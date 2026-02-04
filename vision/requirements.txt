@@ -1,0 +1,27 @@
+# Guitar Hero Bot - Vision System Dependencies
+
+# Core computer vision
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Video capture
+# Note: opencv-python includes VideoCapture support
+
+# Serial communication with PIC
+pyserial>=3.5
+
+# Image processing utilities
+Pillow>=10.0.0
+
+# For timing and performance
+time-machine>=2.10.0  # For testing time-dependent code
+
+# Development and testing
+pytest>=7.4.0
+pytest-cov>=4.1.0
+
+# Optional: GUI for debugging
+# PyQt6>=6.5.0  # Uncomment if GUI debugging needed
+
+# Optional: Performance profiling
+# py-spy>=0.3.0  # Uncomment for profiling
