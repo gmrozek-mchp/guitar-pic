@@ -30,6 +30,8 @@ An autonomous system that plays Guitar Hero on PlayStation 2 or Nintendo Wii by 
 
 ## System Architecture
 
+### Option A: Video Capture (PC-based)
+
 ```
 ┌─────────────────┐     ┌─────────────────────────────────────────┐
 │  PS2 or Wii     │     │            Vision System                │
@@ -64,6 +66,63 @@ An autonomous system that plays Guitar Hero on PlayStation 2 or Nintendo Wii by 
          └──────────────│  (Physical buttons actuated by machine) │
                         └─────────────────────────────────────────┘
 ```
+
+### Option B: Light Sensor Detection (Standalone PIC)
+
+```
+┌─────────────────┐
+│  PS2 or Wii     │
+│    Console      │
+│  Guitar Hero    │────▶  TV/Monitor
+│  Game           │           │
+│                 │           │ (light from screen)
+└────────▲────────┘           ▼
+         │              ┌─────────────────────────────────────────┐
+         │              │     Light Sensor Array (on screen)      │
+         │              │  ┌────┐ ┌────┐ ┌────┐ ┌────┐ ┌────┐    │
+         │              │  │ PT │ │ PT │ │ PT │ │ PT │ │ PT │    │
+         │              │  │ G  │ │ R  │ │ Y  │ │ B  │ │ O  │    │
+         │              │  └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘ └──┬─┘    │
+         │              └─────┼──────┼──────┼──────┼──────┼───────┘
+         │                    │      │      │      │      │
+         │                    └──────┴──────┴──────┴──────┘
+         │                                  │
+         │                                  │ Analog (5 wires)
+         │                                  ▼
+         │              ┌─────────────────────────────────────────┐
+         │              │           Control System                │
+         │              │  ┌─────────────┐    ┌───────────────┐   │
+         │              │  │ PIC ADC     │───▶│ Motor         │   │
+         │              │  │ + Logic     │    │ Drivers       │   │
+         │              │  └─────────────┘    └───────┬───────┘   │
+         │              └─────────────────────────────┼───────────┘
+         │                                            │
+         │                                            ▼
+         │              ┌─────────────────────────────────────────┐
+         │              │        Mechanical Actuators             │
+         │              │  ┌────────┐ ┌────────┐ ┌────────┐       │
+         │              │  │Solenoid│ │Strum   │ │Whammy  │       │
+         │              │  │x5 Frets│ │Actuator│ │Servo   │       │
+         │              │  └────┬───┘ └────┬───┘ └────┬───┘       │
+         │              └──────┼──────────┼──────────┼────────────┘
+         │                     │          │          │
+         │                     ▼          ▼          ▼
+         │              ┌─────────────────────────────────────────┐
+         │              │     PS2 or Wii Guitar Controller        │
+         └──────────────│  (Physical buttons actuated by machine) │
+                        └─────────────────────────────────────────┘
+```
+
+**Architecture Comparison:**
+
+| Aspect | Option A: Video Capture | Option B: Light Sensors |
+|--------|-------------------------|-------------------------|
+| Detection latency | 50-70ms | <1ms |
+| Requires PC | Yes | No |
+| Complexity | High (OpenCV, threading) | Low (ADC thresholds) |
+| Cost | ~$150-200 total | ~$100-140 total |
+| Star power detection | Yes (CV analysis) | Limited (brightness only) |
+| Portability | Tethered to PC | Fully standalone |
 
 ---
 
@@ -110,6 +169,179 @@ Wii ──[Component Cables]──► Elgato Game Capture HD ──[USB 2.0]─�
 - Set display mode to 480p (EDTV/HDTV) in Wii System Settings
 - Wii outputs 480p progressive via component cables
 - Alternative: Wii2HDMI adapter + HDMI capture (may add latency)
+
+---
+
+#### Alternative: Light Sensor Detection
+
+An experimental approach using low-resolution light sensors mounted directly on the screen to detect notes, eliminating video capture entirely.
+
+**Concept:**
+```
+Screen (Guitar Hero highway)
+┌────────────────────────────────────────────────────────┐
+│                                                        │
+│     ●        ●        ●        ●        ●             │ ← Notes scroll down
+│     │        │        │        │        │             │
+│  [Green] [Red]  [Yellow][Blue] [Orange]               │
+│     │        │        │        │        │             │
+│     ▼        ▼        ▼        ▼        ▼             │
+│  ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐ ┌──┴──┐            │ ← Sensors at strike line
+│  │ PT  │ │ PT  │ │ PT  │ │ PT  │ │ PT  │            │   (phototransistors)
+│  └─────┘ └─────┘ └─────┘ └─────┘ └─────┘            │
+└────────────────────────────────────────────────────────┘
+        │        │        │        │        │
+        └────────┴────────┴────────┴────────┴──► PIC ADC (5 channels)
+```
+
+**Key Insight:** Position = Color. Each lane corresponds to one fret button. Sensors don't need to detect color—they only detect brightness change. The X-position determines which button to press.
+
+**Sensor Options:**
+
+| Type | Part Example | Response Time | Cost | Notes |
+|------|--------------|---------------|------|-------|
+| Phototransistor | TEPT5700 | <15μs | $0.50 | Recommended, simple analog |
+| Ambient Light Sensor | VEML7700 | 25ms | $2 | I²C, built-in ADC |
+| Photodiode | BPW34 | <1μs | $1 | Needs amplifier circuit |
+| RGB Color Sensor | TCS34725 | 50ms | $4 | Overkill, but detects star power glow |
+
+**Recommended: TEPT5700 Phototransistor**
+
+| Spec | Value |
+|------|-------|
+| Type | NPN silicon phototransistor |
+| Spectral sensitivity | 440-800nm (covers all note colors) |
+| Rise/fall time | <15μs |
+| Package | 5mm clear dome |
+| Interface | Analog voltage (simple resistor divider) |
+| Cost | ~$0.50 each |
+
+**Circuit (per sensor):**
+```
+    VCC (3.3V or 5V)
+         │
+         ├───────────► PIC ADC pin
+         │
+        ┌┴┐
+        │ │ 10kΩ
+        └┬┘
+         │
+         ▼ Collector
+       ┌───┐
+       │PT │ TEPT5700
+       └─┬─┘
+         │ Emitter
+         │
+        GND
+```
+
+**Sensor Placement Options:**
+
+| Placement | Look-ahead | Pros | Cons |
+|-----------|------------|------|------|
+| At strike line | 0ms | Simplest logic, detect = press | Zero margin for error |
+| 1" above strike | ~80-100ms | Time to prepare, compensate | Need scroll speed calibration |
+| 2" above strike | ~150-200ms | Maximum warning | Higher calibration complexity |
+
+**Recommended:** Place sensors ~1 inch above the strike line for ~100ms look-ahead time.
+
+**Comparison: Video Capture vs Light Sensors**
+
+| Factor | Video Capture | Light Sensors |
+|--------|---------------|---------------|
+| Detection latency | 50-70ms | <1ms |
+| Processing | PC + OpenCV | PIC ADC only |
+| Total system latency | 70-125ms | 15-25ms |
+| Hardware cost | $50-100 | ~$10 |
+| Complexity | High | Low |
+| Calibration | Per-game color tuning | Per-TV brightness threshold |
+| Portability | Requires PC | Standalone PIC possible |
+| Sustain detection | Tail tracking in CV | Extended high reading |
+| Star power detection | Color/glow analysis | Brightness spike (or RGB sensor) |
+
+**Challenges:**
+
+1. **Mounting precision** - Sensors must align precisely with note lanes
+   - Solution: 3D-printed mounting frame sized to TV bezel
+   - Alternative: Adjustable suction cup mounts with fine positioning
+
+2. **Ambient light interference** - Room lighting affects readings
+   - Solution: Light tubes/hoods over each sensor (5-10mm tubes)
+   - Solution: Differential detection (compare to baseline)
+
+3. **TV brightness variation** - Different displays have different output
+   - Solution: Calibration routine at startup
+   - Measure "background" and "note present" levels per lane
+
+4. **Chord detection** - Multiple simultaneous notes
+   - Not a problem: Each lane has independent sensor
+
+5. **Sustain notes** - Long held notes with tails
+   - Detect: Extended period of high brightness after initial spike
+   - Release: Brightness returns to background level
+
+**Calibration Procedure:**
+
+1. Start song, pause immediately (highway visible, no notes at strike line)
+2. Read all 5 sensors → store as `background[]`
+3. Resume, let notes pass each lane
+4. Track maximum reading per lane → store as `note_peak[]`
+5. Set threshold = `(background + note_peak) / 2` per lane
+
+**Detection Logic (PIC firmware):**
+
+```c
+#define NUM_LANES 5
+#define DEBOUNCE_MS 20
+
+uint16_t background[NUM_LANES];
+uint16_t threshold[NUM_LANES];
+uint8_t note_state[NUM_LANES];  // 0 = idle, 1 = detected
+
+void detect_notes(void) {
+    for (int lane = 0; lane < NUM_LANES; lane++) {
+        uint16_t reading = read_adc(lane);
+        
+        if (reading > threshold[lane] && note_state[lane] == 0) {
+            // Rising edge: note detected
+            note_state[lane] = 1;
+            press_fret(lane);
+            strum();
+        } else if (reading < threshold[lane] && note_state[lane] == 1) {
+            // Falling edge: note passed
+            note_state[lane] = 0;
+            release_fret(lane);
+        }
+    }
+}
+```
+
+**Bill of Materials (Light Sensor Approach):**
+
+| Item | Qty | Est. Cost |
+|------|-----|-----------|
+| TEPT5700 phototransistor | 5 | $2.50 |
+| 10kΩ resistors | 5 | $0.50 |
+| Light tubes (3D printed or vinyl) | 5 | $2 |
+| Mounting frame (3D printed) | 1 | $5 |
+| Wiring, connectors | - | $3 |
+| **Total** | | **~$13** |
+
+**Advantages:**
+- **Dramatically lower latency** - Sub-millisecond detection vs 50-70ms capture
+- **No PC required** - Entire system can run on PIC alone
+- **Simpler software** - Threshold comparison vs computer vision
+- **Lower cost** - $13 vs $50-100 for capture card
+- **More reliable** - No frame drops, buffer issues, or USB timing problems
+
+**Risks:**
+- Untested approach - requires prototype validation
+- Screen positioning may be finicky
+- May not detect star power phrases (unless using RGB sensor)
+
+**Recommendation:** Build a single-lane test rig (~$5) to validate detection reliability before committing to full 5-lane build.
+
+---
 
 ### 2. PIC Microcontroller
 
@@ -597,17 +829,28 @@ Total system latency from note appearance to button press:
 ### Phase 1: Foundation (Proof of Concept)
 
 **Goals**:
-- Capture PS2 video successfully
-- Detect single notes (one color)
+- Choose detection method (video capture vs light sensors)
+- Detect single notes (one color/lane)
 - Actuate one solenoid via PIC
 - Hit a few notes in "Tutorial" or easiest song
 
-**Deliverables**:
+**Path A: Video Capture Deliverables**:
 - [ ] Video capture working, frames accessible in Python
 - [ ] Basic color detection for green notes
 - [ ] PIC firmware responds to serial commands
 - [ ] Single solenoid fires on command
 - [ ] End-to-end test: detect note → press button
+
+**Path B: Light Sensor Deliverables**:
+- [ ] Single phototransistor test rig built
+- [ ] Validate detection of note vs background on one lane
+- [ ] PIC ADC reading sensor reliably
+- [ ] Single solenoid fires on detection
+- [ ] End-to-end test: light sensor detects note → press button
+
+**Detection Method Decision Criteria**:
+- If light sensor reliably detects notes with >95% accuracy → proceed with Path B
+- If light sensor is unreliable (ambient light issues, calibration problems) → fall back to Path A
 
 ### Phase 2: Core Gameplay
 
@@ -703,12 +946,14 @@ Total system latency from note appearance to button press:
 
 ## Open Questions
 
-1. **Game Platform**: PS2 vs Wii? (Wii has better video, more games, but wireless guitar adds complexity)
-2. **PIC Model Selection**: PIC18F4550 (USB) vs PIC18F26K22 (simpler)?
-3. **Vision Platform**: Full PC vs Raspberry Pi 4?
-4. **Solenoid Voltage**: 5V (simpler power) vs 12V (faster response)?
-5. **Mounting System**: 3D printed custom vs adjustable clamps?
-6. **Latency Calibration**: Visual method vs audio sync?
+1. **Detection Method**: Video capture (PC + OpenCV) vs Light sensors (standalone PIC)? Light sensors offer dramatically lower latency but are unproven.
+2. **Game Platform**: PS2 vs Wii? (Wii has better video, more games, but wireless guitar adds complexity)
+3. **PIC Model Selection**: PIC18F4550 (USB) vs PIC18F26K22 (simpler)? Light sensor approach needs 5+ ADC channels.
+4. **Vision Platform**: Full PC vs Raspberry Pi 4? (Only applies if using video capture)
+5. **Solenoid Voltage**: 5V (simpler power) vs 12V (faster response)?
+6. **Mounting System**: 3D printed custom vs adjustable clamps?
+7. **Latency Calibration**: Visual method vs audio sync?
+8. **Light Sensor Placement**: At strike line (simpler) vs above strike line (more margin)?
 
 ---
 
