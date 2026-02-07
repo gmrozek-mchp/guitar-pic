@@ -190,6 +190,1151 @@ I'll add it after the Video Capture section, around line 113.</details></think>
 
 <details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
 
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Good, I've added the light sensor section. Now I should also update the system architecture diagram to show this as an alternative path, and perhaps update the Open Questions section to include this as an option. Let me also check if the Bill of Materials section should be updated.
+
+Let me also update the architecture section to show the light sensor as an alternative detection path.</details></think>
+
+---
+
+Now let me update the system architecture diagram to show the light sensor as an alternative detection path.
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Good. Now let me update the Open Questions section to include the detection method choice.</details></think>
+
+---
+
+Now let me update the Open Questions section to include this detection method choice.
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Good. Let me also check if there's a phase 1 section that should mention testing the light sensor approach as an alternative. Let me look at the development phases section.</details></think>
+
+---
+
+Let me also add a note in Phase 1 about testing the light sensor approach as an alternative path.
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Let me find the Development Phases section to update Phase 1.</details></think>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "pattern": "### Phase 1: Foundation",
+  "path": "/Users/greg/projects/microchip/guitar-pic/SPEC.md",
+  "contextAfter": 25,
+  "caseInsensitive": false
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "pattern": "### Phase 1: Foundation",
+  "path": "/Users/greg/projects/microchip/guitar-pic/SPEC.md",
+  "outputMode": "content",
+  "totalFiles": 1,
+  "totalMatches": 1,
+  "topFiles": [
+    {
+      "uri": "SPEC.md",
+      "matchCount": 26
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+I'll update Phase 1 to include an alternative path for the light sensor approach.</details></think>
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+I've added the light sensor detection section to the spec. Let me verify the changes look good by reading the relevant sections.</details></think>
+
+---
+
+Done! I've added the light sensor detection approach to the spec with:
+
+1. **New "Alternative: Light Sensor Detection" section** after Video Capture - includes:
+   - Concept diagram showing sensor placement
+   - Sensor options comparison (phototransistors, photodiodes, RGB sensors)
+   - TEPT5700 recommendation with specs
+   - Circuit schematic
+   - Sensor placement options (at vs above strike line)
+   - Comparison table: Video Capture vs Light Sensors
+   - Challenges and solutions (mounting, ambient light, calibration)
+   - Calibration procedure
+   - Sample detection logic in C
+   - Bill of materials (~$13 total)
+
+2. **Updated System Architecture** - now shows both options:
+   - Option A: Video Capture (PC-based)
+   - Option B: Light Sensor Detection (Standalone PIC)
+   - Comparison table
+
+3. **Updated Open Questions** - added:
+   - Detection method choice as #1 priority question
+   - Light sensor placement question
+
+4. **Updated Phase 1** - now includes parallel paths:
+   - Path A: Video Capture deliverables
+   - Path B: Light Sensor deliverables
+   - Decision criteria for choosing between them
+
+The light sensor approach could drop total system latency from 70-125ms down to 15-25ms and eliminate the need for a PC entirely. The recommendation is to build a single-lane test rig (~$5) to validate the approach before committing.
+
+---
+
+_**User**_
+
+Help with voice coil calculation. Say I have 2 mangnets 1/2" x 1/4" x 1/8" (magnetized across 1/8" thickness) and seperated by 4mm (north and south facing each other on large face). spec says surface field is 4174 Gauss. is this enough information to calculate force generated by wire (voice coil) operating in this field?
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+The user is asking about calculating the force on a voice coil operating in the magnetic field between two magnets. Let me think through this.
+
+For a voice coil (Lorentz force), the force on a current-carrying wire in a magnetic field is:
+
+F = B × I × L
+
+Where:
+- F = force (Newtons)
+- B = magnetic field strength (Tesla)
+- I = current (Amps)
+- L = length of wire in the field (meters)
+
+The key question is: what is the actual field strength B in the gap between the magnets?
+
+The user provided:
+- Magnet dimensions: 1/2" × 1/4" × 1/8" (magnetized through the 1/8" thickness)
+- Gap between magnets: 4mm
+- Surface field: 4174 Gauss
+
+The surface field (4174 Gauss = 0.4174 Tesla) is the field right at the magnet surface. But the field in the gap between the magnets is different - it depends on the gap distance and magnet geometry.
+
+For two magnets facing each other with opposite poles (N-S configuration), the field in the gap is actually stronger than a single magnet's surface field because the fields add. However, the field also decreases with distance from the surface.
+
+Let me convert the dimensions:
+- 1/2" = 12.7mm (length)
+- 1/4" = 6.35mm (width) 
+- 1/8" = 3.175mm (thickness, magnetization direction)
+- Gap = 4mm
+
+For a rough calculation, we can estimate the field in the center of the gap. With two magnets facing each other (attracting), the fields reinforce. But the 4mm gap is larger than the magnet thickness (3.175mm), so there will be some field reduction.
+
+A simplified approach for the gap field:
+- The field from a single magnet at distance d from its surface decreases roughly as:
+
+
+B(d) ≈ Br × (t / (t + d)) for a thin magnet (where t is thickness)
+
+With two opposing magnets, their fields add together. To get a more precise answer, I'd need the remanent field Br and magnet grade (N42, N52, etc.), but the 4174 Gauss surface field gives us a reasonable baseline. At the center of the 4mm gap (2mm from each magnet surface), the combined field will be reduced from the surface value but still substantial due to the reinforcing effect of both magnets.
+
+I estimate the field strength in the gap at roughly 60-80% of the surface field, putting it around 2500-3500 Gauss or 0.25-0.35 T. Using the force equation F = B × I × L, with an estimated gap field of 0.3 T and 60 turns of wire with ~15mm active length per turn (0.9m total), the force at 0.5A would be approximately 0.135 N.
+
+The main challenge is that the gap field differs from the surface measurement, so I need to estimate it based on the magnet configuration. The calculation also depends on knowing the coil's geometry—how many turns and how much wire sits in the magnetic field—plus the actual current flowing through it.</details></think>
+
+---
+
+Yes, you have enough information for a reasonable estimate! The key formula for voice coil force is:
+
+## Lorentz Force Formula
+
+**F = B × I × L**
+
+Where:
+- **F** = Force (Newtons)
+- **B** = Magnetic field in the gap (Tesla)
+- **I** = Current through coil (Amps)  
+- **L** = Total length of wire in the magnetic field (meters)
+
+## The Challenge: Gap Field ≠ Surface Field
+
+The 4174 Gauss spec is the field at the magnet surface. The field in your 4mm gap will be different.
+
+**Your geometry:**
+```
+        ┌─────────────────┐
+        │       N         │  ← Magnet 1 (1/2" × 1/4" × 1/8")
+        │       ↓         │     12.7mm × 6.35mm × 3.175mm
+        └─────────────────┘
+              4mm gap        ← Coil wire goes here
+        ┌─────────────────┐
+        │       ↑         │  
+        │       S         │  ← Magnet 2
+        └─────────────────┘
+```
+
+**Good news:** With N-S facing (attracting), the fields from both magnets reinforce in the gap.
+
+**Complication:** The 4mm gap is larger than the magnet thickness (3.175mm), so field falls off.
+
+## Estimating Gap Field
+
+For two opposing rectangular magnets, a rough approximation for centerline field:
+
+```
+B_gap ≈ B_surface × (t / (t + g/2)) × 2 × geometry_factor
+```
+
+Where:
+- t = magnet thickness = 3.175mm
+- g = gap = 4mm
+- geometry_factor ≈ 0.7-0.8 for small magnets
+
+**Rough estimate:**
+```
+B_gap ≈ 4174G × (3.175 / (3.175 + 2)) × 2 × 0.75
+      ≈ 4174 × 0.61 × 2 × 0.75
+      ≈ 3840 Gauss
+      ≈ 0.38 Tesla
+```
+
+This is a ballpark - actual field could be 0.25-0.45T depending on magnet grade and exact geometry.
+
+## Force Calculation Example
+
+Say you wind a coil with:
+- 60 turns
+- Each turn has ~10mm (0.010m) of wire in the field (the portion between the magnets)
+- Total active length L = 60 × 0.010 = 0.6m
+- Current I = 0.5A
+- Gap field B ≈ 0.35T
+
+**Force:**
+```
+F = 0.35T × 0.5A × 0.6m
+F = 0.105 N
+F ≈ 10.7 grams-force
+```
+
+For 50g actuation force, you'd need roughly:
+- 2.5× more current (1.25A), or
+- 2.5× more turns, or
+- Stronger magnets / smaller gap
+
+## What Would Help Refine This
+
+| Parameter | Why It Helps |
+|-----------|--------------|
+| Magnet grade (N42, N52?) | Gives actual Br (remanent field) |
+| Coil dimensions | Active wire length in field |
+| Wire gauge | Determines max current, resistance |
+| Target force | Sizes the design |
+
+## Quick Sanity Check Tool
+
+Would you like me to search for a calculator or create a simple spreadsheet formula to iterate on coil turns, current, and wire gauge to hit your 50g target force?
+
+Or if you can share the magnet grade (usually printed on them or from the supplier), I can give you a more precise gap field estimate.
+
+---
+
+_**User**_
+
+magnet grade is n52. spec says br max = 14,800 Gauss
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+Now we have more accurate information:
+- N52 magnets
+- Br (remanent magnetization) = 14,800 Gauss = 1.48 Tesla
+- Dimensions: 1/2" × 1/4" × 1/8" (12.7mm × 6.35mm × 3.175mm)
+- Magnetized through 1/8" (3.175mm) thickness
+- Gap: 4mm
+- Surface field: 4174 Gauss (this is consistent with the geometry)
+
+With Br known, I can do a better calculation of the gap field.
+
+For a rectangular magnet, the surface field at the center of one face can be approximated using the formula:
+
+B_surface = (Br/π) × [arctan(LW/(2t×√(L²/4 + W²/4 + t²))) ]
+
+But that's complex. A simpler approximation for the ratio of surface field to Br for a rectangular magnet magnetized through thickness t with face dimensions L × W:
+
+For our magnet:
+- L = 12.7mm
+- W = 6.35mm  
+- t = 3.175mm
+
+The surface field they quote (4174 G) compared to Br (14800 G) gives a ratio of about 0.28, which is reasonable for this geometry.
+
+For the gap field between two opposing magnets, I can use a more rigorous approach.
+
+For two identical rectangular magnets facing each other with opposite poles, the field along the centerline (axis of magnetization) can be calculated. 
+
+A useful formula for the axial field of a rectangular magnet at distance z from its surface:
+
+B(z) = (Br/π) × [arctan(LW / (2(t+z)√((L/2)² + (W/2)² + (t+z)²))) - arctan(LW / (2z√((L/2)² + (W/2)² + z²)))]
+
+
+This gets complicated quickly. For small magnets where the gap distance is comparable to the face dimensions, simpler approximations fail. I should use the K&J Magnetics approach instead, which accounts for the actual geometry more directly.
+
+Since the magnets are attracting (N-S configuration), their fields reinforce each other in the gap. I can estimate the field at the gap center by calculating contributions from each magnet separately—treating each as a uniformly magnetized block—then adding them together since both fields point the same direction.
+
+For a rectangular magnet, the axial field drops off with distance from the pole face, and I need to account for the specific face dimensions. At 2mm from the surface of a 12.7 × 6.35mm magnet, the field is noticeably weaker than at the surface, but the exact reduction depends on the geometry.
+
+Using a cylindrical approximation with an equivalent radius of about 5.1mm, the field at 2mm distance retains roughly 87% of its surface strength. With both magnets contributing at this reduced level, the combined field in the gap works out to approximately 0.73 Tesla—which is reasonable for N52 magnets positioned close together, though on the higher end of expectations.
+
+The field isn't uniform across the gap though. It peaks at the center and drops off toward the edges, meaning wire positioned at the periphery experiences weaker forces than wire at the core. For a practical voice coil design, I need to account for this non-uniformity and work with a more conservative effective field strength. The wire itself must fit within the 4mm gap and be oriented perpendicular to the field direction to maximize the force it experiences, following the right-hand rule where force acts perpendicular to both current and magnetic field.
+
+For the coil geometry, if the magnet face is 12.7mm × 6.35mm, the active wire length in the gap per turn would be approximately 12.7mm (0.0127m), assuming the coil passes through the gap along that dimension. Scaling this up with multiple turns gives a total active length of N × 0.0127m. Wire gauge matters too—30 AWG at 0.25mm diameter or 28 AWG at 0.32mm would both fit, potentially allowing multiple layers depending on the gap constraints.
+
+Using the force equation F = B × I × L, I can work backward from your 50g target force (0.49N). With a conservative magnetic field estimate of 0.5T, this requires roughly 77 amp-turns. That translates to several practical configurations: 77 turns drawing 1A, 154 turns at 0.5A, or 39 turns at 2A, depending on your power constraints and available space.</details></think>
+
+---
+
+Excellent, N52 with Br = 14,800 Gauss (1.48T) is strong stuff. Now we can do a proper calculation.
+
+## Calculating Gap Field
+
+For two opposing N52 magnets (N-S attracting), the fields reinforce. Let me calculate the field at the center of the 4mm gap.
+
+**Your magnet geometry:**
+- Face: 12.7mm × 6.35mm (1/2" × 1/4")
+- Thickness: 3.175mm (1/8")
+- Gap: 4mm (each magnet surface is 2mm from gap center)
+
+**Field contribution from each magnet at z = 2mm:**
+
+Using the equivalent disc approximation (effective radius r ≈ √(L×W/π) ≈ 5.1mm):
+
+```
+B(z) ≈ B_surface × r² / (r² + z²)
+B(2mm) ≈ 4174G × 5.1² / (5.1² + 2²)
+B(2mm) ≈ 4174 × 26 / 30
+B(2mm) ≈ 3620 Gauss per magnet
+```
+
+**Combined gap field (both magnets):**
+```
+B_gap ≈ 2 × 3620G = 7240 Gauss ≈ 0.72 Tesla
+```
+
+That's a strong field! For a conservative design estimate, use **0.5-0.6T** to account for edge effects and non-uniformity.
+
+## Force Calculation
+
+**F = B × I × L**
+
+Where L = active wire length in the field = (turns) × (length per turn in gap)
+
+**Geometry consideration:**
+```
+         ┌──────────────────┐
+         │    N magnet      │  12.7mm wide
+         └──────────────────┘
+              ║ 4mm gap ║
+         ═════╬═════════╬═════  ← Coil wire passes through here
+              ║         ║         Active length ≈ 12.7mm per turn
+         ┌──────────────────┐
+         │    S magnet      │
+         └──────────────────┘
+```
+
+**Active length per turn:** ~12.7mm = 0.0127m (wire segment in the gap)
+
+## Force vs Amp-Turns
+
+| Target Force | B = 0.5T | B = 0.6T |
+|--------------|----------|----------|
+| 25g (0.245N) | 39 A·turns | 32 A·turns |
+| 50g (0.49N) | 77 A·turns | 64 A·turns |
+| 75g (0.74N) | 116 A·turns | 97 A·turns |
+
+## Practical Coil Designs for 50g
+
+| Turns | Current | Wire Gauge | Resistance* | Power |
+|-------|---------|------------|-------------|-------|
+| 40 | 1.9A | 28 AWG | ~0.8Ω | 2.9W |
+| 60 | 1.3A | 30 AWG | ~1.9Ω | 3.2W |
+| 80 | 1.0A | 30 AWG | ~2.5Ω | 2.5W |
+| 120 | 0.65A | 32 AWG | ~5.8Ω | 2.5W |
+
+*Rough estimates assuming ~25mm total wire per turn
+
+## Coil Fit Check
+
+**4mm gap, how many layers?**
+- 30 AWG = 0.255mm diameter
+- With enamel insulation ≈ 0.29mm
+- Layers that fit: 4mm / 0.29mm ≈ **13 layers**
+
+**Turns per layer** (along 6.35mm magnet width):
+- 6.35mm / 0.29mm ≈ **21 turns per layer**
+
+**Max turns in gap:** 13 × 21 ≈ **273 turns** (way more than needed)
+
+## Recommended Design
+
+For 50g force with margin:
+
+```
+Coil: 60 turns of 30 AWG
+Active length: 60 × 0.0127m = 0.76m
+At B = 0.55T, I = 1.2A:
+Force = 0.55 × 1.2 × 0.76 = 0.50N ≈ 51g ✓
+
+Coil resistance: ~1.5-2Ω
+Power: ~2-3W
+```
+
+This is very achievable. Want me to update the voice coil design section in the spec with these N52-based calculations?
+
+---
+
+_**User**_
+
+yes. and current design actually has 2 pairs of these magnets that the voice coil with pass through.
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants me to update the voice coil design section in the spec with the N52 calculations, and they're clarifying that the actual design has 2 pairs of magnets that the voice coil passes through. This means the active wire length is doubled - the coil passes through two gaps, so each turn contributes 2× the force.
+
+Let me first read the current voice coil design section to see what's there, then update it with the new calculations.</details></think>
+
+---
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "pattern": "#### Alternative: DIY Voice Coil",
+  "path": "/Users/greg/projects/microchip/guitar-pic/SPEC.md",
+  "contextAfter": 60,
+  "caseInsensitive": false
+}
+```
+Result:
+
+```json
+{
+  "success": {
+    "pattern": "#### Alternative: DIY Voice Coil",
+    "path": "/Users/greg/projects/microchip/guitar-pic/SPEC.md",
+    "outputMode": "content",
+    "workspaceResults": {
+      "/Users/greg/projects/microchip/guitar-pic": {
+        "content": {
+          "matches": [
+            {
+              "file": "SPEC.md",
+              "matches": [
+                {
+                  "lineNumber": 466,
+                  "content": "#### Alternative: DIY Voice Coil Actuator"
+                },
+                {
+                  "lineNumber": 467,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 468,
+                  "content": "A custom voice coil that fits around a standard keyboard switch, using Lorentz force for the quietest possible actuation.",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 469,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 470,
+                  "content": "**Concept:**",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 471,
+                  "content": "&#96;&#96;&#96;",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 472,
+                  "content": "         ┌─────────────────┐",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 473,
+                  "content": "         │  Custom keycap  │",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 474,
+                  "content": "         │  ┌───────────┐  │",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 475,
+                  "content": "         │  │░░ Coil ░░░│  │ ← Voice coil (moves with keycap)",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 476,
+                  "content": "         │  └─────┬─────┘  │",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 477,
+                  "content": "         └────────┼────────┘",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 478,
+                  "content": "                  │",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 479,
+                  "content": "    ══════════════╪═══════════════ Mounting plate",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 480,
+                  "content": "           ┌──────┴──────┐",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 481,
+                  "content": "           │ N ║ gap ║ N │ ← Ring magnets (fixed)",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 482,
+                  "content": "           │ S ║     ║ S │",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 483,
+                  "content": "           │ ════════════ │ ← Steel yoke",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 484,
+                  "content": "           └──────┬───────┘",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 485,
+                  "content": "           ┌──────┴──────┐",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 486,
+                  "content": "           │   Switch    │ ← Standard Cherry MX",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 487,
+                  "content": "           └─────────────┘",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 488,
+                  "content": "&#96;&#96;&#96;",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 489,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 490,
+                  "content": "| Spec | Value |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 491,
+                  "content": "|------|-------|",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 492,
+                  "content": "| Type | Voice coil (Lorentz force) |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 493,
+                  "content": "| Magnets | 4× N42 10×5×3mm blocks |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 494,
+                  "content": "| Coil | 30 AWG, 60 turns, 4Ω |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 495,
+                  "content": "| Gap | 3.5mm |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 496,
+                  "content": "| Operating voltage | 5V |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 497,
+                  "content": "| Current for 50g | ~0.5A |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 498,
+                  "content": "| Response time | &lt;5ms |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 499,
+                  "content": "| Estimated cost | ~$33 for all 7 |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 500,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 501,
+                  "content": "**Advantages:**",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 502,
+                  "content": "- **Absolutely quietest** - No snap, no impact, smooth proportional force",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 503,
+                  "content": "- **Fastest response** - Low moving mass (&lt;5ms)",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 504,
+                  "content": "- **Proportional control** - Force linear with current",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 505,
+                  "content": "- **Bidirectional** - Can push or pull",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 506,
+                  "content": "- **Highest cool factor** - Speaker technology for buttons",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 507,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 508,
+                  "content": "**Risks:**",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 509,
+                  "content": "- Most complex construction",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 510,
+                  "content": "- Requires precise magnet alignment",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 511,
+                  "content": "- Higher assembly time",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 512,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 513,
+                  "content": "**Documentation:**",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 514,
+                  "content": "- Design details: [docs/voice-coil-design.md](docs/voice-coil-design.md)",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 515,
+                  "content": "- Test protocol: [docs/voice-coil-test-protocol.md](docs/voice-coil-test-protocol.md)",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 516,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 517,
+                  "content": "**Recommendation:** Build one test unit (~$17) to validate before full build.",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 518,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 519,
+                  "content": "---",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 520,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 521,
+                  "content": "#### Actuator Comparison Summary",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 522,
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 523,
+                  "content": "| Factor | DIY Solenoid | Electromagnet | Voice Coil |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 524,
+                  "content": "|--------|--------------|---------------|------------|",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 525,
+                  "content": "| Noise | Soft thud | Very quiet | **Quietest** |",
+                  "isContextLine": true
+                },
+                {
+                  "lineNumber": 526,
+                  "content": "| Response | 15-20ms | 15-20ms | **&lt;5ms** |",
+                  "isContextLine": true
+                }
+              ]
+            }
+          ],
+          "totalLines": 61,
+          "totalMatchedLines": 1
+        }
+      }
+    }
+  }
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Now I understand the current design. The user has 2 pairs of magnets (4 magnets total), so the voice coil passes through 2 gaps. This doubles the active wire length and therefore the force per amp-turn.
+
+Let me update this section with:
+1. The N52 magnet specs (1/2" × 1/4" × 1/8")
+2. The dual-gap configuration
+3. Updated calculations showing the doubled force
+4. Revised current requirements
+
+With 2 gaps:
+- Active length per turn = 2 × 12.7mm = 25.4mm = 0.0254m
+- For 50g at B = 0.55T:
+  F = B × I × L
+  0.49N = 0.55T × I × (N × 0.0254m)
+  I × N = 0.49 / (0.55 × 0.0254) = 35 amp-turns
+
+This is much more achievable - roughly half the amp-turns needed compared to single gap.</details></think>
+
+---
+
+Two gaps doubles your force per amp-turn. Let me update the voice coil section with the N52 specs and dual-gap configuration.
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Good, I've updated the voice coil section. Let me also update the actuator comparison summary table to reflect the updated specs.</details></think>
+
+---
+
+Now let me update the actuator comparison table to reflect the updated voice coil specs.
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+I've updated both sections. Let me give the user a summary of the key changes and the improved numbers.</details></think>
+
+---
+
+Updated the voice coil section with the N52 dual-gap configuration. Here's the key improvement:
+
+## Dual-Gap Advantage
+
+With the coil passing through **2 gaps** instead of 1:
+- Active wire length per turn: **25.4mm** (vs 12.7mm)
+- Force per amp-turn: **2×**
+- Required amp-turns for 50g: **~39** (vs ~77 for single gap)
+
+## Updated Specs
+
+| Parameter | Old Design | New N52 Dual-Gap |
+|-----------|------------|------------------|
+| Magnets | 4× N42 10×5×3mm | 4× N52 1/2"×1/4"×1/8" |
+| Gap field | ~0.35T (est) | ~0.55T |
+| Gaps | 1 | 2 |
+| Turns needed | 60 | 40 |
+| Current for 50g | ~0.5A | ~0.9A |
+| Power | ~2.5W | ~1W |
+
+The dual-gap N52 configuration is significantly more efficient. With 40 turns of 30 AWG at ~0.9A, you get 50g force at only ~1W per actuator—much easier to drive and less heat to dissipate.
+
+The spec now includes:
+- Detailed dual-gap diagram
+- N52 magnet specs with Br value
+- Gap field calculation methodology
+- Force vs amp-turns table
+- Coil geometry verification (fits easily in 2 layers)
+- Updated BOM (~$7 per actuator, ~$49 for all 7)
+- Magnet safety warnings (N52s are no joke)
+
+---
+
+_**User**_
+
+Perform calculations with 1/16" thick N42 magnets. Other dimensions the same. How many turns for same force?
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants to compare N42 magnets with 1/16" thickness vs the N52 magnets with 1/8" thickness. Let me calculate:
+
+**N42 magnet specs:**
+- Dimensions: 1/2" × 1/4" × 1/16" (12.7 × 6.35 × 1.5875mm)
+- Thickness: 1/16" = 1.5875mm (half of the N52)
+- Br for N42: typically ~13,200 Gauss (1.32T)
+
+**Changes from N52 1/8":**
+1. Lower Br (N42 vs N52): 13,200G vs 14,800G = 0.89× factor
+2. Thinner magnet: 1.5875mm vs 3.175mm = 0.5× factor
+
+The surface field of a rectangular magnet scales with thickness (for thin magnets). The formula for surface field at the center of a rectangular magnet face is approximately:
+
+B_surface ∝ Br × (geometric factor involving thickness)
+
+For a thin magnet compared to face dimensions, the surface field is roughly:
+B_surface ≈ Br × (2/π) × arctan(LW / (2t × √(L²/4 + W²/4 + t²)))
+
+This is complex, but we can use the ratio approach. For the N52 1/8" magnet:
+- Br = 14,800G
+- Surface field = 4,174G
+- Ratio = 4174/14800 = 0.282
+
+For thinner magnets, this ratio decreases because the magnet has less "depth" to generate field. For a 1/16" magnet (half thickness):
+
+Let me estimate using a simplified model. For a rectangular magnet, the surface field at the center depends on the geometry. A rough approximation for thin magnets:
+
+
+B_surface/Br ≈ (2/π) × arctan(L×W / (2t × √((L/2)² + (W/2)² + t²)))
+
+For the N52 1/8" case, I can work through the geometric calculation with t = 3.175mm, L = 12.7mm, W = 6.35mm to establish a baseline, then apply the same approach to the thinner N42 magnet to see how the reduced thickness affects the field strength.
+
+The formula gives me around 0.65 for the normalized ratio, but the actual measured value is closer to 0.28, so the geometric model alone isn't capturing the full picture. Since the 4174G spec appears to be measured data, I should use that as my reference point and estimate how the N42 1/16" would scale relative to it. The key factors are the lower remanence of N42 compared to N52, and the significant reduction in thickness from 1/8" to 1/16", both of which will meaningfully reduce the surface field. For a thin rectangular magnet, the surface field scales with t / √(t² + r²), where r is the effective face radius of about 5.1mm.
+
+Testing this against the N52 1/8" magnet: the ratio gives 3.175/6.0 ≈ 0.53, which predicts around 7,850G compared to the actual 4,174G—roughly double what's observed. There's clearly a missing factor in the model, though the relative scaling between different thicknesses should still hold. For the thinner N42 1/16" case, applying the same approach with t = 1.5875mm gives a smaller ratio, which aligns with expecting lower surface field strength.
+
+Comparing the two magnets directly: the N42 1/16" produces about half the surface field of the N52 1/8", so I'd estimate around 2,100G at the surface. At a 2mm distance from each magnet face in a 4mm gap, the field drops to roughly 1,820G per magnet, combining to approximately 3,640G in the gap.
+
+This is about half the field strength of the N52 1/8" configuration. To achieve the same 50g holding force, I'd need to double the amp-turns—either using 78 amp-turns instead of 39, or keeping 40 turns but increasing current from 0.9A to 1.8A, which would quadruple the power consumption from about 1W to 4W.</details></think>
+
+---
+
+Let me run through the calculations for N42 magnets at 1/16" thickness.
+
+## N42 1/16" vs N52 1/8" Comparison
+
+**Magnet parameters:**
+
+| Parameter | N52 1/8" (current) | N42 1/16" (new) |
+|-----------|-------------------|-----------------|
+| Dimensions | 12.7 × 6.35 × 3.175mm | 12.7 × 6.35 × 1.59mm |
+| Thickness | 3.175mm | 1.59mm (half) |
+| Br (remanence) | 14,800 G | ~13,200 G |
+| Br ratio | 1.0 | 0.89× |
+
+## Surface Field Estimation
+
+For thin rectangular magnets, surface field scales with both Br and thickness. Using the approximation:
+
+```
+B_surface ∝ Br × t / √(t² + r²)
+
+Where r = effective face radius ≈ √(L×W/π) ≈ 5.1mm
+```
+
+**N52 1/8":**
+```
+t/√(t² + r²) = 3.175 / √(10.1 + 26) = 3.175 / 6.0 = 0.53
+```
+
+**N42 1/16":**
+```
+t/√(t² + r²) = 1.59 / √(2.5 + 26) = 1.59 / 5.34 = 0.30
+```
+
+**Surface field ratio:**
+```
+(Br_N42 × 0.30) / (Br_N52 × 0.53) = (13200 × 0.30) / (14800 × 0.53)
+                                  = 3960 / 7844
+                                  ≈ 0.50
+```
+
+The N42 1/16" has roughly **half the surface field** of the N52 1/8".
+
+## Gap Field Comparison
+
+| Parameter | N52 1/8" | N42 1/16" |
+|-----------|----------|-----------|
+| Est. surface field | 4,174 G | ~2,100 G |
+| Field at z=2mm (per magnet) | 3,620 G | ~1,820 G |
+| Combined gap field | ~7,240 G | ~3,640 G |
+| Gap field (Tesla) | **~0.72 T** | **~0.36 T** |
+
+## Force Impact
+
+Since F = B × I × L, and B is halved:
+
+**For 50g force with dual-gap configuration:**
+
+| Magnet | Gap Field | Amp-turns needed | 40-turn current | Power |
+|--------|-----------|------------------|-----------------|-------|
+| N52 1/8" | 0.55T* | 39 | 0.9A | ~1W |
+| N42 1/16" | 0.28T* | **77** | **1.9A** | **~4.7W** |
+
+*Using conservative design values (0.76× theoretical)
+
+## Answer: Turns Needed
+
+**For same force (50g) at same current (~0.9A):**
+- N52 1/8": **40 turns**
+- N42 1/16": **~80 turns** (2× more)
+
+**Alternatively, keeping 40 turns:**
+- Current increases from 0.9A to ~1.9A
+- Power increases from ~1W to ~4.7W
+
+## Recommendation
+
+| Factor | N52 1/8" | N42 1/16" |
+|--------|----------|-----------|
+| Turns for 50g @ 1A | 40 | 80 |
+| Coil layers needed | 2 | 3-4 |
+| Power dissipation | ~1W | ~4-5W |
+| Magnet cost (×4) | ~$4 | ~$2-3 |
+| Handling danger | Higher | Lower |
+
+The N42 1/16" magnets are:
+- **Cheaper** and **safer to handle** (less powerful snap)
+- But require **2× the turns** or **2× the current**
+- More heat to dissipate (~5W vs ~1W)
+
+The N52 1/8" is the better choice for efficiency unless cost/safety is the priority. Want me to update the spec with a comparison table showing both options?
+
+---
+
+_**User**_
+
+yes, update spec with these options. Also add 1/16" thick N52 and 1/8" thick N42
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+The user wants me to add a comparison of 4 magnet options to the spec:
+1. N52 1/8" (current)
+2. N52 1/16"
+3. N42 1/8"
+4. N42 1/16"
+
+Let me calculate all four:
+
+**Common parameters:**
+- Face dimensions: 1/2" × 1/4" (12.7 × 6.35mm)
+- Effective radius r ≈ 5.1mm
+- Gap: 4mm (z = 2mm from each surface to center)
+
+**Br values:**
+- N52: 14,800 G (1.48T)
+- N42: 13,200 G (1.32T)
+
+**Thickness:**
+- 1/8" = 3.175mm
+- 1/16" = 1.5875mm
+
+**Surface field scaling:**
+B_surface ∝ Br × t / √(t² + r²)
+
+For r = 5.1mm:
+
+1. **N52 1/8"** (t = 3.175mm):
+   - t/√(t² + r²) = 3.175/√(10.1 + 26) = 3.175/6.0 = 0.529
+   - Relative factor = 14800 × 0.529 = 7829
+   - Surface field ≈ 4174 G (given)
+
+2. **N52 1/16"** (t = 1.5875mm):
+   - t/√(t² + r²) = 1.5875/√(2.52 + 26) = 1.5875/5.34 = 0.297
+   - Relative factor = 14800 × 0.297 = 4396
+   - Ratio to N52 1/8": 4396/7829 = 0.56
+   - Surface field ≈ 2340 G
+
+3. **N42 1/8"** (t = 3.175mm):
+   - t/√(t² + r²) = 0.529 (same geometry)
+   - Relative factor = 13200 × 0.529 = 6983
+   - Ratio to N52 1/8": 6983/7829 = 0.89
+   - Surface field ≈ 3715 G
+
+4. **N42 1/16"** (t = 1.5875mm):
+   - t/√(t² + r²) = 0.297 (same geometry)
+   - Relative factor = 13200 × 0.297 = 3924
+   - Ratio to N52 1/8": 3924/7829 = 0.50
+   - Surface field ≈ 2087 G
+
+For the gap field at z=2mm, I need to apply the geometric factor r²/(r² + z²) = 26/30 = 0.867. With both magnets contributing, the combined field becomes 1.73 times the surface field value.
+
+This gives me the gap field strengths: N52 1/8" reaches 0.72 T, the 1/16" variant drops to 0.40 T, N42 1/8" achieves 0.64 T, and N42 1/16" provides 0.36 T. To generate 0.49N of force across the dual-gap configuration with L = 0.0254m per turn, I calculate the required amp-turns as A·T = 0.49 / (B × 0.0254).
+
+Applying a 0.75× safety factor to account for real-world losses, the amp-turn requirements become: N52 1/8" needs 36 A·T, N52 1/16" requires 64 A·T, N42 1/8" demands 40 A·T, and N42 1/16" calls for 71 A·T. I'll organize these into a summary table for clarity.</details></think>
+
+---
+
+Let me calculate all four combinations and update the spec.
+
+---
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Now I have the context. Let me replace the single magnet specification section with a comparison table of all four options. I'll update from line 514 through the force vs amp-turns table.</details></think>
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
 Status: **loading**
 
 </details>

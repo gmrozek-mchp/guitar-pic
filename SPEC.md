@@ -467,67 +467,212 @@ An experimental approach using electromagnets to attract permanent magnets on th
 
 A custom voice coil that fits around a standard keyboard switch, using Lorentz force for the quietest possible actuation.
 
-**Concept:**
+**Concept (Dual-Gap Configuration):**
 ```
-         ┌─────────────────┐
-         │  Custom keycap  │
-         │  ┌───────────┐  │
-         │  │░░ Coil ░░░│  │ ← Voice coil (moves with keycap)
-         │  └─────┬─────┘  │
-         └────────┼────────┘
-                  │
-    ══════════════╪═══════════════ Mounting plate
-           ┌──────┴──────┐
-           │ N ║ gap ║ N │ ← Ring magnets (fixed)
-           │ S ║     ║ S │
-           │ ════════════ │ ← Steel yoke
-           └──────┬───────┘
-           ┌──────┴──────┐
-           │   Switch    │ ← Standard Cherry MX
-           └─────────────┘
+                    ┌─────────────────┐
+                    │  Custom keycap  │
+                    │  ┌───────────┐  │
+                    │  │░░ Coil ░░░│  │ ← Voice coil (moves with keycap)
+                    │  └─────┬─────┘  │
+                    └────────┼────────┘
+                             │
+       ══════════════════════╪══════════════════════ Mounting plate
+                             │
+    ┌────────────┐    4mm    │    4mm    ┌────────────┐
+    │     N      │◄── gap ──►║◄── gap ──►│     N      │
+    │ ┌────────┐ │           ║           │ ┌────────┐ │
+    │ │ magnet │ │    ┌──────╨──────┐    │ │ magnet │ │
+    │ └────────┘ │    │ coil passes │    │ └────────┘ │
+    │     S      │    │   through   │    │     S      │
+    └────────────┘    │  both gaps  │    └────────────┘
+                      └──────┬──────┘
+                             │
+                      ┌──────┴──────┐
+                      │   Switch    │ ← Standard Cherry MX
+                      └─────────────┘
+
+    Side view (coil moving through dual gaps):
+    
+         Magnet 1A    ║ Coil ║    Magnet 1B
+         ┌──────┐     ║      ║     ┌──────┐
+         │  N   │     ║ wire ║     │  N   │
+         │  ↓   │ gap ║  ⊙   ║ gap │  ↓   │
+         │  S   │ 4mm ║      ║ 4mm │  S   │
+         └──────┘     ║      ║     └──────┘
+                      ║      ║
+         Magnet 2A    ║      ║    Magnet 2B
+         ┌──────┐     ║      ║     ┌──────┐
+         │  N   │     ║ wire ║     │  N   │
+         │  ↑   │ gap ║  ⊗   ║ gap │  ↑   │
+         │  S   │ 4mm ║      ║ 4mm │  S   │
+         └──────┘     ║      ║     └──────┘
+                      ╚══════╝
+              Coil passes through 2 gaps
+              → 2× active wire length per turn
 ```
 
-| Spec | Value |
-|------|-------|
-| Type | Voice coil (Lorentz force) |
-| Magnets | 4× N42 10×5×3mm blocks |
-| Coil | 30 AWG, 60 turns, 4Ω |
-| Gap | 3.5mm |
-| Operating voltage | 5V |
-| Current for 50g | ~0.5A |
-| Response time | <5ms |
-| Estimated cost | ~$33 for all 7 |
+**Magnet Options:**
+
+All magnets share face dimensions: 1/2" × 1/4" (12.7 × 6.35mm), magnetized through thickness.
+
+| Grade | Thickness | Dimensions (mm) | Br | Typical Cost (×4) |
+|-------|-----------|-----------------|-------|-------------------|
+| N52 | 1/8" | 12.7 × 6.35 × 3.18 | 14,800 G | ~$4.00 |
+| N52 | 1/16" | 12.7 × 6.35 × 1.59 | 14,800 G | ~$3.00 |
+| N42 | 1/8" | 12.7 × 6.35 × 3.18 | 13,200 G | ~$3.00 |
+| N42 | 1/16" | 12.7 × 6.35 × 1.59 | 13,200 G | ~$2.50 |
+
+**Gap Field Calculation:**
+
+With N-S opposing configuration (attracting), fields reinforce. For 4mm gap (2mm from each surface to center):
+
+```
+Surface field estimation:
+  B_surface ∝ Br × t / √(t² + r²)
+  where r = effective face radius ≈ √(L×W/π) ≈ 5.1mm
+
+Gap field from both magnets:
+  B(z=2mm) ≈ B_surface × r² / (r² + z²) per magnet
+  B_gap = 2 × B(z=2mm)  (both magnets contribute)
+```
+
+**Calculated Field Strengths:**
+
+| Magnet | Surface Field | Gap Field (theoretical) | Design Value (0.75×) |
+|--------|---------------|-------------------------|----------------------|
+| **N52 1/8"** | 4,170 G | 0.72 T | **0.54 T** |
+| N52 1/16" | 2,340 G | 0.40 T | 0.30 T |
+| N42 1/8" | 3,720 G | 0.64 T | 0.48 T |
+| N42 1/16" | 2,090 G | 0.36 T | 0.27 T |
+
+**Force Calculation (Lorentz Force):**
+
+```
+F = B × I × L
+
+Where:
+  B = gap field strength (Tesla)
+  I = coil current (Amps)
+  L = active wire length in field (meters)
+
+With dual-gap configuration:
+  Active length per turn = 2 × 12.7mm = 25.4mm = 0.0254m
+  (Wire passes through BOTH gaps, force contributions add)
+
+Amp-turns required:
+  A·T = F / (B × L_per_turn) = 0.49N / (B × 0.0254m)
+```
+
+**Magnet Comparison for 50g Force (Dual Gap):**
+
+| Magnet | Gap Field | Amp-turns | Turns @ 1A | Current @ 40T | Power @ 40T |
+|--------|-----------|-----------|------------|---------------|-------------|
+| **N52 1/8"** | 0.54 T | **36** | 36 | **0.9 A** | **~1.0 W** |
+| N52 1/16" | 0.30 T | 64 | 64 | 1.6 A | ~3.3 W |
+| N42 1/8" | 0.48 T | 40 | 40 | 1.0 A | ~1.3 W |
+| N42 1/16" | 0.27 T | 72 | 72 | 1.8 A | ~4.2 W |
+
+**Magnet Selection Trade-offs:**
+
+| Factor | N52 1/8" | N52 1/16" | N42 1/8" | N42 1/16" |
+|--------|----------|-----------|----------|-----------|
+| Force efficiency | ★★★★★ | ★★★ | ★★★★ | ★★½ |
+| Coil simplicity | ★★★★★ | ★★★ | ★★★★ | ★★★ |
+| Power/heat | ★★★★★ | ★★★ | ★★★★ | ★★½ |
+| Cost (×4 magnets) | ★★★ | ★★★★ | ★★★★ | ★★★★★ |
+| Handling safety | ★★ | ★★★ | ★★★ | ★★★★ |
+| Availability | ★★★★ | ★★★★ | ★★★★★ | ★★★★★ |
+
+**Recommendation:** 
+- **Best performance:** N52 1/8" - Highest field, lowest power, fewest turns
+- **Best value:** N42 1/8" - 90% of N52 performance at lower cost, easier handling
+- **Budget option:** N42 1/16" - Works but needs 2× turns or current, more heat
+
+**Recommended Coil Designs by Magnet Choice:**
+
+| Spec | N52 1/8" (Best) | N42 1/8" (Value) | N42 1/16" (Budget) |
+|------|-----------------|------------------|---------------------|
+| Magnets (×4) | N52 1/2"×1/4"×1/8" | N42 1/2"×1/4"×1/8" | N42 1/2"×1/4"×1/16" |
+| Gap field | ~0.54T | ~0.48T | ~0.27T |
+| Coil wire | 30 AWG | 30 AWG | 28 AWG |
+| Coil turns | 40 | 45 | 80 |
+| Coil layers | 2 | 2-3 | 4 |
+| Resistance | ~1.3Ω | ~1.5Ω | ~1.8Ω |
+| Current for 50g | 0.9A | 1.0A | 1.8A |
+| Operating voltage | 5V | 5V | 5V |
+| Power @ 50g | ~1.0W | ~1.3W | ~4.2W |
+| Response time | <5ms | <5ms | <5ms |
+| Magnet cost (×4) | $4.00 | $3.00 | $2.50 |
+
+**Primary Recommendation: N52 1/8"** - Best efficiency, lowest heat, simplest coil.
+
+**Alternative: N42 1/8"** - Nearly as good (90% field strength), cheaper, safer to handle. Good choice if N52 availability is an issue.
+
+**Coil Geometry Check:**
+
+```
+Gap: 4mm
+30 AWG with insulation: ~0.29mm diameter
+
+Layers that fit in gap: 4mm / 0.29mm ≈ 13 layers
+Turns per layer (6.35mm width): 6.35 / 0.29 ≈ 21 turns/layer
+Max turns possible: 13 × 21 ≈ 273 turns
+
+Required: 40 turns → easily fits in 2 layers
+```
+
+**Bill of Materials (per actuator):**
+
+| Item | N52 1/8" | N42 1/8" | N42 1/16" |
+|------|----------|----------|-----------|
+| Magnets (×4) | $4.00 | $3.00 | $2.50 |
+| Magnet wire (30 or 28 AWG) | $1.50 | $1.50 | $2.00 |
+| Coil former (3D printed) | $0.50 | $0.50 | $0.50 |
+| Mounting hardware | $1.00 | $1.00 | $1.00 |
+| **Per actuator** | **$7.00** | **$6.00** | **$6.00** |
+| **All 7 actuators** | **~$49** | **~$42** | **~$42** |
+
+Note: N42 1/16" requires more wire (80 turns vs 40) and heavier gauge for higher current.
 
 **Advantages:**
 - **Absolutely quietest** - No snap, no impact, smooth proportional force
 - **Fastest response** - Low moving mass (<5ms)
 - **Proportional control** - Force linear with current
-- **Bidirectional** - Can push or pull
+- **Bidirectional** - Can push or pull (reverse current)
+- **Low power** - ~1W per actuator at full force
 - **Highest cool factor** - Speaker technology for buttons
 
 **Risks:**
 - Most complex construction
-- Requires precise magnet alignment
+- Requires precise magnet alignment (opposing pairs must be parallel)
 - Higher assembly time
+- Strong magnets are brittle and can shatter if snapped together
+
+**Magnet Handling Safety:**
+- N52 magnets are extremely strong - keep away from electronics, credit cards, pacemakers
+- Magnets can pinch fingers severely if allowed to snap together
+- Store with spacers; assemble with care
+- Wear safety glasses (magnets can shatter)
 
 **Documentation:**
 - Design details: [docs/voice-coil-design.md](docs/voice-coil-design.md)
 - Test protocol: [docs/voice-coil-test-protocol.md](docs/voice-coil-test-protocol.md)
 
-**Recommendation:** Build one test unit (~$17) to validate before full build.
+**Recommendation:** Build one test unit (~$10) to validate force output before full build.
 
 ---
 
 #### Actuator Comparison Summary
 
-| Factor | DIY Solenoid | Electromagnet | Voice Coil |
-|--------|--------------|---------------|------------|
+| Factor | DIY Solenoid | Electromagnet | Voice Coil (N52) |
+|--------|--------------|---------------|------------------|
 | Noise | Soft thud | Very quiet | **Quietest** |
 | Response | 15-20ms | 15-20ms | **<5ms** |
 | Force control | On/off | On/off | **Proportional** |
 | Complexity | Medium | Medium | Higher |
-| Cost (×7) | ~$38 | ~$26 | ~$33 |
-| Test cost | N/A | ~$20 | ~$17 |
+| Power per actuator | ~6W | ~29W | **~1W** |
+| Cost (×7) | ~$38 | ~$26 | ~$49 |
+| Test cost | N/A | ~$20 | ~$10 |
 | Cool factor | Medium | High | **Highest** |
 
 **Recommended test order:**
