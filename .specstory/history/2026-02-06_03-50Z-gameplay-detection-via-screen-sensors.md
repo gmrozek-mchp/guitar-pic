@@ -1335,11 +1335,216 @@ Now I have the context. Let me replace the single magnet specification section w
 
 <details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
 
-Status: **loading**
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Now let me update the recommended coil design section to reference the N52 1/8" as the primary choice but note the alternatives.</details></think>
+
+---
+
+Now let me update the recommended coil design section to reflect the multiple options.
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
 
 </details>
 
 </tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Good, now let me update the Bill of Materials section to reflect the different magnet options.</details></think>
+
+---
+
+Now let me update the BOM to show the options.
+
+---
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+---
+
+<think><details><summary>Thought Process</summary>
+Good, the spec is now updated with all four magnet options. Let me provide a summary to the user.</details></think>
+
+---
+
+Done! I've updated the voice coil section with all four magnet options. Here's the summary:
+
+## Magnet Comparison (all 1/2" × 1/4" face, 4mm gap, dual-gap config)
+
+| Magnet | Gap Field | Amp-turns for 50g | Current @ 40 turns | Power |
+|--------|-----------|-------------------|---------------------|-------|
+| **N52 1/8"** | 0.54 T | 36 | 0.9 A | 1.0 W |
+| N52 1/16" | 0.30 T | 64 | 1.6 A | 3.3 W |
+| **N42 1/8"** | 0.48 T | 40 | 1.0 A | 1.3 W |
+| N42 1/16" | 0.27 T | 72 | 1.8 A | 4.2 W |
+
+## Key Findings
+
+**Thickness matters more than grade:**
+- Going from 1/8" → 1/16" cuts field strength by ~45%
+- Going from N52 → N42 only cuts field by ~11%
+
+**The sweet spot is N42 1/8":**
+- 90% of N52 1/8" performance
+- Cheaper (~$3 vs $4 per set of 4)
+- Safer to handle (less snap force)
+- Widely available
+
+**N42 1/16" is workable but costly in other ways:**
+- Needs 2× the turns (80 vs 40)
+- 4× the power dissipation
+- More heat to manage
+
+The spec now includes:
+- Magnet options comparison table
+- Calculated field strengths for all four
+- Amp-turns and power requirements
+- Trade-off ratings (efficiency, cost, safety)
+- Recommended coil designs for each option
+- Updated BOM with costs per magnet choice
+
+---
+
+_**User**_
+
+how many turns of 30 awg magnet wire will fit in 2mm x 2mm slot?
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+The user is asking about how many turns of 30 AWG magnet wire can fit in a 2mm × 2mm slot.
+
+30 AWG magnet wire:
+- Bare wire diameter: 0.255mm (0.010")
+- With enamel insulation: approximately 0.274-0.294mm depending on insulation type (single, double, heavy build)
+
+Let me use ~0.29mm as a typical value for 30 AWG with standard enamel.
+
+For a 2mm × 2mm slot:
+- Turns per layer (width): 2mm / 0.29mm ≈ 6.9 → 6 turns per layer
+- Number of layers (depth): 2mm / 0.29mm ≈ 6.9 → 6 layers
+
+Total turns (ideal packing): 6 × 6 = 36 turns
+
+But this assumes perfect square packing. In practice:
+- Square packing: ~36 turns
+- Hexagonal (closest) packing: can fit ~15% more, but harder to achieve with hand winding
+- Practical hand winding with some gaps: ~75-85% of theoretical = 27-31 turns
+
+So a realistic answer is:
+- Theoretical maximum (square): ~36 turns
+- Practical (hand wound): ~28-32 turns</details></think>
+
+---
+
+**30 AWG magnet wire diameter:** ~0.29mm (with enamel insulation)
+
+**2mm × 2mm slot:**
+```
+        2mm width
+    ┌─────────────┐
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │  2mm
+    │ ○ ○ ○ ○ ○ ○ │  depth
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    └─────────────┘
+```
+
+**Calculation:**
+- Turns per layer: 2mm / 0.29mm = **6 turns**
+- Number of layers: 2mm / 0.29mm = **6 layers**
+- Theoretical max (square packing): 6 × 6 = **36 turns**
+
+**Practical estimates:**
+
+| Winding Method | Fill Factor | Turns |
+|----------------|-------------|-------|
+| Perfect machine wound | 90% | ~32 |
+| Careful hand wound | 75-80% | ~27-29 |
+| Quick hand wound | 65-70% | ~23-25 |
+
+**Realistic answer: ~28-32 turns** for careful hand winding in a 2mm × 2mm slot.
+
+If you need more turns, options:
+- 32 AWG: ~0.23mm → 8×8 = 64 theoretical, ~50 practical
+- 34 AWG: ~0.18mm → 11×11 = 121 theoretical, ~95 practical
+
+---
+
+_**User**_
+
+how about 2mm width x 3mm tall slot
+
+---
+
+_**Agent (model claude-4.5-opus-high-thinking, mode Agent)**_
+
+<think><details><summary>Thought Process</summary>
+Same calculation but with 3mm height instead of 2mm.
+
+30 AWG with insulation: ~0.29mm
+
+- Turns per layer (width): 2mm / 0.29mm = 6.9 → 6 turns
+- Number of layers (height): 3mm / 0.29mm = 10.3 → 10 layers
+- Theoretical max: 6 × 10 = 60 turns</details></think>
+
+---
+
+**2mm width × 3mm tall slot with 30 AWG (~0.29mm):**
+
+```
+      2mm width
+    ┌───────────┐
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │  3mm
+    │ ○ ○ ○ ○ ○ ○ │  tall
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    │ ○ ○ ○ ○ ○ ○ │
+    └───────────┘
+```
+
+**Calculation:**
+- Turns per layer: 2mm / 0.29mm = **6 turns**
+- Number of layers: 3mm / 0.29mm = **10 layers**
+- Theoretical max: 6 × 10 = **60 turns**
+
+**Practical estimates:**
+
+| Winding Method | Fill Factor | Turns |
+|----------------|-------------|-------|
+| Perfect machine wound | 90% | ~54 |
+| Careful hand wound | 75-80% | **~45-48** |
+| Quick hand wound | 65-70% | ~39-42 |
+
+**Realistic answer: ~45-48 turns** for careful hand winding.
+
+That's enough for any of the magnet options—even the weaker N42 1/16" only needs ~72 amp-turns, achievable with 48 turns at 1.5A.
 
 ---
 
