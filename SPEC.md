@@ -200,10 +200,11 @@ Screen (Guitar Hero highway)
 
 | Type | Part Example | Response Time | Cost | Notes |
 |------|--------------|---------------|------|-------|
-| Phototransistor | TEPT5700 | <15μs | $0.50 | Recommended, simple analog |
+| Phototransistor (THT) | TEPT5700 | <15μs | $0.50 | Recommended, simple analog |
+| Phototransistor (SMD) | TEMT6000X01 | <15μs | $0.45 | SMD alternative, same family |
 | Ambient Light Sensor | VEML7700 | 25ms | $2 | I²C, built-in ADC |
 | Photodiode | BPW34 | <1μs | $1 | Needs amplifier circuit |
-| RGB Color Sensor | TCS34725 | 50ms | $4 | Overkill, but detects star power glow |
+| RGB Color Sensor | TCS3400 | 50ms | $3-4 | Optional, detects star power glow (replaces discontinued TCS34725) |
 
 **Recommended: TEPT5700 Phototransistor**
 
@@ -234,6 +235,44 @@ Screen (Guitar Hero highway)
          │
         GND
 ```
+
+**SMD Alternative: TEMT6000X01 Phototransistor**
+
+Surface-mount equivalent from the same Vishay family. Identical spectral characteristics and circuit topology, in a solderable 1206 package.
+
+| Spec | TEPT5700 (THT) | TEMT6000X01 (SMD) |
+|------|----------------|-------------------|
+| Package | 5mm through-hole dome | 1206 SMD (4 × 2 × 1.05mm) |
+| Spectral sensitivity | 440-800nm | 440-800nm |
+| Peak wavelength | 570nm | 570nm |
+| Half angle (FOV) | ±50° | ±60° |
+| Photocurrent @ 100 lux | 75μA | 50μA |
+| Dark current (max) | 50nA | 50nA |
+| AEC-Q101 | No | Yes |
+| Cost | ~$0.50 | ~$0.45 |
+
+Use 15kΩ load resistor (instead of 10kΩ) to compensate for lower photocurrent and maintain equivalent ADC voltage swing.
+
+**Circuit (per sensor, TEMT6000X01):**
+```
+    VCC (3.3V or 5V)
+         │
+         ├───────────► PIC ADC pin
+         │
+        ┌┴┐
+        │ │ 15kΩ
+        └┬┘
+         │
+         ▼ Collector
+       ┌───┐
+       │PT │ TEMT6000X01
+       └─┬─┘
+         │ Emitter
+         │
+        GND
+```
+
+**When to choose SMD:** If building a custom sensor PCB with precise lane spacing, the TEMT6000X01 enables tighter mechanical tolerances and a more compact mounting solution. For quick prototyping, the through-hole TEPT5700 is easier to work with.
 
 **Sensor Placement Options:**
 
@@ -320,8 +359,8 @@ void detect_notes(void) {
 
 | Item | Qty | Est. Cost |
 |------|-----|-----------|
-| TEPT5700 phototransistor | 5 | $2.50 |
-| 10kΩ resistors | 5 | $0.50 |
+| TEPT5700 (THT) *or* TEMT6000X01 (SMD) | 5 | $2.50 |
+| 10kΩ (THT) or 15kΩ (SMD) resistors | 5 | $0.50 |
 | Light tubes (3D printed or vinyl) | 5 | $2 |
 | Mounting frame (3D printed) | 1 | $5 |
 | Wiring, connectors | - | $3 |
