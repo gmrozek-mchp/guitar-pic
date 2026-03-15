@@ -58,7 +58,24 @@
           "width": 0.0
         }
       ],
-      "drc_exclusions": [],
+      "drc_exclusions": [
+        [
+          "courtyards_overlap|102745000|96740000|00f5186e-a39f-4b34-9db0-e820c7a38a38|57ca34ec-fcb3-48df-96a8-9d75092698c1",
+          ""
+        ],
+        [
+          "courtyards_overlap|109255000|96740000|00f5186e-a39f-4b34-9db0-e820c7a38a38|3b6212b1-7200-4068-b05b-af32fa4ae0ca",
+          ""
+        ],
+        [
+          "courtyards_overlap|115255000|96740000|3b6212b1-7200-4068-b05b-af32fa4ae0ca|88b67e1c-9da6-4ce7-b31a-ad9c8b80ffce",
+          ""
+        ],
+        [
+          "courtyards_overlap|121255000|96740000|88b67e1c-9da6-4ce7-b31a-ad9c8b80ffce|8f54edb7-680b-45f7-b5bd-d13fab6e3a77",
+          ""
+        ]
+      ],
       "meta": {
         "version": 2
       },
@@ -503,7 +520,7 @@
       "gencad": "",
       "idf": "",
       "netlist": "",
-      "plot": "",
+      "plot": "output/",
       "pos_files": "",
       "specctra_dsn": "",
       "step": "",
