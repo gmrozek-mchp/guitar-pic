@@ -5016,7 +5016,7 @@
 	)
 	(wire
 		(pts
-			(xy 241.3 68.58) (xy 256.54 68.58)
+			(xy 241.3 71.12) (xy 256.54 71.12)
 		)
 		(stroke
 			(width 0)
@@ -5476,7 +5476,7 @@
 	)
 	(wire
 		(pts
-			(xy 241.3 76.2) (xy 256.54 76.2)
+			(xy 241.3 83.82) (xy 256.54 83.82)
 		)
 		(stroke
 			(width 0)
@@ -5496,7 +5496,7 @@
 	)
 	(wire
 		(pts
-			(xy 241.3 66.04) (xy 256.54 66.04)
+			(xy 241.3 68.58) (xy 256.54 68.58)
 		)
 		(stroke
 			(width 0)
@@ -5556,7 +5556,7 @@
 	)
 	(wire
 		(pts
-			(xy 241.3 73.66) (xy 256.54 73.66)
+			(xy 241.3 81.28) (xy 256.54 81.28)
 		)
 		(stroke
 			(width 0)
@@ -5586,7 +5586,7 @@
 	)
 	(wire
 		(pts
-			(xy 241.3 71.12) (xy 256.54 71.12)
+			(xy 241.3 78.74) (xy 256.54 78.74)
 		)
 		(stroke
 			(width 0)
@@ -5645,7 +5645,7 @@
 		(uuid "17caf767-1ccd-4c01-8d04-2b9d141f459c")
 	)
 	(label "TRACK_ORANGE"
-		(at 256.54 76.2 180)
+		(at 256.54 83.82 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5655,7 +5655,7 @@
 		(uuid "6476921a-b922-46ef-833d-e20faef87480")
 	)
 	(label "TRACK_BLUE"
-		(at 256.54 73.66 180)
+		(at 256.54 81.28 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5675,7 +5675,7 @@
 		(uuid "8f158a6b-6ffa-4925-addd-3cda21071a16")
 	)
 	(label "TRACK_GREEN"
-		(at 256.54 66.04 180)
+		(at 256.54 68.58 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5695,7 +5695,7 @@
 		(uuid "a616bd35-1ae9-4207-b328-bed3aa655f62")
 	)
 	(label "TRACK_YELLOW"
-		(at 256.54 71.12 180)
+		(at 256.54 78.74 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -5705,7 +5705,7 @@
 		(uuid "a7998fcf-0419-43c1-9d0a-c52b2c63dc45")
 	)
 	(label "TRACK_RED"
-		(at 256.54 68.58 180)
+		(at 256.54 71.12 180)
 		(effects
 			(font
 				(size 1.27 1.27)
@@ -6605,6 +6605,72 @@
 	)
 	(symbol
 		(lib_id "power:VCC")
+		(at 254 43.18 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "2778fbc7-4cb7-4c3f-858c-2ec9e778c02f")
+		(property "Reference" "#PWR032"
+			(at 254 46.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "VCC"
+			(at 254 38.1 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 254 43.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 254 43.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"VCC\""
+			(at 254 43.18 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "97fcff5b-61db-4d6b-b1ae-3e668ae8c3f2")
+		)
+		(instances
+			(project "Sensor-LCD5"
+				(path "/d197603e-4ccc-4946-b679-34390a9ee348"
+					(reference "#PWR032")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:VCC")
 		(at 119.38 33.02 0)
 		(unit 1)
 		(exclude_from_sim no)
@@ -7325,6 +7391,76 @@
 		)
 	)
 	(symbol
+		(lib_id "Device:C")
+		(at 254 46.99 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "6ebfa421-fda1-427a-a922-80d173e85ffe")
+		(property "Reference" "C4"
+			(at 257.81 45.7199 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Value" "10uF"
+			(at 257.81 48.2599 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(justify left)
+			)
+		)
+		(property "Footprint" "Capacitor_SMD:C_0805_2012Metric"
+			(at 254.9652 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" "~"
+			(at 254 46.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Unpolarized capacitor"
+			(at 254 46.99 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "2"
+			(uuid "32531a4e-b65e-4612-8232-eca68d670092")
+		)
+		(pin "1"
+			(uuid "4f1b6e72-cfea-4c02-9835-565139b9a08a")
+		)
+		(instances
+			(project "Sensor-LCD5"
+				(path "/d197603e-4ccc-4946-b679-34390a9ee348"
+					(reference "C4")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
 		(lib_id "Device:Q_Photo_NPN")
 		(at 93.98 45.72 0)
 		(unit 1)
@@ -7653,6 +7789,72 @@
 			(project "Sensor-LCD5"
 				(path "/d197603e-4ccc-4946-b679-34390a9ee348"
 					(reference "#PWR015")
+					(unit 1)
+				)
+			)
+		)
+	)
+	(symbol
+		(lib_id "power:GNDD")
+		(at 254 50.8 0)
+		(unit 1)
+		(exclude_from_sim no)
+		(in_bom yes)
+		(on_board yes)
+		(dnp no)
+		(fields_autoplaced yes)
+		(uuid "86ea44f7-7ea5-40ee-8e62-07f3b89d5dd4")
+		(property "Reference" "#PWR031"
+			(at 254 57.15 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Value" "COM"
+			(at 254 54.61 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Footprint" ""
+			(at 254 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Datasheet" ""
+			(at 254 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(property "Description" "Power symbol creates a global label with name \"GNDD\" , digital ground"
+			(at 254 50.8 0)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+				(hide yes)
+			)
+		)
+		(pin "1"
+			(uuid "a2e6a349-1898-4df3-937d-f8fd88ec982c")
+		)
+		(instances
+			(project "Sensor-LCD5"
+				(path "/d197603e-4ccc-4946-b679-34390a9ee348"
+					(reference "#PWR031")
 					(unit 1)
 				)
 			)
