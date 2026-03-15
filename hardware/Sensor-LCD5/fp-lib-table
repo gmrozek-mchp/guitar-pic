@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "guitar-pic")(type "KiCad")(uri "/Users/greg/projects/microchip/guitar-pic/hardware/kicad/guitar-pic.pretty")(options "")(descr ""))
+)
