@@ -5,6 +5,7 @@
 #include "definitions.h"
 #include "fret_scan.h"
 #include "fret_detect.h"
+#include "fret_button.h"
 #include "data_stream.h"
 
 int main(void)
@@ -12,11 +13,13 @@ int main(void)
     SYS_Initialize(NULL);
     fret_scan_init();
     fret_detect_init();
+    fret_button_init();
     data_stream_init();
 
     while (true) {
         if (fret_scan_task()) {
             fret_detect_update();
+            fret_button_update();
             data_stream_send();
         }
     }
