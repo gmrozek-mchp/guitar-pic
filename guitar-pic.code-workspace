@@ -8,6 +8,14 @@
 		}
 	],
 	"settings": {
-		"specstory.cloudSync.enabled": "never"
+		"specstory.cloudSync.enabled": "never",
+		"mplab.clangd.compileCommandsDir": "${workspaceFolder}/firmware/fretboard/_build/fretboard/default",
+		"mplab.clangd.path": "/Applications/microchip/xc32/v5.10/bin/xc32-clangd",
+		"memory-inspector.debugTypes": [
+			"arm-debugger",
+			"embedded-debug",
+			"gdb",
+			"mplab-core-da"
+		]
 	}
 }

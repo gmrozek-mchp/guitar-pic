@@ -28,14 +28,45 @@
             "name": "default-XC32",
             "type": "toolchain",
             "provider": "microchip.toolchains:xc32@5.10",
-            "properties": {}
+            "properties": {
+                "compiler.extra-include-directories": [
+                    "fretboard-mcc/src/config/default"
+                ]
+            }
         }
     ],
     "fileSets": [
         {
             "name": "default",
             "files": [
-                "main.c"
+                "main.c",
+                "fretboard-mcc/src/config/default/definitions.h",
+                "fretboard-mcc/src/config/default/device_cache.h",
+                "fretboard-mcc/src/config/default/device_vectors.h",
+                "fretboard-mcc/src/config/default/device.h",
+                "fretboard-mcc/src/config/default/exceptions.c",
+                "fretboard-mcc/src/config/default/initialization.c",
+                "fretboard-mcc/src/config/default/interrupts.c",
+                "fretboard-mcc/src/config/default/interrupts.h",
+                "fretboard-mcc/src/config/default/libc_syscalls.c",
+                "fretboard-mcc/src/config/default/PIC32CM6408PL10048.ld",
+                "fretboard-mcc/src/config/default/startup_xc32.c",
+                "fretboard-mcc/src/config/default/toolchain_specifics.h",
+                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.h",
+                "fretboard-mcc/src/config/default/peripheral/adc/plib_adc_common.h",
+                "fretboard-mcc/src/config/default/peripheral/adc/plib_adc0.c",
+                "fretboard-mcc/src/config/default/peripheral/adc/plib_adc0.h",
+                "fretboard-mcc/src/config/default/peripheral/clock/plib_clock.c",
+                "fretboard-mcc/src/config/default/peripheral/clock/plib_clock.h",
+                "fretboard-mcc/src/config/default/peripheral/evsys/plib_evsys.c",
+                "fretboard-mcc/src/config/default/peripheral/evsys/plib_evsys.h",
+                "fretboard-mcc/src/config/default/peripheral/nvic/plib_nvic.c",
+                "fretboard-mcc/src/config/default/peripheral/nvic/plib_nvic.h",
+                "fretboard-mcc/src/config/default/peripheral/port/plib_port.c",
+                "fretboard-mcc/src/config/default/peripheral/port/plib_port.h",
+                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom_usart_common.h",
+                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c",
+                "fretboard-mcc/src/config/default/stdio/xc32_monitor.c"
             ]
         }
     ]
