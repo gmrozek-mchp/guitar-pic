@@ -1,0 +1,41 @@
+{
+    "version": "1.9",
+    "configurations": [
+        {
+            "name": "default",
+            "id": "conf1",
+            "device": "PIC32CM6408PL10048",
+            "imagePath": "./out/fretboard/default.elf",
+            "packs": [
+                {
+                    "name": "PIC32CM-PL_DFP",
+                    "vendor": "Microchip",
+                    "version": "1.2.329"
+                },
+                {
+                    "name": "CMSIS",
+                    "vendor": "ARM",
+                    "version": "6.3.0"
+                }
+            ],
+            "fileSet": "default",
+            "toolchain": "default-XC32"
+        }
+    ],
+    "propertyGroups": [
+        {
+            "name": "default-XC32",
+            "type": "toolchain",
+            "provider": "microchip.toolchains:xc32@5.10",
+            "properties": {}
+        }
+    ],
+    "fileSets": [
+        {
+            "name": "default",
+            "files": [
+                "main.c"
+            ]
+        }
+    ]
+}
