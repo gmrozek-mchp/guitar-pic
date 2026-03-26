@@ -1,75 +1,25 @@
-/*******************************************************************************
-  Main Source File
-
-  Company:
-    Microchip Technology Inc.
-
-  File Name:
-    main.c
-
-  Summary:
-    This file contains the "main" function for a project.
-
-  Description:
-    This file contains the "main" function for a project.  The
-    "main" function calls the "SYS_Initialize" function to initialize the state
-    machines of all modules in the system
- *******************************************************************************/
-
-// *****************************************************************************
-// *****************************************************************************
-// Section: Included Files
-// *****************************************************************************
-// *****************************************************************************
-
-#include <stddef.h>                     // Defines NULL
-#include <stdbool.h>                    // Defines true
+#include <stddef.h>
+#include <stdbool.h>
 #include <stdint.h>
-#include <stdlib.h>                     // Defines EXIT_FAILURE
-#include "definitions.h"                // SYS function prototypes
+#include <stdlib.h>
+#include "definitions.h"
+#include "fret_scan.h"
+#include "fret_detect.h"
+#include "data_stream.h"
 
-
-// *****************************************************************************
-// *****************************************************************************
-// Section: Main Entry Point
-// *****************************************************************************
-// *****************************************************************************
-
-uint16_t adc_count;
-
-int main ( void )
+int main(void)
 {
-    /* Initialize all modules */
-    SYS_Initialize ( NULL );
+    SYS_Initialize(NULL);
+    fret_scan_init();
+    fret_detect_init();
+    data_stream_init();
 
-    ADC0_Enable();
-    
-    while ( true )
-    {
-        /* Maintain state machines of all polled MPLAB Harmony modules. */
-        SYS_Tasks ( );
-
-        /* Start ADC conversion */
-        ADC0_ConversionStart();
-
-        /* Wait till ADC conversion result is available */
-        while(!ADC0_ResultReadyStatusGet())
-        {
-
-        };
-
-        /* Read the ADC result */
-        adc_count = ADC0_ConversionResultGet();
-        
-        SERCOM1_USART_Write( ".", 1 );
+    while (true) {
+        if (fret_scan_task()) {
+            fret_detect_update();
+            data_stream_send();
+        }
     }
 
-    /* Execution should not come here during normal operation */
-
-    return ( EXIT_FAILURE );
+    return EXIT_FAILURE;
 }
-
-
-/*******************************************************************************
- End of File
-*/

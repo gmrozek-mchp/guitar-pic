@@ -40,6 +40,12 @@
             "name": "default",
             "files": [
                 "main.c",
+                "fret_scan.c",
+                "fret_scan.h",
+                "data_stream.c",
+                "data_stream.h",
+                "fret_detect.c",
+                "fret_detect.h",
                 "fretboard-mcc/src/config/default/definitions.h",
                 "fretboard-mcc/src/config/default/device_cache.h",
                 "fretboard-mcc/src/config/default/device_vectors.h",

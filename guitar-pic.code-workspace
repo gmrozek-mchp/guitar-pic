@@ -16,6 +16,7 @@
 			"embedded-debug",
 			"gdb",
 			"mplab-core-da"
-		]
+		],
+		"mplab.project.workspace.addNewSourceFiles": "Never"
 	}
 }

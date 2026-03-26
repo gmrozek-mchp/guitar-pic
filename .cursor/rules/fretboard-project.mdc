@@ -1,0 +1,30 @@
+---
+description: MPLAB Extensions for VS Code project conventions for the fretboard firmware
+globs: firmware/fretboard/**
+alwaysApply: false
+---
+
+# Fretboard Project — MPLAB Extensions for VS Code
+
+## Build System
+
+This is an **MPLAB Extensions for VS Code** project. The build configuration and file set are maintained in:
+
+```
+firmware/fretboard/.vscode/fretboard.mplab.json
+```
+
+When adding or removing source files, update the `fileSets[0].files` array in that JSON file. **Do not** create or modify `user.cmake` — the MPLAB extension regenerates the CMake files from `fretboard.mplab.json`.
+
+## Project Layout
+
+- `firmware/fretboard/` — Application source (main.c, app modules)
+- `firmware/fretboard/fretboard-mcc/` — MCC/Harmony generated low-level code (do not edit; ignore `fretboard-mcc/src/main.c`)
+- `firmware/fretboard/.vscode/fretboard.mplab.json` — Project config, toolchain, file set
+- Peripheral PLIB headers and sources live under `fretboard-mcc/src/config/default/peripheral/`
+
+## Target
+
+- Device: PIC32CM6408PL10048 (Cortex-M0+)
+- Toolchain: XC32
+- Clock: 24 MHz
