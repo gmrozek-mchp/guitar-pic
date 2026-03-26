@@ -5,8 +5,13 @@
 #include <stdbool.h>
 #include "fret_scan.h"
 
-#define FRET_PRESS_THRESHOLD    2000
-#define FRET_RELEASE_THRESHOLD  2500
+/* Per-channel thresholds: { press, release } */
+typedef struct {
+    uint16_t press;
+    uint16_t release;
+} fret_threshold_t;
+
+extern const fret_threshold_t fret_thresholds[FRET_COUNT];
 
 void fret_detect_init(void);
 

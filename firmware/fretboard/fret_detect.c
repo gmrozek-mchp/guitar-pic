@@ -1,5 +1,13 @@
 #include "fret_detect.h"
 
+const fret_threshold_t fret_thresholds[FRET_COUNT] = {
+    [FRET_GREEN]  = { .press = 2500, .release = 3000 },
+    [FRET_RED]    = { .press = 2500, .release = 3000 },
+    [FRET_YELLOW] = { .press = 2200, .release = 2400 },
+    [FRET_BLUE]   = { .press = 2500, .release = 3000 },
+    [FRET_ORANGE] = { .press = 2500, .release = 3000 },
+};
+
 static bool pressed[FRET_COUNT];
 static uint8_t new_press_flags;
 
@@ -16,12 +24,12 @@ void fret_detect_update(void)
         uint16_t val = fret_scan_result((fret_channel_t)i);
 
         if (!pressed[i]) {
-            if (val < FRET_PRESS_THRESHOLD) {
+            if (val < fret_thresholds[i].press) {
                 pressed[i] = true;
                 new_press_flags |= (1U << i);
             }
         } else {
-            if (val > FRET_RELEASE_THRESHOLD) {
+            if (val > fret_thresholds[i].release) {
                 pressed[i] = false;
             }
         }
