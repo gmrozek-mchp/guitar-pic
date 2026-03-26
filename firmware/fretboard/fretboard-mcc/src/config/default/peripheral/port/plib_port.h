@@ -65,6 +65,52 @@
 // *****************************************************************************
 // *****************************************************************************
 
+/*** Macros for CDC_TX pin ***/
+#define CDC_TX_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 0U)) & 0x01U)
+#define CDC_TX_PIN                  PORT_PIN_PB00
+
+/*** Macros for CDC_RX pin ***/
+#define CDC_RX_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 1U)) & 0x01U)
+#define CDC_RX_PIN                  PORT_PIN_PB01
+
+/*** Macros for LED0 pin ***/
+#define LED0_Set()               (PORT_REGS->GROUP[1].PORT_OUTSET = ((uint32_t)1U << 2U))
+#define LED0_Clear()             (PORT_REGS->GROUP[1].PORT_OUTCLR = ((uint32_t)1U << 2U))
+#define LED0_Toggle()            (PORT_REGS->GROUP[1].PORT_OUTTGL = ((uint32_t)1U << 2U))
+#define LED0_OutputEnable()      (PORT_REGS->GROUP[1].PORT_DIRSET = ((uint32_t)1U << 2U))
+#define LED0_InputEnable()       (PORT_REGS->GROUP[1].PORT_DIRCLR = ((uint32_t)1U << 2U))
+#define LED0_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 2U)) & 0x01U)
+#define LED0_PIN                  PORT_PIN_PB02
+
+/*** Macros for SW0 pin ***/
+#define SW0_Set()               (PORT_REGS->GROUP[1].PORT_OUTSET = ((uint32_t)1U << 3U))
+#define SW0_Clear()             (PORT_REGS->GROUP[1].PORT_OUTCLR = ((uint32_t)1U << 3U))
+#define SW0_Toggle()            (PORT_REGS->GROUP[1].PORT_OUTTGL = ((uint32_t)1U << 3U))
+#define SW0_OutputEnable()      (PORT_REGS->GROUP[1].PORT_DIRSET = ((uint32_t)1U << 3U))
+#define SW0_InputEnable()       (PORT_REGS->GROUP[1].PORT_DIRCLR = ((uint32_t)1U << 3U))
+#define SW0_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 3U)) & 0x01U)
+#define SW0_PIN                  PORT_PIN_PB03
+
+/*** Macros for ADC_NOTE_RED pin ***/
+#define ADC_NOTE_RED_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 16U)) & 0x01U)
+#define ADC_NOTE_RED_PIN                  PORT_PIN_PA16
+
+/*** Macros for ADC_NOTE_YELLOW pin ***/
+#define ADC_NOTE_YELLOW_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 19U)) & 0x01U)
+#define ADC_NOTE_YELLOW_PIN                  PORT_PIN_PA19
+
+/*** Macros for ADC_NOTE_ORANGE pin ***/
+#define ADC_NOTE_ORANGE_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 26U)) & 0x01U)
+#define ADC_NOTE_ORANGE_PIN                  PORT_PIN_PA26
+
+/*** Macros for ADC_NOTE_BLUE pin ***/
+#define ADC_NOTE_BLUE_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 27U)) & 0x01U)
+#define ADC_NOTE_BLUE_PIN                  PORT_PIN_PA27
+
+/*** Macros for ADC_NOTE_GREEN pin ***/
+#define ADC_NOTE_GREEN_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 28U)) & 0x01U)
+#define ADC_NOTE_GREEN_PIN                  PORT_PIN_PA28
+
 // *****************************************************************************
 /* PORT Group
 
@@ -274,6 +320,40 @@ typedef enum
 // Section: Generated API based on pin configurations done in Pin Manager
 // *****************************************************************************
 // *****************************************************************************
+// *****************************************************************************
+/* Function:
+    void PORT_Initialize(void)
+
+  Summary:
+    Initializes the PORT Library.
+
+  Description:
+    This function initializes all ports and pins as configured in the
+    MHC Pin Manager.
+
+  Precondition:
+    None.
+
+  Parameters:
+    None.
+
+  Returns:
+    None.
+
+  Example:
+    <code>
+
+    PORT_Initialize();
+
+    </code>
+
+  Remarks:
+    The function should be called once before calling any other PORTS PLIB
+    functions.
+*/
+
+void PORT_Initialize(void);
+
 // *****************************************************************************
 // *****************************************************************************
 // Section: PORT APIs which operates on multiple pins of a group

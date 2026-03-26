@@ -5,15 +5,17 @@ device: PIC32CM6408PL10048
 deviceLibrary: {}
 groupModules: []
 modules:
+- adc0
 - cmsis
 - core
 - dfp
 - evsys
+- sercom1
 generatedFileHashHistoryMap:
 - file: ../src/config/default/PIC32CM6408PL10048.ld
   hash: 1be83a2de4596f61ef9a0a0cda41503b2d2f00e87036363eaff5607db25fadb4
 - file: ../src/config/default/definitions.h
-  hash: 7c30b9e18423a995588db444eca9822031ea7afff81c391ce7eaf93ae5b55a8f
+  hash: 5d2b59140ad3198f34cb01596d10de3d64696f41494e658618f9fbb377330263
 - file: ../src/config/default/device.h
   hash: cbe5a5f60fcaf3cb182092323aa3c71cf2414fed36e66337f5827197fd2e2325
 - file: ../src/config/default/device_cache.h
@@ -23,15 +25,21 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/exceptions.c
   hash: d1567a190561858cc1cb7e796cf1a29720e52b9799bbd88b087993d8539e137f
 - file: ../src/config/default/initialization.c
-  hash: 8aa32e7b70340bcfbcbc5207cdc4b23135bf4522913d8d32eefdd03a02f5f941
+  hash: 184323be0502a93223cb4d7face6b1b31b0272c4658aeaf47f811b7d3b37211e
 - file: ../src/config/default/interrupts.c
-  hash: 99d401a9c6049a726181964cbdc077536755d015ff8198e8d710a77bf0cd1073
+  hash: 95859e1f93c52725ec852db5bde74df1a10bf4a6c3f314dce11e362612cc2520
 - file: ../src/config/default/interrupts.h
-  hash: 90657d3fc02bc4951e5569052befa59e190b3288a4e1335eecb1561bd0b73c05
+  hash: 54702d3fa869bf3f224cbc0e3f65ed17c980348f345b002aa8eb80d81b2e14bd
 - file: ../src/config/default/libc_syscalls.c
   hash: c9afc1b1257829415a1a6746ce3744f0a768b339d59fff2ab3ca1fab58b2a916
+- file: ../src/config/default/peripheral/adc/plib_adc0.c
+  hash: ecf341f70a0fa397f57d19a3e5a89769f4690fd16cd984b725c0ed62884233f8
+- file: ../src/config/default/peripheral/adc/plib_adc0.h
+  hash: 61ac300384e3d8670b9153457f183f1706bb5a3f8ab5a04893bed90228c8a22f
+- file: ../src/config/default/peripheral/adc/plib_adc_common.h
+  hash: 68c5928a7207b8984c1c07999ad22770c8564f261784d1b6f5858c53119013b7
 - file: ../src/config/default/peripheral/clock/plib_clock.c
-  hash: 78efd905fd477d403a153677d5f12bec730d8c2eca0a561a80869c9a4bb0b959
+  hash: 8601f67946a39517acc99d798b4cec1ed5d9f56db537ba6377f4b4fa0bd6de97
 - file: ../src/config/default/peripheral/clock/plib_clock.h
   hash: 5c751a5947890774f3971015256f9dcff88778669b18b808f57c07a8b6944882
 - file: ../src/config/default/peripheral/evsys/plib_evsys.c
@@ -39,15 +47,21 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/evsys/plib_evsys.h
   hash: f7d08eb8162f271ce1db384c082586a6624e506aa7f502c64c4ab5a1aadac47d
 - file: ../src/config/default/peripheral/nvic/plib_nvic.c
-  hash: d17bdfa86168bdfc1dd73f6785fdae850b5e041462997d96caf174cad18431f6
+  hash: eb71a006484c563bc07c53053ff02f6c01cfe1ffaffc6058699a938cca514a1c
 - file: ../src/config/default/peripheral/nvic/plib_nvic.h
   hash: 9936ac782115af41003255283fa2f603f4ff2212d16275b7c80ea8d067a9e208
 - file: ../src/config/default/peripheral/port/plib_port.c
-  hash: 554b36ce35723948e94f7872d1d82d2876b522dd9f4d4eaa6750c080ef01365f
+  hash: 5a7a0dd933b5d00744b6512a7aadba2b128957d5e9b30f72079ec54fa548e2f3
 - file: ../src/config/default/peripheral/port/plib_port.h
-  hash: 1a2a7e4dacac01dcdd5974ecec33a41f6ce539a420bc970ff3220d7737a3d352
+  hash: d65d8b4bb90d0b30af3a6f6256904973498d15f6dedba37cf987c50527f6897b
+- file: ../src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c
+  hash: b1b34450173ee9707242748d9d54bd2488e7ef298e8ddde231cf4b1650569b5f
+- file: ../src/config/default/peripheral/sercom/usart/plib_sercom1_usart.h
+  hash: f139e664f91fb7ed962f61e210a4fd17059e895a06a64a243d2fd979ac59b674
+- file: ../src/config/default/peripheral/sercom/usart/plib_sercom_usart_common.h
+  hash: 8ce7e93172c9cde3c5940869cb66ab1646c706a4ea1605209085ea58382e8b1e
 - file: ../src/config/default/pin_configurations.csv
-  hash: 3b4d7041204093211c6e79fc4fbbb0f3c048042384dc1d8c10bee5516b34ecc1
+  hash: 2798fbd46ad33062a0853f544308e66d494e6e5dca42d08da923d9ef1e5b3711
 - file: ../src/config/default/startup_xc32.c
   hash: 3aa1360f333b564211c35f641c7327c2111e11aa633bd02ec5a0be9466b1df04
 - file: ../src/config/default/stdio/xc32_monitor.c
