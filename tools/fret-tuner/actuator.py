@@ -245,6 +245,10 @@ class Actuator:
             self._frets_active &= ~bit
             self._release_pending[ch] = False
 
+    def set_serial(self, ser: Optional[serial.Serial]) -> None:
+        """Swap the serial object (e.g. after reconnect)."""
+        self._ser = ser
+
     def _release_all(self) -> None:
         self._frets_active = 0
         self._strum_active = False

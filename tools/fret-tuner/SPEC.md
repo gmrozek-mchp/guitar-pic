@@ -10,6 +10,7 @@ Web-based Python tool for developing and refining fret-press detection algorithm
 Browser (localhost:8080)
   ├── uPlot charts (zoom, pan, pause)
   ├── Controls (detector, params, actuation)
+  ├── Camera panel (getUserMedia → frame buffer → sync)
   └── WebSocket
         ↕
 FastAPI backend (Python)
@@ -79,6 +80,10 @@ Bit   Output
 ```
 
 Bit = 1 → assert (drive low). Bit = 0 → release (tri-state). The firmware applies the latest received byte each tick. When no bytes are received, outputs remain unchanged.
+
+### Serial Auto-Reconnect
+
+When the USB serial connection is lost (board unplugged, USB sleep, etc.), the feed loop catches the error, closes the stale serial handle, and retries opening the port every 2 seconds until the device reappears. On disconnect and reconnect, the server pushes `serial_status` messages over WebSocket so the browser UI can display the current state (amber "Serial disconnected -- reconnecting..." while down, green "Connected" on recovery). CSV replay sources are not affected.
 
 ### CSV Replay Format
 
@@ -225,6 +230,7 @@ Server → client:
 {"type": "data", "samples": [...], "state": [...]}
 {"type": "detector", "name": "...", "params": {...}, "available": [...],
  "timing": {...}, "actuate_enabled": false}
+{"type": "serial_status", "connected": true}
 ```
 
 Client → server:
@@ -272,6 +278,18 @@ Uses the repo-level `.venv` (Python 3.12). Required packages:
 - `fastapi >= 0.115`
 - `uvicorn[standard] >= 0.30`
 - `websockets >= 12.0`
+
+### Camera Panel
+
+Right-side panel with synchronized webcam/capture-card view for comparing waveforms against on-screen activity.
+
+- **Device selector** -- dropdown populated from `navigator.mediaDevices.enumerateDevices()` (video inputs only), selection persisted in `localStorage`
+- **Live view** -- `getUserMedia()` stream displayed in `<video>` element while chart is running
+- **Frame buffer** -- captures frames at ~10 fps via `<canvas>` + `toDataURL()` into a ring buffer (~30 seconds / 300 frames), each tagged with an ADC-timeline timestamp computed from a wall-clock-to-ADC-time anchor
+- **Pause sync** -- when the chart is paused, the video switches to a `<canvas>` displaying the buffered frame closest to the chart's center time
+- **Zoom/pan sync** -- dragging or zooming the charts while paused updates the displayed frame to match the new center time
+
+All capture and buffering is browser-side using the MediaStream API; no server changes required.
 
 ## Future Work
 

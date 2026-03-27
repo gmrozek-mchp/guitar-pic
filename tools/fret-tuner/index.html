@@ -15,6 +15,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
            overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
            border-right: 1px solid #0f3460; }
 #charts  { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+#video-panel { width: 360px; min-width: 360px; background: #16213e; padding: 12px;
+               display: flex; flex-direction: column; gap: 8px;
+               border-left: 1px solid #0f3460; overflow-y: auto; }
+#video-container { position: relative; width: 100%; background: #000; border-radius: 4px; overflow: hidden; }
+#cam-video, #cam-canvas { width: 100%; display: block; border-radius: 4px; }
+#cam-canvas { display: none; }
+#cam-status { font-size: 11px; color: #666; text-align: center; }
+#cam-time { font-size: 11px; color: #e94560; font-family: monospace; text-align: center; }
 
 h1 { font-size: 16px; color: #e94560; margin-bottom: 4px; }
 h2 { font-size: 13px; color: #999; text-transform: uppercase; letter-spacing: 1px;
@@ -47,6 +55,7 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
 #status { font-size: 11px; padding: 6px 8px; border-radius: 4px; text-align: center; }
 #status.connected { background: #0a3d2a; color: #4ade80; }
 #status.disconnected { background: #3d0a0a; color: #f87171; }
+#status.serial-lost { background: #3d2a0a; color: #fbbf24; }
 
 .chart-wrap { flex: 1; min-height: 120px; }
 .chart-wrap .uplot { width: 100% !important; }
@@ -91,6 +100,19 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   <div class="chart-wrap" id="chart-yellow"></div>
   <div class="chart-wrap" id="chart-blue"></div>
   <div class="chart-wrap" id="chart-orange"></div>
+</div>
+
+<div id="video-panel">
+  <div class="section">
+    <h2>Camera</h2>
+    <select id="camera-select"><option value="">No camera</option></select>
+  </div>
+  <div id="video-container">
+    <video id="cam-video" autoplay muted playsinline></video>
+    <canvas id="cam-canvas"></canvas>
+  </div>
+  <div id="cam-time"></div>
+  <div id="cam-status">No camera selected</div>
 </div>
 
 <script>
@@ -194,6 +216,14 @@ function createChart(ch) {
     ],
   };
 
+  opts.hooks = opts.hooks || {};
+  opts.hooks.setScale = [(u, key) => {
+    if (key === "x" && paused && frameBuffer.length) {
+      const t = getChartCenterTime();
+      showFrameAtTime(t);
+    }
+  }];
+
   const plot = new uPlot(opts, [[], [], []], el);
   plots[ch] = plot;
 }
@@ -277,6 +307,9 @@ function connect() {
     const msg = JSON.parse(ev.data);
 
     if (msg.type === "data") {
+      if (!adcWallAnchor && msg.samples.length) {
+        adcWallAnchor = { adcT: msg.samples[0].t, wallT: performance.now() / 1000 };
+      }
       for (let i = 0; i < msg.samples.length; i++) {
         const s = msg.samples[i];
         const st = msg.state[i];
@@ -296,6 +329,17 @@ function connect() {
       populateParamSliders(msg.params);
       populateTimingSliders(msg.timing);
       updateActuateButton(msg.actuate_enabled);
+    }
+
+    else if (msg.type === "serial_status") {
+      const el = document.getElementById("status");
+      if (msg.connected) {
+        el.className = "connected";
+        el.textContent = "Connected";
+      } else {
+        el.className = "serial-lost";
+        el.textContent = "Serial disconnected \u2014 reconnecting\u2026";
+      }
     }
   };
 }
@@ -453,9 +497,168 @@ document.getElementById("btn-actuate").addEventListener("click", () => {
   ws.send(JSON.stringify({ type: "set_actuate", enabled: enabling }));
 });
 
+// --- Camera ---
+
+const FRAME_RATE = 10;
+const FRAME_BUFFER_SEC = 30;
+const FRAME_BUFFER_CAP = FRAME_RATE * FRAME_BUFFER_SEC;
+
+let camStream = null;
+let frameBuffer = [];   // { t: adcTime, blob: Blob }
+let captureInterval = null;
+let adcWallAnchor = null;  // { adcT, wallT } set on first data arrival
+
+const camVideo = document.getElementById("cam-video");
+const camCanvas = document.getElementById("cam-canvas");
+const camCtx = camCanvas.getContext("2d");
+const camSelect = document.getElementById("camera-select");
+const camStatus = document.getElementById("cam-status");
+const camTime = document.getElementById("cam-time");
+
+function adcTimeNow() {
+  if (!adcWallAnchor) return 0;
+  return (performance.now() / 1000 - adcWallAnchor.wallT) + adcWallAnchor.adcT;
+}
+
+async function enumerateCameras() {
+  try {
+    await navigator.mediaDevices.getUserMedia({ video: true });
+  } catch { /* need permission prompt first */ }
+
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const videoInputs = devices.filter(d => d.kind === "videoinput");
+
+  camSelect.innerHTML = '<option value="">No camera</option>';
+  videoInputs.forEach((dev, i) => {
+    const opt = document.createElement("option");
+    opt.value = dev.deviceId;
+    opt.textContent = dev.label || ("Camera " + (i + 1));
+    camSelect.appendChild(opt);
+  });
+
+  const saved = loadSettings();
+  if (saved.cameraId) {
+    const match = videoInputs.find(d => d.deviceId === saved.cameraId);
+    if (match) {
+      camSelect.value = match.deviceId;
+      startCamera(match.deviceId);
+    }
+  }
+}
+
+async function startCamera(deviceId) {
+  stopCamera();
+  if (!deviceId) {
+    camStatus.textContent = "No camera selected";
+    return;
+  }
+
+  try {
+    camStream = await navigator.mediaDevices.getUserMedia({
+      video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+    });
+    camVideo.srcObject = camStream;
+    camVideo.style.display = "block";
+    camCanvas.style.display = "none";
+    camStatus.textContent = "Live";
+
+    camVideo.addEventListener("loadedmetadata", () => {
+      camCanvas.width = camVideo.videoWidth;
+      camCanvas.height = camVideo.videoHeight;
+    }, { once: true });
+
+    captureInterval = setInterval(captureFrame, 1000 / FRAME_RATE);
+  } catch (e) {
+    camStatus.textContent = "Error: " + e.message;
+  }
+}
+
+function stopCamera() {
+  if (captureInterval) { clearInterval(captureInterval); captureInterval = null; }
+  if (camStream) {
+    camStream.getTracks().forEach(t => t.stop());
+    camStream = null;
+  }
+  camVideo.srcObject = null;
+}
+
+function captureFrame() {
+  if (!camStream || !camVideo.videoWidth) return;
+
+  camCtx.drawImage(camVideo, 0, 0, camCanvas.width, camCanvas.height);
+  const dataUrl = camCanvas.toDataURL("image/jpeg", 0.7);
+
+  const t = adcTimeNow();
+  frameBuffer.push({ t, dataUrl });
+
+  if (frameBuffer.length > FRAME_BUFFER_CAP) {
+    frameBuffer.splice(0, frameBuffer.length - FRAME_BUFFER_CAP);
+  }
+}
+
+function showFrameAtTime(t) {
+  if (!frameBuffer.length) return;
+
+  let best = 0;
+  let bestDist = Math.abs(frameBuffer[0].t - t);
+  for (let i = 1; i < frameBuffer.length; i++) {
+    const dist = Math.abs(frameBuffer[i].t - t);
+    if (dist < bestDist) { best = i; bestDist = dist; }
+  }
+
+  const img = new Image();
+  img.onload = () => {
+    camCtx.drawImage(img, 0, 0, camCanvas.width, camCanvas.height);
+  };
+  img.src = frameBuffer[best].dataUrl;
+
+  camVideo.style.display = "none";
+  camCanvas.style.display = "block";
+  camTime.textContent = "t = " + frameBuffer[best].t.toFixed(3) + "s (frame " + best + "/" + frameBuffer.length + ")";
+}
+
+function showLiveVideo() {
+  if (camStream) {
+    camVideo.style.display = "block";
+    camCanvas.style.display = "none";
+    camStatus.textContent = "Live";
+    camTime.textContent = "";
+  }
+}
+
+function getChartCenterTime() {
+  const ch = CHANNELS[0];
+  const d = data[ch];
+  if (!d.t.length) return 0;
+
+  const plot = plots[ch];
+  const scales = plot.scales;
+  if (scales.x.min != null && scales.x.max != null) {
+    return (scales.x.min + scales.x.max) / 2;
+  }
+  return d.t[d.t.length - 1];
+}
+
+camSelect.addEventListener("change", (e) => {
+  saveSettings({ cameraId: e.target.value });
+  startCamera(e.target.value);
+});
+
+document.getElementById("btn-pause").addEventListener("click", () => {
+  if (paused) {
+    const t = getChartCenterTime();
+    showFrameAtTime(t);
+    camStatus.textContent = "Paused";
+  } else {
+    showLiveVideo();
+  }
+});
+
 // Boot
 initCharts();
+
 connect();
+enumerateCameras();
 </script>
 </body>
 </html>
