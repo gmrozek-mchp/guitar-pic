@@ -62,6 +62,16 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
 
 #window-control { display: flex; align-items: center; gap: 8px; }
 #window-control input { flex: 1; }
+
+.manual-row { display: flex; gap: 6px; }
+.manual-btn { flex: 1; padding: 10px 0; font-weight: 700; font-size: 14px; text-align: center;
+  background: #1a1a2e; color: var(--btn-color, #e0e0e0); border: 2px solid var(--btn-color, #0f3460);
+  border-radius: 6px; cursor: pointer; user-select: none; touch-action: none;
+  transition: background 0.1s, opacity 0.15s; }
+.manual-btn:active, .manual-btn.held { background: var(--btn-color, #0f3460); color: #fff; }
+.manual-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.manual-btn:disabled:active, .manual-btn:disabled.held { background: #1a1a2e; color: var(--btn-color, #e0e0e0); }
+.strum-btn { --btn-color: #a855f7; }
 </style>
 </head>
 <body>
@@ -87,11 +97,7 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
     <div id="param-sliders"></div>
   </div>
 
-  <div class="section">
-    <h2>Actuation</h2>
-    <button id="btn-actuate">Enable Actuation</button>
-    <div id="timing-sliders"></div>
-  </div>
+
 </div>
 
 <div id="charts">
@@ -112,7 +118,33 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
     <canvas id="cam-canvas"></canvas>
   </div>
   <div id="cam-time"></div>
-  <div id="cam-status">No camera selected</div>
+  <div style="display:flex;gap:6px;align-items:center;">
+    <div id="cam-status" style="flex:1">No camera selected</div>
+    <button id="btn-mute" style="width:auto;padding:4px 10px;font-size:12px;">Unmute</button>
+  </div>
+
+  <div class="section">
+    <h2>Actuation</h2>
+    <button id="btn-actuate">Enable Actuation</button>
+    <div id="timing-sliders"></div>
+  </div>
+
+  <div class="section">
+    <h2>Manual</h2>
+    <div id="manual-buttons">
+      <div class="manual-row">
+        <button class="manual-btn" data-bit="0" style="--btn-color:#22c55e">G</button>
+        <button class="manual-btn" data-bit="1" style="--btn-color:#ef4444">R</button>
+        <button class="manual-btn" data-bit="2" style="--btn-color:#eab308">Y</button>
+        <button class="manual-btn" data-bit="3" style="--btn-color:#3b82f6">B</button>
+        <button class="manual-btn" data-bit="4" style="--btn-color:#f97316">O</button>
+      </div>
+      <div class="manual-row">
+        <button class="manual-btn strum-btn" data-bit="5">Strum &#9650;</button>
+        <button class="manual-btn strum-btn" data-bit="6">Strum &#9660;</button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -124,6 +156,7 @@ const STORAGE_KEY = "fret-tuner-settings";
 let ws = null;
 let paused = false;
 let windowSec = 2.0;
+let strumDelayMs = 220;
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
@@ -143,7 +176,7 @@ function savedParam(key, fallback) {
 // Per-channel ring buffers: [timestamps, raw, baseline, pressed]
 const data = {};
 CHANNELS.forEach(ch => {
-  data[ch] = { t: [], raw: [], baseline: [], pressed: [] };
+  data[ch] = { t: [], raw: [], baseline: [], pressed: [], pressCount: [] };
 });
 
 // uPlot instances
@@ -184,6 +217,41 @@ function makePressBands(ch) {
             const px = u.valToPos(d.t[d.t.length - 1], "x", true);
             ctx.fillRect(x0, u.bbox.top, px - x0, u.bbox.height);
           }
+
+          // Strike line: strum delay behind the latest sample
+          if (d.t.length > 1) {
+            const tLatest = d.t[d.t.length - 1];
+            const strikeT = tLatest - strumDelayMs / 1000;
+            const sx = u.valToPos(strikeT, "x", true);
+            if (sx >= u.bbox.left && sx <= u.bbox.left + u.bbox.width) {
+              ctx.strokeStyle = "#e94560";
+              ctx.globalAlpha = 0.7;
+              ctx.lineWidth = 1.5;
+              ctx.setLineDash([6, 4]);
+              ctx.beginPath();
+              ctx.moveTo(sx, u.bbox.top);
+              ctx.lineTo(sx, u.bbox.top + u.bbox.height);
+              ctx.stroke();
+              ctx.setLineDash([]);
+            }
+          }
+
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 0.6;
+          ctx.lineWidth = 2;
+          for (let i = 1; i < d.t.length; i++) {
+            if (d.pressed[i] && d.pressed[i - 1]
+                && d.pressCount[i] !== d.pressCount[i - 1]) {
+              const px = u.valToPos(d.t[i], "x", true);
+              if (px >= u.bbox.left && px <= u.bbox.left + u.bbox.width) {
+                ctx.beginPath();
+                ctx.moveTo(px, u.bbox.top);
+                ctx.lineTo(px, u.bbox.top + u.bbox.height);
+                ctx.stroke();
+              }
+            }
+          }
+
           ctx.restore();
         }
       ]
@@ -273,6 +341,7 @@ function trimBuffers() {
       d.raw.splice(0, excess);
       d.baseline.splice(0, excess);
       d.pressed.splice(0, excess);
+      d.pressCount.splice(0, excess);
     }
   });
 }
@@ -318,6 +387,7 @@ function connect() {
           data[ch].raw.push(s[ch]);
           data[ch].baseline.push(st[ch].baseline);
           data[ch].pressed.push(st[ch].pressed);
+          data[ch].pressCount.push(st[ch].press_count || 0);
         });
       }
       trimBuffers();
@@ -438,12 +508,14 @@ function populateParamSliders(params) {
 }
 
 function populateTimingSliders(timing) {
+  if (timing.STRUM_DELAY_MS !== undefined) strumDelayMs = timing.STRUM_DELAY_MS;
   const container = document.getElementById("timing-sliders");
   _buildSliderGroup(container, Object.entries(timing), "timing-", "set_timing", "timing",
     () => 500);
 }
 
 function updateActuateButton(enabled) {
+  actuateEnabled = enabled;
   const btn = document.getElementById("btn-actuate");
   if (enabled) {
     btn.classList.add("active");
@@ -452,6 +524,7 @@ function updateActuateButton(enabled) {
     btn.classList.remove("active");
     btn.textContent = "Enable Actuation";
   }
+  updateManualEnabled();
 }
 
 // Pause button
@@ -555,7 +628,8 @@ async function startCamera(deviceId) {
 
   try {
     camStream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } }
+      video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: true,
     });
     camVideo.srcObject = camStream;
     camVideo.style.display = "block";
@@ -644,6 +718,14 @@ camSelect.addEventListener("change", (e) => {
   startCamera(e.target.value);
 });
 
+document.getElementById("btn-mute").addEventListener("click", () => {
+  camVideo.muted = !camVideo.muted;
+  const btn = document.getElementById("btn-mute");
+  btn.textContent = camVideo.muted ? "Unmute" : "Mute";
+  if (camVideo.muted) btn.classList.remove("active");
+  else btn.classList.add("active");
+});
+
 document.getElementById("btn-pause").addEventListener("click", () => {
   if (paused) {
     const t = getChartCenterTime();
@@ -652,6 +734,58 @@ document.getElementById("btn-pause").addEventListener("click", () => {
   } else {
     showLiveVideo();
   }
+});
+
+// --- Manual buttons ---
+
+let manualMask = 0;
+let actuateEnabled = false;
+
+function updateManualEnabled() {
+  document.querySelectorAll(".manual-btn").forEach(btn => {
+    btn.disabled = actuateEnabled;
+    if (actuateEnabled) {
+      btn.classList.remove("held");
+    }
+  });
+  if (actuateEnabled && manualMask !== 0) {
+    manualMask = 0;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: "manual_output", mask: 0 }));
+    }
+  }
+}
+
+function sendManualMask() {
+  if (actuateEnabled) return;
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "manual_output", mask: manualMask }));
+  }
+}
+
+document.querySelectorAll(".manual-btn").forEach(btn => {
+  const bit = 1 << parseInt(btn.dataset.bit);
+
+  function press(e) {
+    e.preventDefault();
+    if (btn.disabled) return;
+    btn.classList.add("held");
+    manualMask |= bit;
+    sendManualMask();
+  }
+  function release(e) {
+    e.preventDefault();
+    btn.classList.remove("held");
+    manualMask &= ~bit;
+    sendManualMask();
+  }
+
+  btn.addEventListener("mousedown", press);
+  btn.addEventListener("mouseup", release);
+  btn.addEventListener("mouseleave", release);
+  btn.addEventListener("touchstart", press);
+  btn.addEventListener("touchend", release);
+  btn.addEventListener("touchcancel", release);
 });
 
 // Boot

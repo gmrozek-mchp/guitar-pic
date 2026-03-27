@@ -133,10 +133,9 @@ def _process_sample(sample: Sample, det, act):
     state_row = {}
     for ch in CHANNELS:
         ch_s = state.get(ch, {})
-        state_row[ch] = {
-            "pressed": ch_s.get("pressed", False),
-            "baseline": ch_s.get("baseline", 0),
-        }
+        state_row[ch] = dict(ch_s)
+        state_row[ch].setdefault("pressed", False)
+        state_row[ch].setdefault("baseline", 0)
 
     with _lock:
         _raw_history.append(sample)
@@ -316,6 +315,15 @@ async def ws_endpoint(ws: WebSocket):
                 if _actuator:
                     _actuator.set_enabled(msg.get("enabled", False))
                 await ws.send_text(json.dumps(_detector_info()))
+
+            elif msg_type == "manual_output":
+                mask = int(msg.get("mask", 0)) & 0x7F
+                if _ser_obj and _ser_obj.is_open:
+                    if not (_actuator and _actuator.enabled):
+                        try:
+                            _ser_obj.write(bytes([mask]))
+                        except serial.SerialException:
+                            pass
 
     except WebSocketDisconnect:
         pass

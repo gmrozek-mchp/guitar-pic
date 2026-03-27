@@ -87,6 +87,7 @@ class Actuator:
         self._strum_direction = False  # False = down, True = up
 
         self._prev_pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
+        self._prev_press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
         self._output_mask: int = 0
 
     @property
@@ -125,9 +126,16 @@ class Actuator:
             pressed = ch_state.get("pressed", False)
             was_pressed = self._prev_pressed[ch]
 
-            if pressed and not was_pressed:
-                presses |= CHANNEL_BITS[ch]
-            elif not pressed and was_pressed:
+            press_count = ch_state.get("press_count")
+            if press_count is not None:
+                if press_count != self._prev_press_count[ch]:
+                    presses |= CHANNEL_BITS[ch]
+                self._prev_press_count[ch] = press_count
+            else:
+                if pressed and not was_pressed:
+                    presses |= CHANNEL_BITS[ch]
+
+            if not pressed and was_pressed:
                 releases |= CHANNEL_BITS[ch]
 
             self._prev_pressed[ch] = pressed

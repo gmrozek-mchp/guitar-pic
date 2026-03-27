@@ -1,0 +1,23 @@
+---
+description: Detection algorithm development conventions
+alwaysApply: true
+---
+
+# Detection Algorithm Development
+
+All fret-press detection logic and actuation timing are developed **on the PC side** in `tools/fret-tuner/` (Python). The firmware (`firmware/fretboard/`) only scans ADCs, streams raw data, and receives GPIO bitmask commands — do not add detection or actuation logic there.
+
+## Firmware Is Read-Only
+
+- Do **not** modify firmware source files for detection work
+- The firmware modules `fret_detect.c` and `fret_button.c` are inactive legacy code; their PC-side equivalents are `detect_*.py` and `actuator.py`
+
+## M0+ Constraint
+
+Detection algorithms must remain simple enough to eventually port to an ARM Cortex-M0+ at 24 MHz:
+
+- Integer arithmetic only (no floats)
+- No dynamic allocation; fixed-size per-channel state
+- Bit shifts instead of multiply/divide where practical
+- O(1) per sample per channel; no unbounded loops or large buffers
+- Total per-channel state should fit in a small struct (~20-30 bytes)
