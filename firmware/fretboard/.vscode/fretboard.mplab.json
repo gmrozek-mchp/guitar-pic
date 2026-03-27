@@ -48,6 +48,8 @@
                 "fret_detect.h",
                 "fret_button.c",
                 "fret_button.h",
+                "cmd_receive.c",
+                "cmd_receive.h",
                 "fretboard-mcc/src/config/default/definitions.h",
                 "fretboard-mcc/src/config/default/device_cache.h",
                 "fretboard-mcc/src/config/default/device_vectors.h",

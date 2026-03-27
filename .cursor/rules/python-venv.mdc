@@ -1,0 +1,43 @@
+---
+description: Always use a Python 3.12 virtual environment for Python tooling
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python Virtual Environment
+
+Always use a virtual environment for Python scripts and tools in this project.
+
+## Setup
+
+If a `.venv` directory does not already exist at the project root, create one:
+
+```bash
+python3.12 -m venv .venv
+```
+
+## Activation
+
+Before running `pip install`, `python`, or any Python command, activate the venv:
+
+```bash
+source .venv/bin/activate
+```
+
+## Installing dependencies
+
+Always install into the venv, never globally:
+
+```bash
+source .venv/bin/activate && pip install <package>
+```
+
+## Running scripts
+
+Always run Python scripts through the venv interpreter:
+
+```bash
+.venv/bin/python script.py
+# or
+source .venv/bin/activate && python script.py
+```

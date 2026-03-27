@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fret Tuner</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.min.css">
+<script src="https://cdn.jsdelivr.net/npm/uplot@1.6.31/dist/uPlot.iife.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: #1a1a2e; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+
+#sidebar { width: 280px; min-width: 280px; background: #16213e; padding: 16px;
+           overflow-y: auto; display: flex; flex-direction: column; gap: 16px;
+           border-right: 1px solid #0f3460; }
+#charts  { flex: 1; padding: 12px; overflow-y: auto; display: flex; flex-direction: column; gap: 4px; }
+
+h1 { font-size: 16px; color: #e94560; margin-bottom: 4px; }
+h2 { font-size: 13px; color: #999; text-transform: uppercase; letter-spacing: 1px;
+     margin-bottom: 8px; border-bottom: 1px solid #0f3460; padding-bottom: 4px; }
+
+.section { display: flex; flex-direction: column; gap: 6px; }
+
+label { font-size: 12px; color: #aaa; display: flex; justify-content: space-between; align-items: center; }
+label span.val { color: #e94560; font-weight: 600; font-family: monospace; }
+
+select, input[type=range], button, input[type=number] {
+  width: 100%; font-size: 13px; background: #1a1a2e; color: #e0e0e0;
+  border: 1px solid #0f3460; border-radius: 4px; padding: 4px 8px; }
+select:focus, button:focus, input[type=number]:focus { outline: 1px solid #e94560; }
+
+input[type=range] { padding: 0; cursor: pointer; accent-color: #e94560; }
+input[type=number] { width: 70px; text-align: right; font-family: monospace;
+  -moz-appearance: textfield; }
+input[type=number]::-webkit-inner-spin-button { opacity: 1; }
+
+.slider-row { display: flex; align-items: center; gap: 6px; }
+.slider-row input[type=range] { flex: 1; }
+.slider-row input[type=number] { flex: 0 0 70px; }
+
+button { cursor: pointer; padding: 8px; font-weight: 600; transition: background 0.15s; }
+button:hover { background: #0f3460; }
+
+button.active { background: #e94560; color: #fff; border-color: #e94560; }
+
+#status { font-size: 11px; padding: 6px 8px; border-radius: 4px; text-align: center; }
+#status.connected { background: #0a3d2a; color: #4ade80; }
+#status.disconnected { background: #3d0a0a; color: #f87171; }
+
+.chart-wrap { flex: 1; min-height: 120px; }
+.chart-wrap .uplot { width: 100% !important; }
+
+#window-control { display: flex; align-items: center; gap: 8px; }
+#window-control input { flex: 1; }
+</style>
+</head>
+<body>
+
+<div id="sidebar">
+  <div>
+    <h1>Fret Tuner</h1>
+    <div id="status" class="disconnected">Disconnected</div>
+  </div>
+
+  <div class="section">
+    <h2>Transport</h2>
+    <button id="btn-pause">Pause</button>
+    <div id="window-control">
+      <label>Window <span class="val" id="window-val">2.0s</span></label>
+      <input type="range" id="window-range" min="0.5" max="30" step="0.5" value="2.0">
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Detector</h2>
+    <select id="detector-select"></select>
+    <div id="param-sliders"></div>
+  </div>
+
+  <div class="section">
+    <h2>Actuation</h2>
+    <button id="btn-actuate">Enable Actuation</button>
+    <div id="timing-sliders"></div>
+  </div>
+</div>
+
+<div id="charts">
+  <div class="chart-wrap" id="chart-green"></div>
+  <div class="chart-wrap" id="chart-red"></div>
+  <div class="chart-wrap" id="chart-yellow"></div>
+  <div class="chart-wrap" id="chart-blue"></div>
+  <div class="chart-wrap" id="chart-orange"></div>
+</div>
+
+<script>
+const CHANNELS = ["green", "red", "yellow", "blue", "orange"];
+const COLORS = { green: "#22c55e", red: "#ef4444", yellow: "#eab308", blue: "#3b82f6", orange: "#f97316" };
+const MAX_POINTS = 15000; // 30 seconds at 500 Hz
+
+const STORAGE_KEY = "fret-tuner-settings";
+let ws = null;
+let paused = false;
+let windowSec = 2.0;
+
+function loadSettings() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
+}
+function saveSettings(patch) {
+  const s = loadSettings();
+  Object.assign(s, patch);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(s));
+}
+function savedParam(key, fallback) {
+  const s = loadSettings();
+  if (s.params && s.params[key] !== undefined) return s.params[key];
+  if (s.timing && s.timing[key] !== undefined) return s.timing[key];
+  return fallback;
+}
+
+// Per-channel ring buffers: [timestamps, raw, baseline, pressed]
+const data = {};
+CHANNELS.forEach(ch => {
+  data[ch] = { t: [], raw: [], baseline: [], pressed: [] };
+});
+
+// uPlot instances
+const plots = {};
+
+function makePressBands(ch) {
+  return {
+    hooks: {
+      draw: [
+        (u) => {
+          const ctx = u.ctx;
+          const d = data[ch];
+          if (!d.t.length) return;
+
+          const color = COLORS[ch];
+          ctx.save();
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.15;
+
+          let inPress = false;
+          let x0 = 0;
+          for (let i = 0; i < d.t.length; i++) {
+            const px = u.valToPos(d.t[i], "x", true);
+            if (px < u.bbox.left || px > u.bbox.left + u.bbox.width) {
+              if (d.pressed[i]) { inPress = true; x0 = px; }
+              else { inPress = false; }
+              continue;
+            }
+            if (d.pressed[i] && !inPress) {
+              inPress = true;
+              x0 = px;
+            } else if (!d.pressed[i] && inPress) {
+              inPress = false;
+              ctx.fillRect(x0, u.bbox.top, px - x0, u.bbox.height);
+            }
+          }
+          if (inPress) {
+            const px = u.valToPos(d.t[d.t.length - 1], "x", true);
+            ctx.fillRect(x0, u.bbox.top, px - x0, u.bbox.height);
+          }
+          ctx.restore();
+        }
+      ]
+    }
+  };
+}
+
+function createChart(ch) {
+  const el = document.getElementById("chart-" + ch);
+  const rect = el.getBoundingClientRect();
+
+  const opts = {
+    width: rect.width,
+    height: rect.height,
+    plugins: [makePressBands(ch)],
+    cursor: { drag: { x: true, y: true, uni: 50 } },
+    scales: {
+      x: { time: false },
+      y: { range: [0, 4096] },
+    },
+    axes: [
+      { size: 30, font: "10px monospace", stroke: "#666", grid: { stroke: "#222", width: 1 } },
+      { size: 45, font: "10px monospace", stroke: "#666", grid: { stroke: "#222", width: 1 },
+        label: ch.charAt(0).toUpperCase() + ch.slice(1), labelFont: "bold 11px sans-serif", labelGap: 4 },
+    ],
+    series: [
+      {},
+      { label: "Raw", stroke: COLORS[ch], width: 1.5 },
+      { label: "Baseline", stroke: "#888", width: 1, dash: [4, 3] },
+    ],
+  };
+
+  const plot = new uPlot(opts, [[], [], []], el);
+  plots[ch] = plot;
+}
+
+function initCharts() {
+  CHANNELS.forEach(ch => createChart(ch));
+  window.addEventListener("resize", () => {
+    CHANNELS.forEach(ch => {
+      const el = document.getElementById("chart-" + ch);
+      const r = el.getBoundingClientRect();
+      plots[ch].setSize({ width: r.width, height: r.height });
+    });
+  });
+}
+
+function updateCharts() {
+  CHANNELS.forEach(ch => {
+    const d = data[ch];
+    if (!d.t.length) return;
+
+    const plot = plots[ch];
+
+    // Trim to window
+    const tMax = d.t[d.t.length - 1];
+    const tMin = tMax - windowSec;
+
+    let startIdx = 0;
+    for (let i = 0; i < d.t.length; i++) {
+      if (d.t[i] >= tMin) { startIdx = i; break; }
+    }
+
+    const tSlice = d.t.slice(startIdx);
+    const rawSlice = d.raw.slice(startIdx);
+    const baseSlice = d.baseline.slice(startIdx);
+
+    plot.setData([tSlice, rawSlice, baseSlice]);
+  });
+}
+
+// Trim buffers to MAX_POINTS
+function trimBuffers() {
+  CHANNELS.forEach(ch => {
+    const d = data[ch];
+    if (d.t.length > MAX_POINTS) {
+      const excess = d.t.length - MAX_POINTS;
+      d.t.splice(0, excess);
+      d.raw.splice(0, excess);
+      d.baseline.splice(0, excess);
+      d.pressed.splice(0, excess);
+    }
+  });
+}
+
+// WebSocket
+function connect() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(proto + "//" + location.host + "/ws");
+
+  ws.onopen = () => {
+    document.getElementById("status").className = "connected";
+    document.getElementById("status").textContent = "Connected";
+    const saved = loadSettings();
+    if (saved.detector) {
+      ws.send(JSON.stringify({ type: "set_detector", name: saved.detector }));
+    }
+    if (saved.params && Object.keys(saved.params).length) {
+      ws.send(JSON.stringify({ type: "set_params", params: saved.params }));
+    }
+    if (saved.timing && Object.keys(saved.timing).length) {
+      ws.send(JSON.stringify({ type: "set_timing", params: saved.timing }));
+    }
+  };
+
+  ws.onclose = () => {
+    document.getElementById("status").className = "disconnected";
+    document.getElementById("status").textContent = "Disconnected";
+    setTimeout(connect, 1000);
+  };
+
+  ws.onmessage = (ev) => {
+    const msg = JSON.parse(ev.data);
+
+    if (msg.type === "data") {
+      for (let i = 0; i < msg.samples.length; i++) {
+        const s = msg.samples[i];
+        const st = msg.state[i];
+        CHANNELS.forEach(ch => {
+          data[ch].t.push(s.t);
+          data[ch].raw.push(s[ch]);
+          data[ch].baseline.push(st[ch].baseline);
+          data[ch].pressed.push(st[ch].pressed);
+        });
+      }
+      trimBuffers();
+      if (!paused) updateCharts();
+    }
+
+    else if (msg.type === "detector") {
+      populateDetectorSelect(msg.available, msg.name);
+      populateParamSliders(msg.params);
+      populateTimingSliders(msg.timing);
+      updateActuateButton(msg.actuate_enabled);
+    }
+  };
+}
+
+// Controls
+function populateDetectorSelect(available, current) {
+  const sel = document.getElementById("detector-select");
+  sel.innerHTML = "";
+  available.forEach(name => {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    if (name === current) opt.selected = true;
+    sel.appendChild(opt);
+  });
+}
+
+// Track which slider groups have been built so we can update in-place
+let _paramKeys = [];
+let _timingKeys = [];
+
+function _buildSliderGroup(container, entries, idPrefix, msgType, storageSection, maxFn) {
+  const existingKeys = Array.from(container.querySelectorAll("input[type=range]")).map(el => el.dataset.key);
+  const newKeys = entries.map(([k]) => k);
+  const needsRebuild = existingKeys.join(",") !== newKeys.join(",");
+
+  if (needsRebuild) {
+    container.innerHTML = "";
+  }
+
+  entries.forEach(([key, serverVal]) => {
+    const id = idPrefix + key;
+    const val = savedParam(key, serverVal);
+    const maxVal = maxFn(val, serverVal);
+
+    if (needsRebuild) {
+      const label = document.createElement("label");
+      label.textContent = key;
+
+      const row = document.createElement("div");
+      row.className = "slider-row";
+
+      const range = document.createElement("input");
+      range.type = "range";
+      range.id = id;
+      range.dataset.key = key;
+      range.min = 0;
+      range.max = maxVal;
+      range.step = 1;
+      range.value = val;
+
+      const num = document.createElement("input");
+      num.type = "number";
+      num.id = id + "-num";
+      num.min = 0;
+      num.max = maxVal;
+      num.value = val;
+
+      function applyValue(v) {
+        const clamped = Math.max(0, Math.min(parseInt(v) || 0, maxVal));
+        range.value = clamped;
+        num.value = clamped;
+        const p = {};
+        p[key] = clamped;
+        const store = {};
+        store[storageSection] = Object.assign({}, loadSettings()[storageSection] || {}, p);
+        saveSettings(store);
+        ws.send(JSON.stringify({ type: msgType, params: p }));
+      }
+
+      range.addEventListener("input", () => { num.value = range.value; });
+      range.addEventListener("change", () => applyValue(range.value));
+      num.addEventListener("change", () => applyValue(num.value));
+
+      row.appendChild(range);
+      row.appendChild(num);
+      container.appendChild(label);
+      container.appendChild(row);
+    } else {
+      const range = document.getElementById(id);
+      const num = document.getElementById(id + "-num");
+      if (range && document.activeElement !== range) {
+        range.value = val;
+      }
+      if (num && document.activeElement !== num) {
+        num.value = val;
+      }
+    }
+  });
+}
+
+function populateParamSliders(params) {
+  const container = document.getElementById("param-sliders");
+  _buildSliderGroup(container, Object.entries(params), "param-", "set_params", "params",
+    (val, serverVal) => Math.max(serverVal * 3, 4096));
+}
+
+function populateTimingSliders(timing) {
+  const container = document.getElementById("timing-sliders");
+  _buildSliderGroup(container, Object.entries(timing), "timing-", "set_timing", "timing",
+    () => 500);
+}
+
+function updateActuateButton(enabled) {
+  const btn = document.getElementById("btn-actuate");
+  if (enabled) {
+    btn.classList.add("active");
+    btn.textContent = "Actuation ON";
+  } else {
+    btn.classList.remove("active");
+    btn.textContent = "Enable Actuation";
+  }
+}
+
+// Pause button
+document.getElementById("btn-pause").addEventListener("click", () => {
+  paused = !paused;
+  const btn = document.getElementById("btn-pause");
+  if (paused) {
+    btn.classList.add("active");
+    btn.textContent = "Resume";
+    ws.send(JSON.stringify({ type: "pause" }));
+  } else {
+    btn.classList.remove("active");
+    btn.textContent = "Pause";
+    ws.send(JSON.stringify({ type: "resume" }));
+  }
+});
+
+// Window slider -- restore saved value
+(function() {
+  const saved = loadSettings();
+  if (saved.windowSec) {
+    windowSec = saved.windowSec;
+    document.getElementById("window-range").value = windowSec;
+    document.getElementById("window-val").textContent = windowSec.toFixed(1) + "s";
+  }
+})();
+document.getElementById("window-range").addEventListener("input", (e) => {
+  windowSec = parseFloat(e.target.value);
+  document.getElementById("window-val").textContent = windowSec.toFixed(1) + "s";
+  saveSettings({ windowSec });
+});
+
+// Detector select
+document.getElementById("detector-select").addEventListener("change", (e) => {
+  saveSettings({ detector: e.target.value });
+  ws.send(JSON.stringify({ type: "set_detector", name: e.target.value }));
+});
+
+// Actuate toggle
+document.getElementById("btn-actuate").addEventListener("click", () => {
+  const btn = document.getElementById("btn-actuate");
+  const enabling = !btn.classList.contains("active");
+  ws.send(JSON.stringify({ type: "set_actuate", enabled: enabling }));
+});
+
+// Boot
+initCharts();
+connect();
+</script>
+</body>
+</html>
