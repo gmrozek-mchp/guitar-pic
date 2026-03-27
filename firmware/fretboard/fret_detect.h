@@ -24,4 +24,8 @@ bool fret_is_pressed(fret_channel_t ch);
    the last call (edge-triggered, auto-clears). */
 uint8_t fret_detect_new_presses(void);
 
+/* Returns a bitmask of channels that transitioned to released since
+   the last call (edge-triggered, auto-clears). */
+uint8_t fret_detect_new_releases(void);
+
 #endif

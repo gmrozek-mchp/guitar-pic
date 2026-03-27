@@ -28,7 +28,7 @@ int main(void)
 
             fret_scan_all();
             fret_detect_update();
-            fret_button_update();
+            fret_button_update(now);
             data_stream_send();
         }
     }

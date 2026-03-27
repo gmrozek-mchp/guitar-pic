@@ -10,12 +10,14 @@ const fret_threshold_t fret_thresholds[FRET_COUNT] = {
 
 static bool pressed[FRET_COUNT];
 static uint8_t new_press_flags;
+static uint8_t new_release_flags;
 
 void fret_detect_init(void)
 {
     for (uint8_t i = 0; i < FRET_COUNT; i++)
         pressed[i] = false;
     new_press_flags = 0;
+    new_release_flags = 0;
 }
 
 void fret_detect_update(void)
@@ -31,6 +33,7 @@ void fret_detect_update(void)
         } else {
             if (val > fret_thresholds[i].release) {
                 pressed[i] = false;
+                new_release_flags |= (1U << i);
             }
         }
     }
@@ -45,5 +48,12 @@ uint8_t fret_detect_new_presses(void)
 {
     uint8_t flags = new_press_flags;
     new_press_flags = 0;
+    return flags;
+}
+
+uint8_t fret_detect_new_releases(void)
+{
+    uint8_t flags = new_release_flags;
+    new_release_flags = 0;
     return flags;
 }
