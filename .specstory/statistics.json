@@ -1,5 +1,23 @@
 {
   "sessions": {
+    "09f70696-d93e-421e-84e7-beeb98b3e3d7": {
+      "user_message_count": 5,
+      "agent_message_count": 61,
+      "start_timestamp": "2026-02-25T23:00:37-06:00",
+      "end_timestamp": "2026-02-25T23:00:37-06:00",
+      "markdown_size_bytes": 105972,
+      "provider": "cursoride",
+      "last_updated": "2026-03-26T01:01:44Z"
+    },
+    "4ca8ecac-2ae9-489c-b52b-5e978a022bd3": {
+      "user_message_count": 9,
+      "agent_message_count": 54,
+      "start_timestamp": "2026-02-05T21:50:55-06:00",
+      "end_timestamp": "2026-02-05T21:50:55-06:00",
+      "markdown_size_bytes": 61739,
+      "provider": "cursoride",
+      "last_updated": "2026-03-26T01:01:44Z"
+    },
     "a20407e5-1de0-4ecf-bc16-066cbe027a9f": {
       "user_message_count": 8,
       "agent_message_count": 56,
@@ -7,7 +25,29 @@
       "end_timestamp": "2026-02-04T14:47:09-06:00",
       "markdown_size_bytes": 59085,
       "provider": "cursoride",
+<<<<<<< Updated upstream
       "last_updated": "2026-03-26T22:16:22Z"
+=======
+      "last_updated": "2026-03-24T19:59:21Z"
+    },
+    "d684edbc-dce5-4b54-b0ab-8487cead32aa": {
+      "user_message_count": 1,
+      "agent_message_count": 10,
+      "start_timestamp": "2026-02-09T22:50:08-06:00",
+      "end_timestamp": "2026-02-09T22:50:08-06:00",
+      "markdown_size_bytes": 16976,
+      "provider": "cursoride",
+      "last_updated": "2026-03-26T01:01:44Z"
+    },
+    "ffe6bf6e-8681-4509-ae45-58bdc5a0610c": {
+      "user_message_count": 30,
+      "agent_message_count": 267,
+      "start_timestamp": "2026-01-28T22:42:48-06:00",
+      "end_timestamp": "2026-01-28T22:42:48-06:00",
+      "markdown_size_bytes": 219401,
+      "provider": "cursoride",
+      "last_updated": "2026-03-26T01:01:44Z"
+>>>>>>> Stashed changes
     }
   }
 }
