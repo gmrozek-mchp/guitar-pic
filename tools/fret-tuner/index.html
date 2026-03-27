@@ -116,6 +116,7 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   <div id="video-container">
     <video id="cam-video" autoplay muted playsinline></video>
     <canvas id="cam-canvas"></canvas>
+    <img id="mjpeg-video" src="" style="display:none;width:100%;"/>
   </div>
   <div id="cam-time"></div>
   <div style="display:flex;gap:6px;align-items:center;">
@@ -399,6 +400,7 @@ function connect() {
       populateParamSliders(msg.params);
       populateTimingSliders(msg.timing);
       updateActuateButton(msg.actuate_enabled);
+      switchCameraMode(msg.name);
     }
 
     else if (msg.type === "serial_status") {
@@ -571,6 +573,59 @@ document.getElementById("btn-actuate").addEventListener("click", () => {
 });
 
 // --- Camera ---
+
+let usingMjpeg = false;
+let audioOnlyStream = null;
+const mjpegImg = document.getElementById("mjpeg-video");
+
+let camerasEnumerated = false;
+
+async function startAudioOnly() {
+  stopAudioOnly();
+  try {
+    audioOnlyStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+    camVideo.srcObject = audioOnlyStream;
+    camVideo.style.display = "none";
+    camVideo.muted = false;
+    await camVideo.play();
+  } catch (e) {
+    console.warn("Could not start audio:", e.message);
+  }
+}
+
+function stopAudioOnly() {
+  if (audioOnlyStream) {
+    audioOnlyStream.getTracks().forEach(t => t.stop());
+    audioOnlyStream = null;
+  }
+}
+
+function switchCameraMode(detectorName) {
+  if (detectorName === "detect_video") {
+    if (!usingMjpeg) {
+      stopCamera();
+      camSelect.style.display = "none";
+      camCanvas.style.display = "none";
+      mjpegImg.src = "/video";
+      mjpegImg.style.display = "block";
+      camStatus.textContent = "Video detector (MJPEG)";
+      usingMjpeg = true;
+      startAudioOnly();
+    }
+  } else {
+    if (usingMjpeg) {
+      stopAudioOnly();
+      mjpegImg.src = "";
+      mjpegImg.style.display = "none";
+      camSelect.style.display = "";
+      usingMjpeg = false;
+    }
+    if (!camerasEnumerated) {
+      camerasEnumerated = true;
+      enumerateCameras();
+    }
+  }
+}
 
 const FRAME_RATE = 10;
 const FRAME_BUFFER_SEC = 30;
@@ -792,7 +847,6 @@ document.querySelectorAll(".manual-btn").forEach(btn => {
 initCharts();
 
 connect();
-enumerateCameras();
 </script>
 </body>
 </html>

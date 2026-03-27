@@ -14,10 +14,12 @@ All fret-press detection logic and actuation timing are developed **on the PC si
 
 ## M0+ Constraint
 
-Detection algorithms must remain simple enough to eventually port to an ARM Cortex-M0+ at 24 MHz:
+ADC-based detection algorithms (`detect_threshold`, `detect_trough`, `detect_slope`) must remain simple enough to eventually port to an ARM Cortex-M0+ at 24 MHz:
 
 - Integer arithmetic only (no floats)
 - No dynamic allocation; fixed-size per-channel state
 - Bit shifts instead of multiply/divide where practical
 - O(1) per sample per channel; no unbounded loops or large buffers
 - Total per-channel state should fit in a small struct (~20-30 bytes)
+
+`detect_video` is a **PC-only reference detector** (camera + OpenCV). It is not intended for M0+ porting and has no complexity constraints.

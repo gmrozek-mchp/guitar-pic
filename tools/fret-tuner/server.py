@@ -17,7 +17,8 @@ from typing import Optional
 
 import serial
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
+from starlette.responses import StreamingResponse
 
 from actuator import Actuator, DEFAULT_TIMING
 from stream import CHANNELS, CsvStream, Sample, SerialStream
@@ -56,6 +57,15 @@ def _discover_detectors() -> list[str]:
     for p in sorted(here.glob("detect_*.py")):
         names.append(p.stem)
     return names
+
+
+def _stop_detector(det):
+    """Stop a detector if it has a stop() method (e.g. camera release)."""
+    if det is not None and hasattr(det, "stop"):
+        try:
+            det.stop()
+        except Exception as exc:
+            log.warning("Error stopping detector: %s", exc)
 
 
 def _load_detector(name: str, params: Optional[dict] = None):
@@ -266,6 +276,41 @@ async def list_detectors():
     return JSONResponse(_discover_detectors())
 
 
+async def _mjpeg_generator():
+    """Yield MJPEG frames from the active detector's preview, if available."""
+    while True:
+        jpeg = None
+        with _lock:
+            det = _detector
+        if det and hasattr(det, "get_preview_jpeg"):
+            jpeg = det.get_preview_jpeg()
+        if jpeg:
+            yield (b"--frame\r\n"
+                   b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
+        await asyncio.sleep(0.033)
+
+
+@app.get("/video")
+async def video_feed():
+    return StreamingResponse(
+        _mjpeg_generator(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+    )
+
+
+@app.get("/video/snap")
+async def video_snap():
+    """Return a single JPEG frame (no MJPEG streaming). Useful for debugging."""
+    with _lock:
+        det = _detector
+    if det and hasattr(det, "get_preview_jpeg"):
+        jpeg = det.get_preview_jpeg()
+        if jpeg:
+            return Response(content=jpeg, media_type="image/jpeg",
+                            headers={"Cache-Control": "no-store"})
+    return Response(content=b"no frame available", status_code=503)
+
+
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket):
     global _detector, _detector_name, _detector_params, _paused
@@ -290,19 +335,28 @@ async def ws_endpoint(ws: WebSocket):
             elif msg_type == "set_params":
                 new_params = msg.get("params", {})
                 with _lock:
+                    old_det = _detector
                     _detector_params.update(
                         {k: int(v) for k, v in new_params.items()}
                     )
                     _detector, _detector_params = _load_detector(
                         _detector_name, _detector_params
                     )
+                _stop_detector(old_det)
+                time.sleep(0.5)
                 await ws.send_text(json.dumps(_detector_info()))
 
             elif msg_type == "set_detector":
                 name = msg.get("name", _detector_name)
                 with _lock:
+                    if name == _detector_name and _detector is not None:
+                        await ws.send_text(json.dumps(_detector_info()))
+                        continue
+                    old_det = _detector
                     _detector_name = name
                     _detector, _detector_params = _load_detector(name)
+                _stop_detector(old_det)
+                time.sleep(0.5)
                 await ws.send_text(json.dumps(_detector_info()))
 
             elif msg_type == "set_timing":
