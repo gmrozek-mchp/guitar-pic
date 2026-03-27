@@ -8,7 +8,7 @@
 /* All delays in milliseconds (using SYSTICK_GetTickCounter). */
 
 /* Ms from chord window close (commit) to strike line / strum. */
-#define STRUM_DELAY_MS       200
+#define STRUM_DELAY_MS       220
 
 /* Ms the fret output must be on before the strike — strum fires this many ms
    after fret press (fret at strike - FRET_EARLY, strum at strike). */

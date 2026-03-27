@@ -1,11 +1,11 @@
 #include "fret_detect.h"
 
 const fret_threshold_t fret_thresholds[FRET_COUNT] = {
-    [FRET_GREEN]  = { .press = 2500, .release = 3000 },
-    [FRET_RED]    = { .press = 2500, .release = 3000 },
-    [FRET_YELLOW] = { .press = 2200, .release = 2400 },
-    [FRET_BLUE]   = { .press = 2200, .release = 2500 },
-    [FRET_ORANGE] = { .press = 2200, .release = 2500 },
+    [FRET_GREEN]  = { .press = 2500, .release = 2800 },
+    [FRET_RED]    = { .press = 2500, .release = 2800 },
+    [FRET_YELLOW] = { .press = 1500, .release = 1700 },
+    [FRET_BLUE]   = { .press = 1500, .release = 1700 },
+    [FRET_ORANGE] = { .press = 2000, .release = 2200 },
 };
 
 static bool pressed[FRET_COUNT];

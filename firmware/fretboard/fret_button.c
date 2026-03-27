@@ -1,22 +1,33 @@
 #include "fret_button.h"
 #include "fret_detect.h"
 #include "definitions.h"
+#include "fret_scan.h"
 
 #define SW0_DEBOUNCE_MS  30
 
-/* ---- pending chord FIFO ---- */
+/* ---- pending note FIFO ---- */
 
 typedef struct {
     uint8_t  fret_mask;
-    uint32_t press_at;
-    uint32_t strum_at;
-    bool     frets_asserted;
-} pending_chord_t;
+    uint32_t assert_at;
+} pending_note_t;
 
-#define CHORD_Q_CAP 8
-static pending_chord_t chord_q[CHORD_Q_CAP];
-static uint8_t cq_head;
-static uint8_t cq_count;
+#define NOTE_Q_CAP 8
+static pending_note_t note_q[NOTE_Q_CAP];
+static uint8_t nq_head;
+static uint8_t nq_count;
+
+/* ---- pending strum FIFO ---- */
+
+typedef struct {
+    uint8_t  fret_mask;
+    uint32_t strum_at;
+} pending_strum_t;
+
+#define STRUM_Q_CAP 8
+static pending_strum_t strum_q[STRUM_Q_CAP];
+static uint8_t sq_head;
+static uint8_t sq_count;
 
 /* ---- per-fret release scheduling ---- */
 
@@ -78,6 +89,7 @@ static void strum_release(void)
     BUTTON_STRUM_UP_InputEnable();
     strum_active = false;
     LED0_Set();
+    // button_release(FRET_ORANGE);
 }
 
 static void strum_trigger(uint32_t now)
@@ -94,6 +106,7 @@ static void strum_trigger(uint32_t now)
     strum_active = true;
     strum_release_at = now + STRUM_PULSE_MS;
     LED0_Clear();
+    // button_assert(FRET_ORANGE);
 }
 
 static void release_all(void)
@@ -104,8 +117,10 @@ static void release_all(void)
     }
     frets_active = 0;
     strum_release();
-    cq_head = 0;
-    cq_count = 0;
+    nq_head = 0;
+    nq_count = 0;
+    sq_head = 0;
+    sq_count = 0;
     chord_open = false;
     chord_mask = 0;
 }
@@ -147,69 +162,82 @@ static void sw0_poll(uint32_t now)
 
 static void chord_commit(uint32_t now)
 {
-    if (cq_count >= CHORD_Q_CAP) {
+    if (nq_count >= NOTE_Q_CAP || sq_count >= STRUM_Q_CAP) {
         chord_open = false;
         chord_mask = 0;
         return;
     }
 
-    uint32_t press_at = now + STRUM_DELAY_MS - FRET_EARLY_MS;
-    uint32_t strum_at = now + STRUM_DELAY_MS;
+    uint32_t assert_at = now + STRUM_DELAY_MS - FRET_EARLY_MS;
+    uint32_t strum_at  = now + STRUM_DELAY_MS;
 
-    /* If previous chord's strum pulse hasn't finished, push this chord's
-       times forward so its frets don't interfere with the prior strum. */
-    if (cq_count > 0) {
-        uint8_t tail = (cq_head + cq_count - 1U) % CHORD_Q_CAP;
-        uint32_t earliest = chord_q[tail].strum_at + STRUM_PULSE_MS;
-        if ((int32_t)(press_at - earliest) < 0) {
-            press_at = earliest;
-            strum_at = press_at + FRET_EARLY_MS;
+    /* If previous strum pulse hasn't finished, push times forward so
+       new frets don't interfere with the prior strum. */
+    if (sq_count > 0) {
+        uint8_t tail = (sq_head + sq_count - 1U) % STRUM_Q_CAP;
+        uint32_t earliest = strum_q[tail].strum_at + STRUM_PULSE_MS;
+        if ((int32_t)(assert_at - earliest) < 0) {
+            assert_at = earliest;
+            strum_at  = assert_at + FRET_EARLY_MS;
         }
     }
 
-    uint8_t slot = (cq_head + cq_count) % CHORD_Q_CAP;
-    chord_q[slot] = (pending_chord_t){
-        .fret_mask       = chord_mask,
-        .press_at        = press_at,
-        .strum_at        = strum_at,
-        .frets_asserted  = false,
+    uint8_t nslot = (nq_head + nq_count) % NOTE_Q_CAP;
+    note_q[nslot] = (pending_note_t){
+        .fret_mask  = chord_mask,
+        .assert_at  = assert_at,
     };
-    cq_count++;
+    nq_count++;
+
+    uint8_t sslot = (sq_head + sq_count) % STRUM_Q_CAP;
+    strum_q[sslot] = (pending_strum_t){
+        .fret_mask  = chord_mask,
+        .strum_at   = strum_at,
+    };
+    sq_count++;
 
     chord_open = false;
     chord_mask = 0;
 }
 
-/* ---- process pending chords (FIFO order) ---- */
+/* ---- process pending notes (FIFO order) ---- */
 
-static void process_pending(uint32_t now)
+static void process_notes(uint32_t now)
 {
-    while (cq_count > 0) {
-        pending_chord_t *c = &chord_q[cq_head];
+    while (nq_count > 0) {
+        pending_note_t *n = &note_q[nq_head];
+        if ((int32_t)(now - n->assert_at) < 0)
+            break;
 
-        if (!c->frets_asserted && (int32_t)(now - c->press_at) >= 0) {
-            for (uint8_t i = 0; i < FRET_COUNT; i++) {
-                bool need = (c->fret_mask >> i) & 1U;
-                bool have = (frets_active >> i) & 1U;
-                if (need && !have) {
-                    button_assert(i);
-                    frets_active |= (1U << i);
-                } else if (!need && have) {
-                    button_release(i);
-                    frets_active &= ~(1U << i);
-                }
+        for (uint8_t i = 0; i < FRET_COUNT; i++) {
+            bool need = (n->fret_mask >> i) & 1U;
+            bool have = (frets_active >> i) & 1U;
+            if (need && !have) {
+                button_assert(i);
+                frets_active |= (1U << i);
+            } else if (!need && have) {
+                button_release(i);
+                frets_active &= ~(1U << i);
             }
-            c->frets_asserted = true;
         }
 
-        if (c->frets_asserted && (int32_t)(now - c->strum_at) >= 0) {
-            strum_trigger(now);
-            cq_head = (cq_head + 1U) % CHORD_Q_CAP;
-            cq_count--;
-            continue;
-        }
+        nq_head = (nq_head + 1U) % NOTE_Q_CAP;
+        nq_count--;
+    }
+}
 
-        break;
+/* ---- process pending strums (FIFO order) ---- */
+
+static void process_strums(uint32_t now)
+{
+    while (sq_count > 0) {
+        pending_strum_t *s = &strum_q[sq_head];
+        if ((int32_t)(now - s->strum_at) < 0)
+            break;
+
+        strum_trigger(now);
+        sq_head = (sq_head + 1U) % STRUM_Q_CAP;
+        sq_count--;
     }
 }
 
@@ -226,14 +254,17 @@ static void process_releases(uint32_t now)
         if (fret_is_pressed((fret_channel_t)i))
             continue;
 
-        /* Don't release if any pending chord still needs this fret. */
+        /* Don't release if any pending note or strum still needs this fret. */
         bool needed = false;
-        for (uint8_t j = 0; j < cq_count; j++) {
-            uint8_t slot = (cq_head + j) % CHORD_Q_CAP;
-            if (chord_q[slot].fret_mask & (1U << i)) {
+        for (uint8_t j = 0; j < nq_count && !needed; j++) {
+            uint8_t slot = (nq_head + j) % NOTE_Q_CAP;
+            if (note_q[slot].fret_mask & (1U << i))
                 needed = true;
-                break;
-            }
+        }
+        for (uint8_t j = 0; j < sq_count && !needed; j++) {
+            uint8_t slot = (sq_head + j) % STRUM_Q_CAP;
+            if (strum_q[slot].fret_mask & (1U << i))
+                needed = true;
         }
         if (needed)
             continue;
@@ -248,8 +279,10 @@ static void process_releases(uint32_t now)
 
 void fret_button_init(void)
 {
-    cq_head = 0;
-    cq_count = 0;
+    nq_head = 0;
+    nq_count = 0;
+    sq_head = 0;
+    sq_count = 0;
     frets_active = 0;
     chord_open = false;
     chord_mask = 0;
@@ -297,11 +330,12 @@ void fret_button_update(uint32_t now)
     if (chord_open && (now - chord_start_ms) >= CHORD_WINDOW_MS)
         chord_commit(now);
 
-    process_pending(now);
-    process_releases(now);
-
     if (strum_active && (int32_t)(now - strum_release_at) >= 0)
         strum_release();
+
+    process_notes(now);
+    process_strums(now);
+    process_releases(now);
 }
 
 bool fret_button_is_enabled(void)
