@@ -4,8 +4,8 @@ const fret_threshold_t fret_thresholds[FRET_COUNT] = {
     [FRET_GREEN]  = { .press = 2500, .release = 3000 },
     [FRET_RED]    = { .press = 2500, .release = 3000 },
     [FRET_YELLOW] = { .press = 2200, .release = 2400 },
-    [FRET_BLUE]   = { .press = 2500, .release = 3000 },
-    [FRET_ORANGE] = { .press = 2500, .release = 3000 },
+    [FRET_BLUE]   = { .press = 2200, .release = 2500 },
+    [FRET_ORANGE] = { .press = 2200, .release = 2500 },
 };
 
 static bool pressed[FRET_COUNT];
