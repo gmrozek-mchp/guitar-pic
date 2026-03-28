@@ -177,7 +177,7 @@ function savedParam(key, fallback) {
 // Per-channel ring buffers: [timestamps, raw, baseline, pressed]
 const data = {};
 CHANNELS.forEach(ch => {
-  data[ch] = { t: [], raw: [], baseline: [], pressed: [], pressCount: [] };
+  data[ch] = { t: [], raw: [], baseline: [], edgeLine: [], pressed: [], pressCount: [] };
 });
 
 // uPlot instances
@@ -281,7 +281,8 @@ function createChart(ch) {
     series: [
       {},
       { label: "Raw", stroke: COLORS[ch], width: 1.5 },
-      { label: "Baseline", stroke: "#888", width: 1, dash: [4, 3] },
+      { label: "Hold", stroke: "#888", width: 1, dash: [4, 3] },
+      { label: "Edge", stroke: "#e94560", width: 1.5, dash: [2, 2] },
     ],
   };
 
@@ -293,7 +294,7 @@ function createChart(ch) {
     }
   }];
 
-  const plot = new uPlot(opts, [[], [], []], el);
+  const plot = new uPlot(opts, [[], [], [], []], el);
   plots[ch] = plot;
 }
 
@@ -327,8 +328,9 @@ function updateCharts() {
     const tSlice = d.t.slice(startIdx);
     const rawSlice = d.raw.slice(startIdx);
     const baseSlice = d.baseline.slice(startIdx);
+    const edgeSlice = d.edgeLine.slice(startIdx);
 
-    plot.setData([tSlice, rawSlice, baseSlice]);
+    plot.setData([tSlice, rawSlice, baseSlice, edgeSlice]);
   });
 }
 
@@ -341,6 +343,7 @@ function trimBuffers() {
       d.t.splice(0, excess);
       d.raw.splice(0, excess);
       d.baseline.splice(0, excess);
+      d.edgeLine.splice(0, excess);
       d.pressed.splice(0, excess);
       d.pressCount.splice(0, excess);
     }
@@ -387,6 +390,7 @@ function connect() {
           data[ch].t.push(s.t);
           data[ch].raw.push(s[ch]);
           data[ch].baseline.push(st[ch].baseline);
+          data[ch].edgeLine.push(st[ch].edge_line || 0);
           data[ch].pressed.push(st[ch].pressed);
           data[ch].pressCount.push(st[ch].press_count || 0);
         });

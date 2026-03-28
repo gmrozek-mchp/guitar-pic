@@ -291,6 +291,54 @@ Right-side panel with synchronized webcam/capture-card view for comparing wavefo
 
 All capture and buffering is browser-side using the MediaStream API; no server changes required.
 
+## Bundled Detector: detect_video
+
+Camera-based detection using pixel sampling. Two sensor points per button, both above the strike line:
+
+- **Sensor 1 (hold)** -- brightness detect (color OR white). Sets `pressed=True` whenever max channel brightness exceeds `THRESHOLD`.
+- **Sensor 2 (edge)** -- color-filtered leading-edge detect. Increments `press_count` on each new note arrival for strum timing.
+
+Detection thresholds are applied directly to raw pixel values (dark background is implicit zero, no settle/calibration phase).
+
+### Observed Game Colors (camera-captured BGR)
+
+Colors are highly saturated with negligible off-channel values:
+
+| Color  | B    | G    | R    | Notes |
+|--------|------|------|------|-------|
+| Red    | <10  | <10  | >100 | Almost completely red |
+| Green  | <10  | >100 | <10  | Completely green |
+| Blue   | >100 | ~67  | <10  | B dominant, G about 2/3 of B, low R |
+| Yellow | <10  | ~100 | ~100 | Even mix of G and R, very low B |
+| Orange | <10  | ~50  | >100 | R dominant, G about half of R, low B |
+| White (fret bar) | ~160 | ~160 | ~160 | Equal channels at brightest, sat near 0 |
+
+The edge detector uses a color filter with saturation scaling `(max-min)/max` to reject white/gray fret bars regardless of camera white balance.
+
+### Parameters
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `DEVICE_ID` | 0 | Camera device index |
+| `THRESHOLD` | 50 | Detection threshold (brightness for hold, color signal for edge) |
+| `RELEASE_FRAC` | 60 | Release threshold as % of press threshold (hysteresis) |
+| `PATCH_RADIUS` | 2 | Pixel averaging radius around sample point |
+| `SHOW_PREVIEW` | 1 | Enable MJPEG preview stream at /video |
+| `{COLOR}_X/Y` | varies | Hold sensor pixel coordinates per button |
+| `{COLOR}_EX/EY` | varies | Edge sensor pixel coordinates per button |
+
+### Calibration
+
+Use `video_calibrate.py` to interactively mark sensor positions:
+
+```bash
+# Full calibration (10 points: 5 hold + 5 edge)
+python video_calibrate.py --device 0
+
+# Color sampling mode (inspect BGR values without calibrating)
+python video_calibrate.py --sample
+```
+
 ## Future Work
 
 - Multi-detector overlay (compare two algorithms side-by-side on the same chart)

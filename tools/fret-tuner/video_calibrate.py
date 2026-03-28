@@ -9,9 +9,10 @@ Usage:
     python video_calibrate.py [--device 0]
 
 Controls:
-    Left-click  -- mark current button
+    Left-click  -- mark current button (or sample color in --sample mode)
     Space       -- pause/resume the live feed
     u           -- undo last mark
+    s           -- print BGR sample at cursor to console
     q           -- finish and print results
 
 Requires: opencv-python
@@ -19,6 +20,7 @@ Requires: opencv-python
 
 import argparse
 import cv2
+import numpy as np
 
 HOLD_BUTTONS = ("GREEN", "RED", "YELLOW", "BLUE", "ORANGE")
 EDGE_BUTTONS = ("GREEN_E", "RED_E", "YELLOW_E", "BLUE_E", "ORANGE_E")
@@ -44,6 +46,10 @@ def main():
     parser.add_argument("--device", type=int, default=0, help="Camera device index")
     parser.add_argument("--width", type=int, default=1920, help="Capture width")
     parser.add_argument("--height", type=int, default=1080, help="Capture height")
+    parser.add_argument("--sample", action="store_true",
+                        help="Color sampling mode only (no calibration)")
+    parser.add_argument("--patch", type=int, default=2,
+                        help="Patch radius for averaging (default 2)")
     args = parser.parse_args()
 
     cap = cv2.VideoCapture(args.device)
@@ -57,15 +63,20 @@ def main():
     coords: dict[str, tuple[int, int]] = {}
     idx = 0
     click_raw = None
+    mouse_pos = None
     paused = False
     frozen_frame = None
     scale_x = 1.0
     scale_y = 1.0
+    patch_r = args.patch
+    sample_log = []
 
     def on_mouse(event, x, y, _flags, _param):
-        nonlocal click_raw
+        nonlocal click_raw, mouse_pos
         if event == cv2.EVENT_LBUTTONDOWN:
             click_raw = (x, y)
+        elif event == cv2.EVENT_MOUSEMOVE:
+            mouse_pos = (x, y)
 
     win = "Video Calibration"
     cv2.namedWindow(win, cv2.WINDOW_AUTOSIZE)
@@ -76,9 +87,32 @@ def main():
             return f"{name[:-2]} edge"
         return name + " hold"
 
-    print("Click on each fret button in the camera view.")
-    print(f"  Next: {_display_name(all_targets[0])}")
-    print("  Press Space to pause, 'u' to undo, 'q' to quit.\n")
+    def _sample_patch(frm, ix, iy):
+        """Average a small patch around (ix, iy), return BGR float array."""
+        h, w = frm.shape[:2]
+        ix = max(0, min(ix, w - 1))
+        iy = max(0, min(iy, h - 1))
+        y0 = max(0, iy - patch_r)
+        y1 = min(h, iy + patch_r + 1)
+        x0 = max(0, ix - patch_r)
+        x1 = min(w, ix + patch_r + 1)
+        patch = frm[y0:y1, x0:x1]
+        if patch.size == 0:
+            return np.zeros(3)
+        return patch.astype(np.float64).mean(axis=(0, 1))
+
+    def _sat_ratio(bgr):
+        cmax = max(bgr[0], bgr[1], bgr[2])
+        cmin = min(bgr[0], bgr[1], bgr[2])
+        return (cmax - cmin) / cmax if cmax > 0 else 0.0
+
+    if args.sample:
+        print("COLOR SAMPLING MODE -- click or press 's' to sample pixels.")
+        print("  Press Space to pause, 'q' to quit.\n")
+    else:
+        print("Click on each fret button in the camera view.")
+        print(f"  Next: {_display_name(all_targets[0])}")
+        print("  Press Space to pause, 'u' to undo, 's' to sample, 'q' to quit.\n")
 
     try:
         while True:
@@ -118,6 +152,19 @@ def main():
             cv2.putText(frame, label, (10, 25),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
+            if mouse_pos is not None:
+                mx = int(mouse_pos[0] * scale_x)
+                my = int(mouse_pos[1] * scale_y)
+                mx = max(0, min(mx, img_w - 1))
+                my = max(0, min(my, img_h - 1))
+                bgr = _sample_patch(frame, mx, my)
+                sat = _sat_ratio(bgr)
+                info = f"({mx},{my}) B={bgr[0]:.0f} G={bgr[1]:.0f} R={bgr[2]:.0f}  sat={sat:.2f}"
+                cv2.putText(frame, info, (10, img_h - 10),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                cv2.rectangle(frame, (mx - patch_r, my - patch_r),
+                              (mx + patch_r, my + patch_r), (255, 255, 255), 1)
+
             cv2.imshow(win, frame)
             key = cv2.waitKey(30) & 0xFF
 
@@ -133,7 +180,24 @@ def main():
                 paused = not paused
                 print("  " + ("Paused" if paused else "Resumed"))
 
-            if click_raw is not None and idx < len(all_targets):
+            if key == ord("s") and mouse_pos is not None:
+                sx = int(mouse_pos[0] * scale_x)
+                sy = int(mouse_pos[1] * scale_y)
+                bgr = _sample_patch(frame, sx, sy)
+                sat = _sat_ratio(bgr)
+                print(f"  SAMPLE ({sx},{sy}): B={bgr[0]:.1f} G={bgr[1]:.1f} R={bgr[2]:.1f}  sat={sat:.3f}")
+                sample_log.append((sx, sy, bgr[0], bgr[1], bgr[2], sat))
+
+            if args.sample and click_raw is not None:
+                sx = int(click_raw[0] * scale_x)
+                sy = int(click_raw[1] * scale_y)
+                bgr = _sample_patch(frame, sx, sy)
+                sat = _sat_ratio(bgr)
+                print(f"  SAMPLE ({sx},{sy}): B={bgr[0]:.1f} G={bgr[1]:.1f} R={bgr[2]:.1f}  sat={sat:.3f}")
+                sample_log.append((sx, sy, bgr[0], bgr[1], bgr[2], sat))
+                click_raw = None
+
+            if not args.sample and click_raw is not None and idx < len(all_targets):
                 name = all_targets[idx]
                 img_x = int(click_raw[0] * scale_x)
                 img_y = int(click_raw[1] * scale_y)
@@ -149,7 +213,7 @@ def main():
                 else:
                     print("\nAll points marked. Press 'q' to print results.\n")
 
-            if key == ord("u") and idx > 0:
+            if not args.sample and key == ord("u") and idx > 0:
                 idx -= 1
                 removed = all_targets[idx]
                 coords.pop(removed, None)
@@ -162,6 +226,16 @@ def main():
     finally:
         cap.release()
         cv2.destroyAllWindows()
+
+    if sample_log:
+        print("\n" + "=" * 50)
+        print("Sampled points:\n")
+        print(f"  {'Pos':>12s}  {'B':>5s}  {'G':>5s}  {'R':>5s}  {'Sat':>5s}")
+        for sx, sy, b, g, r, sat in sample_log:
+            print(f"  ({sx:4d},{sy:4d})  {b:5.1f}  {g:5.1f}  {r:5.1f}  {sat:5.3f}")
+
+    if args.sample:
+        return
 
     if len(coords) < len(all_targets):
         print(f"Only {len(coords)}/{len(all_targets)} points marked.")

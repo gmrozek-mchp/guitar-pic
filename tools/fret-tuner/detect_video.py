@@ -10,7 +10,8 @@ Two sensor points per button, both above the strike line:
                       which the actuator uses to schedule strums.
 
 Use video_calibrate.py to find pixel coordinates for all 10 sensor
-points.  Reference colors are auto-captured during the first few frames.
+points.  Detection thresholds are applied to raw pixel values (dark
+background is the implicit zero).
 
 The "baseline" output is the stronger of the two signals (scaled to
 0..4095) for chart overlay visualization.
@@ -35,14 +36,15 @@ _DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
 
 # Per-button color filter for the edge detector (sensor 2).
 # (target_weights, reject_weights) in BGR order.
-# Detection signal = target - reject.  Rejects white so only the
-# button's own color triggers a strum edge.
+# Detection signal = target - reject.  Reject weights > 1.0 total
+# so that camera-captured whites (which have color-temperature bias)
+# are aggressively suppressed, not just mathematically-perfect whites.
 _COLOR_FILTER: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
-    "green":  ((0, 1, 0),     (0.5, 0, 0.5)),   # want G up, penalize B/R
-    "red":    ((0, 0, 1),     (0.5, 0.5, 0)),    # want R up, penalize B/G
-    "yellow": ((0, 0.5, 0.5), (1, 0, 0)),        # want R+G up, penalize B
-    "blue":   ((1, 0, 0),     (0, 0.5, 0.5)),    # want B up, penalize G/R
-    "orange": ((0, 0.3, 0.7), (1, 0, 0)),        # want R+someG up, penalize B
+    "green":  ((0, 1, 0),     (0.7, 0, 0.7)),   # want G up, penalize B/R
+    "red":    ((0, 0, 1),     (0.7, 0.7, 0)),    # want R up, penalize B/G
+    "yellow": ((0, 0.5, 0.5), (1.4, 0, 0)),      # want R+G up, penalize B
+    "blue":   ((1, 0.4, 0),   (0, 0, 1.4)),       # want B + some G, penalize R
+    "orange": ((0, 0.3, 0.7), (1.4, 0, 0)),      # want R+someG up, penalize B
 }
 
 _MARKER_COLORS = {
@@ -68,30 +70,30 @@ class Detector:
     def default_params(cls) -> dict:
         return {
             "DEVICE_ID": 0,
-            "THRESHOLD": 50,
-            "RELEASE_FRAC": 60,
-            "SETTLE_FRAMES": 30,
+            "HOLD_THRESH": 50,
+            "HOLD_RELEASE_FRAC": 60,
+            "EDGE_THRESH": 50,
             "PATCH_RADIUS": 2,
             "SHOW_PREVIEW": 1,
-            "GREEN_X": 770, "GREEN_Y": 700,
-            "RED_X": 880, "RED_Y": 700,
-            "YELLOW_X": 980, "YELLOW_Y": 700,
-            "BLUE_X": 1020, "BLUE_Y": 700,
-            "ORANGE_X": 1120, "ORANGE_Y": 700,
-            "GREEN_EX": 770, "GREEN_EY": 600,
-            "RED_EX": 880, "RED_EY": 600,
-            "YELLOW_EX": 980, "YELLOW_EY": 600,
-            "BLUE_EX": 1020, "BLUE_EY": 600,
-            "ORANGE_EX": 1120, "ORANGE_EY": 600,
+            "GREEN_X": 748, "GREEN_Y": 700,
+            "RED_X": 850, "RED_Y": 700,
+            "YELLOW_X": 947, "YELLOW_Y": 700,
+            "BLUE_X": 1045, "BLUE_Y": 700,
+            "ORANGE_X": 1147, "ORANGE_Y": 700,
+            "GREEN_EX": 780, "GREEN_EY": 700,
+            "RED_EX": 882, "RED_EY": 700,
+            "YELLOW_EX": 979, "YELLOW_EY": 700,
+            "BLUE_EX": 1013, "BLUE_EY": 700,
+            "ORANGE_EX": 1115, "ORANGE_EY": 700,
         }
 
     def __init__(self, **params):
         defaults = self.default_params()
         defaults.update(params)
 
-        self._threshold = int(defaults["THRESHOLD"])
-        self._release_thresh = self._threshold * int(defaults["RELEASE_FRAC"]) // 100
-        self._settle_total = int(defaults["SETTLE_FRAMES"])
+        self._hold_thresh = int(defaults["HOLD_THRESH"])
+        self._hold_release = self._hold_thresh * int(defaults["HOLD_RELEASE_FRAC"]) // 100
+        self._edge_thresh = int(defaults["EDGE_THRESH"])
         self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
         self._show_preview = bool(int(defaults["SHOW_PREVIEW"]))
 
@@ -104,17 +106,6 @@ class Detector:
 
         self._hold_pixels: dict[str, tuple[int, int]] = dict(self._cal_hold_pixels)
         self._edge_pixels: dict[str, tuple[int, int]] = dict(self._cal_edge_pixels)
-
-        self._hold_ref: dict[str, Optional[np.ndarray]] = {ch: None for ch in CHANNELS}
-        self._edge_ref: dict[str, Optional[np.ndarray]] = {ch: None for ch in CHANNELS}
-        self._hold_accum: dict[str, np.ndarray] = {
-            ch: np.zeros(3, dtype=np.float64) for ch in CHANNELS
-        }
-        self._edge_accum: dict[str, np.ndarray] = {
-            ch: np.zeros(3, dtype=np.float64) for ch in CHANNELS
-        }
-        self._settle_n = 0
-        self._settled = False
 
         self._hold_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
         self._edge_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
@@ -164,7 +155,6 @@ class Detector:
                 hold_d = self._hold_dist[ch]
                 edge_d = self._edge_dist[ch]
                 edge_on = self._edge_active[ch]
-                settled = self._settled
 
             color = _MARKER_COLORS[ch]
             hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
@@ -177,19 +167,13 @@ class Detector:
             cv2.rectangle(display, (ex - r, ey - r), (ex + r, ey + r), color, 1)
             cv2.circle(display, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
 
-            label = ch[0].upper()
-            if settled:
-                label += f" h{hold_d:.0f} e{edge_d:.0f}"
+            label = f"{ch[0].upper()} h{hold_d:.0f} e{edge_d:.0f}"
             cv2.putText(display, label, (hx + _MARKER_RADIUS + 4, hy + 5),
                         cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
 
         h, w = display.shape[:2]
         cv2.putText(display, f"{w}x{h}", (10, h - 10),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-        if not settled:
-            cv2.putText(display, "Settling...", (10, 30),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 200, 255), 2)
 
         ok, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if ok:
@@ -269,17 +253,27 @@ class Detector:
         return patch.astype(np.float64).mean(axis=(0, 1))
 
     @staticmethod
-    def _brightness_dist(diff: np.ndarray) -> float:
-        """Max per-channel increase -- triggers on any color or white."""
-        d = float(max(0.0, diff[0], diff[1], diff[2]))
+    def _brightness(color: np.ndarray) -> float:
+        """Max channel value -- triggers on any color or white."""
+        d = float(max(0.0, color[0], color[1], color[2]))
         return 0.0 if np.isnan(d) else d
 
-    def _color_dist(self, diff: np.ndarray, ch: str) -> float:
-        """Color-filtered distance -- only the button's own color triggers."""
+    def _color_signal(self, color: np.ndarray, ch: str) -> float:
+        """Color-filtered signal -- only the button's own color triggers.
+
+        Scales by saturation ratio (max-min)/max so white/gray pixels
+        produce near-zero signal regardless of camera white balance.
+        """
+        cmax = float(max(color[0], color[1], color[2]))
+        if cmax < 1.0:
+            return 0.0
+        cmin = float(min(color[0], color[1], color[2]))
+        sat_ratio = (cmax - cmin) / cmax
+
         tw, rw = _COLOR_FILTER[ch]
-        target = tw[0]*diff[0] + tw[1]*diff[1] + tw[2]*diff[2]
-        reject = max(0.0, rw[0]*diff[0] + rw[1]*diff[1] + rw[2]*diff[2])
-        d = float(target - reject)
+        target = tw[0]*color[0] + tw[1]*color[1] + tw[2]*color[2]
+        reject = max(0.0, rw[0]*color[0] + rw[1]*color[1] + rw[2]*color[2])
+        d = float((target - reject) * sat_ratio)
         return 0.0 if np.isnan(d) else d
 
     def update(self, sample: Sample) -> dict:
@@ -306,43 +300,29 @@ class Detector:
             hold_color = self._sample_at(frame, hx, hy)
             edge_color = self._sample_at(frame, ex, ey)
 
-            if not self._settled:
-                self._hold_accum[ch] += hold_color
-                self._edge_accum[ch] += edge_color
+            hold_dist = self._brightness(hold_color)
+            edge_dist = self._color_signal(edge_color, ch)
+            self._hold_dist[ch] = hold_dist
+            self._edge_dist[ch] = edge_dist
 
-            if self._settled:
-                hold_dist = self._brightness_dist(hold_color - self._hold_ref[ch])
-                edge_dist = self._color_dist(edge_color - self._edge_ref[ch], ch)
-                self._hold_dist[ch] = hold_dist
-                self._edge_dist[ch] = edge_dist
+            if not self._pressed[ch]:
+                if hold_dist > self._hold_thresh:
+                    self._pressed[ch] = True
+            else:
+                if hold_dist < self._hold_release:
+                    self._pressed[ch] = False
 
-                if not self._pressed[ch]:
-                    if hold_dist > self._threshold:
-                        self._pressed[ch] = True
-                else:
-                    if hold_dist < self._release_thresh:
-                        self._pressed[ch] = False
+            edge_on = edge_dist > self._edge_thresh
+            if edge_on and not self._edge_active[ch]:
+                self._press_count[ch] += 1
+            self._edge_active[ch] = edge_on
 
-                edge_on = edge_dist > self._threshold
-                if edge_on and not self._edge_active[ch]:
-                    self._press_count[ch] += 1
-                self._edge_active[ch] = edge_on
-
-            combined = max(self._hold_dist[ch], self._edge_dist[ch])
             result[ch] = {
                 "pressed": self._pressed[ch],
-                "baseline": min(4095, int(combined * _DIST_SCALE)),
-                "distance": round(combined, 1),
+                "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
+                "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
                 "press_count": self._press_count[ch],
                 "camera": "ok",
             }
-
-        if not self._settled:
-            self._settle_n += 1
-            if self._settle_n >= self._settle_total:
-                for ch in CHANNELS:
-                    self._hold_ref[ch] = self._hold_accum[ch] / self._settle_total
-                    self._edge_ref[ch] = self._edge_accum[ch] / self._settle_total
-                self._settled = True
 
         return result
