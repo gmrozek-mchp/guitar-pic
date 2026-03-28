@@ -1,20 +1,22 @@
 """
-Video-based fret press detection -- camera pointed at the guitar controller.
+Video-based fret detection -- camera pointed at the game screen.
 
-Point a camera at the fret buttons, configure pixel coordinates for each
-button (use video_calibrate.py to find them), and the detector auto-captures
-reference colors from the first few frames.  When the button's own color
-channel increases from its reference by more than THRESHOLD, that button
-is pressed (e.g. red channel for the red button, green for green, etc.).
+Two sensor points per button, both above the strike line:
 
-This detector ignores ADC sample values -- it uses the sample timestamp
-only.  The "baseline" output is the color distance (scaled to ADC range)
-for chart overlay visualization, so you can see video-detected presses
-overlaid on the raw ADC waveforms.
+  Sensor 1 (hold)  -- brightness detect (color OR white).
+                      Sets pressed=True whenever anything bright appears.
+  Sensor 2 (edge)  -- color-filtered leading-edge detect.
+                      Increments press_count on each new note arrival,
+                      which the actuator uses to schedule strums.
+
+Use video_calibrate.py to find pixel coordinates for all 10 sensor
+points.  Reference colors are auto-captured during the first few frames.
+
+The "baseline" output is the stronger of the two signals (scaled to
+0..4095) for chart overlay visualization.
 
 When SHOW_PREVIEW=1 (default), the annotated camera feed is served at
-http://localhost:8080/video as an MJPEG stream.  Close the browser camera
-panel first so OpenCV gets full access to the camera.
+http://localhost:8080/video as an MJPEG stream.
 
 Requires: opencv-python
 """
@@ -31,11 +33,10 @@ from stream import Sample, CHANNELS
 
 _DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
 
-# Per-button color filter: (target_weights, reject_weights) in BGR order.
-# target = weighted sum of increase in the button's own color channels.
-# reject = weighted sum of increase in off-color channels.
-# Detection signal = target - reject.  White light increases all channels
-# equally, so target - reject ≈ 0 and won't trigger.
+# Per-button color filter for the edge detector (sensor 2).
+# (target_weights, reject_weights) in BGR order.
+# Detection signal = target - reject.  Rejects white so only the
+# button's own color triggers a strum edge.
 _COLOR_FILTER: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
     "green":  ((0, 1, 0),     (0.5, 0, 0.5)),   # want G up, penalize B/R
     "red":    ((0, 0, 1),     (0.5, 0.5, 0)),    # want R up, penalize B/G
@@ -72,11 +73,16 @@ class Detector:
             "SETTLE_FRAMES": 30,
             "PATCH_RADIUS": 2,
             "SHOW_PREVIEW": 1,
-            "GREEN_X": 737, "GREEN_Y": 708,
-            "RED_X": 841, "RED_Y": 712,
-            "YELLOW_X": 948, "YELLOW_Y": 706,
-            "BLUE_X": 1054, "BLUE_Y": 704,
-            "ORANGE_X": 1164, "ORANGE_Y": 712,
+            "GREEN_X": 770, "GREEN_Y": 700,
+            "RED_X": 880, "RED_Y": 700,
+            "YELLOW_X": 980, "YELLOW_Y": 700,
+            "BLUE_X": 1020, "BLUE_Y": 700,
+            "ORANGE_X": 1120, "ORANGE_Y": 700,
+            "GREEN_EX": 770, "GREEN_EY": 600,
+            "RED_EX": 880, "RED_EY": 600,
+            "YELLOW_EX": 980, "YELLOW_EY": 600,
+            "BLUE_EX": 1020, "BLUE_EY": 600,
+            "ORANGE_EX": 1120, "ORANGE_EY": 600,
         }
 
     def __init__(self, **params):
@@ -89,23 +95,32 @@ class Detector:
         self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
         self._show_preview = bool(int(defaults["SHOW_PREVIEW"]))
 
-        self._cal_pixels: dict[str, tuple[int, int]] = {}
+        self._cal_hold_pixels: dict[str, tuple[int, int]] = {}
+        self._cal_edge_pixels: dict[str, tuple[int, int]] = {}
         for ch in CHANNELS:
             p = ch.upper()
-            self._cal_pixels[ch] = (int(defaults[f"{p}_X"]), int(defaults[f"{p}_Y"]))
+            self._cal_hold_pixels[ch] = (int(defaults[f"{p}_X"]), int(defaults[f"{p}_Y"]))
+            self._cal_edge_pixels[ch] = (int(defaults[f"{p}_EX"]), int(defaults[f"{p}_EY"]))
 
-        self._pixels: dict[str, tuple[int, int]] = dict(self._cal_pixels)
+        self._hold_pixels: dict[str, tuple[int, int]] = dict(self._cal_hold_pixels)
+        self._edge_pixels: dict[str, tuple[int, int]] = dict(self._cal_edge_pixels)
 
-        self._ref: dict[str, Optional[np.ndarray]] = {ch: None for ch in CHANNELS}
-        self._accum: dict[str, np.ndarray] = {
+        self._hold_ref: dict[str, Optional[np.ndarray]] = {ch: None for ch in CHANNELS}
+        self._edge_ref: dict[str, Optional[np.ndarray]] = {ch: None for ch in CHANNELS}
+        self._hold_accum: dict[str, np.ndarray] = {
+            ch: np.zeros(3, dtype=np.float64) for ch in CHANNELS
+        }
+        self._edge_accum: dict[str, np.ndarray] = {
             ch: np.zeros(3, dtype=np.float64) for ch in CHANNELS
         }
         self._settle_n = 0
         self._settled = False
 
-        self._dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+        self._hold_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+        self._edge_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
         self._pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
         self._press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
+        self._edge_active: dict[str, bool] = {ch: False for ch in CHANNELS}
 
         self._lock = threading.Lock()
         self._frame: Optional[np.ndarray] = None
@@ -132,29 +147,40 @@ class Detector:
     def _log(self, msg: str):
         print(f"[detect_video] {msg}", flush=True)
 
+    _EDGE_RADIUS = 10
+    _EDGE_THICK = 2
+
     def _encode_preview(self, frame: np.ndarray):
-        """Annotate frame with detection markers and encode as JPEG."""
+        """Annotate frame with hold and edge detection markers."""
         display = frame.copy()
 
         for ch in CHANNELS:
-            x, y = self._pixels[ch]
+            hx, hy = self._hold_pixels[ch]
+            ex, ey = self._edge_pixels[ch]
             r = self._patch_r
 
             with self._lock:
                 pressed = self._pressed[ch]
-                dist = self._dist[ch]
+                hold_d = self._hold_dist[ch]
+                edge_d = self._edge_dist[ch]
+                edge_on = self._edge_active[ch]
                 settled = self._settled
 
             color = _MARKER_COLORS[ch]
-            ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
+            hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
 
-            cv2.rectangle(display, (x - r, y - r), (x + r, y + r), color, 1)
-            cv2.circle(display, (x, y), _MARKER_RADIUS, ring, _MARKER_THICK)
+            cv2.rectangle(display, (hx - r, hy - r), (hx + r, hy + r), color, 1)
+            cv2.circle(display, (hx, hy), _MARKER_RADIUS, hold_ring, _MARKER_THICK)
+
+            cv2.line(display, (hx, hy), (ex, ey), color, 1)
+            edge_ring = _PRESSED_COLOR if edge_on else _IDLE_COLOR
+            cv2.rectangle(display, (ex - r, ey - r), (ex + r, ey + r), color, 1)
+            cv2.circle(display, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
 
             label = ch[0].upper()
             if settled:
-                label += f" {dist:.0f}"
-            cv2.putText(display, label, (x + _MARKER_RADIUS + 4, y + 5),
+                label += f" h{hold_d:.0f} e{edge_d:.0f}"
+            cv2.putText(display, label, (hx + _MARKER_RADIUS + 4, hy + 5),
                         cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
 
         h, w = display.shape[:2]
@@ -177,8 +203,9 @@ class Detector:
 
     def _scale_pixels(self, frame_w: int, frame_h: int):
         """Scale calibrated pixel coords to match actual camera resolution."""
-        cal_xs = [x for x, _ in self._cal_pixels.values()]
-        cal_ys = [y for _, y in self._cal_pixels.values()]
+        all_cal = list(self._cal_hold_pixels.values()) + list(self._cal_edge_pixels.values())
+        cal_xs = [x for x, _ in all_cal]
+        cal_ys = [y for _, y in all_cal]
         cal_w = max(cal_xs) + max(cal_xs) // 4
         cal_h = max(cal_ys) + max(cal_ys) // 4
 
@@ -187,10 +214,13 @@ class Detector:
             sy = frame_h / 1080.0
             self._log(f"scaling coords by {sx:.3f}x{sy:.3f}")
             for ch in CHANNELS:
-                ox, oy = self._cal_pixels[ch]
-                self._pixels[ch] = (int(ox * sx), int(oy * sy))
+                hx, hy = self._cal_hold_pixels[ch]
+                self._hold_pixels[ch] = (int(hx * sx), int(hy * sy))
+                ex, ey = self._cal_edge_pixels[ch]
+                self._edge_pixels[ch] = (int(ex * sx), int(ey * sy))
         else:
-            self._pixels = dict(self._cal_pixels)
+            self._hold_pixels = dict(self._cal_hold_pixels)
+            self._edge_pixels = dict(self._cal_edge_pixels)
 
     def _capture_loop(self, device_id: int):
         cap = cv2.VideoCapture(device_id)
@@ -211,8 +241,9 @@ class Detector:
                         self._log(f"camera opened: {w}x{h}")
                         self._scale_pixels(w, h)
                         for ch in CHANNELS:
-                            x, y = self._pixels[ch]
-                            self._log(f"  {ch}: ({x}, {y})")
+                            hx, hy = self._hold_pixels[ch]
+                            ex, ey = self._edge_pixels[ch]
+                            self._log(f"  {ch}: hold({hx},{hy}) edge({ex},{ey})")
                         sys.stdout.flush()
                         started = True
                     with self._lock:
@@ -224,19 +255,32 @@ class Detector:
         finally:
             cap.release()
 
-    def _sample(self, frame: np.ndarray, ch: str) -> np.ndarray:
-        """Average a small patch around the configured pixel location."""
-        x, y = self._pixels[ch]
+    def _sample_at(self, frame: np.ndarray, px: int, py: int) -> np.ndarray:
+        """Average a small patch around (px, py)."""
         h, w = frame.shape[:2]
-        x = max(0, min(x, w - 1))
-        y = max(0, min(y, h - 1))
+        px = max(0, min(px, w - 1))
+        py = max(0, min(py, h - 1))
         r = self._patch_r
-        y0, y1 = max(0, y - r), min(h, y + r + 1)
-        x0, x1 = max(0, x - r), min(w, x + r + 1)
+        y0, y1 = max(0, py - r), min(h, py + r + 1)
+        x0, x1 = max(0, px - r), min(w, px + r + 1)
         patch = frame[y0:y1, x0:x1]
         if patch.size == 0:
             return np.zeros(3, dtype=np.float64)
         return patch.astype(np.float64).mean(axis=(0, 1))
+
+    @staticmethod
+    def _brightness_dist(diff: np.ndarray) -> float:
+        """Max per-channel increase -- triggers on any color or white."""
+        d = float(max(0.0, diff[0], diff[1], diff[2]))
+        return 0.0 if np.isnan(d) else d
+
+    def _color_dist(self, diff: np.ndarray, ch: str) -> float:
+        """Color-filtered distance -- only the button's own color triggers."""
+        tw, rw = _COLOR_FILTER[ch]
+        target = tw[0]*diff[0] + tw[1]*diff[1] + tw[2]*diff[2]
+        reject = max(0.0, rw[0]*diff[0] + rw[1]*diff[1] + rw[2]*diff[2])
+        d = float(target - reject)
+        return 0.0 if np.isnan(d) else d
 
     def update(self, sample: Sample) -> dict:
         with self._lock:
@@ -257,32 +301,38 @@ class Detector:
             return result
 
         for ch in CHANNELS:
-            color = self._sample(frame, ch)
+            hx, hy = self._hold_pixels[ch]
+            ex, ey = self._edge_pixels[ch]
+            hold_color = self._sample_at(frame, hx, hy)
+            edge_color = self._sample_at(frame, ex, ey)
 
             if not self._settled:
-                self._accum[ch] += color
+                self._hold_accum[ch] += hold_color
+                self._edge_accum[ch] += edge_color
 
             if self._settled:
-                diff = color - self._ref[ch]
-                tw, rw = _COLOR_FILTER[ch]
-                target = tw[0]*diff[0] + tw[1]*diff[1] + tw[2]*diff[2]
-                reject = rw[0]*diff[0] + rw[1]*diff[1] + rw[2]*diff[2]
-                reject = max(0.0, reject)
-                dist = float(target - reject)
-                if np.isnan(dist):
-                    dist = 0.0
-                self._dist[ch] = dist
+                hold_dist = self._brightness_dist(hold_color - self._hold_ref[ch])
+                edge_dist = self._color_dist(edge_color - self._edge_ref[ch], ch)
+                self._hold_dist[ch] = hold_dist
+                self._edge_dist[ch] = edge_dist
 
-                if not self._pressed[ch] and dist > self._threshold:
-                    self._pressed[ch] = True
+                if not self._pressed[ch]:
+                    if hold_dist > self._threshold:
+                        self._pressed[ch] = True
+                else:
+                    if hold_dist < self._release_thresh:
+                        self._pressed[ch] = False
+
+                edge_on = edge_dist > self._threshold
+                if edge_on and not self._edge_active[ch]:
                     self._press_count[ch] += 1
-                elif self._pressed[ch] and dist < self._release_thresh:
-                    self._pressed[ch] = False
+                self._edge_active[ch] = edge_on
 
+            combined = max(self._hold_dist[ch], self._edge_dist[ch])
             result[ch] = {
                 "pressed": self._pressed[ch],
-                "baseline": min(4095, int(self._dist[ch] * _DIST_SCALE)),
-                "distance": round(self._dist[ch], 1),
+                "baseline": min(4095, int(combined * _DIST_SCALE)),
+                "distance": round(combined, 1),
                 "press_count": self._press_count[ch],
                 "camera": "ok",
             }
@@ -291,7 +341,8 @@ class Detector:
             self._settle_n += 1
             if self._settle_n >= self._settle_total:
                 for ch in CHANNELS:
-                    self._ref[ch] = self._accum[ch] / self._settle_total
+                    self._hold_ref[ch] = self._hold_accum[ch] / self._settle_total
+                    self._edge_ref[ch] = self._edge_accum[ch] / self._settle_total
                 self._settled = True
 
         return result

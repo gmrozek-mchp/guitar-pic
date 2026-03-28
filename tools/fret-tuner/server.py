@@ -75,7 +75,9 @@ def _load_detector(name: str, params: Optional[dict] = None):
     cls = mod.Detector
     defaults = cls.default_params()
     if params:
-        defaults.update(params)
+        for k, v in params.items():
+            if k in defaults:
+                defaults[k] = v
     return cls(**defaults), defaults
 
 

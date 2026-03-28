@@ -20,7 +20,8 @@ Requires: opencv-python
 import argparse
 import cv2
 
-BUTTONS = ("GREEN", "RED", "YELLOW", "BLUE", "ORANGE")
+HOLD_BUTTONS = ("GREEN", "RED", "YELLOW", "BLUE", "ORANGE")
+EDGE_BUTTONS = ("GREEN_E", "RED_E", "YELLOW_E", "BLUE_E", "ORANGE_E")
 
 _BGR = {
     "GREEN":  (0, 200, 0),
@@ -28,6 +29,11 @@ _BGR = {
     "YELLOW": (0, 220, 220),
     "BLUE":   (220, 0, 0),
     "ORANGE": (0, 140, 255),
+    "GREEN_E":  (0, 200, 0),
+    "RED_E":    (0, 0, 220),
+    "YELLOW_E": (0, 220, 220),
+    "BLUE_E":   (220, 0, 0),
+    "ORANGE_E": (0, 140, 255),
 }
 
 
@@ -47,6 +53,7 @@ def main():
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
 
+    all_targets = list(HOLD_BUTTONS) + list(EDGE_BUTTONS)
     coords: dict[str, tuple[int, int]] = {}
     idx = 0
     click_raw = None
@@ -64,8 +71,13 @@ def main():
     cv2.namedWindow(win, cv2.WINDOW_AUTOSIZE)
     cv2.setMouseCallback(win, on_mouse)
 
+    def _display_name(name):
+        if name.endswith("_E"):
+            return f"{name[:-2]} edge"
+        return name + " hold"
+
     print("Click on each fret button in the camera view.")
-    print(f"  Next: {BUTTONS[0]}")
+    print(f"  Next: {_display_name(all_targets[0])}")
     print("  Press Space to pause, 'u' to undo, 'q' to quit.\n")
 
     try:
@@ -82,12 +94,23 @@ def main():
 
             for name, (cx, cy) in coords.items():
                 c = _BGR[name]
-                cv2.circle(frame, (cx, cy), 8, c, 2)
-                cv2.putText(frame, name[0], (cx - 5, cy + 5),
+                is_edge = name.endswith("_E")
+                radius = 5 if is_edge else 8
+                thickness = 1 if is_edge else 2
+                cv2.circle(frame, (cx, cy), radius, c, thickness)
+                lbl = name[0].lower() + "e" if is_edge else name[0]
+                cv2.putText(frame, lbl, (cx - 5, cy + 5),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.4, c, 1)
+                base_name = name[:-2] if is_edge else name
+                edge_name = base_name + "_E"
+                if not is_edge and edge_name in coords:
+                    cv2.line(frame, (cx, cy), coords[edge_name], c, 1)
 
-            if idx < len(BUTTONS):
-                label = f"Click: {BUTTONS[idx]}"
+            if idx < len(all_targets):
+                dn = _display_name(all_targets[idx])
+                label = f"Click: {dn}"
+                if idx == len(HOLD_BUTTONS):
+                    label = "EDGE PASS -- " + label
             else:
                 label = "Done! Press 'q' to finish"
             if paused:
@@ -98,7 +121,6 @@ def main():
             cv2.imshow(win, frame)
             key = cv2.waitKey(30) & 0xFF
 
-            # Compute HiDPI scale factor from window vs image size
             try:
                 _, _, win_w, win_h = cv2.getWindowImageRect(win)
                 if win_w > 0 and win_h > 0:
@@ -111,26 +133,29 @@ def main():
                 paused = not paused
                 print("  " + ("Paused" if paused else "Resumed"))
 
-            if click_raw is not None and idx < len(BUTTONS):
-                name = BUTTONS[idx]
+            if click_raw is not None and idx < len(all_targets):
+                name = all_targets[idx]
                 img_x = int(click_raw[0] * scale_x)
                 img_y = int(click_raw[1] * scale_y)
                 coords[name] = (img_x, img_y)
-                print(f"  {name}: ({img_x}, {img_y})  [scale {scale_x:.1f}x{scale_y:.1f}]")
+                print(f"  {_display_name(name)}: ({img_x}, {img_y})  [scale {scale_x:.1f}x{scale_y:.1f}]")
                 click_raw = None
                 idx += 1
-                if idx < len(BUTTONS):
-                    print(f"  Next: {BUTTONS[idx]}")
+                if idx == len(HOLD_BUTTONS):
+                    print("\nHold positions done. Now click the edge detector point for each button.")
+                    print(f"  Next: {_display_name(all_targets[idx])}\n")
+                elif idx < len(all_targets):
+                    print(f"  Next: {_display_name(all_targets[idx])}")
                 else:
-                    print("\nAll buttons marked. Press 'q' to print results.\n")
+                    print("\nAll points marked. Press 'q' to print results.\n")
 
             if key == ord("u") and idx > 0:
                 idx -= 1
-                removed = BUTTONS[idx]
+                removed = all_targets[idx]
                 coords.pop(removed, None)
-                click = None
-                print(f"  Undo: {removed}")
-                print(f"  Next: {BUTTONS[idx]}")
+                click_raw = None
+                print(f"  Undo: {_display_name(removed)}")
+                print(f"  Next: {_display_name(all_targets[idx])}")
 
             if key == ord("q"):
                 break
@@ -138,23 +163,35 @@ def main():
         cap.release()
         cv2.destroyAllWindows()
 
-    if len(coords) < len(BUTTONS):
-        print(f"Only {len(coords)}/{len(BUTTONS)} buttons marked.")
-        return
+    if len(coords) < len(all_targets):
+        print(f"Only {len(coords)}/{len(all_targets)} points marked.")
 
     print("=" * 50)
     print("CLI params for fret-tuner:\n")
     parts = []
-    for name in BUTTONS:
-        x, y = coords[name]
-        parts.append(f"--param {name}_X={x}")
-        parts.append(f"--param {name}_Y={y}")
+    for name in HOLD_BUTTONS:
+        if name in coords:
+            x, y = coords[name]
+            parts.append(f"--param {name}_X={x}")
+            parts.append(f"--param {name}_Y={y}")
+    for name in EDGE_BUTTONS:
+        if name in coords:
+            x, y = coords[name]
+            base = name[:-2]
+            parts.append(f"--param {base}_EX={x}")
+            parts.append(f"--param {base}_EY={y}")
     print("  " + " \\\n  ".join(parts))
 
     print("\nOr paste into default_params():\n")
-    for name in BUTTONS:
-        x, y = coords[name]
-        print(f'    "{name}_X": {x}, "{name}_Y": {y},')
+    for name in HOLD_BUTTONS:
+        if name in coords:
+            x, y = coords[name]
+            print(f'    "{name}_X": {x}, "{name}_Y": {y},')
+    for name in EDGE_BUTTONS:
+        if name in coords:
+            x, y = coords[name]
+            base = name[:-2]
+            print(f'    "{base}_EX": {x}, "{base}_EY": {y},')
 
 
 if __name__ == "__main__":
