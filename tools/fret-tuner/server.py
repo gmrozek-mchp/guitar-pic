@@ -124,15 +124,20 @@ def _try_reopen_serial() -> tuple:
     return ser, SerialStream(ser=ser)
 
 
+_last_actuator_mask = 0
+
+
 def _process_sample(sample: Sample, det, act):
     """Run detection + actuation for one sample and buffer results."""
-    global _batch, _batch_states
+    global _batch, _batch_states, _last_actuator_mask
 
     state = det.update(sample)
 
     now_ms = sample.timestamp * 1000.0
     if act is not None:
-        act.update(now_ms, state)
+        _last_actuator_mask = act.update(now_ms, state)
+    else:
+        _last_actuator_mask = 0
 
     row = {
         "t": round(sample.timestamp, 6),
@@ -222,6 +227,7 @@ async def _broadcast_loop():
             has_data = bool(_batch)
             payload = _batch
             states = _batch_states
+            act_mask = _last_actuator_mask
             _batch = []
             _batch_states = []
 
@@ -235,7 +241,8 @@ async def _broadcast_loop():
                     dead.add(ws)
 
         if has_data:
-            msg = json.dumps({"type": "data", "samples": payload, "state": states})
+            msg = json.dumps({"type": "data", "samples": payload, "state": states,
+                              "actuator_mask": act_mask})
             for ws in list(_ws_clients):
                 try:
                     await ws.send_text(msg)

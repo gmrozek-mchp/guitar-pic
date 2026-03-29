@@ -60,6 +60,11 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
 .chart-wrap { flex: 1; min-height: 120px; }
 .chart-wrap .uplot { width: 100% !important; }
 
+#timeline { height: 50px; flex: 0 0 50px; background: #111122; border-radius: 4px;
+            cursor: crosshair; display: none; margin-top: 4px; }
+#timeline.visible { display: block; }
+#timeline canvas { display: block; }
+
 #window-control { display: flex; align-items: center; gap: 8px; }
 #window-control input { flex: 1; }
 
@@ -69,8 +74,9 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   border-radius: 6px; cursor: pointer; user-select: none; touch-action: none;
   transition: background 0.1s, opacity 0.15s; }
 .manual-btn:active, .manual-btn.held { background: var(--btn-color, #0f3460); color: #fff; }
-.manual-btn:disabled { opacity: 0.3; cursor: not-allowed; }
-.manual-btn:disabled:active, .manual-btn:disabled.held { background: #1a1a2e; color: var(--btn-color, #e0e0e0); }
+.manual-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.manual-btn:disabled:active { background: #1a1a2e; color: var(--btn-color, #e0e0e0); }
+.manual-btn:disabled.held { opacity: 1; background: var(--btn-color, #0f3460); color: #fff; }
 .strum-btn { --btn-color: #a855f7; }
 </style>
 </head>
@@ -106,6 +112,7 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   <div class="chart-wrap" id="chart-yellow"></div>
   <div class="chart-wrap" id="chart-blue"></div>
   <div class="chart-wrap" id="chart-orange"></div>
+  <div id="timeline"><canvas id="timeline-canvas"></canvas></div>
 </div>
 
 <div id="video-panel">
@@ -158,6 +165,8 @@ let ws = null;
 let paused = false;
 let windowSec = 2.0;
 let strumDelayMs = 220;
+let scrubTime = 0;
+let _renderingFromTimeline = false;
 
 function loadSettings() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch { return {}; }
@@ -237,6 +246,19 @@ function makePressBands(ch) {
             }
           }
 
+          if (paused) {
+            const scrubX = u.valToPos(scrubTime, "x", true);
+            if (scrubX >= u.bbox.left && scrubX <= u.bbox.left + u.bbox.width) {
+              ctx.strokeStyle = "#fff";
+              ctx.globalAlpha = 0.8;
+              ctx.lineWidth = 1.5;
+              ctx.beginPath();
+              ctx.moveTo(scrubX, u.bbox.top);
+              ctx.lineTo(scrubX, u.bbox.top + u.bbox.height);
+              ctx.stroke();
+            }
+          }
+
           ctx.strokeStyle = color;
           ctx.globalAlpha = 0.6;
           ctx.lineWidth = 2;
@@ -288,9 +310,10 @@ function createChart(ch) {
 
   opts.hooks = opts.hooks || {};
   opts.hooks.setScale = [(u, key) => {
-    if (key === "x" && paused && frameBuffer.length) {
+    if (key === "x" && paused && !_renderingFromTimeline && frameBuffer.length) {
       const t = getChartCenterTime();
       showFrameAtTime(t);
+      drawTimeline();
     }
   }];
 
@@ -350,6 +373,175 @@ function trimBuffers() {
   });
 }
 
+// --- Timeline scrubber ---
+
+function clampScrubTime() {
+  const d = data[CHANNELS[0]];
+  if (!d.t.length) return;
+  const bufStart = d.t[0];
+  const bufEnd = d.t[d.t.length - 1];
+  const half = windowSec / 2;
+  if (bufEnd - bufStart < windowSec) {
+    scrubTime = (bufStart + bufEnd) / 2;
+  } else {
+    scrubTime = Math.max(bufStart + half, Math.min(bufEnd - half, scrubTime));
+  }
+}
+
+function renderAtTime(centerT, halfWin) {
+  _renderingFromTimeline = true;
+  CHANNELS.forEach(ch => {
+    const d = data[ch];
+    if (!d.t.length) return;
+    const tMin = centerT - halfWin;
+    const tMax = centerT + halfWin;
+
+    let lo = 0, hi = d.t.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (d.t[mid] < tMin) lo = mid + 1; else hi = mid; }
+    const startIdx = Math.max(0, lo - 1);
+
+    lo = startIdx; hi = d.t.length;
+    while (lo < hi) { const mid = (lo + hi) >> 1; if (d.t[mid] <= tMax) lo = mid + 1; else hi = mid; }
+    const endIdx = Math.min(d.t.length, lo + 1);
+
+    plots[ch].setData([
+      d.t.slice(startIdx, endIdx),
+      d.raw.slice(startIdx, endIdx),
+      d.baseline.slice(startIdx, endIdx),
+      d.edgeLine.slice(startIdx, endIdx),
+    ]);
+  });
+  _renderingFromTimeline = false;
+  showFrameAtTime(centerT);
+  drawTimeline();
+}
+
+function drawTimeline() {
+  const canvas = document.getElementById("timeline-canvas");
+  if (!canvas) return;
+  const container = document.getElementById("timeline");
+  if (container) {
+    const cr = container.getBoundingClientRect();
+    if (cr.width > 0 && cr.height > 0 && (canvas.width !== Math.round(cr.width) || canvas.height !== Math.round(cr.height))) {
+      canvas.width = Math.round(cr.width);
+      canvas.height = Math.round(cr.height);
+    }
+  }
+  const ctx = canvas.getContext("2d");
+  const W = canvas.width;
+  const H = canvas.height;
+  if (!W || !H) return;
+
+  ctx.clearRect(0, 0, W, H);
+
+  const d = data[CHANNELS[0]];
+  if (!d.t.length) return;
+  const bufStart = d.t[0];
+  const bufEnd = d.t[d.t.length - 1];
+  const bufDur = bufEnd - bufStart;
+  if (bufDur <= 0) return;
+
+  const chColors = [COLORS.green, COLORS.red, COLORS.yellow, COLORS.blue, COLORS.orange];
+  CHANNELS.forEach((ch, ci) => {
+    const cd = data[ch];
+    ctx.strokeStyle = chColors[ci];
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = 0.3;
+    ctx.beginPath();
+    const step = Math.max(1, Math.floor(cd.t.length / W));
+    for (let i = 0; i < cd.t.length; i += step) {
+      const x = ((cd.t[i] - bufStart) / bufDur) * W;
+      const y = H - (cd.raw[i] / 4096) * H;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  });
+  ctx.globalAlpha = 1;
+
+  const vpLeft = Math.max(0, ((scrubTime - windowSec / 2 - bufStart) / bufDur) * W);
+  const vpRight = Math.min(W, ((scrubTime + windowSec / 2 - bufStart) / bufDur) * W);
+  ctx.fillStyle = "rgba(233, 69, 96, 0.15)";
+  ctx.fillRect(vpLeft, 0, vpRight - vpLeft, H);
+  ctx.strokeStyle = "#e94560";
+  ctx.lineWidth = 1;
+  ctx.strokeRect(vpLeft + 0.5, 0.5, vpRight - vpLeft - 1, H - 1);
+
+  const sx = ((scrubTime - bufStart) / bufDur) * W;
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(sx, 0);
+  ctx.lineTo(sx, H);
+  ctx.stroke();
+
+  ctx.fillStyle = "#888";
+  ctx.font = "10px monospace";
+  ctx.textAlign = "left";
+  ctx.fillText(bufStart.toFixed(1) + "s", 4, H - 4);
+  ctx.textAlign = "right";
+  ctx.fillText(bufEnd.toFixed(1) + "s", W - 4, H - 4);
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#e94560";
+  ctx.fillText(scrubTime.toFixed(2) + "s", sx, 12);
+}
+
+function zoomAtScrub(factor) {
+  windowSec = Math.max(0.05, Math.min(30, windowSec * factor));
+  const slider = document.getElementById("window-range");
+  slider.value = Math.min(parseFloat(slider.max), Math.max(parseFloat(slider.min), windowSec));
+  document.getElementById("window-val").textContent = windowSec.toFixed(1) + "s";
+  clampScrubTime();
+  renderAtTime(scrubTime, windowSec / 2);
+}
+
+function initTimeline() {
+  const canvas = document.getElementById("timeline-canvas");
+  const container = document.getElementById("timeline");
+  if (!canvas || !container) return;
+
+  function resizeCanvas() {
+    const rect = container.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    if (paused) drawTimeline();
+  }
+  resizeCanvas();
+  window.addEventListener("resize", resizeCanvas);
+
+  let dragging = false;
+
+  function timeFromX(clientX) {
+    const rect = canvas.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+    const d = data[CHANNELS[0]];
+    if (!d.t.length) return 0;
+    return d.t[0] + ratio * (d.t[d.t.length - 1] - d.t[0]);
+  }
+
+  canvas.addEventListener("mousedown", (e) => {
+    if (!paused) return;
+    dragging = true;
+    scrubTime = timeFromX(e.clientX);
+    clampScrubTime();
+    renderAtTime(scrubTime, windowSec / 2);
+  });
+
+  window.addEventListener("mousemove", (e) => {
+    if (!dragging) return;
+    scrubTime = timeFromX(e.clientX);
+    clampScrubTime();
+    renderAtTime(scrubTime, windowSec / 2);
+  });
+
+  window.addEventListener("mouseup", () => { dragging = false; });
+
+  canvas.addEventListener("wheel", (e) => {
+    if (!paused) return;
+    e.preventDefault();
+    zoomAtScrub(e.deltaY > 0 ? 1.3 : 1 / 1.3);
+  }, { passive: false });
+}
+
 // WebSocket
 function connect() {
   const proto = location.protocol === "https:" ? "wss:" : "ws:";
@@ -397,6 +589,13 @@ function connect() {
       }
       trimBuffers();
       if (!paused) updateCharts();
+      if (actuateEnabled && msg.actuator_mask !== undefined) {
+        document.querySelectorAll(".manual-btn").forEach(btn => {
+          const bit = 1 << parseInt(btn.dataset.bit);
+          if (msg.actuator_mask & bit) btn.classList.add("held");
+          else btn.classList.remove("held");
+        });
+      }
     }
 
     else if (msg.type === "detector") {
@@ -537,14 +736,25 @@ function updateActuateButton(enabled) {
 document.getElementById("btn-pause").addEventListener("click", () => {
   paused = !paused;
   const btn = document.getElementById("btn-pause");
+  const tl = document.getElementById("timeline");
   if (paused) {
     btn.classList.add("active");
     btn.textContent = "Resume";
     ws.send(JSON.stringify({ type: "pause" }));
+    pauseCapture();
+    const d = data[CHANNELS[0]];
+    scrubTime = d.t.length ? d.t[d.t.length - 1] : 0;
+    clampScrubTime();
+    tl.classList.add("visible");
+    renderAtTime(scrubTime, windowSec / 2);
+    camStatus.textContent = "Paused";
   } else {
     btn.classList.remove("active");
     btn.textContent = "Pause";
     ws.send(JSON.stringify({ type: "resume" }));
+    tl.classList.remove("visible");
+    resumeCapture();
+    showLiveVideo();
   }
 });
 
@@ -561,6 +771,10 @@ document.getElementById("window-range").addEventListener("input", (e) => {
   windowSec = parseFloat(e.target.value);
   document.getElementById("window-val").textContent = windowSec.toFixed(1) + "s";
   saveSettings({ windowSec });
+  if (paused) {
+    clampScrubTime();
+    renderAtTime(scrubTime, windowSec / 2);
+  }
 });
 
 // Detector select
@@ -615,10 +829,12 @@ function switchCameraMode(detectorName) {
       camStatus.textContent = "Video detector (MJPEG)";
       usingMjpeg = true;
       startAudioOnly();
+      startMjpegCapture();
     }
   } else {
     if (usingMjpeg) {
       stopAudioOnly();
+      stopMjpegCapture();
       mjpegImg.src = "";
       mjpegImg.style.display = "none";
       camSelect.style.display = "";
@@ -631,13 +847,14 @@ function switchCameraMode(detectorName) {
   }
 }
 
-const FRAME_RATE = 10;
 const FRAME_BUFFER_SEC = 30;
-const FRAME_BUFFER_CAP = FRAME_RATE * FRAME_BUFFER_SEC;
+const FRAME_BUFFER_FPS = 30;
+const FRAME_BUFFER_CAP = FRAME_BUFFER_FPS * FRAME_BUFFER_SEC;
 
 let camStream = null;
-let frameBuffer = [];   // { t: adcTime, blob: Blob }
-let captureInterval = null;
+let frameBuffer = [];   // { t, dataUrl }
+let capturingFrames = false;
+let mjpegCaptureInterval = null;
 let adcWallAnchor = null;  // { adcT, wallT } set on first data arrival
 
 const camVideo = document.getElementById("cam-video");
@@ -700,14 +917,20 @@ async function startCamera(deviceId) {
       camCanvas.height = camVideo.videoHeight;
     }, { once: true });
 
-    captureInterval = setInterval(captureFrame, 1000 / FRAME_RATE);
+    capturingFrames = true;
+    if (camVideo.requestVideoFrameCallback) {
+      camVideo.requestVideoFrameCallback(onVideoFrame);
+    } else {
+      mjpegCaptureInterval = setInterval(captureFrame, 1000 / FRAME_BUFFER_FPS);
+    }
   } catch (e) {
     camStatus.textContent = "Error: " + e.message;
   }
 }
 
 function stopCamera() {
-  if (captureInterval) { clearInterval(captureInterval); captureInterval = null; }
+  capturingFrames = false;
+  if (mjpegCaptureInterval) { clearInterval(mjpegCaptureInterval); mjpegCaptureInterval = null; }
   if (camStream) {
     camStream.getTracks().forEach(t => t.stop());
     camStream = null;
@@ -729,6 +952,52 @@ function captureFrame() {
   }
 }
 
+function onVideoFrame(now, metadata) {
+  if (!capturingFrames || !camStream) return;
+  captureFrame();
+  camVideo.requestVideoFrameCallback(onVideoFrame);
+}
+
+function startMjpegCapture() {
+  stopMjpegCapture();
+  mjpegCaptureInterval = setInterval(() => {
+    if (!mjpegImg.naturalWidth || paused) return;
+    camCanvas.width = mjpegImg.naturalWidth;
+    camCanvas.height = mjpegImg.naturalHeight;
+    camCtx.drawImage(mjpegImg, 0, 0);
+    const dataUrl = camCanvas.toDataURL("image/jpeg", 0.7);
+    const t = adcTimeNow();
+    frameBuffer.push({ t, dataUrl });
+    if (frameBuffer.length > FRAME_BUFFER_CAP) {
+      frameBuffer.splice(0, frameBuffer.length - FRAME_BUFFER_CAP);
+    }
+  }, 1000 / FRAME_BUFFER_FPS);
+}
+
+function stopMjpegCapture() {
+  if (mjpegCaptureInterval) { clearInterval(mjpegCaptureInterval); mjpegCaptureInterval = null; }
+}
+
+function pauseCapture() {
+  capturingFrames = false;
+  stopMjpegCapture();
+}
+
+function resumeCapture() {
+  if (usingMjpeg) {
+    startMjpegCapture();
+  } else if (camStream) {
+    capturingFrames = true;
+    if (camVideo.requestVideoFrameCallback) {
+      camVideo.requestVideoFrameCallback(onVideoFrame);
+    } else {
+      mjpegCaptureInterval = setInterval(captureFrame, 1000 / FRAME_BUFFER_FPS);
+    }
+  }
+}
+
+let _showFrameId = 0;
+
 function showFrameAtTime(t) {
   if (!frameBuffer.length) return;
 
@@ -739,19 +1008,31 @@ function showFrameAtTime(t) {
     if (dist < bestDist) { best = i; bestDist = dist; }
   }
 
+  const myId = ++_showFrameId;
   const img = new Image();
   img.onload = () => {
+    if (myId !== _showFrameId) return;
+    if (camCanvas.width !== img.width || camCanvas.height !== img.height) {
+      camCanvas.width = img.width;
+      camCanvas.height = img.height;
+    }
     camCtx.drawImage(img, 0, 0, camCanvas.width, camCanvas.height);
   };
   img.src = frameBuffer[best].dataUrl;
 
   camVideo.style.display = "none";
   camCanvas.style.display = "block";
+  if (usingMjpeg) mjpegImg.style.display = "none";
   camTime.textContent = "t = " + frameBuffer[best].t.toFixed(3) + "s (frame " + best + "/" + frameBuffer.length + ")";
 }
 
 function showLiveVideo() {
-  if (camStream) {
+  if (usingMjpeg) {
+    mjpegImg.style.display = "block";
+    camCanvas.style.display = "none";
+    camStatus.textContent = "Video detector (MJPEG)";
+    camTime.textContent = "";
+  } else if (camStream) {
     camVideo.style.display = "block";
     camCanvas.style.display = "none";
     camStatus.textContent = "Live";
@@ -785,15 +1066,6 @@ document.getElementById("btn-mute").addEventListener("click", () => {
   else btn.classList.add("active");
 });
 
-document.getElementById("btn-pause").addEventListener("click", () => {
-  if (paused) {
-    const t = getChartCenterTime();
-    showFrameAtTime(t);
-    camStatus.textContent = "Paused";
-  } else {
-    showLiveVideo();
-  }
-});
 
 // --- Manual buttons ---
 
@@ -803,9 +1075,6 @@ let actuateEnabled = false;
 function updateManualEnabled() {
   document.querySelectorAll(".manual-btn").forEach(btn => {
     btn.disabled = actuateEnabled;
-    if (actuateEnabled) {
-      btn.classList.remove("held");
-    }
   });
   if (actuateEnabled && manualMask !== 0) {
     manualMask = 0;
@@ -847,8 +1116,47 @@ document.querySelectorAll(".manual-btn").forEach(btn => {
   btn.addEventListener("touchcancel", release);
 });
 
+// --- Keyboard shortcuts ---
+document.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
+
+  if (e.code === "Space") {
+    e.preventDefault();
+    document.getElementById("btn-pause").click();
+    return;
+  }
+
+  if (!paused) return;
+
+  const step = windowSec / 20;
+  if (e.key === "ArrowLeft") {
+    e.preventDefault();
+    scrubTime -= step;
+    clampScrubTime();
+    renderAtTime(scrubTime, windowSec / 2);
+  } else if (e.key === "ArrowRight") {
+    e.preventDefault();
+    scrubTime += step;
+    clampScrubTime();
+    renderAtTime(scrubTime, windowSec / 2);
+  } else if (e.key === "=" || e.key === "+") {
+    e.preventDefault();
+    zoomAtScrub(1 / 1.3);
+  } else if (e.key === "-" || e.key === "_") {
+    e.preventDefault();
+    zoomAtScrub(1.3);
+  }
+});
+
+document.getElementById("charts").addEventListener("wheel", (e) => {
+  if (!paused) return;
+  e.preventDefault();
+  zoomAtScrub(e.deltaY > 0 ? 1.3 : 1 / 1.3);
+}, { passive: false });
+
 // Boot
 initCharts();
+initTimeline();
 
 connect();
 </script>
