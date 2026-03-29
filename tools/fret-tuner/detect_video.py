@@ -72,7 +72,11 @@ class Detector:
             "DEVICE_ID": 0,
             "HOLD_THRESH": 50,
             "HOLD_RELEASE_FRAC": 60,
-            "EDGE_THRESH": 50,
+            "EDGE_GREEN": 50,
+            "EDGE_RED": 50,
+            "EDGE_YELLOW": 50,
+            "EDGE_BLUE": 50,
+            "EDGE_ORANGE": 50,
             "PATCH_RADIUS": 2,
             "SHOW_PREVIEW": 1,
             "GREEN_X": 748, "GREEN_Y": 700,
@@ -93,7 +97,9 @@ class Detector:
 
         self._hold_thresh = int(defaults["HOLD_THRESH"])
         self._hold_release = self._hold_thresh * int(defaults["HOLD_RELEASE_FRAC"]) // 100
-        self._edge_thresh = int(defaults["EDGE_THRESH"])
+        self._edge_thresh: dict[str, int] = {
+            ch: int(defaults[f"EDGE_{ch.upper()}"]) for ch in CHANNELS
+        }
         self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
         self._show_preview = bool(int(defaults["SHOW_PREVIEW"]))
 
@@ -312,7 +318,7 @@ class Detector:
                 if hold_dist < self._hold_release:
                     self._pressed[ch] = False
 
-            edge_on = edge_dist > self._edge_thresh
+            edge_on = edge_dist > self._edge_thresh[ch]
             if edge_on and not self._edge_active[ch]:
                 self._press_count[ch] += 1
             self._edge_active[ch] = edge_on
