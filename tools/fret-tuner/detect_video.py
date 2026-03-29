@@ -118,10 +118,14 @@ class Detector:
         self._pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
         self._press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
         self._edge_active: dict[str, bool] = {ch: False for ch in CHANNELS}
+        self._cached_result: Optional[dict] = None
 
         self._lock = threading.Lock()
         self._frame: Optional[np.ndarray] = None
         self._preview_jpeg: Optional[bytes] = None
+        self._frame_seq = 0
+        self._preview_seq = -1
+        self._frame_event = threading.Event()
         self._cam_ok = False
         self._running = True
 
@@ -187,9 +191,26 @@ class Detector:
                 self._preview_jpeg = buf.tobytes()
 
     def get_preview_jpeg(self) -> Optional[bytes]:
-        """Return the latest annotated frame as JPEG bytes, or None."""
+        """Return the latest annotated frame as JPEG bytes, encoding lazily."""
+        if not self._show_preview:
+            return None
+        with self._lock:
+            frame = self._frame
+            seq = self._frame_seq
+        if frame is None:
+            return None
+        if seq != self._preview_seq:
+            self._encode_preview(frame)
+            self._preview_seq = seq
         with self._lock:
             return self._preview_jpeg
+
+    def wait_for_frame(self, timeout: float = 0.1) -> bool:
+        """Block until a new preview frame is ready. Returns True if a frame arrived."""
+        got = self._frame_event.wait(timeout)
+        if got:
+            self._frame_event.clear()
+        return got
 
     def _scale_pixels(self, frame_w: int, frame_h: int):
         """Scale calibrated pixel coords to match actual camera resolution."""
@@ -236,10 +257,11 @@ class Detector:
                             self._log(f"  {ch}: hold({hx},{hy}) edge({ex},{ey})")
                         sys.stdout.flush()
                         started = True
+                    self._detect(frame)
                     with self._lock:
                         self._frame = frame
-                    if self._show_preview:
-                        self._encode_preview(frame)
+                        self._frame_seq += 1
+                    self._frame_event.set()
                 else:
                     time.sleep(0.01)
         finally:
@@ -282,24 +304,9 @@ class Detector:
         d = float((target - reject) * sat_ratio)
         return 0.0 if np.isnan(d) else d
 
-    def update(self, sample: Sample) -> dict:
-        with self._lock:
-            frame = self._frame
-            cam_ok = self._cam_ok
-
+    def _detect(self, frame: np.ndarray):
+        """Run detection on a new camera frame. Called from capture thread."""
         result: dict[str, dict] = {}
-
-        if frame is None:
-            for ch in CHANNELS:
-                result[ch] = {
-                    "pressed": False,
-                    "baseline": 0,
-                    "distance": 0.0,
-                    "press_count": self._press_count[ch],
-                    "camera": "waiting" if cam_ok else "no_device",
-                }
-            return result
-
         for ch in CHANNELS:
             hx, hy = self._hold_pixels[ch]
             ex, ey = self._edge_pixels[ch]
@@ -328,7 +335,21 @@ class Detector:
                 "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
                 "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
                 "press_count": self._press_count[ch],
-                "camera": "ok",
             }
 
-        return result
+        with self._lock:
+            self._cached_result = result
+
+    def update(self, sample: Sample) -> dict:
+        """Return the latest detection result (computed in capture thread)."""
+        with self._lock:
+            cached = self._cached_result
+            cam_ok = self._cam_ok
+
+        if cached is not None:
+            return cached
+
+        return {ch: {
+            "pressed": False, "baseline": 0, "edge_line": 0,
+            "press_count": 0, "camera": "waiting" if cam_ok else "no_device",
+        } for ch in CHANNELS}

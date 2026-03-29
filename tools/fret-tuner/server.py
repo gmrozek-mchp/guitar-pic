@@ -288,15 +288,20 @@ async def list_detectors():
 async def _mjpeg_generator():
     """Yield MJPEG frames from the active detector's preview, if available."""
     while True:
-        jpeg = None
         with _lock:
             det = _detector
-        if det and hasattr(det, "get_preview_jpeg"):
+        if det and hasattr(det, "wait_for_frame"):
+            await asyncio.to_thread(det.wait_for_frame, 0.1)
             jpeg = det.get_preview_jpeg()
+        elif det and hasattr(det, "get_preview_jpeg"):
+            jpeg = det.get_preview_jpeg()
+            await asyncio.sleep(0.033)
+        else:
+            jpeg = None
+            await asyncio.sleep(0.033)
         if jpeg:
             yield (b"--frame\r\n"
                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg + b"\r\n")
-        await asyncio.sleep(0.033)
 
 
 @app.get("/video")

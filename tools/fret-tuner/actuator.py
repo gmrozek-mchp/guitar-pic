@@ -33,7 +33,7 @@ CHANNEL_BITS = {
     "orange": BIT_ORANGE,
 }
 
-FIFO_CAP = 8
+FIFO_CAP = 16
 
 DEFAULT_TIMING = {
     "STRUM_DELAY_MS": 220,
