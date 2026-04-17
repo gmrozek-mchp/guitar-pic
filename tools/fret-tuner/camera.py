@@ -57,9 +57,15 @@ class Frame:
     dispatch (so detectors can opt into full-res pixel data); it is cleared
     before the frame is consumed from the ring buffer, so buffered/scrubbed
     frames never carry the full-res payload.
+
+    `meta` is a per-frame namespace where listeners stash a snapshot of the
+    state they computed for this frame (detector results, marker values,
+    actuator mask, etc.). Buffered frames retain their meta so scrub renders
+    overlays that reflect what was seen at the original capture time, not
+    whatever the detector says right now.
     """
 
-    __slots__ = ("t", "seq", "image", "raw_image")
+    __slots__ = ("t", "seq", "image", "raw_image", "meta")
 
     def __init__(
         self,
@@ -72,6 +78,7 @@ class Frame:
         self.seq = seq
         self.image = image
         self.raw_image = raw_image
+        self.meta: Optional[dict] = None
 
     def detect_image(self) -> np.ndarray:
         """Best image for a detector: full-res raw if available, else working."""

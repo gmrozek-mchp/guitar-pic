@@ -10952,3 +10952,230 @@ I will commit
 _**Agent (claude-opus-4-7)**_
 
 Sounds good. Server is still running on PID 97694 if you want to keep testing — kill it whenever you're done.
+
+---
+
+_**User**_
+
+Is detect_video essentially guaranteed to run once per frame?  (assuming sufficient processing power) and at highest priority? 
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm tracing through the capture loop to understand the threading guarantees. The camera thread reads frames, resizes them, wraps them in a Frame object, and then synchronously calls each listener—including detect_video's handler—before looping back to wait for the next frame.
+
+This gives us once-per-frame execution as long as detection finishes before the next frame arrives, though the OS may drop frames if we fall behind the camera's frame rate. For priority, the capture thread achieves highest priority through architecture rather than OS scheduling: it's the only thread touching the camera, and detection runs inline before any other work can proceed on that path. The GIL and concurrent threads like the view encoder don't interfere because cv2 operations release the GIL, and the view encoder has built-in gaps where it sleeps.
+
+The main caveat is that if detection takes longer than the camera's frame interval, we'll miss frames since cap.read() will return the latest buffered frame rather than waiting for a new one. I'm realizing the key insight here is that detection runs synchronously on every frame the camera actually delivers, giving it architectural priority—but there's no OS-level thread scheduling boost, so if another listener gets added later it would run after detection, and if the camera frame rate exceeds processing capacity, older frames drop at the OS buffer level before detection even sees them.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Yes, with caveats worth knowing.
+
+**Once per frame: yes.** In the capture loop, detection is called *synchronously* on the same thread immediately after `cap.read()` returns, before the next read:
+
+```186:243:tools/fret-tuner/camera.py
+    def _capture_loop(self) -> None:
+        ...
+        while self._running:
+            ...
+            ret, frame = cap.read()
+            ...
+            # resize + wrap in Frame + append to buffer + set event
+            ...
+            try:
+                for listener in listeners:
+                    try:
+                        listener(f)
+                    except Exception as exc:
+                        log.warning("camera: frame listener raised: %s", exc)
+            finally:
+                f.raw_image = None
+```
+
+So for every frame `cap.read()` returns, every registered listener (today: just `detect_video._on_frame`) runs exactly once. A listener exception is caught so it can't break the loop or skip other listeners.
+
+**Highest priority: yes, but architecturally — not OS-scheduled.**
+
+What "highest priority" actually means in this code:
+
+1. **Nothing can preempt detection on the capture path.** The next `cap.read()` doesn't begin until every listener returns. The view encoder cannot ever sneak in and "steal" a frame from the detector — they run on different threads and operate on different objects.
+2. **No work runs *before* detection on a frame.** The order is: read → downscale → buffer-append → event-set → listeners. The view encoder is woken by `event-set`, but it's a separate thread that does its own (slower) work in parallel.
+3. **Concurrency only helps detection.** OpenCV calls (`cap.read`, `cv2.resize`, `cv2.imencode`, `cv2.putText`) release the GIL during the heavy C work, so the view encoder's encode and the asyncio loop don't starve the capture thread of GIL time during detection's numpy patch sums.
+
+What it does **not** mean:
+
+- **No OS-level thread priority bump.** It's a regular `threading.Thread(daemon=True)`. macOS gives it the default scheduling class. We could call `pthread_setschedparam` for real priority, but we don't (and on macOS that requires elevated entitlements anyway).
+- **No frame-drop guarantee from the camera.** If detection ever takes longer than `1/camera_fps`, the OS / V4L / AVF buffer between the device and `cap.read()` will fill and the driver drops the oldest frame. `detect_video` still runs once per frame *delivered*, but you'd silently skip frames from the camera. Today detection is well under 1 ms at 30 fps so this is a non-issue, but worth knowing if you ever add a heavier detector.
+- **Listener order matters.** All listeners run sequentially in the capture thread. If a second listener is ever added that's slow, it would delay subsequent frames just like a slow detector would. Right now it's only `detect_video`, so no contention.
+
+If you ever need a hard priority guarantee, the cleanest options are:
+
+- Cap the work the view encoder is allowed to do per second (already done via `VIEW_FPS = 15`).
+- Add `os.nice()` / `setpriority` on the view encoder to deprioritize it explicitly.
+- Or move detection to its own dedicated thread reading from a 1-deep "latest frame" slot, so a slow detector falls behind without ever back-pressuring `cap.read()`. (Not needed today.)
+
+---
+
+_**User**_
+
+is the visualization frame buffering effectively decoupled from actual display? I'm wondering for purpose of scrubbing through the visualization and detection data. It would be ideal if the buffer could keep full 30fps even if not capable of displaying full 30fps live.
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ So the key insight here is that the buffer needs to maintain full capture fidelity at the original frame rate while the display pipeline can operate independently at a lower rate—the buffer shouldn't drop frames just because the viewer can't keep up. The capture thread reads frames, resizes them, wraps them, and appends to the buffer before notifying listeners, while the view encoder thread operates on its own schedule.
+
+For scrubbing, the system searches the full buffer at the original capture rate to find the closest frame at any timestamp. Detection runs inline during capture, but there's a potential bottleneck if detection processing ever exceeds the frame interval—though currently it's fast enough. The tricky part is that detection state isn't stored per-frame in the buffer, only the images are, so scrubbing shows the image but not the detection metadata from that moment. The chart data is separate and time-indexed, so it can display detection signals at any scrubbed timestamp independently.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Yes — the buffer and the live display are fully decoupled. The buffer always gets every captured frame; the live display just samples the latest one at a throttled rate.
+
+**Capture path** (always full rate):
+
+```186:243:tools/fret-tuner/camera.py
+    def _capture_loop(self) -> None:
+        ...
+        while self._running:
+            ...
+            ret, frame = cap.read()
+            ...
+            t = float(self._sample_clock_fn())
+            with self._lock:
+                self._seq += 1
+                f = Frame(
+                    t=t, seq=self._seq, image=work_image, raw_image=raw_image,
+                )
+                self._buffer.append(f)
+                listeners = list(self._frame_listeners)
+
+            self._frame_event.set()
+```
+
+Every successful `cap.read()` becomes a `Frame` and goes into the deque. Nothing the view encoder does can prevent that or evict an entry early. The deque just rolls when it hits `BUFFER_CAP`.
+
+**View encoder** (throttled, samples latest only):
+
+```661:677:tools/fret-tuner/server.py
+    def _run(self) -> None:
+        cam = get_camera()
+        last_emit = 0.0
+        last_seq = -1
+        while not self._stop.is_set():
+            cam.wait_for_frame(self._interval)
+            now = time.monotonic()
+            wait = self._interval - (now - last_emit)
+            if wait > 0:
+                if self._stop.wait(wait):
+                    return
+            frame = cam.latest()
+            if frame is None or frame.seq == last_seq:
+                continue
+```
+
+The encoder grabs `cam.latest()` (a reference into the buffer), encodes that one frame, and goes back to sleep until the next 15 Hz tick. It never iterates the buffer, never marks frames "consumed," never blocks the capture thread. So the buffer's frame rate equals the camera's frame rate, regardless of `VIEW_FPS`.
+
+**Scrub** (uses the full buffer):
+
+```705:716:tools/fret-tuner/server.py
+def _snap_jpeg(t: Optional[float]) -> Optional[bytes]:
+    cam = get_camera()
+    frame = cam.latest() if t is None else cam.closest(float(t))
+    ...
+```
+
+`cam.closest(t)` walks the deque and returns the frame whose timestamp is nearest. It's encoded on-demand on a worker thread, so you can scrub through every frame the camera produced.
+
+**One gap worth flagging** (since you mentioned "visualization *and* detection data"):
+
+The video buffer stores raw image data per frame, but **not the per-frame detection state**. The overlay draw functions in `detect_video._draw_markers` read the *current* `self._pressed`, `self._hold_dist`, etc. — they have no memory of what those were at the scrub time. So when you scrub back, you'll see a *past frame* with *present* overlay markers. The chart underneath does scrub correctly because ADC samples are timestamped, but the video overlays don't.
+
+If you want the overlays to also be time-accurate during scrub, the cleanest fix is to attach a per-frame detection snapshot to the `Frame` (a small dict, ~few hundred bytes) at the moment detection runs, and have `_draw_markers` use that snapshot when present. Cheap on memory, faithful on scrub. Want me to wire that up?
+
+---
+
+_**User**_
+
+yes please
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I need to attach detection state to each Frame so the scrubber can display historically accurate overlays. I'm thinking of storing a snapshot of the detector's internal state—things like pressed keys, hold distances, and edge activity—as an optional field on the Frame object, capturing exactly what gets rendered at that moment.
+
+The tricky part is that `_draw_markers` currently only receives the image, so I need to either change the overlay API to pass the frame as well, or find another way for the draw function to access the stored state. Option A—updating the draw signature to accept an optional frame parameter—seems cleanest and stays backward compatible. Let me check how overlays are actually invoked in the server code to confirm this approach will work.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me look at the overlay-draw API in `server.py` so I know how to thread the frame through.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+  "pattern": "_compose_frame_jpeg|_draw_default_overlays|_maybe_apply_overlays|overlays\\(\\)"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+  "pattern": "_compose_frame_jpeg|_draw_default_overlays|_maybe_apply_overlays|overlays\\(\\)",
+  "topFiles": [
+    {
+      "matchCount": 9,
+      "uri": "tools/fret-tuner/server.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 9
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm seeing there are two separate pathways for rendering overlays on a scrubbed frame: one pulls from the server's current detection state regardless of timeline position, while the other invokes the detector's marker drawing which reads from its own internal state—so I need to figure out which one is actually being used and why the historical data isn't showing up.</details></think>

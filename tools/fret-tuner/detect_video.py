@@ -203,6 +203,9 @@ class Detector:
         Prefers the full-resolution raw frame from the capture device when
         available, so detection is unaffected by the working/buffer downscale
         used for the live view.
+
+        After detection, attaches a per-frame snapshot to `frame.meta` so the
+        view path can render scrub-accurate overlays from buffered frames.
         """
         img = frame.detect_image()
         if img is None:
@@ -210,6 +213,25 @@ class Detector:
         h, w = img.shape[:2]
         hold_px, edge_px = self._scale_pixels(w, h)
         self._detect(img, hold_px, edge_px)
+
+        with self._lock:
+            snap_state = dict(self._cached_result) if self._cached_result else {}
+            snap_markers = {
+                ch: {
+                    "pressed": self._pressed[ch],
+                    "hold_dist": self._hold_dist[ch],
+                    "edge_dist": self._edge_dist[ch],
+                    "edge_active": self._edge_active[ch],
+                } for ch in CHANNELS
+            }
+            patch_r = self._patch_r
+        if frame.meta is None:
+            frame.meta = {}
+        frame.meta["detect_video"] = {
+            "state": snap_state,
+            "markers": snap_markers,
+            "patch_r": patch_r,
+        }
 
     def _sample_at(self, frame: np.ndarray, px: int, py: int) -> np.ndarray:
         """Average a small patch around (px, py)."""
@@ -312,21 +334,42 @@ class Detector:
         """Expose sensor markers as an overlay layer for the video viewport."""
         return [{"name": "detect_video.markers", "draw": self._draw_markers}]
 
-    def _draw_markers(self, image) -> None:
+    def _draw_markers(self, image, frame: Optional[Frame] = None) -> None:
         h, w = image.shape[:2]
         hold_px, edge_px = self._scale_pixels(w, h)
-        with self._lock:
+
+        # Prefer the per-frame snapshot when available (scrub fidelity); fall
+        # back to live state for live frames or when the frame predates the
+        # current detector instance.
+        snap_meta = None
+        if frame is not None and frame.meta:
+            snap_meta = frame.meta.get("detect_video")
+        if snap_meta is not None:
+            markers = snap_meta.get("markers", {})
+            patch_r = int(snap_meta.get("patch_r", self._patch_r))
             snap = {
                 ch: (
                     hold_px[ch],
                     edge_px[ch],
-                    self._pressed[ch],
-                    self._hold_dist[ch],
-                    self._edge_dist[ch],
-                    self._edge_active[ch],
+                    bool(markers.get(ch, {}).get("pressed", False)),
+                    float(markers.get(ch, {}).get("hold_dist", 0.0)),
+                    float(markers.get(ch, {}).get("edge_dist", 0.0)),
+                    bool(markers.get(ch, {}).get("edge_active", False)),
                 ) for ch in CHANNELS
             }
-            patch_r = self._patch_r
+        else:
+            with self._lock:
+                snap = {
+                    ch: (
+                        hold_px[ch],
+                        edge_px[ch],
+                        self._pressed[ch],
+                        self._hold_dist[ch],
+                        self._edge_dist[ch],
+                        self._edge_active[ch],
+                    ) for ch in CHANNELS
+                }
+                patch_r = self._patch_r
 
         for ch, ((hx, hy), (ex, ey), pressed, hold_d, edge_d, edge_on) in snap.items():
             color = _MARKER_COLORS[ch]

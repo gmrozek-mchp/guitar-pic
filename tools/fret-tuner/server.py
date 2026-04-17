@@ -397,7 +397,7 @@ def _draw_default_overlays(image, sample_t: float, state: dict, mask: int) -> No
     )
 
 
-def _maybe_apply_overlays(image, det) -> None:
+def _maybe_apply_overlays(image, det, frame=None) -> None:
     if det is None or image is None or not hasattr(det, "overlays"):
         return
     try:
@@ -406,10 +406,27 @@ def _maybe_apply_overlays(image, det) -> None:
         log.warning("detector overlays() raised: %s", exc)
         return
     for layer in layers:
+        draw = layer.get("draw")
+        if draw is None:
+            continue
         try:
-            layer.get("draw")(image)
+            try:
+                draw(image, frame=frame)
+            except TypeError:
+                draw(image)
         except Exception as exc:
             log.warning("overlay layer raised: %s", exc)
+
+
+def _frame_state_snapshot(frame) -> Optional[dict]:
+    """Return the per-channel state snapshot stashed by a detector, if any."""
+    if frame is None or not getattr(frame, "meta", None):
+        return None
+    for key in ("detect_video",):
+        meta = frame.meta.get(key)
+        if meta and meta.get("state"):
+            return meta["state"]
+    return None
 
 
 def _compose_frame_jpeg(frame, det, scrub_t: Optional[float] = None) -> Optional[bytes]:
@@ -417,12 +434,18 @@ def _compose_frame_jpeg(frame, det, scrub_t: Optional[float] = None) -> Optional
         return None
     img = frame.image.copy()
     with _lock:
-        state = dict(_latest_state)
-        mask = _latest_actuator_mask
+        live_state = dict(_latest_state)
+        live_mask = _latest_actuator_mask
         live_t = _latest_sample_t
+    snap_state = _frame_state_snapshot(frame)
+    state = snap_state if snap_state is not None else live_state
+    # Actuator mask isn't snapshot per-frame today (it's recomputed on the
+    # data thread, ~1 ms after the frame's detection lands). Live is fine
+    # for now; revisit if scrub fidelity on strum boxes matters.
+    mask = live_mask
     t = scrub_t if scrub_t is not None else (frame.t if frame.t else live_t)
     _draw_default_overlays(img, t, state, mask)
-    _maybe_apply_overlays(img, det)
+    _maybe_apply_overlays(img, det, frame=frame)
     ok, buf = cv2.imencode(".jpg", img, [cv2.IMWRITE_JPEG_QUALITY, 80])
     if not ok:
         return None
