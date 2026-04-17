@@ -77,6 +77,16 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
 .manual-btn:disabled:active { background: #1a1a2e; color: var(--btn-color, #e0e0e0); }
 .manual-btn:disabled.held { opacity: 1; background: var(--btn-color, #0f3460); color: #fff; }
 .strum-btn { --btn-color: #a855f7; }
+
+#scrub-controls { display: flex; flex-direction: column; gap: 6px; margin-top: 4px;
+  padding-top: 6px; border-top: 1px solid #0f3460; }
+#scrub-controls[hidden] { display: none; }
+.scrub-row { display: flex; gap: 4px; }
+.scrub-row button { padding: 6px 0; font-size: 14px; font-weight: 700;
+  font-family: monospace; }
+#btn-slowmo.active { background: #e94560; color: #fff; border-color: #e94560; }
+#scrub-info { font-size: 11px; font-family: monospace; color: #888;
+  text-align: center; }
 </style>
 </head>
 <body>
@@ -85,15 +95,6 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   <div>
     <h1>Fret Tuner</h1>
     <div id="status" class="disconnected">Disconnected</div>
-  </div>
-
-  <div class="section">
-    <h2>Transport</h2>
-    <button id="btn-pause">Pause</button>
-    <div id="window-control">
-      <label>Window <span class="val" id="window-val">2.0s</span></label>
-      <input type="range" id="window-range" min="0.5" max="30" step="0.5" value="2.0">
-    </div>
   </div>
 
   <div class="section">
@@ -106,11 +107,6 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
 </div>
 
 <div id="charts">
-  <div class="chart-wrap" id="chart-green"></div>
-  <div class="chart-wrap" id="chart-red"></div>
-  <div class="chart-wrap" id="chart-yellow"></div>
-  <div class="chart-wrap" id="chart-blue"></div>
-  <div class="chart-wrap" id="chart-orange"></div>
   <div id="timeline"><canvas id="timeline-canvas"></canvas></div>
 </div>
 
@@ -137,6 +133,34 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   </div>
 
   <div class="section">
+    <h2>Transport</h2>
+    <button id="btn-pause">Pause</button>
+    <div id="window-control">
+      <label>Window <span class="val" id="window-val">2.0s</span></label>
+      <input type="range" id="window-range" min="0.5" max="30" step="0.5" value="2.0">
+    </div>
+
+    <div id="scrub-controls" hidden>
+      <div class="scrub-row">
+        <button id="btn-step-back-10" title="-10 frames (Shift+Left)">&laquo;</button>
+        <button id="btn-step-back-1" title="-1 frame (Left)">&lsaquo;</button>
+        <button id="btn-slowmo" title="Slow-motion play / pause (Space)">&#9658;</button>
+        <button id="btn-step-fwd-1" title="+1 frame (Right)">&rsaquo;</button>
+        <button id="btn-step-fwd-10" title="+10 frames (Shift+Right)">&raquo;</button>
+      </div>
+      <label>Speed
+        <select id="slowmo-speed">
+          <option value="0.1">0.1x</option>
+          <option value="0.25" selected>0.25x</option>
+          <option value="0.5">0.5x</option>
+          <option value="1">1x</option>
+        </select>
+      </label>
+      <div id="scrub-info">--</div>
+    </div>
+  </div>
+
+  <div class="section">
     <h2>Manual</h2>
     <div id="manual-buttons">
       <div class="manual-row">
@@ -155,8 +179,6 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
 </div>
 
 <script>
-const CHANNELS = ["green", "red", "yellow", "blue", "orange"];
-const COLORS = { green: "#22c55e", red: "#ef4444", yellow: "#eab308", blue: "#3b82f6", orange: "#f97316" };
 const MAX_POINTS = 15000; // 30 seconds at 500 Hz
 
 const STORAGE_KEY = "fret-tuner-settings";
@@ -164,7 +186,24 @@ let ws = null;
 let paused = false;
 let windowSec = 2.0;
 let strumDelayMs = 220;
-let scrubTime = 0;
+// Camera-as-master-clock. The currently-displayed video frame is the
+// ground truth for "now"; every other UI element (chart cursor, timeline
+// position, overlay text) reads from `currentFrame.t`. `seq` is the
+// authoritative frame identifier when known (from server snap/step
+// responses or frame_tick); we fall back to `t` for snap-to-closest when
+// seq is null (initial scrub, or no camera attached).
+let currentFrame = { seq: null, t: 0 };
+let lastFrameTickAt = 0; // performance.now() of the most recent frame_tick
+
+function hasCamera() {
+  return activeSourceId != null && activeSourceId !== "none";
+}
+
+function setCurrentFrame(seq, t) {
+  if (typeof t === "number" && isFinite(t)) currentFrame.t = t;
+  currentFrame.seq = (seq == null ? null : Number(seq));
+}
+
 let _renderingFromTimeline = false;
 
 function loadSettings() {
@@ -182,27 +221,38 @@ function savedParam(key, fallback) {
   return fallback;
 }
 
-// Per-channel ring buffers: [timestamps, raw, baseline, pressed]
-const data = {};
-CHANNELS.forEach(ch => {
-  data[ch] = { t: [], raw: [], baseline: [], edgeLine: [], pressed: [], pressCount: [] };
-});
+// Detector-driven chart schema. Populated from the server's `detector`
+// message; until then charts stay empty. Each entry is:
+//   { id, label, color, y_range: [min, max],
+//     series: [ { key, label, color, width, dash? }, ... ] }
+let currentSchema = [];
 
-// uPlot instances
+// Per-slot ring buffers built dynamically from the schema:
+//   data[slot.id] = { t, series: { <key>: [] }, pressed, pressCount }
+const data = {};
+
+// uPlot instances, keyed by slot.id
 const plots = {};
 
-function makePressBands(ch) {
+function slotById(id) {
+  return currentSchema.find(s => s.id === id);
+}
+
+function firstSlotId() {
+  return currentSchema.length ? currentSchema[0].id : null;
+}
+
+function makePressBands(slotId, slotColor) {
   return {
     hooks: {
       draw: [
         (u) => {
           const ctx = u.ctx;
-          const d = data[ch];
-          if (!d.t.length) return;
+          const d = data[slotId];
+          if (!d || !d.t.length) return;
 
-          const color = COLORS[ch];
           ctx.save();
-          ctx.fillStyle = color;
+          ctx.fillStyle = slotColor;
           ctx.globalAlpha = 0.15;
 
           let inPress = false;
@@ -227,9 +277,11 @@ function makePressBands(ch) {
             ctx.fillRect(x0, u.bbox.top, px - x0, u.bbox.height);
           }
 
-          // Strike line: strum delay behind the latest sample
+          // Strike line: strum delay behind "now". "Now" is the timestamp
+          // of the currently displayed video frame (camera as master); if
+          // there's no camera we fall back to the latest ADC sample.
           if (d.t.length > 1) {
-            const tLatest = d.t[d.t.length - 1];
+            const tLatest = hasCamera() ? currentFrame.t : d.t[d.t.length - 1];
             const strikeT = tLatest - strumDelayMs / 1000;
             const sx = u.valToPos(strikeT, "x", true);
             if (sx >= u.bbox.left && sx <= u.bbox.left + u.bbox.width) {
@@ -246,7 +298,7 @@ function makePressBands(ch) {
           }
 
           if (paused) {
-            const scrubX = u.valToPos(scrubTime, "x", true);
+            const scrubX = u.valToPos(currentFrame.t, "x", true);
             if (scrubX >= u.bbox.left && scrubX <= u.bbox.left + u.bbox.width) {
               ctx.strokeStyle = "#fff";
               ctx.globalAlpha = 0.8;
@@ -258,7 +310,7 @@ function makePressBands(ch) {
             }
           }
 
-          ctx.strokeStyle = color;
+          ctx.strokeStyle = slotColor;
           ctx.globalAlpha = 0.6;
           ctx.lineWidth = 2;
           for (let i = 1; i < d.t.length; i++) {
@@ -281,30 +333,32 @@ function makePressBands(ch) {
   };
 }
 
-function createChart(ch) {
-  const el = document.getElementById("chart-" + ch);
+function createChart(slot, el) {
   const rect = el.getBoundingClientRect();
+
+  const series = [{}];
+  for (const s of slot.series) {
+    const spec = { label: s.label, stroke: s.color, width: s.width || 1 };
+    if (s.dash) spec.dash = s.dash;
+    series.push(spec);
+  }
 
   const opts = {
     width: rect.width,
     height: rect.height,
-    plugins: [makePressBands(ch)],
+    plugins: [makePressBands(slot.id, slot.color)],
     cursor: { drag: { x: true, y: true, uni: 50 } },
     scales: {
       x: { time: false },
-      y: { range: [0, 4096] },
+      y: { range: slot.y_range && slot.y_range.length === 2
+            ? slot.y_range : [0, 4096] },
     },
     axes: [
       { size: 30, font: "10px monospace", stroke: "#666", grid: { stroke: "#222", width: 1 } },
       { size: 45, font: "10px monospace", stroke: "#666", grid: { stroke: "#222", width: 1 },
-        label: ch.charAt(0).toUpperCase() + ch.slice(1), labelFont: "bold 11px sans-serif", labelGap: 4 },
+        label: slot.label, labelFont: "bold 11px sans-serif", labelGap: 4 },
     ],
-    series: [
-      {},
-      { label: "Raw", stroke: COLORS[ch], width: 1.5 },
-      { label: "Hold", stroke: "#888", width: 1, dash: [4, 3] },
-      { label: "Edge", stroke: "#e94560", width: 1.5, dash: [2, 2] },
-    ],
+    series,
   };
 
   opts.hooks = opts.hooks || {};
@@ -316,82 +370,146 @@ function createChart(ch) {
     }
   }];
 
-  const plot = new uPlot(opts, [[], [], [], []], el);
-  plots[ch] = plot;
+  const empty = [[]];
+  for (let i = 0; i < slot.series.length; i++) empty.push([]);
+  const plot = new uPlot(opts, empty, el);
+  plots[slot.id] = plot;
+}
+
+function applySchema(schema) {
+  if (!Array.isArray(schema) || !schema.length) return;
+  currentSchema = schema;
+
+  for (const id of Object.keys(plots)) {
+    try { plots[id].destroy(); } catch (e) { /* ignore */ }
+    delete plots[id];
+    delete data[id];
+  }
+
+  const container = document.getElementById("charts");
+  container.querySelectorAll(".chart-wrap").forEach(el => el.remove());
+
+  // Two passes: insert ALL chart-wrap divs first so the flex container
+  // distributes height across them, THEN measure and construct uPlot
+  // instances. Otherwise the first chart we create takes the full available
+  // height and its canvas overlaps later ones once siblings are added.
+  const timeline = document.getElementById("timeline");
+  const wraps = [];
+  for (const slot of schema) {
+    data[slot.id] = {
+      t: [],
+      series: {},
+      pressed: [],
+      pressCount: [],
+    };
+    for (const s of slot.series) data[slot.id].series[s.key] = [];
+
+    const el = document.createElement("div");
+    el.className = "chart-wrap";
+    el.id = "chart-slot-" + slot.id;
+    container.insertBefore(el, timeline);
+    wraps.push({ slot, el });
+  }
+  for (const { slot, el } of wraps) {
+    createChart(slot, el);
+  }
 }
 
 function initCharts() {
-  CHANNELS.forEach(ch => createChart(ch));
   window.addEventListener("resize", () => {
-    CHANNELS.forEach(ch => {
-      const el = document.getElementById("chart-" + ch);
+    for (const slot of currentSchema) {
+      const el = document.getElementById("chart-slot-" + slot.id);
+      const plot = plots[slot.id];
+      if (!el || !plot) continue;
       const r = el.getBoundingClientRect();
-      plots[ch].setSize({ width: r.width, height: r.height });
-    });
+      plot.setSize({ width: r.width, height: r.height });
+    }
   });
 }
 
 function updateCharts() {
-  CHANNELS.forEach(ch => {
-    const d = data[ch];
-    if (!d.t.length) return;
+  // Live mode: when the camera is the master clock, only render samples
+  // up through `currentFrame.t` so the chart's leading edge tracks the
+  // displayed video frame. Without a camera we fall back to the latest
+  // ingested ADC sample.
+  const cam = hasCamera();
+  for (const slot of currentSchema) {
+    const d = data[slot.id];
+    if (!d || !d.t.length) continue;
+    const plot = plots[slot.id];
+    if (!plot) continue;
 
-    const plot = plots[ch];
-
-    // Trim to window
-    const tMax = d.t[d.t.length - 1];
+    const tMax = cam ? currentFrame.t : d.t[d.t.length - 1];
     const tMin = tMax - windowSec;
 
+    // Find first index >= tMin and last index <= tMax.
     let startIdx = 0;
     for (let i = 0; i < d.t.length; i++) {
       if (d.t[i] >= tMin) { startIdx = i; break; }
     }
+    let endIdx = d.t.length;
+    if (cam) {
+      // Binary search for the rightmost i with d.t[i] <= tMax.
+      let lo = startIdx, hi = d.t.length;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (d.t[mid] <= tMax) lo = mid + 1; else hi = mid;
+      }
+      endIdx = lo;
+    }
 
-    const tSlice = d.t.slice(startIdx);
-    const rawSlice = d.raw.slice(startIdx);
-    const baseSlice = d.baseline.slice(startIdx);
-    const edgeSlice = d.edgeLine.slice(startIdx);
-
-    plot.setData([tSlice, rawSlice, baseSlice, edgeSlice]);
-  });
+    const cols = [d.t.slice(startIdx, endIdx)];
+    for (const s of slot.series) {
+      const arr = d.series[s.key];
+      cols.push(arr ? arr.slice(startIdx, endIdx) : []);
+    }
+    plot.setData(cols);
+  }
 }
 
-// Trim buffers to MAX_POINTS
 function trimBuffers() {
-  CHANNELS.forEach(ch => {
-    const d = data[ch];
-    if (d.t.length > MAX_POINTS) {
-      const excess = d.t.length - MAX_POINTS;
-      d.t.splice(0, excess);
-      d.raw.splice(0, excess);
-      d.baseline.splice(0, excess);
-      d.edgeLine.splice(0, excess);
-      d.pressed.splice(0, excess);
-      d.pressCount.splice(0, excess);
-    }
-  });
+  for (const slot of currentSchema) {
+    const d = data[slot.id];
+    if (!d || d.t.length <= MAX_POINTS) continue;
+    const excess = d.t.length - MAX_POINTS;
+    d.t.splice(0, excess);
+    d.pressed.splice(0, excess);
+    d.pressCount.splice(0, excess);
+    for (const key of Object.keys(d.series)) d.series[key].splice(0, excess);
+  }
 }
 
 // --- Timeline scrubber ---
 
 function clampScrubTime() {
-  const d = data[CHANNELS[0]];
-  if (!d.t.length) return;
+  const id = firstSlotId();
+  const d = id ? data[id] : null;
+  if (!d || !d.t.length) return;
   const bufStart = d.t[0];
   const bufEnd = d.t[d.t.length - 1];
   const half = windowSec / 2;
+  let t = currentFrame.t;
+  let clamped;
   if (bufEnd - bufStart < windowSec) {
-    scrubTime = (bufStart + bufEnd) / 2;
+    clamped = (bufStart + bufEnd) / 2;
   } else {
-    scrubTime = Math.max(bufStart + half, Math.min(bufEnd - half, scrubTime));
+    clamped = Math.max(bufStart + half, Math.min(bufEnd - half, t));
+  }
+  if (clamped !== t) {
+    // The clamped t no longer corresponds to the seq we held -- the next
+    // snap/step will refresh it.
+    setCurrentFrame(null, clamped);
   }
 }
 
 function renderAtTime(centerT, halfWin) {
   _renderingFromTimeline = true;
-  CHANNELS.forEach(ch => {
-    const d = data[ch];
-    if (!d.t.length) return;
+  for (const slot of currentSchema) {
+    const d = data[slot.id];
+    if (!d || !d.t.length) continue;
+    const plot = plots[slot.id];
+    if (!plot) continue;
+
     const tMin = centerT - halfWin;
     const tMax = centerT + halfWin;
 
@@ -403,13 +521,13 @@ function renderAtTime(centerT, halfWin) {
     while (lo < hi) { const mid = (lo + hi) >> 1; if (d.t[mid] <= tMax) lo = mid + 1; else hi = mid; }
     const endIdx = Math.min(d.t.length, lo + 1);
 
-    plots[ch].setData([
-      d.t.slice(startIdx, endIdx),
-      d.raw.slice(startIdx, endIdx),
-      d.baseline.slice(startIdx, endIdx),
-      d.edgeLine.slice(startIdx, endIdx),
-    ]);
-  });
+    const cols = [d.t.slice(startIdx, endIdx)];
+    for (const s of slot.series) {
+      const arr = d.series[s.key];
+      cols.push(arr ? arr.slice(startIdx, endIdx) : []);
+    }
+    plot.setData(cols);
+  }
   _renderingFromTimeline = false;
   showFrameAtTime(centerT);
   drawTimeline();
@@ -433,39 +551,49 @@ function drawTimeline() {
 
   ctx.clearRect(0, 0, W, H);
 
-  const d = data[CHANNELS[0]];
-  if (!d.t.length) return;
-  const bufStart = d.t[0];
-  const bufEnd = d.t[d.t.length - 1];
+  const refId = firstSlotId();
+  const ref = refId ? data[refId] : null;
+  if (!ref || !ref.t.length) return;
+  const bufStart = ref.t[0];
+  const bufEnd = ref.t[ref.t.length - 1];
   const bufDur = bufEnd - bufStart;
   if (bufDur <= 0) return;
 
-  const chColors = [COLORS.green, COLORS.red, COLORS.yellow, COLORS.blue, COLORS.orange];
-  CHANNELS.forEach((ch, ci) => {
-    const cd = data[ch];
-    ctx.strokeStyle = chColors[ci];
+  // Mini overview: per-slot first series, scaled to its own y_range.
+  for (const slot of currentSchema) {
+    const cd = data[slot.id];
+    if (!cd || !cd.t.length || !slot.series.length) continue;
+    const key = slot.series[0].key;
+    const arr = cd.series[key];
+    if (!arr || !arr.length) continue;
+    const yMin = (slot.y_range && slot.y_range.length === 2) ? slot.y_range[0] : 0;
+    const yMax = (slot.y_range && slot.y_range.length === 2) ? slot.y_range[1] : 4096;
+    const ySpan = (yMax - yMin) || 1;
+
+    ctx.strokeStyle = slot.color || "#888";
     ctx.lineWidth = 1;
     ctx.globalAlpha = 0.3;
     ctx.beginPath();
     const step = Math.max(1, Math.floor(cd.t.length / W));
     for (let i = 0; i < cd.t.length; i += step) {
       const x = ((cd.t[i] - bufStart) / bufDur) * W;
-      const y = H - (cd.raw[i] / 4096) * H;
+      const y = H - ((arr[i] - yMin) / ySpan) * H;
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     }
     ctx.stroke();
-  });
+  }
   ctx.globalAlpha = 1;
 
-  const vpLeft = Math.max(0, ((scrubTime - windowSec / 2 - bufStart) / bufDur) * W);
-  const vpRight = Math.min(W, ((scrubTime + windowSec / 2 - bufStart) / bufDur) * W);
+  const tNow = currentFrame.t;
+  const vpLeft = Math.max(0, ((tNow - windowSec / 2 - bufStart) / bufDur) * W);
+  const vpRight = Math.min(W, ((tNow + windowSec / 2 - bufStart) / bufDur) * W);
   ctx.fillStyle = "rgba(233, 69, 96, 0.15)";
   ctx.fillRect(vpLeft, 0, vpRight - vpLeft, H);
   ctx.strokeStyle = "#e94560";
   ctx.lineWidth = 1;
   ctx.strokeRect(vpLeft + 0.5, 0.5, vpRight - vpLeft - 1, H - 1);
 
-  const sx = ((scrubTime - bufStart) / bufDur) * W;
+  const sx = ((tNow - bufStart) / bufDur) * W;
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -481,7 +609,7 @@ function drawTimeline() {
   ctx.fillText(bufEnd.toFixed(1) + "s", W - 4, H - 4);
   ctx.textAlign = "center";
   ctx.fillStyle = "#e94560";
-  ctx.fillText(scrubTime.toFixed(2) + "s", sx, 12);
+  ctx.fillText(tNow.toFixed(2) + "s", sx, 12);
 }
 
 function zoomAtScrub(factor) {
@@ -490,7 +618,7 @@ function zoomAtScrub(factor) {
   slider.value = Math.min(parseFloat(slider.max), Math.max(parseFloat(slider.min), windowSec));
   document.getElementById("window-val").textContent = windowSec.toFixed(1) + "s";
   clampScrubTime();
-  renderAtTime(scrubTime, windowSec / 2);
+  renderAtTime(currentFrame.t, windowSec / 2);
 }
 
 function initTimeline() {
@@ -512,24 +640,28 @@ function initTimeline() {
   function timeFromX(clientX) {
     const rect = canvas.getBoundingClientRect();
     const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
-    const d = data[CHANNELS[0]];
-    if (!d.t.length) return 0;
+    const id = firstSlotId();
+    const d = id ? data[id] : null;
+    if (!d || !d.t.length) return 0;
     return d.t[0] + ratio * (d.t[d.t.length - 1] - d.t[0]);
   }
 
   canvas.addEventListener("mousedown", (e) => {
     if (!paused) return;
     dragging = true;
-    scrubTime = timeFromX(e.clientX);
+    // Drag resolves to the closest buffered frame on the server side --
+    // setCurrentFrame() with seq=null lets snap/step fall back to t-based
+    // lookup; the snap response then fills in the authoritative seq+t.
+    setCurrentFrame(null, timeFromX(e.clientX));
     clampScrubTime();
-    renderAtTime(scrubTime, windowSec / 2);
+    renderAtTime(currentFrame.t, windowSec / 2);
   });
 
   window.addEventListener("mousemove", (e) => {
     if (!dragging) return;
-    scrubTime = timeFromX(e.clientX);
+    setCurrentFrame(null, timeFromX(e.clientX));
     clampScrubTime();
-    renderAtTime(scrubTime, windowSec / 2);
+    renderAtTime(currentFrame.t, windowSec / 2);
   });
 
   window.addEventListener("mouseup", () => { dragging = false; });
@@ -574,16 +706,28 @@ function connect() {
       for (let i = 0; i < msg.samples.length; i++) {
         const s = msg.samples[i];
         const st = msg.state[i];
-        CHANNELS.forEach(ch => {
-          data[ch].t.push(s.t);
-          data[ch].raw.push(s[ch]);
-          data[ch].baseline.push(st[ch].baseline);
-          data[ch].edgeLine.push(st[ch].edge_line || 0);
-          data[ch].pressed.push(st[ch].pressed);
-          data[ch].pressCount.push(st[ch].press_count || 0);
-        });
+        for (const slot of currentSchema) {
+          const d = data[slot.id];
+          if (!d) continue;
+          d.t.push(s.t);
+          const chSt = (st && st[slot.id]) || {};
+          for (const series of slot.series) {
+            const arr = d.series[series.key];
+            const v = chSt[series.key];
+            arr.push(typeof v === "number" ? v : 0);
+          }
+          d.pressed.push(!!chSt.pressed);
+          d.pressCount.push(chSt.press_count || 0);
+        }
       }
       trimBuffers();
+      // CSV / no-camera fallback: there are no frame_tick messages, so the
+      // ADC sample clock has to drive currentFrame.t. With a camera
+      // attached the frame_tick handler does this instead.
+      if (!paused && !hasCamera() && msg.samples.length) {
+        const lastT = msg.samples[msg.samples.length - 1].t;
+        setCurrentFrame(null, lastT);
+      }
       if (!paused) updateCharts();
       if (actuateEnabled && msg.actuator_mask !== undefined) {
         document.querySelectorAll(".manual-btn").forEach(btn => {
@@ -599,6 +743,7 @@ function connect() {
       populateParamSliders(msg.params);
       populateTimingSliders(msg.timing);
       updateActuateButton(msg.actuate_enabled);
+      if (msg.chart_schema) applySchema(msg.chart_schema);
     }
 
     else if (msg.type === "sources") {
@@ -607,6 +752,18 @@ function connect() {
 
     else if (msg.type === "actuator_status") {
       populateActuatorSelect(msg.available, msg);
+    }
+
+    else if (msg.type === "frame_tick") {
+      // Master clock tick: every buffer write from the camera (~30 Hz).
+      // Live mode advances currentFrame here so charts/overlays align to
+      // the displayed frame. While paused we ignore ticks; the user is
+      // holding currentFrame still via scrub controls.
+      lastFrameTickAt = performance.now();
+      if (!paused) {
+        setCurrentFrame(msg.seq, msg.t);
+        updateCharts();
+      }
     }
 
     else if (msg.type === "serial_status") {
@@ -735,6 +892,96 @@ function updateActuateButton(enabled) {
   updateManualEnabled();
 }
 
+// --- Scrub / slow-mo (active while paused) ---
+const scrubControls = document.getElementById("scrub-controls");
+const scrubInfo = document.getElementById("scrub-info");
+const slowmoBtn = document.getElementById("btn-slowmo");
+const slowmoSpeedSelect = document.getElementById("slowmo-speed");
+
+let slowmoTimer = null;
+
+function setSlowmoActive(active) {
+  if (active) {
+    slowmoBtn.classList.add("active");
+    slowmoBtn.innerHTML = "&#10073;&#10073;"; // pause glyph
+  } else {
+    slowmoBtn.classList.remove("active");
+    slowmoBtn.innerHTML = "&#9658;"; // play glyph
+  }
+}
+
+function stopSlowmo() {
+  if (slowmoTimer != null) {
+    clearInterval(slowmoTimer);
+    slowmoTimer = null;
+  }
+  setSlowmoActive(false);
+}
+
+function startSlowmo() {
+  stopSlowmo();
+  const speed = parseFloat(slowmoSpeedSelect.value) || 0.25;
+  // One frame per (1/30 s) / speed of wallclock => playback at `speed` x real time.
+  const intervalMs = Math.max(15, Math.round(1000 / 30 / speed));
+  slowmoTimer = setInterval(async () => {
+    const moved = await stepFrames(1);
+    if (!moved) stopSlowmo();
+  }, intervalMs);
+  setSlowmoActive(true);
+}
+
+async function stepFrames(n) {
+  // Server walks the actual buffered frames and returns the next/prev
+  // {seq, t}. We address by seq when we have one (exact, even if the
+  // buffer rolls); fall back to t for the very first scrub action.
+  try {
+    const dir = n >= 0 ? "next" : "prev";
+    const cnt = Math.abs(n);
+    let url;
+    if (currentFrame.seq != null) {
+      url = "/video/step?seq=" + encodeURIComponent(currentFrame.seq)
+          + "&dir=" + dir + "&n=" + cnt;
+    } else {
+      url = "/video/step?t=" + encodeURIComponent(currentFrame.t.toFixed(4))
+          + "&dir=" + dir + "&n=" + cnt;
+    }
+    const resp = await fetch(url);
+    if (!resp.ok) return false;
+    const j = await resp.json();
+    // Hit buffer edge: same seq returned, or same t with no seq known.
+    if (currentFrame.seq != null && j.seq === currentFrame.seq) return false;
+    if (currentFrame.seq == null && Math.abs(j.t - currentFrame.t) < 1e-6) return false;
+    setCurrentFrame(j.seq, j.t);
+    clampScrubTime();
+    renderAtTime(currentFrame.t, windowSec / 2);
+    updateScrubInfo();
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function updateScrubInfo() {
+  const speed = parseFloat(slowmoSpeedSelect.value) || 0.25;
+  const seqStr = currentFrame.seq != null ? "  #" + currentFrame.seq : "";
+  scrubInfo.textContent = "t = " + currentFrame.t.toFixed(3) + "s" + seqStr + "  @ " + speed + "x";
+}
+
+document.getElementById("btn-step-back-10").addEventListener("click", () => { stopSlowmo(); stepFrames(-10); });
+document.getElementById("btn-step-back-1").addEventListener("click",  () => { stopSlowmo(); stepFrames(-1);  });
+document.getElementById("btn-step-fwd-1").addEventListener("click",   () => { stopSlowmo(); stepFrames(1);   });
+document.getElementById("btn-step-fwd-10").addEventListener("click",  () => { stopSlowmo(); stepFrames(10);  });
+
+slowmoBtn.addEventListener("click", () => {
+  if (slowmoTimer != null) stopSlowmo();
+  else startSlowmo();
+});
+
+slowmoSpeedSelect.addEventListener("change", () => {
+  if (slowmoTimer != null) startSlowmo(); // restart at new speed
+  updateScrubInfo();
+});
+
 // Pause button
 document.getElementById("btn-pause").addEventListener("click", () => {
   paused = !paused;
@@ -744,18 +991,27 @@ document.getElementById("btn-pause").addEventListener("click", () => {
     btn.classList.add("active");
     btn.textContent = "Resume";
     ws.send(JSON.stringify({ type: "pause" }));
-    const d = data[CHANNELS[0]];
-    scrubTime = d.t.length ? d.t[d.t.length - 1] : 0;
+    // Pin to whatever frame is on screen right now. The next snap will
+    // refresh seq/t with the server's authoritative values.
+    if (!hasCamera()) {
+      const refId = firstSlotId();
+      const d = refId ? data[refId] : null;
+      setCurrentFrame(null, (d && d.t.length) ? d.t[d.t.length - 1] : 0);
+    }
     clampScrubTime();
     tl.classList.add("visible");
-    renderAtTime(scrubTime, windowSec / 2);
+    renderAtTime(currentFrame.t, windowSec / 2);
     camStatus.textContent = "Paused";
+    scrubControls.hidden = false;
+    updateScrubInfo();
   } else {
     btn.classList.remove("active");
     btn.textContent = "Pause";
     ws.send(JSON.stringify({ type: "resume" }));
     tl.classList.remove("visible");
     showLiveVideo();
+    stopSlowmo();
+    scrubControls.hidden = true;
   }
 });
 
@@ -774,7 +1030,7 @@ document.getElementById("window-range").addEventListener("input", (e) => {
   saveSettings({ windowSec });
   if (paused) {
     clampScrubTime();
-    renderAtTime(scrubTime, windowSec / 2);
+    renderAtTime(currentFrame.t, windowSec / 2);
   }
 });
 
@@ -908,42 +1164,71 @@ actSelect.addEventListener("change", (e) => {
 });
 
 function getChartCenterTime() {
-  const ch = CHANNELS[0];
-  const d = data[ch];
-  if (!d.t.length) return 0;
+  const id = firstSlotId();
+  if (!id) return 0;
+  const d = data[id];
+  if (!d || !d.t.length) return 0;
 
-  const plot = plots[ch];
-  const scales = plot.scales;
-  if (scales.x.min != null && scales.x.max != null) {
-    return (scales.x.min + scales.x.max) / 2;
+  const plot = plots[id];
+  if (plot) {
+    const scales = plot.scales;
+    if (scales.x.min != null && scales.x.max != null) {
+      return (scales.x.min + scales.x.max) / 2;
+    }
   }
   return d.t[d.t.length - 1];
 }
 
 let _scrubReqId = 0;
 
-function showFrameAtTime(t) {
-  if (activeSourceId === "none" || activeSourceId == null) {
+async function showFrameAtTime(t) {
+  if (!hasCamera()) {
     camTime.textContent = "t = " + t.toFixed(3) + "s (no video)";
     return;
   }
   const myId = ++_scrubReqId;
   const url = "/video/snap?t=" + encodeURIComponent(t.toFixed(3));
-  const probe = new Image();
-  probe.onload = () => {
+  try {
+    const resp = await fetch(url, { cache: "no-store" });
     if (myId !== _scrubReqId) return;
-    mjpegImg.src = url;
-    camTime.textContent = "t = " + t.toFixed(3) + "s";
-  };
-  probe.onerror = () => {
-    if (myId !== _scrubReqId) return;
-    camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
-  };
-  probe.src = url;
+    if (!resp.ok) {
+      camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
+      return;
+    }
+    // Snap response is the authority on which frame we're displaying;
+    // pull seq/t out of the X-Frame-* headers and update currentFrame.
+    const seqHdr = resp.headers.get("X-Frame-Seq");
+    const tHdr = resp.headers.get("X-Frame-Time");
+    const seq = seqHdr != null ? parseInt(seqHdr, 10) : null;
+    const ft = tHdr != null ? parseFloat(tHdr) : t;
+    const blob = await resp.blob();
+    if (myId !== _scrubReqId) { return; }
+    const oldUrl = mjpegImg._blobUrl;
+    const blobUrl = URL.createObjectURL(blob);
+    mjpegImg._blobUrl = blobUrl;
+    mjpegImg.src = blobUrl;
+    if (oldUrl) URL.revokeObjectURL(oldUrl);
+    setCurrentFrame(seq, ft);
+    camTime.textContent = "t = " + ft.toFixed(3) + "s"
+      + (seq != null ? "  #" + seq : "");
+    // Keep the timeline cursor and scrub-info readout consistent with the
+    // snapped frame (might differ slightly from the requested t).
+    drawTimeline();
+    if (paused && !scrubControls.hidden) updateScrubInfo();
+  } catch (e) {
+    if (myId === _scrubReqId) {
+      camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
+    }
+  }
 }
 
 function showLiveVideo() {
-  if (activeSourceId === "none" || activeSourceId == null) {
+  // Drop any pinned scrub blob so the next snap allocates a fresh one.
+  if (mjpegImg._blobUrl) {
+    URL.revokeObjectURL(mjpegImg._blobUrl);
+    mjpegImg._blobUrl = null;
+  }
+  if (!hasCamera()) {
     mjpegImg.removeAttribute("src");
     camStatus.textContent = "No camera selected";
   } else {
@@ -1027,25 +1312,28 @@ document.querySelectorAll(".manual-btn").forEach(btn => {
 document.addEventListener("keydown", (e) => {
   if (e.target.tagName === "INPUT" || e.target.tagName === "SELECT" || e.target.tagName === "TEXTAREA") return;
 
+  // Space: while paused, toggle slow-mo play/pause; otherwise toggle live pause.
   if (e.code === "Space") {
     e.preventDefault();
-    document.getElementById("btn-pause").click();
+    if (paused) {
+      if (slowmoTimer != null) stopSlowmo();
+      else startSlowmo();
+    } else {
+      document.getElementById("btn-pause").click();
+    }
     return;
   }
 
   if (!paused) return;
 
-  const step = windowSec / 20;
   if (e.key === "ArrowLeft") {
     e.preventDefault();
-    scrubTime -= step;
-    clampScrubTime();
-    renderAtTime(scrubTime, windowSec / 2);
+    stopSlowmo();
+    stepFrames(e.shiftKey ? -10 : -1);
   } else if (e.key === "ArrowRight") {
     e.preventDefault();
-    scrubTime += step;
-    clampScrubTime();
-    renderAtTime(scrubTime, windowSec / 2);
+    stopSlowmo();
+    stepFrames(e.shiftKey ? 10 : 1);
   } else if (e.key === "=" || e.key === "+") {
     e.preventDefault();
     zoomAtScrub(1 / 1.3);

@@ -31,7 +31,7 @@ import cv2
 import numpy as np
 
 from camera import Frame, get_camera
-from stream import CHANNELS, Sample
+from stream import CH_COLORS, CHANNELS, Sample, make_slot_schema
 
 _DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
 
@@ -327,6 +327,20 @@ class Detector:
             "pressed": False, "baseline": 0, "edge_line": 0,
             "press_count": 0, "camera": msg,
         } for ch in CHANNELS}
+
+    # --- Chart schema -------------------------------------------------------
+
+    def chart_schema(self) -> list[dict]:
+        """Per-fret hold + edge signals (no raw ADC)."""
+        return [
+            make_slot_schema(ch, [
+                {"key": "baseline", "label": "Hold",
+                 "color": CH_COLORS[ch], "width": 1.5},
+                {"key": "edge_line", "label": "Edge",
+                 "color": "#e94560", "width": 1.5, "dash": [2, 2]},
+            ])
+            for ch in CHANNELS
+        ]
 
     # --- Overlay extension --------------------------------------------------
 

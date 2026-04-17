@@ -31,7 +31,7 @@ This detector targets eventual port to an ARM Cortex-M0+ at 24 MHz:
 
 from enum import Enum, auto
 
-from stream import Sample, CHANNELS
+from stream import CHANNELS, Sample, adc_chart_schema
 
 # EMA is computed in fixed-point with this many fractional bits.
 # smoothed is stored scaled by (1 << _FP_BITS) to avoid truncation drift.
@@ -171,3 +171,9 @@ class Detector:
 
         self._first = False
         return result
+
+    def chart_schema(self) -> list[dict]:
+        return adc_chart_schema(extra_series=[
+            {"key": "baseline", "label": "Hold", "color": "#888",
+             "width": 1, "dash": [4, 3]},
+        ])

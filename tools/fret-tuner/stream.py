@@ -16,6 +16,59 @@ import serial.tools.list_ports
 
 CHANNELS = ("green", "red", "yellow", "blue", "orange")
 
+# Per-channel display colors used by chart schemas. Detectors share these
+# so the UI uses a consistent palette regardless of which detector is active.
+CH_COLORS: dict[str, str] = {
+    "green":  "#22c55e",
+    "red":    "#ef4444",
+    "yellow": "#eab308",
+    "blue":   "#3b82f6",
+    "orange": "#f97316",
+}
+
+
+def make_slot_schema(
+    channel: str,
+    series: list[dict],
+    *,
+    label: str | None = None,
+    color: str | None = None,
+    y_range: tuple[int, int] = (0, 4096),
+) -> dict:
+    """Build a single chart-slot schema for `channel`.
+
+    `series` is a list of {key, label, color, width, dash?} entries, where
+    `key` names a field inside the per-channel state dict produced by the
+    detector's update() (e.g. "raw", "baseline", "edge_line").
+    """
+    return {
+        "id": channel,
+        "label": label or channel.capitalize(),
+        "color": color or CH_COLORS.get(channel, "#888"),
+        "y_range": list(y_range),
+        "series": series,
+    }
+
+
+def adc_chart_schema(
+    extra_series: list[dict] | None = None,
+) -> list[dict]:
+    """Default schema for ADC-driven detectors: raw ADC + extra series.
+
+    Each detector that consumes ADC data and wants the raw signal plotted
+    can call this and pass any additional detector-derived series (baseline,
+    threshold lines, etc.).
+    """
+    extras = extra_series or []
+    slots = []
+    for ch in CHANNELS:
+        series = [
+            {"key": "raw", "label": "Raw", "color": CH_COLORS[ch], "width": 1.5},
+            *extras,
+        ]
+        slots.append(make_slot_schema(ch, series))
+    return slots
+
 START_BYTE = 0x03
 END_BYTE = 0xFC
 FRAME_SIZE = 12

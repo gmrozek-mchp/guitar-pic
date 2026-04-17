@@ -180,6 +180,61 @@ class Camera:
             return None
         return min(buf, key=lambda f: abs(f.t - t))
 
+    def step(self, t: float, direction: str = "next", n: int = 1) -> Optional[Frame]:
+        """Step `n` frames after (`direction='next'`) or before
+        (`direction='prev'`) the frame closest to `t`.
+
+        Used by the UI's frame-step / slow-mo controls so it can advance
+        through the actual buffered frames instead of guessing intervals.
+        Clamps at the buffer ends (returns first/last frame if `n` would
+        run off the edge).
+        """
+        with self._lock:
+            buf = list(self._buffer)
+        if not buf:
+            return None
+        # Find the index of the frame closest to `t`.
+        best_i = 0
+        best_d = abs(buf[0].t - t)
+        for i in range(1, len(buf)):
+            d = abs(buf[i].t - t)
+            if d < best_d:
+                best_d = d
+                best_i = i
+        delta = int(n) if direction == "next" else -int(n)
+        idx = max(0, min(len(buf) - 1, best_i + delta))
+        return buf[idx]
+
+    def step_seq(self, seq: int, direction: str = "next", n: int = 1) -> Optional[Frame]:
+        """Step `n` frames after/before the buffered frame with `seq`.
+
+        Exact addressing -- avoids the snap-to-closest ambiguity of
+        `step(t, ...)`. If the seq is no longer in the buffer (rolled off
+        the back), falls back to the oldest/newest frame as appropriate.
+        Clamps at buffer ends.
+        """
+        with self._lock:
+            buf = list(self._buffer)
+        if not buf:
+            return None
+        target = int(seq)
+        # Direct lookup; deque seqs are monotonic so we can binary-feel via
+        # offset from the back, but linear scan is fine for ~900 entries.
+        idx = -1
+        for i, f in enumerate(buf):
+            if f.seq == target:
+                idx = i
+                break
+        if idx < 0:
+            # Caller's seq has aged out. Pick the closest end and step from there.
+            if target < buf[0].seq:
+                idx = 0
+            else:
+                idx = len(buf) - 1
+        delta = int(n) if direction == "next" else -int(n)
+        new_idx = max(0, min(len(buf) - 1, idx + delta))
+        return buf[new_idx]
+
     def encode_jpeg(self, frame: Frame, quality: int = 80) -> Optional[bytes]:
         """Encode `frame.image` as JPEG bytes. Cached by frame sequence."""
         with self._lock:

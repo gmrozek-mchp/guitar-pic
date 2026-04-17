@@ -17,7 +17,7 @@ This detector targets eventual port to an ARM Cortex-M0+ at 24 MHz:
 - per-channel state ~20-30 bytes
 """
 
-from stream import Sample, CHANNELS
+from stream import CHANNELS, Sample, adc_chart_schema
 
 # Firmware defaults from fret_detect.c
 _DEFAULT_THRESHOLDS = {
@@ -79,3 +79,9 @@ class Detector:
             }
 
         return result
+
+    def chart_schema(self) -> list[dict]:
+        return adc_chart_schema(extra_series=[
+            {"key": "baseline", "label": "Hold", "color": "#888",
+             "width": 1, "dash": [4, 3]},
+        ])

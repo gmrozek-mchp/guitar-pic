@@ -167,6 +167,34 @@ class Detector:
 
 The `update()` return dict must include `"pressed"` (bool) and `"baseline"` (int) per channel. Additional keys are detector-specific and available for charting.
 
+The server auto-injects `"raw"` (the raw ADC reading for that channel) into each per-channel state dict before charting, so detectors do not need to copy it themselves.
+
+### Chart schema
+
+Detectors describe what their five chart slots should display via:
+
+```python
+class Detector:
+    def chart_schema(self) -> list[dict]:
+        """Return 5 slot specs:
+        {
+            "id":      str,             # state-dict key (e.g. "green")
+            "label":   str,             # axis label
+            "color":   "#rrggbb",
+            "y_range": [min, max],
+            "series":  [
+                {"key": str, "label": str, "color": "#rrggbb",
+                 "width": float, "dash": [int, int] | None},
+                ...
+            ],
+        }
+        """
+```
+
+Each `series.key` names a field inside that channel's state dict. `stream.adc_chart_schema(extra_series=[...])` builds the conventional `raw + <extras>` layout for ADC detectors. Detectors with no use for raw ADC (e.g. `detect_video`) simply omit the `"raw"` series.
+
+The browser rebuilds its chart slots whenever a new schema arrives, so switching detectors swaps the chart contents (labels, colors, y-range, plotted series) along with the algorithm.
+
 ### Overlay extension
 
 Detectors may optionally contribute named overlay layers to the video viewport:
@@ -273,10 +301,10 @@ Single-file HTML served by the backend at `http://localhost:8080`. Loads uPlot f
 
 ### Charts
 
-- 5 stacked uPlot time-series charts (one per channel: green, red, yellow, blue, orange)
-- Each shows raw ADC waveform + baseline overlay (dashed) + shaded press regions
+- 5 stacked uPlot time-series charts, one per fret slot (green, red, yellow, blue, orange)
+- The active detector's `chart_schema()` defines the series, labels, colors, and y-range for each slot. ADC detectors plot raw ADC + their baseline / threshold lines; `detect_video` plots its hold + edge signals (no raw ADC). Switching detectors swaps the chart contents.
+- Shaded press bands and (where the detector emits `press_count`) re-press tick marks are overlaid in the slot color
 - Native mouse-drag zoom, scroll-wheel zoom, double-click to reset
-- Y axis fixed at 0--4096 (full ADC range)
 
 ### Controls (sidebar)
 
@@ -313,10 +341,19 @@ Backed by the always-on subsystem in [Video reference (always-on)](#video-refere
 
 Sample data, detector state, and overlay metadata flow over the WebSocket; raw video frames are delivered over a parallel HTTP video transport (implementation choice; the existing tool uses MJPEG). Both share the same sample-clock timestamps so chart and video scrubbing target the same *t*.
 
+#### Master clock: the displayed video frame
+
+The currently displayed video frame is the single source of truth for *now*. Each captured frame has a `seq` (monotonic id) and a `t` (sample-clock timestamp), and every UI element (chart cursor, viewport scroll, overlay text) aligns to the *currently displayed* frame's `t` -- not to the latest ADC sample, the wall clock, or the network arrival time.
+
+- **Live mode**: the server emits a `frame_tick` message on every buffer write (~30 Hz). The browser updates `currentFrame = {seq, t}` and re-clips the chart's leading edge to that `t`. ADC samples that arrived *after* the latest displayed frame are buffered but not yet visible; they are revealed on the next tick. Chart movement is therefore quantized at the camera frame rate, which is the trade-off we accept to keep video, charts, and overlays exactly aligned.
+- **Pause / scrub**: `frame_tick` is ignored. The user moves `currentFrame` via the timeline, frame-step buttons, or slow-mo playback. Each scrub action returns from the server with a `{seq, t}` pair, which the browser writes back into `currentFrame`.
+- **CSV / no-camera fallback**: when no camera is attached, no `frame_tick` is emitted. The browser falls back to the latest ingested ADC sample timestamp as `currentFrame.t`, with `seq=null`.
+
 Server → client:
 
 ```json
 {"type": "data", "samples": [...], "state": [...], "actuator_mask": 0}
+{"type": "frame_tick", "seq": 1234, "t": 12.345}          // ~30 Hz, camera only
 {"type": "detector", "name": "...", "params": {...}, "available": [...],
  "timing": {...}, "actuate_enabled": false}
 {"type": "serial_status", "connected": true}              // data port
@@ -347,6 +384,9 @@ The backend also exposes:
 
 - `GET /api/sources` -- camera sources (mirror of the WS `sources` message)
 - `GET /api/serial-ports` -- enumerated serial ports for the actuator dropdown
+- `GET /video` -- live MJPEG of the working-resolution buffer (server-rendered overlays applied)
+- `GET /video/snap?t=<sec>` -- single JPEG of the buffered frame closest to *t*. Response carries `X-Frame-Seq` and `X-Frame-Time` headers (and a matching `Access-Control-Expose-Headers`) so the browser can sync `currentFrame` to the snapped frame even when the snapped *t* differs from the requested *t*.
+- `GET /video/step?dir=next|prev&n=N&{seq=S | t=T}` -- walk the ring buffer to the n-th next/prev frame. Address by `seq` for exact stepping (preferred when the browser holds a known frame); fall back to `t` for the first scrub when seq is unknown. Returns `{"seq": int, "t": float, "buffered": int}`.
 
 ## CLI Reference
 
@@ -447,7 +487,7 @@ python video_calibrate.py --sample
 
 ## Future Work
 
-- **Detector-owned data sources & chart schemas**: lift the ADC stream out of the top-level CLI into the detector itself, so each detector declares what inputs it needs (ADC serial / CSV / camera frames / nothing) and what the 5 chart slots should display (channel name, color, y-range, series). The runtime UI exposes a per-detector source picker. The current scope keeps `--port` / `--csv` as a top-level concern and leaves the 5 ADC channels hardcoded.
+- **Detector-owned data sources**: lift the ADC stream out of the top-level CLI into the detector itself, so each detector declares what inputs it needs (ADC serial / CSV / camera frames / nothing). The runtime UI would then expose a per-detector source picker. (Chart schemas already follow this model: each detector returns a `chart_schema()` and the browser rebuilds the 5 chart slots from it.) The current scope keeps `--port` / `--csv` as a top-level concern.
 - Multi-detector overlay (compare two algorithms side-by-side on the same chart)
 - Per-channel enable/disable toggles for actuation
 - Latency measurement display (round-trip time from ADC sample to GPIO assertion)

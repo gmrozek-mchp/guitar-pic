@@ -143,6 +143,21 @@ def _on_actuator_status(_status: dict) -> None:
     _push_status(_actuator_status_msg())
 
 
+def _on_frame_tick(frame) -> None:
+    """Camera listener: announce every buffered frame to clients.
+
+    The browser uses these ticks as the master clock — the currently
+    displayed frame's `t` drives chart cursor, scrub time, and overlay
+    alignment. Fired on every buffer write (~30 Hz), independent of the
+    view encoder's throttled MJPEG output.
+    """
+    _push_status({
+        "type": "frame_tick",
+        "seq": int(frame.seq),
+        "t": float(frame.t),
+    })
+
+
 def _actuator_status_msg() -> dict:
     a = _actuator
     s = a.status() if a is not None else {"active": False, "port": None,
@@ -205,6 +220,9 @@ def _process_sample(sample: Sample, det, act):
         state_row[ch] = dict(ch_s)
         state_row[ch].setdefault("pressed", False)
         state_row[ch].setdefault("baseline", 0)
+        # Auto-inject the raw ADC reading into state so chart schemas can
+        # reference "raw" without each detector having to copy it explicitly.
+        state_row[ch]["raw"] = getattr(sample, ch)
 
     with _lock:
         _raw_history.append(sample)
@@ -313,6 +331,32 @@ async def _broadcast_loop():
         _ws_clients.difference_update(dead)
 
 
+def _fallback_chart_schema() -> list[dict]:
+    """Minimal schema for detectors that haven't implemented chart_schema().
+
+    Plots only the per-channel `baseline` field (every detector emits it).
+    """
+    from stream import CH_COLORS, make_slot_schema  # local to avoid cycles
+    return [
+        make_slot_schema(ch, [
+            {"key": "baseline", "label": "Baseline",
+             "color": CH_COLORS[ch], "width": 1.5},
+        ])
+        for ch in CHANNELS
+    ]
+
+
+def _detector_chart_schema(det) -> list[dict]:
+    if det is not None and hasattr(det, "chart_schema"):
+        try:
+            schema = det.chart_schema()
+            if schema:
+                return list(schema)
+        except Exception as exc:
+            log.warning("detector chart_schema() raised: %s", exc)
+    return _fallback_chart_schema()
+
+
 def _detector_info() -> dict:
     return {
         "type": "detector",
@@ -326,6 +370,7 @@ def _detector_info() -> dict:
             "CHORD_WINDOW_MS": _actuator.chord_window_ms if _actuator else DEFAULT_TIMING["CHORD_WINDOW_MS"],
         },
         "actuate_enabled": _actuator.enabled if _actuator else False,
+        "chart_schema": _detector_chart_schema(_detector),
     }
 
 
@@ -471,6 +516,7 @@ async def startup():
 
     cam = get_camera()
     cam.set_sample_clock(lambda: _latest_sample_t)
+    cam.add_frame_listener(_on_frame_tick)
 
     sources = enumerate_cameras()
     target_id: Optional[int] = None
@@ -637,23 +683,77 @@ async def video_feed():
     )
 
 
-def _snap_jpeg(t: Optional[float]) -> Optional[bytes]:
+def _snap_jpeg(t: Optional[float]) -> Optional[tuple[bytes, int, float]]:
+    """Snap (and overlay-encode) a frame; return (jpeg, seq, t)."""
     cam = get_camera()
     frame = cam.latest() if t is None else cam.closest(float(t))
     if frame is None:
         return None
     with _lock:
         det = _detector
-    return _compose_frame_jpeg(frame, det, scrub_t=t)
+    jpeg = _compose_frame_jpeg(frame, det, scrub_t=t)
+    if jpeg is None:
+        return None
+    return jpeg, int(frame.seq), float(frame.t)
 
 
 @app.get("/video/snap")
 async def video_snap(t: Optional[float] = None):
-    jpeg = await asyncio.to_thread(_snap_jpeg, t)
-    if jpeg is None:
+    snap = await asyncio.to_thread(_snap_jpeg, t)
+    if snap is None:
         return Response(content=b"no frame available", status_code=503)
-    return Response(content=jpeg, media_type="image/jpeg",
-                    headers={"Cache-Control": "no-store"})
+    jpeg, seq, ft = snap
+    return Response(
+        content=jpeg,
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-store",
+            # Identifies the frame the browser is looking at, for the
+            # camera-as-master-clock model. Browser reads these to keep its
+            # `currentFrame` in sync with whatever it's actually displaying.
+            "X-Frame-Seq": str(seq),
+            "X-Frame-Time": f"{ft:.6f}",
+            "Access-Control-Expose-Headers": "X-Frame-Seq, X-Frame-Time",
+        },
+    )
+
+
+@app.get("/video/step")
+async def video_step(
+    dir: str = "next",
+    n: int = 1,
+    seq: Optional[int] = None,
+    t: Optional[float] = None,
+):
+    """Return the {seq, t} of the n-th next/prev buffered frame.
+
+    Addressing: prefers `seq` (exact, no ambiguity) when supplied; falls
+    back to `t` (snap-to-closest) for fresh scrubs where the browser has
+    no frame seq yet.
+
+    Used by the browser's scrub controls so it can move by exact frame
+    boundaries instead of guessing intervals. Response is JSON
+    `{"t": float, "seq": int, "buffered": int}`. 503 if no buffer yet.
+    """
+    if seq is None and t is None:
+        return Response(content=b"need seq or t", status_code=400)
+
+    cam = get_camera()
+    frame = await asyncio.to_thread(_step_by, seq, t, dir, n)
+    if frame is None:
+        return Response(content=b"no frame available", status_code=503)
+    return JSONResponse({
+        "t": float(frame.t),
+        "seq": int(frame.seq),
+        "buffered": cam.status().get("buffered", 0),
+    })
+
+
+def _step_by(seq: Optional[int], t: Optional[float], direction: str, n: int):
+    cam = get_camera()
+    if seq is not None:
+        return cam.step_seq(int(seq), direction, int(n))
+    return cam.step(float(t), direction, int(n))
 
 
 # --- WebSocket -------------------------------------------------------------

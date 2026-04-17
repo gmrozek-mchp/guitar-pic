@@ -8,6 +8,126 @@ _**User**_
 
 I want to rethink the fret-tuner tool. lets work on the spec document. First, the video input will always be present. This will have a few different purposes, independent of any other sensor data or detection algorithms. Primary purpose is as video reference / record against any other sensor data / detection algorithms. Source should be selectable in the user interface. It should buffer up to at least 30 seconds of video at 30Hz for review against other data. Must be able to scrub through video data in sync with other buffered data. Should be able to overlay other information over the video data at full frame rate.
 
+_**User**_
+
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+_**User**_
+
+has this modified spec been implemented in code yet?
+
+_**User**_
+
+I just switched to Opus 4.7 vs. auto mode. Take another look at spec based on this conversation so far
+
+_**User**_
+
+yes let's switch to planning mode for this. Also, remove any restrictions related to ARM Cortex M0+ from the overall spec. We may place this restriction on specific detection algorithms in the future. But the overall tool should not have this restriction.
+
+_**User**_
+
+a
+
+_**User**_
+
+are you stuck?
+
+_**User**_
+
+what about all the other stuff we just talked about?
+
+_**User**_
+
+minimum overlay should include strum state as well as frets
+
+_**User**_
+
+go
+
+_**User**_
+
+I don't see camera.py
+
+_**User**_
+
+why did we defer this? It's requirement of the project, no?
+
+_**User**_
+
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+_**User**_
+
+is everything ready to try out?
+
+_**User**_
+
+run it
+
+_**User**_
+
+view looks good. we need to separate out the actuation stream from any data stream.
+
+_**User**_
+
+start with one board
+
+_**User**_
+
+actuator serial not connecting. nothing shows up in UI
+
+_**User**_
+
+connected. detect video algorithm not working as it used to.
+
+_**User**_
+
+presses are incorrect and wrong time. Does detect_video act on raw incoming video before any overlays for display?
+
+_**User**_
+
+chat stuck?
+
+_**User**_
+
+everything seems to be running slower than it used to. is this an effect of new architecture? video capture and detection algorithms should have absolute priority. view lower priority
+
+_**User**_
+
+detector performance is significantly improved.
+
+_**User**_
+
+is there overhead in shrinking the working frame to 960x540? I'm thinking detection could run at full resolution but display buffer for visualization purpose could be lower resolution
+
+_**User**_
+
+I will commit
+
+_**User**_
+
+Is detect_video essentially guaranteed to run once per frame?  (assuming sufficient processing power) and at highest priority? 
+
+_**User**_
+
+is the visualization frame buffering effectively decoupled from actual display? I'm wondering for purpose of scrubbing through the visualization and detection data. It would be ideal if the buffer could keep full 30fps even if not capable of displaying full 30fps live.
+
+_**User**_
+
+yes please
+
+_**User**_
+
+let's remove default ADC data from data view. data in chart view should be dependent on enabled detector
+
+_**User**_
+
+I want to rethink the fret-tuner tool. lets work on the spec document. First, the video input will always be present. This will have a few different purposes, independent of any other sensor data or detection algorithms. Primary purpose is as video reference / record against any other sensor data / detection algorithms. Source should be selectable in the user interface. It should buffer up to at least 30 seconds of video at 30Hz for review against other data. Must be able to scrub through video data in sync with other buffered data. Should be able to overlay other information over the video data at full frame rate.
+
 ---
 
 _**Agent (claude-opus-4-7)**_
@@ -23,25 +143,14 @@ Exploring the fret-tuner docs and video-related code so we can draft an accurate
 
 _**Agent (claude-opus-4-7)**_
 
-<tool-use data-tool-type="search" data-tool-name="glob_file_search">
-<details>
-<summary>Tool use: **glob_file_search** • Searched codebase "" • **5** results in **1** directory</summary>
-
-Directory: **/Users/greg/projects/microchip/guitar-pic** (5 files)
-
-| File |
-|------|
-| `.specstory/history/2026-03-27_14-01-12Z-fretboard-tuning-tool-specification.md` |
-| `tools/fret-tuner/SPEC.md` |
-| `.specstory/history/2026-01-29_04-42-48Z-guitar-hero-bot-specification-document.md` |
-| `SPEC.md` |
-| `.specstory/history/2026-01-29_04-42Z-guitar-hero-bot-specification-document.md` |
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
 
 </details>
 </tool-use>
 
-<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
-<summary>Tool use: **glob_file_search**</summary>
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
 
 </details></tool-use>
 
@@ -67,14 +176,25 @@ Directory: **/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner** (1 fil
 
 _**Agent (claude-opus-4-7)**_
 
-<tool-use data-tool-type="read" data-tool-name="read_file_v2">
-<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **5** results in **1** directory</summary>
+
+Directory: **/Users/greg/projects/microchip/guitar-pic** (5 files)
+
+| File |
+|------|
+| `.specstory/history/2026-03-27_14-01-12Z-fretboard-tuning-tool-specification.md` |
+| `tools/fret-tuner/SPEC.md` |
+| `.specstory/history/2026-01-29_04-42-48Z-guitar-hero-bot-specification-document.md` |
+| `SPEC.md` |
+| `.specstory/history/2026-01-29_04-42Z-guitar-hero-bot-specification-document.md` |
 
 </details>
 </tool-use>
 
-<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
-<summary>Tool use: **read_file_v2**</summary>
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
 
 </details></tool-use>
 
@@ -256,68 +376,7 @@ Noting a mismatch: [tools/fret-tuner/SPEC.md](tools/fret-tuner/SPEC.md) says ~10
 
 _**Agent (claude-opus-4-7)**_
 
-<tool-use data-tool-type="unknown" data-tool-name="create_plan">
-<details>
-<summary>Tool use: **create_plan**</summary>
-
-
-Parameters:
-
-```json
-{
-  "name": "Fret-tuner video spec",
-  "overview": "Expand [tools/fret-tuner/SPEC.md](tools/fret-tuner/SPEC.md) with a first-class \"always-on video reference\" subsystem: goals independent of ADC/detection, UI source selection, 30s@30Hz buffering, timeline-locked scrubbing with charts, and full-frame-rate overlays—while clearly separating this from the optional &#96;detect_video&#96; detector and fixing outdated camera-panel numbers.",
-  "plan": "# Fret-tuner SPEC: video reference subsystem\n\n## Scope\n\nUpdate only [&#96;tools/fret-tuner/SPEC.md&#96;](tools/fret-tuner/SPEC.md). No code changes in this step (plan mode). The goal is a clear product/architecture description that matches your intent and replaces stale camera-panel details.\n\n## Current gaps (why this edit matters)\n\n- The **Camera Panel** subsection describes ~10 fps and ~300 frames; [&#96;index.html&#96;](tools/fret-tuner/index.html) already targets **30 s × 30 Hz** (&#96;FRAME_BUFFER_SEC&#96;, &#96;FRAME_BUFFER_FPS&#96;, &#96;FRAME_BUFFER_CAP&#96;). The spec should match the target requirements, not the old prose.\n- Today the doc mixes **browser camera** (&#96;getUserMedia&#96;) with **&#96;detect_video&#96;** (OpenCV + &#96;/video&#96; MJPEG) without stating that **reference video** should be conceptually independent of **which detector** is selected.\n\n## Proposed SPEC structure\n\n### 1. New section early (after **Overview** or integrated into **Architecture**): **Video reference (always-on)**\n\nState explicitly:\n\n- **Presence**: The fret-tuner UI includes a dedicated video path at all times—not an optional mode gated on choosing &#96;detect_video&#96;.\n- **Primary role**: Time-aligned **reference and recording** against UART/CSV timeline and any detector outputs (waveforms, presses, actuator events). Useful for correlating “what was on screen” with “what the ADC said.”\n- **Independence**: Operation and requirements for this path do **not** depend on running a particular &#96;detect_*.py&#96; module. Detection algorithms may consume video elsewhere (e.g. &#96;detect_video&#96;), but **reference capture** is a separate concern.\n\nOptional short bullet list of **secondary roles** (wording only—keep generic): debug visual alignment, offline review after sessions, documenting false positives/negatives.\n\n### 2. Requirements (normative bullets for the spec)\n\nAlign with what you asked for:\n\n| Topic | Spec language |\n|--------|----------------|\n| **Source selection** | User-selectable video input in the UI (same idea as today: enumerate &#96;videoinput&#96; devices; persist selection). Clarify if multiple backends exist later (browser capture vs server MJPEG), the **reference track** still has one active source at a time. |\n| **Buffer depth** | Ring buffer holding **at least 30 seconds** at **30 Hz** (900 frames target). Note this is the **review buffer**, distinct from any detector-internal frame queue. |\n| **Synchronization** | Single **shared timeline** (anchor wall clock or sample clock to video frame timestamps) so scrubbing/panning the chart seeks the **closest** frame (existing behavior direction in code: frame buffer entries tagged with &#96;t&#96;). |\n| **Scrubbing** | When paused (and ideally when interacting with zoom/pan), the displayed frame tracks the **same time** as the chart focus/cursor as other buffered series—no divergent clocks. |\n| **Overlays** | Compositing **detector state, ADC-derived annotations, timing markers, text** on top of the video at **full frame rate**—meaning each displayed frame is drawn with overlays for that timeline instant, not a lower-rate annotation pass. (Avoid promising a specific FPS number for compositing beyond “matches video display path”; the requirement is **per-frame overlay**, not 10 Hz stickers.) |\n\n### 3. Architecture diagram update\n\nExtend the ASCII diagram in **Architecture** so “Video reference” sits beside the browser charts and WebSocket path, not nested under “detector.” Example intent:\n\n&#96;&#96;&#96;mermaid\nflowchart LR\n  subgraph browser [Browser]\n    Charts[uPlot_ADC_state]\n    VideoRef[Video_ring_buffer_and_display]\n    WS[WebSocket]\n  end\n  subgraph backend [FastAPI]\n    Stream[stream.py_serial_CSV]\n    Detect[detect_*.py_optional]\n    Server[server.py]\n  end\n  UART[MCU_UART]\n  CSV[CSV_file]\n\n  UART --\u003e Stream\n  CSV --\u003e Stream\n  Stream --\u003e Server\n  Server --\u003e WS\n  WS --\u003e Charts\n  Detect --\u003e Server\n  VideoRef -. optional_anchor_to_sample_time .-\u003e Charts\n&#96;&#96;&#96;\n\n(Use this only if it clarifies; keep ASCII if you prefer consistency with the rest of the file.)\n\n### 4. Replace / rewrite **### Camera Panel** → **### Video panel (reference)**\n\n- Rename heading to reflect “reference video” language.\n- Document: device selector, live vs paused behavior, ring buffer parameters (**30 s / 30 Hz**), pause/zoom sync with charts.\n- **Explicit split** from **&#96;detect_video&#96;**: When that detector is active, the server may expose &#96;/video&#96; MJPEG **for algorithm preview**; that does not replace the **always-on reference** semantics above (two concepts: “algorithm preview” vs “timeline-locked reference archive”).\n\n### 5. Touch **Bundled Detector: detect_video** lightly\n\nAdd a short cross-reference at the top of that section: pixel-based detection is **optional**; reference video buffering remains defined in **Video panel (reference)**.\n\n### 6. **Future Work** hygiene\n\nEither move “full-frame overlays with arbitrary layers” out of Future Work if it becomes a stated requirement, or leave a single line for extras (export, multi-camera) that are still out of scope.\n\n## Deliverable\n\nOne cohesive edit to [&#96;tools/fret-tuner/SPEC.md&#96;](tools/fret-tuner/SPEC.md): new section + revised diagram + rewritten video panel + corrected buffer numbers + clear separation from &#96;detect_video&#96;.\n\n## Out of scope for this doc pass\n\n- Implementing overlay pipeline, GPU paths, or changing [&#96;index.html&#96;](tools/fret-tuner/index.html) capture implementation (e.g. &#96;dataURL&#96; cost at 30 Hz)—those belong to a follow-up implementation task once the spec is locked.\n",
-  "todos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "pending"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "pending"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "pending"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "pending"
-    }
-  ]
-}
-```
-Additional data:
-
-```json
-{
-  "hasOpenedEditor": true,
-  "planId": "fret-tuner_video_spec_50da5461",
-  "planUri": "file:///Users/greg/.cursor/plans/fret-tuner_video_spec_50da5461.plan.md",
-  "reviewData": {
-    "isShowingInput": false,
-    "selectedOption": "none",
-    "status": "Requested"
-  }
-}
-```
-Result:
-
-```json
-{
-  "rejected": {}
-}
-```
-Status: **completed**
-
-
-</details>
-</tool-use>
+Cancelled
 
 <tool-use data-tool-type="unknown" data-tool-name="create_plan"><details>
 <summary>Tool use: **create_plan**</summary>
@@ -327,6 +386,8 @@ Status: **completed**
 ---
 
 _**User**_
+
+Fret-tuner SPEC: video reference subsystem
 
 Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
 
@@ -356,7 +417,14 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
+      "id": "draft-video-section",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -368,28 +436,6 @@ Result:
       "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
       "id": "draft-video-section",
       "status": "in_progress"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "pending"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "pending"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "pending"
     },
     {
       "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
@@ -644,7 +690,29 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
+      "id": "draft-video-section",
+      "status": "completed"
+    },
+    {
+      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
+      "id": "revise-architecture",
+      "status": "completed"
+    },
+    {
+      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
+      "id": "rewrite-camera-panel",
+      "status": "completed"
+    },
+    {
+      "content": "Adjust Future Work vs new normative requirements",
+      "id": "future-work-pass",
+      "status": "completed"
+    }
+  ]
 }
 ```
 Result:
@@ -671,28 +739,6 @@ Result:
       "content": "Adjust Future Work vs new normative requirements",
       "id": "future-work-pass",
       "status": "completed"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "in_progress"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "pending"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "pending"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "pending"
     }
   ],
   "success": true,
@@ -735,6 +781,12 @@ Here is what changed in [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md):
 All related todos are **completed**.
 
 ---
+
+_**User**_
+
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
 
 _**User**_
 
@@ -1001,8 +1053,6 @@ Result:
   "userApproved": true
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1262,18 +1312,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "camera_ownership": [
-      "__freeform_other__"
-    ],
-    "ui_layout": [
-      "split_resizable"
-    ]
-  },
-  "freeformTexts": {
-    "camera_ownership": "Not sure I completely understand options. I think C? Reference should own its own camera always. Any detect_video algorithm would likely pull from this buffer.",
-    "ui_layout": ""
-  },
   "status": "submitted"
 }
 ```
@@ -1296,8 +1334,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1379,7 +1415,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {},
   "status": "submitted"
 }
 ```
@@ -1389,16 +1424,16 @@ Result:
 {
   "answers": [
     {
+      "freeformText": "",
       "questionId": "capture_location"
     },
     {
+      "freeformText": "",
       "questionId": "scope_now"
     }
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1417,6 +1452,17 @@ _**User**_
 a
 
 ---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user answered "a" to one of the questions, but looking back at the previous batch, neither question used "a" as an option ID directly. The first question about capture location had options like server_capture and browser_capture_upload, while the second about scope had spec_only and spec_plus_rule. So "a" likely maps to the first option in one of these questions, though both apparently received "No" responses.
+
+Given that the user just wrote "a" with no other context, they're probably selecting the first option for both unanswered questions — server_capture and spec_only. That's the simplest reading. But I'm also noticing the workspace folders changed to "none," which is unusual and makes me want to be careful about proceeding. I should ask a quick clarifying question to confirm they mean "a" for both questions rather than guessing.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Just to confirm — "a" applied to both unanswered questions?
 
 _**Agent (claude-opus-4-7)**_
 
@@ -1459,14 +1505,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "confirm_a": [
-      "neither"
-    ]
-  },
-  "freeformTexts": {
-    "confirm_a": ""
-  },
   "status": "submitted"
 }
 ```
@@ -1485,8 +1523,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1497,6 +1533,15 @@ Status: **completed**
 <summary>Tool use: **ask_question**</summary>
 
 </details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I realize I may have misunderstood what "a" referred to—let me reframe those original questions in a clearer way for the user.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Sorry — let me re-pose the two open questions more clearly:
 
 _**Agent (claude-opus-4-7)**_
 
@@ -1561,18 +1606,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "capture_location": [
-      "server_capture"
-    ],
-    "scope_now": [
-      "spec_plus_rule_and_code"
-    ]
-  },
-  "freeformTexts": {
-    "capture_location": "",
-    "scope_now": ""
-  },
   "status": "submitted"
 }
 ```
@@ -1598,8 +1631,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1610,6 +1641,17 @@ Status: **completed**
 <summary>Tool use: **ask_question**</summary>
 
 </details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm settling on the key architectural decisions: the Reference component will manage its own camera instance, detect_video will read from it, the UI uses split_resizable for layout, and video capture happens server-side with OpenCV while the browser just displays the frames. The scope covers the SPEC, cursor rule cleanup, and some minor code alignment work. I need to finalize a few more details before mapping out the full plan.
+
+The critical unknowns are how to transport frames from server to browser (MJPEG seems like the natural choice since it's already in the codebase), what overlays to actually render on the video, and how CSV replay should behave when there's no live camera feed to capture from. I'm leaning toward just specifying MJPEG for transport and asking about the CSV replay scenario, since that's genuinely a UX question about whether the camera should even be active during a historical CSV playback.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Two more decisions and then I'll draft the plan:
 
 _**Agent (claude-opus-4-7)**_
 
@@ -1674,18 +1716,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "csv_replay_video": [
-      "__freeform_other__"
-    ],
-    "overlay_set": [
-      "extensible"
-    ]
-  },
-  "freeformTexts": {
-    "csv_replay_video": "I think option C, but what is 'CSV'?",
-    "overlay_set": ""
-  },
   "status": "submitted"
 }
 ```
@@ -1708,8 +1738,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1720,6 +1748,47 @@ Status: **completed**
 <summary>Tool use: **ask_question**</summary>
 
 </details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ So the CSV format comes from Microchip Data Visualizer and contains ADC sample logs with columns for timestamps and raw/processed values across different color channels like BLUE, GREEN, and ORANGE.
+
+I'm settling on the core decisions: reference video owns its camera, split resizable layout in the UI, server-side capture with Python OpenCV feeding frames to the browser, and CSV replay paired with video files. For overlays I'll keep it extensible with a small required set and hooks for extensions. Now I need to restructure the SPEC to position video as a first-class component alongside the other capture modes.
+
+The tricky part is resolving how detect_video fits in—the server captures into a shared ring buffer that detect_video reads from, eliminating the need for a separate MJPEG endpoint. I should clarify the capture location, transport mechanism (MJPEG has precedent but I need to decide), and buffer ownership. For recording and playback, live captures go into the ring buffer, and on demand we can save to disk; CSV replay loads the paired video file alongside the data.
+
+On the code side, this is bigger than a small touch-up—proper alignment requires the server-side capture refactor as its own task. I'll keep changes minimal: remove the camera selector hiding so the dropdown stays visible, and drop the MJPEG-specific camera mode switching since there's just one capture path now. I should also clean up the M0+ references by either removing them from the cursor rules or scoping them to per-detector docstrings, and move any M0+ notes in detect_slope.py into the file itself as detector-specific concerns.
+
+For the M0+ removal, I'm keeping the per-detector note in detect_slope.py since that's already the right place, and adding similar guidance to detect_threshold.py and detect_trough.py, while removing the tool-wide M0+ section from the cursor rule.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Good — that's enough. (Quick note: **CSV** = the captured ADC sample logs in [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) §"CSV Replay Format" — files from Microchip Data Visualizer or our own recordings, used with `python fret-tuner.py --csv ...`.)
+
+Drafting the plan now.
+
+_**Agent (claude-opus-4-7)**_
+
+Cancelled
+
+<tool-use data-tool-type="unknown" data-tool-name="create_plan"><details>
+<summary>Tool use: **create_plan**</summary>
+
+</details></tool-use>
+
+---
+
+_**User**_
+
+a
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user just typed "a" again, which could mean approval, an accidental keystroke, or a reference to something else entirely. Since I just presented the plan and there's no active question pending, it's most likely they're approving it—but I need to confirm before proceeding, since plan mode requires explicit permission to execute.</details></think>
 
 _**Agent (claude-opus-4-7)**_
 
@@ -1762,14 +1831,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "approve_plan": [
-      "stray"
-    ]
-  },
-  "freeformTexts": {
-    "approve_plan": ""
-  },
   "status": "submitted"
 }
 ```
@@ -1788,8 +1849,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1800,6 +1859,10 @@ Status: **completed**
 <summary>Tool use: **ask_question**</summary>
 
 </details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Acknowledged — ignoring. Plan is still pending your review. Let me know when you'd like to proceed, revise, or have me clarify anything in it.
 
 ---
 
@@ -1969,8 +2032,6 @@ Result:
   "userApproved": true
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -1998,34 +2059,8 @@ Parameters:
 
 ```json
 {
-  "merge": true
-}
-```
-Result:
-
-```json
-{
-  "finalTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "completed"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "completed"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "completed"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "completed"
-    },
+  "merge": true,
+  "todos": [
     {
       "content": "Rewrite top sections of SPEC.md: tightened Video reference (always-on), single ASCII Architecture, drop redundant mermaid",
       "id": "spec-rewrite-top",
@@ -2076,27 +2111,63 @@ Result:
       "id": "code-align-camera-selector",
       "status": "pending"
     }
-  ],
-  "initialTodos": [
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
     {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "completed"
+      "content": "Rewrite top sections of SPEC.md: tightened Video reference (always-on), single ASCII Architecture, drop redundant mermaid",
+      "id": "spec-rewrite-top",
+      "status": "in_progress"
     },
     {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "completed"
+      "content": "Add Overlay extension subsection under Detection Algorithm Contract",
+      "id": "spec-overlay-extension",
+      "status": "pending"
     },
     {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "completed"
+      "content": "Add Recording \u0026 paired CSV subsection; document --video CLI option",
+      "id": "spec-recording-csv",
+      "status": "pending"
     },
     {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "completed"
+      "content": "Rewrite Video panel (reference) under Browser UI; split layout; remove implementation leakage",
+      "id": "spec-browser-ui",
+      "status": "pending"
+    },
+    {
+      "content": "Reframe Bundled Detector: detect_video as a buffer consumer; drop DEVICE_ID/SHOW_PREVIEW; sensor markers as overlay layer",
+      "id": "spec-detect-video",
+      "status": "pending"
+    },
+    {
+      "content": "Update WebSocket Protocol with video_meta, set_source, record_start, record_stop",
+      "id": "spec-ws-protocol",
+      "status": "pending"
+    },
+    {
+      "content": "Prune Future Work to reflect new in-scope items",
+      "id": "spec-future-work",
+      "status": "pending"
+    },
+    {
+      "content": "Delete M0+ Constraint section from .cursor/rules/detection-development.mdc; add brief per-detector pointer",
+      "id": "rule-strip-m0",
+      "status": "pending"
+    },
+    {
+      "content": "Add Performance Notes block to detect_threshold.py, detect_trough.py, detect_slope.py",
+      "id": "detector-perf-notes",
+      "status": "pending"
+    },
+    {
+      "content": "Remove camera-selector hiding when detect_video active in index.html",
+      "id": "code-align-camera-selector",
+      "status": "pending"
     }
   ],
   "success": true,
@@ -2296,34 +2367,8 @@ Parameters:
 
 ```json
 {
-  "merge": true
-}
-```
-Result:
-
-```json
-{
-  "finalTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "completed"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "completed"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "completed"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "completed"
-    },
+  "merge": true,
+  "todos": [
     {
       "content": "Rewrite top sections of SPEC.md: tightened Video reference (always-on), single ASCII Architecture, drop redundant mermaid",
       "id": "spec-rewrite-top",
@@ -2374,77 +2419,63 @@ Result:
       "id": "code-align-camera-selector",
       "status": "in_progress"
     }
-  ],
-  "initialTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "completed"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "completed"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "completed"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "completed"
-    },
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
     {
       "content": "Rewrite top sections of SPEC.md: tightened Video reference (always-on), single ASCII Architecture, drop redundant mermaid",
       "id": "spec-rewrite-top",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "content": "Add Overlay extension subsection under Detection Algorithm Contract",
       "id": "spec-overlay-extension",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "content": "Add Recording \u0026 paired CSV subsection; document --video CLI option",
       "id": "spec-recording-csv",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "content": "Rewrite Video panel (reference) under Browser UI; split layout; remove implementation leakage",
       "id": "spec-browser-ui",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "content": "Reframe Bundled Detector: detect_video as a buffer consumer; drop DEVICE_ID/SHOW_PREVIEW; sensor markers as overlay layer",
       "id": "spec-detect-video",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "content": "Update WebSocket Protocol with video_meta, set_source, record_start, record_stop",
       "id": "spec-ws-protocol",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "content": "Prune Future Work to reflect new in-scope items",
       "id": "spec-future-work",
-      "status": "pending"
+      "status": "completed"
     },
     {
       "content": "Delete M0+ Constraint section from .cursor/rules/detection-development.mdc; add brief per-detector pointer",
       "id": "rule-strip-m0",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "content": "Add Performance Notes block to detect_threshold.py, detect_trough.py, detect_slope.py",
       "id": "detector-perf-notes",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "content": "Remove camera-selector hiding when detect_video active in index.html",
       "id": "code-align-camera-selector",
-      "status": "pending"
+      "status": "in_progress"
     }
   ],
   "success": true,
@@ -2664,69 +2695,8 @@ Parameters:
 
 ```json
 {
-  "merge": true
-}
-```
-Result:
-
-```json
-{
-  "finalTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "completed"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "completed"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "completed"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "completed"
-    },
-    {
-      "content": "Rewrite top sections of SPEC.md: tightened Video reference (always-on), single ASCII Architecture, drop redundant mermaid",
-      "id": "spec-rewrite-top",
-      "status": "completed"
-    },
-    {
-      "content": "Add Overlay extension subsection under Detection Algorithm Contract",
-      "id": "spec-overlay-extension",
-      "status": "completed"
-    },
-    {
-      "content": "Add Recording \u0026 paired CSV subsection; document --video CLI option",
-      "id": "spec-recording-csv",
-      "status": "completed"
-    },
-    {
-      "content": "Rewrite Video panel (reference) under Browser UI; split layout; remove implementation leakage",
-      "id": "spec-browser-ui",
-      "status": "completed"
-    },
-    {
-      "content": "Reframe Bundled Detector: detect_video as a buffer consumer; drop DEVICE_ID/SHOW_PREVIEW; sensor markers as overlay layer",
-      "id": "spec-detect-video",
-      "status": "completed"
-    },
-    {
-      "content": "Update WebSocket Protocol with video_meta, set_source, record_start, record_stop",
-      "id": "spec-ws-protocol",
-      "status": "completed"
-    },
-    {
-      "content": "Prune Future Work to reflect new in-scope items",
-      "id": "spec-future-work",
-      "status": "completed"
-    },
+  "merge": true,
+  "todos": [
     {
       "content": "Delete M0+ Constraint section from .cursor/rules/detection-development.mdc; add brief per-detector pointer",
       "id": "rule-strip-m0",
@@ -2742,28 +2712,14 @@ Result:
       "id": "code-align-camera-selector",
       "status": "completed"
     }
-  ],
-  "initialTodos": [
-    {
-      "content": "Add Video reference (always-on): goals, independence from detectors, requirements table/bullets",
-      "id": "draft-video-section",
-      "status": "completed"
-    },
-    {
-      "content": "Update Architecture diagram + WebSocket description to show parallel video reference path",
-      "id": "revise-architecture",
-      "status": "completed"
-    },
-    {
-      "content": "Rename to Video panel; fix 30s/30Hz; scrub/sync/overlay; cross-ref detect_video",
-      "id": "rewrite-camera-panel",
-      "status": "completed"
-    },
-    {
-      "content": "Adjust Future Work vs new normative requirements",
-      "id": "future-work-pass",
-      "status": "completed"
-    },
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
     {
       "content": "Rewrite top sections of SPEC.md: tightened Video reference (always-on), single ASCII Architecture, drop redundant mermaid",
       "id": "spec-rewrite-top",
@@ -2802,17 +2758,17 @@ Result:
     {
       "content": "Delete M0+ Constraint section from .cursor/rules/detection-development.mdc; add brief per-detector pointer",
       "id": "rule-strip-m0",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "content": "Add Performance Notes block to detect_threshold.py, detect_trough.py, detect_slope.py",
       "id": "detector-perf-notes",
-      "status": "in_progress"
+      "status": "completed"
     },
     {
       "content": "Remove camera-selector hiding when detect_video active in index.html",
       "id": "code-align-camera-selector",
-      "status": "in_progress"
+      "status": "completed"
     }
   ],
   "success": true,
@@ -2960,8 +2916,6 @@ Result:
   "userApproved": true
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -3097,18 +3051,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "implementation_phases": [
-      "phase_ab"
-    ],
-    "source_enumeration": [
-      "platform_specific"
-    ]
-  },
-  "freeformTexts": {
-    "implementation_phases": "",
-    "source_enumeration": ""
-  },
   "status": "submitted"
 }
 ```
@@ -3134,8 +3076,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -3172,98 +3112,7 @@ Drafting the plan now.
 
 _**Agent (claude-opus-4-7)**_
 
-<tool-use data-tool-type="unknown" data-tool-name="create_plan">
-<details>
-<summary>Tool use: **create_plan**</summary>
-
-
-Parameters:
-
-```json
-{
-  "name": "Implement camera.py + detect_video refactor",
-  "overview": "Move camera ownership from browser/detect_video to a new server-side [tools/fret-tuner/camera.py](tools/fret-tuner/camera.py) module: shared ring buffer, sample-clock-anchored frames, runtime source switching, platform-specific enumeration. Wire [server.py](tools/fret-tuner/server.py) to drive the camera and serve /video + per-time snaps. Refactor [detect_video.py](tools/fret-tuner/detect_video.py) to consume the shared buffer instead of grabbing its own camera. Replace the browser-side getUserMedia capture with a server-driven source dropdown in [index.html](tools/fret-tuner/index.html).",
-  "plan": "\n## Scope\n\n**Phase A + B** of the implementation. Out: recording, paired CSV+video replay, split/resizable layout (deferred to follow-up tasks).\n\n## Architecture (after)\n\n&#96;&#96;&#96;mermaid\nflowchart LR\n  Cam[Physical camera] --\u003e CamPy[camera.py]\n  CamPy --\u003e|ring buffer| Server[server.py]\n  CamPy --\u003e|frame listener| DetVid[detect_video.py]\n  Server --\u003e|/video MJPEG| Browser\n  Server --\u003e|/video/snap?t=X| Browser\n  Server --\u003e|WS sources, video_meta| Browser\n  ADC[Sample stream] --\u003e Server\n  Server --\u003e|sample_clock| CamPy\n&#96;&#96;&#96;\n\n## 1. New module — [tools/fret-tuner/camera.py](tools/fret-tuner/camera.py)\n\nSingle responsibility: own the camera, hold the ring buffer, expose frame access by time.\n\nKey surface:\n\n&#96;&#96;&#96;python\nclass Frame:\n    __slots__ = (\"t\", \"seq\", \"image\")  # t: sample-clock seconds; seq: monotonic; image: BGR ndarray\n\nclass Camera:\n    def set_sample_clock(self, fn: Callable[[], float]) -\u003e None\n    def add_frame_listener(self, fn: Callable[[Frame], None]) -\u003e None  # for detect_video\n    def remove_frame_listener(self, fn) -\u003e None\n    def open(self, device_id: int, label: str | None = None) -\u003e bool   # closes prior capture\n    def close(self) -\u003e None\n    def latest(self) -\u003e Frame | None\n    def closest(self, t: float) -\u003e Frame | None\n    def encode_jpeg(self, frame: Frame, quality: int = 80) -\u003e bytes | None  # cached by frame.seq\n    def wait_for_frame(self, timeout: float = 0.1) -\u003e bool\n    def status(self) -\u003e dict   # {active, device_id, label, buffered}\n\ndef get_camera() -\u003e Camera   # singleton\ndef enumerate_cameras() -\u003e list[dict]   # [{\"id\": int, \"label\": str}, ...]\n&#96;&#96;&#96;\n\nConstants: &#96;BUFFER_SECONDS = 30.0&#96;, &#96;MAX_FPS = 60&#96; (sized for worst case), &#96;BUFFER_CAP = 1800&#96;.\n\nCapture thread reads from &#96;cv2.VideoCapture&#96;, calls the registered sample-clock fn for each frame's &#96;t&#96;, appends to a &#96;deque(maxlen=BUFFER_CAP)&#96;, fires listeners. JPEG encoding is lazy and cached per &#96;seq&#96;.\n\n### Enumeration\n\nPlatform-specific helpers fall back to a probe loop on failure:\n\n- **macOS** (&#96;sys.platform == \"darwin\"&#96;): subprocess &#96;system_profiler SPCameraDataType -json&#96;, map index → friendly name. No extra Python deps.\n- **Linux**: glob &#96;/sys/class/video4linux/video*&#96; and read each &#96;name&#96; file.\n- **Other / fallback**: &#96;_enumerate_probe()&#96; opens indices 0..7 and reports whichever succeed as &#96;\"Camera N\"&#96;.\n\n## 2. Server wiring — [tools/fret-tuner/server.py](tools/fret-tuner/server.py)\n\nChanges layered onto the existing module:\n\n- Add &#96;_latest_sample_t: float = 0.0&#96;. Update inside &#96;_process_sample&#96; so &#96;camera&#96; reads from a single shared anchor.\n- At startup: &#96;cam = get_camera(); cam.set_sample_clock(lambda: _latest_sample_t)&#96;. If &#96;enumerate_cameras()&#96; is non-empty, auto-open the first.\n- Replace &#96;_mjpeg_generator()&#96; so it pulls from &#96;cam&#96;, not from the active detector:\n\n&#96;&#96;&#96;python\nasync def _mjpeg_generator():\n    cam = get_camera()\n    while True:\n        await asyncio.to_thread(cam.wait_for_frame, 0.1)\n        f = cam.latest()\n        if f is None:\n            await asyncio.sleep(0.05); continue\n        jpeg = cam.encode_jpeg(f)\n        if jpeg:\n            yield (b\"--frame\\r\\n\" b\"Content-Type: image/jpeg\\r\\n\\r\\n\" + jpeg + b\"\\r\\n\")\n&#96;&#96;&#96;\n\n- Update &#96;/video/snap&#96; to accept optional &#96;?t=&#96; and serve closest-frame JPEG; without &#96;t&#96;, serve latest. Used by browser for paused scrub.\n- New &#96;/api/sources&#96; returning &#96;enumerate_cameras()&#96;.\n- Extend &#96;_detector_info()&#96; (or send a separate &#96;sources&#96; WS message on connect) with &#96;{\"available\": [...], \"active\": {...}}&#96; for the camera source dropdown.\n- New WS handler:\n\n&#96;&#96;&#96;python\nelif msg_type == \"set_source\":\n    name = msg.get(\"name\")  # int index, or \"none\"\n    cam = get_camera()\n    if name in (None, \"none\"):\n        cam.close()\n    else:\n        cam.open(int(name))\n    await ws.send_text(json.dumps(_sources_msg()))\n&#96;&#96;&#96;\n\n&#96;/video&#96; and &#96;/video/snap&#96; always reflect the camera, regardless of which detector is active.\n\n## 3. Refactor — [tools/fret-tuner/detect_video.py](tools/fret-tuner/detect_video.py)\n\n- Drop &#96;_capture_loop&#96;, &#96;_thread&#96;, &#96;_running&#96;, the &#96;DEVICE_ID&#96; and &#96;SHOW_PREVIEW&#96; parameters, and the JPEG-preview path (&#96;_encode_preview&#96;, &#96;get_preview_jpeg&#96;, &#96;wait_for_frame&#96;).\n- In &#96;__init__&#96;, register a frame listener with &#96;get_camera()&#96;:\n\n&#96;&#96;&#96;python\nfrom camera import get_camera\nself._cam = get_camera()\nself._cam.add_frame_listener(self._on_frame)\n&#96;&#96;&#96;\n\n- &#96;_on_frame(frame: Frame)&#96; runs &#96;_detect(frame.image)&#96; (same logic as today's &#96;_detect&#96;).\n- &#96;stop()&#96; calls &#96;self._cam.remove_frame_listener(self._on_frame)&#96;.\n- &#96;update(sample)&#96; returns the most recent cached result (unchanged behavior).\n- Sensor markers: stays in this file but moves into a thin &#96;overlays()&#96; method that returns one layer with the current marker-drawing logic, exposed via the spec's [Overlay extension](tools/fret-tuner/SPEC.md#overlay-extension). Implementation detail: the overlay can be applied server-side (bake into the &#96;encode_jpeg&#96; step when this detector is active) or client-side. **For Phase B, bake into the server-side encode path** when the active detector exposes &#96;overlays()&#96;. This avoids a new browser-side compositing pipeline.\n\nTo keep &#96;server.py&#96; simple, add one helper there:\n\n&#96;&#96;&#96;python\ndef _maybe_apply_overlays(frame_image, det):\n    if det and hasattr(det, \"overlays\"):\n        for layer in det.overlays():\n            layer[\"draw\"](frame_image)  # mutates in place\n    return frame_image\n&#96;&#96;&#96;\n\nCalled in &#96;_mjpeg_generator&#96; and &#96;/video/snap&#96; before &#96;encode_jpeg&#96;.\n\n&#96;video_calibrate.py&#96; is unaffected (it's a standalone script that opens its own camera).\n\n## 4. Browser — [tools/fret-tuner/index.html](tools/fret-tuner/index.html)\n\nReplace the browser-side capture path with a server-driven one. Two big simplifications: drop getUserMedia for video, drop the browser ring buffer.\n\n- **Camera select**: populate from server message (&#96;sources&#96;), not &#96;navigator.mediaDevices.enumerateDevices()&#96;. On change, send &#96;{\"type\": \"set_source\", \"name\": \u003cid\u003e}&#96;. Add a &#96;\"none\"&#96; option.\n- **Live display**: always render &#96;\u003cimg id=\"mjpeg-video\" src=\"/video\"\u003e&#96;. Remove the getUserMedia &#96;\u003cvideo\u003e&#96; track for video (keep audio path; see below).\n- **Pause / scrub**: when paused or while &#96;setScale&#96; fires from the chart, fetch &#96;/video/snap?t=\u003ccenter-time\u003e&#96; and swap the displayed image. Drop &#96;frameBuffer&#96;, &#96;captureFrame&#96;, &#96;onVideoFrame&#96;, &#96;startMjpegCapture&#96;, &#96;stopMjpegCapture&#96;, &#96;pauseCapture&#96;, &#96;resumeCapture&#96;, &#96;showFrameAtTime&#96;, &#96;showLiveVideo&#96;, the whole &#96;switchCameraMode&#96; function, and &#96;adcWallAnchor&#96; (server now owns the clock).\n- **Audio**: the current code does &#96;getUserMedia({audio: true})&#96; for the mute toggle. Keep this **only for audio**, isolated from video. The mute button continues to work; audio device picker can stay or be folded into a single source selector — for Phase A+B, just keep audio on default device and ignore the picker. Mute toggle stays.\n- **Overlay drawing**: server bakes overlays for now (see §3); no browser-side compositing. The minimum-set overlays from the SPEC (fret pressed, strum state, scrub time) are drawn server-side too, by adding a &#96;_default_overlays(state)&#96; helper in &#96;server.py&#96; that draws into &#96;frame.image&#96; before encode using the most recent sample/actuator state. This is the simplest path to \"full frame rate overlays\" without re-architecting the browser.\n\n## 5. CLI — [tools/fret-tuner/fret-tuner.py](tools/fret-tuner/fret-tuner.py)\n\nAdd one optional flag:\n\n&#96;&#96;&#96;python\nparser.add_argument(\"--camera\", type=int, default=None, metavar=\"ID\",\n                    help=\"Initial camera device ID (default: first available)\")\n&#96;&#96;&#96;\n\nPass through to a new optional arg of &#96;server.configure(...)&#96; that the startup hook uses to pick the initial source.\n\n## 6. SPEC sync — [tools/fret-tuner/SPEC.md](tools/fret-tuner/SPEC.md)\n\nAfter implementation lands, remove the &#96;[planned]&#96; annotation on &#96;camera.py&#96; in the File Layout and adjust prose if needed (the spec already describes the target architecture; should require zero re-writes beyond removing the annotation).\n\n## 7. Dependencies — [tools/fret-tuner/requirements.txt](tools/fret-tuner/requirements.txt)\n\nVerify &#96;opencv-python&#96; is present; if not, add it. (No other new deps; &#96;system_profiler&#96; is a built-in macOS binary; sysfs reads use stdlib.)\n\n## Testing approach\n\nPlan does not include automated tests. Manual verification once changes land:\n\n1. Launch with &#96;--port&#96; and a connected camera; confirm &#96;/video&#96; shows frames, source dropdown lists cameras, switching sources works.\n2. Switch to &#96;detect_video&#96; from the dropdown; confirm sensor markers overlay; confirm detector reads work; confirm camera selector is **not** hidden.\n3. Pause the chart, scrub the time cursor; confirm displayed frame tracks the chart center time.\n4. Confirm CSV replay works without a camera (source dropdown allows \"none\"; video panel idle).\n\n## Out of scope (follow-up tasks)\n\n- Recording (start/stop, video file write, paired CSV).\n- &#96;--video FILE&#96; paired replay during CSV playback.\n- Split / resizable two-pane layout.\n- Browser-side overlay compositing (server bakes overlays in this pass).\n- Removing &#96;video_calibrate.py&#96; or merging it into the live tool.\n",
-  "todos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "pending"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "pending"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "pending"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "pending"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "pending"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "pending"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "pending"
-    }
-  ]
-}
-```
-Additional data:
-
-```json
-{
-  "hasOpenedEditor": true,
-  "planId": "implement_camera.py_+_detect_video_refactor_47ef7954",
-  "planUri": "file:///Users/greg/.cursor/plans/implement_camera.py_%2B_detect_video_refactor_47ef7954.plan.md",
-  "reviewData": {
-    "isShowingInput": false,
-    "selectedOption": "none",
-    "status": "Requested"
-  }
-}
-```
-Result:
-
-```json
-{
-  "rejected": {}
-}
-```
-Status: **completed**
-
-
-</details>
-</tool-use>
+Cancelled
 
 <tool-use data-tool-type="unknown" data-tool-name="create_plan"><details>
 <summary>Tool use: **create_plan**</summary>
@@ -3273,6 +3122,8 @@ Status: **completed**
 ---
 
 _**User**_
+
+# Scope
 
 Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
 
@@ -3298,14 +3149,8 @@ Parameters:
 
 ```json
 {
-  "merge": true
-}
-```
-Result:
-
-```json
-{
-  "finalTodos": [
+  "merge": true,
+  "todos": [
     {
       "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
       "id": "create-camera-py",
@@ -3356,12 +3201,18 @@ Result:
       "id": "verify-deps",
       "status": "pending"
     }
-  ],
-  "initialTodos": [
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
     {
       "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
       "id": "create-camera-py",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
@@ -3571,7 +3422,19 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
+      "id": "create-camera-py",
+      "status": "completed"
+    },
+    {
+      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
+      "id": "wire-server-camera",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -3588,58 +3451,6 @@ Result:
       "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
       "id": "wire-server-camera",
       "status": "in_progress"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "pending"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "pending"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "pending"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "pending"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "pending"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "in_progress"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "pending"
     },
     {
       "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
@@ -3727,7 +3538,29 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
+      "id": "wire-server-camera",
+      "status": "completed"
+    },
+    {
+      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
+      "id": "default-overlays",
+      "status": "completed"
+    },
+    {
+      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
+      "id": "overlay-application",
+      "status": "completed"
+    },
+    {
+      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
+      "id": "refactor-detect-video",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -3759,58 +3592,6 @@ Result:
       "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
       "id": "overlay-application",
       "status": "completed"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "pending"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "pending"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "completed"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "in_progress"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "pending"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "pending"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "pending"
     },
     {
       "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
@@ -3883,7 +3664,19 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
+      "id": "refactor-detect-video",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
+      "id": "browser-source-dropdown",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -3920,58 +3713,6 @@ Result:
       "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
       "id": "browser-source-dropdown",
       "status": "in_progress"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "pending"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "completed"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "completed"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "completed"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "in_progress"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "completed"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "pending"
     },
     {
       "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
@@ -4152,7 +3893,24 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
+      "id": "browser-source-dropdown",
+      "status": "completed"
+    },
+    {
+      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
+      "id": "browser-cleanup",
+      "status": "completed"
+    },
+    {
+      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
+      "id": "cli-camera-flag",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -4199,58 +3957,6 @@ Result:
       "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
       "id": "cli-camera-flag",
       "status": "in_progress"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "completed"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "completed"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "completed"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "completed"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "completed"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "in_progress"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "pending"
     },
     {
       "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
@@ -4382,7 +4088,24 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
+      "id": "cli-camera-flag",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
+      "id": "spec-unflag-camera",
+      "status": "completed"
+    },
+    {
+      "content": "Confirm opencv-python is in requirements.txt; add if missing",
+      "id": "verify-deps",
+      "status": "completed"
+    }
+  ]
 }
 ```
 Result:
@@ -4439,58 +4162,6 @@ Result:
       "content": "Confirm opencv-python is in requirements.txt; add if missing",
       "id": "verify-deps",
       "status": "completed"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "completed"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "completed"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "completed"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "completed"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "completed"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "completed"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "completed"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "in_progress"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "pending"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "pending"
     }
   ],
   "success": true,
@@ -4817,6 +4488,12 @@ All 10 todos are complete and the modules import cleanly. The OpenCV warnings ab
 
 _**User**_
 
+Implement the plan as specified, it is attached for your reference. Do NOT edit the plan file itself.
+
+To-do's from the plan have already been created. Do not create them again. Mark them as in_progress as you work, starting with the first one. Don't stop until you have completed all the to-dos.
+
+_**User**_
+
 is everything ready to try out?
 
 ---
@@ -4930,14 +4607,6 @@ _**Agent (claude-opus-4-7)**_
 
 ```
 2026-04-17 14:40:15.895 Python[95258:25075320] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-Stream error (no serial port to reconnect): [Errno 2] No such file or directory: '../../firmware/fretboard/fretboard-sample-raw.csv'
-Starting fret-tuner at http://127.0.0.1:8080
-[detect_video] stopped
-]633;C2026-04-17 14:40:15.895 Python[95258:25075320] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-Stream error (no serial port to reconnect): [Errno 2] No such file or directory: '../../firmware/fretboard/fretboard-sample-raw.csv'
-Starting fret-tuner at http://127.0.0.1:8080
-[detect_video] stopped
-]633;C2026-04-17 14:40:15.895 Python[95258:25075320] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
 Stream error (no serial port to reconnect): [Errno 2] No such file or directory: '../../firmware/fretboard/fretboard-sample-raw.csv'
 Starting fret-tuner at http://127.0.0.1:8080
 [detect_video] stopped
@@ -5064,15 +4733,6 @@ Directory: **/Users/greg/projects/microchip/guitar-pic** (0 files)
 
 </details></tool-use>
 
-_**Agent (claude-opus-4-7)**_
-
-Cancelled
-
-<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
-<summary>Tool use: **run_terminal_command_v2**</summary>
-
-</details></tool-use>
-
 ---
 
 _**User**_
@@ -5151,18 +4811,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "cli": [
-      "__freeform_other__"
-    ],
-    "split": [
-      "decouple-csv"
-    ]
-  },
-  "freeformTexts": {
-    "cli": "actuation is always needed regardless of detector. data stream should be part of detector.",
-    "split": ""
-  },
   "status": "submitted"
 }
 ```
@@ -5185,8 +4833,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -5272,18 +4918,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "charts-non-adc": [
-      "__freeform_other__"
-    ],
-    "data-source-config": [
-      "per-detector-runtime"
-    ]
-  },
-  "freeformTexts": {
-    "charts-non-adc": "can chart be flexible so that what it displays depends on detector?",
-    "data-source-config": ""
-  },
   "status": "submitted"
 }
 ```
@@ -5306,8 +4940,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -5403,22 +5035,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "actuator-cli": [
-      "cli-plus-ui"
-    ],
-    "chart-schema": [
-      "schema-fixed-count"
-    ],
-    "shared-port-ok": [
-      "shared-ok"
-    ]
-  },
-  "freeformTexts": {
-    "actuator-cli": "",
-    "chart-schema": "",
-    "shared-port-ok": ""
-  },
   "status": "submitted"
 }
 ```
@@ -5451,8 +5067,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -5506,7 +5120,48 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "todos": [
+    {
+      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section parallel to Video reference; describe ports, sharing, enumeration, UI selector, lifecycle",
+      "id": "spec-actuator-section",
+      "status": "in_progress"
+    },
+    {
+      "content": "SPEC.md: capture 'detector-owned data source + declared chart schema' as future-work direction; note current scope (ADC-only data source via top-level CLI)",
+      "id": "spec-detector-future",
+      "status": "pending"
+    },
+    {
+      "content": "SPEC.md: update CLI Reference + WS Protocol for --actuator-port, set_actuator_port, actuator_status messages, /api/serial-ports",
+      "id": "spec-cli-update",
+      "status": "pending"
+    },
+    {
+      "content": "actuator.py: own a serial.Serial directly; open/close/reconnect API; share with data port when same device; status() introspection",
+      "id": "actuator-port-owner",
+      "status": "pending"
+    },
+    {
+      "content": "Add serial-port enumeration helper (pyserial list_ports.comports) -- usable by both data and actuator pickers",
+      "id": "serial-enum",
+      "status": "pending"
+    },
+    {
+      "content": "server.py: drop _ser_obj from data-source coupling for actuator writes; add --actuator-port plumbing; /api/serial-ports endpoint; set_actuator_port WS handler; actuator_status broadcast",
+      "id": "server-actuator-wire",
+      "status": "pending"
+    },
+    {
+      "content": "fret-tuner.py: add --actuator-port; allow it to equal --port (shared handle) or differ (separate)",
+      "id": "cli-actuator-flag",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
+      "id": "browser-actuator-dropdown",
+      "status": "pending"
+    }
+  ]
 }
 ```
 Result:
@@ -5553,58 +5208,6 @@ Result:
       "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
       "id": "browser-actuator-dropdown",
       "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "Create tools/fret-tuner/camera.py with Camera singleton, ring buffer, capture thread, encode_jpeg, frame listeners, platform-specific enumeration",
-      "id": "create-camera-py",
-      "status": "completed"
-    },
-    {
-      "content": "Wire server.py: sample-clock anchor, startup auto-open, /video from camera, /video/snap?t=, /api/sources, set_source WS handler, sources WS message",
-      "id": "wire-server-camera",
-      "status": "completed"
-    },
-    {
-      "content": "Add server-side default overlays helper (fret pressed, strum state, scrub time) drawn into frame before encode",
-      "id": "default-overlays",
-      "status": "completed"
-    },
-    {
-      "content": "Refactor detect_video.py: drop self-owned capture; register camera frame listener; expose sensor markers via overlays() hook; drop DEVICE_ID/SHOW_PREVIEW params",
-      "id": "refactor-detect-video",
-      "status": "completed"
-    },
-    {
-      "content": "Apply detector overlays() in server before JPEG encode for both /video and /video/snap",
-      "id": "overlay-application",
-      "status": "completed"
-    },
-    {
-      "content": "index.html: replace getUserMedia video path with server-driven source dropdown; rip out browser ring buffer; /video stays mounted; paused scrub fetches /video/snap?t=",
-      "id": "browser-source-dropdown",
-      "status": "completed"
-    },
-    {
-      "content": "Remove dead browser code: switchCameraMode, frameBuffer, captureFrame, adcWallAnchor, showFrameAtTime, showLiveVideo, startMjpegCapture/stopMjpegCapture, getUserMedia(video) calls",
-      "id": "browser-cleanup",
-      "status": "completed"
-    },
-    {
-      "content": "fret-tuner.py: add --camera ID flag, plumb through server.configure()",
-      "id": "cli-camera-flag",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: remove [planned] annotation on camera.py once code lands",
-      "id": "spec-unflag-camera",
-      "status": "completed"
-    },
-    {
-      "content": "Confirm opencv-python is in requirements.txt; add if missing",
-      "id": "verify-deps",
-      "status": "completed"
     }
   ],
   "success": true
@@ -5687,7 +5290,19 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section",
+      "id": "spec-actuator-section",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: capture 'detector-owned data source + declared chart schema' as future-work",
+      "id": "spec-detector-future",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -5704,48 +5319,6 @@ Result:
       "content": "SPEC.md: capture 'detector-owned data source + declared chart schema' as future-work",
       "id": "spec-detector-future",
       "status": "in_progress"
-    },
-    {
-      "content": "SPEC.md: update CLI Reference + WS Protocol for --actuator-port, set_actuator_port, actuator_status messages, /api/serial-ports",
-      "id": "spec-cli-update",
-      "status": "pending"
-    },
-    {
-      "content": "actuator.py: own a serial.Serial directly; open/close/reconnect API; share with data port when same device; status() introspection",
-      "id": "actuator-port-owner",
-      "status": "pending"
-    },
-    {
-      "content": "Add serial-port enumeration helper (pyserial list_ports.comports) -- usable by both data and actuator pickers",
-      "id": "serial-enum",
-      "status": "pending"
-    },
-    {
-      "content": "server.py: drop _ser_obj from data-source coupling for actuator writes; add --actuator-port plumbing; /api/serial-ports endpoint; set_actuator_port WS handler; actuator_status broadcast",
-      "id": "server-actuator-wire",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --actuator-port; allow it to equal --port (shared handle) or differ (separate)",
-      "id": "cli-actuator-flag",
-      "status": "pending"
-    },
-    {
-      "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
-      "id": "browser-actuator-dropdown",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section parallel to Video reference; describe ports, sharing, enumeration, UI selector, lifecycle",
-      "id": "spec-actuator-section",
-      "status": "in_progress"
-    },
-    {
-      "content": "SPEC.md: capture 'detector-owned data source + declared chart schema' as future-work direction; note current scope (ADC-only data source via top-level CLI)",
-      "id": "spec-detector-future",
-      "status": "pending"
     },
     {
       "content": "SPEC.md: update CLI Reference + WS Protocol for --actuator-port, set_actuator_port, actuator_status messages, /api/serial-ports",
@@ -5935,7 +5508,24 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "SPEC.md: capture detector-owned data + chart schema as future-work",
+      "id": "spec-detector-future",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: CLI Reference + WS Protocol + Browser UI updated for actuator port",
+      "id": "spec-cli-update",
+      "status": "completed"
+    },
+    {
+      "content": "actuator.py: own serial.Serial; open/close/reconnect; share with data port; status()",
+      "id": "actuator-port-owner",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -5962,48 +5552,6 @@ Result:
       "content": "actuator.py: own serial.Serial; open/close/reconnect; share with data port; status()",
       "id": "actuator-port-owner",
       "status": "in_progress"
-    },
-    {
-      "content": "Add serial-port enumeration helper (pyserial list_ports.comports) -- usable by both data and actuator pickers",
-      "id": "serial-enum",
-      "status": "pending"
-    },
-    {
-      "content": "server.py: drop _ser_obj from data-source coupling for actuator writes; add --actuator-port plumbing; /api/serial-ports endpoint; set_actuator_port WS handler; actuator_status broadcast",
-      "id": "server-actuator-wire",
-      "status": "pending"
-    },
-    {
-      "content": "fret-tuner.py: add --actuator-port; allow it to equal --port (shared handle) or differ (separate)",
-      "id": "cli-actuator-flag",
-      "status": "pending"
-    },
-    {
-      "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
-      "id": "browser-actuator-dropdown",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section",
-      "id": "spec-actuator-section",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: capture 'detector-owned data source + declared chart schema' as future-work",
-      "id": "spec-detector-future",
-      "status": "in_progress"
-    },
-    {
-      "content": "SPEC.md: update CLI Reference + WS Protocol for --actuator-port, set_actuator_port, actuator_status messages, /api/serial-ports",
-      "id": "spec-cli-update",
-      "status": "pending"
-    },
-    {
-      "content": "actuator.py: own a serial.Serial directly; open/close/reconnect API; share with data port when same device; status() introspection",
-      "id": "actuator-port-owner",
-      "status": "pending"
     },
     {
       "content": "Add serial-port enumeration helper (pyserial list_ports.comports) -- usable by both data and actuator pickers",
@@ -6135,7 +5683,24 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "actuator.py: own serial.Serial; open/close/reconnect; share with data port; status()",
+      "id": "actuator-port-owner",
+      "status": "completed"
+    },
+    {
+      "content": "Add serial-port enumeration helper",
+      "id": "serial-enum",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: actuator owns its writer; --actuator-port plumbing; /api/serial-ports; set_actuator_port WS handler; actuator_status broadcast",
+      "id": "server-actuator-wire",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -6172,48 +5737,6 @@ Result:
       "content": "server.py: actuator owns its writer; --actuator-port plumbing; /api/serial-ports; set_actuator_port WS handler; actuator_status broadcast",
       "id": "server-actuator-wire",
       "status": "in_progress"
-    },
-    {
-      "content": "fret-tuner.py: add --actuator-port; allow it to equal --port (shared handle) or differ (separate)",
-      "id": "cli-actuator-flag",
-      "status": "pending"
-    },
-    {
-      "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
-      "id": "browser-actuator-dropdown",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section",
-      "id": "spec-actuator-section",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: capture detector-owned data + chart schema as future-work",
-      "id": "spec-detector-future",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: CLI Reference + WS Protocol + Browser UI updated for actuator port",
-      "id": "spec-cli-update",
-      "status": "completed"
-    },
-    {
-      "content": "actuator.py: own serial.Serial; open/close/reconnect; share with data port; status()",
-      "id": "actuator-port-owner",
-      "status": "in_progress"
-    },
-    {
-      "content": "Add serial-port enumeration helper (pyserial list_ports.comports) -- usable by both data and actuator pickers",
-      "id": "serial-enum",
-      "status": "pending"
-    },
-    {
-      "content": "server.py: drop _ser_obj from data-source coupling for actuator writes; add --actuator-port plumbing; /api/serial-ports endpoint; set_actuator_port WS handler; actuator_status broadcast",
-      "id": "server-actuator-wire",
-      "status": "pending"
     },
     {
       "content": "fret-tuner.py: add --actuator-port; allow it to equal --port (shared handle) or differ (separate)",
@@ -6296,7 +5819,19 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "server.py: wired",
+      "id": "server-actuator-wire",
+      "status": "completed"
+    },
+    {
+      "content": "fret-tuner.py: --actuator-port",
+      "id": "cli-actuator-flag",
+      "status": "in_progress"
+    }
+  ]
 }
 ```
 Result:
@@ -6338,48 +5873,6 @@ Result:
       "content": "fret-tuner.py: --actuator-port",
       "id": "cli-actuator-flag",
       "status": "in_progress"
-    },
-    {
-      "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
-      "id": "browser-actuator-dropdown",
-      "status": "pending"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section",
-      "id": "spec-actuator-section",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: capture detector-owned data + chart schema as future-work",
-      "id": "spec-detector-future",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: CLI Reference + WS Protocol + Browser UI updated for actuator port",
-      "id": "spec-cli-update",
-      "status": "completed"
-    },
-    {
-      "content": "actuator.py: own serial.Serial; open/close/reconnect; share with data port; status()",
-      "id": "actuator-port-owner",
-      "status": "completed"
-    },
-    {
-      "content": "Add serial-port enumeration helper",
-      "id": "serial-enum",
-      "status": "completed"
-    },
-    {
-      "content": "server.py: actuator owns its writer; --actuator-port plumbing; /api/serial-ports; set_actuator_port WS handler; actuator_status broadcast",
-      "id": "server-actuator-wire",
-      "status": "in_progress"
-    },
-    {
-      "content": "fret-tuner.py: add --actuator-port; allow it to equal --port (shared handle) or differ (separate)",
-      "id": "cli-actuator-flag",
-      "status": "pending"
     },
     {
       "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
@@ -7176,7 +6669,19 @@ Parameters:
 
 ```json
 {
-  "merge": true
+  "merge": true,
+  "todos": [
+    {
+      "content": "fret-tuner.py: --actuator-port",
+      "id": "cli-actuator-flag",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: actuator port dropdown + status + WS handler",
+      "id": "browser-actuator-dropdown",
+      "status": "completed"
+    }
+  ]
 }
 ```
 Result:
@@ -7223,48 +6728,6 @@ Result:
       "content": "index.html: actuator port dropdown + status + WS handler",
       "id": "browser-actuator-dropdown",
       "status": "completed"
-    }
-  ],
-  "initialTodos": [
-    {
-      "content": "SPEC.md: add 'Actuation (always-on)' subsystem section",
-      "id": "spec-actuator-section",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: capture detector-owned data + chart schema as future-work",
-      "id": "spec-detector-future",
-      "status": "completed"
-    },
-    {
-      "content": "SPEC.md: CLI Reference + WS Protocol + Browser UI updated for actuator port",
-      "id": "spec-cli-update",
-      "status": "completed"
-    },
-    {
-      "content": "actuator.py: own serial.Serial; open/close/reconnect; share with data port; status()",
-      "id": "actuator-port-owner",
-      "status": "completed"
-    },
-    {
-      "content": "Add serial-port enumeration helper",
-      "id": "serial-enum",
-      "status": "completed"
-    },
-    {
-      "content": "server.py: wired",
-      "id": "server-actuator-wire",
-      "status": "completed"
-    },
-    {
-      "content": "fret-tuner.py: --actuator-port",
-      "id": "cli-actuator-flag",
-      "status": "in_progress"
-    },
-    {
-      "content": "index.html: add actuator port dropdown in sidebar (mirrors camera dropdown), shows status, sends set_actuator_port",
-      "id": "browser-actuator-dropdown",
-      "status": "pending"
     }
   ],
   "success": true,
@@ -7362,14 +6825,6 @@ _**Agent (claude-opus-4-7)**_
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
 ```
-
-```
-]633;C2026-04-17 15:00:38.527 Python[95859:25094947] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-ERROR:    [Errno 48] error while attempting to bind on address ('127.0.0.1', 8080): address already in use
-Starting fret-tuner at http://127.0.0.1:8080
-]633;D;1
-
-```
 </details>
 </tool-use>
 
@@ -7416,15 +6871,6 @@ _**Agent (claude-opus-4-7)**_
 _**Agent (claude-opus-4-7)**_
 
 Port 8080 is in use — leftover process from earlier. Let me find and kill it, then restart.
-
-_**Agent (claude-opus-4-7)**_
-
-Cancelled
-
-<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
-<summary>Tool use: **run_terminal_command_v2**</summary>
-
-</details></tool-use>
 
 ---
 
@@ -7582,14 +7028,6 @@ _**Agent (claude-opus-4-7)**_
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
 ```
-
-```
-]633;C2026-04-17 15:02:16.747 Python[95989:25097620] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-ERROR:    [Errno 48] error while attempting to bind on address ('127.0.0.1', 8080): address already in use
-Starting fret-tuner at http://127.0.0.1:8080
-]633;D;1
-
-```
 </details>
 </tool-use>
 
@@ -7699,15 +7137,6 @@ _**Agent (claude-opus-4-7)**_
 
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
-```
-
-```
-]633;C]633;P;Cwd=/Users/greg/projects/microchip/guitar-pic]633;P;HasRichCommandDetection=True]633;A$ ]633;B]633;E;cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
-]633;C2026-04-17 15:02:58.578 Python[96075:25099453] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-Starting fret-tuner at http://127.0.0.1:8080
-[detect_video] stopped
-[detect_video] stopped
-
 ```
 </details>
 </tool-use>
@@ -8443,14 +7872,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "symptom": [
-      "other"
-    ]
-  },
-  "freeformTexts": {
-    "symptom": ""
-  },
   "status": "submitted"
 }
 ```
@@ -8460,6 +7881,7 @@ Result:
 {
   "answers": [
     {
+      "freeformText": "",
       "questionId": "symptom",
       "selectedOptionIds": [
         "other"
@@ -8468,8 +7890,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -8488,6 +7908,191 @@ _**User**_
 presses are incorrect and wrong time. Does detect_video act on raw incoming video before any overlays for display?
 
 ---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user is asking a clarifying question about the frame processing pipeline. I'm tracing through how frames flow: the capture loop reads raw frames and passes them to listeners, then the detection handler processes the raw image data before any overlays are applied, and later the server composes the final frame with all the visual elements added.
+
+But there's a critical memory issue I need to think through — OpenCV's `VideoCapture.read()` might return a numpy view that shares memory with an internal buffer, meaning that same memory gets reused for each new frame. So when `Frame.image` is stored in the ring buffer, it could be pointing to memory that gets overwritten as soon as the next frame is captured. This means detection might run on the correct frame data initially, but by the time the HTTP handler tries to display that frame, the underlying pixels could have been replaced by newer frames.
+
+The real timing problem is that the actuator's timestamp comes from the ADC sample, not the camera frame — so a press detected at camera time 1.000s might not be reported to the actuator until the next ADC sample at 1.002s. Since `update()` returns the cached detection result on every call, the actuator detects a press change the first time it reads a new result, but that happens at whatever ADC timestamp is current at that moment, creating a variable delay between detection and actuation.
+
+The old architecture had the same ~33ms jitter from asynchronous camera updates, so that's not the regression. But looking at how the actuator processes the state dict — it reads `pressed` and `press_count` directly from the shared cached result without copying — I'm wondering if there's a mutation issue or if the detection is somehow running on the wrong frames.
+
+Let me trace through the old `update()` method to see if it was building a fresh result dict each call versus returning a cached one, since that could explain why presses are getting lost or timestamped incorrectly.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Critical question — yes, detection runs on raw frames before overlays (overlays are drawn on a `.copy()`). But there's another subtlety I want to verify. Let me check the old version's `update()` logic vs the new one:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic && git show HEAD:tools/fret-tuner/detect_video.py | sed -n '330,420p'</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic && git show HEAD:tools/fret-tuner/detect_video.py | sed -n '330,420p'
+```
+
+```
+                self._press_count[ch] += 1
+            self._edge_active[ch] = edge_on
+
+            result[ch] = {
+                "pressed": self._pressed[ch],
+                "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
+                "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
+                "press_count": self._press_count[ch],
+            }
+
+        with self._lock:
+            self._cached_result = result
+
+    def update(self, sample: Sample) -&gt; dict:
+        """Return the latest detection result (computed in capture thread)."""
+        with self._lock:
+            cached = self._cached_result
+            cam_ok = self._cam_ok
+
+        if cached is not None:
+            return cached
+
+        return {ch: {
+            "pressed": False, "baseline": 0, "edge_line": 0,
+            "press_count": 0, "camera": "waiting" if cam_ok else "no_device",
+        } for ch in CHANNELS}
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The old and new implementations produce identical results, which is reassuring. However, I'm noticing a critical difference in how they handle thread safety — the original `_detect` method modified internal state variables without any locking mechanism, whereas the new version wraps those same mutations inside a lock to prevent race conditions.
+
+Now I'm stepping back to compare the broader architectures. The old system had detect_video managing its own capture thread and owning the VideoCapture object directly, while the new design centralizes capture in camera.py and invokes _detect as a synchronous listener after each frame read. This means other consumers like the MJPEG stream and snapshot endpoints now pull frames from a shared buffer instead of relying on a cached result.
+
+The key question is whether this architectural shift could introduce detection errors. I'm exploring whether OpenCV's `cap.read()` returns the same underlying buffer across calls — if so, there's a risk that frame data gets overwritten before detection completes. But actually, since `_on_frame` runs synchronously in the capture thread before the next read, the frame data should remain stable during detection.
+
+I'm also checking whether the listener-based invocation adds latency compared to inlined detection, whether frame pacing differs between the two capture loops (both rely on the camera's FPS blocking, so they should be identical), and whether there's a timing desync between ADC samples and camera frames. The old system keyed actuator actions on ADC timestamps while updating detection asynchronously from camera frames, and the new system should preserve this same relationship through `_latest_sample_t`.
+
+Looking at the frame capture and listener invocation sequence, the frame gets appended to the buffer before listeners are called, so if detection takes too long it would block the capture thread and drop the frame rate—but 5 channels with 2 sensors processing small patches should complete in under a millisecond, so that's not it. The user's question about whether detection runs on raw video before overlays is starting to feel like the real clue here.
+
+Let me verify the overlay path once more. The server creates a copy of the frame image, draws overlays on that copy, and leaves the original untouched—so detection reading from `frame.image` should always get the raw, unmodified data. The copy operation creates a deep buffer, so there's no contamination between the overlay-composited version and what detection sees. Detection itself only reads pixels without writing anything back, so there's no way overlays could be affecting the detection input.
+
+But now I'm realizing there might be a deeper issue with how OpenCV handles frame buffers. Some backends reuse the same numpy array on each `cap.read()` call, just overwriting the pixel data in place. If that's happening here, then every Frame object in the buffer would actually point to the same underlying memory, meaning they'd all show the latest frame data regardless of when they were captured. This wouldn't break detection since it runs synchronously while the buffer is stable, but it would mean the MJPEG reader always sees current pixels and scrubbing wouldn't actually work. Still, this doesn't explain the timing issue with presses.
+
+Actually, checking the OpenCV docs confirms that `cap.read()` returns a fresh numpy array each time, not a reused buffer. So that's not the problem.
+
+Let me reconsider what the user is actually asking. They're saying presses are incorrect and happening at the wrong time, and they're specifically asking whether detect_video reads the raw video before overlays are applied. That's the core concern—they suspect detection might be running on already-overlayed frames. I should verify this carefully and give them a clear answer.
+
+There's another potential race condition I'm noticing though. The capture thread builds a Frame, appends it to the buffer under lock, then releases the lock before invoking the listener callback. That means detection starts running on the frame while the MJPEG renderer could simultaneously be reading and drawing overlays on a copy of that same frame. The listener callback runs outside the lock, so there's a window where...
+
+Actually, looking at the concrete code path: `_compose_frame_jpeg` makes a copy of `frame.image`, then passes that copy to the draw functions. The draw functions only write to the copy, never mutating the original frame. So there's no contamination there.
+
+But the user mentioned "wrong time"—maybe the issue is with how timestamps are being assigned to presses. The actuator gets its timing from the sample's timestamp, which is converted to milliseconds and passed to the update function.
+
+In the old architecture, the detector had its own capture thread and would mutate a cached result that the ADC thread polled. In the new architecture, the camera capture loop is in camera.py and invokes frame listeners synchronously. The timing should be identical, unless the camera capture loop is now running slower because the listeners themselves are taking longer to execute.
+
+The camera buffer's lock overhead is minimal—appending frames is O(1) and copying the listener list is O(N) where N is small. But I'm wondering if there's something else going on. The shared sample clock is used to tag frames with timestamps for buffer scrubbing and overlays, but those timestamps don't affect press timing. More importantly, I'm noticing that every time `set_params` is called, the detector module gets reloaded and a new Detector instance is created, which registers a new frame listener. If this happens repeatedly without cleaning up the old listeners, they could accumulate...
+
+Actually, looking at the `set_params` handler, the new detector is created and registers its listener before the old detector is stopped and its listener removed. So there's a brief window with two listeners. The old detector's `stop()` method calls `remove_frame_listener` with its bound method, which should work correctly since the bound method identity should remain the same even after module reload. But I'm realizing the `remove_frame_listener` implementation might be the issue—let me check how it's actually removing listeners from the list. I'm wondering if the "wrong time" issue could actually stem from press_count being incremented multiple times per physical press due to overlapping listeners, though that shouldn't matter since the actuator only reads from the active detector. Let me trace through the frame capture sequence more carefully — when a frame is captured, all registered listeners run synchronously before the next frame, so there shouldn't be any race conditions updating _cached_result. But I'm realizing the real problem might be that after a module reload, multiple detect_video instances could be registered as listeners simultaneously, each updating their own _cached_result independently, and the listener cleanup during reload might not be removing the old bound methods correctly since bound method equality depends on both the instance and function being identical.
+
+Actually, checking the bound method removal logic — when an old detector instance calls stop(), it tries to remove its _on_frame bound method from the listener list, and since the old instance's bound method references the old function while the new instance's references the new function, they're different objects. So the removal should work fine. The timing jitter is probably just inherent to the system — _cached_result is read at 500Hz but updated at ~30Hz, creating up to 33ms of latency, which is the same as the original code. And I should verify that the frame listeners are receiving the raw camera frame before any overlays are applied.
+
+Looking at the capture loop, frames are created directly from cap.read() and passed to listeners before _compose_frame_jpeg draws overlays on a copy, so detection is definitely happening on raw frames. No mutations to frame.image anywhere else. But now I'm wondering if the real issue is that both detect_video and another detector like detect_threshold are running simultaneously because the old detector wasn't properly stopped.
+
+Actually, when switching detectors, the old one gets stopped if it has a stop() method, and detect_threshold probably doesn't, so that's fine. Each detector swap should leave exactly one listener. But here's something I just realized—when a detector is replaced via set_params, the new instance starts with press_count=0, while the actuator is still tracking _prev_press_count from the old instance. If the old detector had press_count=42 and the new one starts at 0, the actuator sees a drop and could fire a phantom press. That's definitely a bug, though it would only show up when parameters change, not during normal operation.
+
+Let me trace through the actuator's press detection logic more carefully. It compares the current press_count against _prev_press_count, and if they differ, it flags a press. On detector reload, that 42→0 transition would trigger incorrectly. But this bug existed in the old code too, so it's not a regression.
+
+I don't think I'm seeing an architectural reason for the timing issue the user reported. Let me ask them to be more specific about what "wrong time" means—are strums firing early or late relative to the on-screen notes, are presses hitting the wrong color, or is there a delay between the visible press and the actuator firing? I should also verify that the overlay drawing doesn't interfere with detection by checking the exact order of operations in the capture loop.
+
+The MJPEG server runs concurrently with the capture thread. When it calls `.copy()` on the frame, it's working with a separate copy of the pixel data, so drawing overlays there shouldn't affect what the detector sees. OpenCV's VideoCapture returns a fresh numpy array each time, so even if the threads are processing different frames simultaneously, they're working with independent memory.
+
+But I'm realizing the real issue might be elsewhere. The detector runs in the capture thread and updates a shared `_cached_result` dict. Meanwhile, the ADC feed loop at 500Hz is constantly reading from that same dict. So multiple ADC samples see the same detection results between camera frames, and only the first sample after an update increments the counter properly.
+
+The timing latency is roughly 5-7ms from camera capture to actuator scheduling, which is negligible compared to the old code. But the user's complaint about "wrong time and incorrect presses" suggests something deeper—maybe the shared sample clock is affecting frame timestamps, or there's an issue with how `_latest_sample_t` updates when the ADC stops. I should also check if there's a `press_count` reset bug when the detector reloads.
+
+Let me just ask the user for more specifics rather than guessing further.
+
+Actually, wait—I'm wondering if the listener invocation pattern in the camera loop could be dropping presses. If `detect_video` throws an exception, that frame's detection fails silently (just logged as a warning), and the user might not notice. I should suggest checking the server logs for any warnings that would indicate frames being skipped.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Yes — detection definitely runs on raw frames. Here's the exact path:
+
+```176:213:tools/fret-tuner/camera.py
+    def _capture_loop(self) -> None:
+        logged_size = False
+        while self._running:
+            with self._lock:
+                cap = self._cap
+            if cap is None:
+                break
+
+            try:
+                ret, frame = cap.read()
+            except Exception as exc:
+                log.warning("camera: read error: %s", exc)
+                time.sleep(0.05)
+                continue
+
+            if not ret or frame is None:
+                time.sleep(0.01)
+                continue
+            ...
+            t = float(self._sample_clock_fn())
+            with self._lock:
+                self._seq += 1
+                f = Frame(t=t, seq=self._seq, image=frame)
+                self._buffer.append(f)
+                listeners = list(self._frame_listeners)
+
+            self._frame_event.set()
+
+            for listener in listeners:
+                try:
+                    listener(f)
+```
+
+Listeners (i.e. `detect_video._on_frame`) get the frame *before* anything else touches it. Overlays are only ever drawn on a copy:
+
+```383:399:tools/fret-tuner/server.py
+def _compose_frame_jpeg(frame, det, scrub_t: Optional[float] = None) -> Optional[bytes]:
+    """Apply overlays to a working copy of the frame and return JPEG bytes."""
+    if frame is None:
+        return None
+    img = frame.image.copy()
+    with _lock:
+        state = dict(_latest_state)
+        mask = _latest_actuator_mask
+        live_t = _latest_sample_t
+    t = scrub_t if scrub_t is not None else (frame.t if frame.t else live_t)
+    _draw_default_overlays(img, t, state, mask)
+    _maybe_apply_overlays(img, det)
+```
+
+So that's not the cause. But I do see a real regression candidate now that you said "wrong time":
+
+**Sample-clock anchored frame timestamps.** The actuator's `now_ms` for the chord-window / strum-delay timing comes from the ADC sample's `sample.timestamp`. The OLD detect_video also used ADC time, but the camera owned the timeline. In the new architecture, every camera frame is now stamped via `set_sample_clock(lambda: _latest_sample_t)` — so during the brief startup window, when the camera is producing frames but no ADC samples have arrived yet, all frames get tagged `t=0` and pile into the buffer at the same timestamp. More relevant for scrub than for press timing, but it can cause weird overlay/log behavior. I don't think it's your "wrong time" though.
+
+Three more concrete suspects that could move presses around:
+
+1. **press_count reset on detector reload.** Every time you tweak a slider, `_load_detector` makes a *new* `Detector` instance whose `_press_count` starts at 0. The actuator still has `_prev_press_count = N` from the old instance, sees `0 != N`, and fires a phantom press for every channel. This bug existed before but it was per-detector before; now if you've been adjusting `EDGE_*` thresholds it'll do this every time.
+
+2. **Stale `_cached_result` between frames.** New `update(sample)` returns the *same dict object* until the next camera frame replaces it. At 30 fps that's ~33 ms of "the press is already on" being re-asserted to every ADC sample (~16 redundant ticks). The actuator's edge detection only acts on *changes*, so this *should* be fine — but if anything in your detector path mutates `_cached_result` in place, you'd get stuck state.
+
+3. **Listener invoked synchronously in capture thread.** If `_detect` exceptions out for a frame, `camera: frame listener raised: …` lands in the server log and that frame's detection silently drops. Worth checking.
+
+Before I start changing anything, two questions to nail what "wrong time" means concretely:
 
 _**Agent (claude-opus-4-7)**_
 
@@ -8560,18 +8165,6 @@ Additional data:
 
 ```json
 {
-  "currentSelections": {
-    "log-check": [
-      "no-warnings"
-    ],
-    "wrong-time": [
-      "describe"
-    ]
-  },
-  "freeformTexts": {
-    "log-check": "",
-    "wrong-time": ""
-  },
   "status": "submitted"
 }
 ```
@@ -8597,8 +8190,6 @@ Result:
   ]
 }
 ```
-User decision: **accepted**
-
 Status: **completed**
 
 
@@ -8609,6 +8200,88 @@ Status: **completed**
 <summary>Tool use: **ask_question**</summary>
 
 </details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Go ahead — describe what's happening with the press timing in your own words. Anything you can give me (when does it fire, where's the marker, does it correlate with notes on screen, is it the same on all 5 buttons or worse on some) helps narrow it down.
+
+---
+
+_**User**_
+
+presses are incorrect and wrong time. Does detect_video act on raw incoming video before any overlays for display?
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user resent their question, so they likely didn't see my previous response. I should give them a straightforward answer without the extra detail or follow-up questions this time. Yes, detection operates on the raw incoming frames before any display overlays are applied — the overlays get drawn on a separate copy afterward.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Yes — detect_video acts on the raw camera frame, before any overlays are composited.
+
+Concretely:
+
+1. The capture thread in `camera.py` calls `cap.read()`, wraps the array in a `Frame`, appends it to the ring buffer, and then invokes frame listeners (including `detect_video._on_frame`) **synchronously** with that raw array:
+
+```198:213:tools/fret-tuner/camera.py
+            t = float(self._sample_clock_fn())
+            with self._lock:
+                self._seq += 1
+                f = Frame(t=t, seq=self._seq, image=frame)
+                self._buffer.append(f)
+                listeners = list(self._frame_listeners)
+
+            self._frame_event.set()
+
+            for listener in listeners:
+                try:
+                    listener(f)
+                except Exception as exc:
+                    log.warning("camera: frame listener raised: %s", exc)
+```
+
+2. `detect_video._on_frame` reads `frame.image` directly and runs `_detect` on it — only sampling pixels, never writing:
+
+```177:184:tools/fret-tuner/detect_video.py
+    def _on_frame(self, frame: Frame) -> None:
+        """Camera frame listener -- runs in the capture thread."""
+        img = frame.image
+        if img is None:
+            return
+        h, w = img.shape[:2]
+        self._scale_pixels(w, h)
+        self._detect(img)
+```
+
+3. The MJPEG endpoint composites overlays only onto a **copy** of `frame.image`, leaving the buffered original untouched:
+
+```383:394:tools/fret-tuner/server.py
+def _compose_frame_jpeg(frame, det, scrub_t: Optional[float] = None) -> Optional[bytes]:
+    """Apply overlays to a working copy of the frame and return JPEG bytes."""
+    if frame is None:
+        return None
+    img = frame.image.copy()
+    with _lock:
+        state = dict(_latest_state)
+        mask = _latest_actuator_mask
+        live_t = _latest_sample_t
+    t = scrub_t if scrub_t is not None else (frame.t if frame.t else live_t)
+    _draw_default_overlays(img, t, state, mask)
+    _maybe_apply_overlays(img, det)
+```
+
+So overlay contamination is ruled out as the cause of incorrect/mistimed presses. The detection algorithm itself in `_detect` is byte-identical to the last committed version (just wrapped in a lock now, no logic change).
+
+If presses are still wrong, the likely suspects are elsewhere — happy to investigate any of these in order, just point me at the most plausible:
+
+- **Phantom presses on slider tweak**: every `set_params` reloads `detect_video` and creates a new instance with `_press_count` reset to 0 per channel. The actuator still holds `_prev_press_count = N` from the previous instance, sees `0 != N`, and fires a spurious press for every channel. Easy to fix by either persisting press counts across reload or seeding the actuator's `_prev_press_count` from the new detector's initial state.
+- **Latency vs the old build**: the listener-call overhead is sub-millisecond, but if your `STRUM_DELAY_MS` was tuned against the old timing it might feel off by a frame.
+- **Frame buffer resolution**: the new `camera.py` requests 1920×1080, same as before, but the UGREEN capture might be negotiating a different resolution this time. Worth checking — the server logs `camera: stream started <W>x<H>` once on first frame.
+
+Want me to dig into the phantom-press-on-reload bug, or do you have a different theory based on what you're actually seeing on screen?
 
 ---
 
@@ -8956,15 +8629,6 @@ _**Agent (claude-opus-4-7)**_
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
 ```
-
-```
-]633;C2026-04-17 15:22:17.796 Python[96961:25122980] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-Starting fret-tuner at http://127.0.0.1:8080
-camera: stream started 1920x1080 -- buffer max 900 frames ~ 5339 MB
-[detect_video] stopped
-]633;D;0
-
-```
 </details>
 </tool-use>
 
@@ -9177,17 +8841,6 @@ _**Agent (claude-opus-4-7)**_
 
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
-```
-
-```
-]633;C]633;P;Cwd=/Users/greg/projects/microchip/guitar-pic]633;P;HasRichCommandDetection=True]633;A$ ]633;B]633;E;cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
-]633;C2026-04-17 15:35:13.380 Python[97231:25133105] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-Starting fret-tuner at http://127.0.0.1:8080
-camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] stopped
-[detect_video] scaling coords by 0.500x0.500
-
 ```
 </details>
 </tool-use>
@@ -9540,1009 +9193,6 @@ _**Agent (claude-opus-4-7)**_
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
 ```
-
-```
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] scaling coords by 0.500x0.500
-[detect_video] stopped
-[detect_video] scaling coords for 960x540 by 0.500x0.500
-[detect_video] stopped
-[detect_video] scaling coords for 960x540 by 0.500x0.500
-]633;D;0
-
-```
 </details>
 </tool-use>
 
@@ -10782,17 +9432,6 @@ _**Agent (claude-opus-4-7)**_
 
 ```bash
 cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
-```
-
-```
-]633;C]633;P;Cwd=/Users/greg/projects/microchip/guitar-pic]633;P;HasRichCommandDetection=True]633;A$ ]633;B]633;E;cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
-]633;C2026-04-17 15:46:40.550 Python[97694:25145121] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
-Starting fret-tuner at http://127.0.0.1:8080
-camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
-[detect_video] scaling coords for 960x540 by 0.500x0.500
-[detect_video] stopped
-[detect_video] scaling coords for 960x540 by 0.500x0.500
-
 ```
 </details>
 </tool-use>
@@ -11178,4 +9817,6010 @@ _**Agent (claude-opus-4-7)**_
 _**Agent (claude-opus-4-7)**_
 
 <think><details><summary>Thought Process</summary>
- I'm seeing there are two separate pathways for rendering overlays on a scrubbed frame: one pulls from the server's current detection state regardless of timeline position, while the other invokes the detector's marker drawing which reads from its own internal state—so I need to figure out which one is actually being used and why the historical data isn't showing up.</details></think>
+ I'm seeing there are two separate pathways for rendering overlays on a scrubbed frame: one pulls from the server's current detection state regardless of timeline position, while the other invokes the detector's marker drawing which reads from its own internal state—so I need to figure out which one is actually being used and why the historical data isn't showing up.
+
+The cleanest fix would be to attach a snapshot to each frame containing the detector's per-channel state and the processed detection result, then have the compose function check for this snapshot and use it instead of the live state when it exists. The tricky part is that the actuator mask gets computed downstream in the data thread, so the frame won't have access to it until after detection runs—but I could solve this by giving frames a metadata dictionary that listeners populate with whatever state they need to preserve for that moment in time. I need to store detector and state snapshots in frame metadata so scrubbing shows accurate overlays, then decide how to pass those snapshots to the drawing functions—either by changing the overlay signature to accept the frame, or using a thread-local reference. For the actuator mask, I could sample it from a history buffer keyed by time, though the simplest approach might be to just capture the current mask at frame time.
+
+Actually, thinking about it more: when `_on_frame` runs, `_latest_actuator_mask` holds whatever the data thread computed from the previous frame's state, which is causally correct for display. For scrubbing purposes, the user mainly cares about seeing what the detector observed, so I can keep the actuator mask live and just store the detector snapshot and state in frame metadata.
+
+For passing the snapshot to `_draw_markers`, option (a) is cleaner—I'd modify the overlay signature to optionally accept a frame parameter, then have the detector overlay extract its snapshot from `frame.meta` if available, falling back to the current snapshot if not. The server would try calling overlays with the frame first, and gracefully fall back to the old signature if that fails.
+
+Modifying overlay signatures... Implementing the frame metadata approach now. I'll add a `meta` dict to Frame that captures detector state and actuator mask at capture time, then have `_compose_frame_jpeg` and `_draw_markers` pull from that snapshot instead of live globals when scrubbing. The server registers its own listener to populate the actuator mask, keeping detect_video decoupled. Memory overhead is minimal—just a few floats and dicts per frame.
+
+The actuator mask will lag by one frame since it's computed in the data sample loop based on the previous detection state, but that's acceptable for scrubbing. I'll snapshot the live mask at frame time rather than trying to thread it through the sample loop. Now I need to trace through server.py to see where `_latest_state` and `_latest_actuator_mask` get updated and how the listeners coordinate.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me also check how `_latest_state` and `_latest_actuator_mask` are populated so the snapshot is causally consistent.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+  "pattern": "_latest_state|_latest_actuator_mask|_latest_sample_t|_latest_video_state"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+  "pattern": "_latest_state|_latest_actuator_mask|_latest_sample_t|_latest_video_state",
+  "topFiles": [
+    {
+      "matchCount": 12,
+      "uri": "tools/fret-tuner/server.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 12
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm tracking how the state updates flow through the system—the data thread continuously polls at ~1kHz and updates `_latest_state` and `_latest_actuator_mask`, while video detection only refreshes when a new frame arrives from the camera. For snapshots, the detect_video function runs on the capture thread and maintains its own state variables like `_pressed` and `_hold_dist`, then the data thread calls `det.update(sample)` to integrate those readings.
+
+The issue is that if I snapshot `_latest_state` and `_latest_actuator_mask` at frame-listener time, I'm getting results from the previous data sample cycle, which introduces a one-frame lag. A cleaner approach would be to have detect_video write its result directly into `Frame.meta` and snapshot from there, while the server snapshots the mask separately. But I need to think through the listener registration order—the server's snapshot listener needs to run after detect_video's listener completes, and since listeners execute in registration order, I'd need to ensure the detector registers first at startup, which is tricky since it's created lazily when the user picks one.
+
+A simpler solution: have detect_video populate its state into `frame.meta`, and the server's `_compose_frame_jpeg` checks that first before falling back to globals. For the actuator mask, I should also snapshot it historically for scrub fidelity so the replay shows the actual actuation timing that occurred, not the current live mask state. I'll need to register a frame listener that captures the mask at the right moment.
+
+The tricky part is synchronization — the mask updates on the data thread while frames arrive on the camera thread, so there's inherent lag. I'm going with the simplest approach: just snapshot `_latest_actuator_mask` at frame-listener time and accept a 1-frame lag. If it becomes an issue, I can revisit.
+
+For implementation, I'm adding a `meta` dict slot to the Frame class, then in detect_video's frame handler, after detection runs, I'm building a snapshot with the detector state and attaching it to the frame's metadata.
+
+Writing detector snapshot code... I'm realizing the snapshot should store per-channel detection state, and then use the current image's scaled pixel positions since those depend on the working resolution, not when detection ran. There's a potential edge case if calibration changes mid-session, but that's minor enough to ignore for now. So I'll keep it simple: snapshot captures detection values per channel, positions come from the current `_scale_pixels` call. Now I need to update the server code to pass frame metadata through to the drawing functions and use the detection-time state snapshot when available.
+
+I should also check if there's room in Frame's `__slots__` for this metadata. And I'm thinking about detectors that aren't detect_video — they won't have a per-frame snapshot, so the overlay should gracefully fall back to showing live state. For video detectors, I can pull the state from `frame.meta["detect_video"]["state"]` if it exists; for ADC detectors, the chart already shows time-correlated data anyway, so using the closest live sample is fine. This approach handles both cases cleanly.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Got it. Plan:
+
+1. Add `Frame.meta: Optional[dict]` slot.
+2. `detect_video._on_frame` populates `frame.meta["detect_video"]` with both the per-channel result dict and the raw marker values (`pressed`, `hold_dist`, `edge_dist`, `edge_active`).
+3. Extend the overlay-draw API to optionally accept `frame=`, so `_draw_markers` can pull the historical snapshot.
+4. `_compose_frame_jpeg` reads `frame.meta` first, falls back to live globals (so non-video detectors degrade gracefully and live frames keep working).
+
+Let me wire it up.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now update `detect_video._on_frame` to snapshot per-frame state, and `_draw_markers` to consume it.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now update `server.py` so `_compose_frame_jpeg` uses the per-frame snapshot for the default overlays, and `_maybe_apply_overlays` passes the frame through to detector-supplied draw functions.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I need to make sure I'm only clearing the heavy `raw_image` data in the finally block, while letting `meta` persist on the buffered frame since that's essential for this change to work. Let me double-check the capture loop to confirm this is right.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Verify the capture loop only clears `raw_image` and not `meta`.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Good — `meta` is preserved on the buffered Frame; only `raw_image` is cleared.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Restart and verify scrub now shows historically accurate overlays.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: pgrep -f "fret-tuner.py" | xargs -I{} kill -9 {} 2>/dev/null; sleep 1; pgrep -f "fret-tuner.py" || echo "no fret-tuner running"</summary>
+
+```bash
+pgrep -f "fret-tuner.py" | xargs -I{} kill -9 {} 2>/dev/null; sleep 1; pgrep -f "fret-tuner.py" || echo "no fret-tuner running"
+```
+
+```
+no fret-tuner running
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="await">
+<details>
+<summary>Tool use: **await**</summary>
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="await"><details>
+<summary>Tool use: **await**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: sleep 6; for i in 1 2 3; do curl -s http://127.0.0.1:8080/video/snap -o /dev/null -w "snap %{http_code} %{time_total}s\n"; done; echo "--- with t param (scrub) ---"; for i in 1 2 3; do curl -s "http://127.0.0.1:8080/video/snap?t=2.0" -o /dev/null -w "scrub %{http_code} %{time_total}s\n"; done; echo "--- terminal tail ---"; tail -5 /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/489800.txt; echo "--- mem ---"; PY=$(pgrep -f 'fret-tuner.py' | tail -1); ps -o pid=,rss= -p $PY</summary>
+
+```bash
+sleep 6; for i in 1 2 3; do curl -s http://127.0.0.1:8080/video/snap -o /dev/null -w "snap %{http_code} %{time_total}s\n"; done; echo "--- with t param (scrub) ---"; for i in 1 2 3; do curl -s "http://127.0.0.1:8080/video/snap?t=2.0" -o /dev/null -w "scrub %{http_code} %{time_total}s\n"; done; echo "--- terminal tail ---"; tail -5 /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/489800.txt; echo "--- mem ---"; PY=$(pgrep -f 'fret-tuner.py' | tail -1); ps -o pid=,rss= -p $PY
+```
+
+```
+snap 200 0.005175s
+snap 200 0.001943s
+snap 200 0.002033s
+--- with t param (scrub) ---
+scrub 200 0.002702s
+scrub 200 0.002058s
+scrub 200 0.002626s
+--- terminal tail ---
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+--- mem ---
+98313 1549152
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The performance metrics look solid—live snap and scrub snap are both hitting around 2-3 ms, which is fast enough that scrubbing doesn't cause any blocking. Memory usage is actually down to 1.55 GB from the previous 2.32 GB since the buffer is still warming up, and the per-frame metadata is adding only a negligible amount of overhead.
+
+I'm verifying that the detection snapshot system is working correctly—each frame gets a fresh snapshot written to its metadata, and both the view encoder and scrub functionality pass that through to the overlay draw layer, which uses it when available. The live behavior stays unchanged since the snapshot captures the state at the moment the frame was recorded, which matches the live state anyway.
+
+I've checked that the metadata dict isn't being mutated after it's stored in the buffer, and the detection system isn't leaking references—the state and markers dicts are built fresh each frame and owned by the frame metadata, so memory overhead is minimal at around 1 MB total across all frames.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Working. Numbers:
+
+- **Live snap**: ~2 ms
+- **Scrub snap** (`?t=2.0`): ~2–3 ms — equally fast, scrub still doesn't block
+- **Memory**: 1.55 GB (down from 2.32 GB earlier — the buffer is still warming after restart). Per-frame meta dict is ~1–2 KB × 900 frames ≈ ~1–2 MB total, negligible.
+
+What changed:
+
+```51:88:tools/fret-tuner/camera.py
+class Frame:
+    """A single captured frame with its sample-clock timestamp.
+    ...
+    `meta` is a per-frame namespace where listeners stash a snapshot of the
+    state they computed for this frame (detector results, marker values,
+    actuator mask, etc.). Buffered frames retain their meta so scrub renders
+    overlays that reflect what was seen at the original capture time, not
+    whatever the detector says right now.
+    """
+
+    __slots__ = ("t", "seq", "image", "raw_image", "meta")
+```
+
+In `detect_video._on_frame`, after `_detect()` runs we stash a snapshot under `frame.meta["detect_video"]` containing both the per-channel result dict (drives the bottom-row pressed circles) and the marker values (drives the per-fret hold/edge rings and labels).
+
+In `server._compose_frame_jpeg`, we pull `state` from `_frame_state_snapshot(frame)` first and only fall back to `_latest_state` if the frame has no snapshot. The detector's overlay `draw` callback now also receives `frame=` so `_draw_markers` can use `frame.meta["detect_video"]["markers"]` for the historical pressed/active/dist values.
+
+So when you scrub:
+
+- The image is the historical frame from the buffer (unchanged behavior).
+- The bottom-row colored circles reflect **historical pressed state**.
+- The per-fret hold/edge rings and the `h.../e...` distance labels reflect **historical detection values**.
+- The fret-hold patches' `pressed` glow and edge `active` glow reflect **historical state**.
+- The `t = …` text reflects the scrub time (unchanged).
+
+What still shows live (intentionally, with a TODO in code):
+
+- The two **STRUM ▾ / STRUM ^** boxes show the live actuator mask. The actuator runs on the data thread ~1 ms after the frame's detection lands, and snapshotting it cleanly per-frame would require either a small history buffer or letting the data thread tag camera frames. Easy to add later if you want strum-state scrub fidelity, but I left it live for now since it's noted in the comment.
+
+```390:407:tools/fret-tuner/server.py
+def _compose_frame_jpeg(frame, det, scrub_t: Optional[float] = None) -> Optional[bytes]:
+    if frame is None:
+        return None
+    img = frame.image.copy()
+    with _lock:
+        live_state = dict(_latest_state)
+        live_mask = _latest_actuator_mask
+        live_t = _latest_sample_t
+    snap_state = _frame_state_snapshot(frame)
+    state = snap_state if snap_state is not None else live_state
+    # Actuator mask isn't snapshot per-frame today (it's recomputed on the
+    # data thread, ~1 ms after the frame's detection lands). Live is fine
+    # for now; revisit if scrub fidelity on strum boxes matters.
+    mask = live_mask
+    t = scrub_t if scrub_t is not None else (frame.t if frame.t else live_t)
+```
+
+The overlay-draw API is also backward compatible: `_maybe_apply_overlays` calls `draw(image, frame=frame)` and falls back to `draw(image)` on `TypeError`, so any legacy detector overlay function that didn't expect a `frame` kwarg still works.
+
+Server is running at PID 98313. Reload the browser, point at detect_video, hit pause, and scrub — the markers should now follow the buffer instead of jumping with current detection.
+
+---
+
+_**User**_
+
+let's remove default ADC data from data view. data in chart view should be dependent on enabled detector
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user wants to remove default ADC data from the chart view so it only displays data relevant to the currently enabled detector—this ties back to the detector-owned data sources feature mentioned in the spec. Let me examine how the chart is currently structured to understand what needs to change.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me first survey what's currently being plotted and how detectors expose data, so I scope the change properly.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "files_with_matches",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner",
+  "pattern": "CHANNELS|sample\\.green|sample\\.red|sample\\.yellow|sample\\.blue|sample\\.orange|adc|raw_history|state_row|baseline|edge_line|detector.*chart|chart.*detector"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "files_with_matches",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner",
+  "pattern": "CHANNELS|sample\\.green|sample\\.red|sample\\.yellow|sample\\.blue|sample\\.orange|adc|raw_history|state_row|baseline|edge_line|detector.*chart|chart.*detector",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/server.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/detect_video.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/index.html"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/stream.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/actuator.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/SPEC.md"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/detect_slope.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/detect_trough.py"
+    },
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/detect_threshold.py"
+    }
+  ],
+  "totalFiles": 9,
+  "totalMatches": 9
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now let me look at the chart code in `index.html` and at how detectors expose channel data, to decide what the chart contract should become.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "CHANNELS|chart|series|baseline|edge_line|ADC|sample\\.|state\\."
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "CHANNELS|chart|series|baseline|edge_line|ADC|sample\\.|state\\.",
+  "topFiles": [
+    {
+      "matchCount": 34,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 34
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm seeing how the chart system works—it's locked into five fixed slots matching the channel colors, with each displaying three data series (raw samples, baseline holds, and edge lines) against a fixed 0-4096 range. The user wants to change this setup.
+
+The key insight is that the server should send a "chart schema" from the active detector that defines what each of the five slots contains—their names, colors, y-ranges, and which series to plot. For ADC detectors, this would be the current setup (raw + baseline + edge), but for video-based detectors, it would show detection metrics like hold distance and edge distance instead of ADC values. The detector emits values for each series at sample rate, and the browser renders based on whatever schema the server provides. Defining detector schema structure...
+
+The key insight is that state becomes the single source of truth for all chart data—detectors decide what values to include there, so ADC-based detectors can opt-in to plotting raw samples by including them in their state dict, while the chart schema defines the visual presentation for each slot.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me see what each detector currently emits in `state`, so I understand what each will want to chart.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py",
+  "pattern": "def update|return\\s*\\{|baseline|edge_line|pressed|press_count|raw"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py",
+  "pattern": "def update|return\\s*\\{|baseline|edge_line|pressed|press_count|raw",
+  "topFiles": [
+    {
+      "matchCount": 9,
+      "uri": "tools/fret-tuner/detect_threshold.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 9
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py",
+  "pattern": "def update|return\\s*result|result\\[ch\\]\\s*=|baseline|edge_line|pressed"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py",
+  "pattern": "def update|return\\s*result|result\\[ch\\]\\s*=|baseline|edge_line|pressed",
+  "topFiles": [
+    {
+      "matchCount": 23,
+      "uri": "tools/fret-tuner/detect_trough.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 23
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py",
+  "pattern": "def update|return\\s*result|result\\[ch\\]\\s*=|baseline|edge_line|pressed"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py",
+  "pattern": "def update|return\\s*result|result\\[ch\\]\\s*=|baseline|edge_line|pressed",
+  "topFiles": [
+    {
+      "matchCount": 6,
+      "uri": "tools/fret-tuner/detect_slope.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 6
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm seeing that the existing detectors output per-channel state with different sets of fields like baseline, edge_line, thresholds, and peak values depending on the detector type. The chart UI is currently hardcoded to display 5 channels with 3 fixed series each—Raw samples, Hold baseline, and Edge detection—but this rigid structure doesn't account for the varying fields different detectors actually emit.
+
+The solution is to have each detector define its own chart schema through a method that specifies which slots (channels) to display and what series to plot within each slot, including the key to look up in the state dict, display label, color, line styling, and Y-axis range. The cleanest approach is for detectors to decide what goes into their state—if a detector wants to plot raw ADC data, it copies the sample value into its state under a "raw" key, and the schema simply references that key.
+
+Defining the schema structure... and on detector change), send `chart_schema` message with the detector's schema. Browser rebuilds charts.Per-sample data: server sends state row with whatever keys the detector emitted. Browser stores all keys per channel-id, then on chart update, plots only the keys referenced by the schema.
+
+But there's still a question: how does each detector get the ADC data into state? The current pattern is `det.update(sample)` — the detector has access to the sample and can copy any field it wants.
+
+For ADC detectors that want raw ADC plotted, they should add `"raw": getattr(sample, ch)` to their state dict.
+
+For detect_video, no need for raw ADC. Its schema would not reference any raw ADC. It might plot hold_dist (mapped already to "baseline") and edge_dist (mapped to "edge_line").
+
+Let me think about a base helper. Actually, since the ADC detectors all want the raw ADC in state, we could have a base class or convenience. But for now, just adding it explicitly to each detector's update() is fine.
+
+OK so the implementation is: each detector defines a `chart_schema()` method that returns its slot configuration, ADC detectors include raw values in their state output, and detect_video only includes its video-derived metrics. The server broadcasts this schema on connect and detector changes, then the browser dynamically rebuilds the chart based on what the active detector actually provides.
+
+For detect_video specifically, the charts would show detection signals like hold_dist and edge_dist per fret — these update at video frame rate but get sampled at 1kHz, so they'll appear as step functions on the chart.
+
+Now I need to implement this cleanly: each detector class gets a `chart_schema()` method returning slot definitions with id, label, color, y-range, and series info...
+
+Defining detector schemas... I'm weighing whether to ask the user about scope or just implement the minimal version and let them iterate. A clean architecture that lets each detector define its own chart series seems worth the effort here.
+
+My plan: each detector exposes a `chart_schema()` method that returns specs for all 5 slots, where each spec includes the series list with keys, labels, colors, and styling. ADC detectors will include "raw" in their schema, while detect_video will skip raw and just plot baseline and edge data. The server sends this schema to the browser on detector changes, and the frontend rebuilds the charts dynamically based on it.
+
+Let me check the scaling in detect_video to make sure the values map correctly to the 0-4095 range...
+
+Defining the schema structure... I'm settling on a cleaner approach: each detector defines `chart_schema()` returning slot specs with series metadata, the server auto-injects raw ADC values into state for all detectors (they're cheap), and the schema decides what to actually plot. ADC detectors will include "raw" in their series list while video detection won't, and the browser dynamically recreates charts based on the schema it receives.
+
+Now I'm realizing the data wire format needs rethinking too—currently raw ADC samples are always sent, but if a detector doesn't want them plotted, maybe we shouldn't send them at all, except the timeline scrubber still uses them for the mini ADC overview. So I need to make that detector-driven as well: ADC detectors show ADC overview, video detection shows detector output overview instead.
+
+Let me simplify: always send samples and state since the network cost is negligible, but the browser only uses what the schema requests. For the timeline overview, I'll use the first series from each slot in the schema rather than hardcoding ADC raw, so it stays consistent with what's actually being plotted.
+
+Defining the schema structure... I need to inject raw ADC values into the state object on the server side so the browser can read all chart data from a unified state structure rather than splitting between samples and detector state. The browser's chart builder will then pull everything it needs from state, which means I need to be careful about how the dynamic series are constructed on the client side. Writing the state injection logic...</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Now I have the picture. Let me also check where the browser uses raw `samples[i].green` etc., so I scope the refactor properly.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "s\\[ch\\]|s\\.green|s\\.red|s\\.yellow|s\\.blue|s\\.orange|samples\\["
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "s\\[ch\\]|s\\.green|s\\.red|s\\.yellow|s\\.blue|s\\.orange|samples\\[",
+  "topFiles": [
+    {
+      "matchCount": 7,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 7
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm laying out the architecture where each detector provides a schema function that returns slot specifications with state keys, labels, colors, and y-axis ranges, along with series data for visualization.
+
+On the server side, I'll create a helper for standard ADC detectors with raw and baseline series, auto-inject raw sample data into state, include the schema in detector info payloads, and let video detection define its own custom schema.
+
+For the browser, I need to track the schema globally, rebuild charts dynamically when a new schema arrives, organize data buffers by slot and series keys, and adapt the rendering functions to work with whatever schema is active while keeping the press tracking separate for the overlay.
+
+This is a significant refactor of the frontend, so I'm thinking through how to make the transition clean without too much disruption.
+
+Building the helper module... Now I'm refactoring the frontend to use a dynamic schema instead of hardcoded data fields—each detector message will include its schema, and the charts will rebuild based on whatever series that detector provides. I need to define a shared color palette in stream.py so all detectors and the server reference the same colors consistently.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Plan: each detector defines its own `chart_schema()` returning a 5-slot spec with per-slot label/color/y-range/series. Server auto-injects raw ADC values into state (cheap), so detectors that *want* to plot raw can reference the `"raw"` key in their schema; detectors that don't (e.g. `detect_video`) just don't list it. Browser rebuilds charts on detector change.
+
+Let me check `stream.py` to share a color constant.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/stream.py",
+  "pattern": "CHANNELS|COLOR"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/stream.py",
+  "pattern": "CHANNELS|COLOR",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/stream.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 1
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "todos": [
+    {
+      "content": "stream.py: add CH_COLORS + adc_chart_schema() helper",
+      "id": "schema-helper",
+      "status": "in_progress"
+    },
+    {
+      "content": "detect_threshold/trough/slope: implement chart_schema()",
+      "id": "detect-adc-schemas",
+      "status": "pending"
+    },
+    {
+      "content": "detect_video: implement chart_schema() (no raw)",
+      "id": "detect-video-schema",
+      "status": "pending"
+    },
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: rebuild charts from schema; switch data buffers and ingest to schema-driven keys",
+      "id": "browser-dynamic-charts",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: timeline overview uses first schema series instead of raw ADC",
+      "id": "browser-timeline-overview",
+      "status": "pending"
+    }
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "stream.py: add CH_COLORS + adc_chart_schema() helper",
+      "id": "schema-helper",
+      "status": "in_progress"
+    },
+    {
+      "content": "detect_threshold/trough/slope: implement chart_schema()",
+      "id": "detect-adc-schemas",
+      "status": "pending"
+    },
+    {
+      "content": "detect_video: implement chart_schema() (no raw)",
+      "id": "detect-video-schema",
+      "status": "pending"
+    },
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: rebuild charts from schema; switch data buffers and ingest to schema-driven keys",
+      "id": "browser-dynamic-charts",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: timeline overview uses first schema series instead of raw ADC",
+      "id": "browser-timeline-overview",
+      "status": "pending"
+    }
+  ],
+  "success": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/stream.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/stream.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now add `chart_schema()` to each ADC detector.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now `detect_video` — no raw ADC, just video-derived signals.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true,
+  "todos": [
+    {
+      "content": "stream.py: add CH_COLORS + adc_chart_schema() helper",
+      "id": "schema-helper",
+      "status": "completed"
+    },
+    {
+      "content": "detect_threshold/trough/slope: implement chart_schema()",
+      "id": "detect-adc-schemas",
+      "status": "completed"
+    },
+    {
+      "content": "detect_video: implement chart_schema() (no raw)",
+      "id": "detect-video-schema",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "in_progress"
+    }
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "stream.py: add CH_COLORS + adc_chart_schema() helper",
+      "id": "schema-helper",
+      "status": "completed"
+    },
+    {
+      "content": "detect_threshold/trough/slope: implement chart_schema()",
+      "id": "detect-adc-schemas",
+      "status": "completed"
+    },
+    {
+      "content": "detect_video: implement chart_schema() (no raw)",
+      "id": "detect-video-schema",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: rebuild charts from schema; switch data buffers and ingest to schema-driven keys",
+      "id": "browser-dynamic-charts",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: timeline overview uses first schema series instead of raw ADC",
+      "id": "browser-timeline-overview",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now extend `_detector_info()` to include the schema, with a sane fallback if a detector hasn't implemented it yet.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Now I'm tackling the main refactor of the index.html file. I need to restructure how the chart data is organized — moving away from fixed properties like `raw`, `baseline`, and `edgeLine` toward a more flexible schema where data series are keyed by slot ID. This means reworking the `createChart` function and how it processes the incoming data.
+
+The update flow needs to change too: `updateCharts()` will now iterate through whatever series the schema defines, and `renderAtTime` will follow the same pattern. I'll need to handle buffer trimming across all series arrays, and the WebSocket data ingestion will read from the state structure based on what the schema specifies for each slot.
+
+For the timeline overview, I should pick a series that's always present — probably keeping a special baseline or using the raw data when available. The press bands still need their own tracking since those come from `pressed` and `pressCount` in the data buffer. The manual channel buttons and color mapping will need to shift to being schema-driven per slot rather than using a global COLORS dictionary.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Now the browser side. Let me read more of `index.html` to see all the places I need to touch.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Now I'm refactoring the chart initialization in the HTML file to make it schema-driven instead of relying on fixed data structures, and I need to rethink how the chart container IDs map to the schema slots.
+
+Since the schema always defines exactly 5 slots in channel order, I can keep the 5 hardcoded divs but dynamically assign each one to a slot based on the schema, using the slot's ID as the data key. When the schema changes (new detector), I'll tear down the old plots and rebuild everything from scratch while keeping the timeline canvas intact.
+
+For the data flow, each slot gets its own data object containing time arrays, series data keyed by the slot's series names, and pressed/pressCount arrays. The ingest handler will iterate through schema slots and push values from the state into the corresponding data structure, then the chart updates and timeline drawing will reference the schema ordering to stay in sync.
+
+Now I'm working through the chart code implementation...
+
+I need to dynamically create chart divs from the schema instead of hardcoding them, which means replacing the fixed chart-{green,red,...} divs with a container that JS populates. The timeline stays separate. One thing to watch: the press-band overlay and getChartCenterTime both reference specific channels, so I need to make sure the slot indexing aligns with how the data flows in from the server.
+
+My approach is to keep a `currentSchema` global that defaults to empty until the detector message arrives, key the `data` object by slot.id, add a `slotById()` helper for lookups, and create an `applySchema()` function that rebuilds the charts and resets data. I'll also strip out the hardcoded `COLORS` dependency from the chart code and pull colors from the schema instead, though the manual buttons can keep using the COLORS dict since they're CSS-styled. For detectors that don't have press_count, that field will just be undefined, which is fine—the press band overlay will handle it gracefully.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Now the browser. This is a substantive rewrite of the chart code. Plan:
+
+- `currentSchema` global, populated when a `detector` message arrives.
+- `data[slotId] = { t, series: { <key>: [] }, pressed, pressCount }` — keyed by schema slot id, with one array per series.
+- `applySchema(schema)` tears down old plots, builds new chart divs and `uPlot` instances from the schema, resets data buffers.
+- Chart rendering / trimming / scrub / timeline iterate the schema instead of the hardcoded `CHANNELS`.
+
+Replace the static chart divs with a dynamic container, then rewrite the chart JS.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Need the new wrapper to flex like the old ones did. Check the CSS.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now rewrite the chart JS section. I'll replace from the data-buffer init through `trimBuffers`, `renderAtTime`, and `drawTimeline` to be schema-driven.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now update the rest of `makePressBands` to use the new closure variables, and rewrite `createChart`/`initCharts`/`updateCharts`/`trimBuffers`.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now `clampScrubTime`, `renderAtTime`, and `drawTimeline` need to use schema slots, and the data-ingest in `ws.onmessage` needs to read schema-driven keys.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now the timeline `timeFromX` and the data-ingest in `ws.onmessage`, plus the pause-button handler.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Pause-button uses `data[CHANNELS[0]]`. Update it.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+And `getChartCenterTime`.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now wire the schema arrival path and remove the old `initCharts()` call (which required pre-existing divs). Find where `initCharts` is called and where the `detector` message is handled.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "initCharts|msg\\.type === \u0026quot;detector\u0026quot;|msg\\.type === \\\"detector\\\""
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "initCharts|msg\\.type === \u0026quot;detector\u0026quot;|msg\\.type === \\\"detector\\\"",
+  "topFiles": [
+    {
+      "matchCount": 3,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 3
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+`initCharts()` is fine — it now only attaches the resize listener (which iterates `currentSchema`). Let me verify and also check the bottom of the file context.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now let me update the SPEC and remove the future-work item that's now done.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md",
+  "pattern": "chart_schema|Detector-owned data sources|chart schemas"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md",
+  "pattern": "chart_schema|Detector-owned data sources|chart schemas",
+  "topFiles": [
+    {
+      "matchCount": 1,
+      "uri": "tools/fret-tuner/SPEC.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 1
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now let me also look at the SPEC's chart description to add a brief mention of the schema.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md",
+  "pattern": "chart|Chart"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md",
+  "pattern": "chart|Chart",
+  "topFiles": [
+    {
+      "matchCount": 15,
+      "uri": "tools/fret-tuner/SPEC.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 15
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Also update the Charts section description.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now do quick lint / smoke tests. First check for obvious errors.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/stream.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/stream.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Quick smoke import to ensure each detector loads and produces a valid schema.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: .venv/bin/python -c "
+import importlib, json
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    print(name, '-> slots:', [s['id'] for s in schema])
+    print(name, '-> first slot series:', [s['key'] for s in schema[0]['series']])
+"
+</summary>
+
+```bash
+.venv/bin/python -c "
+import importlib, json
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    print(name, '-> slots:', [s['id'] for s in schema])
+    print(name, '-> first slot series:', [s['key'] for s in schema[0]['series']])
+"
+
+```
+
+```
+(eval):1: no such file or directory: .venv/bin/python
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **/Users/greg/projects/microchip/guitar-pic** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search">
+<details>
+<summary>Tool use: **glob_file_search** • Searched codebase "" • **0** results in **1** directory</summary>
+
+Directory: **/Users/greg/projects/microchip/guitar-pic/tools** (0 files)
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="search" data-tool-name="glob_file_search"><details>
+<summary>Tool use: **glob_file_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: ls -a /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/ | head -30 && which python3</summary>
+
+```bash
+ls -a /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/ | head -30 && which python3
+```
+
+```
+.
+..
+.gitignore
+SPEC.md
+__pycache__
+actuator.py
+camera.py
+detect_slope.py
+detect_threshold.py
+detect_trough.py
+detect_video.py
+fret-tuner.py
+index.html
+requirements.txt
+server.py
+stream.py
+video_calibrate.py
+/opt/homebrew/bin/python3
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: ls /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/ 2>/dev/null | head -5</summary>
+
+```bash
+ls /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/ 2>/dev/null | head -5
+```
+
+```
+1.txt
+122857.txt
+2.txt
+252386.txt
+303361.txt
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: head -10 /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/*.txt 2>/dev/null</summary>
+
+```bash
+head -10 /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/*.txt 2>/dev/null
+```
+
+```
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/1.txt &lt;==
+---
+pid: 89176
+cwd: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner
+---
+te.py", line 169, in main
+    key = cv2.waitKey(30) &amp; 0xFF
+          ^^^^^^^^^^^^^^^
+KeyboardInterrupt
+
+((.venv) ) greg@Laboratory fret-tuner % python video_calibrate.py --sample
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/122857.txt &lt;==
+---
+pid: 97532
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:40:37.740Z
+running_for_ms: 350120   
+---
+2026-04-17 15:40:38.556 Python[97538:25139988] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/2.txt &lt;==
+---
+pid: 89448
+cwd: /Users/greg/projects/microchip/guitar-pic
+---
+greg@Laboratory guitar-pic %
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/252386.txt &lt;==
+---
+pid: 97688
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:46:39.705Z
+running_for_ms: 1230442  
+---
+2026-04-17 15:46:40.550 Python[97694:25145121] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/303361.txt &lt;==
+---
+pid: 95252
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "/Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --csv ../../firmware/fretboard/fretboard-sample-raw.csv --fast"
+started_at: 2026-04-17T19:40:09.869Z
+running_for_ms: 1316391  
+---
+2026-04-17 14:40:15.895 Python[95258:25075320] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Stream error (no serial port to reconnect): [Errno 2] No such file or directory: '../../firmware/fretboard/fretboard-sample-raw.csv'
+Starting fret-tuner at http://127.0.0.1:8080
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/338241.txt &lt;==
+---
+pid: 95853
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:00:37.654Z
+running_for_ms: 1        
+---
+2026-04-17 15:00:38.527 Python[95859:25094947] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+ERROR:    [Errno 48] error while attempting to bind on address ('127.0.0.1', 8080): address already in use
+Starting fret-tuner at http://127.0.0.1:8080
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/429387.txt &lt;==
+---
+pid: 95983
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:02:14.323Z
+running_for_ms: 2        
+---
+2026-04-17 15:02:16.747 Python[95989:25097620] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+ERROR:    [Errno 48] error while attempting to bind on address ('127.0.0.1', 8080): address already in use
+Starting fret-tuner at http://127.0.0.1:8080
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/489800.txt &lt;==
+---
+pid: 98307
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T21:07:19.223Z
+running_for_ms: 2005746  
+---
+2026-04-17 16:07:20.262 Python[98313:25166018] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/621767.txt &lt;==
+---
+pid: 97225
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:35:12.524Z
+running_for_ms: 315125   
+---
+2026-04-17 15:35:13.380 Python[97231:25133105] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/818760.txt &lt;==
+---
+pid: 96955
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:22:13.957Z
+running_for_ms: 755295   
+---
+2026-04-17 15:22:17.796 Python[96961:25122980] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -- buffer max 900 frames ~ 5339 MB
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/996337.txt &lt;==
+---
+pid: 96069
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:02:57.522Z
+running_for_ms: 1155575  
+---
+2026-04-17 15:02:58.578 Python[96075:25099453] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+[detect_video] stopped
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I've located the virtual environment at `/Users/greg/projects/microchip/guitar-pic/.venv`, so now I'll run the smoke test using that correct path.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import importlib, json
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    assert isinstance(schema, list) and len(schema) == 5, (name, schema)
+    for slot in schema:
+        for k in ('id','label','color','y_range','series'):
+            assert k in slot, (name, slot)
+        assert isinstance(slot['series'], list) and slot['series'], (name, slot)
+        for s in slot['series']:
+            assert 'key' in s and 'label' in s and 'color' in s, (name, s)
+    keys0 = [s['key'] for s in schema[0]['series']]
+    print(f'{name:20s} slot0 series: {keys0}')
+print('OK')
+"
+</summary>
+
+```bash
+/Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import importlib, json
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    assert isinstance(schema, list) and len(schema) == 5, (name, schema)
+    for slot in schema:
+        for k in ('id','label','color','y_range','series'):
+            assert k in slot, (name, slot)
+        assert isinstance(slot['series'], list) and slot['series'], (name, slot)
+        for s in slot['series']:
+            assert 'key' in s and 'label' in s and 'color' in s, (name, s)
+    keys0 = [s['key'] for s in schema[0]['series']]
+    print(f'{name:20s} slot0 series: {keys0}')
+print('OK')
+"
+
+```
+
+```
+Traceback (most recent call last):
+  File "&lt;string&gt;", line 4, in &lt;module&gt;
+  File "/opt/homebrew/Cellar/python@3.12/3.12.12/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "&lt;frozen importlib._bootstrap&gt;", line 1387, in _gcd_import
+  File "&lt;frozen importlib._bootstrap&gt;", line 1360, in _find_and_load
+  File "&lt;frozen importlib._bootstrap&gt;", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'detect_threshold'
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import sys, os
+sys.path.insert(0, os.getcwd())
+import importlib
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    assert isinstance(schema, list) and len(schema) == 5, (name, len(schema))
+    for slot in schema:
+        for k in ('id','label','color','y_range','series'):
+            assert k in slot, (name, list(slot))
+        assert isinstance(slot['series'], list) and slot['series']
+        for s in slot['series']:
+            assert 'key' in s and 'label' in s and 'color' in s
+    print(f'{name:18s} slot0 series: {[s[\"key\"] for s in schema[0][\"series\"]]}')
+print('OK')
+"
+</summary>
+
+```bash
+/Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import sys, os
+sys.path.insert(0, os.getcwd())
+import importlib
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    assert isinstance(schema, list) and len(schema) == 5, (name, len(schema))
+    for slot in schema:
+        for k in ('id','label','color','y_range','series'):
+            assert k in slot, (name, list(slot))
+        assert isinstance(slot['series'], list) and slot['series']
+        for s in slot['series']:
+            assert 'key' in s and 'label' in s and 'color' in s
+    print(f'{name:18s} slot0 series: {[s[\"key\"] for s in schema[0][\"series\"]]}')
+print('OK')
+"
+
+```
+
+```
+Traceback (most recent call last):
+  File "&lt;string&gt;", line 6, in &lt;module&gt;
+  File "/opt/homebrew/Cellar/python@3.12/3.12.12/Frameworks/Python.framework/Versions/3.12/lib/python3.12/importlib/__init__.py", line 90, in import_module
+    return _bootstrap._gcd_import(name[level:], package, level)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "&lt;frozen importlib._bootstrap&gt;", line 1387, in _gcd_import
+  File "&lt;frozen importlib._bootstrap&gt;", line 1360, in _find_and_load
+  File "&lt;frozen importlib._bootstrap&gt;", line 1324, in _find_and_load_unlocked
+ModuleNotFoundError: No module named 'detect_threshold'
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The working_directory parameter doesn't seem to be taking effect, so sys.path isn't picking up the correct directory. I'll try injecting an absolute path instead to see if that resolves it.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import sys; sys.path.insert(0, '.')
+import importlib
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    assert isinstance(schema, list) and len(schema) == 5
+    for slot in schema:
+        for k in ('id','label','color','y_range','series'):
+            assert k in slot
+        assert isinstance(slot['series'], list) and slot['series']
+    print(f'{name:18s} slot0 series:', [s['key'] for s in schema[0]['series']])
+print('OK')
+"</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import sys; sys.path.insert(0, '.')
+import importlib
+for name in ['detect_threshold','detect_trough','detect_slope','detect_video']:
+    m = importlib.import_module(name)
+    d = m.Detector(**m.Detector.default_params())
+    schema = d.chart_schema()
+    assert isinstance(schema, list) and len(schema) == 5
+    for slot in schema:
+        for k in ('id','label','color','y_range','series'):
+            assert k in slot
+        assert isinstance(slot['series'], list) and slot['series']
+    print(f'{name:18s} slot0 series:', [s['key'] for s in schema[0]['series']])
+print('OK')
+"
+```
+
+```
+detect_threshold   slot0 series: ['raw', 'baseline', 'press_threshold']
+detect_trough      slot0 series: ['raw', 'baseline', 'run_min']
+detect_slope       slot0 series: ['raw', 'baseline', 'trough', 'peak']
+detect_video       slot0 series: ['baseline', 'edge_line']
+OK
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+All four detectors emit valid 5-slot schemas. Notice `detect_video` correctly omits `raw`. Let me also verify the server's fallback doesn't crash and the full server module imports.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import sys; sys.path.insert(0, '.')
+import server
+schema = server._fallback_chart_schema()
+assert len(schema) == 5
+print('fallback ids:', [s['id'] for s in schema])
+print('fallback slot0 series:', [s['key'] for s in schema[0]['series']])
+print('OK')
+"</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "
+import sys; sys.path.insert(0, '.')
+import server
+schema = server._fallback_chart_schema()
+assert len(schema) == 5
+print('fallback ids:', [s['id'] for s in schema])
+print('fallback slot0 series:', [s['key'] for s in schema[0]['series']])
+print('OK')
+"
+```
+
+```
+fallback ids: ['green', 'red', 'yellow', 'blue', 'orange']
+fallback slot0 series: ['baseline']
+OK
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Everything's importing correctly and the schemas check out. Now I need to make sure there aren't any lingering references to the old CHANNELS-based chart code that could cause issues—let me search through the codebase for any remaining uses.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me make sure I didn't leave any dangling `CHANNELS[0]`/`COLORS[ch]` references in the chart paths.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "CHANNELS\\[|data\\[ch\\]|COLORS\\[ch\\]|d\\.raw|d\\.edgeLine|d\\.baseline\\b|chart-green|chart-red|chart-yellow|chart-blue|chart-orange"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "CHANNELS\\[|data\\[ch\\]|COLORS\\[ch\\]|d\\.raw|d\\.edgeLine|d\\.baseline\\b|chart-green|chart-red|chart-yellow|chart-blue|chart-orange",
+  "topFiles": [],
+  "totalFiles": 0,
+  "totalMatches": 0
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "CHANNELS|COLORS"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "CHANNELS|COLORS",
+  "topFiles": [
+    {
+      "matchCount": 2,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 2
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm checking whether those constants are actually being used anywhere — the grep search came up empty, so they're truly unused now. The manual buttons rely on CSS styling instead of the COLORS dictionary, and CHANNELS isn't referenced in the JavaScript either, so I should clean them up.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "\\bCHANNELS\\b|\\bCOLORS\\b"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "\\bCHANNELS\\b|\\bCOLORS\\b",
+  "topFiles": [
+    {
+      "matchCount": 2,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 2
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Truly unused now — drop them.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true,
+  "todos": [
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: rebuild charts from schema; switch data buffers and ingest to schema-driven keys",
+      "id": "browser-dynamic-charts",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: timeline overview uses first schema series instead of raw ADC",
+      "id": "browser-timeline-overview",
+      "status": "completed"
+    }
+  ]
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "stream.py: add CH_COLORS + adc_chart_schema() helper",
+      "id": "schema-helper",
+      "status": "completed"
+    },
+    {
+      "content": "detect_threshold/trough/slope: implement chart_schema()",
+      "id": "detect-adc-schemas",
+      "status": "completed"
+    },
+    {
+      "content": "detect_video: implement chart_schema() (no raw)",
+      "id": "detect-video-schema",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: rebuild charts from schema; switch data buffers and ingest to schema-driven keys",
+      "id": "browser-dynamic-charts",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: timeline overview uses first schema series instead of raw ADC",
+      "id": "browser-timeline-overview",
+      "status": "completed"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now restart the server so you can try it.
+
+_**Agent (claude-opus-4-7)**_
+
+Cancelled
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+---
+
+_**User**_
+
+restart server
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The server needs to be restarted after the previous attempt got interrupted, so I'm going to kill any existing processes and bring it back up.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: lsof -i :8080 -t 2>/dev/null | xargs -r kill -9 2>/dev/null; pkill -9 -f "fret-tuner.py" 2>/dev/null; sleep 0.5; echo done</summary>
+
+```bash
+lsof -i :8080 -t 2>/dev/null | xargs -r kill -9 2>/dev/null; pkill -9 -f "fret-tuner.py" 2>/dev/null; sleep 0.5; echo done
+```
+
+```
+done
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+```
+
+```
+]633;C2026-04-17 17:27:54.604 Python[501:25256227] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="await">
+<details>
+<summary>Tool use: **await**</summary>
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="await"><details>
+<summary>Tool use: **await**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/912205.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Server is running cleanly at `http://127.0.0.1:8080`. Reload the browser and you should see:
+
+- **`detect_threshold`**: per-fret charts plot raw ADC + Release line (dashed grey) + Press threshold (dashed red).
+- **`detect_trough`**: raw + Baseline + Run-min.
+- **`detect_slope`**: raw + Smoothed + Trough + Peak.
+- **`detect_video`**: per-fret Hold and Edge signals only — no raw ADC.
+
+Switching detectors via the sidebar dropdown should swap the chart contents (labels, colors, series) along with the algorithm. The mini timeline overview at the bottom now uses each slot's first series instead of raw ADC, so it stays meaningful when `detect_video` is active.
+
+---
+
+_**User**_
+
+broke something with the chart. formatting is different. Did you do as we discussed? Keep standard overall formatting for chart (5 channels), but data is dependent on detector
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user is saying the chart formatting looks different from what they expected. They want to keep the standard 5-channel layout but make the data swappable. I'm reviewing my changes—I replaced the hardcoded channel divs with a dynamic container that populates them, and I'm adjusting the flexbox styling to maintain the original layout structure.
+
+Looking at the CSS, the new `#chart-slots` container should behave the same as the original setup with 5 equal-height channels, but I'm realizing the structure has shifted slightly with the timeline as a sibling now instead of being part of the flex flow. The key difference is that each chart-wrap is now a child of `#chart-slots` rather than direct children of `#charts`, which could affect how they distribute the available space.
+
+I'm also noticing some styling discrepancies in the series definitions — the "Press" line is now width 1 instead of 1.5, and the label changed from "Hold" to "Release", which might be why the visual appearance feels off compared to the original detector output.
+
+Looking back at what the user actually asked for, they wanted the same 5-channel layout and visual presentation with just the data changing based on the detector type. I think I may have overcomplicated things by changing labels, widths, and potentially introducing CSS quirks when I should've kept the formatting consistent and only swapped out the data flow.
+
+Let me check the current index.html to see what's actually there and verify it matches the original styling expectations.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me look at the current state of the chart code and figure out what changed visually.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm noticing there's a nested flex layout happening here — the `#charts` container has flex-column styling, but now there's an additional `#chart-slots` wrapper inside it with the same flex properties, which creates a double-nested flex structure for the inner chart elements.
+
+The real visual difference is probably coming from the legends. Each detector type has a different number of series — detect_slope has four series which means its legend takes up more vertical space and leaves less room for the actual plot area, making it look cramped compared to the others. And for detect_threshold, there's now a third line (the press_threshold in dashed red) that wasn't visible before, which changes how the chart looks overall.
+
+The user wants the chart container formatting to stay consistent — same 5-slot layout, same axes and spacing — but the data lines inside should adapt based on which detector is active. So instead of restructuring the HTML or adding new wrappers, I should keep the original five hardcoded chart divs and just reinitialize the uPlot instances when the schema changes, letting the data adapt while the visual structure stays put. side each existing div. Avoids any layout changes.
+
+But that ties slot IDs to fixed channel names. For the current detectors that's fine (they all use ch ids), but a new detector with custom slot ids couldn't be added.
+
+Alternative: keep dynamic creation but match the original CSS structure exactly — drop the extra `#chart-slots` wrapper and append chart-wraps directly to #charts (with timeline last).
+
+Let me go with the latter: append chart-wraps directly to #charts container, before the timeline. That preserves the original CSS structure.
+
+Also let me restore the original look as closely as possible. The original had:
+- For each fret: stroke=COLORS[ch] width=1.5 (Raw) + #888 width=1 dash[4,3] (Hold) + #e94560 width=1.5 dash[2,2] (Edge)
+
+For detect_threshold/trough/slope — those didn't actually have edge lines before (they emitted edge_line=undefined or 0, which would render as flat 0). So the original chart for them showed Raw + Hold + a flat-0 Edge line. Visually that's 2 useful lines plus a flat one at zero.
+
+For detect_video, the original chart showed Raw (raw ADC, irrelevant noise) + Hold (hold_dist scaled) + Edge (edge_dist scaled). New chart shows Hold + Edge only. So we removed the irrelevant raw ADC noise — that's intended.
+
+So in summary, what user wants:
+- Layout: same as before (5 stacked charts, fills available height)
+- Data: detector-driven
+
+The legend sizing might shift if the number of series changes per chart, and the wrapper div could subtly affect sizing. I'll remove the wrapper and simplify the series to match the original visualization — each ADC detector shows just raw and baseline (the old "Raw + Hold"), while detect_video shows only baseline and edge line. This keeps the plots visually consistent while using detector-specific data.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+You're right — I changed two things instead of one. The agreement was: keep the 5-channel layout *visually identical*, only the data lines change per detector. I introduced an extra wrapper div that affects layout, and added more series than the old chart had (e.g. `detect_slope` now has 4 lines, threshold has 3 with a dashed red line that wasn't there before). Let me revert both.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now `applySchema` should append directly into `#charts` *before* the timeline element, so the chart slots occupy the same DOM position as the originals.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now trim the ADC detector schemas back to match the original chart visuals (raw + baseline only — same as the old "Raw + Hold").
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm adjusting the visual styling for `detect_video` to match the old chart format — using the slot color for the hold line (the first series) so it resembles the old "Raw" line appearance, then adding a dashed grey line for the edge detection, even though there's no actual raw ADC data in this version. I need to increase the edge line width from 1 to 1.5 to match the original chart's visual weight, then restart the server to apply the changes.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Match `detect_video`'s edge-line width to the original (was 1.5).
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now restart the server.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: lsof -i :8080 -t 2>/dev/null | xargs -r kill -9 2>/dev/null; pkill -9 -f "fret-tuner.py" 2>/dev/null; sleep 0.5; echo done</summary>
+
+```bash
+lsof -i :8080 -t 2>/dev/null | xargs -r kill -9 2>/dev/null; pkill -9 -f "fret-tuner.py" 2>/dev/null; sleep 0.5; echo done
+```
+
+```
+done
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+```
+
+```
+]633;C]633;P;Cwd=/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner]633;P;HasRichCommandDetection=True]633;A$ ]633;B]633;E;cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+]633;C2026-04-17 17:31:01.555 Python[685:25259952] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="await">
+<details>
+<summary>Tool use: **await**</summary>
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="await"><details>
+<summary>Tool use: **await**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Server is up. Reload the tab — the chart layout should now match the original (5 stacked charts with the same proportions, no extra wrapper, no extra series), and only the *plotted data* differs per detector:
+
+- `detect_threshold` / `detect_trough` / `detect_slope`: Raw + Hold (same look as before).
+- `detect_video`: Hold + Edge in the slot color and red-dashed (no irrelevant raw ADC noise).
+
+---
+
+_**User**_
+
+chart still not right. channels seem to be on top of each other with each having different y axis scaling. 
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user mentions the charts are stacked but with mismatched Y-axis scales, and they might actually be overlapping rather than properly arranged. I'm thinking through what could cause this — the flex layout on the chart containers might not be applying correctly, or uPlot's element creation could be interfering with how the divs expand to fill space.
+
+Actually, I think I've found the real issue: when I create each chart, uPlot gets instantiated at whatever height the container has at that moment. Chart 1 gets created when it's the only flex item, so it takes the full available height — maybe 600px. Then when I add chart 2, the flex layout recalculates and both containers should shrink to around 300px each, but uPlot for chart 1 was already rendered at 600px and doesn't automatically resize when the parent layout changes. The same happens with charts 3, 4, and 5 — each one gets locked into whatever height it had when it was created, so they end up with completely different sizes even though their containers are supposed to be equal.
+
+The solution is to insert all the empty chart containers first, let the browser's layout engine settle everything, and only then create the uPlot instances once all the containers have their final dimensions. I'm refactoring the code to do this in two passes instead of creating each chart immediately after adding its container.
+
+Updating the function... Writing the two-pass layout fix...</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Found it. The bug is that I'm creating each `uPlot` instance *as I insert* its `chart-wrap` div. The first wrap, alone in the flex container, briefly gets the full available height — uPlot is constructed at that size. As subsequent wraps are inserted the flex layout shrinks each wrap, but the already-constructed uPlot canvases keep their original (oversized) heights and visually overlap.
+
+Two-pass fix: insert all 5 wraps first, *then* construct uPlot instances after the layout has settled.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Server is still running and the browser fetches `index.html` fresh on reload, so just reload the tab. The five charts should stack at equal heights with their original spacing, no overlap, and each with a 0–4096 y-axis.
+
+---
+
+_**User**_
+
+much better
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+Glad that's sorted. Charts now display detector-specific data with the original 5-channel layout intact. Let me know when you want to tackle anything else.
+
+---
+
+_**User**_
+
+lets move the pause / scrub controls to the right side below actuator. When paused, I'd like fine controls to be able to step frame by frame or slow motion
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I need to understand the current layout first—where the pause and scrub controls are in the sidebar and where the actuator section is in the right panel, so I can move those controls below it and add the fine-grained playback options when paused.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me look at the current sidebar layout and the right-panel structure to plan the move.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm examining the existing pause logic and `showFrameAtTime` to understand how frame stepping should work. The video frames are captured server-side at roughly 30fps, so each frame interval is about 33 milliseconds—I need to use that to advance to the next or previous frame when stepping.
+
+For the UI layout, I'm moving the Transport section (pause controls and window slider) to the right panel below the Actuator, then adding new scrub controls: frame-by-frame stepping buttons, multi-frame jumps, and slow-motion playback options at different speeds. The Window slider stays with Transport since it controls the visible time range for both charts and scrubbing.
+
+Designing the Scrub section UI... Building the transport and scrub UI... I'm realizing the timing needs to be precise—each tick happens every 1/30th of a second in real time, and the scrubTime advances by that frame step multiplied by the playback speed, so at 0.25x it moves through the buffered video at a quarter of real-time speed. For edge cases, when slow-mo reaches the end I should stop playback and keep the button showing play, and resuming live playback should cancel any slow-mo session. Keyboard controls let users step frame-by-frame with arrow keys or jump by 10 frames with shift, and space toggles slow-mo only when paused. The trickier part is that stepping by frame doesn't actually work perfectly since we don't know exact frame timestamps client-side—we're approximating with the frame step constant and the server snaps to the closest frame, which can cause frames to get stuck if the step is smaller than the actual frame interval. The cleanest solution would be to have the server return the exact frame timestamp in a response header, so after loading a frame the client updates to that precise time and subsequent steps always land on a new frame. Or even simpler, add a server endpoint that takes the current time and direction and returns the next or previous frame's timestamp directly, letting the browser jump precisely between frames.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me peek at `camera.py` to see what frame-lookup APIs exist (for stepping to actual frame timestamps rather than guessing).
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py",
+  "pattern": "def closest|def latest|_buffer|deque|def status|class Camera"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py",
+  "pattern": "def closest|def latest|_buffer|deque|def status|class Camera",
+  "topFiles": [
+    {
+      "matchCount": 12,
+      "uri": "tools/fret-tuner/camera.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 12
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'll add a `step(t, dir)` method to navigate between frames and create a server endpoint that returns the snapped JPEG with the actual frame timestamp in the response header for clean synchronization.
+
+Actually, I realize the snap endpoint finds the closest frame, not the next one—so a small time offset won't reliably step to the next frame when frames are ~33ms apart. I need an explicit step API instead: `Camera.step(t, direction)` returns the frame strictly after or before the given time, and `/video/step?t=X&dir=next|prev` returns the frame metadata so the browser can update scrubTime and load the correct frame.
+
+For playback at different speeds, I'll use `setInterval` with a dynamic interval: at 1x speed it's 33ms per frame, but at 0.25x I'd use `33/0.25 = 132ms` per interval, so each tick advances one frame at the slower rate. Let me implement this now and check the fps value in the camera module.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now add a `step()` method to `Camera`. I'll plan the work, then build it up.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method that walks the buffer to the n-th next/prev frame",
+      "id": "cam-step",
+      "status": "in_progress"
+    },
+    {
+      "content": "server.py: add /video/step endpoint returning {t, seq}",
+      "id": "server-step",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: move Transport section out of sidebar, into the right panel below Actuator",
+      "id": "ui-move",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: add Scrub controls (frame step buttons, slow-mo play, speed select, frame info) visible only when paused",
+      "id": "ui-scrub",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: keyboard shortcuts for stepping (arrows) and slow-mo toggle (space)",
+      "id": "ui-keyboard",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "stream.py: add CH_COLORS + adc_chart_schema() helper",
+      "id": "schema-helper",
+      "status": "completed"
+    },
+    {
+      "content": "detect_threshold/trough/slope: implement chart_schema()",
+      "id": "detect-adc-schemas",
+      "status": "completed"
+    },
+    {
+      "content": "detect_video: implement chart_schema() (no raw)",
+      "id": "detect-video-schema",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: auto-inject sample raw into state; include chart_schema in detector info",
+      "id": "server-inject-raw",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: rebuild charts from schema; switch data buffers and ingest to schema-driven keys",
+      "id": "browser-dynamic-charts",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: timeline overview uses first schema series instead of raw ADC",
+      "id": "browser-timeline-overview",
+      "status": "completed"
+    }
+  ],
+  "success": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method",
+      "id": "cam-step",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: add /video/step endpoint returning {t, seq}",
+      "id": "server-step",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: move Transport section out of sidebar, into the right panel below Actuator",
+      "id": "ui-move",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: add Scrub controls (frame step buttons, slow-mo play, speed select, frame info) visible only when paused",
+      "id": "ui-scrub",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: keyboard shortcuts for stepping (arrows) and slow-mo toggle (space)",
+      "id": "ui-keyboard",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method that walks the buffer to the n-th next/prev frame",
+      "id": "cam-step",
+      "status": "in_progress"
+    },
+    {
+      "content": "server.py: add /video/step endpoint returning {t, seq}",
+      "id": "server-step",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: move Transport section out of sidebar, into the right panel below Actuator",
+      "id": "ui-move",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: add Scrub controls (frame step buttons, slow-mo play, speed select, frame info) visible only when paused",
+      "id": "ui-scrub",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: keyboard shortcuts for stepping (arrows) and slow-mo toggle (space)",
+      "id": "ui-keyboard",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method",
+      "id": "cam-step",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: add /video/step endpoint",
+      "id": "server-step",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: move Transport section into the right panel below Actuator",
+      "id": "ui-move",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: add Scrub controls (frame step buttons, slow-mo play, speed select, frame info) visible only when paused",
+      "id": "ui-scrub",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: keyboard shortcuts for stepping (arrows) and slow-mo toggle (space)",
+      "id": "ui-keyboard",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method",
+      "id": "cam-step",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: add /video/step endpoint returning {t, seq}",
+      "id": "server-step",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: move Transport section out of sidebar, into the right panel below Actuator",
+      "id": "ui-move",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: add Scrub controls (frame step buttons, slow-mo play, speed select, frame info) visible only when paused",
+      "id": "ui-scrub",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: keyboard shortcuts for stepping (arrows) and slow-mo toggle (space)",
+      "id": "ui-keyboard",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now move the Transport section to the right panel and add scrub controls. Also add CSS for the new control row.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Add CSS for the new scrub controls.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now wire it up in JS. Find the existing pause-button handler.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "btn-pause|btn-pause|showFrameAtTime|showLiveVideo"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "btn-pause|btn-pause|showFrameAtTime|showLiveVideo",
+  "topFiles": [
+    {
+      "matchCount": 9,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 9
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Now I'm mapping out the keyboard controls—I need to toggle the scrub controls panel based on pause state, wire up the frame step buttons, add slow-motion playback with adjustable speed, and switch the arrow keys to frame-by-frame stepping instead of time-window scrubbing when paused.
+
+Setting up the slow-mo handler... Now I'm wiring up the UI controls—updating the scrub info display with the current time and playback speed, then adding click handlers for the step buttons to move forward or backward by frames. I'm also setting up the slow-mo toggle and speed selector to restart playback when the speed changes, and I need to make sure pausing stops slow-mo, hides the scrub controls, and enables keyboard frame-stepping.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Now wire it all up. Update the pause handler and keyboard shortcuts, and add the scrub control logic.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now upgrade the keyboard shortcuts: arrows step by frame (Shift = ×10), space toggles slow-mo while paused.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method",
+      "id": "cam-step",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: add /video/step endpoint",
+      "id": "server-step",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: move Transport into right panel below Actuator",
+      "id": "ui-move",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: scrub controls (frame step, slow-mo, info)",
+      "id": "ui-scrub",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: keyboard shortcuts updated",
+      "id": "ui-keyboard",
+      "status": "completed"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method",
+      "id": "cam-step",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: add /video/step endpoint",
+      "id": "server-step",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: move Transport section into the right panel below Actuator",
+      "id": "ui-move",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: add Scrub controls (frame step buttons, slow-mo play, speed select, frame info) visible only when paused",
+      "id": "ui-scrub",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: keyboard shortcuts for stepping (arrows) and slow-mo toggle (space)",
+      "id": "ui-keyboard",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints">
+<details>
+<summary>Tool use: **read_lints**</summary>
+
+
+Parameters:
+
+```json
+{
+  "paths": [
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+    "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html"
+  ]
+}
+```
+Result:
+
+```json
+{
+  "linterErrorsByFile": [
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py"
+    },
+    {
+      "relativeWorkspacePath": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html"
+    }
+  ]
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="read_lints"><details>
+<summary>Tool use: **read_lints**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Restart the server.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: lsof -i :8080 -t 2>/dev/null | xargs -r kill -9 2>/dev/null; pkill -9 -f "fret-tuner.py" 2>/dev/null; sleep 0.5; echo done</summary>
+
+```bash
+lsof -i :8080 -t 2>/dev/null | xargs -r kill -9 2>/dev/null; pkill -9 -f "fret-tuner.py" 2>/dev/null; sleep 0.5; echo done
+```
+
+```
+done
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+```
+
+```
+]633;C]633;P;Cwd=/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner]633;P;HasRichCommandDetection=True]633;A$ ]633;B]633;E;cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+]633;C2026-04-17 17:48:37.232 Python[1288:25280065] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="await">
+<details>
+<summary>Tool use: **await**</summary>
+
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="await"><details>
+<summary>Tool use: **await**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Server is up. Reload the tab to see the changes:
+
+**Layout**
+- The Transport section is gone from the left sidebar; it now sits in the right panel below Actuator (above Manual). The Window slider stays with it since it controls scrub viewport too.
+
+**Scrub controls** (appear only when paused)
+- `«`  step back 10 frames
+- `‹`  step back 1 frame
+- `▶ / ‖‖`  toggle slow-motion playback
+- `›`  step forward 1 frame
+- `»`  step forward 10 frames
+- `Speed` dropdown: 0.1x, 0.25x, 0.5x, 1x — changes apply live (restarts a running slow-mo at the new speed)
+- A small `t = X.XXXs @ 0.25x` readout
+
+**Frame stepping is exact**: the new `/video/step` endpoint walks the actual buffered frames in `camera.py` and returns the snapped timestamp, so `‹` / `›` always move to the next/prev real frame regardless of capture rate. Stops cleanly at the buffer ends.
+
+**Keyboard**
+- `Space`: live → toggle pause/resume; paused → toggle slow-mo play/pause
+- `← / →`: ±1 frame (paused)
+- `Shift + ← / →`: ±10 frames (paused)
+- `+ / -` still zoom the chart window
+
+---
+
+_**User**_
+
+what is the t variable in step function
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user is asking about the `t` variable in the step function — there are a few different step functions in the codebase, but they're likely referring to the server-side `step()` method in `camera.py` since that's where `t` has the most meaningful role as a timestamp parameter. The `t` variable represents the sample-clock seconds that serves as a reference point for finding the closest buffered frame.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+In `Camera.step(t, direction, n)` (and the `/video/step?t=…` endpoint, and `stepFrames(n)` in the browser), `t` is a **timestamp in seconds on the shared sample-clock** — the same clock used everywhere in the tool (ADC samples, `Frame.t`, `scrubTime`, the chart x-axis, the `t = X.XXXs` overlay, `cam.closest(t)`).
+
+It's the reference point for the step:
+
+1. Find the buffered frame whose `Frame.t` is closest to `t`.
+2. Move `n` indices forward (`direction="next"`) or backward (`"prev"`) in the buffer from there.
+3. Return that frame (clamped to first/last if you'd walk off the edge).
+
+In the browser, the value passed in is the current `scrubTime`:
+
+```1054:1058:tools/fret-tuner/index.html
+    const url = "/video/step?t=" + encodeURIComponent(scrubTime.toFixed(4))
+              + "&dir=" + (n >= 0 ? "next" : "prev")
+              + "&n=" + Math.abs(n);
+```
+
+so each call answers the question *"starting from where I'm currently scrubbed to, what's the timestamp of the frame N steps away?"* The browser then assigns that returned timestamp back to `scrubTime` and re-renders. That's also why stepping snaps cleanly to real frame boundaries even though the client doesn't know the exact capture interval.
+
+---
+
+_**User**_
+
+Not sure I understand. to we step by frames or timestamp? Stepping forward or backward should always be by frame and timestamp of that frame is the reference?
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ So the user is clarifying that stepping always happens by frame count, with the current frame's timestamp serving as the reference point. The implementation should find the current frame index based on the input timestamp, then advance or retreat by the specified number of frames from there.
+
+The reason we pass a timestamp rather than a frame sequence number is that the browser only knows about timestamps on the shared clock, not the server's internal frame indices. When the user clicks "next" repeatedly, the round-trip overhead is minimal anyway since each returned frame's timestamp becomes the new reference point for the next call.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Yes, that's exactly the model — stepping is always **by frame**; `t` is just how the browser tells the server *"this is my current position"* so it can locate which frame I'm on.
+
+Concretely the algorithm is:
+
+1. Find the buffer **index** `i` of the frame whose `Frame.t` is closest to the supplied `t`.
+2. Move `i ± n` (clamped to `[0, len-1]`).
+3. Return that frame; the browser overwrites `scrubTime` with the returned `Frame.t`.
+
+So the unit of motion is frame indices. `t` is just the addressing mechanism. The reason it's a timestamp and not a frame-index is that the browser only ever knows about `scrubTime` (sample-clock seconds) — it has no concept of server-side ring-buffer indices. After the first step, `scrubTime` equals an *exact* buffered `Frame.t`, so subsequent steps round-trip cleanly to the next/previous frame:
+
+```186:208:tools/fret-tuner/camera.py
+    def step(self, t: float, direction: str = "next", n: int = 1) -> Optional[Frame]:
+        # ...
+        # Find the index of the frame closest to `t`.
+        best_i = 0
+        best_d = abs(buf[0].t - t)
+        for i in range(1, len(buf)):
+            d = abs(buf[i].t - t)
+            if d < best_d:
+                best_d = d
+                best_i = i
+        delta = int(n) if direction == "next" else -int(n)
+        idx = max(0, min(len(buf) - 1, best_i + delta))
+        return buf[idx]
+```
+
+If you'd prefer a more explicit contract I could change the API to pass the frame's `seq` (sequence number — each `Frame` already has one) instead of `t`. That would make it impossible to "miss" a frame because of timestamp rounding. Want me to switch it?
+
+---
+
+_**User**_
+
+Help me think this through. It seems that a seqence number would be better?
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm weighing whether using a sequence number is better than a timestamp for frame navigation. The sequence approach has real advantages—each frame gets a unique identifier with no ambiguity, stepping forward is straightforward, and I can easily spot gaps if frames are dropped. There's also no risk of getting stuck if the scrub time lands between frames.
+
+But there are practical complications. The browser still needs timestamps for chart rendering, ADC lookups, and the timeline scrubber itself. That means I'd be maintaining two separate pieces of state that have to stay in sync. The frame buffer is a deque where old frames drop off, so looking up a frame by sequence number either requires searching through the buffer or maintaining a separate map. When users click the timeline directly, they're giving me a timestamp, not a sequence number, so I'd still need that closest-frame lookup somewhere. Plus, for non-video detectors without a camera feed, there's no frame sequence at all, which breaks the stepping UI entirely.
+
+A hybrid approach might work better—keep the timestamp as the primary state but add sequence numbers to the frame-step API for cleaner semantics. The server returns both the timestamp and sequence, and the browser can cache the sequence for the next step request. The real problem with pure timestamp-based stepping is that if the user clicks between frames and then steps, the direction of the snap is unpredictable depending on which frame was closer.
+
+Actually, looking at my current implementation more carefully, the first step after a timeline drag might snap in either direction, but from that point forward every subsequent step starts from an exact frame timestamp, so the rounding becomes deterministic. The only genuine edge case is at the buffer boundaries where frames get evicted. Staying with timestamps keeps things simple—single source of truth for position, works for any detector type, and the stepping endpoint is video-specific anyway.
+
+But I could also add seq to the step response and let the browser pass it back when available, falling back to timestamps for fresh scrubs. The cleanest approach might be responding with seq from the snapshot endpoint too, so the browser tracks the current frame sequence and passes it to step—that way the server uses seq when present and timestamps as a fallback.
+
+The real question is whether introducing a parallel frame sequence addressing scheme is worth it just for the step API, since scrubTime is already a unified concept used everywhere. Let me lay out both approaches honestly and let the user weigh the trade-offs.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let's actually think about it instead of just defaulting to "yes" or "no".
+
+## What we have now (`t`)
+
+`scrubTime` is the **single source of truth for "where am I"** across the whole app:
+- chart x-axis position
+- timeline scrubber position
+- video frame currently shown
+- `t = X.XXXs` overlay
+- ADC sample lookups (no `seq` exists for samples)
+
+The `/video/step` endpoint takes that timestamp, snaps to the nearest buffered frame, walks N frames, returns the new frame's `t`. Browser writes that back into `scrubTime` and re-renders everything.
+
+## What `seq` would buy
+
+- **Unambiguous "step by frame"**: index in the buffer ± N. No "snap to closest" middleman, no possibility of off-by-one near boundaries.
+- **Detectable buffer edges**: server can tell the client "you're at the oldest frame, can't go back".
+- **Detectable buffer eviction**: if the seq you sent has already dropped off the deque, server can say so explicitly.
+- **Future-proof against floating-point edge cases** (frame jitter, clock drift between camera and ADC sample clock, `closest()` ties).
+
+## What `seq` would cost
+
+- **Two pieces of state** in the browser instead of one: `scrubTime` *and* `currentFrameSeq`. Every UI surface that already deals in `t` (chart cursor, timeline drag, keyboard +/- zoom which re-centers on a `t`) keeps using `t`. The step API becomes the only one that uses `seq`. They have to stay in sync.
+- **Asymmetry**: timeline drag still has to be `t`-based — there's no `seq` for a click position on a timeline canvas. So you'd have a `t`-flavored scrub path *and* a `seq`-flavored frame-step path coexisting.
+- **`seq` is camera-only.** ADC samples don't have one. CSV replay has no camera at all. So `seq` only makes sense for video — but that's also the only thing the step API touches today, so this isn't really a downside.
+
+## Practical impact today
+
+With the current `t`-based impl, the only real failure mode is: *first* step after a timeline drag where `t` lands between frames. After that first step, `scrubTime` equals an exact `Frame.t`, and every subsequent step is index ± 1 deterministically. So `‹` / `›` after a click might initially feel "fast" or "slow" by half a frame, but consecutive steps after that are clean.
+
+## Suggestion: hybrid, almost free
+
+Have the step endpoint **return both `t` and `seq`** (it already returns both). The browser tracks `currentFrameSeq` opportunistically — set whenever a step or snap responds with one, cleared when the user does anything that's purely `t`-flavored (timeline drag, keyboard zoom, transition into pause). The step request prefers `seq` when known, falls back to `t` otherwise:
+
+```
+/video/step?seq=12345&dir=next&n=1     # exact, no closest-match
+/video/step?t=10.234&dir=next&n=1      # fallback for fresh scrubs
+```
+
+Server handles either: with `seq`, look up the frame in the deque (or fail clearly if evicted); with `t`, do today's snap-to-closest. Response always returns both for the next call.
+
+That gives you the crisp frame-stepping semantics where it matters (the step buttons and slow-mo) without forcing the rest of the UI to learn about `seq`.
+
+Want me to implement the hybrid? It's ~20 lines on each side.
+
+---
+
+_**User**_
+
+Keep in mind that the camera is the one source of truth. Everything else (e.g. timestamp) in visualization should be synced to camera even if, for example, chart data is running faster than camera 30fps
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ So the user is reframing this entirely — the video camera becomes the synchronization anchor, and everything else (the scrubber, charts, ADC data) needs to align to whatever frame is currently displayed, regardless of the underlying sample rates. This fundamentally shifts the architecture away from using a sample-clock timestamp as the master reference point.
+
+The implementation would track the current frame as the primary state, with the frame's timestamp becoming a derived value rather than the source of truth. When scrubbing, the system would query the server to find the nearest actual frame to the target time, then snap to that frame. Step controls would work directly with frame sequences, and the charts would always show data up to that frame's timestamp, eliminating the possibility of being "between" frames.
+
+For the server, I need to add endpoints that can retrieve frames by sequence number or find the closest frame to a given timestamp. On the browser side, I'd replace the scrubTime state with a currentFrame object and update all the rendering logic to use that frame's timestamp as the anchor point. The edge case of CSV replay without a camera is a known limitation that can be addressed separately—for now, the focus is on making the camera the canonical timeline.
+
+The key insight is that during live playback, charts scroll freely at their native sample rate while the video shows frames at ~30fps, but when paused or scrubbing, everything locks to frame boundaries. So in paused mode, scrubTime becomes exactly equal to currentFrame.t, and stepping or dragging the timeline updates currentFrame first, then syncs scrubTime to match. This keeps the data structure mostly unchanged but adds the constraint that paused scrubbing is always frame-aligned.
+
+Now I'm weighing whether to go all-in on sequence numbers as the primary identifier. Using seq is conceptually cleaner—it directly answers "what frame am I on"—and eliminates ambiguity in the step API. The trade-off is that the browser needs to track currentFrameSeq and timeline drags require a server round-trip to find the seq for a given timestamp, unless we push frame metadata to the client. Given that the camera is the source of truth, committing to seq-as-primary in scrub mode seems worth the extra state plumbing. So the core insight is that paused-mode scrubTime needs to always land exactly on a frame timestamp—no in-between values. That means timeline drags snap to the nearest frame, stepping walks through frames by sequence number, and the chart cursor naturally aligns with frame boundaries. The implementation is straightforward: add a `seq` query parameter to the step endpoint for precise frame addressing, and create a `/video/at?t=X` endpoint that returns the nearest frame's metadata so the UI can snap to it.
+
+The cleanest approach is a helper function that wraps every scrub position change—it fetches the snapped frame data from the server and updates both the scrubTime and currentFrameSeq in one go. Step buttons can bypass this and use a faster path that just increments the sequence number directly. There's a potential performance issue with timeline dragging firing requests at 60Hz, but since it's just a buffer lookup on the server side, it's manageable—though batching with requestAnimationFrame could smooth it out. Alternatively, I could have the client cache frame timestamps from the snap response so it can do the snapping locally without round-tripping for every drag event.</details></think>
+
+---
+
+_**User**_
+
+lets discuss this before actually making any changes. My thoughts are that the video (camera) stream from the GH game represents the once source of truth for the game. Any other data that we gather / display needs to coordinate with timestamp of the currently displayed frame. Where do we keep track of which frame is currently displayed? Whichever frame is displayed, we should use the timestamp of that frame to synchronize any other data.
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user is making a crucial architectural point here. Let me trace through how the synchronization actually works: the ADC stream provides a shared sample-clock timestamp that the server passes to the camera at capture time, and then the browser uses scrubTime as the master playhead position to keep everything in sync.
+
+But the user's suggesting we flip this—make the camera frame itself the source of truth instead. That's actually elegant for a Guitar Hero setup where the visual game state is what matters, and the detector outputs are just responses to what's happening on screen. So in live mode, the most recent frame becomes the reference point, and charts should display data aligned to that frame's timestamp rather than chasing the absolute newest ADC sample. When paused or scrubbing, the user picks a frame and everything else follows.
+
+The real question is where to anchor this "currently displayed frame" state. I'm weighing three approaches: tracking it purely on the browser side with a frame sequence number that drives all renders, keeping it server-side per-client which gets messier, or going hybrid where the server includes the current frame's metadata in every data batch. Option 1 feels cleanest—the browser maintains the frame sequence as the master clock.
+
+The tricky part is that MJPEG streams don't easily carry per-frame metadata in a browser-friendly way, so in live mode we're working with an approximate "latest frame" rather than precise timestamps. Meanwhile, the ADC data is flowing in at 500Hz while the camera only captures at 30fps, so I need to buffer the ADC samples and gate them to only render up to the video frame's timestamp instead of showing everything up to "now." This is a meaningful shift in behavior that would require some buffering logic.
+
+For the addressing model, both `seq` and `t` serve different purposes: `seq` uniquely identifies a frame (useful for stepping), while `t` is the timestamp property that synchronizes everything else. The browser tracks `currentFrame` with both values, and in live mode the simplest approach is probably having the server push a frame tick message over WebSocket whenever a new frame enters the buffer, so the browser always knows what's currently displayed.
+
+This creates a unified model where live mode streams the MJPEG at the throttled rate while pushing frame metadata separately, and scrub mode just updates `currentFrame` from step responses—both modes then render charts and overlays relative to that single source of truth. But there's a tension between what the browser actually painted (the last MJPEG frame) versus what's newest in the buffer, and for scrubbing we'd want the latest buffered frame so charts show the most recent data.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Good — let's lock down the model before touching code. Your framing changes things meaningfully so worth being precise.
+
+## Model you're proposing
+
+The currently displayed camera frame is the master clock. Everything else (chart cursor, ADC data window shown, overlay state, timeline scrub indicator, the `t = X.XXXs` readout) is rendered relative to that frame's timestamp. Frame identity is `seq` (unambiguous), frame clock is `t` (used to align other data).
+
+I think this is correct, and it cleanly resolves the seq-vs-t question: you need **both** — `seq` is the *identity* of "where am I", `t` is the *clock value* used to align everything else against it.
+
+## Where to track it
+
+Browser-side, single struct, replaces `scrubTime`:
+
+```js
+let currentFrame = { seq: null, t: 0 };
+```
+
+Updated only by things that produce a real frame:
+- `/video/snap` response (add `X-Frame-Seq` / `X-Frame-Time` response headers)
+- `/video/step` response (already returns both)
+- Live tick — see below
+
+Removed: the standalone `scrubTime`. Whenever code today reads `scrubTime`, it reads `currentFrame.t`. Whenever it writes `scrubTime`, it instead consumes a `{seq, t}` pair from a server response.
+
+## The live-mode wrinkle (this is the part that needs your call)
+
+Today in live mode the chart races ahead at the ADC sample rate (~500 Hz) regardless of where the most recent video frame is. If the camera-frame is the master, live behavior must change:
+
+**Option A — strict alignment.**
+Server emits a `frame_tick {seq, t}` WS message every time a new frame lands in the buffer (~30 Hz). Browser sets `currentFrame` from each tick. Charts only render ADC data with timestamps `≤ currentFrame.t`. Net effect: charts visibly tick forward 30×/s in 33 ms steps instead of smoothly at 500 Hz, and lag the very latest ADC sample by up to ~one frame interval.
+
+Pros: perfect video-vs-chart sync, identical behavior live and scrubbed.  
+Cons: chart visibly "stutters" at 30 Hz instead of looking smooth; live chart is ~33 ms behind the truly latest ADC sample.
+
+**Option B — soft alignment.**
+In live, charts keep rendering ADC at full rate (today's behavior). `currentFrame` is still tracked from frame ticks but only *consulted* in pause/scrub mode. The cursor / scrub time displayed in live mode just shows the latest frame's timestamp without gating chart data.
+
+Pros: smooth live charts unchanged; scrub stays frame-aligned.  
+Cons: in live mode the rightmost edge of the chart may sit a few ms ahead of the displayed video frame — same loose coupling we have today, but conceptually it admits "live is approximate, scrub is exact".
+
+I lean toward **Option A** because it's the model you described — *one* source of truth — and the 33 ms quantization on live charts is genuinely useful (it's the actual rate at which we know-for-sure-what-was-on-screen). But it does mean accepting a visibly "ticky" live chart.
+
+## What "currently displayed frame" means in live mode
+
+Two candidates:
+1. **Latest frame in the server's ring buffer** (~30 Hz). This is what the detector saw, and what scrub would show if you hit pause this instant.
+2. **Latest frame the browser actually painted via MJPEG** (≤15 Hz, view-encoder throttled).
+
+I'd argue (1) is right: it's "what the system knows", and detector overlays / state are already computed against (1). The MJPEG view being throttled to 15 Hz is a display-bandwidth concern, not a truth concern. So `frame_tick` should fire on buffer writes, at the full 30 Hz, even though the user only sees a new MJPEG image every other tick.
+
+## Questions for you
+
+1. **Option A or B?** (My lean: A.)
+2. **`frame_tick` rate**: 30 Hz (every buffer write) or throttled to match the view encoder (15 Hz)?  (My lean: 30 Hz — match the source of truth, not the display.)
+3. **Scrub timeline drag**: today the user can click the mini-timeline at any pixel = arbitrary `t`. Under the new model that click should resolve to "the buffered frame closest to that t", server returns `{seq, t}`, browser updates `currentFrame` exactly. Confirm that's the right behavior?
+4. **CSV-only / no-camera mode**: there's no camera frame to drive anything. Do we fall back to today's "ADC-sample-as-clock" model in that case, or simply disable scrub?  (My lean: fall back; don't lose functionality.)
+
+Once we agree on those four, I can sketch the concrete changes (it's about: a `frame_tick` WS message, `X-Frame-Seq/Time` headers on snap, replacing `scrubTime` with `currentFrame`, and a chart-render gate on `currentFrame.t`).
+
+---
+
+_**User**_
+
+1a, 2 30hz, 3 correct, 4 fall back
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user has confirmed all four design decisions around frame alignment, tick frequency, timeline interaction, and the CSV fallback strategy. Now I'm mapping out the server-side implementation, starting with modifications to camera.py...
+
+Adding frame listener callbacks...
+
+For the server, I need to emit frame_tick messages at 30Hz whenever a new frame enters the buffer—either by hooking into the existing camera listener or creating a dedicated broadcast task. The /video/snap endpoint should include frame sequence and timestamp headers so client-side snaps are properly identified. The /video/step endpoint already returns the necessary metadata.
+
+For the CSV fallback when there's no camera, I'll emit frame_tick events using ADC sample timestamps, or let the browser default to using the latest sample time if nothing's being broadcast.
+
+On the browser side, I'm replacing the scrubTime variable with a currentFrame object containing both sequence and timestamp, then adding a WebSocket handler to process incoming frame_tick messages... I'm settling on a simpler approach: emit frame_tick messages from the camera when it's active, and when the camera is inactive, the browser just uses the latest ADC sample timestamp as the current frame time. This way currentFrame gets updated from either source, with frame_tick taking priority when available. Now I need to check how the existing frame subscription pattern works in camera.py to add a listener mechanism.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Locked in. Let me check the existing camera listener pattern so I can hook the `frame_tick` broadcaster cleanly into the same path the detector uses.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py",
+  "pattern": "add_listener|listeners|frame_listener|set_sample_clock"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py",
+  "pattern": "add_listener|listeners|frame_listener|set_sample_clock",
+  "topFiles": [
+    {
+      "matchCount": 10,
+      "uri": "tools/fret-tuner/camera.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 10
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Listener API is already there. Plan locked in:
+
+## Implementation plan
+
+**Server (`server.py`)**
+1. On startup, register a `_on_frame_tick(frame)` listener via `cam.add_frame_listener()` that pushes a `{"type":"frame_tick","seq":N,"t":T}` status message — fires on every buffer write (~30 Hz).
+2. `/video/snap` returns `X-Frame-Seq` and `X-Frame-Time` response headers (refactor `_snap_jpeg` to return `(jpeg, frame)`).
+3. `/video/step` already returns `{seq, t}` — keep.
+4. CSV/no-camera mode: no ticks emitted; browser falls back to latest ADC sample `t` for the cursor.
+
+**Browser (`index.html`)**
+5. Replace `scrubTime` with `currentFrame = {seq: null, t: 0}`. Single source of truth.
+6. New WS handler: `frame_tick` → updates `currentFrame` whenever it arrives (live mode only — paused mode ignores ticks).
+7. `data` ingest in live mode: clip `updateCharts()` so chart only renders ADC rows with `t ≤ currentFrame.t`. Buffer everything; only render up to the master clock.
+8. Camera-not-active fallback: if no `frame_tick` ever arrives (or if the latest one is stale), use latest ingested sample `t` as `currentFrame.t` with `seq=null`. This keeps CSV-only mode functional.
+9. Step/snap responses populate `currentFrame.{seq,t}` from headers/JSON.
+10. Timeline drag → calls `/video/snap?t=…`, server returns the snapped frame's headers, browser updates `currentFrame` from those.
+11. Step API prefers `seq` when known; falls back to `t` when not (post-drag, post-startup).
+
+Confirm and I'll go.
+
+---
+
+_**User**_
+
+go
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Now I'm laying out the implementation steps: setting up the server to broadcast frame tick events to connected clients, updating the video endpoints to return frame metadata, replacing the scrubbing mechanism with frame-based tracking in the frontend, wiring up the WebSocket handler to receive those updates, and making sure the charts stay synchronized with the current frame in live mode.
+
+The key insight is that scrubbing should work by generating a {seq, t} pair from either a snap or step call, updating the currentFrame state, and then rendering around that frame's timestamp rather than managing scrubTime directly. I'm ready to start implementing this.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me set up todos and start with the server side.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "in_progress"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "camera.py: add step(t, dir, n) method",
+      "id": "cam-step",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: add /video/step endpoint",
+      "id": "server-step",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: move Transport into right panel below Actuator",
+      "id": "ui-move",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: scrub controls (frame step, slow-mo, info)",
+      "id": "ui-scrub",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: keyboard shortcuts updated",
+      "id": "ui-keyboard",
+      "status": "completed"
+    }
+  ],
+  "success": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+### Server: frame_tick listener
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm verifying the threading model here — `_push_status` appends to a list under a lock, and `_broadcast_loop` drains it once per batch interval at roughly 30Hz, so frame ticks should arrive cleanly batched in each broadcast cycle. The lock ensures thread safety for the status updates.
+
+Now I need to look at the `/video/snap` endpoint headers.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+### Server: `/video/snap` returns frame headers
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me also extend `/video/step` to accept either `seq` or `t`, with `seq` taking precedence when present.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+I need to add `step_seq` to camera.py.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now mark server tasks done and tackle the browser.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "in_progress"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now to the browser. Let me read the relevant chunks of index.html.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "scrubTime|currentFrame|frame_tick|video/snap|video/step|stepFrames|setSlowmoActive|startSlowmo|stopSlowmo|updateScrubInfo|renderAtTime|clampScrubTime|firstSlotId|paused"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "scrubTime|currentFrame|frame_tick|video/snap|video/step|stepFrames|setSlowmoActive|startSlowmo|stopSlowmo|updateScrubInfo|renderAtTime|clampScrubTime|firstSlotId|paused",
+  "topFiles": [
+    {
+      "matchCount": 79,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 79
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm restructuring the state management around a unified `currentFrame` object that tracks both the sequence and timestamp, which will serve as the single source of truth for syncing the video playback, chart cursor, axis positioning, and all text overlays.
+
+For live mode, I need to clip the chart display to `currentFrame.t` so that ADC data arriving ahead of the camera frame stays buffered but hidden—then when the next frame tick comes in around 33ms later, the chart window shifts forward to reveal that new data. The tricky part is that the press strike line currently references the last sample in the buffer, but I need to change that to use `currentFrame.t` instead so it aligns with what's actually visible on screen.
+
+In paused or scrub mode, the behavior stays the same—just centered around `currentFrame.t` instead of `scrubTime`. I'm going to do a proper rename throughout the codebase rather than keeping backwards compatibility, since this is a cohesive change that affects how the whole timeline works.
+
+Refactoring the global state... I need to be careful about how `showFrameAtTime` interacts with the rendering loop—when the user pans the chart while paused, it calls `showFrameAtTime` with an arbitrary timestamp, the server snaps to the nearest frame and returns the actual seq+t in headers, and I should update `currentFrame` from those headers without triggering a re-render loop. The key is to update the camera time overlay and `currentFrame` quietly so the next user action uses the snapped timestamp, but I should also re-render to align the cursor with what was actually snapped rather than what was requested.
+
+For chart panning specifically, repeated scale changes trigger `setScale` which calls `showFrameAtTime`, and I don't want the charts re-rendering on each callback since that would fight the user's drag—the `_renderingFromTimeline` flag already handles this.
+
+My implementation plan is to replace `scrubTime` with a `currentFrame` object holding seq and t, add a helper to update both fields safely, define a `hasCamera()` check for when a camera source is active, set up the `frame_tick` handler to advance `currentFrame` when live and unpaused, and continue with the remaining setup steps.
+
+Still writing implementation plan... Writing the fetch handler...
+
+Now I'm realizing that when showFrameAtTime snaps to the server's frame time, I need to update the chart cursor position too. The current flow has renderAtTime calling both showFrameAtTime and drawTimeline, but if currentFrame.t changes to the snapped value, the chart won't redraw automatically to reflect that shift. I should trigger a canvas redraw after the snap response comes back, probably by calling the plot's redraw method without re-slicing the data, since the content is already centered correctly in paused mode.
+
+The tricky part is deciding when to actually update currentFrame from the snap response—the user explicitly wants currentFrame.{seq,t} populated from step/snap actions, but I need to be careful about when that triggers redraws to avoid loops. I think the cleanest approach is to only update currentFrame when the user explicitly interacts (clicking timeline, using step controls), not during passive chart panning, and then redraw the plots to keep the cursor in sync with the snapped time.
+
+Now I'm laying out the implementation: I'll replace the scrubTime variable with a currentFrame object tracking both seq and t, add a lastFrameTickAt timestamp, create helper functions for updating the frame and checking camera state, and wire up a new frame_tick WebSocket handler to receive frame updates from the server.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Now I have the full picture. Let me make the browser changes. I'll start with the global state and helpers.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm realizing that `activeSourceId` is declared later in the code, so I need to check if hoisting could be an issue. Since `let` doesn't hoist the same way `var` does, and this is module-scoped JavaScript in a single script tag, the variable wouldn't be accessible at the top. However, `hasCamera()` is a function that only gets called later, so as long as nothing tries to reference `activeSourceId` before it's declared, we're safe. The initial value is `null`, so the comparison `null != null` evaluates to false anyway.
+
+Actually, I need to reconsider the temporal dead zone — if `hasCamera()` gets called before line 979 where `activeSourceId` is declared, it would throw an error. But looking at the execution order, the boot section with the initial calls is at the very bottom of the script, well after `activeSourceId` is declared. And `setCurrentFrame()` is only called from event handlers, not at the top level, so we're good.
+
+Now I need to tackle replacing all the `scrubTime` references throughout the code. Rather than doing this piecemeal, a global rename would be cleaner. I'm thinking about how to handle the replacements — assignments like `scrubTime = X` should become either `currentFrame.t = X` or `setCurrentFrame(seq, t)` depending on whether we have a sequence value. Let me identify all the remaining occurrences and plan the targeted replacements.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Now let me update all the references to `scrubTime` throughout the file. I'll do these in batches.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now `updateCharts` to clip at currentFrame.t in live+camera mode:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now `clampScrubTime` and `renderAtTime`:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Update timeline drawing:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Update zoom and timeline drag handlers:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now WS message handlers — add `frame_tick` and CSV/no-camera fallback:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now `stepFrames` to prefer seq, and update scrub controls + pause:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now refactor `showFrameAtTime` to read snap headers and update currentFrame:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm realizing there's a resource leak when switching between the live stream and paused states—when we resume and set the source back to the live feed, we need to revoke the previous blob URL to avoid keeping that data in memory.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me check there are no remaining `scrubTime` references:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "scrubTime"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "scrubTime",
+  "topFiles": [],
+  "totalFiles": 0,
+  "totalMatches": 0
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+All clean. Let me also verify no readers still expect the old `let scrubTime` and check file sanity:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "count",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "currentFrame|frame_tick|hasCamera|setCurrentFrame"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "count",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "currentFrame|frame_tick|hasCamera|setCurrentFrame",
+  "topFiles": [
+    {
+      "matchCount": 48,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 48
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm noticing a type mismatch with the activeSourceId—it starts as null, then gets set to string values like "0", "1", or "none" by populateSourceSelect, so my null check needs to account for this properly before checking against the "none" string.
+
+There's a potential temporal dead zone issue since activeSourceId is declared much later in the file than currentFrame, but since the script executes top-to-bottom and hasCamera() only gets called after the variable is initialized (either through async message handlers or chart creation), it should be safe.
+
+Let me run a quick test to verify the server starts without issues.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me start the server to smoke test.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: ls /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/ 2>/dev/null</summary>
+
+```bash
+ls /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/ 2>/dev/null
+```
+
+```
+1.txt
+122857.txt
+2.txt
+252386.txt
+303361.txt
+338241.txt
+429387.txt
+489800.txt
+621767.txt
+722017.txt
+818760.txt
+826770.txt
+912205.txt
+996337.txt
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: head -n 6 /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/*.txt 2>/dev/null | head -200</summary>
+
+```bash
+head -n 6 /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/*.txt 2>/dev/null | head -200
+```
+
+```
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/1.txt &lt;==
+---
+pid: 89176
+cwd: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner
+---
+te.py", line 169, in main
+    key = cv2.waitKey(30) &amp; 0xFF
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/122857.txt &lt;==
+---
+pid: 97532
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:40:37.740Z
+running_for_ms: 350120   
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/2.txt &lt;==
+---
+pid: 89448
+cwd: /Users/greg/projects/microchip/guitar-pic
+---
+greg@Laboratory guitar-pic %
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/252386.txt &lt;==
+---
+pid: 97688
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:46:39.705Z
+running_for_ms: 1230442  
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/303361.txt &lt;==
+---
+pid: 95252
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "/Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --csv ../../firmware/fretboard/fretboard-sample-raw.csv --fast"
+started_at: 2026-04-17T19:40:09.869Z
+running_for_ms: 1316391  
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/338241.txt &lt;==
+---
+pid: 95853
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:00:37.654Z
+running_for_ms: 1        
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/429387.txt &lt;==
+---
+pid: 95983
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:02:14.323Z
+running_for_ms: 2        
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/489800.txt &lt;==
+---
+pid: 98307
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T21:07:19.223Z
+running_for_ms: 4826876  
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/621767.txt &lt;==
+---
+pid: 97225
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:35:12.524Z
+running_for_ms: 315125   
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/722017.txt &lt;==
+---
+pid: 679
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T22:31:00.768Z
+running_for_ms: 1045437  
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/818760.txt &lt;==
+---
+pid: 96955
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:22:13.957Z
+running_for_ms: 755295   
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/826770.txt &lt;==
+---
+pid: 1282
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T22:48:36.117Z
+running_for_ms: 1285502  
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/912205.txt &lt;==
+---
+pid: 492
+cwd: "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T22:27:53.598Z
+running_for_ms: 180098   
+
+==&gt; /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/996337.txt &lt;==
+---
+pid: 96069
+cwd: "/Users/greg/projects/microchip/guitar-pic"
+command: "cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner &amp;&amp; /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102"
+started_at: 2026-04-17T20:02:57.522Z
+running_for_ms: 1155575  
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I should verify the Python syntax is correct before starting the server to make sure my edits didn't introduce any errors.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "import ast; ast.parse(open('tools/fret-tuner/server.py').read()); ast.parse(open('tools/fret-tuner/camera.py').read()); print('OK')"</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "import ast; ast.parse(open('tools/fret-tuner/server.py').read()); ast.parse(open('tools/fret-tuner/camera.py').read()); print('OK')"
+```
+
+```
+OK
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "import sys; sys.path.insert(0, 'tools/fret-tuner'); import server, camera; print('imports OK'); print('cam.step_seq:', hasattr(camera.Camera, 'step_seq'))" </summary>
+
+```bash
+/Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "import sys; sys.path.insert(0, 'tools/fret-tuner'); import server, camera; print('imports OK'); print('cam.step_seq:', hasattr(camera.Camera, 'step_seq'))" 
+```
+
+```
+imports OK
+cam.step_seq: True
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Mark all todos complete and update SPEC.md to reflect the new master-clock model.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: document camera-as-master-clock + frame_tick + headers",
+      "id": "spec-update",
+      "status": "in_progress"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md",
+  "pattern": "WebSocket Protocol|frame_tick|video/step|video/snap|master clock|currentFrame|sample[- ]clock"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md",
+  "pattern": "WebSocket Protocol|frame_tick|video/step|video/snap|master clock|currentFrame|sample[- ]clock",
+  "topFiles": [
+    {
+      "matchCount": 4,
+      "uri": "tools/fret-tuner/SPEC.md"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 4
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/SPEC.md</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: document camera-as-master-clock + frame_tick + headers",
+      "id": "spec-update",
+      "status": "completed"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: document camera-as-master-clock + frame_tick + headers",
+      "id": "spec-update",
+      "status": "in_progress"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+All done. Here's what shipped:
+
+**Server (`server.py`, `camera.py`)**
+- `Camera.add_frame_listener` now feeds a new `_on_frame_tick` that pushes `{"type":"frame_tick","seq","t"}` over the WebSocket on every buffer write (~30 Hz).
+- `/video/snap` returns `X-Frame-Seq` and `X-Frame-Time` headers (with `Access-Control-Expose-Headers`) so the browser can sync to the *actual* snapped frame.
+- `/video/step` now accepts either `seq` (exact, preferred) or `t` (snap-to-closest fallback). Backed by a new `Camera.step_seq()`.
+
+**Browser (`index.html`)**
+- Replaced `scrubTime` with `currentFrame = {seq, t}` as the one source of truth. Added `hasCamera()` and `setCurrentFrame()` helpers.
+- New `frame_tick` WS handler: in live mode, updates `currentFrame` and re-renders charts; ignored while paused.
+- `updateCharts()` now clips the leading edge at `currentFrame.t` when a camera is attached -- charts tick at 30 Hz in lockstep with the displayed video frame.
+- Press-band strike line uses `currentFrame.t` as "now" (camera-aligned), with ADC fallback when no camera.
+- `showFrameAtTime()` switched to `fetch` + blob URL so it can read the snap headers and write authoritative `seq`/`t` into `currentFrame`.
+- `stepFrames()` addresses by `currentFrame.seq` when known; falls back to `t` for the first scrub.
+- CSV / no-camera path: `data` handler advances `currentFrame.t` to the latest ADC sample so charts still scroll.
+
+**SPEC.md**
+- Added "Master clock: the displayed video frame" section under WebSocket Protocol explaining live, paused, and CSV-fallback semantics.
+- Documented `frame_tick` message, `/video/snap` headers, and the `seq`/`t` addressing on `/video/step`.
+
+Quick sanity test:
+
+1. Start with a camera attached: chart cursor and overlays should advance in 30 Hz "ticks" and stay perfectly aligned with the video.
+2. Pause, then use `‹›« »` and slow-mo -- each step is a real buffered frame; the scrub-info readout shows `t` and `#seq`.
+3. Drag the mini-timeline -- snap response writes back seq/t; subsequent step buttons use that seq.
+4. Run with `--csv` and no camera -- charts scroll using ADC sample timestamps as before.
+
+---
+
+_**User**_
+
+restart server please
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I need to terminate the existing fret-tuner process and restart it using the configuration from the most recent terminal session, which was running on port `/dev/cu.usbmodem21102` for both the main and actuator connections.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: pkill -f "fret-tuner.py" ; sleep 1 ; lsof -i :8080 || echo "port 8080 free"</summary>
+
+```bash
+pkill -f "fret-tuner.py" ; sleep 1 ; lsof -i :8080 || echo "port 8080 free"
+```
+
+```
+COMMAND    PID USER   FD   TYPE             DEVICE SIZE/OFF NODE NAME
+com.apple 1253 greg   24u  IPv4 0x7251f7fdd032f7de      0t0  TCP localhost:51230-&gt;localhost:http-alt (ESTABLISHED)
+Python    1288 greg   26u  IPv4 0xbf18ea5f2b83d5bb      0t0  TCP localhost:http-alt-&gt;localhost:51230 (ESTABLISHED)
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: pkill -9 -f fret-tuner ; pkill -9 -f "uvicorn" ; sleep 2 ; lsof -i :8080 || echo "port 8080 free"</summary>
+
+```bash
+pkill -9 -f fret-tuner ; pkill -9 -f "uvicorn" ; sleep 2 ; lsof -i :8080 || echo "port 8080 free"
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: sleep 2 && (lsof -i :8080 2>/dev/null || echo "port 8080 free")</summary>
+
+```bash
+sleep 2 && (lsof -i :8080 2>/dev/null || echo "port 8080 free")
+```
+
+```
+port 8080 free
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+```
+
+```
+2026-04-17 18:12:10.803 Python[2246:25305101] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+]633;C2026-04-17 18:12:10.803 Python[2246:25305101] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="await">
+<details>
+<summary>Tool use: **await**</summary>
+
+Status: **loading**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="await"><details>
+<summary>Tool use: **await**</summary>
+
+</details></tool-use>
