@@ -5,6 +5,16 @@ Simple per-channel detection with separate press and release thresholds.
 A channel is pressed when the ADC value drops below its press threshold
 and released when it rises above its release threshold (hysteresis prevents
 chatter).
+
+Performance notes
+-----------------
+This detector targets eventual port to an ARM Cortex-M0+ at 24 MHz:
+
+- integer arithmetic only (no floats)
+- no dynamic allocation; fixed-size per-channel state
+- bit shifts in place of multiply/divide where practical
+- O(1) per sample per channel
+- per-channel state ~20-30 bytes
 """
 
 from stream import Sample, CHANNELS

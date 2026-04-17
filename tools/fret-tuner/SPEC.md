@@ -4,26 +4,70 @@
 
 Web-based Python tool for developing and refining fret-press detection algorithms. Consumes the same raw ADC data the firmware sees -- either live from the board over UART or replayed from a captured CSV -- runs detection logic in Python, and visualizes everything in an interactive browser UI. Optionally sends actuation commands back to the microcontroller, moving the entire detection and strum-timing pipeline to the PC for rapid iteration.
 
+## Video reference (always-on)
+
+A first-class always-on subsystem. The UI exposes a video viewport at all times; behavior is independent of which detector is active.
+
+**Primary role**: time-aligned visual reference and recording against the ADC sample timeline and any derived signals (waveforms, detector state, fret/strum events). The question it answers: does what was on screen at time *t* match what the ADC and algorithms reported at *t*?
+
+**Secondary roles**: debugging alignment between capture and charts, reviewing a session after the fact, documenting false positives/negatives.
+
+### Requirements
+
+- **Primacy**: video reference is a first-class always-on subsystem, not gated on detector choice.
+- **Source ownership**: the fret-tuner **backend** owns the camera. Exactly one source feeds the reference ring buffer at a time. The source is selectable in the UI from cameras enumerated by the backend, plus a "none" option, plus any video file supplied for replay.
+- **Buffer**: server-side ring buffer with **≥30 s wall-clock coverage** at a **target 30 Hz** capture rate. The buffer accepts whatever rate the camera delivers, sized to retain ≥30 s even when the source runs as fast as 60 Hz.
+- **Synchronization**: every buffered frame carries a sample-clock timestamp anchored to the ADC stream so that any time *t* in the chart timeline maps to the closest buffered frame.
+- **Live behavior**: while playing, the browser shows the most recent server frame with overlays composed for that frame's *t*.
+- **Paused / scrubbing**: when paused, or while panning/zooming the charts, the video display follows the chart cursor / center time, picking the closest buffered frame.
+- **Overlays**: per-frame composition (live and paused) at the display path's natural rate. Required minimum set:
+    - 5 fret **pressed-state** indicators (per ADC channel)
+    - **strum state** indicators (down + up, sourced from the actuator pipeline)
+    - **scrub-time** text cursor
+  Detectors may register additional overlay layers via the extension hook (see [Detection Algorithm Contract → Overlay extension](#overlay-extension)).
+- **Detector consumption**: detectors that need pixel data (e.g. `detect_video`) **read from the reference buffer**; they do not own a separate camera grab.
+
+## Actuation (always-on)
+
+A first-class always-on subsystem that owns the GPIO command serial link to the actuator microcontroller. Behavior is independent of which detector is active and of where the ADC data comes from (live serial, CSV replay, or none).
+
+**Primary role**: consume detector state each tick, run the strum timing pipeline (chord window, FIFO scheduling, fret early/late, strum pulse), and emit a 1-byte GPIO bitmask to the actuator board over UART.
+
+### Requirements
+
+- **Primacy**: actuation is a first-class always-on subsystem, not a side effect of opening a data port. It can be enabled with any detector and any data source (including CSV-only replay against a live actuator board).
+- **Source ownership**: the actuator owns its own `serial.Serial` handle. The port is selectable in the UI from ports enumerated by the backend, plus a "none" option.
+- **Port sharing**: the actuator port may name the same `/dev/cu.*` device as an ADC data port (single-board case). In that case the backend opens the device once and shares the handle between the data reader and the actuator writer; the writer never blocks on the reader and vice versa.
+- **Reconnect**: when the actuator port is lost (unplug, USB sleep, etc.) the writer goes silent without raising; on reconnect, output resumes. Auto-reconnect runs at the same cadence as the data-port reconnect.
+- **Enable gate**: a UI toggle gates output at the *bitmask* level. When disabled, the timing pipeline still runs (and reports `output_mask = 0`), but no bytes are written. Manual GPIO override (`manual_output`) still works when actuation is disabled, so individual buttons can be poked from the browser without engaging the full pipeline.
+- **Always-on lifecycle**: created at server startup, persists across detector switches, never owned by a detector.
+
 ## Architecture
+
+The backend is organized around two **always-on subsystems** (video reference, actuation) and one swappable **detector subsystem**. Always-on subsystems own their I/O and run regardless of which detector is active. The detector consumes whatever inputs it needs (ADC stream, video frames, etc.), produces detection state, and feeds it to the actuator.
 
 ```
 Browser (localhost:8080)
+  ├── Video viewport (live or scrubbed frame + composited overlays)
   ├── uPlot charts (zoom, pan, pause)
-  ├── Controls (detector, params, actuation)
-  ├── Camera panel (getUserMedia → frame buffer → sync)
-  └── WebSocket
+  ├── Controls (camera source, actuator port, detector, params, recording)
+  └── WebSocket  (sample data, detector state, sources, actuator status)
         ↕
 FastAPI backend (Python)
-  ├── stream.py        (serial/CSV data source)
-  ├── detect_*.py      (pluggable detection algorithms)
-  ├── actuator.py      (strum timing pipeline → serial TX)
-  └── server.py        (WebSocket + HTTP)
+  ├── camera.py          (OpenCV capture → shared ring buffer, ≥30 s @ ≥30 Hz)   [always-on]
+  ├── actuator.py        (strum timing pipeline + GPIO serial TX)                 [always-on]
+  ├── stream.py          (serial/CSV ADC source for ADC-based detectors)
+  ├── detect_*.py        (consume samples and/or video frames; emit overlay layers)
+  └── server.py          (WebSocket + HTTP video transport, subsystem wiring)
         ↕
-Microcontroller (PIC32CM)
-  ├── fret_scan         (ADC sampling)
-  ├── data_stream       (12-byte frames → UART TX)
-  └── cmd_receive       (1-byte bitmask → GPIO assert/release)
+Microcontrollers (PIC32CM)
+  ├── Data board   →  fret_scan + data_stream     (12-byte ADC frames over UART)
+  └── Actuator board → cmd_receive                (1-byte bitmask → GPIO assert/release)
+                       The data board and actuator board may be the same physical
+                       device sharing one UART, or two different devices.
 ```
+
+Browser and backend are deployed as a split / resizable layout: video viewport and ADC charts are co-equal, neither dominant by default. The shared video ring buffer lives in the backend; detector pixel consumers and the browser display both read from it.
 
 ## File Layout
 
@@ -31,11 +75,15 @@ Microcontroller (PIC32CM)
 tools/fret-tuner/
     fret-tuner.py          # CLI entry point (launches server, opens browser)
     server.py              # FastAPI app, WebSocket, data pipeline wiring
-    index.html             # Browser UI (uPlot charts + controls, no build step)
+    camera.py              # OpenCV capture + shared video ring buffer
+    index.html             # Browser UI (uPlot charts + video viewport, no build step)
     stream.py              # Serial + CSV data sources
     actuator.py            # Strum timing pipeline (port of fret_button.c)
     detect_threshold.py    # Detection: fixed per-channel hysteresis
     detect_trough.py       # Detection: baseline + trough FSM
+    detect_slope.py        # Detection: EMA + slope FSM with re-press handling
+    detect_video.py        # Detection: pixel sampling against the reference buffer
+    video_calibrate.py     # Standalone helper for marking detect_video sensor coords
     requirements.txt       # Python dependencies
     SPEC.md                # This file
     .gitignore
@@ -118,6 +166,24 @@ class Detector:
 ```
 
 The `update()` return dict must include `"pressed"` (bool) and `"baseline"` (int) per channel. Additional keys are detector-specific and available for charting.
+
+### Overlay extension
+
+Detectors may optionally contribute named overlay layers to the video viewport:
+
+```python
+class Detector:
+    def overlays(self) -> list[OverlayLayer]:
+        """Optional. Return list of overlay layers to draw on the video.
+        Each layer = {name: str, draw(ctx, frame_meta, sample_state) -> None}.
+        Returning [] (or omitting the method) means no detector-specific overlays.
+        """
+        return []
+```
+
+Layers compose on top of the always-on minimum set (fret pressed-state, strum state, scrub time). Transport for overlay drawcalls is implementation-defined: the server may bake them into delivered frames, or stream drawcall metadata (see [WebSocket Protocol](#websocket-protocol) `video_meta`) for client-side compositing.
+
+`detect_video`, for example, registers a layer that draws its sensor sample points and per-button signal levels.
 
 ### Adding a new detector
 
@@ -218,19 +284,47 @@ Single-file HTML served by the backend at `http://localhost:8080`. Loads uPlot f
 - **Window width** -- slider controlling visible time range (0.5--30 seconds)
 - **Detector dropdown** -- switch between available `detect_*.py` modules live
 - **Parameter sliders** -- dynamically generated from the active detector's `default_params()`, changes take effect immediately
-- **Actuation toggle** -- enable/disable sending command bytes to the microcontroller
+- **Camera source dropdown** -- enumerated cameras + "none"; controls the always-on video reference
+- **Actuator port dropdown** -- enumerated `/dev/cu.*` (or platform equivalent) serial ports + "none"; controls the always-on actuator. Selecting the same device as a live ADC data port shares the handle.
+- **Actuation toggle** -- enable/disable writing command bytes (the timing pipeline runs either way)
 - **Timing sliders** -- strum delay, fret early, strum pulse, chord window
-- **Connection status** indicator
+- **Connection status** indicators -- separate badges for the data port and the actuator port
+
+### Layout
+
+Split / resizable two-pane layout. The **video viewport** and the **ADC charts** are co-equal first-class panes; neither is dominant by default and the user can resize the split. Sidebar controls remain to one side.
+
+### Video viewport
+
+Backed by the always-on subsystem in [Video reference (always-on)](#video-reference-always-on). UI surface:
+
+- **Source selector** -- lists cameras enumerated by the backend, plus "none" and any `--video FILE` replay file. Selection persisted by the backend, applied immediately.
+- **Recording controls** -- start / stop / save buffer (writes paired video + ADC log; see [Recording & paired CSV replay](#recording--paired-csv-replay)). Default off.
+- **Pause / scrub** -- synchronized with the charts' pause; chart center time drives the displayed frame.
+- **Overlays** -- always-on minimum (5 fret pressed-state indicators, strum state, scrub time) plus any layers the active detector registers via [Overlay extension](#overlay-extension).
+
+### Recording & paired CSV replay
+
+- A live session can be **recorded**: the backend drains the reference ring buffer to a video file alongside the ADC sample log (CSV), with a shared time anchor written into the recording so the two replay in sync.
+- `python fret-tuner.py --csv FILE [--video FILE]` replays both. If `--video` is omitted, the video viewport shows "no recorded video for this CSV" and disables source selection for the duration of the replay.
+- Recording is started/stopped explicitly from the sidebar; default off.
 
 ### WebSocket Protocol
+
+Sample data, detector state, and overlay metadata flow over the WebSocket; raw video frames are delivered over a parallel HTTP video transport (implementation choice; the existing tool uses MJPEG). Both share the same sample-clock timestamps so chart and video scrubbing target the same *t*.
 
 Server → client:
 
 ```json
-{"type": "data", "samples": [...], "state": [...]}
+{"type": "data", "samples": [...], "state": [...], "actuator_mask": 0}
 {"type": "detector", "name": "...", "params": {...}, "available": [...],
  "timing": {...}, "actuate_enabled": false}
-{"type": "serial_status", "connected": true}
+{"type": "serial_status", "connected": true}              // data port
+{"type": "actuator_status", "connected": true,
+ "available": [...], "active": "/dev/cu.usbmodem21202"}   // actuator port
+{"type": "video_meta", "t": 12.345, "layers": [...]}
+{"type": "sources", "available": [...], "active": "..."}  // camera sources
+{"type": "recording", "active": false, "path": null}
 ```
 
 Client → server:
@@ -242,23 +336,44 @@ Client → server:
 {"type": "set_detector", "name": "detect_trough"}
 {"type": "set_timing", "params": {"STRUM_DELAY_MS": 200}}
 {"type": "set_actuate", "enabled": true}
+{"type": "set_source", "name": "..."}            // camera source
+{"type": "set_actuator_port", "name": "/dev/cu.usbmodem21202"}  // or "none"
+{"type": "manual_output", "mask": 0}
+{"type": "record_start"}
+{"type": "record_stop"}
 ```
+
+The backend also exposes:
+
+- `GET /api/sources` -- camera sources (mirror of the WS `sources` message)
+- `GET /api/serial-ports` -- enumerated serial ports for the actuator dropdown
 
 ## CLI Reference
 
 ```
-usage: fret-tuner.py [-h] (--port PORT | --csv FILE) [--detector MODULE]
-                     [--param KEY=VALUE] [--fast] [--host HOST]
-                     [--web-port PORT]
+usage: fret-tuner.py [-h] (--port PORT | --csv FILE) [--video FILE]
+                     [--actuator-port PORT] [--camera ID]
+                     [--detector MODULE] [--param KEY=VALUE] [--fast]
+                     [--host HOST] [--web-port PORT]
 ```
+
+`--port` selects the **data** serial port (ADC frame source). `--actuator-port` selects the **actuator** serial port; if omitted, the actuator starts idle and a port can be chosen at runtime from the sidebar dropdown. If `--actuator-port` names the same device as `--port`, the backend opens it once and shares the handle for read and write.
 
 ### Examples
 
 ```bash
-# Live from hardware (opens browser automatically)
-python fret-tuner.py --port /dev/cu.usbmodem21202
+# Single board: ADC stream + actuator on the same port (handle is shared)
+python fret-tuner.py --port /dev/cu.usbmodem21202 \
+    --actuator-port /dev/cu.usbmodem21202
 
-# CSV replay
+# Two boards: ADC stream on one device, actuator on another
+python fret-tuner.py --port /dev/cu.usbmodem21202 \
+    --actuator-port /dev/cu.usbmodem31301
+
+# CSV replay against a live actuator board
+python fret-tuner.py --csv session.csv --actuator-port /dev/cu.usbmodem31301
+
+# CSV replay, no actuator (UI dropdown can attach one later)
 python fret-tuner.py --csv ../../firmware/fretboard/fretboard-sample-raw.csv
 
 # Start with trough detector and custom parameters
@@ -278,22 +393,13 @@ Uses the repo-level `.venv` (Python 3.12). Required packages:
 - `fastapi >= 0.115`
 - `uvicorn[standard] >= 0.30`
 - `websockets >= 12.0`
-
-### Camera Panel
-
-Right-side panel with synchronized webcam/capture-card view for comparing waveforms against on-screen activity.
-
-- **Device selector** -- dropdown populated from `navigator.mediaDevices.enumerateDevices()` (video inputs only), selection persisted in `localStorage`
-- **Live view** -- `getUserMedia()` stream displayed in `<video>` element while chart is running
-- **Frame buffer** -- captures frames at ~10 fps via `<canvas>` + `toDataURL()` into a ring buffer (~30 seconds / 300 frames), each tagged with an ADC-timeline timestamp computed from a wall-clock-to-ADC-time anchor
-- **Pause sync** -- when the chart is paused, the video switches to a `<canvas>` displaying the buffered frame closest to the chart's center time
-- **Zoom/pan sync** -- dragging or zooming the charts while paused updates the displayed frame to match the new center time
-
-All capture and buffering is browser-side using the MediaStream API; no server changes required.
+- `opencv-python` (server-side video capture and `detect_video`)
 
 ## Bundled Detector: detect_video
 
-Camera-based detection using pixel sampling. Two sensor points per button, both above the strike line:
+Pixel-sampling detector that **consumes the shared reference video buffer**. It does not own a camera and does not serve its own video stream; sensor sample points and per-button signal levels are exposed as an [overlay layer](#overlay-extension) for the viewport.
+
+Two sensor points per button, both above the strike line:
 
 - **Sensor 1 (hold)** -- brightness detect (color OR white). Sets `pressed=True` whenever max channel brightness exceeds `THRESHOLD`.
 - **Sensor 2 (edge)** -- color-filtered leading-edge detect. Increments `press_count` on each new note arrival for strum timing.
@@ -319,13 +425,13 @@ The edge detector uses a color filter with saturation scaling `(max-min)/max` to
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `DEVICE_ID` | 0 | Camera device index |
 | `THRESHOLD` | 50 | Detection threshold (brightness for hold, color signal for edge) |
 | `RELEASE_FRAC` | 60 | Release threshold as % of press threshold (hysteresis) |
 | `PATCH_RADIUS` | 2 | Pixel averaging radius around sample point |
-| `SHOW_PREVIEW` | 1 | Enable MJPEG preview stream at /video |
 | `{COLOR}_X/Y` | varies | Hold sensor pixel coordinates per button |
 | `{COLOR}_EX/EY` | varies | Edge sensor pixel coordinates per button |
+
+Camera selection lives in the always-on video subsystem, not the detector; there is no `DEVICE_ID` parameter here. Sensor markers are drawn through the `overlays()` hook, replacing the previous `SHOW_PREVIEW`/`/video` path.
 
 ### Calibration
 
@@ -341,7 +447,8 @@ python video_calibrate.py --sample
 
 ## Future Work
 
+- **Detector-owned data sources & chart schemas**: lift the ADC stream out of the top-level CLI into the detector itself, so each detector declares what inputs it needs (ADC serial / CSV / camera frames / nothing) and what the 5 chart slots should display (channel name, color, y-range, series). The runtime UI exposes a per-detector source picker. The current scope keeps `--port` / `--csv` as a top-level concern and leaves the 5 ADC channels hardcoded.
 - Multi-detector overlay (compare two algorithms side-by-side on the same chart)
-- Data recording/export from the browser UI
 - Per-channel enable/disable toggles for actuation
 - Latency measurement display (round-trip time from ADC sample to GPIO assertion)
+- Multi-camera reference (more than one source recorded and replayable in sync)

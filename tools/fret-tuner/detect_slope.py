@@ -18,8 +18,15 @@ second dip would false-trigger a re-press.  A time-based holdoff
 RISING / plateau state longer than the holdoff, subsequent falls are
 treated as sustain deepening (trough updated, no new press event).
 
-All arithmetic is integer-only and O(1) per sample per channel, suitable
-for eventual porting to ARM Cortex-M0+ at 24 MHz.
+Performance notes
+-----------------
+This detector targets eventual port to an ARM Cortex-M0+ at 24 MHz:
+
+- integer arithmetic only (no floats)
+- no dynamic allocation; fixed-size per-channel state
+- bit shifts in place of multiply/divide where practical
+- O(1) per sample per channel
+- per-channel state ~20-30 bytes
 """
 
 from enum import Enum, auto

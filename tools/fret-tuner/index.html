@@ -18,9 +18,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-
 #video-panel { width: 360px; min-width: 360px; background: #16213e; padding: 12px;
                display: flex; flex-direction: column; gap: 8px;
                border-left: 1px solid #0f3460; overflow-y: auto; }
-#video-container { position: relative; width: 100%; background: #000; border-radius: 4px; overflow: hidden; }
-#cam-video, #cam-canvas { width: 100%; display: block; border-radius: 4px; }
-#cam-canvas { display: none; }
+#video-container { position: relative; width: 100%; background: #000; border-radius: 4px; overflow: hidden; min-height: 120px; }
+#mjpeg-video { width: 100%; display: block; border-radius: 4px; }
 #cam-status { font-size: 11px; color: #666; text-align: center; }
 #cam-time { font-size: 11px; color: #e94560; font-family: monospace; text-align: center; }
 
@@ -52,10 +51,10 @@ button:hover { background: #0f3460; }
 
 button.active { background: #e94560; color: #fff; border-color: #e94560; }
 
-#status { font-size: 11px; padding: 6px 8px; border-radius: 4px; text-align: center; }
-#status.connected { background: #0a3d2a; color: #4ade80; }
-#status.disconnected { background: #3d0a0a; color: #f87171; }
-#status.serial-lost { background: #3d2a0a; color: #fbbf24; }
+#status, .port-status { font-size: 11px; padding: 6px 8px; border-radius: 4px; text-align: center; }
+#status.connected, .port-status.connected { background: #0a3d2a; color: #4ade80; }
+#status.disconnected, .port-status.disconnected { background: #3d0a0a; color: #f87171; }
+#status.serial-lost, .port-status.serial-lost { background: #3d2a0a; color: #fbbf24; }
 
 .chart-wrap { flex: 1; min-height: 120px; }
 .chart-wrap .uplot { width: 100% !important; }
@@ -121,9 +120,7 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
     <select id="camera-select"><option value="">No camera</option></select>
   </div>
   <div id="video-container">
-    <video id="cam-video" autoplay muted playsinline></video>
-    <canvas id="cam-canvas"></canvas>
-    <img id="mjpeg-video" src="" style="display:none;width:100%;"/>
+    <img id="mjpeg-video" src="" alt="video reference"/>
   </div>
   <div id="cam-time"></div>
   <div style="display:flex;gap:6px;align-items:center;">
@@ -132,7 +129,9 @@ button.active { background: #e94560; color: #fff; border-color: #e94560; }
   </div>
 
   <div class="section">
-    <h2>Actuation</h2>
+    <h2>Actuator</h2>
+    <select id="actuator-port-select"><option value="none">None</option></select>
+    <div id="actuator-status" class="port-status disconnected">Not attached</div>
     <button id="btn-actuate">Enable Actuation</button>
     <div id="timing-sliders"></div>
   </div>
@@ -310,7 +309,7 @@ function createChart(ch) {
 
   opts.hooks = opts.hooks || {};
   opts.hooks.setScale = [(u, key) => {
-    if (key === "x" && paused && !_renderingFromTimeline && frameBuffer.length) {
+    if (key === "x" && paused && !_renderingFromTimeline) {
       const t = getChartCenterTime();
       showFrameAtTime(t);
       drawTimeline();
@@ -572,9 +571,6 @@ function connect() {
     const msg = JSON.parse(ev.data);
 
     if (msg.type === "data") {
-      if (!adcWallAnchor && msg.samples.length) {
-        adcWallAnchor = { adcT: msg.samples[0].t, wallT: performance.now() / 1000 };
-      }
       for (let i = 0; i < msg.samples.length; i++) {
         const s = msg.samples[i];
         const st = msg.state[i];
@@ -603,17 +599,24 @@ function connect() {
       populateParamSliders(msg.params);
       populateTimingSliders(msg.timing);
       updateActuateButton(msg.actuate_enabled);
-      switchCameraMode(msg.name);
+    }
+
+    else if (msg.type === "sources") {
+      populateSourceSelect(msg.available, msg.active);
+    }
+
+    else if (msg.type === "actuator_status") {
+      populateActuatorSelect(msg.available, msg);
     }
 
     else if (msg.type === "serial_status") {
       const el = document.getElementById("status");
       if (msg.connected) {
         el.className = "connected";
-        el.textContent = "Connected";
+        el.textContent = "Data port connected";
       } else {
         el.className = "serial-lost";
-        el.textContent = "Serial disconnected \u2014 reconnecting\u2026";
+        el.textContent = "Data port \u2014 reconnecting\u2026";
       }
     }
   };
@@ -741,7 +744,6 @@ document.getElementById("btn-pause").addEventListener("click", () => {
     btn.classList.add("active");
     btn.textContent = "Resume";
     ws.send(JSON.stringify({ type: "pause" }));
-    pauseCapture();
     const d = data[CHANNELS[0]];
     scrubTime = d.t.length ? d.t[d.t.length - 1] : 0;
     clampScrubTime();
@@ -753,7 +755,6 @@ document.getElementById("btn-pause").addEventListener("click", () => {
     btn.textContent = "Pause";
     ws.send(JSON.stringify({ type: "resume" }));
     tl.classList.remove("visible");
-    resumeCapture();
     showLiveVideo();
   }
 });
@@ -790,255 +791,121 @@ document.getElementById("btn-actuate").addEventListener("click", () => {
   ws.send(JSON.stringify({ type: "set_actuate", enabled: enabling }));
 });
 
-// --- Camera ---
+// --- Video reference (server-driven) ---
+//
+// The backend owns the camera and the ring buffer. Live frames stream from
+// /video as MJPEG; paused/scrub frames come from /video/snap?t=<sec>.
 
-let usingMjpeg = false;
-let audioOnlyStream = null;
 const mjpegImg = document.getElementById("mjpeg-video");
-
-let camerasEnumerated = false;
-
-async function startAudioOnly() {
-  stopAudioOnly();
-  try {
-    audioOnlyStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
-    camVideo.srcObject = audioOnlyStream;
-    camVideo.style.display = "none";
-    camVideo.muted = false;
-    await camVideo.play();
-  } catch (e) {
-    console.warn("Could not start audio:", e.message);
-  }
-}
-
-function stopAudioOnly() {
-  if (audioOnlyStream) {
-    audioOnlyStream.getTracks().forEach(t => t.stop());
-    audioOnlyStream = null;
-  }
-}
-
-function switchCameraMode(detectorName) {
-  if (detectorName === "detect_video") {
-    if (!usingMjpeg) {
-      stopCamera();
-      camSelect.style.display = "none";
-      camCanvas.style.display = "none";
-      mjpegImg.src = "/video";
-      mjpegImg.style.display = "block";
-      camStatus.textContent = "Video detector (MJPEG)";
-      usingMjpeg = true;
-      startAudioOnly();
-      startMjpegCapture();
-    }
-  } else {
-    if (usingMjpeg) {
-      stopAudioOnly();
-      stopMjpegCapture();
-      mjpegImg.src = "";
-      mjpegImg.style.display = "none";
-      camSelect.style.display = "";
-      usingMjpeg = false;
-    }
-    if (!camerasEnumerated) {
-      camerasEnumerated = true;
-      enumerateCameras();
-    }
-  }
-}
-
-const FRAME_BUFFER_SEC = 30;
-const FRAME_BUFFER_FPS = 30;
-const FRAME_BUFFER_CAP = FRAME_BUFFER_FPS * FRAME_BUFFER_SEC;
-
-let camStream = null;
-let frameBuffer = [];   // { t, dataUrl }
-let capturingFrames = false;
-let mjpegCaptureInterval = null;
-let adcWallAnchor = null;  // { adcT, wallT } set on first data arrival
-
-const camVideo = document.getElementById("cam-video");
-const camCanvas = document.getElementById("cam-canvas");
-const camCtx = camCanvas.getContext("2d");
 const camSelect = document.getElementById("camera-select");
 const camStatus = document.getElementById("cam-status");
 const camTime = document.getElementById("cam-time");
 
-function adcTimeNow() {
-  if (!adcWallAnchor) return 0;
-  return (performance.now() / 1000 - adcWallAnchor.wallT) + adcWallAnchor.adcT;
-}
+let activeSourceId = null;
+let audioStream = null;
+let audioMuted = true;
 
-async function enumerateCameras() {
-  try {
-    await navigator.mediaDevices.getUserMedia({ video: true });
-  } catch { /* need permission prompt first */ }
+const audioEl = document.createElement("audio");
+audioEl.autoplay = true;
+audioEl.muted = true;
+document.body.appendChild(audioEl);
 
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const videoInputs = devices.filter(d => d.kind === "videoinput");
+function populateSourceSelect(available, active) {
+  camSelect.innerHTML = "";
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "none";
+  noneOpt.textContent = "None";
+  camSelect.appendChild(noneOpt);
 
-  camSelect.innerHTML = '<option value="">No camera</option>';
-  videoInputs.forEach((dev, i) => {
+  (available || []).forEach(src => {
     const opt = document.createElement("option");
-    opt.value = dev.deviceId;
-    opt.textContent = dev.label || ("Camera " + (i + 1));
+    opt.value = String(src.id);
+    opt.textContent = src.label;
     camSelect.appendChild(opt);
   });
 
-  const saved = loadSettings();
-  if (saved.cameraId) {
-    const match = videoInputs.find(d => d.deviceId === saved.cameraId);
-    if (match) {
-      camSelect.value = match.deviceId;
-      startCamera(match.deviceId);
-    }
-  }
-}
+  const activeId = active && active.active && active.device_id != null ? String(active.device_id) : "none";
+  camSelect.value = activeId;
+  activeSourceId = activeId;
 
-async function startCamera(deviceId) {
-  stopCamera();
-  if (!deviceId) {
+  if (activeId === "none") {
     camStatus.textContent = "No camera selected";
-    return;
-  }
-
-  try {
-    camStream = await navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId }, width: { ideal: 640 }, height: { ideal: 480 } },
-      audio: true,
-    });
-    camVideo.srcObject = camStream;
-    camVideo.style.display = "block";
-    camCanvas.style.display = "none";
-    camStatus.textContent = "Live";
-
-    camVideo.addEventListener("loadedmetadata", () => {
-      camCanvas.width = camVideo.videoWidth;
-      camCanvas.height = camVideo.videoHeight;
-    }, { once: true });
-
-    capturingFrames = true;
-    if (camVideo.requestVideoFrameCallback) {
-      camVideo.requestVideoFrameCallback(onVideoFrame);
-    } else {
-      mjpegCaptureInterval = setInterval(captureFrame, 1000 / FRAME_BUFFER_FPS);
-    }
-  } catch (e) {
-    camStatus.textContent = "Error: " + e.message;
-  }
-}
-
-function stopCamera() {
-  capturingFrames = false;
-  if (mjpegCaptureInterval) { clearInterval(mjpegCaptureInterval); mjpegCaptureInterval = null; }
-  if (camStream) {
-    camStream.getTracks().forEach(t => t.stop());
-    camStream = null;
-  }
-  camVideo.srcObject = null;
-}
-
-function captureFrame() {
-  if (!camStream || !camVideo.videoWidth) return;
-
-  camCtx.drawImage(camVideo, 0, 0, camCanvas.width, camCanvas.height);
-  const dataUrl = camCanvas.toDataURL("image/jpeg", 0.7);
-
-  const t = adcTimeNow();
-  frameBuffer.push({ t, dataUrl });
-
-  if (frameBuffer.length > FRAME_BUFFER_CAP) {
-    frameBuffer.splice(0, frameBuffer.length - FRAME_BUFFER_CAP);
-  }
-}
-
-function onVideoFrame(now, metadata) {
-  if (!capturingFrames || !camStream) return;
-  captureFrame();
-  camVideo.requestVideoFrameCallback(onVideoFrame);
-}
-
-function startMjpegCapture() {
-  stopMjpegCapture();
-  mjpegCaptureInterval = setInterval(() => {
-    if (!mjpegImg.naturalWidth || paused) return;
-    camCanvas.width = mjpegImg.naturalWidth;
-    camCanvas.height = mjpegImg.naturalHeight;
-    camCtx.drawImage(mjpegImg, 0, 0);
-    const dataUrl = camCanvas.toDataURL("image/jpeg", 0.7);
-    const t = adcTimeNow();
-    frameBuffer.push({ t, dataUrl });
-    if (frameBuffer.length > FRAME_BUFFER_CAP) {
-      frameBuffer.splice(0, frameBuffer.length - FRAME_BUFFER_CAP);
-    }
-  }, 1000 / FRAME_BUFFER_FPS);
-}
-
-function stopMjpegCapture() {
-  if (mjpegCaptureInterval) { clearInterval(mjpegCaptureInterval); mjpegCaptureInterval = null; }
-}
-
-function pauseCapture() {
-  capturingFrames = false;
-  stopMjpegCapture();
-}
-
-function resumeCapture() {
-  if (usingMjpeg) {
-    startMjpegCapture();
-  } else if (camStream) {
-    capturingFrames = true;
-    if (camVideo.requestVideoFrameCallback) {
-      camVideo.requestVideoFrameCallback(onVideoFrame);
-    } else {
-      mjpegCaptureInterval = setInterval(captureFrame, 1000 / FRAME_BUFFER_FPS);
+    mjpegImg.removeAttribute("src");
+  } else {
+    camStatus.textContent = active.label || ("Camera " + activeId);
+    if (mjpegImg.getAttribute("src") !== "/video") {
+      mjpegImg.src = "/video";
     }
   }
 }
 
-let _showFrameId = 0;
+camSelect.addEventListener("change", (e) => {
+  const value = e.target.value;
+  saveSettings({ sourceId: value });
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "set_source", name: value }));
+  }
+});
 
-function showFrameAtTime(t) {
-  if (!frameBuffer.length) return;
+// --- Actuator port selector (always-on subsystem; mirrors camera dropdown) ---
 
-  let best = 0;
-  let bestDist = Math.abs(frameBuffer[0].t - t);
-  for (let i = 1; i < frameBuffer.length; i++) {
-    const dist = Math.abs(frameBuffer[i].t - t);
-    if (dist < bestDist) { best = i; bestDist = dist; }
+const actSelect = document.getElementById("actuator-port-select");
+const actStatusEl = document.getElementById("actuator-status");
+let actuatorPortName = null;
+
+function populateActuatorSelect(available, status) {
+  const prev = actSelect.value;
+  actSelect.innerHTML = "";
+  const noneOpt = document.createElement("option");
+  noneOpt.value = "none";
+  noneOpt.textContent = "None";
+  actSelect.appendChild(noneOpt);
+
+  (available || []).forEach(p => {
+    const opt = document.createElement("option");
+    opt.value = p.name;
+    opt.textContent = p.label;
+    actSelect.appendChild(opt);
+  });
+
+  const activeName = (status && status.active && status.port) ? status.port : "none";
+  actuatorPortName = activeName === "none" ? null : activeName;
+
+  // Make sure the active port is in the dropdown even if enumeration missed it
+  // (e.g. the device went away momentarily).
+  if (activeName !== "none" && !Array.from(actSelect.options).some(o => o.value === activeName)) {
+    const opt = document.createElement("option");
+    opt.value = activeName;
+    opt.textContent = activeName + " (attached)";
+    actSelect.appendChild(opt);
   }
 
-  const myId = ++_showFrameId;
-  const img = new Image();
-  img.onload = () => {
-    if (myId !== _showFrameId) return;
-    if (camCanvas.width !== img.width || camCanvas.height !== img.height) {
-      camCanvas.width = img.width;
-      camCanvas.height = img.height;
-    }
-    camCtx.drawImage(img, 0, 0, camCanvas.width, camCanvas.height);
-  };
-  img.src = frameBuffer[best].dataUrl;
+  actSelect.value = activeName;
 
-  camVideo.style.display = "none";
-  camCanvas.style.display = "block";
-  if (usingMjpeg) mjpegImg.style.display = "none";
-  camTime.textContent = "t = " + frameBuffer[best].t.toFixed(3) + "s (frame " + best + "/" + frameBuffer.length + ")";
-}
-
-function showLiveVideo() {
-  if (usingMjpeg) {
-    mjpegImg.style.display = "block";
-    camCanvas.style.display = "none";
-    camStatus.textContent = "Video detector (MJPEG)";
-    camTime.textContent = "";
-  } else if (camStream) {
-    camVideo.style.display = "block";
-    camCanvas.style.display = "none";
-    camStatus.textContent = "Live";
-    camTime.textContent = "";
+  if (!status || !status.active) {
+    actStatusEl.className = "port-status disconnected";
+    actStatusEl.textContent = "Not attached";
+  } else if (status.connected) {
+    actStatusEl.className = "port-status connected";
+    actStatusEl.textContent = (status.owned ? "Open" : "Shared") + ": " + status.port;
+  } else {
+    actStatusEl.className = "port-status serial-lost";
+    actStatusEl.textContent = "Reconnecting: " + status.port + "\u2026";
   }
+
+  // Suppress phantom 'change' events from rebuild
+  actSelect._lastValue = activeName;
 }
+
+actSelect.addEventListener("change", (e) => {
+  const value = e.target.value;
+  if (value === actSelect._lastValue) return;
+  actSelect._lastValue = value;
+  saveSettings({ actuatorPort: value });
+  if (ws && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({ type: "set_actuator_port", name: value }));
+  }
+});
 
 function getChartCenterTime() {
   const ch = CHANNELS[0];
@@ -1053,16 +920,56 @@ function getChartCenterTime() {
   return d.t[d.t.length - 1];
 }
 
-camSelect.addEventListener("change", (e) => {
-  saveSettings({ cameraId: e.target.value });
-  startCamera(e.target.value);
-});
+let _scrubReqId = 0;
 
-document.getElementById("btn-mute").addEventListener("click", () => {
-  camVideo.muted = !camVideo.muted;
+function showFrameAtTime(t) {
+  if (activeSourceId === "none" || activeSourceId == null) {
+    camTime.textContent = "t = " + t.toFixed(3) + "s (no video)";
+    return;
+  }
+  const myId = ++_scrubReqId;
+  const url = "/video/snap?t=" + encodeURIComponent(t.toFixed(3));
+  const probe = new Image();
+  probe.onload = () => {
+    if (myId !== _scrubReqId) return;
+    mjpegImg.src = url;
+    camTime.textContent = "t = " + t.toFixed(3) + "s";
+  };
+  probe.onerror = () => {
+    if (myId !== _scrubReqId) return;
+    camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
+  };
+  probe.src = url;
+}
+
+function showLiveVideo() {
+  if (activeSourceId === "none" || activeSourceId == null) {
+    mjpegImg.removeAttribute("src");
+    camStatus.textContent = "No camera selected";
+  } else {
+    mjpegImg.src = "/video";
+    camStatus.textContent = "Live";
+  }
+  camTime.textContent = "";
+}
+
+async function ensureAudio() {
+  if (audioStream) return;
+  try {
+    audioStream = await navigator.mediaDevices.getUserMedia({ video: false, audio: true });
+    audioEl.srcObject = audioStream;
+  } catch (e) {
+    console.warn("Could not start audio:", e.message);
+  }
+}
+
+document.getElementById("btn-mute").addEventListener("click", async () => {
+  audioMuted = !audioMuted;
+  if (!audioMuted) await ensureAudio();
+  audioEl.muted = audioMuted;
   const btn = document.getElementById("btn-mute");
-  btn.textContent = camVideo.muted ? "Unmute" : "Mute";
-  if (camVideo.muted) btn.classList.remove("active");
+  btn.textContent = audioMuted ? "Unmute" : "Mute";
+  if (audioMuted) btn.classList.remove("active");
   else btn.classList.add("active");
 });
 

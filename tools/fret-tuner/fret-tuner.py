@@ -66,6 +66,15 @@ def main() -> None:
         "--web-port", type=int, default=8080, metavar="PORT",
         help="Web server port (default: 8080)",
     )
+    parser.add_argument(
+        "--camera", type=int, default=None, metavar="ID",
+        help="Initial camera device ID for the video reference (default: first available)",
+    )
+    parser.add_argument(
+        "--actuator-port", default=None, metavar="PORT",
+        help="Serial port for the actuator (GPIO output). May equal --port (handle "
+             "is shared) or be a different device. Default: idle, picker in the UI.",
+    )
 
     args = parser.parse_args()
 
@@ -92,6 +101,8 @@ def main() -> None:
         detector_params={k: int(v) for k, v in params.items()},
         serial_port=args.port,
         ser_obj=ser_obj,
+        camera_id=args.camera,
+        actuator_port=args.actuator_port,
     )
 
     url = f"http://{args.host}:{args.web_port}"

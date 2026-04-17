@@ -12,6 +12,7 @@ from collections import deque
 from typing import Generator, NamedTuple
 
 import serial
+import serial.tools.list_ports
 
 CHANNELS = ("green", "red", "yellow", "blue", "orange")
 
@@ -31,6 +32,33 @@ class Sample(NamedTuple):
     yellow: int
     blue: int
     orange: int
+
+
+def enumerate_serial_ports() -> list[dict]:
+    """Return [{"name": "/dev/cu.usbmodemXXXX", "label": "..."}, ...].
+
+    Used by the actuator-port and (future) data-port dropdowns. On macOS,
+    skips the noisy `/dev/tty.*` aliases and prefers `/dev/cu.*` callout
+    devices (which is what the existing CLI examples use).
+    """
+    out: list[dict] = []
+    for p in sorted(serial.tools.list_ports.comports(), key=lambda c: c.device):
+        device = p.device
+        # On macOS pyserial reports both /dev/cu.* and /dev/tty.*. Filter the
+        # tty.* duplicates -- callers should use the cu.* aliases for write.
+        if device.startswith("/dev/tty.") and any(
+            other.device == "/dev/cu." + device[len("/dev/tty."):]
+            for other in serial.tools.list_ports.comports()
+        ):
+            continue
+        label_parts = [p.description or "", p.manufacturer or ""]
+        label = " - ".join([s for s in label_parts if s and s != "n/a"]).strip()
+        if not label:
+            label = device
+        else:
+            label = f"{device} ({label})"
+        out.append({"name": device, "label": label})
+    return out
 
 
 def _unpack_frame(buf: bytes) -> tuple[int, int, int, int, int] | None:

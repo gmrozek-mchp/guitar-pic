@@ -1,6 +1,11 @@
 """
 Video-based fret detection -- camera pointed at the game screen.
 
+Consumes frames from the shared reference video buffer (camera.py); does
+not own the camera. Sensor markers and per-button signal levels are
+exposed as an overlay layer through the `overlays()` hook so the server
+can bake them into the live MJPEG and paused scrub frames.
+
 Two sensor points per button, both above the strike line:
 
   Sensor 1 (hold)  -- brightness detect (color OR white).
@@ -10,27 +15,23 @@ Two sensor points per button, both above the strike line:
                       which the actuator uses to schedule strums.
 
 Use video_calibrate.py to find pixel coordinates for all 10 sensor
-points.  Detection thresholds are applied to raw pixel values (dark
+points. Detection thresholds are applied to raw pixel values (dark
 background is the implicit zero).
 
 The "baseline" output is the stronger of the two signals (scaled to
 0..4095) for chart overlay visualization.
 
-When SHOW_PREVIEW=1 (default), the annotated camera feed is served at
-http://localhost:8080/video as an MJPEG stream.
-
 Requires: opencv-python
 """
 
-import sys
 import threading
-import time
 from typing import Optional
 
 import cv2
 import numpy as np
 
-from stream import Sample, CHANNELS
+from camera import Frame, get_camera
+from stream import CHANNELS, Sample
 
 _DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
 
@@ -62,14 +63,17 @@ _MARKER_THICK = 3
 _FONT_SCALE = 0.6
 _FONT_THICK = 2
 
+# Calibration coords are anchored to a 1920x1080 reference frame.
+_CAL_W = 1920
+_CAL_H = 1080
+
 
 class Detector:
-    """Camera-based fret press detector."""
+    """Camera-based fret press detector consuming the shared video buffer."""
 
     @classmethod
     def default_params(cls) -> dict:
         return {
-            "DEVICE_ID": 0,
             "HOLD_THRESH": 50,
             "HOLD_RELEASE_FRAC": 60,
             "EDGE_GREEN": 50,
@@ -78,7 +82,6 @@ class Detector:
             "EDGE_BLUE": 50,
             "EDGE_ORANGE": 50,
             "PATCH_RADIUS": 2,
-            "SHOW_PREVIEW": 1,
             "GREEN_X": 748, "GREEN_Y": 700,
             "RED_X": 850, "RED_Y": 700,
             "YELLOW_X": 947, "YELLOW_Y": 700,
@@ -101,7 +104,6 @@ class Detector:
             ch: int(defaults[f"EDGE_{ch.upper()}"]) for ch in CHANNELS
         }
         self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
-        self._show_preview = bool(int(defaults["SHOW_PREVIEW"]))
 
         self._cal_hold_pixels: dict[str, tuple[int, int]] = {}
         self._cal_edge_pixels: dict[str, tuple[int, int]] = {}
@@ -110,8 +112,16 @@ class Detector:
             self._cal_hold_pixels[ch] = (int(defaults[f"{p}_X"]), int(defaults[f"{p}_Y"]))
             self._cal_edge_pixels[ch] = (int(defaults[f"{p}_EX"]), int(defaults[f"{p}_EY"]))
 
-        self._hold_pixels: dict[str, tuple[int, int]] = dict(self._cal_hold_pixels)
-        self._edge_pixels: dict[str, tuple[int, int]] = dict(self._cal_edge_pixels)
+        # Per-frame-size cache of scaled pixel coords. The capture path
+        # passes full-res frames to detection while the view path applies
+        # overlays onto the downscaled working frame, so we typically need
+        # at least two entries (one for detection, one for view). Callers
+        # treat the returned dicts as immutable.
+        self._scaled_cache: dict[
+            tuple[int, int],
+            tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]],
+        ] = {}
+        self._scale_lock = threading.Lock()
 
         self._hold_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
         self._edge_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
@@ -121,29 +131,23 @@ class Detector:
         self._cached_result: Optional[dict] = None
 
         self._lock = threading.Lock()
-        self._frame: Optional[np.ndarray] = None
-        self._preview_jpeg: Optional[bytes] = None
-        self._frame_seq = 0
-        self._preview_seq = -1
-        self._frame_event = threading.Event()
-        self._cam_ok = False
-        self._running = True
 
-        dev = int(defaults["DEVICE_ID"])
-        self._thread = threading.Thread(
-            target=self._capture_loop, args=(dev,), daemon=True
-        )
-        self._thread.start()
+        self._cam = get_camera()
+        self._cam.add_frame_listener(self._on_frame)
 
     def stop(self):
-        """Stop the camera capture thread and release resources."""
-        self._running = False
-        if self._thread.is_alive():
-            self._thread.join(timeout=2.0)
+        """Detach the camera frame listener."""
+        try:
+            self._cam.remove_frame_listener(self._on_frame)
+        except Exception:
+            pass
         self._log("stopped")
 
     def __del__(self):
-        self._running = False
+        try:
+            self._cam.remove_frame_listener(self._on_frame)
+        except Exception:
+            pass
 
     def _log(self, msg: str):
         print(f"[detect_video] {msg}", flush=True)
@@ -151,121 +155,61 @@ class Detector:
     _EDGE_RADIUS = 10
     _EDGE_THICK = 2
 
-    def _encode_preview(self, frame: np.ndarray):
-        """Annotate frame with hold and edge detection markers."""
-        display = frame.copy()
+    def _scale_pixels(
+        self, frame_w: int, frame_h: int,
+    ) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]]:
+        """Return (hold_pixels, edge_pixels) scaled for the given frame size.
 
-        for ch in CHANNELS:
-            hx, hy = self._hold_pixels[ch]
-            ex, ey = self._edge_pixels[ch]
-            r = self._patch_r
+        Cached per (w, h) so the detection (full-res) and overlay (working-res)
+        paths don't keep invalidating each other. Returned dicts are shared
+        across calls and should be treated as immutable by callers.
+        """
+        key = (frame_w, frame_h)
+        with self._scale_lock:
+            cached = self._scaled_cache.get(key)
+            if cached is not None:
+                return cached
 
-            with self._lock:
-                pressed = self._pressed[ch]
-                hold_d = self._hold_dist[ch]
-                edge_d = self._edge_dist[ch]
-                edge_on = self._edge_active[ch]
+            all_cal = list(self._cal_hold_pixels.values()) + list(self._cal_edge_pixels.values())
+            cal_xs = [x for x, _ in all_cal]
+            cal_ys = [y for _, y in all_cal]
+            cal_w = max(cal_xs) + max(cal_xs) // 4
+            cal_h = max(cal_ys) + max(cal_ys) // 4
 
-            color = _MARKER_COLORS[ch]
-            hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
+            if frame_w < cal_w or frame_h < cal_h:
+                sx = frame_w / float(_CAL_W)
+                sy = frame_h / float(_CAL_H)
+                self._log(f"scaling coords for {frame_w}x{frame_h} by {sx:.3f}x{sy:.3f}")
+                hold = {
+                    ch: (int(self._cal_hold_pixels[ch][0] * sx),
+                         int(self._cal_hold_pixels[ch][1] * sy))
+                    for ch in CHANNELS
+                }
+                edge = {
+                    ch: (int(self._cal_edge_pixels[ch][0] * sx),
+                         int(self._cal_edge_pixels[ch][1] * sy))
+                    for ch in CHANNELS
+                }
+            else:
+                hold = dict(self._cal_hold_pixels)
+                edge = dict(self._cal_edge_pixels)
+            cached = (hold, edge)
+            self._scaled_cache[key] = cached
+            return cached
 
-            cv2.rectangle(display, (hx - r, hy - r), (hx + r, hy + r), color, 1)
-            cv2.circle(display, (hx, hy), _MARKER_RADIUS, hold_ring, _MARKER_THICK)
+    def _on_frame(self, frame: Frame) -> None:
+        """Camera frame listener -- runs in the capture thread.
 
-            cv2.line(display, (hx, hy), (ex, ey), color, 1)
-            edge_ring = _PRESSED_COLOR if edge_on else _IDLE_COLOR
-            cv2.rectangle(display, (ex - r, ey - r), (ex + r, ey + r), color, 1)
-            cv2.circle(display, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
-
-            label = f"{ch[0].upper()} h{hold_d:.0f} e{edge_d:.0f}"
-            cv2.putText(display, label, (hx + _MARKER_RADIUS + 4, hy + 5),
-                        cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
-
-        h, w = display.shape[:2]
-        cv2.putText(display, f"{w}x{h}", (10, h - 10),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
-
-        ok, buf = cv2.imencode(".jpg", display, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        if ok:
-            with self._lock:
-                self._preview_jpeg = buf.tobytes()
-
-    def get_preview_jpeg(self) -> Optional[bytes]:
-        """Return the latest annotated frame as JPEG bytes, encoding lazily."""
-        if not self._show_preview:
-            return None
-        with self._lock:
-            frame = self._frame
-            seq = self._frame_seq
-        if frame is None:
-            return None
-        if seq != self._preview_seq:
-            self._encode_preview(frame)
-            self._preview_seq = seq
-        with self._lock:
-            return self._preview_jpeg
-
-    def wait_for_frame(self, timeout: float = 0.1) -> bool:
-        """Block until a new preview frame is ready. Returns True if a frame arrived."""
-        got = self._frame_event.wait(timeout)
-        if got:
-            self._frame_event.clear()
-        return got
-
-    def _scale_pixels(self, frame_w: int, frame_h: int):
-        """Scale calibrated pixel coords to match actual camera resolution."""
-        all_cal = list(self._cal_hold_pixels.values()) + list(self._cal_edge_pixels.values())
-        cal_xs = [x for x, _ in all_cal]
-        cal_ys = [y for _, y in all_cal]
-        cal_w = max(cal_xs) + max(cal_xs) // 4
-        cal_h = max(cal_ys) + max(cal_ys) // 4
-
-        if frame_w < cal_w or frame_h < cal_h:
-            sx = frame_w / 1920.0
-            sy = frame_h / 1080.0
-            self._log(f"scaling coords by {sx:.3f}x{sy:.3f}")
-            for ch in CHANNELS:
-                hx, hy = self._cal_hold_pixels[ch]
-                self._hold_pixels[ch] = (int(hx * sx), int(hy * sy))
-                ex, ey = self._cal_edge_pixels[ch]
-                self._edge_pixels[ch] = (int(ex * sx), int(ey * sy))
-        else:
-            self._hold_pixels = dict(self._cal_hold_pixels)
-            self._edge_pixels = dict(self._cal_edge_pixels)
-
-    def _capture_loop(self, device_id: int):
-        cap = cv2.VideoCapture(device_id)
-        if not cap.isOpened():
-            self._log("ERROR: cannot open camera")
+        Prefers the full-resolution raw frame from the capture device when
+        available, so detection is unaffected by the working/buffer downscale
+        used for the live view.
+        """
+        img = frame.detect_image()
+        if img is None:
             return
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-        with self._lock:
-            self._cam_ok = True
-        started = False
-        try:
-            while self._running:
-                ret, frame = cap.read()
-                if ret:
-                    if not started:
-                        h, w = frame.shape[:2]
-                        self._log(f"camera opened: {w}x{h}")
-                        self._scale_pixels(w, h)
-                        for ch in CHANNELS:
-                            hx, hy = self._hold_pixels[ch]
-                            ex, ey = self._edge_pixels[ch]
-                            self._log(f"  {ch}: hold({hx},{hy}) edge({ex},{ey})")
-                        sys.stdout.flush()
-                        started = True
-                    self._detect(frame)
-                    with self._lock:
-                        self._frame = frame
-                        self._frame_seq += 1
-                    self._frame_event.set()
-                else:
-                    time.sleep(0.01)
-        finally:
-            cap.release()
+        h, w = img.shape[:2]
+        hold_px, edge_px = self._scale_pixels(w, h)
+        self._detect(img, hold_px, edge_px)
 
     def _sample_at(self, frame: np.ndarray, px: int, py: int) -> np.ndarray:
         """Average a small patch around (px, py)."""
@@ -304,38 +248,45 @@ class Detector:
         d = float((target - reject) * sat_ratio)
         return 0.0 if np.isnan(d) else d
 
-    def _detect(self, frame: np.ndarray):
+    def _detect(
+        self,
+        frame: np.ndarray,
+        hold_pixels: dict[str, tuple[int, int]],
+        edge_pixels: dict[str, tuple[int, int]],
+    ):
         """Run detection on a new camera frame. Called from capture thread."""
         result: dict[str, dict] = {}
         for ch in CHANNELS:
-            hx, hy = self._hold_pixels[ch]
-            ex, ey = self._edge_pixels[ch]
+            hx, hy = hold_pixels[ch]
+            ex, ey = edge_pixels[ch]
             hold_color = self._sample_at(frame, hx, hy)
             edge_color = self._sample_at(frame, ex, ey)
 
             hold_dist = self._brightness(hold_color)
             edge_dist = self._color_signal(edge_color, ch)
-            self._hold_dist[ch] = hold_dist
-            self._edge_dist[ch] = edge_dist
 
-            if not self._pressed[ch]:
-                if hold_dist > self._hold_thresh:
-                    self._pressed[ch] = True
-            else:
-                if hold_dist < self._hold_release:
-                    self._pressed[ch] = False
+            with self._lock:
+                self._hold_dist[ch] = hold_dist
+                self._edge_dist[ch] = edge_dist
 
-            edge_on = edge_dist > self._edge_thresh[ch]
-            if edge_on and not self._edge_active[ch]:
-                self._press_count[ch] += 1
-            self._edge_active[ch] = edge_on
+                if not self._pressed[ch]:
+                    if hold_dist > self._hold_thresh:
+                        self._pressed[ch] = True
+                else:
+                    if hold_dist < self._hold_release:
+                        self._pressed[ch] = False
 
-            result[ch] = {
-                "pressed": self._pressed[ch],
-                "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
-                "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
-                "press_count": self._press_count[ch],
-            }
+                edge_on = edge_dist > self._edge_thresh[ch]
+                if edge_on and not self._edge_active[ch]:
+                    self._press_count[ch] += 1
+                self._edge_active[ch] = edge_on
+
+                result[ch] = {
+                    "pressed": self._pressed[ch],
+                    "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
+                    "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
+                    "press_count": self._press_count[ch],
+                }
 
         with self._lock:
             self._cached_result = result
@@ -344,12 +295,53 @@ class Detector:
         """Return the latest detection result (computed in capture thread)."""
         with self._lock:
             cached = self._cached_result
-            cam_ok = self._cam_ok
 
         if cached is not None:
             return cached
 
+        cam_status = self._cam.status()
+        msg = "no_device" if not cam_status.get("active") else "waiting"
         return {ch: {
             "pressed": False, "baseline": 0, "edge_line": 0,
-            "press_count": 0, "camera": "waiting" if cam_ok else "no_device",
+            "press_count": 0, "camera": msg,
         } for ch in CHANNELS}
+
+    # --- Overlay extension --------------------------------------------------
+
+    def overlays(self) -> list[dict]:
+        """Expose sensor markers as an overlay layer for the video viewport."""
+        return [{"name": "detect_video.markers", "draw": self._draw_markers}]
+
+    def _draw_markers(self, image) -> None:
+        h, w = image.shape[:2]
+        hold_px, edge_px = self._scale_pixels(w, h)
+        with self._lock:
+            snap = {
+                ch: (
+                    hold_px[ch],
+                    edge_px[ch],
+                    self._pressed[ch],
+                    self._hold_dist[ch],
+                    self._edge_dist[ch],
+                    self._edge_active[ch],
+                ) for ch in CHANNELS
+            }
+            patch_r = self._patch_r
+
+        for ch, ((hx, hy), (ex, ey), pressed, hold_d, edge_d, edge_on) in snap.items():
+            color = _MARKER_COLORS[ch]
+            hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
+
+            cv2.rectangle(image, (hx - patch_r, hy - patch_r),
+                          (hx + patch_r, hy + patch_r), color, 1)
+            cv2.circle(image, (hx, hy), _MARKER_RADIUS, hold_ring, _MARKER_THICK)
+
+            cv2.line(image, (hx, hy), (ex, ey), color, 1)
+            edge_ring = _PRESSED_COLOR if edge_on else _IDLE_COLOR
+            cv2.rectangle(image, (ex - patch_r, ey - patch_r),
+                          (ex + patch_r, ey + patch_r), color, 1)
+            cv2.circle(image, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
+
+            label = f"{ch[0].upper()} h{hold_d:.0f} e{edge_d:.0f}"
+            cv2.putText(image, label, (hx + _MARKER_RADIUS + 4, hy + 5),
+                        cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
