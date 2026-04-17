@@ -683,35 +683,54 @@ async def video_feed():
     )
 
 
-def _snap_jpeg(t: Optional[float]) -> Optional[tuple[bytes, int, float]]:
-    """Snap (and overlay-encode) a frame; return (jpeg, seq, t)."""
+def _snap_jpeg(
+    seq: Optional[int],
+    t: Optional[float],
+) -> Optional[tuple[bytes, int, float]]:
+    """Render (and overlay-encode) a frame.
+
+    Addressing precedence: `seq` (exact lookup; preferred when caller
+    knows which frame it wants) > `t` (snap-to-closest) > latest. Returns
+    (jpeg, seq, t) so the HTTP response can include both ids in headers.
+    """
     cam = get_camera()
-    frame = cam.latest() if t is None else cam.closest(float(t))
+    if seq is not None:
+        frame = cam.by_seq(int(seq))
+    elif t is not None:
+        frame = cam.closest(float(t))
+    else:
+        frame = cam.latest()
     if frame is None:
         return None
     with _lock:
         det = _detector
-    jpeg = _compose_frame_jpeg(frame, det, scrub_t=t)
+    # When we render an exact seq, anchor overlays to that frame's t (not
+    # to whatever t the caller passed, which may be stale).
+    scrub_t: Optional[float] = float(frame.t) if seq is not None else t
+    jpeg = _compose_frame_jpeg(frame, det, scrub_t=scrub_t)
     if jpeg is None:
         return None
     return jpeg, int(frame.seq), float(frame.t)
 
 
 @app.get("/video/snap")
-async def video_snap(t: Optional[float] = None):
-    snap = await asyncio.to_thread(_snap_jpeg, t)
+async def video_snap(
+    seq: Optional[int] = None,
+    t: Optional[float] = None,
+):
+    snap = await asyncio.to_thread(_snap_jpeg, seq, t)
     if snap is None:
         return Response(content=b"no frame available", status_code=503)
-    jpeg, seq, ft = snap
+    jpeg, sseq, ft = snap
     return Response(
         content=jpeg,
         media_type="image/jpeg",
         headers={
             "Cache-Control": "no-store",
-            # Identifies the frame the browser is looking at, for the
-            # camera-as-master-clock model. Browser reads these to keep its
-            # `currentFrame` in sync with whatever it's actually displaying.
-            "X-Frame-Seq": str(seq),
+            # Authoritative ids for the frame actually rendered. Browser
+            # reads these to keep `currentFrame` in sync with whatever
+            # is on screen.
+            "X-Frame-Seq": str(sseq),
             "X-Frame-Time": f"{ft:.6f}",
             "Access-Control-Expose-Headers": "X-Frame-Seq, X-Frame-Time",
         },

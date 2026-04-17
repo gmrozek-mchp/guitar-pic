@@ -364,9 +364,11 @@ function createChart(slot, el) {
   opts.hooks = opts.hooks || {};
   opts.hooks.setScale = [(u, key) => {
     if (key === "x" && paused && !_renderingFromTimeline) {
+      // Chart pan while paused: resolve the new center time to the
+      // closest buffered frame and pin currentFrame there. scrubToTime
+      // updates the video, currentFrame, chart center, and timeline.
       const t = getChartCenterTime();
-      showFrameAtTime(t);
-      drawTimeline();
+      scrubToTime(t);
     }
   }];
 
@@ -482,19 +484,20 @@ function trimBuffers() {
 // --- Timeline scrubber ---
 
 function clampScrubTime() {
+  // Clamp ONLY to the actual buffer span. Do NOT inset by windowSec/2 --
+  // we are scrubbing per-frame, and the rendered window is allowed to be
+  // truncated near the edges. Pre-camera-as-master code inset the range
+  // to keep the chart window centered, but that silently warped the
+  // scrubbed frame backwards by up to windowSec/2 every time the user
+  // stepped near a buffer edge, producing the "single frame mostly,
+  // sometimes a second" jump pattern.
   const id = firstSlotId();
   const d = id ? data[id] : null;
   if (!d || !d.t.length) return;
   const bufStart = d.t[0];
   const bufEnd = d.t[d.t.length - 1];
-  const half = windowSec / 2;
-  let t = currentFrame.t;
-  let clamped;
-  if (bufEnd - bufStart < windowSec) {
-    clamped = (bufStart + bufEnd) / 2;
-  } else {
-    clamped = Math.max(bufStart + half, Math.min(bufEnd - half, t));
-  }
+  const t = currentFrame.t;
+  const clamped = Math.max(bufStart, Math.min(bufEnd, t));
   if (clamped !== t) {
     // The clamped t no longer corresponds to the seq we held -- the next
     // snap/step will refresh it.
@@ -502,6 +505,11 @@ function clampScrubTime() {
   }
 }
 
+// Pure: redraw all charts and the mini-timeline centered at `centerT`.
+// Does NOT touch the video viewport -- callers are responsible for
+// pairing this with the appropriate showFrameBy* call. Splitting these
+// concerns is what lets stepping/scrubbing be 100% seq-driven for the
+// video while charts/timeline ride along on the seq's t.
 function renderAtTime(centerT, halfWin) {
   _renderingFromTimeline = true;
   for (const slot of currentSchema) {
@@ -529,7 +537,6 @@ function renderAtTime(centerT, halfWin) {
     plot.setData(cols);
   }
   _renderingFromTimeline = false;
-  showFrameAtTime(centerT);
   drawTimeline();
 }
 
@@ -649,19 +656,15 @@ function initTimeline() {
   canvas.addEventListener("mousedown", (e) => {
     if (!paused) return;
     dragging = true;
-    // Drag resolves to the closest buffered frame on the server side --
-    // setCurrentFrame() with seq=null lets snap/step fall back to t-based
-    // lookup; the snap response then fills in the authoritative seq+t.
-    setCurrentFrame(null, timeFromX(e.clientX));
-    clampScrubTime();
-    renderAtTime(currentFrame.t, windowSec / 2);
+    // Drag resolves to the closest buffered frame on the server side.
+    // scrubToTime fetches the snap, writes the authoritative {seq, t}
+    // into currentFrame, and re-renders the chart.
+    scrubToTime(timeFromX(e.clientX));
   });
 
   window.addEventListener("mousemove", (e) => {
     if (!dragging) return;
-    setCurrentFrame(null, timeFromX(e.clientX));
-    clampScrubTime();
-    renderAtTime(currentFrame.t, windowSec / 2);
+    scrubToTime(timeFromX(e.clientX));
   });
 
   window.addEventListener("mouseup", () => { dragging = false; });
@@ -930,34 +933,49 @@ function startSlowmo() {
   setSlowmoActive(true);
 }
 
+// In-flight guard. Slow-mo's setInterval doesn't wait for the previous
+// async step to complete; without this, two ticks racing on the same
+// starting seq would both step to (seq+1) and the second one would look
+// like "no progress" and stop slow-mo. Skipping overlapping ticks just
+// means slow-mo runs at the rate the network can sustain, which is what
+// we want.
+let _stepInFlight = false;
+
 async function stepFrames(n) {
-  // Server walks the actual buffered frames and returns the next/prev
-  // {seq, t}. We address by seq when we have one (exact, even if the
-  // buffer rolls); fall back to t for the very first scrub action.
+  if (_stepInFlight) return true;
+  _stepInFlight = true;
+  // Capture the seq we're stepping FROM. Edge detection compares against
+  // this, not against currentFrame at completion time -- otherwise a
+  // concurrent update could mask real progress as a stall.
+  const fromSeq = currentFrame.seq;
+  const fromT = currentFrame.t;
   try {
     const dir = n >= 0 ? "next" : "prev";
     const cnt = Math.abs(n);
     let url;
-    if (currentFrame.seq != null) {
-      url = "/video/step?seq=" + encodeURIComponent(currentFrame.seq)
+    if (fromSeq != null) {
+      url = "/video/step?seq=" + encodeURIComponent(fromSeq)
           + "&dir=" + dir + "&n=" + cnt;
     } else {
-      url = "/video/step?t=" + encodeURIComponent(currentFrame.t.toFixed(4))
+      url = "/video/step?t=" + encodeURIComponent(fromT.toFixed(4))
           + "&dir=" + dir + "&n=" + cnt;
     }
     const resp = await fetch(url);
     if (!resp.ok) return false;
     const j = await resp.json();
-    // Hit buffer edge: same seq returned, or same t with no seq known.
-    if (currentFrame.seq != null && j.seq === currentFrame.seq) return false;
-    if (currentFrame.seq == null && Math.abs(j.t - currentFrame.t) < 1e-6) return false;
+    // Hit buffer edge: server returned the same frame we asked from.
+    if (fromSeq != null && j.seq === fromSeq) return false;
+    if (fromSeq == null && Math.abs(j.t - fromT) < 1e-6) return false;
     setCurrentFrame(j.seq, j.t);
-    clampScrubTime();
-    renderAtTime(currentFrame.t, windowSec / 2);
-    updateScrubInfo();
+    // Display the EXACT frame (by seq), then redraw chart/timeline
+    // around currentFrame.t. No t-based snap involved -- the seq we just
+    // got from /video/step is the seq we render.
+    await scrubToCurrent();
     return true;
   } catch (e) {
     return false;
+  } finally {
+    _stepInFlight = false;
   }
 }
 
@@ -991,8 +1009,10 @@ document.getElementById("btn-pause").addEventListener("click", () => {
     btn.classList.add("active");
     btn.textContent = "Resume";
     ws.send(JSON.stringify({ type: "pause" }));
-    // Pin to whatever frame is on screen right now. The next snap will
-    // refresh seq/t with the server's authoritative values.
+    // Pin to whatever frame the master clock currently points at.
+    // - With camera: currentFrame.{seq, t} is already tracking frame_tick
+    //   so we can show that exact frame (by seq) immediately.
+    // - Without camera: pin to the latest ADC sample; no video to show.
     if (!hasCamera()) {
       const refId = firstSlotId();
       const d = refId ? data[refId] : null;
@@ -1000,10 +1020,9 @@ document.getElementById("btn-pause").addEventListener("click", () => {
     }
     clampScrubTime();
     tl.classList.add("visible");
-    renderAtTime(currentFrame.t, windowSec / 2);
     camStatus.textContent = "Paused";
     scrubControls.hidden = false;
-    updateScrubInfo();
+    scrubToCurrent();
   } else {
     btn.classList.remove("active");
     btn.textContent = "Pause";
@@ -1181,45 +1200,85 @@ function getChartCenterTime() {
 
 let _scrubReqId = 0;
 
-async function showFrameAtTime(t) {
-  if (!hasCamera()) {
-    camTime.textContent = "t = " + t.toFixed(3) + "s (no video)";
-    return;
-  }
+// Shared core: fetch a snap (by seq or by t), display its JPEG, and
+// return the authoritative {seq, t} the server actually rendered. Pure
+// in the sense that it doesn't touch currentFrame or the chart -- the
+// caller decides what to do with the returned ids.
+async function _fetchAndDisplay(query) {
+  if (!hasCamera()) return null;
   const myId = ++_scrubReqId;
-  const url = "/video/snap?t=" + encodeURIComponent(t.toFixed(3));
-  try {
-    const resp = await fetch(url, { cache: "no-store" });
-    if (myId !== _scrubReqId) return;
-    if (!resp.ok) {
-      camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
-      return;
-    }
-    // Snap response is the authority on which frame we're displaying;
-    // pull seq/t out of the X-Frame-* headers and update currentFrame.
-    const seqHdr = resp.headers.get("X-Frame-Seq");
-    const tHdr = resp.headers.get("X-Frame-Time");
-    const seq = seqHdr != null ? parseInt(seqHdr, 10) : null;
-    const ft = tHdr != null ? parseFloat(tHdr) : t;
-    const blob = await resp.blob();
-    if (myId !== _scrubReqId) { return; }
-    const oldUrl = mjpegImg._blobUrl;
-    const blobUrl = URL.createObjectURL(blob);
-    mjpegImg._blobUrl = blobUrl;
-    mjpegImg.src = blobUrl;
-    if (oldUrl) URL.revokeObjectURL(oldUrl);
-    setCurrentFrame(seq, ft);
-    camTime.textContent = "t = " + ft.toFixed(3) + "s"
-      + (seq != null ? "  #" + seq : "");
-    // Keep the timeline cursor and scrub-info readout consistent with the
-    // snapped frame (might differ slightly from the requested t).
-    drawTimeline();
-    if (paused && !scrubControls.hidden) updateScrubInfo();
-  } catch (e) {
-    if (myId === _scrubReqId) {
-      camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
-    }
+  const url = "/video/snap?" + query;
+  const resp = await fetch(url, { cache: "no-store" });
+  if (myId !== _scrubReqId) return null;
+  if (!resp.ok) return null;
+  const seqHdr = resp.headers.get("X-Frame-Seq");
+  const tHdr = resp.headers.get("X-Frame-Time");
+  const seq = seqHdr != null ? parseInt(seqHdr, 10) : null;
+  const ft = tHdr != null ? parseFloat(tHdr) : null;
+  const blob = await resp.blob();
+  if (myId !== _scrubReqId) return null;
+  const oldUrl = mjpegImg._blobUrl;
+  const blobUrl = URL.createObjectURL(blob);
+  mjpegImg._blobUrl = blobUrl;
+  mjpegImg.src = blobUrl;
+  if (oldUrl) URL.revokeObjectURL(oldUrl);
+  return { seq, t: ft };
+}
+
+function _setCamLabel(seq, t) {
+  if (seq != null && t != null) {
+    camTime.textContent = "t = " + t.toFixed(3) + "s  #" + seq;
+  } else if (t != null) {
+    camTime.textContent = "t = " + t.toFixed(3) + "s";
   }
+}
+
+// Display the exact buffered frame with this seq. Used whenever the UI
+// already knows which frame it wants to show -- frame_step, slow-mo,
+// and pause init all flow through here. NEVER snaps by time, so it can
+// never silently drift to a neighbouring frame.
+async function showFrameBySeq(seq) {
+  if (seq == null) return false;
+  const got = await _fetchAndDisplay("seq=" + encodeURIComponent(seq));
+  if (!got) {
+    camTime.textContent = "#" + seq + " (no frame)";
+    return false;
+  }
+  _setCamLabel(got.seq, got.t);
+  return true;
+}
+
+// Resolve an arbitrary time to the closest buffered frame, display it,
+// and write the resolved {seq, t} into currentFrame. Used by drag/click
+// inputs that don't have a seq (timeline drag, chart pan).
+async function scrubToTime(t) {
+  const got = await _fetchAndDisplay("t=" + encodeURIComponent(t.toFixed(4)));
+  if (!got) {
+    camTime.textContent = "t = " + t.toFixed(3) + "s (no frame)";
+    return false;
+  }
+  setCurrentFrame(got.seq, got.t != null ? got.t : t);
+  _setCamLabel(currentFrame.seq, currentFrame.t);
+  renderAtTime(currentFrame.t, windowSec / 2);
+  if (paused && !scrubControls.hidden) updateScrubInfo();
+  return true;
+}
+
+// Display whatever frame currentFrame currently identifies, and refresh
+// the chart/timeline around it. Used after stepFrames updates
+// currentFrame from a /video/step response.
+async function scrubToCurrent() {
+  if (currentFrame.seq != null) {
+    await showFrameBySeq(currentFrame.seq);
+  } else if (hasCamera()) {
+    // Lost our seq somehow; resolve via time as a fallback.
+    await scrubToTime(currentFrame.t);
+    return;
+  } else {
+    camTime.textContent = "t = " + currentFrame.t.toFixed(3) + "s (no video)";
+  }
+  renderAtTime(currentFrame.t, windowSec / 2);
+  if (paused && !scrubControls.hidden) updateScrubInfo();
 }
 
 function showLiveVideo() {

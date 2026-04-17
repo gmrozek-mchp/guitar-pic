@@ -15814,7 +15814,7 @@ _**Agent (claude-opus-4-7)**_
 <details>
 <summary>Tool use: **await**</summary>
 
-Status: **loading**
+Status: **completed**
 
 
 </details>
@@ -15824,3 +15824,1068 @@ Status: **loading**
 <summary>Tool use: **await**</summary>
 
 </details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/.cursor/projects/Users-greg-projects-microchip-guitar-pic/terminals/981130.txt</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Server is up at http://127.0.0.1:8080. Camera attached at 1920x1080 (downscaled to 960x540 for the buffer; detection still runs at full res). `frame_tick` is now broadcasting at the capture rate as soon as the WebSocket connects. Reload the browser tab to pick up the new `index.html` with the `currentFrame` master clock.
+
+---
+
+_**User**_
+
+scrub controls not always working right. sometimes seem to jump single frame. other times jumping by second or other increments
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm investigating why the frame stepping behavior is inconsistent—sometimes it advances by a single frame, other times by larger jumps. Let me trace through the `stepFrames` function to see where the discrepancy might be coming from.
+
+The issue appears to be in the sequence of operations after stepping: we send a step request to get the next frame, update the current frame with that result, then `clampScrubTime()` potentially resets the sequence to null if the time gets clamped. After that, `renderAtTime()` calls `showFrameAtTime()`, which makes a separate snap request that can return a completely different frame than what we just stepped to—because snap returns the closest frame to a given time rather than respecting our step direction. This creates a mismatch where the UI ends up showing a frame that wasn't the intended step target. So the real issue is in `clampScrubTime` — when the buffer is shorter than the window, it forces the time to the midpoint instead of respecting the snapped frame time from step. This means after stepping to a frame, `clampScrubTime` can overwrite that time with something completely different, breaking the consistency between what step gave us and what gets rendered.
+
+There's also a potential unit mismatch: the step endpoint sends time with 4 decimal places, but the sequence number is sent separately, and if the snap response returns a slightly different time than what we stepped to, the next step starts from that snapped time rather than the actual stepped frame — which could compound into larger jumps over multiple steps.
+
+Looking at the snap endpoint, it calls a function that generates a JPEG with overlays and returns the closest frame to the requested time, along with its sequence number and timestamp. Since it's deterministic, if we request an exact frame timestamp, we should get that frame back.
+
+Let me trace through what happens when the user pauses and then steps: pause sets paused to true so frame ticks are ignored, then step sends a request to advance by one frame. The snap response should return the same frame we just stepped to, updating the current frame's sequence number.</details></think>
+
+---
+
+_**User**_
+
+I thought we were steping by frame, not time?
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ The user is seeing inconsistent behavior with the frame-step buttons—sometimes they advance by a single frame as expected, other times they jump by larger amounts. I'm tracing through the logic to understand what's happening: when they click the step button, it calls `stepFrames(1)` which constructs a URL with the current frame sequence and a direction, then the server's `_step_by` function processes it.
+
+I'm now examining what happens during pause—specifically whether `currentFrame.seq` stays in sync with what's actually being displayed. When paused with a camera attached, the code doesn't reset `currentFrame`, so it retains the last sequence from the MJPEG stream. But then `renderAtTime` calls `/video/snap?t=` which might snap to a slightly different frame than what was being streamed, creating a mismatch between what `currentFrame.seq` thinks is displayed and what actually is. During pause, the seq stays locked at whatever was last set. But if the user paused before the first frame_tick arrived, currentFrame.seq would be null, and the first step would fall back to t-based snapping which might land on an unexpected frame. On pause, we call showFrameAtTime with currentFrame.t from the websocket frame_tick, but that t might not match what's actually visible on the MJPEG stream due to different latency paths. For the jumping issue the user reported, I'm wondering if it's in the stepFrames logic — when currentFrame.seq is null, we might be missing the seq-based step entirely.
+
+Actually, after showFrameAtTime snaps and fills in currentFrame.seq from the response header, that seq should correspond exactly to the frame on screen, so stepping from seq N to N+1 should advance by one frame. But there's a potential race condition in slow-mo mode where multiple stepFrames calls could be in flight simultaneously, each using the same currentFrame.seq if the previous response hasn't arrived yet. More critically, I'm noticing that renderAtTime gets called before the snap fetch resolves, so the chart and timeline might show one frame while the video displays another after the snap completes.
+
+The timeline drag handler is resetting seq to null, which forces subsequent steps to use time-based snapping instead of exact frame sequences. When seq is null, the step request snaps to the nearest frame at that time, then steps forward—but if showFrameAtTime's snap resolves after stepFrames returns, it could overwrite the stepped frame with an older one.
+
+Let me trace through what happens when the user steps multiple times in quick succession. The first step uses seq-based navigation and triggers an async snap fetch, but if a second step fires before that fetch completes, we'd have two in-flight requests—though the request ID check should discard the stale one. The real issue might be that timeline drag's render is interfering with the frame state somehow.
+
+Looking at clampScrubTime more carefully, I see the problem now. When a user steps forward to a frame near the buffer edge, the clamping logic applies a windowSec/2 margin that can drag the time backward significantly—potentially by up to a second with a 2-second window. So stepping forward near the edge actually moves the user back, which breaks the expected behavior and causes the next step to start from the wrong position.
+
+The real issue is that clampScrubTime conflates two concerns: keeping the chart window centered within the buffer bounds, and constraining where the user can scrub. The fix is to decouple these—either skip clamping after step/snap actions entirely, or apply the margin only to the chart center while letting the scrubbed frame stay where the user put it. The simplest approach might be to remove the windowSec/2 margin constraint altogether and let the chart handle partial-window displays at the edges. I need to control the x-axis range explicitly so the chart window stays fixed at the requested size even when data doesn't fill it completely. Looking at the current setup, x autoscales to whatever data points exist, so when I'm near the buffer edge with fewer samples, the chart shrinks. I should set `scales.x.range` or `auto: false` to lock the window to `[centerT - halfWin, centerT + halfWin]` regardless of data density.
+
+Also, I'm realizing the clamping logic is too aggressive—when the server returns a snapped frame, that's already valid and shouldn't be clamped. I'll remove the clamp from explicit frame steps but keep it for timeline drags and pause initialization. I see the root cause now — when clampScrubTime clears the seq and shifts t backward, the next stepFrames call snaps to the closest frame at that new t, which can be several frames away from where the user intended to step. This creates the illusion of jumping backward then forward by frame increments. The fix is straightforward: remove the windowSec/2 margin from clampScrubTime so it only constrains t to the actual buffer bounds, not some artificial window around it.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+You're right — we step by frame, but the chart-window clamping logic is dragging the timestamp backward by up to `windowSec/2` (≈1 s) whenever the stepped frame lands near a buffer edge.
+
+The flow is:
+
+1. `stepFrames(1)` does `/video/step?seq=…` → server returns the *next* buffered frame's `{seq,t}`. ✓ exact
+2. `setCurrentFrame(seq, t)` ✓
+3. `clampScrubTime()` ⚠️ — clamps `t` into `[bufStart + windowSec/2, bufEnd − windowSec/2]`, which when you're stepping near the buffer edge silently warps you back ~0.5–1 s and clears `seq`.
+4. Next click then uses `?t=` fallback (because `seq` was nulled), snaps to the warped position, and steps from *there* — explaining the second-sized jumps.
+
+The clamp only existed to keep the chart's window centered inside the data; it has no business mutating the scrubbed frame. Fix: clamp only to the actual buffer bounds, and let the chart render a partial window near edges.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm checking whether there are other places where the sequence number might get lost when calling `setCurrentFrame(null, ...)`. The clamping logic looks good now since it only clears the sequence when the time actually gets constrained, but I need to verify the timeline drag behavior—it intentionally passes null for the frame since it's working with time values, and the subsequent render should restore the frame properly.
+
+There's one edge case I'm noticing: when the user is paused with the camera attached and immediately steps forward, the snap request is still in flight, so we might be stepping from a slightly stale frame sequence rather than the authoritative one from the server. It's a minor timing issue that probably won't be noticeable in practice, but it's worth noting.
+
+Let me trace through the exact stepping behavior to confirm the fix works. When stepping forward from a frame, we call the step endpoint with the current sequence, get back the next frame's sequence and timestamp, update the state, and then snap to that time. Even at buffer edges where the server clamps the request, the step endpoint returns the same sequence, which we detect and stop stepping. Stepping backward from the edge works the same way—we move to the previous frame and continue normally.
+
+The buffer keeps advancing as new frames are captured during pause, so the right edge stays accessible for future forward steps. When the buffer rolls and older frames drop, the sequence numbers stay valid because the deque maintains the last N frames, and the step function falls back gracefully if a sequence is no longer in the buffer.
+
+I should verify whether using sequence numbers directly in the snap endpoint would be more reliable than relying on timestamps, since frame timestamps can have jitter and two frames might have nearly identical times. For now, the time-based snap should work fine since the stepped timestamp comes directly from a real buffered frame, so snapping to the closest frame by time should land on the exact same frame we stepped to.
+
+The fix should be complete—users just need to reload the browser since only the HTML changed.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+That's it. The bug was here: every step would land you on an exact buffered frame, but `clampScrubTime()` was then insetting the allowed range by `windowSec/2` (e.g. ~1 s with the default 2 s window). Near the front/back of the ring buffer, that silently warped the timestamp by up to a second *and* nulled the seq, so the *next* click had to snap-by-time from the warped position instead of stepping by seq — producing the "sometimes one frame, sometimes a second" pattern.
+
+Now `clampScrubTime()` only clamps to the actual `[bufStart, bufEnd]`, and the chart window is allowed to be truncated near the edges. Stepping is exact, every time:
+
+- Server returns `{seq: N+1, t: T'}` from `/video/step?seq=N&dir=next&n=1`.
+- We write that back to `currentFrame` unmodified.
+- The next click reads `seq=N+1` and asks for `seq=N+2`. No t-based snapping involved.
+
+No server changes — just reload the page.
+
+---
+
+_**User**_
+
+chart not showing anything now 
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Something's off with the charts after my clamp fix — they're not rendering anything now. Let me trace through what's happening when data arrives. In live mode, WebSocket data should push into the series, and if we're not paused and there's no camera active, it should call setCurrentFrame with null and the latest timestamp. But with a camera present, that update doesn't happen, which might be why nothing's showing.
+
+Looking at the updateCharts logic, it calculates the time window based on whether a camera exists and what currentFrame.t is set to. If currentFrame.t is still at its initial value of 0 before the first frame tick arrives, the time window becomes negative, and since all the actual data has positive timestamps, nothing falls within that range — the chart ends up empty. The real problem is that the charts depend on currentFrame.t being properly initialized, but if frame_tick events aren't arriving or the camera isn't sending them, we're stuck with blank charts. This shouldn't be related to my windowSec/2 margin change since that only affects paused mode, but I need to figure out if the charts were actually working before or if something else broke.
+
+After the camera-as-master change and server restart, the issue is likely that frame_tick events aren't being broadcast reliably. The camera frames should be timestamped using the latest ADC sample time, so if that's working correctly, frame_tick should arrive with matching timestamps and the chart should display the window up to that point. Let me check the server logs to see if frame_tick is actually being sent out.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me check how `frame_tick` actually gets broadcast and whether the live chart sees `currentFrame.t` advance.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+  "pattern": "_push_status|_broadcast_loop|_status_queue|frame_tick"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py",
+  "pattern": "_push_status|_broadcast_loop|_status_queue|frame_tick",
+  "topFiles": [
+    {
+      "matchCount": 9,
+      "uri": "tools/fret-tuner/server.py"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 9
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+---
+
+_**User**_
+
+never mind I think there was a glitch with something after refresh. I'm seeing chart data now
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+Good — likely the WebSocket hadn't reconnected with the new HTML yet, so no `frame_tick` had arrived and the live chart was clipping at `currentFrame.t = 0`. Once the first tick lands, the leading edge tracks the camera frame and data flows in. Let me know how the per-frame stepping behaves now.
+
+---
+
+_**User**_
+
+still doing some very strange jumping around.
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm digging deeper into what might be causing the jumping behavior in the scrub functionality. The clamping should've fixed the windowSec/2 issue, but there's likely something else at play. Let me trace through the `stepFrames` function to see where the problem originates.
+
+The function builds a request to step forward or backward through frames, either by sequence number or timestamp. After getting the response and updating the current frame, it calls `renderAtTime` which triggers an async fetch to snap to the nearest frame. Here's where things get tricky — even though we're passing the exact timestamp we just received from the step endpoint, the snap response might return a slightly different timestamp since the server snaps to the closest available frame in the buffer.
+
+This becomes a real problem if multiple frames share the same timestamp. The camera keeps capturing during pause while new frames are added to the buffer. If the ADC sample clock stops updating momentarily, consecutive camera frames could end up with identical timestamps. When we snap by timestamp, the server's `min()` function will pick the first frame it encounters with that minimum distance, which might not be the frame we just stepped to. For instance, stepping from sequence 100 to 101 where both have timestamp 12.345 could cause snap to return sequence 100 instead of the newer 101. The camera frame rate is much slower than the ADC sample rate, so normally consecutive frames have different timestamps, but if the data stream hiccups, this collision becomes possible.
+
+Another angle is the interaction between the live MJPEG stream and paused snap requests. When paused, we replace the image source with a blob URL, which should cancel any ongoing MJPEG fetch. But there's also the timing of frame ticks arriving during pause—they're ignored by the pause check, though `lastFrameTickAt` still updates harmlessly. The real concern might be a race condition in the step flow: user clicks step, which triggers a network request to `/video/step`, and while waiting for that response, another step click arrives. This could create a situation where multiple requests are in flight and responses arrive out of order, causing the displayed frame to jump unexpectedly.
+
+Looking at the slow-motion timer specifically, each tick calls `stepFrames` which does a fetch (roughly 20ms round trip) plus `renderAtTime` which kicks off an async snap fetch. If the snap fetch is slow (50ms), these operations overlap, but the `_scrubReqId` should handle that. The real issue might be that `showFrameAtTime` updates `currentFrame` based on the snapped frame from the response headers, which could differ from what `stepFrames` set if there's any floating-point collision or timing mismatch. This means the next step might use the wrong sequence number, causing the jump.
+
+I'm checking the chart's `setScale` hook to see when `showFrameAtTime` gets called. When the user pans the chart while paused, it calls `showFrameAtTime` with an arbitrary time, and the snap response overwrites `currentFrame` with whatever frame it snapped to. But there's a guard: `_renderingFromTimeline` is set during `renderAtTime` before the plot updates, which prevents the hook from firing during normal stepping. After the plot updates, the flag is cleared and `showFrameAtTime` is called once with the stepped time, which is correct.
+
+The real problem is that `showFrameAtTime` is async and updates `currentFrame` later via the snap response. If the user steps quickly, that async update could overwrite the next step's sequence number before it even runs.
+
+Let me trace through what happens with rapid consecutive steps. The first step fires a network request, returns a frame, and starts a snap fetch. While that snap is still pending, the second step fires with a new sequence number. The snap response comes back and sets the frame, but by then the second step has already started its own snap request. This should still work out fine though—the snap responses match their corresponding frames.
+
+But I'm wondering if the slow-motion timer could be the culprit. The timer fires every 33ms, but `stepFrames` is async and might take 80ms or longer to complete with network latency. If the interval is faster than the actual step duration, requests could stack up.
+
+Actually, looking at the snap behavior more carefully—when `showFrameAtTime` calls snap, it requests a specific timestamp but snap returns the closest frame it can find. That response might shift the current frame's timestamp slightly off from what the step just set, which could throw off the next step's calculation. I'm realizing there's a deeper issue: when multiple frames share the same timestamp (due to data stream stalls), snapping to the closest time can cause the UI to step backward silently, trapping us in a loop where stepping forward and snapping keeps cycling between the same two frames. The real fix is to make the snap endpoint support sequence-based addressing so that when we know the exact frame number from stepping, we fetch that specific frame rather than searching by time, which would eliminate this ambiguity entirely. I'm settling on a cleaner architecture: the server endpoint handles both exact frame requests by sequence number and time-based snapping, while on the browser side I'll create a dedicated helper for snapping by time that returns the frame metadata, then use that to update the current frame state before rendering. The key insight is that `showFrameAtTime` shouldn't be responsible for updating state—that should only happen after an explicit snap operation from user interaction like timeline dragging.
+
+Now I'm realizing there's a potential issue with the camera's closest-frame logic when multiple frames have equal distance from the target time—it picks the first one, which might not be the desired behavior.
+
+Let me verify how _latest_sample_t actually works and whether it's advancing monotonically with each ADC sample. If the timing isn't granular enough, frames could end up with identical or very close timestamps, causing the snap to drift to an older frame and then get stuck repeating.
+
+Actually, the simplest fix is to just implement seq-based snapping on the server side and use it from showFrameAtTime whenever we have a known seq. That way, when we request a specific frame by sequence number, we get exactly that frame back, eliminating any drift or repetition issues entirely.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me look at the showFrameAtTime + step interaction more carefully — I think the snap response is silently shifting `currentFrame` to a different seq than the one we just stepped to.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Cancelled
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+---
+
+_**User**_
+
+why are we showing fram at time? Stepping / scrubbing should always be by seqence number
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I see the core problem now—when the video is paused, I should always fetch frames by their sequence number rather than by timestamp, since a paused state means we're locked onto a specific frame. When the user drags the timeline without a known sequence, I'll first resolve to the correct sequence using the snap endpoint, then switch to sequence-based fetching from that point forward.
+
+My plan is to split the frame-display logic: create a `showFrameBySeq` function for when I know the sequence, and a `resolveTimeToFrame` helper for timeline interactions that need to snap to the nearest frame first. On the server side, I'll add an endpoint to fetch a frame directly by sequence without snapping. In the browser, stepping will call `showFrameBySeq` with the current frame's sequence, timeline interactions will resolve the time first then display by sequence, and when pausing a live stream, I'll just render whatever frame was last tracked since the frame_tick already gave me its sequence and timestamp. For chart panning while paused, that's essentially scrubbing by time, so I'll snap to a frame and update the current frame accordingly.
+
+Now I'm clarifying the implementation details: the server gets three snap modes—exact frame by sequence, snap to closest by time, or return the latest. The browser side removes the standalone time-based display and instead uses sequence-based display for known frames, while scrubbing interactions fetch the snapped frame info from the server, update the current frame state, and then display it. Step operations will fetch the next frame, update state, re-render the chart, and display the frame by its sequence.
+
+I'm reconsidering the architecture though—whether renderAtTime should handle both chart and frame display or keep them separate. I think it's cleaner to split them: one function purely handles chart and timeline rendering, another handles displaying a buffered frame by sequence, and a third orchestrates the full scrub-to-time flow that snaps to the nearest frame, updates state, and triggers both displays.
+
+Defining the refactored functions...
+
+I need to be careful with the setScale hook though—it currently uses _scrubReqId for race protection when requesting frames, so I should preserve that mechanism. Also need to handle the edge case where a requested sequence has rolled out of the buffer.
+
+For MJPEG versus blob handling: the live stream uses MJPEG, but when paused I'll fetch individual frames as blobs from the snap endpoint. When resuming playback, I'll switch the image source back to the live stream.
+
+One important detail—when paused and calling snap with a sequence number, I need to make sure the detector overlays respect the current state. The snap endpoint already composes frames with the right timestamp, so passing the frame's timestamp should work correctly.
+
+My implementation plan is to add a server-side method to look up frames by sequence, refactor the snap endpoint to accept either sequence or timestamp, then update the browser to use sequence-based scrubbing for stepping frames and time-based scrubbing for timeline interactions and chart panning. Let me start building this out.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+You're right — once we know `seq`, every paint should be by seq, not by snapping a `t`. The `showFrameAtTime` round-trip was silently re-resolving `currentFrame` from the snap response, which can land on a different frame when timestamps tie or jitter. Let me restructure.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py + camera.py: /video/snap?seq=N exact-by-seq",
+      "id": "srv-snap-seq",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: showFrameBySeq + scrubToTime + scrubToCurrent; remove showFrameAtTime",
+      "id": "ui-show-by-seq",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: rewire stepFrames, drag, chart-pan, pause to seq-first model",
+      "id": "ui-callers",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "server.py: frame_tick listener + WS broadcast",
+      "id": "srv-tick",
+      "status": "completed"
+    },
+    {
+      "content": "server.py: /video/snap returns X-Frame-Seq/Time headers",
+      "id": "srv-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: replace scrubTime with currentFrame{seq,t} as single clock",
+      "id": "ui-currentframe",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: WS frame_tick handler updates currentFrame in live mode",
+      "id": "ui-tick-handler",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: live charts gate on currentFrame.t",
+      "id": "ui-clip-live",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: parse snap headers, update currentFrame from snap/step responses",
+      "id": "ui-snap-hdr",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: step API prefers seq when known",
+      "id": "ui-step-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: CSV/no-camera fallback uses latest ADC sample t",
+      "id": "ui-csv-fallback",
+      "status": "completed"
+    },
+    {
+      "content": "SPEC.md: document camera-as-master-clock + frame_tick + headers",
+      "id": "spec-update",
+      "status": "completed"
+    }
+  ],
+  "success": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+### Server: snap-by-seq
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/camera.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/server.py</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py + camera.py: /video/snap?seq=N exact-by-seq",
+      "id": "srv-snap-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: showFrameBySeq + scrubToTime + scrubToCurrent; remove showFrameAtTime",
+      "id": "ui-show-by-seq",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: rewire stepFrames, drag, chart-pan, pause to seq-first model",
+      "id": "ui-callers",
+      "status": "pending"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "server.py + camera.py: /video/snap?seq=N exact-by-seq",
+      "id": "srv-snap-seq",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: showFrameBySeq + scrubToTime + scrubToCurrent; remove showFrameAtTime",
+      "id": "ui-show-by-seq",
+      "status": "pending"
+    },
+    {
+      "content": "index.html: rewire stepFrames, drag, chart-pan, pause to seq-first model",
+      "id": "ui-callers",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+### Browser: split frame display from chart render
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Strip `renderAtTime`'s implicit video update, and rewrite the video helpers.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now replace `showFrameAtTime` with `showFrameBySeq` + `scrubToTime` + `scrubToCurrent`:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now rewire all callers. First, find the remaining references:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "showFrameAtTime|renderAtTime\\("
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "showFrameAtTime|renderAtTime\\(",
+  "topFiles": [
+    {
+      "matchCount": 10,
+      "uri": "tools/fret-tuner/index.html"
+    }
+  ],
+  "totalFiles": 1,
+  "totalMatches": 10
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Let me look at each of these in context and rewire.
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Looking at the renderAtTime callsites throughout the code, most are paired with currentFrame updates and need to handle frame display. Starting with the zoomAtScrub function around line 626—when the window slider moves while paused, we're just re-rendering the chart after clamping the scrub time, so the video doesn't need to change and renderAtTime can stay as-is, though it shouldn't auto-show the frame anymore.
+
+For the timeline drag handlers at lines 662 and 669, after setting the current frame and clamping, I need to replace renderAtTime with scrubToTime to actually move to that time. The pause button's hasCamera path at line 961 already gets the frame from frame_tick, so it just needs scrubToCurrent. Similarly, stepFrames at line 1008 receives the frame from the /video/step endpoint and also needs scrubToCurrent. Lines 1248 and 1266 are the window slider when paused again—chart-only re-renders like the zoom case. Let me go through each one in context and rewire them properly.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now stepFrames + pause:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Now stepFrames itself:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ Looking at the remaining renderAtTime calls, the window slider when paused and zoomAtScrub are both handling zoom or window-size changes where the scrubbed frame stays the same, so they just need a chart redraw—renderAtTime now handles exactly that with its chart and timeline updates. I should also check the keyboard shortcuts section to see if anything there needs adjusting.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I'm verifying the renderAtTime callers I haven't checked yet—the zoom operations at lines 626 and 1036 are both chart-only, so they're fine. All the callers are now properly separated: video playback goes through showFrameBySeq, scrubToTime, and scrubToCur, while the new helper functions handle the rest correctly.
+
+Now I need to make sure there are no lingering showFrameAtTime references left in the codebase.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search">
+<details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+
+Parameters:
+
+```json
+{
+  "caseInsensitive": false,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "showFrameAtTime"
+}
+```
+Additional data:
+
+```json
+{
+  "isPruned": true,
+  "outputMode": "content",
+  "path": "/Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html",
+  "pattern": "showFrameAtTime",
+  "topFiles": [],
+  "totalFiles": 0,
+  "totalMatches": 0
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="ripgrep_raw_search"><details>
+<summary>Tool use: **ripgrep_raw_search**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I've rewired all the callers, and now I'm thinking about whether `seq` should always be known at this point—since we display by `seq` immediately after stepping, `currentFrame.seq` gets populated right away, stays populated in live mode through frame ticks, and gets set during paused initialization through scrubToCurrent, so the only gap is right after a timeline drag.
+
+But actually, scrubToTime sets `seq` from the snap response, so after any user action `seq` is always there. Let me trace through the flow: page loads in live mode and frame_tick sets it, user pauses and scrubToCurrent displays the exact frame, stepping forward calls stepFrames which returns the next seq and updates it, dragging the timeline calls scrubToTime which fetches the seq from the snap endpoint, then subsequent steps use that new seq—so it's always seq-driven.
+
+Now I'm spotting a potential race condition in slow-mo mode: if the slowmoTimer fires faster than the async stepFrames completes, multiple step requests could stack up, and each one reads `currentFrame.seq` at different moments while it's being updated by previous fetches.
+
+Tracing through a high-speed scenario where the timer fires every 33ms but the fetch takes ~50ms: the first tick starts a step request, the second tick fires before the first completes and reads the same seq, sending a duplicate request, then when the first response arrives it updates seq and the second response comes back with the same value—but now `currentFrame.seq` has already been updated, so the code sees "same seq returned" and incorrectly interprets it as hitting the buffer edge, stopping slow-mo. The fix is to compare the response against what we actually requested, not against the current state at completion time, or better yet, serialize the stepFrames calls so they don't overlap.
+
+Adding a simple in-flight flag to prevent concurrent stepFrames calls...</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+Add an in-flight guard so concurrent slow-mo ticks don't stack and trip the "hit buffer edge" check:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2">
+<details><summary>Tool use: **read_file_v2** • Read file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="read" data-tool-name="read_file_v2"><details>
+<summary>Tool use: **read_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2">
+
+<details><summary>Tool use: **edit_file_v2** • Edit file: /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner/index.html</summary>
+
+</details>
+
+</tool-use>
+
+<tool-use data-tool-type="write" data-tool-name="edit_file_v2"><details>
+<summary>Tool use: **edit_file_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<think><details><summary>Thought Process</summary>
+ I need to verify that `scrubInfo` gets properly updated after `stepFrames` — `scrubToCurrent` handles this when paused with scrub controls visible, so that's covered. The pause button currently triggers `scrubToCurrent` which is async, but I need to make sure the UI updates immediately after pausing.
+
+When `scrubToCurrent` is called with no camera data while paused, it only updates the time label and then `renderAtTime` runs, which should work fine. I'm also checking that returning `true` from `_stepInFlight` when a step is skipped keeps slow-mo running as intended — if I returned `false` it would stop prematurely.
+
+One performance concern: timeline dragging fires a network request for every mouse pixel movement, which could be optimized with debouncing or the existing `_scrubReqId` mechanism, but I'll leave that for now. Let me also verify the server endpoint syntax for the snapshot request.</details></think>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: /Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "import ast; ast.parse(open('tools/fret-tuner/server.py').read()); ast.parse(open('tools/fret-tuner/camera.py').read()); print('OK')"</summary>
+
+```bash
+/Users/greg/projects/microchip/guitar-pic/.venv/bin/python -c "import ast; ast.parse(open('tools/fret-tuner/server.py').read()); ast.parse(open('tools/fret-tuner/camera.py').read()); print('OK')"
+```
+
+```
+OK
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write">
+<details>
+<summary>Tool use: **todo_write**</summary>
+
+
+Parameters:
+
+```json
+{
+  "merge": true
+}
+```
+Result:
+
+```json
+{
+  "finalTodos": [
+    {
+      "content": "server.py + camera.py: /video/snap?seq=N exact-by-seq",
+      "id": "srv-snap-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: showFrameBySeq + scrubToTime + scrubToCurrent; remove showFrameAtTime",
+      "id": "ui-show-by-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: rewire stepFrames, drag, chart-pan, pause to seq-first model",
+      "id": "ui-callers",
+      "status": "completed"
+    }
+  ],
+  "initialTodos": [
+    {
+      "content": "server.py + camera.py: /video/snap?seq=N exact-by-seq",
+      "id": "srv-snap-seq",
+      "status": "completed"
+    },
+    {
+      "content": "index.html: showFrameBySeq + scrubToTime + scrubToCurrent; remove showFrameAtTime",
+      "id": "ui-show-by-seq",
+      "status": "in_progress"
+    },
+    {
+      "content": "index.html: rewire stepFrames, drag, chart-pan, pause to seq-first model",
+      "id": "ui-callers",
+      "status": "pending"
+    }
+  ],
+  "success": true,
+  "wasMerge": true
+}
+```
+Status: **completed**
+
+
+</details>
+</tool-use>
+
+<tool-use data-tool-type="unknown" data-tool-name="todo_write"><details>
+<summary>Tool use: **todo_write**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Restart the server so the new `/video/snap?seq=` endpoint is live:
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: pkill -9 -f fret-tuner ; sleep 2 ; lsof -i :8080 || echo "port 8080 free"</summary>
+
+```bash
+pkill -9 -f fret-tuner ; sleep 2 ; lsof -i :8080 || echo "port 8080 free"
+```
+
+```
+port 8080 free
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102</summary>
+
+```bash
+cd /Users/greg/projects/microchip/guitar-pic/tools/fret-tuner && /Users/greg/projects/microchip/guitar-pic/.venv/bin/python fret-tuner.py --port /dev/cu.usbmodem21102 --actuator-port /dev/cu.usbmodem21102
+```
+
+```
+2026-04-17 18:29:34.617 Python[3002:25326036] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+]633;C2026-04-17 18:29:34.617 Python[3002:25326036] WARNING: AVCaptureDeviceTypeExternal is deprecated for Continuity Cameras. Please use AVCaptureDeviceTypeContinuityCamera and add NSCameraUseContinuityCameraDeviceType to your Info.plist.
+Starting fret-tuner at http://127.0.0.1:8080
+camera: stream started 1920x1080 -&gt; working 960x540 -- buffer max 900 frames ~ 1335 MB (detection runs at 1920x1080)
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+[detect_video] stopped
+[detect_video] scaling coords for 960x540 by 0.500x0.500
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Server's up. Reload the browser tab.
+
+**What changed:**
+
+- `/video/snap` now accepts `?seq=N` for exact frame fetch (in addition to `?t=` snap-to-closest).
+- The browser separates concerns:
+  - `showFrameBySeq(seq)` — paints the exact frame, never snaps.
+  - `scrubToTime(t)` — used only by inputs that don't yet have a seq (timeline drag, chart pan); resolves once via `?t=` and pins `currentFrame` from the response headers.
+  - `scrubToCurrent()` — paints `currentFrame.seq` and re-renders chart/timeline. Used after every `stepFrames` and on pause.
+- `renderAtTime()` is now chart-only (doesn't trigger any video fetch). The video and the chart re-render are explicit, paired calls.
+- `stepFrames` now captures the *from* seq before fetching, compares the result against that, and uses `_stepInFlight` to drop overlapping slow-mo ticks (which previously could mask real progress as a stall and stop slow-mo).
+
+Net effect: once the UI knows a `seq` (which is essentially always after first user action), every paint is by exact seq. No more time-based round-trips that can drift to a neighbouring frame when timestamps tie.
+
+---
+
+_**User**_
+
+done for now stop the server
+
+---
+
+_**Agent (claude-opus-4-7)**_
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2">
+<details><summary>Tool use: **run_terminal_command_v2** • Run command: pkill -9 -f fret-tuner ; sleep 1 ; lsof -i :8080 || echo "port 8080 free"</summary>
+
+```bash
+pkill -9 -f fret-tuner ; sleep 1 ; lsof -i :8080 || echo "port 8080 free"
+```
+
+```
+port 8080 free
+
+```
+</details>
+</tool-use>
+
+<tool-use data-tool-type="shell" data-tool-name="run_terminal_command_v2"><details>
+<summary>Tool use: **run_terminal_command_v2**</summary>
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7)**_
+
+Stopped. Port 8080 is free.

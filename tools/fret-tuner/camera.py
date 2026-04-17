@@ -180,6 +180,22 @@ class Camera:
             return None
         return min(buf, key=lambda f: abs(f.t - t))
 
+    def by_seq(self, seq: int) -> Optional[Frame]:
+        """Return the buffered frame with this exact `seq`, or None.
+
+        Seq is the unambiguous addressing the UI should use whenever it
+        already knows which frame it's looking at -- it sidesteps the
+        snap-to-closest-by-t races that happen when several frames share
+        a sample-clock timestamp (e.g. ADC stalled).
+        """
+        target = int(seq)
+        with self._lock:
+            buf = list(self._buffer)
+        for f in buf:
+            if f.seq == target:
+                return f
+        return None
+
     def step(self, t: float, direction: str = "next", n: int = 1) -> Optional[Frame]:
         """Step `n` frames after (`direction='next'`) or before
         (`direction='prev'`) the frame closest to `t`.
