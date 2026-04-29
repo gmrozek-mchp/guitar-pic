@@ -3,7 +3,7 @@
     "configurations": [
         {
             "name": "default",
-            "id": "conf1",
+            "id": "",
             "device": "SAM9X75D2G",
             "imagePath": "./out/marvin/default.elf",
             "packs": [
@@ -14,7 +14,11 @@
                 }
             ],
             "fileSet": "default",
-            "toolchain": "default-XC32"
+            "toolchain": "default-XC32",
+            "postBuildSteps": [
+                "${MP_CC_DIR}/xc32-objcopy -O binary out/marvin/default.elf out/harmony.bin"
+            ],
+            "includeLegacyMacros": false
         }
     ],
     "propertyGroups": [
@@ -200,7 +204,10 @@
                 "default/src/config/default/peripheral/aic/plib_aic.h",
                 "default/src/config/default/cstartup.S",
                 "default/src/config/default/ddram.ld",
-                "default/src/config/default/fault_handlers.c"
+                "default/src/config/default/fault_handlers.c",
+                "default/src/config/default/peripheral/dbgu/plib_dbgu_common.h",
+                "default/src/config/default/peripheral/dbgu/plib_dbgu.h",
+                "default/src/config/default/peripheral/dbgu/plib_dbgu.c"
             ]
         }
     ]

@@ -39,6 +39,9 @@ int main ( void )
     /* Initialize all modules */
     SYS_Initialize ( NULL );
 
+    LED_GREEN_Set();
+    printf( "Hello World!\r\n" );
+
     while ( true )
     {
         /* Maintain state machines of all polled MPLAB Harmony modules. */

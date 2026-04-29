@@ -6,14 +6,16 @@ deviceLibrary: {}
 groupModules: []
 modules:
 - core
+- dbgu
 - dfp
+- stdio
 generatedFileHashHistoryMap:
 - file: ../src/config/default/cstartup.S
   hash: bab52b245ee3ee78ff26156c06ac67761ea78039030859fa772ece111fd5dab3
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: d199e52edf7b5ae4577281b279802a60064fc8e171c603c1cb98f2e0580f4fb3
+  hash: 420df461035baaa2b7c40576fa147805f915cbc19019a324857c4143ab89dab6
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -21,7 +23,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/fault_handlers.c
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
 - file: ../src/config/default/initialization.c
-  hash: 40ee60cfff21b5c336627c1f5a572c73538cbd1753a3d1e71912e0576b2e9a2c
+  hash: 0e46dceb9ea24727905dd112f89e62f26ad47b4f890610d869b18d0386e3b449
 - file: ../src/config/default/interrupts.c
   hash: 2f7142ad0cc39b508419c3c3b07f8343ec9a9a2d24b1f437f7a353188b80f311
 - file: ../src/config/default/interrupts.h
@@ -31,9 +33,15 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: 03fdb2682b9981666411da6be0d733ef49a1871fd46c1d24fbe48dbbb1c67cf2
+  hash: 20e57b1b490ca64967993be2e48e8da8f2a48c676162d13c7fadf8cdc373593f
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
+- file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
+  hash: a4f09380e2d0cdaf55fabb865a590ac05247472234b97e565e3bb330d96318c2
+- file: ../src/config/default/peripheral/dbgu/plib_dbgu.h
+  hash: 60f552a7fc1710e738e9e4721e8ead0ba2349ccb983b5cfacccfaa98fcc47447
+- file: ../src/config/default/peripheral/dbgu/plib_dbgu_common.h
+  hash: 3a5532ba83c46095ed55db646a9be166772429df5eac103b28c31a562c9cf1a2
 - file: ../src/config/default/peripheral/mmu/cp15.h
   hash: d927deee45b9b50351c5513daf446ae3278f5fa85915c06c434b24c7eb61b64b
 - file: ../src/config/default/peripheral/mmu/plib_mmu.c
@@ -41,13 +49,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/mmu/plib_mmu.h
   hash: 7fb6e6b8ad6a80b7fc04c0264b7cdf49e6d6b887e4f3c5aa394eda88e32e0116
 - file: ../src/config/default/peripheral/pio/plib_pio.c
-  hash: b8dfeea705c2d585c846ffe29d25ec539131c82a2ac2a9c996f54a3b00f4062b
+  hash: 5ed53e9d72d738f7312293b1c57d1fe1a9cdeb056f49483fe75a21e73e308ff2
 - file: ../src/config/default/peripheral/pio/plib_pio.h
-  hash: c785d51de6f490e2ed6c65cede52ab5a0a663aedd1bbeda06ad1a5fa74b77332
+  hash: 7d3eb3df334501912d1a9bc3ad790a9b98625121447e7ed5ea5eaac89171f8fe
 - file: ../src/config/default/pin_configurations.csv
-  hash: 15d461c06148859af6f53d5e2ee05dddb606bc60bb6090cca0220b8b8289fc64
+  hash: d4f1c3fd1e0c8fc9348190c64649c8b34cdcf0b66cc2bee04bf4ac6e7fb2350a
 - file: ../src/config/default/stdio/xc32_monitor.c
-  hash: 858f8710d4287200a5ee7f3b3ad7c24f505aed9c05c16956ab0ff9f7bb162a6a
+  hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/main.c

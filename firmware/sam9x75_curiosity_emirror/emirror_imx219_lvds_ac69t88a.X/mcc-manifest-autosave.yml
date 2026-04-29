@@ -2,10 +2,10 @@
 
 manifest_file_version: 1.0.0
 project: emirror_imx219_lvds_ac69t88a
-creation_date: 2026-03-26T15:36:51.101-07:00[America/Phoenix]
-operating_system: Windows 11
+creation_date: 2026-04-29T16:16:58.906-05:00[America/Chicago]
+operating_system: Mac OS X
 mcc_mode: IDE
-mcc_mode_version: v6.25
+mcc_mode_version: v6.30
 device_name: SAM9X75D2G
 compiler: XC32 4.60
 mcc_version: 5.6.4

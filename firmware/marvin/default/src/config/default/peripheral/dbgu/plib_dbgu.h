@@ -1,14 +1,14 @@
 /*******************************************************************************
- Debug Console Source file
+  DBGU PLIB
 
   Company:
     Microchip Technology Inc.
 
   File Name:
-    xc32_monitor.c
+    plib_dbgu.h
 
   Summary:
-    debug console Source File
+    DBGU PLIB Header File
 
   Description:
     None
@@ -16,7 +16,7 @@
 *******************************************************************************/
 
 /*******************************************************************************
-* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
+* Copyright (C) 2019 Microchip Technology Inc. and its subsidiaries.
 *
 * Subject to your compliance with these terms, you may use Microchip software
 * and any derivatives exclusively with Microchip products. It is your
@@ -37,37 +37,54 @@
 * ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
 * THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
 *******************************************************************************/
-#include <stddef.h>
-#include "definitions.h"
 
-extern int read(int handle, void *buffer, unsigned int len);
-extern int write(int handle, void * buffer, size_t count);
+#ifndef PLIB_DBGU_H
+#define PLIB_DBGU_H
 
+#include "plib_dbgu_common.h"
 
-int read(int handle, void *buffer, unsigned int len)
-{
-    int nChars = 0;
-    bool success = false;
-    if ((handle == 0)  && (len > 0U))
-    {
-        do
-        {
-            success = DBGU_Read(buffer, 1);
-        }while( !success);
-        nChars = 1;
+// DOM-IGNORE-BEGIN
+#ifdef __cplusplus  // Provide C++ Compatibility
+
+    extern "C" {
+
+#endif
+// DOM-IGNORE-END
+
+// *****************************************************************************
+// *****************************************************************************
+// Section: Interface
+// *****************************************************************************
+// *****************************************************************************
+#define DBGU_FrequencyGet()    (uint32_t)(266666666UL)
+
+/****************************** DBGU API *********************************/
+
+void DBGU_Initialize(void);
+
+DBGU_ERROR DBGU_ErrorGet(void);
+
+bool DBGU_SerialSetup(DBGU_SERIAL_SETUP *setup, uint32_t srcClkFreq);
+
+bool DBGU_Write(void *buffer, const size_t size);
+
+bool DBGU_Read(void *buffer, const size_t size);
+
+uint8_t DBGU_ReadByte(void);
+
+void DBGU_WriteByte(uint8_t data);
+
+bool DBGU_TransmitterIsReady(void);
+
+bool DBGU_ReceiverIsReady(void);
+
+bool DBGU_TransmitComplete(void);
+
+// DOM-IGNORE-BEGIN
+#ifdef __cplusplus  // Provide C++ Compatibility
+
     }
-    return nChars;
-}
 
-int write(int handle, void * buffer, size_t count)
-{
-   bool success = false;
-   if (handle == 1)
-   {
-       do
-       {
-           success = DBGU_Write(buffer, count);
-       }while( !success);
-   }
-   return (int)count;
-}
+#endif
+// DOM-IGNORE-END
+#endif // PLIB_DBGU_H
