@@ -504,7 +504,11 @@
                 "default/src/config/default/system/input/sys_input_mouse.h",
                 "default/src/config/default/system/input/sys_input_touch.h",
                 "default/src/config/default/system/input/sys_input.c",
-                "default/src/config/default/system/input/sys_input_listener.c"
+                "default/src/config/default/system/input/sys_input_listener.c",
+                "default/src/config/default/gfx/driver/processor/gfx2d/drv_gfx2d.h",
+                "default/src/config/default/gfx/driver/processor/gfx2d/drv_gfx2d.c",
+                "default/src/config/default/peripheral/gfx2d/plib_gfx2d.h",
+                "default/src/config/default/peripheral/gfx2d/plib_gfx2d.c"
             ]
         }
     ]

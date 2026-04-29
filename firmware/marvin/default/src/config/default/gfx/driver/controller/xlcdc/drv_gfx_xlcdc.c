@@ -41,6 +41,7 @@
 
 #include "toolchain_specifics.h"
 #include "gfx/driver/gfx_driver.h"
+#include "gfx/driver/processor/gfx2d/drv_gfx2d.h"
 #include "gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
 
@@ -147,53 +148,6 @@ static void DRV_XLCDC_ColorSet (void * fb)
     while(size-- > 0) *ptr++ = 0x0;
 }
 
-/* Perform a CPU based Blit */
-static gfxResult DRV_XLCDC_CPU_Blit(const gfxPixelBuffer* restrict source,
-                                   const gfxRect* restrict rectSrc,
-                                   const gfxPixelBuffer* restrict dest,
-                                   const gfxRect* restrict rectDest)
-{
-    if (!source || !rectSrc || !dest || !rectDest)
-        return GFX_FAILURE;
-
-    // Calculate dimensions
-    const uint32_t width = MIN(rectSrc->width, rectDest->width);
-    const uint32_t height = MIN(rectSrc->height, rectDest->height);
-
-    if (width == 0 || height == 0)
-        return GFX_FAILURE;
-
-    // Calculate row size in bytes
-    const uint32_t pixelSize = gfxColorInfoTable[dest->mode].size;
-    const uint32_t rowSize = width * pixelSize;
-
-    // Calculate source and destination strides based on buffer widths
-    const uint32_t srcStride = source->size.width * pixelSize;
-    const uint32_t destStride = dest->size.width * pixelSize;
-
-    uint8_t* restrict srcBase = (uint8_t*)gfxPixelBufferOffsetGet(source, rectSrc->x, rectSrc->y);
-    uint8_t* restrict destBase = (uint8_t*)gfxPixelBufferOffsetGet(dest, rectDest->x, rectDest->y);
-
-    // Check if we can do a single large transfer i.e. we have contiguous data
-    if (width == source->size.width && width == dest->size.width)
-    {
-        const uint32_t totalSize = rowSize * height;
-        memcpy(destBase, srcBase, totalSize);
-
-        return GFX_SUCCESS;
-    }
-
-    // Row by row processing for non-contiguous data
-    for (uint32_t row = 0; row < height; row++)
-    {
-        uint8_t* restrict src = srcBase + row * srcStride;
-        uint8_t* restrict dst = destBase + row * destStride;
-        memcpy(dst, src, rowSize);
-    }
-
-    return GFX_SUCCESS;
-}
-
 void DRV_XLCDC_Update(void)
 {
     switch(state)
@@ -272,10 +226,7 @@ gfxResult DRV_XLCDC_BlitBuffer(int32_t x, int32_t y, gfxPixelBuffer* buf)
     destRect.height = buf->size.height;
     destRect.width = buf->size.width;
 
-    result = DRV_XLCDC_CPU_Blit(buf,
-                                &srcRect,
-                                &drvLayer[activeLayer].pixelBuffer[drvLayer[activeLayer].frontBufferIdx],
-                                &destRect);
+    result = gfxGPUInterface.blitBuffer(buf, &srcRect, &drvLayer[activeLayer].pixelBuffer[drvLayer[activeLayer].frontBufferIdx], &destRect);
 
     gfxPixelBuffer_SetLocked(buf, GFX_FALSE);
 

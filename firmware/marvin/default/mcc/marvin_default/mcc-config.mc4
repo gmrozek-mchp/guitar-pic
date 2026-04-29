@@ -13,6 +13,8 @@ modules:
 - gfx_display_comp_ac69t88a
 - gfx_legato
 - le_gfx_driver_xlcdc
+- le_gfx_gfx2d
+- plib_gfx2d
 - stdio
 - sys_input
 - sys_time
@@ -29,7 +31,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: d3391cd6b5771f154c2e63d651fff506e780d7dab04d75b49a1b1d06de46e033
+  hash: f84c4bd53ac29459f286cee5c5b89c00f47c64690f0976c88172a0b77e78835d
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -45,7 +47,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h
   hash: 5afe7e416d4f004399a4c80462caede10b18a35a238366604d193f765a2e34ec
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c
-  hash: 1da84a207eaabaf32f17b20dcd28d1b2eed60816ccfa51a1a79c6efa31bc7207
+  hash: f3b8cba6bd94dc5d50cea5944203ba80e6081ff299ddf18a816514d48ddca0e8
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h
   hash: 637d343cc20356dfb08492f7a3e97479ad421b88ffec123181330eb895f50689
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
@@ -55,7 +57,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/driver/gfx_driver.c
   hash: 09c3af304672f8af0e2396e39d075b3666380044092f21647b30b1030d0f0655
 - file: ../src/config/default/gfx/driver/gfx_driver.h
-  hash: c49e46dfed4d9a1436d5913fe010c723fd41303c85f712b600ef7a146c513edc
+  hash: 99c4a55ae198e618fd3590a98f219c38882bde956dc022215ef66df01b108936
+- file: ../src/config/default/gfx/driver/processor/gfx2d/drv_gfx2d.c
+  hash: 77a3f0a2acad57156eed172b6c7f2473ef6ba18a7235c9895359e606e7a6eef0
+- file: ../src/config/default/gfx/driver/processor/gfx2d/drv_gfx2d.h
+  hash: b8928dd67243e292ea99a01a75a4717328ef59ca1f0d56e3a1f03fe5b1840709
 - file: ../src/config/default/gfx/legato/common/legato_color.c
   hash: efb7044e3c7f0f79198bd4d5833226517544fe87a4f03a21ca1a7bc34163c0b9
 - file: ../src/config/default/gfx/legato/common/legato_color.h
@@ -553,7 +559,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: ce5e8e4c3882379bd1015d3f40a008f93d0a1b15a9df628463f37927e7f553a2
+  hash: fb513b88cb79f1324ad974c3ede18cb12c5de3f94c22e81ad14a392c6ac69551
 - file: ../src/config/default/interrupts.c
   hash: 3f257c1c617c901d65c7a959e95e16fa3baaacb7c3667d18059a321a4dbab6bf
 - file: ../src/config/default/interrupts.h
@@ -569,7 +575,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: a8195b689c1d216135cab864110c955c014e43939a81e26167bbcdf07d3c2d76
+  hash: 61ae49795e98598e1c6ed0e879980cfc50d6f2356ff6d637f0891a8dd8b0410a
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -578,6 +584,10 @@ generatedFileHashHistoryMap:
   hash: 60f552a7fc1710e738e9e4721e8ead0ba2349ccb983b5cfacccfaa98fcc47447
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu_common.h
   hash: 3a5532ba83c46095ed55db646a9be166772429df5eac103b28c31a562c9cf1a2
+- file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.c
+  hash: c143979d6918aa64bf68fc768cca5b8179fa78d66349e301c14f94658ac48c00
+- file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.h
+  hash: 18ddb5eb428222191d9510dd224eefec5333d7271429f5e287e22d248b853108
 - file: ../src/config/default/peripheral/mmu/cp15.h
   hash: d927deee45b9b50351c5513daf446ae3278f5fa85915c06c434b24c7eb61b64b
 - file: ../src/config/default/peripheral/mmu/plib_mmu.c
@@ -643,7 +653,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: c75bb9cfb7f7a153ac3cd45934d898a722ca567b13051e34310589a0e7614dd4
+  hash: 648b9ad8eb6cc04ee90164f1f3c85b83c3f68db648507b4aa45e860462eefaba
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/user.h

@@ -1,11 +1,11 @@
 configVersion: 1.0.0
-componentName: gfx_legato
+componentName: le_gfx_gfx2d
 coreVersion: 5.8.4
 device: SAM9X75D2G
 library: []
 dependency:
 - dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
-  name: gfx_legato
+  name: le_gfx_gfx2d
   type: module
   version: ''
 - dependencyPackage: ''
@@ -18,76 +18,54 @@ data:
     children:
     - children:
       - attributes:
-          id: gfx_driver
+          id: GFX2D
         children:
         - children:
           - attributes:
               id: targetComponentID
             children:
             - type: Value
-              value: le_gfx_driver_xlcdc
+              value: plib_gfx2d
             type: String
           - attributes:
               id: targetAttachmentID
             children:
             - type: Value
-              value: le_gfx_xlcdc_cap
+              value: GFX2D
             type: String
           type: Attributes
         type: DirectDependency
       - attributes:
-          id: gpu_driver
+          id: LE GPU Driver
         children:
         - children:
           - attributes:
               id: targetComponentID
             children:
             - type: Value
-              value: le_gfx_gfx2d
+              value: gfx_legato
             type: String
           - attributes:
               id: targetAttachmentID
             children:
             - type: Value
-              value: LE GPU Driver
+              value: gpu_driver
             type: String
           type: Attributes
-        type: DirectDependency
+        type: DirectCapability
       type: Attachments
-    type: gfx_legato
+    type: le_gfx_gfx2d
   elementPosition:
     attributes:
       id: __ROOTVIEW
     children:
     - children:
       - attributes:
-          id: gfx_legato
-          x: '550'
-          y: '199'
+          id: le_gfx_gfx2d
+          x: '370'
+          y: '270'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
-  symbols:
-    LeGPUConnected:
-      attributes:
-        id: LeGPUConnected
-      children:
-      - children:
-        - attributes:
-            id: gfx_legato
-            value: 'true'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    driverInitName:
-      attributes:
-        id: driverInitName
-      children:
-      - children:
-        - attributes:
-            id: gfx_legato
-            value: xlcdcDisplayDriver
-          type: Dynamic
-        type: Values
-      type: String
+  symbols: {}
   userData: {}

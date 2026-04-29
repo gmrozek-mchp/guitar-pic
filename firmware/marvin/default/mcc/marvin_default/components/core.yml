@@ -781,6 +781,17 @@ data:
           type: User
         type: Values
       type: String
+    GFX2D_CLOCK_ENABLE:
+      attributes:
+        id: GFX2D_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: plib_gfx2d
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
   userData:
     children:
     - attributes:

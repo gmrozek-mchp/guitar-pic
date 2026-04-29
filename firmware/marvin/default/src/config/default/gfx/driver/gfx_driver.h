@@ -1262,13 +1262,6 @@ typedef struct gfxGraphicsProcessor
 
 } gfxGraphicsProcessor;
 
-static const gfxGraphicsProcessor gfxGPUInterface =
-{
-    NULL,
-    NULL,
-    NULL,
-    NULL
-};
 
 #ifdef __cplusplus
     }

@@ -55,6 +55,7 @@ static void initPeriphClk(void)
         { ID_PIOB, 1, 0, 0, 0},
         { ID_PIOC, 1, 0, 0, 0},
         { ID_TC0, 1, 0, 0, 0},
+        { ID_GFX2D, 1, 0, 0, 0},
         { ID_PIOD, 1, 0, 0, 0},
         { ID_DBGU, 1, 0, 0, 0},
         { ID_PERIPH_MAX + 1, 0, 0, 0, 0}//end of list marker
