@@ -471,30 +471,30 @@
                      displayName="emirror_imx219_lvds_ac69t88a_default"
                      projectFiles="true">
         <logicalFolder name="components" displayName="components" projectFiles="true">
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_maxtouch_controller.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/le_gfx_template_ac69t88a.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_csi2dc.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_ImageSensor.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/sys_input.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_Camera.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/dfp.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/drv_i2c.yml</itemPath>
           <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_canvas.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/core.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/sys_time.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/HarmonyCore.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/stdio.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/drv_i2c_0.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_bridge_lvdsc_plib.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_ImageSensor.yml</itemPath>
           <itemPath>emirror_imx219_lvds_ac69t88a_default/components/tc0.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_legato.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/dfp.yml</itemPath>
           <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_csi.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/flexcom6.yml</itemPath>
-          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/le_gfx_driver_xlcdc.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_csi2dc.yml</itemPath>
           <itemPath>emirror_imx219_lvds_ac69t88a_default/components/dbgu.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/HarmonyCore.yml</itemPath>
           <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_isc.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/drv_i2c.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/le_gfx_template_ac69t88a.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/drv_i2c_0.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/sys_input.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/flexcom6.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_maxtouch_controller.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/le_gfx_driver_xlcdc.yml</itemPath>
           <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_display_comp_ac69t88a.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/sys_time.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/core.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/vision_Camera.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_legato.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/gfx_bridge_lvdsc_plib.yml</itemPath>
+          <itemPath>emirror_imx219_lvds_ac69t88a_default/components/stdio.yml</itemPath>
         </logicalFolder>
         <itemPath>emirror_imx219_lvds_ac69t88a_default/mcc-config.mc4</itemPath>
       </logicalFolder>
@@ -908,6 +908,11 @@
           <itemPath>../src/config/default/fault_handlers.c</itemPath>
           <itemPath>../src/config/default/tasks.c</itemPath>
         </logicalFolder>
+      </logicalFolder>
+      <logicalFolder name="emirror_imx219_lvds_ac69t88a_default"
+                     displayName="emirror_imx219_lvds_ac69t88a_default"
+                     projectFiles="true">
+        <itemPath>emirror_imx219_lvds_ac69t88a_default/.DS_Store</itemPath>
       </logicalFolder>
       <itemPath>../src/main.c</itemPath>
       <itemPath>../src/app.c</itemPath>

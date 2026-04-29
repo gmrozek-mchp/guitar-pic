@@ -1,5 +1,5 @@
 "Pin Number","Pin ID","Custom Name","Function","Direction","Latch","Open Drain","PIO Interrupt","Pull Up","Pull Down","Glitch/Debounce Filter",Slew Rate Control,Drive Strength
-A2,PC30,,Available,In,,,,,,,,
+A2,PC30,AT69T88A_ENABLE,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
 A3,PC2,,Available,In,,,,,,,,
 A4,PC4,,Available,In,,,,,,,,
 A5,PC6,,Available,In,,,,,,,,
@@ -36,7 +36,7 @@ D10,PB22,,Available,In,,,,,,,,
 D16,PD10,,Available,In,,,,,,,,
 D17,PB8,,Available,In,,,,,,,,
 E1,PC16,,Available,In,,,,,,,,
-E2,PC18,,Available,In,,,,,,,,
+E2,PC18,AC69T88A_BACKLIGHT_EN,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
 E3,PC15,,Available,In,,,,,,,,
 E4,PC23,,Available,In,,,,,,,,
 E16,PD14,,Available,In,,,,,,,,
@@ -80,7 +80,7 @@ P11,PD2,,Available,In,,,,,,,,
 P13,PD6,,Available,In,,,,,,,,
 P15,PD7,,Available,In,,,,,,,,
 P16,PA3,,Available,In,,,,,,,,
-P17,PA17,,Available,In,,,,,,,,
+P17,PA17,AC69T88A_DISP,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
 R1,PA31,,Available,In,,,,,,,,
 R2,PA25,,Available,In,,,,,,,,
 R4,PA24,,Available,In,,,,,,,,

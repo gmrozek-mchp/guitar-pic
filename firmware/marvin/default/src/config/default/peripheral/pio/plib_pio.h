@@ -62,6 +62,15 @@
 // *****************************************************************************
 
 
+/*** Macros for AT69T88A_ENABLE pin ***/
+#define AT69T88A_ENABLE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<30U))
+#define AT69T88A_ENABLE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<30U))
+#define AT69T88A_ENABLE_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<30U))
+#define AT69T88A_ENABLE_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<30U))
+#define AT69T88A_ENABLE_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<30U))
+#define AT69T88A_ENABLE_Get()               ((PIOC_REGS->PIO_PDSR >> 30U) & 0x1U)
+#define AT69T88A_ENABLE_PIN                  PIO_PIN_PC30
+
 /*** Macros for LED_BLUE pin ***/
 #define LED_BLUE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<20U))
 #define LED_BLUE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<20U))
@@ -80,6 +89,15 @@
 #define LED_GREEN_Get()               ((PIOC_REGS->PIO_PDSR >> 21U) & 0x1U)
 #define LED_GREEN_PIN                  PIO_PIN_PC21
 
+/*** Macros for AC69T88A_BACKLIGHT_EN pin ***/
+#define AC69T88A_BACKLIGHT_EN_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<18U))
+#define AC69T88A_BACKLIGHT_EN_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<18U))
+#define AC69T88A_BACKLIGHT_EN_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<18U))
+#define AC69T88A_BACKLIGHT_EN_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<18U))
+#define AC69T88A_BACKLIGHT_EN_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<18U))
+#define AC69T88A_BACKLIGHT_EN_Get()               ((PIOC_REGS->PIO_PDSR >> 18U) & 0x1U)
+#define AC69T88A_BACKLIGHT_EN_PIN                  PIO_PIN_PC18
+
 /*** Macros for LED_RED pin ***/
 #define LED_RED_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<14U))
 #define LED_RED_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<14U))
@@ -88,6 +106,15 @@
 #define LED_RED_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<14U))
 #define LED_RED_Get()               ((PIOC_REGS->PIO_PDSR >> 14U) & 0x1U)
 #define LED_RED_PIN                  PIO_PIN_PC14
+
+/*** Macros for AC69T88A_DISP pin ***/
+#define AC69T88A_DISP_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<17U))
+#define AC69T88A_DISP_Clear()             (PIOA_REGS->PIO_CODR = ((uint32_t)1U<<17U))
+#define AC69T88A_DISP_Toggle()            (PIOA_REGS->PIO_ODSR ^= ((uint32_t)1U<<17U))
+#define AC69T88A_DISP_OutputEnable()      (PIOA_REGS->PIO_OER = ((uint32_t)1U<<17U))
+#define AC69T88A_DISP_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<17U))
+#define AC69T88A_DISP_Get()               ((PIOA_REGS->PIO_PDSR >> 17U) & 0x1U)
+#define AC69T88A_DISP_PIN                  PIO_PIN_PA17
 
 
 // *****************************************************************************
