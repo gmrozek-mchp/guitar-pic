@@ -5,6 +5,9 @@
 		},
 		{
 			"path": "firmware/fretboard"
+		},
+		{
+			"path": "firmware/sam9x75_curiosity_emirror"
 		}
 	],
 	"settings": {
