@@ -56,7 +56,9 @@
 // Section: Handler Routines
 // *****************************************************************************
 // *****************************************************************************
+void FLEXCOM6_InterruptHandler (void);
 void TC0_InterruptHandler (void);
+void XDMAC_InterruptHandler (void);
 
 
 /* Interrupt Handler for spurious interrupts */

@@ -1,0 +1,101 @@
+configVersion: 1.0.0
+componentName: vision_Camera
+coreVersion: 5.8.4
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: vision_Camera
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: vision
+  type: package
+  version: v3.2.1
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments:
+    children:
+    - children:
+      - attributes:
+          id: Data_Interface
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: vision_csi
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: Data_Interface
+            type: String
+          type: Attributes
+        type: DirectCapability
+      - attributes:
+          id: I2c_Interface
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: vision_ImageSensor
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: I2c_Interface
+            type: String
+          type: Attributes
+        type: DirectCapability
+      type: Attachments
+    type: vision_Camera
+  elementPosition:
+    attributes:
+      id: __ROOTVIEW
+    children:
+    - children:
+      - attributes:
+          id: vision_Camera
+          x: '357'
+          y: '436'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    ImageSensorBitWidth:
+      attributes:
+        id: ImageSensorBitWidth
+      children:
+      - children:
+        - attributes:
+            value: '0'
+          type: User
+        type: Values
+      type: KeyValueSet
+    ImageSensorOutputFormat:
+      attributes:
+        id: ImageSensorOutputFormat
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: KeyValueSet
+    ImageSensorResolution:
+      attributes:
+        id: ImageSensorResolution
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: KeyValueSet
+  userData: {}

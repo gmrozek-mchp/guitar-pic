@@ -9,6 +9,9 @@ modules:
 - core
 - dbgu
 - dfp
+- drv_i2c
+- drv_i2c_0
+- flexcom6
 - gfx_bridge_lvdsc_plib
 - gfx_display_comp_ac69t88a
 - gfx_legato
@@ -19,19 +22,25 @@ modules:
 - sys_input
 - sys_time
 - tc0
+- vision
+- vision_Camera
+- vision_ImageSensor
+- vision_csi
+- vision_csi2dc
+- vision_isc
 generatedFileHashHistoryMap:
 - file: ../src/app.c
   hash: 632c78c323cb9f8c6359f20337440c08f8461eb4b0304552b6a3cfd5c4052620
 - file: ../src/app.h
   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
 - file: ../src/config/default/configuration.h
-  hash: 4ca5d2ad55e343af5efaf63dd7b2fb6708809ede70b0f97a2fcfa938493d4361
+  hash: 08729c81ab77fdde03a131e6870e89c15c56053d5904339633c21b2003e1e9ab
 - file: ../src/config/default/cstartup.S
   hash: bab52b245ee3ee78ff26156c06ac67761ea78039030859fa772ece111fd5dab3
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: f84c4bd53ac29459f286cee5c5b89c00f47c64690f0976c88172a0b77e78835d
+  hash: 7e0656456ba04a7a0632e8f65432f58a976d98d2b0ba8f36cd704f3c42d1d5d1
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -40,6 +49,14 @@ generatedFileHashHistoryMap:
   hash: 042fdd289460dbddb8e805850af7e3ac9aea95468e37414959781ebc5b2f454d
 - file: ../src/config/default/driver/driver_common.h
   hash: 5217965f6720b4fdf717e99ce9df4f2c9fbd82bbbc9655847166d1eefa806fee
+- file: ../src/config/default/driver/i2c/drv_i2c.h
+  hash: 1f06cabfaac9a01113fcd80f34ef2d900eaa53423171e8ba38d663d3104c2f7e
+- file: ../src/config/default/driver/i2c/drv_i2c_definitions.h
+  hash: 308393d7dc25f042ea7443ac00d81cc8fafb0eec952207d88f64a0b48ea04bae
+- file: ../src/config/default/driver/i2c/src/drv_i2c.c
+  hash: 34b5958374f95645872aecbb0eb393333e9bcdee0f00d087c69262a1cd527ed7
+- file: ../src/config/default/driver/i2c/src/drv_i2c_local.h
+  hash: efe3b598a6fc3492f7f448c0077edcce4378d2029b5a26d304e0293e0d4711f7
 - file: ../src/config/default/fault_handlers.c
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
@@ -559,11 +576,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: fb513b88cb79f1324ad974c3ede18cb12c5de3f94c22e81ad14a392c6ac69551
+  hash: 0055fb7a82d79c783440e51109546258076da38ea82473b35c354c4a08b48b5e
 - file: ../src/config/default/interrupts.c
   hash: 3f257c1c617c901d65c7a959e95e16fa3baaacb7c3667d18059a321a4dbab6bf
 - file: ../src/config/default/interrupts.h
-  hash: 24cd452db8af2fe208332e72cf0fb01725ceafc04a1edb5a20917392f4f321c1
+  hash: 970b218977cd3c7261b991c2ae13b083201fe98bef3e7025edcd1b0b1cba9803
 - file: ../src/config/default/osal/osal.h
   hash: 1cfe3b61d9693b2369922041eef33fe16b3c1ccd9c85d4ded808b805f90a869c
 - file: ../src/config/default/osal/osal_definitions.h
@@ -571,11 +588,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/osal/osal_impl_basic.h
   hash: 158c4107f883f6d8c0244b73273361d1ca2ebd57c0934572b11a25c532fd22c5
 - file: ../src/config/default/peripheral/aic/plib_aic.c
-  hash: 17a021f341e62d7824bd8f4055bf6458d6e7970319d4339d2eae23537e9401fa
+  hash: dfd5261aeb9e1595f931f9d4de9480ec95240e9e642e80bea311aa43e4b49816
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: 61ae49795e98598e1c6ed0e879980cfc50d6f2356ff6d637f0891a8dd8b0410a
+  hash: 788be7baba5ba8eba3a241ebc46ffdf53a9e66d1645d7e094981588917d793bb
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -584,6 +601,12 @@ generatedFileHashHistoryMap:
   hash: 60f552a7fc1710e738e9e4721e8ead0ba2349ccb983b5cfacccfaa98fcc47447
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu_common.h
   hash: 3a5532ba83c46095ed55db646a9be166772429df5eac103b28c31a562c9cf1a2
+- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c
+  hash: 3d118f4f1bc81c52f72feb1446acfc9d4d1fa1fddeb8b0908629393224f55fd7
+- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h
+  hash: ec172c9f29f28a6cd23db61ccc5f0039b2f257f1c74a10be2c06bb5b75949e94
+- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom_twi_master_common.h
+  hash: b167387d3ed43ed5aec18b601bf7d5da73592c102a83e21d56351bb98c67807a
 - file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.c
   hash: c143979d6918aa64bf68fc768cca5b8179fa78d66349e301c14f94658ac48c00
 - file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.h
@@ -595,17 +618,23 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/mmu/plib_mmu.h
   hash: 7fb6e6b8ad6a80b7fc04c0264b7cdf49e6d6b887e4f3c5aa394eda88e32e0116
 - file: ../src/config/default/peripheral/pio/plib_pio.c
-  hash: 348c7b38620626ffffd2c954a41bb5382d878de06ac5afdd75827c6cc6074897
+  hash: 99d6fc85b7e7285a08161842f1420930316d1395ea282f85f9260bad7d7b9950
 - file: ../src/config/default/peripheral/pio/plib_pio.h
-  hash: 85e473bcbceb5ea7068ceb5f2d7b0419e4941422a1c6491d71cb6bc53be0accc
+  hash: bf3f7d20a2572bcebf87f9cdbad28284fea58dfb748c95ff914587421e8e9c34
 - file: ../src/config/default/peripheral/tc/plib_tc0.c
   hash: e1ac548e92a3347891aac4b309ed496d2162ded50619f871069d6e3175496fb8
 - file: ../src/config/default/peripheral/tc/plib_tc0.h
   hash: 79afe8007b0060db79e911ca3574ac588005761cabfd42c574d779bb71615a7d
 - file: ../src/config/default/peripheral/tc/plib_tc_common.h
   hash: aa07077b6355fa1dc9e938cb4def1c725bffddf452ffc55e4f982f83d3988a9e
+- file: ../src/config/default/peripheral/xdmac/plib_xdmac.c
+  hash: 0ca05b288990ff91faa7b07d1dfe16f9d6a5df07447c96b81062fb8760963f3c
+- file: ../src/config/default/peripheral/xdmac/plib_xdmac.h
+  hash: 3860c41bf2e5b74a7dd2cd2642b1afce660d201d4297b0bc9523b0c3cc8606fa
+- file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
+  hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
-  hash: 59847dd19da1cd5d5e52220698f02dda037ea817a736d56a3e4dab8a8e860b48
+  hash: 4527489df3ccb6e5402dd9e05aaf63bdbd9045fc67d2e01e7d31a7d0f60b68ea
 - file: ../src/config/default/stdio/xc32_monitor.c
   hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/sys_tasks.h
@@ -653,11 +682,51 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 648b9ad8eb6cc04ee90164f1f3c85b83c3f68db648507b4aa45e860462eefaba
+  hash: 5bb1d7689289f385c52c354bdf601cd0a32f35d9e14c5362349956714c12c7c2
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/user.h
   hash: 451e0878e9fcf6cf9fab046c1452ea662757988346c7f39e6bc98478ca25f995
+- file: ../src/config/default/vision/drivers/csi/drv_csi.c
+  hash: b72340379e9158bda5ae3d3b367ed6158c1111b4f5f53a0080a88124fa796dd6
+- file: ../src/config/default/vision/drivers/csi/drv_csi.h
+  hash: 6aa601edf23aab62ff7495a49300a50856443b1760b3d973c5e6fed872ab9c54
+- file: ../src/config/default/vision/drivers/csi/plib_csi.c
+  hash: 219caa2a0ad3facbef037c82bbd2bdd16ee6f794fa8acb294c1f840aa1c1bf46
+- file: ../src/config/default/vision/drivers/csi/plib_csi.h
+  hash: e6065c210597e7fe51c0ae25ba4f11352975c90f6a7d41e07302101c0d9e91dc
+- file: ../src/config/default/vision/drivers/csi2dc/drv_csi2dc.c
+  hash: 7a0d4b7a5f629b62c977f707c7d8df79eeedf058ac16d90d1596a03f852f3caa
+- file: ../src/config/default/vision/drivers/csi2dc/drv_csi2dc.h
+  hash: b8241a4bb7b3db0fedca5332a79d4d42a2fa53ee2329b8bf0195b23cdb360b2c
+- file: ../src/config/default/vision/drivers/csi2dc/plib_csi2dc.c
+  hash: 8ad7423d096740f7c0e1aa429967be60ffa1982f59aae5dd28d481e7732961b6
+- file: ../src/config/default/vision/drivers/csi2dc/plib_csi2dc.h
+  hash: b11582ba6cef1af3581af516564b9d7ce92cef9ed048d11a1d76845418de43c5
+- file: ../src/config/default/vision/drivers/image_sensor/drv_image_sensor.c
+  hash: 578935e1a56af0b947491c39d16cbfae86fe6229c8dc5c2512441dbdd1d9680e
+- file: ../src/config/default/vision/drivers/image_sensor/drv_image_sensor.h
+  hash: ba7bdc08f35df9e8dc9a986e6cb675541aa916d39cf565213f4fd65a70f1c625
+- file: ../src/config/default/vision/drivers/isc/drv_isc.c
+  hash: bc132a79f8a9ade06a42c5b739963136608c279c8bb61f42bda296088b61e48a
+- file: ../src/config/default/vision/drivers/isc/drv_isc.h
+  hash: 768cb2e849b626005f5fc956cbd4cfc56003bc7f4c800c7bf94e0c711ebe0a60
+- file: ../src/config/default/vision/drivers/isc/plib_isc.c
+  hash: eb97d27e050f0df6f75ec01da52ff940153182096d64137c43844fa088ca08bb
+- file: ../src/config/default/vision/drivers/isc/plib_isc.h
+  hash: abba60a67aee7dc78ba6a89a01d6c76a3639e45e23e4668424cc225e34b53d8a
+- file: ../src/config/default/vision/image_sensors/imx219/imx219.c
+  hash: b33d2e3a5936564f48aceecf8691ccd2152952700705c36fe6402443ac8a34bf
+- file: ../src/config/default/vision/image_sensors/ov2640/ov2640.c
+  hash: 7eeecdf5cdc098da09dd2b877333ac387db27aa4f62dd08330d688647d22c2fe
+- file: ../src/config/default/vision/image_sensors/ov5640/ov5640.c
+  hash: 6dad794d9a8cb4580ff25b8d889ebc0e9530935b06b8a1fce418709f54cb70a3
+- file: ../src/config/default/vision/image_sensors/ov5647/ov5647.c
+  hash: 875292f8d76072262e0954021b7f4382f220a1a436ea83099a73dafcc02a8c79
+- file: ../src/config/default/vision/libcamera/camera.c
+  hash: 64b3560814b033ac09c1061fa7e4b81612103214425071d23158ba014b22c285
+- file: ../src/config/default/vision/libcamera/camera.h
+  hash: 4817d9a62a7be25a25ca29a0cfbddd54f1cbbf1c1858e972e787249dca2e0b6a
 - file: ../src/main.c
   hash: d3c233d419e6304bfacbafc18cc68c0f5c26e365f23b20ea40ccfac458f664c5
 - file: ../src/packs/SAM9X75D2G_DFP/component/adc.h

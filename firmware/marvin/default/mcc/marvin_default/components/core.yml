@@ -299,7 +299,7 @@ data:
       children:
       - children:
         - attributes:
-            value: ''
+            value: CAMERA_RESET
           type: User
         type: Values
       type: String
@@ -309,7 +309,7 @@ data:
       children:
       - children:
         - attributes:
-            value: ''
+            value: GPIO
           type: User
         type: Values
       type: String
@@ -319,7 +319,7 @@ data:
       children:
       - children:
         - attributes:
-            value: ''
+            value: GPIO
           type: User
         type: Values
       type: String
@@ -352,7 +352,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '201326592'
+            value: '251658240'
           type: Dynamic
         type: Values
       type: Hex
@@ -440,7 +440,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '1077166080'
+            value: '1077723136'
           type: Dynamic
         type: Values
       type: Hex
@@ -645,7 +645,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '1074003968'
+            value: '1074528256'
           type: Dynamic
         type: Values
       type: Hex
@@ -792,6 +792,322 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    FLEXCOM6_CLOCK_ENABLE:
+      attributes:
+        id: FLEXCOM6_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: flexcom6
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM6_CLOCK_FREQUENCY:
+      attributes:
+        id: FLEXCOM6_CLOCK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    FLEXCOM6_INTERRUPT_ENABLE:
+      attributes:
+        id: FLEXCOM6_INTERRUPT_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: flexcom6
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM6_INTERRUPT_HANDLER:
+      attributes:
+        id: FLEXCOM6_INTERRUPT_HANDLER
+      children:
+      - children:
+        - attributes:
+            id: flexcom6
+            value: FLEXCOM6_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    FLEXCOM6_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: FLEXCOM6_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: flexcom6
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    XDMAC_HIGHEST_CHANNEL:
+      attributes:
+        id: XDMAC_HIGHEST_CHANNEL
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '1'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XDMAC_INTERRUPT_ENABLE:
+      attributes:
+        id: XDMAC_INTERRUPT_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    XDMAC_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: XDMAC_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    XDMAC_INTERRUPT_HANDLER:
+      attributes:
+        id: XDMAC_INTERRUPT_HANDLER
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: XDMAC_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    DMA_ENABLE:
+      attributes:
+        id: DMA_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    XDMAC_CLOCK_ENABLE:
+      attributes:
+        id: XDMAC_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    xdmacHeaderFile:
+      attributes:
+        id: xdmacHeaderFile
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    xdmacCommonHeaderFile:
+      attributes:
+        id: xdmacCommonHeaderFile
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    xdmacSourceFile:
+      attributes:
+        id: xdmacSourceFile
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    xdmacSystemInitFile:
+      attributes:
+        id: xdmacSystemInitFile
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    xdmacSystemDefFile:
+      attributes:
+        id: xdmacSystemDefFile
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    XDMAC_CH0_ENABLE:
+      attributes:
+        id: XDMAC_CH0_ENABLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    XDMAC_CC0_CSIZE:
+      attributes:
+        id: XDMAC_CC0_CSIZE
+      children:
+      - children:
+        - attributes:
+            value: '4'
+          type: User
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC0_MBSIZE:
+      attributes:
+        id: XDMAC_CC0_MBSIZE
+      children:
+      - children:
+        - attributes:
+            value: '3'
+          type: User
+        type: Values
+      type: KeyValueSet
+    PIN_67_FUNCTION_TYPE:
+      attributes:
+        id: PIN_67_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_67_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_67_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_67_FUNCTION_NAME:
+      attributes:
+        id: PIN_67_FUNCTION_NAME
+      children:
+      - children:
+        - attributes:
+            value: CAMERA_PWD
+          type: User
+        type: Values
+      type: String
+    PIN_67_DIR:
+      attributes:
+        id: PIN_67_DIR
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_94_DIR:
+      attributes:
+        id: PIN_94_DIR
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_94_LAT:
+      attributes:
+        id: PIN_94_LAT
+      children:
+      - children:
+        - attributes:
+            value: High
+          type: User
+        type: Values
+      type: String
+    PIN_198_FUNCTION_TYPE:
+      attributes:
+        id: PIN_198_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM6_IO1
+          type: User
+        type: Values
+      type: String
+    PIN_198_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_198_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_200_FUNCTION_TYPE:
+      attributes:
+        id: PIN_200_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM6_IO0
+          type: User
+        type: Values
+      type: String
+    PIN_200_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_200_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
   userData:
     children:
     - attributes:

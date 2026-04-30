@@ -77,6 +77,10 @@ void SYS_Tasks ( void )
 
     /* Maintain Device Drivers */
     
+    CAMERA_Task(sysObj.devCamera);
+
+
+
     DRV_XLCDC_Update();
 
 

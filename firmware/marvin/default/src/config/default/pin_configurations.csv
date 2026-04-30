@@ -37,7 +37,7 @@ D16,PD10,,Available,In,,,,,,,,
 D17,PB8,,Available,In,,,,,,,,
 E1,PC16,,Available,In,,,,,,,,
 E2,PC18,AC69T88A_BACKLIGHT_EN,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
-E3,PC15,,Available,In,,,,,,,,
+E3,PC15,CAMERA_PWD,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 E4,PC23,,Available,In,,,,,,,,
 E16,PD14,,Available,In,,,,,,,,
 E17,PB14,,Available,In,,,,,,,,
@@ -45,7 +45,7 @@ F2,PC14,LED_RED,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 F16,PB6,,Available,In,,,,,,,,
 G1,PC8,,Available,In,,,,,,,,
 G2,PC0,,Available,In,,,,,,,,
-G3,PC19,,Available,In,,,,,,,,
+G3,PC19,CAMERA_RESET,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
 G4,PC17,,Available,In,,,,,,,,
 G15,PD3,,Available,In,,,,,,,,
 G16,PB0,,Available,In,,,,,,,,
@@ -82,8 +82,8 @@ P15,PD7,,Available,In,,,,,,,,
 P16,PA3,,Available,In,,,,,,,,
 P17,PA17,AC69T88A_DISP,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
 R1,PA31,,Available,In,,,,,,,,
-R2,PA25,,Available,In,,,,,,,,
-R4,PA24,,Available,In,,,,,,,,
+R2,PA25,,FLEXCOM6_IO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
+R4,PA24,,FLEXCOM6_IO0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 R5,PA12,,Available,In,,,,,,,,
 R8,PB3,,Available,In,,,,,,,,
 R11,PD9,,Available,In,,,,,,,,

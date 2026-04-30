@@ -95,6 +95,107 @@ extern "C" {
 // Section: Driver Configuration
 // *****************************************************************************
 // *****************************************************************************
+/* I2C Driver Instance 0 Configuration Options */
+#define DRV_I2C_INDEX_0                       0
+#define DRV_I2C_CLIENTS_NUMBER_IDX0           2
+#define DRV_I2C_QUEUE_SIZE_IDX0               2
+#define DRV_I2C_CLOCK_SPEED_IDX0              400000
+
+
+/*** libcamera Configuration ***/
+#define CAMERA_ENABLE_AWB_ALGO	false
+#define CAMERA_ENABLE_DEBUG	1
+
+
+
+/*** CSI Driver Configuration ***/
+#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
+#define CSI_NUM_LANES				CSI_DATA_LANES_2
+
+
+/*** ISC Image Sensor Configuration ***/
+#define ISC_INPUT_FORMAT_TYPE			DRV_IMAGE_SENSOR_RGB
+#define ISC_INPUT_BIT_WIDTH				DRV_IMAGE_SENSOR_8_BIT
+#define ISC_OUTPUT_FORMAT_TYPE			ISC_RLP_CFG_MODE_ARGB32
+#define ISC_OUTPUT_LAYOUT_TYPE			ISC_LAYOUT_PACKED32
+#define ISC_BAYER_PATTERN_TYPE			ISC_CFA_CFG_BAYCFG_RGRG_Val
+#define ISC_ENABLE_DPC			true
+#define ISC_ENABLE_BLC			true
+#define ISC_ENABLE_GDC			true
+#define ISC_DPC_ENABLE_EITPOL		true
+#define ISC_DPC_ENABLE_TM			true
+#define ISC_DPC_ENABLE_TC			true
+#define ISC_DPC_ENABLE_TA			true
+#define ISC_DPC_ENABLE_ND_MODE		true
+#define ISC_DPC_RE_MODE					ISC_DPC_CFG_RE_MODE_1_Val
+#define ISC_DPC_GDCCLP					64
+#define ISC_DCP_BLOFST					64
+#define ISC_DCP_THRESHM					512
+#define ISC_DCP_THRESHC					512
+#define ISC_DCP_THRESHA					512
+#define ISC_ENABLE_GAMMA				true
+#define ISC_GAMMA_RED_ENTRIES			true
+#define ISC_GAMMA_BLUE_ENTRIES			true
+#define ISC_GAMMA_GREEN_ENTRIES			true
+#define ISC_ENABLE_WHITE_BALANCE		true
+#define ISC_WB_R_OFFSET					7928
+#define ISC_WB_GR_OFFSET				7928
+#define ISC_WB_B_OFFSET					7936
+#define ISC_WB_GB_OFFSET				7928
+#define ISC_WB_R_GAIN					1944
+#define ISC_WB_GR_GAIN					1103
+#define ISC_WB_B_GAIN					3403
+#define ISC_WB_GB_GAIN					1619
+#define ISC_ENABLE_HISTOGRAM			false
+#define ISC_ENABLE_MIPI_INTERFACE		true
+#define ISC_ENABLE_VIDEO_MODE			true
+#define ISC_ENABLE_BRIGHTNESS_CONTRAST	true
+#define ISC_CBC_BRIGHTNESS_VAL			5
+#define ISC_CBC_CONTRAST_VAL			18
+#define ISC_CBHS_HUE_VAL				0
+#define ISC_CBHS_SATURATION_VAL			32
+#define ISC_ENABLE_PROGRESSIVE_MODE		true
+#define ISC_ENABLE_SCALING		false
+#define ISC_SCALE_OUTPUT_WIDTH				0
+#define ISC_SCALE_OUTPUT_HEIGHT				0
+
+
+/*** ISC PLib Configuration ***/
+#define PLIB_ISC_MCK_SEL_VAL		0
+#define PLIB_ISC_MCK_DIV_VAL		0
+#define ISC_HSYNC_POLARITY_VAL		0
+#define ISC_VSYNC_POLARITY_VAL		0
+
+/* I2C Driver Common Configuration Options */
+#define DRV_I2C_INSTANCES_NUMBER              (1U)
+
+
+
+/*** Image Sensor Driver Configuration ***/
+#define DRV_IMAGE_SENSOR_I2C_MODULE_INDEX		0
+
+
+/*** CSI2DC Driver Configuration ***/
+#define CSI2DC_BUS_TYPE		CSI2DC_BUS_CSI2_DPHY
+#define CSI2DC_VIDEO_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
+#define CSI2DC_VIDEO_PIPE_CHANNEL_ID		0
+#define CSI2DC_DATA_PIPE_CHANNEL_ID			0
+#define CSI2DC_DATA_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
+#define CSI2DC_DATA_PIPE_DMA_CHUCK_SIZE		CSI2DC_DMA_CHUCK_SIZE_16
+#define CSI2DC_DATA_PIPE_DMA_COUNT			320
+#define CSI2DC_ENABLE_MIPI_CLOCK_FREE_RUN		false
+#define CSI2DC_POST_ALIGNED		true
+#define CSI2DC_ENABLE_DATA_PIPE		false
+#define CSI2DC_DATA_PIPE_ENABLE_DMA	false
+
+
+
+/*** Image Sensor Configuration ***/
+#define IMAGE_SENSOR_NAME					"AutoDectect"
+#define IMAGE_SENSOR_OUTPUT_RESOLUTION		DRV_IMAGE_SENSOR_WVGA
+#define IMAGE_SENSOR_OUTPUT_FORMAT			DRV_IMAGE_SENSOR_RGB
+#define IMAGE_SENSOR_OUTPUT_BUS_WIDTH		DRV_IMAGE_SENSOR_8_BIT
+
 
 
 // *****************************************************************************

@@ -98,6 +98,15 @@
 #define AC69T88A_BACKLIGHT_EN_Get()               ((PIOC_REGS->PIO_PDSR >> 18U) & 0x1U)
 #define AC69T88A_BACKLIGHT_EN_PIN                  PIO_PIN_PC18
 
+/*** Macros for CAMERA_PWD pin ***/
+#define CAMERA_PWD_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<15U))
+#define CAMERA_PWD_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<15U))
+#define CAMERA_PWD_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<15U))
+#define CAMERA_PWD_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<15U))
+#define CAMERA_PWD_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<15U))
+#define CAMERA_PWD_Get()               ((PIOC_REGS->PIO_PDSR >> 15U) & 0x1U)
+#define CAMERA_PWD_PIN                  PIO_PIN_PC15
+
 /*** Macros for LED_RED pin ***/
 #define LED_RED_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<14U))
 #define LED_RED_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<14U))
@@ -106,6 +115,15 @@
 #define LED_RED_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<14U))
 #define LED_RED_Get()               ((PIOC_REGS->PIO_PDSR >> 14U) & 0x1U)
 #define LED_RED_PIN                  PIO_PIN_PC14
+
+/*** Macros for CAMERA_RESET pin ***/
+#define CAMERA_RESET_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<19U))
+#define CAMERA_RESET_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<19U))
+#define CAMERA_RESET_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<19U))
+#define CAMERA_RESET_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<19U))
+#define CAMERA_RESET_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<19U))
+#define CAMERA_RESET_Get()               ((PIOC_REGS->PIO_PDSR >> 19U) & 0x1U)
+#define CAMERA_RESET_PIN                  PIO_PIN_PC19
 
 /*** Macros for AC69T88A_DISP pin ***/
 #define AC69T88A_DISP_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<17U))
