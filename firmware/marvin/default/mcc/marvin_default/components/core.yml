@@ -624,7 +624,7 @@ data:
       children:
       - children:
         - attributes:
-            value: AT69T88A_ENABLE
+            value: AC69T88A_ENABLE
           type: User
         type: Values
       type: String
@@ -1108,6 +1108,108 @@ data:
           type: User
         type: Values
       type: String
+    CSI_CLOCK_ENABLE:
+      attributes:
+        id: CSI_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    CSI2DC_CLOCK_ENABLE:
+      attributes:
+        id: CSI2DC_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    ISC_CLOCK_ENABLE:
+      attributes:
+        id: ISC_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    MIPIPHY_CLOCK_FREQUENCY:
+      attributes:
+        id: MIPIPHY_CLOCK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '26666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    MIPIPHY_GCLK_FREQUENCY:
+      attributes:
+        id: MIPIPHY_GCLK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '26666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    CLK_MIPIPHY_GCLKEN:
+      attributes:
+        id: CLK_MIPIPHY_GCLKEN
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    CLK_MIPIPHY_GCLKCSS:
+      attributes:
+        id: CLK_MIPIPHY_GCLKCSS
+      children:
+      - children:
+        - attributes:
+            value: '3'
+          type: User
+        type: Values
+      type: KeyValueSet
+    CLK_MIPIPHY_GCLKDIV:
+      attributes:
+        id: CLK_MIPIPHY_GCLKDIV
+      children:
+      - children:
+        - attributes:
+            value: '9'
+          type: User
+        type: Values
+      type: Integer
+    CSI2DC_INTERRUPT_ENABLE:
+      attributes:
+        id: CSI2DC_INTERRUPT_ENABLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    ISC_INTERRUPT_ENABLE:
+      attributes:
+        id: ISC_INTERRUPT_ENABLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
   userData:
     children:
     - attributes:

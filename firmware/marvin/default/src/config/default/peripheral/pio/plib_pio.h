@@ -62,14 +62,14 @@
 // *****************************************************************************
 
 
-/*** Macros for AT69T88A_ENABLE pin ***/
-#define AT69T88A_ENABLE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<30U))
-#define AT69T88A_ENABLE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<30U))
-#define AT69T88A_ENABLE_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<30U))
-#define AT69T88A_ENABLE_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<30U))
-#define AT69T88A_ENABLE_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<30U))
-#define AT69T88A_ENABLE_Get()               ((PIOC_REGS->PIO_PDSR >> 30U) & 0x1U)
-#define AT69T88A_ENABLE_PIN                  PIO_PIN_PC30
+/*** Macros for AC69T88A_ENABLE pin ***/
+#define AC69T88A_ENABLE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<30U))
+#define AC69T88A_ENABLE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<30U))
+#define AC69T88A_ENABLE_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<30U))
+#define AC69T88A_ENABLE_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<30U))
+#define AC69T88A_ENABLE_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<30U))
+#define AC69T88A_ENABLE_Get()               ((PIOC_REGS->PIO_PDSR >> 30U) & 0x1U)
+#define AC69T88A_ENABLE_PIN                  PIO_PIN_PC30
 
 /*** Macros for LED_BLUE pin ***/
 #define LED_BLUE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<20U))

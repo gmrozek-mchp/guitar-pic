@@ -59,6 +59,8 @@
 void FLEXCOM6_InterruptHandler (void);
 void TC0_InterruptHandler (void);
 void XDMAC_InterruptHandler (void);
+void ISC_Handler (void);
+void CSI2DC_Handler (void);
 
 
 /* Interrupt Handler for spurious interrupts */

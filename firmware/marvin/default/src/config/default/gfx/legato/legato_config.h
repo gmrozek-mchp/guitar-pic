@@ -50,7 +50,7 @@ extern "C" {
 // DOM-IGNORE-END
 
 
-#include "device.h"
+#include <toolchain_specifics.h>
 
 #define LE_COHERENT_ATTR                     CACHE_ALIGN
 #define LE_COHERENT_MEMORY                   LE_COHERENT_ATTR
@@ -65,8 +65,6 @@ extern "C" {
 #define LE_ASSERT_ENABLE                     0
 #define LE_DEBUG                             0 // internal use only, do not change
 #define LE_DEBUG_RENDERER                    0 // internal use only, do not change
-
-#define LE_DEBUG_BLIT_RECTS                  0
 
 #define LE_DEFAULT_SCREEN_WIDTH              800
 #define LE_DEFAULT_SCREEN_HEIGHT             480

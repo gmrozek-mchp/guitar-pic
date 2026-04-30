@@ -34,13 +34,13 @@ generatedFileHashHistoryMap:
 - file: ../src/app.h
   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
 - file: ../src/config/default/configuration.h
-  hash: 08729c81ab77fdde03a131e6870e89c15c56053d5904339633c21b2003e1e9ab
+  hash: 44274597441a47709942a7ec833ce3d4609c9417ae252dcfb090dfb4c315eae8
 - file: ../src/config/default/cstartup.S
   hash: bab52b245ee3ee78ff26156c06ac67761ea78039030859fa772ece111fd5dab3
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 7e0656456ba04a7a0632e8f65432f58a976d98d2b0ba8f36cd704f3c42d1d5d1
+  hash: 67ba395d5d9c18bacd43b2bf6bef630240363eb8f8c51c64cd01051fab4dcc1f
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -176,7 +176,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.h
   hash: a913b0cf5f6029be4a46db040144b14d9949f2e52d9b00576e2373403d530213
 - file: ../src/config/default/gfx/legato/generated/le_gen_init.c
-  hash: 1a6ee17186d2dda9d37198c719ba7e115cd3298124022fb9005093983ad7d46f
+  hash: 75ffb17636f0083587b55af305ebc83961548c12c397f0c8e8895a21111f9e16
 - file: ../src/config/default/gfx/legato/generated/le_gen_init.h
   hash: ff64245a1cfefc55213a1ff89de4029ef6f3763069eeb726f329cd26c0452bdb
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.c
@@ -262,7 +262,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/legato.h
   hash: b4ce875200132b2bf0aa6b5a3271b8bc363107741378e3079cbaa14037fbf807
 - file: ../src/config/default/gfx/legato/legato_config.h
-  hash: 0e89f3e87b1e7149a89506cd896ec44a38be55728b525a6d0ff8fedcdb2e1f57
+  hash: 70ced34276b9d552f9938741c34f29855670ed673fd4c57f0d7af40b4741c5a3
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.c
   hash: 197174ddbc7c7ef5c966bee36da8114e64dec8ce734d374c0b31401f800e21bf
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.h
@@ -576,11 +576,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 0055fb7a82d79c783440e51109546258076da38ea82473b35c354c4a08b48b5e
+  hash: 499a500ec2155eea44f0dadab828e3baa2afdd84e0a10efda1091b45445dc649
 - file: ../src/config/default/interrupts.c
   hash: 3f257c1c617c901d65c7a959e95e16fa3baaacb7c3667d18059a321a4dbab6bf
 - file: ../src/config/default/interrupts.h
-  hash: 970b218977cd3c7261b991c2ae13b083201fe98bef3e7025edcd1b0b1cba9803
+  hash: 8170934f7a05bfec97f8f10674ac1749163f6b83ad05dec817693f7b83c19b26
 - file: ../src/config/default/osal/osal.h
   hash: 1cfe3b61d9693b2369922041eef33fe16b3c1ccd9c85d4ded808b805f90a869c
 - file: ../src/config/default/osal/osal_definitions.h
@@ -588,11 +588,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/osal/osal_impl_basic.h
   hash: 158c4107f883f6d8c0244b73273361d1ca2ebd57c0934572b11a25c532fd22c5
 - file: ../src/config/default/peripheral/aic/plib_aic.c
-  hash: dfd5261aeb9e1595f931f9d4de9480ec95240e9e642e80bea311aa43e4b49816
+  hash: 4119af78818d8a13ff9e4662140a4188b52f8e23f89665c52be6ebf4d17d4c9d
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: 788be7baba5ba8eba3a241ebc46ffdf53a9e66d1645d7e094981588917d793bb
+  hash: 2bc609ba69398e1d94810f59a053a2ce194e420d6a0bf8ca1439c1e2a264acd0
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -620,7 +620,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/pio/plib_pio.c
   hash: 99d6fc85b7e7285a08161842f1420930316d1395ea282f85f9260bad7d7b9950
 - file: ../src/config/default/peripheral/pio/plib_pio.h
-  hash: bf3f7d20a2572bcebf87f9cdbad28284fea58dfb748c95ff914587421e8e9c34
+  hash: 945a4d7af5b41d5b1532bb0e59ed70c6c56c8bec3e14713e6aa6b94c37ee34c0
 - file: ../src/config/default/peripheral/tc/plib_tc0.c
   hash: e1ac548e92a3347891aac4b309ed496d2162ded50619f871069d6e3175496fb8
 - file: ../src/config/default/peripheral/tc/plib_tc0.h
@@ -634,7 +634,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
   hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
-  hash: 4527489df3ccb6e5402dd9e05aaf63bdbd9045fc67d2e01e7d31a7d0f60b68ea
+  hash: d34f0a32f506f0700bdbee887a6e5fb04dff0f7c69c450b78888fde29a6a7fce
 - file: ../src/config/default/stdio/xc32_monitor.c
   hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/sys_tasks.h

@@ -1,5 +1,5 @@
 "Pin Number","Pin ID","Custom Name","Function","Direction","Latch","Open Drain","PIO Interrupt","Pull Up","Pull Down","Glitch/Debounce Filter",Slew Rate Control,Drive Strength
-A2,PC30,AT69T88A_ENABLE,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
+A2,PC30,AC69T88A_ENABLE,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
 A3,PC2,,Available,In,,,,,,,,
 A4,PC4,,Available,In,,,,,,,,
 A5,PC6,,Available,In,,,,,,,,

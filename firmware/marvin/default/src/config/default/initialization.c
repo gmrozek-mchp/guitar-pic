@@ -339,12 +339,12 @@ void SYS_Initialize ( void* data )
     /* Disable WDT   */
     WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
 
+    FLEXCOM6_TWI_Initialize();
+
  
     TC0_CH0_TimerInitialize(); 
      
     
-    FLEXCOM6_TWI_Initialize();
-
     XLCDC_Initialize();
 
     DBGU_Initialize();
