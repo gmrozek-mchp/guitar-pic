@@ -145,9 +145,67 @@ DBGU output contains `TC358743: present (chipid=0x...)` with the upper byte equa
 - Any HDMI / CSI register programming.
 - Hooking into the `drv_image_sensor` framework.
 
-#### Phase 2 — Register access helpers
+#### Phase 2 — Register access helpers ✅ CODE COMPLETE (2026-05-01, pending flash verify)
 
-TC358743 has 16-bit register addresses and mixed 8/16/32-bit data widths. Emirror's sensor helpers only cover 8/16-bit addr + byte / 2-byte data — not enough. Port the Linux driver's `i2c_wr8/wr16/wr32` + `i2c_rd8/rd16/rd32` against FLEXCOM6 TWI. Direct map from the kernel driver.
+TC358743 has 16-bit register addresses and mixed 8/16/32-bit data widths. Port the Linux driver's `i2c_wr*` + `i2c_rd*` family, one-for-one, against FLEXCOM6 TWI.
+
+**API (module-internal, `static` in `tc358743.c`):**
+
+```c
+static bool tc358743_wr(uint16_t reg, const uint8_t *vals, size_t n);
+static bool tc358743_rd(uint16_t reg, uint8_t *vals, size_t n);
+static bool tc358743_wr8(uint16_t reg, uint8_t val);
+static bool tc358743_wr16(uint16_t reg, uint16_t val);
+static bool tc358743_wr32(uint16_t reg, uint32_t val);
+static bool tc358743_rd8(uint16_t reg, uint8_t *val);
+static bool tc358743_rd16(uint16_t reg, uint16_t *val);
+static bool tc358743_rd32(uint16_t reg, uint32_t *val);
+static bool tc358743_wr16_and_or(uint16_t reg, uint16_t mask, uint16_t val);
+```
+
+All return `true` on success, `false` on any I2C error. Values are little-endian on the wire (matches kernel driver's `i2c_wrreg`/`i2c_rdreg` via `cpu_to_le32`/`le32_to_cpu`). Register addresses go out big-endian (MSB first) — also matches kernel driver.
+
+**Sync mechanism:**
+
+Each helper runs synchronously from the caller's view:
+
+1. Clear module-scoped `xferDone` / `xferErr` flags.
+2. Issue `DRV_I2C_WriteTransferAdd` / `DRV_I2C_WriteReadTransferAdd`.
+3. Spin on `while (!xferDone && !xferErr)`.
+4. Return success/failure.
+
+A single shared transfer-event callback flips the flags. FLEXCOM TWI is interrupt-driven on SAM9X7, so the spin loop doesn't need to pump anything — the ISR fires and the flag flips.
+
+**Blocking implications:**
+
+Each helper blocks for the duration of its I2C transaction (~100-500 µs at 400 kHz depending on size). Phase 3's init sequence may do 50+ transactions plus an EDID load; total boot-time block is expected to be tens of ms. Legato's initial animation may show a brief pause at startup. Acceptable — init runs once at boot.
+
+If any Phase 3+ use case needs to issue I2C without blocking (e.g. runtime format change), we add an async variant then. YAGNI for now.
+
+**Refactor of Phase 1:**
+
+Replace the ~10-state machine with imperative code in `TC358743_Initialize`:
+
+```c
+open i2c
+register callback
+tc358743_wr16(SYSCTL, SRESET);
+delay_ms(1);
+tc358743_wr16(SYSCTL, 0);
+delay_ms(1);
+tc358743_rd16(CHIPID, &id);
+print
+```
+
+`TC358743_Tasks` becomes empty for now — reserved for Phase 4 runtime work (format-change polling).
+
+**Buffer sizing:**
+
+Small static buffer (8 bytes tx + 4 bytes rx) handles all Phase 2 needs — reg addr (2 bytes) + up to 4-byte data. Phase 3's EDID load needs a larger buffer; we'll add a dedicated bulk-write helper then (or grow `txBuf` with a `#define`).
+
+**File structure:**
+
+Stay monolithic (`tc358743.c` / `tc358743.h`). Split only when file grows past 300-400 lines — likely sometime in Phase 3 or 4.
 
 #### Phase 3 — Initialization sequence
 
@@ -225,6 +283,12 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — Phase 2 implemented
+
+Replaced Phase 1's ~10-state async machine with sync helpers + imperative probe. `tc358743.c` went from ~200 lines to ~180 with far less state. API matches the kernel driver naming convention (`tc358743_wr8/16/32`, `tc358743_rd8/16/32`, `tc358743_wr16_and_or`, and generic `tc358743_wr/rd`). Phase 1's observable behavior is unchanged — same DBGU output, same probe semantics. `TC358743_Tasks` is now empty, reserved for Phase 4 format-change polling.
+
+Ready for flash verification before starting Phase 3.
 
 ### 2026-05-01 — Phase 1 passes on hardware
 
