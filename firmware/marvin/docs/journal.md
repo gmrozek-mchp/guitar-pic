@@ -207,18 +207,74 @@ Small static buffer (8 bytes tx + 4 bytes rx) handles all Phase 2 needs — reg 
 
 Stay monolithic (`tc358743.c` / `tc358743.h`). Split only when file grows past 300-400 lines — likely sometime in Phase 3 or 4.
 
-#### Phase 3 — Initialization sequence
+#### Phase 3 — Initialization sequence ✅ PASSES ON HARDWARE (2026-05-01; EDID deferred to 3b)
 
-Port from Linux `tc358743_initial_setup()` and its callees:
+Port the minimal set of `tc358743_initial_setup()` + callees from the kernel driver to bring the chip from "responsive on I2C" (end of Phase 2) to "configured and awaiting HDMI source lock" (ready for Phase 4's stream-enable).
 
-- Software reset
-- `SYS_CTRL` clock muxing (depends on 27 MHz REFCLK)
-- HDMI PHY config
-- CSI-TX PLL + D-PHY timing (Linux driver computes from a `tc_data` struct — we hardcode for 2-lane 480p60)
-- EDID RAM load (copy the 256-byte blob from the Linux driver; advertises 1080p/720p/480p)
-- Enable HDMI input-format detection
+**Landed in this pass:** reset hold (IR/CEC), CTX/HDMI reset, wake, FIFOCTL, `set_ref_clk` (27 MHz), DDC_CTL delay, EDID_MODE=E-DDC, `set_hdmi_phy` (PHY enable, CTL1/2, BIAS, CSQ, AVM, HDMI_DET, HV_RST), VI_MODE (RGB/DVI), VOUT_SET2/3 (auto color mode), `set_pll` (PRD=4, FBD=88, FRS=0 for 594 Mbps/lane), `set_csi` (2 lanes, D-PHY timings, CSI_START, CSI_CONFW sequence), `set_csi_color_space_rgb888`.
 
-This is the point where "throwaway file" becomes a real module. Revisit integration question (sensor framework vs standalone) here.
+**Deferred to Phase 3b:** EDID blob load into EDID_RAM. Hand-constructing a valid 128-byte EDID with correct checksum is an error-prone step, and getting the init logic right is a separate concern. Without an EDID, the HDMI source (ElectronWarp) will likely see "no sink" on DDC and either refuse to output or fall back to a failsafe. Phase 3 flashed state will let us observe that and confirm the init side of things is correct.
+
+**Deferred to Phase 4:** HPD enable (`HPD_CTL`), `init_interrupts`, `enable_stream()`. HPD really belongs with EDID — the source re-reads EDID on HPD assertion, so we enable HPD after EDID is programmed.
+
+**Pass criteria for this commit:** build succeeds; DBGU shows each step succeeding with a final `SYS_STATUS=0xXX` readout. Exact `SYS_STATUS` bits depend on source state — without HPD asserted yet, `DDC5V` bit may read 1 (we'd detect source 5V) but TMDS/PHY lock bits will be 0. That's fine.
+
+**Target configuration (hardcoded, not parameterized):**
+
+| Parameter | Value | Source |
+|---|---|---|
+| REFCLK | 27 MHz | Waveshare v1/v2 on-board XTAL |
+| CSI lanes | 2 | marvin CSI_NUM_LANES and Waveshare v1/v2 |
+| PLL_PRD | 4 | `tc358743.c:2079` |
+| PLL_FBD | 88 | `tc358743.c:2100-2101` |
+| CSI bits/lane | 594 Mbps | `(27 MHz / 4) * 88`, well over 62.5 Mbps minimum |
+| FIFO_LEVEL | 374 | kernel default for 594 Mbps 2-lane |
+| CSI output format | RGB888 (MIPI DT 0x24) | marvin ISC expects RGB888 |
+
+**D-PHY timing counts for 594 Mbps** (from `tc358743.c:2113-2125`):
+`LINEINITCNT=0xE80`, `LPTXTIMECNT=0x003`, `TCLK_HEADERCNT=0x1403`, `TCLK_TRAILCNT=0x00`, `THS_HEADERCNT=0x0103`, `TWAKEUP=0x4882`, `TCLK_POSTCNT=0x008`, `THS_TRAILCNT=0x2`, `HSTXVREGCNT=0`.
+
+**Minimal init sequence (in order):**
+
+1. `tc358743_reset(MASK_CTXRST | MASK_HDMIRST)` — reset CSI-TX ctx + HDMI RX blocks (`tc358743.c:2-line helper`).
+2. `tc358743_sleep_mode(false)` — clear CONFCTL.SleepM so chip wakes.
+3. `wr16(FIFOCTL, 374)`.
+4. `set_ref_clk()` — `SYS_FREQ0/1`, `SYS_SYSCLK_IND`, PHY lock-detect counts, NCO_F0_MOD (for 27 MHz).
+5. `set_hdmi_phy()` — `PHY_EN`, `PHY_CTL1/2`, `PHY_BIAS`, `PHY_CSQ`, `AVM_CTL`, `HDMI_DET`, `HV_RST`.
+6. VI_MODE, VOUT_SET2/3 — RGB DVI detect + color-mode auto-detect.
+7. `set_pll()` — `PLLCTL0/1` with PRD/FBD, lock, enable.
+8. `set_csi()` — program all D-PHY timing counts, enable lanes 0/1 (CLW/D0W/D1W), `CSI_START`, `CSI_CONFW`.
+9. `set_csi_color_space(RGB888)` — `VOUT_SET2` (clear 422), `VI_REP` (color full RGB), `CONFCTL` (clear YCbCrFmt).
+10. Load EDID into EDID_RAM (0x8C00..), set `EDID_LEN1/LEN2`.
+11. Enable HPD via `HPD_CTL` so source sees a valid sink.
+12. `init_interrupts()` — clear all status registers (no IRQ wiring yet; we'll poll in Phase 4).
+
+Phase 3 stops at step 12 — no `enable_stream()` yet (that's Phase 4 after we confirm source lock).
+
+**EDID:** single 128-byte block, hand-constructed, declaring 640x480@60 (480p) as the only detailed timing, plus standard VESA timings. Sufficient for the Wii → ElectronWarp to see "480p sink" and emit 480p60. If source refuses or falls back, we expand EDID to 256 bytes / add 720p60.
+
+**Register definitions:** add only the ~30 registers and masks we actually use to `tc358743.c` as `#define`s. Not worth importing the kernel's 782-line `tc358743_regs.h` wholesale.
+
+**Explicitly skipped (matches Phase 3 scope cuts in the Agent's survey):**
+
+- CEC subsystem — firmware has no use for HDMI CEC.
+- Audio subsystem — we ignore HDMI audio entirely; no I²S out.
+- HDCP — source is a Wii, no content protection to bypass or enforce.
+- V4L2 DV timings framework — we hardcode 480p60.
+- Infoframe parsing — don't need AVI/SPD/ACP parsed out.
+- HPD delayed-work / debouncing — direct register write, no worker.
+- Interrupt handler — not wired yet (Phase 4 decision: poll vs wire INT GPIO).
+
+**Pass criteria for Phase 3:**
+
+- Build succeeds, flash boots.
+- DBGU prints a trace of each init step with success/fail.
+- No I2C errors during init.
+- After Phase 3 completes, `SYS_STATUS` reads a non-zero value (exact bits depend on whether HDMI source is connected and locked — but the register itself must be readable without error).
+
+**Where Phase 3 lives:**
+
+Monolithic — keep everything in `tc358743.c` / `tc358743.h`. File is currently ~180 lines; after Phase 3 it'll be ~500. Split only if Phase 4 pushes past 700 or so. The EDID blob is the natural first split candidate (own file / generated header).
 
 #### Phase 4 — Format detection & start CSI streaming
 
@@ -283,6 +339,39 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — Phase 3 passes on hardware
+
+Boot output:
+
+```
+TC358743: probe starting
+TC358743: present (chipid=0x0000)
+TC358743: init (2 lanes, 594 Mbps/lane, RGB888)
+TC358743: init complete; SYS_STATUS=0x00
+```
+
+All init steps succeed (no `init: X failed` message between the "init" and "init complete" lines). `SYS_STATUS=0x00` is consistent with "no HPD asserted, no EDID programmed" — nothing is expected to lock yet. Whether `DDC5V` eventually flips to 1 is partly up to the Waveshare's 5V-sense routing (version-dependent) and whether the source asserts +5V independent of HPD; we'll find out in Phase 4.
+
+### 2026-05-01 — Phase 3 implemented (EDID deferred to 3b)
+
+Ported `tc358743_initial_setup()` + callees from the kernel driver:
+
+- Reset + sleep + FIFOCTL + `set_ref_clk` (27 MHz constants)
+- DDC_CTL (100 ms 5V debounce), EDID_MODE = E-DDC
+- `set_hdmi_phy` (PHY_EN, CTL1/2, BIAS, CSQ=0x0A, AVM=45, HDMI_DET, HV_RST)
+- VI_MODE (RGB in DVI), VOUT_SET2 (auto color), VOUT_SET3 (ext count)
+- `set_pll` (PRD=4, FBD=88 → 594 Mbps/lane, FRS=0 since >500 MHz)
+- `set_csi` (disable D2/D3, program 9 D-PHY timing counts, HSTXVREGEN for C+D0+D1, CONTCLKMODE, STARTCNTRL, CSI_START, 4-step CSI_CONFW sequence for 2-lane HS mode)
+- `set_csi_color_space_rgb888` (clear SEL422 / 422FIL / YCBCRFMT, set RGB_FULL color select)
+
+Added `tc358743_wr8_and_or` helper missed in Phase 2 and a `delay_us` wrapper.
+
+EDID load deferred (Phase 3b) — needs a hand-constructed 128-byte EDID with correct byte-layout and checksum; separate concern from init correctness.
+
+HPD enable and `enable_stream` deferred to Phase 4.
+
+After `TC358743_Initialize`, firmware prints `SYS_STATUS=0xXX`. On hardware without HPD asserted by the source, `DDC5V` bit may set if source is providing 5V on HDMI; other bits (TMDS, PHY PLL, SYNC) will be 0 pending HPD + EDID.
 
 ### 2026-05-01 — Phase 2 implemented
 

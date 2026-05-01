@@ -8,10 +8,154 @@
 #include "definitions.h"
 
 #define TC358743_I2C_ADDR       0x0Fu
-#define TC358743_REG_CHIPID     0x0000u
-#define TC358743_REG_SYSCTL     0x0002u
-#define TC358743_SYSCTL_SRESET  0x0001u
-#define TC358743_RESET_HOLD_MS  1u
+
+#define REFCLK_HZ               27000000u
+#define CSI_LANES               2u
+#define PLL_PRD                 4u
+#define PLL_FBD                 88u
+#define CSI_BPS_PER_LANE        ((REFCLK_HZ / PLL_PRD) * PLL_FBD)
+#define FIFO_LEVEL              374u
+
+#define LINEINITCNT_VAL         0x00000E80u
+#define LPTXTIMECNT_VAL         0x00000003u
+#define TCLK_HEADERCNT_VAL      0x00001403u
+#define TCLK_TRAILCNT_VAL       0x00000000u
+#define THS_HEADERCNT_VAL       0x00000103u
+#define TWAKEUP_VAL             0x00004882u
+#define TCLK_POSTCNT_VAL        0x00000008u
+#define THS_TRAILCNT_VAL        0x00000002u
+#define HSTXVREGCNT_VAL         0x00000000u
+
+#define CHIPID                  0x0000u
+#define SYSCTL                  0x0002u
+#define CONFCTL                 0x0004u
+#define FIFOCTL                 0x0006u
+#define PLLCTL0                 0x0020u
+#define PLLCTL1                 0x0022u
+#define CECHCLK                 0x0028u
+#define CECLCLK                 0x002Au
+#define CLW_CNTRL               0x0140u
+#define D0W_CNTRL               0x0144u
+#define D1W_CNTRL               0x0148u
+#define D2W_CNTRL               0x014Cu
+#define D3W_CNTRL               0x0150u
+#define STARTCNTRL              0x0204u
+#define LINEINITCNT             0x0210u
+#define LPTXTIMECNT             0x0214u
+#define TCLK_HEADERCNT          0x0218u
+#define TCLK_TRAILCNT           0x021Cu
+#define THS_HEADERCNT           0x0220u
+#define TWAKEUP                 0x0224u
+#define TCLK_POSTCNT            0x0228u
+#define THS_TRAILCNT            0x022Cu
+#define HSTXVREGCNT             0x0230u
+#define HSTXVREGEN              0x0234u
+#define TXOPTIONCNTRL           0x0238u
+#define CSI_CONFW               0x0500u
+#define CSI_START               0x0518u
+#define SYS_STATUS              0x8520u
+#define PHY_CTL0                0x8531u
+#define PHY_CTL1                0x8532u
+#define PHY_CTL2                0x8533u
+#define PHY_EN                  0x8534u
+#define PHY_BIAS                0x8536u
+#define PHY_CSQ                 0x853Fu
+#define SYS_FREQ0               0x8540u
+#define SYS_FREQ1               0x8541u
+#define DDC_CTL                 0x8543u
+#define HPD_CTL                 0x8544u
+#define AVM_CTL                 0x8546u
+#define HDMI_DET                0x8552u
+#define VI_MODE                 0x8570u
+#define VOUT_SET2               0x8573u
+#define VOUT_SET3               0x8574u
+#define VI_REP                  0x8576u
+#define VI_MUTE                 0x857Fu
+#define FH_MIN0                 0x85AAu
+#define FH_MIN1                 0x85ABu
+#define FH_MAX0                 0x85ACu
+#define FH_MAX1                 0x85ADu
+#define HV_RST                  0x85AFu
+#define EDID_MODE               0x85C7u
+#define EDID_LEN1               0x85CAu
+#define EDID_LEN2               0x85CBu
+#define LOCKDET_REF0            0x8630u
+#define LOCKDET_REF1            0x8631u
+#define LOCKDET_REF2            0x8632u
+#define NCO_F0_MOD              0x8670u
+#define EDID_RAM                0x8C00u
+
+#define MASK_CTXRST             0x0200u
+#define MASK_HDMIRST            0x0100u
+#define MASK_SLEEP              0x0001u
+#define MASK_IRRST              0x0800u
+#define MASK_CECRST             0x0400u
+#define MASK_YCBCRFMT           0x00C0u
+#define MASK_VBUFEN             0x0001u
+#define MASK_ABUFEN             0x0002u
+#define MASK_PLL_PRD            0xF000u
+#define MASK_PLL_FBD            0x01FFu
+#define MASK_PLL_FRS            0x0C00u
+#define MASK_CKEN               0x0010u
+#define MASK_RESETB             0x0002u
+#define MASK_PLL_EN             0x0001u
+#define MASK_CLW_LANEDISABLE    0x00000001u
+#define MASK_D0W_LANEDISABLE    0x00000001u
+#define MASK_D1W_LANEDISABLE    0x00000001u
+#define MASK_D2W_LANEDISABLE    0x00000001u
+#define MASK_D3W_LANEDISABLE    0x00000001u
+#define MASK_CLM_HSTXVREGEN     0x0001u
+#define MASK_D0M_HSTXVREGEN     0x0002u
+#define MASK_D1M_HSTXVREGEN     0x0004u
+#define MASK_D2M_HSTXVREGEN     0x0008u
+#define MASK_D3M_HSTXVREGEN     0x0010u
+#define MASK_CONTCLKMODE        0x00000001u
+#define MASK_START              0x00000001u
+#define MASK_STRT               0x00000001u
+#define MASK_MODE_SET           0xA0000000u
+#define MASK_MODE_CLEAR         0xC0000000u
+#define MASK_ADDRESS_CSI_CONTROL        0x03000000u
+#define MASK_ADDRESS_CSI_INT_ENA        0x06000000u
+#define MASK_ADDRESS_CSI_ERR_INTENA     0x14000000u
+#define MASK_ADDRESS_CSI_ERR_HALT       0x15000000u
+#define MASK_CSI_MODE           0x8000u
+#define MASK_TXHSMD             0x0080u
+#define MASK_NOL_2              0x0002u
+#define MASK_INTER              0x00000004u
+#define MASK_INER               0x00000200u
+#define MASK_WCER               0x00000100u
+#define MASK_QUNK               0x00000010u
+#define MASK_TXBRK              0x00000002u
+#define MASK_PHY_SYSCLK_IND     0x02u
+#define MASK_NCO_F0_MOD         0x03u
+#define MASK_NCO_F0_MOD_27MHZ   0x01u
+#define MASK_ENABLE_PHY         0x01u
+#define MASK_CSQ_CNT            0x0Fu
+#define MASK_PHY_AUTO_RST1      0xF0u
+#define MASK_FREQ_RANGE_MODE    0x0Fu
+#define MASK_PHY_AUTO_RSTn      0x07u
+#define MASK_HDMI_DET_V         0x30u
+#define MASK_H_PI_RST           0x20u
+#define MASK_V_PI_RST           0x10u
+#define MASK_DDC5V_MODE         0x03u
+#define MASK_EDID_MODE          0x03u
+#define MASK_EDID_MODE_E_DDC    0x02u
+#define MASK_RGB_DVI            0x08u
+#define MASK_SEL422             0x80u
+#define MASK_VOUT_422FIL_100    0x40u
+#define MASK_VOUT_COLOR_SEL     0xE0u
+#define MASK_VOUT_COLOR_RGB_FULL 0x00u
+#define MASK_VOUTCOLORMODE      0x03u
+#define MASK_VOUTCOLORMODE_AUTO 0x01u
+#define MASK_VOUT_EXTCNT        0x08u
+#define MASK_AUTO_MUTE          0xC0u
+#define MASK_VI_MUTE            0x10u
+
+#define DDC5V_DELAY_100_MS      2u
+
+#define SYSCTL_SRESET           0x0001u
+#define RESET_HOLD_MS           1u
+#define PLL_SETTLE_US           10u
 
 #define TC358743_TX_BUF_SIZE    8u
 #define TC358743_RX_BUF_SIZE    4u
@@ -28,20 +172,13 @@ static void TransferEventHandler(DRV_I2C_TRANSFER_EVENT event,
 {
     (void)transferHandle;
     (void)context;
-
-    if (event == DRV_I2C_TRANSFER_EVENT_COMPLETE)
-    {
-        xferDone = true;
-    }
-    else
-    {
-        xferErr = true;
-    }
+    if (event == DRV_I2C_TRANSFER_EVENT_COMPLETE) { xferDone = true; }
+    else { xferErr = true; }
 }
 
 static bool wait_xfer(void)
 {
-    while (!xferDone && !xferErr) { /* ISR flips the flags */ }
+    while (!xferDone && !xferErr) { }
     return xferDone;
 }
 
@@ -49,6 +186,14 @@ static bool delay_ms(uint32_t ms)
 {
     SYS_TIME_HANDLE h = SYS_TIME_HANDLE_INVALID;
     if (SYS_TIME_DelayMS(ms, &h) != SYS_TIME_SUCCESS) { return false; }
+    while (!SYS_TIME_DelayIsComplete(h)) { }
+    return true;
+}
+
+static bool delay_us(uint32_t us)
+{
+    SYS_TIME_HANDLE h = SYS_TIME_HANDLE_INVALID;
+    if (SYS_TIME_DelayUS(us, &h) != SYS_TIME_SUCCESS) { return false; }
     while (!SYS_TIME_DelayIsComplete(h)) { }
     return true;
 }
@@ -67,7 +212,6 @@ static bool tc358743_wr(uint16_t reg, const uint8_t *vals, size_t n)
     xferErr  = false;
     DRV_I2C_WriteTransferAdd(i2cHandle, TC358743_I2C_ADDR, txBuf, n + 2u, &th);
     if (th == DRV_I2C_TRANSFER_HANDLE_INVALID) { return false; }
-
     return wait_xfer();
 }
 
@@ -85,7 +229,6 @@ static bool tc358743_rd(uint16_t reg, uint8_t *vals, size_t n)
     DRV_I2C_WriteReadTransferAdd(i2cHandle, TC358743_I2C_ADDR,
                                  txBuf, 2u, rxBuf, n, &th);
     if (th == DRV_I2C_TRANSFER_HANDLE_INVALID) { return false; }
-
     if (!wait_xfer()) { return false; }
 
     for (size_t i = 0; i < n; i++) { vals[i] = rxBuf[i]; }
@@ -127,15 +270,11 @@ static bool tc358743_rd16(uint16_t reg, uint16_t *val)
     return true;
 }
 
-static bool tc358743_rd32(uint16_t reg, uint32_t *val)
+static bool tc358743_wr8_and_or(uint16_t reg, uint8_t mask, uint8_t val)
 {
-    uint8_t b[4];
-    if (!tc358743_rd(reg, b, 4u)) { return false; }
-    *val = (uint32_t)b[0]
-         | ((uint32_t)b[1] << 8)
-         | ((uint32_t)b[2] << 16)
-         | ((uint32_t)b[3] << 24);
-    return true;
+    uint8_t cur;
+    if (!tc358743_rd8(reg, &cur)) { return false; }
+    return tc358743_wr8(reg, (uint8_t)((cur & mask) | val));
 }
 
 static bool tc358743_wr16_and_or(uint16_t reg, uint16_t mask, uint16_t val)
@@ -145,9 +284,261 @@ static bool tc358743_wr16_and_or(uint16_t reg, uint16_t mask, uint16_t val)
     return tc358743_wr16(reg, (uint16_t)((cur & mask) | val));
 }
 
+static bool tc358743_reset(uint16_t mask)
+{
+    uint16_t sysctl;
+    if (!tc358743_rd16(SYSCTL, &sysctl)) { return false; }
+    if (!tc358743_wr16(SYSCTL, (uint16_t)(sysctl | mask))) { return false; }
+    return tc358743_wr16(SYSCTL, (uint16_t)(sysctl & ~mask));
+}
+
+static bool tc358743_sleep_mode(bool enable)
+{
+    return tc358743_wr16_and_or(SYSCTL, (uint16_t)~MASK_SLEEP,
+                                enable ? MASK_SLEEP : 0u);
+}
+
+static bool tc358743_set_ref_clk(void)
+{
+    uint32_t sys_freq      = REFCLK_HZ / 10000u;
+    uint32_t fh_min        = REFCLK_HZ / 100000u;
+    uint32_t fh_max        = (fh_min * 66u) / 10u;
+    uint32_t lockdet_ref   = REFCLK_HZ / 100u;
+    uint32_t cec_freq      = (656u * sys_freq) / 4200u;
+
+    return tc358743_wr8(SYS_FREQ0,    (uint8_t)(sys_freq & 0xFFu))
+        && tc358743_wr8(SYS_FREQ1,    (uint8_t)((sys_freq >> 8) & 0xFFu))
+        && tc358743_wr8_and_or(PHY_CTL0, (uint8_t)~MASK_PHY_SYSCLK_IND, 0u)
+        && tc358743_wr8(FH_MIN0,      (uint8_t)(fh_min & 0xFFu))
+        && tc358743_wr8(FH_MIN1,      (uint8_t)((fh_min >> 8) & 0xFFu))
+        && tc358743_wr8(FH_MAX0,      (uint8_t)(fh_max & 0xFFu))
+        && tc358743_wr8(FH_MAX1,      (uint8_t)((fh_max >> 8) & 0xFFu))
+        && tc358743_wr8(LOCKDET_REF0, (uint8_t)(lockdet_ref & 0xFFu))
+        && tc358743_wr8(LOCKDET_REF1, (uint8_t)((lockdet_ref >> 8) & 0xFFu))
+        && tc358743_wr8(LOCKDET_REF2, (uint8_t)((lockdet_ref >> 16) & 0x0Fu))
+        && tc358743_wr8_and_or(NCO_F0_MOD, (uint8_t)~MASK_NCO_F0_MOD,
+                               MASK_NCO_F0_MOD_27MHZ)
+        && tc358743_wr16(CECHCLK, (uint16_t)cec_freq)
+        && tc358743_wr16(CECLCLK, (uint16_t)cec_freq);
+}
+
+static bool tc358743_set_hdmi_phy(void)
+{
+    uint8_t phy_ctl1 = (uint8_t)(((1600u / 200u) << 4) & MASK_PHY_AUTO_RST1)
+                     | (uint8_t)((1u - 1u) & MASK_FREQ_RANGE_MODE);
+
+    return tc358743_wr8_and_or(PHY_EN, (uint8_t)~MASK_ENABLE_PHY, 0u)
+        && tc358743_wr8(PHY_CTL1, phy_ctl1)
+        && tc358743_wr8_and_or(PHY_CTL2, (uint8_t)~MASK_PHY_AUTO_RSTn, 0u)
+        && tc358743_wr8(PHY_BIAS, 0x40u)
+        && tc358743_wr8(PHY_CSQ, (uint8_t)(0x0Au & MASK_CSQ_CNT))
+        && tc358743_wr8(AVM_CTL, 45u)
+        && tc358743_wr8_and_or(HDMI_DET, (uint8_t)~MASK_HDMI_DET_V, 0u)
+        && tc358743_wr8_and_or(HV_RST,
+                               (uint8_t)~(MASK_H_PI_RST | MASK_V_PI_RST), 0u)
+        && tc358743_wr8_and_or(PHY_EN, (uint8_t)~MASK_ENABLE_PHY,
+                               MASK_ENABLE_PHY);
+}
+
+static bool tc358743_set_pll(void)
+{
+    uint16_t pllctl0_new = (uint16_t)(((PLL_PRD - 1u) << 12) & MASK_PLL_PRD)
+                         | (uint16_t)((PLL_FBD - 1u) & MASK_PLL_FBD);
+    uint32_t hsck        = CSI_BPS_PER_LANE;
+    uint16_t pll_frs;
+
+    if      (hsck > 500000000u) { pll_frs = 0x0u; }
+    else if (hsck > 250000000u) { pll_frs = 0x1u; }
+    else if (hsck > 125000000u) { pll_frs = 0x2u; }
+    else                        { pll_frs = 0x3u; }
+
+    if (!tc358743_sleep_mode(true)) { return false; }
+    if (!tc358743_wr16(PLLCTL0, pllctl0_new)) { return false; }
+    if (!tc358743_wr16_and_or(PLLCTL1,
+                              (uint16_t)~(MASK_PLL_FRS | MASK_RESETB | MASK_PLL_EN),
+                              (uint16_t)(((pll_frs << 10) & MASK_PLL_FRS)
+                                         | MASK_RESETB | MASK_PLL_EN)))
+    {
+        return false;
+    }
+    if (!delay_us(PLL_SETTLE_US)) { return false; }
+    if (!tc358743_wr16_and_or(PLLCTL1, (uint16_t)~MASK_CKEN, MASK_CKEN))
+    {
+        return false;
+    }
+    return tc358743_sleep_mode(false);
+}
+
+static bool tc358743_set_csi(void)
+{
+    if (!tc358743_reset(MASK_CTXRST)) { return false; }
+
+    if (!tc358743_wr32(D2W_CNTRL, MASK_D2W_LANEDISABLE)) { return false; }
+    if (!tc358743_wr32(D3W_CNTRL, MASK_D3W_LANEDISABLE)) { return false; }
+
+    if (!tc358743_wr32(LINEINITCNT,    LINEINITCNT_VAL))    { return false; }
+    if (!tc358743_wr32(LPTXTIMECNT,    LPTXTIMECNT_VAL))    { return false; }
+    if (!tc358743_wr32(TCLK_HEADERCNT, TCLK_HEADERCNT_VAL)) { return false; }
+    if (!tc358743_wr32(TCLK_TRAILCNT,  TCLK_TRAILCNT_VAL))  { return false; }
+    if (!tc358743_wr32(THS_HEADERCNT,  THS_HEADERCNT_VAL))  { return false; }
+    if (!tc358743_wr32(TWAKEUP,        TWAKEUP_VAL))        { return false; }
+    if (!tc358743_wr32(TCLK_POSTCNT,   TCLK_POSTCNT_VAL))   { return false; }
+    if (!tc358743_wr32(THS_TRAILCNT,   THS_TRAILCNT_VAL))   { return false; }
+    if (!tc358743_wr32(HSTXVREGCNT,    HSTXVREGCNT_VAL))    { return false; }
+
+    if (!tc358743_wr32(HSTXVREGEN,
+                       MASK_CLM_HSTXVREGEN
+                       | MASK_D0M_HSTXVREGEN
+                       | MASK_D1M_HSTXVREGEN))
+    {
+        return false;
+    }
+
+    if (!tc358743_wr32(TXOPTIONCNTRL, MASK_CONTCLKMODE)) { return false; }
+    if (!tc358743_wr32(STARTCNTRL,    MASK_START))       { return false; }
+    if (!tc358743_wr32(CSI_START,     MASK_STRT))        { return false; }
+
+    if (!tc358743_wr32(CSI_CONFW,
+                       MASK_MODE_SET
+                       | MASK_ADDRESS_CSI_CONTROL
+                       | MASK_CSI_MODE
+                       | MASK_TXHSMD
+                       | MASK_NOL_2))
+    {
+        return false;
+    }
+
+    if (!tc358743_wr32(CSI_CONFW,
+                       MASK_MODE_SET
+                       | MASK_ADDRESS_CSI_ERR_INTENA
+                       | MASK_TXBRK | MASK_QUNK | MASK_WCER | MASK_INER))
+    {
+        return false;
+    }
+
+    if (!tc358743_wr32(CSI_CONFW,
+                       MASK_MODE_CLEAR
+                       | MASK_ADDRESS_CSI_ERR_HALT
+                       | MASK_TXBRK | MASK_QUNK))
+    {
+        return false;
+    }
+
+    return tc358743_wr32(CSI_CONFW,
+                         MASK_MODE_SET
+                         | MASK_ADDRESS_CSI_INT_ENA
+                         | MASK_INTER);
+}
+
+static bool tc358743_set_csi_color_space_rgb888(void)
+{
+    return tc358743_wr8_and_or(VOUT_SET2,
+                               (uint8_t)~(MASK_SEL422 | MASK_VOUT_422FIL_100),
+                               0u)
+        && tc358743_wr8_and_or(VI_REP,
+                               (uint8_t)~MASK_VOUT_COLOR_SEL,
+                               MASK_VOUT_COLOR_RGB_FULL)
+        && tc358743_wr16_and_or(CONFCTL, (uint16_t)~MASK_YCBCRFMT, 0u);
+}
+
+static bool tc358743_do_init(void)
+{
+    if (!tc358743_wr16_and_or(SYSCTL,
+                              (uint16_t)~(MASK_IRRST | MASK_CECRST),
+                              (uint16_t)(MASK_IRRST | MASK_CECRST)))
+    {
+        printf("TC358743: init: IR/CEC reset hold failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_reset(MASK_CTXRST | MASK_HDMIRST))
+    {
+        printf("TC358743: init: CTX/HDMI reset failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_sleep_mode(false))
+    {
+        printf("TC358743: init: sleep-mode-off failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_wr16(FIFOCTL, FIFO_LEVEL))
+    {
+        printf("TC358743: init: FIFOCTL failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_set_ref_clk())
+    {
+        printf("TC358743: init: set_ref_clk failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_wr8_and_or(DDC_CTL, (uint8_t)~MASK_DDC5V_MODE,
+                             DDC5V_DELAY_100_MS))
+    {
+        printf("TC358743: init: DDC_CTL failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_wr8_and_or(EDID_MODE, (uint8_t)~MASK_EDID_MODE,
+                             MASK_EDID_MODE_E_DDC))
+    {
+        printf("TC358743: init: EDID_MODE failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_set_hdmi_phy())
+    {
+        printf("TC358743: init: set_hdmi_phy failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_wr8_and_or(VI_MODE, (uint8_t)~MASK_RGB_DVI, 0u))
+    {
+        printf("TC358743: init: VI_MODE failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_wr8_and_or(VOUT_SET2, (uint8_t)~MASK_VOUTCOLORMODE,
+                             MASK_VOUTCOLORMODE_AUTO))
+    {
+        printf("TC358743: init: VOUT_SET2 failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_wr8(VOUT_SET3, MASK_VOUT_EXTCNT))
+    {
+        printf("TC358743: init: VOUT_SET3 failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_set_pll())
+    {
+        printf("TC358743: init: set_pll failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_set_csi())
+    {
+        printf("TC358743: init: set_csi failed\r\n");
+        return false;
+    }
+
+    if (!tc358743_set_csi_color_space_rgb888())
+    {
+        printf("TC358743: init: set_csi_color_space failed\r\n");
+        return false;
+    }
+
+    return true;
+}
+
 void TC358743_Initialize(void)
 {
     uint16_t chipid;
+    uint8_t  sys_status;
 
     i2cHandle = DRV_I2C_Open(DRV_I2C_INDEX_0, DRV_IO_INTENT_READWRITE);
     if (i2cHandle == DRV_HANDLE_INVALID)
@@ -159,29 +550,44 @@ void TC358743_Initialize(void)
 
     printf("TC358743: probe starting\r\n");
 
-    if (!tc358743_wr16(TC358743_REG_SYSCTL, TC358743_SYSCTL_SRESET)
-        || !delay_ms(TC358743_RESET_HOLD_MS)
-        || !tc358743_wr16(TC358743_REG_SYSCTL, 0x0000u)
-        || !delay_ms(TC358743_RESET_HOLD_MS))
+    if (!tc358743_wr16(SYSCTL, SYSCTL_SRESET)
+        || !delay_ms(RESET_HOLD_MS)
+        || !tc358743_wr16(SYSCTL, 0x0000u)
+        || !delay_ms(RESET_HOLD_MS))
     {
         printf("TC358743: software reset failed\r\n");
         return;
     }
 
-    if (!tc358743_rd16(TC358743_REG_CHIPID, &chipid))
+    if (!tc358743_rd16(CHIPID, &chipid))
     {
         printf("TC358743: CHIPID read failed\r\n");
         return;
     }
 
-    if ((chipid & 0xFF00u) == 0x0000u)
-    {
-        printf("TC358743: present (chipid=0x%04X)\r\n", chipid);
-    }
-    else
+    if ((chipid & 0xFF00u) != 0x0000u)
     {
         printf("TC358743: unexpected chipid=0x%04X\r\n", chipid);
+        return;
     }
+
+    printf("TC358743: present (chipid=0x%04X)\r\n", chipid);
+    printf("TC358743: init (2 lanes, %u Mbps/lane, RGB888)\r\n",
+           (unsigned)(CSI_BPS_PER_LANE / 1000000u));
+
+    if (!tc358743_do_init())
+    {
+        printf("TC358743: init aborted\r\n");
+        return;
+    }
+
+    if (!tc358743_rd8(SYS_STATUS, &sys_status))
+    {
+        printf("TC358743: init complete; SYS_STATUS read failed\r\n");
+        return;
+    }
+
+    printf("TC358743: init complete; SYS_STATUS=0x%02X\r\n", sys_status);
 }
 
 void TC358743_Tasks(void)
