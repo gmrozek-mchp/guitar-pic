@@ -55,17 +55,16 @@
 #include "peripheral/pio/plib_pio.h"
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
-#include "vision/libcamera/camera.h"
 #include "peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h"
 #include "peripheral/tc/plib_tc0.h"
-#include "driver/i2c/drv_i2c.h"
 #include "system/time/sys_time.h"
+#include "driver/i2c/drv_i2c.h"
 #include "system/input/sys_input.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
 #include "gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h"
 #include "gfx/driver/processor/gfx2d/drv_gfx2d.h"
-#include "peripheral/dbgu/plib_dbgu.h"
 #include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
+#include "peripheral/dbgu/plib_dbgu.h"
 #include "system/int/sys_int.h"
 #include "system/cache/sys_cache.h"
 #include "osal/osal.h"
@@ -203,8 +202,6 @@ typedef struct
 {
     /* I2C0 Driver Object */
     SYS_MODULE_OBJ drvI2C0;
-
-	SYS_MODULE_OBJ devCamera;
 
     SYS_MODULE_OBJ  sysTime;
 

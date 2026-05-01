@@ -102,12 +102,6 @@ extern "C" {
 #define DRV_I2C_CLOCK_SPEED_IDX0              400000
 
 
-/*** libcamera Configuration ***/
-#define CAMERA_ENABLE_AWB_ALGO	false
-#define CAMERA_ENABLE_DEBUG	1
-
-
-
 /*** ISC Image Sensor Configuration ***/
 #define ISC_INPUT_FORMAT_TYPE			DRV_IMAGE_SENSOR_RGB
 #define ISC_INPUT_BIT_WIDTH				DRV_IMAGE_SENSOR_8_BIT
@@ -171,10 +165,6 @@ extern "C" {
 
 
 
-/*** Image Sensor Driver Configuration ***/
-#define DRV_IMAGE_SENSOR_I2C_MODULE_INDEX		0
-
-
 /*** CSI2DC Driver Configuration ***/
 #define CSI2DC_BUS_TYPE		CSI2DC_BUS_CSI2_DPHY
 #define CSI2DC_VIDEO_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
@@ -188,13 +178,6 @@ extern "C" {
 #define CSI2DC_ENABLE_DATA_PIPE		false
 #define CSI2DC_DATA_PIPE_ENABLE_DMA	false
 
-
-
-/*** Image Sensor Configuration ***/
-#define IMAGE_SENSOR_NAME					"AutoDectect"
-#define IMAGE_SENSOR_OUTPUT_RESOLUTION		DRV_IMAGE_SENSOR_WVGA
-#define IMAGE_SENSOR_OUTPUT_FORMAT			DRV_IMAGE_SENSOR_RGB
-#define IMAGE_SENSOR_OUTPUT_BUS_WIDTH		DRV_IMAGE_SENSOR_8_BIT
 
 
 

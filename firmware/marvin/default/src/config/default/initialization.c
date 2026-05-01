@@ -136,39 +136,6 @@ static const DRV_I2C_INIT drvI2C0InitData =
 };
 // </editor-fold>
 
-const CAMERA_INIT drvCAMERAInitData =
-{
-    .imageSensorName               = IMAGE_SENSOR_NAME,
-    .imageSensorResolution         = IMAGE_SENSOR_OUTPUT_RESOLUTION,
-    .imageSensorOutputFormat       = IMAGE_SENSOR_OUTPUT_FORMAT,
-    .imageSensorOutputBitWidth     = IMAGE_SENSOR_OUTPUT_BUS_WIDTH,
-    .iscInputFormat                = ISC_INPUT_FORMAT_TYPE,
-    .iscInputBits                  = ISC_INPUT_BIT_WIDTH,
-    .iscOutputFormat               = ISC_OUTPUT_FORMAT_TYPE,
-    .iscOutputLayout               = ISC_OUTPUT_LAYOUT_TYPE,
-    .iscBayerPattern               = ISC_BAYER_PATTERN_TYPE,
-    .iscEnableDPC		   = ISC_ENABLE_DPC,
-    .iscEnableGDC		   = ISC_ENABLE_GDC,
-    .iscEnableBLC		   = ISC_ENABLE_BLC,	
-    .iscEnableGamma                = ISC_ENABLE_GAMMA,
-    .iscEnableWhiteBalance         = ISC_ENABLE_WHITE_BALANCE,
-    .iscEnableHistogram            = ISC_ENABLE_HISTOGRAM,
-    .iscEnableMIPI                 = ISC_ENABLE_MIPI_INTERFACE,
-    .iscEnableVideoMode            = ISC_ENABLE_VIDEO_MODE,
-    .iscEnableBightnessAndContrast = ISC_ENABLE_BRIGHTNESS_CONTRAST,
-    .iscEnableProgressiveMode      = ISC_ENABLE_PROGRESSIVE_MODE,
-    .iscEnableScaling              = ISC_ENABLE_SCALING,
-    .iscScaleImageWidth            = ISC_SCALE_OUTPUT_WIDTH,
-    .iscScaleImageHeight           = ISC_SCALE_OUTPUT_HEIGHT,
-#if ISC_ENABLE_MIPI_INTERFACE	
-    .csiDataFormat                 = CSI_DATA_FORMAT_TYPE,
-#endif	
-    .drvI2CIndex                   = DRV_IMAGE_SENSOR_I2C_MODULE_INDEX,
-	.cameraEnableAWBAlgo		= CAMERA_ENABLE_AWB_ALGO,
-};
-
-// </editor-fold>
-
 
 
 
@@ -347,8 +314,8 @@ void SYS_Initialize ( void* data )
     
     XLCDC_Initialize();
 
-    DBGU_Initialize();
 
+    DBGU_Initialize();
 
 
     /* MISRAC 2023 deviation block start */
@@ -358,10 +325,6 @@ void SYS_Initialize ( void* data )
 
     /* Initialize I2C0 Driver Instance */
     sysObj.drvI2C0 = DRV_I2C_Initialize(DRV_I2C_INDEX_0, (SYS_MODULE_INIT *)&drvI2C0InitData);
-
-
-	sysObj.devCamera = CAMERA_Initialize((SYS_MODULE_INIT *)&drvCAMERAInitData);
-
 
     DRV_XLCDC_Initialize();
 

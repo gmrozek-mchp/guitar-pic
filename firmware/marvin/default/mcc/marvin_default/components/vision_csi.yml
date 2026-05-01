@@ -18,24 +18,6 @@ data:
     children:
     - children:
       - attributes:
-          id: Data_Interface
-        children:
-        - children:
-          - attributes:
-              id: targetComponentID
-            children:
-            - type: Value
-              value: vision_Camera
-            type: String
-          - attributes:
-              id: targetAttachmentID
-            children:
-            - type: Value
-              value: Data_Interface
-            type: String
-          type: Attributes
-        type: DirectDependency
-      - attributes:
           id: vision_driver_csi
         children:
         - children:

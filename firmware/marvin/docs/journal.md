@@ -57,9 +57,11 @@ Status of original hardware items:
 
 Nothing blocking Phase 1. I2C path is unambiguous: FLEXCOM6 on PA24/PA25 → J29 pins 21/20 → 22→15 adapter → Waveshare CAM_I²C → TC358743 at `0x0f`.
 
-#### Phase 1 — I2C probe & chip ID
+#### Phase 1 — I2C probe & chip ID ✅ COMPLETE (2026-05-01)
 
 Smallest code that proves I2C works and the chip is present.
+
+**Result:** DBGU reports `TC358743: present (chipid=0x0000)` on every boot — TC358743 is on the bus at `0x0f`, ACKs our transactions, accepts the software reset, and returns a clean CHIPID read. Full I2C path validated end-to-end: FLEXCOM6 → PA24/PA25 → J29 → 22→15 adapter → Waveshare → TC358743.
 
 **File layout (throwaway-friendly):**
 
@@ -199,6 +201,11 @@ This is the point where "throwaway file" becomes a real module. Revisit integrat
 | 2026-05-01 | J29 (22-pin MIPI) pinout confirmed; PC19=pin 17, PC15=pin 18 (not 5/6) | Per SAM9X75-Curiosity User Guide §3.4.10 (queried via Microchip MCP). Pins 5/6 are MIPI_D1_N/P — CSI data lane 1 diff pairs, not GPIOs. Correct GPIO pins for RESET/INT are pin 17 (PC19, `MIPI_CSI_GPIO0`) and pin 18 (PC15, `MIPI_CSI_GPIO1`). I2C on pins 20 (PA25, `CAM_I²C_CLK`) and 21 (PA24, `CAM_I²C_DATA`) confirmed to match marvin's FLEXCOM6 pin assignment (`pin_configurations.csv:85-86`). |
 | 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
 | 2026-05-01 | Delays use Harmony's `SYS_TIME` service (non-blocking shape) | Already initialized in `SYS_Initialize`; existing marvin code (`drv_isc.c`, `plib_isc.c`) uses it with `SYS_TIME_DelayUS/MS` + `SYS_TIME_DelayIsComplete`. Non-blocking pattern inside our state machine keeps `APP_Tasks()` (and Legato) from stalling during reset hold times, and scales naturally into Phase 3's longer init sequence. |
+| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
 
 ---
 
@@ -206,7 +213,6 @@ This is the point where "throwaway file" becomes a real module. Revisit integrat
 
 _(Questions we haven't answered yet. Move to decision log with rationale once resolved.)_
 
-- **Bayer-pipeline bypass for RGB input.** Marvin's MCC config leaves ISC Bayer blocks enabled — `ISC_ENABLE_DPC`, `ISC_ENABLE_GDC`, `ISC_ENABLE_WHITE_BALANCE`, `ISC_ENABLE_GAMMA`, `ISC_BAYER_PATTERN_TYPE = ISC_CFA_CFG_BAYCFG_RGRG_Val` (see `configuration.h:117-143`). These apply to Bayer input only and are inconsistent with the `DRV_IMAGE_SENSOR_RGB` input format. Figure out during Phase 5 whether `drv_isc.c` already routes around them when `inputFormat = RGB`, or whether we need to disable them in MCC / config.
 - CSI-TX minimum bitrate at 480p60. Linux driver's `tc_data` CSI-TX PLL config for 480p60 is the authoritative reference — pull those numbers during Phase 3 and check they're within SAM9X75 ISC RX tolerance.
 
 ---
@@ -219,6 +225,42 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — Phase 1 passes on hardware
+
+With the shim header and `CAMERA_ENABLE_DEBUG=0` in place, build succeeds and first boot produces:
+
+```
+TC358743: probe starting
+TC358743: present (chipid=0x0000)
+```
+
+`chipid=0x0000` satisfies the kernel driver's probe rule (high byte must be zero). I2C path from SAM9X75 FLEXCOM6 → J29 pins 20/21 → 22→15 adapter → Waveshare → TC358743 is fully validated. Software reset over I2C confirmed working. Non-blocking state machine and `SYS_TIME` delays behave as designed.
+
+Phase 1 is closed. Ready to start on Phase 2 (register access helpers) when we come back.
+
+### 2026-05-01 — Post-regen build break: ISC depends on image-sensor enums
+
+After MCC regen removed libcamera + image-sensor driver + vision camera library, the build breaks because:
+
+- `drv_isc.c:15` still `#include`s the deleted `drv_image_sensor.h`.
+- `drv_isc.c:246, 257, 363-365` use `DRV_IMAGE_SENSOR_*` enum values.
+- `configuration.h:106-107` uses `DRV_IMAGE_SENSOR_RGB` and `DRV_IMAGE_SENSOR_8_BIT`.
+
+MCC's vision ISC component carried a dependency on the image-sensor driver's types without providing them itself when image_sensor is removed. Not something we can fix in MCC.
+
+**Fix applied:** minimal shim `vision/drivers/image_sensor/drv_image_sensor.h` containing only the enum declarations used, with numeric values preserved. Since MCC no longer knows about the image_sensor component, it won't regenerate over this path.
+
+**Also confirmed during this investigation:** `drv_isc.c:363-365` auto-bypasses the Bayer blocks when `inputFormat == DRV_IMAGE_SENSOR_RGB`, so one of our earlier open questions is now answered without needing config changes.
+
+### 2026-05-01 — Phase 1 first flash: I2C handle conflict; libcamera removal decided
+
+First flash revealed two issues:
+
+1. **I2C open conflict.** MCC-configured libcamera (`drv_image_sensor.c:343`) opens `DRV_I2C_INDEX_0` with `DRV_IO_INTENT_READWRITE` during `SYS_Initialize`, before our `APP_Initialize` runs. Our `DRV_IO_INTENT_EXCLUSIVE` open then fails because Harmony's I2C driver rejects `EXCLUSIVE` when any other client is already attached. **Fix applied:** changed `tc358743.c` to use `DRV_IO_INTENT_READWRITE`. The driver's `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already allows two simultaneous clients, so coexistence is fine.
+2. **Libcamera is running and noisy.** `initialization.c:363` calls `CAMERA_Initialize()` which probes IMX219/OV5640/OV2640/OV5647 on the bus, fails (no such sensor present), and logs "`Image Sensor probe failed.`", "`Camera Open Error`". Beyond console noise, libcamera also configures ISC/CSI/CSI2DC for its own expected pipeline — this would conflict with Phase 3 when we need to drive those blocks from TC358743 settings.
+
+**Decision:** Greg will remove Camera Module, Image Sensor Driver, and Vision Camera Library from MCC and regenerate. Keeping CSI / ISC / CSI2DC low-level drivers since we'll drive them directly from our TC358743 module in later phases. After regen, I'll verify the new config still has I2C, CSI, ISC, CSI2DC available and our `tc358743.c` still builds.
 
 ### 2026-05-01 — Phase 1 implemented (pending hardware verification)
 

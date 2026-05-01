@@ -35,24 +35,6 @@ data:
             type: String
           type: Attributes
         type: DirectDependency
-      - attributes:
-          id: vision_driver_isc
-        children:
-        - children:
-          - attributes:
-              id: targetComponentID
-            children:
-            - type: Value
-              value: vision
-            type: String
-          - attributes:
-              id: targetAttachmentID
-            children:
-            - type: Value
-              value: vision_driver_isc
-            type: String
-          type: Attributes
-        type: DirectCapability
       type: Attachments
     type: vision_isc
   elementPosition:

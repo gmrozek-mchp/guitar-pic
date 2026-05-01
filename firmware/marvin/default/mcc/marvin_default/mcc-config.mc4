@@ -22,9 +22,6 @@ modules:
 - sys_input
 - sys_time
 - tc0
-- vision
-- vision_Camera
-- vision_ImageSensor
 - vision_csi
 - vision_csi2dc
 - vision_isc
@@ -34,13 +31,13 @@ generatedFileHashHistoryMap:
 - file: ../src/app.h
   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
 - file: ../src/config/default/configuration.h
-  hash: 44274597441a47709942a7ec833ce3d4609c9417ae252dcfb090dfb4c315eae8
+  hash: 5fbd3f6484b529556406c636c322c5291fb8f2a77efb97a31a929388badc380f
 - file: ../src/config/default/cstartup.S
   hash: bab52b245ee3ee78ff26156c06ac67761ea78039030859fa772ece111fd5dab3
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 67ba395d5d9c18bacd43b2bf6bef630240363eb8f8c51c64cd01051fab4dcc1f
+  hash: 1c25a3b400b624a69c82621e0e7d76bf16d4e169daeb52d95509099183ab538a
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -163,32 +160,6 @@ generatedFileHashHistoryMap:
   hash: 87a3fd9f6b110e0451f9315b1d967825c913fe92546ca0fb11cadf83a32dc82e
 - file: ../src/config/default/gfx/legato/font/legato_rasterfont_stream.c
   hash: 211449061e65ea18d22f4971dfa6375dc4f0a9f74dee474465b6c9b4c3b98996
-- file: ../src/config/default/gfx/legato/generated/font/le_gen_fonts.c
-  hash: 46f1500d35be7d335c1ed6942aa3d570d7ac7446047fec34c2f3873349eda675
-- file: ../src/config/default/gfx/legato/generated/image/le_gen_images.c
-  hash: f9b216a3bcda7fd3f6c12705055b4390bdc68d14cdb183182d801b1462f6d4f4
-- file: ../src/config/default/gfx/legato/generated/le_gen_assets.h
-  hash: fd41f6fb5f8183d9e67bd55dc4d408f0adc8fe858d0a3d57d9239ac6d3aee7de
-- file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
-  hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
-- file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c
-  hash: 36c31abc6bcd91d7c298d51d6b6e71eb8240659f35f5b6ddb74d5cc2c3a7b4c3
-- file: ../src/config/default/gfx/legato/generated/le_gen_harmony.h
-  hash: a913b0cf5f6029be4a46db040144b14d9949f2e52d9b00576e2373403d530213
-- file: ../src/config/default/gfx/legato/generated/le_gen_init.c
-  hash: 75ffb17636f0083587b55af305ebc83961548c12c397f0c8e8895a21111f9e16
-- file: ../src/config/default/gfx/legato/generated/le_gen_init.h
-  hash: ff64245a1cfefc55213a1ff89de4029ef6f3763069eeb726f329cd26c0452bdb
-- file: ../src/config/default/gfx/legato/generated/le_gen_scheme.c
-  hash: bed6057f7bd12e28e587dbaa97aafe826ee042d098c08621ec5d436fdde7f124
-- file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
-  hash: 21c6f25ee167e7946221d8e248bc4a414a440b96fffecb8ebd74cd6b162fbfd4
-- file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
-  hash: 56754d87269e95e8227da983b1b2da69902e58c1bd52f8e6687579debdab6e69
-- file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c
-  hash: a80cf9bd95a9f831e576ef5857d782139580a65dc85a17992b5426e1e9216aa1
-- file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h
-  hash: 5507257291aab0d86b9c1a51e78e43216314b7f49dd2793908c319267f892baa
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c
@@ -261,8 +232,6 @@ generatedFileHashHistoryMap:
   hash: 9bb60eecba4c3654720be55e785373e8a829d54191a2823bde3d420a9a43138a
 - file: ../src/config/default/gfx/legato/legato.h
   hash: b4ce875200132b2bf0aa6b5a3271b8bc363107741378e3079cbaa14037fbf807
-- file: ../src/config/default/gfx/legato/legato_config.h
-  hash: 70ced34276b9d552f9938741c34f29855670ed673fd4c57f0d7af40b4741c5a3
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.c
   hash: 197174ddbc7c7ef5c966bee36da8114e64dec8ce734d374c0b31401f800e21bf
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.h
@@ -576,7 +545,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 499a500ec2155eea44f0dadab828e3baa2afdd84e0a10efda1091b45445dc649
+  hash: b20cee2bc33eaa96d7ec1407a076e87f8ac5ddffe43d155d30f3508f15407326
 - file: ../src/config/default/interrupts.c
   hash: 3f257c1c617c901d65c7a959e95e16fa3baaacb7c3667d18059a321a4dbab6bf
 - file: ../src/config/default/interrupts.h
@@ -682,7 +651,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 5bb1d7689289f385c52c354bdf601cd0a32f35d9e14c5362349956714c12c7c2
+  hash: 5c85e9f82a512a6e7df8f42de36eb42f92fad3a7afb78925727386ce10fc8ab8
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/user.h
@@ -703,10 +672,6 @@ generatedFileHashHistoryMap:
   hash: 8ad7423d096740f7c0e1aa429967be60ffa1982f59aae5dd28d481e7732961b6
 - file: ../src/config/default/vision/drivers/csi2dc/plib_csi2dc.h
   hash: b11582ba6cef1af3581af516564b9d7ce92cef9ed048d11a1d76845418de43c5
-- file: ../src/config/default/vision/drivers/image_sensor/drv_image_sensor.c
-  hash: 578935e1a56af0b947491c39d16cbfae86fe6229c8dc5c2512441dbdd1d9680e
-- file: ../src/config/default/vision/drivers/image_sensor/drv_image_sensor.h
-  hash: ba7bdc08f35df9e8dc9a986e6cb675541aa916d39cf565213f4fd65a70f1c625
 - file: ../src/config/default/vision/drivers/isc/drv_isc.c
   hash: bc132a79f8a9ade06a42c5b739963136608c279c8bb61f42bda296088b61e48a
 - file: ../src/config/default/vision/drivers/isc/drv_isc.h
@@ -715,18 +680,6 @@ generatedFileHashHistoryMap:
   hash: eb97d27e050f0df6f75ec01da52ff940153182096d64137c43844fa088ca08bb
 - file: ../src/config/default/vision/drivers/isc/plib_isc.h
   hash: abba60a67aee7dc78ba6a89a01d6c76a3639e45e23e4668424cc225e34b53d8a
-- file: ../src/config/default/vision/image_sensors/imx219/imx219.c
-  hash: b33d2e3a5936564f48aceecf8691ccd2152952700705c36fe6402443ac8a34bf
-- file: ../src/config/default/vision/image_sensors/ov2640/ov2640.c
-  hash: 7eeecdf5cdc098da09dd2b877333ac387db27aa4f62dd08330d688647d22c2fe
-- file: ../src/config/default/vision/image_sensors/ov5640/ov5640.c
-  hash: 6dad794d9a8cb4580ff25b8d889ebc0e9530935b06b8a1fce418709f54cb70a3
-- file: ../src/config/default/vision/image_sensors/ov5647/ov5647.c
-  hash: 875292f8d76072262e0954021b7f4382f220a1a436ea83099a73dafcc02a8c79
-- file: ../src/config/default/vision/libcamera/camera.c
-  hash: 64b3560814b033ac09c1061fa7e4b81612103214425071d23158ba014b22c285
-- file: ../src/config/default/vision/libcamera/camera.h
-  hash: 4817d9a62a7be25a25ca29a0cfbddd54f1cbbf1c1858e972e787249dca2e0b6a
 - file: ../src/main.c
   hash: d3c233d419e6304bfacbafc18cc68c0f5c26e365f23b20ea40ccfac458f664c5
 - file: ../src/packs/SAM9X75D2G_DFP/component/adc.h
