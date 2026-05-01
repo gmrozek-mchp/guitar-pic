@@ -276,6 +276,51 @@ Phase 3 stops at step 12 — no `enable_stream()` yet (that's Phase 4 after we c
 
 Monolithic — keep everything in `tc358743.c` / `tc358743.h`. File is currently ~180 lines; after Phase 3 it'll be ~500. Split only if Phase 4 pushes past 700 or so. The EDID blob is the natural first split candidate (own file / generated header).
 
+#### Phase 3b — EDID load + HPD enable ✅ PASSES ON HARDWARE (2026-05-01)
+
+**Scope:** program a valid EDID into the chip's EDID RAM and raise HPD so the HDMI source sees a sink. Goes beyond "pure EDID" because the source won't re-read EDID unless HPD toggles — the two steps are tightly coupled.
+
+**EDID blob (256 bytes = base + CEA-861-D extension):**
+
+Two-block EDID. Base block is VESA EDID 1.3, detailed/preferred timing = **720x480 @ 60p** (SMPTE 293M / CEA VIC 2), pixel clock 27.000 MHz — matches what Wii → ElectronWarp emits. Established-timings byte flags 640x480@60 as a secondary. Monitor-range descriptor declares 50-75 Hz V, 30-75 kHz H, 150 MHz max pclk. Monitor name = `marvin-hdmi`.
+
+CEA-861-D extension is required for HDMI sources to recognise us as an HDMI sink (vs DVI) and to know that VIC 2/3 are acceptable modes. Contents:
+- Video Data Block with **VIC 2** (720x480p@60 4:3) marked native, **VIC 3** (720x480p@60 16:9), **VIC 1** (640x480@60) fallback.
+- HDMI VSDB with OUI `0x000C03` (HDMI Licensing LLC, LE-encoded) and source physical address `1.0.0.0`.
+- No audio descriptors (we don't process HDMI audio).
+- No YCbCr advertised (RGB-only).
+
+Sink chromaticity is sRGB / BT.709 primaries (red=(0.64,0.33), green=(0.30,0.60), blue=(0.15,0.06), white=D65). Feature byte sets RGB display type + pref-timing-is-native + sRGB default.
+
+Checksum computed at runtime: byte 127 is patched so sum[0..127] ≡ 0 mod 256. Avoids arithmetic-error risk in the hand-layout.
+
+**Sequence (mirrors kernel driver `tc358743_s_edid`):**
+
+1. Deassert HPD (`HPD_CTL.HPD_OUT0 = 0`) — tells source to disconnect.
+2. Compute checksum, patch byte 127.
+3. Write `EDID_LEN1 = 1`, `EDID_LEN2 = 0` (one block).
+4. Write all 128 bytes to `EDID_RAM` (0x8C00) in a single I2C transaction.
+5. Delay ~150 ms so source registers the HPD drop.
+6. Assert HPD (`HPD_CTL.HPD_OUT0 = 1`) — source re-reads EDID, starts negotiation.
+7. Delay ~200 ms, then re-read and print `SYS_STATUS` so we can see whether source reacted.
+
+**Buffer sizing:** `TC358743_TX_BUF_SIZE` bumped from 8 to 132 so the EDID write fits in one transaction (2 bytes register address + 128 bytes data). Matches kernel driver's `I2C_MAX_XFER_SIZE = EDID_BLOCK_SIZE + 2`.
+
+**Pass criteria:** build succeeds; after `init complete`, DBGU shows `EDID loaded, HPD asserted` followed by a second `SYS_STATUS=0xXX`. With a live Wii → ElectronWarp chain, the post-HPD `SYS_STATUS` should have at minimum `DDC5V` set (splitter has asserted 5V after handshake) and ideally `TMDS`/`PHY_PLL` set as well, meaning we have a locked input stream. `SYNC` lock is separate and typically takes longer — we'll still see it mostly in Phase 4.
+
+#### Phase 4a — Runtime status watcher (observation only) ✅ PASSES ON HARDWARE (2026-05-01)
+
+**Confirmed source format:** **720x480p @ 60 Hz, RGB limited-range** (SMPTE 16-235). This is Wii → ElectronWarp native output. Full lock sequence observed: `0x09 → 0x1F → 0x9F`. Noting for Phase 4+ that the pipeline will need range expansion (or accept slightly dim/gray output) since the ISC/display side defaults to full-range.
+
+Prerequisite for Phase 4 proper (streaming). Goal: see what the chain is doing in real time without turning on CSI output yet.
+
+- `TC358743_Tasks()` polls `SYS_STATUS` every ~100 ms.
+- On each transition of `SYS_STATUS`, print the before→after bitmask with human-readable bit names.
+- When `S_SYNC` becomes set, read the detected-timing registers and print: active width × height, scan type (p/i), fps, color space, range (full/limited). Registers: `DE_WIDTH_H_LO/HI`, `DE_WIDTH_V_LO/HI`, `FV_CNT_LO/HI`, `VI_STATUS1`, `VI_STATUS3`. Color-space lookup table matches the kernel driver's `input_color_space[]`.
+- Polling only; no interrupts wired (the TC358743 INT pin isn't exposed on our 22→15 adapter).
+
+Intended use: turn on Wii, watch DBGU transitions in real time — confirms what resolution/format ElectronWarp is emitting, and gives us ground-truth for Phase 4 (stream enable) when we trust the lock semantics.
+
 #### Phase 4 — Format detection & start CSI streaming
 
 - Poll (or IRQ on TC358743's INT pin) the HDMI SYS_STATUS register until source is locked and the format matches expectation.
@@ -339,6 +384,46 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — Phase 4a passes on hardware; full HDMI lock
+
+Boot output with Wii + ElectronWarp + splitter chain active:
+
+```
+TC358743: init complete; SYS_STATUS=0x09
+TC358743: post-HPD SYS_STATUS=0x09
+TC358743: watcher start; SYS_STATUS=0x09
+TC358743: SYS_STATUS 0x09->0x1F [DDC5V TMDS PLL SCDT HDMI ]
+TC358743: SYS_STATUS 0x1F->0x9F [DDC5V TMDS PLL SCDT HDMI SYNC]
+TC358743: detected 720x480p @ 60 Hz, RGB limited-range
+```
+
+Confirmed:
+- Full HDMI handshake completes.
+- Source format is **720x480p @ 60 Hz, RGB limited-range** (Wii 480p native, matches our EDID's preferred timing).
+- Limited-range RGB (SMPTE 16-235) — downstream pipeline will need range expansion, or we accept a slightly dim/gray display.
+
+Ready to enable CSI streaming (Phase 4 proper) and then wire ISC capture (Phase 5).
+
+### 2026-05-01 — Phase 4a watcher implemented
+
+Filled in `TC358743_Tasks()` with a 100 ms-cadence SYS_STATUS poller. On each transition prints `0xAA->0xBB [DDC5V TMDS PLL SCDT HDMI SYNC]` with current-state bit names. On the first 0→1 edge of `S_SYNC`, reads `DE_WIDTH_H/V`, `FV_CNT`, `VI_STATUS1/3` and prints active resolution, scan type, fps, color space, and range. Color-space lookup table mirrors the kernel driver's `input_color_space[]`.
+
+Pollling only (no IRQ). `log_detected_format` does 8 I2C reads so it only runs on the SYNC 0→1 edge, not every poll.
+
+First-boot output now shows initial state as `watcher start; SYS_STATUS=0xXX` then transitions as the source negotiates.
+
+### 2026-05-01 — Phase 3b implemented (with CEA extension)
+
+Added EDID load + HPD enable to `tc358743_do_init()`:
+
+- **256-byte EDID** = VESA 1.3 base + CEA-861-D extension. Base-block detailed timing = 720x480@60p (27 MHz pclk, matching Wii via ElectronWarp). Extension advertises **HDMI VSDB** (OUI 0x000C03, phys addr 1.0.0.0) and VICs 2/3/1 via a Video Data Block (VIC 2 native). Extension added up-front since prior attempts at this bringup indicated HDMI sources refuse without the VSDB + VIC advertising — saves an iteration cycle.
+- Both checksum bytes (127 and 255) patched at runtime so hand-layout arithmetic can't break the load.
+- Sequence: `HPD_OUT0=0` → write `EDID_LEN1=2, EDID_LEN2=0` → write 128 bytes to `EDID_RAM + 0` then 128 bytes to `EDID_RAM + 128` → 150 ms delay → `HPD_OUT0=1`.
+- Single-shot post-HPD `SYS_STATUS` readback 200 ms after HPD rise.
+- `TC358743_TX_BUF_SIZE` bumped 8 → 132 to fit the full 128-byte block write in one I2C transaction (matches kernel's `I2C_MAX_XFER_SIZE = 130`).
+
+Clarified in the 3b plan that HPD is folded into this subphase (not Phase 4) because source EDID re-read depends on an HPD toggle.
 
 ### 2026-05-01 — Phase 3 passes on hardware
 

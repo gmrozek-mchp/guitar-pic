@@ -54,6 +54,14 @@
 #define CSI_CONFW               0x0500u
 #define CSI_START               0x0518u
 #define SYS_STATUS              0x8520u
+#define VI_STATUS1              0x8522u
+#define VI_STATUS3              0x8528u
+#define DE_WIDTH_H_LO           0x8582u
+#define DE_WIDTH_H_HI           0x8583u
+#define DE_WIDTH_V_LO           0x8588u
+#define DE_WIDTH_V_HI           0x8589u
+#define FV_CNT_LO               0x85A1u
+#define FV_CNT_HI               0x85A2u
 #define PHY_CTL0                0x8531u
 #define PHY_CTL1                0x8532u
 #define PHY_CTL2                0x8533u
@@ -151,14 +159,34 @@
 #define MASK_AUTO_MUTE          0xC0u
 #define MASK_VI_MUTE            0x10u
 
+#define MASK_S_DDC5V            0x01u
+#define MASK_S_TMDS             0x02u
+#define MASK_S_PHY_PLL          0x04u
+#define MASK_S_PHY_SCDT         0x08u
+#define MASK_S_HDMI             0x10u
+#define MASK_S_SYNC             0x80u
+#define MASK_S_V_INTERLACE      0x01u
+#define MASK_S_V_COLOR          0x1Eu
+#define MASK_LIMITED            0x01u
+
+#define STATUS_POLL_MS          100u
+
 #define DDC5V_DELAY_100_MS      2u
 
 #define SYSCTL_SRESET           0x0001u
 #define RESET_HOLD_MS           1u
 #define PLL_SETTLE_US           10u
 
-#define TC358743_TX_BUF_SIZE    8u
+#define TC358743_TX_BUF_SIZE    132u
 #define TC358743_RX_BUF_SIZE    4u
+
+#define EDID_BLOCK_SIZE         128u
+#define EDID_BLOCK_COUNT        2u
+#define EDID_TOTAL_SIZE         (EDID_BLOCK_SIZE * EDID_BLOCK_COUNT)
+#define EDID_POST_DROP_MS       150u
+#define EDID_POST_RISE_MS       200u
+
+#define MASK_HPD_OUT0           0x01u
 
 static DRV_HANDLE       i2cHandle = DRV_HANDLE_INVALID;
 static uint8_t          txBuf[TC358743_TX_BUF_SIZE];
@@ -430,6 +458,138 @@ static bool tc358743_set_csi(void)
                          | MASK_INTER);
 }
 
+/* EDID: base (VESA 1.3) + CEA-861-D extension.
+ * Base block detailed/preferred timing is 720x480@60p (SMPTE 293M / CEA VIC 2),
+ * matching Wii 480p output via ElectronWarp. Extension block advertises the
+ * HDMI Vendor-Specific Data Block (without which many HDMI sources fall back
+ * to DVI mode) and a Video Data Block listing VIC 2 (native), VIC 3, VIC 1.
+ * Both block checksums (bytes 127 and 255) are patched at runtime. */
+static uint8_t edid_block[EDID_TOTAL_SIZE] = {
+    /* ===== Block 0: VESA EDID 1.3 ===== */
+    /* 0..7:   EDID header */
+    0x00, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x00,
+    /* 8..9:   Manufacturer ID "LNX" (Linux Foundation virtual vendor) */
+    0x31, 0xD8,
+    /* 10..11: Product code 0x0001 */
+    0x01, 0x00,
+    /* 12..15: Serial number 0x00000001 */
+    0x01, 0x00, 0x00, 0x00,
+    /* 16..17: Week 1, year 2026 (= 36 decimal) */
+    0x01, 0x24,
+    /* 18..19: EDID 1.3 */
+    0x01, 0x03,
+    /* 20:     Video input = digital */
+    0x80,
+    /* 21..22: Max image size 16x9 cm */
+    0x10, 0x09,
+    /* 23:     Display gamma 2.20 */
+    0x78,
+    /* 24:     Features = RGB display, sRGB default, preferred timing native */
+    0x0E,
+    /* 25..34: Chromaticity (sRGB / BT.709 primaries, D65 white) */
+    0xDE, 0x91, 0xA3, 0x54, 0x4C, 0x99, 0x26, 0x0F, 0x50, 0x54,
+    /* 35..37: Established timings — bit 5 of byte 35 = 640x480@60 */
+    0x20, 0x00, 0x00,
+    /* 38..53: Standard timings (unused, all 0x01) */
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+    0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
+    /* 54..71: Detailed timing 1 = 720x480@60p (pclk 27.000 MHz) */
+    0x8C, 0x0A, 0xD0, 0x8A, 0x20, 0xE0, 0x2D, 0x10,
+    0x10, 0x3E, 0x96, 0x00, 0xA0, 0x78, 0x00, 0x00,
+    0x00, 0x18,
+    /* 72..89: Detailed timing 2 = monitor range limits
+     *         V: 50-75 Hz, H: 30-75 kHz, max pclk 150 MHz */
+    0x00, 0x00, 0x00, 0xFD, 0x00, 0x32, 0x4B, 0x1E,
+    0x4B, 0x0F, 0x00, 0x0A, 0x20, 0x20, 0x20, 0x20,
+    0x20, 0x20,
+    /* 90..107: Detailed timing 3 = monitor name "marvin-hdmi" */
+    0x00, 0x00, 0x00, 0xFC, 0x00, 'm', 'a', 'r',
+    'v', 'i', 'n', '-', 'h', 'd', 'm', 'i',
+    0x0A, 0x20,
+    /* 108..125: Detailed timing 4 = dummy descriptor (tag 0x10) */
+    0x00, 0x00, 0x00, 0x10, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00,
+    /* 126: One extension block follows */
+    0x01,
+    /* 127: Base-block checksum — patched at runtime */
+    0x00,
+
+    /* ===== Block 1: CEA-861-D extension ===== */
+    /* 128: CEA extension tag */
+    0x02,
+    /* 129: CEA-861-D revision */
+    0x03,
+    /* 130: DTD offset (14 = end of data-block collection) */
+    0x0E,
+    /* 131: Flags — no audio, RGB-only, 1 native format */
+    0x01,
+    /* 132..135: Video Data Block (tag=2, len=3): VIC 2 native, VIC 3, VIC 1 */
+    0x43, 0x82, 0x03, 0x01,
+    /* 136..141: HDMI VSDB (tag=3, len=5): OUI 0x000C03 LE, phys addr 1.0.0.0 */
+    0x65, 0x03, 0x0C, 0x00, 0x10, 0x00,
+    /* 142..254: Padding */
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00,
+    /* 255: Extension-block checksum — patched at runtime */
+    0x00,
+};
+
+static bool tc358743_hpd_set(bool asserted)
+{
+    return tc358743_wr8_and_or(HPD_CTL, (uint8_t)~MASK_HPD_OUT0,
+                               asserted ? MASK_HPD_OUT0 : 0u);
+}
+
+static void tc358743_fixup_edid_checksums(void)
+{
+    for (size_t blk = 0; blk < EDID_BLOCK_COUNT; blk++)
+    {
+        size_t base = blk * EDID_BLOCK_SIZE;
+        uint8_t sum = 0;
+        for (size_t i = 0; i < EDID_BLOCK_SIZE - 1u; i++)
+        {
+            sum = (uint8_t)(sum + edid_block[base + i]);
+        }
+        edid_block[base + EDID_BLOCK_SIZE - 1u] = (uint8_t)(0u - (uint32_t)sum);
+    }
+}
+
+static bool tc358743_load_edid(void)
+{
+    tc358743_fixup_edid_checksums();
+
+    if (!tc358743_hpd_set(false)) { return false; }
+    if (!tc358743_wr8(EDID_LEN1, EDID_BLOCK_COUNT)) { return false; }
+    if (!tc358743_wr8(EDID_LEN2, 0x00u)) { return false; }
+
+    for (size_t blk = 0; blk < EDID_BLOCK_COUNT; blk++)
+    {
+        uint16_t addr = (uint16_t)(EDID_RAM + blk * EDID_BLOCK_SIZE);
+        if (!tc358743_wr(addr, &edid_block[blk * EDID_BLOCK_SIZE],
+                         EDID_BLOCK_SIZE))
+        {
+            return false;
+        }
+    }
+
+    if (!delay_ms(EDID_POST_DROP_MS)) { return false; }
+    return tc358743_hpd_set(true);
+}
+
 static bool tc358743_set_csi_color_space_rgb888(void)
 {
     return tc358743_wr8_and_or(VOUT_SET2,
@@ -532,6 +692,12 @@ static bool tc358743_do_init(void)
         return false;
     }
 
+    if (!tc358743_load_edid())
+    {
+        printf("TC358743: init: load_edid failed\r\n");
+        return false;
+    }
+
     return true;
 }
 
@@ -588,8 +754,109 @@ void TC358743_Initialize(void)
     }
 
     printf("TC358743: init complete; SYS_STATUS=0x%02X\r\n", sys_status);
+
+    (void)delay_ms(EDID_POST_RISE_MS);
+
+    if (tc358743_rd8(SYS_STATUS, &sys_status))
+    {
+        printf("TC358743: post-HPD SYS_STATUS=0x%02X\r\n", sys_status);
+    }
+}
+
+static const char *color_space_name(uint8_t cs)
+{
+    switch (cs)
+    {
+    case 0:  return "RGB";
+    case 1:  return "YCbCr 601";
+    case 2:  return "opRGB";
+    case 3:  return "YCbCr 709";
+    case 5:  return "xvYCC 601";
+    case 7:  return "xvYCC 709";
+    case 9:  return "sYCC 601";
+    case 13: return "opYCC 601";
+    default: return "unknown";
+    }
+}
+
+static void log_detected_format(void)
+{
+    uint8_t de_w_lo, de_w_hi, de_v_lo, de_v_hi;
+    uint8_t fv_lo, fv_hi, vi1, vi3;
+
+    if (!tc358743_rd8(DE_WIDTH_H_LO, &de_w_lo)) { return; }
+    if (!tc358743_rd8(DE_WIDTH_H_HI, &de_w_hi)) { return; }
+    if (!tc358743_rd8(DE_WIDTH_V_LO, &de_v_lo)) { return; }
+    if (!tc358743_rd8(DE_WIDTH_V_HI, &de_v_hi)) { return; }
+    if (!tc358743_rd8(FV_CNT_LO,     &fv_lo))   { return; }
+    if (!tc358743_rd8(FV_CNT_HI,     &fv_hi))   { return; }
+    if (!tc358743_rd8(VI_STATUS1,    &vi1))     { return; }
+    if (!tc358743_rd8(VI_STATUS3,    &vi3))     { return; }
+
+    uint16_t width  = (uint16_t)(((de_w_hi & 0x1Fu) << 8) | de_w_lo);
+    uint16_t height = (uint16_t)(((de_v_hi & 0x1Fu) << 8) | de_v_lo);
+    uint16_t fv     = (uint16_t)(((fv_hi   & 0x03u) << 8) | fv_lo);
+    uint16_t fps    = (fv > 0u) ? (uint16_t)((10000u + fv / 2u) / fv) : 0u;
+    uint8_t  cs     = (uint8_t)((vi3 & MASK_S_V_COLOR) >> 1);
+    bool     inter  = (vi1 & MASK_S_V_INTERLACE) != 0u;
+    bool     limtd  = (vi3 & MASK_LIMITED)       != 0u;
+
+    printf("TC358743: detected %ux%u%c @ %u Hz, %s %s-range\r\n",
+           (unsigned)width, (unsigned)height, inter ? 'i' : 'p',
+           (unsigned)fps, color_space_name(cs),
+           limtd ? "limited" : "full");
+}
+
+static void log_status_change(uint8_t prev, uint8_t cur)
+{
+    printf("TC358743: SYS_STATUS 0x%02X->0x%02X [%s%s%s%s%s%s]\r\n",
+           prev, cur,
+           (cur & MASK_S_DDC5V)    ? "DDC5V "  : "",
+           (cur & MASK_S_TMDS)     ? "TMDS "   : "",
+           (cur & MASK_S_PHY_PLL)  ? "PLL "    : "",
+           (cur & MASK_S_PHY_SCDT) ? "SCDT "   : "",
+           (cur & MASK_S_HDMI)     ? "HDMI "   : "",
+           (cur & MASK_S_SYNC)     ? "SYNC"    : "");
+
+    bool sync_now      = (cur  & MASK_S_SYNC) != 0u;
+    bool sync_previous = (prev & MASK_S_SYNC) != 0u;
+    if (sync_now && !sync_previous)
+    {
+        log_detected_format();
+    }
 }
 
 void TC358743_Tasks(void)
 {
+    static SYS_TIME_HANDLE pollHandle = SYS_TIME_HANDLE_INVALID;
+    static uint8_t         lastStatus = 0u;
+    static bool            firstPoll  = true;
+
+    if (i2cHandle == DRV_HANDLE_INVALID) { return; }
+
+    if (pollHandle != SYS_TIME_HANDLE_INVALID
+        && !SYS_TIME_DelayIsComplete(pollHandle))
+    {
+        return;
+    }
+
+    uint8_t sys_status;
+    if (tc358743_rd8(SYS_STATUS, &sys_status))
+    {
+        if (firstPoll)
+        {
+            firstPoll = false;
+            lastStatus = sys_status;
+            printf("TC358743: watcher start; SYS_STATUS=0x%02X\r\n", sys_status);
+            if (sys_status & MASK_S_SYNC) { log_detected_format(); }
+        }
+        else if (sys_status != lastStatus)
+        {
+            log_status_change(lastStatus, sys_status);
+            lastStatus = sys_status;
+        }
+    }
+
+    pollHandle = SYS_TIME_HANDLE_INVALID;
+    (void)SYS_TIME_DelayMS(STATUS_POLL_MS, &pollHandle);
 }
