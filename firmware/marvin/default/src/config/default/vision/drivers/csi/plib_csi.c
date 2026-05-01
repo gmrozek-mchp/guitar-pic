@@ -108,6 +108,21 @@ void CSI_Configure_DataId(uint8_t id, uint8_t vchannel, uint8_t datatype) {
 #endif    
 }
 
+/* Per-lane HS RX init: select register at lane_code, write offset-calibration +
+ * termination-enable (0x94), then write bit-rate-range data. */
+static void csi_phy_hs_rx_init(uint8_t lane_code, uint8_t bit_rate)
+{
+    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(lane_code) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
+    CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
+    CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
+    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0;
+    CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
+    CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
+    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(bit_rate) | 0;
+    CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
+    CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
+}
+
 void CSI_Analog_Init(uint8_t bit_rate, uint8_t nlanes) {
     // Release PHY test codes from reset
     CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x00) | 0;
@@ -115,58 +130,20 @@ void CSI_Analog_Init(uint8_t bit_rate, uint8_t nlanes) {
     CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
 
     // PHY RX only
-    // HS RX Control of Clock Lane (code = 0x34)
+    // HS RX Control of Clock Lane (code = 0x34) — offset cal + termination, no bit-rate-range
+    // (matches Linux DWC reference: clock lane is globally configured, not per-lane)
     CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
     CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x34) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
     CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
     CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0; // HS RX offset calibration + termination enable
+    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0;
     CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
     CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
 
-    // HS RX Control of Lane 0 (code = 0x44)
-    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x44) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
-    CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-    CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0; // HS RX offset calibration + termination enable
-    CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-    CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-    CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(bit_rate) | 0; //Bit rate range = 150-169 Mbps (0x02)
-    CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-    CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-
-    if (nlanes == CSI_DATA_LANES_2) {
-        // HS RX Control of Lane 1 (code = 0x54)
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x54) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0; // HS RX offset calibration + termination enable
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-    } else if (nlanes == CSI_DATA_LANES_3) {
-        // HS RX Control of Lane 2 (code = 0x64)
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x24) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0; // HS RX offset calibration + termination enable
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-    } else if (nlanes == CSI_DATA_LANES_4) {
-        // HS RX Control of Lane 2 (code = 0x64)
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x24) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0; // HS RX offset calibration + termination enable
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-
-        // HS RX Control of Lane 3 (code = 0x74)
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x74) | CSI_PHY_TEST_CTRL1_PHY_TESTEN(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-        CSI_REGS->CSI_PHY_TEST_CTRL1 = CSI_PHY_TEST_CTRL1_PHY_TESTDIN(0x94) | 0; // HS RX offset calibration + termination enable
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = CSI_PHY_TEST_CTRL0_PHY_TESTCLK(1);
-        CSI_REGS->CSI_PHY_TEST_CTRL0 = 0;
-    }
+    // HS RX Control of each active data lane
+    csi_phy_hs_rx_init(0x44, bit_rate);                                         // Lane 0
+    if (nlanes >= CSI_DATA_LANES_2) { csi_phy_hs_rx_init(0x54, bit_rate); }     // Lane 1
+    if (nlanes >= CSI_DATA_LANES_3) { csi_phy_hs_rx_init(0x64, bit_rate); }     // Lane 2
+    if (nlanes >= CSI_DATA_LANES_4) { csi_phy_hs_rx_init(0x74, bit_rate); }     // Lane 3
 }
 
