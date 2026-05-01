@@ -12,7 +12,9 @@
 #define REFCLK_HZ               27000000u
 #define CSI_LANES               2u
 #define PLL_PRD                 4u
-#define PLL_FBD                 88u
+/* FBD=44 → hsck = (27M/4)*44 = 297 Mbps/lane. Pairs with the SAM9X75 D-PHY
+ * HSFREQRANGE band 0x14 (270-299 Mbps). See isc_capture.c CSI bitrate comment. */
+#define PLL_FBD                 44u
 #define CSI_BPS_PER_LANE        ((REFCLK_HZ / PLL_PRD) * PLL_FBD)
 #define FIFO_LEVEL              374u
 
@@ -200,6 +202,10 @@ static uint8_t          txBuf[TC358743_TX_BUF_SIZE];
 static uint8_t          rxBuf[TC358743_RX_BUF_SIZE];
 static volatile bool    xferDone;
 static volatile bool    xferErr;
+
+static volatile uint8_t  s_sysStatus      = 0u;
+static volatile uint16_t s_detectedWidth  = 0u;
+static volatile uint16_t s_detectedHeight = 0u;
 
 static void TransferEventHandler(DRV_I2C_TRANSFER_EVENT event,
                                  DRV_I2C_TRANSFER_HANDLE transferHandle,
@@ -802,23 +808,6 @@ static bool tc358743_enable_stream(bool enable)
         enable ? (uint16_t)(MASK_VBUFEN | MASK_ABUFEN) : 0u);
 }
 
-static void log_csi_status(void)
-{
-    uint32_t st  = 0;
-    uint32_t err = 0;
-
-    (void)delay_ms(150u);
-    (void)tc358743_rd32(CSI_STATUS, &st);
-    (void)tc358743_rd32(CSI_ERR,    &err);
-    printf("TC358743: CSI_STATUS=0x%08lX [%s%s%s%s] CSI_ERR=0x%08lX\r\n",
-           (unsigned long)st,
-           (st & MASK_S_WSYNC) ? "WSYNC " : "",
-           (st & MASK_S_TXACT) ? "TXACT " : "",
-           (st & MASK_S_RXACT) ? "RXACT " : "",
-           (st & MASK_S_HLT)   ? "HLT"    : "",
-           (unsigned long)err);
-}
-
 static const char *color_space_name(uint8_t cs)
 {
     switch (cs)
@@ -835,32 +824,39 @@ static const char *color_space_name(uint8_t cs)
     }
 }
 
-static void log_detected_format(void)
+static bool read_detected_format(uint16_t *width, uint16_t *height)
 {
     uint8_t de_w_lo, de_w_hi, de_v_lo, de_v_hi;
     uint8_t fv_lo, fv_hi, vi1, vi3;
 
-    if (!tc358743_rd8(DE_WIDTH_H_LO, &de_w_lo)) { return; }
-    if (!tc358743_rd8(DE_WIDTH_H_HI, &de_w_hi)) { return; }
-    if (!tc358743_rd8(DE_WIDTH_V_LO, &de_v_lo)) { return; }
-    if (!tc358743_rd8(DE_WIDTH_V_HI, &de_v_hi)) { return; }
-    if (!tc358743_rd8(FV_CNT_LO,     &fv_lo))   { return; }
-    if (!tc358743_rd8(FV_CNT_HI,     &fv_hi))   { return; }
-    if (!tc358743_rd8(VI_STATUS1,    &vi1))     { return; }
-    if (!tc358743_rd8(VI_STATUS3,    &vi3))     { return; }
+    if (!tc358743_rd8(DE_WIDTH_H_LO, &de_w_lo)) { return false; }
+    if (!tc358743_rd8(DE_WIDTH_H_HI, &de_w_hi)) { return false; }
+    if (!tc358743_rd8(DE_WIDTH_V_LO, &de_v_lo)) { return false; }
+    if (!tc358743_rd8(DE_WIDTH_V_HI, &de_v_hi)) { return false; }
+    if (!tc358743_rd8(FV_CNT_LO,     &fv_lo))   { return false; }
+    if (!tc358743_rd8(FV_CNT_HI,     &fv_hi))   { return false; }
+    if (!tc358743_rd8(VI_STATUS1,    &vi1))     { return false; }
+    if (!tc358743_rd8(VI_STATUS3,    &vi3))     { return false; }
 
-    uint16_t width  = (uint16_t)(((de_w_hi & 0x1Fu) << 8) | de_w_lo);
-    uint16_t height = (uint16_t)(((de_v_hi & 0x1Fu) << 8) | de_v_lo);
-    uint16_t fv     = (uint16_t)(((fv_hi   & 0x03u) << 8) | fv_lo);
-    uint16_t fps    = (fv > 0u) ? (uint16_t)((10000u + fv / 2u) / fv) : 0u;
-    uint8_t  cs     = (uint8_t)((vi3 & MASK_S_V_COLOR) >> 1);
-    bool     inter  = (vi1 & MASK_S_V_INTERLACE) != 0u;
-    bool     limtd  = (vi3 & MASK_LIMITED)       != 0u;
+    uint16_t w   = (uint16_t)(((de_w_hi & 0x1Fu) << 8) | de_w_lo);
+    uint16_t h   = (uint16_t)(((de_v_hi & 0x1Fu) << 8) | de_v_lo);
+    uint16_t fv  = (uint16_t)(((fv_hi   & 0x03u) << 8) | fv_lo);
+    uint16_t fps = (fv > 0u) ? (uint16_t)((10000u + fv / 2u) / fv) : 0u;
+    uint8_t  cs  = (uint8_t)((vi3 & MASK_S_V_COLOR) >> 1);
+    bool     il  = (vi1 & MASK_S_V_INTERLACE) != 0u;
+    bool     lr  = (vi3 & MASK_LIMITED)       != 0u;
 
     printf("TC358743: detected %ux%u%c @ %u Hz, %s %s-range\r\n",
-           (unsigned)width, (unsigned)height, inter ? 'i' : 'p',
+           (unsigned)w, (unsigned)h, il ? 'i' : 'p',
            (unsigned)fps, color_space_name(cs),
-           limtd ? "limited" : "full");
+           lr ? "limited" : "full");
+
+    s_detectedWidth  = w;
+    s_detectedHeight = h;
+
+    if (width  != NULL) { *width  = w; }
+    if (height != NULL) { *height = h; }
+    return true;
 }
 
 static void log_status_change(uint8_t prev, uint8_t cur)
@@ -878,23 +874,12 @@ static void log_status_change(uint8_t prev, uint8_t cur)
     bool sync_previous = (prev & MASK_S_SYNC) != 0u;
     if (sync_now && !sync_previous)
     {
-        log_detected_format();
-        if (tc358743_enable_stream(true))
-        {
-            printf("TC358743: CSI stream enabled\r\n");
-            log_csi_status();
-        }
-        else
-        {
-            printf("TC358743: CSI stream enable failed\r\n");
-        }
+        (void)read_detected_format(NULL, NULL);
     }
     else if (!sync_now && sync_previous)
     {
-        if (tc358743_enable_stream(false))
-        {
-            printf("TC358743: CSI stream disabled\r\n");
-        }
+        s_detectedWidth  = 0u;
+        s_detectedHeight = 0u;
     }
 }
 
@@ -915,6 +900,8 @@ void TC358743_Tasks(void)
     uint8_t sys_status;
     if (tc358743_rd8(SYS_STATUS, &sys_status))
     {
+        s_sysStatus = sys_status;
+
         if (firstPoll)
         {
             firstPoll = false;
@@ -922,12 +909,7 @@ void TC358743_Tasks(void)
             printf("TC358743: watcher start; SYS_STATUS=0x%02X\r\n", sys_status);
             if (sys_status & MASK_S_SYNC)
             {
-                log_detected_format();
-                if (tc358743_enable_stream(true))
-                {
-                    printf("TC358743: CSI stream enabled\r\n");
-                    log_csi_status();
-                }
+                (void)read_detected_format(NULL, NULL);
             }
         }
         else if (sys_status != lastStatus)
@@ -939,4 +921,22 @@ void TC358743_Tasks(void)
 
     pollHandle = SYS_TIME_HANDLE_INVALID;
     (void)SYS_TIME_DelayMS(STATUS_POLL_MS, &pollHandle);
+}
+
+bool TC358743_IsLocked(void)
+{
+    return (s_sysStatus & MASK_S_SYNC) != 0u;
+}
+
+bool TC358743_GetDetectedFormat(uint16_t *width, uint16_t *height)
+{
+    if (s_detectedWidth == 0u || s_detectedHeight == 0u) { return false; }
+    if (width  != NULL) { *width  = s_detectedWidth;  }
+    if (height != NULL) { *height = s_detectedHeight; }
+    return true;
+}
+
+bool TC358743_EnableStream(bool enable)
+{
+    return tc358743_enable_stream(enable);
 }

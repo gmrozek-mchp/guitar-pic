@@ -69,7 +69,13 @@ uint32_t CSI2DC_Interrupt_Status(void) {
 }
 
 void CSI2DC_Configure_VideoPipe(uint32_t dt, uint32_t vc, uint32_t align_isc) {
-    CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt) | CSI2DC_VPCFGR_VC(vc) | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0);
+    /* RMS=1 selects byte-stream memory storage (CSI-2 spec format) rather than
+     * the per-component-per-clock ISC layout. Required for pass-through of
+     * pre-decoded pixel formats (e.g. RGB888 from TC358743) into ARGB32. */
+    CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt)
+                               | CSI2DC_VPCFGR_VC(vc)
+                               | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0)
+                               | CSI2DC_VPCFGR_RMS_1;
 }
 
 void CSI2DC_Enable_VideoPipe(void) {

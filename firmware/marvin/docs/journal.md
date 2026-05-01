@@ -16,6 +16,12 @@ Vision-based guitar-playing robot. The marvin firmware captures live HDMI video 
 
 ## Current focus
 
+**End-to-end capture pipeline is working as of 2026-05-01: Wii → TC358743 → CSI-2 @ 297 Mbps/lane → SAM9X75 → ISC DMA → SDRAM at 60 fps, 720×480 ARGB32.**
+
+Next up: Phase 6 — render captured frames on the LCD via Legato. See the Phase 6 section below for scope notes. Known items to think through before coding Phase 6 are in the "Open questions" section near the bottom.
+
+### Original focus (for context — this is done)
+
 **TC358743 HDMI-to-CSI-2 bridge driver** — first real driver work on marvin. The bridge is the gate between "we have hardware wired up" and "we have pixels in memory."
 
 ### Hardware context
@@ -225,10 +231,10 @@ Port the minimal set of `tc358743_initial_setup()` + callees from the kernel dri
 |---|---|---|
 | REFCLK | 27 MHz | Waveshare v1/v2 on-board XTAL |
 | CSI lanes | 2 | marvin CSI_NUM_LANES and Waveshare v1/v2 |
-| PLL_PRD | 4 | `tc358743.c:2079` |
-| PLL_FBD | 88 | `tc358743.c:2100-2101` |
-| CSI bits/lane | 594 Mbps | `(27 MHz / 4) * 88`, well over 62.5 Mbps minimum |
-| FIFO_LEVEL | 374 | kernel default for 594 Mbps 2-lane |
+| PLL_PRD | 4 | kernel driver + emirror working baseline |
+| PLL_FBD | 44 | **changed from 88 during Phase 5 debug** (594 → 297 Mbps) |
+| CSI bits/lane | 297 Mbps | `(27 MHz / 4) * 44`, pairs with host HSFREQRANGE band 0x14 |
+| FIFO_LEVEL | 374 | kernel default; works at 297 Mbps too |
 | CSI output format | RGB888 (MIPI DT 0x24) | marvin ISC expects RGB888 |
 
 **D-PHY timing counts for 594 Mbps** (from `tc358743.c:2113-2125`):
@@ -323,7 +329,9 @@ Intended use: turn on Wii, watch DBGU transitions in real time — confirms what
 
 #### Phase 4 — Format detection & start CSI streaming ✅ PASSES ON HARDWARE (2026-05-01)
 
-TXACT confirmed present (bit 9 of CSI_STATUS) ~60 ms after stream enable, CSI_ERR=0, so CSI-TX is successfully transmitting. TXACT at 10 ms after enable was 0 but at 60 ms and 260 ms was stably 1 — more consistent with a **stream-setup latency** (D-PHY LP11→HS transition + initial frame setup + internal clock sync) than with per-packet momentary behavior. The 10 ms sample was simply too early; the chip needs more time to reach steady-state transmission. Any future pass/fail check on TXACT should allow at least 100 ms settling.
+CSI_ERR = 0 and HLT = 0 across every sample we've seen; TC358743 is fully locked on HDMI side (SYS_STATUS=0x9F) and our `enable_stream()` writes all succeed. TXACT (bit 9 of CSI_STATUS) has been observed at 1 but is not reliably set — a run at 150 ms after enable read TXACT=0, after an earlier run had it set at 60 ms. Best interpretation: **TXACT is momentary** (indicates actively transmitting a packet right now, not "stream is on") and whether a given sample catches it depends on timing vs. packet boundaries. Bits 2, 6, 12 of CSI_STATUS are consistently set across runs — meaning is unknown without the TC358743 reference manual; kernel driver ignores them.
+
+The only way to definitively verify CSI-TX is transmitting valid data is Phase 5 (ISC counting frame-complete interrupts). Proceeding.
 
 **Scope:** enable the TC358743's CSI-TX stream and tie it to `S_SYNC` state so pixel data starts/stops with source lock. ISC-side capture is still Phase 5.
 
@@ -339,15 +347,68 @@ TXACT confirmed present (bit 9 of CSI_STATUS) ~60 ms after stream enable, CSI_ER
 
 **Pass criteria:** boot shows `CSI stream enabled` after the SYNC transition, followed by `CSI_STATUS=0xXXXX [TXACT]` (or similar bit combo). Power cycling the source should show stream disable/enable pairs. No regressions to the Phase 4a output.
 
-#### Phase 5 — Hook into marvin's ISC/CSI capture
+#### Phase 5 — Hook into marvin's ISC/CSI capture ✅ PASSES ON HARDWARE, 60 FPS (2026-05-01)
 
-- Call `tc358743_start()` after `SYS_Initialize()`.
-- Arm ISC DMA into a framebuffer in SDRAM.
-- Verify via ISC frame-complete IRQ / frame counter that frames are landing.
+**Scope:** Wire up the SAM9X75 RX pipeline (CSI D-PHY → CSI2DC → ISC → DMA → SDRAM) and prove frames are landing by counting ISC DDONE interrupts. No display yet (that's Phase 6).
+
+**What MCC already provides (we don't write):**
+- `plib_csi`, `plib_csi2dc`, `plib_isc` — raw register-level code.
+- `drv_csi`, `drv_csi2dc`, `drv_isc` — Init/Configure/Start wrappers with object structs.
+- Config constants in `configuration.h`: CSI_NUM_LANES=2, CSI_DATA_FORMAT_TYPE=RGB888, ISC_INPUT_FORMAT_TYPE=RGB, ISC_OUTPUT_FORMAT_TYPE=ARGB32, layout packed32, etc.
+
+**What we write (the thin wiring that libcamera used to do):**
+
+- New module `default/src/isc_capture.{c,h}`, separate from `tc358743.c`. Public API:
+  - `void ISC_Capture_Initialize(void)` — one-time driver init (calls `DRV_ISC_Initialize()`, `DRV_CSI2DC_Initalize()`, `DRV_CSI_Initalize()` in order). Not start yet.
+  - `bool ISC_Capture_Start(uint32_t w, uint32_t h)` — fill CSI/ISC obj fields with width/height, point ISC DMA at framebuffer, register frame-done callback, configure + start.
+  - `void ISC_Capture_Stop(void)` — stop capture (for re-sync when source drops).
+  - `uint32_t ISC_Capture_FrameCount(void)` — read count.
+- Framebuffer in `.region_cache` section with 32-byte alignment, 720×480×4 (ARGB32) × 2 buffers ≈ 2.7 MB. Conservative max allocation for now.
+- Frame-done callback wired to `iscObj->dma.callback`, increments a `volatile uint32_t`.
+
+**Wiring from tc358743.c:**
+
+- In `TC358743_Initialize`, after `DRV_I2C_Open`, also call `ISC_Capture_Initialize()`.
+- In the watcher, on `S_SYNC` 0→1 (after `tc358743_enable_stream(true)` succeeds): read detected width/height, call `ISC_Capture_Start(w, h)`.
+- On `S_SYNC` 1→0: call `ISC_Capture_Stop()`.
+- In `TC358743_Tasks`, once per second when capture is active, read `ISC_Capture_FrameCount()` and print the delta — that's our "are we actually receiving frames" evidence.
+
+**Init/Configure order** (from emirror `camera.c`):
+
+- Init: `DRV_ISC_Initialize()` → `DRV_CSI2DC_Initalize()` → `DRV_CSI_Initalize()`.
+- Configure (called on `S_SYNC` acquire): `DRV_CSI_Configure()` → `DRV_CSI2DC_Configure()` → `DRV_ISC_Configure()` → `DRV_ISC_Configure_DMA()`.
+- Start: `DRV_ISC_Start_Capture()` (may block up to ~1 s polling for VD — acceptable for bring-up, revisit if problematic) → `SYS_INT_SourceEnable(ID_ISC)`.
+
+**Known blocker (flagged by user):** `plib_csi.c` has known bugs / changes needed before CSI RX will actually work. We write the app-level wiring first, then Greg guides through the plib_csi fixes before first flash.
+
+**Pass criteria:**
+- Build succeeds with the new module.
+- After SYNC acquired, watcher prints a per-second frame count somewhere in the range of 55-65 (target 60 fps).
+- No `DRV_*` configure step returns a failure code.
+- Re-toggling source on/off cleanly shows capture stop/restart.
+
+**Explicitly out of scope:**
+- Displaying the captured frames (Phase 6).
+- Cache invalidation for CPU-side buffer reads (only needed once we actually read pixel data; Phase 6).
+- Double-buffered swap semantics / backpressure (Phase 6).
+- Vision / actuation logic (later phases).
 
 #### Phase 6 — First rendered frame
 
-- Display the captured buffer on the existing Legato surface. Fix format/stride mismatches here.
+Goal: pixels in SDRAM (Phase 5 output) shown on the Legato LCD surface already brought up in commit `3bb441a`.
+
+**Scope / known items to work through:**
+
+- **Cache coherence.** Framebuffer is `.region_cache_aligned` (cached DDR). DMA writes bypass CPU cache, so CPU-side reads will see stale data unless we invalidate the cache range before reading each frame. Use `SYS_CACHE_InvalidateDCache_by_Addr(addr, size)` keyed off the frame-done callback. Alternative: move framebuffer to `.region_nocache` — simpler but trades off uncached-read latency.
+- **Double-buffered swap.** ISC DMA writes alternately to buffer 0 and buffer 1 (`dmaDescSize=2`, `frameIndex` wraps in `ISC_Handler`). Renderer should read the *previously completed* buffer (`(frameIndex + 1) & 1` from the callback's perspective) so it doesn't race the in-flight DMA write.
+- **Limited-range → full-range RGB.** Wii outputs 16-235 (SMPTE limited). Legato renders 0-255 full range. Without expansion, blacks look gray and whites dim. Simple linear expand: `out = ((in - 16) * 255) / 219`, clamped. Decide whether to do this in a fast SIMD loop on ARM9 or use the 2D GPU (commit `5cd5a90` brought that in) for a blit-time conversion.
+- **Legato integration.** Probably an `Image Widget` pointed at our framebuffer, set to paint on each `le_RedrawAll()`. Or a custom widget if we need per-pixel control. Need to check Legato's pixel-format support — ARGB32 is standard, but its buffer descriptor conventions are worth looking up.
+- **Redraw cadence vs. capture cadence.** ISC is pushing frames at 60 Hz. LCD refresh is likely also 60 Hz (Legato default, depends on `drv_gfx_xlcdc` config). Want to request a redraw *on* each new-frame callback rather than polling Legato's own tick. Avoid double-buffer tears.
+- **Display resolution vs. source resolution.** Wii is 720×480. LCD module `AC69T88A` (from commit `3bb441a`) is 1024×600 per the emirror reference. Options: center + letterbox (simplest), stretch-to-fit (use 2D GPU scaler), or 1:1 pixel map with blanks. Start with letterbox for sanity, revisit if we want fullscreen.
+- **Frame counter / metrics on screen.** Optional: overlay `ISC: N fps` on the display for at-a-glance debugging without needing DBGU.
+- **Source mode robustness.** If the Wii resets and outputs a different mode (e.g. 1440×240p from an earlier observation), the capture pipeline re-configures automatically, but the renderer needs to handle a resolution change mid-run. Either re-create the image widget on `TC358743_GetDetectedFormat` change, or make the renderer resolution-aware.
+
+None of this blocks anything — it's just things to think about before wiring up the render path.
 
 ### Known risks
 
@@ -376,6 +437,7 @@ TXACT confirmed present (bit 9 of CSI_STATUS) ~60 ms after stream enable, CSI_ER
 | 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
 | 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
 | 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
 | 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
 
 ---
@@ -384,9 +446,29 @@ TXACT confirmed present (bit 9 of CSI_STATUS) ~60 ms after stream enable, CSI_ER
 
 _(Questions we haven't answered yet. Move to decision log with rationale once resolved.)_
 
-- CSI-TX minimum bitrate at 480p60. Linux driver's `tc_data` CSI-TX PLL config for 480p60 is the authoritative reference — pull those numbers during Phase 3 and check they're within SAM9X75 ISC RX tolerance.
-- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **resolved 2026-05-01**: multi-sample diagnostic shows TXACT is 0 at ~10 ms after enable but stably 1 at ~60 ms and ~260 ms. This is more consistent with a stream-setup latency (D-PHY LP11→HS + first-frame + clock sync) than per-packet momentary behavior; 10 ms was simply too early. Allow ≥100 ms settling before any pass/fail check on TXACT. No CSI_ERR at any sample.
-- ~~Source mode variability~~ — **explained 2026-05-01**: the 1440x240p observation was because the Wii had been reset and returned to a default mode, not because of anything in our pipeline. Wii needs to be put back into 480p output mode; once it is, we stay on 720x480p@60 as designed. Not an ongoing issue.
+- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **deferred 2026-05-01**: TXACT has been observed at both 0 and 1 at various times after enable. Likely momentary (active-packet indicator, not stream-on flag). CSI_ERR=0 and HLT=0 consistently. Phase 5 frames-in-memory confirmed the chain works regardless.
+- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+
+**Carried into future sessions:**
+
+- **MCC-file modifications maintenance risk.** Two MCC-generated files have local bug-fixes that will be clobbered if MCC re-emits them:
+  1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
+  2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` adds `CSI2DC_VPCFGR_RMS_1` bit.
+
+  Recovery plan: if the build breaks post-regen, re-apply both (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+
+- **drv_image_sensor.h shim.** We keep a minimal enum-only shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` so `drv_isc.c` and `configuration.h` still compile after libcamera removal. MCC shouldn't touch this path since the image_sensor component is disabled, but worth a check if something weird happens.
+
+- **TC358743 code comment discipline.** The current `tc358743.c` is ~1000 lines with decent inline comments per CLAUDE.md rules. When we revisit for Phase 6+, check that no comments have drifted into dev-diary territory.
+
+- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+
+- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+
+- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+
+- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
 
 ---
 
@@ -398,6 +480,153 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — Session wrap-up
+
+End-to-end HDMI capture pipeline working: Wii → ElectronWarp → splitter → Waveshare TC358743 → MIPI CSI-2 @ 297 Mbps × 2 lanes → SAM9X75 D-PHY RX → CSI2DC → ISC → DMA → SDRAM at sustained 60 fps, 720×480 ARGB32 (~83 MB/s).
+
+**New code this session:** Phases 0-5 implemented from scratch (`tc358743.c/h`, `isc_capture.c/h`, `app.c` wiring, user.cmake, drv_image_sensor.h shim) + targeted fixes to two MCC-generated files (`plib_csi.c`, `plib_csi2dc.c`).
+
+**All Phase 5 fixes that were needed together** (any one missing and it doesn't work):
+1. TC358743 PLL 594 → 297 Mbps/lane (match HSFREQRANGE band 0x14).
+2. plib_csi.c `CSI_Analog_Init` — Lane 1 missing bit-rate write (the 3rd test-code transaction).
+3. plib_csi2dc.c — OR `CSI2DC_VPCFGR_RMS_1` (byte-stream memory layout).
+4. isc_capture.c — `enableMIPIFreeRun = true` override (MIPIFRN=0, matches TC358743 continuous clock).
+5. app.c — ordering: Configure CSI-RX → TC358743 EnableStream(true) → ISC Start_Capture. The D-PHY must be listening when TC358743's `TXOPTIONCNTRL 0→CONTCLKMODE` produces the LP11→HS edge.
+
+**Next session:** Phase 6 (display captured frames on LCD via Legato). Detailed scope notes in the Phase 6 section above; carried items in Open questions. Nothing is in-progress / partially done — all code is committed-ready.
+
+### 2026-05-01 — Phase 5 passes on hardware: 60 fps sustained 🎉
+
+```
+TC358743: detected 720x480p @ 60 Hz, RGB limited-range
+ISC_Capture: configured 720x480 ARGB32 (1382400 bytes/frame)
+ISC_Capture diag (pre-start):
+  CSI_PHY_RX=0x00030000      ← bit 16 (clock out-of-ULP) + bit 17 (RXCLKACTIVEHS) SET
+  CSI_INT_ST_MAIN=0x00000004
+  CSI_INT_ST  PHY_FATAL=0    PKT_FATAL=0    FRAME_FATAL=0
+  CSI2DC_GSR=0x00000000      ← ARSTIP cleared
+  ISC_INTSR=0x08000003
+ISC_Capture: capture started
+ISC: 37 fps                   ← partial first-second window
+ISC: 60 fps                   ← steady-state 60 fps sustained
+ISC: 60 fps
+  ...
+```
+
+D-PHY RX acquired the incoming DDR clock; ARSTIP released on its own confirming the journal's note that it self-clears once HS traffic is seen. ISC DMA is delivering ~83 MB/s of ARGB32 pixel data into the framebuffer in DDR3 at 60 Hz.
+
+**The full set of fixes needed beyond the initial Phase 5 port:**
+1. TC358743 PLL 594 → 297 Mbps/lane (match HSFREQRANGE band 0x14).
+2. CSI2DC VPCFGR.RMS = 1 (byte-stream memory layout for pre-decoded RGB888).
+3. CSI2DC MIPIFRN = 0 (free-running; matches TC358743 continuous-clock mode).
+4. **RX-configure-before-source-transmit ordering** — the single biggest fix. D-PHY has to be out of reset and listening when TC358743's `TXOPTIONCNTRL 0→CONTCLKMODE` toggle produces the LP11→HS edge.
+5. plib_csi.c `CSI_Analog_Init` — 3rd transaction (bit-rate data write) added for Lane 1 (was missing; journal's "Test O"). Lane 2/3 typo fixes + missing-lane-1-init in 3/4-lane paths also cleaned up, though not exercised by our 2-lane setup.
+6. plib_csi2dc.c `CSI_Configure_VideoPipe` — OR in `CSI2DC_VPCFGR_RMS_1` bit.
+
+Also noted but turned out not to matter for this debug: TC358743 init order (EDID before or after PLL). Our order (EDID last) worked; emirror's order (EDID before PLL) also worked. Not a critical distinction for bring-up.
+
+Next: Phase 6 — display captured frames via Legato on the LCD.
+
+### 2026-05-01 — Cross-referenced Greg's prior debug journal (commit 1d0d3d4)
+
+Key takeaway from the prior debug journal: **ARSTIP is never "fixed" directly** — it's a downstream status that clears on its own once the D-PHY actually sees HS traffic. No register write makes it clear; the D-PHY has to lock first. That reframes our debugging: if our ordering fix causes the D-PHY to finally catch the LP11→HS edge, ARSTIP will clear as a side effect.
+
+Confirmed our current state matches the working baseline from the journal's "Test W" (297 Mbps + band 0x14). Remaining deltas from emirror's order: we load EDID *after* set_pll/set_csi whereas emirror does it before. Kernel driver doesn't load EDID in initial_setup at all (ioctl-driven), so it's not inherently wrong — but if current fixes don't clear ARSTIP, try swapping EDID before PLL next. Also noted: `CSI_PUSR`/`CSI_PCR`/`PMR` readback was suggested by the journal's author as the next diag step if D-PHY lock is still mysterious.
+
+### 2026-05-01 — Phase 5 fourth fix: ordering of RX-config vs. source-stream-enable
+
+Third flash with MIPIFRN=0 still showed `CSI2DC_GSR=0x02` (ARSTIP stuck). Root cause: we were configuring CSI-RX **after** TC358743 had already enabled its stream. Comparing emirror's working flow:
+
+```
+CAMERA_Open:
+    DRV_CSI2DC_Configure()   ← RX side ready first
+    DRV_CSI_Configure()
+    DRV_ISC_Configure()
+CAMERA_Start_Capture:
+    DRV_ImageSensor_Start()  ← *then* source transmits
+    DRV_ISC_Start_Capture()  ← *then* ISC arms + polls VD
+```
+
+The TC358743 LP11->HS transition is triggered by its `TXOPTIONCNTRL 0->CONTCLKMODE` toggle inside `enable_stream()`. The SAM9X75 D-PHY RX has to be out of reset and actively listening to catch that edge — otherwise it never locks onto the byte clock, downstream CSI2DC's async-reset domain never releases (ARSTIP stuck at 1), and VD never fires at ISC.
+
+**Restructured:** (a) split `ISC_Capture_Start(w, h)` into `ISC_Capture_Configure(w, h)` (all CSI2DC/CSI/ISC + DMA config) and `ISC_Capture_Start()` (just `DRV_ISC_Start_Capture` + IRQ enable). (b) Exposed `TC358743_EnableStream(bool)` publicly and removed auto-enable from tc358743's watcher — watcher now only tracks state. (c) `app.c` coordinates the correct order: `Configure -> EnableStream(true) -> Start`. (d) Flipped internal configure order to CSI2DC → CSI → ISC to match emirror.
+
+### 2026-05-01 — Phase 5 third flash: clock-mode mismatch found
+
+Second flash (after PLL 594→297 + RMS=1) moved the needle:
+
+```
+CSI_PHY_STOPSTATE=0x00000000  ← was 0x03 (LP11). Data lanes are now transitioning HS.
+CSI_INT_ST_PHY_FATAL=0        ← no fatal PHY errors
+CSI_INT_ST_PKT_FATAL=0        ← no packet decode errors either
+CSI2DC_FNVC0R=0               ← but still zero frames at CSI2DC
+CSI2DC_GSR=0x00000002         ← **ARSTIP=1 (async-reset stuck)**
+```
+
+`ARSTIP` stuck is the exact symptom the emirror working code's comment calls out for clock-mode mismatch:
+
+> *csiContinuousClock=true (camera layer programs CSI2DC.MIPIFRN=0 = free-running) AND with the tc358743_start() pulse. Mismatched bridge/host clock modes leave CSI2DC.GSR.ARSTIP stuck.*
+
+MCC's `CSI2DC_ENABLE_MIPI_CLOCK_FREE_RUN = false` sets MIPIFRN=1 (gated). But TC358743 transmits continuous-clock (TXOPTIONCNTRL = CONTCLKMODE). Mismatch. **Fix:** override `csi2dcObj->enableMIPIFreeRun = true` in `isc_capture.c` (same override pattern as csiBitRate — leaves MCC config untouched).
+
+### 2026-05-01 — Phase 5 first flash: D-PHY not locking; applying fixes from working commit
+
+Phase 5 code built and ran. TC358743 locked HDMI (720x480p60 RGB limited) and reported TXACT. But ISC `DRV_ISC_Start_Capture` timed out on VD interrupt. Diagnostic dump showed:
+
+```
+CSI_PHY_RX=0x00010000        ← only bit 16 (clock lane out-of-ULP); bit 17 (PHY_RXCLKACTIVEHS) NOT set
+CSI_PHY_STOPSTATE=0x00000003 ← both data lanes stuck in LP11 stop state
+CSI_INT_ST_* all 0           ← PHY never even tried to lock
+CSI2DC_FNVC0R=0              ← zero frames at CSI2DC
+```
+
+So SAM9X75 D-PHY RX is blind to the incoming HS clock from TC358743. Greg pointed at a working commit pair in git history (31a967c → af69a79) of emirror experiments. Diff surfaced two critical mismatches vs. our Phase 1-4 config:
+
+1. **HSFREQRANGE band vs. bridge PLL rate mismatch.** Our TC358743 PLL outputs 594 Mbps/lane (PLL_FBD=88). Our SAM9X75 HSFREQRANGE code is `0x14` (270-299 Mbps band, what the working commit settled on). Those don't match — the D-PHY is set to expect ~300 Mbps but the bridge is emitting ~600 Mbps. **Fix:** drop the bridge PLL to 297 Mbps (PLL_FBD=44). Working commit's comment explicitly identifies this as the calibrated standard point: `v13 (current, Test W): 0x14 (270-299) paired with bridge PLL at 297 Mbps/lane (FBD=44, FRS=1)`. D-PHY timing counts (LINEINITCNT et al.) from the kernel driver's 594 Mbps table remain valid at 297 Mbps (LP timings are conservatively long).
+
+2. **CSI2DC VPCFGR.RMS not set.** Default is RMS=0 ("one pixel per component per clock, ISC-engine-compliant"), which is correct for Bayer-sensor input where ISC performs demosaic. For pre-decoded RGB888 from TC358743 we need RMS=1 ("byte stream compliant with CSI-2 spec memory format"). Without this, even if the D-PHY locked, the video pipe would malformat pixels into memory. **Fix:** OR `CSI2DC_VPCFGR_RMS_1` into the value written by `CSI2DC_Configure_VideoPipe()` in plib_csi2dc.c.
+
+Also fixed: `app.c` retry semantics — `capture_attempted` flag (not `capture_started`) prevents the ~1s retry loop when `DRV_ISC_Start_Capture` fails.
+
+Two new MCC-file modifications joining the set we're maintaining: `plib_csi2dc.c` RMS bit. (plib_csi.c lane-1 fix was already there.)
+
+Re-flashing next.
+
+### 2026-05-01 — Phase 5 implemented (isc_capture + app.c coordination)
+
+Added `default/src/isc_capture.{c,h}` as a pure SoC-side capture driver:
+- Initializes `DRV_ISC` / `DRV_CSI2DC` / `DRV_CSI` in order.
+- Populates ISC object fields from `configuration.h` constants; overrides `DRV_CSI`'s hardcoded `csiBitRate = 0x16` with `0x14`.
+- Frame-done callback increments `g_frame_count`; public `ISC_Capture_FrameCount()` + `ISC_Capture_IsRunning()` expose state.
+- `ISC_Capture_Start(w, h)` configures CSI/CSI2DC/ISC, arms DMA against a `.region_cache_aligned` 32-byte-aligned framebuffer sized for 1920x1080 ARGB32 × 2 (double-buffered; ~16 MB in DDR3), enables `SYS_INT_SourceEnable(ID_ISC)`.
+- `ISC_Capture_Stop()` does the inverse.
+
+`tc358743.c` stays a pure bridge-chip driver. Added public state-query API (`TC358743_IsLocked()`, `TC358743_GetDetectedFormat(w, h)`) backed by module-scope caches (`s_sysStatus`, `s_detectedWidth/Height`) updated by the watcher. Internal SYNC 0↔1 logic continues to toggle TC358743's own CSI-TX stream.
+
+`app.c` is the orchestrator. Per `APP_Tasks` tick:
+1. `TC358743_Tasks()` — pump the watcher.
+2. `app_coordinate_capture()` — observe TC358743 lock state; on 0→1 (with a cached format), call `ISC_Capture_Start(w, h)`; on 1→0, call `ISC_Capture_Stop()`. Uses `capture_started` flag (not just "was_locked") to handle the case where lock goes high before the format is cached.
+3. `app_report_fps()` — once per second (gated by `SYS_TIME`), if capture is running, print `ISC: N fps` as delta from the last poll.
+
+Pass criteria:
+- No build errors.
+- With source chain live, DBGU eventually shows `ISC_Capture: started 720x480 ARGB32 (1382400 bytes/frame)` after TC358743 watcher reports `SYNC`, followed by `ISC: ~60 fps` once per second.
+
+### 2026-05-01 — plib_csi.c `CSI_Analog_Init` refactor (pre-Phase 5)
+
+Fixed known bugs in `CSI_Analog_Init` before wiring up Phase 5. Greg flagged that Lane 1+ weren't getting a bit-rate-range write matching Lane 0's lines 134-136. Investigation surfaced more bugs:
+
+- Lane 1 missing bit-rate write (primary, in 2-lane path).
+- Lane 2 had a typo `TESTDIN(0x24)` vs the commented `code = 0x64` (two places — 3-lane and 4-lane paths).
+- Lane 2 / Lane 3 missing bit-rate writes.
+- 3-lane and 4-lane paths never initialized Lane 1 (the if/else-if structure skipped it).
+
+**Clock lane check against Linux reference (`linux-at91/drivers/media/platform/dwc/dw-dphy-rx.c:344-351`)**: Linux driver writes `HS_RX_CTRL_LANE0..3` per data lane but NOT a clock lane HS RX control. The clock lane is globally configured via HSFREQRANGE / OSC_FREQ_TARGET. Therefore we left the clock lane init (the 0x34 block) unchanged — don't add bit-rate data write there.
+
+**Fix shape:** extracted a helper `csi_phy_hs_rx_init(lane_code, bit_rate)` that does addr-select + 0x94 + bit_rate. Called once per active data lane, gated by `nlanes >= CSI_DATA_LANES_N`. Corrects the Lane 2 address (0x24 → 0x64). The if/else-if chain is gone; 2-lane, 3-lane, 4-lane all fall out correctly.
+
+**File is MCC-generated.** If MCC regenerates `plib_csi.c` it will clobber this fix. Noted in open questions so we remember to re-apply. At least the fix is self-contained and easy to redo.
 
 ### 2026-05-01 — Phase 4 passes on hardware; source mode variability noted
 
