@@ -51,6 +51,8 @@
 #define HSTXVREGCNT             0x0230u
 #define HSTXVREGEN              0x0234u
 #define TXOPTIONCNTRL           0x0238u
+#define CSI_STATUS              0x0410u
+#define CSI_ERR                 0x044Cu
 #define CSI_CONFW               0x0500u
 #define CSI_START               0x0518u
 #define SYS_STATUS              0x8520u
@@ -168,6 +170,11 @@
 #define MASK_S_V_INTERLACE      0x01u
 #define MASK_S_V_COLOR          0x1Eu
 #define MASK_LIMITED            0x01u
+
+#define MASK_S_WSYNC            0x0400u
+#define MASK_S_TXACT            0x0200u
+#define MASK_S_RXACT            0x0100u
+#define MASK_S_HLT              0x0001u
 
 #define STATUS_POLL_MS          100u
 
@@ -295,6 +302,17 @@ static bool tc358743_rd16(uint16_t reg, uint16_t *val)
     uint8_t b[2];
     if (!tc358743_rd(reg, b, 2u)) { return false; }
     *val = (uint16_t)b[0] | ((uint16_t)b[1] << 8);
+    return true;
+}
+
+static bool tc358743_rd32(uint16_t reg, uint32_t *val)
+{
+    uint8_t b[4];
+    if (!tc358743_rd(reg, b, 4u)) { return false; }
+    *val = (uint32_t)b[0]
+         | ((uint32_t)b[1] << 8)
+         | ((uint32_t)b[2] << 16)
+         | ((uint32_t)b[3] << 24);
     return true;
 }
 
@@ -763,6 +781,44 @@ void TC358743_Initialize(void)
     }
 }
 
+static bool tc358743_enable_stream(bool enable)
+{
+    if (enable)
+    {
+        if (!tc358743_wr32(TXOPTIONCNTRL, 0u))                { return false; }
+        if (!tc358743_wr32(TXOPTIONCNTRL, MASK_CONTCLKMODE))  { return false; }
+        if (!tc358743_wr8(VI_MUTE, MASK_AUTO_MUTE))           { return false; }
+    }
+    else
+    {
+        if (!tc358743_wr8(VI_MUTE, MASK_AUTO_MUTE | MASK_VI_MUTE))
+        {
+            return false;
+        }
+    }
+    return tc358743_wr16_and_or(
+        CONFCTL,
+        (uint16_t)~(MASK_VBUFEN | MASK_ABUFEN),
+        enable ? (uint16_t)(MASK_VBUFEN | MASK_ABUFEN) : 0u);
+}
+
+static void log_csi_status(void)
+{
+    uint32_t st  = 0;
+    uint32_t err = 0;
+
+    (void)delay_ms(150u);
+    (void)tc358743_rd32(CSI_STATUS, &st);
+    (void)tc358743_rd32(CSI_ERR,    &err);
+    printf("TC358743: CSI_STATUS=0x%08lX [%s%s%s%s] CSI_ERR=0x%08lX\r\n",
+           (unsigned long)st,
+           (st & MASK_S_WSYNC) ? "WSYNC " : "",
+           (st & MASK_S_TXACT) ? "TXACT " : "",
+           (st & MASK_S_RXACT) ? "RXACT " : "",
+           (st & MASK_S_HLT)   ? "HLT"    : "",
+           (unsigned long)err);
+}
+
 static const char *color_space_name(uint8_t cs)
 {
     switch (cs)
@@ -823,6 +879,22 @@ static void log_status_change(uint8_t prev, uint8_t cur)
     if (sync_now && !sync_previous)
     {
         log_detected_format();
+        if (tc358743_enable_stream(true))
+        {
+            printf("TC358743: CSI stream enabled\r\n");
+            log_csi_status();
+        }
+        else
+        {
+            printf("TC358743: CSI stream enable failed\r\n");
+        }
+    }
+    else if (!sync_now && sync_previous)
+    {
+        if (tc358743_enable_stream(false))
+        {
+            printf("TC358743: CSI stream disabled\r\n");
+        }
     }
 }
 
@@ -848,7 +920,15 @@ void TC358743_Tasks(void)
             firstPoll = false;
             lastStatus = sys_status;
             printf("TC358743: watcher start; SYS_STATUS=0x%02X\r\n", sys_status);
-            if (sys_status & MASK_S_SYNC) { log_detected_format(); }
+            if (sys_status & MASK_S_SYNC)
+            {
+                log_detected_format();
+                if (tc358743_enable_stream(true))
+                {
+                    printf("TC358743: CSI stream enabled\r\n");
+                    log_csi_status();
+                }
+            }
         }
         else if (sys_status != lastStatus)
         {

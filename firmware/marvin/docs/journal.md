@@ -321,11 +321,23 @@ Prerequisite for Phase 4 proper (streaming). Goal: see what the chain is doing i
 
 Intended use: turn on Wii, watch DBGU transitions in real time — confirms what resolution/format ElectronWarp is emitting, and gives us ground-truth for Phase 4 (stream enable) when we trust the lock semantics.
 
-#### Phase 4 — Format detection & start CSI streaming
+#### Phase 4 — Format detection & start CSI streaming ✅ PASSES ON HARDWARE (2026-05-01)
 
-- Poll (or IRQ on TC358743's INT pin) the HDMI SYS_STATUS register until source is locked and the format matches expectation.
-- Program CSI-TX output for 480p60 in the chosen pixel format.
-- Release CSI-TX stop state → pixel data flows.
+TXACT confirmed present (bit 9 of CSI_STATUS) ~60 ms after stream enable, CSI_ERR=0, so CSI-TX is successfully transmitting. TXACT at 10 ms after enable was 0 but at 60 ms and 260 ms was stably 1 — more consistent with a **stream-setup latency** (D-PHY LP11→HS transition + initial frame setup + internal clock sync) than with per-packet momentary behavior. The 10 ms sample was simply too early; the chip needs more time to reach steady-state transmission. Any future pass/fail check on TXACT should allow at least 100 ms settling.
+
+**Scope:** enable the TC358743's CSI-TX stream and tie it to `S_SYNC` state so pixel data starts/stops with source lock. ISC-side capture is still Phase 5.
+
+- `tc358743_enable_stream(true)` (mirror of kernel's `enable_stream()`):
+  - `TXOPTIONCNTRL ← 0` then `← MASK_CONTCLKMODE` — the non-continuous→continuous toggle is how the CSI-TX triggers the LP11→HS transition that the receiver expects.
+  - `VI_MUTE ← MASK_AUTO_MUTE` — clear manual mute, leave auto-mute on.
+  - `CONFCTL` set `VBUFEN | ABUFEN` — open video (and audio; harmless, we ignore the audio path) buffer enables.
+- `tc358743_enable_stream(false)` — manual mute + clear VBUFEN/ABUFEN.
+- Watcher: on `S_SYNC` 0→1, enable stream; on `S_SYNC` 1→0, disable. Also enables on first-poll if SYNC is already set (warm-boot path).
+- `CSI_STATUS` (reg 0x0410) dumped after enable so we can see `WSYNC`/`TXACT`/`RXACT`/`HLT` bits. `TXACT=1` after enable is the proof-of-life signal.
+
+**No ISC / CSI2DC programming yet.** The SAM9X75 CSI receiver is present (from MCC), but we're not arming DMA or counting frame interrupts — that's Phase 5.
+
+**Pass criteria:** boot shows `CSI stream enabled` after the SYNC transition, followed by `CSI_STATUS=0xXXXX [TXACT]` (or similar bit combo). Power cycling the source should show stream disable/enable pairs. No regressions to the Phase 4a output.
 
 #### Phase 5 — Hook into marvin's ISC/CSI capture
 
@@ -373,6 +385,8 @@ Intended use: turn on Wii, watch DBGU transitions in real time — confirms what
 _(Questions we haven't answered yet. Move to decision log with rationale once resolved.)_
 
 - CSI-TX minimum bitrate at 480p60. Linux driver's `tc_data` CSI-TX PLL config for 480p60 is the authoritative reference — pull those numbers during Phase 3 and check they're within SAM9X75 ISC RX tolerance.
+- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **resolved 2026-05-01**: multi-sample diagnostic shows TXACT is 0 at ~10 ms after enable but stably 1 at ~60 ms and ~260 ms. This is more consistent with a stream-setup latency (D-PHY LP11→HS + first-frame + clock sync) than per-packet momentary behavior; 10 ms was simply too early. Allow ≥100 ms settling before any pass/fail check on TXACT. No CSI_ERR at any sample.
+- ~~Source mode variability~~ — **explained 2026-05-01**: the 1440x240p observation was because the Wii had been reset and returned to a default mode, not because of anything in our pipeline. Wii needs to be put back into 480p output mode; once it is, we stay on 720x480p@60 as designed. Not an ongoing issue.
 
 ---
 
@@ -384,6 +398,47 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — Phase 4 passes on hardware; source mode variability noted
+
+Multi-sample diagnostic confirms CSI-TX is transmitting:
+
+```
+TC358743: CSI stream enabled
+TC358743: CSI_STATUS=0x00001044 [] CSI_ERR=0x00000000          ← 10 ms: no TXACT yet
+TC358743: CSI_STATUS=0x00001244 [TXACT ] CSI_ERR=0x00000000    ← 60 ms: TXACT set
+TC358743: CSI_STATUS=0x00001244 [TXACT ] CSI_ERR=0x00000000    ← 260 ms: still set
+```
+
+TXACT is momentary by design — it's "currently transmitting a packet", not "stream is on". It clears during LP11 gaps between packets/frames. Our 10 ms sample lands in a gap, the later samples catch active packets.
+
+Also observed: this boot detected `1440x240p @ 60 Hz` (CEA VIC 8/9, NTSC pixel-doubled) instead of the previous run's `720x480p @ 60 Hz`. **Cause was Wii-side**: the Wii had been reset and reverted to a default output mode; it needs to be put back into 480p. Expected source mode is 720x480p@60 under normal operation; not something our pipeline needs to accommodate.
+
+### 2026-05-01 — Phase 4 first flash: TXACT absent in CSI_STATUS
+
+First flash of Phase 4 passed functionally — full lock/unlock/relock cycles work correctly:
+
+```
+TC358743: init complete; SYS_STATUS=0x1F
+TC358743: post-HPD SYS_STATUS=0x9F
+TC358743: watcher start; SYS_STATUS=0x9F
+TC358743: detected 720x480p @ 60 Hz, RGB limited-range
+TC358743: CSI stream enabled
+TC358743: CSI_STATUS=0x1044 []
+TC358743: SYS_STATUS 0x9F->0x1F [DDC5V TMDS PLL SCDT HDMI ]
+TC358743: CSI stream disabled
+...
+TC358743: CSI stream enabled
+TC358743: CSI_STATUS=0x1044 []
+```
+
+But `CSI_STATUS=0x1044` doesn't have TXACT (bit 9 / 0x0200) or any named bit set. Three unknown bits (2, 6, 12) are set. HLT is clear (not halted) which is reassuring. Added multi-sample + full 32-bit readout + CSI_ERR for next flash. See open questions.
+
+### 2026-05-01 — Phase 4 implemented (CSI stream enable, still no ISC side)
+
+Added `tc358743_enable_stream(bool)` (direct port of kernel driver's `enable_stream`) and wired it into the watcher: stream enables on `S_SYNC` 0→1, disables on 1→0, and also enables on first-poll if the chain is already locked at boot. After enable, the watcher dumps `CSI_STATUS` (reg 0x0410) so we can see whether `TXACT` flips on.
+
+Nothing programmed on the SAM9X75 ISC side yet — the CSI-TX will just drive the CSI-2 bus into the SoC where the receiver either accepts or drops; we proceed to Phase 5 for the capture side.
 
 ### 2026-05-01 — Phase 4a passes on hardware; full HDMI lock
 
