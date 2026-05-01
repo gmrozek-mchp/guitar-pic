@@ -28,6 +28,7 @@
 // *****************************************************************************
 
 #include "app.h"
+#include "tc358743.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -91,11 +92,7 @@ void APP_Initialize ( void )
     /* Place the App state machine in its initial state. */
     appData.state = APP_STATE_INIT;
 
-
-
-    /* TODO: Initialize your application's state machine and other
-     * parameters.
-     */
+    TC358743_Initialize();
 }
 
 
@@ -109,6 +106,7 @@ void APP_Initialize ( void )
 
 void APP_Tasks ( void )
 {
+    TC358743_Tasks();
 
     /* Check the application's current state. */
     switch ( appData.state )

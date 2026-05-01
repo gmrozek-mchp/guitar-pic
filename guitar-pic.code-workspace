@@ -12,6 +12,10 @@
 		{
 			"name": "marvin",
 			"path": "firmware/marvin"
+		},
+		{
+			"name": "linux-at91",
+			"path": "../linux-at91"
 		}
 	],
 	"settings": {
