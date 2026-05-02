@@ -12,6 +12,11 @@ modules:
 - drv_i2c
 - drv_i2c_0
 - flexcom6
+- gfx_bridge_lvdsc_plib
+- gfx_display_comp_ac69t88a
+- le_gfx_driver_xlcdc
+- le_gfx_gfx2d
+- plib_gfx2d
 - stdio
 - sys_time
 - tc0
@@ -30,7 +35,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 8c108acbe337eb1a22cdef71dc3d9d6f290d419163f803c9a3755099b06fa15c
+  hash: b482e17e15dcc3d7a1081a856f06783f895068098ba56f788b0fa6083f3fbd2f
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -49,8 +54,28 @@ generatedFileHashHistoryMap:
   hash: efe3b598a6fc3492f7f448c0077edcce4378d2029b5a26d304e0293e0d4711f7
 - file: ../src/config/default/fault_handlers.c
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
+- file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
+  hash: 15400a7b9361d6bbe70a842c4fdfcabf211100bc29d185be8edc755e2065db41
+- file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h
+  hash: 5afe7e416d4f004399a4c80462caede10b18a35a238366604d193f765a2e34ec
+- file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c
+  hash: b71cc41df96d4e350cec78cb556348e128a4f978e91742cd6b9e33cc1440c9af
+- file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h
+  hash: 637d343cc20356dfb08492f7a3e97479ad421b88ffec123181330eb895f50689
+- file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
+  hash: 786a6ee8a4500810dacc56b77f05e2a00bde71eb5b3d7baaaec3863dc0a9c409
+- file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
+  hash: cdd70b5efe9e854ce1530a32a65119c2af79f22f90e0e661d4127113df72c17a
+- file: ../src/config/default/gfx/driver/gfx_driver.c
+  hash: 09c3af304672f8af0e2396e39d075b3666380044092f21647b30b1030d0f0655
+- file: ../src/config/default/gfx/driver/gfx_driver.h
+  hash: 99c4a55ae198e618fd3590a98f219c38882bde956dc022215ef66df01b108936
+- file: ../src/config/default/gfx/driver/processor/gfx2d/drv_gfx2d.c
+  hash: 77a3f0a2acad57156eed172b6c7f2473ef6ba18a7235c9895359e606e7a6eef0
+- file: ../src/config/default/gfx/driver/processor/gfx2d/drv_gfx2d.h
+  hash: b8928dd67243e292ea99a01a75a4717328ef59ca1f0d56e3a1f03fe5b1840709
 - file: ../src/config/default/initialization.c
-  hash: e0103d197ad3a4559b23166a4e7ae13714a77ddd012aa5140fd6d215e14ba523
+  hash: b3189e1f4dade8f92927faecfe82486a4fcd3644b71f6ee43eec7f0c0607bbe9
 - file: ../src/config/default/interrupts.c
   hash: 3f257c1c617c901d65c7a959e95e16fa3baaacb7c3667d18059a321a4dbab6bf
 - file: ../src/config/default/interrupts.h
@@ -66,7 +91,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: 415ec4141272226f13089a209736730f0ef55cf80c9dcefceb1fe8cdbc909034
+  hash: 2bc609ba69398e1d94810f59a053a2ce194e420d6a0bf8ca1439c1e2a264acd0
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -81,6 +106,10 @@ generatedFileHashHistoryMap:
   hash: ec172c9f29f28a6cd23db61ccc5f0039b2f257f1c74a10be2c06bb5b75949e94
 - file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom_twi_master_common.h
   hash: b167387d3ed43ed5aec18b601bf7d5da73592c102a83e21d56351bb98c67807a
+- file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.c
+  hash: c143979d6918aa64bf68fc768cca5b8179fa78d66349e301c14f94658ac48c00
+- file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.h
+  hash: 18ddb5eb428222191d9510dd224eefec5333d7271429f5e287e22d248b853108
 - file: ../src/config/default/peripheral/mmu/cp15.h
   hash: d927deee45b9b50351c5513daf446ae3278f5fa85915c06c434b24c7eb61b64b
 - file: ../src/config/default/peripheral/mmu/plib_mmu.c
@@ -136,7 +165,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 36364a39e784157f4aac281dfecc1f19be971c9935e6299a6f37a78cd98d1d46
+  hash: 3b442e3fb44ad51eafce4da3b50ab176b34f02f08299b28c4fa7d0fd92d3f26f
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/user.h

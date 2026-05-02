@@ -77,6 +77,9 @@ void SYS_Tasks ( void )
 
     /* Maintain Device Drivers */
     
+    DRV_XLCDC_Update();
+
+
 
     /* Maintain Middleware & Other Libraries */
     

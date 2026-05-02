@@ -251,3 +251,8 @@ bool ISC_Capture_IsRunning(void)
     return g_running;
 }
 
+uint32_t ISC_Capture_GetBufferAddress(void)
+{
+    return (uint32_t)(uintptr_t)g_framebuffer;
+}
+

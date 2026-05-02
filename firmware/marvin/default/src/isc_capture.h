@@ -15,6 +15,11 @@ void     ISC_Capture_Stop(void);
 uint32_t ISC_Capture_FrameCount(void);
 bool     ISC_Capture_IsRunning(void);
 
+/* Base address of the capture framebuffer pool. Returns buffer 0; buffer 1
+ * is at +(width * height * 4). ISC DMA alternates between the two. For a
+ * tear-tolerant read-only display, pointing at buffer 0 alone is fine. */
+uint32_t ISC_Capture_GetBufferAddress(void);
+
 #ifdef __cplusplus
 }
 #endif

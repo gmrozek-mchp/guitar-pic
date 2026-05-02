@@ -16,11 +16,13 @@ Vision-based guitar-playing robot. The marvin firmware captures live HDMI video 
 
 ## Current focus
 
-**End-to-end capture pipeline is working as of 2026-05-02: Pi → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → SDRAM at 720p60, native BGRX32 (4 B/pixel) in DDR — no post-capture conversion needed.**
+**End-to-end pipeline working as of 2026-05-02: source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 7" LVDS panel.**
 
-> **Configuration reference:** see [`capture_pipeline.md`](capture_pipeline.md) for the authoritative, stage-by-stage pipeline documentation (register settings, datasheet citations, override locations).
+> **Configuration references:**
+> - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
+> - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
 
-Phase 5b (byte-level content verification) ✅ done — R/G/B/W/K sweep confirms BGRX32. Next up: **Phase 6 — display on LCD via Legato / LCDC**, consuming the BGRX32 framebuffer directly.
+Phase 5b (byte-level content verification) ✅. Phase 6 MVP (captured video on the LCD, 720×480 pillarboxed on 800×480) ✅. Phase 7a/c (480p via Pi and Wii) ✅. Next: either HEO scaling for 720p-on-800×480 display, or Phase 8 (vision stage) on the existing 480p path.
 
 ### Original focus (for context — this is done)
 
@@ -553,6 +555,34 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-02 — Phase 6 MVP: captured video on the LCD ✅
+
+First pixels from the capture pipeline displaying on the 7" AC69T88A LVDS panel. 720×480 Wii feed pillarboxed (40 px black each side) on the 800×480 panel. No scaling, no CPU post-processing.
+
+**MCC additions (staged from Greg's Harmony Configurator session):**
+- gfx_display_comp_ac69t88a (panel timings)
+- le_gfx_driver_xlcdc (high-level layer driver + 4 auto-allocated .region_nocache framebuffers)
+- le_gfx_gfx2d (2D engine driver)
+- plib_gfx2d (2D engine peripheral lib)
+- gfx_bridge_lvdsc_plib (LVDS serializer)
+- Wired into `SYS_Initialize()` via auto-generated initialization.c
+
+**Key discovery — BASE layer has no window registers.** `XLCDC_SetupBaseLayer` configures BASECFG0..6 but no equivalents to OVRxCFG2/3 (XPOS/YPOS/XSIZE/YSIZE). BASE layer is always the full configured panel size. Pointing BASE at a 720-wide buffer on an 800-wide panel produced a characteristic line-to-line skew (LCDC reads 800×4 = 3200 B/row, source has only 720×4 = 2880 B/row, every display row drifts 80 px left). Fix: use OVR1 instead, which has real window position/size registers.
+
+**Pixel format:** `XLCDC_RGB_COLOR_MODE_ARGB_8888` reads memory in byte order `B, G, R, A` (low to high). That's exactly our BGRX32 layout byte-for-byte. Our X=0x00 would imply transparent, but we set OVR1 layer global alpha to 255 via `SetLayerOpts(layer, 255, true, false)` which overrides per-pixel A.
+
+**Code changes (small):**
+- `isc_capture.c/h` — new `ISC_Capture_GetBufferAddress()` accessor exposes buffer 0 base.
+- `app.c:APP_Initialize` — calls `XLCDC_EnableBacklight()` (MCC auto-init leaves it off).
+- `app.c:lcd_bind_capture()` — reconfigures OVR1 to point at the capture buffer, pillarboxed. Called from `app_coordinate_capture` once per TC358743 lock, right after `ISC_Capture_Configure` succeeds.
+
+**Known trade-offs (documented in `display_path.md`):**
+- LCDC stuck on buffer 0; ISC alternates writes between buffer 0 and 1. Effective display refresh ~30 Hz, possible scanline tear. Upgrade path: pointer swap on ISC frame-done ISR.
+- 1280×720 sources (Pi 720p) exceed the 800×480 panel; bind bails. Downscale via HEO scaler is future work — plib doesn't expose HEO scaling so would need direct `HEOCFG*` register writes.
+- Limited-range Wii red (~0xC8) displays slightly dim. Could range-expand via CPU or GFX2D if needed.
+
+Phase 6 MVP complete. Next: decide whether to pursue HEO scaling for Pi 720p support or proceed to Phase 8 (vision stage) on the existing 480p path.
 
 ### 2026-05-02 — Phase 7c PASSES: Wii→ElectronWarp→TC358743 fully characterized ✅
 

@@ -276,7 +276,15 @@
                 "default/src/config/default/vision/image_sensors/imx219/imx219.c",
                 "default/src/config/default/peripheral/xdmac/plib_xdmac_common.h",
                 "default/src/config/default/peripheral/xdmac/plib_xdmac.h",
-                "default/src/config/default/peripheral/xdmac/plib_xdmac.c"
+                "default/src/config/default/peripheral/xdmac/plib_xdmac.c",
+                "default/src/config/default/gfx/driver/gfx_driver.h",
+                "default/src/config/default/gfx/driver/gfx_driver.c",
+                "default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h",
+                "default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c",
+                "default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h",
+                "default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c",
+                "default/src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h",
+                "default/src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c"
             ]
         }
     ]
