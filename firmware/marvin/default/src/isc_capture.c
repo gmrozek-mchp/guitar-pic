@@ -425,6 +425,26 @@ bool ISC_Capture_ProbeFrame(void)
     uint8_t b2min = 0xFFu, b2max = 0u;
     uint8_t b3min = 0xFFu, b3max = 0u;
 
+    /* Absolute corners: catches PFE-crop-edge issues and DMA first/last-word
+     * alignment that the 1/4-spaced 9-point grid misses. */
+    {
+        static const struct { const char *tag; bool right; bool bottom; } corners[] = {
+            {"FIRST", false, false},  /* (0, 0)         very first pixel */
+            {"TopR ", true,  false},  /* (w-1, 0)       first row, last pixel */
+            {"BotL ", false, true },  /* (0, h-1)       last row, first pixel */
+            {"LAST ", true,  true },  /* (w-1, h-1)     very last pixel */
+        };
+        for (size_t i = 0; i < sizeof(corners) / sizeof(corners[0]); i++)
+        {
+            uint32_t x = corners[i].right  ? (w - 1u) : 0u;
+            uint32_t y = corners[i].bottom ? (h - 1u) : 0u;
+            uint32_t off = ((y * w) + x) * ISC_CAP_BPP;
+            printf("  %s (%4lu,%4lu) mem: %02X %02X %02X %02X\r\n",
+                   corners[i].tag, (unsigned long)x, (unsigned long)y,
+                   buf[off + 0u], buf[off + 1u], buf[off + 2u], buf[off + 3u]);
+        }
+    }
+
     for (size_t i = 0; i < sizeof(pts) / sizeof(pts[0]); i++)
     {
         /* xf: 1/2/3 -> w/4, w/2, 3w/4 (avoid pillarbox at x=0 and x=w-1

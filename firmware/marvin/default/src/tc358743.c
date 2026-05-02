@@ -498,8 +498,10 @@ static bool tc358743_set_csi(void)
 /* EDID: base (VESA 1.3) + CEA-861-D extension.
  * Base block preferred DTD is 1280x720@60p (CEA VIC 4). Extension's CEA
  * Video Data Block lists VIC 4 (native, 720p60 16:9), VIC 19 (720p50 16:9),
- * and VIC 34 (1080p30 16:9) as accepted modes — no 480p fallback, to force
- * real HDMI sources off the Wii-style pixel-doubled 720x480 path.
+ * VIC 34 (1080p30 16:9), VIC 3 (720x480p60 16:9), and VIC 2 (720x480p60 4:3)
+ * as accepted modes. 480p is last-preference; native + preferred is still
+ * 720p60, so cooperating sources default there. 480p support is here for
+ * the Wii/ElectronWarp path which only outputs 480p.
  * Both block checksums (bytes 127 and 255) are patched at runtime. */
 static uint8_t edid_block[EDID_TOTAL_SIZE] = {
     /* ===== Block 0: VESA EDID 1.3 ===== */
@@ -559,16 +561,18 @@ static uint8_t edid_block[EDID_TOTAL_SIZE] = {
     0x02,
     /* 129: CEA-861-D revision */
     0x03,
-    /* 130: DTD offset (14 = end of data-block collection) */
-    0x0E,
+    /* 130: DTD offset (18 = end of data-block collection) */
+    0x12,
     /* 131: Flags — no audio, RGB-only, 1 native format */
     0x01,
-    /* 132..135: Video Data Block (tag=2, len=3): VIC 4 native, VIC 19, VIC 34
-     *           (720p60 preferred, 720p50 fallback, 1080p30 fallback) */
-    0x43, 0x84, 0x13, 0x22,
-    /* 136..141: HDMI VSDB (tag=3, len=5): OUI 0x000C03 LE, phys addr 1.0.0.0 */
+    /* 132..137: Video Data Block (tag=2, len=5): VIC 4 native, VIC 19,
+     *           VIC 34, VIC 3, VIC 2.
+     *           720p60 preferred/native; 720p50, 1080p30, 480p60 16:9,
+     *           480p60 4:3 as fallbacks. */
+    0x45, 0x84, 0x13, 0x22, 0x03, 0x02,
+    /* 138..143: HDMI VSDB (tag=3, len=5): OUI 0x000C03 LE, phys addr 1.0.0.0 */
     0x65, 0x03, 0x0C, 0x00, 0x10, 0x00,
-    /* 142..254: Padding */
+    /* 144..254: Padding (111 bytes) */
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -582,8 +586,7 @@ static uint8_t edid_block[EDID_TOTAL_SIZE] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     /* 255: Extension-block checksum — patched at runtime */
     0x00,
 };
