@@ -517,6 +517,71 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-01 — Branch `720p`: drift GONE at 720p60 / 972 Mbps, D-PHY locks with Gen3 HSFREQRANGE
+
+**Key results after two flashes on new branch:**
+
+1. **Byte-phase drift is 480p-specific.** At 720p60 on a real HDMI source, the phase scanner shows exactly one entry (`row 0 → 2`) — flat across all captured rows. The 5/11 16-row drift we fought on 480p is gone. Confirmed: root cause was either the pixel-doubling path (now absent), or the 297 Mbps/lane CSI rate, or both.
+
+2. **SAM9X75 D-PHY RX is DWC Gen3, not Gen2.** First attempt at 972 Mbps with HSFREQRANGE=0x1A (Gen2 band 950-1000) gave `CSI_INT_ST_PHY_FATAL=0x3` (SOT sync errors both lanes). Swapped to Gen3 band value 0x0A and it locked cleanly. Confirms the DT clue `snps,dw-dphy-rx` with hardware-detected `dphy_gen` — Gen3 path in Linux's DWC driver. Update `ISC_CAP_CSI_BITRATE` accordingly in the code.
+
+3. **Bridge cleanly delivers full 720p60 frame**: IDS reports `DT=0x24 VC=0 WC=3840 rows=720` — full-width, full-height MIPI packets at 60 Hz. No halving, no field-weaving, no pixel repetition.
+
+4. **RMS=1 cliff is not a fixed byte budget.** Captured ~108 destination rows per frame, = 414 KB/frame. At 480p the cliff was ~120 KB/frame. So the cliff scales (roughly 3.4×) with the input data rate, but still bites somewhere short of full frame.
+
+5. **DDONE interrupts never fire.** `ISC: 0 fps` — frame-count callback is not being invoked despite memory clearly being written. ISC detects no "end of frame" because it's stopping mid-frame at the cliff. Fixing the cliff may fix DDONE as a side-effect.
+
+6. **Secondary bug: re-start after source re-lock fails.** When source blinks (0x9F→0x19→0x9F), second `DRV_ISC_Start_Capture` times out. Driver state cleanup after `Stop` is incomplete. Not blocking, can revisit.
+
+**Settings summary that work on this branch:**
+- PLL FBD=144 → 972 Mbps/lane
+- D-PHY timings from kernel's 972 Mbps table
+- HSFREQRANGE **0x0A** (Gen3 band)
+- VI_REP cleared (no pixel-rep de-replication)
+- EDID advertises VIC 4/19/34 only
+- CSI2DC / ISC unchanged from previous baseline
+
+**Next focus:** ISC RMS=1 cliff. With the drift gone, there's no obstacle to capturing the full 720×1280 frame other than this throughput limit. Likely candidates: ISC PFE cropping, DMA descriptor chain size, AHB-matrix priority.
+
+### 2026-05-01 — Branch `720p`: pipeline reconfigured for 720p60 / 1080p30
+
+Fresh branch off `9x75take2`. All code changes coordinated to target 720p60 RGB888 at 972 Mbps/lane (kernel's tabulated rate).
+
+**Changes in this commit:**
+
+| File | Change |
+|---|---|
+| tc358743.c | `PLL_FBD=88` → `144` (297 Mbps → 972 Mbps/lane). D-PHY timings updated to kernel's 972 Mbps values (LINEINITCNT=0x1B58 etc.). |
+| tc358743.c | `VI_REP` IN_REP_HEN/IN_REP cleared (real HDMI sources don't carry pixel doubling). |
+| tc358743.c | Base-block DTD: 720x480p@60 → 1280x720p@60 (74.25 MHz pclk, pos-H/pos-V sync). |
+| tc358743.c | CEA VDB: VIC 2/3/1 → VIC 4 (native) / VIC 19 / VIC 34. No 480p fallback — force source off pixel-doubled 480p. |
+| isc_capture.c | `csiBitRate = 0x14` → `0x1A` (HSFREQRANGE band for 950-1000 Mbps, DWC Gen2 table). |
+| app.c | Removed `cap_w = w/2` halving; use detected width directly. |
+
+**Bandwidth math at 972 Mbps/lane × 2 lanes = 1.944 Gbps:**
+- 720p60 RGB888: 1.327 Gbps (68% link utilization) ✓
+- 1080p30 RGB888: 1.493 Gbps (77%) ✓
+- 1080p60 RGB888: 2.985 Gbps ❌ (not advertised in EDID)
+
+**Per the samsonx / RPi forum thread, 720p and 1080p are the "clean" paths on TC358743.** Hypotheses we're testing simultaneously on this branch:
+
+1. Real HDMI source (no pixel doubling) → no need for VI_REP.IN_REP → full horizontal resolution.
+2. Higher CSI rate (972 vs 297 Mbps/lane) → different D-PHY alignment behavior → maybe the 16-row byte-phase drift disappears.
+3. 720p/1080p timings → no field-weaving or half-frame behavior → full vertical resolution captured.
+
+**Expected post-flash (if all three hypotheses hold):**
+- TC358743 detects 1280x720p@60 (or whatever the source picks from VIC 4/19/34).
+- IDS: `DT=0x24 VC=0 WC=3840 (=1280×3) rows=720` for 720p60.
+- Phase scanner: zero transitions (flat phase, no drift).
+- `vertical extent: rows 0..719 written` (full frame captured, RMS=1 cliff may or may not still bite).
+- Probe hex dumps show clean dense 3-byte pixel triples.
+
+**Failure modes to expect and interpret:**
+- `SYS_STATUS` never reaches 0x9F → source doesn't support any advertised VIC. Widen EDID to include 480p, test.
+- D-PHY locks but CSI2DC `ARSTIP` stuck → 972 Mbps too fast for SAM9X75 D-PHY. Drop to 756 Mbps with new HSFREQRANGE.
+- Frames captured but fps < 60 → FIFO overrun; bridge dropping frames because 594 Mbps/lane (prior config) was too slow, should be fixed here.
+- Phase drift still present → drift is fundamental to CSI2DC VP, not source-specific. Falls to software realign or Data Pipe.
+
 ### 2026-05-01 — Session wrap: 480p pipeline works end-to-end at 360x~113; pivoting to 720p/1080p test
 
 Committing current state and starting a fresh branch to test whether 720p or 1080p sources avoid the 480p-specific quirks we've hit (pixel-doubling, 16-row phase drift, RMS=1 byte cliff). RPi forum threads suggest 720p/1080p are cleaner paths on TC358743.

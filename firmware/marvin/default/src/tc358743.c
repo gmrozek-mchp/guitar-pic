@@ -12,22 +12,24 @@
 #define REFCLK_HZ               27000000u
 #define CSI_LANES               2u
 #define PLL_PRD                 4u
-/* FBD=44 → hsck = (27M/4)*44 = 297 Mbps/lane. Pairs with the SAM9X75 D-PHY
- * HSFREQRANGE band 0x14 (270-299 Mbps). See isc_capture.c CSI bitrate comment. */
-#define PLL_FBD                 44u
+/* FBD=144 → hsck = (27M/4)*144 = 972 Mbps/lane. Pairs with the SAM9X75
+ * D-PHY HSFREQRANGE band 0x0A (DWC Gen3 table, 950-1000 Mbps).
+ * Kernel tabulates this as the rate for 720p60 RGB888 / 1080p50 YUV422
+ * over 2 lanes. 2 lanes × 972 Mbps = 1.944 Gbps: fits 720p60 RGB888
+ * (1.33 Gbps) with headroom, plus 1080p30 RGB888 (1.49 Gbps). */
+#define PLL_FBD                 144u
 #define CSI_BPS_PER_LANE        ((REFCLK_HZ / PLL_PRD) * PLL_FBD)
-#define FIFO_LEVEL              374u   /* kernel driver default; tuning this
-                                        * affects alignment slightly but does
-                                        * not fix the ~half-frame halving. */
+#define FIFO_LEVEL              374u   /* kernel hardcodes this at all rates. */
 
-#define LINEINITCNT_VAL         0x00000E80u
-#define LPTXTIMECNT_VAL         0x00000003u
-#define TCLK_HEADERCNT_VAL      0x00001403u
+/* D-PHY timing counts for 972 Mbps from kernel driver tc358743.c case 972000000 */
+#define LINEINITCNT_VAL         0x00001B58u
+#define LPTXTIMECNT_VAL         0x00000007u
+#define TCLK_HEADERCNT_VAL      0x00002806u
 #define TCLK_TRAILCNT_VAL       0x00000000u
-#define THS_HEADERCNT_VAL       0x00000103u
-#define TWAKEUP_VAL             0x00004882u
+#define THS_HEADERCNT_VAL       0x00000806u
+#define TWAKEUP_VAL             0x00004268u
 #define TCLK_POSTCNT_VAL        0x00000008u
-#define THS_TRAILCNT_VAL        0x00000002u
+#define THS_TRAILCNT_VAL        0x00000005u
 #define HSTXVREGCNT_VAL         0x00000000u
 
 #define CHIPID                  0x0000u
@@ -494,10 +496,10 @@ static bool tc358743_set_csi(void)
 }
 
 /* EDID: base (VESA 1.3) + CEA-861-D extension.
- * Base block detailed/preferred timing is 720x480@60p (SMPTE 293M / CEA VIC 2),
- * matching Wii 480p output via ElectronWarp. Extension block advertises the
- * HDMI Vendor-Specific Data Block (without which many HDMI sources fall back
- * to DVI mode) and a Video Data Block listing VIC 2 (native), VIC 3, VIC 1.
+ * Base block preferred DTD is 1280x720@60p (CEA VIC 4). Extension's CEA
+ * Video Data Block lists VIC 4 (native, 720p60 16:9), VIC 19 (720p50 16:9),
+ * and VIC 34 (1080p30 16:9) as accepted modes — no 480p fallback, to force
+ * real HDMI sources off the Wii-style pixel-doubled 720x480 path.
  * Both block checksums (bytes 127 and 255) are patched at runtime. */
 static uint8_t edid_block[EDID_TOTAL_SIZE] = {
     /* ===== Block 0: VESA EDID 1.3 ===== */
@@ -528,10 +530,12 @@ static uint8_t edid_block[EDID_TOTAL_SIZE] = {
     /* 38..53: Standard timings (unused, all 0x01) */
     0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
     0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01, 0x01,
-    /* 54..71: Detailed timing 1 = 720x480@60p (pclk 27.000 MHz) */
-    0x8C, 0x0A, 0xD0, 0x8A, 0x20, 0xE0, 0x2D, 0x10,
-    0x10, 0x3E, 0x96, 0x00, 0xA0, 0x78, 0x00, 0x00,
-    0x00, 0x18,
+    /* 54..71: Detailed timing 1 = 1280x720p@60Hz (CEA VIC 4, pclk 74.25 MHz,
+     *         H: 1280 active / 370 blank / 110 fp / 40 sync,
+     *         V: 720 active / 30 blank / 5 fp / 5 sync, pos-H / pos-V) */
+    0x01, 0x1D, 0x00, 0x72, 0x51, 0xD0, 0x1E, 0x20,
+    0x6E, 0x28, 0x55, 0x00, 0xA0, 0x5A, 0x00, 0x00,
+    0x00, 0x1E,
     /* 72..89: Detailed timing 2 = monitor range limits
      *         V: 50-75 Hz, H: 30-75 kHz, max pclk 150 MHz */
     0x00, 0x00, 0x00, 0xFD, 0x00, 0x32, 0x4B, 0x1E,
@@ -559,8 +563,9 @@ static uint8_t edid_block[EDID_TOTAL_SIZE] = {
     0x0E,
     /* 131: Flags — no audio, RGB-only, 1 native format */
     0x01,
-    /* 132..135: Video Data Block (tag=2, len=3): VIC 2 native, VIC 3, VIC 1 */
-    0x43, 0x82, 0x03, 0x01,
+    /* 132..135: Video Data Block (tag=2, len=3): VIC 4 native, VIC 19, VIC 34
+     *           (720p60 preferred, 720p50 fallback, 1080p30 fallback) */
+    0x43, 0x84, 0x13, 0x22,
     /* 136..141: HDMI VSDB (tag=3, len=5): OUI 0x000C03 LE, phys addr 1.0.0.0 */
     0x65, 0x03, 0x0C, 0x00, 0x10, 0x00,
     /* 142..254: Padding */
@@ -627,12 +632,11 @@ static bool tc358743_load_edid(void)
 
 static bool tc358743_set_csi_color_space_rgb888(void)
 {
-    /* Full-range RGB888 (MIPI DT 0x24) with 2x horizontal pixel-repetition
-     * de-replication. IN_REP_HEN=1, IN_REP=1 tells the bridge the input
-     * carries 2x pixel repetition; the bridge strips every other pixel on
-     * output so 720 unique pixels land in a 720-wide CSI row instead of
-     * being split across two 720-wide rows (samsonx 2016 observation:
-     * 480p-on-TC358743 reads cleanly at 1440-wide, scrambled at 720-wide). */
+    /* Full-range RGB888 (MIPI DT 0x24). Matches kernel driver's RGB888
+     * path for MEDIA_BUS_FMT_RGB888_1X24. IN_REP_HEN / IN_REP cleared
+     * so the bridge doesn't apply pixel-repetition de-replication
+     * (real HDMI sources at 720p/1080p don't carry pixel repetition;
+     * leaving IN_REP on would halve horizontal resolution). */
     return tc358743_wr8_and_or(VOUT_SET2,
                                (uint8_t)~(MASK_SEL422 | MASK_VOUT_422FIL_100),
                                0u)
@@ -640,9 +644,7 @@ static bool tc358743_set_csi_color_space_rgb888(void)
                                (uint8_t)~(MASK_VOUT_COLOR_SEL
                                           | MASK_IN_REP_HEN
                                           | MASK_IN_REP),
-                               (uint8_t)(MASK_VOUT_COLOR_RGB_FULL
-                                         | MASK_IN_REP_HEN
-                                         | 0x01u))
+                               MASK_VOUT_COLOR_RGB_FULL)
         && tc358743_wr16_and_or(CONFCTL, (uint16_t)~MASK_YCBCRFMT, 0u);
 }
 

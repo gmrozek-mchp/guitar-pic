@@ -16,9 +16,13 @@
 
 #define ISC_CAP_MAX_W        1920u
 #define ISC_CAP_MAX_H        1080u
-#define ISC_CAP_BPP          3u    /* BYPASS+PACKED8+RMS=1: dense BGR bytes, 3 B/pixel */
+#define ISC_CAP_BPP          3u    /* BYPASS+PACKED8+RMS=1: dense bytes, 3 B/pixel */
 #define ISC_CAP_NUM_BUFFERS  2u
-#define ISC_CAP_CSI_BITRATE  0x14u
+/* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
+ * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
+ * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps
+ * (works in both Gen2 and Gen3 — bands coincide there). Changes with bitrate. */
+#define ISC_CAP_CSI_BITRATE  0x0Au
 
 static __attribute__((__section__(".region_cache_aligned")))
        __attribute__((__aligned__(32)))
@@ -176,7 +180,7 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
     (void)memset(g_framebuffer, 0x55, fill_bytes);
     SYS_CACHE_CleanDCache_by_Addr((uint32_t *)g_framebuffer, (int32_t)fill_bytes);
 
-    printf("ISC_Capture: configured %lux%lu ARGB32 (%lu bytes/frame); "
+    printf("ISC_Capture: configured %lux%lu RGB888 packed (%lu bytes/frame); "
            "buffers pre-filled with 0x55\r\n",
            (unsigned long)width, (unsigned long)height,
            (unsigned long)frame_size);
@@ -413,8 +417,8 @@ bool ISC_Capture_ProbeFrame(void)
             }
         }
     }
-    printf("  BYPASS+PACKED8+RMS=1: 3 bytes/pixel, GRB byte order (Phase 5b). "
-           "Solid R=FF through A2D gain ~0.753 lands as 00 C0 00 repeating.\r\n");
+    printf("  BYPASS+PACKED8+RMS=1: 3 bytes/pixel packed. Byte order TBD on\r\n"
+           "  this source; feed solid primaries (R/G/B) to identify the map.\r\n");
 
     return true;
 }
