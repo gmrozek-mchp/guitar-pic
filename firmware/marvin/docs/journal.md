@@ -517,7 +517,43 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
-### 2026-05-01 — Branch `720p`: drift GONE at 720p60 / 972 Mbps, D-PHY locks with Gen3 HSFREQRANGE
+### 2026-05-01 — Branch `720p`: cliff root-caused to PFE crop; fix applied but unverified
+
+**Diagnostic breakthrough**: expanded ISC_Capture_ProbeFrame with a `cliff:` block that reads PFE crop window, ISC DMA state, per-probe CSI2DC/ISC counter deltas, and decoded INTSR error bits. First flash pinpointed the problem:
+
+```
+cliff: PFE_CFG1=0x00000000 PFE_CFG2=0x00000000
+cliff: PFE crop col[0..0] row[0..0]  expected col[0..1279] row[0..719]
+cliff: INTSR=0x08000002 [HD HDTO!]
+cliff: iscObj frameCount=1
+```
+
+**MCC's ISC driver never programs the PFE crop window.** `plib_isc.c` defines `ISC_PFE_Crop_Area()` but nothing calls it, so `PFE_CFG1/2` stay at reset value 0 → PFE expects a 1×1 frame → HDTO (Horizontal Detection Timeout) fires after the first line → ISC halts, no DDONE. This has almost certainly been happening on the 480p path too, but at 480p the bridge drops so many lines that the cliff overlapped with the bridge shortfall.
+
+**Fix attempt 1**: program `PFE_CFG1 = COLMAX(w-1)` and `PFE_CFG2 = ROWMAX(h-1)` in `ISC_Capture_Configure` after `DRV_ISC_Configure`. Result: HDTO gone (`INTSR=0x00000002 [HD]` only) — but VD also stopped firing entirely (`frameCount=0` vs `=1` pre-fix). Partial memory writes, no DDONE.
+
+**Cross-referenced the kernel mchp-isc driver** (`microchip-isc-base.c`): it programs PFE_CFG1/2 **AND** sets `COLEN`/`ROWEN` bits in PFE_CFG0 via `regmap_update_bits`. Without those enable bits the crop values are stored but inert, and the PFE's internal line/frame boundary detector doesn't activate.
+
+**Fix attempt 2**: `PFE_CFG0 |= COLEN | ROWEN` (bits 12+13) after the crop-value writes. `PFE_CFG0` now reads `0x40007080` (was `0x40004080`). Flash confirms the bits take, and `DRV_ISC_Start_Capture` succeeds — but the source (NTSC → 720p converter) dropped SYNC before the 1-second probe interval, so we got no post-fix probe output to verify DDONE behavior. **Fix is unverified.**
+
+**Session state at wrap:**
+- PFE crop window + COLEN/ROWEN programming committed to `isc_capture.c`.
+- Probe now has a `cliff:` diagnostic block and moved sample points to `x=w/4,w/2,3w/4` + `y=h/8,h/2,7h/8` (inside pillarbox, avoid edge overscan).
+- Hex-dump rows rebased to 5/20/60/100/200 (span both 480p and 720p cliff locations).
+
+**Carry-forward for next session:**
+
+1. **Verify the PFE/COLEN fix**. Need a stable source that doesn't drop SYNC within the 1-second probe window. If fix works, expect:
+   - `frameCount` delta ≈ 60 per probe
+   - `frameIndex` alternating 0/1
+   - `ISC: 60 fps`
+   - `vertical extent: rows 0..719 written` (full frame)
+
+2. **Restart-after-source-blink bug**. Second `DRV_ISC_Start_Capture` fails after source drops+recovers. Diagnosed but not fixed. Driver state cleanup on `Stop` is incomplete. Probably small, in `isc_capture.c` or requires partial `DRV_ISC_Software_Reset()` before re-configure.
+
+3. **Source stability**. NTSC→720p converter dropping SYNC periodically. Could be cable / grounding / the converter itself. If it keeps being flaky, swap to a more stable source (PC HDMI output, chromecast, etc.) to isolate firmware vs. source issues.
+
+### 2026-05-01 — Branch `720p`: drift GONE at 972 Mbps, D-PHY locks with Gen3 HSFREQRANGE
 
 **Key results after two flashes on new branch:**
 

@@ -167,6 +167,21 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
         printf("ISC_Capture: DRV_ISC_Configure failed\r\n");
         return false;
     }
+
+    /* Program PFE crop window to the configured image size. The MCC
+     * ISC driver defines ISC_PFE_Crop_Area() but never calls it — the
+     * PFE_CFG1/2 registers stay at reset value 0, which tells the PFE
+     * to expect a 1×1 pixel frame. Setting the crop values alone isn't
+     * enough: the Linux mchp-isc driver also sets COLEN+ROWEN in
+     * PFE_CFG0 to activate the crop window; without these bits the
+     * PFE doesn't properly detect line/frame boundaries and VD never
+     * fires. */
+    ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
+                           | ISC_PFE_CFG1_COLMAX((uint32_t)width - 1u);
+    ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
+                           | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);
+    ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
+
     if (DRV_ISC_Configure_DMA(iscObj) != 0u)
     {
         printf("ISC_Capture: DRV_ISC_Configure_DMA failed\r\n");
@@ -240,10 +255,13 @@ bool ISC_Capture_ProbeFrame(void)
 
     SYS_CACHE_InvalidateDCache_by_Addr((uint32_t *)buf, (int32_t)frame_size);
 
+    /* Sample points are at w/4, w/2, 3w/4 horizontally (stays inside
+     * pillarbox for 4:3-in-16:9 sources), and fractional Y capped by the
+     * captured extent so we don't just read sentinel on unused rows. */
     static const struct { const char *tag; uint32_t xf, yf; } pts[] = {
-        {"TL", 0, 0}, {"TM", 1, 0}, {"TR", 2, 0},
-        {"ML", 0, 1}, {"CT", 1, 1}, {"MR", 2, 1},
-        {"BL", 0, 2}, {"BM", 1, 2}, {"BR", 2, 2},
+        {"TL", 1, 1}, {"TM", 2, 1}, {"TR", 3, 1},
+        {"ML", 1, 2}, {"CT", 2, 2}, {"MR", 3, 2},
+        {"BL", 1, 3}, {"BM", 2, 3}, {"BR", 3, 3},
     };
 
     uint32_t vpisr  = CSI2DC_REGS->CSI2DC_VPISR;
@@ -259,6 +277,91 @@ bool ISC_Capture_ProbeFrame(void)
            (unsigned long)w, (unsigned long)h,
            (unsigned long)vpisr, (unsigned long)gisr, (unsigned long)fnvc0,
            (unsigned long)vpcolr, (unsigned long)vprowr);
+
+    /* Cliff diagnostic: figure out WHY ISC is writing partial frames and
+     * never firing DDONE. Split four ways:
+     *  (a) FNVC0 delta over 1 probe tick — if > 0, CSI2DC is receiving
+     *      60 fps worth of frames even when ISC isn't completing them.
+     *      Rules D-PHY / CSI2DC problems out.
+     *  (b) iscObj->frameCount (VD pulses) — fires on every VSYNC edge
+     *      even if the frame doesn't complete. Non-zero here confirms
+     *      ISC's VD detection works.
+     *  (c) iscObj->frameIndex (DDONE counter) — only increments when a
+     *      full frame DMA completes. 0 means DDONE never fires.
+     *  (d) PFE crop window — if COLMAX/ROWMAX don't match w-1 / h-1,
+     *      ISC expects a different-shape frame than what's arriving.
+     *  Plus ISC_INTSR error bits (HDTO/VDTO = horiz/vert timeout,
+     *  DAOV = DMA overflow, RERR/WERR = bus access errors). */
+    {
+        static uint32_t last_fnvc0        = 0u;
+        static uint32_t last_frame_count  = 0u;
+        static uint8_t  last_frame_index  = 0u;
+        static bool     cliff_diag_seeded = false;
+
+        uint32_t pfe_cfg0 = ISC_REGS->ISC_PFE_CFG0;
+        uint32_t pfe_cfg1 = ISC_REGS->ISC_PFE_CFG1;
+        uint32_t pfe_cfg2 = ISC_REGS->ISC_PFE_CFG2;
+        uint32_t ctrlsr   = ISC_REGS->ISC_CTRLSR;
+        uint32_t dctrl    = ISC_REGS->ISC_DCTRL;
+        uint32_t dnda     = ISC_REGS->ISC_DNDA;
+        uint32_t intsr    = ISC_Interrupt_Status();  /* cleared on read */
+
+        uint32_t col_min = (pfe_cfg1 & ISC_PFE_CFG1_COLMIN_Msk)
+                           >> ISC_PFE_CFG1_COLMIN_Pos;
+        uint32_t col_max = (pfe_cfg1 & ISC_PFE_CFG1_COLMAX_Msk)
+                           >> ISC_PFE_CFG1_COLMAX_Pos;
+        uint32_t row_min = (pfe_cfg2 & ISC_PFE_CFG2_ROWMIN_Msk)
+                           >> ISC_PFE_CFG2_ROWMIN_Pos;
+        uint32_t row_max = (pfe_cfg2 & ISC_PFE_CFG2_ROWMAX_Msk)
+                           >> ISC_PFE_CFG2_ROWMAX_Pos;
+
+        uint8_t  cur_frame_index = iscObj->frameIndex;
+        uint32_t cur_frame_count = iscObj->frameCount;
+
+        int32_t  fnvc0_delta       = cliff_diag_seeded
+                                     ? (int32_t)(fnvc0 - last_fnvc0) : 0;
+        int32_t  frame_count_delta = cliff_diag_seeded
+                                     ? (int32_t)(cur_frame_count - last_frame_count) : 0;
+        int32_t  frame_index_delta = cliff_diag_seeded
+                                     ? (int32_t)((uint8_t)(cur_frame_index - last_frame_index)) : 0;
+
+        printf("  cliff: PFE_CFG0=0x%08lX PFE_CFG1=0x%08lX PFE_CFG2=0x%08lX\r\n",
+               (unsigned long)pfe_cfg0,
+               (unsigned long)pfe_cfg1,
+               (unsigned long)pfe_cfg2);
+        printf("  cliff: PFE crop col[%lu..%lu] row[%lu..%lu]"
+               "  expected col[0..%lu] row[0..%lu]\r\n",
+               (unsigned long)col_min, (unsigned long)col_max,
+               (unsigned long)row_min, (unsigned long)row_max,
+               (unsigned long)(w - 1u), (unsigned long)(h - 1u));
+        printf("  cliff: CTRLSR=0x%08lX DCTRL=0x%08lX DNDA=0x%08lX\r\n",
+               (unsigned long)ctrlsr,
+               (unsigned long)dctrl,
+               (unsigned long)dnda);
+        printf("  cliff: INTSR=0x%08lX [%s%s%s%s%s%s%s%s]\r\n",
+               (unsigned long)intsr,
+               (intsr & ISC_INTSR_VD_Msk)     ? "VD "     : "",
+               (intsr & ISC_INTSR_HD_Msk)     ? "HD "     : "",
+               (intsr & ISC_INTSR_DDONE_Msk)  ? "DDONE "  : "",
+               (intsr & ISC_INTSR_LDONE_Msk)  ? "LDONE "  : "",
+               (intsr & ISC_INTSR_HDTO_Msk)   ? "HDTO! "  : "",
+               (intsr & ISC_INTSR_VDTO_Msk)   ? "VDTO! "  : "",
+               (intsr & ISC_INTSR_DAOV_Msk)   ? "DAOV! "  : "",
+               (intsr & (ISC_INTSR_WERR_Msk | ISC_INTSR_RERR_Msk))
+                                              ? "BUSERR! " : "");
+        printf("  cliff: FNVC0 delta=%ld (since prev probe); "
+               "iscObj frameIndex=%u (d=%ld) frameCount=%lu (d=%ld) "
+               "g_frame_count=%lu\r\n",
+               (long)fnvc0_delta,
+               (unsigned)cur_frame_index, (long)frame_index_delta,
+               (unsigned long)cur_frame_count, (long)frame_count_delta,
+               (unsigned long)g_frame_count);
+
+        last_fnvc0         = fnvc0;
+        last_frame_count   = cur_frame_count;
+        last_frame_index   = cur_frame_index;
+        cliff_diag_seeded  = true;
+    }
 
     /* CSI2DC Image Data Snoop (IDS) — authoritative per-packet metadata
      * captured directly from the CSI-2 stream. Each entry holds one
@@ -292,12 +395,15 @@ bool ISC_Capture_ProbeFrame(void)
 
     for (size_t i = 0; i < sizeof(pts) / sizeof(pts[0]); i++)
     {
-        uint32_t x = (pts[i].xf == 0u) ? 0u
-                   : (pts[i].xf == 1u) ? (w / 2u)
-                                       : (w - 1u);
-        uint32_t y = (pts[i].yf == 0u) ? 0u
-                   : (pts[i].yf == 1u) ? (h / 2u)
-                                       : (h - 1u);
+        /* xf: 1/2/3 -> w/4, w/2, 3w/4 (avoid pillarbox at x=0 and x=w-1
+         *               for 4:3 sources in a 16:9 frame).
+         * yf: 1/2/3 -> h/8, h/2, 7h/8 (bias top sample slightly down to
+         *               avoid top-edge overscan). */
+        uint32_t x = (w * pts[i].xf) / 4u;
+        if (x >= w) { x = w - 1u; }
+        uint32_t y = (pts[i].yf == 1u) ? (h / 8u)
+                   : (pts[i].yf == 2u) ? (h / 2u)
+                                       : ((h * 7u) / 8u);
         uint32_t off = ((y * w) + x) * ISC_CAP_BPP;
 
         uint8_t b0 = buf[off + 0u];
@@ -320,13 +426,16 @@ bool ISC_Capture_ProbeFrame(void)
     /* Raw hex dumps: several (row, x) offsets so we can see the actual
      * memory pattern without any pixel-layout assumption. 48 bytes = 16
      * pixels at 3 B/px, 12 pixels at 4 B/px. */
+    /* Dumps at x=w/4 (inside pillarbox for 4:3-in-16:9 sources) across
+     * several rows. Rows chosen to span the typical captured range
+     * regardless of frame size — 5, 20, 60 are within any cliff we've
+     * seen; 100 and 200 are past 480p cliff but still within 720p's. */
     struct { uint32_t y; uint32_t x; } dumps[] = {
-        { 0u,   0u  },     /* row 0 left edge (likely black margin) */
-        { 0u,   w/2u },    /* row 0 center (content) */
-        { 10u,  w/2u },    /* row 10 center — iter 3 captured region */
-        { 50u,  w/2u },    /* row 50 center — edge of iter 3 cliff */
-        { 100u, w/2u },    /* row 100 — past iter 3 cliff, within iter 5 */
-        { 200u, w/2u },    /* row 200 — past iter 3, within iter 5 */
+        {   5u, w / 4u },
+        {  20u, w / 4u },
+        {  60u, w / 4u },
+        { 100u, w / 4u },
+        { 200u, w / 4u },
     };
     for (size_t r = 0; r < sizeof(dumps) / sizeof(dumps[0]); r++)
     {
