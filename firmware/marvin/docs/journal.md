@@ -455,9 +455,17 @@ Goal: pixels in SDRAM (Phase 5 output) shown on the Legato LCD surface already b
 
 None of this blocks anything — it's just things to think about before wiring up the render path.
 
-#### Phase 7 — 480p source revisit (deferred; parallel to Phase 6)
+#### Phase 7 — 480p source revisit ✅ 7a PASSED 2026-05-02; 7c (Wii) still outstanding
 
-Bring 480p back as a supported source. The original Wii→ElectronWarp→TC358743 use case pushed 480p — we pivoted to 720p only because 480p had issues (5/11 row-phase drift every 16 rows + RMS=1 partial-frame cliff) that we couldn't resolve at the time. **The capture-side config that fixed those at 720p was never tested at 480p.**
+Phase 7a **passed first try** with Pi forced to 720×480p60 via config.txt. Zero firmware changes needed; today's pipeline is fully resolution-agnostic. Historical "480p phase drift" was a symptom of the broken BPS=EIGHT/PACKED8/RMS=1 pipeline, not intrinsic to the resolution. See 2026-05-02 Phase 7a session log entry.
+
+Phase 7b (297 Mbps) now deferred indefinitely — not needed.
+
+Phase 7c (Wii through ElectronWarp) remains: pure test of the component→HDMI chain. If drift returns there, the smoking gun is definitively ElectronWarp, not 480p or our pipeline.
+
+---
+
+**Original plan kept below for history:**
 
 **What changed since 480p was last tested (commit `3bb441a` era):**
 
@@ -545,6 +553,29 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-02 — Phase 7a PASSES first try: 480p is clean on today's pipeline ✅
+
+Pi forced to 720×480p60 via `config.txt` (`hdmi_group=1 hdmi_mode=2 hdmi_force_hotplug=1 hdmi_drive=2`). Flash, boot, capture. **Zero firmware changes** — `ISC_Capture_Configure` already reads width/height from `TC358743_GetDetectedFormat`.
+
+Results with solid red source:
+- TC358743 locks: `detected 720x480p @ 60 Hz, RGB limited-range; raster 858x525`
+- IDS authoritative: `DT=0x24 VC=0 WC=2160 rows=480` (2160 = 720 × 3 MIPI bytes)
+- Frame size: `1,382,400` (= 720 × 480 × 4) ✓
+- 9-point probe: every sample `00 00 FE 00` (B=0, G=0, R=0xFE, X=0) — correct BGRX32 red
+- `vertical extent: rows 0..479 written, first sentinel at row 480 (of 480)` — **full frame, no cliff**
+- **Phase scanner: ONE entry, `row 0 → 2`. The 5/11 16-row drift is gone.**
+- 70 fps sustained
+
+**Conclusion: the historical 480p phase drift was NOT intrinsic to 480p.** It was caused by the broken capture-side pipeline (BPS=EIGHT + PACKED8 + RMS=1 + no PFE crop + BEATS8). When the ISC misinterprets the 40-bit CSI2DC word as 8-bit samples, it slices pixels at bit boundaries and produces apparent "drift" that's actually stable-but-misaligned reading. BPS=FORTY eliminates the slicing; RMS=0 + PACKED32 + PFE crop + BEATS32 take care of the rest. All resolution-agnostic.
+
+**Phase 7b (drop to 297 Mbps) is now unnecessary for 480p correctness** — the 972 Mbps pipeline works fine for 480p (TC358743 pads blanking). Still worth testing if we hit CSI-2 latency/buffering issues at some source rate in the future.
+
+**Phase 7c (Wii through ElectronWarp) is now an isolated test** of the component→HDMI chain specifically. If drift shows up on that path it's ElectronWarp, not 480p.
+
+Carry-forward:
+- The capture_pipeline.md reference doc applies unchanged to 480p — just different PFE crop values. Consider adding a sentence noting this explicitly.
+- Phase 7 plan in the Phased plan section can be reduced to "7c only" — 7a done, 7b deferred until there's a reason.
 
 ### 2026-05-02 — BGRX32 in-pipeline via CSI2DC RMS=0 + ISC PACKED32 ✅
 

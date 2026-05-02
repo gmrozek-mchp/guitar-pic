@@ -2,7 +2,7 @@
 
 Authoritative configuration reference for the 720p60 HDMI capture path on SAM9X75. Every stage, every register bit that matters, with datasheet citations. When something breaks, start here before grepping code.
 
-**Status:** working as of 2026-05-02. 1280×720 @ 60 fps, native BGRX32 in DDR, no CPU post-processing.
+**Status:** working as of 2026-05-02. Validated at **1280×720p60** and **720×480p60**, native BGRX32 in DDR, no CPU post-processing. The pipeline is resolution-agnostic — PFE crop, DMA size, and framebuffer offsets all scale from the TC358743-detected `{width, height}` automatically.
 
 Datasheet references are to **SAM9X7 Series DS60001813** (sections 48 = MIPI CSI / D-PHY, 49 = CSI2DC, 50 = ISC). TC358743 refs are to the Toshiba datasheet + mainline Linux `drivers/media/i2c/tc358743.c`.
 
