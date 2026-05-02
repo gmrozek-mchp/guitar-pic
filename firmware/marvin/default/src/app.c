@@ -120,11 +120,18 @@ static void app_coordinate_capture(void)
         uint16_t w = 0, h = 0;
         if (TC358743_GetDetectedFormat(&w, &h))
         {
+            /* Wii analog component is ~360 H pixels; ElectronWarp re-samples
+             * to 720 HDMI pixel clocks with 2x pixel-rep; TC358743 VI_REP
+             * IN_REP=1 strips the duplicates, so CSI-side emits 360 unique
+             * px/row even though detected HDMI width is 720. Capture at
+             * the CSI-emitted width so dest rows match source rows 1:1. */
+            uint16_t cap_w = (uint16_t)(w / 2u);
+
             /* RX side ready first, then start source transmit, then arm ISC.
              * Mirrors emirror's working CAMERA_Open + CAMERA_Start_Capture
              * ordering. CSI-RX must be configured before TC358743's stream
              * enable so the D-PHY catches the LP11->HS edge. */
-            if (ISC_Capture_Configure(w, h))
+            if (ISC_Capture_Configure(cap_w, h))
             {
                 (void)TC358743_EnableStream(true);
                 (void)ISC_Capture_Start();
@@ -157,6 +164,7 @@ static void app_report_fps(void)
         uint32_t delta = now - last_frames;
         last_frames = now;
         printf("ISC: %lu fps\r\n", (unsigned long)delta);
+        (void)ISC_Capture_ProbeFrame();
     }
     else
     {

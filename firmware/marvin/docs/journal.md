@@ -18,7 +18,7 @@ Vision-based guitar-playing robot. The marvin firmware captures live HDMI video 
 
 **End-to-end capture pipeline is working as of 2026-05-01: Wii → TC358743 → CSI-2 @ 297 Mbps/lane → SAM9X75 → ISC DMA → SDRAM at 60 fps, 720×480 ARGB32.**
 
-Next up: Phase 6 — render captured frames on the LCD via Legato. See the Phase 6 section below for scope notes. Known items to think through before coding Phase 6 are in the "Open questions" section near the bottom.
+Next up: **Phase 5b — frame content verification**. Probe the captured bytes in SDRAM against known source patterns (solid colors, test patterns) before attempting display. Previous attempts fell apart at the display layer because something in the pipeline was silently mangling data; catching that at byte level is faster than staring at garble on an LCD. `ISC_Capture_ProbeFrame()` already wired up and called once per second from the fps tick. After Phase 5b, Phase 6 (display on LCD via Legato). See Phase 5b and Phase 6 sections below.
 
 ### Original focus (for context — this is done)
 
@@ -393,6 +393,49 @@ The only way to definitively verify CSI-TX is transmitting valid data is Phase 5
 - Double-buffered swap semantics / backpressure (Phase 6).
 - Vision / actuation logic (later phases).
 
+#### Phase 5b — Frame content verification ✅ PASSES ON HARDWARE (2026-05-01)
+
+**Verdict: RGB888 capture path is deterministic and invertible.** Byte order in memory is GRB per pixel (not BGR or RGB). Analog chain is linear with gain ≈ 0.753 (0xFF → 0xC0). See the 2026-05-01 session-log entry "Phase 5b PASS" for full measurements.
+
+**Working config:** BYPASS + PACKED8 + RMS=1 + BPP=3. Other paths explored: RMS=0 + any RLP collapses to 1 sample per pixel for RGB888 DT; ARGB32 RLP requires upstream pipeline stages we bypass.
+
+**Remaining structural quirks (content-independent, documented for Phase 6 / upstream work):**
+- `VPROW=241` (half frame delivered from TC358743/bridge; likely interlaced).
+- Only ~60 source rows captured per frame (RMS=1 byte-budget cliff at ~129,600 bytes).
+- ~50% of each row has real pixel data; the rest is zeros (likely TC358743 active-area narrower than raster).
+
+These are NOT blockers for Phase 6 — we can render whatever is captured. They're additional work items if we want the full 480-row 720-pixel-wide frame.
+
+#### Phase 5b — Original scope (now superseded — see verdict above)
+
+**Goal:** validate captured bytes in SDRAM match the known source output *before* investing effort in display rendering. Previous bring-up attempts fell apart at display because something in the pipeline was silently garbling pixel data; by probing bytes directly we can find the misinterpretation (channel order, stride, endianness, partial frame) at the earliest possible layer.
+
+**Mechanism:** `ISC_Capture_ProbeFrame()` in `isc_capture.c`, called once per second from `app_report_fps` alongside the fps print.
+
+Per call, probe:
+- **9 sample points**: corners + mid-edges + center of the last completed buffer.
+- **Cache invalidation** (`SYS_CACHE_InvalidateDCache_by_Addr`) over the sampled frame so CPU reads see what DMA wrote.
+- **Range scan across the center row** — surfaces per-pixel variation a 9-point sample would miss.
+- **Byte output in memory order** (b0 b1 b2 b3) so the user can mentally pattern-match against known source without pre-committing to a channel layout.
+- **Layout legend line** reminding how bytes map under ARGB / BGRA / RGBA / ABGR.
+
+**Test plan — iterate through these with the source:**
+
+1. **Solid mid-gray** (e.g. 0x808080) — all 9 samples should be (near) identical; each byte either ~0x80 or the alpha value.
+2. **Solid pure red** (R=0xFF, G=0, B=0 — or 0xEB/0x10 in limited-range). Distinctive byte pattern: exactly one of b0..b3 is high, the rest are low (or near the range-expansion values). Tells us which byte is R.
+3. **Solid green / blue** — cycle through to confirm all three channels land correctly.
+4. **Test pattern with known structure** — color bars (e.g. SMPTE bars). Verify that bytes at specific x-coordinates match the expected bar color.
+
+**Known pitfalls to look for:**
+
+- **Limited-range vs. full-range RGB.** Wii is 16-235 SMPTE limited. Expect 0x10-0xEB, not 0x00-0xFF. If min/max are 0x00/0xFF, something's doing range expansion we didn't expect; if the max is below 0xEB, range-clipping somewhere.
+- **Channel swap** — e.g. red source but the high byte is in b3 instead of b1 means we're reading BGRA or ABGR.
+- **Stride mismatch** — if row N and row N+1 don't look continuous, stride = (width × 4) arithmetic may be off by a byte, or ISC is writing with padding we don't know about.
+- **Garbled / noise** — if every byte varies wildly, CSI2DC or ISC is packing data incorrectly (possibly the RMS bit decision was wrong, or format tag mismatch between bridge and CSI2DC).
+- **Partial capture** — if the first N rows are valid and the rest are zeros, ISC/DMA isn't driving the full frame.
+
+**Exit criteria:** we can look at the probe output and, for a solid-color source, identify the correct byte-to-channel mapping and confirm pixel values match the source within limited-range expectations. Once that's locked, **Phase 6 (display on LCD)** knows exactly how to interpret the buffer.
+
 #### Phase 6 — First rendered frame
 
 Goal: pixels in SDRAM (Phase 5 output) shown on the Legato LCD surface already brought up in commit `3bb441a`.
@@ -474,12 +517,263 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-01 — Tried forcing 640x480p via EDID; Wii/ElectronWarp refused
+
+Hypothesis was: if the source can be pushed off 720x480 onto 640x480 (VIC 1), we'd avoid the pixel-doubling path entirely and get 640 unique pixels directly. Updated EDID to advertise ONLY VIC 1 (native, single VIC in CEA VDB) plus matching base-block detailed timing (VGA 25.175 MHz). Result: **source still reports 720x480p**. Either the ElectronWarp has no 640x480 output path, or the Wii won't downsample its internal render. Reverted EDID to original 720x480-preferred (VIC 2/3/1 in VDB).
+
+Takeaway for future: the Wii → ElectronWarp chain only emits 720x480p@60 HDMI; if we want different CEA resolutions we'd need a different source device. Don't retry this knob. The pixel-doubling behavior documented in the VI_REP session is the permanent nature of this source.
+
+### 2026-05-01 — VI_REP IN_REP=1 flipped the halving: clean 360x~480, not 720x~240
+
+Applied the samsonx-inspired fix: `VI_REP.IN_REP_HEN=1, IN_REP=1` (2x horizontal pixel-repetition de-replication). Single-line change in `tc358743_set_csi_color_space_rgb888`. VI_REP reads back as 0x11, confirmed.
+
+**Result — before vs. after:**
+
+| Metric       | Before (VI_REP=0x00) | After (VI_REP=0x11) |
+|--------------|----------------------|---------------------|
+| IDS WC       | 2160 (= 720 px × 3)  | 1080 (= 360 px × 3) |
+| IDS rows     | 241                  | 458                 |
+| Bytes/frame  | ~520,560             | ~494,640            |
+| Content      | scrambled, ~358/720 non-zero, shifting row-to-row | clean 3-byte pixel triples, solid color for solid source |
+
+Total bytes per frame stayed roughly constant (both ~half of 1.04 MB for full 720×480×3), but the organization flipped from "half-rows-of-full-width garbage" to "full-rows-of-half-width clean data".
+
+**Hex dump quality check** (solid red source, 0xFF R input):
+```
+r  0 x  0+: 000000 00 000000 00 000000 00 0000C0 0000C0 0000C0 0000C0 ...
+r 30 x  0+: b0=[00-00] b1=[00-C0] b2=[00-00]  (R channel only)
+```
+
+GRB byte order (Phase 5b) with R=C0 (= 0xFF × 0.753 A2D gain) repeating cleanly every 3 bytes. Exactly what solid red should look like. Content is **correct**.
+
+**Interpretation — what the Wii/ElectronWarp chain is actually doing:**
+
+Wii analog component video has native horizontal resolution of ~340-360 pixels (standard NTSC analog). In 480p mode, Wii outputs 360 unique pixels × 480 progressive lines of analog. The ElectronWarp re-samples this to HDMI with **2x horizontal pixel repetition** — 720 HDMI pixel clocks per line, each unique pixel sent twice — and flags it as CEA VIC 2/3 (720x480p). TC358743 detects this correctly (`DE_WIDTH_H=720, VI_STATUS1=0x00`, i.e., progressive) but, without `IN_REP_HEN`, passes the pixel-doubled stream straight through to CSI-2. With `IN_REP_HEN=1, IN_REP=1`, the bridge strips the duplicates and the real 360-pixel content falls out cleanly.
+
+So the horizontal "halving" isn't a bug — **360 px IS the Wii's actual horizontal resolution**. No amount of register tweaking recovers more pixels because they don't exist on the input side.
+
+**Vertical story — slightly open:** we now get 458 rows instead of 241, close to 480 but not quite. Could be (a) real — 22 lines lost to the bridge's internal blanking handling; (b) each frame alternates between 240-line and 218-line captures due to some deinterlacer/frame-counter quirk; (c) IN_REP=1 happens to also enable field-weave which double-maps one 240-line field into 480 rows (so true unique content is still 240). Need another frame-level sample to tell. For marvin's purposes, 458 or 480 rows are both "full frame vertically" — good enough unless the vision layer demands exactly 480.
+
+**Status of the two journal-flagged structural quirks:**
+- ~~VPROW=241 half-frame~~: **resolved** by `IN_REP_HEN=1`. Now 458 rows per frame.
+- ~~~50% zero-pad per row~~: **resolved** by `IN_REP_HEN=1`. Rows are dense now.
+- **ISC RMS=1 byte cliff persists** — capture still stops at ~56 dest rows (≈ 120K bytes). With narrower source rows (1080 vs 2160) this now equals ~111 source rows captured of the 458 delivered. Independent issue.
+
+**Cosmetic follow-up on next code pass:** set `ISC_Capture_Configure` width to 360 instead of 720 so destination-row layout matches source-row layout 1:1 (currently each 720-wide dest row holds 2 source rows side-by-side). Doesn't change correctness of the captured bytes, just makes the layout reason-about-able.
+
+**Code change this session:** single-line edit in `tc358743_set_csi_color_space_rgb888` enabling VI_REP IN_REP_HEN | IN_REP=1. Comment updated. Stale "BGR byte order" text in `isc_capture.c` probe print fixed to "GRB" + A2D gain note.
+
+### 2026-05-01 — 480i root-cause investigation (model-switch session, no code changes)
+
+No code changes this session. Investigated the two remaining structural quirks from Phase 5b:
+
+**Issue 1: TC358743 delivers only 241/480 lines per CSI-2 frame (IDS-confirmed)**
+
+Hypothesis now: the source (Wii → ElectronWarp) is likely outputting **HDMI 480i** (two interlaced fields of ~240 active lines each), not 480p — and the TC358743 is outputting each field as a separate CSI-2 frame at 60 Hz (= 60 fields/second).
+
+Evidence:
+- IDS shows 241 rows per CSI frame. 480i field 1 has 241 active lines, field 2 has 240. Exactly matches.
+- Linux driver investigation confirms `MASK_INTER` in `CSI_CONFW` is an **interrupt-enable bit** (CSI_INT_ENA), not a line-count control. The driver has no CSI-output line-count register for interlaced mode — it just outputs whatever fields the bridge provides.
+- Linux driver `tc358743_s_dv_timings()`: detects `V4L2_DV_INTERLACED` via `VI_STATUS1.MASK_S_V_INTERLACE` (bit 0), but never changes any CSI output config based on it. Bridge hardware handles the field→packet mapping autonomously.
+- `VI_REP.IN_REP_HEN` and `IN_REP` confirmed 0x00 (no horizontal pixel-repetition). This was the last register candidate; all config registers are now ruled out.
+
+**Why TC358743 reports 480p**: Our `read_detected_format()` checks `VI_STATUS1.MASK_S_V_INTERLACE` and prints 'i' or 'p'. If this reads 0 (progressive), it may be that the TC358743 is misdetecting the field structure, OR the ElectronWarp is doing bob-deinterlace internally so the HDMI output truly appears progressive to the bridge while still only having 240 unique lines per field delivered to CSI.
+
+**Issue 2: ~358/720 pixels of real content per row**
+
+Hypothesis: 480i uses 2× HDMI pixel repetition (each unique pixel clocked twice). Active content ≈ 360 unique pixels, doubled to 720 pixel clocks. But VI_REP=0x00 (IN_REP_HEN=0) means the bridge is NOT de-replicating — it should be sending both copies of each pixel, giving 720 non-zero bytes. This conflicts with the observation of zeros in ~half the row. Need more data.
+
+**Alternate hypothesis for both issues**: The Wii via ElectronWarp is outputting CEA-861 VIC 6/7 (720×480i, 2× pixel rep) but the TC358743's internal HDMI decode somehow only captures the first field and only the first half of the pixel-rep. Requires measuring whether VI_STATUS1.INTERLACE = 1 (currently unknown — we only checked for 'p' in the print).
+
+**Next session action items:**
+1. Add VI_STATUS1 raw value print to `read_detected_format` (it already reads `vi1` — add a raw hex dump).
+2. Check `VI_STATUS3` for AVI InfoFrame pixel-repetition field (bits [3:0] of AVI byte 5 via HDMI RX).
+3. Consider: if source is confirmed 480i, accept 241 rows as correct behavior and move on to Phase 6 with partial frame.
+
+**Web search status**: Attempted on claude-sonnet-4-6 but API returned 400 error. Model returning to claude-opus-4-7.
+
+**User-provided web search summary (post-model-switch)** — Common TC358743 480p issues:
+1. Width not divisible by 32 → distorted images / "green bars". Ours: 720 not div by 32, but IDS WC=2160 shows full-width packets are being sent. Rules this out for our specific symptom.
+2. First-frame corruption (discard frame 0). Not our issue — we see steady-state.
+3. MIPI lane-count mismatch (source on 1 lane, host expects 2). Not our issue — both sides 2-lane and locked.
+4. Link frequency too high. We're at 297 Mbps/lane, the article's recommended fallback. Good.
+5. **EDID not forcing true 480p60** → source falls back to 480i or another mode. **This is our remaining lever**. If Wii → ElectronWarp is outputting 480i despite our EDID, bridge correctly outputs each field as 241-row CSI frame.
+
+**Updated next-session plan (post web search):**
+1. Instrument: print `VI_STATUS1` raw hex byte in `read_detected_format` (currently only checks 1 bit for 'i'/'p'). Confirms whether INTERLACE bit is actually 1. The raw value disambiguates "progressive with bridge bug" from "interlaced as expected".
+2. If INTERLACE=1: accept 241 rows as correct for 480i. Options to get 480p: (a) update EDID to force VIC 2 only and deny 480i, (b) confirm Wii's output mode (Wii has 480p setting in system menu — worth re-verifying), (c) ElectronWarp may have a 480p/480i switch.
+3. If INTERLACE=0 AND VI_STATUS1 shows no unexpected bits: escalate — bridge internally doing something unusual. Next candidates: VI_STATUS2 registers, AVI InfoFrame raw read, FIFO underrun signalling.
+
+### 2026-05-01 — RPi forum find: 480p on TC358743 is pixel-doubled (samsonx report)
+
+Greg shared https://forums.raspberrypi.com/viewtopic.php?t=120702 — the canonical RPi TC358743 thread (30 pages, 737 posts). Two user reports match our symptom exactly:
+
+**Samsonx (Sept/Oct 2016):**
+> "for some reason 720x480p60 is giving me some strange issues. If I set the width and height to 720x480 the video is scrambled..."
+>
+> "setting the width and height to 1440x480 will give me unscrambled video but with two images wide and the height is squished."
+>
+> "I notice I get the same appearance of the second image if I view 1280x720 HDMI video with MMAL set to 2560x720."
+
+**Orbital6 / 6by9 (page 7):** 480p fails with `MMAL_ERROR_ENOSPC` on RPi; 6by9 suspected "timing registers in the EDID." Thread shows 480p issue was **never definitively root-caused** by the RPi team.
+
+**Interpretation for marvin:** the bridge emits 480p content as if it were **1440×240 on the wire** — i.e., 2× horizontal pixel repetition without de-replication. Maps directly to what our IDS reports:
+
+- `rows=241` ≈ 240 source lines actually emitted (matches "1440×240" output)
+- ~358/720 non-zero pixels per 720-wide CSI row ≈ half a 1440-pixel source line landing in each 720-wide window
+- "Pattern start-position shifts row-to-row by constant amount" = what you see when a 1440-pixel scanline rotates across a 720-wide view
+- 241 rows × 60 fps ≈ 14460 lines/sec ≈ source delivering ~240-line fields at 60Hz
+
+So both halvings (H and V) are actually the **same 2× pixel-doubling phenomenon** manifested differently, NOT two independent bugs.
+
+**Why VI_STATUS1 reports progressive (`p`)**: detected-timing registers reflect the HDMI wire format (480p as declared by source). The CSI-TX path count of 240-ish lines is what the bridge actually emits after its internal video pipe. Detection vs. emission can legitimately disagree when pixel repetition is in play.
+
+**Fix candidates, in priority order:**
+1. **VI_REP.IN_REP_HEN=1, IN_REP=1** — tell the bridge to de-replicate 2× horizontal pixel repetition. Currently VI_REP=0x00 so the bridge passes both copies of each pixel through. Easiest to try.
+2. Read AVI InfoFrame pixel-repetition field (CEA-861 byte 5, bits [3:0] — "PR" pixel repetition). If PR=1, source is advertising 2× rep. Bridge should respect it.
+3. Capture at 1440×240 and verify samsonx's "two side-by-side images" observation reproduces. If yes, confirms the 1440-wide emission.
+4. Modify EDID to only advertise VIC 2 (720×480p, no pix-rep) and drop VIC 3 / 1 / unspecified — may push source to emit true 480p instead of 2×-doubled 480p.
+5. Investigate if ElectronWarp has a 480p/480i/pix-rep switch (hardware-side root cause, since Wii native 480p component has no HDMI pixel repetition concept).
+
+**Caveat**: Claude could only read portions of the RPi thread via WebFetch (30 pages, 737 posts total; sampled pages 1, 4-8, 11, 16, 21). Further useful context may exist on pages not yet read.
+
+### 2026-05-01 — Phase 5b PASS: RGB888 capture path characterized
+
+Found, verified, and documented the working RGB888 capture config and its behavior. Key facts:
+
+**Pipeline (iter 6 / final working config):**
+- CSI2DC VP: `RMS=1, PA=1, DT=0x24`, `CSI2DC_VPCFGR = 0x00006024`
+- ISC RLP: `MODE=BYPASS (0xF), ALPHA=0, YMODE=0`, `ISC_RLP_CFG = 0x0000000F`
+- ISC DMA: `IMODE=PACKED8, YMBSIZE=BEATS8`, `ISC_DCFG = 0x00000020`
+- ISC PFE: `BPS=EIGHT, MIPI=1, CONT=1`, `ISC_PFE_CFG0 = 0x40004080`
+- Memory: 3 bytes per pixel, packed, `W*H*3` bytes per frame.
+
+**Byte order per pixel in memory is GRB (not BGR, not RGB):**
+```
+byte 0 = G, byte 1 = R, byte 2 = B
+```
+Verified by feeding the pipeline solid R, G, B, and white. Every primary hits exactly the predicted byte position with 0x00 on the other two. Deterministic across hundreds of frames.
+
+**A2D chain is linear with gain ≈ 0.753:**
+- Input 0xFF → output 0xC0 (= 0xFF × 0.753)
+- Input 0xC0 → output 0x90
+- Input 0x80 → output 0x60
+- No clipping anywhere below 0xC0. Fully invertible in software if needed. This is the analog component-video → HDMI gain through ElectronWarp, not an ISC/pipeline artifact.
+
+**What does NOT work in RMS=0 mode (for the record):**
+- `ARGB32` RLP requires upstream pipeline stages (CFA/WB/CSC) to deliver pre-grouped per-pixel RGB. With those bypassed for direct-dump, RLP=ARGB32 writes one sample into a 4-byte slot and zero-pads the other three. Looks like "181 rows of b0 only". Prior engineer hit this in their D0–D9 cycles.
+- CSI2DC in RMS=0 on DT=0x24 collapses to one 12-bit sample per pixel clock (not 3 component samples). Appears as "single byte of data per pixel, row-dependent phase." RMS=0 does NOT decompose RGB888 — only YUV formats (per Linux driver conventions).
+
+**What DOES work: RMS=1 byte stream + BYPASS RLP + PACKED8 IMODE.** Datasheet's explicit recommendation: "Select BYPASS for MIPI RMS mode" (DS60001813D, RLP_CFG MODE field description).
+
+**Structural quirks that remain (content-independent, confirmed across R/G/B/white):**
+- `VPCOL=540, VPROW=241` per frame from CSI2DC. VPROW=241 ≈ half of 480 source rows. Suggests interlaced delivery or TC358743 output-mode issue. VPCOL=540 counted in units other than pixels (540 × 4 = 2160 = full-row byte count).
+- ISC writes only 60 source-rows of memory per frame with RMS=1 byte stream. Prior-session data shows RMS=1 hits a fixed-byte-budget cliff regardless of burst size (D27/D31/D34 in the prior journal). Equivalent to 60 × 720 × 3 = 129,600 bytes.
+- Within each captured row, pattern covers roughly the middle half with zeros on the edges; pattern start-position shifts row-to-row by a constant amount.
+
+None of the above varies with source content. All three are pipeline-structural.
+
+**Decision log additions to check:**
+- Byte order is GRB. Render code must swap accordingly (or CSC matrix can absorb it).
+- A2D linear gain ≈ 0.753. If full-contrast display matters, apply inverse gain clamped to [0, 255].
+
+**Files at Phase 5b pass:**
+- `plib_csi2dc.c`: `RMS=1` restored (local fix, re-apply after MCC regen)
+- `isc_capture.c`: `rlpMode = ISC_RLP_CFG_MODE_BYPASS`, `layout = ISC_LAYOUT_PACKED8`, `ISC_CAP_BPP = 3`. Probe instrumentation kept (sentinel prefill, dense hex dump, VPCOL/VPROW readback).
+- `app.c`: `ISC_Capture_ProbeFrame()` called from fps tick.
+
+### 2026-05-01 — Drifted away from 60fps baseline; restored and reverted to ARGB32 direct-dump
+
+Worked Phase 5b across multiple configuration hypotheses: YUV422 end-to-end, RGB888 PACKED8 direct-dump with DAT8, with and without PFE cropping, with and without RMS=1, various COLMAX multipliers. All of these edited `isc_capture.c` pipeline config AND `plib_csi2dc.c` simultaneously. By the time the probe showed "80 rows written, top 1/6 of frame, byte values 0x66/0x76/0x86", the live config had drifted so far from the committed `a0f9950` 60fps-working baseline that no single observation told us anything useful about what was broken.
+
+**Key miss:** the journal's "carried into future sessions" section explicitly calls out `plib_csi2dc.c: CSI2DC_Configure_VideoPipe adds CSI2DC_VPCFGR_RMS_1 bit` as a **required local fix** (known to be needed for the 60fps-working state). I removed that during YUV422 experimentation (see prior session entry "RMS_1 reverted" which was wrong) and did not restore it. Combined with simultaneously switching BPP 4→3 and RLP ARGB32→DAT8 and adding PFE crop programming, the pipeline was in a never-tested state.
+
+**Reset.** Reverted `plib_csi2dc.c` and `vision_isc.yml` to `HEAD` (RMS_1 restored, YAML back to MCC default). Rewrote `isc_capture.c` to match the committed baseline pipeline config (ARGB32 / PACKED32 / MCC defaults, no PFE crop programming — ISC captured 720×480×4 at 60 fps without manual PFE cropping on `a0f9950`, so crop programming isn't actually required). Kept only the probe instrumentation (`ISC_Capture_ProbeFrame`, sentinel pre-fill, VPISR/FNVC0 dump, `app.c` probe call). Probe now interprets bytes as ARGB32 in memory order (b0=A, b1=R, b2=G, b3=B).
+
+**Next flash** should restore 60 fps, probe should show the full 480 rows written. Only *then* can we reason about byte content against the known source.
+
 ### 2026-05-01 — Planning kickoff
 
 - Surveyed marvin and emirror to map existing I2C / CSI / ISC scaffolding and template patterns. (See "Current focus" above for findings.)
 - Confirmed mainline Linux TC358743 driver is present locally in `linux-at91` and usable as the primary reference.
 - Agreed phased plan (Phases 0–6 above) and the initial decisions in the decision log.
 - Journal started; added project-wide rules in `CLAUDE.md` (always read/update the journal; keep code comments lean).
+
+### 2026-05-01 — YUV422 probe showed garble; back to RGB888 with correct direct-dump config
+
+Flashed the YUV422 pipeline. Source is verified solid `R=FF G=C0 B=80` on a separate HDMI display (Wii game rendering → component → ElectronWarp → HDMI). In our captured buffer:
+
+- Most of the frame: `AC 0F AC 0F` repeating. Decodes to nonsense colors regardless of UYVY / YUYV / YVYU / VYUY interpretation (best attempt → near-black luma, single chroma value; should be Y≈0xBF, Cb≈0x5A, Cr≈0xA0).
+- Top-row samples: `20 20 20 20` / `26 26 26 26` (different from mid/bot).
+- `buf=0` mid-rows have zeros; `buf=1` mid-rows have `AC 0F` pattern. Alternate-buffer inconsistency.
+- Full-row range scan: `b0=[28-FC] b1=[06-AF]` — way too wide for a solid source. Pipeline is producing positionally-variable bytes from a uniform input.
+
+Conclusion: the issue isn't "wrong format", it's something more fundamental with the pipeline that YUV422 didn't fix and may have obscured.
+
+Greg pointed out that `plib_csi2dc.h` explicitly defines `CSI2DC_DATA_FORMAT_RGB888 = 0x24` (as well as RGB444/555/565/666). **Hardware supports RGB888 end-to-end**; the "RGB888 not supported" claim in the earlier Linux driver survey was a driver-policy artifact, not a hardware limitation.
+
+Going back to RGB888 with the canonical direct-dump config that we hadn't tried:
+
+- TC358743 color space: RGB888 (`set_csi_color_space_rgb888`).
+- CSI data type: `CSI2_DATA_FORMAT_RGB888` (0x24).
+- CSI2DC data type: `CSI2DC_DATA_FORMAT_RGB888` (0x24). RMS=0 unchanged.
+- ISC RLP: `DAT8` (keep direct-dump).
+- ISC layout: `PACKED8` (keep).
+- ISC input format: `DRV_IMAGE_SENSOR_RGB`.
+- Bytes/pixel: **3** (packed RGB888, no alpha padding).
+
+For a solid source, the expected memory pattern is unambiguous: `FF C0 80 FF C0 80 FF C0 80 ...` repeating every 3 bytes. If we see that, pipeline works. If we see something else, the specific deviation points at the specific bug.
+
+### 2026-05-01 — Switched pipeline to YUV422 end-to-end (matches Linux + emirror)
+
+Surveyed the Linux DWC MIPI CSI-2 RX driver (`drivers/media/platform/dwc/`) and the Microchip CSI2DC / ISC drivers (`drivers/media/platform/microchip/`). Findings that overturn several of my earlier guesses:
+
+- **CSI2DC video pipe does NOT support RGB888.** Its format table in `microchip-csi2dc.c:100-148` only contains RAW (6-14 bit) and YUV422 8-bit. Setting `VPCFGR.DT = 0x24` is a dead end. This is exactly why emirror's working config chose YUV422. I had wanted to preserve RGB888 for simplicity, but the hardware doesn't let us.
+- **`CSI2DC_VPCFGR.RMS` is unconditionally 0 in Linux** (`microchip-csi2dc.c:398`). Our earlier hack to OR-in `RMS_1` was wrong in both the architectural and the I-hacked-an-MCC-file senses. Reverted.
+- **`CSI2DC_VPCFGR.PA` is unconditionally 1 in Linux** (`microchip-csi2dc.c:399`). Matches MCC's `videoPipeAlign = CSI2DC_POST_ALIGNED` default. No change needed.
+- **For any non-RAW input coming through CSI2DC, Linux ISC runs in "direct dump" mode**: `isc_try_configure_rlp_dma()` at `microchip-isc-base.c:850-854` sets `rlp_cfg_mode = DAT8 (0x0)`, `dcfg_imode = PACKED8`, `dctrl_dview = PACKED`. Not ARGB32 (our original), not BYPASS (0xF, my second guess — and BYPASS isn't even a defined mode in the Microchip ISC RLP register per the driver header). DAT8 is the answer for pre-decoded bytes.
+- **Pipeline stages are all disabled for non-RAW** (`microchip-isc-base.c:873-879`: `bits_pipeline = 0`). Our code already does this for RGB-input; correct.
+
+**Applied changes** (Phase 5b, next flash):
+1. `plib_csi2dc.c` — dropped the `RMS_1` OR (match Linux default RMS=0).
+2. `tc358743.c` — replaced `set_csi_color_space_rgb888` with `set_csi_color_space_yuv422` (`VOUT_SET2 |= SEL422 | 422FIL_100`; `VI_REP = VOUT_COLOR_601_YCBCR_LIMITED`; `CONFCTL.YCBCRFMT = 422_8_BIT`). Mirrors the UYVY path in the kernel driver.
+3. `isc_capture.c` — `iscObj->inputFormat = YUV_422`, `rlpMode = DAT8`, `layout = PACKED8`. Also overrides `csiObj->csiDataType = CSI2_DATA_FORMAT_YUV422_8 (0x1E)` and `csi2dcObj->{videoPipeDataType,dataPipeDataType} = CSI2DC_DATA_FORMAT_YUV422_8`. ISC_CAP_BPP dropped from 4 to 2.
+4. Probe layout legend updated: UYVY / YUYV / YVYU / VYUY interpretations instead of ARGB/BGRA/RGBA/ABGR.
+
+**Expected probe pattern** for source R=FF G=C0 B=80 converted to BT.601 limited YCbCr: Y≈0xBF (191), Cb≈0x5B (91), Cr≈0xA0 (160). If CSI-2 order is UYVY, memory bytes should read ~`5B BF A0 BF` repeating. If YUYV, ~`BF 5B BF A0`.
+
+### 2026-05-01 — Phase 5b: probe reveals byte-level garble; RLP mode mismatch suspected
+
+Source set to solid R=0xFF G=0xC0 B=0x80. Probe output:
+
+```
+ISC probe (frame=N, buf=B, 720x480):
+  TL (   0,   0) mem: 00 00 00 00           ← row 0 mostly zero
+  TM ( 360,   0) mem: B0/70 00 00 00        ← sparse non-zero, varies between frames
+  TR ( 719,   0) mem: E4/A4/64/E4/24 ...    ← ditto
+  ML (   0, 240) mem: AC 0F AC 0F            ← consistent across rest of frame
+  CT ( 360, 240) mem: AC 0F AC 0F
+  ... every mid/bottom sample: AC 0F AC 0F
+  mid-row rng: b0=[2C-EC] b1=[03-8F] b2=[2C-EC] b3=[07-8F]
+```
+
+Expected if ARGB32 layout + source FF/C0/80: something like [FF FF C0 80] or equivalent. Observed `AC 0F` clearly isn't ARGB32 of the source.
+
+**Analysis:** the `AC 0F AC 0F` pattern is 2-byte-repeating, characteristic of YUV422 not ARGB32. Most frame is consistent garbage with this pattern. Row 0 is additionally broken (zeros + sparse variable bytes).
+
+**Hypothesis:** ISC RLP mode is wrong. We set `iscObj->rlpMode = ISC_RLP_CFG_MODE_ARGB32` (0xA) which expects RGB from the ISC's internal processing pipeline (Bayer demosaic etc.). But we also set CSI2DC's RMS=1 (byte-stream to memory format). Per `isc.h` comment at `ISC_RLP_CFG_MODE_BYPASS` (0xF): *"32-bit input is sampled and written to the rlp output port. Select this mode for MIPI RMS mode."*
+
+The two settings are mutually exclusive — RMS byte-stream should pair with BYPASS, not ARGB32. Our ISC is trying to re-pack already-packed bytes, mangling them.
+
+**Applied fix:** override `iscObj->rlpMode = ISC_RLP_CFG_MODE_BYPASS` in `isc_capture.c`. Next flash should show bytes that pattern-match the source (FF/C0/80 somewhere in the buffer). If still garbled, next candidate is to align more carefully with emirror's working YUV422 end-to-end (which uses RMS=1 + RLP=YYCC at `0xB`, despite the datasheet's BYPASS hint).
+
+### 2026-05-01 — Phase 5b implemented (frame content probe)
+
+Added `ISC_Capture_ProbeFrame()` to dump raw bytes at 9 sample points plus a full-center-row range scan, once per second alongside the fps report. Sits at the pre-display layer so we can verify byte-level correctness against known source patterns (solid colors, test patterns) before rendering.
+
+Uses `SYS_CACHE_InvalidateDCache_by_Addr` over the sampled buffer so CPU reads see DMA's writes. Samples from the most-recently-completed buffer (`(frameIndex - 1) & 1`) to avoid racing the DMA writer.
+
+Next flash: source = a known solid color, read the probe output, confirm byte layout matches expectations. Any mismatch (wrong channel order, range clipping, partial capture) becomes a concrete fix before Phase 6.
 
 ### 2026-05-01 — Session wrap-up
 
@@ -494,7 +788,7 @@ End-to-end HDMI capture pipeline working: Wii → ElectronWarp → splitter → 
 4. isc_capture.c — `enableMIPIFreeRun = true` override (MIPIFRN=0, matches TC358743 continuous clock).
 5. app.c — ordering: Configure CSI-RX → TC358743 EnableStream(true) → ISC Start_Capture. The D-PHY must be listening when TC358743's `TXOPTIONCNTRL 0→CONTCLKMODE` produces the LP11→HS edge.
 
-**Next session:** Phase 6 (display captured frames on LCD via Legato). Detailed scope notes in the Phase 6 section above; carried items in Open questions. Nothing is in-progress / partially done — all code is committed-ready.
+**Next session:** Phase 5b (frame content verification — probe captured bytes in SDRAM against known-source patterns). Then Phase 6 (display on LCD via Legato). Detailed scope notes in Phase 5b / Phase 6 sections above; carried items in Open questions. Nothing is in-progress / partially done — all code is committed-ready.
 
 ### 2026-05-01 — Phase 5 passes on hardware: 60 fps sustained 🎉
 

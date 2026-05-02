@@ -3,7 +3,8 @@
     "allow": [
       "WebFetch(domain:ww1.microchip.com)",
       "WebFetch(domain:api.microchip.com)",
-      "mcp__microchip__search_microchip_product_documents"
+      "mcp__microchip__search_microchip_product_documents",
+      "WebSearch"
     ]
   }
 }

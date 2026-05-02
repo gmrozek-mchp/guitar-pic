@@ -14,6 +14,7 @@ bool     ISC_Capture_Start(void);
 void     ISC_Capture_Stop(void);
 uint32_t ISC_Capture_FrameCount(void);
 bool     ISC_Capture_IsRunning(void);
+bool     ISC_Capture_ProbeFrame(void);
 
 #ifdef __cplusplus
 }

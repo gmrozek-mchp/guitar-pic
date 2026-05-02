@@ -16,7 +16,9 @@
  * HSFREQRANGE band 0x14 (270-299 Mbps). See isc_capture.c CSI bitrate comment. */
 #define PLL_FBD                 44u
 #define CSI_BPS_PER_LANE        ((REFCLK_HZ / PLL_PRD) * PLL_FBD)
-#define FIFO_LEVEL              374u
+#define FIFO_LEVEL              374u   /* kernel driver default; tuning this
+                                        * affects alignment slightly but does
+                                        * not fix the ~half-frame halving. */
 
 #define LINEINITCNT_VAL         0x00000E80u
 #define LPTXTIMECNT_VAL         0x00000003u
@@ -64,6 +66,10 @@
 #define DE_WIDTH_H_HI           0x8583u
 #define DE_WIDTH_V_LO           0x8588u
 #define DE_WIDTH_V_HI           0x8589u
+#define H_SIZE_LO               0x858Au
+#define H_SIZE_HI               0x858Bu
+#define V_SIZE_LO               0x858Cu
+#define V_SIZE_HI               0x858Du
 #define FV_CNT_LO               0x85A1u
 #define FV_CNT_HI               0x85A2u
 #define PHY_CTL0                0x8531u
@@ -105,6 +111,7 @@
 #define MASK_YCBCRFMT           0x00C0u
 #define MASK_VBUFEN             0x0001u
 #define MASK_ABUFEN             0x0002u
+#define MASK_AUTOINDEX          0x0004u
 #define MASK_PLL_PRD            0xF000u
 #define MASK_PLL_FBD            0x01FFu
 #define MASK_PLL_FRS            0x0C00u
@@ -156,7 +163,11 @@
 #define MASK_SEL422             0x80u
 #define MASK_VOUT_422FIL_100    0x40u
 #define MASK_VOUT_COLOR_SEL     0xE0u
+#define MASK_IN_REP_HEN         0x10u   /* Input-repeat horizontal enable */
+#define MASK_IN_REP             0x0Fu   /* Input-repeat count (low nibble) */
 #define MASK_VOUT_COLOR_RGB_FULL 0x00u
+#define MASK_VOUT_COLOR_601_YCBCR_LIMITED  0x60u
+#define MASK_YCBCRFMT_422_8_BIT 0x00C0u
 #define MASK_VOUTCOLORMODE      0x03u
 #define MASK_VOUTCOLORMODE_AUTO 0x01u
 #define MASK_VOUT_EXTCNT        0x08u
@@ -616,12 +627,22 @@ static bool tc358743_load_edid(void)
 
 static bool tc358743_set_csi_color_space_rgb888(void)
 {
+    /* Full-range RGB888 (MIPI DT 0x24) with 2x horizontal pixel-repetition
+     * de-replication. IN_REP_HEN=1, IN_REP=1 tells the bridge the input
+     * carries 2x pixel repetition; the bridge strips every other pixel on
+     * output so 720 unique pixels land in a 720-wide CSI row instead of
+     * being split across two 720-wide rows (samsonx 2016 observation:
+     * 480p-on-TC358743 reads cleanly at 1440-wide, scrambled at 720-wide). */
     return tc358743_wr8_and_or(VOUT_SET2,
                                (uint8_t)~(MASK_SEL422 | MASK_VOUT_422FIL_100),
                                0u)
         && tc358743_wr8_and_or(VI_REP,
-                               (uint8_t)~MASK_VOUT_COLOR_SEL,
-                               MASK_VOUT_COLOR_RGB_FULL)
+                               (uint8_t)~(MASK_VOUT_COLOR_SEL
+                                          | MASK_IN_REP_HEN
+                                          | MASK_IN_REP),
+                               (uint8_t)(MASK_VOUT_COLOR_RGB_FULL
+                                         | MASK_IN_REP_HEN
+                                         | 0x01u))
         && tc358743_wr16_and_or(CONFCTL, (uint16_t)~MASK_YCBCRFMT, 0u);
 }
 
@@ -698,6 +719,16 @@ static bool tc358743_do_init(void)
         return false;
     }
 
+    /* AUTOINDEX enables CSI-TX auto-indexing of packet metadata (line
+     * numbers etc.). Kernel driver sets this during audio setup; we need
+     * it even without audio so CSI2DC sees monotonically-indexed line
+     * packets per frame. Without it, VPROW counts only half the lines. */
+    if (!tc358743_wr16_and_or(CONFCTL, 0xFFFFu, MASK_AUTOINDEX))
+    {
+        printf("TC358743: init: CONFCTL AUTOINDEX failed\r\n");
+        return false;
+    }
+
     if (!tc358743_set_pll())
     {
         printf("TC358743: init: set_pll failed\r\n");
@@ -762,7 +793,7 @@ void TC358743_Initialize(void)
     }
 
     printf("TC358743: present (chipid=0x%04X)\r\n", chipid);
-    printf("TC358743: init (2 lanes, %u Mbps/lane, RGB888)\r\n",
+    printf("TC358743: init (2 lanes, %u Mbps/lane, RGB888 full-range)\r\n",
            (unsigned)(CSI_BPS_PER_LANE / 1000000u));
 
     if (!tc358743_do_init())
@@ -827,29 +858,67 @@ static const char *color_space_name(uint8_t cs)
 static bool read_detected_format(uint16_t *width, uint16_t *height)
 {
     uint8_t de_w_lo, de_w_hi, de_v_lo, de_v_hi;
+    uint8_t hsz_lo, hsz_hi, vsz_lo, vsz_hi;
     uint8_t fv_lo, fv_hi, vi1, vi3;
 
     if (!tc358743_rd8(DE_WIDTH_H_LO, &de_w_lo)) { return false; }
     if (!tc358743_rd8(DE_WIDTH_H_HI, &de_w_hi)) { return false; }
     if (!tc358743_rd8(DE_WIDTH_V_LO, &de_v_lo)) { return false; }
     if (!tc358743_rd8(DE_WIDTH_V_HI, &de_v_hi)) { return false; }
+    if (!tc358743_rd8(H_SIZE_LO,     &hsz_lo))  { return false; }
+    if (!tc358743_rd8(H_SIZE_HI,     &hsz_hi))  { return false; }
+    if (!tc358743_rd8(V_SIZE_LO,     &vsz_lo))  { return false; }
+    if (!tc358743_rd8(V_SIZE_HI,     &vsz_hi))  { return false; }
     if (!tc358743_rd8(FV_CNT_LO,     &fv_lo))   { return false; }
     if (!tc358743_rd8(FV_CNT_HI,     &fv_hi))   { return false; }
     if (!tc358743_rd8(VI_STATUS1,    &vi1))     { return false; }
     if (!tc358743_rd8(VI_STATUS3,    &vi3))     { return false; }
 
-    uint16_t w   = (uint16_t)(((de_w_hi & 0x1Fu) << 8) | de_w_lo);
-    uint16_t h   = (uint16_t)(((de_v_hi & 0x1Fu) << 8) | de_v_lo);
-    uint16_t fv  = (uint16_t)(((fv_hi   & 0x03u) << 8) | fv_lo);
-    uint16_t fps = (fv > 0u) ? (uint16_t)((10000u + fv / 2u) / fv) : 0u;
-    uint8_t  cs  = (uint8_t)((vi3 & MASK_S_V_COLOR) >> 1);
-    bool     il  = (vi1 & MASK_S_V_INTERLACE) != 0u;
-    bool     lr  = (vi3 & MASK_LIMITED)       != 0u;
+    uint16_t w    = (uint16_t)(((de_w_hi & 0x1Fu) << 8) | de_w_lo);
+    uint16_t h    = (uint16_t)(((de_v_hi & 0x1Fu) << 8) | de_v_lo);
+    uint16_t htot = (uint16_t)(((hsz_hi  & 0x1Fu) << 8) | hsz_lo);
+    /* V_SIZE is in half-line units per the kernel driver (tc358743.c:370). */
+    uint16_t vtot = (uint16_t)((((vsz_hi & 0x3Fu) << 8) | vsz_lo) / 2u);
+    uint16_t fv   = (uint16_t)(((fv_hi   & 0x03u) << 8) | fv_lo);
+    uint16_t fps  = (fv > 0u) ? (uint16_t)((10000u + fv / 2u) / fv) : 0u;
+    uint8_t  cs   = (uint8_t)((vi3 & MASK_S_V_COLOR) >> 1);
+    bool     il   = (vi1 & MASK_S_V_INTERLACE) != 0u;
+    bool     lr   = (vi3 & MASK_LIMITED)       != 0u;
 
-    printf("TC358743: detected %ux%u%c @ %u Hz, %s %s-range\r\n",
+    printf("TC358743: detected %ux%u%c @ %u Hz, %s %s-range; "
+           "raster %ux%u (incl blanking); VI_STATUS1=0x%02X VI_STATUS3=0x%02X\r\n",
            (unsigned)w, (unsigned)h, il ? 'i' : 'p',
            (unsigned)fps, color_space_name(cs),
-           lr ? "limited" : "full");
+           lr ? "limited" : "full",
+           (unsigned)htot, (unsigned)vtot,
+           vi1, vi3);
+
+    /* Bridge CSI-TX + FIFO + HDMI-detect config snapshot — catches
+     * bridge-side narrowing (FIFO underrun, HDMI_DET mode, CSI_ERR). */
+    uint8_t  vi_mode = 0, hdmi_det = 0;
+    uint16_t confctl = 0, fifoctl = 0;
+    uint32_t csi_status = 0, csi_err = 0;
+    (void)tc358743_rd8(VI_MODE,   &vi_mode);
+    (void)tc358743_rd8(HDMI_DET,  &hdmi_det);
+    (void)tc358743_rd16(CONFCTL,  &confctl);
+    (void)tc358743_rd16(FIFOCTL,  &fifoctl);
+    (void)tc358743_rd32(CSI_STATUS, &csi_status);
+    (void)tc358743_rd32(CSI_ERR,    &csi_err);
+    printf("TC358743:   CONFCTL=0x%04X FIFOCTL=0x%04X VI_MODE=0x%02X HDMI_DET=0x%02X\r\n",
+           (unsigned)confctl, (unsigned)fifoctl,
+           (unsigned)vi_mode, (unsigned)hdmi_det);
+    printf("TC358743:   CSI_STATUS=0x%08lX CSI_ERR=0x%08lX\r\n",
+           (unsigned long)csi_status, (unsigned long)csi_err);
+
+    /* VOUT_SET2/SET3/VI_REP governs output format including pixel-repetition
+     * de-replication. IN_REP bits in VI_REP low nibble + IN_REP_HEN (bit 4)
+     * could be causing horizontal halving if misconfigured. */
+    uint8_t vout_set2 = 0, vout_set3 = 0, vi_rep = 0;
+    (void)tc358743_rd8(VOUT_SET2, &vout_set2);
+    (void)tc358743_rd8(VOUT_SET3, &vout_set3);
+    (void)tc358743_rd8(VI_REP,    &vi_rep);
+    printf("TC358743:   VOUT_SET2=0x%02X VOUT_SET3=0x%02X VI_REP=0x%02X\r\n",
+           (unsigned)vout_set2, (unsigned)vout_set3, (unsigned)vi_rep);
 
     s_detectedWidth  = w;
     s_detectedHeight = h;

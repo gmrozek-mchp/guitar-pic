@@ -69,9 +69,9 @@ uint32_t CSI2DC_Interrupt_Status(void) {
 }
 
 void CSI2DC_Configure_VideoPipe(uint32_t dt, uint32_t vc, uint32_t align_isc) {
-    /* RMS=1 selects byte-stream memory storage (CSI-2 spec format) rather than
-     * the per-component-per-clock ISC layout. Required for pass-through of
-     * pre-decoded pixel formats (e.g. RGB888 from TC358743) into ARGB32. */
+    /* RMS=1: CSI2DC emits raw byte stream — required for RGB888 since RMS=0
+     * one-sample-per-pixel mode only captures 12 bits of the 24-bit pixel.
+     * Pair with ISC RLP=BYPASS + IMODE=PACKED8 for dense byte capture. */
     CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt)
                                | CSI2DC_VPCFGR_VC(vc)
                                | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0)
