@@ -455,6 +455,32 @@ Goal: pixels in SDRAM (Phase 5 output) shown on the Legato LCD surface already b
 
 None of this blocks anything — it's just things to think about before wiring up the render path.
 
+#### Phase 7 — 480p source revisit (deferred; parallel to Phase 6)
+
+Bring 480p back as a supported source. The original Wii→ElectronWarp→TC358743 use case pushed 480p — we pivoted to 720p only because 480p had issues (5/11 row-phase drift every 16 rows + RMS=1 partial-frame cliff) that we couldn't resolve at the time. **The capture-side config that fixed those at 720p was never tested at 480p.**
+
+**What changed since 480p was last tested (commit `3bb441a` era):**
+
+- `BPS=FORTY` (commit `2908679`) — was EIGHT before; ISC now correctly interprets the 40-bit CSI2DC word. This is the fix most likely to have affected 480p phase behavior because BPS=EIGHT slicing at bit boundaries plausibly produced some of what looked like drift.
+- `PFE_CFG1/2` + `COLEN/ROWEN` — journal line 611 notes the PFE crop bug "has almost certainly been happening on 480p too". Fixed.
+- `DCFG = PACKED32 + BEATS32` — resolution-agnostic, applies.
+- `RMS=0` + `COLMAX = W - 1` (commit `eb8b109`) — BGRX32 layout, resolution-agnostic.
+- **HSFREQRANGE is bitrate-specific.** 480p's prior 297 Mbps config used `0x14`; that may or may not be the correct DWC Gen3 value. Need to look up the Gen3 band for 200–300 Mbps.
+
+**Test plan (cheap → expensive):**
+
+1. **Phase 7a — Pi @ 480p, 972 Mbps retained.** Keep TC358743 D-PHY at 972 (it'll pad blanking, per kernel driver + journal line 460). Add 480p back to EDID (re-introduce VIC 1/2/3 CEA VDB; add a 640x480 or 720x480 DTD in the base block). Pi config.txt → `hdmi_mode=1` (640×480) or `hdmi_mode=2` (720×480). Reduce `ISC_Capture_Configure(w,h)` to match. If clean: 480p is solved with zero extra TC358743/D-PHY work.
+2. **Phase 7b — Pi @ 480p, 297 Mbps CSI.** Only if 7a shows drift. Revert TC358743 PLL to 297 Mbps output, update D-PHY timing constants (kernel driver has the table), find the Gen3 HSFREQRANGE value for that band. Compare drift behavior.
+3. **Phase 7c — Wii @ 480p through ElectronWarp.** Only after Pi 480p is clean. Tests whether drift is intrinsic to the Wii/ElectronWarp chain (pixel-doubling, component→HDMI timing jitter, etc.) vs. the 480p resolution itself.
+
+**Open sub-questions for Phase 7:**
+
+- Is the 5/11 16-row drift eliminated by BPS=FORTY alone? (Hypothesis: partially or fully — worth testing before touching anything else.)
+- CSI2DC GCFGR.ULC=1 and the Data Pipe + XDMAC alternate path — journal line 712 notes these were never tested at 480p. Backup options if Phase 7a/b still show drift.
+- Correct HSFREQRANGE (Gen3) for 297 Mbps. Our old `0x14` value may have been a Gen2 guess that worked by coincidence.
+
+**Carry-forward probe-interpretation note:** the `phase` scanner in `ISC_Capture_ProbeFrame` uses `b % ISC_CAP_BPP`. Historical 480p drift logs were captured with `BPP=3` (RMS=1), so their `phase: row N → {0,1,2}` readings are NOT directly comparable to new logs which use `BPP=4` and report `{0,1,2,3}`. Keep that in mind when comparing old-vs-new drift behavior.
+
 ### Known risks
 
 1. **TC358743 CSI-TX minimum bitrate.** At 480p60 the native pixel rate is low enough that the Linux driver runs CSI-TX faster than the source and pads with blanking. We'll likely inherit that approach, and SAM9X75 ISC must tolerate it.
@@ -484,6 +510,7 @@ None of this blocks anything — it's just things to think about before wiring u
 | 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
 | 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
 | 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
 
 ---
 
@@ -497,9 +524,9 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **MCC-file modifications maintenance risk.** Two MCC-generated files have local bug-fixes that will be clobbered if MCC re-emits them:
+- **MCC-file modifications maintenance risk.** Two MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
   1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
-  2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` adds `CSI2DC_VPCFGR_RMS_1` bit.
+  2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` does **not** OR in `CSI2DC_VPCFGR_RMS_1`. MCC default sets RMS=1, we need RMS=0 for the BGRX32 pipeline. If MCC regenerates, the `| CSI2DC_VPCFGR_RMS_1` will come back and capture output will silently shift to dense 3 B/pixel BGR layout — alpha lane disappears, frame size changes, display will show garbage.
 
   Recovery plan: if the build breaks post-regen, re-apply both (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
