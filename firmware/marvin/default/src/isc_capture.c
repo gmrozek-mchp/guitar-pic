@@ -188,6 +188,22 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
         return false;
     }
 
+    /* Override ISC DMA burst size from BEATS8 (MCC / sama5d2-era default)
+     * to BEATS32 (sama7g5 / full AXI4 default per Linux mchp-isc driver).
+     * SAM9X75 uses the sama7g5 ISC variant — the RAM access port is full
+     * 32-bit AXI4 and wants 32-beat bursts. At BEATS8, the AHB transaction
+     * overhead is 4x what it should be. At 480p (83 MB/s) this is fine;
+     * at 720p60 RGB888 (165 MB/s) the ISC FIFO back-pressures, HSYNC
+     * detection stalls, HDTO fires after ~180 rows and DDONE never fires. */
+    ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED8
+                       | ISC_DCFG_YMBSIZE_BEATS32
+                       | ISC_DCFG_CMBSIZE_BEATS32;
+    printf("ISC_Capture: post-override ISC_DCFG=0x%08lX (expected 0x%08lX)\r\n",
+           (unsigned long)ISC_REGS->ISC_DCFG,
+           (unsigned long)(ISC_DCFG_IMODE_PACKED8
+                          | ISC_DCFG_YMBSIZE_BEATS32
+                          | ISC_DCFG_CMBSIZE_BEATS32));
+
     /* Pre-fill both buffers with a sentinel so the probe can tell which
      * memory regions DMA actually wrote vs. which are still untouched.
      * Flush cache to DDR so DMA writes land on top of known sentinel. */
