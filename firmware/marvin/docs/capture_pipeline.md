@@ -294,40 +294,36 @@ All five match expectation across the full 1280×720 extent (rows 0..719 complet
 |---|---|---|---|
 | TC358743 D-PHY timing | `default/src/tc358743.c` | 25–33 | 972 Mbps timing constants (kernel-derived) |
 | TC358743 PLL | `default/src/tc358743.c` | 14–20 | `PLL_PRD=4`, `PLL_FBD=144` |
-| CSI HSFREQRANGE | `default/src/isc_capture.c` | 25 | `0x0A` for DWC Gen3 @ 972 Mbps |
-| CSI bitrate override | `default/src/isc_capture.c` | 86 | `csiObj->csiBitRate = ISC_CAP_CSI_BITRATE` (MCC default is `0x16`) |
+| CSI HSFREQRANGE | `default/src/isc_capture.c` | 23 | `0x0A` for DWC Gen3 @ 972 Mbps |
+| CSI bitrate override | `default/src/isc_capture.c` | 83 | `csiObj->csiBitRate = ISC_CAP_CSI_BITRATE` (MCC default is `0x16`) |
 | CSI2DC RMS=0 | `default/src/config/default/vision/drivers/csi2dc/plib_csi2dc.c` | 71–78 | dropped `CSI2DC_VPCFGR_RMS_1` from VPCFGR write |
-| CSI2DC free-run | `default/src/isc_capture.c` | 91 | `enableMIPIFreeRun = true` |
-| ISC PFE crop | `default/src/isc_capture.c` | 204–209 | direct `PFE_CFG1/2` + `COLEN`/`ROWEN` writes |
-| ISC DMA config | `default/src/isc_capture.c` | 219–221 | direct `DCFG` write (PACKED32 + BEATS32×2) |
-| Framebuffer BPP | `default/src/isc_capture.c` | 19 | `ISC_CAP_BPP = 4` |
+| CSI2DC free-run | `default/src/isc_capture.c` | 88 | `enableMIPIFreeRun = true` |
+| ISC PFE crop | `default/src/isc_capture.c` | 195–202 | direct `PFE_CFG1/2` + `COLEN`/`ROWEN` writes |
+| ISC DMA config | `default/src/isc_capture.c` | 209–211 | direct `DCFG` write (PACKED32 + BEATS32×2) |
+| Framebuffer BPP | `default/src/isc_capture.c` | 17 | `ISC_CAP_BPP = 4` |
 
 ---
 
 ## 5. Debug / diagnostics
 
-`ISC_Capture_ProbeFrame()` in `isc_capture.c` dumps once per second:
+Runtime log is intentionally quiet — initialization, format detection, and a one-shot pre-start register snapshot only. No periodic dump.
 
-1. **`cliff:` block** — PFE/DMA register snapshot, INTSR decode with named bits (VD/HD/DDONE/LDONE/HDTO/VDTO/DAOV/BUSERR), per-probe frame-counter deltas.
-2. **`IDS[i]:`** — CSI2DC Image Data Snoop per-packet metadata: DT / VC / word-count (bytes per MIPI long packet) / accumulated row count since last snoop reset. Authoritative per-packet evidence of what CSI-2 sent us. `WC=3840` at 720p = 1280 px × 3 MIPI bytes/pixel = correct.
-3. **9-point mem dump** — 4-byte samples at `{TL,TM,TR,ML,CT,MR,BL,BM,BR}` of the frame. First diagnostic to check when reasoning about pixel format.
-4. **Hex rows** — 48 bytes × 5 row locations for visual inspection of packing.
-5. **Byte-range scan** — min/max of each byte position across row 30. Useful for detecting whether data is present at all.
-6. **Vertical extent** — first unwritten row (sentinel 0x55 = DMA never touched). Full frame expected = `rows 0..719 written, first sentinel at row 720 (of 720)`.
-7. **Phase scan** — reports the mod-BPP byte-lane offset of the first saturated byte per row. Useful legacy diagnostic from the RMS=1 phase-drift days; with BGRX32 it's pretty much constant per solid color.
+What lands on the DBGU during normal operation:
 
-When something's wrong, read in this order:
-- `INTSR` error bits (HDTO/VDTO/DAOV/BUSERR) point at the PFE, PFE, DMA, or bus respectively.
-- `IDS[0]` WC and rows tell you if CSI-2 payload is correct at the wire level.
-- 9-point dump + row-30 range localize format/byte-order issues.
-- `vertical extent` distinguishes a cliff from a format issue.
+1. **TC358743 init + lock sequence** — I2C presence, init, SYS_STATUS transitions as HDMI negotiates, final `detected WxH @ FPS, RGB ...` with raster dimensions.
+2. **`ISC_Capture: configured WxH BGRX32 (N bytes/frame)`** — called by `app_coordinate_capture` when TC358743 reports a locked format.
+3. **`ISC_Capture diag (pre-start):` block** — one-shot register snapshot printed from `diag_dump_rx()` right before `DRV_ISC_Start_Capture`. Contains CSI / CSI2DC / ISC state at the moment capture is armed. When diagnosing new sources or regressions, this is the first place to look.
+4. **`ISC_Capture: capture started`** — green light. Quiet from here.
+5. **TC358743 format-change events** — if the source switches resolution mid-run, the watcher prints a new detection line and the capture module re-configures.
+
+If deeper inspection is needed (byte-level probes, phase scanners, content bounding box), resurrect `ISC_Capture_ProbeFrame()` from git history (commit `29a21bf` has the last full version) and wire it into a temporary 1-Hz tick.
 
 ---
 
 ## 6. Known carry-forwards
 
 - **`INTSR.HDTO` always set** after capture start — informational-only residual, not a stop signal. Also present under working RMS=1 config. Safe to ignore.
-- **`frameIndex` stuck at 0** in most probe windows — DDONE interrupt fires rarely or not at all, but the DMA itself works (buffers update, `frameCount` counts VDs at correct rate). Investigate before relying on DDONE-based downstream triggers.
+- **DDONE interrupt unreliable** — `iscObj->frameIndex` advances rarely or not at all; `g_frame_count` (incremented from the frame-done callback, driven by VD) counts correctly. DMA itself works (buffers update on schedule). Investigate before building consumer logic that relies on DDONE firing per frame.
 - **Pixel range 0x00–0xFE** because TC358743 passes through source's limited-range signaling. EDID overrides or TC358743 colorimetry registers can force full-range; deferred until display stage forces the issue.
 - **Alpha channel = 0x00** — not 0xFF. Acceptable for display framebuffers that ignore alpha; requires CPU fix-up if alpha is semantic.
 
