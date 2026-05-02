@@ -77,18 +77,9 @@ void SYS_Tasks ( void )
 
     /* Maintain Device Drivers */
     
-    DRV_XLCDC_Update();
-
-
 
     /* Maintain Middleware & Other Libraries */
     
-    Legato_Tasks();
-
-
-    SYS_INP_Tasks();
-
-
 
     /* Maintain the application's state machine. */
         /* Call Application task APP. */

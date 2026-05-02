@@ -306,14 +306,11 @@ void SYS_Initialize ( void* data )
     /* Disable WDT   */
     WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
 
-    FLEXCOM6_TWI_Initialize();
-
  
     TC0_CH0_TimerInitialize(); 
      
     
-    XLCDC_Initialize();
-
+    FLEXCOM6_TWI_Initialize();
 
     DBGU_Initialize();
 
@@ -326,12 +323,6 @@ void SYS_Initialize ( void* data )
     /* Initialize I2C0 Driver Instance */
     sysObj.drvI2C0 = DRV_I2C_Initialize(DRV_I2C_INDEX_0, (SYS_MODULE_INIT *)&drvI2C0InitData);
 
-    DRV_XLCDC_Initialize();
-
-    LVDSC_Initialize();
-
-    DRV_GFX2D_Initialize();
-
 
     /* MISRA C-2023 Rule 11.3, 11.8 deviated below. Deviation record ID -
     H3_MISRAC_2023_R_11_3_DR_1 & H3_MISRAC_2023_R_11_8_DR_1*/
@@ -339,12 +330,6 @@ void SYS_Initialize ( void* data )
     sysObj.sysTime = SYS_TIME_Initialize(SYS_TIME_INDEX_0, (SYS_MODULE_INIT *)&sysTimeInitData);
 
     /* MISRAC 2012 deviation block end */
-
-    SYS_INP_Init();
-
-
-    // initialize UI library
-    Legato_Initialize();
 
 
     /* MISRAC 2023 deviation block end */

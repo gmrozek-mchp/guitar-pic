@@ -44,8 +44,8 @@ data:
     - children:
       - attributes:
           id: vision_csi
-          x: '521'
-          y: '388'
+          x: '508'
+          y: '378'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

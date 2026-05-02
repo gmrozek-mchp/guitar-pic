@@ -477,28 +477,6 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
-    XLCDC_INTERRUPT_ENABLE:
-      attributes:
-        id: XLCDC_INTERRUPT_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: le_gfx_driver_xlcdc
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    XLCDC_INTERRUPT_HANDLER:
-      attributes:
-        id: XLCDC_INTERRUPT_HANDLER
-      children:
-      - children:
-        - attributes:
-            id: le_gfx_driver_xlcdc
-            value: XLCDC_InterruptHandler
-          type: Dynamic
-        type: Values
-      type: String
     TC0_CH3_CLOCK_FREQUENCY:
       attributes:
         id: TC0_CH3_CLOCK_FREQUENCY
@@ -781,17 +759,6 @@ data:
           type: User
         type: Values
       type: String
-    GFX2D_CLOCK_ENABLE:
-      attributes:
-        id: GFX2D_CLOCK_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: plib_gfx2d
-            value: 'true'
-          type: Dynamic
-        type: Values
-      type: Boolean
     FLEXCOM6_CLOCK_ENABLE:
       attributes:
         id: FLEXCOM6_CLOCK_ENABLE
