@@ -258,6 +258,18 @@ uint8_t R = px[2];
 
 As a 32-bit word: `*(uint32_t*)px == 0x00RRGGBB` (native little-endian).
 
+### Sizing strategy
+
+The buffer pool is statically allocated for the **maximum supported resolution** (`ISC_CAP_MAX_W × ISC_CAP_MAX_H × ISC_CAP_BPP × ISC_CAP_NUM_BUFFERS` = 1920 × 1080 × 4 × 2 = 15.8 MB), reserved once at link time in `.region_cache_aligned`. Per-capture the ISC DMA descriptor is programmed for only `width × height × 4` bytes; the rest of the pool sits idle.
+
+| Resolution | In use / frame | 2-buffer total | Idle |
+|---|---|---|---|
+| 480p60 | 1.32 MB | 2.64 MB | 13.2 MB |
+| 720p60 | 3.69 MB | 7.37 MB | 8.4 MB |
+| 1080p60 | 7.90 MB | 15.8 MB | 0 |
+
+Trade-off: idle DDR at low resolutions (trivial on this 256 MB platform) in exchange for zero reallocation on source-resolution change — buffer base pointers stay constant, the consumer never needs to re-bind. `ISC_Capture_Configure` rejects any `width > MAX_W || height > MAX_H` so the guarantee is enforced.
+
 ---
 
 ## 3. Verified output — color sweep

@@ -577,6 +577,11 @@ Carry-forward:
 - The capture_pipeline.md reference doc applies unchanged to 480p — just different PFE crop values. Consider adding a sentence noting this explicitly.
 - Phase 7 plan in the Phased plan section can be reduced to "7c only" — 7a done, 7b deferred until there's a reason.
 
+**Follow-up validation (same session):**
+- EDID extended with VIC 3 + VIC 2 so real HDMI sources (Wii/ElectronWarp) can negotiate 480p naturally. Pi still locks to 720p60 natively; `hdmi_force_hotplug=1` + `hdmi_mode=2` forces the 480p path for testing. Extension-block byte layout kept at 128 bytes (VDB grew by 2, padding shrank by 2).
+- Probe extended with 4 absolute-corner samples (`FIRST`, `TopR`, `BotL`, `LAST`) = `(0,0)`, `(W-1,0)`, `(0,H-1)`, `(W-1,H-1)`. All four read clean BGRX-red at 720×480: PFE-crop and DMA first/last-word alignment are exact. Combined with the interior 9-point grid, 13 sample locations confirm every corner/center of the active region.
+- Framebuffer sizing strategy documented in `capture_pipeline.md`: static 1920×1080×4×2 = 15.8 MB pool, per-capture only the DMA descriptor's `frame_size` changes. Trivial idle waste at low resolutions; zero reallocation on source-resolution change.
+
 ### 2026-05-02 — BGRX32 in-pipeline via CSI2DC RMS=0 + ISC PACKED32 ✅
 
 **Milestone:** capture now lands directly as `B G R 00` per pixel (BGRX32) in DDR — no CPU post-pass, no GFX2D blit. Confirmed across R/G/B/W/K solid-color sweep at 720p60. 70 fps sustained. 3,686,400 B/frame.
