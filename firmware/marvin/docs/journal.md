@@ -554,6 +554,31 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-02 — Phase 7c PASSES: Wii→ElectronWarp→TC358743 fully characterized ✅
+
+Same pipeline, Wii (component → ElectronWarp → HDMI → TC358743) as source instead of Pi. All Phase 7 objectives now complete.
+
+Capture quality:
+- TC358743 locks: `detected 720x480p @ 60 Hz, RGB limited-range; raster 858x525`
+- IDS: `DT=0x24 WC=2160 rows=480` identical to Pi-at-480p.
+- Full frame written (rows 0..479), no cliff, ~70 fps sustained.
+- **No phase drift** — scanner reports only 2 transitions (`row 0 → 2`, `row 479 → -1`), both expected edge cases. The historical 5/11 16-row drift is definitively pipeline-caused (BPS=EIGHT + PACKED8 + RMS=1), not an ElectronWarp/Wii property.
+
+Content geometry (from bbox scanner):
+- Horizontal: `x=[36..675]` → **640 active px**, asymmetric pillarbox (36 L, 44 R). That's the Wii's internal 640×480 4:3 render, slightly left-shifted by ElectronWarp relative to NTSC HSYNC.
+- Vertical: `y=[0..478]` → 479 active rows, just 1 px black at bottom (row 479). Effectively full-height.
+- **Wii content crop (future vision consumer):**
+  ```c
+  CONTENT_X = 36,  CONTENT_Y = 0
+  CONTENT_W = 640, CONTENT_H = 479
+  ```
+
+Saturation:
+- Peak red ≈ `0xC8` (≈78% of 0xFF, ≈85% of 0xEB limited-range peak). Expected from the analog component → RGB chain; Pi digital through TC358743 peaks at `0xFE`. If full range matters, the vision or display stage can linearly expand.
+- Per-pixel noise ±3 LSB (`C5..CC`) — normal analog jitter, not a pipeline issue.
+
+Phase 7 now fully closed: 7a (Pi 480p) ✅, 7b (297 Mbps) indefinitely deferred — not needed, 7c (Wii/ElectronWarp) ✅.
+
 ### 2026-05-02 — Phase 7a PASSES first try: 480p is clean on today's pipeline ✅
 
 Pi forced to 720×480p60 via `config.txt` (`hdmi_group=1 hdmi_mode=2 hdmi_force_hotplug=1 hdmi_drive=2`). Flash, boot, capture. **Zero firmware changes** — `ISC_Capture_Configure` already reads width/height from `TC358743_GetDetectedFormat`.
