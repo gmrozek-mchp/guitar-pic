@@ -381,6 +381,38 @@ bool ISC_Capture_ProbeFrame(void)
            (unsigned long)last_written_row,
            (unsigned long)first_sentinel_row,
            (unsigned long)h);
+
+    /* Per-row byte-alignment phase scan: for each captured row, find the
+     * mod-3 offset of the first non-trivial byte in the middle of the row.
+     * For a solid-color source the phase should be constant across rows;
+     * changes indicate the CSI/ISC stream is shifting within the row. */
+    int prev_phase = -2;
+    uint32_t transitions = 0;
+    for (uint32_t y = 0; y <= last_written_row && y < h; y++)
+    {
+        uint32_t row_base = y * w * ISC_CAP_BPP;
+        int phase = -1;
+        uint32_t scan_lo = (w / 3u) * ISC_CAP_BPP;
+        uint32_t scan_hi = (2u * w / 3u) * ISC_CAP_BPP;
+        for (uint32_t b = scan_lo; b < scan_hi; b++)
+        {
+            if (buf[row_base + b] >= 0x40u)
+            {
+                phase = (int)(b % 3u);
+                break;
+            }
+        }
+        if (phase != prev_phase)
+        {
+            printf("  phase: row %3lu -> %d\r\n", (unsigned long)y, phase);
+            prev_phase = phase;
+            if (++transitions >= 16u)
+            {
+                printf("  phase: ... (16 transitions, truncated)\r\n");
+                break;
+            }
+        }
+    }
     printf("  BYPASS+PACKED8+RMS=1: 3 bytes/pixel, GRB byte order (Phase 5b). "
            "Solid R=FF through A2D gain ~0.753 lands as 00 C0 00 repeating.\r\n");
 

@@ -517,6 +517,70 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-01 — Session wrap: 480p pipeline works end-to-end at 360x~113; pivoting to 720p/1080p test
+
+Committing current state and starting a fresh branch to test whether 720p or 1080p sources avoid the 480p-specific quirks we've hit (pixel-doubling, 16-row phase drift, RMS=1 byte cliff). RPi forum threads suggest 720p/1080p are cleaner paths on TC358743.
+
+**Carried-forward state (in this commit):**
+- TC358743 VI_REP = 0x11 (IN_REP_HEN=1 + IN_REP=1): strips 2x horizontal pixel repetition from the Wii/ElectronWarp chain. 360 unique px/row emitted.
+- ISC capture geometry set to `w/2 × h` in `app_coordinate_capture()` to match de-replicated width.
+- `ISC_Capture_ProbeFrame` has phase-scanner diagnostic added (shows per-row byte alignment).
+- All other pipeline settings at Phase 5b "working" baseline.
+
+**Known issues deferred (don't try to fix on main branch):**
+1. **16-row byte-phase drift.** CSI2DC Video Pipe introduces a deterministic 5/11 split in every 16-row cycle. Ruled out: ISC YMBSIZE (tested SINGLE vs BEATS8), CSI2DC VPCFGR.PA (tested 0 vs 1). Not tested: GCFGR.ULC=1, Data Pipe + XDMAC path.
+2. **ISC RMS=1 row cliff.** Only ~113 of 458 delivered rows land in memory per frame. Byte budget ~120 KB/frame regardless of row width or burst size.
+3. **458 vs 480 rows delivered.** Bridge delivers 458 per "frame" — 22 short of 480. Unclear whether true content is 240 field-weaved or 480 with drops.
+
+**Hypothesis for new branch test:** Wii → ElectronWarp pixel-doubling is analog-NTSC-induced (13.5 MHz native sample rate → 27 MHz HDMI with doubling). A 720p60 or 1080p24 source device (non-Wii, HDMI-native) would have no such doubling. Expected results if hypothesis holds:
+- No IN_REP needed (clear VI_REP back to 0x00).
+- IDS `WC = width × 3` (full width, no halving).
+- IDS `rows` matches full vertical (720 or 1080).
+- Possibly no 16-row phase drift if the drift is a byproduct of the odd input-clock situation.
+
+If 720p/1080p works clean, decide whether 480p path is worth fixing or if marvin permanently uses a higher-res source and downsamples in software for vision work.
+
+### 2026-05-01 — Row-alignment drift is periodic: 5/11 split every 16 rows
+
+Added per-row byte-phase scanner to `ISC_Capture_ProbeFrame`. For a solid-color source, it finds which mod-3 offset within a pixel carries the content byte, and logs rows where the phase transitions.
+
+**Result — exactly periodic across every frame, every run:**
+
+```
+phase: row   0 -> 2   \
+phase: row   5 -> 0    \  5 rows phase 2, 11 rows phase 0 — 16-row cycle
+phase: row  16 -> 2    /  repeats for all 113 captured rows
+phase: row  21 -> 0   /
+...
+phase: row 112 -> 2
+```
+
+Period = **16 rows = 17,280 bytes exactly.** 5:11 split within each cycle. Net phase shift per cycle = 0 (stable). Transition jumps are ±2 bytes mod 3.
+
+**Rules out:** random bit errors (would be irregular), constant per-row drift (would give period 3), content-driven phase (bytes can't rotate within pixels for solid color).
+
+**Points at:** structured byte misalignment introduced by the CSI/CSI2DC/ISC data path on a fixed 17,280-byte cycle. 5:11 and 16 don't obviously map to any HDMI 480p line structure (525 total / 858 per line / 45 vblank).
+
+**Next diagnostic candidates** (in priority order):
+
+1. **ISC DMA burst size.** `ISC_DCFG=0x00000020` → YMBSIZE=BEATS8. At 8-beat bursts, 1080-byte rows don't divide evenly into the burst granularity. Try YMBSIZE=SINGLE (no bursting) or BEATS16 and see if period changes or disappears. Single-line config change in `isc_capture.c`.
+2. **CSI2DC Data Pipe vs Video Pipe.** We use VP. DP has different packing semantics and may not have this periodic realignment. Bigger pivot — requires re-checking how ISC consumes from DP.
+3. **CSI2DC FIFO level.** `FIFOCTL=0x0176` (374) in TC358743 is unrelated; that's a bridge-side FIFO. But CSI2DC has its own internal FIFO governed by different settings — worth checking datasheet.
+
+Not yet ruled out: MIPI CSI-2 LS/LE short packets leaking into the RMS=1 byte stream. But if that were the cause, the drift would be per-row (every line has LS+LE), not period-16.
+
+**Update — two experiments later, both negative:**
+
+1. **ISC DMA YMBSIZE SINGLE (vs BEATS8 default).** `ISC_DCFG` went from `0x20` → `0x00`. Phase pattern bit-for-bit identical. Rules out ISC DMA burst granularity. fps and row-cliff unchanged — BEATS8 wasn't bottlenecking throughput either.
+2. **CSI2DC VPCFGR.PA=0 (vs PA=1 default).** `VPCFGR` went `0x6024` → `0x2024`. Phase pattern bit-for-bit identical. Rules out 12-bit-bus MSB alignment.
+
+So the drift is inherent to CSI2DC's Video Pipe output for this data type + RMS combo. No VPISR overflow bits set (RATEOVF=0, CTLOVF=0, STE=0), so no buffer-fill issue.
+
+**Remaining levers (ease descending):**
+- `GCFGR.ULC=1` — tell CSI2DC to use LS/LE packets for line-boundary detection. If bridge emits LS/LE and CSI2DC currently ignores them, turning ULC on might re-sync line boundaries. Single-bit change.
+- Switch VP → Data Pipe. Bypasses ISC entirely; CSI2DC writes memory via its own DMA. Much larger change, affects capture/interrupt plumbing.
+- Accept drift and software-realign at display time. Pattern is 100% deterministic (5/11 split in 16-row cycle) so a render-time byte-offset LUT would work. Trades cleanliness for done-ness.
+
 ### 2026-05-01 — Tried forcing 640x480p via EDID; Wii/ElectronWarp refused
 
 Hypothesis was: if the source can be pushed off 720x480 onto 640x480 (VIC 1), we'd avoid the pixel-doubling path entirely and get 640 unique pixels directly. Updated EDID to advertise ONLY VIC 1 (native, single VIC in CEA VDB) plus matching base-block detailed timing (VGA 25.175 MHz). Result: **source still reports 720x480p**. Either the ElectronWarp has no 640x480 output path, or the Wii won't downsample its internal render. Reverted EDID to original 720x480-preferred (VIC 2/3/1 in VDB).
