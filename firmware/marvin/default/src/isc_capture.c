@@ -547,6 +547,53 @@ bool ISC_Capture_ProbeFrame(void)
            (unsigned long)first_sentinel_row,
            (unsigned long)h);
 
+    /* Content bounding box: find the inset where non-black pixels begin on
+     * each edge. Walks centerlines (horizontal at y=h/2, vertical at x=w/2)
+     * — cheap (O(w+h)) and sufficient for rectangular content with a uniform
+     * black border (Wii safe-area, ElectronWarp letterbox, etc.). Threshold
+     * = any of B/G/R above 0x10 to ignore DC noise in the black region. */
+    {
+        const uint32_t THR = 0x10u;
+        uint32_t cy = h / 2u;
+        uint32_t cx = w / 2u;
+        uint32_t left = w, right = 0u, top = h, bottom = 0u;
+
+        for (uint32_t x = 0; x < w; x++)
+        {
+            uint32_t off = ((cy * w) + x) * ISC_CAP_BPP;
+            if (buf[off] > THR || buf[off + 1u] > THR || buf[off + 2u] > THR)
+            {
+                if (x < left)  { left  = x; }
+                if (x > right) { right = x; }
+            }
+        }
+        for (uint32_t y = 0; y < h; y++)
+        {
+            uint32_t off = ((y * w) + cx) * ISC_CAP_BPP;
+            if (buf[off] > THR || buf[off + 1u] > THR || buf[off + 2u] > THR)
+            {
+                if (y < top)    { top    = y; }
+                if (y > bottom) { bottom = y; }
+            }
+        }
+
+        if (left <= right && top <= bottom)
+        {
+            printf("  content bbox: x=[%lu..%lu] (%lu px, insets L=%lu R=%lu)"
+                   "  y=[%lu..%lu] (%lu px, insets T=%lu B=%lu)\r\n",
+                   (unsigned long)left, (unsigned long)right,
+                   (unsigned long)(right - left + 1u),
+                   (unsigned long)left, (unsigned long)(w - 1u - right),
+                   (unsigned long)top, (unsigned long)bottom,
+                   (unsigned long)(bottom - top + 1u),
+                   (unsigned long)top, (unsigned long)(h - 1u - bottom));
+        }
+        else
+        {
+            printf("  content bbox: no non-black pixels found on centerlines\r\n");
+        }
+    }
+
     /* Per-row byte-alignment phase scan: for each captured row, find the
      * mod-3 offset of the first non-trivial byte in the middle of the row.
      * For a solid-color source the phase should be constant across rows;
