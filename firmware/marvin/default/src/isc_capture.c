@@ -59,7 +59,13 @@ void ISC_Capture_Initialize(void)
      * collapses to 1 sample per pixel). Tradeoff: RMS=1 hits a ~25% ISC
      * throughput cliff on this chip. Memory: packed BGR triples. */
     iscObj->inputFormat           = ISC_INPUT_FORMAT_TYPE;  /* RGB */
-    iscObj->inputBits             = ISC_INPUT_BIT_WIDTH;    /* 8-bit */
+    /* For MIPI RGB888 the ISC should treat the stream as an opaque 40-bit
+     * MIPI format rather than trying to sample it per-8-bit-channel.
+     * PFE_CFG0.BPS=FORTY is the "MIPI bypass" mode per the datasheet:
+     * "used for MIPI formats up to forty bits per pixel." Without this,
+     * PFE samples at 8-bit-per-tick and ends up writing sparse 12-bytes-
+     * per-pixel memory with bit-spreading artifacts. */
+    iscObj->inputBits             = DRV_IMAGE_SENSOR_40_BIT;
     iscObj->rlpMode               = ISC_RLP_CFG_MODE_BYPASS;
     iscObj->layout                = ISC_LAYOUT_PACKED8;
     iscObj->bayerPattern          = ISC_BAYER_PATTERN_TYPE;
