@@ -517,6 +517,49 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-02 — 720p60 full-frame capture WORKING; memory format reverse-engineered
+
+Huge progress day. Pi as stable 720p60 source, worked through a chain of ISC config issues, ended with full 720-row capture at 60 fps with a deterministic (if quirky) memory layout.
+
+**Issues resolved (in order):**
+
+1. **PFE crop window never set** (MCC bug). `plib_isc.c` defines `ISC_PFE_Crop_Area()` but nobody calls it. `PFE_CFG1/2` stayed at reset value 0, PFE expected 1×1 frame, fired HDTO on first real line. Fix: write crop directly, AND set COLEN+ROWEN bits in PFE_CFG0 (per Linux mchp-isc driver) to activate.
+
+2. **Cliff at 180 rows × 3840 bytes = 691,200 bytes per frame.** Ruled out: LCDC/AHB contention (LCDC removed — no change), burst size (YMBSIZE SINGLE vs BEATS32 — no change), VPCFGR.PA (no change). Diagnostic register dump showed `CSI2DC VPCOL=960 = WC/4`: CSI2DC VP emits 32-bit words to ISC. IMODE=PACKED8 was treating each word as a 1-byte sample → 960 samples/row × 720 rows = 691,200 bytes = the exact cliff.
+
+3. **Fix: IMODE=PACKED32.** ISC now writes 4 bytes per CSI2DC word × 960 × 720 = 2,764,800 bytes = full frame. `DCFG=0x00000442`. **60 fps sustained, full 720 rows written per frame.**
+
+**Memory layout decoded** (with R/G/B/white/black solid-color tests from Pi):
+
+Each pixel occupies **12 bytes**. Channel order is **BGR**. Each 8-bit source byte becomes a 12-bit MSB-aligned value in memory (`0xFF` source → `0xEF0` stored — bridge subtracts 16 from full-range bytes without scaling, so decoded 8-bit equivalent is `0xEF`=239 for `0xFF` input).
+
+```
+Pixel at offset N*12:
+  +0  B low 8 bits      +4  G low 8 bits      +8  R low 8 bits
+  +1  G high 4 bits     +5  R high 4 bits     +9  B high 4 bits
+  +2  0 (pad)           +6  0                 +10 0
+  +3  0                 +7  0                 +11 0
+
+Reconstruction:
+  B12 = mem[+0] | (mem[+9] << 8);   B8 = B12 >> 4;
+  G12 = mem[+4] | (mem[+1] << 8);   G8 = G12 >> 4;
+  R12 = mem[+8] | (mem[+5] << 8);   R8 = R12 >> 4;
+```
+
+Quirk: each channel's high 4 bits land in the chunk BEFORE its own (Blue high → Red chunk, Green high → Blue chunk, Red high → Green chunk), a CSI2DC/ISC streaming artifact. Consistent and decodable.
+
+**Data density consequence**: 12 bytes per pixel × 1280 × 720 = 11,059,200 bytes needed for full-resolution; framebuffer holds 2,764,800 bytes. So effective capture is **1/4 horizontal resolution (320 unique pixels × 720 rows)**. On solid colors this is invisible. On real images it's 4:1 horizontal downsampling.
+
+**Remaining / carry-forward:**
+- HDTO bit still fires in INTSR — harmless (informational only; not a stop signal).
+- 1/4 horizontal resolution — either accept & decode in software (320×720 plenty for guitar fretboard), OR find CSI2DC VP config that emits denser source bytes per output word.
+- Byte-value range offset: 0xFF → 0xEF. Recoverable via `out = min(255, in + 16)` if needed.
+
+**Code state at end of day:**
+- `isc_capture.c`: PFE crop + COLEN/ROWEN activate; DCFG override to PACKED32 + BEATS32 + CMBSIZE_BEATS32; `csi2dcObj->videoPipeAlign = false` (PA=0); redundant `DRV_ISC_Configure_DMA` call removed.
+- LCDC removed from MCC config (no contention concerns).
+- ISC 60fps sustained, full 720-row frames landing in DDR.
+
 ### 2026-05-01 — Branch `720p`: cliff root-caused to PFE crop; fix applied but unverified
 
 **Diagnostic breakthrough**: expanded ISC_Capture_ProbeFrame with a `cliff:` block that reads PFE crop window, ISC DMA state, per-probe CSI2DC/ISC counter deltas, and decoded INTSR error bits. First flash pinpointed the problem:

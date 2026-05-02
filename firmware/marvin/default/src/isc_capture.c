@@ -85,6 +85,13 @@ void ISC_Capture_Initialize(void)
      * (false -> MIPIFRN=1); mismatch leaves CSI2DC.GSR.ARSTIP stuck. */
     csi2dcObj->enableMIPIFreeRun = true;
 
+    /* PA (VPCFGR bit 14) = "ISC Post Adjustment, MSB-aligned to 12-bit bus".
+     * Intended for 10/12-bit Bayer sensors. In RMS=1 byte-stream mode with
+     * 8-bit samples it left-shifts each byte 4 bits into a 12-bit-wide slot,
+     * producing sparse memory (`F0 0E 00 00` per 32-bit word for 0xFF input).
+     * Clear it: memory should become dense 8-bit-per-byte sequence. */
+    csi2dcObj->videoPipeAlign = false;
+
     printf("ISC_Capture: initialized\r\n");
 }
 
