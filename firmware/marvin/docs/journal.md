@@ -16,9 +16,11 @@ Vision-based guitar-playing robot. The marvin firmware captures live HDMI video 
 
 ## Current focus
 
-**End-to-end capture pipeline is working as of 2026-05-01: Wii → TC358743 → CSI-2 @ 297 Mbps/lane → SAM9X75 → ISC DMA → SDRAM at 60 fps, 720×480 ARGB32.**
+**End-to-end capture pipeline is working as of 2026-05-02: Pi → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → SDRAM at 720p60, native BGRX32 (4 B/pixel) in DDR — no post-capture conversion needed.**
 
-Next up: **Phase 5b — frame content verification**. Probe the captured bytes in SDRAM against known source patterns (solid colors, test patterns) before attempting display. Previous attempts fell apart at the display layer because something in the pipeline was silently mangling data; catching that at byte level is faster than staring at garble on an LCD. `ISC_Capture_ProbeFrame()` already wired up and called once per second from the fps tick. After Phase 5b, Phase 6 (display on LCD via Legato). See Phase 5b and Phase 6 sections below.
+> **Configuration reference:** see [`capture_pipeline.md`](capture_pipeline.md) for the authoritative, stage-by-stage pipeline documentation (register settings, datasheet citations, override locations).
+
+Phase 5b (byte-level content verification) ✅ done — R/G/B/W/K sweep confirms BGRX32. Next up: **Phase 6 — display on LCD via Legato / LCDC**, consuming the BGRX32 framebuffer directly.
 
 ### Original focus (for context — this is done)
 
@@ -517,7 +519,42 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
-### 2026-05-02 — 720p60 full-frame capture WORKING; memory format reverse-engineered
+### 2026-05-02 — BGRX32 in-pipeline via CSI2DC RMS=0 + ISC PACKED32 ✅
+
+**Milestone:** capture now lands directly as `B G R 00` per pixel (BGRX32) in DDR — no CPU post-pass, no GFX2D blit. Confirmed across R/G/B/W/K solid-color sweep at 720p60. 70 fps sustained. 3,686,400 B/frame.
+
+**Root-caused from datasheet sections 48/49/50:**
+
+- **49.6.54 VPCFGR.RMS** is the lever. RMS=1 (MCC hard-coded default) packs 4 BGR pixels into 12 bytes per CSI-2 "Recommended Memory Storage" (Table 49.27) — that's what our previous "dense 3 B/pixel" capture was. RMS=0 makes CSI2DC emit **one pixel per 40-bit VP word** as `demux_data = 0x00_00RRGGBB` (Table 49.25).
+- **50.6.19 RLP BYPASS (mode 15)**: "32-bit input is sampled and written to the rlp output port. Select this mode for MIPI RMS mode." With RMS=0 input, RLP BYPASS passes `sub420_data[31:0] = 0x00RRGGBB` straight through.
+- **50.6.20 DMA IMODE=PACKED32**: stores `rlp_data[31:0]` as 4 bytes/sample → little-endian memory order `B G R 00` = BGRX32.
+
+**Why ARGB32 RLP mode fails on our path (confirmed, not just empirical):** Table 50.19 row for ARGB32 specifies `R=sub420_data[29:22]`, `G=sub420_data[19:12]`, `B=sub420_data[9:2]` — those bit positions are the output of the ISC CSC module, not raw MIPI. With MIPI RGB888 bypass the R/G/B live at `[23:16]/[15:8]/[7:0]`, so ARGB32 RLP picks a 6-bit-shifted garbage slice. ARGB32 RLP is structurally unusable for MIPI bypass of RGB888; it would require routing through CSC (which is intended for Bayer/YCbCr). **Alpha = 0xFF in-pipeline is therefore not achievable** on the MIPI-RGB888 bypass path. We get X=0x00 for free; if alpha needs 0xFF a cheap CPU init of the framebuffer can set byte 3 once (DMA writes don't touch it if the pixel stride matches).
+
+**Changes (3 lines of real substance):**
+
+- `plib_csi2dc.c:71-79` — drop `CSI2DC_VPCFGR_RMS_1` (RMS=1 → RMS=0).
+- `isc_capture.c:19` — `ISC_CAP_BPP` 3 → 4.
+- `isc_capture.c:206` — `PFE_CFG1.COLMAX = width - 1` (was `(W*3)/4 - 1`).
+
+**Sweep results (Pi 720p60 source; TC358743 in limited-range, peak = 0xFE not 0xFF):**
+
+| Source | Memory (b0 b1 b2 b3) |
+|---|---|
+| Red   | `00 00 FE 00` |
+| Green | `00 FE 00 00` |
+| Blue  | `FE 00 00 00` |
+| White | `FE FE FE 00` |
+| Black | `00 00 00 00` |
+
+Byte order = B, G, R, X (little-endian of `0x00RRGGBB`). All primaries clean across full 720×1280 extent.
+
+**Carry-forward:**
+- Peak value 0xFE: TC358743 is in `RGB limited-range`. EDID / colorimetry override to get full-range 0x00–0xFF is a separate task.
+- HDTO still in INTSR; frameIndex still stuck at 0 with DDONE unfired — carried over from prior state, not caused by this change. Still harmless.
+- Next: wire BGRX32 framebuffer into LCDC/Legato for live display (Phase 6).
+
+### 2026-05-02 (earlier) — 720p60 full-frame capture WORKING; memory format reverse-engineered
 
 Huge progress day. Pi as stable 720p60 source, worked through a chain of ISC config issues, ended with full 720-row capture at 60 fps with a deterministic (if quirky) memory layout.
 

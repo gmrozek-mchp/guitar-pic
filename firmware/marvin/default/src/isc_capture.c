@@ -16,7 +16,7 @@
 
 #define ISC_CAP_MAX_W        1920u
 #define ISC_CAP_MAX_H        1080u
-#define ISC_CAP_BPP          3u    /* BYPASS+PACKED8+RMS=1: dense bytes, 3 B/pixel */
+#define ISC_CAP_BPP          4u    /* BYPASS+PACKED32+RMS=0+BPS=FORTY: BGRX32 4 B/pixel */
 #define ISC_CAP_NUM_BUFFERS  2u
 /* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
  * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
@@ -53,19 +53,17 @@ void ISC_Capture_Initialize(void)
         return;
     }
 
-    /* RGB888 byte-stream dump: CSI2DC VP RMS=1 emits raw bytes, ISC RLP in
-     * BYPASS samples them, DMA PACKED8 writes one byte per clock. This is
-     * the only config that captures all 3 bytes/pixel for RGB888 (RMS=0
-     * collapses to 1 sample per pixel). Tradeoff: RMS=1 hits a ~25% ISC
-     * throughput cliff on this chip. Memory: packed BGR triples. */
+    /* BYPASS RLP + IMODE=PACKED32 + BPS=FORTY + CSI2DC RMS=0:
+     * CSI2DC emits demux_data = 0x00_00RRGGBB on the 40-bit VP bus
+     * (one pixel per word, per Table 49.25). RLP BYPASS samples the
+     * low 32 bits (0x00RRGGBB) unchanged; PACKED32 stores each 32-bit
+     * sample as 4 bytes in DDR — little-endian order -> B G R 00 =
+     * BGRX32. Costs 33% more bandwidth than RMS=1 packed BGR but
+     * matches LCDC/GFX2D native 32 bpp format. The X byte is 0x00
+     * (RLP ALPHA register requires RGB32 RLP mode, which does not
+     * work on MIPI bypass — see journal). */
     iscObj->inputFormat           = ISC_INPUT_FORMAT_TYPE;  /* RGB */
-    /* For MIPI RGB888 the ISC should treat the stream as an opaque 40-bit
-     * MIPI format rather than trying to sample it per-8-bit-channel.
-     * PFE_CFG0.BPS=FORTY is the "MIPI bypass" mode per the datasheet:
-     * "used for MIPI formats up to forty bits per pixel." Without this,
-     * PFE samples at 8-bit-per-tick and ends up writing sparse 12-bytes-
-     * per-pixel memory with bit-spreading artifacts. */
-    iscObj->inputBits             = DRV_IMAGE_SENSOR_40_BIT;
+    iscObj->inputBits             = DRV_IMAGE_SENSOR_40_BIT; /* BPS=FORTY */
     iscObj->rlpMode               = ISC_RLP_CFG_MODE_BYPASS;
     iscObj->layout                = ISC_LAYOUT_PACKED8;
     iscObj->bayerPattern          = ISC_BAYER_PATTERN_TYPE;
@@ -91,11 +89,9 @@ void ISC_Capture_Initialize(void)
      * (false -> MIPIFRN=1); mismatch leaves CSI2DC.GSR.ARSTIP stuck. */
     csi2dcObj->enableMIPIFreeRun = true;
 
-    /* PA (VPCFGR bit 14) = "ISC Post Adjustment, MSB-aligned to 12-bit bus".
-     * Intended for 10/12-bit Bayer sensors. In RMS=1 byte-stream mode with
-     * 8-bit samples it left-shifts each byte 4 bits into a 12-bit-wide slot,
-     * producing sparse memory (`F0 0E 00 00` per 32-bit word for 0xFF input).
-     * Clear it: memory should become dense 8-bit-per-byte sequence. */
+    /* PA=0 (VPCFGR bit 14): leave video pipe output LSB-aligned. PA=1 is
+     * intended for 10/12-bit Bayer sensors being packed onto ISC's 12-bit
+     * internal data bus. */
     csi2dcObj->videoPipeAlign = false;
 
     printf("ISC_Capture: initialized\r\n");
@@ -153,10 +149,9 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
     csiObj->csiFrameHeight = height;
     csiObj->csiFps         = 60u;
 
-    /* iscObj->imageWidth/Height stay in pixel units (the probe uses them
-     * to compute framebuffer offsets). We override PFE_CFG1.COLMAX to the
-     * byte count separately below — that's the only place ISC's internal
-     * per-row sample counter actually matters in RMS=1 byte-stream mode. */
+    /* imageWidth/Height stay in pixel units. With RMS=0 + PACKED32, the
+     * ISC per-row sample counter is also in pixel units (1 sample = 1
+     * 32-bit word = 1 pixel), so COLMAX = width - 1 programmed below. */
     iscObj->imageWidth   = (uint16_t)width;
     iscObj->imageHeight  = (uint16_t)height;
     iscObj->outputWidth  = (uint16_t)width;
@@ -199,26 +194,18 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
      * separately; DRV_ISC_Configure calls it internally (line 381 of
      * drv_isc.c). A second explicit call would reset DCFG back to the
      * MCC BEATS8 default and clobber our overrides. Don't add one. */
-    /* With IMODE=PACKED32, each ISC "sample" is a 32-bit word. CSI2DC
-     * emits WC/4 = (width * BPP) / 4 = 960 words per row for our 720p
-     * RGB888 (matches VPCOLR readback). COLMAX is in sample units. */
-    uint32_t isc_samples_per_row = (width * ISC_CAP_BPP) / 4u;
-
+    /* RMS=0 -> CSI2DC emits one 32-bit VP word per pixel. PACKED32 IMODE
+     * writes 4 bytes per sample to DDR. COLMAX is in sample units, which
+     * now matches pixels 1:1. */
     ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
-                           | ISC_PFE_CFG1_COLMAX(isc_samples_per_row - 1u);
+                           | ISC_PFE_CFG1_COLMAX((uint32_t)width - 1u);
     ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
                            | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);
     ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
 
     /* Override ISC DMA config:
-     *  - IMODE=PACKED32 (not PACKED8): CSI2DC emits 32-bit words to ISC
-     *    (CSI2DC_VPCOL shows WC/4 = 960 words per row for our 3840-byte
-     *    source line). With PACKED8, ISC was treating each word as a
-     *    1-byte sample, writing only 960 bytes per row × 720 rows =
-     *    691,200 bytes/frame — our exact cliff. PACKED32 tells ISC each
-     *    word is a 4-byte sample, giving 960 × 4 = 3840 bytes/row × 720
-     *    rows = 2,764,800 = full frame. Bytes in memory end up dense
-     *    (32-bit word writes contiguous) so RGB888 packing is preserved.
+     *  - IMODE=PACKED32: store RLP's 32-bit output verbatim (see file-top
+     *    comment for full pipeline rationale).
      *  - YMBSIZE/CMBSIZE=BEATS32: sama7g5's full AXI4 burst size per
      *    Linux mchp-isc driver (MCC default BEATS8 is sama5d2-era). */
     ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED32
@@ -232,7 +219,7 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
     (void)memset(g_framebuffer, 0x55, fill_bytes);
     SYS_CACHE_CleanDCache_by_Addr((uint32_t *)g_framebuffer, (int32_t)fill_bytes);
 
-    printf("ISC_Capture: configured %lux%lu RGB888 packed (%lu bytes/frame); "
+    printf("ISC_Capture: configured %lux%lu BGRX32 (%lu bytes/frame); "
            "buffers pre-filled with 0x55\r\n",
            (unsigned long)width, (unsigned long)height,
            (unsigned long)frame_size);
@@ -556,7 +543,7 @@ bool ISC_Capture_ProbeFrame(void)
         {
             if (buf[row_base + b] >= 0x40u)
             {
-                phase = (int)(b % 3u);
+                phase = (int)(b % ISC_CAP_BPP);
                 break;
             }
         }
@@ -571,8 +558,7 @@ bool ISC_Capture_ProbeFrame(void)
             }
         }
     }
-    printf("  BYPASS+PACKED8+RMS=1: 3 bytes/pixel packed. Byte order TBD on\r\n"
-           "  this source; feed solid primaries (R/G/B) to identify the map.\r\n");
+    printf("  BYPASS+PACKED32+RMS=0: 4 B/pixel, expect B G R 00 per pixel.\r\n");
 
     return true;
 }

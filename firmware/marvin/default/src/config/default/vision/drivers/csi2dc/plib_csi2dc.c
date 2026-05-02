@@ -69,13 +69,12 @@ uint32_t CSI2DC_Interrupt_Status(void) {
 }
 
 void CSI2DC_Configure_VideoPipe(uint32_t dt, uint32_t vc, uint32_t align_isc) {
-    /* RMS=1: CSI2DC emits raw byte stream — required for RGB888 since RMS=0
-     * one-sample-per-pixel mode only captures 12 bits of the 24-bit pixel.
-     * Pair with ISC RLP=BYPASS + IMODE=PACKED8 for dense byte capture. */
+    /* RMS=0: CSI2DC outputs 1 pixel per VP word. For RGB888 MIPI bypass this
+     * gives demux_data = 0x00RRGGBB on the 40-bit bus; ISC RLP=BYPASS samples
+     * the low 32 bits and IMODE=PACKED32 stores them as BGRX32 in DDR. */
     CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt)
                                | CSI2DC_VPCFGR_VC(vc)
-                               | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0)
-                               | CSI2DC_VPCFGR_RMS_1;
+                               | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0);
 }
 
 void CSI2DC_Enable_VideoPipe(void) {
