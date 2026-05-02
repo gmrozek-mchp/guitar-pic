@@ -140,6 +140,10 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
     csiObj->csiFrameHeight = height;
     csiObj->csiFps         = 60u;
 
+    /* iscObj->imageWidth/Height stay in pixel units (the probe uses them
+     * to compute framebuffer offsets). We override PFE_CFG1.COLMAX to the
+     * byte count separately below — that's the only place ISC's internal
+     * per-row sample counter actually matters in RMS=1 byte-stream mode. */
     iscObj->imageWidth   = (uint16_t)width;
     iscObj->imageHeight  = (uint16_t)height;
     iscObj->outputWidth  = (uint16_t)width;
@@ -175,34 +179,38 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
      * enough: the Linux mchp-isc driver also sets COLEN+ROWEN in
      * PFE_CFG0 to activate the crop window; without these bits the
      * PFE doesn't properly detect line/frame boundaries and VD never
-     * fires. */
+     * fires. DRV_ISC_Configure does NOT touch these registers, so our
+     * writes here persist through to capture start.
+     *
+     * Note: emirror/libcamera does NOT call DRV_ISC_Configure_DMA
+     * separately; DRV_ISC_Configure calls it internally (line 381 of
+     * drv_isc.c). A second explicit call would reset DCFG back to the
+     * MCC BEATS8 default and clobber our overrides. Don't add one. */
+    /* With IMODE=PACKED32, each ISC "sample" is a 32-bit word. CSI2DC
+     * emits WC/4 = (width * BPP) / 4 = 960 words per row for our 720p
+     * RGB888 (matches VPCOLR readback). COLMAX is in sample units. */
+    uint32_t isc_samples_per_row = (width * ISC_CAP_BPP) / 4u;
+
     ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
-                           | ISC_PFE_CFG1_COLMAX((uint32_t)width - 1u);
+                           | ISC_PFE_CFG1_COLMAX(isc_samples_per_row - 1u);
     ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
                            | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);
     ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
 
-    if (DRV_ISC_Configure_DMA(iscObj) != 0u)
-    {
-        printf("ISC_Capture: DRV_ISC_Configure_DMA failed\r\n");
-        return false;
-    }
-
-    /* Override ISC DMA burst size from BEATS8 (MCC / sama5d2-era default)
-     * to BEATS32 (sama7g5 / full AXI4 default per Linux mchp-isc driver).
-     * SAM9X75 uses the sama7g5 ISC variant — the RAM access port is full
-     * 32-bit AXI4 and wants 32-beat bursts. At BEATS8, the AHB transaction
-     * overhead is 4x what it should be. At 480p (83 MB/s) this is fine;
-     * at 720p60 RGB888 (165 MB/s) the ISC FIFO back-pressures, HSYNC
-     * detection stalls, HDTO fires after ~180 rows and DDONE never fires. */
-    ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED8
+    /* Override ISC DMA config:
+     *  - IMODE=PACKED32 (not PACKED8): CSI2DC emits 32-bit words to ISC
+     *    (CSI2DC_VPCOL shows WC/4 = 960 words per row for our 3840-byte
+     *    source line). With PACKED8, ISC was treating each word as a
+     *    1-byte sample, writing only 960 bytes per row × 720 rows =
+     *    691,200 bytes/frame — our exact cliff. PACKED32 tells ISC each
+     *    word is a 4-byte sample, giving 960 × 4 = 3840 bytes/row × 720
+     *    rows = 2,764,800 = full frame. Bytes in memory end up dense
+     *    (32-bit word writes contiguous) so RGB888 packing is preserved.
+     *  - YMBSIZE/CMBSIZE=BEATS32: sama7g5's full AXI4 burst size per
+     *    Linux mchp-isc driver (MCC default BEATS8 is sama5d2-era). */
+    ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED32
                        | ISC_DCFG_YMBSIZE_BEATS32
                        | ISC_DCFG_CMBSIZE_BEATS32;
-    printf("ISC_Capture: post-override ISC_DCFG=0x%08lX (expected 0x%08lX)\r\n",
-           (unsigned long)ISC_REGS->ISC_DCFG,
-           (unsigned long)(ISC_DCFG_IMODE_PACKED8
-                          | ISC_DCFG_YMBSIZE_BEATS32
-                          | ISC_DCFG_CMBSIZE_BEATS32));
 
     /* Pre-fill both buffers with a sentinel so the probe can tell which
      * memory regions DMA actually wrote vs. which are still untouched.
@@ -354,6 +362,14 @@ bool ISC_Capture_ProbeFrame(void)
                (unsigned long)ctrlsr,
                (unsigned long)dctrl,
                (unsigned long)dnda);
+        printf("  cliff: VHXS_CTRL=0x%08lX CLKSR=0x%08lX RLP=0x%08lX DCFG=0x%08lX\r\n",
+               (unsigned long)ISC_REGS->ISC_VHXS_CTRL,
+               (unsigned long)ISC_REGS->ISC_CLKSR,
+               (unsigned long)ISC_REGS->ISC_RLP_CFG,
+               (unsigned long)ISC_REGS->ISC_DCFG);
+        printf("  cliff: DAD0=0x%08lX DST0=0x%08lX (stride)\r\n",
+               (unsigned long)ISC_REGS->ISC_DAD0,
+               (unsigned long)ISC_REGS->ISC_DST0);
         printf("  cliff: INTSR=0x%08lX [%s%s%s%s%s%s%s%s]\r\n",
                (unsigned long)intsr,
                (intsr & ISC_INTSR_VD_Msk)     ? "VD "     : "",
