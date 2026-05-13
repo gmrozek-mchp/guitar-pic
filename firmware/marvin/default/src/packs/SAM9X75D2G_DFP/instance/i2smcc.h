@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,15 +19,15 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_I2SMCC_INSTANCE_
 #define _SAM9X7_I2SMCC_INSTANCE_
 
 
 /* ========== Instance Parameter definitions for I2SMCC peripheral ========== */
-#define I2SMCC_CLOCK_ID                          (34)       
-#define I2SMCC_DMAC_ID_RX                        (37)       
-#define I2SMCC_DMAC_ID_TX                        (36)       
+#define I2SMCC_CLOCK_ID                          (34)
+#define I2SMCC_DMAC_ID_RX                        (37)
+#define I2SMCC_DMAC_ID_TX                        (36)
 #define I2SMCC_INSTANCE_ID                       (34)       /* I2S Multi Channel Controller */
 
 #endif /* _SAM9X7_I2SMCC_INSTANCE_ */

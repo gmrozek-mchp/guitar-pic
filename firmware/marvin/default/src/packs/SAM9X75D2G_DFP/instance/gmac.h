@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,14 +19,14 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_GMAC_INSTANCE_
 #define _SAM9X7_GMAC_INSTANCE_
 
 
 /* ========== Instance Parameter definitions for GMAC peripheral ========== */
-#define GMAC_CLOCK_ID                            (24)       
-#define GMAC_CLOCK_ID_TSU                        (67)       
+#define GMAC_CLOCK_ID                            (24)
+#define GMAC_CLOCK_ID_TSU                        (67)
 #define GMAC_INSTANCE_ID                         (24)       /* Gigabit Ethernet MAC */
 #define GMAC_INSTANCE_ID_EMAC                    (65)       /* Gigabit Ethernet MAC - Express MAC */
 #define GMAC_INSTANCE_ID_MMSL                    (66)       /* Gigabit Ethernet MAC - Mac Merge SubLayer */

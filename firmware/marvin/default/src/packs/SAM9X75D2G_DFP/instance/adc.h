@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,14 +19,14 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_ADC_INSTANCE_
 #define _SAM9X7_ADC_INSTANCE_
 
 
 /* ========== Instance Parameter definitions for ADC peripheral ========== */
-#define ADC_CLOCK_ID                             (19)       
-#define ADC_DMAC_ID_RX                           (40)       
+#define ADC_CLOCK_ID                             (19)
+#define ADC_DMAC_ID_RX                           (40)
 #define ADC_INSTANCE_ID                          (19)       /* ADC Controller */
 
 #endif /* _SAM9X7_ADC_INSTANCE_ */

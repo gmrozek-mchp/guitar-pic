@@ -1,7 +1,7 @@
 /*
  * Component description for OTPC
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_OTPC_COMPONENT_H_
 #define _SAM9X7_OTPC_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                      SOFTWARE API DEFINITION FOR OTPC                      */
@@ -880,10 +883,12 @@
 #define   OTPC_WPSR_SWETYP_WRITE_RO_Val       _UINT32_(0x1)                                        /* (OTPC_WPSR) A write access has been performed on a read-only register (warning).  */
 #define   OTPC_WPSR_SWETYP_CONF_CHG_Val       _UINT32_(0x2)                                        /* (OTPC_WPSR) A change has been made into the configuration (error).  */
 #define   OTPC_WPSR_SWETYP_KEY_ERROR_Val      _UINT32_(0x3)                                        /* (OTPC_WPSR) A write has been computed in OTPC_CR or OTPC_WPMR register with a wrong value in the related KEY field (error).  */
+#define   OTPC_WPSR_SWETYP_DATA_ACC_Val       _UINT32_(0x4)                                        /* (OTPC_WPSR) The non-secure world application tried to read a packet from the secure world (error).  */
 #define OTPC_WPSR_SWETYP_READ_WO              (OTPC_WPSR_SWETYP_READ_WO_Val << OTPC_WPSR_SWETYP_Pos) /* (OTPC_WPSR) A write-only register has been read (warning). Position */
 #define OTPC_WPSR_SWETYP_WRITE_RO             (OTPC_WPSR_SWETYP_WRITE_RO_Val << OTPC_WPSR_SWETYP_Pos) /* (OTPC_WPSR) A write access has been performed on a read-only register (warning). Position */
 #define OTPC_WPSR_SWETYP_CONF_CHG             (OTPC_WPSR_SWETYP_CONF_CHG_Val << OTPC_WPSR_SWETYP_Pos) /* (OTPC_WPSR) A change has been made into the configuration (error). Position */
 #define OTPC_WPSR_SWETYP_KEY_ERROR            (OTPC_WPSR_SWETYP_KEY_ERROR_Val << OTPC_WPSR_SWETYP_Pos) /* (OTPC_WPSR) A write has been computed in OTPC_CR or OTPC_WPMR register with a wrong value in the related KEY field (error). Position */
+#define OTPC_WPSR_SWETYP_DATA_ACC             (OTPC_WPSR_SWETYP_DATA_ACC_Val << OTPC_WPSR_SWETYP_Pos) /* (OTPC_WPSR) The non-secure world application tried to read a packet from the secure world (error). Position */
 #define OTPC_WPSR_ECLASS_Pos                  _UINT32_(31)                                         /* (OTPC_WPSR) Software Error Class Position */
 #define OTPC_WPSR_ECLASS_Msk                  (_UINT32_(0x1) << OTPC_WPSR_ECLASS_Pos)              /* (OTPC_WPSR) Software Error Class Mask */
 #define OTPC_WPSR_ECLASS(value)               (OTPC_WPSR_ECLASS_Msk & (_UINT32_(value) << OTPC_WPSR_ECLASS_Pos)) /* Assignment of value for ECLASS in the OTPC_WPSR register */

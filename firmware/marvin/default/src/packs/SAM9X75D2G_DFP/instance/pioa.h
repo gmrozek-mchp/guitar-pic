@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,7 +19,7 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_PIOA_INSTANCE_
 #define _SAM9X7_PIOA_INSTANCE_
 
@@ -27,7 +27,7 @@
 /* ========== Instance Parameter definitions for PIOA peripheral ========== */
 #define PIOA_ABCDSR1_DEFAULT_VAL                 (0x00000000) /* Register value at reset */
 #define PIOA_ABCDSR2_DEFAULT_VAL                 (0x00000000) /* Register value at reset */
-#define PIOA_CLOCK_ID                            (2)        
+#define PIOA_CLOCK_ID                            (2)
 #define PIOA_INSTANCE_ID                         (2)        /* Parallel I/O Controller A */
 #define PIOA_OSR_DEFAULT_VAL                     (0x00000000) /* Register value at reset */
 #define PIOA_PPDSR_DEFAULT_VAL                   (0xFFFFFFFF) /* Register value at reset */

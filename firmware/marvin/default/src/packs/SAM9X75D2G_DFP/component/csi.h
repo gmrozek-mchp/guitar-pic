@@ -1,7 +1,7 @@
 /*
  * Component description for CSI
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_CSI_COMPONENT_H_
 #define _SAM9X7_CSI_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                      SOFTWARE API DEFINITION FOR CSI                       */
@@ -33,6 +36,14 @@
 #define CSI_N_LANES_N_LANES_Pos               _UINT32_(0)                                          /* (CSI_N_LANES) Number of active data lanes Position */
 #define CSI_N_LANES_N_LANES_Msk               (_UINT32_(0x3) << CSI_N_LANES_N_LANES_Pos)           /* (CSI_N_LANES) Number of active data lanes Mask */
 #define CSI_N_LANES_N_LANES(value)            (CSI_N_LANES_N_LANES_Msk & (_UINT32_(value) << CSI_N_LANES_N_LANES_Pos)) /* Assignment of value for N_LANES in the CSI_N_LANES register */
+#define   CSI_N_LANES_N_LANES_1_LANE_Val      _UINT32_(0x0)                                        /* (CSI_N_LANES) One data lane.  */
+#define   CSI_N_LANES_N_LANES_2_LANES_Val     _UINT32_(0x1)                                        /* (CSI_N_LANES) Two data lanes.  */
+#define   CSI_N_LANES_N_LANES_3_LANES_Val     _UINT32_(0x2)                                        /* (CSI_N_LANES) Three data lanes.  */
+#define   CSI_N_LANES_N_LANES_4_LANES_Val     _UINT32_(0x3)                                        /* (CSI_N_LANES) Four data laness.  */
+#define CSI_N_LANES_N_LANES_1_LANE            (CSI_N_LANES_N_LANES_1_LANE_Val << CSI_N_LANES_N_LANES_Pos) /* (CSI_N_LANES) One data lane. Position */
+#define CSI_N_LANES_N_LANES_2_LANES           (CSI_N_LANES_N_LANES_2_LANES_Val << CSI_N_LANES_N_LANES_Pos) /* (CSI_N_LANES) Two data lanes. Position */
+#define CSI_N_LANES_N_LANES_3_LANES           (CSI_N_LANES_N_LANES_3_LANES_Val << CSI_N_LANES_N_LANES_Pos) /* (CSI_N_LANES) Three data lanes. Position */
+#define CSI_N_LANES_N_LANES_4_LANES           (CSI_N_LANES_N_LANES_4_LANES_Val << CSI_N_LANES_N_LANES_Pos) /* (CSI_N_LANES) Four data laness. Position */
 #define CSI_N_LANES_Msk                       _UINT32_(0x00000003)                                 /* (CSI_N_LANES) Register Mask  */
 
 

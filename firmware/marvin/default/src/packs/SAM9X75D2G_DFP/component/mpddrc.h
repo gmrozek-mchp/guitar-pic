@@ -1,7 +1,7 @@
 /*
  * Component description for MPDDRC
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_MPDDRC_COMPONENT_H_
 #define _SAM9X7_MPDDRC_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                     SOFTWARE API DEFINITION FOR MPDDRC                     */
@@ -277,17 +280,17 @@
 #define MPDDRC_LPR_SELFAUTO_Pos               _UINT32_(14)                                         /* (MPDDRC_LPR) Self-refresh Exit Autorefresh Position */
 #define MPDDRC_LPR_SELFAUTO_Msk               (_UINT32_(0x1) << MPDDRC_LPR_SELFAUTO_Pos)           /* (MPDDRC_LPR) Self-refresh Exit Autorefresh Mask */
 #define MPDDRC_LPR_SELFAUTO(value)            (MPDDRC_LPR_SELFAUTO_Msk & (_UINT32_(value) << MPDDRC_LPR_SELFAUTO_Pos)) /* Assignment of value for SELFAUTO in the MPDDRC_LPR register */
-#define   MPDDRC_LPR_SELFAUTO_0_Val           _UINT32_(0x0)                                        /* (MPDDRC_LPR) Upon exiting Self-refresh mode, active command is immediately performed after tXSNR. The autorefresh command is issued every 15.6 \xb5 s or less.  */
+#define   MPDDRC_LPR_SELFAUTO_0_Val           _UINT32_(0x0)                                        /* (MPDDRC_LPR) Upon exiting Self-refresh mode, active command is immediately performed after tXSNR. The autorefresh command is issued every 15.6 µs or less.  */
 #define   MPDDRC_LPR_SELFAUTO_1_Val           _UINT32_(0x1)                                        /* (MPDDRC_LPR) Upon exiting Self-refresh mode, autorefresh command is immediately performed after tXSNR.  */
-#define MPDDRC_LPR_SELFAUTO_0                 (MPDDRC_LPR_SELFAUTO_0_Val << MPDDRC_LPR_SELFAUTO_Pos) /* (MPDDRC_LPR) Upon exiting Self-refresh mode, active command is immediately performed after tXSNR. The autorefresh command is issued every 15.6 \xb5 s or less. Position */
+#define MPDDRC_LPR_SELFAUTO_0                 (MPDDRC_LPR_SELFAUTO_0_Val << MPDDRC_LPR_SELFAUTO_Pos) /* (MPDDRC_LPR) Upon exiting Self-refresh mode, active command is immediately performed after tXSNR. The autorefresh command is issued every 15.6 µs or less. Position */
 #define MPDDRC_LPR_SELFAUTO_1                 (MPDDRC_LPR_SELFAUTO_1_Val << MPDDRC_LPR_SELFAUTO_Pos) /* (MPDDRC_LPR) Upon exiting Self-refresh mode, autorefresh command is immediately performed after tXSNR. Position */
 #define MPDDRC_LPR_SRT_Pos                    _UINT32_(15)                                         /* (MPDDRC_LPR) High Temperature Self-refresh Rate Position */
 #define MPDDRC_LPR_SRT_Msk                    (_UINT32_(0x1) << MPDDRC_LPR_SRT_Pos)                /* (MPDDRC_LPR) High Temperature Self-refresh Rate Mask */
 #define MPDDRC_LPR_SRT(value)                 (MPDDRC_LPR_SRT_Msk & (_UINT32_(value) << MPDDRC_LPR_SRT_Pos)) /* Assignment of value for SRT in the MPDDRC_LPR register */
-#define   MPDDRC_LPR_SRT_0_Val                _UINT32_(0x0)                                        /* (MPDDRC_LPR) 1x refresh rate. Industrial and automative devices with temperatures that do not exceed 85\xfb C.  */
-#define   MPDDRC_LPR_SRT_1_Val                _UINT32_(0x1)                                        /* (MPDDRC_LPR) 2x refresh rate. Provides a faster rate on industrial and automotive devices if temperature exceeds 85\xfb C.  */
-#define MPDDRC_LPR_SRT_0                      (MPDDRC_LPR_SRT_0_Val << MPDDRC_LPR_SRT_Pos)         /* (MPDDRC_LPR) 1x refresh rate. Industrial and automative devices with temperatures that do not exceed 85\xfb C. Position */
-#define MPDDRC_LPR_SRT_1                      (MPDDRC_LPR_SRT_1_Val << MPDDRC_LPR_SRT_Pos)         /* (MPDDRC_LPR) 2x refresh rate. Provides a faster rate on industrial and automotive devices if temperature exceeds 85\xfb C. Position */
+#define   MPDDRC_LPR_SRT_0_Val                _UINT32_(0x0)                                        /* (MPDDRC_LPR) 1x refresh rate. Industrial and automative devices with temperatures that do not exceed 85°C.  */
+#define   MPDDRC_LPR_SRT_1_Val                _UINT32_(0x1)                                        /* (MPDDRC_LPR) 2x refresh rate. Provides a faster rate on industrial and automotive devices if temperature exceeds 85°C.  */
+#define MPDDRC_LPR_SRT_0                      (MPDDRC_LPR_SRT_0_Val << MPDDRC_LPR_SRT_Pos)         /* (MPDDRC_LPR) 1x refresh rate. Industrial and automative devices with temperatures that do not exceed 85°C. Position */
+#define MPDDRC_LPR_SRT_1                      (MPDDRC_LPR_SRT_1_Val << MPDDRC_LPR_SRT_Pos)         /* (MPDDRC_LPR) 2x refresh rate. Provides a faster rate on industrial and automotive devices if temperature exceeds 85°C. Position */
 #define MPDDRC_LPR_APDE_Pos                   _UINT32_(16)                                         /* (MPDDRC_LPR) Active Power Down Exit Time Position */
 #define MPDDRC_LPR_APDE_Msk                   (_UINT32_(0x1) << MPDDRC_LPR_APDE_Pos)               /* (MPDDRC_LPR) Active Power Down Exit Time Mask */
 #define MPDDRC_LPR_APDE(value)                (MPDDRC_LPR_APDE_Msk & (_UINT32_(value) << MPDDRC_LPR_APDE_Pos)) /* Assignment of value for APDE in the MPDDRC_LPR register */

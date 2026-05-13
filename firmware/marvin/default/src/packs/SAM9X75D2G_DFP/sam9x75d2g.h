@@ -1,7 +1,7 @@
 /*
  * Header file for ATSAM9X75D2G
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,16 +19,16 @@
  *
  */
 
-/* File generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* File generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X75D2G_H_
 #define _SAM9X75D2G_H_
 
 /* Header version uses Semantic Versioning 2.0.0 (https://semver.org/) */
-#define HEADER_FORMAT_VERSION "2.1.1"
+#define HEADER_FORMAT_VERSION "3.0.0"
 
-#define HEADER_FORMAT_VERSION_MAJOR (2)
-#define HEADER_FORMAT_VERSION_MINOR (1)
-#define HEADER_FORMAT_VERSION_PATCH (1)
+#define HEADER_FORMAT_VERSION_MAJOR (3)
+#define HEADER_FORMAT_VERSION_MINOR (0)
+#define HEADER_FORMAT_VERSION_PATCH (0)
 
 /* SAM9X75D2G definitions
   This file defines all structures and symbols for SAM9X75D2G:
@@ -59,9 +59,9 @@
 
 #else /* Assembler */
 
-#  define _UINT8_(x) x    /* Assembler: 8-bits unsigned integer constant value */
-#  define _UINT16_(x) x   /* Assembler: 16-bits unsigned integer constant value */
-#  define _UINT32_(x) x   /* Assembler: 32-bits unsigned integer constant value */
+#  define _UINT8_(x) (x)    /* Assembler: 8-bits unsigned integer constant value */
+#  define _UINT16_(x) (x)   /* Assembler: 16-bits unsigned integer constant value */
+#  define _UINT32_(x) (x)   /* Assembler: 32-bits unsigned integer constant value */
 #endif /* !(defined(__ASSEMBLER__) || defined(__IAR_SYSTEMS_ASM__)) */
 #endif /* SKIP_INTEGER_LITERALS */
 
@@ -132,9 +132,9 @@ typedef enum IRQn
   CSI2DC_IRQn               =  52, /* 52  CSI-2 Demultiplexer Controller (CSI2DC) */
   CSI_IRQn                  =  53, /* 53  CSI Host Controller (CSI)           */
   DSI_IRQn                  =  54, /* 54  Display Serial Interface (DSI)      */
-  MIPIPHY_IRQn              =  55, /* 55   (MIPIPHY)                          */
+  MIPIPHY_IRQn              =  55, /* 55  MIPI DPHY interface                 */
   LVDSC_IRQn                =  56, /* 56  LVDS Controller (LVDSC)             */
-  LVDSPHY_IRQn              =  57, /* 57   (LVDSPHY)                          */
+  LVDSPHY_IRQn              =  57, /* 57  LVDS PHY                            */
   PIT64B1_IRQn              =  58, /* 58  Periodic Interval Timer 64-bit (PIT64B1) */
   GMAC_Q1_IRQn              =  60, /* 60  Gigabit Ethernet MAC (GMAC)         */
   GMAC_Q2_IRQn              =  61, /* 61  Gigabit Ethernet MAC (GMAC)         */
@@ -284,7 +284,6 @@ typedef enum IRQn
 #include "instance/trng.h"
 #include "instance/udphs.h"
 #include "instance/uhphs.h"
-#include "instance/uhphs_ehci.h"
 #include "instance/uhphs_ohci.h"
 #include "instance/wdt.h"
 #include "instance/xdmac.h"
@@ -430,7 +429,6 @@ typedef enum IRQn
 #define UDPHS_REGS                       ((udphs_registers_t*)0xf803c000)              /* UDPHS Registers Address      */
 #define UHPHS_OHCI_REGS                  ((uhpfs_registers_t*)0x00600000)              /* UHPHS_OHCI Registers Address */
 #define UHPHS_REGS                       ((uhphs_registers_t*)0x00700000)              /* UHPHS Registers Address      */
-#define UHPHS_EHCI_REGS                  ((uhphs_registers_t*)0x00700000)              /* UHPHS_EHCI Registers Address */
 #define WDT_REGS                         ((wdt_registers_t*)0xffffff80)                /* WDT Registers Address        */
 #define XDMAC_REGS                       ((xdmac_registers_t*)0xf0008000)              /* XDMAC Registers Address      */
 #endif /* (defined(__ASSEMBLER__) || defined(__IAR_SYSTEMS_ASM__)) */
@@ -504,7 +502,6 @@ typedef enum IRQn
 #define UDPHS_BASE_ADDRESS               _UINT32_(0xf803c000)                          /* UDPHS Base Address */
 #define UHPHS_OHCI_BASE_ADDRESS          _UINT32_(0x00600000)                          /* UHPHS_OHCI Base Address */
 #define UHPHS_BASE_ADDRESS               _UINT32_(0x00700000)                          /* UHPHS Base Address */
-#define UHPHS_EHCI_BASE_ADDRESS          _UINT32_(0x00700000)                          /* UHPHS_EHCI Base Address */
 #define WDT_BASE_ADDRESS                 _UINT32_(0xffffff80)                          /* WDT Base Address */
 #define XDMAC_BASE_ADDRESS               _UINT32_(0xf0008000)                          /* XDMAC Base Address */
 

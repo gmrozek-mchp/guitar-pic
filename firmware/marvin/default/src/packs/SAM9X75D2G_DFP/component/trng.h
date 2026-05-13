@@ -1,7 +1,7 @@
 /*
  * Component description for TRNG
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_TRNG_COMPONENT_H_
 #define _SAM9X7_TRNG_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                      SOFTWARE API DEFINITION FOR TRNG                      */
@@ -57,7 +60,9 @@
 #define TRNG_MR_DIFF_Msk                      (_UINT32_(0x1) << TRNG_MR_DIFF_Pos)                  /* (TRNG_MR) Minimum Hamming Distance Mask */
 #define TRNG_MR_DIFF(value)                   (TRNG_MR_DIFF_Msk & (_UINT32_(value) << TRNG_MR_DIFF_Pos)) /* Assignment of value for DIFF in the TRNG_MR register */
 #define   TRNG_MR_DIFF_DISABLED_Val           _UINT32_(0x0)                                        /* (TRNG_MR) Delivers a new random sample without condition with the previous sample (unless HD=1).  */
+#define   TRNG_MR_DIFF_ENABLED_Val            _UINT32_(0x1)                                        /* (TRNG_MR) Delivers a new random sample only if it differs from the previous delivered sample (unless HD=1).  */
 #define TRNG_MR_DIFF_DISABLED                 (TRNG_MR_DIFF_DISABLED_Val << TRNG_MR_DIFF_Pos)      /* (TRNG_MR) Delivers a new random sample without condition with the previous sample (unless HD=1). Position */
+#define TRNG_MR_DIFF_ENABLED                  (TRNG_MR_DIFF_ENABLED_Val << TRNG_MR_DIFF_Pos)       /* (TRNG_MR) Delivers a new random sample only if it differs from the previous delivered sample (unless HD=1). Position */
 #define TRNG_MR_Msk                           _UINT32_(0x00000081)                                 /* (TRNG_MR) Register Mask  */
 
 

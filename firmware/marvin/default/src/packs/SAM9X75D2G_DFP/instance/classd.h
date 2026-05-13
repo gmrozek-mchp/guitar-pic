@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,14 +19,14 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_CLASSD_INSTANCE_
 #define _SAM9X7_CLASSD_INSTANCE_
 
 
 /* ========== Instance Parameter definitions for CLASSD peripheral ========== */
-#define CLASSD_CLOCK_ID                          (42)       
-#define CLASSD_DMAC_ID_TX                        (35)       
+#define CLASSD_CLOCK_ID                          (42)
+#define CLASSD_DMAC_ID_TX                        (35)
 #define CLASSD_INSTANCE_ID                       (42)       /* CLASS D Controller */
 
 #endif /* _SAM9X7_CLASSD_INSTANCE_ */

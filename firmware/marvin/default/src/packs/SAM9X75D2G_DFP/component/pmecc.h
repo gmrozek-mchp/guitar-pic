@@ -1,7 +1,7 @@
 /*
  * Component description for PMECC
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_PMECC_COMPONENT_H_
 #define _SAM9X7_PMECC_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                     SOFTWARE API DEFINITION FOR PMECC                      */
@@ -85,7 +88,9 @@
 #define PMECC_CFG_NANDWR_Pos                  _UINT32_(12)                                         /* (PMECC_CFG) NAND Write Access Position */
 #define PMECC_CFG_NANDWR_Msk                  (_UINT32_(0x1) << PMECC_CFG_NANDWR_Pos)              /* (PMECC_CFG) NAND Write Access Mask */
 #define PMECC_CFG_NANDWR(value)               (PMECC_CFG_NANDWR_Msk & (_UINT32_(value) << PMECC_CFG_NANDWR_Pos)) /* Assignment of value for NANDWR in the PMECC_CFG register */
+#define   PMECC_CFG_NANDWR_0_Val              _UINT32_(0x0)                                        /* (PMECC_CFG) NAND read access  */
 #define   PMECC_CFG_NANDWR_1_Val              _UINT32_(0x1)                                        /* (PMECC_CFG) NAND write access  */
+#define PMECC_CFG_NANDWR_0                    (PMECC_CFG_NANDWR_0_Val << PMECC_CFG_NANDWR_Pos)     /* (PMECC_CFG) NAND read access Position */
 #define PMECC_CFG_NANDWR_1                    (PMECC_CFG_NANDWR_1_Val << PMECC_CFG_NANDWR_Pos)     /* (PMECC_CFG) NAND write access Position */
 #define PMECC_CFG_SPAREEN_Pos                 _UINT32_(16)                                         /* (PMECC_CFG) Spare Enable Position */
 #define PMECC_CFG_SPAREEN_Msk                 (_UINT32_(0x1) << PMECC_CFG_SPAREEN_Pos)             /* (PMECC_CFG) Spare Enable Mask */

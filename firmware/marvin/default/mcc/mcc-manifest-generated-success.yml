@@ -2,7 +2,7 @@
 
 manifest_file_version: 1.0.0
 project: marvin_default
-creation_date: 2026-05-02T17:44:23.484-05:00[America/Chicago]
+creation_date: 2026-05-13T15:50:31.721-05:00[America/Chicago]
 operating_system: Mac OS X
 mcc_mode: VSCodePlugin
 mcc_mode_version: Unknown
@@ -16,9 +16,9 @@ is_using_prerelease_versions: false
 mcc_content_registries: https://registry.npmjs.org/
 device_library: {library_class: com.microchip.mcc.harmony.Harmony3Library, name: Bundled,
   version: Bundled}
-packs: {name: SAM9X7_DFP, version: 1.9.170}
+packs: {name: SAM9X7_DFP, version: 1.13.225}
 modules:
-- {name: core, type: HARMONY, version: v3.16.1}
-- {name: csp, type: HARMONY, version: v3.25.1}
+- {name: core, type: HARMONY, version: v3.16.3}
+- {name: csp, type: HARMONY, version: v3.25.2}
 - {name: vision, type: HARMONY, version: v3.2.1}
-- {name: gfx, type: HARMONY, version: v3.16.3}
+- {name: gfx, type: HARMONY, version: v3.17.0}

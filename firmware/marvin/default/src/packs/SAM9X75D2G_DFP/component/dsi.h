@@ -1,7 +1,7 @@
 /*
  * Component description for DSI
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_DSI_COMPONENT_H_
 #define _SAM9X7_DSI_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                      SOFTWARE API DEFINITION FOR DSI                       */
@@ -640,11 +643,9 @@
 #define   DSI_SDF_3D_MODE_3D_0_Val            _UINT32_(0x0)                                        /* (DSI_SDF_3D) 3D mode off (2D mode on).  */
 #define   DSI_SDF_3D_MODE_3D_1_Val            _UINT32_(0x1)                                        /* (DSI_SDF_3D) 3D mode on, portrait orientation.  */
 #define   DSI_SDF_3D_MODE_3D_2_Val            _UINT32_(0x2)                                        /* (DSI_SDF_3D) 3D mode on, landscape orientation.  */
-#define   DSI_SDF_3D_MODE_3D_3_Val            _UINT32_(0x3)                                        /* (DSI_SDF_3D) Reserved.  */
 #define DSI_SDF_3D_MODE_3D_0                  (DSI_SDF_3D_MODE_3D_0_Val << DSI_SDF_3D_MODE_3D_Pos) /* (DSI_SDF_3D) 3D mode off (2D mode on). Position */
 #define DSI_SDF_3D_MODE_3D_1                  (DSI_SDF_3D_MODE_3D_1_Val << DSI_SDF_3D_MODE_3D_Pos) /* (DSI_SDF_3D) 3D mode on, portrait orientation. Position */
 #define DSI_SDF_3D_MODE_3D_2                  (DSI_SDF_3D_MODE_3D_2_Val << DSI_SDF_3D_MODE_3D_Pos) /* (DSI_SDF_3D) 3D mode on, landscape orientation. Position */
-#define DSI_SDF_3D_MODE_3D_3                  (DSI_SDF_3D_MODE_3D_3_Val << DSI_SDF_3D_MODE_3D_Pos) /* (DSI_SDF_3D) Reserved. Position */
 #define DSI_SDF_3D_FORMAT_3D_Pos              _UINT32_(2)                                          /* (DSI_SDF_3D) 3D Format Position */
 #define DSI_SDF_3D_FORMAT_3D_Msk              (_UINT32_(0x3) << DSI_SDF_3D_FORMAT_3D_Pos)          /* (DSI_SDF_3D) 3D Format Mask */
 #define DSI_SDF_3D_FORMAT_3D(value)           (DSI_SDF_3D_FORMAT_3D_Msk & (_UINT32_(value) << DSI_SDF_3D_FORMAT_3D_Pos)) /* Assignment of value for FORMAT_3D in the DSI_SDF_3D register */
@@ -1593,11 +1594,9 @@
 #define   DSI_SDF_3D_ACT_MODE_3D_0_Val        _UINT32_(0x0)                                        /* (DSI_SDF_3D_ACT) 3D Mode off (2D Mode on).  */
 #define   DSI_SDF_3D_ACT_MODE_3D_1_Val        _UINT32_(0x1)                                        /* (DSI_SDF_3D_ACT) 3D Mode on, portrait orientation.  */
 #define   DSI_SDF_3D_ACT_MODE_3D_2_Val        _UINT32_(0x2)                                        /* (DSI_SDF_3D_ACT) 3D Mode on, landscape orientation.  */
-#define   DSI_SDF_3D_ACT_MODE_3D_3_Val        _UINT32_(0x3)                                        /* (DSI_SDF_3D_ACT) Reserved.  */
 #define DSI_SDF_3D_ACT_MODE_3D_0              (DSI_SDF_3D_ACT_MODE_3D_0_Val << DSI_SDF_3D_ACT_MODE_3D_Pos) /* (DSI_SDF_3D_ACT) 3D Mode off (2D Mode on). Position */
 #define DSI_SDF_3D_ACT_MODE_3D_1              (DSI_SDF_3D_ACT_MODE_3D_1_Val << DSI_SDF_3D_ACT_MODE_3D_Pos) /* (DSI_SDF_3D_ACT) 3D Mode on, portrait orientation. Position */
 #define DSI_SDF_3D_ACT_MODE_3D_2              (DSI_SDF_3D_ACT_MODE_3D_2_Val << DSI_SDF_3D_ACT_MODE_3D_Pos) /* (DSI_SDF_3D_ACT) 3D Mode on, landscape orientation. Position */
-#define DSI_SDF_3D_ACT_MODE_3D_3              (DSI_SDF_3D_ACT_MODE_3D_3_Val << DSI_SDF_3D_ACT_MODE_3D_Pos) /* (DSI_SDF_3D_ACT) Reserved. Position */
 #define DSI_SDF_3D_ACT_FORMAT_3D_Pos          _UINT32_(2)                                          /* (DSI_SDF_3D_ACT) 3D Format Position */
 #define DSI_SDF_3D_ACT_FORMAT_3D_Msk          (_UINT32_(0x3) << DSI_SDF_3D_ACT_FORMAT_3D_Pos)      /* (DSI_SDF_3D_ACT) 3D Format Mask */
 #define DSI_SDF_3D_ACT_FORMAT_3D(value)       (DSI_SDF_3D_ACT_FORMAT_3D_Msk & (_UINT32_(value) << DSI_SDF_3D_ACT_FORMAT_3D_Pos)) /* Assignment of value for FORMAT_3D in the DSI_SDF_3D_ACT register */

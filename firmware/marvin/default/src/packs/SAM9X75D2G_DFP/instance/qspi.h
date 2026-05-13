@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,15 +19,15 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_QSPI_INSTANCE_
 #define _SAM9X7_QSPI_INSTANCE_
 
 
 /* ========== Instance Parameter definitions for QSPI peripheral ========== */
-#define QSPI_CLOCK_ID                            (35)       
-#define QSPI_DMAC_ID_RX                          (27)       
-#define QSPI_DMAC_ID_TX                          (26)       
+#define QSPI_CLOCK_ID                            (35)
+#define QSPI_DMAC_ID_RX                          (27)
+#define QSPI_DMAC_ID_TX                          (26)
 #define QSPI_INSTANCE_ID                         (35)       /* Quad I/O SPI Controller */
 
 #endif /* _SAM9X7_QSPI_INSTANCE_ */

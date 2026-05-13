@@ -1,7 +1,7 @@
 /*
  * Component description for TC
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_TC_COMPONENT_H_
 #define _SAM9X7_TC_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                       SOFTWARE API DEFINITION FOR TC                       */
@@ -95,6 +98,43 @@
 #define TC_CMR_Msk                            _UINT32_(0x0000003F)                                 /* (TC_CMR) Register Mask  */
 
 /* CAPTURE mode */
+#define TC_CMR_CAPTURE_TCCLKS_Pos             _UINT32_(0)                                          /* (TC_CMR) Clock Selection Position */
+#define TC_CMR_CAPTURE_TCCLKS_Msk             (_UINT32_(0x7) << TC_CMR_CAPTURE_TCCLKS_Pos)         /* (TC_CMR) Clock Selection Mask */
+#define TC_CMR_CAPTURE_TCCLKS(value)          (TC_CMR_CAPTURE_TCCLKS_Msk & (_UINT32_(value) << TC_CMR_CAPTURE_TCCLKS_Pos))
+#define   TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK1_Val _UINT32_(0x0)                                        /* (TC_CMR) Clock selected: internal GCLK [17], GCLK[45] clock signal (from PMC)  */
+#define   TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK2_Val _UINT32_(0x1)                                        /* (TC_CMR) Clock selected: internal MCK/8 clock signal (from PMC)  */
+#define   TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK3_Val _UINT32_(0x2)                                        /* (TC_CMR) Clock selected: internal MCK/32 clock signal (from PMC)  */
+#define   TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK4_Val _UINT32_(0x3)                                        /* (TC_CMR) Clock selected: internal MCK/128 clock signal (from PMC)  */
+#define   TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK5_Val _UINT32_(0x4)                                        /* (TC_CMR) Clock selected: internal MD_SLCK clock signal (from PMC)  */
+#define   TC_CMR_CAPTURE_TCCLKS_XC0_Val       _UINT32_(0x5)                                        /* (TC_CMR) Clock selected: XC0  */
+#define   TC_CMR_CAPTURE_TCCLKS_XC1_Val       _UINT32_(0x6)                                        /* (TC_CMR) Clock selected: XC1  */
+#define   TC_CMR_CAPTURE_TCCLKS_XC2_Val       _UINT32_(0x7)                                        /* (TC_CMR) Clock selected: XC2  */
+#define TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK1    (TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK1_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal GCLK [17], GCLK[45] clock signal (from PMC) Position */
+#define TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK2    (TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK2_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MCK/8 clock signal (from PMC) Position */
+#define TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK3    (TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK3_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MCK/32 clock signal (from PMC) Position */
+#define TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK4    (TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK4_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MCK/128 clock signal (from PMC) Position */
+#define TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK5    (TC_CMR_CAPTURE_TCCLKS_TIMER_CLOCK5_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MD_SLCK clock signal (from PMC) Position */
+#define TC_CMR_CAPTURE_TCCLKS_XC0             (TC_CMR_CAPTURE_TCCLKS_XC0_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: XC0 Position */
+#define TC_CMR_CAPTURE_TCCLKS_XC1             (TC_CMR_CAPTURE_TCCLKS_XC1_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: XC1 Position */
+#define TC_CMR_CAPTURE_TCCLKS_XC2             (TC_CMR_CAPTURE_TCCLKS_XC2_Val << TC_CMR_CAPTURE_TCCLKS_Pos) /* (TC_CMR) Clock selected: XC2 Position */
+#define TC_CMR_CAPTURE_CLKI_Pos               _UINT32_(3)                                          /* (TC_CMR) Clock Invert Position */
+#define TC_CMR_CAPTURE_CLKI_Msk               (_UINT32_(0x1) << TC_CMR_CAPTURE_CLKI_Pos)           /* (TC_CMR) Clock Invert Mask */
+#define TC_CMR_CAPTURE_CLKI(value)            (TC_CMR_CAPTURE_CLKI_Msk & (_UINT32_(value) << TC_CMR_CAPTURE_CLKI_Pos))
+#define   TC_CMR_CAPTURE_CLKI_0_Val           _UINT32_(0x0)                                        /* (TC_CMR) Counter is incremented on rising edge of the clock.  */
+#define   TC_CMR_CAPTURE_CLKI_1_Val           _UINT32_(0x1)                                        /* (TC_CMR) Counter is incremented on falling edge of the clock.  */
+#define TC_CMR_CAPTURE_CLKI_0                 (TC_CMR_CAPTURE_CLKI_0_Val << TC_CMR_CAPTURE_CLKI_Pos) /* (TC_CMR) Counter is incremented on rising edge of the clock. Position */
+#define TC_CMR_CAPTURE_CLKI_1                 (TC_CMR_CAPTURE_CLKI_1_Val << TC_CMR_CAPTURE_CLKI_Pos) /* (TC_CMR) Counter is incremented on falling edge of the clock. Position */
+#define TC_CMR_CAPTURE_BURST_Pos              _UINT32_(4)                                          /* (TC_CMR) Burst Signal Selection Position */
+#define TC_CMR_CAPTURE_BURST_Msk              (_UINT32_(0x3) << TC_CMR_CAPTURE_BURST_Pos)          /* (TC_CMR) Burst Signal Selection Mask */
+#define TC_CMR_CAPTURE_BURST(value)           (TC_CMR_CAPTURE_BURST_Msk & (_UINT32_(value) << TC_CMR_CAPTURE_BURST_Pos))
+#define   TC_CMR_CAPTURE_BURST_NONE_Val       _UINT32_(0x0)                                        /* (TC_CMR) The clock is not gated by an external signal.  */
+#define   TC_CMR_CAPTURE_BURST_XC0_Val        _UINT32_(0x1)                                        /* (TC_CMR) XC0 is ANDed with the selected clock.  */
+#define   TC_CMR_CAPTURE_BURST_XC1_Val        _UINT32_(0x2)                                        /* (TC_CMR) XC1 is ANDed with the selected clock.  */
+#define   TC_CMR_CAPTURE_BURST_XC2_Val        _UINT32_(0x3)                                        /* (TC_CMR) XC2 is ANDed with the selected clock.  */
+#define TC_CMR_CAPTURE_BURST_NONE             (TC_CMR_CAPTURE_BURST_NONE_Val << TC_CMR_CAPTURE_BURST_Pos) /* (TC_CMR) The clock is not gated by an external signal. Position */
+#define TC_CMR_CAPTURE_BURST_XC0              (TC_CMR_CAPTURE_BURST_XC0_Val << TC_CMR_CAPTURE_BURST_Pos) /* (TC_CMR) XC0 is ANDed with the selected clock. Position */
+#define TC_CMR_CAPTURE_BURST_XC1              (TC_CMR_CAPTURE_BURST_XC1_Val << TC_CMR_CAPTURE_BURST_Pos) /* (TC_CMR) XC1 is ANDed with the selected clock. Position */
+#define TC_CMR_CAPTURE_BURST_XC2              (TC_CMR_CAPTURE_BURST_XC2_Val << TC_CMR_CAPTURE_BURST_Pos) /* (TC_CMR) XC2 is ANDed with the selected clock. Position */
 #define TC_CMR_CAPTURE_LDBSTOP_Pos            _UINT32_(6)                                          /* (TC_CMR) Counter Clock Stopped with RB Loading Position */
 #define TC_CMR_CAPTURE_LDBSTOP_Msk            (_UINT32_(0x1) << TC_CMR_CAPTURE_LDBSTOP_Pos)        /* (TC_CMR) Counter Clock Stopped with RB Loading Mask */
 #define TC_CMR_CAPTURE_LDBSTOP(value)         (TC_CMR_CAPTURE_LDBSTOP_Msk & (_UINT32_(value) << TC_CMR_CAPTURE_LDBSTOP_Pos))
@@ -134,8 +174,8 @@
 #define   TC_CMR_CAPTURE_CPCTRG_1_Val         _UINT32_(0x1)                                        /* (TC_CMR) RC Compare resets the counter and starts the counter clock.  */
 #define TC_CMR_CAPTURE_CPCTRG_0               (TC_CMR_CAPTURE_CPCTRG_0_Val << TC_CMR_CAPTURE_CPCTRG_Pos) /* (TC_CMR) RC Compare has no effect on the counter and its clock. Position */
 #define TC_CMR_CAPTURE_CPCTRG_1               (TC_CMR_CAPTURE_CPCTRG_1_Val << TC_CMR_CAPTURE_CPCTRG_Pos) /* (TC_CMR) RC Compare resets the counter and starts the counter clock. Position */
-#define TC_CMR_CAPTURE_WAVE_Pos               _UINT32_(15)                                         /* (TC_CMR) Capture Mode Position */
-#define TC_CMR_CAPTURE_WAVE_Msk               (_UINT32_(0x1) << TC_CMR_CAPTURE_WAVE_Pos)           /* (TC_CMR) Capture Mode Mask */
+#define TC_CMR_CAPTURE_WAVE_Pos               _UINT32_(15)                                         /* (TC_CMR) Waveform Mode Position */
+#define TC_CMR_CAPTURE_WAVE_Msk               (_UINT32_(0x1) << TC_CMR_CAPTURE_WAVE_Pos)           /* (TC_CMR) Waveform Mode Mask */
 #define TC_CMR_CAPTURE_WAVE(value)            (TC_CMR_CAPTURE_WAVE_Msk & (_UINT32_(value) << TC_CMR_CAPTURE_WAVE_Pos))
 #define   TC_CMR_CAPTURE_WAVE_0_Val           _UINT32_(0x0)                                        /* (TC_CMR) Capture mode is enabled.  */
 #define   TC_CMR_CAPTURE_WAVE_1_Val           _UINT32_(0x1)                                        /* (TC_CMR) Capture mode is disabled (Waveform mode is enabled).  */
@@ -176,9 +216,46 @@
 #define TC_CMR_CAPTURE_SBSMPLR_FOURTH         (TC_CMR_CAPTURE_SBSMPLR_FOURTH_Val << TC_CMR_CAPTURE_SBSMPLR_Pos) /* (TC_CMR) Load a Capture register every 4 selected edges Position */
 #define TC_CMR_CAPTURE_SBSMPLR_EIGHTH         (TC_CMR_CAPTURE_SBSMPLR_EIGHTH_Val << TC_CMR_CAPTURE_SBSMPLR_Pos) /* (TC_CMR) Load a Capture register every 8 selected edges Position */
 #define TC_CMR_CAPTURE_SBSMPLR_SIXTEENTH      (TC_CMR_CAPTURE_SBSMPLR_SIXTEENTH_Val << TC_CMR_CAPTURE_SBSMPLR_Pos) /* (TC_CMR) Load a Capture register every 16 selected edges Position */
-#define TC_CMR_CAPTURE_Msk                    _UINT32_(0x007FC7C0)                                 /* (TC_CMR_CAPTURE) Register Mask  */
+#define TC_CMR_CAPTURE_Msk                    _UINT32_(0x007FC7FF)                                 /* (TC_CMR_CAPTURE) Register Mask  */
 
 /* WAVEFORM mode */
+#define TC_CMR_WAVEFORM_TCCLKS_Pos            _UINT32_(0)                                          /* (TC_CMR) Clock Selection Position */
+#define TC_CMR_WAVEFORM_TCCLKS_Msk            (_UINT32_(0x7) << TC_CMR_WAVEFORM_TCCLKS_Pos)        /* (TC_CMR) Clock Selection Mask */
+#define TC_CMR_WAVEFORM_TCCLKS(value)         (TC_CMR_WAVEFORM_TCCLKS_Msk & (_UINT32_(value) << TC_CMR_WAVEFORM_TCCLKS_Pos))
+#define   TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK1_Val _UINT32_(0x0)                                        /* (TC_CMR) Clock selected: internal GCLK [17], GCLK[45] clock signal (from PMC)  */
+#define   TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK2_Val _UINT32_(0x1)                                        /* (TC_CMR) Clock selected: internal MCK/8 clock signal (from PMC)  */
+#define   TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK3_Val _UINT32_(0x2)                                        /* (TC_CMR) Clock selected: internal MCK/32 clock signal (from PMC)  */
+#define   TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK4_Val _UINT32_(0x3)                                        /* (TC_CMR) Clock selected: internal MCK/128 clock signal (from PMC)  */
+#define   TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK5_Val _UINT32_(0x4)                                        /* (TC_CMR) Clock selected: internal MD_SLCK clock signal (from PMC)  */
+#define   TC_CMR_WAVEFORM_TCCLKS_XC0_Val      _UINT32_(0x5)                                        /* (TC_CMR) Clock selected: XC0  */
+#define   TC_CMR_WAVEFORM_TCCLKS_XC1_Val      _UINT32_(0x6)                                        /* (TC_CMR) Clock selected: XC1  */
+#define   TC_CMR_WAVEFORM_TCCLKS_XC2_Val      _UINT32_(0x7)                                        /* (TC_CMR) Clock selected: XC2  */
+#define TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK1   (TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK1_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal GCLK [17], GCLK[45] clock signal (from PMC) Position */
+#define TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK2   (TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK2_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MCK/8 clock signal (from PMC) Position */
+#define TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK3   (TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK3_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MCK/32 clock signal (from PMC) Position */
+#define TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK4   (TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK4_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MCK/128 clock signal (from PMC) Position */
+#define TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK5   (TC_CMR_WAVEFORM_TCCLKS_TIMER_CLOCK5_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: internal MD_SLCK clock signal (from PMC) Position */
+#define TC_CMR_WAVEFORM_TCCLKS_XC0            (TC_CMR_WAVEFORM_TCCLKS_XC0_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: XC0 Position */
+#define TC_CMR_WAVEFORM_TCCLKS_XC1            (TC_CMR_WAVEFORM_TCCLKS_XC1_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: XC1 Position */
+#define TC_CMR_WAVEFORM_TCCLKS_XC2            (TC_CMR_WAVEFORM_TCCLKS_XC2_Val << TC_CMR_WAVEFORM_TCCLKS_Pos) /* (TC_CMR) Clock selected: XC2 Position */
+#define TC_CMR_WAVEFORM_CLKI_Pos              _UINT32_(3)                                          /* (TC_CMR) Clock Invert Position */
+#define TC_CMR_WAVEFORM_CLKI_Msk              (_UINT32_(0x1) << TC_CMR_WAVEFORM_CLKI_Pos)          /* (TC_CMR) Clock Invert Mask */
+#define TC_CMR_WAVEFORM_CLKI(value)           (TC_CMR_WAVEFORM_CLKI_Msk & (_UINT32_(value) << TC_CMR_WAVEFORM_CLKI_Pos))
+#define   TC_CMR_WAVEFORM_CLKI_0_Val          _UINT32_(0x0)                                        /* (TC_CMR) Counter is incremented on rising edge of the clock.  */
+#define   TC_CMR_WAVEFORM_CLKI_1_Val          _UINT32_(0x1)                                        /* (TC_CMR) Counter is incremented on falling edge of the clock.  */
+#define TC_CMR_WAVEFORM_CLKI_0                (TC_CMR_WAVEFORM_CLKI_0_Val << TC_CMR_WAVEFORM_CLKI_Pos) /* (TC_CMR) Counter is incremented on rising edge of the clock. Position */
+#define TC_CMR_WAVEFORM_CLKI_1                (TC_CMR_WAVEFORM_CLKI_1_Val << TC_CMR_WAVEFORM_CLKI_Pos) /* (TC_CMR) Counter is incremented on falling edge of the clock. Position */
+#define TC_CMR_WAVEFORM_BURST_Pos             _UINT32_(4)                                          /* (TC_CMR) Burst Signal Selection Position */
+#define TC_CMR_WAVEFORM_BURST_Msk             (_UINT32_(0x3) << TC_CMR_WAVEFORM_BURST_Pos)         /* (TC_CMR) Burst Signal Selection Mask */
+#define TC_CMR_WAVEFORM_BURST(value)          (TC_CMR_WAVEFORM_BURST_Msk & (_UINT32_(value) << TC_CMR_WAVEFORM_BURST_Pos))
+#define   TC_CMR_WAVEFORM_BURST_NONE_Val      _UINT32_(0x0)                                        /* (TC_CMR) The clock is not gated by an external signal.  */
+#define   TC_CMR_WAVEFORM_BURST_XC0_Val       _UINT32_(0x1)                                        /* (TC_CMR) XC0 is ANDed with the selected clock.  */
+#define   TC_CMR_WAVEFORM_BURST_XC1_Val       _UINT32_(0x2)                                        /* (TC_CMR) XC1 is ANDed with the selected clock.  */
+#define   TC_CMR_WAVEFORM_BURST_XC2_Val       _UINT32_(0x3)                                        /* (TC_CMR) XC2 is ANDed with the selected clock.  */
+#define TC_CMR_WAVEFORM_BURST_NONE            (TC_CMR_WAVEFORM_BURST_NONE_Val << TC_CMR_WAVEFORM_BURST_Pos) /* (TC_CMR) The clock is not gated by an external signal. Position */
+#define TC_CMR_WAVEFORM_BURST_XC0             (TC_CMR_WAVEFORM_BURST_XC0_Val << TC_CMR_WAVEFORM_BURST_Pos) /* (TC_CMR) XC0 is ANDed with the selected clock. Position */
+#define TC_CMR_WAVEFORM_BURST_XC1             (TC_CMR_WAVEFORM_BURST_XC1_Val << TC_CMR_WAVEFORM_BURST_Pos) /* (TC_CMR) XC1 is ANDed with the selected clock. Position */
+#define TC_CMR_WAVEFORM_BURST_XC2             (TC_CMR_WAVEFORM_BURST_XC2_Val << TC_CMR_WAVEFORM_BURST_Pos) /* (TC_CMR) XC2 is ANDed with the selected clock. Position */
 #define TC_CMR_WAVEFORM_CPCSTOP_Pos           _UINT32_(6)                                          /* (TC_CMR) Counter Clock Stopped with RC Compare Position */
 #define TC_CMR_WAVEFORM_CPCSTOP_Msk           (_UINT32_(0x1) << TC_CMR_WAVEFORM_CPCSTOP_Pos)       /* (TC_CMR) Counter Clock Stopped with RC Compare Mask */
 #define TC_CMR_WAVEFORM_CPCSTOP(value)        (TC_CMR_WAVEFORM_CPCSTOP_Msk & (_UINT32_(value) << TC_CMR_WAVEFORM_CPCSTOP_Pos))
@@ -328,7 +405,7 @@
 #define TC_CMR_WAVEFORM_BSWTRG_SET            (TC_CMR_WAVEFORM_BSWTRG_SET_Val << TC_CMR_WAVEFORM_BSWTRG_Pos) /* (TC_CMR) Set Position */
 #define TC_CMR_WAVEFORM_BSWTRG_CLEAR          (TC_CMR_WAVEFORM_BSWTRG_CLEAR_Val << TC_CMR_WAVEFORM_BSWTRG_Pos) /* (TC_CMR) Clear Position */
 #define TC_CMR_WAVEFORM_BSWTRG_TOGGLE         (TC_CMR_WAVEFORM_BSWTRG_TOGGLE_Val << TC_CMR_WAVEFORM_BSWTRG_Pos) /* (TC_CMR) Toggle Position */
-#define TC_CMR_WAVEFORM_Msk                   _UINT32_(0xFFFFFFC0)                                 /* (TC_CMR_WAVEFORM) Register Mask  */
+#define TC_CMR_WAVEFORM_Msk                   _UINT32_(0xFFFFFFFF)                                 /* (TC_CMR_WAVEFORM) Register Mask  */
 
 
 /* -------- TC_SMMR : (TC Offset: 0x08) (R/W 32) Stepper Motor Mode Register  -------- */

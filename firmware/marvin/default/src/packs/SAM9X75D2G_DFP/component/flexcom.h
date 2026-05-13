@@ -1,7 +1,7 @@
 /*
  * Component description for FLEXCOM
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_FLEXCOM_COMPONENT_H_
 #define _SAM9X7_FLEXCOM_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                    SOFTWARE API DEFINITION FOR FLEXCOM                     */
@@ -2893,7 +2896,9 @@
 #define FLEX_TWI_SMR_BSEL_Msk                 (_UINT32_(0x1) << FLEX_TWI_SMR_BSEL_Pos)             /* (FLEX_TWI_SMR) TWI Bus Selection Mask */
 #define FLEX_TWI_SMR_BSEL(value)              (FLEX_TWI_SMR_BSEL_Msk & (_UINT32_(value) << FLEX_TWI_SMR_BSEL_Pos)) /* Assignment of value for BSEL in the FLEX_TWI_SMR register */
 #define   FLEX_TWI_SMR_BSEL_0_Val             _UINT32_(0x0)                                        /* (FLEX_TWI_SMR) TWI analyzes the TWCK and TWD pins from its TWI bus.  */
+#define   FLEX_TWI_SMR_BSEL_1_Val             _UINT32_(0x1)                                        /* (FLEX_TWI_SMR) TWIn analyzes the TWCK and TWD pins of the peripheral TWIn-1 (TWI0 analyzes TWImax).  */
 #define FLEX_TWI_SMR_BSEL_0                   (FLEX_TWI_SMR_BSEL_0_Val << FLEX_TWI_SMR_BSEL_Pos)   /* (FLEX_TWI_SMR) TWI analyzes the TWCK and TWD pins from its TWI bus. Position */
+#define FLEX_TWI_SMR_BSEL_1                   (FLEX_TWI_SMR_BSEL_1_Val << FLEX_TWI_SMR_BSEL_Pos)   /* (FLEX_TWI_SMR) TWIn analyzes the TWCK and TWD pins of the peripheral TWIn-1 (TWI0 analyzes TWImax). Position */
 #define FLEX_TWI_SMR_SCLWSDIS_Pos             _UINT32_(6)                                          /* (FLEX_TWI_SMR) Clock Wait State Disable Position */
 #define FLEX_TWI_SMR_SCLWSDIS_Msk             (_UINT32_(0x1) << FLEX_TWI_SMR_SCLWSDIS_Pos)         /* (FLEX_TWI_SMR) Clock Wait State Disable Mask */
 #define FLEX_TWI_SMR_SCLWSDIS(value)          (FLEX_TWI_SMR_SCLWSDIS_Msk & (_UINT32_(value) << FLEX_TWI_SMR_SCLWSDIS_Pos)) /* Assignment of value for SCLWSDIS in the FLEX_TWI_SMR register */

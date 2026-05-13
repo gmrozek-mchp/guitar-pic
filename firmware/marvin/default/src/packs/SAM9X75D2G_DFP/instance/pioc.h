@@ -1,7 +1,7 @@
 /*
  * Instance header file for ATSAM9X75D5MN0
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,7 +19,7 @@
  *
  */
 
-/* file generated from device description file (ATDF) version 2024-06-25T17:22:56Z */
+/* file generated from device description file (ATDF) version 2026-02-05T11:00:00Z */
 #ifndef _SAM9X7_PIOC_INSTANCE_
 #define _SAM9X7_PIOC_INSTANCE_
 
@@ -27,7 +27,7 @@
 /* ========== Instance Parameter definitions for PIOC peripheral ========== */
 #define PIOC_ABCDSR1_DEFAULT_VAL                 (0x00000000) /* Register value at reset */
 #define PIOC_ABCDSR2_DEFAULT_VAL                 (0x02000000) /* Register value at reset */
-#define PIOC_CLOCK_ID                            (4)        
+#define PIOC_CLOCK_ID                            (4)
 #define PIOC_INSTANCE_ID                         (4)        /* Parallel I/O Controller C */
 #define PIOC_OSR_DEFAULT_VAL                     (0x02000000) /* Register value at reset */
 #define PIOC_PPDSR_DEFAULT_VAL                   (0xFDFFFFFF) /* Register value at reset */

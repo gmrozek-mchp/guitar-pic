@@ -1,7 +1,7 @@
 /*
  * Component description for LCDC
  *
- * Copyright (c) 2025 Microchip Technology Inc. and its subsidiaries.
+ * Copyright (c) 2026 Microchip Technology Inc. and its subsidiaries.
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -19,9 +19,12 @@
  *
  */
 
-/*  file generated from device description file (ATDF) version 2024-06-25T17:22:56Z  */
+/*  file generated from device description file (ATDF) version 2026-02-05T11:00:00Z  */
 #ifndef _SAM9X7_LCDC_COMPONENT_H_
 #define _SAM9X7_LCDC_COMPONENT_H_
+
+#if !defined(DISABLE_CMSIS)
+#endif /* !defined(DISABLE_CMSIS) */
 
 /* ************************************************************************** */
 /*                      SOFTWARE API DEFINITION FOR LCDC                      */
@@ -236,25 +239,13 @@
 #define LCDC_LCDCFG5_MODE_Msk                 (_UINT32_(0x7) << LCDC_LCDCFG5_MODE_Pos)             /* (LCDC_LCDCFG5) LCDC Output Mode Mask */
 #define LCDC_LCDCFG5_MODE(value)              (LCDC_LCDCFG5_MODE_Msk & (_UINT32_(value) << LCDC_LCDCFG5_MODE_Pos)) /* Assignment of value for MODE in the LCDC_LCDCFG5 register */
 #define   LCDC_LCDCFG5_MODE_OUTPUT_12BPP_Val  _UINT32_(0x0)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 12 bits per pixel  */
-#define   LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG1_Val _UINT32_(0x0)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 1  */
 #define   LCDC_LCDCFG5_MODE_OUTPUT_16BPP_Val  _UINT32_(0x1)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel  */
-#define   LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG2_Val _UINT32_(0x1)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 2  */
 #define   LCDC_LCDCFG5_MODE_OUTPUT_18BPP_Val  _UINT32_(0x2)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel  */
-#define   LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG3_Val _UINT32_(0x2)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 3  */
 #define   LCDC_LCDCFG5_MODE_OUTPUT_24BPP_Val  _UINT32_(0x3)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 24 bits per pixel  */
-#define   LCDC_LCDCFG5_MODE_OUTPUT_DPI_18BPPCFG1_Val _UINT32_(0x3)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 1  */
-#define   LCDC_LCDCFG5_MODE_OUTPUT_DPI_18BPPCFG2_Val _UINT32_(0x4)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 2  */
-#define   LCDC_LCDCFG5_MODE_OUTPUT_DPI_24BPP_Val _UINT32_(0x5)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 24 bits per pixel  */
 #define LCDC_LCDCFG5_MODE_OUTPUT_12BPP        (LCDC_LCDCFG5_MODE_OUTPUT_12BPP_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 12 bits per pixel Position */
-#define LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG1 (LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG1_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 1 Position */
 #define LCDC_LCDCFG5_MODE_OUTPUT_16BPP        (LCDC_LCDCFG5_MODE_OUTPUT_16BPP_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Position */
-#define LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG2 (LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG2_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 2 Position */
 #define LCDC_LCDCFG5_MODE_OUTPUT_18BPP        (LCDC_LCDCFG5_MODE_OUTPUT_18BPP_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Position */
-#define LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG3 (LCDC_LCDCFG5_MODE_OUTPUT_DPI_16BPPCFG3_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 3 Position */
 #define LCDC_LCDCFG5_MODE_OUTPUT_24BPP        (LCDC_LCDCFG5_MODE_OUTPUT_24BPP_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 24 bits per pixel Position */
-#define LCDC_LCDCFG5_MODE_OUTPUT_DPI_18BPPCFG1 (LCDC_LCDCFG5_MODE_OUTPUT_DPI_18BPPCFG1_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 1 Position */
-#define LCDC_LCDCFG5_MODE_OUTPUT_DPI_18BPPCFG2 (LCDC_LCDCFG5_MODE_OUTPUT_DPI_18BPPCFG2_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 2 Position */
-#define LCDC_LCDCFG5_MODE_OUTPUT_DPI_24BPP    (LCDC_LCDCFG5_MODE_OUTPUT_DPI_24BPP_Val << LCDC_LCDCFG5_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 24 bits per pixel Position */
 #define LCDC_LCDCFG5_DPI_Pos                  _UINT32_(11)                                         /* (LCDC_LCDCFG5) Display Pixel Interface Compatible Mode Position */
 #define LCDC_LCDCFG5_DPI_Msk                  (_UINT32_(0x1) << LCDC_LCDCFG5_DPI_Pos)              /* (LCDC_LCDCFG5) Display Pixel Interface Compatible Mode Mask */
 #define LCDC_LCDCFG5_DPI(value)               (LCDC_LCDCFG5_DPI_Msk & (_UINT32_(value) << LCDC_LCDCFG5_DPI_Pos)) /* Assignment of value for DPI in the LCDC_LCDCFG5 register */
@@ -280,6 +271,24 @@
 #define LCDC_LCDCFG5_GUARDTIME_Msk            (_UINT32_(0xFF) << LCDC_LCDCFG5_GUARDTIME_Pos)       /* (LCDC_LCDCFG5) LCD Display Guard Time Mask */
 #define LCDC_LCDCFG5_GUARDTIME(value)         (LCDC_LCDCFG5_GUARDTIME_Msk & (_UINT32_(value) << LCDC_LCDCFG5_GUARDTIME_Pos)) /* Assignment of value for GUARDTIME in the LCDC_LCDCFG5 register */
 #define LCDC_LCDCFG5_Msk                      _UINT32_(0x00FF3FDF)                                 /* (LCDC_LCDCFG5) Register Mask  */
+
+/* DPI_COMPLIANT mode */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos   _UINT32_(8)                                          /* (LCDC_LCDCFG5) LCDC Output Mode Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Msk   (_UINT32_(0x7) << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCDC Output Mode Mask */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE(value) (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Msk & (_UINT32_(value) << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos))
+#define   LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG1_Val _UINT32_(0x0)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 1  */
+#define   LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG2_Val _UINT32_(0x1)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 2  */
+#define   LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG3_Val _UINT32_(0x2)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 3  */
+#define   LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_18BPPCFG1_Val _UINT32_(0x3)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 1  */
+#define   LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_18BPPCFG2_Val _UINT32_(0x4)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 2  */
+#define   LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_24BPP_Val _UINT32_(0x5)                                        /* (LCDC_LCDCFG5) LCD Output mode is set to 24 bits per pixel  */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG1 (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG1_Val << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 1 Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG2 (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG2_Val << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 2 Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG3 (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_16BPPCFG3_Val << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 16 bits per pixel Configuration 3 Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_18BPPCFG1 (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_18BPPCFG1_Val << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 1 Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_18BPPCFG2 (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_18BPPCFG2_Val << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 18 bits per pixel Configuration 2 Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_24BPP (LCDC_LCDCFG5_DPI_COMPLIANT_MODE_OUTPUT_DPI_24BPP_Val << LCDC_LCDCFG5_DPI_COMPLIANT_MODE_Pos) /* (LCDC_LCDCFG5) LCD Output mode is set to 24 bits per pixel Position */
+#define LCDC_LCDCFG5_DPI_COMPLIANT_Msk        _UINT32_(0x00000700)                                 /* (LCDC_LCDCFG5_DPI_COMPLIANT) Register Mask  */
 
 
 /* -------- LCDC_LCDCFG6 : (LCDC Offset: 0x18) (R/W 32) Configuration Register 6 -------- */
