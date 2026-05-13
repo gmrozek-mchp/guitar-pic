@@ -139,6 +139,14 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
     uint32_t xpos = (LCD_PANEL_W - src_w) / 2u;
     uint32_t ypos = (LCD_PANEL_H - src_h) / 2u;
 
+    /* Disable HEO and OVR2 — they sit ABOVE OVR1 in z-order (BASE -> OVR1
+     * -> HEO -> OVR2) and MCC enables all four by default with the new
+     * SFACTC=A0*As blend. RGB565 (no per-pixel alpha) forces As=1.0, so
+     * those layers paint as fully opaque black over the entire panel and
+     * hide OVR1. BASE stays enabled (below OVR1, harmless). */
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO,  false, true);
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR2, false, true);
+
     XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1,
                                XLCDC_RGB_COLOR_MODE_ARGB_8888, false);
@@ -147,9 +155,27 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
     XLCDC_SetLayerXStride(XLCDC_LAYER_OVR1, 0u, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_OVR1, xpos, ypos, false);
     XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_OVR1, src_w, src_h, false);
-    /* alpha=255 + enable_dma=true => opaque overlay that sources RGB from
-     * memory via DMA. Per-pixel A=0x00 in our BGRX data is ignored. */
-    XLCDC_SetLayerOpts(XLCDC_LAYER_OVR1, 255u, true, false);
+
+    /* Explicit alpha-blend config that ignores per-pixel source alpha.
+     * Cannot use XLCDC_SetLayerOpts() — its OVR1CFG9 write uses
+     * SFACTC=A0*As and DFACTC=1-(A0*As). With our BGRX32 data, As=0x00,
+     * so source contribution = 0 and the layer is invisible (regression
+     * from MCC regen; previous SFACTC was 5 = 1-(A0*Ad)).
+     *
+     * Required blend: out_color = src * 1 + dst * 0 (pure overlay).
+     * SFACTC=2 (A0/255) with A0=255 gives factor 1.0; DFACTC=0 (ZERO).
+     * Alpha channel doesn't matter for output but set sane values too. */
+    XLCDC_REGS->LCDC_OVR1CFG9 = LCDC_OVR1CFG9_DMA(1)
+                              | LCDC_OVR1CFG9_REP(1)
+                              | LCDC_OVR1CFG9_CRKEY(0)
+                              | LCDC_OVR1CFG9_DSTKEY(0)
+                              | LCDC_OVR1CFG9_SFACTC(2)   /* A0/255 = 1.0 */
+                              | LCDC_OVR1CFG9_SFACTA(0)   /* 0.0 */
+                              | LCDC_OVR1CFG9_DFACTC(0)   /* 0.0 */
+                              | LCDC_OVR1CFG9_DFACTA(0)   /* 0.0 */
+                              | LCDC_OVR1CFG9_A0(255)
+                              | LCDC_OVR1CFG9_A1(0);
+
     XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, true, true);
 
     printf("LCD: OVR1 bound to capture buf @0x%08lX, "
