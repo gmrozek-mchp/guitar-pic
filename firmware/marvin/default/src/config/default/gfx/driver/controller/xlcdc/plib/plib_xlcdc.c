@@ -220,7 +220,7 @@ void XLCDC_SetupBaseLayer(void)
     /* Configure Color Mode */
     XLCDC_REGS->LCDC_BASECFG1 = LCDC_BASECFG1_CLUTEN(0) |
                                 LCDC_BASECFG1_GAM(0) |
-                                LCDC_BASECFG1_RGBMODE(12) |
+                                LCDC_BASECFG1_RGBMODE(3) |
                                 LCDC_BASECFG1_CLUTMODE(3);
 
     /* Configure Row Striding */
@@ -266,7 +266,7 @@ void XLCDC_SetupOVR1Layer(void)
     /* Configure Color Mode */
     XLCDC_REGS->LCDC_OVR1CFG1 = LCDC_OVR1CFG1_CLUTEN(0) |
                                 LCDC_OVR1CFG1_GAM(0) |
-                                LCDC_OVR1CFG1_RGBMODE(12) |
+                                LCDC_OVR1CFG1_RGBMODE(3) |
                                 LCDC_OVR1CFG1_CLUTMODE(3);
 
     /* Configure Window Position */
@@ -303,7 +303,7 @@ void XLCDC_SetupOVR1Layer(void)
                                 LCDC_OVR1CFG9_REP(1) |
                                 LCDC_OVR1CFG9_CRKEY(0) |
                                 LCDC_OVR1CFG9_DSTKEY(0) |
-                                LCDC_OVR1CFG9_SFACTC(5) |  //A0*Ad
+                                LCDC_OVR1CFG9_SFACTC(4) |  //A0*As
                                 LCDC_OVR1CFG9_SFACTA(1) |  //1*As
                                 LCDC_OVR1CFG9_DFACTC(6) |  //1-(A0*As)
                                 LCDC_OVR1CFG9_DFACTA(2) |  //1-(A0*As)
@@ -332,7 +332,7 @@ void XLCDC_SetupOVR2Layer(void)
     /* Configure Color Mode */
     XLCDC_REGS->LCDC_OVR2CFG1 = LCDC_OVR2CFG1_CLUTEN(0) |
                                 LCDC_OVR2CFG1_GAM(0) |
-                                LCDC_OVR2CFG1_RGBMODE(12) |
+                                LCDC_OVR2CFG1_RGBMODE(3) |
                                 LCDC_OVR2CFG1_CLUTMODE(3);
 
     /* Configure Window Position */
@@ -369,7 +369,7 @@ void XLCDC_SetupOVR2Layer(void)
                                 LCDC_OVR2CFG9_REP(1) |
                                 LCDC_OVR2CFG9_CRKEY(0) |
                                 LCDC_OVR2CFG9_DSTKEY(0) |
-                                LCDC_OVR2CFG9_SFACTC(5) |  //A0*Ad
+                                LCDC_OVR2CFG9_SFACTC(4) |  //A0*As
                                 LCDC_OVR2CFG9_SFACTA(1) |  //1*As
                                 LCDC_OVR2CFG9_DFACTC(6) |  //1-(A0*As)
                                 LCDC_OVR2CFG9_DFACTA(2) |  //1-(A0*As)
@@ -400,7 +400,7 @@ void XLCDC_SetupHEOLayer(void)
     XLCDC_REGS->LCDC_HEOCFG1 = LCDC_HEOCFG1_CLUTEN(0) |
                                LCDC_HEOCFG1_YCCEN(0) |
                                LCDC_HEOCFG1_GAM(0) |
-                               LCDC_HEOCFG1_RGBMODE(12) |
+                               LCDC_HEOCFG1_RGBMODE(3) |
                                LCDC_HEOCFG1_CLUTMODE(3) |
                                LCDC_HEOCFG1_YCCMODE(0) |
                                LCDC_HEOCFG1_YCC422ROT(0) |
@@ -448,7 +448,7 @@ void XLCDC_SetupHEOLayer(void)
                                 LCDC_HEOCFG12_CRKEY(0) |
                                 LCDC_HEOCFG12_DSTKEY(0) |
                                 LCDC_HEOCFG12_VIDPRI(1) |  //OVR2>HEO>OVR1>BASE
-                                LCDC_HEOCFG12_SFACTC(5) |  //A0*Ad
+                                LCDC_HEOCFG12_SFACTC(4) |  //A0*As
                                 LCDC_HEOCFG12_SFACTA(1) |  //1*As
                                 LCDC_HEOCFG12_DFACTC(6) |  //1-(A0*As)
                                 LCDC_HEOCFG12_DFACTA(2) |  //1-(A0*As)
@@ -636,7 +636,7 @@ bool XLCDC_SetLayerOpts(XLCDC_LAYER layer, uint8_t alpha, bool enable_dma, bool 
                                         LCDC_OVR1CFG9_REP(1) |
                                         LCDC_OVR1CFG9_CRKEY(0) |
                                         LCDC_OVR1CFG9_DSTKEY(0) |
-                                LCDC_OVR1CFG9_SFACTC(5) |  //A0*Ad
+                                LCDC_OVR1CFG9_SFACTC(4) |  //A0*As
                                         LCDC_OVR1CFG9_SFACTA(1) |  //1*As
                                         LCDC_OVR1CFG9_DFACTC(6) |  //1-(A0*As)
                                         LCDC_OVR1CFG9_DFACTA(2) |  //1-(A0*As)
@@ -652,7 +652,7 @@ bool XLCDC_SetLayerOpts(XLCDC_LAYER layer, uint8_t alpha, bool enable_dma, bool 
                                         LCDC_OVR2CFG9_REP(1) |
                                         LCDC_OVR2CFG9_CRKEY(0) |
                                         LCDC_OVR2CFG9_DSTKEY(0) |
-                                LCDC_OVR2CFG9_SFACTC(5) |  //A0*Ad
+                                LCDC_OVR2CFG9_SFACTC(4) |  //A0*As
                                         LCDC_OVR2CFG9_SFACTA(1) |  //1*As
                                         LCDC_OVR2CFG9_DFACTC(6) |  //1-(A0*As)
                                         LCDC_OVR2CFG9_DFACTA(2) |  //1-(A0*As)
@@ -669,7 +669,7 @@ bool XLCDC_SetLayerOpts(XLCDC_LAYER layer, uint8_t alpha, bool enable_dma, bool 
                                         LCDC_HEOCFG12_CRKEY(0) |
                                         LCDC_HEOCFG12_DSTKEY(0) |
                                         LCDC_HEOCFG12_VIDPRI(1) |  //OVR2>HEO>OVR1>BASE
-                                LCDC_HEOCFG12_SFACTC(5) |  //A0*Ad
+                                LCDC_HEOCFG12_SFACTC(4) |  //A0*As
                                         LCDC_HEOCFG12_SFACTA(1) |  //1*As
                                         LCDC_HEOCFG12_DFACTC(6) |  //1-(A0*As)
                                         LCDC_HEOCFG12_DFACTA(2) |  //1-(A0*As)

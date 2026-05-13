@@ -16,13 +16,13 @@ Vision-based guitar-playing robot. The marvin firmware captures live HDMI video 
 
 ## Current focus
 
-**End-to-end pipeline working as of 2026-05-02: source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 7" LVDS panel.**
+**End-to-end pipeline working as of 2026-05-02: source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1" 1280×800 LVDS panel.**
 
 > **Configuration references:**
 > - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
 > - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
 
-Phase 5b (byte-level content verification) ✅. Phase 6 MVP (captured video on the LCD, 720×480 pillarboxed on 800×480) ✅. Phase 7a/c (480p via Pi and Wii) ✅. Next: either HEO scaling for 720p-on-800×480 display, or Phase 8 (vision stage) on the existing 480p path.
+Phase 5b (byte-level content verification) ✅. Phase 6 MVP (captured video on the LCD) ✅, now displaying 480p sources pillarboxed/letterboxed and 720p sources letterbox-only on the 1280×800 panel. Phase 7a/c (480p via Pi and Wii) ✅. Next: Phase 8 (vision stage) — HEO scaling no longer needed for 720p since the bigger panel accommodates native, only relevant if 1080p sources come into scope.
 
 ### Original focus (for context — this is done)
 
@@ -556,6 +556,16 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-02 — Panel swap: 7" 800×480 → 10.1" 1280×800
+
+Greg moved to a larger LVDS panel and updated the MCC display component to match. MCC regenerated `XLCDC_HOR_RES/VER_RES`, `LCDCFG1..4` (sync widths/porches/active region), and the per-layer setup defaults to 1280×800. `LCD_PANEL_W/H` macros in `app.c` updated to match (those are not MCC-generated).
+
+Side effect: Pi 720p (1280×720) now fits the panel natively — it's letterboxed (40 px top/bottom) instead of being rejected. 480p sources land in a 720×480 inset with 280 px pillarbox each side, 160 px letterbox top + bottom.
+
+Auto-allocated layer buffers grew from 800×480 × 2 = 768 KB to 1280×800 × 2 = 2 MB per layer (RGB565 mode from the previous session). Total of all four layers is ~8 MB of `.region_nocache` DDR permanently allocated, of which we use exactly 0 bytes (OVR1 reads our capture buffer instead). Trivially recoverable later if memory tightens.
+
+No code changes other than `LCD_PANEL_W/H`. `lcd_bind_capture()` math is parametric on those macros, so the pillarbox/letterbox positions update automatically.
 
 ### 2026-05-02 — Phase 6 MVP: captured video on the LCD ✅
 

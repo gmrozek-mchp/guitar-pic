@@ -58,8 +58,8 @@
 /* Not Cached */
 #define FB_CACHE_NC             __attribute__ ((section(".region_nocache"), aligned (32)))
 /* Frame Buffer Pointer Type */
-#define FB_COL_MODE             XLCDC_RGB_COLOR_MODE_ARGB_8888
-#define FB_BPP_TYPE             uint32_t
+#define FB_COL_MODE             XLCDC_RGB_COLOR_MODE_RGB_565
+#define FB_BPP_TYPE             uint16_t
 #define FB_PTR_TYPE             FB_BPP_TYPE *
 #define FB_TYPE_SZ              sizeof(FB_BPP_TYPE)
 

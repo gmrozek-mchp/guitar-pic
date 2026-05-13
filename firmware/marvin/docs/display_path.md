@@ -1,8 +1,8 @@
 # marvin BGRX32 → LCD Display Path
 
-How the captured video (documented in [`capture_pipeline.md`](capture_pipeline.md)) lands on the AC69T88A 7" LVDS panel. Minimum-viable implementation: BGRX32 from DDR → SAM9X75 XLCDC OVR1 layer → LVDSC → panel. Zero CPU, zero scaling, pillarboxed.
+How the captured video (documented in [`capture_pipeline.md`](capture_pipeline.md)) lands on the 10.1" 1280×800 LVDS panel. Minimum-viable implementation: BGRX32 from DDR → SAM9X75 XLCDC OVR1 layer → LVDSC → panel. Zero CPU, zero scaling, pillarboxed/letterboxed.
 
-**Status:** working as of 2026-05-02 at 720×480 pillarboxed onto 800×480 panel. Source coming from Wii (via ElectronWarp) or Pi, both through TC358743.
+**Status:** working as of 2026-05-02. Pi 480p (720×480) and Wii/ElectronWarp 480p (720×480) display centered on the 1280×800 panel with 280 px black pillarbox each side and 160 px black letterbox top + bottom. Pi 720p (1280×720) display works too — full panel width, 40 px letterbox top + bottom.
 
 ---
 
@@ -15,17 +15,17 @@ DDR framebuffer (g_framebuffer in isc_capture.c)
         ▼
 XLCDC OVR1 layer (Overlay 1)
   ARGB_8888 color mode (memory byte order matches BGRX32)
-  720×480 window, positioned at (40, 0) on the 800×480 panel
+  src_w × src_h window, centered on the 1280×800 panel via lcd_bind_capture()
   alpha=255 global, per-pixel A ignored
         │
         ▼
-XLCDC timing engine  (800×480 @ 60 Hz, 7" panel timings from MCC)
+XLCDC timing engine  (1280×800 @ 60 Hz, 10.1" panel timings from MCC)
         │
         ▼
 LVDSC  (LVDS serializer)
         │
         ▼
-AC69T88A LCD panel (800×480 7" LVDS)
+10.1" 1280×800 LVDS panel
 ```
 
 ---
@@ -61,9 +61,16 @@ So our `X = 0x00` in the framebuffer is harmless; the display shows opaque RGB.
 
 ### 2.4 Pillarbox, not scale
 
-Source 720×480, panel 800×480. Simplest mapping: center the source horizontally with 40 px black bars on each side (`xpos = (800-720)/2 = 40`, `ypos = 0`). No scaling engine needed. BASE layer (below OVR1 in z-order) paints the side bars; it's still the MCC-auto-allocated 800×480 buffer of zeroes, so the pillarbox is naturally black.
+Panel is 1280×800. Source dimensions vary; `lcd_bind_capture(w, h)` centers the source via `xpos = (1280-w)/2`, `ypos = (800-h)/2`. Common cases:
 
-If the source is 1280×720 (Pi native), this path bails (`LCD: source exceeds panel`) and does nothing. Scaling a 1280×720 source to fit 800×480 requires the HEO layer's hardware scaler, which the MCC plib does not expose — it'd need direct `HEOCFG*` register writes. Deferred.
+| Source | Window | Pillarbox L+R | Letterbox T+B |
+|---|---|---|---|
+| 720×480 (Wii / Pi 480p) | 720×480 at (280, 160) | 280 px each | 160 px each |
+| 1280×720 (Pi 720p) | 1280×720 at (0, 40) | 0 (fills width) | 40 px each |
+
+No scaling engine needed for either. BASE layer (below OVR1 in z-order) paints the surrounding black region — it's still the MCC-auto-allocated 1280×800 buffer of zeroes.
+
+If the source is larger than 1280×800 (e.g. 1080p), `lcd_bind_capture` bails with `LCD: source exceeds panel` and the bind step is skipped (capture pipeline still runs into DDR, just nothing on screen). Downscaling a > 1280×800 source requires the HEO layer's hardware scaler, which the MCC plib does not expose — it'd need direct `HEOCFG*` register writes. Deferred until needed.
 
 ### 2.5 Single-buffer read, tear-tolerant
 
@@ -97,7 +104,7 @@ XLCDC_EnableBacklight();
 ```
 
 MCC's auto-initialization (`SYS_Initialize`) already ran:
-- `XLCDC_Initialize()` — clocks, timing engine, all 4 layers (BASE/OVR1/HEO/OVR2) set up at 800×480 with auto-allocated buffers in `.region_nocache`.
+- `XLCDC_Initialize()` — clocks, timing engine, all 4 layers (BASE/OVR1/HEO/OVR2) set up at 1280×800 with auto-allocated buffers in `.region_nocache` (now in RGB565, ~2 MB per layer).
 - `XLCDC_Start()` — panel clock, sync, disp enable, SD enable (all called from inside `Initialize`).
 - `LVDSC_Initialize()` — LVDS serializer.
 - `DRV_GFX2D_Initialize()` — 2D graphics engine (available for later work).
@@ -127,9 +134,9 @@ Note the `update = false` on all but the last call. The last `SetLayerEnable(tru
 
 ## 5. Current limitations / next steps
 
-- **Panel-exceeding sources aren't displayed.** At Pi 720p the capture works; display bails. Either crop at the LCDC (set window = 800×480, XStride = `(1280-800)*4`, keeps a scrolling-window view) or scale via HEO.
+- **Panel-exceeding sources aren't displayed.** Pi 720p (1280×720) now fits the 1280×800 panel; only 1080p and beyond would need HEO scaling.
 - **No double-buffer swap** — LCDC stuck on buffer 0, ~30 Hz effective with possible tear. Switch to ISR-driven pointer swap when motion clarity matters.
-- **BASE layer is still the MCC-auto-allocated 800×480 black buffer.** It uses ~1.5 MB of `.region_nocache` DDR that's permanently displaying black under our pillarbox. Low priority; could reclaim by dropping `XLCDC_BUF_PER_LAYER` to 0 for BASE, or by disabling BASE entirely (the pillarbox area would then go transparent and show whatever the LCDC's "default layer color" is — `BASECFG3.RDEF/GDEF/BDEF = 0,0,0`, i.e. black, same result).
+- **BASE layer is still the MCC-auto-allocated 1280×800 black buffer.** ~2 MB of `.region_nocache` DDR (RGB565) permanently displaying black around our overlay. Low priority; could reclaim by dropping `XLCDC_BUF_PER_LAYER` to 0 for BASE, or by disabling BASE entirely (the surrounding region would then go transparent and show whatever the LCDC's "default layer color" is — `BASECFG3.RDEF/GDEF/BDEF = 0,0,0`, i.e. black, same result).
 - **Limited→full range expansion — will be done in the HEO CSC block, display-only.** TC358743 reports RGB limited-range (16–235) for both Wii and Pi sources, so bytes in DDR reflect that range. Vision consumers deliberately see **unexpanded** bytes — the 15% extra dynamic range of full scale doesn't carry any real information from a limited-range source (it's just a linear rescale), and keeping capture pristine means vision algorithms operate on ground-truth values. The expansion is cosmetic, needed only because the AC69T88A panel expects full 0–255 and would render limited-range data with muted blacks and washed-out whites.
   - **Chosen path:** HEO layer Color Space Conversion matrix (`HEOCFG14..17` on this chip). Programmable `out = M × in + offset` configured as an identity RGB→RGB with the correct gain/offset for the 219-step expansion. Zero CPU, happens at display time only, capture framebuffer unchanged.
   - Rejected alternatives: CPU LUT pass (burns cycles, and would either expand the capture buffer in place — breaking vision — or require a second buffer), GFX2D blit (not clear the engine has a linear gain mode at all).
