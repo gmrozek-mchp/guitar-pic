@@ -1,11 +1,11 @@
 configVersion: 1.0.0
-componentName: gfx_display_comp_ac69t88a
+componentName: gfx_display_comp_nvdi_10_1in
 coreVersion: 5.8.4
 device: SAM9X75D2G
 library: []
 dependency:
 - dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
-  name: gfx_display_comp_ac69t88a
+  name: gfx_display_comp_nvdi_10_1in
   type: module
   version: ''
 - dependencyPackage: ''
@@ -36,16 +36,16 @@ data:
           type: Attributes
         type: DirectCapability
       type: Attachments
-    type: gfx_display_comp_ac69t88a
+    type: gfx_display_comp_nvdi_10_1in
   elementPosition:
     attributes:
       id: __ROOTVIEW
     children:
     - children:
       - attributes:
-          id: gfx_display_comp_ac69t88a
-          x: '16'
-          y: '165'
+          id: gfx_display_comp_nvdi_10_1in
+          x: '22'
+          y: '157'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

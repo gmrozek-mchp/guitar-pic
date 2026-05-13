@@ -177,23 +177,23 @@ void XLCDC_EnableClocks(void)
 void XLCDC_SetupTimingEngine(void)
 {
     /* Configure Horizontal and Vertical Pulse Widths */
-    XLCDC_REGS->LCDC_LCDCFG1 = LCDC_LCDCFG1_VSPW(5 - 1) |
-                               LCDC_LCDCFG1_HSPW(5 - 1);
+    XLCDC_REGS->LCDC_LCDCFG1 = LCDC_LCDCFG1_VSPW(6 - 1) |
+                               LCDC_LCDCFG1_HSPW(32 - 1);
     WAIT_LCDSR_EQ(LCDC_LCDSR_SIPSTS_Msk);
 
     /* Configure Vertical Porch Widths */
-    XLCDC_REGS->LCDC_LCDCFG2 = LCDC_LCDCFG2_VBPW(1 - 1) |
-                               LCDC_LCDCFG2_VFPW(23 - 1);
+    XLCDC_REGS->LCDC_LCDCFG2 = LCDC_LCDCFG2_VBPW(6 - 1) |
+                               LCDC_LCDCFG2_VFPW(3 - 1);
     WAIT_LCDSR_EQ(LCDC_LCDSR_SIPSTS_Msk);
 
     /* Configure Horizontal Porch Widths */
-    XLCDC_REGS->LCDC_LCDCFG3 = LCDC_LCDCFG3_HBPW(40 - 1) |
-                               LCDC_LCDCFG3_HFPW(88 - 1);
+    XLCDC_REGS->LCDC_LCDCFG3 = LCDC_LCDCFG3_HBPW(80 - 1) |
+                               LCDC_LCDCFG3_HFPW(48 - 1);
     WAIT_LCDSR_EQ(LCDC_LCDSR_SIPSTS_Msk);
 
     /* Configure Horizontal and Vertical Resolution */
-    XLCDC_REGS->LCDC_LCDCFG4 = LCDC_LCDCFG4_RPF(480 - 1) |
-                               LCDC_LCDCFG4_PPL(800 - 1);
+    XLCDC_REGS->LCDC_LCDCFG4 = LCDC_LCDCFG4_RPF(800 - 1) |
+                               LCDC_LCDCFG4_PPL(1280 - 1);
     WAIT_LCDSR_EQ(LCDC_LCDSR_SIPSTS_Msk);
 
     /* Configure Signals and Misc. settings */
@@ -274,8 +274,8 @@ void XLCDC_SetupOVR1Layer(void)
                                 LCDC_OVR1CFG2_YPOS(0);
 
     /* Configure Window Size */
-    XLCDC_REGS->LCDC_OVR1CFG3 = LCDC_OVR1CFG3_XSIZE(800 - 1) |
-                                LCDC_OVR1CFG3_YSIZE(480 - 1);
+    XLCDC_REGS->LCDC_OVR1CFG3 = LCDC_OVR1CFG3_XSIZE(1280 - 1) |
+                                LCDC_OVR1CFG3_YSIZE(800 - 1);
 
     /* Configure Row Striding */
     XLCDC_REGS->LCDC_OVR1CFG4 = LCDC_OVR1CFG4_XSTRIDE(0);
@@ -340,8 +340,8 @@ void XLCDC_SetupOVR2Layer(void)
                                 LCDC_OVR2CFG2_YPOS(0);
 
     /* Configure Window Size */
-    XLCDC_REGS->LCDC_OVR2CFG3 = LCDC_OVR2CFG3_XSIZE(800 - 1) |
-                                LCDC_OVR2CFG3_YSIZE(480 - 1);
+    XLCDC_REGS->LCDC_OVR2CFG3 = LCDC_OVR2CFG3_XSIZE(1280 - 1) |
+                                LCDC_OVR2CFG3_YSIZE(800 - 1);
 
     /* Configure Row Striding */
     XLCDC_REGS->LCDC_OVR2CFG4 = LCDC_OVR2CFG4_XSTRIDE(0);
@@ -411,12 +411,12 @@ void XLCDC_SetupHEOLayer(void)
                                LCDC_HEOCFG2_YPOS(0);
 
     /* Configure Window Size */
-    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(800 - 1) |
-                               LCDC_HEOCFG3_YSIZE(480 - 1);
+    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(1280 - 1) |
+                               LCDC_HEOCFG3_YSIZE(800 - 1);
 
     /* Image Size */
-    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(800 - 1) |
-                               LCDC_HEOCFG4_YMEMSIZE(480 - 1);
+    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(1280 - 1) |
+                               LCDC_HEOCFG4_YMEMSIZE(800 - 1);
 
     /* Configure Row Striding */
     XLCDC_REGS->LCDC_HEOCFG5 = LCDC_HEOCFG5_XSTRIDE(0);
@@ -1028,8 +1028,8 @@ bool XLCDC_DisplayHEORGBSurface(XLCDC_HEO_RGB_SURFACE *surface)
 {
     if (surface->windowSizeX == 0  || surface->windowSizeY == 0  ||
         surface->imageSizeX == 0  || surface->imageSizeY == 0    ||
-        ((surface->windowStartX + surface->windowSizeX) > 800) ||
-        ((surface->windowStartY + surface->windowSizeY) > 480) ||
+        ((surface->windowStartX + surface->windowSizeX) > 1280) ||
+        ((surface->windowStartY + surface->windowSizeY) > 800) ||
         surface->imageAddress == NULL)
     {
         return 1; // Invalid parameters

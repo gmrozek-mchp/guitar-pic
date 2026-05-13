@@ -13,7 +13,7 @@ modules:
 - drv_i2c_0
 - flexcom6
 - gfx_bridge_lvdsc_plib
-- gfx_display_comp_ac69t88a
+- gfx_display_comp_nvdi_10_1in
 - le_gfx_driver_xlcdc
 - le_gfx_gfx2d
 - plib_gfx2d
@@ -55,15 +55,15 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/fault_handlers.c
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
-  hash: 15400a7b9361d6bbe70a842c4fdfcabf211100bc29d185be8edc755e2065db41
+  hash: 5c79f5307aee58daface87f8dbb4d80d8b2a473544d37b9bc78458d552a68b6f
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h
   hash: 5afe7e416d4f004399a4c80462caede10b18a35a238366604d193f765a2e34ec
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c
-  hash: b71cc41df96d4e350cec78cb556348e128a4f978e91742cd6b9e33cc1440c9af
+  hash: 619e3dc04d35d5410379508a199d2a871ac778aa5bd38eb68ff0f9a944222348
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h
   hash: 637d343cc20356dfb08492f7a3e97479ad421b88ffec123181330eb895f50689
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
-  hash: 786a6ee8a4500810dacc56b77f05e2a00bde71eb5b3d7baaaec3863dc0a9c409
+  hash: e8f8a432f7ab9d9bb8bd715bb78735816a4041d43a04de0e0de2f840c586af92
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
   hash: cdd70b5efe9e854ce1530a32a65119c2af79f22f90e0e661d4127113df72c17a
 - file: ../src/config/default/gfx/driver/gfx_driver.c

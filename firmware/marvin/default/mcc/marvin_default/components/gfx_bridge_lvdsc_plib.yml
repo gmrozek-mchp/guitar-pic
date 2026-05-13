@@ -43,7 +43,7 @@ data:
               id: targetComponentID
             children:
             - type: Value
-              value: gfx_display_comp_ac69t88a
+              value: gfx_display_comp_nvdi_10_1in
             type: String
           - attributes:
               id: targetAttachmentID
@@ -62,8 +62,8 @@ data:
     - children:
       - attributes:
           id: gfx_bridge_lvdsc_plib
-          x: '189'
-          y: '185'
+          x: '221'
+          y: '160'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
@@ -75,21 +75,10 @@ data:
       - children:
         - attributes:
             id: gfx_bridge_lvdsc_plib
-            value: gfx_display_comp_ac69t88a
+            value: gfx_display_comp_nvdi_10_1in
           type: Dynamic
         type: Values
       type: String
-    LVDSCDCMapping:
-      attributes:
-        id: LVDSCDCMapping
-      children:
-      - children:
-        - attributes:
-            id: gfx_bridge_lvdsc_plib
-            value: '0'
-          type: Dynamic
-        type: Values
-      type: KeyValueSet
     LVDSCDCMode:
       attributes:
         id: LVDSCDCMode
@@ -98,6 +87,17 @@ data:
         - attributes:
             id: gfx_bridge_lvdsc_plib
             value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    LVDSCDCMapping:
+      attributes:
+        id: LVDSCDCMapping
+      children:
+      - children:
+        - attributes:
+            id: gfx_bridge_lvdsc_plib
+            value: '1'
           type: Dynamic
         type: Values
       type: KeyValueSet

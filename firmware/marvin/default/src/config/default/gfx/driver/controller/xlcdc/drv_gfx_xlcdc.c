@@ -64,8 +64,8 @@
 #define FB_TYPE_SZ              sizeof(FB_BPP_TYPE)
 
 /* Driver Settings */
-#define XLCDC_HOR_RES           800
-#define XLCDC_VER_RES           480
+#define XLCDC_HOR_RES           1280
+#define XLCDC_VER_RES           800
 #define XLCDC_TOT_LAYERS        4
 #define XLCDC_BUF_PER_LAYER     1
 

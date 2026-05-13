@@ -56,60 +56,31 @@ data:
     - children:
       - attributes:
           id: le_gfx_driver_xlcdc
-          x: '362'
-          y: '178'
+          x: '390'
+          y: '162'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
   symbols:
-    XClkGenSel:
+    XTResPPL:
       attributes:
-        id: XClkGenSel
-      children:
-      - children:
-        - attributes:
-            id: readOnly
-          children:
-          - type: Value
-            value: 'true'
-          type: Boolean
-        type: Attributes
-      - children:
-        - attributes:
-            id: le_gfx_driver_xlcdc
-            value: LVDSPLL
-          type: Dynamic
-        type: Values
-      type: Combo
-    XLMColMode:
-      attributes:
-        id: XLMColMode
-      children:
-      - children:
-        - attributes:
-            value: '2'
-          type: User
-        type: Values
-      type: KeyValueSet
-    XTHorBP:
-      attributes:
-        id: XTHorBP
+        id: XTResPPL
       children:
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '40'
+            value: '1280'
           type: Dynamic
         type: Values
       type: Integer
-    XTHorFP:
+    XTResRPF:
       attributes:
-        id: XTHorFP
+        id: XTResRPF
       children:
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '88'
+            value: '800'
           type: Dynamic
         type: Values
       type: Integer
@@ -120,7 +91,62 @@ data:
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '5'
+            value: '32'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XTHorBP:
+      attributes:
+        id: XTHorBP
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '80'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XTHorFP:
+      attributes:
+        id: XTHorFP
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '48'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XTVerPW:
+      attributes:
+        id: XTVerPW
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '6'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XTVerBP:
+      attributes:
+        id: XTVerBP
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '6'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XTVerFP:
+      attributes:
+        id: XTVerFP
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '3'
           type: Dynamic
         type: Values
       type: Integer
@@ -157,59 +183,33 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
-    XTResPPL:
+    XClkGenSel:
       attributes:
-        id: XTResPPL
+        id: XClkGenSel
       children:
       - children:
         - attributes:
-            id: le_gfx_driver_xlcdc
-            value: '800'
-          type: Dynamic
-        type: Values
-      type: Integer
-    XTResRPF:
-      attributes:
-        id: XTResRPF
-      children:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '480'
+            value: LVDSPLL
           type: Dynamic
         type: Values
-      type: Integer
-    XTVerBP:
+      type: Combo
+    XLMColMode:
       attributes:
-        id: XTVerBP
+        id: XLMColMode
       children:
       - children:
         - attributes:
-            id: le_gfx_driver_xlcdc
-            value: '1'
-          type: Dynamic
+            value: '2'
+          type: User
         type: Values
-      type: Integer
-    XTVerFP:
-      attributes:
-        id: XTVerFP
-      children:
-      - children:
-        - attributes:
-            id: le_gfx_driver_xlcdc
-            value: '23'
-          type: Dynamic
-        type: Values
-      type: Integer
-    XTVerPW:
-      attributes:
-        id: XTVerPW
-      children:
-      - children:
-        - attributes:
-            id: le_gfx_driver_xlcdc
-            value: '5'
-          type: Dynamic
-        type: Values
-      type: Integer
+      type: KeyValueSet
   userData: {}
