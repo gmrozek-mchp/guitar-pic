@@ -212,4 +212,35 @@ data:
           type: User
         type: Values
       type: KeyValueSet
+    TotalNumLayers:
+      attributes:
+        id: TotalNumLayers
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '2'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XLMEnableOVR2:
+      attributes:
+        id: XLMEnableOVR2
+      children:
+      - children:
+        - attributes:
+            value: 'false'
+          type: User
+        type: Values
+      type: Boolean
+    XLMEnableOVR1:
+      attributes:
+        id: XLMEnableOVR1
+      children:
+      - children:
+        - attributes:
+            value: 'false'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}

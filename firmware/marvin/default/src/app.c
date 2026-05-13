@@ -118,14 +118,21 @@ void APP_Initialize ( void )
     See prototype in app.h.
  */
 
-/* Point LCDC overlay 1 at the capture framebuffer, pillarboxed within the
- * 800x480 panel. OVR1 (not BASE) because BASE has no window position/size
- * registers — it's always full-panel, so a 720-wide source on BASE gets
- * read at panel-wide stride and smears line-to-line.
+/* Point LCDC HEO layer at the capture framebuffer, pillarboxed/letterboxed
+ * within the 1280x800 panel. Using HEO (not BASE/OVR1/OVR2) because:
+ *  - MCC's display config now leaves only BASE and HEO enabled.
+ *  - BASE has no window position/size registers (always full panel).
+ *  - HEO is the only remaining overlay; also has the scaler + CSC engine
+ *    available for future range-expansion / downscale work.
  *
  * ARGB_8888 on SAM9X75 LCDC reads memory as {B, G, R, A} low-to-high,
- * matching our BGRX32 byte-for-byte. X lands as A=0 (transparent) so we
- * set OVR1 to use global alpha = 255 (fully opaque) via SetLayerOpts. */
+ * matching our BGRX32 byte-for-byte. X=0 lands as A=0; the alpha-blend
+ * config below uses SFACTC=A0/255 and DFACTC=ZERO so per-pixel A is
+ * ignored entirely and HEO is fully opaque.
+ *
+ * Scaler stays disabled (HEOCFG23 = 0 from MCC's setup) so HEO renders
+ * 1:1 at src_w x src_h. HEOCFG3 (window) and HEOCFG4 (memory) are set
+ * equal — required when scaler is bypassed. */
 static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
 {
     if (src_w > LCD_PANEL_W || src_h > LCD_PANEL_H)
@@ -139,46 +146,40 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
     uint32_t xpos = (LCD_PANEL_W - src_w) / 2u;
     uint32_t ypos = (LCD_PANEL_H - src_h) / 2u;
 
-    /* Disable HEO and OVR2 — they sit ABOVE OVR1 in z-order (BASE -> OVR1
-     * -> HEO -> OVR2) and MCC enables all four by default with the new
-     * SFACTC=A0*As blend. RGB565 (no per-pixel alpha) forces As=1.0, so
-     * those layers paint as fully opaque black over the entire panel and
-     * hide OVR1. BASE stays enabled (below OVR1, harmless). */
-    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO,  false, true);
-    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR2, false, true);
-
-    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
-    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1,
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
                                XLCDC_RGB_COLOR_MODE_ARGB_8888, false);
-    XLCDC_SetLayerAddress(XLCDC_LAYER_OVR1,
+    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO,
                           ISC_Capture_GetBufferAddress(), false);
-    XLCDC_SetLayerXStride(XLCDC_LAYER_OVR1, 0u, false);
-    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_OVR1, xpos, ypos, false);
-    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_OVR1, src_w, src_h, false);
+    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, xpos, ypos, false);
+    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_HEO, src_w, src_h, false);
 
-    /* Explicit alpha-blend config that ignores per-pixel source alpha.
-     * Cannot use XLCDC_SetLayerOpts() — its OVR1CFG9 write uses
-     * SFACTC=A0*As and DFACTC=1-(A0*As). With our BGRX32 data, As=0x00,
-     * so source contribution = 0 and the layer is invisible (regression
-     * from MCC regen; previous SFACTC was 5 = 1-(A0*Ad)).
-     *
-     * Required blend: out_color = src * 1 + dst * 0 (pure overlay).
-     * SFACTC=2 (A0/255) with A0=255 gives factor 1.0; DFACTC=0 (ZERO).
-     * Alpha channel doesn't matter for output but set sane values too. */
-    XLCDC_REGS->LCDC_OVR1CFG9 = LCDC_OVR1CFG9_DMA(1)
-                              | LCDC_OVR1CFG9_REP(1)
-                              | LCDC_OVR1CFG9_CRKEY(0)
-                              | LCDC_OVR1CFG9_DSTKEY(0)
-                              | LCDC_OVR1CFG9_SFACTC(2)   /* A0/255 = 1.0 */
-                              | LCDC_OVR1CFG9_SFACTA(0)   /* 0.0 */
-                              | LCDC_OVR1CFG9_DFACTC(0)   /* 0.0 */
-                              | LCDC_OVR1CFG9_DFACTA(0)   /* 0.0 */
-                              | LCDC_OVR1CFG9_A0(255)
-                              | LCDC_OVR1CFG9_A1(0);
+    /* HEOCFG4 = source memory size, must equal HEOCFG3 (window size) when
+     * the scaler is bypassed. No plib helper for this register. */
+    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
+                             | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
 
-    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, true, true);
+    /* Alpha-blend identical to the OVR1 fix in 96cdb46: bypass
+     * XLCDC_SetLayerOpts() because its HEOCFG12 write uses SFACTC=A0*As,
+     * which zeroes the source contribution when As=0 (our X byte). Use
+     * SFACTC=2 (A0/255 = 1.0 with A0=255) and DFACTC=0 (ZERO) for a pure
+     * overlay independent of per-pixel alpha. */
+    XLCDC_REGS->LCDC_HEOCFG12 = LCDC_HEOCFG12_DMA(1)
+                              | LCDC_HEOCFG12_REP(1)
+                              | LCDC_HEOCFG12_CRKEY(0)
+                              | LCDC_HEOCFG12_DSTKEY(0)
+                              | LCDC_HEOCFG12_VIDPRI(1)   /* elevated bus prio */
+                              | LCDC_HEOCFG12_SFACTC(2)   /* A0/255 = 1.0 */
+                              | LCDC_HEOCFG12_SFACTA(0)   /* 0.0 */
+                              | LCDC_HEOCFG12_DFACTC(0)   /* 0.0 */
+                              | LCDC_HEOCFG12_DFACTA(0)   /* 0.0 */
+                              | LCDC_HEOCFG12_A0(255)
+                              | LCDC_HEOCFG12_A1(0);
 
-    printf("LCD: OVR1 bound to capture buf @0x%08lX, "
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+
+    printf("LCD: HEO bound to capture buf @0x%08lX, "
            "%lux%lu at (%lu,%lu)\r\n",
            (unsigned long)ISC_Capture_GetBufferAddress(),
            (unsigned long)src_w, (unsigned long)src_h,

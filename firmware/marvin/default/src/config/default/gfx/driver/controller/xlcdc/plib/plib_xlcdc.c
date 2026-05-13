@@ -1155,8 +1155,6 @@ void XLCDC_Initialize(void)
     XLCDC_EnableClocks();
     XLCDC_SetupTimingEngine();
     XLCDC_SetupBaseLayer();
-    XLCDC_SetupOVR1Layer();
     XLCDC_SetupHEOLayer();
-    XLCDC_SetupOVR2Layer();
     XLCDC_Start();
 }

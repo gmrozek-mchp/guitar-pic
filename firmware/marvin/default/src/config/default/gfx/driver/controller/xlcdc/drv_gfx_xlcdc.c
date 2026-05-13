@@ -66,7 +66,7 @@
 /* Driver Settings */
 #define XLCDC_HOR_RES           1280
 #define XLCDC_VER_RES           800
-#define XLCDC_TOT_LAYERS        4
+#define XLCDC_TOT_LAYERS        2
 #define XLCDC_BUF_PER_LAYER     1
 
 /* Local Data */
@@ -80,9 +80,7 @@ typedef enum
 /* Generated Layer Order */
 static const char layerOrder[XLCDC_TOT_LAYERS] = {
     XLCDC_LAYER_BASE,
-    XLCDC_LAYER_OVR1,
     XLCDC_LAYER_HEO,
-    XLCDC_LAYER_OVR2,
 };
 
 const char *DRIVER_NAME = "XLCDC";
