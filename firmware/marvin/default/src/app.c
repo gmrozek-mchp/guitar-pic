@@ -118,21 +118,70 @@ void APP_Initialize ( void )
     See prototype in app.h.
  */
 
-/* Point LCDC HEO layer at the capture framebuffer, pillarboxed/letterboxed
- * within the 1280x800 panel. Using HEO (not BASE/OVR1/OVR2) because:
- *  - MCC's display config now leaves only BASE and HEO enabled.
- *  - BASE has no window position/size registers (always full panel).
- *  - HEO is the only remaining overlay; also has the scaler + CSC engine
- *    available for future range-expansion / downscale work.
+/* TAP coefficient encoding: 13-bit signed Q2.10 fixed point per typical
+ * Microchip XLCDC. 1.0 = 0x400. If output looks dim, format may be Q1.11
+ * (1.0 = 0x800) or Q3.9 (1.0 = 0x200) — try those if 0x400 doesn't work. */
+#define LCD_TAP_ONE  0x400u
+
+/* Aspect-preserving fit. Returns the largest sub-rectangle of the panel that
+ * matches the source aspect, plus its top-left corner for centering.
+ * "fit width": panel is taller than source aspect → letterbox top/bottom.
+ * "fit height": panel is wider than source aspect → pillarbox left/right. */
+static void lcd_compute_fit(uint32_t src_w, uint32_t src_h,
+                            uint32_t *out_w, uint32_t *out_h,
+                            uint32_t *out_x, uint32_t *out_y)
+{
+    uint32_t pw = LCD_PANEL_W;
+    uint32_t ph = LCD_PANEL_H;
+
+    /* If panel_w * src_h <= panel_h * src_w, source aspect is wider, fit width. */
+    if (pw * src_h <= ph * src_w)
+    {
+        *out_w = pw;
+        *out_h = (pw * src_h) / src_w;
+    }
+    else
+    {
+        *out_h = ph;
+        *out_w = (ph * src_w) / src_h;
+    }
+    *out_x = (pw - *out_w) / 2u;
+    *out_y = (ph - *out_h) / 2u;
+}
+
+/* Program HEO scaler taps for nearest-neighbor: TAP1 = 1.0, others 0. */
+static void lcd_program_scaler_taps_nearest(void)
+{
+    for (uint32_t i = 0; i < 16u; i++)
+    {
+        XLCDC_REGS->LCDC_HEOVTAP[i].LCDC_HEOVTAP10P =
+            LCDC_HEOVTAP10P_TAP0(0) | LCDC_HEOVTAP10P_TAP1(LCD_TAP_ONE);
+        XLCDC_REGS->LCDC_HEOVTAP[i].LCDC_HEOVTAP32P =
+            LCDC_HEOVTAP32P_TAP2(0) | LCDC_HEOVTAP32P_TAP3(0);
+        XLCDC_REGS->LCDC_HEOHTAP[i].LCDC_HEOHTAP10P =
+            LCDC_HEOHTAP10P_TAP0(0) | LCDC_HEOHTAP10P_TAP1(LCD_TAP_ONE);
+        XLCDC_REGS->LCDC_HEOHTAP[i].LCDC_HEOHTAP32P =
+            LCDC_HEOHTAP32P_TAP2(0) | LCDC_HEOHTAP32P_TAP3(0);
+    }
+}
+
+/* Point LCDC HEO layer at the capture framebuffer, scaling with aspect
+ * preservation to fill the largest pillarboxed/letterboxed area within the
+ * panel. ARGB_8888 reads memory as {B, G, R, A} low-to-high, matching our
+ * BGRX32 byte-for-byte. Per-pixel A is ignored via SFACTC=A0/255, DFACTC=0
+ * blend (so X=0 in the framebuffer doesn't kill the layer).
  *
- * ARGB_8888 on SAM9X75 LCDC reads memory as {B, G, R, A} low-to-high,
- * matching our BGRX32 byte-for-byte. X=0 lands as A=0; the alpha-blend
- * config below uses SFACTC=A0/255 and DFACTC=ZERO so per-pixel A is
- * ignored entirely and HEO is fully opaque.
- *
- * Scaler stays disabled (HEOCFG23 = 0 from MCC's setup) so HEO renders
- * 1:1 at src_w x src_h. HEOCFG3 (window) and HEOCFG4 (memory) are set
- * equal — required when scaler is bypassed. */
+ * Scaler config follows datasheet Table 44.59 (Progressive ARGB):
+ *   HEOCFG23: enable all four scaler bits (VXSY/VXSC/HXSY/HXSC)
+ *   HEOCFG24/25: VFACTOR for vertical Y/alpha and chroma channels
+ *   HEOCFG26/27: HFACTOR for horizontal Y/alpha and chroma channels
+ *     (chroma factors set equal to luma since this is RGB, not YCbCr)
+ *   HEOCFG28/29: phase offsets all zero
+ *   HEOCFG30/31: VXSYCFG/HXSYCFG = 1 (default polyphase mode), TAP2=0,
+ *                BICU=0 — Table 44.59 ARGB row.
+ *   HEOVTAP/HEOHTAP: nearest-neighbor coefficients (TAP1=1.0). Hard-edged
+ *                    but unambiguous; can refine to programmed bilinear
+ *                    later once the encoding is verified on hardware. */
 static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
 {
     if (src_w > LCD_PANEL_W || src_h > LCD_PANEL_H)
@@ -143,8 +192,10 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
         return;
     }
 
-    uint32_t xpos = (LCD_PANEL_W - src_w) / 2u;
-    uint32_t ypos = (LCD_PANEL_H - src_h) / 2u;
+    uint32_t win_w, win_h, xpos, ypos;
+    lcd_compute_fit(src_w, src_h, &win_w, &win_h, &xpos, &ypos);
+
+    bool needs_scaler = (win_w != src_w) || (win_h != src_h);
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
@@ -153,37 +204,77 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
                           ISC_Capture_GetBufferAddress(), false);
     XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, xpos, ypos, false);
-    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_HEO, src_w, src_h, false);
+    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_HEO, win_w, win_h, false);
 
-    /* HEOCFG4 = source memory size, must equal HEOCFG3 (window size) when
-     * the scaler is bypassed. No plib helper for this register. */
+    /* HEOCFG4 = source memory size. With the scaler engaged this differs
+     * from HEOCFG3 (display window). With it bypassed, the two are equal. */
     XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
                              | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
 
-    /* Alpha-blend identical to the OVR1 fix in 96cdb46: bypass
-     * XLCDC_SetLayerOpts() because its HEOCFG12 write uses SFACTC=A0*As,
-     * which zeroes the source contribution when As=0 (our X byte). Use
-     * SFACTC=2 (A0/255 = 1.0 with A0=255) and DFACTC=0 (ZERO) for a pure
-     * overlay independent of per-pixel alpha. */
+    if (needs_scaler)
+    {
+        /* HFACTOR/VFACTOR per datasheet 44.6.13.2:
+         *   FACTOR = round( 2^20 × (memsize) / (winsize) )
+         * Operate in mem/win-1 form (XMEMSIZE/XSIZE conventions). */
+        uint32_t hfactor = (uint32_t)(((uint64_t)(src_w - 1u) * (1u << 20)
+                                       + ((win_w - 1u) >> 1)) / (win_w - 1u));
+        uint32_t vfactor = (uint32_t)(((uint64_t)(src_h - 1u) * (1u << 20)
+                                       + ((win_h - 1u) >> 1)) / (win_h - 1u));
+
+        XLCDC_REGS->LCDC_HEOCFG24 = LCDC_HEOCFG24_VXSYFACT(vfactor);
+        XLCDC_REGS->LCDC_HEOCFG25 = LCDC_HEOCFG25_VXSCFACT(vfactor);
+        XLCDC_REGS->LCDC_HEOCFG26 = LCDC_HEOCFG26_HXSYFACT(hfactor);
+        XLCDC_REGS->LCDC_HEOCFG27 = LCDC_HEOCFG27_HXSCFACT(hfactor);
+
+        XLCDC_REGS->LCDC_HEOCFG28 = LCDC_HEOCFG28_VXSYOFF(0)
+                                  | LCDC_HEOCFG28_VXSYOFF1(0)
+                                  | LCDC_HEOCFG28_VXSCOFF(0)
+                                  | LCDC_HEOCFG28_VXSCOFF1(0);
+        XLCDC_REGS->LCDC_HEOCFG29 = LCDC_HEOCFG29_HXSYOFF(0)
+                                  | LCDC_HEOCFG29_HXSCOFF(0);
+
+        /* HEOCFG30/31 keep MCC defaults (VXSYCFG=1, TAP2=0, BICU=0) which
+         * matches Table 44.59. Set them explicitly anyway in case anything
+         * changed underneath us. */
+        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1)
+                                  | LCDC_HEOCFG30_VXSCCFG(1);
+        XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1)
+                                  | LCDC_HEOCFG31_HXSCCFG(1);
+
+        lcd_program_scaler_taps_nearest();
+
+        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
+                                  | LCDC_HEOCFG23_VXSCEN(1)
+                                  | LCDC_HEOCFG23_HXSYEN(1)
+                                  | LCDC_HEOCFG23_HXSCEN(1);
+    }
+    else
+    {
+        XLCDC_REGS->LCDC_HEOCFG23 = 0u;  /* scaler bypassed, 1:1 path */
+    }
+
+    /* Alpha-blend: bypass XLCDC_SetLayerOpts() because its HEOCFG12 write
+     * uses SFACTC=A0*As, which zeroes the source when As=0 (our X byte).
+     * SFACTC=2 (A0/255=1.0) + DFACTC=0 = pure overlay independent of A. */
     XLCDC_REGS->LCDC_HEOCFG12 = LCDC_HEOCFG12_DMA(1)
                               | LCDC_HEOCFG12_REP(1)
                               | LCDC_HEOCFG12_CRKEY(0)
                               | LCDC_HEOCFG12_DSTKEY(0)
-                              | LCDC_HEOCFG12_VIDPRI(1)   /* elevated bus prio */
-                              | LCDC_HEOCFG12_SFACTC(2)   /* A0/255 = 1.0 */
-                              | LCDC_HEOCFG12_SFACTA(0)   /* 0.0 */
-                              | LCDC_HEOCFG12_DFACTC(0)   /* 0.0 */
-                              | LCDC_HEOCFG12_DFACTA(0)   /* 0.0 */
+                              | LCDC_HEOCFG12_VIDPRI(1)
+                              | LCDC_HEOCFG12_SFACTC(2)
+                              | LCDC_HEOCFG12_SFACTA(0)
+                              | LCDC_HEOCFG12_DFACTC(0)
+                              | LCDC_HEOCFG12_DFACTA(0)
                               | LCDC_HEOCFG12_A0(255)
                               | LCDC_HEOCFG12_A1(0);
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
 
-    printf("LCD: HEO bound to capture buf @0x%08lX, "
-           "%lux%lu at (%lu,%lu)\r\n",
-           (unsigned long)ISC_Capture_GetBufferAddress(),
+    printf("LCD: HEO src=%lux%lu -> win=%lux%lu @ (%lu,%lu) scaler=%s\r\n",
            (unsigned long)src_w, (unsigned long)src_h,
-           (unsigned long)xpos, (unsigned long)ypos);
+           (unsigned long)win_w, (unsigned long)win_h,
+           (unsigned long)xpos, (unsigned long)ypos,
+           needs_scaler ? "on" : "off");
 }
 
 static void app_coordinate_capture(void)
