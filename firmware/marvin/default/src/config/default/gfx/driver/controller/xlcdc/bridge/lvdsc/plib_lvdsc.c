@@ -66,8 +66,12 @@ void LVDSC_Initialize(void)
     LVDSC_REGS->LVDSC_CR = LVDSC_CR_SER_EN(0);
     while ((LVDSC_REGS->LVDSC_SR & LVDSC_SR_CS_Msk) != 0);
 
-    /* Configuration */
+    /* Configuration. DEN_POL_HIGH copied from mgs_quickstart's
+     * curiosity_nvdi_10_1inch — the validated reference for this panel.
+     * MCC default omits DEN_POL (defaults to LOW), which the panel may
+     * not handle cleanly. */
     LVDSC_REGS->LVDSC_CFGR = LVDSC_CFGR_LCDC_PIXSIZE(LVDSC_CFGR_LCDC_PIXSIZE_24BITS_Val) |
+            LVDSC_CFGR_LCDC_DEN_POL(LVDSC_CFGR_LCDC_DEN_POL_HIGH_Val) |
             LVDSC_CFGR_MAPPING(LVDSC_CFGR_MAPPING_VESA_Val) |
             LVDSC_CFGR_DC_BAL(LVDSC_CFGR_DC_BAL_UNBALANCED_Val);
 

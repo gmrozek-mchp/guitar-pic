@@ -535,11 +535,13 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **MCC-file modifications maintenance risk.** Two MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
+- **MCC-file modifications maintenance risk.** Four MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
   1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
   2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` does **not** OR in `CSI2DC_VPCFGR_RMS_1`. MCC default sets RMS=1, we need RMS=0 for the BGRX32 pipeline. If MCC regenerates, the `| CSI2DC_VPCFGR_RMS_1` will come back and capture output will silently shift to dense 3 B/pixel BGR layout — alpha lane disappears, frame size changes, display will show garbage.
+  3. `plib_xlcdc.c` LVDSPLL — `XLCDC_EnableClocks` uses MUL=37-1, FRACR=174763, DIVPMC=2-1 (≈444 MHz LVDSPLL) copied from `mgsh_sam9x7/mgs_quickstart` `curiosity_nvdi_10_1inch` reference. MCC was emitting MUL=29-1, FRACR=699051, DIVPMC=4-1 (≈175 MHz, ~2.5× too low for the 10.1" panel) which produced visible flicker. If regenerated to the broken values, flicker comes back.
+  4. `plib_lvdsc.c` `LVDSC_Initialize` — `LVDSC_CFGR` ORs in `LCDC_DEN_POL(HIGH)` copied from the same reference. MCC default omitted it (defaults to LOW), which contributes to the same flicker symptom on this panel.
 
-  Recovery plan: if the build breaks post-regen, re-apply both (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+  Recovery plan: if the build breaks post-regen, re-apply all four (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **drv_image_sensor.h shim.** We keep a minimal enum-only shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` so `drv_isc.c` and `configuration.h` still compile after libcamera removal. MCC shouldn't touch this path since the image_sensor component is disabled, but worth a check if something weird happens.
 
@@ -556,6 +558,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-13 — Display flicker root-caused: LVDSPLL too slow + DEN_POL wrong
+
+Panel was running with persistent flicker since the swap from 800×480 to the 10.1" 1280×800 NVDI panel (commit 57d24cf). Comparing marvin's MCC-generated `plib_xlcdc.c` and `plib_lvdsc.c` against the validated `mgsh_sam9x7/mgs_quickstart curiosity_nvdi_10_1inch` reference revealed:
+
+- **LVDSPLL config** in `XLCDC_EnableClocks`:
+  - Marvin (broken): `MUL=29-1, FRACR=699051, DIVPMC=4-1` → ~175 MHz output
+  - Reference (working): `MUL=37-1, FRACR=174763, DIVPMC=2-1` → ~444.5 MHz output
+  - Panel needs ~70 MHz pixel clock × 7 LVDS-bit-clock multiplier ≈ 493 MHz LVDS bus rate. Marvin was running ~2.5× too slow → serializer couldn't lock cleanly → flicker.
+- **LVDSC.CFGR.DEN_POL** missing in marvin (defaults to LOW); reference sets HIGH. Probably contributory but not the main driver.
+
+Both files patched to reference values. Added to the MCC-maintenance carry-forward list since both are MCC-regenerated and will get clobbered next time MCC emits them.
+
+Why MCC produced wrong values for the same panel component (`gfx_display_comp_nvdi_10_1in`) in both projects: unknown. Likely an MCC version drift between when mgs_quickstart was built vs marvin. Reproducible diff and fix; report to Microchip if useful.
 
 ### 2026-05-13 — HEO hardware scaler upscaling 720×480 → 1200×800 ✅
 
