@@ -174,24 +174,23 @@ static void lcd_program_scaler_taps_bilinear(void)
     }
 }
 
-/* Point LCDC HEO layer at the capture framebuffer, scaling with aspect
- * preservation to fill the largest pillarboxed/letterboxed area within the
- * panel. ARGB_8888 reads memory as {B, G, R, A} low-to-high, matching our
- * BGRX32 byte-for-byte. Per-pixel A is ignored via SFACTC=A0/255, DFACTC=0
- * blend (so X=0 in the framebuffer doesn't kill the layer).
+/* Point LCDC HEO layer at the capture framebuffer.
  *
- * Scaler config follows datasheet Table 44.59 (Progressive ARGB):
- *   HEOCFG23: enable all four scaler bits (VXSY/VXSC/HXSY/HXSC)
- *   HEOCFG24/25: VFACTOR for vertical Y/alpha and chroma channels
- *   HEOCFG26/27: HFACTOR for horizontal Y/alpha and chroma channels
- *     (chroma factors set equal to luma since this is RGB, not YCbCr)
- *   HEOCFG28/29: phase offsets all zero
- *   HEOCFG30/31: VXSYCFG/HXSYCFG = 1 (default polyphase mode), TAP2=0,
- *                BICU=0 — Table 44.59 ARGB row.
- *   HEOVTAP/HEOHTAP: 16-phase bilinear coefficients (TAP1 = 1-φ, TAP2 = φ).
- *                    Soft but smooth at modest upscale ratios. Bicubic /
- *                    Lanczos would be sharper but require signed taps. */
-static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
+ * fullscreen=false: native 1:1 — source rendered at src_w × src_h, centered
+ *   on the panel with pillarbox/letterbox black around it. Cheapest path,
+ *   leaves panel real estate around the video for UI / analytics overlays.
+ *   This is the default view.
+ * fullscreen=true:  aspect-preserving scale via HEO hardware scaler. Source
+ *   is upscaled to the largest sub-rectangle of the panel that matches its
+ *   aspect ratio — pillarbox or letterbox depending on geometry.
+ *
+ * ARGB_8888 reads memory as {B, G, R, A} low-to-high, matching our BGRX32
+ * byte-for-byte. Per-pixel A is ignored via SFACTC=A0/255, DFACTC=0 blend
+ * (so X=0 in the framebuffer doesn't kill the layer).
+ *
+ * Scaler config (when engaged) follows datasheet Table 44.59 (Progressive
+ * ARGB) with 16-phase bilinear taps. See lcd_program_scaler_taps_bilinear. */
+static void lcd_bind_capture(uint32_t src_w, uint32_t src_h, bool fullscreen)
 {
     if (src_w > LCD_PANEL_W || src_h > LCD_PANEL_H)
     {
@@ -202,7 +201,17 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
     }
 
     uint32_t win_w, win_h, xpos, ypos;
-    lcd_compute_fit(src_w, src_h, &win_w, &win_h, &xpos, &ypos);
+    if (fullscreen)
+    {
+        lcd_compute_fit(src_w, src_h, &win_w, &win_h, &xpos, &ypos);
+    }
+    else
+    {
+        win_w = src_w;
+        win_h = src_h;
+        xpos  = (LCD_PANEL_W - src_w) / 2u;
+        ypos  = (LCD_PANEL_H - src_h) / 2u;
+    }
 
     bool needs_scaler = (win_w != src_w) || (win_h != src_h);
 
@@ -302,7 +311,11 @@ static void app_coordinate_capture(void)
              * enable so the D-PHY catches the LP11->HS edge. */
             if (ISC_Capture_Configure(w, h))
             {
-                lcd_bind_capture(w, h);
+                /* Default to native 1:1 video window centered on the panel.
+                 * UI / analytics will fill the remaining real estate. Pass
+                 * fullscreen=true here to enable aspect-preserving HEO
+                 * upscale to the full panel (e.g., for a fullscreen view). */
+                lcd_bind_capture(w, h, false);
                 (void)TC358743_EnableStream(true);
                 (void)ISC_Capture_Start();
             }
