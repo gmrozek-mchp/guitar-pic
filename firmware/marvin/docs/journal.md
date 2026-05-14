@@ -561,6 +561,39 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-14 — Fresh start on `bigteninch` branch from 57d24cf, hit same yellow-tinge wall
+
+Backed off `lcd` branch experimentation and started `bigteninch` from `57d24cf` to revisit the LVDSPLL fix and yellow-tinge problem with cleaner incremental commits. `lcd` branch preserved as historical record of the full debug journey.
+
+**Steps so far on bigteninch:**
+1. Bring journal + display_path docs forward from lcd (commit `f7ff383`).
+2. Remove emirror project (commit `24be61b`, mirrors `66e172f` from lcd).
+3. Update `LCD_PANEL_W/H` macros 800→1280 / 480→800 (commit `c0fdf37`).
+4. Through MCC: set `LVDSClockMul=37, LVDSClockFrac=174763, LVDSClockDivPMC=2` to fix the 175 MHz LVDSPLL → 444.5 MHz; reduce `XLCDC_TOT_LAYERS` from 4 to 2 (BASE + OVR1 only). MCC regen committed in this same step.
+
+**Result:** clean clock locks the panel; OVR1 displays captured 720x480 video centered with 280 px pillarbox + 160 px letterbox. **Yellow-tinge / left-half artifact returns.** Identical symptom to lcd-branch experiments. Cable handling at panel end modulates strength → SI/EMI is the dominant cause.
+
+**Software-side levers tried previously (all on lcd branch, same conclusions apply here):**
+- HEO BLEN INCR4 (vs INCR32) — no help
+- HEOCFG12 VIDPRI=0 — broke the display
+- LVDSC PREEMP 1 / 2 — modest improvement at best
+- LVDSC DC_BAL=BALANCED — broke the display (panel doesn't speak balanced)
+- HEOCFG4 conditional skip in 1:1 mode — no help
+- BASE-only display with white fill — clean (eliminates cable/panel as fundamental issue)
+- HEO with capture, BASE disabled — yellow persisted (eliminates BASE bandwidth as the driver)
+
+**Strategic insight (from this session):** the **vision pipeline** needs full RGB888 @ 60 Hz, but the **display path** doesn't. They can be decoupled. Display fidelity can be sacrificed for bandwidth without affecting vision quality. Realistic options to pursue:
+
+1. **Drop BASE to RGB565** — halves BASE's DDR read bandwidth (245 → 123 MB/s) for the panel-wide black backdrop. MCC config change. Easy first try.
+2. **GFX2D blit BGRX32 → RGB565 to a display-only buffer** — capture stays at full quality in its own DDR buffer; a periodic blit produces a lower-bandwidth display buffer. LCDC reads only the RGB565 display buffer. Cuts display-side reads from ~83 MB/s (OVR1 ARGB) to ~42 MB/s (OVR1 RGB565). Breakeven if GFX2D blit cost is small.
+3. **HEO scaler downscale for display** — display HEO at, say, 640x400 inside a 720x480 capture region. Scaler reads source at full size, writes smaller window output. Net read bandwidth unchanged but data path through HEO has different timing characteristics worth testing.
+4. **Display every Nth frame** — does NOT reduce LCDC's DMA bandwidth (LCDC re-reads each panel refresh regardless of capture rate), so no SI win. Skip.
+5. **Hardware** — different cable, ferrite, board-level shielding. Cable handling sensitivity → real fix is at the physical layer.
+
+Decided direction: software-side bandwidth reduction first (option 1 is easiest, option 2 is the proper architecture for the display/vision split). Hardware is the last resort. Documented the SI sensitivity and current state in this entry; details and full debug journey are on the `lcd` branch's session-log entries.
+
+
+
 ### 2026-05-13 (later) — MCC config update fixes LVDSPLL natively; DEN_POL was not load-bearing
 
 Greg adjusted the XLCDC driver settings in MCC and regenerated. The resulting `plib_xlcdc.c` now emits `MUL=37-1, FRACR=174763, DIVPMC=2-1` directly — matches our hand-patch from earlier today. Our manual override is now redundant; both files (MCC-emitted and patched) are byte-identical. No further action on `plib_xlcdc.c`.
