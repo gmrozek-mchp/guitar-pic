@@ -7,9 +7,6 @@
 			"path": "firmware/fretboard"
 		},
 		{
-			"path": "firmware/sam9x75_curiosity_emirror"
-		},
-		{
 			"name": "marvin",
 			"path": "firmware/marvin"
 		},
