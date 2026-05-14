@@ -16,13 +16,13 @@ Vision-based guitar-playing robot. The marvin firmware captures live HDMI video 
 
 ## Current focus
 
-**End-to-end pipeline working as of 2026-05-02: source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 7" LVDS panel.**
+**End-to-end pipeline working as of 2026-05-02: source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1" 1280×800 LVDS panel.**
 
 > **Configuration references:**
 > - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
 > - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
 
-Phase 5b (byte-level content verification) ✅. Phase 6 MVP (captured video on the LCD, 720×480 pillarboxed on 800×480) ✅. Phase 7a/c (480p via Pi and Wii) ✅. Next: either HEO scaling for 720p-on-800×480 display, or Phase 8 (vision stage) on the existing 480p path.
+Phase 5b (byte-level content verification) ✅. Phase 6 MVP (captured video on the LCD) ✅, now displaying 480p sources pillarboxed/letterboxed and 720p sources letterbox-only on the 1280×800 panel. Phase 7a/c (480p via Pi and Wii) ✅. Next: Phase 8 (vision stage) — HEO scaling no longer needed for 720p since the bigger panel accommodates native, only relevant if 1080p sources come into scope.
 
 ### Original focus (for context — this is done)
 
@@ -539,6 +539,10 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
   1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
   2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` does **not** OR in `CSI2DC_VPCFGR_RMS_1`. MCC default sets RMS=1, we need RMS=0 for the BGRX32 pipeline. If MCC regenerates, the `| CSI2DC_VPCFGR_RMS_1` will come back and capture output will silently shift to dense 3 B/pixel BGR layout — alpha lane disappears, frame size changes, display will show garbage.
 
+  Previously listed but now resolved (MCC config update on 2026-05-13):
+  - ~~`plib_xlcdc.c` LVDSPLL~~ — MCC now emits the correct `MUL=37-1, FRACR=174763, DIVPMC=2-1` (≈444 MHz) once the XLCDC driver MCC config was corrected. Our manual override is no longer needed; current file matches MCC's regenerated output.
+  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. Flicker is gone without it, so the original 444 MHz LVDSPLL was the sole load-bearing fix; DEN_POL wasn't relevant. File reverted to MCC default.
+
   Recovery plan: if the build breaks post-regen, re-apply both (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **drv_image_sensor.h shim.** We keep a minimal enum-only shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` so `drv_isc.c` and `configuration.h` still compile after libcamera removal. MCC shouldn't touch this path since the image_sensor component is disabled, but worth a check if something weird happens.
@@ -556,6 +560,55 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-13 (later) — MCC config update fixes LVDSPLL natively; DEN_POL was not load-bearing
+
+Greg adjusted the XLCDC driver settings in MCC and regenerated. The resulting `plib_xlcdc.c` now emits `MUL=37-1, FRACR=174763, DIVPMC=2-1` directly — matches our hand-patch from earlier today. Our manual override is now redundant; both files (MCC-emitted and patched) are byte-identical. No further action on `plib_xlcdc.c`.
+
+Same regen pulled the latest Harmony gfx library, which intentionally omits the LVDSC `LCDC_DEN_POL` field. Display continues working without it, confirming the original 444 MHz LVDSPLL was the sole flicker fix; DEN_POL wasn't load-bearing. `plib_lvdsc.c` reverted to MCC default.
+
+Updated MCC-maintenance carry-forward list in Open Questions: dropped items 3 and 4, since both are now satisfied by the regenerated MCC output. List is back to two items (`plib_csi.c` and `plib_csi2dc.c`).
+
+### 2026-05-13 — Display flicker root-caused: LVDSPLL too slow + DEN_POL wrong
+
+Panel was running with persistent flicker since the swap from 800×480 to the 10.1" 1280×800 NVDI panel (commit 57d24cf). Comparing marvin's MCC-generated `plib_xlcdc.c` and `plib_lvdsc.c` against the validated `mgsh_sam9x7/mgs_quickstart curiosity_nvdi_10_1inch` reference revealed:
+
+- **LVDSPLL config** in `XLCDC_EnableClocks`:
+  - Marvin (broken): `MUL=29-1, FRACR=699051, DIVPMC=4-1` → ~175 MHz output
+  - Reference (working): `MUL=37-1, FRACR=174763, DIVPMC=2-1` → ~444.5 MHz output
+  - Panel needs ~70 MHz pixel clock × 7 LVDS-bit-clock multiplier ≈ 493 MHz LVDS bus rate. Marvin was running ~2.5× too slow → serializer couldn't lock cleanly → flicker.
+- **LVDSC.CFGR.DEN_POL** missing in marvin (defaults to LOW); reference sets HIGH. Probably contributory but not the main driver.
+
+Both files patched to reference values. Added to the MCC-maintenance carry-forward list since both are MCC-regenerated and will get clobbered next time MCC emits them.
+
+Why MCC produced wrong values for the same panel component (`gfx_display_comp_nvdi_10_1in`) in both projects: unknown. Likely an MCC version drift between when mgs_quickstart was built vs marvin. Reproducible diff and fix; report to Microchip if useful.
+
+### 2026-05-13 — HEO hardware scaler upscaling 720×480 → 1200×800 ✅
+
+Aspect-preserving fit on the 1280×800 panel: 720×480 source scales to 1200×800 via HEO with 40 px black pillarbox each side. 1280×720 sources still bypass the scaler (1:1 with 40 px letterbox top/bottom). Per datasheet Table 44.59 (Progressive ARGB), 4-tap polyphase filter, all four scaler enables on, factors computed as `round(2^20 × (memsize-1) / (winsize-1))`.
+
+**Tap encoding confirmed:** 13-bit signed Q2.10. 1.0 = `0x400`. Datasheet doesn't state explicitly; verified empirically with nearest-neighbor pass-through. Documented as `LCD_TAP_ONE` in app.c.
+
+**Current filter:** bilinear (16-phase). TAP1 = 1−φ, TAP2 = φ, TAP0=TAP3=0. Coefficients sum to exactly 1.0 per phase. Soft but smooth — visibly better than nearest-neighbor for camera-style content.
+
+**Possible future polish (not blocking anything):**
+- **Bicubic / Mitchell-Netravali** (B=1/3, C=1/3) — uses all 4 taps, requires signed coefficients (some negative). Sharper edges than bilinear without the ringing of pure cubic.
+- **Lanczos-2** — windowed sinc, all 4 taps signed, gold standard for video upscale. Diminishing returns at modest 1.667× ratios; main benefit is at larger ratios or for downscale.
+- **Different filter for downscale vs upscale** if we ever do downscale (e.g., 1080p → 1280×800).
+
+For now bilinear is the resting place. Revisit only if image quality becomes a complaint.
+
+
+
+### 2026-05-02 — Panel swap: 7" 800×480 → 10.1" 1280×800
+
+Greg moved to a larger LVDS panel and updated the MCC display component to match. MCC regenerated `XLCDC_HOR_RES/VER_RES`, `LCDCFG1..4` (sync widths/porches/active region), and the per-layer setup defaults to 1280×800. `LCD_PANEL_W/H` macros in `app.c` updated to match (those are not MCC-generated).
+
+Side effect: Pi 720p (1280×720) now fits the panel natively — it's letterboxed (40 px top/bottom) instead of being rejected. 480p sources land in a 720×480 inset with 280 px pillarbox each side, 160 px letterbox top + bottom.
+
+Auto-allocated layer buffers grew from 800×480 × 2 = 768 KB to 1280×800 × 2 = 2 MB per layer (RGB565 mode from the previous session). Total of all four layers is ~8 MB of `.region_nocache` DDR permanently allocated, of which we use exactly 0 bytes (OVR1 reads our capture buffer instead). Trivially recoverable later if memory tightens.
+
+No code changes other than `LCD_PANEL_W/H`. `lcd_bind_capture()` math is parametric on those macros, so the pillarbox/letterbox positions update automatically.
 
 ### 2026-05-02 — Phase 6 MVP: captured video on the LCD ✅
 
