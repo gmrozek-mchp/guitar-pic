@@ -92,11 +92,11 @@ APP_DATA appData;
     See prototype in app.h.
  */
 
-/* 7" AC69T88A panel is 800x480. MCC auto-initializes XLCDC + LVDSC + GFX2D
+/* 10.1" LVDS panel is 1280x800. MCC auto-initializes XLCDC + LVDSC + GFX2D
  * in SYS_Initialize; the timing engine is already running by the time we get
  * here. Auto-init leaves backlight off. */
-#define LCD_PANEL_W  800u
-#define LCD_PANEL_H  480u
+#define LCD_PANEL_W  1280u
+#define LCD_PANEL_H  800u
 
 void APP_Initialize ( void )
 {
