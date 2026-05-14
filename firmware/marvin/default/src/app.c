@@ -118,9 +118,8 @@ void APP_Initialize ( void )
     See prototype in app.h.
  */
 
-/* TAP coefficient encoding: 13-bit signed Q2.10 fixed point per typical
- * Microchip XLCDC. 1.0 = 0x400. If output looks dim, format may be Q1.11
- * (1.0 = 0x800) or Q3.9 (1.0 = 0x200) — try those if 0x400 doesn't work. */
+/* TAP coefficient encoding: 13-bit signed Q2.10 fixed point. 1.0 = 0x400.
+ * Confirmed on hardware with nearest-neighbor pass-through. */
 #define LCD_TAP_ONE  0x400u
 
 /* Aspect-preserving fit. Returns the largest sub-rectangle of the panel that
@@ -149,19 +148,29 @@ static void lcd_compute_fit(uint32_t src_w, uint32_t src_h,
     *out_y = (ph - *out_h) / 2u;
 }
 
-/* Program HEO scaler taps for nearest-neighbor: TAP1 = 1.0, others 0. */
-static void lcd_program_scaler_taps_nearest(void)
+/* Program HEO scaler taps for bilinear interpolation. For each of the 16
+ * phases φ = i/16, output sample is (1-φ)*S[0] + φ*S[1] where S[0]/S[1]
+ * are the two adjacent input samples. In the 4-tap layout that's
+ * TAP1 = (1-φ) and TAP2 = φ. TAP0 and TAP3 unused. Coefficients sum to
+ * 1.0 exactly (TAP1 + TAP2 = 0x400) so brightness is preserved.
+ *
+ * Bicubic / Lanczos would be sharper at 1.667x upscale but require
+ * signed taps and more design — see notes in journal for follow-up. */
+static void lcd_program_scaler_taps_bilinear(void)
 {
     for (uint32_t i = 0; i < 16u; i++)
     {
+        uint32_t tap1 = ((16u - i) * LCD_TAP_ONE) / 16u;
+        uint32_t tap2 = (i * LCD_TAP_ONE) / 16u;
+
         XLCDC_REGS->LCDC_HEOVTAP[i].LCDC_HEOVTAP10P =
-            LCDC_HEOVTAP10P_TAP0(0) | LCDC_HEOVTAP10P_TAP1(LCD_TAP_ONE);
+            LCDC_HEOVTAP10P_TAP0(0) | LCDC_HEOVTAP10P_TAP1(tap1);
         XLCDC_REGS->LCDC_HEOVTAP[i].LCDC_HEOVTAP32P =
-            LCDC_HEOVTAP32P_TAP2(0) | LCDC_HEOVTAP32P_TAP3(0);
+            LCDC_HEOVTAP32P_TAP2(tap2) | LCDC_HEOVTAP32P_TAP3(0);
         XLCDC_REGS->LCDC_HEOHTAP[i].LCDC_HEOHTAP10P =
-            LCDC_HEOHTAP10P_TAP0(0) | LCDC_HEOHTAP10P_TAP1(LCD_TAP_ONE);
+            LCDC_HEOHTAP10P_TAP0(0) | LCDC_HEOHTAP10P_TAP1(tap1);
         XLCDC_REGS->LCDC_HEOHTAP[i].LCDC_HEOHTAP32P =
-            LCDC_HEOHTAP32P_TAP2(0) | LCDC_HEOHTAP32P_TAP3(0);
+            LCDC_HEOHTAP32P_TAP2(tap2) | LCDC_HEOHTAP32P_TAP3(0);
     }
 }
 
@@ -179,9 +188,9 @@ static void lcd_program_scaler_taps_nearest(void)
  *   HEOCFG28/29: phase offsets all zero
  *   HEOCFG30/31: VXSYCFG/HXSYCFG = 1 (default polyphase mode), TAP2=0,
  *                BICU=0 — Table 44.59 ARGB row.
- *   HEOVTAP/HEOHTAP: nearest-neighbor coefficients (TAP1=1.0). Hard-edged
- *                    but unambiguous; can refine to programmed bilinear
- *                    later once the encoding is verified on hardware. */
+ *   HEOVTAP/HEOHTAP: 16-phase bilinear coefficients (TAP1 = 1-φ, TAP2 = φ).
+ *                    Soft but smooth at modest upscale ratios. Bicubic /
+ *                    Lanczos would be sharper but require signed taps. */
 static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
 {
     if (src_w > LCD_PANEL_W || src_h > LCD_PANEL_H)
@@ -241,7 +250,7 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
         XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1)
                                   | LCDC_HEOCFG31_HXSCCFG(1);
 
-        lcd_program_scaler_taps_nearest();
+        lcd_program_scaler_taps_bilinear();
 
         XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
                                   | LCDC_HEOCFG23_VXSCEN(1)

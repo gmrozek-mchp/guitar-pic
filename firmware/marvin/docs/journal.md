@@ -557,6 +557,23 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-13 — HEO hardware scaler upscaling 720×480 → 1200×800 ✅
+
+Aspect-preserving fit on the 1280×800 panel: 720×480 source scales to 1200×800 via HEO with 40 px black pillarbox each side. 1280×720 sources still bypass the scaler (1:1 with 40 px letterbox top/bottom). Per datasheet Table 44.59 (Progressive ARGB), 4-tap polyphase filter, all four scaler enables on, factors computed as `round(2^20 × (memsize-1) / (winsize-1))`.
+
+**Tap encoding confirmed:** 13-bit signed Q2.10. 1.0 = `0x400`. Datasheet doesn't state explicitly; verified empirically with nearest-neighbor pass-through. Documented as `LCD_TAP_ONE` in app.c.
+
+**Current filter:** bilinear (16-phase). TAP1 = 1−φ, TAP2 = φ, TAP0=TAP3=0. Coefficients sum to exactly 1.0 per phase. Soft but smooth — visibly better than nearest-neighbor for camera-style content.
+
+**Possible future polish (not blocking anything):**
+- **Bicubic / Mitchell-Netravali** (B=1/3, C=1/3) — uses all 4 taps, requires signed coefficients (some negative). Sharper edges than bilinear without the ringing of pure cubic.
+- **Lanczos-2** — windowed sinc, all 4 taps signed, gold standard for video upscale. Diminishing returns at modest 1.667× ratios; main benefit is at larger ratios or for downscale.
+- **Different filter for downscale vs upscale** if we ever do downscale (e.g., 1080p → 1280×800).
+
+For now bilinear is the resting place. Revisit only if image quality becomes a complaint.
+
+
+
 ### 2026-05-02 — Panel swap: 7" 800×480 → 10.1" 1280×800
 
 Greg moved to a larger LVDS panel and updated the MCC display component to match. MCC regenerated `XLCDC_HOR_RES/VER_RES`, `LCDCFG1..4` (sync widths/porches/active region), and the per-layer setup defaults to 1280×800. `LCD_PANEL_W/H` macros in `app.c` updated to match (those are not MCC-generated).
