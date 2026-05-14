@@ -243,4 +243,56 @@ data:
           type: User
         type: Values
       type: Boolean
+    XLCDCPixClockHint:
+      attributes:
+        id: XLCDCPixClockHint
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '63500000'
+          type: Dynamic
+        type: Values
+      type: Integer
+    LVDSClockOutHint:
+      attributes:
+        id: LVDSClockOutHint
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '444500000'
+          type: Dynamic
+        type: Values
+      type: Integer
+    LVDSClockMul:
+      attributes:
+        id: LVDSClockMul
+      children:
+      - children:
+        - attributes:
+            value: '37'
+          type: User
+        type: Values
+      type: Integer
+    LVDSClockFrac:
+      attributes:
+        id: LVDSClockFrac
+      children:
+      - children:
+        - attributes:
+            value: '174763'
+          type: User
+        type: Values
+      type: Integer
+    LVDSClockDivPMC:
+      attributes:
+        id: LVDSClockDivPMC
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

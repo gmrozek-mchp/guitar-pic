@@ -535,13 +535,15 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **MCC-file modifications maintenance risk.** Four MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
+- **MCC-file modifications maintenance risk.** Two MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
   1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
   2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` does **not** OR in `CSI2DC_VPCFGR_RMS_1`. MCC default sets RMS=1, we need RMS=0 for the BGRX32 pipeline. If MCC regenerates, the `| CSI2DC_VPCFGR_RMS_1` will come back and capture output will silently shift to dense 3 B/pixel BGR layout — alpha lane disappears, frame size changes, display will show garbage.
-  3. `plib_xlcdc.c` LVDSPLL — `XLCDC_EnableClocks` uses MUL=37-1, FRACR=174763, DIVPMC=2-1 (≈444 MHz LVDSPLL) copied from `mgsh_sam9x7/mgs_quickstart` `curiosity_nvdi_10_1inch` reference. MCC was emitting MUL=29-1, FRACR=699051, DIVPMC=4-1 (≈175 MHz, ~2.5× too low for the 10.1" panel) which produced visible flicker. If regenerated to the broken values, flicker comes back.
-  4. `plib_lvdsc.c` `LVDSC_Initialize` — `LVDSC_CFGR` ORs in `LCDC_DEN_POL(HIGH)` copied from the same reference. MCC default omitted it (defaults to LOW), which contributes to the same flicker symptom on this panel.
 
-  Recovery plan: if the build breaks post-regen, re-apply all four (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+  Previously listed but now resolved (MCC config update on 2026-05-13):
+  - ~~`plib_xlcdc.c` LVDSPLL~~ — MCC now emits the correct `MUL=37-1, FRACR=174763, DIVPMC=2-1` (≈444 MHz) once the XLCDC driver MCC config was corrected. Our manual override is no longer needed; current file matches MCC's regenerated output.
+  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. Flicker is gone without it, so the original 444 MHz LVDSPLL was the sole load-bearing fix; DEN_POL wasn't relevant. File reverted to MCC default.
+
+  Recovery plan: if the build breaks post-regen, re-apply both (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **drv_image_sensor.h shim.** We keep a minimal enum-only shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` so `drv_isc.c` and `configuration.h` still compile after libcamera removal. MCC shouldn't touch this path since the image_sensor component is disabled, but worth a check if something weird happens.
 
@@ -558,6 +560,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-13 (later) — MCC config update fixes LVDSPLL natively; DEN_POL was not load-bearing
+
+Greg adjusted the XLCDC driver settings in MCC and regenerated. The resulting `plib_xlcdc.c` now emits `MUL=37-1, FRACR=174763, DIVPMC=2-1` directly — matches our hand-patch from earlier today. Our manual override is now redundant; both files (MCC-emitted and patched) are byte-identical. No further action on `plib_xlcdc.c`.
+
+Same regen pulled the latest Harmony gfx library, which intentionally omits the LVDSC `LCDC_DEN_POL` field. Display continues working without it, confirming the original 444 MHz LVDSPLL was the sole flicker fix; DEN_POL wasn't load-bearing. `plib_lvdsc.c` reverted to MCC default.
+
+Updated MCC-maintenance carry-forward list in Open Questions: dropped items 3 and 4, since both are now satisfied by the regenerated MCC output. List is back to two items (`plib_csi.c` and `plib_csi2dc.c`).
 
 ### 2026-05-13 — Display flicker root-caused: LVDSPLL too slow + DEN_POL wrong
 

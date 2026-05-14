@@ -63,7 +63,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h
   hash: 637d343cc20356dfb08492f7a3e97479ad421b88ffec123181330eb895f50689
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
-  hash: 4597b002717b05e666e12187baa90d5a61fffdb1a7058f38b8451551120967d3
+  hash: e1075ab48cbf54ae2b6bd88a04828dcd8c3b26f354495495095db16f213dd247
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
   hash: cdd70b5efe9e854ce1530a32a65119c2af79f22f90e0e661d4127113df72c17a
 - file: ../src/config/default/gfx/driver/gfx_driver.c
