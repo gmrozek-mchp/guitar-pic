@@ -13,6 +13,10 @@
 		{
 			"name": "linux-at91",
 			"path": "../linux-at91"
+		},
+		{
+			"name": "mgsh_sam9x7",
+			"path": "../mgsh_sam9x7"
 		}
 	],
 	"settings": {
