@@ -152,15 +152,21 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
     XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, xpos, ypos, false);
     XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_HEO, src_w, src_h, false);
-    /* MCC's gfx-driver init left HEOCFG12 at SFACTC=4 (A0×As) / DFACTC=6
-     * (1-A0×As). RGB_888_PACKED has no source alpha → A0×As=0 → HEO
-     * invisible. Patch to SFACTC=2 / DFACTC=0 → out = src. Read-modify-
-     * write preserves MCC's DMA, REP, VIDPRI, A0, A1, CRKEY, DSTKEY. */
-    uint32_t heocfg12 = XLCDC_REGS->LCDC_HEOCFG12;
-    heocfg12 &= ~(LCDC_HEOCFG12_SFACTC_Msk | LCDC_HEOCFG12_DFACTC_Msk);
-    heocfg12 |= LCDC_HEOCFG12_SFACTC(2) | LCDC_HEOCFG12_DFACTC(0);
-    XLCDC_REGS->LCDC_HEOCFG12 = heocfg12;
+
+    /* §44.6.4.7 — discard BASE DMA in the HEO region. HEO with MCC's
+     * default SFACTC=4 (A0×As) / DFACTC=6 (1-A0×As) reaches 100%
+     * opacity for RGB_888_PACKED: no per-pixel alpha → As is sourced
+     * from A0=255 → A0×As=1.0, src factor=1, dst factor=0. BASE pixels
+     * in this rect are blended out anyway, so DISCEN tells the BASE
+     * channel to skip fetching them. Saves ~35 MB/s at 720×480 / 50 Hz. */
+    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(xpos)
+                              | LCDC_BASECFG5_DISCYPOS(ypos);
+    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(src_w - 1u)
+                              | LCDC_BASECFG6_DISCYSIZE(src_h - 1u);
+    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
 
     printf("LCD: HEO bound to capture buf @0x%08lX, "
            "%lux%lu at (%lu,%lu)\r\n",
