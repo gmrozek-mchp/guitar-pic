@@ -202,16 +202,6 @@ data:
           type: Dynamic
         type: Values
       type: Combo
-    XLMColMode:
-      attributes:
-        id: XLMColMode
-      children:
-      - children:
-        - attributes:
-            value: '2'
-          type: User
-        type: Values
-      type: KeyValueSet
     XLCDCPixClockHint:
       attributes:
         id: XLCDCPixClockHint
@@ -281,13 +271,33 @@ data:
       children:
       - children:
         - attributes:
-            value: 'false'
+            value: 'true'
           type: User
         type: Values
       type: Boolean
     XLMEnableOVR2:
       attributes:
         id: XLMEnableOVR2
+      children:
+      - children:
+        - attributes:
+            value: 'false'
+          type: User
+        type: Values
+      type: Boolean
+    XLMColMode:
+      attributes:
+        id: XLMColMode
+      children:
+      - children:
+        - attributes:
+            value: '0'
+          type: User
+        type: Values
+      type: KeyValueSet
+    XLMEnableOVR1:
+      attributes:
+        id: XLMEnableOVR1
       children:
       - children:
         - attributes:
