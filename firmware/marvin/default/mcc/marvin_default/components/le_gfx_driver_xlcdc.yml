@@ -265,16 +265,6 @@ data:
           type: Dynamic
         type: Values
       type: Integer
-    XLMEnableHEO:
-      attributes:
-        id: XLMEnableHEO
-      children:
-      - children:
-        - attributes:
-            value: 'true'
-          type: User
-        type: Values
-      type: Boolean
     XLMEnableOVR2:
       attributes:
         id: XLMEnableOVR2
