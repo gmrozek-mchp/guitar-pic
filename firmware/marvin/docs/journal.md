@@ -561,6 +561,42 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-14 (later) — Switch capture+display path to RGB888 packed; yellow not bandwidth-driven
+
+Re-architected capture pipeline to RGB888 packed (3 B/pixel dense BGR) instead of BGRX32 (4 B/pixel). Three-file change:
+
+- **`plib_csi2dc.c`** — re-enable `CSI2DC_VPCFGR_RMS_1` so CSI2DC byte-stream-packs the MIPI RGB888 stream per CSI-2 RMS spec (Table 49.27).
+- **`isc_capture.c`** — `ISC_CAP_BPP=3`, ISC PFE `COLMAX = (width × 3) / 4 - 1` (sample-words, not pixels), DCFG keeps `IMODE=PACKED32` (each ISC sample = one 32-bit CSI2DC word; PACKED32 writes 4 bytes per sample, totaling `width × 3` bytes/row).
+- **`app.c`** — OVR1 layer color mode `ARGB_8888` → `RGB_888_PACKED` (LCDC reads 3 bytes per pixel in B, G, R order — Table 44.26).
+
+**Bandwidth wins:**
+- ISC writes: 83 → 62 MB/s (−25%)
+- OVR1 reads: 83 → 62 MB/s (−25%)
+- Framebuffer pool: 15.8 MB → 11.9 MB
+- Vision sees the same RGB888 quality, just 3-byte stride.
+
+**Initial-flash mistake worth recording:** my first cut had `ISC_DCFG.IMODE=PACKED8`, mistakenly thinking byte-stream → byte-DMA was the right pairing. That produced "4 small copies of the video across the top + garbage below" because PACKED8 writes only 1 byte per sample, dropping 3/4 of each line's data. Correct pairing is RMS=1 + IMODE=PACKED32 + COLMAX in sample-words; this is what the original (pre-d2e6938) RMS=1 path used.
+
+**On the yellow tinge: bandwidth was NOT the root cause.** With 25% less DMA on both write and read, the yellow on left half of OVR1 is unchanged. Cable handling at the panel still modulates strength. This eliminates total-DMA-bandwidth as the driving factor and confirms the issue is **SI / EMI margin at the LVDS layer**, sensitive to the second-layer DMA pattern (HEO or OVR1 displaying captured content) on top of BASE, plus cable signal-integrity margin.
+
+**Software levers exhausted (cumulative across `lcd` + `bigteninch`):**
+- Layer choice (HEO vs OVR1) — same yellow either way
+- HEO BLEN small/large, VIDPRI 0/1
+- HEO scaler 1:1 vs upscale
+- LVDS PREEMP 0..2 (slight improvement, not solving)
+- LVDS DC_BAL UNBALANCED (BALANCED breaks the panel)
+- HEOCFG4 conditional in scaler-bypass mode
+- BASE disabled entirely (yellow persisted)
+- ISC writes alone (clean) → ISC not the source
+- Bandwidth reduction via 4 → 3 B/pixel (no improvement on yellow)
+
+**Hardware mitigations to try next:**
+1. Different LVDS cable (rated for ≥ 500 Mbps/lane, short, well-shielded)
+2. Ferrite clamp on cable near the panel-side connector
+3. PCB-side: shorter LVDS traces, ground stitching around the connector
+
+Yellow tinge declared a hardware SI item. Software-side configuration is now in a clean architectural state (RGB888 packed throughout, 25% less DDR pressure, full RGB888 quality preserved for vision).
+
 ### 2026-05-14 — Fresh start on `bigteninch` branch from 57d24cf, hit same yellow-tinge wall
 
 Backed off `lcd` branch experimentation and started `bigteninch` from `57d24cf` to revisit the LVDSPLL fix and yellow-tinge problem with cleaner incremental commits. `lcd` branch preserved as historical record of the full debug journey.

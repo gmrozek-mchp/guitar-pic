@@ -119,13 +119,15 @@ void APP_Initialize ( void )
  */
 
 /* Point LCDC overlay 1 at the capture framebuffer, pillarboxed within the
- * 800x480 panel. OVR1 (not BASE) because BASE has no window position/size
+ * 1280x800 panel. OVR1 (not BASE) because BASE has no window position/size
  * registers — it's always full-panel, so a 720-wide source on BASE gets
  * read at panel-wide stride and smears line-to-line.
  *
- * ARGB_8888 on SAM9X75 LCDC reads memory as {B, G, R, A} low-to-high,
- * matching our BGRX32 byte-for-byte. X lands as A=0 (transparent) so we
- * set OVR1 to use global alpha = 255 (fully opaque) via SetLayerOpts. */
+ * RGB_888_PACKED on SAM9X75 LCDC reads memory in B, G, R order per pixel
+ * (3 B/pixel dense — Table 44.26), exactly matching the CSI2DC RMS=1 +
+ * ISC PACKED8 byte stream that fills g_framebuffer. 25% less LCDC DMA
+ * bandwidth than the ARGB_8888 path; full RGB888 quality preserved for
+ * vision consumers. */
 static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
 {
     if (src_w > LCD_PANEL_W || src_h > LCD_PANEL_H)
@@ -141,14 +143,16 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1,
-                               XLCDC_RGB_COLOR_MODE_ARGB_8888, false);
+                               XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
     XLCDC_SetLayerAddress(XLCDC_LAYER_OVR1,
                           ISC_Capture_GetBufferAddress(), false);
     XLCDC_SetLayerXStride(XLCDC_LAYER_OVR1, 0u, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_OVR1, xpos, ypos, false);
     XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_OVR1, src_w, src_h, false);
-    /* alpha=255 + enable_dma=true => opaque overlay that sources RGB from
-     * memory via DMA. Per-pixel A=0x00 in our BGRX data is ignored. */
+    /* alpha=255 + enable_dma=true => opaque overlay sourcing RGB from
+     * memory via DMA. RGB_888_PACKED has no per-pixel alpha, so the
+     * blend's source-alpha handling is irrelevant; global alpha (A0)
+     * carries the opacity. */
     XLCDC_SetLayerOpts(XLCDC_LAYER_OVR1, 255u, true, false);
     XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, true, true);
 

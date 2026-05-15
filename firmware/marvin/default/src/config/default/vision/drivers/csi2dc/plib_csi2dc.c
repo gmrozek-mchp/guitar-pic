@@ -69,10 +69,16 @@ uint32_t CSI2DC_Interrupt_Status(void) {
 }
 
 void CSI2DC_Configure_VideoPipe(uint32_t dt, uint32_t vc, uint32_t align_isc) {
-    /* RMS=0: CSI2DC outputs 1 pixel per VP word. For RGB888 MIPI bypass this
-     * gives demux_data = 0x00RRGGBB on the 40-bit bus; ISC RLP=BYPASS samples
-     * the low 32 bits and IMODE=PACKED32 stores them as BGRX32 in DDR. */
-    CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt) | CSI2DC_VPCFGR_VC(vc) | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0);
+    /* RMS=1: CSI2DC byte-stream packs the MIPI RGB888 stream — 4 BGR pixels
+     * across 12 bytes per CSI-2 RMS spec (Table 49.27). Combined with
+     * ISC PACKED8 + BPS=FORTY this lands as dense BGR888 in DDR (3 B/pixel).
+     * LCDC reads natively in RGB_888_PACKED mode (memory order B, G, R per
+     * pixel — Table 44.26). 25% less DMA bandwidth than the RMS=0 / BGRX32
+     * path while preserving full RGB888 quality for vision consumers. */
+    CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt)
+                               | CSI2DC_VPCFGR_VC(vc)
+                               | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0)
+                               | CSI2DC_VPCFGR_RMS_1;
 }
 
 void CSI2DC_Enable_VideoPipe(void) {
