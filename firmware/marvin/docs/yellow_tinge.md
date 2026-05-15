@@ -1,8 +1,8 @@
 # Yellow-Tinge / Left-Half Artifact — Complete Analysis
 
-Working document collecting every test we've run against the yellow-tinge / left-half-of-overlay artifact on the SAM9X75 + 10.1" NVDI 1280×800 LVDS panel. Goal of this doc: avoid re-treading any of the tested ground; record the empirical results; identify the most-likely root cause; list the hardware mitigations worth trying.
+Working document collecting every test we've run against the yellow-tinge / left-half-of-overlay artifact on the SAM9X75 + 10.1" NVDI 1280×800 LVDS panel. Goal of this doc: avoid re-treading any of the tested ground; record the empirical results; identify the root cause; document the resolution.
 
-**Status (2026-05-15):** software config exhausted. Yellow remains. Hardware mitigation is the next move.
+**Status (2026-05-15): RESOLVED at 50 Hz.** Yellow is gone at **40, 45, 50, and 52 Hz**, present at 54 Hz, severe at 60 Hz. Threshold sits in the **razor-thin 52–54 Hz window** (427 → 444 MHz LVDS bit clock — only ~4% bit-rate gap separates clean from failing). Confirms the hypothesis: at 444 MHz the LVDS receiver was right at the edge of its eye-margin budget for this cable; modest EMI from overlay-layer DMA tipped it over. Backing off bit rate restores margin. **Production setting: 50 Hz** (~8% margin under the cliff, comfortable headroom without sacrificing visible refresh quality).
 
 ---
 
@@ -117,34 +117,87 @@ Why cable handling matters:
 
 Together: at the LVDSPLL bit clock (~444 MHz over 4 lanes carrying full 24-bit color × 60 Hz), we're operating at the edge of the cable's signal-integrity envelope. SoC internal noise from overlay rendering tips us over the edge for the left half of overlay regions specifically, and the cable's positioning determines how far over.
 
-## 5. What hasn't been tried (worth trying)
+## 5. Resolution: lower LVDSPLL → 40 Hz refresh
 
-### Hardware
-1. **Different LVDS cable** — shorter, better-shielded, rated for ≥ 500 Mbps/lane. The current cable is the prime suspect given the handling sensitivity.
-2. **Ferrite clamp** on the cable near the panel-end connector. Cuts coupled HF noise.
-3. **Cable shielding tweaks** — wrap the existing cable in foil/braid, ground to chassis, etc.
-4. **PCB respin** — shorter LVDS traces, ground stitching around the LVDSC pins, ferrite bead on `Vdd_LVDS` near the chip. Last resort.
+The "long shot" of reducing LVDSPLL turned out to be the actual fix. We swept frame rates 30 / 40 / 45 / 50 / 55 / 60 (each computed to keep the LVDSPLL VCO above the 600 MHz minimum) and observed:
 
-### Software (long shots, not yet tested)
-1. **Move overlay framebuffer to `.region_nocache`** — would eliminate any cache-snoop traffic that adds to the bus activity. CPU isn't writing the buffer in our use case so this should be transparent.
-2. **Disable HEO's combinatorial blocks more aggressively** — there may be control bits we haven't found that completely gate the scaler / CSC / etc. logic when not in use, reducing switching activity.
-3. **Reduce LVDSPLL slightly** — running below 444 MHz would lower bit clock and reduce edge density, but the panel may not lock cleanly below ~50 Hz refresh. We saw clear flicker at 175 MHz and clean at 444 MHz; finding the sweet spot would take experimentation.
+| Refresh | LVDSPLL | Bit clock per LVDS lane | Result |
+|---|---|---|---|
+| 30 Hz | 246.5 MHz | ~246 Mbps | Yellow gone, subtle flicker on bright content |
+| 40 Hz | 328.6 MHz | ~329 Mbps | Yellow gone, no flicker |
+| 45 Hz | 369.7 MHz | ~370 Mbps | Yellow gone, no flicker |
+| **50 Hz** ← chosen | **410.8 MHz** | **~411 Mbps** | **Yellow gone, no flicker — production setting** |
+| 52 Hz | 427.2 MHz | ~427 Mbps | Yellow gone, no flicker (closest clean) |
+| 54 Hz (was) | 444.5 MHz | ~444 Mbps | Yellow on overlay left half |
+| 60 Hz | 492.9 MHz | ~493 Mbps | **Significant yellow, much worse than 54 Hz** |
 
-## 6. References
+The yellow threshold is bracketed in the **razor-thin 52–54 Hz window** — only ~4% bit-rate spread separates clean from failing. Textbook signature of a marginal SI link operating right at its eye-budget cliff: until the eye closes past the receiver's threshold there's no visible degradation, then it falls off rapidly. Past the cliff, severity scales with how far over you push:
 
-- Microchip's `mgsh_sam9x7/mgs_quickstart/firmware/src/config/curiosity_nvdi_10_1inch/` — validated config for this exact panel. Uses BASE-only display (no overlay) and runs clean. Same LVDSPLL, same cable, same panel.
+- 52 Hz @ 427 Mbps = clean → ~4% margin under threshold (closest tested clean)
+- 50 Hz @ 411 Mbps = clean → ~8% margin (chosen production setting)
+- 45 Hz @ 370 Mbps = clean → ~17% margin
+- 40 Hz @ 329 Mbps = clean → ~26% margin
+- 30 Hz @ 246 Mbps = clean → ~45% margin (but slight flicker)
+- 54 Hz @ 444 Mbps = visible yellow → ~0% margin (just over the cliff)
+- **60 Hz @ 493 Mbps = severe yellow** → ~−10% margin (well past)
+
+The 60 Hz observation confirms the SI cliff is one-directional: pushing further past the threshold makes things worse fast. Beyond simple bit errors, the LVDS receiver may also be dropping into a degraded lock state where it's not fully recovering between symbols.
+
+Cable swap or hardware mitigations would push the ceiling up — but at 50 Hz with ~8% margin, we're comfortably below the cliff and haven't seen any new artifacts in extended testing. No further hardware work needed for this panel.
+
+### Production MCC values: 50 Hz
+
+Set in the **XLCDC Driver** MCC component (`le_gfx_driver_xlcdc.yml`):
+
+```
+LVDSClockMul       = 34
+LVDSClockFrac      = 964690
+LVDSClockDivPMC    = 2
+XLCDCPixClockHint  = 58680000
+LVDSClockOutHint   = 410760000
+```
+
+Verify: `24 × (34 + 964690/2²²) / 2 = 24 × 34.230 / 2 = 410.76 MHz` ✓
+- VCO `24 × 34.230 = 821.5 MHz` (above 600 MHz floor) ✓
+- LVDSPLL output `410.76 MHz`
+- Pixel clock `410.76 / 7 = 58.68 MHz`
+- Frame rate `58,680,000 / (1440 × 815) = 50.00 Hz` exactly
+
+### Alternative settings
+
+For reference if you ever want to back further off the cliff (slower refresh, more SI margin) — both confirmed clean:
+
+**45 Hz** — `Mul=30, Frac=3384800, DivPMC=2` → 369.68 MHz output, 17% margin
+**40 Hz** — `Mul=27, Frac=1610613, DivPMC=2` → 328.61 MHz output, 26% margin
+**30 Hz** — `Mul=41, Frac=318768, DivPMC=4` → 246.46 MHz output, 45% margin (subtle flicker on bright content)
+
+## 6. Why the panel + cable can't handle 444 MHz cleanly
+
+This is the actual root cause:
+
+- **Cable SI margin too tight at ~444 Mbps/lane.** Confirmed by physical-handling sensitivity — touching/repositioning the cable changes the artifact, which is the textbook signature of a marginally-failing differential pair. Likely the cable wasn't qualified for this rate, or the connector seating is slightly off.
+- **Overlay-layer rendering pushes EMI floor higher than BASE-only does.** Overlay's data path has scaler/CSC/blender combinatorial logic that toggles on every pixel, plus its DMA bursts are clumped within the overlay's x-window rather than spread across the line. Both increase peak switching activity and EMI relative to BASE.
+- **At 444 MHz bit clock, the marginal cable + elevated EMI floor combine to cross the bit-error threshold** specifically on the worst-case data patterns (long runs of high-density 1-bits, i.e. white pixels), and specifically on the bits that carry blue components (LVDS lane A2 in VESA mapping). That's the yellow tinge.
+- **At 328 MHz bit clock**, the eye opens by ~35% (proportional to bit period). The receiver gets enough margin to recover all bits cleanly, including the worst-case patterns. Yellow disappears.
+
+## 7. Future work (optional, not blocking)
+
+1. **Hardware: better cable** — would let us run higher refresh rates if needed. 60 Hz would be possible with a properly-rated cable. Not currently necessary.
+2. **Hardware: ferrite or shielding** — same goal. Not necessary at 40 Hz.
+3. **Software: reduce overlay EMI floor** — long shots if we want to push refresh higher without fixing the cable: move overlay buffer to `.region_nocache`, disable any HEO blocks we haven't yet, etc. None of these promise more than a small SI improvement.
+
+## 8. Why 40 Hz is fine
+
+- Panel locks cleanly with no visible flicker at this rate on our content (live camera feed + static UI elements).
+- Camera input is 60 fps, but display only needs to show "current frame" — 40 Hz LCDC refresh just means each captured frame is shown for at most 25 ms before the next refresh starts. Worst-case input-to-output latency is unchanged (the limiter is ISC writing into DDR at 60 fps).
+- DDR bandwidth needed by LCDC drops 33% (from `BASE + OVR1 read at 60 Hz` to `at 40 Hz`), freeing it for vision workloads.
+- 40 Hz is well above the 24 Hz cinema-rate baseline humans tolerate easily.
+
+## 9. References
+
+- Microchip's `mgsh_sam9x7/mgs_quickstart/firmware/src/config/curiosity_nvdi_10_1inch/` — validated config for this exact panel. Uses BASE-only display (no overlay) and runs clean at 444 MHz. Now we know why: BASE alone has lower EMI than BASE+overlay, so the cable SI margin holds even at the higher bit rate.
 - SAM9X7 Datasheet DS60001813 §44 (XLCDC) — layer config, blend factors, scaler use cases.
 - `firmware/marvin/docs/capture_pipeline.md` — capture-side pipeline reference.
 - `firmware/marvin/docs/display_path.md` — display-side wiring reference.
 - `firmware/marvin/docs/journal.md` — chronological log of every test session and decision.
 - `lcd` git branch — full commit history of all the experiments described here. Preserved as historical record.
-
-## 7. Practical takeaway
-
-For now, the system is in a clean architectural state on `bigteninch`:
-- BGR888 packed throughout (capture + display)
-- 25% less DDR pressure than the BGRX32 path
-- Full RGB888 quality preserved for vision
-- Yellow tinge present only in OVR1's display, not affecting vision data integrity
-
-The vision pipeline can proceed independently — vision algorithms read pristine RGB888 from DDR, unaffected by the display-side yellow. Display correctness for the user-facing UI is the only remaining concern, and that's a hardware-level fix (cable / ferrite / shielding).
