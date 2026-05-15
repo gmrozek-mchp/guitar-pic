@@ -535,18 +535,21 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **MCC-file modifications maintenance risk.** Two MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
-  1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
-  2. `plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR` set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config for this PLL. The change doesn't affect functional behavior in our use (50 Hz refresh works either way), but represents the manufacturer's recommended jitter/lock optimum for this fIN range. Re-apply after regen.
+- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. Re-apply after every regen:
+
+  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+
+  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+
+  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+
+  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
 
   Previously listed but now resolved or moot:
-  - ~~`plib_csi2dc.c` `CSI2DC_VPCFGR_RMS_1`~~ — was needed when we ran the RMS=0 + BGRX32 path; current pipeline is back to RMS=1 + RGB888-packed (commit `7da1faa`), which is already MCC's default. The current code's explicit `| CSI2DC_VPCFGR_RMS_1` matches MCC output; difference vs regen would be cosmetic only (comment block + line-break formatting).
   - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
   - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
 
-  Recovery plan: if the build breaks post-regen, re-apply the two listed (small, self-contained diffs in `plib_csi.c` and `plib_xlcdc.c`'s `PMC_PLL_ACR` write). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
-
-- **drv_image_sensor.h shim.** We keep a minimal enum-only shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` so `drv_isc.c` and `configuration.h` still compile after libcamera removal. MCC shouldn't touch this path since the image_sensor component is disabled, but worth a check if something weird happens.
+  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **TC358743 code comment discipline.** The current `tc358743.c` is ~1000 lines with decent inline comments per CLAUDE.md rules. When we revisit for Phase 6+, check that no comments have drifted into dev-diary territory.
 
@@ -561,6 +564,19 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-15 — Fresh MCC regen confirms 4 manual changes get clobbered
+
+Greg ran a from-scratch MCC code regeneration. Four local modifications were wiped:
+
+1. `plib_csi.c` — `CSI_Analog_Init` refactor (helper function + three bug fixes).
+2. `plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR = 0x12023010` reverted to MCC's default `LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`.
+3. `plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1` dropped. (Previously believed to be MCC's default; that note in the carry-forward list was wrong.)
+4. `drv_image_sensor.h` — entire shim file *deleted* by regen. Without it `drv_isc.c` and `configuration.h` don't compile.
+
+Carry-forward list in Open Questions corrected to enumerate all four. All four manually re-applied. MCC-side manifest files (`mcc-manifest-autosave.yml`, `mcc-manifest-generated-success.yml`, `harmony-manifest-success.yml`) staged from the regen.
+
+No functional change to the firmware vs the pre-regen baseline.
 
 ### 2026-05-14 (later) — Switch capture+display path to RGB888 packed; yellow not bandwidth-driven
 
