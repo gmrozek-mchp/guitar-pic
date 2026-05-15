@@ -132,8 +132,10 @@ void XLCDC_EnableClocks(void)
                              PMC_PLL_UPDT_ID(0x3);
 
     /* Set the analog controls to the values recommended in the data sheet */
-    PMC_REGS->PMC_PLL_ACR = PMC_PLL_ACR_LOOP_FILTER(0x1B) |
-                            PMC_PLL_ACR_LOCK_THR(0x4) |
+    PMC_REGS->PMC_PLL_ACR = PMC_PLL_ACR_LOOP_FILTER(0x12) |
+                            PMC_PLL_ACR_LOCK_THR(0x2) |
+                            PMC_PLL_ACR_UTMIBG(1) |
+                            PMC_PLL_ACR_UTMIVR(1) |
                             PMC_PLL_ACR_CONTROL(0x10);
 
     /* Set loop parameters for the fractional PLL */

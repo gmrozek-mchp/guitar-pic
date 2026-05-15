@@ -537,13 +537,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 - **MCC-file modifications maintenance risk.** Two MCC-generated files have local modifications that will be clobbered if MCC re-emits them:
   1. `plib_csi.c` — `CSI_Analog_Init` refactor (Lane 1 bit-rate write + Lane 2 addr typo + 3/4-lane Lane-1 skip).
-  2. `plib_csi2dc.c` — `CSI2DC_Configure_VideoPipe` does **not** OR in `CSI2DC_VPCFGR_RMS_1`. MCC default sets RMS=1, we need RMS=0 for the BGRX32 pipeline. If MCC regenerates, the `| CSI2DC_VPCFGR_RMS_1` will come back and capture output will silently shift to dense 3 B/pixel BGR layout — alpha lane disappears, frame size changes, display will show garbage.
+  2. `plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR` set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config for this PLL. The change doesn't affect functional behavior in our use (50 Hz refresh works either way), but represents the manufacturer's recommended jitter/lock optimum for this fIN range. Re-apply after regen.
 
-  Previously listed but now resolved (MCC config update on 2026-05-13):
-  - ~~`plib_xlcdc.c` LVDSPLL~~ — MCC now emits the correct `MUL=37-1, FRACR=174763, DIVPMC=2-1` (≈444 MHz) once the XLCDC driver MCC config was corrected. Our manual override is no longer needed; current file matches MCC's regenerated output.
-  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. Flicker is gone without it, so the original 444 MHz LVDSPLL was the sole load-bearing fix; DEN_POL wasn't relevant. File reverted to MCC default.
+  Previously listed but now resolved or moot:
+  - ~~`plib_csi2dc.c` `CSI2DC_VPCFGR_RMS_1`~~ — was needed when we ran the RMS=0 + BGRX32 path; current pipeline is back to RMS=1 + RGB888-packed (commit `7da1faa`), which is already MCC's default. The current code's explicit `| CSI2DC_VPCFGR_RMS_1` matches MCC output; difference vs regen would be cosmetic only (comment block + line-break formatting).
+  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
 
-  Recovery plan: if the build breaks post-regen, re-apply both (small, self-contained diffs documented in decision log). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+  Recovery plan: if the build breaks post-regen, re-apply the two listed (small, self-contained diffs in `plib_csi.c` and `plib_xlcdc.c`'s `PMC_PLL_ACR` write). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **drv_image_sensor.h shim.** We keep a minimal enum-only shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` so `drv_isc.c` and `configuration.h` still compile after libcamera removal. MCC shouldn't touch this path since the image_sensor component is disabled, but worth a check if something weird happens.
 
