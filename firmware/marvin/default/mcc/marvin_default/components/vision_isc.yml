@@ -44,8 +44,8 @@ data:
     - children:
       - attributes:
           id: vision_isc
-          x: '880'
-          y: '417'
+          x: '854'
+          y: '517'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

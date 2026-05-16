@@ -35,6 +35,24 @@ data:
             type: String
           type: Attributes
         type: DirectCapability
+      - attributes:
+          id: touch_panel
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: gfx_maxtouch_controller
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: touch_panel
+            type: String
+          type: Attributes
+        type: DirectCapability
       type: Attachments
     type: gfx_display_comp_nvdi_10_1in
   elementPosition:

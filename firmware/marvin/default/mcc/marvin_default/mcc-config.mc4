@@ -15,6 +15,7 @@ modules:
 - gfx_bridge_lvdsc_plib
 - gfx_display_comp_nvdi_10_1in
 - gfx_legato
+- gfx_maxtouch_controller
 - le_gfx_driver_xlcdc
 - le_gfx_gfx2d
 - plib_gfx2d
@@ -31,13 +32,13 @@ generatedFileHashHistoryMap:
 - file: ../src/app.h
   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
 - file: ../src/config/default/configuration.h
-  hash: 5fbd3f6484b529556406c636c322c5291fb8f2a77efb97a31a929388badc380f
+  hash: 7a663ff56a2b9cdf3234651fe389083a0575559576f620df253dfb649cf7f2f0
 - file: ../src/config/default/cstartup.S
   hash: bab52b245ee3ee78ff26156c06ac67761ea78039030859fa772ece111fd5dab3
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 3b2cf302206eb8dce9f449d7a3d5c3cdc69edffb07976340404e04103f6738be
+  hash: 90fc42c8deeda80f47fb73aedbd6029f490fb642a1215f3aa8b094df0501e574
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -54,6 +55,10 @@ generatedFileHashHistoryMap:
   hash: 34b5958374f95645872aecbb0eb393333e9bcdee0f00d087c69262a1cd527ed7
 - file: ../src/config/default/driver/i2c/src/drv_i2c_local.h
   hash: efe3b598a6fc3492f7f448c0077edcce4378d2029b5a26d304e0293e0d4711f7
+- file: ../src/config/default/driver/input/drv_maxtouch.c
+  hash: 0e813f3e408b6b8d68745248b71c7fa2e052d1fe53541d3fdfe675d79443991f
+- file: ../src/config/default/driver/input/drv_maxtouch.h
+  hash: 375f0ff61553b5486cbdc9447e45998c6aa003d3a3745cfc833ebf8de74c2ce9
 - file: ../src/config/default/fault_handlers.c
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
@@ -573,7 +578,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 19a8be9404c50332a57a05bbdea1e901d5b8b2a5e581a3d238989d8727c0f138
+  hash: c965fccb7f482672bb418fa87d644b3527560af1457c7b47f3f30685103c659c
 - file: ../src/config/default/interrupts.c
   hash: 3f257c1c617c901d65c7a959e95e16fa3baaacb7c3667d18059a321a4dbab6bf
 - file: ../src/config/default/interrupts.h
@@ -617,7 +622,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/pio/plib_pio.c
   hash: 99d6fc85b7e7285a08161842f1420930316d1395ea282f85f9260bad7d7b9950
 - file: ../src/config/default/peripheral/pio/plib_pio.h
-  hash: 945a4d7af5b41d5b1532bb0e59ed70c6c56c8bec3e14713e6aa6b94c37ee34c0
+  hash: 51578e715c40c64ccf026cc680d73e411d070f09106462fe9e48398ca57d53c1
 - file: ../src/config/default/peripheral/tc/plib_tc0.c
   hash: e1ac548e92a3347891aac4b309ed496d2162ded50619f871069d6e3175496fb8
 - file: ../src/config/default/peripheral/tc/plib_tc0.h
@@ -631,7 +636,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
   hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
-  hash: d34f0a32f506f0700bdbee887a6e5fb04dff0f7c69c450b78888fde29a6a7fce
+  hash: 7a02d30f8ebb662c255bde2d2bb4bbf635a4a5465ea676241e30a38c5c03961e
 - file: ../src/config/default/stdio/xc32_monitor.c
   hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/sys_tasks.h
@@ -679,7 +684,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 648b9ad8eb6cc04ee90164f1f3c85b83c3f68db648507b4aa45e860462eefaba
+  hash: 72e61d4787ea529772166182d119590b00b6d4696c5706f3aebc64ffd2fd570f
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/user.h

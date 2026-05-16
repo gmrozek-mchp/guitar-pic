@@ -134,6 +134,15 @@
 #define AC69T88A_DISP_Get()               ((PIOA_REGS->PIO_PDSR >> 17U) & 0x1U)
 #define AC69T88A_DISP_PIN                  PIO_PIN_PA17
 
+/*** Macros for BSP_MAXTOUCH_CHG pin ***/
+#define BSP_MAXTOUCH_CHG_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<20U))
+#define BSP_MAXTOUCH_CHG_Clear()             (PIOA_REGS->PIO_CODR = ((uint32_t)1U<<20U))
+#define BSP_MAXTOUCH_CHG_Toggle()            (PIOA_REGS->PIO_ODSR ^= ((uint32_t)1U<<20U))
+#define BSP_MAXTOUCH_CHG_OutputEnable()      (PIOA_REGS->PIO_OER = ((uint32_t)1U<<20U))
+#define BSP_MAXTOUCH_CHG_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<20U))
+#define BSP_MAXTOUCH_CHG_Get()               ((PIOA_REGS->PIO_PDSR >> 20U) & 0x1U)
+#define BSP_MAXTOUCH_CHG_PIN                  PIO_PIN_PA20
+
 
 // *****************************************************************************
 /* PIO Port

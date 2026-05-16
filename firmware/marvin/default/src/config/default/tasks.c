@@ -80,6 +80,9 @@ void SYS_Tasks ( void )
     DRV_XLCDC_Update();
 
 
+    DRV_MAXTOUCH_Tasks(sysObj.drvMAXTOUCH);
+
+
 
     /* Maintain Middleware & Other Libraries */
     

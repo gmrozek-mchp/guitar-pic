@@ -22,8 +22,8 @@ data:
     - children:
       - attributes:
           id: sys_input
-          x: '25'
-          y: '403'
+          x: '581'
+          y: '307'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

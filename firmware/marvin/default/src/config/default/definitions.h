@@ -65,6 +65,7 @@
 #include "gfx/driver/processor/gfx2d/drv_gfx2d.h"
 #include "peripheral/dbgu/plib_dbgu.h"
 #include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
+#include "driver/input/drv_maxtouch.h"
 #include "system/int/sys_int.h"
 #include "system/cache/sys_cache.h"
 #include "osal/osal.h"
@@ -204,6 +205,8 @@ typedef struct
     SYS_MODULE_OBJ drvI2C0;
 
     SYS_MODULE_OBJ  sysTime;
+    SYS_MODULE_OBJ  drvMAXTOUCH;
+
 
 } SYSTEM_OBJECTS;
 

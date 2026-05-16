@@ -136,6 +136,19 @@ static const DRV_I2C_INIT drvI2C0InitData =
 };
 // </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="DRV_INPUT_MXT336T Initialization Data">
+/*** MaxTouch Driver Initialization Data ***/
+const DRV_MAXTOUCH_INIT drvMAXTOUCHInitData =
+{
+    .drvOpen                     = DRV_I2C_Open,
+    .drvClose                    = DRV_I2C_Close,
+    .orientation                 = 0,
+    .horizontalResolution        = 1280,
+    .verticalResolution          = 800,
+};
+
+// </editor-fold>
+
 
 
 
@@ -331,6 +344,9 @@ void SYS_Initialize ( void* data )
     LVDSC_Initialize();
 
     DRV_GFX2D_Initialize();
+
+
+    sysObj.drvMAXTOUCH = DRV_MAXTOUCH_Initialize(0, (SYS_MODULE_INIT *)&drvMAXTOUCHInitData);
 
 
     /* MISRA C-2023 Rule 11.3, 11.8 deviated below. Deviation record ID -

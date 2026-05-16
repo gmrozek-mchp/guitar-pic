@@ -532,7 +532,9 @@
                 "default/src/config/default/gfx/legato/generated/le_gen_stringtable.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h",
-                "default/src/config/default/gfx/legato/legato_config.h"
+                "default/src/config/default/gfx/legato/legato_config.h",
+                "default/src/config/default/driver/input/drv_maxtouch.h",
+                "default/src/config/default/driver/input/drv_maxtouch.c"
             ]
         }
     ]

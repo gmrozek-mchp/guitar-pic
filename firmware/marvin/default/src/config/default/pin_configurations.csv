@@ -100,7 +100,7 @@ T8,PB11,,Available,In,,,,,,,,
 T9,PA1,,Available,In,,,,,,,,
 T10,PA15,,Available,In,,,,,,,,
 T11,PA9,,Available,In,,,,,,,,
-U7,PA20,,Available,In,,,,,,,,
+U7,PA20,BSP_MAXTOUCH_CHG,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low
 U8,PA16,,Available,In,,,,,,,,
 U9,PA23,,Available,In,,,,,,,,
 U10,PA22,,Available,In,,,,,,,,
