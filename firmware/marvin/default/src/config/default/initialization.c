@@ -306,12 +306,12 @@ void SYS_Initialize ( void* data )
     /* Disable WDT   */
     WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
 
-    FLEXCOM6_TWI_Initialize();
-
  
     TC0_CH0_TimerInitialize(); 
      
     
+    FLEXCOM6_TWI_Initialize();
+
     XLCDC_Initialize();
 
     DBGU_Initialize();
@@ -339,6 +339,12 @@ void SYS_Initialize ( void* data )
     sysObj.sysTime = SYS_TIME_Initialize(SYS_TIME_INDEX_0, (SYS_MODULE_INIT *)&sysTimeInitData);
 
     /* MISRAC 2012 deviation block end */
+
+    SYS_INP_Init();
+
+
+    // initialize UI library
+    Legato_Initialize();
 
 
     /* MISRAC 2023 deviation block end */

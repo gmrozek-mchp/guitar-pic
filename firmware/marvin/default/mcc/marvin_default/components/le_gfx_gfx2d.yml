@@ -35,6 +35,24 @@ data:
             type: String
           type: Attributes
         type: DirectDependency
+      - attributes:
+          id: LE GPU Driver
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: gfx_legato
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: gpu_driver
+            type: String
+          type: Attributes
+        type: DirectCapability
       type: Attachments
     type: le_gfx_gfx2d
   elementPosition:

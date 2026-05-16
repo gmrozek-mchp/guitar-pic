@@ -47,6 +47,24 @@ data:
             type: String
           type: Attributes
         type: DirectDependency
+      - attributes:
+          id: le_gfx_xlcdc_cap
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: gfx_legato
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: gfx_driver
+            type: String
+          type: Attributes
+        type: DirectCapability
       type: Attachments
     type: le_gfx_driver_xlcdc
   elementPosition:

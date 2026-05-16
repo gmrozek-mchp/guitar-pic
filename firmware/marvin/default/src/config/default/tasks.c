@@ -83,6 +83,12 @@ void SYS_Tasks ( void )
 
     /* Maintain Middleware & Other Libraries */
     
+    Legato_Tasks();
+
+
+    SYS_INP_Tasks();
+
+
 
     /* Maintain the application's state machine. */
         /* Call Application task APP. */
