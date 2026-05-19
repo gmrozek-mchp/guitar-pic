@@ -30,6 +30,9 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "FreeRTOS.h"
+#include "task.h"
+
 #include "app.h"
 #include "definitions.h"
 #include "video/video.h"
@@ -123,20 +126,11 @@ void APP_Initialize ( void )
 
 void APP_Tasks ( void )
 {
-    /* Application-level state machine. Currently empty — video handling is
-     * in its own task (video/video.c). Add non-video app behavior here. */
-    switch ( appData.state )
-    {
-        case APP_STATE_INIT:
-            appData.state = APP_STATE_SERVICE_TASKS;
-            break;
-
-        case APP_STATE_SERVICE_TASKS:
-            break;
-
-        default:
-            break;
-    }
+    /* APP is a one-shot launcher — task creation happened in APP_Initialize.
+     * Self-delete here so the (1024-word) stack and TCB are released to the
+     * idle task. The MCC-generated lAPP_Tasks loop will not iterate again
+     * because vTaskDelete(NULL) never returns to its caller. */
+    vTaskDelete(NULL);
 }
 
 
