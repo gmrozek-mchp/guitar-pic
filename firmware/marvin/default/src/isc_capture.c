@@ -223,7 +223,6 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
 
 bool ISC_Capture_Start(void)
 {
-    diag_dump_rx("pre-start");
     if (!DRV_ISC_Start_Capture(iscObj))
     {
         printf("ISC_Capture: DRV_ISC_Start_Capture failed\r\n");

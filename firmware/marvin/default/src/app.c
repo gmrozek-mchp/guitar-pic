@@ -98,30 +98,16 @@ APP_DATA appData;
 #define LCD_PANEL_W  1280u
 #define LCD_PANEL_H  800u
 
-void APP_Initialize ( void )
+typedef enum
 {
-    /* Place the App state machine in its initial state. */
-    appData.state = APP_STATE_INIT;
+    VIDEO_STATE_NONE = 0,
+    VIDEO_STATE_ACTIVE,
+} video_state_t;
 
-    ISC_Capture_Initialize();
-    TC358743_Initialize();
-
-    XLCDC_EnableBacklight();
-}
-
-
-/******************************************************************************
-  Function:
-    void APP_Tasks ( void )
-
-  Remarks:
-    See prototype in app.h.
- */
-
-/* Point LCDC HEO at the capture framebuffer, centered within the 1280x800
- * panel. HEO (not BASE) because BASE has no window position/size registers —
- * always full-panel, so a 720-wide source on BASE gets read at panel-wide
- * stride and smears line-to-line.
+/* Point LCDC HEO at the capture framebuffer at the caller-specified
+ * (xpos, ypos) within the 1280x800 panel. HEO (not BASE) because BASE has
+ * no window position/size registers — always full-panel, so a 720-wide
+ * source on BASE gets read at panel-wide stride and smears line-to-line.
  *
  * RGB_888_PACKED on SAM9X75 LCDC reads memory in B, G, R order per pixel
  * (3 B/pixel dense — Table 44.26), exactly matching the CSI2DC RMS=1 +
@@ -131,18 +117,17 @@ void APP_Initialize ( void )
  * HEOCFG4 (source memory size) to the same value, giving 1:1 with the
  * scaler at its default 0x100000 factor — no scaling needed for native
  * 720x480 → 720x480 display. */
-static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
+static void lcd_bind_capture(uint32_t src_w, uint32_t src_h,
+                             uint32_t xpos, uint32_t ypos)
 {
-    if (src_w > LCD_PANEL_W || src_h > LCD_PANEL_H)
+    if (xpos + src_w > LCD_PANEL_W || ypos + src_h > LCD_PANEL_H)
     {
-        printf("LCD: source %lux%lu exceeds panel %ux%u; skipping bind\r\n",
+        printf("LCD: window %lux%lu @(%lu,%lu) exceeds panel %ux%u; skipping bind\r\n",
                (unsigned long)src_w, (unsigned long)src_h,
+               (unsigned long)xpos, (unsigned long)ypos,
                LCD_PANEL_W, LCD_PANEL_H);
         return;
     }
-
-    uint32_t xpos = 280;
-    uint32_t ypos = 76;
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
@@ -165,6 +150,11 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
                               | LCDC_BASECFG6_DISCYSIZE(src_h - 1u);
     XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
 
+    /* BASECFG4-6 are double-buffered; the writes above don't take effect
+     * until BASE's attribute update is triggered. The two SetLayerEnable
+     * calls below trigger HEO and BASE updates atomically on the next
+     * vsync, so the new HEO geometry and BASE DISCEN window switch in
+     * together. */
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
     XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
 
@@ -175,34 +165,96 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
            (unsigned long)xpos, (unsigned long)ypos);
 }
 
+/* Hide HEO and let BASE (Legato UI) fill the whole panel. */
+static void lcd_unbind_capture(void)
+{
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+}
+
+void APP_Initialize ( void )
+{
+    /* Place the App state machine in its initial state. */
+    appData.state = APP_STATE_INIT;
+
+    ISC_Capture_Initialize();
+    TC358743_Initialize();
+
+    XLCDC_EnableBacklight();
+
+    /* UI-only display from boot: HEO off, BASE owns full panel. The video
+     * path will rebind HEO once a source is detected. */
+    lcd_unbind_capture();
+}
+
+
+/******************************************************************************
+  Function:
+    void APP_Tasks ( void )
+
+  Remarks:
+    See prototype in app.h.
+ */
+
+static bool video_try_start(void)
+{
+    uint16_t w = 0, h = 0;
+    if (!TC358743_GetDetectedFormat(&w, &h)) { return false; }
+
+    /* Pre-condition: bridge is stream-off with lanes parked in LP-11.
+     * That holds at boot (init never enables stream) and after every
+     * video_stop (TC358743_EnableStream(false) rebuilds the CSI-TX
+     * block and parks the lanes — see tc358743_enable_stream). So we
+     * can configure host RX directly, then the EnableStream(true)
+     * below produces the LP11→HS edge that the PFE needs. */
+    if (!ISC_Capture_Configure(w, h)) { return false; }
+    /* Layout: video anchored 76 px from top, horizontally centered. Leaves
+     * a UI strip below the video on the 1280x800 panel. */
+    uint32_t xpos = (LCD_PANEL_W > w) ? (LCD_PANEL_W - w) / 2u : 0u;
+    uint32_t ypos = 76u;
+    lcd_bind_capture(w, h, xpos, ypos);
+    (void)TC358743_EnableStream(true);
+    if (!ISC_Capture_Start())
+    {
+        (void)TC358743_EnableStream(false);
+        lcd_unbind_capture();
+        return false;
+    }
+    printf("APP: video ACTIVE %ux%u\r\n", w, h);
+    return true;
+}
+
+static void video_stop(void)
+{
+    ISC_Capture_Stop();
+    (void)TC358743_EnableStream(false);
+    lcd_unbind_capture();
+    printf("APP: video NONE\r\n");
+}
+
 static void app_coordinate_capture(void)
 {
-    static bool capture_attempted = false;
+    static video_state_t state = VIDEO_STATE_NONE;
 
-    bool now_locked = TC358743_IsLocked();
-    if (now_locked && !capture_attempted)
+    bool locked = TC358743_IsLocked();
+
+    switch (state)
     {
-        uint16_t w = 0, h = 0;
-        if (TC358743_GetDetectedFormat(&w, &h))
-        {
-            /* RX side ready first, then start source transmit, then arm ISC.
-             * Mirrors emirror's working CAMERA_Open + CAMERA_Start_Capture
-             * ordering. CSI-RX must be configured before TC358743's stream
-             * enable so the D-PHY catches the LP11->HS edge. */
-            if (ISC_Capture_Configure(w, h))
+        case VIDEO_STATE_NONE:
+            if (locked && video_try_start())
             {
-                lcd_bind_capture(w, h);
-                (void)TC358743_EnableStream(true);
-                (void)ISC_Capture_Start();
+                state = VIDEO_STATE_ACTIVE;
             }
-            capture_attempted = true;
-        }
-    }
-    else if (!now_locked && capture_attempted)
-    {
-        ISC_Capture_Stop();
-        (void)TC358743_EnableStream(false);
-        capture_attempted = false;
+            break;
+
+        case VIDEO_STATE_ACTIVE:
+            if (!locked)
+            {
+                video_stop();
+                state = VIDEO_STATE_NONE;
+            }
+            break;
     }
 }
 

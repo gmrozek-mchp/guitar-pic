@@ -191,6 +191,11 @@
 #define MASK_S_RXACT            0x0100u
 #define MASK_S_HLT              0x0001u
 
+/* Set to 1 to print bridge config registers (CONFCTL/FIFOCTL/CSI_STATUS/
+ * CSI_ERR/VOUT_SET2/VOUT_SET3/VI_REP) every time a format is detected.
+ * Off by default — useful for diagnosing format-detection regressions. */
+#define TC358743_VERBOSE_FORMAT_DUMP 0
+
 #define STATUS_POLL_MS          100u
 
 #define DDC5V_DELAY_100_MS      2u
@@ -838,10 +843,24 @@ static bool tc358743_enable_stream(bool enable)
             return false;
         }
     }
-    return tc358743_wr16_and_or(
-        CONFCTL,
-        (uint16_t)~(MASK_VBUFEN | MASK_ABUFEN),
-        enable ? (uint16_t)(MASK_VBUFEN | MASK_ABUFEN) : 0u);
+    if (!tc358743_wr16_and_or(
+            CONFCTL,
+            (uint16_t)~(MASK_VBUFEN | MASK_ABUFEN),
+            enable ? (uint16_t)(MASK_VBUFEN | MASK_ABUFEN) : 0u))
+    {
+        return false;
+    }
+    /* On stream-off, re-run the full CSI-TX block setup to park the lanes
+     * in LP-11 cleanly. Mirrors the Linux driver's tc358743_s_stream
+     * (drivers/media/i2c/tc358743.c — "Put all lanes in LP-11 state"
+     * comment after enable_stream(false)). Without this the CSI-TX state
+     * machine stays in whatever state the abrupt input loss left it,
+     * and the next stream-on never produces packets the host can decode. */
+    if (!enable)
+    {
+        if (!tc358743_set_csi()) { return false; }
+    }
+    return true;
 }
 
 static const char *color_space_name(uint8_t cs)
@@ -898,8 +917,11 @@ static bool read_detected_format(uint16_t *width, uint16_t *height)
            (unsigned)htot, (unsigned)vtot,
            vi1, vi3);
 
+#if TC358743_VERBOSE_FORMAT_DUMP
     /* Bridge CSI-TX + FIFO + HDMI-detect config snapshot — catches
-     * bridge-side narrowing (FIFO underrun, HDMI_DET mode, CSI_ERR). */
+     * bridge-side narrowing (FIFO underrun, HDMI_DET mode, CSI_ERR).
+     * Disabled by default; flip TC358743_VERBOSE_FORMAT_DUMP to 1 if a
+     * format-detection regression needs investigation. */
     uint8_t  vi_mode = 0, hdmi_det = 0;
     uint16_t confctl = 0, fifoctl = 0;
     uint32_t csi_status = 0, csi_err = 0;
@@ -915,15 +937,13 @@ static bool read_detected_format(uint16_t *width, uint16_t *height)
     printf("TC358743:   CSI_STATUS=0x%08lX CSI_ERR=0x%08lX\r\n",
            (unsigned long)csi_status, (unsigned long)csi_err);
 
-    /* VOUT_SET2/SET3/VI_REP governs output format including pixel-repetition
-     * de-replication. IN_REP bits in VI_REP low nibble + IN_REP_HEN (bit 4)
-     * could be causing horizontal halving if misconfigured. */
     uint8_t vout_set2 = 0, vout_set3 = 0, vi_rep = 0;
     (void)tc358743_rd8(VOUT_SET2, &vout_set2);
     (void)tc358743_rd8(VOUT_SET3, &vout_set3);
     (void)tc358743_rd8(VI_REP,    &vi_rep);
     printf("TC358743:   VOUT_SET2=0x%02X VOUT_SET3=0x%02X VI_REP=0x%02X\r\n",
            (unsigned)vout_set2, (unsigned)vout_set3, (unsigned)vi_rep);
+#endif
 
     s_detectedWidth  = w;
     s_detectedHeight = h;
