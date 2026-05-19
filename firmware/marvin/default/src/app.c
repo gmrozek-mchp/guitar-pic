@@ -98,8 +98,18 @@ void APP_Initialize ( void )
     /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
      * the task runs once the scheduler picks it up. The video module owns
      * its capture-pipeline init (ISC, TC358743, backlight, HEO unbind),
-     * the NONE↔ACTIVE state machine, and the bridge-status polling. */
+     * the capture/display state machine, and the bridge-status polling. */
     Video_Initialize();
+
+    /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
+     * panel — 1:1 with the bridge's typical 480p source, leaves a UI
+     * strip below. Set before DisplayShow; the video module has no
+     * default window of its own. */
+    Video_SetWindow(280u, 76u, 720u, 480u);
+
+    /* Default: arm the capture chain when source locks, and show video. */
+    Video_CaptureEnable();
+    Video_DisplayShow();
 }
 
 

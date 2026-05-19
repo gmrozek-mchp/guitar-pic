@@ -33,10 +33,21 @@ static DRV_ISC_OBJ*    iscObj;
 static volatile uint32_t g_frame_count;
 static bool              g_running;
 
+static volatile ISC_Capture_FrameCallback s_frame_cb;
+static volatile uintptr_t                 s_frame_ctx;
+
 static void isc_frame_done(uintptr_t ctx)
 {
     (void)ctx;
     g_frame_count++;
+    ISC_Capture_FrameCallback cb = s_frame_cb;
+    if (cb != NULL) { cb(g_frame_count, s_frame_ctx); }
+}
+
+void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx)
+{
+    s_frame_ctx = ctx;
+    s_frame_cb  = cb;
 }
 
 void ISC_Capture_Initialize(void)

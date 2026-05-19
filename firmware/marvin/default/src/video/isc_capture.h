@@ -20,6 +20,12 @@ bool     ISC_Capture_IsRunning(void);
  * tear-tolerant read-only display, pointing at buffer 0 alone is fine. */
 uint32_t ISC_Capture_GetBufferAddress(void);
 
+/* Frame-done callback fires from the ISC DMA-done IRQ each time a frame
+ * is written to DDR. Pass NULL to unregister. Single subscriber only;
+ * intended caller is the video module. Runs in IRQ context. */
+typedef void (*ISC_Capture_FrameCallback)(uint32_t frame_count, uintptr_t ctx);
+void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx);
+
 #ifdef __cplusplus
 }
 #endif
