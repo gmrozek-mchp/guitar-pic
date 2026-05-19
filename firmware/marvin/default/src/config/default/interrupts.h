@@ -56,12 +56,14 @@
 // Section: Handler Routines
 // *****************************************************************************
 // *****************************************************************************
+void SYSC_SharedHandler (void);
 void FLEXCOM6_InterruptHandler (void);
 void TC0_InterruptHandler (void);
 void XDMAC_InterruptHandler (void);
 void ISC_Handler (void);
 void CSI2DC_Handler (void);
 
+void PIT_InterruptHandler (void);
 
 /* Interrupt Handler for spurious interrupts */
 void SPURIOUS_INTERRUPT_Handler (void);

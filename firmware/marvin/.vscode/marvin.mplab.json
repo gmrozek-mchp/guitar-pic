@@ -42,13 +42,17 @@
                     "default/mcc",
                     "default/src",
                     "default/src/config/default",
-                    "default/src/packs/SAM9X75D2G_DFP"
+                    "default/src/packs/SAM9X75D2G_DFP",
+                    "default/src/third_party/rtos/FreeRTOS/Source/include",
+                    "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926"
                 ],
                 "compiler++.extra-include-directories": [
                     "default/mcc",
                     "default/src",
                     "default/src/config/default",
-                    "default/src/packs/SAM9X75D2G_DFP"
+                    "default/src/packs/SAM9X75D2G_DFP",
+                    "default/src/third_party/rtos/FreeRTOS/Source/include",
+                    "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926"
                 ]
             }
         }
@@ -217,7 +221,6 @@
                 "default/src/config/default/system/cache/sys_cache.c",
                 "default/src/config/default/osal/osal.h",
                 "default/src/config/default/osal/osal_definitions.h",
-                "default/src/config/default/osal/osal_impl_basic.h",
                 "default/src/app.c",
                 "default/src/app.h",
                 "default/src/config/default/user.h",
@@ -231,10 +234,6 @@
                 "default/src/config/default/system/system_common.h",
                 "default/src/config/default/system/system_module.h",
                 "default/src/config/default/system/debug/sys_debug.h",
-                "default/src/config/default/system/time/sys_time.h",
-                "default/src/config/default/system/time/sys_time_definitions.h",
-                "default/src/config/default/system/time/src/sys_time.c",
-                "default/src/config/default/system/time/src/sys_time_local.h",
                 "default/src/config/default/system/input/sys_input.h",
                 "default/src/config/default/system/input/sys_input_gesture.h",
                 "default/src/config/default/system/input/sys_input_keyboard.h",
@@ -534,7 +533,46 @@
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h",
                 "default/src/config/default/gfx/legato/legato_config.h",
                 "default/src/config/default/driver/input/drv_maxtouch.h",
-                "default/src/config/default/driver/input/drv_maxtouch.c"
+                "default/src/config/default/driver/input/drv_maxtouch.c",
+                "default/src/config/default/peripheral/pit/plib_pit.h",
+                "default/src/config/default/peripheral/pit/plib_pit.c",
+                "default/src/config/default/FreeRTOSConfig.h",
+                "default/src/config/default/freertos_hooks.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/croutine.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/list.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/queue.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/timers.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/event_groups.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/stream_buffer.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/portable/MemMang/heap_1.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/croutine.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/event_groups.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/FreeRTOS.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/list.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/mpu_wrappers.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/portable.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/projdefs.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/queue.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/semphr.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/stack_macros.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/deprecated_definitions.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/task.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/timers.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/mpu_prototypes.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/mpu_syscall_numbers.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/stream_buffer.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/include/message_buffer.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926/port.c",
+                "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926/portASM.S",
+                "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926/portmacro.h",
+                "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926/FreeRTOS_tick_config.c",
+                "default/src/config/default/osal/osal_freertos.h",
+                "default/src/config/default/osal/osal_freertos.c",
+                "default/src/config/default/system/time/sys_time.h",
+                "default/src/config/default/system/time/sys_time_definitions.h",
+                "default/src/config/default/system/time/src/sys_time.c",
+                "default/src/config/default/system/time/src/sys_time_local.h"
             ]
         }
     ]

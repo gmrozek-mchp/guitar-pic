@@ -44,12 +44,23 @@ data:
     - children:
       - attributes:
           id: sys_time
-          x: '697'
-          y: '28'
+          x: '875'
+          y: '52'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
   symbols:
+    SYS_TIME_REMOTE_COMPONENT_ID:
+      attributes:
+        id: SYS_TIME_REMOTE_COMPONENT_ID
+      children:
+      - children:
+        - attributes:
+            id: sys_time
+            value: ''
+          type: Dynamic
+        type: Values
+      type: String
     SYS_TIME_PLIB:
       attributes:
         id: SYS_TIME_PLIB
@@ -58,17 +69,6 @@ data:
         - attributes:
             id: sys_time
             value: TC0
-          type: Dynamic
-        type: Values
-      type: String
-    SYS_TIME_REMOTE_COMPONENT_ID:
-      attributes:
-        id: SYS_TIME_REMOTE_COMPONENT_ID
-      children:
-      - children:
-        - attributes:
-            id: sys_time
-            value: tc0
           type: Dynamic
         type: Values
       type: String

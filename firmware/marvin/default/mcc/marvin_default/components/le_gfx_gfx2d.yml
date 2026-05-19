@@ -67,5 +67,16 @@ data:
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
-  symbols: {}
+  symbols:
+    DRV_GFX2D_MODE:
+      attributes:
+        id: DRV_GFX2D_MODE
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_gfx2d
+            value: Synchronous
+          type: Dynamic
+        type: Values
+      type: Combo
   userData: {}

@@ -509,7 +509,7 @@ bool DRV_I2C_TransferSetup( const DRV_HANDLE handle, DRV_I2C_TRANSFER_SETUP* set
 
 // *****************************************************************************
 /* Function:
-    DRV_I2C_ERROR DRV_I2C_ErrorGet( const DRV_I2C_TRANSFER_HANDLE transferHandle )
+    DRV_I2C_ERROR DRV_I2C_ErrorGet( const DRV_HANDLE drvHandle )
 
    Summary:
     Gets the I2C hardware errors associated with the the transfer request.
@@ -522,7 +522,7 @@ bool DRV_I2C_TransferSetup( const DRV_HANDLE handle, DRV_I2C_TRANSFER_SETUP* set
     DRV_I2C_Open must have been called to obtain a valid opened device handle.
 
    Parameters:
-    transferHandle - A valid handle to the transfer request.
+    drvHandle - A valid handle to the driver instance.
 
    Returns:
     Errors occurred as listed by DRV_I2C_ERROR.
@@ -531,7 +531,7 @@ bool DRV_I2C_TransferSetup( const DRV_HANDLE handle, DRV_I2C_TRANSFER_SETUP* set
   Example:
     <code>
 
-    if (DRV_I2C_ErrorGet(bufferHandle) == DRV_I2C_ERROR_NACK)
+    if (DRV_I2C_ErrorGet(drvHandle) == DRV_I2C_ERROR_NACK)
     {
 
     }
@@ -541,7 +541,7 @@ bool DRV_I2C_TransferSetup( const DRV_HANDLE handle, DRV_I2C_TRANSFER_SETUP* set
     The driver clears all the errors internally.
 */
 
-DRV_I2C_ERROR DRV_I2C_ErrorGet( const DRV_I2C_TRANSFER_HANDLE transferHandle );
+DRV_I2C_ERROR DRV_I2C_ErrorGet( const DRV_HANDLE drvHandle);
 
 // *****************************************************************************
 // *****************************************************************************

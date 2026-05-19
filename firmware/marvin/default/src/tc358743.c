@@ -205,7 +205,6 @@
 #define PLL_SETTLE_US           10u
 
 #define TC358743_TX_BUF_SIZE    132u
-#define TC358743_RX_BUF_SIZE    4u
 
 #define EDID_BLOCK_SIZE         128u
 #define EDID_BLOCK_COUNT        2u
@@ -217,29 +216,10 @@
 
 static DRV_HANDLE       i2cHandle = DRV_HANDLE_INVALID;
 static uint8_t          txBuf[TC358743_TX_BUF_SIZE];
-static uint8_t          rxBuf[TC358743_RX_BUF_SIZE];
-static volatile bool    xferDone;
-static volatile bool    xferErr;
 
 static volatile uint8_t  s_sysStatus      = 0u;
 static volatile uint16_t s_detectedWidth  = 0u;
 static volatile uint16_t s_detectedHeight = 0u;
-
-static void TransferEventHandler(DRV_I2C_TRANSFER_EVENT event,
-                                 DRV_I2C_TRANSFER_HANDLE transferHandle,
-                                 uintptr_t context)
-{
-    (void)transferHandle;
-    (void)context;
-    if (event == DRV_I2C_TRANSFER_EVENT_COMPLETE) { xferDone = true; }
-    else { xferErr = true; }
-}
-
-static bool wait_xfer(void)
-{
-    while (!xferDone && !xferErr) { }
-    return xferDone;
-}
 
 static bool delay_ms(uint32_t ms)
 {
@@ -259,39 +239,23 @@ static bool delay_us(uint32_t us)
 
 static bool tc358743_wr(uint16_t reg, const uint8_t *vals, size_t n)
 {
-    DRV_I2C_TRANSFER_HANDLE th = DRV_I2C_TRANSFER_HANDLE_INVALID;
-
     if (n + 2u > TC358743_TX_BUF_SIZE) { return false; }
 
     txBuf[0] = (uint8_t)(reg >> 8);
     txBuf[1] = (uint8_t)(reg & 0xFFu);
     for (size_t i = 0; i < n; i++) { txBuf[2u + i] = vals[i]; }
 
-    xferDone = false;
-    xferErr  = false;
-    DRV_I2C_WriteTransferAdd(i2cHandle, TC358743_I2C_ADDR, txBuf, n + 2u, &th);
-    if (th == DRV_I2C_TRANSFER_HANDLE_INVALID) { return false; }
-    return wait_xfer();
+    return DRV_I2C_WriteTransfer(i2cHandle, TC358743_I2C_ADDR,
+                                 txBuf, n + 2u);
 }
 
 static bool tc358743_rd(uint16_t reg, uint8_t *vals, size_t n)
 {
-    DRV_I2C_TRANSFER_HANDLE th = DRV_I2C_TRANSFER_HANDLE_INVALID;
-
-    if (n > TC358743_RX_BUF_SIZE) { return false; }
-
     txBuf[0] = (uint8_t)(reg >> 8);
     txBuf[1] = (uint8_t)(reg & 0xFFu);
 
-    xferDone = false;
-    xferErr  = false;
-    DRV_I2C_WriteReadTransferAdd(i2cHandle, TC358743_I2C_ADDR,
-                                 txBuf, 2u, rxBuf, n, &th);
-    if (th == DRV_I2C_TRANSFER_HANDLE_INVALID) { return false; }
-    if (!wait_xfer()) { return false; }
-
-    for (size_t i = 0; i < n; i++) { vals[i] = rxBuf[i]; }
-    return true;
+    return DRV_I2C_WriteReadTransfer(i2cHandle, TC358743_I2C_ADDR,
+                                     txBuf, 2u, vals, n);
 }
 
 static bool tc358743_wr8(uint16_t reg, uint8_t val)
@@ -777,7 +741,6 @@ void TC358743_Initialize(void)
         printf("TC358743: DRV_I2C_Open failed\r\n");
         return;
     }
-    DRV_I2C_TransferEventHandlerSet(i2cHandle, TransferEventHandler, 0);
 
     printf("TC358743: probe starting\r\n");
 

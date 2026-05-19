@@ -44,8 +44,8 @@ data:
     - children:
       - attributes:
           id: tc0
-          x: '531'
-          y: '44'
+          x: '702'
+          y: '122'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
@@ -116,39 +116,6 @@ data:
           type: Dynamic
         type: Values
       type: String
-    SYS_TIME_COMPONENT_ID:
-      attributes:
-        id: SYS_TIME_COMPONENT_ID
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: sys_time
-          type: Dynamic
-        type: Values
-      type: String
-    SYS_TIME_PLIB_OPERATION_MODE:
-      attributes:
-        id: SYS_TIME_PLIB_OPERATION_MODE
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: SYS_TIME_PLIB_MODE_COMPARE
-          type: Dynamic
-        type: Values
-      type: String
-    SYS_TIME_TC_CHANNEL:
-      attributes:
-        id: SYS_TIME_TC_CHANNEL
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: '0'
-          type: Dynamic
-        type: Values
-      type: KeyValueSet
     TC0_CH0_INTERRUPT_ENABLE:
       attributes:
         id: TC0_CH0_INTERRUPT_ENABLE
@@ -248,6 +215,105 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    TC0_SYS_TIME_CONNECTED:
+      attributes:
+        id: TC0_SYS_TIME_CONNECTED
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TC1_SYS_TIME_CONNECTED:
+      attributes:
+        id: TC1_SYS_TIME_CONNECTED
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TC2_SYS_TIME_CONNECTED:
+      attributes:
+        id: TC2_SYS_TIME_CONNECTED
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TC_COMMON_INTERRUPT_STATUS:
+      attributes:
+        id: TC_COMMON_INTERRUPT_STATUS
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TIMER_START_API_NAME:
+      attributes:
+        id: TIMER_START_API_NAME
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: TC0_CH0_TimerStart
+          type: Dynamic
+        type: Values
+      type: String
+    TIMER_STOP_API_NAME:
+      attributes:
+        id: TIMER_STOP_API_NAME
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'TC0_CH0_TimerStop '
+          type: Dynamic
+        type: Values
+      type: String
+    SYS_TIME_COMPONENT_ID:
+      attributes:
+        id: SYS_TIME_COMPONENT_ID
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: sys_time
+          type: Dynamic
+        type: Values
+      type: String
+    SYS_TIME_PLIB_OPERATION_MODE:
+      attributes:
+        id: SYS_TIME_PLIB_OPERATION_MODE
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: SYS_TIME_PLIB_MODE_COMPARE
+          type: Dynamic
+        type: Values
+      type: String
+    TC0_TIMER_PERIOD_COUNT:
+      attributes:
+        id: TC0_TIMER_PERIOD_COUNT
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Long
     TC0_CLOCK_FREQ:
       attributes:
         id: TC0_CLOCK_FREQ
@@ -300,28 +366,6 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
-    TC0_SYS_TIME_CONNECTED:
-      attributes:
-        id: TC0_SYS_TIME_CONNECTED
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'true'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC0_TIMER_PERIOD_COUNT:
-      attributes:
-        id: TC0_TIMER_PERIOD_COUNT
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: '0'
-          type: Dynamic
-        type: Values
-      type: Long
     TC0_TIMER_PERIOD_MS:
       attributes:
         id: TC0_TIMER_PERIOD_MS
@@ -341,50 +385,6 @@ data:
           type: Dynamic
         type: Values
       type: Float
-    TC1_ENABLE:
-      attributes:
-        id: TC1_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC1_IER_CPAS:
-      attributes:
-        id: TC1_IER_CPAS
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC1_IER_CPCS:
-      attributes:
-        id: TC1_IER_CPCS
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC1_SYS_TIME_CONNECTED:
-      attributes:
-        id: TC1_SYS_TIME_CONNECTED
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
     TC1_TIMER_PERIOD_COUNT:
       attributes:
         id: TC1_TIMER_PERIOD_COUNT
@@ -396,53 +396,9 @@ data:
           type: Dynamic
         type: Values
       type: Long
-    TC1_TIMER_PERIOD_MS:
+    TC1_ENABLE:
       attributes:
-        id: TC1_TIMER_PERIOD_MS
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: '0.0'
-          type: Dynamic
-        type: Values
-      type: Float
-    TC2_ENABLE:
-      attributes:
-        id: TC2_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC2_IER_CPAS:
-      attributes:
-        id: TC2_IER_CPAS
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC2_IER_CPCS:
-      attributes:
-        id: TC2_IER_CPCS
-      children:
-      - children:
-        - attributes:
-            id: tc0
-            value: 'false'
-          type: Dynamic
-        type: Values
-      type: Boolean
-    TC2_SYS_TIME_CONNECTED:
-      attributes:
-        id: TC2_SYS_TIME_CONNECTED
+        id: TC1_ENABLE
       children:
       - children:
         - attributes:
@@ -462,6 +418,28 @@ data:
           type: Dynamic
         type: Values
       type: Long
+    TC2_ENABLE:
+      attributes:
+        id: TC2_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TC1_TIMER_PERIOD_MS:
+      attributes:
+        id: TC1_TIMER_PERIOD_MS
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: '0.0'
+          type: Dynamic
+        type: Values
+      type: Float
     TC2_TIMER_PERIOD_MS:
       attributes:
         id: TC2_TIMER_PERIOD_MS
@@ -473,37 +451,59 @@ data:
           type: Dynamic
         type: Values
       type: Float
-    TC_COMMON_INTERRUPT_STATUS:
+    TC1_IER_CPCS:
       attributes:
-        id: TC_COMMON_INTERRUPT_STATUS
+        id: TC1_IER_CPCS
       children:
       - children:
         - attributes:
             id: tc0
-            value: 'true'
+            value: 'false'
           type: Dynamic
         type: Values
       type: Boolean
-    TIMER_START_API_NAME:
+    TC2_IER_CPCS:
       attributes:
-        id: TIMER_START_API_NAME
+        id: TC2_IER_CPCS
       children:
       - children:
         - attributes:
             id: tc0
-            value: TC0_CH0_TimerStart
+            value: 'false'
           type: Dynamic
         type: Values
-      type: String
-    TIMER_STOP_API_NAME:
+      type: Boolean
+    TC1_IER_CPAS:
       attributes:
-        id: TIMER_STOP_API_NAME
+        id: TC1_IER_CPAS
       children:
       - children:
         - attributes:
             id: tc0
-            value: 'TC0_CH0_TimerStop '
+            value: 'false'
           type: Dynamic
         type: Values
-      type: String
+      type: Boolean
+    TC2_IER_CPAS:
+      attributes:
+        id: TC2_IER_CPAS
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    SYS_TIME_TC_CHANNEL:
+      attributes:
+        id: SYS_TIME_TC_CHANNEL
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
   userData: {}

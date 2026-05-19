@@ -55,6 +55,62 @@
 #include "sys_tasks.h"
 
 
+// *****************************************************************************
+// *****************************************************************************
+// Section: RTOS "Tasks" Routine
+// *****************************************************************************
+// *****************************************************************************
+void _LEGATO_Tasks(  void *pvParameters  )
+{
+    while(1)
+    {
+        Legato_Tasks();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+void _SYS_INPUT_Tasks(  void *pvParameters  )
+{
+    while(1)
+    {
+        SYS_INP_Tasks();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+void _XLCDC_Tasks(  void *pvParameters  )
+{
+    while(1)
+    {
+        DRV_XLCDC_Update();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+void _DRV_MAXTOUCH_Tasks(  void *pvParameters  )
+{
+    while(1)
+    {
+        DRV_MAXTOUCH_Tasks(sysObj.drvMAXTOUCH);
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+
+/* Handle for the APP_Tasks. */
+TaskHandle_t xAPP_Tasks;
+
+
+
+static void lAPP_Tasks(  void *pvParameters  )
+{   
+    while(true)
+    {
+        APP_Tasks();
+    }
+}
+
+
 
 
 // *****************************************************************************
@@ -77,28 +133,65 @@ void SYS_Tasks ( void )
 
     /* Maintain Device Drivers */
     
-    DRV_XLCDC_Update();
+    xTaskCreate( _XLCDC_Tasks,
+        "XLCDC_Tasks",
+        1024,
+        (void*)NULL,
+        1,
+        (TaskHandle_t*)NULL
+    );
 
 
-    DRV_MAXTOUCH_Tasks(sysObj.drvMAXTOUCH);
+    xTaskCreate( _DRV_MAXTOUCH_Tasks,
+        "DRV_MAXTOUCH_Tasks",
+        1024,
+        (void*)NULL,
+        1,
+        (TaskHandle_t*)NULL
+    );
 
 
 
     /* Maintain Middleware & Other Libraries */
     
-    Legato_Tasks();
+    xTaskCreate( _LEGATO_Tasks,
+        "LEGATO_Tasks",
+        1024,
+        (void*)NULL,
+        1,
+        (TaskHandle_t*)NULL
+    );
 
 
-    SYS_INP_Tasks();
+    xTaskCreate( _SYS_INPUT_Tasks,
+        "SYS_INPUT_Tasks",
+        1024,
+        (void*)NULL,
+        1,
+        (TaskHandle_t*)NULL
+    );
 
 
 
     /* Maintain the application's state machine. */
-        /* Call Application task APP. */
-    APP_Tasks();
+    
+    /* Create OS Thread for APP_Tasks. */
+    (void) xTaskCreate(
+           (TaskFunction_t) lAPP_Tasks,
+           "APP_Tasks",
+           1024,
+           NULL,
+           1U ,
+           &xAPP_Tasks);
 
 
 
+    /* Start RTOS Scheduler. */
+    
+     /**********************************************************************
+     * Create all Threads for APP Tasks before starting FreeRTOS Scheduler *
+     ***********************************************************************/
+    vTaskStartScheduler(); /* This function never returns. */
 
 }
 

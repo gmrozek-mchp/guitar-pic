@@ -27,5 +27,29 @@ data:
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
-  symbols: {}
+  symbols:
+    INPUT_SYS_RTOS_TASK_C:
+      attributes:
+        id: INPUT_SYS_RTOS_TASK_C
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    RTOSEnabled:
+      attributes:
+        id: RTOSEnabled
+      children:
+      - children:
+        - attributes:
+            id: sys_input
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
   userData: {}

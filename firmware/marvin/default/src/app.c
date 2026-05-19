@@ -175,17 +175,13 @@ static void lcd_unbind_capture(void)
 
 void APP_Initialize ( void )
 {
-    /* Place the App state machine in its initial state. */
+    /* Place the App state machine in its initial state. The heavy init
+     * (ISC, TC358743, backlight, layer unbind) runs in APP_STATE_INIT
+     * inside APP_Tasks — TC358743_Initialize uses the synchronous I²C
+     * API, which blocks on a FreeRTOS semaphore and can only run after
+     * vTaskStartScheduler(). APP_Initialize is called from SYS_Initialize
+     * before the scheduler starts. */
     appData.state = APP_STATE_INIT;
-
-    ISC_Capture_Initialize();
-    TC358743_Initialize();
-
-    XLCDC_EnableBacklight();
-
-    /* UI-only display from boot: HEO off, BASE owns full panel. The video
-     * path will rebind HEO once a source is detected. */
-    lcd_unbind_capture();
 }
 
 
@@ -260,29 +256,29 @@ static void app_coordinate_capture(void)
 
 void APP_Tasks ( void )
 {
-    TC358743_Tasks();
-    app_coordinate_capture();
-
     /* Check the application's current state. */
     switch ( appData.state )
     {
-        /* Application's initial state. */
+        /* Application's initial state. Runs in FreeRTOS task context
+         * after the scheduler has started, so the synchronous I²C API
+         * (which blocks on an RTOS semaphore) works here. */
         case APP_STATE_INIT:
         {
-            bool appInitialized = true;
+            ISC_Capture_Initialize();
+            TC358743_Initialize();
+            XLCDC_EnableBacklight();
+            /* UI-only display from boot: HEO off, BASE owns full panel.
+             * The video path will rebind HEO once a source is detected. */
+            lcd_unbind_capture();
 
-
-            if (appInitialized)
-            {
-
-                appData.state = APP_STATE_SERVICE_TASKS;
-            }
+            appData.state = APP_STATE_SERVICE_TASKS;
             break;
         }
 
         case APP_STATE_SERVICE_TASKS:
         {
-
+            TC358743_Tasks();
+            app_coordinate_capture();
             break;
         }
 
