@@ -49,15 +49,15 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include "gfx/legato/generated/le_gen_harmony.h"
 #include "peripheral/pit/plib_pit.h"
+#include "gfx/legato/generated/le_gen_harmony.h"
 #include "peripheral/mmu/plib_mmu.h"
 #include "peripheral/clk/plib_clk.h"
 #include "peripheral/pio/plib_pio.h"
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
-#include "peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h"
 #include "peripheral/tc/plib_tc0.h"
+#include "peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h"
 #include "driver/i2c/drv_i2c.h"
 #include "system/time/sys_time.h"
 #include "system/input/sys_input.h"

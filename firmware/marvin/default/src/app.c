@@ -35,6 +35,7 @@
 
 #include "app.h"
 #include "definitions.h"
+#include "log.h"
 #include "video/video.h"
 
 // *****************************************************************************
@@ -97,6 +98,12 @@ APP_DATA appData;
 void APP_Initialize ( void )
 {
     appData.state = APP_STATE_INIT;
+
+    /* Logging shim: thin wrapper over libc printf with severity filter
+     * and FreeRTOS-aware locking. Initialized first so subsequent code
+     * (including video task startup) can use LOG_*. Default level is
+     * INFO; flip to DEBUG via log_set_level() to enable verbose. */
+    log_init(LOG_LEVEL_INFO);
 
     /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
      * the task runs once the scheduler picks it up. The video module owns

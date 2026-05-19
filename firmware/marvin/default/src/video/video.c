@@ -1,7 +1,6 @@
 #include "video.h"
 
 #include <stdint.h>
-#include <stdio.h>
 #include <stdbool.h>
 
 #include "FreeRTOS.h"
@@ -9,6 +8,7 @@
 #include "queue.h"
 
 #include "definitions.h"
+#include "log.h"
 #include "tc358743.h"
 #include "isc_capture.h"
 
@@ -68,10 +68,10 @@ static void lcd_bind(uint32_t src_w, uint32_t src_h,
 {
     if (x + dst_w > LCD_PANEL_W || y + dst_h > LCD_PANEL_H)
     {
-        printf("VIDEO: window %lux%lu @(%lu,%lu) exceeds panel %ux%u; skipping bind\r\n",
-               (unsigned long)dst_w, (unsigned long)dst_h,
-               (unsigned long)x, (unsigned long)y,
-               LCD_PANEL_W, LCD_PANEL_H);
+        LOG_WARN("VIDEO: window %lux%lu @(%lu,%lu) exceeds panel %ux%u; skipping bind\r\n",
+                 (unsigned long)dst_w, (unsigned long)dst_h,
+                 (unsigned long)x, (unsigned long)y,
+                 LCD_PANEL_W, LCD_PANEL_H);
         return;
     }
 
@@ -141,11 +141,11 @@ static void lcd_bind(uint32_t src_w, uint32_t src_h,
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
     XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
 
-    printf("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
-           (unsigned long)src_w, (unsigned long)src_h,
-           (unsigned long)dst_w, (unsigned long)dst_h,
-           (unsigned long)x, (unsigned long)y,
-           scaling ? "scaled" : "1:1");
+    LOG_INFO("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
+             (unsigned long)src_w, (unsigned long)src_h,
+             (unsigned long)dst_w, (unsigned long)dst_h,
+             (unsigned long)x, (unsigned long)y,
+             scaling ? "scaled" : "1:1");
 }
 
 /* Hide HEO and let BASE (Legato UI) fill the whole panel. */
@@ -198,7 +198,7 @@ static bool capture_arm(void)
         (void)TC358743_EnableStream(false);
         return false;
     }
-    printf("VIDEO: capture ARMED %ux%u\r\n", w, h);
+    LOG_INFO("VIDEO: capture ARMED %ux%u\r\n", w, h);
     return true;
 }
 
@@ -206,7 +206,7 @@ static void capture_disarm(void)
 {
     ISC_Capture_Stop();
     (void)TC358743_EnableStream(false);
-    printf("VIDEO: capture IDLE\r\n");
+    LOG_INFO("VIDEO: capture IDLE\r\n");
 }
 
 /* Bind/unbind display from current intent + most-recent source size +

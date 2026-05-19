@@ -3,9 +3,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include "definitions.h"
+#include "log.h"
 #include "system/int/sys_int.h"
 #include "vision/drivers/csi/drv_csi.h"
 #include "vision/drivers/csi2dc/drv_csi2dc.h"
@@ -58,7 +58,7 @@ void ISC_Capture_Initialize(void)
 
     if (iscObj == NULL || csi2dcObj == NULL || csiObj == NULL)
     {
-        printf("ISC_Capture: driver init returned NULL\r\n");
+        LOG_ERROR("ISC_Capture: driver init returned NULL\r\n");
         return;
     }
 
@@ -104,41 +104,44 @@ void ISC_Capture_Initialize(void)
      * internal data bus. */
     csi2dcObj->videoPipeAlign = false;
 
-    printf("ISC_Capture: initialized\r\n");
+    LOG_INFO("ISC_Capture: initialized\r\n");
 }
 
 static void diag_dump_rx(const char *tag)
 {
-    printf("ISC_Capture diag (%s):\r\n", tag);
-    printf("  CSI_PHY_RX=0x%08lX  STOPSTATE=0x%08lX\r\n",
-           (unsigned long)CSI_REGS->CSI_PHY_RX,
-           (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
-    printf("  CSI_INT_ST_MAIN=0x%08lX\r\n",
-           (unsigned long)CSI_REGS->CSI_INT_ST_MAIN);
-    printf("  CSI_INT_ST  PHY_FATAL=0x%08lX  PKT_FATAL=0x%08lX  FRAME_FATAL=0x%08lX\r\n",
-           (unsigned long)CSI_REGS->CSI_INT_ST_PHY_FATAL,
-           (unsigned long)CSI_REGS->CSI_INT_ST_PKT_FATAL,
-           (unsigned long)CSI_REGS->CSI_INT_ST_FRAME_FATAL);
-    printf("  CSI_INT_ST  PHY=0x%08lX  PKT=0x%08lX\r\n",
-           (unsigned long)CSI_REGS->CSI_INT_ST_PHY,
-           (unsigned long)CSI_REGS->CSI_INT_ST_PKT);
-    printf("  CSI2DC_GSR=0x%08lX  GISR=0x%08lX  VPISR=0x%08lX\r\n",
-           (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
-           (unsigned long)CSI2DC_REGS->CSI2DC_GISR,
-           (unsigned long)CSI2DC_REGS->CSI2DC_VPISR);
-    printf("  CSI2DC_FNVC0R=0x%08lX  LNVC0R=0x%08lX\r\n",
-           (unsigned long)CSI2DC_REGS->CSI2DC_FNVC0R,
-           (unsigned long)CSI2DC_REGS->CSI2DC_LNVC0R);
-    printf("  ISC_INTSR=0x%08lX  ISC_DCTRL=0x%08lX  ISC_DCFG=0x%08lX\r\n",
-           (unsigned long)ISC_Interrupt_Status(),
-           (unsigned long)ISC_REGS->ISC_DCTRL,
-           (unsigned long)ISC_REGS->ISC_DCFG);
-    printf("  ISC_RLP_CFG=0x%08lX  ISC_PFE_CFG0=0x%08lX\r\n",
-           (unsigned long)ISC_REGS->ISC_RLP_CFG,
-           (unsigned long)ISC_REGS->ISC_PFE_CFG0);
-    printf("  CSI2DC_VPCFGR=0x%08lX  CSI2DC_GCFGR=0x%08lX\r\n",
-           (unsigned long)CSI2DC_REGS->CSI2DC_VPCFGR,
-           (unsigned long)CSI2DC_REGS->CSI2DC_GCFGR);
+    /* Skip the dozen register reads when DEBUG level isn't selected. */
+    if ((int)log_get_level() < (int)LOG_LEVEL_DEBUG) { return; }
+
+    LOG_DEBUG("ISC_Capture diag (%s):\r\n", tag);
+    LOG_DEBUG("  CSI_PHY_RX=0x%08lX  STOPSTATE=0x%08lX\r\n",
+              (unsigned long)CSI_REGS->CSI_PHY_RX,
+              (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
+    LOG_DEBUG("  CSI_INT_ST_MAIN=0x%08lX\r\n",
+              (unsigned long)CSI_REGS->CSI_INT_ST_MAIN);
+    LOG_DEBUG("  CSI_INT_ST  PHY_FATAL=0x%08lX  PKT_FATAL=0x%08lX  FRAME_FATAL=0x%08lX\r\n",
+              (unsigned long)CSI_REGS->CSI_INT_ST_PHY_FATAL,
+              (unsigned long)CSI_REGS->CSI_INT_ST_PKT_FATAL,
+              (unsigned long)CSI_REGS->CSI_INT_ST_FRAME_FATAL);
+    LOG_DEBUG("  CSI_INT_ST  PHY=0x%08lX  PKT=0x%08lX\r\n",
+              (unsigned long)CSI_REGS->CSI_INT_ST_PHY,
+              (unsigned long)CSI_REGS->CSI_INT_ST_PKT);
+    LOG_DEBUG("  CSI2DC_GSR=0x%08lX  GISR=0x%08lX  VPISR=0x%08lX\r\n",
+              (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
+              (unsigned long)CSI2DC_REGS->CSI2DC_GISR,
+              (unsigned long)CSI2DC_REGS->CSI2DC_VPISR);
+    LOG_DEBUG("  CSI2DC_FNVC0R=0x%08lX  LNVC0R=0x%08lX\r\n",
+              (unsigned long)CSI2DC_REGS->CSI2DC_FNVC0R,
+              (unsigned long)CSI2DC_REGS->CSI2DC_LNVC0R);
+    LOG_DEBUG("  ISC_INTSR=0x%08lX  ISC_DCTRL=0x%08lX  ISC_DCFG=0x%08lX\r\n",
+              (unsigned long)ISC_Interrupt_Status(),
+              (unsigned long)ISC_REGS->ISC_DCTRL,
+              (unsigned long)ISC_REGS->ISC_DCFG);
+    LOG_DEBUG("  ISC_RLP_CFG=0x%08lX  ISC_PFE_CFG0=0x%08lX\r\n",
+              (unsigned long)ISC_REGS->ISC_RLP_CFG,
+              (unsigned long)ISC_REGS->ISC_PFE_CFG0);
+    LOG_DEBUG("  CSI2DC_VPCFGR=0x%08lX  CSI2DC_GCFGR=0x%08lX\r\n",
+              (unsigned long)CSI2DC_REGS->CSI2DC_VPCFGR,
+              (unsigned long)CSI2DC_REGS->CSI2DC_GCFGR);
 }
 
 bool ISC_Capture_Configure(uint32_t width, uint32_t height)
@@ -148,8 +151,8 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
     if (width == 0u || height == 0u
         || width > ISC_CAP_MAX_W || height > ISC_CAP_MAX_H)
     {
-        printf("ISC_Capture: %lux%lu out of range\r\n",
-               (unsigned long)width, (unsigned long)height);
+        LOG_ERROR("ISC_Capture: %lux%lu out of range\r\n",
+                  (unsigned long)width, (unsigned long)height);
         return false;
     }
 
@@ -176,17 +179,17 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
      * transmits, so the D-PHY catches the LP11->HS transition. */
     if (!DRV_CSI2DC_Configure(csi2dcObj))
     {
-        printf("ISC_Capture: DRV_CSI2DC_Configure failed\r\n");
+        LOG_ERROR("ISC_Capture: DRV_CSI2DC_Configure failed\r\n");
         return false;
     }
     if (!DRV_CSI_Configure(csiObj))
     {
-        printf("ISC_Capture: DRV_CSI_Configure failed\r\n");
+        LOG_ERROR("ISC_Capture: DRV_CSI_Configure failed\r\n");
         return false;
     }
     if (DRV_ISC_Configure(iscObj) != 0u)
     {
-        printf("ISC_Capture: DRV_ISC_Configure failed\r\n");
+        LOG_ERROR("ISC_Capture: DRV_ISC_Configure failed\r\n");
         return false;
     }
 
@@ -226,9 +229,9 @@ bool ISC_Capture_Configure(uint32_t width, uint32_t height)
                        | ISC_DCFG_YMBSIZE_BEATS32
                        | ISC_DCFG_CMBSIZE_BEATS32;
 
-    printf("ISC_Capture: configured %lux%lu BGR888 packed (%lu bytes/frame)\r\n",
-           (unsigned long)width, (unsigned long)height,
-           (unsigned long)frame_size);
+    LOG_INFO("ISC_Capture: configured %lux%lu BGR888 packed (%lu bytes/frame)\r\n",
+             (unsigned long)width, (unsigned long)height,
+             (unsigned long)frame_size);
     return true;
 }
 
@@ -236,14 +239,14 @@ bool ISC_Capture_Start(void)
 {
     if (!DRV_ISC_Start_Capture(iscObj))
     {
-        printf("ISC_Capture: DRV_ISC_Start_Capture failed\r\n");
+        LOG_ERROR("ISC_Capture: DRV_ISC_Start_Capture failed\r\n");
         diag_dump_rx("post-fail");
         return false;
     }
 
     SYS_INT_SourceEnable(ID_ISC);
     g_running = true;
-    printf("ISC_Capture: capture started\r\n");
+    LOG_INFO("ISC_Capture: capture started\r\n");
     return true;
 }
 
@@ -253,7 +256,7 @@ void ISC_Capture_Stop(void)
     SYS_INT_SourceDisable(ID_ISC);
     DRV_ISC_Stop_Capture();
     g_running = false;
-    printf("ISC_Capture: stopped\r\n");
+    LOG_INFO("ISC_Capture: stopped\r\n");
 }
 
 uint32_t ISC_Capture_FrameCount(void)

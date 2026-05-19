@@ -31,5 +31,15 @@ data:
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
-  symbols: {}
+  symbols:
+    FREERTOS_INCLUDE_XTASKGETSCHEDULERSTATE:
+      attributes:
+        id: FREERTOS_INCLUDE_XTASKGETSCHEDULERSTATE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}

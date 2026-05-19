@@ -34,15 +34,15 @@ generatedFileHashHistoryMap:
 - file: ../src/app.h
   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
 - file: ../src/config/default/FreeRTOSConfig.h
-  hash: 1f4b264203d04eef0b9ccfe3f73df21f873dd106e666b4dad4020c05dd8583e9
+  hash: fd3ef0ae00358b087d48cf6182c00b40ef5df8bf3a12eafd58453cd4a9efb9fc
 - file: ../src/config/default/configuration.h
-  hash: 076a347b5c007d8ccd959b471256f715d578992c3929bd52825852cda7747010
+  hash: cfef12805c133f86932fc72cd3b137db9f32212fc211cb078b9b5d3ad471f9b1
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 5421732c04f45d9f743aec59c995cc01e9cd51743aa2cb481bec448aa2e7c0a5
+  hash: e430f43b71a4ea7ec9811d875e9139e325139fac124bb0de313948dd544def98
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -584,7 +584,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: ab568f7c473ff2451978b94f51e8835c07a9946fc3b89b927b016d788503abe9
+  hash: 644a7965e75e805813871753f94e5f9ce0cc6bfff92943ebfb09fd853e8d8c93
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h

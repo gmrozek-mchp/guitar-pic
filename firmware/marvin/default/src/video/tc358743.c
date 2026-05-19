@@ -3,9 +3,9 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
-#include <stdio.h>
 
 #include "definitions.h"
+#include "log.h"
 
 #define TC358743_I2C_ADDR       0x0Fu
 
@@ -190,11 +190,6 @@
 #define MASK_S_TXACT            0x0200u
 #define MASK_S_RXACT            0x0100u
 #define MASK_S_HLT              0x0001u
-
-/* Set to 1 to print bridge config registers (CONFCTL/FIFOCTL/CSI_STATUS/
- * CSI_ERR/VOUT_SET2/VOUT_SET3/VI_REP) every time a format is detected.
- * Off by default — useful for diagnosing format-detection regressions. */
-#define TC358743_VERBOSE_FORMAT_DUMP 0
 
 #define STATUS_POLL_MS          100u
 
@@ -626,70 +621,70 @@ static bool tc358743_do_init(void)
                               (uint16_t)~(MASK_IRRST | MASK_CECRST),
                               (uint16_t)(MASK_IRRST | MASK_CECRST)))
     {
-        printf("TC358743: init: IR/CEC reset hold failed\r\n");
+        LOG_ERROR("TC358743: init: IR/CEC reset hold failed\r\n");
         return false;
     }
 
     if (!tc358743_reset(MASK_CTXRST | MASK_HDMIRST))
     {
-        printf("TC358743: init: CTX/HDMI reset failed\r\n");
+        LOG_ERROR("TC358743: init: CTX/HDMI reset failed\r\n");
         return false;
     }
 
     if (!tc358743_sleep_mode(false))
     {
-        printf("TC358743: init: sleep-mode-off failed\r\n");
+        LOG_ERROR("TC358743: init: sleep-mode-off failed\r\n");
         return false;
     }
 
     if (!tc358743_wr16(FIFOCTL, FIFO_LEVEL))
     {
-        printf("TC358743: init: FIFOCTL failed\r\n");
+        LOG_ERROR("TC358743: init: FIFOCTL failed\r\n");
         return false;
     }
 
     if (!tc358743_set_ref_clk())
     {
-        printf("TC358743: init: set_ref_clk failed\r\n");
+        LOG_ERROR("TC358743: init: set_ref_clk failed\r\n");
         return false;
     }
 
     if (!tc358743_wr8_and_or(DDC_CTL, (uint8_t)~MASK_DDC5V_MODE,
                              DDC5V_DELAY_100_MS))
     {
-        printf("TC358743: init: DDC_CTL failed\r\n");
+        LOG_ERROR("TC358743: init: DDC_CTL failed\r\n");
         return false;
     }
 
     if (!tc358743_wr8_and_or(EDID_MODE, (uint8_t)~MASK_EDID_MODE,
                              MASK_EDID_MODE_E_DDC))
     {
-        printf("TC358743: init: EDID_MODE failed\r\n");
+        LOG_ERROR("TC358743: init: EDID_MODE failed\r\n");
         return false;
     }
 
     if (!tc358743_set_hdmi_phy())
     {
-        printf("TC358743: init: set_hdmi_phy failed\r\n");
+        LOG_ERROR("TC358743: init: set_hdmi_phy failed\r\n");
         return false;
     }
 
     if (!tc358743_wr8_and_or(VI_MODE, (uint8_t)~MASK_RGB_DVI, 0u))
     {
-        printf("TC358743: init: VI_MODE failed\r\n");
+        LOG_ERROR("TC358743: init: VI_MODE failed\r\n");
         return false;
     }
 
     if (!tc358743_wr8_and_or(VOUT_SET2, (uint8_t)~MASK_VOUTCOLORMODE,
                              MASK_VOUTCOLORMODE_AUTO))
     {
-        printf("TC358743: init: VOUT_SET2 failed\r\n");
+        LOG_ERROR("TC358743: init: VOUT_SET2 failed\r\n");
         return false;
     }
 
     if (!tc358743_wr8(VOUT_SET3, MASK_VOUT_EXTCNT))
     {
-        printf("TC358743: init: VOUT_SET3 failed\r\n");
+        LOG_ERROR("TC358743: init: VOUT_SET3 failed\r\n");
         return false;
     }
 
@@ -699,31 +694,31 @@ static bool tc358743_do_init(void)
      * packets per frame. Without it, VPROW counts only half the lines. */
     if (!tc358743_wr16_and_or(CONFCTL, 0xFFFFu, MASK_AUTOINDEX))
     {
-        printf("TC358743: init: CONFCTL AUTOINDEX failed\r\n");
+        LOG_ERROR("TC358743: init: CONFCTL AUTOINDEX failed\r\n");
         return false;
     }
 
     if (!tc358743_set_pll())
     {
-        printf("TC358743: init: set_pll failed\r\n");
+        LOG_ERROR("TC358743: init: set_pll failed\r\n");
         return false;
     }
 
     if (!tc358743_set_csi())
     {
-        printf("TC358743: init: set_csi failed\r\n");
+        LOG_ERROR("TC358743: init: set_csi failed\r\n");
         return false;
     }
 
     if (!tc358743_set_csi_color_space_rgb888())
     {
-        printf("TC358743: init: set_csi_color_space failed\r\n");
+        LOG_ERROR("TC358743: init: set_csi_color_space failed\r\n");
         return false;
     }
 
     if (!tc358743_load_edid())
     {
-        printf("TC358743: init: load_edid failed\r\n");
+        LOG_ERROR("TC358743: init: load_edid failed\r\n");
         return false;
     }
 
@@ -738,56 +733,56 @@ void TC358743_Initialize(void)
     i2cHandle = DRV_I2C_Open(DRV_I2C_INDEX_0, DRV_IO_INTENT_READWRITE);
     if (i2cHandle == DRV_HANDLE_INVALID)
     {
-        printf("TC358743: DRV_I2C_Open failed\r\n");
+        LOG_ERROR("TC358743: DRV_I2C_Open failed\r\n");
         return;
     }
 
-    printf("TC358743: probe starting\r\n");
+    LOG_INFO("TC358743: probe starting\r\n");
 
     if (!tc358743_wr16(SYSCTL, SYSCTL_SRESET)
         || !delay_ms(RESET_HOLD_MS)
         || !tc358743_wr16(SYSCTL, 0x0000u)
         || !delay_ms(RESET_HOLD_MS))
     {
-        printf("TC358743: software reset failed\r\n");
+        LOG_ERROR("TC358743: software reset failed\r\n");
         return;
     }
 
     if (!tc358743_rd16(CHIPID, &chipid))
     {
-        printf("TC358743: CHIPID read failed\r\n");
+        LOG_ERROR("TC358743: CHIPID read failed\r\n");
         return;
     }
 
     if ((chipid & 0xFF00u) != 0x0000u)
     {
-        printf("TC358743: unexpected chipid=0x%04X\r\n", chipid);
+        LOG_ERROR("TC358743: unexpected chipid=0x%04X\r\n", chipid);
         return;
     }
 
-    printf("TC358743: present (chipid=0x%04X)\r\n", chipid);
-    printf("TC358743: init (2 lanes, %u Mbps/lane, RGB888 full-range)\r\n",
-           (unsigned)(CSI_BPS_PER_LANE / 1000000u));
+    LOG_INFO("TC358743: present (chipid=0x%04X)\r\n", chipid);
+    LOG_INFO("TC358743: init (2 lanes, %u Mbps/lane, RGB888 full-range)\r\n",
+             (unsigned)(CSI_BPS_PER_LANE / 1000000u));
 
     if (!tc358743_do_init())
     {
-        printf("TC358743: init aborted\r\n");
+        LOG_ERROR("TC358743: init aborted\r\n");
         return;
     }
 
     if (!tc358743_rd8(SYS_STATUS, &sys_status))
     {
-        printf("TC358743: init complete; SYS_STATUS read failed\r\n");
+        LOG_ERROR("TC358743: init complete; SYS_STATUS read failed\r\n");
         return;
     }
 
-    printf("TC358743: init complete; SYS_STATUS=0x%02X\r\n", sys_status);
+    LOG_INFO("TC358743: init complete; SYS_STATUS=0x%02X\r\n", sys_status);
 
     (void)delay_ms(EDID_POST_RISE_MS);
 
     if (tc358743_rd8(SYS_STATUS, &sys_status))
     {
-        printf("TC358743: post-HPD SYS_STATUS=0x%02X\r\n", sys_status);
+        LOG_INFO("TC358743: post-HPD SYS_STATUS=0x%02X\r\n", sys_status);
     }
 }
 
@@ -872,41 +867,41 @@ static bool read_detected_format(uint16_t *width, uint16_t *height)
     bool     il   = (vi1 & MASK_S_V_INTERLACE) != 0u;
     bool     lr   = (vi3 & MASK_LIMITED)       != 0u;
 
-    printf("TC358743: detected %ux%u%c @ %u Hz, %s %s-range; "
-           "raster %ux%u (incl blanking); VI_STATUS1=0x%02X VI_STATUS3=0x%02X\r\n",
-           (unsigned)w, (unsigned)h, il ? 'i' : 'p',
-           (unsigned)fps, color_space_name(cs),
-           lr ? "limited" : "full",
-           (unsigned)htot, (unsigned)vtot,
-           vi1, vi3);
+    LOG_INFO("TC358743: detected %ux%u%c @ %u Hz, %s %s-range; "
+             "raster %ux%u (incl blanking); VI_STATUS1=0x%02X VI_STATUS3=0x%02X\r\n",
+             (unsigned)w, (unsigned)h, il ? 'i' : 'p',
+             (unsigned)fps, color_space_name(cs),
+             lr ? "limited" : "full",
+             (unsigned)htot, (unsigned)vtot,
+             vi1, vi3);
 
-#if TC358743_VERBOSE_FORMAT_DUMP
     /* Bridge CSI-TX + FIFO + HDMI-detect config snapshot — catches
      * bridge-side narrowing (FIFO underrun, HDMI_DET mode, CSI_ERR).
-     * Disabled by default; flip TC358743_VERBOSE_FORMAT_DUMP to 1 if a
-     * format-detection regression needs investigation. */
-    uint8_t  vi_mode = 0, hdmi_det = 0;
-    uint16_t confctl = 0, fifoctl = 0;
-    uint32_t csi_status = 0, csi_err = 0;
-    (void)tc358743_rd8(VI_MODE,   &vi_mode);
-    (void)tc358743_rd8(HDMI_DET,  &hdmi_det);
-    (void)tc358743_rd16(CONFCTL,  &confctl);
-    (void)tc358743_rd16(FIFOCTL,  &fifoctl);
-    (void)tc358743_rd32(CSI_STATUS, &csi_status);
-    (void)tc358743_rd32(CSI_ERR,    &csi_err);
-    printf("TC358743:   CONFCTL=0x%04X FIFOCTL=0x%04X VI_MODE=0x%02X HDMI_DET=0x%02X\r\n",
-           (unsigned)confctl, (unsigned)fifoctl,
-           (unsigned)vi_mode, (unsigned)hdmi_det);
-    printf("TC358743:   CSI_STATUS=0x%08lX CSI_ERR=0x%08lX\r\n",
-           (unsigned long)csi_status, (unsigned long)csi_err);
+     * Skip the I²C round-trips when DEBUG level isn't selected. */
+    if ((int)log_get_level() >= (int)LOG_LEVEL_DEBUG)
+    {
+        uint8_t  vi_mode = 0, hdmi_det = 0;
+        uint16_t confctl = 0, fifoctl = 0;
+        uint32_t csi_status = 0, csi_err = 0;
+        (void)tc358743_rd8(VI_MODE,   &vi_mode);
+        (void)tc358743_rd8(HDMI_DET,  &hdmi_det);
+        (void)tc358743_rd16(CONFCTL,  &confctl);
+        (void)tc358743_rd16(FIFOCTL,  &fifoctl);
+        (void)tc358743_rd32(CSI_STATUS, &csi_status);
+        (void)tc358743_rd32(CSI_ERR,    &csi_err);
+        LOG_DEBUG("TC358743:   CONFCTL=0x%04X FIFOCTL=0x%04X VI_MODE=0x%02X HDMI_DET=0x%02X\r\n",
+                  (unsigned)confctl, (unsigned)fifoctl,
+                  (unsigned)vi_mode, (unsigned)hdmi_det);
+        LOG_DEBUG("TC358743:   CSI_STATUS=0x%08lX CSI_ERR=0x%08lX\r\n",
+                  (unsigned long)csi_status, (unsigned long)csi_err);
 
-    uint8_t vout_set2 = 0, vout_set3 = 0, vi_rep = 0;
-    (void)tc358743_rd8(VOUT_SET2, &vout_set2);
-    (void)tc358743_rd8(VOUT_SET3, &vout_set3);
-    (void)tc358743_rd8(VI_REP,    &vi_rep);
-    printf("TC358743:   VOUT_SET2=0x%02X VOUT_SET3=0x%02X VI_REP=0x%02X\r\n",
-           (unsigned)vout_set2, (unsigned)vout_set3, (unsigned)vi_rep);
-#endif
+        uint8_t vout_set2 = 0, vout_set3 = 0, vi_rep = 0;
+        (void)tc358743_rd8(VOUT_SET2, &vout_set2);
+        (void)tc358743_rd8(VOUT_SET3, &vout_set3);
+        (void)tc358743_rd8(VI_REP,    &vi_rep);
+        LOG_DEBUG("TC358743:   VOUT_SET2=0x%02X VOUT_SET3=0x%02X VI_REP=0x%02X\r\n",
+                  (unsigned)vout_set2, (unsigned)vout_set3, (unsigned)vi_rep);
+    }
 
     s_detectedWidth  = w;
     s_detectedHeight = h;
@@ -918,14 +913,14 @@ static bool read_detected_format(uint16_t *width, uint16_t *height)
 
 static void log_status_change(uint8_t prev, uint8_t cur)
 {
-    printf("TC358743: SYS_STATUS 0x%02X->0x%02X [%s%s%s%s%s%s]\r\n",
-           prev, cur,
-           (cur & MASK_S_DDC5V)    ? "DDC5V "  : "",
-           (cur & MASK_S_TMDS)     ? "TMDS "   : "",
-           (cur & MASK_S_PHY_PLL)  ? "PLL "    : "",
-           (cur & MASK_S_PHY_SCDT) ? "SCDT "   : "",
-           (cur & MASK_S_HDMI)     ? "HDMI "   : "",
-           (cur & MASK_S_SYNC)     ? "SYNC"    : "");
+    LOG_INFO("TC358743: SYS_STATUS 0x%02X->0x%02X [%s%s%s%s%s%s]\r\n",
+             prev, cur,
+             (cur & MASK_S_DDC5V)    ? "DDC5V "  : "",
+             (cur & MASK_S_TMDS)     ? "TMDS "   : "",
+             (cur & MASK_S_PHY_PLL)  ? "PLL "    : "",
+             (cur & MASK_S_PHY_SCDT) ? "SCDT "   : "",
+             (cur & MASK_S_HDMI)     ? "HDMI "   : "",
+             (cur & MASK_S_SYNC)     ? "SYNC"    : "");
 
     bool sync_now      = (cur  & MASK_S_SYNC) != 0u;
     bool sync_previous = (prev & MASK_S_SYNC) != 0u;
@@ -963,7 +958,7 @@ void TC358743_Tasks(void)
         {
             firstPoll = false;
             lastStatus = sys_status;
-            printf("TC358743: watcher start; SYS_STATUS=0x%02X\r\n", sys_status);
+            LOG_INFO("TC358743: watcher start; SYS_STATUS=0x%02X\r\n", sys_status);
             if (sys_status & MASK_S_SYNC)
             {
                 (void)read_detected_format(NULL, NULL);
