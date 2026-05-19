@@ -168,9 +168,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/font/le_gen_fonts.c
   hash: 46f1500d35be7d335c1ed6942aa3d570d7ac7446047fec34c2f3873349eda675
 - file: ../src/config/default/gfx/legato/generated/image/le_gen_images.c
-  hash: 7187ccbaa48e4e1498420270becbc50203af745b51c1c3437e20f1a48dc4c301
+  hash: 22c51ad1742b87a4e3fc41e5424e03f15b32df1a69cb984d10c75ac97012789f
 - file: ../src/config/default/gfx/legato/generated/le_gen_assets.h
-  hash: c8be007570251d976d1590b9255c4c7b0c6a77e6c890226008ae42d0b51a50ed
+  hash: 912e34527e856e2b5fd5b40ade535c7d379774b2df963c52ba55f72079fbb54c
 - file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
   hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c
@@ -188,9 +188,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
   hash: 854fd7762f5846c307f690a34a46a0093a7ee2fe9f6e46acc5aad54337e1c4b7
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c
-  hash: ac6c27920fc074975d263f663cb0c5ee5aebc25495f1b18713c5314e5f7ff39f
+  hash: a3a91a752a7d029a159ffff5d4ddb5c3480e4b367ce084703e38c2c2c1cda2d5
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h
-  hash: 5507257291aab0d86b9c1a51e78e43216314b7f49dd2793908c319267f892baa
+  hash: 651d1316136a60438b50edb3b85a24e4cefc0c8d825b7dc8cb1e76463bd2c0e6
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c
@@ -264,7 +264,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/legato.h
   hash: b4ce875200132b2bf0aa6b5a3271b8bc363107741378e3079cbaa14037fbf807
 - file: ../src/config/default/gfx/legato/legato_config.h
-  hash: 27d4a7d706b4305bf9cfed0fa2ba4ced5abe99922894e220baa6ee031e8d705b
+  hash: 1b47a70eb989412986152e475aa725c43eef250d61f36bb5fcfa497c3be83c59
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.c
   hash: 197174ddbc7c7ef5c966bee36da8114e64dec8ce734d374c0b31401f800e21bf
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.h

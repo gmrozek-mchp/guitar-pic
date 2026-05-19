@@ -97,6 +97,15 @@ extern leImage QuickstartDown_WQVGA;
  ***********************************/
 extern leImage QuickstartUp_WQVGA;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   Body
+ * Size:   1280x800 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage Body;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/

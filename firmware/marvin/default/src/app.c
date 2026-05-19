@@ -141,8 +141,8 @@ static void lcd_bind_capture(uint32_t src_w, uint32_t src_h)
         return;
     }
 
-    uint32_t xpos = (LCD_PANEL_W - src_w) / 2u;
-    uint32_t ypos = (LCD_PANEL_H - src_h) / 2u;
+    uint32_t xpos = 280;
+    uint32_t ypos = 76;
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
