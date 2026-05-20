@@ -12,12 +12,15 @@
 #include "vision/drivers/image_sensor/drv_image_sensor.h"
 #include "vision/drivers/isc/drv_isc.h"
 
-#define ISC_CAP_MAX_W        1920u
-#define ISC_CAP_MAX_H        1080u
+/* Sized to 720p60 (current TC358743 ceiling). Pool lives in .region_nocache
+ * (16 MB total); 4×1280×720×3 ≈ 11 MB fits with headroom. Bumping to 1080p
+ * would require either growing ram_nocache in ddram.ld or going back to
+ * cached + per-frame D-cache invalidate. */
+#define ISC_CAP_MAX_W        1280u
+#define ISC_CAP_MAX_H        720u
 #define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
 /* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
- * before the producer laps. 4 → ~50 ms read window. Static pool max is
- * 4×1920×1080×3 ≈ 24 MB, trivial on 1 GB DDR3. */
+ * before the producer laps. 4 → ~50 ms read window. */
 #define ISC_CAP_NUM_BUFFERS  4u
 /* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
  * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
@@ -25,7 +28,10 @@
  * (works in both Gen2 and Gen3 — bands coincide there). Changes with bitrate. */
 #define ISC_CAP_CSI_BITRATE  0x0Au
 
-static __attribute__((__section__(".region_cache_aligned")))
+/* Uncached so CPU readers (detectors, recorder) see ISC DMA writes without
+ * cache maintenance. Trade: every read is a DDR fetch — fine for sparse
+ * patch sampling, would matter for a full-frame scan. */
+static __attribute__((__section__(".region_nocache")))
        __attribute__((__aligned__(32)))
        uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
 

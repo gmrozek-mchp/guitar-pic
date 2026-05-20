@@ -20468,3 +20468,2287 @@ no changes added to commit (use "git add" and/or "git commit -a")
  2 files changed, 60 insertions(+)
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:04:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit game-state spec addition
+
+```bash
+git add firmware/marvin/docs/spec.md firmware/marvin/docs/journal.md .specstory/
+git commit -m "$(cat <<'EOF'
+spec: add game-state awareness & control subsystem (§4.8)
+
+New marvin subsystem: a CV-driven game-state observer that recognizes
+which screen the game is on (menu / song-select / gameplay / pause /
+score) plus a controller layer that translates high-level verbs ("start
+single-player song X") into fret/strum sequences over the existing
+fretboard link. Distinct from the gameplay note-detection path —
+video-frame consumer rather than a detector, separate xGameStateQueue
+bus, narrow detector_state_t shape preserved.
+
+Updates §1.1 mission, §1.4 status table, §2.2 ownership, §6 mode
+toggles, §8 milestones (M9 observer, M10 control), and surfaces Q10
+(recognizer algorithm) and Q11 (arbitration with timing pipeline) in §9.
+EOF
+)"
+```
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos 4cd5fb1] spec: add game-state awareness & control subsystem (§4.8)
+ 4 files changed, 729 insertions(+), 5 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:04:21Z)**_
+
+Committed `4cd5fb1`.
+
+---
+
+_**User (2026-05-20 21:06:33Z)**_
+
+ok let's get back to detector development. Are we ready to start implementing cv_marvin_v1? Or is there some other testing we should do first? (I'm not near hardware at the moment). If ready, we should base cv_marvin_v1 logic on the fret-tuner detect_video.py logic.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:06:38Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:06:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate fret-tuner detection sources
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner -name 'detect_video*' -o -name 'detect*.py' 2>&1 | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py
+/Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py
+/Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py
+/Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:06:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Get sizes of detect modules
+
+`wc -l /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py`
+
+```text
+     404 /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_video.py
+     132 /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_trough.py
+     179 /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_slope.py
+      87 /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/detect_threshold.py
+     802 total
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:06:46Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./tools/fret-tuner/detect_video.py`
+
+```text
+1	"""
+2	Video-based fret detection -- camera pointed at the game screen.
+3	
+4	Consumes frames from the shared reference video buffer (camera.py); does
+5	not own the camera. Sensor markers and per-button signal levels are
+6	exposed as an overlay layer through the `overlays()` hook so the server
+7	can bake them into the live MJPEG and paused scrub frames.
+8	
+9	Two sensor points per button, both above the strike line:
+10	
+11	  Sensor 1 (hold)  -- brightness detect (color OR white).
+12	                      Sets pressed=True whenever anything bright appears.
+13	  Sensor 2 (edge)  -- color-filtered leading-edge detect.
+14	                      Increments press_count on each new note arrival,
+15	                      which the actuator uses to schedule strums.
+16	
+17	Use video_calibrate.py to find pixel coordinates for all 10 sensor
+18	points. Detection thresholds are applied to raw pixel values (dark
+19	background is the implicit zero).
+20	
+21	The "baseline" output is the stronger of the two signals (scaled to
+22	0..4095) for chart overlay visualization.
+23	
+24	Requires: opencv-python
+25	"""
+26	
+27	import threading
+28	from typing import Optional
+29	
+30	import cv2
+31	import numpy as np
+32	
+33	from camera import Frame, get_camera
+34	from stream import CH_COLORS, CHANNELS, Sample, make_slot_schema
+35	
+36	_DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
+37	
+38	# Per-button color filter for the edge detector (sensor 2).
+39	# (target_weights, reject_weights) in BGR order.
+40	# Detection signal = target - reject.  Reject weights > 1.0 total
+41	# so that camera-captured whites (which have color-temperature bias)
+42	# are aggressively suppressed, not just mathematically-perfect whites.
+43	_COLOR_FILTER: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
+44	    "green":  ((0, 1, 0),     (0.7, 0, 0.7)),   # want G up, penalize B/R
+45	    "red":    ((0, 0, 1),     (0.7, 0.7, 0)),    # want R up, penalize B/G
+46	    "yellow": ((0, 0.5, 0.5), (1.4, 0, 0)),      # want R+G up, penalize B
+47	    "blue":   ((1, 0.4, 0),   (0, 0, 1.4)),       # want B + some G, penalize R
+48	    "orange": ((0, 0.3, 0.7), (1.4, 0, 0)),      # want R+someG up, penalize B
+49	}
+50	
+51	_MARKER_COLORS = {
+52	    "green":  (0, 200, 0),
+53	    "red":    (0, 0, 220),
+54	    "yellow": (0, 220, 220),
+55	    "blue":   (220, 0, 0),
+56	    "orange": (0, 140, 255),
+57	}
+58	_IDLE_COLOR = (120, 120, 120)
+59	_PRESSED_COLOR = (0, 255, 0)
+60	
+61	_MARKER_RADIUS = 16
+62	_MARKER_THICK = 3
+63	_FONT_SCALE = 0.6
+64	_FONT_THICK = 2
+65	
+66	# Calibration coords are anchored to a 1920x1080 reference frame.
+67	_CAL_W = 1920
+68	_CAL_H = 1080
+69	
+70	
+71	class Detector:
+72	    """Camera-based fret press detector consuming the shared video buffer."""
+73	
+74	    @classmethod
+75	    def default_params(cls) -> dict:
+76	        return {
+77	            "HOLD_THRESH": 50,
+78	            "HOLD_RELEASE_FRAC": 60,
+79	            "EDGE_GREEN": 50,
+80	            "EDGE_RED": 50,
+81	            "EDGE_YELLOW": 50,
+82	            "EDGE_BLUE": 50,
+83	            "EDGE_ORANGE": 50,
+84	            "PATCH_RADIUS": 2,
+85	            "GREEN_X": 748, "GREEN_Y": 700,
+86	            "RED_X": 850, "RED_Y": 700,
+87	            "YELLOW_X": 947, "YELLOW_Y": 700,
+88	            "BLUE_X": 1045, "BLUE_Y": 700,
+89	            "ORANGE_X": 1147, "ORANGE_Y": 700,
+90	            "GREEN_EX": 780, "GREEN_EY": 700,
+91	            "RED_EX": 882, "RED_EY": 700,
+92	            "YELLOW_EX": 979, "YELLOW_EY": 700,
+93	            "BLUE_EX": 1013, "BLUE_EY": 700,
+94	            "ORANGE_EX": 1115, "ORANGE_EY": 700,
+95	        }
+96	
+97	    def __init__(self, **params):
+98	        defaults = self.default_params()
+99	        defaults.update(params)
+100	
+101	        self._hold_thresh = int(defaults["HOLD_THRESH"])
+102	        self._hold_release = self._hold_thresh * int(defaults["HOLD_RELEASE_FRAC"]) // 100
+103	        self._edge_thresh: dict[str, int] = {
+104	            ch: int(defaults[f"EDGE_{ch.upper()}"]) for ch in CHANNELS
+105	        }
+106	        self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
+107	
+108	        self._cal_hold_pixels: dict[str, tuple[int, int]] = {}
+109	        self._cal_edge_pixels: dict[str, tuple[int, int]] = {}
+110	        for ch in CHANNELS:
+111	            p = ch.upper()
+112	            self._cal_hold_pixels[ch] = (int(defaults[f"{p}_X"]), int(defaults[f"{p}_Y"]))
+113	            self._cal_edge_pixels[ch] = (int(defaults[f"{p}_EX"]), int(defaults[f"{p}_EY"]))
+114	
+115	        # Per-frame-size cache of scaled pixel coords. The capture path
+116	        # passes full-res frames to detection while the view path applies
+117	        # overlays onto the downscaled working frame, so we typically need
+118	        # at least two entries (one for detection, one for view). Callers
+119	        # treat the returned dicts as immutable.
+120	        self._scaled_cache: dict[
+121	            tuple[int, int],
+122	            tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]],
+123	        ] = {}
+124	        self._scale_lock = threading.Lock()
+125	
+126	        self._hold_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+127	        self._edge_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+128	        self._pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
+129	        self._press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
+130	        self._edge_active: dict[str, bool] = {ch: False for ch in CHANNELS}
+131	        self._cached_result: Optional[dict] = None
+132	
+133	        self._lock = threading.Lock()
+134	
+135	        self._cam = get_camera()
+136	        self._cam.add_frame_listener(self._on_frame)
+137	
+138	    def stop(self):
+139	        """Detach the camera frame listener."""
+140	        try:
+141	            self._cam.remove_frame_listener(self._on_frame)
+142	        except Exception:
+143	            pass
+144	        self._log("stopped")
+145	
+146	    def __del__(self):
+147	        try:
+148	            self._cam.remove_frame_listener(self._on_frame)
+149	        except Exception:
+150	            pass
+151	
+152	    def _log(self, msg: str):
+153	        print(f"[detect_video] {msg}", flush=True)
+154	
+155	    _EDGE_RADIUS = 10
+156	    _EDGE_THICK = 2
+157	
+158	    def _scale_pixels(
+159	        self, frame_w: int, frame_h: int,
+160	    ) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]]:
+161	        """Return (hold_pixels, edge_pixels) scaled for the given frame size.
+162	
+163	        Cached per (w, h) so the detection (full-res) and overlay (working-res)
+164	        paths don't keep invalidating each other. Returned dicts are shared
+165	        across calls and should be treated as immutable by callers.
+166	        """
+167	        key = (frame_w, frame_h)
+168	        with self._scale_lock:
+169	            cached = self._scaled_cache.get(key)
+170	            if cached is not None:
+171	                return cached
+172	
+173	            all_cal = list(self._cal_hold_pixels.values()) + list(self._cal_edge_pixels.values())
+174	            cal_xs = [x for x, _ in all_cal]
+175	            cal_ys = [y for _, y in all_cal]
+176	            cal_w = max(cal_xs) + max(cal_xs) // 4
+177	            cal_h = max(cal_ys) + max(cal_ys) // 4
+178	
+179	            if frame_w < cal_w or frame_h < cal_h:
+180	                sx = frame_w / float(_CAL_W)
+181	                sy = frame_h / float(_CAL_H)
+182	                self._log(f"scaling coords for {frame_w}x{frame_h} by {sx:.3f}x{sy:.3f}")
+183	                hold = {
+184	                    ch: (int(self._cal_hold_pixels[ch][0] * sx),
+185	                         int(self._cal_hold_pixels[ch][1] * sy))
+186	                    for ch in CHANNELS
+187	                }
+188	                edge = {
+189	                    ch: (int(self._cal_edge_pixels[ch][0] * sx),
+190	                         int(self._cal_edge_pixels[ch][1] * sy))
+191	                    for ch in CHANNELS
+192	                }
+193	            else:
+194	                hold = dict(self._cal_hold_pixels)
+195	                edge = dict(self._cal_edge_pixels)
+196	            cached = (hold, edge)
+197	            self._scaled_cache[key] = cached
+198	            return cached
+199	
+200	    def _on_frame(self, frame: Frame) -> None:
+201	        """Camera frame listener -- runs in the capture thread.
+202	
+203	        Prefers the full-resolution raw frame from the capture device when
+204	        available, so detection is unaffected by the working/buffer downscale
+205	        used for the live view.
+206	
+207	        After detection, attaches a per-frame snapshot to `frame.meta` so the
+208	        view path can render scrub-accurate overlays from buffered frames.
+209	        """
+210	        img = frame.detect_image()
+211	        if img is None:
+212	            return
+213	        h, w = img.shape[:2]
+214	        hold_px, edge_px = self._scale_pixels(w, h)
+215	        self._detect(img, hold_px, edge_px)
+216	
+217	        with self._lock:
+218	            snap_state = dict(self._cached_result) if self._cached_result else {}
+219	            snap_markers = {
+220	                ch: {
+221	                    "pressed": self._pressed[ch],
+222	                    "hold_dist": self._hold_dist[ch],
+223	                    "edge_dist": self._edge_dist[ch],
+224	                    "edge_active": self._edge_active[ch],
+225	                } for ch in CHANNELS
+226	            }
+227	            patch_r = self._patch_r
+228	        if frame.meta is None:
+229	            frame.meta = {}
+230	        frame.meta["detect_video"] = {
+231	            "state": snap_state,
+232	            "markers": snap_markers,
+233	            "patch_r": patch_r,
+234	        }
+235	
+236	    def _sample_at(self, frame: np.ndarray, px: int, py: int) -> np.ndarray:
+237	        """Average a small patch around (px, py)."""
+238	        h, w = frame.shape[:2]
+239	        px = max(0, min(px, w - 1))
+240	        py = max(0, min(py, h - 1))
+241	        r = self._patch_r
+242	        y0, y1 = max(0, py - r), min(h, py + r + 1)
+243	        x0, x1 = max(0, px - r), min(w, px + r + 1)
+244	        patch = frame[y0:y1, x0:x1]
+245	        if patch.size == 0:
+246	            return np.zeros(3, dtype=np.float64)
+247	        return patch.astype(np.float64).mean(axis=(0, 1))
+248	
+249	    @staticmethod
+250	    def _brightness(color: np.ndarray) -> float:
+251	        """Max channel value -- triggers on any color or white."""
+252	        d = float(max(0.0, color[0], color[1], color[2]))
+253	        return 0.0 if np.isnan(d) else d
+254	
+255	    def _color_signal(self, color: np.ndarray, ch: str) -> float:
+256	        """Color-filtered signal -- only the button's own color triggers.
+257	
+258	        Scales by saturation ratio (max-min)/max so white/gray pixels
+259	        produce near-zero signal regardless of camera white balance.
+260	        """
+261	        cmax = float(max(color[0], color[1], color[2]))
+262	        if cmax < 1.0:
+263	            return 0.0
+264	        cmin = float(min(color[0], color[1], color[2]))
+265	        sat_ratio = (cmax - cmin) / cmax
+266	
+267	        tw, rw = _COLOR_FILTER[ch]
+268	        target = tw[0]*color[0] + tw[1]*color[1] + tw[2]*color[2]
+269	        reject = max(0.0, rw[0]*color[0] + rw[1]*color[1] + rw[2]*color[2])
+270	        d = float((target - reject) * sat_ratio)
+271	        return 0.0 if np.isnan(d) else d
+272	
+273	    def _detect(
+274	        self,
+275	        frame: np.ndarray,
+276	        hold_pixels: dict[str, tuple[int, int]],
+277	        edge_pixels: dict[str, tuple[int, int]],
+278	    ):
+279	        """Run detection on a new camera frame. Called from capture thread."""
+280	        result: dict[str, dict] = {}
+281	        for ch in CHANNELS:
+282	            hx, hy = hold_pixels[ch]
+283	            ex, ey = edge_pixels[ch]
+284	            hold_color = self._sample_at(frame, hx, hy)
+285	            edge_color = self._sample_at(frame, ex, ey)
+286	
+287	            hold_dist = self._brightness(hold_color)
+288	            edge_dist = self._color_signal(edge_color, ch)
+289	
+290	            with self._lock:
+291	                self._hold_dist[ch] = hold_dist
+292	                self._edge_dist[ch] = edge_dist
+293	
+294	                if not self._pressed[ch]:
+295	                    if hold_dist > self._hold_thresh:
+296	                        self._pressed[ch] = True
+297	                else:
+298	                    if hold_dist < self._hold_release:
+299	                        self._pressed[ch] = False
+300	
+301	                edge_on = edge_dist > self._edge_thresh[ch]
+302	                if edge_on and not self._edge_active[ch]:
+303	                    self._press_count[ch] += 1
+304	                self._edge_active[ch] = edge_on
+305	
+306	                result[ch] = {
+307	                    "pressed": self._pressed[ch],
+308	                    "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
+309	                    "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
+310	                    "press_count": self._press_count[ch],
+311	                }
+312	
+313	        with self._lock:
+314	            self._cached_result = result
+315	
+316	    def update(self, sample: Sample) -> dict:
+317	        """Return the latest detection result (computed in capture thread)."""
+318	        with self._lock:
+319	            cached = self._cached_result
+320	
+321	        if cached is not None:
+322	            return cached
+323	
+324	        cam_status = self._cam.status()
+325	        msg = "no_device" if not cam_status.get("active") else "waiting"
+326	        return {ch: {
+327	            "pressed": False, "baseline": 0, "edge_line": 0,
+328	            "press_count": 0, "camera": msg,
+329	        } for ch in CHANNELS}
+330	
+331	    # --- Chart schema -------------------------------------------------------
+332	
+333	    def chart_schema(self) -> list[dict]:
+334	        """Per-fret hold + edge signals (no raw ADC)."""
+335	        return [
+336	            make_slot_schema(ch, [
+337	                {"key": "baseline", "label": "Hold",
+338	                 "color": CH_COLORS[ch], "width": 1.5},
+339	                {"key": "edge_line", "label": "Edge",
+340	                 "color": "#e94560", "width": 1.5, "dash": [2, 2]},
+341	            ])
+342	            for ch in CHANNELS
+343	        ]
+344	
+345	    # --- Overlay extension --------------------------------------------------
+346	
+347	    def overlays(self) -> list[dict]:
+348	        """Expose sensor markers as an overlay layer for the video viewport."""
+349	        return [{"name": "detect_video.markers", "draw": self._draw_markers}]
+350	
+351	    def _draw_markers(self, image, frame: Optional[Frame] = None) -> None:
+352	        h, w = image.shape[:2]
+353	        hold_px, edge_px = self._scale_pixels(w, h)
+354	
+355	        # Prefer the per-frame snapshot when available (scrub fidelity); fall
+356	        # back to live state for live frames or when the frame predates the
+357	        # current detector instance.
+358	        snap_meta = None
+359	        if frame is not None and frame.meta:
+360	            snap_meta = frame.meta.get("detect_video")
+361	        if snap_meta is not None:
+362	            markers = snap_meta.get("markers", {})
+363	            patch_r = int(snap_meta.get("patch_r", self._patch_r))
+364	            snap = {
+365	                ch: (
+366	                    hold_px[ch],
+367	                    edge_px[ch],
+368	                    bool(markers.get(ch, {}).get("pressed", False)),
+369	                    float(markers.get(ch, {}).get("hold_dist", 0.0)),
+370	                    float(markers.get(ch, {}).get("edge_dist", 0.0)),
+371	                    bool(markers.get(ch, {}).get("edge_active", False)),
+372	                ) for ch in CHANNELS
+373	            }
+374	        else:
+375	            with self._lock:
+376	                snap = {
+377	                    ch: (
+378	                        hold_px[ch],
+379	                        edge_px[ch],
+380	                        self._pressed[ch],
+381	                        self._hold_dist[ch],
+382	                        self._edge_dist[ch],
+383	                        self._edge_active[ch],
+384	                    ) for ch in CHANNELS
+385	                }
+386	                patch_r = self._patch_r
+387	
+388	        for ch, ((hx, hy), (ex, ey), pressed, hold_d, edge_d, edge_on) in snap.items():
+389	            color = _MARKER_COLORS[ch]
+390	            hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
+391	
+392	            cv2.rectangle(image, (hx - patch_r, hy - patch_r),
+393	                          (hx + patch_r, hy + patch_r), color, 1)
+394	            cv2.circle(image, (hx, hy), _MARKER_RADIUS, hold_ring, _MARKER_THICK)
+395	
+396	            cv2.line(image, (hx, hy), (ex, ey), color, 1)
+397	            edge_ring = _PRESSED_COLOR if edge_on else _IDLE_COLOR
+398	            cv2.rectangle(image, (ex - patch_r, ey - patch_r),
+399	                          (ex + patch_r, ey + patch_r), color, 1)
+400	            cv2.circle(image, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
+401	
+402	            label = f"{ch[0].upper()} h{hold_d:.0f} e{edge_d:.0f}"
+403	            cv2.putText(image, label, (hx + _MARKER_RADIUS + 4, hy + 5),
+404	                        cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
+405
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:07:29Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:07:30Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/detector.h`
+
+```text
+1	#ifndef DETECTOR_H
+2	#define DETECTOR_H
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "queue.h"
+9	
+10	/* Detector subsystem — see firmware/marvin/docs/spec.md §4.2.
+11	 *
+12	 * A detector is anything that turns observation data into a detector_state_t
+13	 * event: cv_marvin_v1 reads captured video frames; adc_fretboard (future)
+14	 * reads UART-streamed ADC samples from the fretboard MCU; off-board detectors
+15	 * may feed state in over UART/Ethernet.
+16	 *
+17	 * Every detector publishes detector_state_t records onto a single FreeRTOS
+18	 * queue (the "detector-state bus"). The timing pipeline (§4.4) is the sole
+19	 * consumer in steady state; until it lands a stub task drains the queue so
+20	 * producers don't block. */
+21	
+22	typedef enum
+23	{
+24	    FRET_GREEN  = 0,
+25	    FRET_RED    = 1,
+26	    FRET_YELLOW = 2,
+27	    FRET_BLUE   = 3,
+28	    FRET_ORANGE = 4,
+29	    FRET_COUNT  = 5,
+30	} fret_t;
+31	
+32	typedef enum
+33	{
+34	    DETECTOR_CV_MARVIN_V1  = 0,
+35	    DETECTOR_ADC_FRETBOARD = 1,
+36	} detector_id_t;
+37	
+38	/* Canonical record. Layout is fixed-width / naturally aligned / little-endian
+39	 * because this is also the on-disk format for state.bin (spec §4.6.5). Do not
+40	 * reorder fields without bumping the recording schema version. */
+41	typedef struct
+42	{
+43	    uint32_t frame_epoch;     /* master sync token, spec §4.6.4 */
+44	    uint64_t timestamp_us;    /* monotonic, marvin-local */
+45	    uint8_t  detector_id;     /* detector_id_t */
+46	    uint8_t  reserved[3];
+47	    struct
+48	    {
+49	        uint8_t  pressed;     /* 0/1 hard call */
+50	        uint16_t confidence;  /* 0..65535, detector-defined */
+51	        uint16_t raw_value;   /* detector-defined: ADC sample, pixel mean, etc. */
+52	    } fret[FRET_COUNT];
+53	} detector_state_t;
+54	
+55	/* Brings up the detector-state bus queue, the cv_marvin_v1 detector task,
+56	 * and (for now) a stub consumer. All detectors start disabled; the app
+57	 * must Detector_Enable() each one it wants publishing. Active selection
+58	 * defaults to DETECTOR_CV_MARVIN_V1 for symmetry but is independent of
+59	 * enabled-state. Call after Video_Initialize so the video frame queue
+60	 * can be subscribed to from inside cv_marvin_v1. */
+61	void Detector_Initialize(void);
+62	
+63	/* Producers post records here; consumers (timing pipeline, eventually) read
+64	 * them. Returns NULL until Detector_Initialize has run. */
+65	QueueHandle_t Detector_BusQueue(void);
+66	
+67	/* Per-detector enable: controls whether a detector publishes records onto
+68	 * the bus. Multiple detectors may be enabled simultaneously — recording
+69	 * (§4.6) snoops everything for side-by-side training data. Disabled
+70	 * detectors still consume their input (frames, ADC samples) so input
+71	 * queues don't back up; they just don't emit. Bit operations are atomic
+72	 * on aligned 32-bit reads; writes use a critical section. */
+73	void Detector_Enable(detector_id_t id);
+74	void Detector_Disable(detector_id_t id);
+75	bool Detector_IsEnabled(detector_id_t id);
+76	
+77	/* Active selector: which detector's records the timing pipeline (§4.4)
+78	 * acts on. Only one active at a time, irrespective of how many are
+79	 * enabled. The timing pipeline is responsible for filtering by
+80	 * detector_id when it lands; for M1 this is a held setting only. */
+81	void          Detector_SetActive(detector_id_t id);
+82	detector_id_t Detector_GetActive(void);
+83	
+84	#endif
+85
+```
+</details></tool-use>
+
+---
+
+_**User (2026-05-20 21:09:34Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   This session continues marvin firmware development on a SAM9X75-based guitar-playing robot. Sequential explicit user requests:
+   
+   - **Request 1 (resumed)**: Continue the deferred two-commit sequence — commit (2): bump `ISC_CAP_NUM_BUFFERS` from 2 to 4. (Original instruction from prior session: "split 1 and 2 into two commits. defer 3 for now.")
+   
+   - **Request 2**: "looking good. One development rule to remember permanently. Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing." — Save permanent rule about static memory only.
+   
+   - **Request 3**: "I think we're good, but can you review codebase to make sure we don't have any existing use of dynamic memory. If in MCC genereted code, just make note of it. If in our code, plan to correct." — Audit dynamic allocation across the codebase.
+   
+   - **Request 4**: "Forgot about FreeRTOS... I don't think there's anything we can do about MCC generated code - it doesn't support static allocation. But we can and should change all our code to use static FreeRTOS mechanisms. I have regenerated MCC with freertos static. I will leave freertos heap implementation at heap1. go with any changes needed to our code." — Convert our code to static FreeRTOS APIs.
+   
+   - **Request 5**: "commit" — Commit static-allocation conversion.
+   
+   - **Request 6**: Build error report (s_display_bound undeclared, conflicting types for Video_SubscribeFrames, unknown type name 'bool'). Fix build errors.
+   
+   - **Request 7**: "fixed. please commit" — Commit build fix.
+   
+   - **Request 8**: "one more top level marvin spec / scope item to capture before we move on with development. I would like marvin to 'understand' the game state based on observing the screen. This should be its own module using cv to monitor video and determine current menu / selection / gameplay mode / etc. We may also want to implement control of the game through this game module. For example, should be able to ask it to start a single player playthrough of requested song. I think this will mean building up metadata collection of game state, song lists, etc." — Capture new game-state-awareness subsystem in spec.
+   
+   - **Request 9**: "commit" — Commit spec updates.
+   
+   - **Request 10 (most recent)**: "ok let's get back to detector development. Are we ready to start implementing cv_marvin_v1? Or is there some other testing we should do first? (I'm not near hardware at the moment). If ready, we should base cv_marvin_v1 logic on the fret-tuner detect_video.py logic." — Assess readiness for cv_marvin_v1 development; if ready, port from detect_video.py.
+
+   **Standing project rules to preserve verbatim:**
+   - "never `git commit` on my own initiative; only on explicit user ask or after prompting" (auto-memory)
+   - "Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing." (most recent permanent rule)
+   - "Code comments describe current code only" — no dev-diary in source comments
+   - "Journals are the source of truth for planning and progress"
+   - "prefer journal updates over re-stating plans in chat"
+   - Specstory files SHOULD be staged in commits
+   - MCC manifest churn should NOT be in commits
+
+2. Key Technical Concepts:
+   - SAM9X75 Curiosity (Cortex-A5, 1 GB DDR3) running MPLAB Harmony v5.6.4 + FreeRTOS
+   - HDMI capture: TC358743 → MIPI CSI-2 → ISC → DDR
+   - Capture format: BGR888 packed (3 B/pixel), NOT BGRX32 — BYPASS+PACKED32+RMS=1
+   - FreeRTOS static allocation: `xTaskCreateStatic`, `xQueueCreateStatic`, `xSemaphoreCreateMutexStatic`, `StaticTask_t`, `StaticQueue_t`, `StaticSemaphore_t`, `vApplicationGetIdleTaskMemory`
+   - FreeRTOS heap_1 implementation (40 KB, used only by MCC-generated code)
+   - ISC descriptor ring with N=4 buffers, frame routing via `Video_FrameInfo.buffer`
+   - Detector subsystem: `detector_state_t` records on `xDetectorStateQueue`, multi-detector enable/active model
+   - Game-state awareness as separate subsystem: video-frame consumer (not detector), `xGameStateQueue` bus
+   - fret-tuner detect_video.py algorithm: dual-sensor per fret (hold brightness + edge color-filter), 5×5 patch averaging, hysteresis, rising-edge press_count
+   - Cortex-A5 atomicity (aligned 32-bit reads/writes)
+   - taskENTER_CRITICAL for slot writes; aligned-pointer slot reads atomic in IRQ
+   - Per-color BGR target/reject filter weights for note detection
+
+3. Files and Code Sections:
+
+   - **`firmware/marvin/default/src/video/isc_capture.c`** (MODIFIED in commit `171749e`)
+     Bumped `ISC_CAP_NUM_BUFFERS` from 2 to 4 with a tight comment:
+     ```c
+     /* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
+      * before the producer laps. 4 → ~50 ms read window. Static pool max is
+      * 4×1920×1080×3 ≈ 24 MB, trivial on 1 GB DDR3. */
+     #define ISC_CAP_NUM_BUFFERS  4u
+     ```
+
+   - **`/Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/memory/feedback_static_allocation.md`** (NEW)
+     Permanent feedback memory capturing the static-allocation rule.
+
+   - **`/Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/memory/MEMORY.md`** (UPDATED)
+     Added pointer to feedback_static_allocation.md.
+
+   - **`firmware/marvin/default/src/log.c`** (MODIFIED in commit `06051fb`)
+     ```c
+     static volatile log_level_t s_level = LOG_LEVEL_INFO;
+     static SemaphoreHandle_t    s_mutex;
+     static StaticSemaphore_t    s_mutex_buf;
+     
+     void log_init(log_level_t initial_level)
+     {
+         s_level = initial_level;
+         /* Safe before vTaskStartScheduler; only Take/Give require the
+          * scheduler to be running. */
+         s_mutex = xSemaphoreCreateMutexStatic(&s_mutex_buf);
+     }
+     ```
+
+   - **`firmware/marvin/default/src/video/video.c`** (MODIFIED in commits `06051fb` and `7aa6b57`)
+     Added static task storage and converted to xTaskCreateStatic:
+     ```c
+     static StackType_t  s_task_stack[VIDEO_TASK_STACK_WORDS];
+     static StaticTask_t s_task_tcb;
+     
+     void Video_Initialize(void)
+     {
+         (void)xTaskCreateStatic(video_task,
+                                 "VideoTask",
+                                 VIDEO_TASK_STACK_WORDS,
+                                 NULL,
+                                 VIDEO_TASK_PRIORITY,
+                                 s_task_stack,
+                                 &s_task_tcb);
+     }
+     ```
+     Build fix: moved `s_capture_armed` and `s_display_bound` declarations above `on_frame_done` ISR (which reads `s_display_bound`):
+     ```c
+     /* Capture-state flags. s_capture_armed is task-only; s_display_bound is
+      * read by the ISR and written by the task. Defined here (above the ISR)
+      * so on_frame_done can see the latter. */
+     static bool s_capture_armed;
+     static volatile bool s_display_bound;
+     ```
+
+   - **`firmware/marvin/default/src/video/video.h`** (MODIFIED in commit `7aa6b57`)
+     Added `#include <stdbool.h>` to fix unknown type name 'bool' errors.
+
+   - **`firmware/marvin/default/src/detector/detector.c`** (MODIFIED in commit `06051fb`)
+     ```c
+     static QueueHandle_t   s_bus_queue;
+     static StaticQueue_t   s_bus_queue_buf;
+     static uint8_t         s_bus_queue_storage[DETECTOR_BUS_DEPTH * sizeof(detector_state_t)];
+     
+     static StackType_t     s_drain_stack[DRAIN_TASK_STACK_WORDS];
+     static StaticTask_t    s_drain_tcb;
+     
+     static volatile uint32_t s_enabled_mask;
+     static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
+     ```
+     Converted xQueueCreate → xQueueCreateStatic, xTaskCreate → xTaskCreateStatic.
+
+   - **`firmware/marvin/default/src/detector/cv_marvin_v1.c`** (MODIFIED in commit `06051fb`)
+     ```c
+     static StaticQueue_t s_frame_queue_buf;
+     static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+     
+     static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
+     static StaticTask_t  s_task_tcb;
+     ```
+     Converted to xQueueCreateStatic and xTaskCreateStatic.
+
+   - **`firmware/marvin/default/src/detector/detector.h`** (READ for cv_marvin_v1 planning)
+     Canonical detector_state_t shape:
+     ```c
+     typedef struct
+     {
+         uint32_t frame_epoch;
+         uint64_t timestamp_us;
+         uint8_t  detector_id;
+         uint8_t  reserved[3];
+         struct
+         {
+             uint8_t  pressed;
+             uint16_t confidence;
+             uint16_t raw_value;
+         } fret[FRET_COUNT];
+     } detector_state_t;
+     ```
+     Note: schema has no press_count or rising-edge bit — open question for cv_marvin_v1 port.
+
+   - **`firmware/marvin/docs/spec.md`** (MODIFIED in commit `4cd5fb1`)
+     Added §4.8 "Game-state awareness & control" subsystem (peer of §4.2-§4.6 but parked at §4.8 to avoid renumbering). Updates: §1.1 mission bullet 7, §1.4 status row, §2.2 ownership rows (3 new), §6 toggles (`game_observe_enable`, `game_control_enable`), §8 milestones M9/M10, §9 questions Q10/Q11.
+
+   - **`firmware/marvin/docs/journal.md`** (MODIFIED across multiple commits)
+     Added decision-log entries for: ring depth bump landing, static-allocation conversion, game-state subsystem.
+
+   - **`tools/fret-tuner/detect_video.py`** (READ for cv_marvin_v1 port reference, 404 lines)
+     Algorithm understood:
+     - 10 sensor points (5 frets × 2 sensors per fret)
+     - Hold sensor: brightness detect via `_brightness()` = max channel, with hysteresis (HOLD_THRESH / HOLD_RELEASE_FRAC)
+     - Edge sensor: color-filtered via `_color_signal()` = (target_weights·color - reject_weights·color) × saturation, where saturation = (max-min)/max
+     - Rising-edge press_count incremented when edge_dist crosses EDGE_<COLOR> threshold
+     - 5×5 patch averaging via `_sample_at()` with PATCH_RADIUS=2
+     - Calibration coords anchored to 1920×1080, scaled to actual frame size
+     - Color filter table:
+       ```python
+       _COLOR_FILTER = {
+           "green":  ((0, 1, 0),     (0.7, 0, 0.7)),
+           "red":    ((0, 0, 1),     (0.7, 0.7, 0)),
+           "yellow": ((0, 0.5, 0.5), (1.4, 0, 0)),
+           "blue":   ((1, 0.4, 0),   (0, 0, 1.4)),
+           "orange": ((0, 0.3, 0.7), (1.4, 0, 0)),
+       }
+       ```
+
+4. Errors and fixes:
+   - **Build error after static-allocation conversion**: `s_display_bound` undeclared at video.c:187 (used in IRQ before its line-216 definition). Fix: moved both `s_capture_armed` and `s_display_bound` declarations above `on_frame_done` ISR.
+   
+   - **Build error**: video.h had `unknown type name 'bool'` for `Video_SubscribeFrames`/`Video_UnsubscribeFrames` declarations. Was relying on transitive `bool` from `FreeRTOS.h` which broke at translation units processing video.h alone. Fix: added `#include <stdbool.h>` to video.h.
+   
+   - **Build errors**: "conflicting types for Video_SubscribeFrames/Video_UnsubscribeFrames" — were a downstream symptom of the missing bool type in the header. Resolved by the stdbool fix.
+
+   - **Commit hygiene**: User had staged MCC regen output including pure timestamp churn (mcc-manifest-autosave.yml, mcc-manifest-generated-success.yml, harmony-manifest-success.yml) and spurious reorderings (definitions.h include-order shuffle, initialization.c blank-line shift). Per project rule "MCC manifest churn should NOT be in commits", I unstaged these via `git restore --staged` and `git checkout --` while keeping substantive MCC changes (FreeRTOS.yml, FreeRTOSConfig.h, freertos_hooks.c, mcc-config.mc4 hash updates).
+
+5. Problem Solving:
+   - **Static allocation audit**: Identified all 6 dynamic-API call sites in our code; verified MCC config newly enabled `configSUPPORT_STATIC_ALLOCATION=1` and provided `vApplicationGetIdleTaskMemory`; mechanical conversion to *Static APIs.
+   - **Game-state subsystem placement**: Avoided renumbering existing spec sections (§4.5, §4.6, §4.7) that journal references. Trade-off: subsystem appears at §4.8 (after cross-cutting services) which is logically odd but preserves stable references; documented this trade-off in the section itself.
+   - **Detector schema gap identified**: `detector_state_t` has no press_count delta or rising-edge bit — needed for cv_marvin_v1 port which has rising-edge counter semantics. Surfacing as design question.
+   - **Cache coherence question identified**: ISC framebuffer in `.region_cache_aligned` section — section name suggests cache-aligned writes but doesn't clarify cached-vs-uncached. Need to verify before cv_marvin_v1 port to avoid stale-cache reads.
+
+6. All user messages:
+   - "looking good. One development rule to remember permanently. Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing."
+   - "I think we're good, but can you review codebase to make sure we don't have any existing use of dynamic memory. If in MCC genereted code, just make note of it. If in our code, plan to correct."
+   - "Forgot about FreeRTOS... I don't think there's anything we can do about MCC generated code - it doesn't support static allocation. But we can and should change all our code to use static FreeRTOS mechanisms. I have regenerated MCC with freertos static. I will leave freertos heap implementation at heap1. go with any changes needed to our code."
+   - "commit"
+   - [Build error report listing s_display_bound undeclared, conflicting types for Video_SubscribeFrames/Video_UnsubscribeFrames, unknown type name 'bool']
+   - "fixed. please commit"
+   - "one more top level marvin spec / scope item to capture before we move on with development. I would like marvin to 'understand' the game state based on observing the screen. This should be its own module using cv to monitor video and determine current menu / selection / gameplay mode / etc. We may also want to implement control of the game through this game module. For example, should be able to ask it to start a single player playthrough of requested song. I think this will mean building up metadata collection of game state, song lists, etc."
+   - "commit"
+   - "ok let's get back to detector development. Are we ready to start implementing cv_marvin_v1? Or is there some other testing we should do first? (I'm not near hardware at the moment). If ready, we should base cv_marvin_v1 logic on the fret-tuner detect_video.py logic."
+
+7. Pending Tasks:
+   - Provide a clear assessment to the user about cv_marvin_v1 readiness, including:
+     - Plumbing-level readiness (capture, display, detector bus, multi-subscriber video, FreeRTOS static allocation — all done)
+     - Open issues that don't need hardware: cache coherence verification of framebuffer, detector_state_t schema gap (no press_count / rising-edge bit), coordinate scaling strategy (1920×1080 reference → 720×480 actual)
+     - Testing strategy options without hardware: (a) host-side unit-test rig with captured PNGs vs Python reference, (b) write integration and verify on hardware, (c) fully factor logic into host-buildable unit
+   - If user agrees, port detect_video.py logic to cv_marvin_v1.c with:
+     - 10 sensor coords (compile-time constants until calibration UI lands at M6)
+     - Per-color filter weights table (from _COLOR_FILTER)
+     - Brightness hold-detect with hysteresis
+     - Color-filtered edge-detect with rising-edge counter
+     - 5×5 patch averaging
+     - Coordinate scaling from 1920×1080 reference
+
+8. Current Work:
+   Just finished committing `4cd5fb1` (game-state subsystem spec addition). User then asked: "ok let's get back to detector development. Are we ready to start implementing cv_marvin_v1? Or is there some other testing we should do first? (I'm not near hardware at the moment). If ready, we should base cv_marvin_v1 logic on the fret-tuner detect_video.py logic."
+   
+   I read `tools/fret-tuner/detect_video.py` (404 lines, full algorithm captured) and `firmware/marvin/default/src/detector/detector.h` (confirmed detector_state_t shape). I was preparing to give the user a synthesized recommendation covering:
+   - Yes, plumbing is ready (all upstream subsystems work)
+   - Issues to consider before/during port: BGR confirmed matches, coord scaling, cache coherence (needs verification), detector_state_t schema gap (no press_count / rising-edge bit)
+   - Testing-without-hardware options
+   
+   The conversation was interrupted before I could produce that recommendation text.
+
+9. Optional Next Step:
+   Synthesize and deliver the readiness assessment + recommendation to the user, directly answering their most recent question: "Are we ready to start implementing cv_marvin_v1? Or is there some other testing we should do first?"
+   
+   Direct quote from user's most recent message that defines the next step: "Are we ready to start implementing cv_marvin_v1? Or is there some other testing we should do first? (I'm not near hardware at the moment). If ready, we should base cv_marvin_v1 logic on the fret-tuner detect_video.py logic."
+   
+   The recommendation should cover:
+   - Plumbing readiness: all upstream subsystems work (capture/display/multi-subscriber video/detector bus/static allocation) — yes ready in that sense.
+   - Pre-implementation work that doesn't need hardware:
+     - Verify cache coherence of `.region_cache_aligned` framebuffer (look at MMU table or linker script)
+     - Decide on detector_state_t schema extension for press_count / rising-edge bit (or use confidence/raw_value fields creatively)
+     - Decide on coordinate-scaling strategy (compile-time defaults at 720×480 vs runtime scale-from-1920×1080-reference)
+   - Testing options without hardware:
+     - Recommended: small host-side test rig that links the detector logic against captured PNG frames + reference Python output (would catch porting bugs before flashing)
+     - Pragmatic alternative: just port carefully and verify on hardware when back
+   
+   Then ask user which testing approach they prefer and confirm any schema decisions before starting the port.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:09:39Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:09:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check framebuffer section + MMU mapping
+
+`grep -n "region_cache_aligned\|cache_aligned\|NOCACHE\|region_nocache" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/MMU/mmu.c 2>/dev/null | head -40`
+
+```text
+28:static __attribute__((__section__(".region_cache_aligned")))
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:09:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search broader for cache region definitions
+
+`grep -rn "region_cache_aligned\|cache_aligned\|\.region_nocache\|NOCACHE" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/*.ld 2>/dev/null | head -40`
+
+```text
+(eval):1: no matches found: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/*.ld
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:09:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find linker script and cache region definitions
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default -name "*.ld" 2>/dev/null | head; grep -rn "region_cache_aligned\|region_nocache" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default 2>/dev/null | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c:28:static __attribute__((__section__(".region_cache_aligned")))
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld:104:	.region_cache_aligned_const :
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld:107:		*(.region_cache_aligned_const .region_cache_aligned_const.*)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld:123:	.region_nocache (NOLOAD) :
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld:126:		*(.region_nocache .region_nocache.*)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld:140:	.region_cache_aligned (NOLOAD) :
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld:143:		*(.region_cache_aligned .region_cache_aligned.*)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/vision/drivers/isc/drv_isc.c:26:__attribute__((__section__(".region_cache_aligned"))) __attribute__((__aligned__(32))) ISC_DEVICE_DMA_Pool isc_dma_pool;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c:59:#define FB_CACHE_NC             __attribute__ ((section(".region_nocache"), aligned (32)))
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:09:47Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/ddram.ld`
+
+```text
+95		{
+96			. = ALIGN(4);
+97			PROVIDE(_srelocate = .);
+98			KEEP(*(.vectors .vectors.*))
+99			*(.ramfunc)
+100			. = ALIGN(4);
+101			PROVIDE(_erelocate = .);
+102		} >sram AT>ram
+103	
+104		.region_cache_aligned_const :
+105		{
+106			. = ALIGN(32);
+107			*(.region_cache_aligned_const .region_cache_aligned_const.*)
+108			. = ALIGN(32);
+109		} >ram
+110	
+111		.region_sram (NOLOAD) :
+112		{
+113			. = ALIGN(4);
+114			*(.region_sram .region_sram.*)
+115		} >sram
+116	
+117		.region_ram (NOLOAD) :
+118		{
+119			. = ALIGN(4);
+120			*(.region_ram .region_ram.*)
+121		} >ram
+122	
+123		.region_nocache (NOLOAD) :
+124		{
+125			. = ALIGN(4);
+126			*(.region_nocache .region_nocache.*)
+127		} >ram_nocache
+128	
+129		/* .bss section which is used for uninitialized data */
+130		.bss (NOLOAD) :
+131		{
+132			. = ALIGN(4);
+133			PROVIDE(_szero = .);
+134			*(.bss .bss.*)
+135			*(COMMON)
+136			. = ALIGN(4);
+137			PROVIDE(_ezero = .);
+138		} >ram
+139	
+140		.region_cache_aligned (NOLOAD) :
+141		{
+142			. = ALIGN(32);
+143			*(.region_cache_aligned .region_cache_aligned.*)
+144			. = ALIGN(32);
+145		} >ram
+146	
+147		.stacks (NOLOAD) :
+148		{
+149			. += IRQ_STACK_SIZE;
+150			. = ALIGN(8);
+151			_irqstack = .;
+152	
+153			. += FIQ_STACK_SIZE;
+154			. = ALIGN(8);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:09:52Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:10:10Z)**_
+
+Yes, the plumbing is ready — but there are three port-time decisions worth settling before code lands. None require hardware.
+
+## Plumbing readiness ✓
+
+- Capture pipeline pushes BGR888-packed frames into a 4-deep ring (commit `171749e`).
+- Multi-subscriber fan-out works ([video.c:208-215](firmware/marvin/default/src/video/video.c#L208-L215)) — cv_marvin_v1 is already wired as a subscriber stub ([cv_marvin_v1.c:36-77](firmware/marvin/default/src/detector/cv_marvin_v1.c#L36-L77)).
+- Detector bus + enable/active mask ready; cv_marvin_v1 already drains its frame queue and conditionally publishes.
+- FreeRTOS static allocation in place.
+
+## Three issues to settle first
+
+**1. Cache coherence — needs fixing.** ISC DMA pool lives in `.region_cache_aligned` ([isc_capture.c:28](firmware/marvin/default/src/video/isc_capture.c#L28)), which is mapped to the *cached* `ram` region in the linker script — only the GFX framebuffer uses `.region_nocache` ([ddram.ld:123-127](firmware/marvin/default/src/config/default/ddram.ld#L123-L127), [drv_gfx_xlcdc.c:59](firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c#L59)). Right now no CPU code reads the buffer, so the bug is latent. Once cv_marvin_v1 reads frame bytes, we'll see stale L1 data unless we either:
+  - move the ISC ring to `.region_nocache` (simplest, costs ~24 MB DDR bandwidth on every read — fine for our budget), or
+  - invalidate D-cache for each frame before sampling.
+
+  My recommendation: move the ring to `.region_nocache`. We sample sparse 5×5 patches; cache locality buys us little, and invalidate-around-DMA is fragile.
+
+**2. Detector schema gap.** Python emits a per-fret `press_count` (rising-edge counter), but [detector_state_t](firmware/marvin/default/src/detector/detector.h) has no equivalent — only `pressed` (bool), `confidence`, `raw_value`. Options: (a) add `uint8_t press_count` to the per-fret struct (8 bytes total), (b) repurpose `raw_value` to carry the count, (c) drop press_count and let downstream derive rising edges from `pressed`. Recommend (a) — it's the closest to the Python semantics and the recorder will want it for replay.
+
+**3. Coordinate scaling.** detect_video.py anchors at 1920×1080 and scales. Live capture is 480p60/720p60. Either bake compile-time coords for our actual capture format or carry the scaling logic. Recommend keeping the scaling logic — calibration UI (M6) will eventually want to set coords in display space anyway.
+
+## Testing without hardware
+
+Two paths:
+
+- **Host unit-test rig** — factor the per-frame sampling/threshold logic into a translation unit that builds on host, feed captured PNGs, diff against Python reference. Catches porting bugs (channel order, weight signs, hysteresis) before you're at a desk.
+- **Just port + verify on hardware** — faster to write, slower to debug.
+
+I'd recommend the host rig: the algorithm has enough numeric subtlety (BGR vs RGB, target/reject sign math, saturation gate) that a regression diff against Python pays for itself.
+
+---
+
+Want me to:
+1. Move the ISC ring to `.region_nocache` first (small, isolated change)?
+2. Extend `detector_state_t` with `press_count`?
+3. Stand up a host-side test rig, or skip it?
+
+---
+
+_**User (2026-05-20 21:13:40Z)**_
+
+1. move the ring to nocache. 2. different detectors might need different data in order to be able to analyze. not sure what this means overall, but maybe detector state is too rigid? 3. coordinates should be with respect to the native source format.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:11Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:11Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/isc_capture.c`
+
+```text
+1	#include "isc_capture.h"
+2	
+3	#include <stdbool.h>
+4	#include <stddef.h>
+5	#include <stdint.h>
+6	
+7	#include "definitions.h"
+8	#include "log.h"
+9	#include "system/int/sys_int.h"
+10	#include "vision/drivers/csi/drv_csi.h"
+11	#include "vision/drivers/csi2dc/drv_csi2dc.h"
+12	#include "vision/drivers/image_sensor/drv_image_sensor.h"
+13	#include "vision/drivers/isc/drv_isc.h"
+14	
+15	#define ISC_CAP_MAX_W        1920u
+16	#define ISC_CAP_MAX_H        1080u
+17	#define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
+18	/* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
+19	 * before the producer laps. 4 → ~50 ms read window. Static pool max is
+20	 * 4×1920×1080×3 ≈ 24 MB, trivial on 1 GB DDR3. */
+21	#define ISC_CAP_NUM_BUFFERS  4u
+22	/* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
+23	 * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
+24	 * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps
+25	 * (works in both Gen2 and Gen3 — bands coincide there). Changes with bitrate. */
+26	#define ISC_CAP_CSI_BITRATE  0x0Au
+27	
+28	static __attribute__((__section__(".region_cache_aligned")))
+29	       __attribute__((__aligned__(32)))
+30	       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+31	
+32	static DRV_CSI_OBJ*    csiObj;
+33	static DRV_CSI2DC_OBJ* csi2dcObj;
+34	static DRV_ISC_OBJ*    iscObj;
+35	
+36	static volatile uint32_t g_frame_count;
+37	static bool              g_running;
+38	
+39	static volatile ISC_Capture_FrameCallback s_frame_cb;
+40	static volatile uintptr_t                 s_frame_ctx;
+41	
+42	static void isc_frame_done(uintptr_t ctx)
+43	{
+44	    /* The MCC ISC driver increments DrvISCObj.frameIndex before invoking
+45	     * this callback (drv_isc.c ISC_Handler), so frameIndex now points at
+46	     * the descriptor hardware is about to write. The just-completed
+47	     * buffer is the previous slot in the descriptor ring. */
+48	    DRV_ISC_OBJ *obj = (DRV_ISC_OBJ *)ctx;
+49	    uint32_t n = obj->dmaDescSize;
+50	    uint32_t completed = (obj->frameIndex == 0u)
+51	                       ? (n - 1u)
+52	                       : (obj->frameIndex - 1u);
+53	    uint32_t addr = (uint32_t)(uintptr_t)g_framebuffer
+54	                  + completed * obj->dma.size;
+55	
+56	    g_frame_count++;
+57	    ISC_Capture_FrameCallback cb = s_frame_cb;
+58	    if (cb != NULL) { cb(g_frame_count, addr, s_frame_ctx); }
+59	}
+60
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check ram_nocache region size in linker
+
+`grep -n "ram_nocache\|MEMORY\|^ram\b\| ram " /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ddram.ld | head -30`
+
+```text
+11:MEMORY
+14:	ram         (LWX!R) : ORIGIN = 0x21000000, LENGTH = 0x0F000000  /* ram */
+15:	ram_nocache  (!RWX) : ORIGIN = 0x20000000, LENGTH = 0x01000000  /* ram (non-cached) */
+127:	} >ram_nocache
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:32Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:33Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Look up actual capture resolution targets
+
+`grep -n "ISC_CAP_MAX\|GetDetectedFormat\|TC358743_GetDetected" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/*.c /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/*.h 2>/dev/null | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c:15:#define ISC_CAP_MAX_W        1920u
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c:16:#define ISC_CAP_MAX_H        1080u
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c:30:       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c:166:        || width > ISC_CAP_MAX_W || height > ISC_CAP_MAX_H)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c:224:    if (!TC358743_GetDetectedFormat(&w, &h)) { return false; }
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/tc358743.c:983:bool TC358743_GetDetectedFormat(uint16_t *width, uint16_t *height)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/tc358743.h:15:bool TC358743_GetDetectedFormat(uint16_t *width, uint16_t *height);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:41Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:14:54Z)**_
+
+Snag on #1: the static pool is sized for 1920×1080 worst case (24 MB), but `ram_nocache` is only 16 MB ([ddram.ld:15](firmware/marvin/default/src/config/default/ddram.ld#L15)). Since our capture targets are ≤ 720p60, the cleanest path is to drop `ISC_CAP_MAX_W/H` to 1280×720 — pool becomes 4×1280×720×3 ≈ 11 MB and fits in nocache. Capture reconfigures dynamically per detected format anyway; this just caps the static budget.
+
+Editing `ddram.ld` to grow nocache is the alternative but it's MCC-generated and would need re-applying on every regen.
+
+I'll proceed with: (a) drop max to 1280×720, (b) move the buffer to `.region_nocache`. Reverting later (e.g. 1080p60 detector) is a one-line bump on the linker side.
+
+## On #2 — schema rigidity
+
+Two reasonable shapes; both work with our static-allocation rule.
+
+**A. Bus stays canonical, detectors keep private state.**
+Bus carries only what downstream consumers (timing engine, fretboard link, recorder) need — `pressed[FRET_COUNT]`, timestamp, epoch. Per-detector internals (press_count, raw color distances, sub-detector confidence) live inside the detector module, exposed via a detector-specific getter or written straight into the recording stream. cv_marvin_v1's press_count never crosses the bus.
+
+**B. Tagged union.**
+Bus record has a fixed header (epoch, timestamp, detector_id) + a union sized to the largest variant. `detector_id` discriminates. Each detector defines its own struct. Subscribers switch on the id.
+
+A is simpler and matches the asymmetry: downstream consumers genuinely don't care about per-detector internals — they want "is the green fret pressed at frame N." Detector-specific richness belongs to the detector and the recorder. B is more flexible but pays for it in record size and switch-statement burden everywhere a consumer touches the bus.
+
+My pick: **A**. Add `press_count` *inside* cv_marvin_v1's private state, not on the bus. If the recorder later wants it, the recorder subscribes to the same frame queue and runs its own pass — or cv_marvin_v1 grows a second "detail" output channel for the recorder specifically.
+
+## On #3
+
+Confirmed — coords in native capture-frame space. Detector reads `frame.width / frame.height` from `Video_FrameInfo` and reads pixels at native coords. No 1920×1080 reference. Calibration UI (M6) will produce coords in the same native space.
+
+Want me to proceed with #1 (max → 720p, move to nocache) and pick option A for #2? Or push back on either?
+
+---
+
+_**User (2026-05-20 21:16:30Z)**_
+
+yes proceed 1. 2A. For purpose of capturing / outputting detector state, could each detector be responsible for serializing data into protobuf or similar? (Maybe protobuf is too heavy?)
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:16:55Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:17:02Z)**_
+
+To clarify the layering: the **bus** is in-process struct copies (no serialization needed — that's option A's whole point). The **recording** path is where serialization matters. Yes, per-detector serialization makes sense there: each detector knows its own schema; the recorder just writes (header + opaque blob) to disk.
+
+Format trade-offs for recording (M4 territory, not now):
+
+- **Custom packed binary** — smallest/fastest. Header (epoch, timestamp, detector_id, payload_len) + per-detector packed struct. Each detector owns a versioned schema. Both ends are us, both ends are LE, padding controllable.
+- **nanopb** — ~5–10 KB code, schema evolution via field numbers, Python decoder generated from the same `.proto`. Statically-allocated encode/decode buffers — fits the rule. Slightly heavier on the wire.
+- **CBOR / MessagePack** — schema-less, no codegen, mid-weight. Good when shapes are unstable.
+
+Protobuf isn't too heavy for SAM9X75 — nanopb is genuinely embedded-grade. The real question is whether the format is worth the schema-management ceremony. Both producers and consumers are us (marvin writes, fret-tuner reads); we control both ends; recordings aren't consumed by third parties. That tilts toward custom binary for M4, with the option to switch to nanopb if evolution gets painful.
+
+For now (M1) no serialization needed — cv_marvin_v1 just publishes the canonical bus record and keeps press_count in a private static array. We can revisit the recording format when M4 lands and we know what each detector actually wants to capture.
+
+Proceeding with #1 now (max → 720p, move buffer to `.region_nocache`).
+
+_**Agent (claude-opus-4-7 2026-05-20 21:17:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:17:14Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:17:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:17:23Z)**_
+
+Both changes in [isc_capture.c](firmware/marvin/default/src/video/isc_capture.c):
+- `ISC_CAP_MAX_W/H` → 1280×720 (pool now ~11 MB, fits 16 MB nocache)
+- `g_framebuffer` section → `.region_nocache`
+
+Ready for cv_marvin_v1 port whenever you are. To recap the agreed shape:
+- bus record stays canonical (option A) — no schema change
+- press_count + detector internals stay private to cv_marvin_v1
+- coords in native capture-frame space, no 1920×1080 reference
+- recording-format decision deferred to M4
+
+Want me to start the port, or run a build first to confirm the linker/section change is clean?
+
+---
+
+_**User (2026-05-20 21:18:33Z)**_
+
+build is clean. proceed.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:18:37Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:18:37Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./tools/fret-tuner/detect_video.py`
+
+```text
+1	"""
+2	Video-based fret detection -- camera pointed at the game screen.
+3	
+4	Consumes frames from the shared reference video buffer (camera.py); does
+5	not own the camera. Sensor markers and per-button signal levels are
+6	exposed as an overlay layer through the `overlays()` hook so the server
+7	can bake them into the live MJPEG and paused scrub frames.
+8	
+9	Two sensor points per button, both above the strike line:
+10	
+11	  Sensor 1 (hold)  -- brightness detect (color OR white).
+12	                      Sets pressed=True whenever anything bright appears.
+13	  Sensor 2 (edge)  -- color-filtered leading-edge detect.
+14	                      Increments press_count on each new note arrival,
+15	                      which the actuator uses to schedule strums.
+16	
+17	Use video_calibrate.py to find pixel coordinates for all 10 sensor
+18	points. Detection thresholds are applied to raw pixel values (dark
+19	background is the implicit zero).
+20	
+21	The "baseline" output is the stronger of the two signals (scaled to
+22	0..4095) for chart overlay visualization.
+23	
+24	Requires: opencv-python
+25	"""
+26	
+27	import threading
+28	from typing import Optional
+29	
+30	import cv2
+31	import numpy as np
+32	
+33	from camera import Frame, get_camera
+34	from stream import CH_COLORS, CHANNELS, Sample, make_slot_schema
+35	
+36	_DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
+37	
+38	# Per-button color filter for the edge detector (sensor 2).
+39	# (target_weights, reject_weights) in BGR order.
+40	# Detection signal = target - reject.  Reject weights > 1.0 total
+41	# so that camera-captured whites (which have color-temperature bias)
+42	# are aggressively suppressed, not just mathematically-perfect whites.
+43	_COLOR_FILTER: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
+44	    "green":  ((0, 1, 0),     (0.7, 0, 0.7)),   # want G up, penalize B/R
+45	    "red":    ((0, 0, 1),     (0.7, 0.7, 0)),    # want R up, penalize B/G
+46	    "yellow": ((0, 0.5, 0.5), (1.4, 0, 0)),      # want R+G up, penalize B
+47	    "blue":   ((1, 0.4, 0),   (0, 0, 1.4)),       # want B + some G, penalize R
+48	    "orange": ((0, 0.3, 0.7), (1.4, 0, 0)),      # want R+someG up, penalize B
+49	}
+50	
+51	_MARKER_COLORS = {
+52	    "green":  (0, 200, 0),
+53	    "red":    (0, 0, 220),
+54	    "yellow": (0, 220, 220),
+55	    "blue":   (220, 0, 0),
+56	    "orange": (0, 140, 255),
+57	}
+58	_IDLE_COLOR = (120, 120, 120)
+59	_PRESSED_COLOR = (0, 255, 0)
+60	
+61	_MARKER_RADIUS = 16
+62	_MARKER_THICK = 3
+63	_FONT_SCALE = 0.6
+64	_FONT_THICK = 2
+65	
+66	# Calibration coords are anchored to a 1920x1080 reference frame.
+67	_CAL_W = 1920
+68	_CAL_H = 1080
+69	
+70	
+71	class Detector:
+72	    """Camera-based fret press detector consuming the shared video buffer."""
+73	
+74	    @classmethod
+75	    def default_params(cls) -> dict:
+76	        return {
+77	            "HOLD_THRESH": 50,
+78	            "HOLD_RELEASE_FRAC": 60,
+79	            "EDGE_GREEN": 50,
+80	            "EDGE_RED": 50,
+81	            "EDGE_YELLOW": 50,
+82	            "EDGE_BLUE": 50,
+83	            "EDGE_ORANGE": 50,
+84	            "PATCH_RADIUS": 2,
+85	            "GREEN_X": 748, "GREEN_Y": 700,
+86	            "RED_X": 850, "RED_Y": 700,
+87	            "YELLOW_X": 947, "YELLOW_Y": 700,
+88	            "BLUE_X": 1045, "BLUE_Y": 700,
+89	            "ORANGE_X": 1147, "ORANGE_Y": 700,
+90	            "GREEN_EX": 780, "GREEN_EY": 700,
+91	            "RED_EX": 882, "RED_EY": 700,
+92	            "YELLOW_EX": 979, "YELLOW_EY": 700,
+93	            "BLUE_EX": 1013, "BLUE_EY": 700,
+94	            "ORANGE_EX": 1115, "ORANGE_EY": 700,
+95	        }
+96	
+97	    def __init__(self, **params):
+98	        defaults = self.default_params()
+99	        defaults.update(params)
+100	
+101	        self._hold_thresh = int(defaults["HOLD_THRESH"])
+102	        self._hold_release = self._hold_thresh * int(defaults["HOLD_RELEASE_FRAC"]) // 100
+103	        self._edge_thresh: dict[str, int] = {
+104	            ch: int(defaults[f"EDGE_{ch.upper()}"]) for ch in CHANNELS
+105	        }
+106	        self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
+107	
+108	        self._cal_hold_pixels: dict[str, tuple[int, int]] = {}
+109	        self._cal_edge_pixels: dict[str, tuple[int, int]] = {}
+110	        for ch in CHANNELS:
+111	            p = ch.upper()
+112	            self._cal_hold_pixels[ch] = (int(defaults[f"{p}_X"]), int(defaults[f"{p}_Y"]))
+113	            self._cal_edge_pixels[ch] = (int(defaults[f"{p}_EX"]), int(defaults[f"{p}_EY"]))
+114	
+115	        # Per-frame-size cache of scaled pixel coords. The capture path
+116	        # passes full-res frames to detection while the view path applies
+117	        # overlays onto the downscaled working frame, so we typically need
+118	        # at least two entries (one for detection, one for view). Callers
+119	        # treat the returned dicts as immutable.
+120	        self._scaled_cache: dict[
+121	            tuple[int, int],
+122	            tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]],
+123	        ] = {}
+124	        self._scale_lock = threading.Lock()
+125	
+126	        self._hold_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+127	        self._edge_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+128	        self._pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
+129	        self._press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
+130	        self._edge_active: dict[str, bool] = {ch: False for ch in CHANNELS}
+131	        self._cached_result: Optional[dict] = None
+132	
+133	        self._lock = threading.Lock()
+134	
+135	        self._cam = get_camera()
+136	        self._cam.add_frame_listener(self._on_frame)
+137	
+138	    def stop(self):
+139	        """Detach the camera frame listener."""
+140	        try:
+141	            self._cam.remove_frame_listener(self._on_frame)
+142	        except Exception:
+143	            pass
+144	        self._log("stopped")
+145	
+146	    def __del__(self):
+147	        try:
+148	            self._cam.remove_frame_listener(self._on_frame)
+149	        except Exception:
+150	            pass
+151	
+152	    def _log(self, msg: str):
+153	        print(f"[detect_video] {msg}", flush=True)
+154	
+155	    _EDGE_RADIUS = 10
+156	    _EDGE_THICK = 2
+157	
+158	    def _scale_pixels(
+159	        self, frame_w: int, frame_h: int,
+160	    ) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]]:
+161	        """Return (hold_pixels, edge_pixels) scaled for the given frame size.
+162	
+163	        Cached per (w, h) so the detection (full-res) and overlay (working-res)
+164	        paths don't keep invalidating each other. Returned dicts are shared
+165	        across calls and should be treated as immutable by callers.
+166	        """
+167	        key = (frame_w, frame_h)
+168	        with self._scale_lock:
+169	            cached = self._scaled_cache.get(key)
+170	            if cached is not None:
+171	                return cached
+172	
+173	            all_cal = list(self._cal_hold_pixels.values()) + list(self._cal_edge_pixels.values())
+174	            cal_xs = [x for x, _ in all_cal]
+175	            cal_ys = [y for _, y in all_cal]
+176	            cal_w = max(cal_xs) + max(cal_xs) // 4
+177	            cal_h = max(cal_ys) + max(cal_ys) // 4
+178	
+179	            if frame_w < cal_w or frame_h < cal_h:
+180	                sx = frame_w / float(_CAL_W)
+181	                sy = frame_h / float(_CAL_H)
+182	                self._log(f"scaling coords for {frame_w}x{frame_h} by {sx:.3f}x{sy:.3f}")
+183	                hold = {
+184	                    ch: (int(self._cal_hold_pixels[ch][0] * sx),
+185	                         int(self._cal_hold_pixels[ch][1] * sy))
+186	                    for ch in CHANNELS
+187	                }
+188	                edge = {
+189	                    ch: (int(self._cal_edge_pixels[ch][0] * sx),
+190	                         int(self._cal_edge_pixels[ch][1] * sy))
+191	                    for ch in CHANNELS
+192	                }
+193	            else:
+194	                hold = dict(self._cal_hold_pixels)
+195	                edge = dict(self._cal_edge_pixels)
+196	            cached = (hold, edge)
+197	            self._scaled_cache[key] = cached
+198	            return cached
+199	
+200	    def _on_frame(self, frame: Frame) -> None:
+201	        """Camera frame listener -- runs in the capture thread.
+202	
+203	        Prefers the full-resolution raw frame from the capture device when
+204	        available, so detection is unaffected by the working/buffer downscale
+205	        used for the live view.
+206	
+207	        After detection, attaches a per-frame snapshot to `frame.meta` so the
+208	        view path can render scrub-accurate overlays from buffered frames.
+209	        """
+210	        img = frame.detect_image()
+211	        if img is None:
+212	            return
+213	        h, w = img.shape[:2]
+214	        hold_px, edge_px = self._scale_pixels(w, h)
+215	        self._detect(img, hold_px, edge_px)
+216	
+217	        with self._lock:
+218	            snap_state = dict(self._cached_result) if self._cached_result else {}
+219	            snap_markers = {
+220	                ch: {
+221	                    "pressed": self._pressed[ch],
+222	                    "hold_dist": self._hold_dist[ch],
+223	                    "edge_dist": self._edge_dist[ch],
+224	                    "edge_active": self._edge_active[ch],
+225	                } for ch in CHANNELS
+226	            }
+227	            patch_r = self._patch_r
+228	        if frame.meta is None:
+229	            frame.meta = {}
+230	        frame.meta["detect_video"] = {
+231	            "state": snap_state,
+232	            "markers": snap_markers,
+233	            "patch_r": patch_r,
+234	        }
+235	
+236	    def _sample_at(self, frame: np.ndarray, px: int, py: int) -> np.ndarray:
+237	        """Average a small patch around (px, py)."""
+238	        h, w = frame.shape[:2]
+239	        px = max(0, min(px, w - 1))
+240	        py = max(0, min(py, h - 1))
+241	        r = self._patch_r
+242	        y0, y1 = max(0, py - r), min(h, py + r + 1)
+243	        x0, x1 = max(0, px - r), min(w, px + r + 1)
+244	        patch = frame[y0:y1, x0:x1]
+245	        if patch.size == 0:
+246	            return np.zeros(3, dtype=np.float64)
+247	        return patch.astype(np.float64).mean(axis=(0, 1))
+248	
+249	    @staticmethod
+250	    def _brightness(color: np.ndarray) -> float:
+251	        """Max channel value -- triggers on any color or white."""
+252	        d = float(max(0.0, color[0], color[1], color[2]))
+253	        return 0.0 if np.isnan(d) else d
+254	
+255	    def _color_signal(self, color: np.ndarray, ch: str) -> float:
+256	        """Color-filtered signal -- only the button's own color triggers.
+257	
+258	        Scales by saturation ratio (max-min)/max so white/gray pixels
+259	        produce near-zero signal regardless of camera white balance.
+260	        """
+261	        cmax = float(max(color[0], color[1], color[2]))
+262	        if cmax < 1.0:
+263	            return 0.0
+264	        cmin = float(min(color[0], color[1], color[2]))
+265	        sat_ratio = (cmax - cmin) / cmax
+266	
+267	        tw, rw = _COLOR_FILTER[ch]
+268	        target = tw[0]*color[0] + tw[1]*color[1] + tw[2]*color[2]
+269	        reject = max(0.0, rw[0]*color[0] + rw[1]*color[1] + rw[2]*color[2])
+270	        d = float((target - reject) * sat_ratio)
+271	        return 0.0 if np.isnan(d) else d
+272	
+273	    def _detect(
+274	        self,
+275	        frame: np.ndarray,
+276	        hold_pixels: dict[str, tuple[int, int]],
+277	        edge_pixels: dict[str, tuple[int, int]],
+278	    ):
+279	        """Run detection on a new camera frame. Called from capture thread."""
+280	        result: dict[str, dict] = {}
+281	        for ch in CHANNELS:
+282	            hx, hy = hold_pixels[ch]
+283	            ex, ey = edge_pixels[ch]
+284	            hold_color = self._sample_at(frame, hx, hy)
+285	            edge_color = self._sample_at(frame, ex, ey)
+286	
+287	            hold_dist = self._brightness(hold_color)
+288	            edge_dist = self._color_signal(edge_color, ch)
+289	
+290	            with self._lock:
+291	                self._hold_dist[ch] = hold_dist
+292	                self._edge_dist[ch] = edge_dist
+293	
+294	                if not self._pressed[ch]:
+295	                    if hold_dist > self._hold_thresh:
+296	                        self._pressed[ch] = True
+297	                else:
+298	                    if hold_dist < self._hold_release:
+299	                        self._pressed[ch] = False
+300	
+301	                edge_on = edge_dist > self._edge_thresh[ch]
+302	                if edge_on and not self._edge_active[ch]:
+303	                    self._press_count[ch] += 1
+304	                self._edge_active[ch] = edge_on
+305	
+306	                result[ch] = {
+307	                    "pressed": self._pressed[ch],
+308	                    "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
+309	                    "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
+310	                    "press_count": self._press_count[ch],
+311	                }
+312	
+313	        with self._lock:
+314	            self._cached_result = result
+315	
+316	    def update(self, sample: Sample) -> dict:
+317	        """Return the latest detection result (computed in capture thread)."""
+318	        with self._lock:
+319	            cached = self._cached_result
+320	
+321	        if cached is not None:
+322	            return cached
+323	
+324	        cam_status = self._cam.status()
+325	        msg = "no_device" if not cam_status.get("active") else "waiting"
+326	        return {ch: {
+327	            "pressed": False, "baseline": 0, "edge_line": 0,
+328	            "press_count": 0, "camera": msg,
+329	        } for ch in CHANNELS}
+330	
+331	    # --- Chart schema -------------------------------------------------------
+332	
+333	    def chart_schema(self) -> list[dict]:
+334	        """Per-fret hold + edge signals (no raw ADC)."""
+335	        return [
+336	            make_slot_schema(ch, [
+337	                {"key": "baseline", "label": "Hold",
+338	                 "color": CH_COLORS[ch], "width": 1.5},
+339	                {"key": "edge_line", "label": "Edge",
+340	                 "color": "#e94560", "width": 1.5, "dash": [2, 2]},
+341	            ])
+342	            for ch in CHANNELS
+343	        ]
+344	
+345	    # --- Overlay extension --------------------------------------------------
+346	
+347	    def overlays(self) -> list[dict]:
+348	        """Expose sensor markers as an overlay layer for the video viewport."""
+349	        return [{"name": "detect_video.markers", "draw": self._draw_markers}]
+350	
+351	    def _draw_markers(self, image, frame: Optional[Frame] = None) -> None:
+352	        h, w = image.shape[:2]
+353	        hold_px, edge_px = self._scale_pixels(w, h)
+354	
+355	        # Prefer the per-frame snapshot when available (scrub fidelity); fall
+356	        # back to live state for live frames or when the frame predates the
+357	        # current detector instance.
+358	        snap_meta = None
+359	        if frame is not None and frame.meta:
+360	            snap_meta = frame.meta.get("detect_video")
+361	        if snap_meta is not None:
+362	            markers = snap_meta.get("markers", {})
+363	            patch_r = int(snap_meta.get("patch_r", self._patch_r))
+364	            snap = {
+365	                ch: (
+366	                    hold_px[ch],
+367	                    edge_px[ch],
+368	                    bool(markers.get(ch, {}).get("pressed", False)),
+369	                    float(markers.get(ch, {}).get("hold_dist", 0.0)),
+370	                    float(markers.get(ch, {}).get("edge_dist", 0.0)),
+371	                    bool(markers.get(ch, {}).get("edge_active", False)),
+372	                ) for ch in CHANNELS
+373	            }
+374	        else:
+375	            with self._lock:
+376	                snap = {
+377	                    ch: (
+378	                        hold_px[ch],
+379	                        edge_px[ch],
+380	                        self._pressed[ch],
+381	                        self._hold_dist[ch],
+382	                        self._edge_dist[ch],
+383	                        self._edge_active[ch],
+384	                    ) for ch in CHANNELS
+385	                }
+386	                patch_r = self._patch_r
+387	
+388	        for ch, ((hx, hy), (ex, ey), pressed, hold_d, edge_d, edge_on) in snap.items():
+389	            color = _MARKER_COLORS[ch]
+390	            hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
+391	
+392	            cv2.rectangle(image, (hx - patch_r, hy - patch_r),
+393	                          (hx + patch_r, hy + patch_r), color, 1)
+394	            cv2.circle(image, (hx, hy), _MARKER_RADIUS, hold_ring, _MARKER_THICK)
+395	
+396	            cv2.line(image, (hx, hy), (ex, ey), color, 1)
+397	            edge_ring = _PRESSED_COLOR if edge_on else _IDLE_COLOR
+398	            cv2.rectangle(image, (ex - patch_r, ey - patch_r),
+399	                          (ex + patch_r, ey + patch_r), color, 1)
+400	            cv2.circle(image, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
+401	
+402	            label = f"{ch[0].upper()} h{hold_d:.0f} e{edge_d:.0f}"
+403	            cv2.putText(image, label, (hx + _MARKER_RADIUS + 4, hy + 5),
+404	                        cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
+405
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:18:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:18:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/detector.h`
+
+```text
+1	#ifndef DETECTOR_H
+2	#define DETECTOR_H
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "queue.h"
+9	
+10	/* Detector subsystem — see firmware/marvin/docs/spec.md §4.2.
+11	 *
+12	 * A detector is anything that turns observation data into a detector_state_t
+13	 * event: cv_marvin_v1 reads captured video frames; adc_fretboard (future)
+14	 * reads UART-streamed ADC samples from the fretboard MCU; off-board detectors
+15	 * may feed state in over UART/Ethernet.
+16	 *
+17	 * Every detector publishes detector_state_t records onto a single FreeRTOS
+18	 * queue (the "detector-state bus"). The timing pipeline (§4.4) is the sole
+19	 * consumer in steady state; until it lands a stub task drains the queue so
+20	 * producers don't block. */
+21	
+22	typedef enum
+23	{
+24	    FRET_GREEN  = 0,
+25	    FRET_RED    = 1,
+26	    FRET_YELLOW = 2,
+27	    FRET_BLUE   = 3,
+28	    FRET_ORANGE = 4,
+29	    FRET_COUNT  = 5,
+30	} fret_t;
+31	
+32	typedef enum
+33	{
+34	    DETECTOR_CV_MARVIN_V1  = 0,
+35	    DETECTOR_ADC_FRETBOARD = 1,
+36	} detector_id_t;
+37	
+38	/* Canonical record. Layout is fixed-width / naturally aligned / little-endian
+39	 * because this is also the on-disk format for state.bin (spec §4.6.5). Do not
+40	 * reorder fields without bumping the recording schema version. */
+41	typedef struct
+42	{
+43	    uint32_t frame_epoch;     /* master sync token, spec §4.6.4 */
+44	    uint64_t timestamp_us;    /* monotonic, marvin-local */
+45	    uint8_t  detector_id;     /* detector_id_t */
+46	    uint8_t  reserved[3];
+47	    struct
+48	    {
+49	        uint8_t  pressed;     /* 0/1 hard call */
+50	        uint16_t confidence;  /* 0..65535, detector-defined */
+51	        uint16_t raw_value;   /* detector-defined: ADC sample, pixel mean, etc. */
+52	    } fret[FRET_COUNT];
+53	} detector_state_t;
+54	
+55	/* Brings up the detector-state bus queue, the cv_marvin_v1 detector task,
+56	 * and (for now) a stub consumer. All detectors start disabled; the app
+57	 * must Detector_Enable() each one it wants publishing. Active selection
+58	 * defaults to DETECTOR_CV_MARVIN_V1 for symmetry but is independent of
+59	 * enabled-state. Call after Video_Initialize so the video frame queue
+60	 * can be subscribed to from inside cv_marvin_v1. */
+61	void Detector_Initialize(void);
+62	
+63	/* Producers post records here; consumers (timing pipeline, eventually) read
+64	 * them. Returns NULL until Detector_Initialize has run. */
+65	QueueHandle_t Detector_BusQueue(void);
+66	
+67	/* Per-detector enable: controls whether a detector publishes records onto
+68	 * the bus. Multiple detectors may be enabled simultaneously — recording
+69	 * (§4.6) snoops everything for side-by-side training data. Disabled
+70	 * detectors still consume their input (frames, ADC samples) so input
+71	 * queues don't back up; they just don't emit. Bit operations are atomic
+72	 * on aligned 32-bit reads; writes use a critical section. */
+73	void Detector_Enable(detector_id_t id);
+74	void Detector_Disable(detector_id_t id);
+75	bool Detector_IsEnabled(detector_id_t id);
+76	
+77	/* Active selector: which detector's records the timing pipeline (§4.4)
+78	 * acts on. Only one active at a time, irrespective of how many are
+79	 * enabled. The timing pipeline is responsible for filtering by
+80	 * detector_id when it lands; for M1 this is a held setting only. */
+81	void          Detector_SetActive(detector_id_t id);
+82	detector_id_t Detector_GetActive(void);
+83	
+84	#endif
+85
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:18:43Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/cv_marvin_v1.h`
+
+```text
+1	#ifndef CV_MARVIN_V1_H
+2	#define CV_MARVIN_V1_H
+3	
+4	/* Reference vision detector. Owns its FreeRTOS task; subscribes to the video
+5	 * module's frame queue; publishes detector_state_t records onto the detector-
+6	 * state bus (spec §4.2). M1 stub: forwards frame metadata only — real
+7	 * detection logic (Q8) lands incrementally on top. */
+8	
+9	void CvMarvinV1_Initialize(void);
+10	
+11	#endif
+12
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:19:53Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:19:53Z)**_
+
+Porting now.
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:21Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "cv_marvin_v1.h"
+#include "detector.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+
+#include "log.h"
+#include "video/video.h"
+
+#define CV_TASK_STACK_WORDS    1024u
+#define CV_TASK_PRIORITY       2u
+#define CV_FRAME_QUEUE_DEPTH   1u    /* drop-intermediate policy */
+
+/* Capture frames are BGR888 packed, 3 bytes per pixel. Frames whose
+ * bytes_per_pixel disagrees are skipped — defensive guard against
+ * future ISC reformats. */
+#define CV_BYTES_PER_PIXEL     3u
+#define CV_PATCH_RADIUS        2u    /* 5×5 patch */
+
+/* Hold sensor (brightness): rising edge above CV_HOLD_THRESH; releases
+ * when it falls below CV_HOLD_THRESH × CV_HOLD_RELEASE_FRAC. Per-color
+ * edge thresholds are uniform at 50 by default — separable later if any
+ * fret needs its own. Mirrors fret-tuner detect_video.py defaults. */
+#define CV_HOLD_THRESH         50.0f
+#define CV_HOLD_RELEASE_FRAC   0.60f
+#define CV_EDGE_THRESH         50.0f
+
+#define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
+
+/* Sensor coordinates in native capture-frame space. (hx,hy) = brightness
+ * sensor, (ex,ey) = color-filtered edge sensor; both above the strike
+ * line. Calibrated for 1280×720 capture; runtime calibration UI lands
+ * with M6. */
+typedef struct { uint16_t hx, hy, ex, ey; } sensor_xy_t;
+
+static const sensor_xy_t s_sensor_coords[FRET_COUNT] =
+{
+    [FRET_GREEN]  = {  748, 700,  780, 700 },
+    [FRET_RED]    = {  850, 700,  882, 700 },
+    [FRET_YELLOW] = {  947, 700,  979, 700 },
+    [FRET_BLUE]   = { 1045, 700, 1013, 700 },
+    [FRET_ORANGE] = { 1147, 700, 1115, 700 },
+};
+
+/* Per-fret BGR target / reject weights. Edge signal is
+ * (target·c − max(0, reject·c)) × sat_ratio. Reject totals exceed 1.0
+ * so camera-captured whites with color-temperature bias get suppressed,
+ * not just mathematically perfect whites. */
+typedef struct { float target[3]; float reject[3]; } color_filter_t;
+
+static const color_filter_t s_color_filter[FRET_COUNT] =
+{
+    [FRET_GREEN]  = { { 0.0f, 1.0f, 0.0f }, { 0.7f, 0.0f, 0.7f } },
+    [FRET_RED]    = { { 0.0f, 0.0f, 1.0f }, { 0.7f, 0.7f, 0.0f } },
+    [FRET_YELLOW] = { { 0.0f, 0.5f, 0.5f }, { 1.4f, 0.0f, 0.0f } },
+    [FRET_BLUE]   = { { 1.0f, 0.4f, 0.0f }, { 0.0f, 0.0f, 1.4f } },
+    [FRET_ORANGE] = { { 0.0f, 0.3f, 0.7f }, { 1.4f, 0.0f, 0.0f } },
+};
+
+/* Per-fret detector state. Private — not on the bus. press_count is the
+ * rising-edge counter the strum scheduler will eventually consume. */
+static float    s_hold_dist[FRET_COUNT];
+static float    s_edge_dist[FRET_COUNT];
+static bool     s_pressed[FRET_COUNT];
+static bool     s_edge_active[FRET_COUNT];
+static uint32_t s_press_count[FRET_COUNT];
+
+static StaticQueue_t s_frame_queue_buf;
+static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+
+static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
+static StaticTask_t  s_task_tcb;
+
+/* ─── Sampling ─────────────────────────────────────────────────────────── */
+
+/* Average BGR over a (2r+1)×(2r+1) patch centered on (px,py), clipping
+ * to frame bounds. Center is clamped first so a one-pixel-off calibration
+ * still produces a reading instead of a silent zero. */
+static void sample_patch_bgr(const uint8_t *frame, uint16_t fw, uint16_t fh,
+                             uint16_t px, uint16_t py, float out[3])
+{
+    int cx = (int)px;
+    if (cx < 0)        { cx = 0; }
+    else if (cx >= fw) { cx = fw - 1; }
+    int cy = (int)py;
+    if (cy < 0)        { cy = 0; }
+    else if (cy >= fh) { cy = fh - 1; }
+
+    int r = (int)CV_PATCH_RADIUS;
+    int x0 = cx - r;       if (x0 < 0)  { x0 = 0; }
+    int y0 = cy - r;       if (y0 < 0)  { y0 = 0; }
+    int x1 = cx + r + 1;   if (x1 > fw) { x1 = fw; }
+    int y1 = cy + r + 1;   if (y1 > fh) { y1 = fh; }
+
+    uint32_t sum_b = 0u, sum_g = 0u, sum_r = 0u;
+    uint32_t row_stride = (uint32_t)fw * CV_BYTES_PER_PIXEL;
+    for (int y = y0; y < y1; y++)
+    {
+        const uint8_t *row = frame
+                           + (uint32_t)y * row_stride
+                           + (uint32_t)x0 * CV_BYTES_PER_PIXEL;
+        for (int x = x0; x < x1; x++)
+        {
+            sum_b += row[0];
+            sum_g += row[1];
+            sum_r += row[2];
+            row   += CV_BYTES_PER_PIXEL;
+        }
+    }
+    uint32_t n = (uint32_t)(x1 - x0) * (uint32_t)(y1 - y0);
+    out[0] = (float)sum_b / (float)n;
+    out[1] = (float)sum_g / (float)n;
+    out[2] = (float)sum_r / (float)n;
+}
+
+/* Max channel — triggers on any color or white. */
+static float brightness(const float bgr[3])
+{
+    float m = bgr[0];
+    if (bgr[1] > m) { m = bgr[1]; }
+    if (bgr[2] > m) { m = bgr[2]; }
+    return m;
+}
+
+/* Color-filtered signal scaled by (max-min)/max so white/gray patches
+ * produce near-zero signal regardless of camera white balance. */
+static float color_signal(const float bgr[3], const color_filter_t *f)
+{
+    float cmax = brightness(bgr);
+    if (cmax < 1.0f) { return 0.0f; }
+    float cmin = bgr[0];
+    if (bgr[1] < cmin) { cmin = bgr[1]; }
+    if (bgr[2] < cmin) { cmin = bgr[2]; }
+    float sat = (cmax - cmin) / cmax;
+
+    float target = f->target[0]*bgr[0] + f->target[1]*bgr[1] + f->target[2]*bgr[2];
+    float reject = f->reject[0]*bgr[0] + f->reject[1]*bgr[1] + f->reject[2]*bgr[2];
+    if (reject < 0.0f) { reject = 0.0f; }
+    return (target - reject) * sat;
+}
+
+/* ─── Detection ────────────────────────────────────────────────────────── */
+
+static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
+{
+    detector_state_t state;
+    memset(&state, 0, sizeof(state));
+    state.frame_epoch  = frame->frame_count;
+    state.timestamp_us = (uint64_t)xTaskGetTickCount() * CV_US_PER_TICK;
+    state.detector_id  = (uint8_t)DETECTOR_CV_MARVIN_V1;
+
+    const float    hold_release = CV_HOLD_THRESH * CV_HOLD_RELEASE_FRAC;
+    const uint8_t *fbuf = (const uint8_t *)frame->buffer;
+    uint16_t       fw   = frame->width;
+    uint16_t       fh   = frame->height;
+
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        sensor_xy_t s = s_sensor_coords[i];
+        float hold_bgr[3], edge_bgr[3];
+        sample_patch_bgr(fbuf, fw, fh, s.hx, s.hy, hold_bgr);
+        sample_patch_bgr(fbuf, fw, fh, s.ex, s.ey, edge_bgr);
+
+        float hd = brightness(hold_bgr);
+        float ed = color_signal(edge_bgr, &s_color_filter[i]);
+        s_hold_dist[i] = hd;
+        s_edge_dist[i] = ed;
+
+        if (!s_pressed[i] && hd > CV_HOLD_THRESH)   { s_pressed[i] = true;  }
+        else if (s_pressed[i] && hd < hold_release) { s_pressed[i] = false; }
+
+        bool edge_on = ed > CV_EDGE_THRESH;
+        if (edge_on && !s_edge_active[i]) { s_press_count[i]++; }
+        s_edge_active[i] = edge_on;
+
+        state.fret[i].pressed = s_pressed[i] ? 1u : 0u;
+
+        /* confidence: edge_dist scaled to 0..65535. ed lives roughly in
+         * channel-value units (~0..255) so ×256 fills the range. */
+        float c = ed * 256.0f;
+        if (c < 0.0f)        { c = 0.0f;     }
+        if (c > 65535.0f)    { c = 65535.0f; }
+        state.fret[i].confidence = (uint16_t)c;
+
+        /* raw_value: hold_dist (max channel, 0..255). */
+        float h = hd;
+        if (h < 0.0f)        { h = 0.0f;     }
+        if (h > 65535.0f)    { h = 65535.0f; }
+        state.fret[i].raw_value = (uint16_t)h;
+    }
+
+    (void)xQueueSend(bus, &state, 0);
+}
+
+/* ─── Task ─────────────────────────────────────────────────────────────── */
+
+static void cv_marvin_v1_task(void *param)
+{
+    (void)param;
+
+    QueueHandle_t frames = xQueueCreateStatic(CV_FRAME_QUEUE_DEPTH,
+                                              sizeof(Video_FrameInfo),
+                                              s_frame_queue_storage,
+                                              &s_frame_queue_buf);
+    configASSERT(frames != NULL);
+    bool subscribed = Video_SubscribeFrames(frames);
+    configASSERT(subscribed);
+
+    QueueHandle_t bus = Detector_BusQueue();
+    configASSERT(bus != NULL);
+
+    LOG_INFO("CV: cv_marvin_v1 started\r\n");
+
+    for (;;)
+    {
+        Video_FrameInfo frame;
+        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+
+        /* Always drain, even when disabled, so frames don't back up. */
+        if (!Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)) { continue; }
+        if (frame.buffer == NULL)                       { continue; }
+        if (frame.width == 0u || frame.height == 0u)    { continue; }
+        if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
+
+        detect_frame(&frame, bus);
+    }
+}
+
+void CvMarvinV1_Initialize(void)
+{
+    (void)xTaskCreateStatic(cv_marvin_v1_task,
+                            "CvMarvinV1",
+                            CV_TASK_STACK_WORDS,
+                            NULL,
+                            CV_TASK_PRIORITY,
+                            s_task_stack,
+                            &s_task_tcb);
+}
+
+```
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:24Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:24Z)**_
+
+Now the journal entry.
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find journal section structure
+
+`grep -n "^## \|^### " /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md | head -30`
+
+```text
+7:## Current focus
+24:## Decision log
+66:## Open questions
+104:## Session log
+106:### 2026-05-20 — Video fan-out + per-frame buffer routing
+115:### 2026-05-20 — M1 scaffolding landed
+131:### 2026-05-20 — System spec drafted
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:27Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+24	## Decision log
+25	
+26	| Date | Decision | Rationale |
+27	|------|----------|-----------|
+28	| 2026-05-20 | System-level spec lives at [`spec.md`](spec.md); read it first on any non-trivial marvin task | We're at the point where deferring system architecture would mean building feature-by-feature without a coherent target. The journal is the running diary; the spec is the durable description of what marvin is. |
+29	| 2026-05-20 | Marvin replaces the fret-tuner PC as the runtime brain | One-host architecture. fret-tuner persists as an off-band dev/calibration tool. fretboard stays a dumb relay (ADC out, bitmask in). |
+30	| 2026-05-20 | Marvin is the *reference detector* — not a debug aid | HDMI-direct CV is ground-truth for the system. Fretboard's photo-detection and any future Edge-AI MCU are trained against marvin's output. Recording reference data is therefore a first-class subsystem (spec §4.6), not an afterthought. |
+31	| 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
+32	| 2026-05-20 | Timing pipeline (chord window, FIFO, strum scheduling) lives on marvin by default; fretboard-takeover is a fallback mode | Centralized = single source of truth, easier multi-detector fusion. Latency budget allows a few ms of UART jitter. Fallback mode disables marvin's pipeline; fretboard runs its own existing `fret_button.c` and feeds emitted-command telemetry up to marvin for capture/display. Spec §4.4 + §6. |
+33	| 2026-05-20 | Reference-data export = SD card, format = detector-state + sparse keyframes | SD chosen over Ethernet/USB CDC because primary consumers are Edge-AI training (offline) and replay/sanity-check (offline). Live side-by-side comparison deferred. Format: dense `detector_state_t` records for all detectors + raw BGRX32 keyframes every 60 frames (1.38 MB/s sustained, comfortable on Class-10). No software JPEG (Cortex-A5 can't keep up; SAM9X75 has no HW encoder). Spec §4.6. |
+34	| 2026-05-20 | `frame_epoch` (32-bit, incremented per captured ISC frame) is the master sync token across recordings, detectors, and any future off-board observers | Need single shared timeline; off-board detectors (e.g. Edge-AI device) record in their own format keyed by marvin's `frame_epoch` so post-hoc training-data alignment is trivial. Wraps after ~830 days @ 60 Hz. |
+35	| 2026-05-20 | Operating modes are independent toggles (`detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`); named modes are presets over them | Matches `tools/fret-tuner/SPEC.md`'s detect/actuate split which has worked well in practice. Avoids a brittle global state machine. Spec §6. |
+36	| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+37	| 2026-05-01 | Reference source = mainline Linux tc358743 driver + community 480p dumps | Linux driver has correct state machine / EDID / IRQ handling; community dumps have verified 480p register values. |
+38	| 2026-05-01 | Integration shape (sensor vs standalone) deferred until Phase 3 | Avoid premature structure; real answer depends on how much state the driver actually needs. |
+39	| 2026-05-01 | Journal lives at `firmware/marvin/docs/journal.md` | Firmware docs co-located with firmware; top-level `docs/` is hardware/mechanical. |
+40	| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+41	| 2026-05-01 | REFCLK: **27 MHz** | Waveshare v1/v2 on-board XTAL. Kernel driver restricts REFCLK to {26, 27, 42} MHz (`tc358743.c:717-719`); 27 MHz is the Waveshare v1/v2 value. |
+42	| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+43	| 2026-05-01 | Register-access helpers will be a direct port from the kernel driver | `tc358743.c:131-269` has clean `i2c_rd/wr` + `i2c_rd8/wr8/rd16/wr16/rd32/wr32`. Map to FLEXCOM6 TWI underneath. |
+44	| 2026-05-01 | J29 (22-pin MIPI) pinout confirmed; PC19=pin 17, PC15=pin 18 (not 5/6) | Per SAM9X75-Curiosity User Guide §3.4.10 (queried via Microchip MCP). Pins 5/6 are MIPI_D1_N/P — CSI data lane 1 diff pairs, not GPIOs. Correct GPIO pins for RESET/INT are pin 17 (PC19, `MIPI_CSI_GPIO0`) and pin 18 (PC15, `MIPI_CSI_GPIO1`). I2C on pins 20 (PA25, `CAM_I²C_CLK`) and 21 (PA24, `CAM_I²C_DATA`) confirmed to match marvin's FLEXCOM6 pin assignment (`pin_configurations.csv:85-86`). |
+45	| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+46	| 2026-05-01 | Delays use Harmony's `SYS_TIME` service (non-blocking shape) | Already initialized in `SYS_Initialize`; existing marvin code (`drv_isc.c`, `plib_isc.c`) uses it with `SYS_TIME_DelayUS/MS` + `SYS_TIME_DelayIsComplete`. Non-blocking pattern inside our state machine keeps `APP_Tasks()` (and Legato) from stalling during reset hold times, and scales naturally into Phase 3's longer init sequence. |
+47	| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+48	| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+49	| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+50	| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+51	| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+52	| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+53	| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
+54	| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+55	| 2026-05-20 | M1 detector scaffolding: one task per detector, single shared bus queue (`xDetectorStateQueue`), temporary in-module drain task until the timing pipeline (M3) lands | Matches spec §4.2.4. Per-detector tasks isolate slow detectors from the frame pipeline; the shared queue is the hand-off point that the timing pipeline will eventually own as sole consumer. The drain task lives in `detector.c` so it travels with the bus and can be deleted in one place when M3 wires the real consumer. Records-per-second log line gives a coarse health signal during bring-up. |
+56	| 2026-05-20 | `frame_epoch` is sourced from `Video_FrameInfo.frame_count` for M1; a persistent counter that survives ISC restart is M5's problem | Recording (M5) is the first consumer that actually needs cross-restart continuity. Until then the post-arm-monotonic counter is fine for plumbing validation, and pretending otherwise would mean threading another counter through the video module before it has a real consumer. |
+57	| 2026-05-20 | Detector control model: per-detector `enable` (multiple may be on simultaneously for side-by-side recording) + single `active` selector (which detector_id the timing pipeline acts on) | Want side-by-side training data — every enabled detector publishes onto the bus; recording (M5) saves them all. But only one detector should ever drive actuation, so the timing pipeline (M3) filters the bus by `Detector_GetActive()` and ignores the rest. Cleaner than a global enum because it decouples "is this running?" from "is this canonical?", and lets us hot-swap the active detector without disabling its peers. Defaults: all-disabled, active=cv_marvin_v1. App explicitly calls `Detector_Enable` + `Detector_SetActive` after init. |
+58	| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+59	| 2026-05-20 | `Video_FrameInfo.buffer` now reflects the buffer that just completed (per-frame routing); HEO is re-pointed in the ISR every frame so the panel sees every captured frame | Pre-fix: `ISC_Capture_GetBufferAddress()` returned the framebuffer base regardless of which descriptor-ring slot ISC just wrote, and HEO was bound once to the base — so HEO only ever read slot 0, and slot 1 was written but never observed. Effective behavior was ~half-rate display. Fix: ISC IRQ computes `slot = (frameIndex - 1 + N) % N` (driver increments before callback per drv_isc.c:47-50), passes `base + slot * frame_size` into the user callback, and video.c re-points HEO at that address with `XLCDC_SetLayerAddress(..., update=true)` — latches at next vsync. Also unblocks ring depth > 2 since each subscriber sees the genuinely-just-written buffer. |
+60	| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+61	| 2026-05-20 | All marvin-owned FreeRTOS objects use `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic`; FreeRTOS heap stays at heap_1 only because MCC code (XLCDC/MAXTOUCH/LEGATO/SYS_INPUT tasks, OSAL, Legato variable heap) needs it | Project rule is static-only memory allocation. MCC-generated code can't be made static without forking, so we keep `configSUPPORT_DYNAMIC_ALLOCATION = 1` for MCC and route all our own code through the static APIs. MCC reconfigured to enable `configSUPPORT_STATIC_ALLOCATION = 1` and emit `vApplicationGetIdleTaskMemory` in `freertos_hooks.c`. Per-module `Static{Task,Queue,Semaphore}_t` plus stack/storage arrays at file scope. |
+62	| 2026-05-20 | Game-state awareness & high-level game control is a marvin subsystem (spec §4.8). Distinct from the gameplay note-detection path: a video-frame consumer (not a detector) emits typed game-state events on `xGameStateQueue`, and a controller layer translates verbs ("start single-player song X") into fret/strum sequences sent over the same fretboard link | Want marvin to drive whole-session play, not just notes once gameplay starts. Game-state observation belongs on marvin because it's CV on the same captured frames. Separating its bus from `xDetectorStateQueue` keeps `detector_state_t` narrow per the 2026-05-20 multi-detector decision. Per-game catalog (menu graph + song list) is metadata kept on marvin. Default arbitration with timing pipeline: mutually exclusive — controller runs only outside `gameplay` state. Phasing: M9 observer-only, M10 control. Open: recognizer algorithm (Q10), arbitration boundary (Q11). |
+63	
+64	---
+65	
+66	## Open questions
+67	
+68	_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:34Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:20:57Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:21:06Z)**_
+
+cv_marvin_v1 is ported and the journal has the three decision-log entries (nocache move, private-state schema choice, native-coord scaling).
+
+What landed in [cv_marvin_v1.c](firmware/marvin/default/src/detector/cv_marvin_v1.c):
+
+- 5 frets × 2 sensors (hold/edge) at compile-time native-frame coords
+- 5×5 patch averaging (`sample_patch_bgr`) with center-clamp + bound-clip — matches Python clamp-then-patch behavior
+- Brightness-based hold detect with hysteresis (`CV_HOLD_THRESH=50`, release at 60% × thresh)
+- Color-filtered edge detect with per-fret BGR target/reject weights and saturation gating
+- Rising-edge `s_press_count[FRET_COUNT]` private to the module
+- Bus record: `pressed`, `confidence` = edge_dist scaled to 0..65535, `raw_value` = hold_dist clipped
+
+Defensive guards on input: NULL buffer, zero w/h, bytes_per_pixel mismatch all fall through without publishing.
+
+Want to build before I touch anything else, or move on?
+
+---
+
+_**User (2026-05-20 21:21:55Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+did you convert fret positions from the scaled values down to 720x480?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:22:05Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:22:07Z)**_
+
+No — I copied Python's defaults verbatim, and those are 1920×1080-anchored (Python's `_CAL_W=1920, _CAL_H=1080`). My code comment claiming "calibrated for 1280×720" is wrong. Let me check what we actually capture at.
+
+_**Agent (claude-opus-4-7 2026-05-20 21:22:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find actual detected resolution
+
+`grep -n "480p\|720p\|480\b\|720\b\|1280\|GetDetectedFormat\|detected_w\|detected_h\|_w =\|_h =" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/tc358743.c | head -30`
+
+```text
+17: * Kernel tabulates this as the rate for 720p60 RGB888 / 1080p50 YUV422
+18: * over 2 lanes. 2 lanes × 972 Mbps = 1.944 Gbps: fits 720p60 RGB888
+463: * Base block preferred DTD is 1280x720@60p (CEA VIC 4). Extension's CEA
+464: * Video Data Block lists VIC 4 (native, 720p60 16:9), VIC 19 (720p50 16:9),
+465: * VIC 34 (1080p30 16:9), VIC 3 (720x480p60 16:9), and VIC 2 (720x480p60 4:3)
+466: * as accepted modes. 480p is last-preference; native + preferred is still
+467: * 720p60, so cooperating sources default there. 480p support is here for
+468: * the Wii/ElectronWarp path which only outputs 480p.
+494:    /* 35..37: Established timings — bit 5 of byte 35 = 640x480@60 */
+499:    /* 54..71: Detailed timing 1 = 1280x720p@60Hz (CEA VIC 4, pclk 74.25 MHz,
+500:     *         H: 1280 active / 370 blank / 110 fp / 40 sync,
+501:     *         V: 720 active / 30 blank / 5 fp / 5 sync, pos-H / pos-V) */
+534:     *           720p60 preferred/native; 720p50, 1080p30, 480p60 16:9,
+535:     *           480p60 4:3 as fallbacks. */
+605:     * (real HDMI sources at 720p/1080p don't carry pixel repetition;
+983:bool TC358743_GetDetectedFormat(uint16_t *width, uint16_t *height)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:22:27Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:22:33Z)**_
+
+No, I didn't — that's a bug in what I just wrote. The Python defaults are anchored to 1920×1080 (`_CAL_W=1920, _CAL_H=1080`), and I copied them verbatim while claiming "calibrated for 1280×720" in the comment. Both are wrong for our capture target.
+
+Two questions before I scale:
+
+**1. Which capture resolution do we target for defaults?** Per [tc358743.c:463-468](firmware/marvin/default/src/video/tc358743.c#L463-L468) the EDID advertises 720p60 as preferred and 480p60 as the Wii fallback. Wii is the production target → 720×480 is the right anchor. Scaling 1920×1080 → 720×480 gives sx=0.375, sy=0.444; coords become roughly (280,311) for green hold up to (430,311) for orange hold.
+
+**2. Worth noting these are placeholders anyway** — Python's coords were tuned for a *camera pointed at a screen* (Elgato workflow). Marvin does *direct HDMI capture*, so the strike line is at a fixed game-rendered Y, not subject to camera framing. Even with correct scaling, these will need recalibration once we have a frame on the panel and can eyeball the strike line. The defaults' value is just "non-zero so the bring-up code paths execute" until M6 calibration UI lands.
+
+Want me to scale to 720×480 now and add a TODO-equivalent note in the journal that they need real calibration on first hardware run? Or pick a different target?
+
+---
+
+_**User (2026-05-20 21:23:37Z)**_
+
+1 yes, scale to 720x480. 2. not placeholders, elgato capture was hdmi to usb converter.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:23:50Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:23:51Z)**_
+
+Got it — same direct-pixel topology, just different bridge chip. Scaling to 720×480 anchor; Python int() truncation gives:
+
+| fret   | hold (hx,hy) | edge (ex,ey) |
+|--------|--------------|--------------|
+| GREEN  | 280, 311     | 292, 311     |
+| RED    | 318, 311     | 330, 311     |
+| YELLOW | 355, 311     | 367, 311     |
+| BLUE   | 391, 311     | 379, 311     |
+| ORANGE | 430, 311     | 418, 311     |
+
+_**Agent (claude-opus-4-7 2026-05-20 21:23:58Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:24:02Z)**_
+
+Now the journal entry that wrongly said "1280×720" — fixing the same misstatement.
+
+_**Agent (claude-opus-4-7 2026-05-20 21:24:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:24:13Z)**_
+
+Coords scaled and journal corrected. The 720×480 anchor matches the Wii path; if a 720p source ever shows up the detector skips frames where `frame.bytes_per_pixel != 3` but won't catch a resolution mismatch — the patch sampler just clips to bounds and the coords will land off-strike. We can add a resolution gate later if it becomes worth it.
+
+---
+
+_**User (2026-05-20 21:25:31Z)**_
+
+build successful. commit. what's next? the simple actuator implementation to talk to fretboard?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:25:36Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:25:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check current git state before commit
+
+`git status && echo "---" && git diff --stat`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+	modified:   firmware/marvin/default/src/detector/cv_marvin_v1.c
+	modified:   firmware/marvin/default/src/video/isc_capture.c
+	modified:   firmware/marvin/docs/journal.md
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+ ...26-05-20_18-30-12Z-working-on-project-marvin.md | 2247 ++++++++++++++++++++
+ .specstory/statistics.json                         |   10 +-
+ .../marvin/default/mcc/mcc-manifest-autosave.yml   |    2 +-
+ .../marvin/default/src/detector/cv_marvin_v1.c     |  217 +-
+ firmware/marvin/default/src/video/isc_capture.c    |   16 +-
+ firmware/marvin/docs/journal.md                    |    3 +
+ 6 files changed, 2453 insertions(+), 42 deletions(-)
+```
+</details></tool-use>
