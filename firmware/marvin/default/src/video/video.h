@@ -1,6 +1,7 @@
 #ifndef VIDEO_H
 #define VIDEO_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "FreeRTOS.h"

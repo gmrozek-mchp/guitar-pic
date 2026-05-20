@@ -51,6 +51,12 @@ static volatile uint32_t s_latest_buffer;
 static volatile uint16_t s_src_w;
 static volatile uint16_t s_src_h;
 
+/* Capture-state flags. s_capture_armed is task-only; s_display_bound is
+ * read by the ISR and written by the task. Defined here (above the ISR)
+ * so on_frame_done can see the latter. */
+static bool s_capture_armed;
+static volatile bool s_display_bound;
+
 /* ─── HEO scaler helper ────────────────────────────────────────────────── */
 
 /* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
@@ -211,9 +217,6 @@ static void on_frame_done(uint32_t frame_count,
 }
 
 /* ─── Capture state machine ────────────────────────────────────────────── */
-
-static bool s_capture_armed;            /* task-only state; tracks ISC running */
-static volatile bool s_display_bound;   /* read by IRQ; written by task        */
 
 static bool capture_arm(void)
 {

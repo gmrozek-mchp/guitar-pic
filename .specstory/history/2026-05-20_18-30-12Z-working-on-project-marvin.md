@@ -19529,3 +19529,278 @@ Changes not staged for commit:
 	modified:   firmware/marvin/docs/journal.md
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:00Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit static-allocation conversion
+
+```bash
+git add firmware/marvin/default/src/log.c firmware/marvin/default/src/video/video.c firmware/marvin/default/src/detector/cv_marvin_v1.c firmware/marvin/default/src/detector/detector.c firmware/marvin/docs/journal.md .specstory/
+git commit -m "$(cat <<'EOF'
+freertos: convert marvin-owned objects to static allocation
+
+MCC regenerated with configSUPPORT_STATIC_ALLOCATION=1; idle-task memory
+callback emitted in freertos_hooks.c. Dynamic allocation stays enabled
+because XLCDC/MAXTOUCH/LEGATO/SYS_INPUT system tasks, OSAL, and Legato's
+variable heap rely on it — but every FreeRTOS object we own now uses the
+*Static APIs with file-scope StaticTask_t/StaticQueue_t/StaticSemaphore_t
+and stack/storage arrays. Six call sites converted: log mutex, video
+task, detector bus queue + drain task, cv_marvin_v1 frame queue + task.
+EOF
+)"
+```
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos 06051fb] freertos: convert marvin-owned objects to static allocation
+ 11 files changed, 1587 insertions(+), 42 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:02Z)**_
+
+Committed `06051fb`. Marvin-owned FreeRTOS objects all use the static APIs now; dynamic allocation stays compiled in only for the MCC-generated tasks and Legato.
+
+---
+
+_**User (2026-05-20 20:55:21Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+Some bugs to fix in build, [{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "'s_display_bound' undeclared (first use in this function); did you mean 's_display_shown'?",
+	"source": "cmake",
+	"startLineNumber": 187,
+	"startColumn": 9,
+	"endLineNumber": 187,
+	"endColumn": 9
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "conflicting types for 'Video_SubscribeFrames'",
+	"source": "cmake",
+	"startLineNumber": 343,
+	"startColumn": 6,
+	"endLineNumber": 343,
+	"endColumn": 6
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "conflicting types for 'Video_UnsubscribeFrames'",
+	"source": "cmake",
+	"startLineNumber": 366,
+	"startColumn": 6,
+	"endLineNumber": 366,
+	"endColumn": 6
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c",
+	"owner": "MPLAB CMake",
+	"severity": 2,
+	"message": "each undeclared identifier is reported only once for each function it appears in",
+	"source": "cmake",
+	"startLineNumber": 187,
+	"startColumn": 9,
+	"endLineNumber": 187,
+	"endColumn": 9
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "unknown type name 'bool'; did you mean '_Bool'?",
+	"source": "cmake",
+	"startLineNumber": 78,
+	"startColumn": 1,
+	"endLineNumber": 78,
+	"endColumn": 1
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "unknown type name 'bool'; did you mean '_Bool'?",
+	"source": "cmake",
+	"startLineNumber": 81,
+	"startColumn": 1,
+	"endLineNumber": 81,
+	"endColumn": 1
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h",
+	"owner": "MPLAB CMake",
+	"severity": 2,
+	"message": "previous declaration of 'Video_SubscribeFrames' was here",
+	"source": "cmake",
+	"startLineNumber": 78,
+	"startColumn": 6,
+	"endLineNumber": 78,
+	"endColumn": 6
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h",
+	"owner": "MPLAB CMake",
+	"severity": 2,
+	"message": "previous declaration of 'Video_UnsubscribeFrames' was here",
+	"source": "cmake",
+	"startLineNumber": 81,
+	"startColumn": 6,
+	"endLineNumber": 81,
+	"endColumn": 6
+}]
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:26Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:26Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.h`
+
+```text
+1	#ifndef VIDEO_H
+2	#define VIDEO_H
+3	
+4	#include <stdint.h>
+5	
+6	#include "FreeRTOS.h"
+7	#include "queue.h"
+8	
+9	/* Video pipeline: HDMI source → TC358743 bridge → CSI-2 → CSI2DC → ISC →
+10	 * DDR → XLCDC HEO. The module owns its own FreeRTOS task; everything below
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:38Z)**_
+
+Now fix the `s_display_bound` ordering in video.c — it's defined at line 216 but used in the IRQ at line 187. Move the declaration above `on_frame_done`.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:38Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+210	    portYIELD_FROM_ISR(higher_priority_task_woken);
+211	}
+212	
+213	/* ─── Capture state machine ────────────────────────────────────────────── */
+214	
+215	static bool s_capture_armed;            /* task-only state; tracks ISC running */
+216	static volatile bool s_display_bound;   /* read by IRQ; written by task        */
+217	
+218	static bool capture_arm(void)
+219	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:55:53Z)**_
+
+Both fixed: `<stdbool.h>` added to video.h (which was leaking the missing-`bool` error into the `Video_SubscribeFrames` declaration mismatch), and `s_display_bound` / `s_capture_armed` moved above the ISR that uses them.
+
+---
+
+_**User (2026-05-20 20:56:25Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+fixed. please commit
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:56:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Pre-commit status
+
+`git status && echo "---" && git diff firmware/marvin/default/src/video/`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/video/video.c
+	modified:   firmware/marvin/default/src/video/video.h
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---
+diff --git a/firmware/marvin/default/src/video/video.c b/firmware/marvin/default/src/video/video.c
+index dfda382..e65ac15 100644
+--- a/firmware/marvin/default/src/video/video.c
++++ b/firmware/marvin/default/src/video/video.c
+@@ -51,6 +51,12 @@ static volatile uint32_t s_latest_buffer;
+ static volatile uint16_t s_src_w;
+ static volatile uint16_t s_src_h;
+ 
++/* Capture-state flags. s_capture_armed is task-only; s_display_bound is
++ * read by the ISR and written by the task. Defined here (above the ISR)
++ * so on_frame_done can see the latter. */
++static bool s_capture_armed;
++static volatile bool s_display_bound;
++
+ /* ─── HEO scaler helper ────────────────────────────────────────────────── */
+ 
+ /* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+@@ -212,9 +218,6 @@ static void on_frame_done(uint32_t frame_count,
+ 
+ /* ─── Capture state machine ────────────────────────────────────────────── */
+ 
+-static bool s_capture_armed;            /* task-only state; tracks ISC running */
+-static volatile bool s_display_bound;   /* read by IRQ; written by task        */
+-
+ static bool capture_arm(void)
+ {
+     uint16_t w = 0, h = 0;
+diff --git a/firmware/marvin/default/src/video/video.h b/firmware/marvin/default/src/video/video.h
+index 9eec225..ff13112 100644
+--- a/firmware/marvin/default/src/video/video.h
++++ b/firmware/marvin/default/src/video/video.h
+@@ -1,6 +1,7 @@
+ #ifndef VIDEO_H
+ #define VIDEO_H
+ 
++#include <stdbool.h>
+ #include <stdint.h>
+ 
+ #include "FreeRTOS.h"
+```
+</details></tool-use>
