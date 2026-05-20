@@ -10,14 +10,14 @@
 
 static volatile log_level_t s_level = LOG_LEVEL_INFO;
 static SemaphoreHandle_t    s_mutex;
+static StaticSemaphore_t    s_mutex_buf;
 
 void log_init(log_level_t initial_level)
 {
     s_level = initial_level;
-    /* xSemaphoreCreateMutex is safe before vTaskStartScheduler — it
-     * allocates from the FreeRTOS heap; only Take/Give require the
+    /* Safe before vTaskStartScheduler; only Take/Give require the
      * scheduler to be running. */
-    s_mutex = xSemaphoreCreateMutex();
+    s_mutex = xSemaphoreCreateMutexStatic(&s_mutex_buf);
 }
 
 void log_set_level(log_level_t lvl)

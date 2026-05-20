@@ -18043,3 +18043,1489 @@ index 4c96aa6..32dd1a7 100644
  Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:28Z)**_
+
+Diff looks right. Stage and commit.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage changes
+
+`git add firmware/marvin/default/src/video/isc_capture.c firmware/marvin/docs/journal.md .specstory/ && git status`
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/video/isc_capture.c
+	modified:   firmware/marvin/docs/journal.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:34Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Bump ISC_Capture frame callback signature to include completed buffer address
+- [X] 🌡️ Refactor video.c: multi-subscriber array, IRQ updates HEO to latest buffer + fans out to all subs
+- [X] 🌡️ Update video.h with multi-subscriber API + comment on policy
+- [X] 🌡️ Verify cv_marvin_v1 still works with new Video_FrameInfo.buffer semantics
+- [X] 🌡️ Commit (1): per-frame buffer routing + multi-subscriber
+- [X] 🌡️ Bump ISC_CAP_NUM_BUFFERS to 4
+- [⚡] 🌡️ Commit (2): ring depth 4
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit ring depth bump
+
+```bash
+git commit -m "$(cat <<'EOF'
+video: deepen ISC ring from 2 to 4 buffers
+
+Static framebuffer pool grows to ~24 MB at the 1920×1080 max (trivial on
+1 GB DDR3). At 60 fps a depth-4 ring gives a subscriber that holds a
+buffer pointer ~50 ms before the producer laps it — room for CV tasks
+that don't run every frame.
+EOF
+)"
+```
+
+```text
+[freertos 171749e] video: deepen ISC ring from 2 to 4 buffers
+ 4 files changed, 452 insertions(+), 22 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:56Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Bump ISC_Capture frame callback signature to include completed buffer address
+- [X] 🌡️ Refactor video.c: multi-subscriber array, IRQ updates HEO to latest buffer + fans out to all subs
+- [X] 🌡️ Update video.h with multi-subscriber API + comment on policy
+- [X] 🌡️ Verify cv_marvin_v1 still works with new Video_FrameInfo.buffer semantics
+- [X] 🌡️ Commit (1): per-frame buffer routing + multi-subscriber
+- [X] 🌡️ Bump ISC_CAP_NUM_BUFFERS to 4
+- [X] 🌡️ Commit (2): ring depth 4
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:59Z)**_
+
+Committed `171749e` — ring depth bumped to 4. Per-task XDMAC sub-region copies remain deferred until a slow / sub-region consumer arrives.
+
+---
+
+_**User (2026-05-20 20:35:31Z)**_
+
+looking good. One development rule to remember permanently. Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:35:36Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:35:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+---
+name: feedback-static-allocation
+description: Static-only memory allocation rule for this repo — no malloc/heap. Ask before deviating.
+metadata:
+  type: feedback
+---
+
+Use static memory allocation only. No `malloc`, `pvPortMalloc`, `calloc`, or other dynamic allocation in firmware. Static arrays sized at compile time (e.g. `static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS];`) are the pattern. For FreeRTOS objects this means using the `*Static` creation APIs (`xQueueCreateStatic`, `xTaskCreateStatic`, etc.) with caller-provided storage when applicable — though plain `xQueueCreate` is acceptable today since it goes through the FreeRTOS heap which is itself a fixed static buffer.
+
+**Why:** Embedded target (SAM9X75 / PIC32). Predictable memory footprint, no fragmentation, no runtime allocation failures, easier to reason about worst-case RAM.
+
+**How to apply:** When designing any data structure, default to a fixed-size static array with a `_MAX_*` compile-time bound. If the bound feels arbitrary, pick one that covers expected use plus headroom and add a `LOG_ERROR` (or assert) on overflow rather than reaching for a growable structure. If you genuinely think dynamic allocation is needed, stop and ask the user before writing it.
+
+Related: [[project-marvin-overview]].
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/memory/feedback_static_allocation.md (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:35:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `/Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/memory/MEMORY.md`
+
+```text
+
+1	- [Project: marvin overview](project_marvin_overview.md) — SAM9X75 vision-based guitar-playing robot; HDMI capture → BGRX32 in DDR → 10.1" LVDS panel.
+2	- [Marvin journal](marvin_journal.md) — read `firmware/marvin/docs/journal.md` first on any non-trivial marvin task; update it as decisions land.
+3	- [Feedback: commits](feedback_commits.md) — never `git commit` on my own initiative; only on explicit user ask or after prompting.
+4	- [Feedback: comments](feedback_comments.md) — code comments describe current code only; no dev-diary narrative.
+5	- [Feedback: journals](feedback_journals.md) — prefer journal updates over re-stating plans in chat.
+6
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:36:00Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/memory/MEMORY.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:36:05Z)**_
+
+Saved as a permanent feedback memory. Going forward I'll reach for fixed-size static arrays with `_MAX_*` bounds (and `xQueueCreateStatic`-style FreeRTOS APIs where it matters), and check with you before introducing any dynamic allocation.
+
+---
+
+_**User (2026-05-20 20:37:14Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/CLAUDE.md in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+I think we're good, but can you review codebase to make sure we don't have any existing use of dynamic memory. If in MCC genereted code, just make note of it. If in our code, plan to correct.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inventory marvin source layout
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && find default/src -name '*.c' -o -name '*.h' | head -50 && echo "---" && ls default/src/`
+
+```text
+default/src/log.c
+default/src/app.h
+default/src/main.c
+default/src/log.h
+default/src/app.c
+default/src/video/isc_capture.c
+default/src/video/video.c
+default/src/video/tc358743.h
+default/src/video/tc358743.c
+default/src/video/video.h
+default/src/video/isc_capture.h
+default/src/detector/detector.c
+default/src/detector/cv_marvin_v1.c
+default/src/detector/detector.h
+default/src/detector/cv_marvin_v1.h
+default/src/config/default/initialization.c
+default/src/config/default/interrupts.h
+default/src/config/default/device.h
+default/src/config/default/toolchain_specifics.h
+default/src/config/default/fault_handlers.c
+default/src/config/default/configuration.h
+default/src/config/default/sys_tasks.h
+default/src/config/default/device_cache.h
+default/src/config/default/interrupts.c
+default/src/config/default/user.h
+default/src/config/default/FreeRTOSConfig.h
+default/src/config/default/tasks.c
+default/src/config/default/freertos_hooks.c
+default/src/config/default/definitions.h
+default/src/packs/SAM9X75D2G_DFP/sam9x75d2g.h
+default/src/config/default/driver/driver_common.h
+default/src/config/default/driver/driver.h
+default/src/config/default/osal/osal_definitions.h
+default/src/config/default/osal/osal_freertos.h
+default/src/config/default/osal/osal_freertos.c
+default/src/config/default/osal/osal.h
+default/src/config/default/system/system_common.h
+default/src/config/default/system/system.h
+default/src/config/default/system/system_module.h
+default/src/config/default/stdio/xc32_monitor.c
+default/src/packs/SAM9X75D2G_DFP/pio/sam9x75d2g.h
+default/src/packs/SAM9X75D2G_DFP/component/rstc.h
+default/src/packs/SAM9X75D2G_DFP/component/adc.h
+default/src/packs/SAM9X75D2G_DFP/component/pio.h
+default/src/packs/SAM9X75D2G_DFP/component/classd.h
+default/src/packs/SAM9X75D2G_DFP/component/uhpfs.h
+default/src/packs/SAM9X75D2G_DFP/component/tc.h
+default/src/packs/SAM9X75D2G_DFP/component/shdwc.h
+default/src/packs/SAM9X75D2G_DFP/component/xdmac.h
+default/src/packs/SAM9X75D2G_DFP/component/gpbr.h
+---
+app.c
+app.h
+config
+detector
+log.c
+log.h
+main.c
+packs
+third_party
+video
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:25Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search our marvin code for dynamic allocation
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src && grep -nE '\b(malloc|calloc|realloc|free|pvPortMalloc|vPortFree|strdup|alloca|new |delete )\b' app.c app.h main.c log.c log.h detector/*.c detector/*.h video/*.c video/*.h 2>&1 | grep -v '^Binary'`
+
+```text
+app.c:147:     * Self-delete here so the (1024-word) stack and TCB are released to the
+video/isc_capture.c:112:     * CSI2DC must match: MIPIFRN = 0 (free-running). MCC default is gated
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:30Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:30Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find FreeRTOS object creation in our code
+
+`grep -nE 'xQueueCreate|xTaskCreate|xSemaphoreCreate|xTimerCreate|xEventGroupCreate|xStreamBufferCreate|xMessageBufferCreate' app.c app.h main.c log.c log.h detector/*.c detector/*.h video/*.c video/*.h 2>&1`
+
+```text
+app.c:109:    /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
+detector/cv_marvin_v1.c:30:    QueueHandle_t frames = xQueueCreate(CV_FRAME_QUEUE_DEPTH,
+detector/cv_marvin_v1.c:75:    (void)xTaskCreate(cv_marvin_v1_task,
+detector/detector.c:55:    s_bus_queue = xQueueCreate(DETECTOR_BUS_DEPTH, sizeof(detector_state_t));
+detector/detector.c:60:    (void)xTaskCreate(drain_task,
+log.c:17:    /* xSemaphoreCreateMutex is safe before vTaskStartScheduler — it
+log.c:20:    s_mutex = xSemaphoreCreateMutex();
+video/video.h:60: *   QueueHandle_t q = xQueueCreate(N, sizeof(Video_FrameInfo));
+video/video.c:317:    (void)xTaskCreate(video_task,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:38Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check FreeRTOS allocation config
+
+`grep -nE 'configSUPPORT_(STATIC|DYNAMIC)_ALLOCATION|configTOTAL_HEAP_SIZE|configAPPLICATION_ALLOCATED_HEAP' default/src/config/default/FreeRTOSConfig.h`
+
+```text
+Exit code 2
+ugrep: warning: default/src/config/default/FreeRTOSConfig.h: No such file or directory
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check FreeRTOS allocation config
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && grep -nE 'configSUPPORT_(STATIC|DYNAMIC)_ALLOCATION|configTOTAL_HEAP_SIZE|configAPPLICATION_ALLOCATED_HEAP' default/src/config/default/FreeRTOSConfig.h`
+
+```text
+253:/* Set configSUPPORT_STATIC_ALLOCATION to 1 to include FreeRTOS API functions
+258:#define configSUPPORT_STATIC_ALLOCATION         0
+260:/* Set configSUPPORT_DYNAMIC_ALLOCATION to 1 to include FreeRTOS API functions
+265:#define configSUPPORT_DYNAMIC_ALLOCATION        1
+271:#define configTOTAL_HEAP_SIZE                   ( ( size_t ) 40960 )
+273:/* Set configAPPLICATION_ALLOCATED_HEAP to 1 to have the application allocate
+276:#define configAPPLICATION_ALLOCATED_HEAP             0
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:52Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:52Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Recursive C-level alloc search in our code
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src && grep -rnE '\b(malloc|calloc|realloc|pvPortMalloc|vPortFree|strdup|alloca)\b' app.c app.h main.c log.c log.h detector/ video/ 2>&1 | grep -v '^Binary'`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find heap usage in MCC config
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src && grep -rnE '\b(malloc|calloc|realloc|pvPortMalloc|vPortFree)\b' config/ 2>&1 | grep -v '^Binary' | grep -v '\*' | head -30`
+
+```text
+config/default/freertos_hooks.c:109:      function that will get called if a call to pvPortMalloc() fails.
+config/default/freertos_hooks.c:110:      pvPortMalloc() is called internally by the kernel whenever a task, queue,
+config/default/freertos_hooks.c:113:      heap available to pvPortMalloc() is defined by configTOTAL_HEAP_SIZE in
+config/default/driver/input/drv_maxtouch.c:2173://    objcfg = calloc(1, sizeof(struct mxt_object_config));
+config/default/driver/input/drv_maxtouch.c:2188://    objcfg->data = calloc(object_size, sizeof(uint8_t));
+config/default/osal/osal_freertos.c:794:     the underlying RTOS. If no RTOS is present, it defaults to malloc.
+config/default/osal/osal_freertos.c:829:    return pvPortMalloc(size);
+config/default/osal/osal_freertos.c:878:    vPortFree(pData);
+config/default/osal/osal.h:666:     the underlying RTOS. If no RTOS is present, it defaults to malloc.
+config/default/gfx/legato/memory/legato_memory.h:226:#define LE_MALLOC(size) malloc(size)
+config/default/gfx/legato/memory/legato_memory.h:227:#define LE_REALLOC(ptr, size) realloc(ptr, size)
+config/default/gfx/legato/memory/legato_memory.c:126:    variableHeapData = malloc(LE_VARIABLEHEAP_SIZE);
+config/default/gfx/legato/memory/legato_memory.c:416:    // not an allocated pointer, just do normal malloc
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:37:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find FreeRTOS dynamic creates in MCC code
+
+`grep -rnE '\bxTaskCreate\b|\bxQueueCreate\b|\bxSemaphoreCreate' config/ 2>&1 | grep -v '\*' | grep -v 'Static' | head -30`
+
+```text
+config/default/tasks.c:136:    xTaskCreate( _XLCDC_Tasks,
+config/default/tasks.c:145:    xTaskCreate( _DRV_MAXTOUCH_Tasks,
+config/default/tasks.c:157:    xTaskCreate( _LEGATO_Tasks,
+config/default/tasks.c:166:    xTaskCreate( _SYS_INPUT_Tasks,
+config/default/tasks.c:179:    (void) xTaskCreate(
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:38:08Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+OSAL and third_party allocations
+
+`grep -rnE '\bxTaskCreate\b|\bxQueueCreate\b|\bxSemaphoreCreate' config/default/osal/ third_party/ 2>&1 | grep -v '\*' | head -10`
+
+```text
+third_party/rtos/FreeRTOS/Source/timers.c:310:                    xReturn = xTaskCreate( &prvTimerTask,
+third_party/rtos/FreeRTOS/Source/timers.c:1139:                    xTimerQueue = xQueueCreate( ( UBaseType_t ) configTIMER_QUEUE_LENGTH, ( UBaseType_t ) sizeof( DaemonTaskMessage_t ) );
+third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1741:    BaseType_t xTaskCreate( TaskFunction_t pxTaskCode,
+third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:3665:            xReturn = xTaskCreate( pxIdleTaskFunction,
+third_party/rtos/FreeRTOS/Source/include/task.h:389:    BaseType_t xTaskCreate( TaskFunction_t pxTaskCode,
+third_party/rtos/FreeRTOS/Source/include/mpu_wrappers.h:100:        #define xTaskCreate                              MPU_xTaskCreate
+third_party/rtos/FreeRTOS/Source/include/semphr.h:167:    #define xSemaphoreCreateBinary()    xQueueGenericCreate( ( UBaseType_t ) 1, semSEMAPHORE_QUEUE_ITEM_LENGTH, queueQUEUE_TYPE_BINARY_SEMAPHORE )
+third_party/rtos/FreeRTOS/Source/include/semphr.h:228:    #define xSemaphoreCreateBinaryStatic( pxStaticSemaphore )    xQueueGenericCreateStatic( ( UBaseType_t ) 1, semSEMAPHORE_QUEUE_ITEM_LENGTH, NULL, ( pxStaticSemaphore ), queueQUEUE_TYPE_BINARY_SEMAPHORE )
+third_party/rtos/FreeRTOS/Source/include/semphr.h:735:    #define xSemaphoreCreateMutex()    xQueueCreateMutex( queueQUEUE_TYPE_MUTEX )
+third_party/rtos/FreeRTOS/Source/include/semphr.h:798:    #define xSemaphoreCreateMutexStatic( pxMutexBuffer )    xQueueCreateMutexStatic( queueQUEUE_TYPE_MUTEX, ( pxMutexBuffer ) )
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:38:11Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:38:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find our fretboard sources
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard && find . -name '*.c' -not -path './*/config/*' -not -path './*/packs/*' -not -path './*/third_party/*' 2>/dev/null | head -20`
+
+```text
+./cmd_receive.c
+./fret_button.c
+./fret_scan.c
+./main.c
+./fret_detect.c
+./data_stream.c
+./fretboard-mcc/src/main.c
+./_build/fretboard/default/CMakeFiles/4.2.3/CompilerIdC/CMakeCCompilerId.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:38:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search fretboard our-code for allocation
+
+`grep -nE '\b(malloc|calloc|realloc|free|pvPortMalloc|vPortFree|strdup|alloca|xTaskCreate|xQueueCreate|xSemaphoreCreate|xTimerCreate)\b' cmd_receive.c fret_button.c fret_scan.c main.c fret_detect.c data_stream.c 2>&1 | grep -v '\*'`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:38:32Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:38:45Z)**_
+
+Audit complete. Here's what I found:
+
+## Our code — direct C dynamic allocation
+
+**None.** No `malloc`/`calloc`/`realloc`/`free`/`pvPortMalloc`/`vPortFree`/`strdup`/`alloca` in any of our marvin or fretboard source files.
+
+## Our code — FreeRTOS dynamic-API allocations
+
+These all route through `pvPortMalloc` on the FreeRTOS heap. They're functionally fine today (heap is a fixed 40 KB `ucHeap[]` and we only allocate at init), but they violate the "static only" rule on principle. Six call sites:
+
+| File | Call |
+|---|---|
+| [default/src/log.c:20](firmware/marvin/default/src/log.c#L20) | `xSemaphoreCreateMutex()` |
+| [default/src/video/video.c:317](firmware/marvin/default/src/video/video.c#L317) | `xTaskCreate(video_task, …)` |
+| [default/src/detector/detector.c:55](firmware/marvin/default/src/detector/detector.c#L55) | `xQueueCreate(DETECTOR_BUS_DEPTH, …)` |
+| [default/src/detector/detector.c:60](firmware/marvin/default/src/detector/detector.c#L60) | `xTaskCreate(drain_task, …)` |
+| [default/src/detector/cv_marvin_v1.c:30](firmware/marvin/default/src/detector/cv_marvin_v1.c#L30) | `xQueueCreate(CV_FRAME_QUEUE_DEPTH, …)` |
+| [default/src/detector/cv_marvin_v1.c:75](firmware/marvin/default/src/detector/cv_marvin_v1.c#L75) | `xTaskCreate(cv_marvin_v1_task, …)` |
+
+FreeRTOSConfig.h current state: `configSUPPORT_STATIC_ALLOCATION = 0`, `configSUPPORT_DYNAMIC_ALLOCATION = 1`, heap = 40 KB. The static APIs aren't even compiled in right now.
+
+## MCC-generated — note only, not to touch
+
+- [config/default/tasks.c:136-179](firmware/marvin/default/src/config/default/tasks.c#L136-L179) — `xTaskCreate` for XLCDC / MAXTOUCH / LEGATO / SYS_INPUT system tasks.
+- [config/default/osal/osal_freertos.c:829,878](firmware/marvin/default/src/config/default/osal/osal_freertos.c#L829) — `OSAL_Malloc`/`OSAL_Free` wrap `pvPortMalloc`/`vPortFree`.
+- [config/default/gfx/legato/memory/legato_memory.c:126](firmware/marvin/default/src/config/default/gfx/legato/memory/legato_memory.c#L126) — Legato calls libc `malloc` for its variable heap.
+- FreeRTOS internals (`timers.c`, `FreeRTOS_tasks.c` idle task) call dynamic APIs.
+
+We can't get rid of these without forking MCC output. Conclusion: dynamic-allocation must stay enabled in FreeRTOSConfig.h to keep MCC code working.
+
+## Fretboard
+
+Clean. Bare-metal, no allocation calls at all.
+
+## Plan to correct our marvin code
+
+1. **FreeRTOSConfig.h**: flip `configSUPPORT_STATIC_ALLOCATION` to `1`. Leave `configSUPPORT_DYNAMIC_ALLOCATION = 1` so MCC code still compiles. (Watch out: MCC may rewrite this on next manifest sync — probably needs a `# user override` annotation in the MCC config or a manual re-patch.)
+2. **Add idle-task / timer-task memory callbacks** ([freertos_hooks.c](firmware/marvin/default/src/config/default/freertos_hooks.c) is the natural place but is MCC-owned — better to add them in our [main.c](firmware/marvin/default/src/main.c) or a small `default/src/freertos_static.c`): `vApplicationGetIdleTaskMemory` and `vApplicationGetTimerTaskMemory`. Both required when static is enabled.
+3. **Convert each call site** to its `*Static` variant with file-scope `StaticTask_t`/`StaticQueue_t`/`StaticSemaphore_t` + stack/storage arrays. No semantic change to runtime behavior.
+
+Want me to land it as a single commit (one config flip + memory callbacks + 6 call-site conversions)? It's mechanical but touches MCC-adjacent config. ~50 lines of changes total.
+
+---
+
+_**User (2026-05-20 20:50:34Z)**_
+
+Forgot about FreeRTOS... I don't think there's anything we can do about MCC generated code - it doesn't support static allocation. But we can and should change all our code to use static FreeRTOS mechanisms. I have regenerated MCC with freertos static. I will leave freertos heap implementation at heap1. go with any changes needed to our code.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:50:41Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:50:41Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify static-allocation now enabled
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && grep -nE 'configSUPPORT_(STATIC|DYNAMIC)_ALLOCATION|configTOTAL_HEAP_SIZE|configUSE_TIMERS|configUSE_IDLE_HOOK' default/src/config/default/FreeRTOSConfig.h`
+
+```text
+201:/* Set configUSE_TIMERS to 1 to include software timer functionality in the
+204: * configUSE_TIMERS is set to 1.  Default to 0 if left undefined.  See
+206:#define configUSE_TIMERS                        0
+209: * used if configUSE_TIMERS is set to 1.  The timer task is a standard FreeRTOS
+212: * if configUSE_TIMERS is set to 1. */
+218: * Only used if configUSE_TIMERS is set to 1. */
+224: * if configUSE_TIMERS is set to 1. */
+253:/* Set configSUPPORT_STATIC_ALLOCATION to 1 to include FreeRTOS API functions
+258:#define configSUPPORT_STATIC_ALLOCATION         1
+260:/* Set configSUPPORT_DYNAMIC_ALLOCATION to 1 to include FreeRTOS API functions
+265:#define configSUPPORT_DYNAMIC_ALLOCATION        1
+271:#define configTOTAL_HEAP_SIZE                   ( ( size_t ) 40960 )
+307:#define configUSE_IDLE_HOOK                     0
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:50:48Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:50:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check whether MCC added static-task callbacks
+
+`grep -nE 'vApplicationGetIdleTaskMemory|vApplicationGetTimerTaskMemory' default/src/config/default/freertos_hooks.c default/src/config/default/initialization.c default/src/config/default/tasks.c 2>&1`
+
+```text
+default/src/config/default/freertos_hooks.c:184: * implementation of vApplicationGetIdleTaskMemory() to provide the memory that is
+default/src/config/default/freertos_hooks.c:186:void vApplicationGetIdleTaskMemory( StaticTask_t ** ppxIdleTaskTCBBuffer,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:50:51Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/freertos_hooks.c`
+
+```text
+175	   taskEXIT_CRITICAL();
+176	}
+177	/*-----------------------------------------------------------*/
+178	
+179	
+180	
+181	/*-----------------------------------------------------------*/
+182	
+183	/* configUSE_STATIC_ALLOCATION is set to 1, so the application must provide an
+184	 * implementation of vApplicationGetIdleTaskMemory() to provide the memory that is
+185	 * used by the Idle task. */
+186	void vApplicationGetIdleTaskMemory( StaticTask_t ** ppxIdleTaskTCBBuffer,
+187	                                    StackType_t ** ppxIdleTaskStackBuffer,
+188	                                    configSTACK_DEPTH_TYPE * pulIdleTaskStackSize )
+189	{
+190	    /* If the buffers to be provided to the Idle task are declared inside this
+191	     * function then they must be declared static - otherwise they will be allocated on
+192	     * the stack and so not exists after this function exits. */
+193	    static StaticTask_t xIdleTaskTCB;
+194	    static StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE ];
+195	
+196	    /* Pass out a pointer to the StaticTask_t structure in which the Idle
+197	     * task's state will be stored. */
+198	    *ppxIdleTaskTCBBuffer = &xIdleTaskTCB;
+199	
+200	    /* Pass out the array that will be used as the Idle task's stack. */
+201	    *ppxIdleTaskStackBuffer = uxIdleTaskStack;
+202	
+203	    /* Pass out the size of the array pointed to by *ppxIdleTaskStackBuffer.
+204	     * Note that, as the array is necessarily of type StackType_t,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:03Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:05Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ log.c: convert xSemaphoreCreateMutex → xSemaphoreCreateMutexStatic
+- [ ] 🌡️ video.c: convert xTaskCreate → xTaskCreateStatic
+- [ ] 🌡️ detector.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ cv_marvin_v1.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ Build / verify (review diff)
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:07Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/log.c`
+
+```text
+1	#include "log.h"
+2	
+3	#include <stdarg.h>
+4	#include <stdbool.h>
+5	#include <stdio.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "semphr.h"
+9	#include "task.h"
+10	
+11	static volatile log_level_t s_level = LOG_LEVEL_INFO;
+12	static SemaphoreHandle_t    s_mutex;
+13	
+14	void log_init(log_level_t initial_level)
+15	{
+16	    s_level = initial_level;
+17	    /* xSemaphoreCreateMutex is safe before vTaskStartScheduler — it
+18	     * allocates from the FreeRTOS heap; only Take/Give require the
+19	     * scheduler to be running. */
+20	    s_mutex = xSemaphoreCreateMutex();
+21	}
+22	
+23	void log_set_level(log_level_t lvl)
+24	{
+25	    s_level = lvl;
+26	}
+27	
+28	log_level_t log_get_level(void)
+29	{
+30	    return s_level;
+31	}
+32	
+33	void log_vprintf(log_level_t lvl, const char *fmt, va_list ap)
+34	{
+35	    if ((int)lvl > (int)s_level) { return; }
+36	
+37	    /* Take the mutex only when the scheduler is running and the mutex
+38	     * was created. Pre-scheduler we're single-threaded so interleaving
+39	     * isn't possible; xSemaphoreTake with portMAX_DELAY would hang
+40	     * before vTaskStartScheduler. */
+41	    bool locked = false;
+42	    if (s_mutex != NULL
+43	        && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+44	    {
+45	        if (xSemaphoreTake(s_mutex, portMAX_DELAY) == pdTRUE)
+46	        {
+47	            locked = true;
+48	        }
+49	    }
+50	
+51	    (void)vprintf(fmt, ap);
+52	
+53	    if (locked)
+54	    {
+55	        (void)xSemaphoreGive(s_mutex);
+56	    }
+57	}
+58	
+59	void log_printf(log_level_t lvl, const char *fmt, ...)
+60	{
+61	    va_list ap;
+62	    va_start(ap, fmt);
+63	    log_vprintf(lvl, fmt, ap);
+64	    va_end(ap);
+65	}
+66
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:13Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/log.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:22Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ log.c: convert xSemaphoreCreateMutex → xSemaphoreCreateMutexStatic
+- [⚡] 🌡️ video.c: convert xTaskCreate → xTaskCreateStatic
+- [ ] 🌡️ detector.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ cv_marvin_v1.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ Build / verify (review diff)
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:27Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:30Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:30Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+313	/* ─── Public API ───────────────────────────────────────────────────────── */
+314	
+315	void Video_Initialize(void)
+316	{
+317	    (void)xTaskCreate(video_task,
+318	                      "VideoTask",
+319	                      VIDEO_TASK_STACK_WORDS,
+320	                      NULL,
+321	                      VIDEO_TASK_PRIORITY,
+322	                      NULL);
+323	}
+324	
+325	void Video_CaptureEnable(void)  { s_capture_enabled = true;  }
+326	void Video_CaptureDisable(void) { s_capture_enabled = false; }
+327
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:42Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ log.c: convert xSemaphoreCreateMutex → xSemaphoreCreateMutexStatic
+- [X] 🌡️ video.c: convert xTaskCreate → xTaskCreateStatic
+- [⚡] 🌡️ detector.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ cv_marvin_v1.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ Build / verify (review diff)
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:44Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/detector.c`
+
+```text
+1	#include "detector.h"
+2	#include "cv_marvin_v1.h"
+3	
+4	#include "FreeRTOS.h"
+5	#include "task.h"
+6	#include "queue.h"
+7	
+8	#include "log.h"
+9	
+10	/* Sized for ~one detector × one frame-time of slack. With cv_marvin_v1
+11	 * publishing at 60 Hz and the stub consumer draining every tick, depth 8
+12	 * absorbs a few ms of consumer stall without dropping records. Bump when
+13	 * adding more producers or a slower consumer. */
+14	#define DETECTOR_BUS_DEPTH       8u
+15	
+16	#define DRAIN_TASK_STACK_WORDS   512u
+17	#define DRAIN_TASK_PRIORITY      1u
+18	#define DRAIN_LOG_INTERVAL_MS    1000u
+19	
+20	static QueueHandle_t   s_bus_queue;
+21	static volatile uint32_t s_enabled_mask;
+22	static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
+23	
+24	static void drain_task(void *param)
+25	{
+26	    (void)param;
+27	
+28	    TickType_t window_start = xTaskGetTickCount();
+29	    uint32_t   window_count = 0;
+30	
+31	    for (;;)
+32	    {
+33	        detector_state_t state;
+34	        if (xQueueReceive(s_bus_queue, &state, portMAX_DELAY) != pdTRUE)
+35	        {
+36	            continue;
+37	        }
+38	        window_count++;
+39	
+40	        TickType_t now = xTaskGetTickCount();
+41	        if ((uint32_t)(now - window_start) >= pdMS_TO_TICKS(DRAIN_LOG_INTERVAL_MS))
+42	        {
+43	            LOG_INFO("DETECTOR: bus drain %lu records/s (last epoch=%lu id=%u)\r\n",
+44	                     (unsigned long)window_count,
+45	                     (unsigned long)state.frame_epoch,
+46	                     (unsigned)state.detector_id);
+47	            window_start = now;
+48	            window_count = 0;
+49	        }
+50	    }
+51	}
+52	
+53	void Detector_Initialize(void)
+54	{
+55	    s_bus_queue = xQueueCreate(DETECTOR_BUS_DEPTH, sizeof(detector_state_t));
+56	    configASSERT(s_bus_queue != NULL);
+57	
+58	    CvMarvinV1_Initialize();
+59	
+60	    (void)xTaskCreate(drain_task,
+61	                      "DetectorDrain",
+62	                      DRAIN_TASK_STACK_WORDS,
+63	                      NULL,
+64	                      DRAIN_TASK_PRIORITY,
+65	                      NULL);
+66	}
+67	
+68	QueueHandle_t Detector_BusQueue(void)
+69	{
+70	    return s_bus_queue;
+71	}
+72	
+73	void Detector_Enable(detector_id_t id)
+74	{
+75	    taskENTER_CRITICAL();
+76	    s_enabled_mask |= (1u << (uint32_t)id);
+77	    taskEXIT_CRITICAL();
+78	}
+79	
+80	void Detector_Disable(detector_id_t id)
+81	{
+82	    taskENTER_CRITICAL();
+83	    s_enabled_mask &= ~(1u << (uint32_t)id);
+84	    taskEXIT_CRITICAL();
+85	}
+86	
+87	bool Detector_IsEnabled(detector_id_t id)
+88	{
+89	    return (s_enabled_mask & (1u << (uint32_t)id)) != 0u;
+90	}
+91	
+92	void Detector_SetActive(detector_id_t id)
+93	{
+94	    s_active_id = (uint8_t)id;
+95	}
+96	
+97	detector_id_t Detector_GetActive(void)
+98	{
+99	    return (detector_id_t)s_active_id;
+100	}
+101
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:51:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:01Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ log.c: convert xSemaphoreCreateMutex → xSemaphoreCreateMutexStatic
+- [X] 🌡️ video.c: convert xTaskCreate → xTaskCreateStatic
+- [X] 🌡️ detector.c: convert xQueueCreate + xTaskCreate to static
+- [⚡] 🌡️ cv_marvin_v1.c: convert xQueueCreate + xTaskCreate to static
+- [ ] 🌡️ Build / verify (review diff)
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:08Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:10Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/cv_marvin_v1.c`
+
+```text
+26	static void cv_marvin_v1_task(void *param)
+27	{
+28	    (void)param;
+29	
+30	    QueueHandle_t frames = xQueueCreate(CV_FRAME_QUEUE_DEPTH,
+31	                                        sizeof(Video_FrameInfo));
+32	    configASSERT(frames != NULL);
+33	    bool subscribed = Video_SubscribeFrames(frames);
+34	    configASSERT(subscribed);
+35
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:30Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ log.c: convert xSemaphoreCreateMutex → xSemaphoreCreateMutexStatic
+- [X] 🌡️ video.c: convert xTaskCreate → xTaskCreateStatic
+- [X] 🌡️ detector.c: convert xQueueCreate + xTaskCreate to static
+- [X] 🌡️ cv_marvin_v1.c: convert xQueueCreate + xTaskCreate to static
+- [⚡] 🌡️ Build / verify (review diff)
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show all our-code conversions
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic && git diff --stat firmware/marvin/default/src/ && echo "---" && git diff firmware/marvin/default/src/log.c firmware/marvin/default/src/video/video.c firmware/marvin/default/src/detector/`
+
+```text
+ .../marvin/default/src/detector/cv_marvin_v1.c     | 25 +++++++++++++++-------
+ firmware/marvin/default/src/detector/detector.c    | 24 +++++++++++++++------
+ firmware/marvin/default/src/log.c                  |  6 +++---
+ firmware/marvin/default/src/video/video.c          | 16 ++++++++------
+ 4 files changed, 47 insertions(+), 24 deletions(-)
+---
+diff --git a/firmware/marvin/default/src/detector/cv_marvin_v1.c b/firmware/marvin/default/src/detector/cv_marvin_v1.c
+index dd78cf8..cbe4c6c 100644
+--- a/firmware/marvin/default/src/detector/cv_marvin_v1.c
++++ b/firmware/marvin/default/src/detector/cv_marvin_v1.c
+@@ -23,12 +23,20 @@
+  * tick rate 1000. Used to project xTaskGetTickCount() into timestamp_us. */
+ #define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
+ 
++static StaticQueue_t s_frame_queue_buf;
++static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
++
++static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
++static StaticTask_t  s_task_tcb;
++
+ static void cv_marvin_v1_task(void *param)
+ {
+     (void)param;
+ 
+-    QueueHandle_t frames = xQueueCreate(CV_FRAME_QUEUE_DEPTH,
+-                                        sizeof(Video_FrameInfo));
++    QueueHandle_t frames = xQueueCreateStatic(CV_FRAME_QUEUE_DEPTH,
++                                              sizeof(Video_FrameInfo),
++                                              s_frame_queue_storage,
++                                              &s_frame_queue_buf);
+     configASSERT(frames != NULL);
+     bool subscribed = Video_SubscribeFrames(frames);
+     configASSERT(subscribed);
+@@ -72,10 +80,11 @@ static void cv_marvin_v1_task(void *param)
+ 
+ void CvMarvinV1_Initialize(void)
+ {
+-    (void)xTaskCreate(cv_marvin_v1_task,
+-                      "CvMarvinV1",
+-                      CV_TASK_STACK_WORDS,
+-                      NULL,
+-                      CV_TASK_PRIORITY,
+-                      NULL);
++    (void)xTaskCreateStatic(cv_marvin_v1_task,
++                            "CvMarvinV1",
++                            CV_TASK_STACK_WORDS,
++                            NULL,
++                            CV_TASK_PRIORITY,
++                            s_task_stack,
++                            &s_task_tcb);
+ }
+diff --git a/firmware/marvin/default/src/detector/detector.c b/firmware/marvin/default/src/detector/detector.c
+index 86e8888..189fe42 100644
+--- a/firmware/marvin/default/src/detector/detector.c
++++ b/firmware/marvin/default/src/detector/detector.c
+@@ -18,6 +18,12 @@
+ #define DRAIN_LOG_INTERVAL_MS    1000u
+ 
+ static QueueHandle_t   s_bus_queue;
++static StaticQueue_t   s_bus_queue_buf;
++static uint8_t         s_bus_queue_storage[DETECTOR_BUS_DEPTH * sizeof(detector_state_t)];
++
++static StackType_t     s_drain_stack[DRAIN_TASK_STACK_WORDS];
++static StaticTask_t    s_drain_tcb;
++
+ static volatile uint32_t s_enabled_mask;
+ static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
+ 
+@@ -52,17 +58,21 @@ static void drain_task(void *param)
+ 
+ void Detector_Initialize(void)
+ {
+-    s_bus_queue = xQueueCreate(DETECTOR_BUS_DEPTH, sizeof(detector_state_t));
++    s_bus_queue = xQueueCreateStatic(DETECTOR_BUS_DEPTH,
++                                     sizeof(detector_state_t),
++                                     s_bus_queue_storage,
++                                     &s_bus_queue_buf);
+     configASSERT(s_bus_queue != NULL);
+ 
+     CvMarvinV1_Initialize();
+ 
+-    (void)xTaskCreate(drain_task,
+-                      "DetectorDrain",
+-                      DRAIN_TASK_STACK_WORDS,
+-                      NULL,
+-                      DRAIN_TASK_PRIORITY,
+-                      NULL);
++    (void)xTaskCreateStatic(drain_task,
++                            "DetectorDrain",
++                            DRAIN_TASK_STACK_WORDS,
++                            NULL,
++                            DRAIN_TASK_PRIORITY,
++                            s_drain_stack,
++                            &s_drain_tcb);
+ }
+ 
+ QueueHandle_t Detector_BusQueue(void)
+diff --git a/firmware/marvin/default/src/log.c b/firmware/marvin/default/src/log.c
+index 4f183ca..9ff51e1 100644
+--- a/firmware/marvin/default/src/log.c
++++ b/firmware/marvin/default/src/log.c
+@@ -10,14 +10,14 @@
+ 
+ static volatile log_level_t s_level = LOG_LEVEL_INFO;
+ static SemaphoreHandle_t    s_mutex;
++static StaticSemaphore_t    s_mutex_buf;
+ 
+ void log_init(log_level_t initial_level)
+ {
+     s_level = initial_level;
+-    /* xSemaphoreCreateMutex is safe before vTaskStartScheduler — it
+-     * allocates from the FreeRTOS heap; only Take/Give require the
++    /* Safe before vTaskStartScheduler; only Take/Give require the
+      * scheduler to be running. */
+-    s_mutex = xSemaphoreCreateMutex();
++    s_mutex = xSemaphoreCreateMutexStatic(&s_mutex_buf);
+ }
+ 
+ void log_set_level(log_level_t lvl)
+diff --git a/firmware/marvin/default/src/video/video.c b/firmware/marvin/default/src/video/video.c
+index 13effba..dfda382 100644
+--- a/firmware/marvin/default/src/video/video.c
++++ b/firmware/marvin/default/src/video/video.c
+@@ -312,14 +312,18 @@ static void video_task(void *param)
+ 
+ /* ─── Public API ───────────────────────────────────────────────────────── */
+ 
++static StackType_t  s_task_stack[VIDEO_TASK_STACK_WORDS];
++static StaticTask_t s_task_tcb;
++
+ void Video_Initialize(void)
+ {
+-    (void)xTaskCreate(video_task,
+-                      "VideoTask",
+-                      VIDEO_TASK_STACK_WORDS,
+-                      NULL,
+-                      VIDEO_TASK_PRIORITY,
+-                      NULL);
++    (void)xTaskCreateStatic(video_task,
++                            "VideoTask",
++                            VIDEO_TASK_STACK_WORDS,
++                            NULL,
++                            VIDEO_TASK_PRIORITY,
++                            s_task_stack,
++                            &s_task_tcb);
+ }
+ 
+ void Video_CaptureEnable(void)  { s_capture_enabled = true;  }
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+1	# marvin — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	## Current focus
+8	
+9	**M1 — Reference detector v0.** First CV detector running on captured frames, publishing `detector_state_t` records onto the detector-state bus. No actuation yet. See [`spec.md`](spec.md) §4.2 for subsystem detail and §8 for the milestone progression.
+10	
+11	Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus queue + a temporary drain task that logs records-per-second; `detector/cv_marvin_v1.{h,c}` subscribes to the video frame queue and publishes one `detector_state_t` per frame with `frame_epoch = Video_FrameInfo.frame_count` and all-zero fret state. Next: pick the v0 algorithm (Q8) and start populating `fret[]`.
+12	
+13	**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+14	
+15	> **Deeper-dive references:**
+16	> - [`spec.md`](spec.md) — system-level spec (read first).
+17	> - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
+18	> - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
+19	
+20	> **Earlier entries** (capture/display bring-up, 2026-05-01 → 2026-05-15) are preserved in [`journal-archive.md`](journal-archive.md).
+21	
+22	---
+23	
+24	## Decision log
+25	
+26	| Date | Decision | Rationale |
+27	|------|----------|-----------|
+28	| 2026-05-20 | System-level spec lives at [`spec.md`](spec.md); read it first on any non-trivial marvin task | We're at the point where deferring system architecture would mean building feature-by-feature without a coherent target. The journal is the running diary; the spec is the durable description of what marvin is. |
+29	| 2026-05-20 | Marvin replaces the fret-tuner PC as the runtime brain | One-host architecture. fret-tuner persists as an off-band dev/calibration tool. fretboard stays a dumb relay (ADC out, bitmask in). |
+30	| 2026-05-20 | Marvin is the *reference detector* — not a debug aid | HDMI-direct CV is ground-truth for the system. Fretboard's photo-detection and any future Edge-AI MCU are trained against marvin's output. Recording reference data is therefore a first-class subsystem (spec §4.6), not an afterthought. |
+31	| 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
+32	| 2026-05-20 | Timing pipeline (chord window, FIFO, strum scheduling) lives on marvin by default; fretboard-takeover is a fallback mode | Centralized = single source of truth, easier multi-detector fusion. Latency budget allows a few ms of UART jitter. Fallback mode disables marvin's pipeline; fretboard runs its own existing `fret_button.c` and feeds emitted-command telemetry up to marvin for capture/display. Spec §4.4 + §6. |
+33	| 2026-05-20 | Reference-data export = SD card, format = detector-state + sparse keyframes | SD chosen over Ethernet/USB CDC because primary consumers are Edge-AI training (offline) and replay/sanity-check (offline). Live side-by-side comparison deferred. Format: dense `detector_state_t` records for all detectors + raw BGRX32 keyframes every 60 frames (1.38 MB/s sustained, comfortable on Class-10). No software JPEG (Cortex-A5 can't keep up; SAM9X75 has no HW encoder). Spec §4.6. |
+34	| 2026-05-20 | `frame_epoch` (32-bit, incremented per captured ISC frame) is the master sync token across recordings, detectors, and any future off-board observers | Need single shared timeline; off-board detectors (e.g. Edge-AI device) record in their own format keyed by marvin's `frame_epoch` so post-hoc training-data alignment is trivial. Wraps after ~830 days @ 60 Hz. |
+35	| 2026-05-20 | Operating modes are independent toggles (`detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`); named modes are presets over them | Matches `tools/fret-tuner/SPEC.md`'s detect/actuate split which has worked well in practice. Avoids a brittle global state machine. Spec §6. |
+36	| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+37	| 2026-05-01 | Reference source = mainline Linux tc358743 driver + community 480p dumps | Linux driver has correct state machine / EDID / IRQ handling; community dumps have verified 480p register values. |
+38	| 2026-05-01 | Integration shape (sensor vs standalone) deferred until Phase 3 | Avoid premature structure; real answer depends on how much state the driver actually needs. |
+39	| 2026-05-01 | Journal lives at `firmware/marvin/docs/journal.md` | Firmware docs co-located with firmware; top-level `docs/` is hardware/mechanical. |
+40	| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+41	| 2026-05-01 | REFCLK: **27 MHz** | Waveshare v1/v2 on-board XTAL. Kernel driver restricts REFCLK to {26, 27, 42} MHz (`tc358743.c:717-719`); 27 MHz is the Waveshare v1/v2 value. |
+42	| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+43	| 2026-05-01 | Register-access helpers will be a direct port from the kernel driver | `tc358743.c:131-269` has clean `i2c_rd/wr` + `i2c_rd8/wr8/rd16/wr16/rd32/wr32`. Map to FLEXCOM6 TWI underneath. |
+44	| 2026-05-01 | J29 (22-pin MIPI) pinout confirmed; PC19=pin 17, PC15=pin 18 (not 5/6) | Per SAM9X75-Curiosity User Guide §3.4.10 (queried via Microchip MCP). Pins 5/6 are MIPI_D1_N/P — CSI data lane 1 diff pairs, not GPIOs. Correct GPIO pins for RESET/INT are pin 17 (PC19, `MIPI_CSI_GPIO0`) and pin 18 (PC15, `MIPI_CSI_GPIO1`). I2C on pins 20 (PA25, `CAM_I²C_CLK`) and 21 (PA24, `CAM_I²C_DATA`) confirmed to match marvin's FLEXCOM6 pin assignment (`pin_configurations.csv:85-86`). |
+45	| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+46	| 2026-05-01 | Delays use Harmony's `SYS_TIME` service (non-blocking shape) | Already initialized in `SYS_Initialize`; existing marvin code (`drv_isc.c`, `plib_isc.c`) uses it with `SYS_TIME_DelayUS/MS` + `SYS_TIME_DelayIsComplete`. Non-blocking pattern inside our state machine keeps `APP_Tasks()` (and Legato) from stalling during reset hold times, and scales naturally into Phase 3's longer init sequence. |
+47	| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+48	| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+49	| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+50	| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+51	| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+52	| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+53	| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
+54	| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+55	| 2026-05-20 | M1 detector scaffolding: one task per detector, single shared bus queue (`xDetectorStateQueue`), temporary in-module drain task until the timing pipeline (M3) lands | Matches spec §4.2.4. Per-detector tasks isolate slow detectors from the frame pipeline; the shared queue is the hand-off point that the timing pipeline will eventually own as sole consumer. The drain task lives in `detector.c` so it travels with the bus and can be deleted in one place when M3 wires the real consumer. Records-per-second log line gives a coarse health signal during bring-up. |
+56	| 2026-05-20 | `frame_epoch` is sourced from `Video_FrameInfo.frame_count` for M1; a persistent counter that survives ISC restart is M5's problem | Recording (M5) is the first consumer that actually needs cross-restart continuity. Until then the post-arm-monotonic counter is fine for plumbing validation, and pretending otherwise would mean threading another counter through the video module before it has a real consumer. |
+57	| 2026-05-20 | Detector control model: per-detector `enable` (multiple may be on simultaneously for side-by-side recording) + single `active` selector (which detector_id the timing pipeline acts on) | Want side-by-side training data — every enabled detector publishes onto the bus; recording (M5) saves them all. But only one detector should ever drive actuation, so the timing pipeline (M3) filters the bus by `Detector_GetActive()` and ignores the rest. Cleaner than a global enum because it decouples "is this running?" from "is this canonical?", and lets us hot-swap the active detector without disabling its peers. Defaults: all-disabled, active=cv_marvin_v1. App explicitly calls `Detector_Enable` + `Detector_SetActive` after init. |
+58	| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+59	| 2026-05-20 | `Video_FrameInfo.buffer` now reflects the buffer that just completed (per-frame routing); HEO is re-pointed in the ISR every frame so the panel sees every captured frame | Pre-fix: `ISC_Capture_GetBufferAddress()` returned the framebuffer base regardless of which descriptor-ring slot ISC just wrote, and HEO was bound once to the base — so HEO only ever read slot 0, and slot 1 was written but never observed. Effective behavior was ~half-rate display. Fix: ISC IRQ computes `slot = (frameIndex - 1 + N) % N` (driver increments before callback per drv_isc.c:47-50), passes `base + slot * frame_size` into the user callback, and video.c re-points HEO at that address with `XLCDC_SetLayerAddress(..., update=true)` — latches at next vsync. Also unblocks ring depth > 2 since each subscriber sees the genuinely-just-written buffer. |
+60	| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+61	
+62	---
+63	
+64	## Open questions
+65	
+66	_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+67	
+68	- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+69	- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **deferred 2026-05-01**: TXACT has been observed at both 0 and 1 at various times after enable. Likely momentary (active-packet indicator, not stream-on flag). CSI_ERR=0 and HLT=0 consistently. Phase 5 frames-in-memory confirmed the chain works regardless.
+70	- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+71	
+72	**Carried into future sessions:**
+73	
+74	- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+75	
+76	- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. Re-apply after every regen:
+77	
+78	  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+79	
+80	  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+81	
+82	  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+83	
+84	  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+85	
+86	  Previously listed but now resolved or moot:
+87	  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+88	  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+89	
+90	  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+91	
+92	- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+93	
+94	- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+95
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:52:48Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:53:01Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:53:14Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ log.c: convert xSemaphoreCreateMutex → xSemaphoreCreateMutexStatic
+- [X] 🌡️ video.c: convert xTaskCreate → xTaskCreateStatic
+- [X] 🌡️ detector.c: convert xQueueCreate + xTaskCreate to static
+- [X] 🌡️ cv_marvin_v1.c: convert xQueueCreate + xTaskCreate to static
+- [X] 🌡️ Build / verify (review diff)
+- [X] 🌡️ Journal entry for static-allocation conversion
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:53:21Z)**_
+
+All six call sites converted. Summary:
+
+**Converted (file-scope static buffers + `*Static` API):**
+- [log.c](firmware/marvin/default/src/log.c) — log mutex
+- [video/video.c](firmware/marvin/default/src/video/video.c) — VideoTask
+- [detector/detector.c](firmware/marvin/default/src/detector/detector.c) — bus queue + DetectorDrain task
+- [detector/cv_marvin_v1.c](firmware/marvin/default/src/detector/cv_marvin_v1.c) — frame queue + CvMarvinV1 task
+
+**Verified MCC side:** [freertos_hooks.c:186](firmware/marvin/default/src/config/default/freertos_hooks.c#L186) already provides `vApplicationGetIdleTaskMemory`. `configUSE_TIMERS=0` so no timer-task callback needed. `configSUPPORT_STATIC_ALLOCATION=1` and `configSUPPORT_DYNAMIC_ALLOCATION=1` (kept on for MCC).
+
+Journal updated with a decision-log entry. Ready to commit when you give the word — diff is +47/−24 across the four source files plus the journal entry.
+
+---
+
+_**User (2026-05-20 20:54:22Z)**_
+
+commit
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Pre-commit status
+
+`git status && echo "---" && git diff --stat`
+
+```text
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   firmware/marvin/default/mcc/marvin_default/components/FreeRTOS.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
+	modified:   firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+	modified:   firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+	modified:   firmware/marvin/default/src/config/default/FreeRTOSConfig.h
+	modified:   firmware/marvin/default/src/config/default/definitions.h
+	modified:   firmware/marvin/default/src/config/default/freertos_hooks.c
+	modified:   firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+	modified:   firmware/marvin/default/src/config/default/initialization.c
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/detector/cv_marvin_v1.c
+	modified:   firmware/marvin/default/src/detector/detector.c
+	modified:   firmware/marvin/default/src/log.c
+	modified:   firmware/marvin/default/src/video/video.c
+	modified:   firmware/marvin/docs/journal.md
+
+---
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+ ...26-05-20_18-30-12Z-working-on-project-marvin.md | 1255 ++++++++++++++++++++
+ .specstory/statistics.json                         |   26 +-
+ .../marvin/default/src/detector/cv_marvin_v1.c     |   25 +-
+ firmware/marvin/default/src/detector/detector.c    |   24 +-
+ firmware/marvin/default/src/log.c                  |    6 +-
+ firmware/marvin/default/src/video/video.c          |   16 +-
+ firmware/marvin/docs/journal.md                    |    1 +
+ 7 files changed, 1316 insertions(+), 37 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:36Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect staged churn vs substantive
+
+`git diff --cached --stat`
+
+```text
+ .../mcc/marvin_default/components/FreeRTOS.yml     | 10 +++++++++
+ .../default/mcc/marvin_default/mcc-config.mc4      |  8 +++----
+ .../marvin/default/mcc/mcc-manifest-autosave.yml   |  2 +-
+ .../default/mcc/mcc-manifest-generated-success.yml |  2 +-
+ .../default/src/config/default/FreeRTOSConfig.h    |  2 +-
+ .../default/src/config/default/definitions.h       |  2 +-
+ .../default/src/config/default/freertos_hooks.c    | 25 ++++++++++++++++++++++
+ .../config/default/harmony-manifest-success.yml    |  2 +-
+ .../default/src/config/default/initialization.c    |  2 +-
+ 9 files changed, 45 insertions(+), 10 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:41Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect manifest/init diffs
+
+`git diff --cached firmware/marvin/default/mcc/mcc-manifest-autosave.yml firmware/marvin/default/mcc/mcc-manifest-generated-success.yml firmware/marvin/default/src/config/default/harmony-manifest-success.yml firmware/marvin/default/src/config/default/definitions.h firmware/marvin/default/src/config/default/initialization.c firmware/marvin/default/mcc/marvin_default/mcc-config.mc4`
+
+```text
+diff --git a/firmware/marvin/default/mcc/marvin_default/mcc-config.mc4 b/firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
+index 8fec943..595efc8 100644
+--- a/firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
++++ b/firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
+@@ -34,7 +34,7 @@ generatedFileHashHistoryMap:
+ - file: ../src/app.h
+   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
+ - file: ../src/config/default/FreeRTOSConfig.h
+-  hash: fd3ef0ae00358b087d48cf6182c00b40ef5df8bf3a12eafd58453cd4a9efb9fc
++  hash: 5e72489ba5579fba277e63c9d67603f07d2338368ea03efe537a9242c97bb1f5
+ - file: ../src/config/default/configuration.h
+   hash: cfef12805c133f86932fc72cd3b137db9f32212fc211cb078b9b5d3ad471f9b1
+ - file: ../src/config/default/cstartup.S
+@@ -42,7 +42,7 @@ generatedFileHashHistoryMap:
+ - file: ../src/config/default/ddram.ld
+   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
+ - file: ../src/config/default/definitions.h
+-  hash: e430f43b71a4ea7ec9811d875e9139e325139fac124bb0de313948dd544def98
++  hash: d2f6c7c7dfb8f219f397bd42529018d87ea69e510be5e11dfff28fa631a5a307
+ - file: ../src/config/default/device.h
+   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
+ - file: ../src/config/default/device_cache.h
+@@ -66,7 +66,7 @@ generatedFileHashHistoryMap:
+ - file: ../src/config/default/fault_handlers.c
+   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
+ - file: ../src/config/default/freertos_hooks.c
+-  hash: c97b8f92ad60ff513a27ac7a27b3c6824b75005eb8f7b85fe5ae18deaf568c4e
++  hash: 48beeff10a0a7c0fefe4aa9800b859c58ede1af59903d7e295928c773481556a
+ - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
+   hash: 5c79f5307aee58daface87f8dbb4d80d8b2a473544d37b9bc78458d552a68b6f
+ - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h
+@@ -584,7 +584,7 @@ generatedFileHashHistoryMap:
+ - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
+   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
+ - file: ../src/config/default/initialization.c
+-  hash: 644a7965e75e805813871753f94e5f9ce0cc6bfff92943ebfb09fd853e8d8c93
++  hash: 598990037989b367f14d6dffa188e3931a6112167110daa0ebf73696d7d3bf9c
+ - file: ../src/config/default/interrupts.c
+   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
+ - file: ../src/config/default/interrupts.h
+diff --git a/firmware/marvin/default/mcc/mcc-manifest-autosave.yml b/firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+index 5be42e0..f36fff8 100644
+--- a/firmware/marvin/default/mcc/mcc-manifest-autosave.yml
++++ b/firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+@@ -2,7 +2,7 @@
+ 
+ manifest_file_version: 1.0.0
+ project: marvin_default
+-creation_date: 2026-05-19T14:03:19.414-05:00[America/Chicago]
++creation_date: 2026-05-20T15:48:20.006-05:00[America/Chicago]
+ operating_system: Mac OS X
+ mcc_mode: VSCodePlugin
+ mcc_mode_version: Unknown
+diff --git a/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml b/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+index 87c13fd..2adb8f3 100644
+--- a/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
++++ b/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+@@ -2,7 +2,7 @@
+ 
+ manifest_file_version: 1.0.0
+ project: marvin_default
+-creation_date: 2026-05-19T14:03:19.380-05:00[America/Chicago]
++creation_date: 2026-05-20T15:48:19.976-05:00[America/Chicago]
+ operating_system: Mac OS X
+ mcc_mode: VSCodePlugin
+ mcc_mode_version: Unknown
+diff --git a/firmware/marvin/default/src/config/default/definitions.h b/firmware/marvin/default/src/config/default/definitions.h
+index 8298bcd..0e2d264 100644
+--- a/firmware/marvin/default/src/config/default/definitions.h
++++ b/firmware/marvin/default/src/config/default/definitions.h
+@@ -64,8 +64,8 @@
+ #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
+ #include "gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h"
+ #include "gfx/driver/processor/gfx2d/drv_gfx2d.h"
+-#include "peripheral/dbgu/plib_dbgu.h"
+ #include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
++#include "peripheral/dbgu/plib_dbgu.h"
+ #include "FreeRTOS.h"
+ #include "task.h"
+ #include "driver/input/drv_maxtouch.h"
+diff --git a/firmware/marvin/default/src/config/default/harmony-manifest-success.yml b/firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+index 6d1eb2e..f244bdd 100644
+--- a/firmware/marvin/default/src/config/default/harmony-manifest-success.yml
++++ b/firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+@@ -4,7 +4,7 @@
+ 
+ 
+ project: marvin_default
+-creation_date: 2026-05-19T14:03:19.387-05:00[America/Chicago]    # ISO 8601 format: https://www.w3.org/TR/NOTE-datetime
++creation_date: 2026-05-20T15:48:19.982-05:00[America/Chicago]    # ISO 8601 format: https://www.w3.org/TR/NOTE-datetime
+ operating_system: Mac OS X
+ mcc_mode: VSCodePlugin            # [IDE|Standalone|Headless]
+ mcc_version: v5.6.4
+diff --git a/firmware/marvin/default/src/config/default/initialization.c b/firmware/marvin/default/src/config/default/initialization.c
+index f33e7c8..0375bcf 100644
+--- a/firmware/marvin/default/src/config/default/initialization.c
++++ b/firmware/marvin/default/src/config/default/initialization.c
+@@ -300,8 +300,8 @@ void SYS_Initialize ( void* data )
+ 
+     XLCDC_Initialize();
+ 
+-    DBGU_Initialize();
+ 
++    DBGU_Initialize();
+ 
+ 
+     /* MISRAC 2023 deviation block start */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:49Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:52Z)**_
+
+Drop the pure-churn files (timestamp-only manifests + spurious reorderings) but keep the substantive MCC config (FreeRTOS.yml, FreeRTOSConfig.h, freertos_hooks.c, mcc-config.mc4 hash updates).
+
+_**Agent (claude-opus-4-7 2026-05-20 20:54:52Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Drop manifest/include-shuffle churn
+
+```bash
+git restore --staged firmware/marvin/default/mcc/mcc-manifest-autosave.yml firmware/marvin/default/mcc/mcc-manifest-generated-success.yml firmware/marvin/default/src/config/default/harmony-manifest-success.yml firmware/marvin/default/src/config/default/definitions.h firmware/marvin/default/src/config/default/initialization.c
+git checkout -- firmware/marvin/default/mcc/mcc-manifest-autosave.yml firmware/marvin/default/mcc/mcc-manifest-generated-success.yml firmware/marvin/default/src/config/default/harmony-manifest-success.yml firmware/marvin/default/src/config/default/definitions.h firmware/marvin/default/src/config/default/initialization.c
+git status
+```
+
+```text
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   firmware/marvin/default/mcc/marvin_default/components/FreeRTOS.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
+	modified:   firmware/marvin/default/src/config/default/FreeRTOSConfig.h
+	modified:   firmware/marvin/default/src/config/default/freertos_hooks.c
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/detector/cv_marvin_v1.c
+	modified:   firmware/marvin/default/src/detector/detector.c
+	modified:   firmware/marvin/default/src/log.c
+	modified:   firmware/marvin/default/src/video/video.c
+	modified:   firmware/marvin/docs/journal.md
+```
+</details></tool-use>

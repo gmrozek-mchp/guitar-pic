@@ -18,6 +18,12 @@
 #define DRAIN_LOG_INTERVAL_MS    1000u
 
 static QueueHandle_t   s_bus_queue;
+static StaticQueue_t   s_bus_queue_buf;
+static uint8_t         s_bus_queue_storage[DETECTOR_BUS_DEPTH * sizeof(detector_state_t)];
+
+static StackType_t     s_drain_stack[DRAIN_TASK_STACK_WORDS];
+static StaticTask_t    s_drain_tcb;
+
 static volatile uint32_t s_enabled_mask;
 static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
 
@@ -52,17 +58,21 @@ static void drain_task(void *param)
 
 void Detector_Initialize(void)
 {
-    s_bus_queue = xQueueCreate(DETECTOR_BUS_DEPTH, sizeof(detector_state_t));
+    s_bus_queue = xQueueCreateStatic(DETECTOR_BUS_DEPTH,
+                                     sizeof(detector_state_t),
+                                     s_bus_queue_storage,
+                                     &s_bus_queue_buf);
     configASSERT(s_bus_queue != NULL);
 
     CvMarvinV1_Initialize();
 
-    (void)xTaskCreate(drain_task,
-                      "DetectorDrain",
-                      DRAIN_TASK_STACK_WORDS,
-                      NULL,
-                      DRAIN_TASK_PRIORITY,
-                      NULL);
+    (void)xTaskCreateStatic(drain_task,
+                            "DetectorDrain",
+                            DRAIN_TASK_STACK_WORDS,
+                            NULL,
+                            DRAIN_TASK_PRIORITY,
+                            s_drain_stack,
+                            &s_drain_tcb);
 }
 
 QueueHandle_t Detector_BusQueue(void)

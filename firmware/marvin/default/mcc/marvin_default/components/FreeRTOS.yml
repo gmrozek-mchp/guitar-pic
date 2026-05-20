@@ -42,4 +42,14 @@ data:
           type: User
         type: Values
       type: Boolean
+    FREERTOS_STATIC_ALLOC:
+      attributes:
+        id: FREERTOS_STATIC_ALLOC
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}

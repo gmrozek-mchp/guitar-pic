@@ -312,14 +312,18 @@ static void video_task(void *param)
 
 /* ─── Public API ───────────────────────────────────────────────────────── */
 
+static StackType_t  s_task_stack[VIDEO_TASK_STACK_WORDS];
+static StaticTask_t s_task_tcb;
+
 void Video_Initialize(void)
 {
-    (void)xTaskCreate(video_task,
-                      "VideoTask",
-                      VIDEO_TASK_STACK_WORDS,
-                      NULL,
-                      VIDEO_TASK_PRIORITY,
-                      NULL);
+    (void)xTaskCreateStatic(video_task,
+                            "VideoTask",
+                            VIDEO_TASK_STACK_WORDS,
+                            NULL,
+                            VIDEO_TASK_PRIORITY,
+                            s_task_stack,
+                            &s_task_tcb);
 }
 
 void Video_CaptureEnable(void)  { s_capture_enabled = true;  }

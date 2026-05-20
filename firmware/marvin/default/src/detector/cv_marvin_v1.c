@@ -23,12 +23,20 @@
  * tick rate 1000. Used to project xTaskGetTickCount() into timestamp_us. */
 #define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
 
+static StaticQueue_t s_frame_queue_buf;
+static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+
+static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
+static StaticTask_t  s_task_tcb;
+
 static void cv_marvin_v1_task(void *param)
 {
     (void)param;
 
-    QueueHandle_t frames = xQueueCreate(CV_FRAME_QUEUE_DEPTH,
-                                        sizeof(Video_FrameInfo));
+    QueueHandle_t frames = xQueueCreateStatic(CV_FRAME_QUEUE_DEPTH,
+                                              sizeof(Video_FrameInfo),
+                                              s_frame_queue_storage,
+                                              &s_frame_queue_buf);
     configASSERT(frames != NULL);
     bool subscribed = Video_SubscribeFrames(frames);
     configASSERT(subscribed);
@@ -72,10 +80,11 @@ static void cv_marvin_v1_task(void *param)
 
 void CvMarvinV1_Initialize(void)
 {
-    (void)xTaskCreate(cv_marvin_v1_task,
-                      "CvMarvinV1",
-                      CV_TASK_STACK_WORDS,
-                      NULL,
-                      CV_TASK_PRIORITY,
-                      NULL);
+    (void)xTaskCreateStatic(cv_marvin_v1_task,
+                            "CvMarvinV1",
+                            CV_TASK_STACK_WORDS,
+                            NULL,
+                            CV_TASK_PRIORITY,
+                            s_task_stack,
+                            &s_task_tcb);
 }
