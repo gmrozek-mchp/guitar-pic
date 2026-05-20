@@ -19804,3 +19804,667 @@ index 9eec225..ff13112 100644
  #include "FreeRTOS.h"
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:56:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit video build fix
+
+```bash
+git add firmware/marvin/default/src/video/video.c firmware/marvin/default/src/video/video.h .specstory/
+git commit -m "$(cat <<'EOF'
+video: fix build — stdbool include + ISR-visible flag ordering
+
+video.h was relying on transitive bool from FreeRTOS.h, which broke once
+the multi-subscriber API used bool returns at translation units that
+processed video.h alone. Add <stdbool.h>.
+
+s_capture_armed / s_display_bound were defined below on_frame_done but
+the ISR reads s_display_bound to gate the per-frame HEO re-point. Move
+both flags above the ISR.
+EOF
+)"
+```
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos 7aa6b57] video: fix build — stdbool include + ISR-visible flag ordering
+ 4 files changed, 287 insertions(+), 8 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:56:37Z)**_
+
+Committed `7aa6b57`.
+
+---
+
+_**User (2026-05-20 21:00:36Z)**_
+
+one more top level marvin  spec / scope item to capture before we move on with development. I would like marvin to "understand" the game state based on observing the screen. This should be its own module using cv to monitor video and determine current menu / selection / gameplay mode / etc. We may also want to implement control of the game through this game module. For example, should be able to ask it to start a single player playthrough of requested song. I think this will mean building up metadata collection of game state, song lists, etc.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:00:42Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:00:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Outline marvin spec structure
+
+`grep -nE '^#|^##|^###' /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md | head -60`
+
+```text
+1:# marvin — System Specification
+9:## 1. Purpose & scope
+11:### 1.1 What marvin is
+24:### 1.2 What marvin is *not*
+31:### 1.3 North-star one-paragraph summary
+35:### 1.4 What's done, what's next
+52:## 2. System context
+54:### 2.1 Three-tier system
+121:### 2.2 Who owns what
+136:### 2.3 Data flow at a glance
+147:### 2.4 Latency budget (target, end-to-end)
+161:## 3. Hardware platform
+163:### 3.1 Boards and links
+176:### 3.2 SAM9X75 resources used / unused
+195:## 4. Subsystems
+197:### 4.1 Video capture & display ✅
+212:### 4.2 CV detection pipeline + detector-state bus 🚧
+214:#### 4.2.1 Role
+218:#### 4.2.2 Detector model
+227:#### 4.2.3 detector_state record (canonical shape)
+245:#### 4.2.4 Bus mechanics
+252:#### 4.2.5 Reference-detector responsibilities
+260:#### 4.2.6 Open questions surfaced here
+265:### 4.3 Fretboard link 🚧
+273:### 4.4 Timing pipeline 🚧
+285:### 4.5 UI / operator surface 🚧
+296:### 4.6 Reference-data recording & export 🚧
+298:#### 4.6.1 Goals (in priority order)
+306:#### 4.6.2 Transport — SD card
+312:#### 4.6.3 Format — detector-state + sparse keyframes
+337:#### 4.6.4 Sync token — `frame_epoch`
+343:#### 4.6.5 manifest.json
+365:#### 4.6.6 On-device buffering
+371:#### 4.6.7 Off-board detectors recording independently
+381:### 4.7 System services 🚧
+393:## 5. External interfaces 🚧
+401:## 6. Operating modes 🚧
+414:## 7. Build & deploy 🚧
+418:## 8. Phasing & milestones 🚧
+433:## 9. Open questions
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:00:45Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/spec.md`
+
+```text
+285	### 4.5 UI / operator surface 🚧
+286	
+287	10.1″ 1280×800 LVDS panel + maxtouch capacitive touch. Functional surfaces required:
+288	
+289	- Live game view (capture composited with detector overlays — sensor crosshairs, detection events, latency markers).
+290	- Calibration / tuning (per-fret ROI placement, threshold values, timing constants).
+291	- Mode + run controls (idle, calibrate, dry-run, play, replay, record).
+292	- Logs / history / stats (recent commands, miss/hit counts, dropped frames).
+293	
+294	**UI framework — open Q5.** Legato is already pulled in for capture init and could absorb the operator UI directly (heavy but in-tree). Alternative: a lightweight custom widget layer over GFX2D / direct framebuffer composition. Decision deferred until we attempt the first non-trivial screen (calibration overlay).
+295	
+296	### 4.6 Reference-data recording & export 🚧
+297	
+298	#### 4.6.1 Goals (in priority order)
+299	
+300	1. **Edge-AI training data** — produce labelled frames + ground-truth detector state suitable for training low-fidelity detectors (fretboard's photo-detector logic; future Edge-AI MCU).
+301	2. **Replay / sanity check** — let the user (offline) scrub through a recorded session to investigate misses.
+302	3. **Multi-detector sync** — independent detectors (fretboard ADC, future Edge-AI) record their own data alongside marvin's; everyone sync's on a shared frame epoch.
+303	
+304	Live off-device streaming for side-by-side comparison is *not* on the MVP critical path.
+305	
+306	#### 4.6.2 Transport — SD card
+307	
+308	Recordings are persisted to an SD card via SDMMC + a simple filesystem (FAT32 via Harmony's FILE_SYSTEM service). The card is removed and read on a workstation; no live network path is required for MVP.
+309	
+310	Bandwidth ceiling: SDMMC sustained write ≥ 5 MB/s on Class-10 cards is reliably achievable. The recording format below is sized to land well below that.
+311	
+312	#### 4.6.3 Format — detector-state + sparse keyframes
+313	
+314	A recording is a **directory** on the SD card, containing:
+315	
+316	```
+317	recordings/
+318	└── 2026-05-20T14-32-08/
+319	    ├── manifest.json          // session metadata, calibration snapshot, detector versions
+320	    ├── state.bin              // dense detector_state_t records, all detectors, all frames
+321	    ├── commands.bin           // emitted fret/strum commands with frame_epoch
+322	    ├── adc_raw.bin            // raw fretboard ADC stream with frame_epoch interleave
+323	    └── keyframes/
+324	        ├── 000000.bgrx        // raw BGRX32 keyframe (no encoder), filename = frame_epoch
+325	        ├── 000060.bgrx
+326	        └── ...
+327	```
+328	
+329	- **`state.bin`** — append-only, fixed-size `detector_state_t` records (§4.2.3). At 60 Hz × 2 detectors × ~28 B = ~3.4 KB/s. Trivial.
+330	- **`commands.bin`** — fret/strum bitmask + direction + emit timestamp + frame_epoch, ~16 B per emit. Sparse.
+331	- **`adc_raw.bin`** — fretboard 12-byte frames at 500 Hz with `frame_epoch` annotation = ~6 KB/s. Modest.
+332	- **Keyframes** — raw BGRX32 dump every N captured frames. At 720×480 BGRX = 1.38 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.38 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~415 MB — comfortable on any modern SD card.
+333	- No software JPEG / video encode. SAM9X75 has no hardware JPEG; CPU encode at 60 fps is infeasible. Keyframes stay raw; offline tools can transcode if desired.
+334	
+335	Filename convention: directory name is ISO-8601 timestamp at session start (UTC); keyframe filenames are zero-padded `frame_epoch` so chronological order matches lexical order.
+336	
+337	#### 4.6.4 Sync token — `frame_epoch`
+338	
+339	A 32-bit counter incremented by the video task on every captured ISC frame (rolls over after ~830 days @ 60 Hz). Every record in a session — `state.bin`, `commands.bin`, `adc_raw.bin`, keyframe filenames, off-board detector data — is keyed by `frame_epoch`. This is the master clock for the entire system, including any later-added detectors that record independently and need to align their data with marvin's.
+340	
+341	For records that don't fall on a frame boundary (ADC samples emitted between video frames), the most-recent `frame_epoch` is used and the sub-frame offset is captured by `timestamp_us`.
+342	
+343	#### 4.6.5 manifest.json
+344	
+345	Minimum fields:
+346	
+347	```json
+348	{
+349	  "schema_version": 1,
+350	  "session_started_utc": "2026-05-20T14:32:08Z",
+351	  "marvin_firmware_git": "<hash>",
+352	  "capture": { "width": 720, "height": 480, "fps": 60, "format": "BGRX32" },
+353	  "keyframe_stride_frames": 60,
+354	  "detectors": [
+355	    { "id": "cv_marvin_v1", "version": "1.0.0", "calibration": { ... } },
+356	    { "id": "adc_fretboard", "version": "1.0.0", "thresholds": { ... } }
+357	  ],
+358	  "timing": { "chord_window_ms": 20, "strum_delay_ms": 220, "fret_early_ms": 50, "strum_pulse_ms": 50 },
+359	  "ended_utc": null
+360	}
+361	```
+362	
+363	Written at session start; `ended_utc` is patched on a clean stop.
+364	
+365	#### 4.6.6 On-device buffering
+366	
+367	A FreeRTOS task (`record_task`) owns SD writes. State / command / ADC streams are small and write through directly. Keyframes are larger — a single keyframe at 1.38 MB cannot block the video pipeline, so the record task receives a **frame buffer pointer** (the same DDR buffer the ISC writes into; refcounted by the video task) and writes from DDR while the next frame is being captured into another buffer. We need ≥ 3 capture frame buffers (one capturing, one displaying, one being recorded) when recording is active; today the video task already has multiple frames pre-allocated — exact count is verified during implementation.
+368	
+369	If the SD write FIFO falls behind (rare; only a sustained-throughput problem), the recorder drops keyframes (logs a `RECORD_DROP` event into `state.bin`'s metadata channel) but **never** drops detector-state records.
+370	
+371	#### 4.6.7 Off-board detectors recording independently
+372	
+373	When a future Edge-AI detection unit is brought online, it can:
+374	
+375	- Subscribe to marvin's `frame_epoch` over a chosen link (UART/Ethernet/etc.).
+376	- Record its own observations (e.g. its own sensor data + its own detector output) in its own format, *keyed by marvin's `frame_epoch`*.
+377	- Be aligned post-hoc against marvin's reference recording during training.
+378	
+379	The spec does not constrain how off-board detectors store their data — only the sync contract (`frame_epoch` timeline) is canonical.
+380	
+381	### 4.7 System services 🚧
+382	
+383	Cross-cutting services not owned by any one subsystem:
+384	
+385	- **Logging** ✅ severity-filtered printf shim (commit `a79042f`).
+386	- **Time** ✅ TC0 / SYS_TIME for OSAL.
+387	- **Config persistence** 🚧 calibration values, mode toggles, last-used recording stride. Storage TBD (a config file on SD vs internal flash).
+388	- **Watchdog** 🚧 not yet enabled.
+389	- **OTA** ⚪ out of scope for now.
+390	
+391	---
+392	
+393	## 5. External interfaces 🚧
+394
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:12Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:14Z)**_
+
+I'll add this as a new subsystem in marvin's spec — game-state awareness is a peer to detection/timing but works at a different layer (observes UI state, can issue high-level commands). Before editing, let me scan the spec for cross-references that'd need updating.
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find any prior mentions of game-state concepts
+
+`grep -nE 'menu|game state|game-state|song list|score|menu navigation|gameplay' /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md /Users/gregmrozek/Projects/microchip/guitar-pic/SPEC.md 2>&1 | head -30`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md:58:| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md:60:| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md:112:Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md:126:Added per-detector enable/disable + single-active selector to the bus API (`Detector_Enable`/`Disable`/`IsEnabled` + `Detector_SetActive`/`GetActive`). Defaults all-disabled; app explicitly enables `DETECTOR_CV_MARVIN_V1` and selects it as active. cv_marvin_v1 still drains its frame queue when disabled but skips publishing. Future video CV tasks (menu, score) go in as video-frame consumers, not detectors — needs a multi-subscriber upgrade to `Video_SubscribeFrames` before the second one lands.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Existing menu/game-state mentions in marvin spec
+
+`grep -nE 'menu|game.state|game-state|song' /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md | head -20`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:22Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/spec.md`
+
+```text
+1	# marvin — System Specification
+2	
+3	> **Read this first** for any non-trivial marvin task. The journal ([`journal.md`](journal.md)) is the running diary of decisions and work-in-progress; this spec is the durable description of *what marvin is*. When the two disagree, fix the spec.
+4	
+5	**Status:** in-progress draft. Sections that are settled are marked ✅; sections that depend on open architectural questions are marked 🚧 and link to the relevant entries in §9.
+6	
+7	---
+8	
+9	## 1. Purpose & scope
+10	
+11	### 1.1 What marvin is
+12	
+13	marvin is the firmware running on a **SAM9X75 Curiosity** board. Its job, in the guitar-playing-robot system, is to:
+14	
+15	1. Capture live HDMI video of a Guitar Hero / Rock Band game from a Nintendo Wii.
+16	2. Run computer-vision note detection on the captured frames.
+17	3. Decide *what* to play and *when* (chord grouping, fret-early timing, strum scheduling).
+18	4. Send the corresponding fret/strum commands to the actuator controller (the **fretboard** MCU).
+19	5. Provide an on-device operator UI (10.1″ LVDS panel + maxtouch capacitive touch) for live view, calibration, mode selection, logs.
+20	6. Produce **reference data** — annotated frames + detector state — for off-board use (training low-fidelity detectors, side-by-side detector comparison, replay).
+21	
+22	In short: marvin is the runtime brain *and* the reference-detector data source for the project.
+23	
+24	### 1.2 What marvin is *not*
+25	
+26	- **Not the actuator.** Physical fret/strum GPIO drive lives on the fretboard MCU. marvin sends bitmask commands; fretboard converts them to button presses.
+27	- **Not a sensor / detection-only device.** marvin owns timing and command emission. It is not a passive vision peripheral that some other host orchestrates.
+28	- **Not a router for a PC.** The previous PC-based architecture (Elgato + OpenCV + USB to a Pi) is retired. marvin replaces the PC in the runtime path.
+29	- **Not a generic camera platform.** The video source is a fixed HDMI signal from a game console. Suggestions like "just use a USB webcam" or "output to HDMI directly" miss the point.
+30	
+31	### 1.3 North-star one-paragraph summary
+32	
+33	A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGRX32, zero-copy). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over UART, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
+34	
+35	### 1.4 What's done, what's next
+36	
+37	| Subsystem | Status |
+38	|---|---|
+39	| HDMI capture (TC358743 → CSI-2 → ISC → DDR, BGRX32) | ✅ working at 480p60 and 720p60. See [`capture_pipeline.md`](capture_pipeline.md). |
+40	| Display path (DDR → XLCDC OVR1 → LVDSC → panel) | ✅ working, pillarboxed/letterboxed. See [`display_path.md`](display_path.md). |
+41	| FreeRTOS scheduler, video task, OSAL I²C | ✅ landed (commits `5a63704`, `6b85d5e`, `e28c497`). |
+42	| Lightweight log shim | ✅ landed (commit `a79042f`). |
+43	| CV detection pipeline | 🚧 not started. §4.2. |
+44	| Fretboard UART link | 🚧 not started. §4.3. |
+45	| Timing pipeline (chord FIFO, strum) | 🚧 not started. §4.4. |
+46	| Operator UI (Legato vs custom) | 🚧 init-only Legato; full UI not started. §4.5, open Q5. |
+47	| Reference-data recording & export | 🚧 not started. §4.6, open Q1/Q2. |
+48	| System services (config, time, watchdog) | 🚧 partial (logging done). §4.7. |
+49	
+50	---
+51	
+52	## 2. System context
+53	
+54	### 2.1 Three-tier system
+55	
+56	```
+57	┌──────────────────────────┐    HDMI 480p60 / 720p60
+58	│  Nintendo Wii            │────────────────────────────────────────┐
+59	│  (Guitar Hero / RB)      │                                        │
+60	└──────────────────────────┘                                        │
+61	                                                                    │
+62	                       ┌──────────────────────┐                     │
+63	                       │ ElectronWarp         │                     │
+64	                       │ (component → HDMI)   │                     │
+65	                       └──────────┬───────────┘                     │
+66	                                  │ HDMI                            │
+67	                                  ▼                                 │
+68	                       ┌──────────────────────┐                     │
+69	                       │ Waveshare TC358743   │                     │
+70	                       │ HDMI → MIPI CSI-2    │                     │
+71	                       └──────────┬───────────┘                     │
+72	                                  │ CSI-2 (2 lanes, 972 Mbps/lane)  │
+73	                                  ▼                                 │
+74	   ┌────────────────────────────────────────────────────────────┐   │
+75	   │                    marvin (SAM9X75)                        │   │
+76	   │                                                            │   │
+77	   │   ISC ──► DDR (BGRX32) ──► CV detect ──┐                   │   │
+78	   │                              │         │                   │   │
+79	   │                              ▼         ▼                   │   │
+80	   │                          XLCDC ──► LVDS panel              │   │
+81	   │                                        ▲                   │   │
+82	   │              ┌─────────────────────────┴───────┐           │   │
+83	   │              │ detector-state bus              │           │   │
+84	   │              │  ├─ CV detector(s)              │           │   │
+85	   │              │  └─ fretboard-ADC detector ◄──┐ │           │   │
+86	   │              ▼                               │ │           │   │
+87	   │         timing pipeline ──► fret/strum cmds  │ │           │   │
+88	   │              │                               │ │           │   │
+89	   │              ▼                               │ │           │   │
+90	   │      reference-data export                   │ │           │   │
+91	   │       (Ethernet / SD / USB CDC — §4.6)       │ │           │   │
+92	   └──────────────┬────────────────────────────┬──┴─┘           │   │
+93	                  │ UART (frets/strum cmds)    │ UART (ADC      │   │
+94	                  │ bitmask                    │ stream)        │   │
+95	                  ▼                            │                │   │
+96	   ┌────────────────────────────────────┐      │                │   │
+97	   │      fretboard (PIC32CM6408)       │──────┘                │   │
+98	   │   ADC scan ──► UART stream         │                       │   │
+99	   │   cmd RX ──► open-drain GPIO       │                       │   │
+100	   │   (frets PA01–07, strums PA00/03)  │                       │   │
+101	   └─────────────────┬──────────────────┘                       │   │
+102	                     │ open-drain GPIO                          │   │
+103	                     ▼                                          │   │
+104	   ┌────────────────────────────────────┐                       │   │
+105	   │ Wii Guitar Hero controller         │                       │   │
+106	   │ (5 frets + strum bar)              │◄──────────────────────┘   │
+107	   └────────────────┬───────────────────┘                           │
+108	                    │ controller cable                              │
+109	                    ▼                                               │
+110	            (back to Wii) ◄────────────────────────────────────────┘
+111	
+112	                        ┌─────────────────────────────────┐
+113	                        │ optional dev PC (fret-tuner)    │
+114	                        │ ─ calibration / tuning UI       │
+115	                        │ ─ replay / detector comparison  │
+116	                        │ ─ training-data ingest          │
+117	                        └─────────────────────────────────┘
+118	                          (off-band; not in runtime path)
+119	```
+120	
+121	### 2.2 Who owns what
+122	
+123	| Concern | Owner | Notes |
+124	|---|---|---|
+125	| HDMI capture into memory | marvin | TC358743 + CSI-2 + ISC; 720×480 / 1280×720 @ 60 Hz, BGRX32. |
+126	| Reference-quality CV note detection | marvin | Ground truth; multiple algorithms may coexist on the bus. |
+127	| ADC-based note detection | fretboard → marvin | fretboard scans 5 phototransistors @ 500 Hz, streams raw values; marvin runs the detector logic. |
+128	| Detector-state fusion / arbitration | marvin | One canonical detector-state bus; the active source feeds the timing pipeline. |
+129	| Chord-window FIFO + strum scheduling | marvin | Open Q4: stays on marvin (centralized) vs migrates to fretboard. Default: marvin. |
+130	| Fret/strum GPIO output | fretboard | Open-drain pin drive only; receives a bitmask over UART. |
+131	| Operator UI (live view, calibration, modes, logs) | marvin | 10.1″ LVDS + maxtouch. Open Q5: Legato vs custom. |
+132	| Reference-data recording & export | marvin | Compressed/derived format; transport TBD (open Q1/Q2). |
+133	| Calibration / tuning UI authoring | dev PC (fret-tuner) | Optional; not required at runtime. Open Q7: long-term fate. |
+134	| Training data ingest / replay analysis | dev PC | Off-band consumer of marvin's reference-data export. |
+135	
+136	### 2.3 Data flow at a glance
+137	
+138	1. **Frame ready** — ISC writes a BGRX32 frame to DDR; the video task notifies subscribers.
+139	2. **CV detect** — one or more CV detectors read the frame and emit detector-state events.
+140	3. **ADC ingest** — a UART task receives raw ADC samples from the fretboard and runs an ADC detector that emits detector-state events on the same bus.
+141	4. **Arbitrate** — the timing pipeline picks the active detector (or fuses), maintains the chord-accumulation window, and pushes finished chords onto its FIFO.
+142	5. **Schedule** — the FIFO emits fret-assert and strum-pulse commands at the correct ticks.
+143	6. **Send** — commands are encoded and transmitted to the fretboard over UART.
+144	7. **Display** — the captured frame is composited with overlays (sensor crosshairs, detector outputs, chord state, latency markers) and shown on the LVDS panel.
+145	8. **Record** (optional) — when recording is enabled, a derived/compressed reference-data record (frame epoch + detector state + raw ADC + emitted commands) is buffered and exported via the chosen transport.
+146	
+147	### 2.4 Latency budget (target, end-to-end)
+148	
+149	| Stage | Budget | Notes |
+150	|---|---|---|
+151	| HDMI source → DDR (capture) | ≤ 16.7 ms | One frame @ 60 Hz; bounded by capture pipeline. |
+152	| Detect on frame | ≤ 16.7 ms | One frame budget for CV; ADC path is separate and faster. |
+153	| Timing pipeline → command emit | latency dominated by `STRUM_DELAY_MS` (≈ 200 ms) — intentional, not waste; compensates for sensor placement above strike line. |
+154	| UART command → fretboard GPIO | ≤ 5 ms | Short fixed-format frame at ≥ 115 200 Bd. |
+155	| Total user-visible latency | ≈ 200–250 ms | Tunable via `STRUM_DELAY_MS`, set per-game by calibration. |
+156	
+157	The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees notes before they reach the strike line. Capture + detect + UART jitter is what we actually budget against.
+158	
+159	---
+160
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:26Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:26Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/spec.md`
+
+```text
+393	## 5. External interfaces 🚧
+394	
+395	To be expanded once §4.3 (fretboard wire protocol) is settled. Will document:
+396	
+397	- Marvin ↔ fretboard UART framing, byte-for-byte.
+398	- Recording on-disk binary layouts (the `_t` structs from §4.2.3 and §4.6 in canonical form, including endianness).
+399	- USB-CDC dev console framing (if any), Ethernet ref-data stream framing (if/when added).
+400	
+401	## 6. Operating modes 🚧
+402	
+403	Default model: independent toggles (matches `tools/fret-tuner/SPEC.md`'s detect/actuate split). Confirmed direction; concrete toggle list:
+404	
+405	| Toggle | Effect |
+406	|---|---|
+407	| `detect_enable` | CV + ADC detectors run; detector-state bus is active. |
+408	| `marvin_timing_enable` | marvin's chord FIFO / strum scheduler runs. When off, fretboard runs its own pipeline (§4.4 fallback). |
+409	| `actuate_enable` | Commands are actually sent to fretboard. When off, marvin computes commands but suppresses them (dry-run). |
+410	| `record_enable` | Recording task writes to SD. |
+411	
+412	A handful of named composite modes (idle, calibrate, dry-run, play, replay, record) are presets over these toggles. Replay specifically requires loading a prior recording from SD and playing detector-state events back through the timing pipeline against the original keyframes — UI affordance for that comes later.
+413	
+414	## 7. Build & deploy 🚧
+415	
+416	To be filled. Topics: MCC-clobbered files (which paths are safe to edit by hand vs. regenerate), `user.cmake` boundaries, flashing workflow, sequence of MCC steps to reproduce the project.
+417	
+418	## 8. Phasing & milestones 🚧
+419	
+420	Proposed order; each is a buildable demo:
+421	
+422	1. **M1 — Reference detector v0** (§4.2). One CV detector running on captured frames, publishing `detector_state_t` to the bus. No actuation. Proves the bus and the detection task structure.
+423	2. **M2 — Fretboard link** (§4.3). UART up; ADC stream ingested; `adc_fretboard` detector publishing onto the bus alongside `cv_marvin_v1`.
+424	3. **M3 — Timing pipeline + actuation** (§4.4). Chord FIFO + strum scheduling; commands sent over UART; fretboard actuates. End-to-end play possible.
+425	4. **M4 — Recording to SD** (§4.6). SDMMC + FAT mount; record task writes state/commands/ADC/keyframes during a session.
+426	5. **M5 — Operator UI v0** (§4.5). Live view with overlays; mode toggles. UI framework decided here.
+427	6. **M6 — Calibration UI** (§4.5). Per-fret ROI placement + threshold tuning on the device.
+428	7. **M7 — Replay** (§6). Load a recording from SD, replay through the timing pipeline.
+429	8. **M8 — Standalone-fretboard fallback** (§4.4). Marvin-disabled-pipeline mode validated.
+430	
+431	Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
+432	
+433	## 9. Open questions
+434	
+435	| # | Question | Status |
+436	|---|---|---|
+437	| Q1 | Reference-data format details — keyframe stride and per-fret patch sizes if patches are added later. | Direction set (§4.6.3); exact stride defaults to 60 frames, revisit after first training-data consumer exists. |
+438	| Q2 | Reference-data transport beyond SD — Ethernet live stream timing. | Deferred post-M8. |
+439	| Q3 | Detector-state bus shape — typed messages on a queue (§4.2.4) is the working choice; revisit if multi-consumer latency becomes a problem. | Working choice. |
+440	| Q4 | Timing pipeline location — marvin centralized with fretboard fallback. | Settled; implementation in M3 + M8. |
+441	| Q5 | UI framework — Legato vs custom on GFX2D. | Open. Decide at M5. |
+442	| Q6 | Operating-mode model — independent toggles. | Settled (§6). |
+443	| Q7 | Fret-tuner's long-term fate — survives as off-band dev/calibration tool. | Settled; not in runtime path. |
+444	| Q8 | Initial CV algorithm choice for `cv_marvin_v1`. | Open. Decide at M1. |
+445	| Q9 | Config persistence location (SD file vs internal flash). | Open. Decide at M4 alongside SDMMC bring-up. |
+446	
+447
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:56Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:01:58Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Add §4.8 Game-state awareness & control to spec
+- [ ] 🌡️ Update §1.1, §1.4 status table, §2.2 ownership, §6 modes, §8 milestones, §9 open Qs
+- [ ] 🌡️ Add journal decision-log entry
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:02:08Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:02:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:02:23Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:02:26Z)**_
+
+Now insert the new §4.8 subsystem section. It goes after §4.7 to avoid renumbering existing sections that the journal references.
+
+_**Agent (claude-opus-4-7 2026-05-20 21:02:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:02:58Z)**_
+
+Now update §6 (operating modes), §8 (milestones), and §9 (open questions).
+
+_**Agent (claude-opus-4-7 2026-05-20 21:03:03Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:03:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:03:21Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:03:27Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Add §4.8 Game-state awareness & control to spec
+- [X] 🌡️ Update §1.1, §1.4 status table, §2.2 ownership, §6 modes, §8 milestones, §9 open Qs
+- [⚡] 🌡️ Add journal decision-log entry
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:03:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:03:55Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Add §4.8 Game-state awareness & control to spec
+- [X] 🌡️ Update §1.1, §1.4 status table, §2.2 ownership, §6 modes, §8 milestones, §9 open Qs
+- [X] 🌡️ Add journal decision-log entry
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:04:05Z)**_
+
+Captured. Summary of edits:
+
+**spec.md:**
+- §1.1 — added bullet 7 about game-state observation + high-level control verbs.
+- §1.4 — new status row "Game-state awareness & high-level game control" pointing at §4.8 / Q10 / Q11.
+- §2.2 — three new ownership rows (observation, catalog/metadata, high-level control).
+- §4.8 (new) — full subsystem section: role, module shape (its own task, video-frame consumer, separate `xGameStateQueue` bus, not on `xDetectorStateQueue`), game catalog & menu metadata, interactions with detection / timing / UI / recording / fretboard, surfaced open questions.
+- §6 — two new toggles: `game_observe_enable`, `game_control_enable`.
+- §8 — M9 (observer v0) and M10 (control v0).
+- §9 — Q10 (recognizer algorithm), Q11 (arbitration with timing pipeline).
+
+**journal.md:**
+- Decision-log entry capturing the scope decision, the bus separation, the metadata story, and the default arbitration rule (mutually exclusive with timing pipeline).
+
+Numbering note: I parked the new section at §4.8 (after system services) instead of inserting between §4.4 and §4.5 to avoid renumbering the recording / UI / services sections that the journal already references. If you'd rather have it slot in the middle in proper architectural order, say the word and I'll do the renumber pass.
+
+Want me to commit these doc changes?
+
+---
+
+_**User (2026-05-20 21:04:10Z)**_
+
+commit
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:04:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Pre-commit status
+
+`git status && echo "---" && git diff --stat firmware/marvin/docs/`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/docs/journal.md
+	modified:   firmware/marvin/docs/spec.md
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---
+ firmware/marvin/docs/journal.md |  1 +
+ firmware/marvin/docs/spec.md    | 59 +++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 60 insertions(+)
+```
+</details></tool-use>

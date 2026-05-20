@@ -18,6 +18,7 @@ marvin is the firmware running on a **SAM9X75 Curiosity** board. Its job, in the
 4. Send the corresponding fret/strum commands to the actuator controller (the **fretboard** MCU).
 5. Provide an on-device operator UI (10.1″ LVDS panel + maxtouch capacitive touch) for live view, calibration, mode selection, logs.
 6. Produce **reference data** — annotated frames + detector state — for off-board use (training low-fidelity detectors, side-by-side detector comparison, replay).
+7. **Observe game state from the screen** — recognize current menu / song-select / gameplay / pause / score-summary contexts via CV, expose high-level control verbs ("start single-player playthrough of song X", "advance menu", "exit to main menu") that translate into fret/strum command sequences sent through the same fretboard link.
 
 In short: marvin is the runtime brain *and* the reference-detector data source for the project.
 
@@ -46,6 +47,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 | Operator UI (Legato vs custom) | 🚧 init-only Legato; full UI not started. §4.5, open Q5. |
 | Reference-data recording & export | 🚧 not started. §4.6, open Q1/Q2. |
 | System services (config, time, watchdog) | 🚧 partial (logging done). §4.7. |
+| Game-state awareness & high-level game control | 🚧 not started. §4.8, open Q10/Q11. |
 
 ---
 
@@ -130,6 +132,9 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 | Fret/strum GPIO output | fretboard | Open-drain pin drive only; receives a bitmask over UART. |
 | Operator UI (live view, calibration, modes, logs) | marvin | 10.1″ LVDS + maxtouch. Open Q5: Legato vs custom. |
 | Reference-data recording & export | marvin | Compressed/derived format; transport TBD (open Q1/Q2). |
+| Game-state observation (menu / song-select / gameplay / pause / score) | marvin | CV on captured frames; emits typed game-state events on its own bus. §4.8. |
+| Game catalog + menu metadata (song list, menu graph, recognized icons) | marvin | Compile-time tables and/or SD-card JSON. Drives the recognizer and the navigator. §4.8. |
+| High-level game control (e.g., "start single-player song X") | marvin | Translates verbs into fret/strum sequences sent over the same fretboard link as gameplay commands. §4.8. |
 | Calibration / tuning UI authoring | dev PC (fret-tuner) | Optional; not required at runtime. Open Q7: long-term fate. |
 | Training data ingest / replay analysis | dev PC | Off-band consumer of marvin's reference-data export. |
 
@@ -388,6 +393,54 @@ Cross-cutting services not owned by any one subsystem:
 - **Watchdog** 🚧 not yet enabled.
 - **OTA** ⚪ out of scope for now.
 
+### 4.8 Game-state awareness & control 🚧
+
+Note on numbering: this subsystem is logically a peer of §4.2–§4.6 (a video-frame consumer that emits typed events plus a controller that issues actuator commands). It lives at §4.8 only to avoid renumbering existing sections referenced from the journal and milestones.
+
+#### 4.8.1 Role
+
+Two related capabilities, both grounded in CV on the captured video stream:
+
+1. **Game-state observer.** Watch the screen; recognize what context the game is currently in — main menu, song-select, difficulty-select, in-game (gameplay), pause, score summary, etc. Surface that as typed events that the operator UI can render and the orchestrator below can act on.
+2. **Game controller.** Expose high-level verbs ("start a single-player playthrough of song X on Hard", "go to the main menu", "select Practice mode"). Translate each verb into a sequence of fret/strum commands using the recognized current state and a known menu graph, monitor the screen for the expected state transitions, retry or back out on mismatch.
+
+This is *not* the gameplay note-detection path (§4.2). cv_marvin_v1 plays notes during gameplay; the game-state module decides *what to play* at the session level (which song, which difficulty, which mode) and gets us there from any starting screen.
+
+#### 4.8.2 Module shape
+
+- Owns its own FreeRTOS task (`game_task`).
+- Subscribes to the video frame queue via the same multi-subscriber API used by detectors (§4.2.4); it is a video-frame consumer, **not** a detector. Its events do not flow on `xDetectorStateQueue`.
+- Emits typed events on a separate, narrow bus (`xGameStateQueue`) — current_state changes, ambiguity warnings, error states.
+- Orchestrator state for high-level verbs (current goal, expected next state, retry counter) lives inside `game_task`.
+- Issues control commands by writing fret/strum bitmasks into the same fretboard-link path used by gameplay. Whether this routes through the timing pipeline (§4.4) or bypasses it is open Q11.
+
+#### 4.8.3 Game catalog & menu metadata
+
+The recognizer and the navigator both depend on per-game data:
+
+- **Recognizer templates.** Per-state visual signatures used by the CV recognizer — could be small reference images (template matching), color histograms, or text regions for OCR. Format chosen with the recognizer algorithm (open Q10).
+- **Menu graph.** Nodes = recognized game states; edges = button sequences that move between them (e.g., "main_menu → song_select" = `[STRUM_DOWN, STRUM_DOWN, GREEN]`). Used by the navigator to plan a verb.
+- **Song catalog.** Per-supported-game list of songs with the menu coordinates needed to select each one (which difficulty submenu, ordinal position in the list, etc.). Possibly augmented with metadata (BPM, length, expected difficulty score) for UI display and for reference-data labeling.
+
+Storage: compile-time tables for the per-game graph + a JSON or similar on the SD card for songlists and any user-editable bits. Exact split deferred until first concrete game is added.
+
+Scope today: target is **one game** — Guitar Hero (Wii) — to validate the design. Adding a second game is a metadata addition (new template set + new menu graph + new song catalog), not a structural change.
+
+#### 4.8.4 Interaction with other subsystems
+
+- **Detection (§4.2):** independent. cv_marvin_v1 runs only when the game-state observer reports `gameplay`. Outside gameplay, cv_marvin_v1 may be disabled to free CPU.
+- **Timing pipeline (§4.4):** during gameplay the timing pipeline drives the actuators from detector-state. Outside gameplay it's idle, and the game-state controller drives actuators directly. Coordination and arbitration between the two is open Q11.
+- **Operator UI (§4.5):** consumes game-state events to display the current screen the game is on; offers verbs as buttons / song-list pickers.
+- **Recording (§4.6):** game-state transitions are useful session metadata. Either annotated into `state.bin` as a side channel or a sibling file (`game_state.bin`). To be decided when the recorder lands.
+- **Fretboard link (§4.3):** shared command path. The fretboard MCU does not know whether a press is "gameplay note" or "menu navigation" — they're the same wire bits.
+
+#### 4.8.5 Open questions surfaced here
+
+See §9 for tracking entries. In summary:
+
+- **Q10** — Recognizer algorithm: template matching vs simple OCR vs region/color heuristics vs a small CNN. Trade-off is robustness vs CPU cost vs metadata authoring effort.
+- **Q11** — Command-path arbitration between game-state controller and timing pipeline. Default is "they don't run at the same time" (gameplay vs menu), but the boundary needs to be explicit.
+
 ---
 
 ## 5. External interfaces 🚧
@@ -408,6 +461,8 @@ Default model: independent toggles (matches `tools/fret-tuner/SPEC.md`'s detect/
 | `marvin_timing_enable` | marvin's chord FIFO / strum scheduler runs. When off, fretboard runs its own pipeline (§4.4 fallback). |
 | `actuate_enable` | Commands are actually sent to fretboard. When off, marvin computes commands but suppresses them (dry-run). |
 | `record_enable` | Recording task writes to SD. |
+| `game_observe_enable` | Game-state observer task runs; `xGameStateQueue` is active. |
+| `game_control_enable` | Game-state controller may issue actuator commands for menu navigation / session setup. Suppressed during `gameplay` state when timing pipeline is driving. |
 
 A handful of named composite modes (idle, calibrate, dry-run, play, replay, record) are presets over these toggles. Replay specifically requires loading a prior recording from SD and playing detector-state events back through the timing pipeline against the original keyframes — UI affordance for that comes later.
 
@@ -427,6 +482,8 @@ Proposed order; each is a buildable demo:
 6. **M6 — Calibration UI** (§4.5). Per-fret ROI placement + threshold tuning on the device.
 7. **M7 — Replay** (§6). Load a recording from SD, replay through the timing pipeline.
 8. **M8 — Standalone-fretboard fallback** (§4.4). Marvin-disabled-pipeline mode validated.
+9. **M9 — Game-state observer v0** (§4.8). Recognize main_menu / song_select / gameplay / pause / score states; surface as `xGameStateQueue` events. No control yet.
+10. **M10 — Game-state control v0** (§4.8). High-level verbs ("start single-player song X") drive menu navigation through the same fretboard link.
 
 Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 
@@ -443,4 +500,6 @@ Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 | Q7 | Fret-tuner's long-term fate — survives as off-band dev/calibration tool. | Settled; not in runtime path. |
 | Q8 | Initial CV algorithm choice for `cv_marvin_v1`. | Open. Decide at M1. |
 | Q9 | Config persistence location (SD file vs internal flash). | Open. Decide at M4 alongside SDMMC bring-up. |
+| Q10 | Game-state recognizer algorithm — template matching vs OCR vs color/region heuristics vs small CNN. | Open. Decide at M9; revisit if first algorithm misclassifies on real game UI. |
+| Q11 | Command-path arbitration between game-state controller and timing pipeline (§4.4 vs §4.8). Default working assumption: mutually exclusive (controller runs only outside `gameplay` state); may need richer arbitration if a game has gameplay-screen menus or pause overlays we want to drive. | Open. Decide at M10. |
 
