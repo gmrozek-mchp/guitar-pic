@@ -16494,3 +16494,1125 @@ Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
 ---
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:27Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage M1 scaffold files
+
+`git add firmware/marvin/cmake/marvin/default/user.cmake firmware/marvin/default/src/app.c firmware/marvin/default/src/detector/ firmware/marvin/docs/journal.md firmware/marvin/docs/spec.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git status`
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/cmake/marvin/default/user.cmake
+	modified:   firmware/marvin/default/src/app.c
+	new file:   firmware/marvin/default/src/detector/cv_marvin_v1.c
+	new file:   firmware/marvin/default/src/detector/cv_marvin_v1.h
+	new file:   firmware/marvin/default/src/detector/detector.c
+	new file:   firmware/marvin/default/src/detector/detector.h
+	modified:   firmware/marvin/docs/journal.md
+	modified:   firmware/marvin/docs/spec.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit M1 detector scaffold
+
+```bash
+git commit -m "$(cat <<'EOF'
+detector: bus + cv_marvin_v1 stub; enable/active controls
+
+New src/detector/ module brings up the M1 detector-state bus per
+spec §4.2:
+
+- detector.{h,c} — canonical detector_state_t (frame_epoch +
+  timestamp_us + detector_id + 5 × {pressed, confidence, raw_value}),
+  fret_t / detector_id_t enums, the shared xDetectorStateQueue
+  (depth 8), and a temporary DetectorDrain task that consumes the
+  bus and logs records-per-second. Drain is M1-only scaffolding;
+  the timing pipeline (M3) replaces it as sole consumer.
+
+- cv_marvin_v1.{h,c} — owns its FreeRTOS task. Creates a depth-1
+  frame queue, calls Video_SubscribeFrames, blocks on receive,
+  publishes one detector_state_t per frame (frame_epoch sourced
+  from Video_FrameInfo.frame_count for now; persistent counter
+  is M5's problem). Publishing is gated on Detector_IsEnabled;
+  the frame queue still drains when disabled so video doesn't
+  back up.
+
+Control model — enable-many, active-one:
+
+  Detector_Enable / Disable / IsEnabled  per-detector publish gate
+  Detector_SetActive / GetActive         which detector_id the
+                                          timing pipeline acts on
+
+Multiple detectors may be enabled simultaneously so recording (M5)
+can save side-by-side training data; only one is active at a time
+to drive actuation. Defaults: all-disabled, active=cv_marvin_v1.
+APP_Initialize explicitly enables + selects.
+
+Storage: enabled bits in a uint32 with taskENTER_CRITICAL on
+writes (naked atomic 32-bit read for IsEnabled); active id in a
+volatile uint8 (naturally atomic on Cortex-A5).
+
+spec.md §4.2.2: BGRX32 → RGB888-packed (3 B/pixel). Other BGRX32
+references in the spec are stale and tracked as carried-forward
+doc-correction debt in the journal — defer the full sweep to
+before M5 since recording-schema math depends on it.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status
+```
+
+```text
+[freertos d33bd87] detector: bus + cv_marvin_v1 stub; enable/active controls
+ 10 files changed, 2539 insertions(+), 6 deletions(-)
+ create mode 100644 firmware/marvin/default/src/detector/cv_marvin_v1.c
+ create mode 100644 firmware/marvin/default/src/detector/cv_marvin_v1.h
+ create mode 100644 firmware/marvin/default/src/detector/detector.c
+ create mode 100644 firmware/marvin/default/src/detector/detector.h
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:07Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:08Z)**_
+
+Committed as `d33bd87`. Now to the next piece — let me investigate the current capture buffer setup before we design the fan-out.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/isc_capture.c`
+
+```text
+1	#include "isc_capture.h"
+2	
+3	#include <stdbool.h>
+4	#include <stddef.h>
+5	#include <stdint.h>
+6	
+7	#include "definitions.h"
+8	#include "log.h"
+9	#include "system/int/sys_int.h"
+10	#include "vision/drivers/csi/drv_csi.h"
+11	#include "vision/drivers/csi2dc/drv_csi2dc.h"
+12	#include "vision/drivers/image_sensor/drv_image_sensor.h"
+13	#include "vision/drivers/isc/drv_isc.h"
+14	
+15	#define ISC_CAP_MAX_W        1920u
+16	#define ISC_CAP_MAX_H        1080u
+17	#define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
+18	#define ISC_CAP_NUM_BUFFERS  2u
+19	/* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
+20	 * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
+21	 * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps
+22	 * (works in both Gen2 and Gen3 — bands coincide there). Changes with bitrate. */
+23	#define ISC_CAP_CSI_BITRATE  0x0Au
+24	
+25	static __attribute__((__section__(".region_cache_aligned")))
+26	       __attribute__((__aligned__(32)))
+27	       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+28	
+29	static DRV_CSI_OBJ*    csiObj;
+30	static DRV_CSI2DC_OBJ* csi2dcObj;
+31	static DRV_ISC_OBJ*    iscObj;
+32	
+33	static volatile uint32_t g_frame_count;
+34	static bool              g_running;
+35	
+36	static volatile ISC_Capture_FrameCallback s_frame_cb;
+37	static volatile uintptr_t                 s_frame_ctx;
+38	
+39	static void isc_frame_done(uintptr_t ctx)
+40	{
+41	    (void)ctx;
+42	    g_frame_count++;
+43	    ISC_Capture_FrameCallback cb = s_frame_cb;
+44	    if (cb != NULL) { cb(g_frame_count, s_frame_ctx); }
+45	}
+46	
+47	void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx)
+48	{
+49	    s_frame_ctx = ctx;
+50	    s_frame_cb  = cb;
+51	}
+52	
+53	void ISC_Capture_Initialize(void)
+54	{
+55	    iscObj    = DRV_ISC_Initialize();
+56	    csi2dcObj = DRV_CSI2DC_Initalize();
+57	    csiObj    = DRV_CSI_Initalize();
+58	
+59	    if (iscObj == NULL || csi2dcObj == NULL || csiObj == NULL)
+60	    {
+61	        LOG_ERROR("ISC_Capture: driver init returned NULL\r\n");
+62	        return;
+63	    }
+64	
+65	    /* BYPASS RLP + IMODE=PACKED32 + BPS=FORTY + CSI2DC RMS=1:
+66	     * CSI2DC byte-stream packs the MIPI RGB888 stream per CSI-2
+67	     * Recommended Memory Storage spec (Table 49.27): four BGR pixels
+68	     * across 12 bytes, dense 3 B/pixel BGR888 in memory. ISC PACKED32
+69	     * DMA writes 4 bytes per CSI2DC word (samples-per-row =
+70	     * (width × 3) / 4, COLMAX programmed accordingly). LCDC reads
+71	     * natively in RGB_888_PACKED mode (memory order B, G, R per pixel
+72	     * — Table 44.26). 25% less DDR bandwidth than the ARGB_8888 /
+73	     * BGRX32 path (capture write + display read both shrink) while
+74	     * preserving full RGB888 quality for vision consumers. */
+75	    iscObj->inputFormat           = ISC_INPUT_FORMAT_TYPE;  /* RGB */
+76	    iscObj->inputBits             = DRV_IMAGE_SENSOR_40_BIT; /* BPS=FORTY */
+77	    iscObj->rlpMode               = ISC_RLP_CFG_MODE_BYPASS;
+78	    iscObj->layout                = ISC_LAYOUT_PACKED8;
+79	    iscObj->bayerPattern          = ISC_BAYER_PATTERN_TYPE;
+80	    iscObj->enableMIPI            = ISC_ENABLE_MIPI_INTERFACE;
+81	    iscObj->enableVideoMode       = ISC_ENABLE_VIDEO_MODE;
+82	    iscObj->enableProgressiveMode = ISC_ENABLE_PROGRESSIVE_MODE;
+83	    iscObj->enableScaling         = ISC_ENABLE_SCALING;
+84	    iscObj->dpc.enableDPC         = ISC_ENABLE_DPC;
+85	    iscObj->dpc.enableGDC         = ISC_ENABLE_GDC;
+86	    iscObj->dpc.enableBLC         = ISC_ENABLE_BLC;
+87	    iscObj->cbc.enableCBC         = ISC_ENABLE_BRIGHTNESS_CONTRAST;
+88	    iscObj->whiteBalance.enableWB = ISC_ENABLE_WHITE_BALANCE;
+89	    iscObj->gamma.enableGamma     = ISC_ENABLE_GAMMA;
+90	    iscObj->enableHistogram       = ISC_ENABLE_HISTOGRAM;
+91	    iscObj->dmaDescSize           = (uint8_t)ISC_CAP_NUM_BUFFERS;
+92	    iscObj->dma.callback          = isc_frame_done;
+93	
+94	    /* DRV_CSI_Initalize hardcodes csiBitRate = 0x16; override here. */
+95	    csiObj->csiBitRate = ISC_CAP_CSI_BITRATE;
+96	
+97	    /* TC358743 uses continuous-clock mode (TXOPTIONCNTRL = CONTCLKMODE).
+98	     * CSI2DC must match: MIPIFRN = 0 (free-running). MCC default is gated
+99	     * (false -> MIPIFRN=1); mismatch leaves CSI2DC.GSR.ARSTIP stuck. */
+100	    csi2dcObj->enableMIPIFreeRun = true;
+101	
+102	    /* PA=0 (VPCFGR bit 14): leave video pipe output LSB-aligned. PA=1 is
+103	     * intended for 10/12-bit Bayer sensors being packed onto ISC's 12-bit
+104	     * internal data bus. */
+105	    csi2dcObj->videoPipeAlign = false;
+106	
+107	    LOG_INFO("ISC_Capture: initialized\r\n");
+108	}
+109	
+110	static void diag_dump_rx(const char *tag)
+111	{
+112	    /* Skip the dozen register reads when DEBUG level isn't selected. */
+113	    if ((int)log_get_level() < (int)LOG_LEVEL_DEBUG) { return; }
+114	
+115	    LOG_DEBUG("ISC_Capture diag (%s):\r\n", tag);
+116	    LOG_DEBUG("  CSI_PHY_RX=0x%08lX  STOPSTATE=0x%08lX\r\n",
+117	              (unsigned long)CSI_REGS->CSI_PHY_RX,
+118	              (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
+119	    LOG_DEBUG("  CSI_INT_ST_MAIN=0x%08lX\r\n",
+120	              (unsigned long)CSI_REGS->CSI_INT_ST_MAIN);
+121	    LOG_DEBUG("  CSI_INT_ST  PHY_FATAL=0x%08lX  PKT_FATAL=0x%08lX  FRAME_FATAL=0x%08lX\r\n",
+122	              (unsigned long)CSI_REGS->CSI_INT_ST_PHY_FATAL,
+123	              (unsigned long)CSI_REGS->CSI_INT_ST_PKT_FATAL,
+124	              (unsigned long)CSI_REGS->CSI_INT_ST_FRAME_FATAL);
+125	    LOG_DEBUG("  CSI_INT_ST  PHY=0x%08lX  PKT=0x%08lX\r\n",
+126	              (unsigned long)CSI_REGS->CSI_INT_ST_PHY,
+127	              (unsigned long)CSI_REGS->CSI_INT_ST_PKT);
+128	    LOG_DEBUG("  CSI2DC_GSR=0x%08lX  GISR=0x%08lX  VPISR=0x%08lX\r\n",
+129	              (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
+130	              (unsigned long)CSI2DC_REGS->CSI2DC_GISR,
+131	              (unsigned long)CSI2DC_REGS->CSI2DC_VPISR);
+132	    LOG_DEBUG("  CSI2DC_FNVC0R=0x%08lX  LNVC0R=0x%08lX\r\n",
+133	              (unsigned long)CSI2DC_REGS->CSI2DC_FNVC0R,
+134	              (unsigned long)CSI2DC_REGS->CSI2DC_LNVC0R);
+135	    LOG_DEBUG("  ISC_INTSR=0x%08lX  ISC_DCTRL=0x%08lX  ISC_DCFG=0x%08lX\r\n",
+136	              (unsigned long)ISC_Interrupt_Status(),
+137	              (unsigned long)ISC_REGS->ISC_DCTRL,
+138	              (unsigned long)ISC_REGS->ISC_DCFG);
+139	    LOG_DEBUG("  ISC_RLP_CFG=0x%08lX  ISC_PFE_CFG0=0x%08lX\r\n",
+140	              (unsigned long)ISC_REGS->ISC_RLP_CFG,
+141	              (unsigned long)ISC_REGS->ISC_PFE_CFG0);
+142	    LOG_DEBUG("  CSI2DC_VPCFGR=0x%08lX  CSI2DC_GCFGR=0x%08lX\r\n",
+143	              (unsigned long)CSI2DC_REGS->CSI2DC_VPCFGR,
+144	              (unsigned long)CSI2DC_REGS->CSI2DC_GCFGR);
+145	}
+146	
+147	bool ISC_Capture_Configure(uint32_t width, uint32_t height)
+148	{
+149	    if (g_running) { ISC_Capture_Stop(); }
+150	
+151	    if (width == 0u || height == 0u
+152	        || width > ISC_CAP_MAX_W || height > ISC_CAP_MAX_H)
+153	    {
+154	        LOG_ERROR("ISC_Capture: %lux%lu out of range\r\n",
+155	                  (unsigned long)width, (unsigned long)height);
+156	        return false;
+157	    }
+158	
+159	    uint32_t frame_size = width * height * ISC_CAP_BPP;
+160	
+161	    csiObj->csiFrameWidth  = width;
+162	    csiObj->csiFrameHeight = height;
+163	    csiObj->csiFps         = 60u;
+164	
+165	    /* imageWidth/Height stay in pixel units. With RMS=0 + PACKED32, the
+166	     * ISC per-row sample counter is also in pixel units (1 sample = 1
+167	     * 32-bit word = 1 pixel), so COLMAX = width - 1 programmed below. */
+168	    iscObj->imageWidth   = (uint16_t)width;
+169	    iscObj->imageHeight  = (uint16_t)height;
+170	    iscObj->outputWidth  = (uint16_t)width;
+171	    iscObj->outputHeight = (uint16_t)height;
+172	    iscObj->dma.address0 = (uint32_t)(uintptr_t)g_framebuffer;
+173	    iscObj->dma.size     = frame_size;
+174	
+175	    g_frame_count = 0u;
+176	
+177	    /* Configure order mirrors emirror's working CAMERA_Open:
+178	     * CSI2DC -> CSI -> ISC. RX side must be ready before source
+179	     * transmits, so the D-PHY catches the LP11->HS transition. */
+180	    if (!DRV_CSI2DC_Configure(csi2dcObj))
+181	    {
+182	        LOG_ERROR("ISC_Capture: DRV_CSI2DC_Configure failed\r\n");
+183	        return false;
+184	    }
+185	    if (!DRV_CSI_Configure(csiObj))
+186	    {
+187	        LOG_ERROR("ISC_Capture: DRV_CSI_Configure failed\r\n");
+188	        return false;
+189	    }
+190	    if (DRV_ISC_Configure(iscObj) != 0u)
+191	    {
+192	        LOG_ERROR("ISC_Capture: DRV_ISC_Configure failed\r\n");
+193	        return false;
+194	    }
+195	
+196	    /* Program PFE crop window to the configured image size. The MCC
+197	     * ISC driver defines ISC_PFE_Crop_Area() but never calls it — the
+198	     * PFE_CFG1/2 registers stay at reset value 0, which tells the PFE
+199	     * to expect a 1×1 pixel frame. Setting the crop values alone isn't
+200	     * enough: the Linux mchp-isc driver also sets COLEN+ROWEN in
+201	     * PFE_CFG0 to activate the crop window; without these bits the
+202	     * PFE doesn't properly detect line/frame boundaries and VD never
+203	     * fires. DRV_ISC_Configure does NOT touch these registers, so our
+204	     * writes here persist through to capture start.
+205	     *
+206	     * Note: emirror/libcamera does NOT call DRV_ISC_Configure_DMA
+207	     * separately; DRV_ISC_Configure calls it internally (line 381 of
+208	     * drv_isc.c). A second explicit call would reset DCFG back to the
+209	     * MCC BEATS8 default and clobber our overrides. Don't add one. */
+210	    /* RMS=1 byte-stream + IMODE=PACKED32: each ISC sample is one 32-bit
+211	     * CSI2DC word; the byte stream emits (width × 3) bytes per row =
+212	     * (width × 3 / 4) sample-words. COLMAX is samples-1 in this mode. */
+213	    uint32_t isc_samples_per_row = (width * ISC_CAP_BPP) / 4u;
+214	    ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
+215	                           | ISC_PFE_CFG1_COLMAX(isc_samples_per_row - 1u);
+216	    ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
+217	                           | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);
+218	    ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
+219	
+220	    /* Override ISC DMA config:
+221	     *  - IMODE=PACKED32: each ISC sample = one 32-bit CSI2DC VP word; DMA
+222	     *    writes 4 bytes per sample to DDR. With RMS=1's byte-packed stream
+223	     *    that works out to (width × 3)/4 samples per row × 4 B/sample =
+224	     *    width × 3 bytes per row = dense 3 B/pixel BGR. PACKED8 would only
+225	     *    write 1 byte per sample, dropping 3/4 of the data per scanline.
+226	     *  - YMBSIZE/CMBSIZE=BEATS32: sama7g5's full AXI4 burst size per
+227	     *    Linux mchp-isc driver (MCC default BEATS8 is sama5d2-era). */
+228	    ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED32
+229	                       | ISC_DCFG_YMBSIZE_BEATS32
+230	                       | ISC_DCFG_CMBSIZE_BEATS32;
+231	
+232	    LOG_INFO("ISC_Capture: configured %lux%lu BGR888 packed (%lu bytes/frame)\r\n",
+233	             (unsigned long)width, (unsigned long)height,
+234	             (unsigned long)frame_size);
+235	    return true;
+236	}
+237	
+238	bool ISC_Capture_Start(void)
+239	{
+240	    if (!DRV_ISC_Start_Capture(iscObj))
+241	    {
+242	        LOG_ERROR("ISC_Capture: DRV_ISC_Start_Capture failed\r\n");
+243	        diag_dump_rx("post-fail");
+244	        return false;
+245	    }
+246	
+247	    SYS_INT_SourceEnable(ID_ISC);
+248	    g_running = true;
+249	    LOG_INFO("ISC_Capture: capture started\r\n");
+250	    return true;
+251	}
+252	
+253	void ISC_Capture_Stop(void)
+254	{
+255	    if (!g_running) { return; }
+256	    SYS_INT_SourceDisable(ID_ISC);
+257	    DRV_ISC_Stop_Capture();
+258	    g_running = false;
+259	    LOG_INFO("ISC_Capture: stopped\r\n");
+260	}
+261	
+262	uint32_t ISC_Capture_FrameCount(void)
+263	{
+264	    return g_frame_count;
+265	}
+266	
+267	bool ISC_Capture_IsRunning(void)
+268	{
+269	    return g_running;
+270	}
+271	
+272	uint32_t ISC_Capture_GetBufferAddress(void)
+273	{
+274	    return (uint32_t)(uintptr_t)g_framebuffer;
+275	}
+276	
+277
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:49Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:51Z)**_
+
+Important finding before the design memo — let me verify what the current 2-buffer code actually does with the second buffer.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find how ISC driver uses dmaDescSize and dma.address0
+
+`grep -n "dmaDescSize\|dma.address\|ISC_DAD\|dma\." /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/vision/drivers/isc/drv_isc.c 2>/dev/null | head -30`
+
+```text
+41:        DrvISCObj.awb.hist_dma.dma_histo_ready = true;
+47:        if (DrvISCObj.frameIndex == (DrvISCObj.dmaDescSize - 1))
+52:        if (DrvISCObj.dma.callback)
+53:            DrvISCObj.dma.callback((uintptr_t) & DrvISCObj);
+103:            for (i = 0; i < iscObj->dmaDescSize; i++) {
+106:                dma_view0[i].addr = (uint32_t) iscObj->dma.address0 + (i * iscObj->dma.size);
+110:            SYS_CACHE_CleanDCache_by_Addr((uint32_t*) dma_view0, sizeof (DRV_ISC_DMA_VIEW0) * iscObj->dmaDescSize);
+129:            for (i = 0; i < iscObj->dmaDescSize; i++) {
+132:                dma_view1[i].addr0 = (uint32_t) iscObj->dma.address0 + i * iscObj->dma.size;
+134:                dma_view1[i].addr1 = (uint32_t) iscObj->dma.address1 + i * iscObj->dma.size;
+139:            SYS_CACHE_CleanDCache_by_Addr((uint32_t*) dma_view1, sizeof (DRV_ISC_DMA_VIEW1) * iscObj->dmaDescSize);
+152:            for (i = 0; i < iscObj->dmaDescSize; i++) {
+155:                dma_view2[i].addr0 = (uint32_t) iscObj->dma.address0 + i * iscObj->dma.size;
+158:                dma_view2[i].addr1 = (uint32_t) iscObj->dma.address1 + i * iscObj->dma.size;
+161:                dma_view2[i].addr2 = (uint32_t) iscObj->dma.address2 + i * iscObj->dma.size;
+166:            SYS_CACHE_CleanDCache_by_Addr((uint32_t*) dma_view2, sizeof (DRV_ISC_DMA_VIEW2) * iscObj->dmaDescSize);
+197:        XDMAC_ChannelDisable(iscobj->awb.hist_dma.channel);
+200:        iscobj->awb.hist_dma.dma_histo_done = true;
+208:        iscObj->awb.hist_dma.channel = XDMAC_CHANNEL_0;
+209:        XDMAC_ChannelCallbackRegister(iscObj->awb.hist_dma.channel, hist_dma_callback, (uintptr_t) iscObj);
+469:        XDMAC_ChannelTransfer(DrvISCObj.awb.hist_dma.channel,
+483:            DrvISCObj.awb.hist_dma.dma_histo_done = false;
+488:            if (!DrvISCObj.awb.hist_dma.dma_histo_ready)
+490:            DrvISCObj.awb.hist_dma.dma_histo_ready = false;
+495:            if (!DrvISCObj.awb.hist_dma.dma_histo_done)
+497:            DrvISCObj.awb.hist_dma.dma_histo_done = false;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:21:59Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:22:00Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/vision/drivers/isc/drv_isc.c`
+
+```text
+35	}
+36	
+37	void ISC_Handler(void) {
+38	    volatile const uint32_t status = ISC_Interrupt_Status();
+39	    if ((status & ISC_INTSR_HISDONE_Msk) == ISC_INTSR_HISDONE_Msk) {
+40	        ISC_Disable_Interrupt(ISC_INTSR_HISDONE_Msk);
+41	        DrvISCObj.awb.hist_dma.dma_histo_ready = true;
+42	        ISC_Enable_Interrupt(ISC_INTSR_HISDONE_Msk);
+43	    }
+44	
+45	    if ((status & ISC_INTSR_DDONE_Msk) == ISC_INTSR_DDONE_Msk) {
+46	        ISC_Disable_Interrupt(ISC_INTEN_DDONE_Msk);
+47	        if (DrvISCObj.frameIndex == (DrvISCObj.dmaDescSize - 1))
+48	            DrvISCObj.frameIndex = 0;
+49	        else
+50	            DrvISCObj.frameIndex++;
+51	
+52	        if (DrvISCObj.dma.callback)
+53	            DrvISCObj.dma.callback((uintptr_t) & DrvISCObj);
+54	        ISC_Enable_Interrupt(ISC_INTEN_DDONE_Msk);
+55	    }
+56	    if ((status & ISC_INTSR_VD_Msk) == ISC_INTSR_VD_Msk) {
+57	        DrvISCObj.frameCount++;
+58	    }
+59	    // ToDo Handle other interrupts.
+60	}
+61	
+62	void DRV_ISC_Stop_Capture() {
+63	    ISC_Stop_Capture();
+64	}
+65	
+66	bool DRV_ISC_Start_Capture(DRV_ISC_OBJ* iscObj) {
+67	    int count = 1000;
+68	
+69	    if (iscObj == NULL)
+70	        return false;
+71	
+72	    ISC_Start_Capture();
+73	
+74	    while (count--) {
+75	        if ((ISC_Interrupt_Status() & ISC_INTSR_VD_Msk) == ISC_INTSR_VD(1)) {
+76	            ISC_Start_Capture();
+77	            break;
+78	        }
+79	        DelayUS(1000);
+80	    }
+81	
+82	    if (count <= 0) {
+83	        debug_print("\n\r ISC_Start_Capture timeout \n\r");
+84	        return false;
+85	    }
+86	
+87	    return true;
+88	}
+89	
+90	uint8_t DRV_ISC_Configure_DMA(DRV_ISC_OBJ* iscObj) {
+91	    uint32_t i;
+92	    DRV_ISC_DMA_VIEW0* dma_view0;
+93	    DRV_ISC_DMA_VIEW1* dma_view1;
+94	    DRV_ISC_DMA_VIEW2* dma_view2;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:22:11Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:22:12Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Investigate current capture buffer behavior + design multi-subscriber + ring depth + GFX accel options
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:22:37Z)**_
+
+Findings before we design:
+
+**Current buffer state — partially-broken double buffer.** [isc_capture.c:18](firmware/marvin/default/src/video/isc_capture.c#L18) sets `ISC_CAP_NUM_BUFFERS=2` and the ISC driver does set up a 2-descriptor ring (auto-computed addresses at `g_framebuffer + 0` and `g_framebuffer + frame_size` per [drv_isc.c:106](firmware/marvin/default/src/config/default/vision/drivers/isc/drv_isc.c#L106)). The driver tracks `frameIndex` internally on each DDONE — but [`ISC_Capture_GetBufferAddress()`](firmware/marvin/default/src/video/isc_capture.c#L272) only ever returns the base. So:
+
+- LCDC HEO is bound once to the base → always reads buffer 0; never sees frames written to buffer 1.
+- `cv_marvin_v1` reads the base → same. Buffer 1 gets written and silently overwritten on the next ISC pass.
+- Effective behavior is closer to single-buffered. Visually it works because the LCDC keeps re-reading buffer 0, and ISC writes there every other frame (~30 Hz from HEO's perspective).
+
+This needs a fix regardless of the multi-subscriber/ring-depth question — `Video_FrameInfo.buffer` should point at the buffer that was *just completed*, not always the base.
+
+---
+
+**Three orthogonal axes for the design:**
+
+| Axis | What it solves | Where it costs |
+|---|---|---|
+| Multi-subscriber `Video_SubscribeFrames` | Multiple CV tasks (note detect, menu reader, score reader, recording) on one capture | Tiny: static array of 4-8 queue handles, ISR fans out N times |
+| Ring depth N > 2 | Slow consumer can hold a buffer pointer for ~(N-1) × 16.7 ms while ISC keeps moving | DDR: 1.04 MB/buf at 720×480 RGB888 → N=8 = 8.3 MB on 1 GB. Trivial. |
+| Per-task DMA copy (XDMAC) | Consumer needs > ring window to process, *or* only cares about a sub-region | XDMAC is mem-to-mem capable; full frame ~7 ms, 200×100 sub-rect ~0.4 ms. CPU-free transfer but contests DDR bandwidth |
+
+**On GFX/blit hardware specifically:** the SAM9X75 has XLCDC for display composition and XDMAC for general DMA, but no dedicated 2D blit/scaler engine like sama5d2's PXP or some MX6 parts have. So "GFX accelerator copy" in our case = XDMAC mem-to-mem. That's still good — it's CPU-free and can copy arbitrary rects with 2D stride descriptors.
+
+---
+
+**Recommended order:**
+
+1. **Fix `GetBufferAddress` + multi-subscriber together.** They're the same change really — extend the IRQ to deliver the address of the just-completed buffer to each subscriber. Display-side: re-point HEO each frame (or expose a fixed display-locked buffer; pick one). Lands the foundation for everything else.
+
+2. **Bump ring depth to 4 (or make it configurable).** Cheap; gives subscribers a ~50 ms read window. Defer 8 unless we have a consumer that wants it.
+
+3. **Add `Video_RequestRegionCopy(rect, dst)` later, when the first slow/sub-region consumer arrives.** Don't pre-build it. XDMAC channel allocation, descriptor setup, and completion semantics are non-trivial — design against a real consumer.
+
+For (1), the API question is whether to fan out at the ISR or at task level. I'd do it at the ISR — `xQueueSendFromISR` is cheap, and queue depth 1 per subscriber gives "newest frame, drop the rest" semantics naturally for slow consumers.
+
+Want me to start on (1)+(2) as a single piece of work, or split into two commits (fix + multi-sub first, ring depth second)?
+
+---
+
+_**User (2026-05-20 20:25:27Z)**_
+
+split 1 and 2 into two commits. defer 3 for now.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:25:43Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:25:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find XLCDC layer-address update API signatures
+
+`grep -n "XLCDC_SetLayerAddress\|XLCDC_SetLayerEnable\|XLCDC_TriggerLayerUpdate\|XLCDC_UpdateLayer" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/xlcdc/plib_xlcdc.h 2>/dev/null | head -20`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:25:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate plib_xlcdc files
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin -name "plib_xlcdc*" -type f 2>/dev/null`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:25:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check XLCDC layer address signatures
+
+`grep -n "SetLayerAddress\|SetLayerEnable" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h`
+
+```text
+366:    bool XLCDC_SetLayerEnable(XLCDC_LAYER layer, bool enable, bool update)
+389:bool XLCDC_SetLayerEnable(XLCDC_LAYER layer, bool enable, bool update);
+559:    bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update)
+582:bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:25:54Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h`
+
+```text
+555	bool XLCDC_SetLayerPStride(XLCDC_LAYER layer, uint32_t pstride, bool update);
+556	
+557	/*******************************************************************************
+558	  Function:
+559	    bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update)
+560	
+561	   Summary:
+562	    Sets the frame buffer address of the selected layer.
+563	
+564	   Description:
+565	    None.
+566	
+567	   Precondition:
+568	    None.
+569	
+570	   Parameters:
+571	    layer - One the four XLCDC layers of type XLCDC_LAYER.
+572	    address - Integer specifying the frame buffer address in memory.
+573	    update - If True, updates attributes immediately.
+574	             If False, update manually using XLCDC_UpdateLayerAttributes(layer).
+575	
+576	   Returns:
+577	    0, on success. 1, on failure.
+578	
+579	   Remarks:
+580	    Ensure address is 32-byte aligned.
+581	*/
+582	bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update);
+583	
+584	/*******************************************************************************
+585	  Function:
+586	   bool XLCDC_UpdateLayerAttributes(XLCDC_LAYER layer, bool update);
+587	
+588	   Summary:
+589	    Updates the attributes of the selected layer.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:26:36Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:26:39Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Bump ISC_Capture frame callback signature to include completed buffer address
+- [ ] 🌡️ Refactor video.c: multi-subscriber array, IRQ updates HEO to latest buffer + fans out to all subs
+- [ ] 🌡️ Verify cv_marvin_v1 still works with new Video_FrameInfo.buffer semantics
+- [ ] 🌡️ Commit (1): per-frame buffer routing + multi-subscriber
+- [ ] 🌡️ Bump ISC_CAP_NUM_BUFFERS to 4; verify alignment + DDR sizing
+- [ ] 🌡️ Commit (2): ring depth 4
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:26:43Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/isc_capture.h`
+
+```text
+1	#ifndef ISC_CAPTURE_H
+2	#define ISC_CAPTURE_H
+3	
+4	#include <stdbool.h>
+5	#include <stdint.h>
+6	
+7	#ifdef __cplusplus
+8	extern "C" {
+9	#endif
+10	
+11	void     ISC_Capture_Initialize(void);
+12	bool     ISC_Capture_Configure(uint32_t width, uint32_t height);
+13	bool     ISC_Capture_Start(void);
+14	void     ISC_Capture_Stop(void);
+15	uint32_t ISC_Capture_FrameCount(void);
+16	bool     ISC_Capture_IsRunning(void);
+17	
+18	/* Base address of the capture framebuffer pool. Returns buffer 0; buffer 1
+19	 * is at +(width * height * 4). ISC DMA alternates between the two. For a
+20	 * tear-tolerant read-only display, pointing at buffer 0 alone is fine. */
+21	uint32_t ISC_Capture_GetBufferAddress(void);
+22	
+23	/* Frame-done callback fires from the ISC DMA-done IRQ each time a frame
+24	 * is written to DDR. Pass NULL to unregister. Single subscriber only;
+25	 * intended caller is the video module. Runs in IRQ context. */
+26	typedef void (*ISC_Capture_FrameCallback)(uint32_t frame_count, uintptr_t ctx);
+27	void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx);
+28	
+29	#ifdef __cplusplus
+30	}
+31	#endif
+32	
+33	#endif
+34
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:26:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef ISC_CAPTURE_H
+#define ISC_CAPTURE_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+void     ISC_Capture_Initialize(void);
+bool     ISC_Capture_Configure(uint32_t width, uint32_t height);
+bool     ISC_Capture_Start(void);
+void     ISC_Capture_Stop(void);
+uint32_t ISC_Capture_FrameCount(void);
+bool     ISC_Capture_IsRunning(void);
+
+/* Base address of the capture framebuffer pool. Subsequent buffers are at
+ * +N × frame_size. Most callers want the per-frame "just completed" address
+ * delivered through the frame callback; use this only for one-time setup
+ * where any valid buffer in the pool is acceptable. */
+uint32_t ISC_Capture_GetBufferAddress(void);
+
+/* Frame-done callback fires from the ISC DMA-done IRQ each time a frame is
+ * written to DDR. The buffer_addr argument points at the buffer that just
+ * completed (one of the N descriptor-ring slots). Pass NULL cb to unregister.
+ * Single subscriber only; intended caller is the video module. Runs in IRQ
+ * context. */
+typedef void (*ISC_Capture_FrameCallback)(uint32_t frame_count,
+                                          uint32_t buffer_addr,
+                                          uintptr_t ctx);
+void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif
+
+```
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:27:35Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:27:39Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:27:42Z)**_
+
+Now refactor video.c — multi-subscriber array, per-frame HEO update, and `Video_FrameInfo.buffer` from the IRQ-supplied address.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:27:42Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+39	/* Frame subscription. Set from any task; read from ISC IRQ. */
+40	static volatile QueueHandle_t s_frame_queue;
+41	
+42	/* Most-recent capture configuration — used to populate Video_FrameInfo and
+43	 * to compare against the display window for scaler decisions. Updated when
+44	 * ISC is armed. */
+45	static volatile uint16_t s_src_w;
+46	static volatile uint16_t s_src_h;
+47	
+48	/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:27:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:27Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:49Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find all frameIndex uses in driver
+
+`grep -n "frameIndex" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/vision/drivers/isc/drv_isc.c`
+
+```text
+47:        if (DrvISCObj.frameIndex == (DrvISCObj.dmaDescSize - 1))
+48:            DrvISCObj.frameIndex = 0;
+50:            DrvISCObj.frameIndex++;
+385:    iscObj->frameIndex = 0;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:56Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:28:56Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Bump ISC_Capture frame callback signature to include completed buffer address
+- [X] 🌡️ Refactor video.c: multi-subscriber array, IRQ updates HEO to latest buffer + fans out to all subs
+- [⚡] 🌡️ Update video.h with multi-subscriber API + comment on policy
+- [ ] 🌡️ Verify cv_marvin_v1 still works with new Video_FrameInfo.buffer semantics
+- [ ] 🌡️ Commit (1): per-frame buffer routing + multi-subscriber
+- [ ] 🌡️ Bump ISC_CAP_NUM_BUFFERS to 4; verify alignment + DDR sizing
+- [ ] 🌡️ Commit (2): ring depth 4
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:00Z)**_
+
+Driver resets `frameIndex` on every `DRV_ISC_Configure` ([drv_isc.c:385](firmware/marvin/default/src/config/default/vision/drivers/isc/drv_isc.c#L385)) — and we call Configure on every re-arm, so the index stays in sync with hardware after stop/start. Good, no extra reset needed.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:15Z)**_
+
+Now verify `cv_marvin_v1.c` works with the new semantics — its `xQueueReceive` already uses `frame.buffer`, which now points at the correct completed slot. The `Video_SubscribeFrames` return now matters; the call site uses `(void)` cast — let me upgrade to an explicit assert for early failure detection.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:17Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:22Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:22Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm scope of changes
+
+`git diff --stat`
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+ ...26-05-20_18-30-12Z-working-on-project-marvin.md | 929 +++++++++++++++++++++
+ .specstory/statistics.json                         |  10 +-
+ .../marvin/default/src/detector/cv_marvin_v1.c     |   3 +-
+ firmware/marvin/default/src/video/isc_capture.c    |  15 +-
+ firmware/marvin/default/src/video/isc_capture.h    |  19 +-
+ firmware/marvin/default/src/video/video.c          | 104 ++-
+ firmware/marvin/default/src/video/video.h          |  28 +-
+ 7 files changed, 1070 insertions(+), 38 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:25Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+1	#include "video.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	
+6	#include "FreeRTOS.h"
+7	#include "task.h"
+8	#include "queue.h"
+9	
+10	#include "definitions.h"
+11	#include "log.h"
+12	#include "tc358743.h"
+13	#include "isc_capture.h"
+14	
+15	#define LCD_PANEL_W  1280u
+16	#define LCD_PANEL_H  800u
+17	
+18	#define VIDEO_TASK_STACK_WORDS  1024u
+19	#define VIDEO_TASK_PRIORITY     1u
+20	#define VIDEO_POLL_MS           20u
+21	
+22	/* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match
+23	 * isc_capture's ISC_CAP_BPP. If that ever becomes runtime-configurable, push
+24	 * it into a getter. */
+25	#define VIDEO_BYTES_PER_PIXEL   3u
+26	
+27	/* Public intent — set via the API, read by the task body. Single-writer
+28	 * (each setter is called by one task), single-reader (video task), so
+29	 * plain volatile is sufficient on a 32-bit MCU. */
+30	static volatile bool s_capture_enabled;
+31	static volatile bool s_display_shown;
+32	
+33	/* Display window. Zero-initialized; the app must call Video_SetWindow
+34	 * before Video_DisplayShow has any visible effect. Layout is app policy,
+35	 * not module policy. */
+36	typedef struct { uint32_t x, y, w, h; } window_t;
+37	static volatile window_t s_window;
+38	
+39	/* Frame subscriber array. Sized for note detector + recording + a couple
+40	 * of independent vision tasks (menu reader, score reader, etc.). Slots are
+41	 * single-aligned-pointer reads/writes so the IRQ can scan without taking
+42	 * a lock; concurrent task-side writers are serialized by taskENTER_CRITICAL
+43	 * during slot assignment. Empty slots are NULL. */
+44	#define VIDEO_MAX_SUBSCRIBERS  4u
+45	static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS];
+46	
+47	/* Most-recent capture buffer + dimensions. Updated by the ISC IRQ on every
+48	 * completed frame; read by Video_GetFrameInfo. Aligned 32-bit so naked
+49	 * reads/writes are atomic on Cortex-A5. */
+50	static volatile uint32_t s_latest_buffer;
+51	static volatile uint16_t s_src_w;
+52	static volatile uint16_t s_src_h;
+53	
+54	/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+55	
+56	/* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+57	 * 1.0 (= 0x100000) means 1:1, no scaling. Mirrors plib_xlcdc.c's
+58	 * static CALC_SCALING_FACT. */
+59	static uint32_t scaler_factor(uint32_t src, uint32_t dst)
+60	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:28Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:28Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+155	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+156	
+157	    LOG_INFO("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
+158	             (unsigned long)src_w, (unsigned long)src_h,
+159	             (unsigned long)dst_w, (unsigned long)dst_h,
+160	             (unsigned long)x, (unsigned long)y,
+161	             scaling ? "scaled" : "1:1");
+162	}
+163	
+164	/* Hide HEO and let BASE (Legato UI) fill the whole panel. */
+165	static void lcd_unbind(void)
+166	{
+167	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+168	    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+169	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+170	}
+171	
+172	/* ─── Frame-done ISR (runs in IRQ context) ─────────────────────────────── */
+173	
+174	static void on_frame_done(uint32_t frame_count,
+175	                          uint32_t buffer_addr,
+176	                          uintptr_t ctx)
+177	{
+178	    (void)ctx;
+179	
+180	    s_latest_buffer = buffer_addr;
+181	
+182	    /* Re-point HEO at the buffer that was just completed so the panel sees
+183	     * every captured frame. With the descriptor ring and a static base
+184	     * binding, HEO would only see frames written to slot 0. The address
+185	     * latches at next vsync (XLCDC update=true); HEO and ISC run on
+186	     * independent clocks so this is fine. Skip when display is hidden. */
+187	    if (s_display_bound)
+188	    {
+189	        XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, buffer_addr, true);
+190	    }
+191	
+192	    Video_FrameInfo info =
+193	    {
+194	        .buffer          = (void *)(uintptr_t)buffer_addr,
+195	        .frame_count     = frame_count,
+196	        .width           = s_src_w,
+197	        .height          = s_src_h,
+198	        .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
+199	    };
+200	
+201	    BaseType_t higher_priority_task_woken = pdFALSE;
+202	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+203	    {
+204	        QueueHandle_t q = s_subscribers[i];
+205	        if (q != NULL)
+206	        {
+207	            (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+208	        }
+209	    }
+210	    portYIELD_FROM_ISR(higher_priority_task_woken);
+211	}
+212	
+213	/* ─── Capture state machine ────────────────────────────────────────────── */
+214
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:33Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:29:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:30:01Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+**Input:**
+
+- file_path: `/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md`
+- new_string:
+
+```
+## Session log
+
+### 2026-05-20 — Video fan-out + per-frame buffer routing
+
+Two-commit sequence opening up video capture for parallel CV consumers:
+
+1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+2. **Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+
+Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+
+### 2026-05-20 — M1 scaffolding landed
+```
+
+- old_string:
+
+```
+## Session log
+
+### 2026-05-20 — M1 scaffolding landed
+```
+
+- replace_all: `false`
+
+</details></tool-use>

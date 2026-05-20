@@ -38,10 +38,21 @@ static volatile uintptr_t                 s_frame_ctx;
 
 static void isc_frame_done(uintptr_t ctx)
 {
-    (void)ctx;
+    /* The MCC ISC driver increments DrvISCObj.frameIndex before invoking
+     * this callback (drv_isc.c ISC_Handler), so frameIndex now points at
+     * the descriptor hardware is about to write. The just-completed
+     * buffer is the previous slot in the descriptor ring. */
+    DRV_ISC_OBJ *obj = (DRV_ISC_OBJ *)ctx;
+    uint32_t n = obj->dmaDescSize;
+    uint32_t completed = (obj->frameIndex == 0u)
+                       ? (n - 1u)
+                       : (obj->frameIndex - 1u);
+    uint32_t addr = (uint32_t)(uintptr_t)g_framebuffer
+                  + completed * obj->dma.size;
+
     g_frame_count++;
     ISC_Capture_FrameCallback cb = s_frame_cb;
-    if (cb != NULL) { cb(g_frame_count, s_frame_ctx); }
+    if (cb != NULL) { cb(g_frame_count, addr, s_frame_ctx); }
 }
 
 void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx)

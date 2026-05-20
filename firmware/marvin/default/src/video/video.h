@@ -55,12 +55,30 @@ typedef struct
 
 /* Subscribe a queue to frame-ready events. The video module sends a
  * Video_FrameInfo from the ISC frame-done IRQ via xQueueSendFromISR
- * each time a frame completes to DDR. Create the queue with:
+ * each time a frame completes to DDR — fanned out to every subscribed
+ * queue. Create the queue with:
  *   QueueHandle_t q = xQueueCreate(N, sizeof(Video_FrameInfo));
- * Use depth 1 for "process most recent frame, drop the rest" patterns;
- * larger depths preserve every frame at the cost of memory and lag.
- * Pass NULL to unsubscribe. Single subscriber. */
-void Video_SubscribeFrames(QueueHandle_t q);
+ *
+ * Per-subscriber depth chooses the back-pressure policy. Depth 1 means
+ * "process most recent frame, drop the rest" — when a frame arrives and
+ * the queue is full, the IRQ's xQueueSendFromISR returns errQUEUE_FULL
+ * and the frame is dropped for that subscriber. Deeper queues preserve
+ * frames at the cost of memory and added latency. Each subscriber chooses
+ * independently.
+ *
+ * The Video_FrameInfo.buffer pointer reflects the buffer that *just*
+ * completed (one of the descriptor-ring slots). With NUM_BUFFERS > 2 a
+ * subscriber can hold the pointer for multiple frame-times before the
+ * ring laps it; with NUM_BUFFERS = 2 the buffer is overwritten on the
+ * second-next frame.
+ *
+ * Returns false if the subscriber table is full. Calling with a queue
+ * already in the table is a no-op success. Up to VIDEO_MAX_SUBSCRIBERS
+ * concurrent subscribers (currently 4). */
+bool Video_SubscribeFrames(QueueHandle_t q);
+
+/* Remove a queue from the subscriber list. Returns false if not found. */
+bool Video_UnsubscribeFrames(QueueHandle_t q);
 
 /* Synchronous read of the current frame state. Doesn't block. May
  * report frame_count = 0 / buffer = NULL if capture has never armed. */

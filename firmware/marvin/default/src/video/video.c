@@ -36,12 +36,18 @@ static volatile bool s_display_shown;
 typedef struct { uint32_t x, y, w, h; } window_t;
 static volatile window_t s_window;
 
-/* Frame subscription. Set from any task; read from ISC IRQ. */
-static volatile QueueHandle_t s_frame_queue;
+/* Frame subscriber array. Sized for note detector + recording + a couple
+ * of independent vision tasks (menu reader, score reader, etc.). Slots are
+ * single-aligned-pointer reads/writes so the IRQ can scan without taking
+ * a lock; concurrent task-side writers are serialized by taskENTER_CRITICAL
+ * during slot assignment. Empty slots are NULL. */
+#define VIDEO_MAX_SUBSCRIBERS  4u
+static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS];
 
-/* Most-recent capture configuration — used to populate Video_FrameInfo and
- * to compare against the display window for scaler decisions. Updated when
- * ISC is armed. */
+/* Most-recent capture buffer + dimensions. Updated by the ISC IRQ on every
+ * completed frame; read by Video_GetFrameInfo. Aligned 32-bit so naked
+ * reads/writes are atomic on Cortex-A5. */
+static volatile uint32_t s_latest_buffer;
 static volatile uint16_t s_src_w;
 static volatile uint16_t s_src_h;
 
@@ -75,11 +81,18 @@ static void lcd_bind(uint32_t src_w, uint32_t src_h,
         return;
     }
 
+    /* Initial HEO address: the latest completed buffer if we have one,
+     * else fall back to the framebuffer base. The on_frame_done IRQ
+     * re-points HEO at every subsequent completed buffer, so this is
+     * the seed that holds for at most one frame-time before the first
+     * IRQ overwrites it. */
+    uint32_t initial_addr = s_latest_buffer;
+    if (initial_addr == 0u) { initial_addr = ISC_Capture_GetBufferAddress(); }
+
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
                                XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
-    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO,
-                          ISC_Capture_GetBufferAddress(), false);
+    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, initial_addr, false);
     XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
 
@@ -158,16 +171,27 @@ static void lcd_unbind(void)
 
 /* ─── Frame-done ISR (runs in IRQ context) ─────────────────────────────── */
 
-static void on_frame_done(uint32_t frame_count, uintptr_t ctx)
+static void on_frame_done(uint32_t frame_count,
+                          uint32_t buffer_addr,
+                          uintptr_t ctx)
 {
     (void)ctx;
 
-    QueueHandle_t q = s_frame_queue;
-    if (q == NULL) { return; }
+    s_latest_buffer = buffer_addr;
+
+    /* Re-point HEO at the buffer that was just completed so the panel sees
+     * every captured frame. With the descriptor ring and a static base
+     * binding, HEO would only see frames written to slot 0. The address
+     * latches at next vsync (XLCDC update=true); HEO and ISC run on
+     * independent clocks so this is fine. Skip when display is hidden. */
+    if (s_display_bound)
+    {
+        XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, buffer_addr, true);
+    }
 
     Video_FrameInfo info =
     {
-        .buffer          = (void *)(uintptr_t)ISC_Capture_GetBufferAddress(),
+        .buffer          = (void *)(uintptr_t)buffer_addr,
         .frame_count     = frame_count,
         .width           = s_src_w,
         .height          = s_src_h,
@@ -175,14 +199,21 @@ static void on_frame_done(uint32_t frame_count, uintptr_t ctx)
     };
 
     BaseType_t higher_priority_task_woken = pdFALSE;
-    (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+    {
+        QueueHandle_t q = s_subscribers[i];
+        if (q != NULL)
+        {
+            (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+        }
+    }
     portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
 /* ─── Capture state machine ────────────────────────────────────────────── */
 
-static bool s_capture_armed;   /* task-only state; tracks ISC running */
-static bool s_display_bound;   /* task-only state; tracks HEO bound  */
+static bool s_capture_armed;            /* task-only state; tracks ISC running */
+static volatile bool s_display_bound;   /* read by IRQ; written by task        */
 
 static bool capture_arm(void)
 {
@@ -305,15 +336,52 @@ void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
     s_display_bound = false;
 }
 
-void Video_SubscribeFrames(QueueHandle_t q)
+bool Video_SubscribeFrames(QueueHandle_t q)
 {
-    s_frame_queue = q;
+    if (q == NULL) { return false; }
+
+    bool ok = false;
+    taskENTER_CRITICAL();
+    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+    {
+        if (s_subscribers[i] == q) { ok = true; break; }     /* already in */
+        if (s_subscribers[i] == NULL)
+        {
+            s_subscribers[i] = q;
+            ok = true;
+            break;
+        }
+    }
+    taskEXIT_CRITICAL();
+
+    if (!ok) { LOG_ERROR("VIDEO: subscriber table full (max %u)\r\n",
+                         (unsigned)VIDEO_MAX_SUBSCRIBERS); }
+    return ok;
+}
+
+bool Video_UnsubscribeFrames(QueueHandle_t q)
+{
+    if (q == NULL) { return false; }
+
+    bool ok = false;
+    taskENTER_CRITICAL();
+    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+    {
+        if (s_subscribers[i] == q)
+        {
+            s_subscribers[i] = NULL;
+            ok = true;
+            break;
+        }
+    }
+    taskEXIT_CRITICAL();
+    return ok;
 }
 
 void Video_GetFrameInfo(Video_FrameInfo *info)
 {
     if (info == NULL) { return; }
-    info->buffer          = (void *)(uintptr_t)ISC_Capture_GetBufferAddress();
+    info->buffer          = (void *)(uintptr_t)s_latest_buffer;
     info->frame_count     = ISC_Capture_FrameCount();
     info->width           = s_src_w;
     info->height          = s_src_h;

@@ -30,7 +30,8 @@ static void cv_marvin_v1_task(void *param)
     QueueHandle_t frames = xQueueCreate(CV_FRAME_QUEUE_DEPTH,
                                         sizeof(Video_FrameInfo));
     configASSERT(frames != NULL);
-    Video_SubscribeFrames(frames);
+    bool subscribed = Video_SubscribeFrames(frames);
+    configASSERT(subscribed);
 
     QueueHandle_t bus = Detector_BusQueue();
     configASSERT(bus != NULL);
