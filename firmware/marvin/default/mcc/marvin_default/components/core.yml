@@ -440,7 +440,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '1077723136'
+            value: '3359424512'
           type: Dynamic
         type: Values
       type: Hex
@@ -1262,6 +1262,210 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    UHPHS_INTERRUPT_ENABLE:
+      attributes:
+        id: UHPHS_INTERRUPT_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: drv_usbhs_v1
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    UHPHS_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: UHPHS_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: drv_usbhs_v1
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    UHPHS_INTERRUPT_HANDLER:
+      attributes:
+        id: UHPHS_INTERRUPT_HANDLER
+      children:
+      - children:
+        - attributes:
+            id: drv_usbhs_v1
+            value: UHPHS_Handler
+          type: Dynamic
+        type: Values
+      type: String
+    PIN_35_FUNCTION_TYPE:
+      attributes:
+        id: PIN_35_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_35_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_35_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_35_FUNCTION_NAME:
+      attributes:
+        id: PIN_35_FUNCTION_NAME
+      children:
+      - children:
+        - attributes:
+            value: VBUS_AH_PC27_PowerEnable
+          type: User
+        type: Values
+      type: String
+    PIN_16_FUNCTION_TYPE:
+      attributes:
+        id: PIN_16_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_16_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_16_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_16_FUNCTION_NAME:
+      attributes:
+        id: PIN_16_FUNCTION_NAME
+      children:
+      - children:
+        - attributes:
+            value: USBB_OVCUR
+          type: User
+        type: Values
+      type: String
+    PIN_35_DIR:
+      attributes:
+        id: PIN_35_DIR
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_52_FUNCTION_TYPE:
+      attributes:
+        id: PIN_52_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_52_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_52_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_52_FUNCTION_NAME:
+      attributes:
+        id: PIN_52_FUNCTION_NAME
+      children:
+      - children:
+        - attributes:
+            value: USBC_OVCUR
+          type: User
+        type: Values
+      type: String
+    PIN_54_FUNCTION_TYPE:
+      attributes:
+        id: PIN_54_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_54_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_54_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_54_FUNCTION_NAME:
+      attributes:
+        id: PIN_54_FUNCTION_NAME
+      children:
+      - children:
+        - attributes:
+            value: VBUS_AH_PC31_PowerEnable
+          type: User
+        type: Values
+      type: String
+    PIOC_PUER_VALUE:
+      attributes:
+        id: PIOC_PUER_VALUE
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '805306368'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_16_PU:
+      attributes:
+        id: PIN_16_PU
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
+    PIN_52_PU:
+      attributes:
+        id: PIN_52_PU
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
+    PIN_54_DIR:
+      attributes:
+        id: PIN_54_DIR
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
   userData:
     children:
     - attributes:

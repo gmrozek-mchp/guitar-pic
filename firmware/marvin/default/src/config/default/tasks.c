@@ -60,21 +60,13 @@
 // Section: RTOS "Tasks" Routine
 // *****************************************************************************
 // *****************************************************************************
-void _LEGATO_Tasks(  void *pvParameters  )
+static void F_USB_HOST_Tasks(  void *pvParameters  )
 {
-    while(1)
+    while(true)
     {
-        Legato_Tasks();
-        vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
-}
-
-void _SYS_INPUT_Tasks(  void *pvParameters  )
-{
-    while(1)
-    {
-        SYS_INP_Tasks();
-        vTaskDelay(10 / portTICK_PERIOD_MS);
+        /* USB Host layer tasks routine */ 
+        USB_HOST_Tasks(sysObj.usbHostObject0);
+        vTaskDelay(10U / portTICK_PERIOD_MS);
     }
 }
 
@@ -107,6 +99,36 @@ static void lAPP_Tasks(  void *pvParameters  )
     while(true)
     {
         APP_Tasks();
+    }
+}
+
+void _LEGATO_Tasks(  void *pvParameters  )
+{
+    while(1)
+    {
+        Legato_Tasks();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
+static void F_DRV_USB_HOST_Tasks(  void *pvParameters  )
+{
+    while(true)
+    {
+        /* USB EHCI Task Routine */
+        DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
+       /* USB OHCI Task Routine */
+       DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
+        vTaskDelay(10U / portTICK_PERIOD_MS);
+    }
+}
+
+void _SYS_INPUT_Tasks(  void *pvParameters  )
+{
+    while(1)
+    {
+        SYS_INP_Tasks();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
     }
 }
 
@@ -153,9 +175,27 @@ void SYS_Tasks ( void )
 
 
     /* Maintain Middleware & Other Libraries */
-    
+        /* Create OS Thread for USB_HOST_Tasks. */
+    (void) xTaskCreate( F_USB_HOST_Tasks,
+        "USB_HOST_TASKS",
+        1024,
+        (void*)NULL,
+        1,
+        (TaskHandle_t*)NULL
+    );
+
+
     xTaskCreate( _LEGATO_Tasks,
         "LEGATO_Tasks",
+        1024,
+        (void*)NULL,
+        1,
+        (TaskHandle_t*)NULL
+    );
+
+    /* Create OS Thread for USB Driver Tasks. */
+    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
+        "DRV_USB_HOST_TASKS",
         1024,
         (void*)NULL,
         1,

@@ -22752,3 +22752,659 @@ warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working
  6 files changed, 2453 insertions(+), 42 deletions(-)
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:25:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:25:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage code/journal/specstory; leave MCC manifest churn untracked
+
+`git add firmware/marvin/default/src/detector/cv_marvin_v1.c firmware/marvin/default/src/video/isc_capture.c firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git status --short`
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+M  .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+M  .specstory/statistics.json
+ M firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+M  firmware/marvin/default/src/detector/cv_marvin_v1.c
+M  firmware/marvin/default/src/video/isc_capture.c
+M  firmware/marvin/docs/journal.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:25:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit cv_marvin_v1 port + nocache framebuffer
+
+```bash
+git commit -m "$(cat <<'EOF'
+detector: cv_marvin_v1 reference port from detect_video.py
+
+Per-frame BGR888 patch sampling, brightness-based hold detect with
+hysteresis, color-filtered edge detect with rising-edge press_count.
+Coords anchored to 720×480 (Wii 480p60), scaled from fret-tuner's
+1920×1080 calibration defaults at port time. press_count + raw
+distances stay private to the module; bus record carries pressed /
+confidence (edge_dist) / raw_value (hold_dist) only.
+
+ISC framebuffer pool moved to .region_nocache so CPU readers see DMA
+writes without cache maintenance; max capture cap dropped to 720p so
+the 4-buffer pool fits in the 16 MB nocache region.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status --short
+```
+
+```text
+[freertos 186872f] detector: cv_marvin_v1 reference port from detect_video.py
+ 5 files changed, 2489 insertions(+), 41 deletions(-)
+ M .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+ M .specstory/statistics.json
+ M firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 21:26:12Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:26:19Z)**_
+
+Committed as `186872f`.
+
+Yes, M2 fretboard link is the natural next step. Three slices to think about, especially given you're away from hardware:
+
+**1. Wire-protocol design (paper, no hardware needed).** Settle: framing (COBS? length-prefixed?), command set (hold-mask + strum-pulse vs separate fret events), ack/no-ack, baud, which FLEXCOM on marvin pairs with which UART on the fretboard. Goes in `spec.md` + journal. ~30-60 minutes; output is a doc you can review and a clean target for the code.
+
+**2. Marvin-side UART skeleton (code, hardware-verifiable later).** A `fretboard_link` module with its own task: consumes from `xDetectorStateQueue`, filters by `Detector_GetActive()`, translates `pressed[]` + `press_count` deltas into wire commands, ships them via FLEXCOM UART. Heartbeat frame at 1 Hz when idle to keep the link warm. Mirrors the detector-task shape we already use.
+
+**3. Fretboard-side adapter.** PIC32CM6408 grows a UART listener that decodes commands and drives existing `fret_button.c` GPIOs. Today's `fret_button.c` already knows how to press/strum from local sensors; adapter just becomes another command source.
+
+If I were ordering: **1 → 2 → 3**. Slice 1 is pure paper and unblocks both code slices; doing it cold (without committing to a wire format) tends to bake the protocol into whichever slice gets written first, which is a worse outcome.
+
+Side note: cv_marvin_v1 is unverified — we landed it without the host test rig. Worth a beat before M2 lands and the next layer assumes the detector is correct? Or accept that risk and verify on hardware?
+
+What do you want to do?
+
+---
+
+_**User (2026-05-20 21:41:37Z)**_
+
+I think we start with simple protocol implemented in firmware/fretboard project. I think we'll plan on going through USB host CDC for all communications to actuators and detectors and such. Let me see if I can get that added to MCC configuration first.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 21:41:50Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 21:41:55Z)**_
+
+Sounds right — USB CDC over a single cable is cleaner than picking a FLEXCOM↔UART pair, and the same wire format works against a host PC for development too. Marvin = USB host + CDC class driver; fretboard = USB device + CDC class.
+
+A few things worth confirming while you're in MCC, in case any of them become friction:
+
+- **Fretboard hardware port**: PIC32CM6408 has full-speed USB. Does the Sensor-LCD5 board route D+/D− out to a connector, or do we need a flying-lead/dev-board path for first bring-up?
+- **Marvin host port**: SAM9X75 Curiosity exposes USB-A. Worth picking which port (HS vs FS host) since the Harmony USB host stack is configured per-port.
+- **VID/PID**: pick a placeholder pair so marvin can identify the fretboard during enumeration. Microchip's CDC examples ship with `0x04D8 / 0x000A` — fine for development.
+
+I'll stand by until MCC is regenerated. Once it is, the work is roughly: marvin grows a `fretboard_link` task that opens the CDC device on enumeration and pumps commands; fretboard grows a CDC RX handler that decodes commands and calls into existing `fret_button.c`. Wire format we still need to design — happy to start that on paper now if you want, or wait until the USB plumbing is in.
+
+---
+
+_**User (2026-05-20 22:08:51Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+MCC USB CDC host added and staged. Please review and commit.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 22:08:55Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:08:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+See what's staged for MCC USB CDC host regen
+
+`git status && echo "---" && git diff --cached --stat`
+
+```text
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   firmware/marvin/.vscode/marvin.mplab.json
+	modified:   firmware/marvin/default/mcc/marvin_default/components/core.yml
+	new file:   firmware/marvin/default/mcc/marvin_default/components/drv_usbhs_v1.yml
+	new file:   firmware/marvin/default/mcc/marvin_default/components/usb_host.yml
+	new file:   firmware/marvin/default/mcc/marvin_default/components/usb_host_cdc.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
+	modified:   firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+	modified:   firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+	modified:   firmware/marvin/default/src/config/default/configuration.h
+	modified:   firmware/marvin/default/src/config/default/definitions.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/drv_usb.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/drv_usb_external_dependencies.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ohci.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci_local.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci_local.h
+	new file:   firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_uhp_ohci_registers.h
+	modified:   firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+	modified:   firmware/marvin/default/src/config/default/initialization.c
+	modified:   firmware/marvin/default/src/config/default/interrupts.h
+	modified:   firmware/marvin/default/src/config/default/peripheral/aic/plib_aic.c
+	modified:   firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c
+	modified:   firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.h
+	modified:   firmware/marvin/default/src/config/default/pin_configurations.csv
+	modified:   firmware/marvin/default/src/config/default/tasks.c
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_external_dependencies.h
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_host.c
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_host_cdc_acm.c
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_host_cdc_local.h
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_host_hub_mapping.h
+	new file:   firmware/marvin/default/src/config/default/usb/src/usb_host_local.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_cdc.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_chapter_9.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_common.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_ehci.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_host.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_host_cdc.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_host_client_driver.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_host_hub_interface.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_hub.h
+	new file:   firmware/marvin/default/src/config/default/usb/usb_ohci.h
+	new file:   firmware/marvin/default/src/config/default/usb_host_init_data.c
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+
+---
+ firmware/marvin/.vscode/marvin.mplab.json          |   29 +-
+ .../default/mcc/marvin_default/components/core.yml |  206 +-
+ .../mcc/marvin_default/components/drv_usbhs_v1.yml |   31 +
+ .../mcc/marvin_default/components/usb_host.yml     |   42 +
+ .../mcc/marvin_default/components/usb_host_cdc.yml |   31 +
+ .../default/mcc/marvin_default/mcc-config.mc4      |   75 +-
+ .../marvin/default/mcc/mcc-manifest-autosave.yml   |    3 +-
+ .../default/mcc/mcc-manifest-generated-success.yml |    3 +-
+ .../default/src/config/default/configuration.h     |  122 +-
+ .../default/src/config/default/definitions.h       |   35 +-
+ .../src/config/default/driver/usb/drv_usb.h        |  419 ++
+ .../driver/usb/drv_usb_external_dependencies.h     |   68 +
+ .../config/default/driver/usb/uhp/drv_usb_ehci.h   | 1495 +++++
+ .../config/default/driver/usb/uhp/drv_usb_ohci.h   | 1533 +++++
+ .../default/driver/usb/uhp/src/drv_usb_ehci.c      | 3828 +++++++++++
+ .../driver/usb/uhp/src/drv_usb_ehci_local.h        |  607 ++
+ .../default/driver/usb/uhp/src/drv_usb_ohci.c      | 3702 +++++++++++
+ .../driver/usb/uhp/src/drv_usb_ohci_local.h        |  434 ++
+ .../usb/uhp/src/drv_usb_uhp_ohci_registers.h       |  981 +++
+ .../config/default/harmony-manifest-success.yml    |    3 +-
+ .../default/src/config/default/initialization.c    |   86 +-
+ .../marvin/default/src/config/default/interrupts.h |    1 +
+ .../src/config/default/peripheral/aic/plib_aic.c   |    1 +
+ .../src/config/default/peripheral/pio/plib_pio.c   |    7 +-
+ .../src/config/default/peripheral/pio/plib_pio.h   |   36 +
+ .../src/config/default/pin_configurations.csv      |    8 +-
+ firmware/marvin/default/src/config/default/tasks.c |   68 +-
+ .../default/usb/src/usb_external_dependencies.h    |   67 +
+ .../default/src/config/default/usb/src/usb_host.c  | 6788 ++++++++++++++++++++
+ .../src/config/default/usb/src/usb_host_cdc.c      | 1612 +++++
+ .../src/config/default/usb/src/usb_host_cdc_acm.c  |  569 ++
+ .../config/default/usb/src/usb_host_cdc_local.h    |  618 ++
+ .../config/default/usb/src/usb_host_hub_mapping.h  |   61 +
+ .../src/config/default/usb/src/usb_host_local.h    | 1213 ++++
+ .../default/src/config/default/usb/usb_cdc.h       |  637 ++
+ .../default/src/config/default/usb/usb_chapter_9.h |  905 +++
+ .../default/src/config/default/usb/usb_common.h    |  550 ++
+ .../default/src/config/default/usb/usb_ehci.h      |  320 +
+ .../default/src/config/default/usb/usb_host.h      | 1757 +++++
+ .../default/src/config/default/usb/usb_host_cdc.h  | 1025 +++
+ .../config/default/usb/usb_host_client_driver.h    | 2170 +++++++
+ .../config/default/usb/usb_host_hub_interface.h    |   98 +
+ .../default/src/config/default/usb/usb_hub.h       |  301 +
+ .../default/src/config/default/usb/usb_ohci.h      |  309 +
+ .../src/config/default/usb_host_init_data.c        |   77 +
+ 45 files changed, 32854 insertions(+), 77 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:03Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:04Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check whether manifest diffs are content or timestamp churn
+
+`git diff --cached firmware/marvin/default/mcc/mcc-manifest-autosave.yml firmware/marvin/default/mcc/mcc-manifest-generated-success.yml firmware/marvin/default/src/config/default/harmony-manifest-success.yml`
+
+```text
+diff --git a/firmware/marvin/default/mcc/mcc-manifest-autosave.yml b/firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+index 5be42e0..de408cf 100644
+--- a/firmware/marvin/default/mcc/mcc-manifest-autosave.yml
++++ b/firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+@@ -2,7 +2,7 @@
+ 
+ manifest_file_version: 1.0.0
+ project: marvin_default
+-creation_date: 2026-05-19T14:03:19.414-05:00[America/Chicago]
++creation_date: 2026-05-20T17:01:02.857-05:00[America/Chicago]
+ operating_system: Mac OS X
+ mcc_mode: VSCodePlugin
+ mcc_mode_version: Unknown
+@@ -21,5 +21,6 @@ modules:
+ - {name: core, type: HARMONY, version: v3.16.3}
+ - {name: csp, type: HARMONY, version: v3.25.2}
+ - {name: vision, type: HARMONY, version: v3.2.1}
++- {name: usb, type: HARMONY, version: v3.16.0}
+ - {name: FreeRTOS-Kernel, type: HARMONY, version: V11.3.0}
+ - {name: gfx, type: HARMONY, version: v3.17.0}
+diff --git a/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml b/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+index 87c13fd..7790626 100644
+--- a/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
++++ b/firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+@@ -2,7 +2,7 @@
+ 
+ manifest_file_version: 1.0.0
+ project: marvin_default
+-creation_date: 2026-05-19T14:03:19.380-05:00[America/Chicago]
++creation_date: 2026-05-20T17:01:02.838-05:00[America/Chicago]
+ operating_system: Mac OS X
+ mcc_mode: VSCodePlugin
+ mcc_mode_version: Unknown
+@@ -21,5 +21,6 @@ modules:
+ - {name: core, type: HARMONY, version: v3.16.3}
+ - {name: csp, type: HARMONY, version: v3.25.2}
+ - {name: vision, type: HARMONY, version: v3.2.1}
++- {name: usb, type: HARMONY, version: v3.16.0}
+ - {name: FreeRTOS-Kernel, type: HARMONY, version: V11.3.0}
+ - {name: gfx, type: HARMONY, version: v3.17.0}
+diff --git a/firmware/marvin/default/src/config/default/harmony-manifest-success.yml b/firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+index 6d1eb2e..9c5f530 100644
+--- a/firmware/marvin/default/src/config/default/harmony-manifest-success.yml
++++ b/firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+@@ -4,7 +4,7 @@
+ 
+ 
+ project: marvin_default
+-creation_date: 2026-05-19T14:03:19.387-05:00[America/Chicago]    # ISO 8601 format: https://www.w3.org/TR/NOTE-datetime
++creation_date: 2026-05-20T17:01:02.844-05:00[America/Chicago]    # ISO 8601 format: https://www.w3.org/TR/NOTE-datetime
+ operating_system: Mac OS X
+ mcc_mode: VSCodePlugin            # [IDE|Standalone|Headless]
+ mcc_version: v5.6.4
+@@ -17,6 +17,7 @@ modules:
+     - {name: "core", version: "v3.16.3"}
+     - {name: "csp", version: "v3.25.2"}
+     - {name: "vision", version: "v3.2.1"}
++    - {name: "usb", version: "v3.16.0"}
+     - {name: "FreeRTOS-Kernel", version: "V11.3.0"}
+     - {name: "gfx", version: "v3.17.0"}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:10Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Review the substantive init/task changes from MCC regen
+
+`git diff --cached firmware/marvin/default/src/config/default/initialization.c firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+diff --git a/firmware/marvin/default/src/config/default/initialization.c b/firmware/marvin/default/src/config/default/initialization.c
+index f33e7c8..45bbfc3 100644
+--- a/firmware/marvin/default/src/config/default/initialization.c
++++ b/firmware/marvin/default/src/config/default/initialization.c
+@@ -46,6 +46,7 @@
+ #include "configuration.h"
+ #include "definitions.h"
+ #include "device.h"
++#include "peripheral/pio/plib_pio.h"
+ 
+ 
+ // ****************************************************************************
+@@ -144,6 +145,70 @@ SYSTEM_OBJECTS sysObj;
+ // Section: Library/Stack Initialization Data
+ // *****************************************************************************
+ // *****************************************************************************
++/******************************************************
++ * USB Driver Initialization
++ ******************************************************/
++static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
++{
++    /* Note: USB Host applications should have a way for Enabling/Disabling the 
++       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
++       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
++       name it to "VBUS_AH". If you a see a build error from this function either 
++       you have not configured the VBUS Power Enable in MHC pin settings or the 
++       Pin name entered in MHC is not "VBUS_AH". */
++    if (enable == true)
++    {
++        /* Enable the VBUS */
++        VBUS_AH_PC27_PowerEnable_Set();
++        VBUS_AH_PC31_PowerEnable_Set();
++
++    }
++    else
++    {
++        /* Disable the VBUS */
++        VBUS_AH_PC27_PowerEnable_Clear();
++        VBUS_AH_PC31_PowerEnable_Clear();
++    }
++}
++
++static DRV_USB_EHCI_INIT drvUSBEHCIInit =
++{
++    /* Interrupt Source for USB module */
++    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
++
++    /* USB base address */
++    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
++    
++    /* Ports Selection */ 
++    .bmPortSelect = 0x02,
++
++    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
++    .portPowerEnable = DRV_USB_VBUSPowerEnable,
++    
++    /* Root hub available current in milliamperes */
++    .rootHubAvailableCurrent = 500,
++
++    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
++};
++
++static DRV_USB_OHCI_INIT drvUSBOHCIInit =
++{
++    /* Interrupt Source for USB module */
++    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
++
++    /* USB base address */
++    .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
++
++     /* Ports Selection */ 
++    .bmPortSelect = 0x02,
++    
++    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
++    .portPowerEnable = DRV_USB_VBUSPowerEnable,
++    
++    /* Root hub available current in milliamperes */
++    .rootHubAvailableCurrent = 500
++};
++
+ 
+ 
+ // *****************************************************************************
+@@ -285,13 +350,6 @@ void SYS_Initialize ( void* data )
+ 
+ 	PIT_TimerInitialize();
+ 
+-    MMU_Initialize();
+-
+-    AIC_INT_Initialize();
+-    
+-    /* Disable WDT   */
+-    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+-
+  
+     TC0_CH0_TimerInitialize(); 
+      
+@@ -300,6 +358,13 @@ void SYS_Initialize ( void* data )
+ 
+     XLCDC_Initialize();
+ 
++    MMU_Initialize();
++
++    AIC_INT_Initialize();
++    
++    /* Disable WDT   */
++    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
++
+     DBGU_Initialize();
+ 
+ 
+@@ -332,9 +397,16 @@ void SYS_Initialize ( void* data )
+     SYS_INP_Init();
+ 
+ 
++    /* Initialize the USB Host layer */
++    sysObj.usbHostObject0 = USB_HOST_Initialize (( SYS_MODULE_INIT *)& usbHostInitData );    
++
+     // initialize UI library
+     Legato_Initialize();
+ 
++     /* Initialize USB Driver */ 
++    sysObj.drvUSBEHCIObject = DRV_USB_EHCI_Initialize (DRV_USB_EHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBEHCIInit);
++    sysObj.drvUSBOHCIObject = DRV_USB_OHCI_Initialize (DRV_USB_OHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBOHCIInit);
++
+ 
+     /* MISRAC 2023 deviation block end */
+     APP_Initialize();
+diff --git a/firmware/marvin/default/src/config/default/tasks.c b/firmware/marvin/default/src/config/default/tasks.c
+index 6c1ab79..5d0c470 100644
+--- a/firmware/marvin/default/src/config/default/tasks.c
++++ b/firmware/marvin/default/src/config/default/tasks.c
+@@ -60,21 +60,13 @@
+ // Section: RTOS "Tasks" Routine
+ // *****************************************************************************
+ // *****************************************************************************
+-void _LEGATO_Tasks(  void *pvParameters  )
++static void F_USB_HOST_Tasks(  void *pvParameters  )
+ {
+-    while(1)
+-    {
+-        Legato_Tasks();
+-        vTaskDelay(10 / portTICK_PERIOD_MS);
+-    }
+-}
+-
+-void _SYS_INPUT_Tasks(  void *pvParameters  )
+-{
+-    while(1)
++    while(true)
+     {
+-        SYS_INP_Tasks();
+-        vTaskDelay(10 / portTICK_PERIOD_MS);
++        /* USB Host layer tasks routine */ 
++        USB_HOST_Tasks(sysObj.usbHostObject0);
++        vTaskDelay(10U / portTICK_PERIOD_MS);
+     }
+ }
+ 
+@@ -110,6 +102,36 @@ static void lAPP_Tasks(  void *pvParameters  )
+     }
+ }
+ 
++void _LEGATO_Tasks(  void *pvParameters  )
++{
++    while(1)
++    {
++        Legato_Tasks();
++        vTaskDelay(10 / portTICK_PERIOD_MS);
++    }
++}
++
++static void F_DRV_USB_HOST_Tasks(  void *pvParameters  )
++{
++    while(true)
++    {
++        /* USB EHCI Task Routine */
++        DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
++       /* USB OHCI Task Routine */
++       DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
++        vTaskDelay(10U / portTICK_PERIOD_MS);
++    }
++}
++
++void _SYS_INPUT_Tasks(  void *pvParameters  )
++{
++    while(1)
++    {
++        SYS_INP_Tasks();
++        vTaskDelay(10 / portTICK_PERIOD_MS);
++    }
++}
++
+ 
+ 
+ 
+@@ -153,7 +175,16 @@ void SYS_Tasks ( void )
+ 
+ 
+     /* Maintain Middleware & Other Libraries */
+-    
++        /* Create OS Thread for USB_HOST_Tasks. */
++    (void) xTaskCreate( F_USB_HOST_Tasks,
++        "USB_HOST_TASKS",
++        1024,
++        (void*)NULL,
++        1,
++        (TaskHandle_t*)NULL
++    );
++
++
+     xTaskCreate( _LEGATO_Tasks,
+         "LEGATO_Tasks",
+         1024,
+@@ -162,6 +193,15 @@ void SYS_Tasks ( void )
+         (TaskHandle_t*)NULL
+     );
+ 
++    /* Create OS Thread for USB Driver Tasks. */
++    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
++        "DRV_USB_HOST_TASKS",
++        1024,
++        (void*)NULL,
++        1,
++        (TaskHandle_t*)NULL
++    );
++
+ 
+     xTaskCreate( _SYS_INPUT_Tasks,
+         "SYS_INPUT_Tasks",
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:25Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check pin/config changes are USB-related only
+
+`git diff --cached firmware/marvin/default/src/config/default/pin_configurations.csv firmware/marvin/default/src/config/default/configuration.h | head -100`
+
+```text
+diff --git a/firmware/marvin/default/src/config/default/configuration.h b/firmware/marvin/default/src/config/default/configuration.h
+index 874f84f..b82257c 100644
+--- a/firmware/marvin/default/src/config/default/configuration.h
++++ b/firmware/marvin/default/src/config/default/configuration.h
+@@ -100,10 +100,28 @@ extern "C" {
+ #define DRV_I2C_CLIENTS_NUMBER_IDX0           2
+ #define DRV_I2C_CLOCK_SPEED_IDX0              400000
+ 
++/* I2C Driver Common Configuration Options */
++#define DRV_I2C_INSTANCES_NUMBER              (1U)
++
++
++
++/*** CSI2DC Driver Configuration ***/
++#define CSI2DC_BUS_TYPE		CSI2DC_BUS_CSI2_DPHY
++#define CSI2DC_VIDEO_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
++#define CSI2DC_VIDEO_PIPE_CHANNEL_ID		0
++#define CSI2DC_DATA_PIPE_CHANNEL_ID			0
++#define CSI2DC_DATA_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
++#define CSI2DC_DATA_PIPE_DMA_CHUCK_SIZE		CSI2DC_DMA_CHUCK_SIZE_16
++#define CSI2DC_DATA_PIPE_DMA_COUNT			320
++#define CSI2DC_ENABLE_MIPI_CLOCK_FREE_RUN		false
++#define CSI2DC_POST_ALIGNED		true
++#define CSI2DC_ENABLE_DATA_PIPE		false
++#define CSI2DC_DATA_PIPE_ENABLE_DMA	false
+ 
+-/*** CSI Driver Configuration ***/
+-#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
+-#define CSI_NUM_LANES				CSI_DATA_LANES_2
++
++
++/*** MXT336T Driver Configuration ***/
++#define DRV_MAXTOUCH_I2C_MODULE_INDEX   0
+ 
+ 
+ /*** ISC Image Sensor Configuration ***/
+@@ -159,28 +177,10 @@ extern "C" {
+ #define ISC_HSYNC_POLARITY_VAL		0
+ #define ISC_VSYNC_POLARITY_VAL		0
+ 
+-/* I2C Driver Common Configuration Options */
+-#define DRV_I2C_INSTANCES_NUMBER              (1U)
+-
+-
+-
+-/*** CSI2DC Driver Configuration ***/
+-#define CSI2DC_BUS_TYPE		CSI2DC_BUS_CSI2_DPHY
+-#define CSI2DC_VIDEO_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
+-#define CSI2DC_VIDEO_PIPE_CHANNEL_ID		0
+-#define CSI2DC_DATA_PIPE_CHANNEL_ID			0
+-#define CSI2DC_DATA_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
+-#define CSI2DC_DATA_PIPE_DMA_CHUCK_SIZE		CSI2DC_DMA_CHUCK_SIZE_16
+-#define CSI2DC_DATA_PIPE_DMA_COUNT			320
+-#define CSI2DC_ENABLE_MIPI_CLOCK_FREE_RUN		false
+-#define CSI2DC_POST_ALIGNED		true
+-#define CSI2DC_ENABLE_DATA_PIPE		false
+-#define CSI2DC_DATA_PIPE_ENABLE_DMA	false
+-
+ 
+-
+-/*** MXT336T Driver Configuration ***/
+-#define DRV_MAXTOUCH_I2C_MODULE_INDEX   0
++/*** CSI Driver Configuration ***/
++#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
++#define CSI_NUM_LANES				CSI_DATA_LANES_2
+ 
+ 
+ 
+@@ -189,6 +189,80 @@ extern "C" {
+ // Section: Middleware & Other Library Configuration
+ // *****************************************************************************
+ // *****************************************************************************
++/* Number of CDC Function driver instances in the application */
++#define USB_HOST_CDC_INSTANCES_NUMBER         1U
++
++/* Number of CDC Attach Listeners */ 
++#define USB_HOST_CDC_ATTACH_LISTENERS_NUMBER        1U
++
++// *****************************************************************************
++// *****************************************************************************
++// Section: USB Host Layer Configuration
++// *****************************************************************************
++// **************************************************************************
++
++/* Number of Endpoints used */
++
++/* Total number of devices to be supported */
++#define USB_HOST_DEVICES_NUMBER                             1U
++
++/* Target peripheral list entries */
++#define  USB_HOST_TPL_ENTRIES                               1 
++
++/* Maximum number of configurations supported per device */
++#define USB_HOST_DEVICE_INTERFACES_NUMBER                   5    
++
++#define USB_HOST_CONTROLLERS_NUMBER                         2U
++
++#define USB_HOST_TRANSFERS_NUMBER                           10U
++
++/* Provides Host pipes number */
+```
+</details></tool-use>

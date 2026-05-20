@@ -70,6 +70,7 @@ static struct
     { 9U,  FLEXCOM6_InterruptHandler,  AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
     { 17U, TC0_InterruptHandler,       AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
     { 20U, XDMAC_InterruptHandler,     AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+    { 22U, UHPHS_Handler,              AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
     { 43U, ISC_Handler,                AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
     { 52U, CSI2DC_Handler,             AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
 };

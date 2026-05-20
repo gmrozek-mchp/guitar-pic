@@ -100,10 +100,28 @@ extern "C" {
 #define DRV_I2C_CLIENTS_NUMBER_IDX0           2
 #define DRV_I2C_CLOCK_SPEED_IDX0              400000
 
+/* I2C Driver Common Configuration Options */
+#define DRV_I2C_INSTANCES_NUMBER              (1U)
 
-/*** CSI Driver Configuration ***/
-#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
-#define CSI_NUM_LANES				CSI_DATA_LANES_2
+
+
+/*** CSI2DC Driver Configuration ***/
+#define CSI2DC_BUS_TYPE		CSI2DC_BUS_CSI2_DPHY
+#define CSI2DC_VIDEO_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
+#define CSI2DC_VIDEO_PIPE_CHANNEL_ID		0
+#define CSI2DC_DATA_PIPE_CHANNEL_ID			0
+#define CSI2DC_DATA_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
+#define CSI2DC_DATA_PIPE_DMA_CHUCK_SIZE		CSI2DC_DMA_CHUCK_SIZE_16
+#define CSI2DC_DATA_PIPE_DMA_COUNT			320
+#define CSI2DC_ENABLE_MIPI_CLOCK_FREE_RUN		false
+#define CSI2DC_POST_ALIGNED		true
+#define CSI2DC_ENABLE_DATA_PIPE		false
+#define CSI2DC_DATA_PIPE_ENABLE_DMA	false
+
+
+
+/*** MXT336T Driver Configuration ***/
+#define DRV_MAXTOUCH_I2C_MODULE_INDEX   0
 
 
 /*** ISC Image Sensor Configuration ***/
@@ -159,28 +177,10 @@ extern "C" {
 #define ISC_HSYNC_POLARITY_VAL		0
 #define ISC_VSYNC_POLARITY_VAL		0
 
-/* I2C Driver Common Configuration Options */
-#define DRV_I2C_INSTANCES_NUMBER              (1U)
 
-
-
-/*** CSI2DC Driver Configuration ***/
-#define CSI2DC_BUS_TYPE		CSI2DC_BUS_CSI2_DPHY
-#define CSI2DC_VIDEO_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
-#define CSI2DC_VIDEO_PIPE_CHANNEL_ID		0
-#define CSI2DC_DATA_PIPE_CHANNEL_ID			0
-#define CSI2DC_DATA_PIPE_FORMAT_TYPE		CSI2DC_DATA_FORMAT_RGB888
-#define CSI2DC_DATA_PIPE_DMA_CHUCK_SIZE		CSI2DC_DMA_CHUCK_SIZE_16
-#define CSI2DC_DATA_PIPE_DMA_COUNT			320
-#define CSI2DC_ENABLE_MIPI_CLOCK_FREE_RUN		false
-#define CSI2DC_POST_ALIGNED		true
-#define CSI2DC_ENABLE_DATA_PIPE		false
-#define CSI2DC_DATA_PIPE_ENABLE_DMA	false
-
-
-
-/*** MXT336T Driver Configuration ***/
-#define DRV_MAXTOUCH_I2C_MODULE_INDEX   0
+/*** CSI Driver Configuration ***/
+#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
+#define CSI_NUM_LANES				CSI_DATA_LANES_2
 
 
 
@@ -189,6 +189,80 @@ extern "C" {
 // Section: Middleware & Other Library Configuration
 // *****************************************************************************
 // *****************************************************************************
+/* Number of CDC Function driver instances in the application */
+#define USB_HOST_CDC_INSTANCES_NUMBER         1U
+
+/* Number of CDC Attach Listeners */ 
+#define USB_HOST_CDC_ATTACH_LISTENERS_NUMBER        1U
+
+// *****************************************************************************
+// *****************************************************************************
+// Section: USB Host Layer Configuration
+// *****************************************************************************
+// **************************************************************************
+
+/* Number of Endpoints used */
+
+/* Total number of devices to be supported */
+#define USB_HOST_DEVICES_NUMBER                             1U
+
+/* Target peripheral list entries */
+#define  USB_HOST_TPL_ENTRIES                               1 
+
+/* Maximum number of configurations supported per device */
+#define USB_HOST_DEVICE_INTERFACES_NUMBER                   5    
+
+#define USB_HOST_CONTROLLERS_NUMBER                         2U
+
+#define USB_HOST_TRANSFERS_NUMBER                           10U
+
+/* Provides Host pipes number */
+#define USB_HOST_PIPES_NUMBER                               10U
+
+
+    
+/*** USB EHCI Driver Configurations ***/
+
+/* Maximum USB driver instances */
+#define DRV_USB_EHCI_INSTANCES_NUMBER                     1U
+
+/* Attach Debounce duration in milli Seconds */ 
+#define DRV_USB_EHCI_ATTACH_DEBOUNCE_DURATION           500
+
+/* Reset duration in milli Seconds */ 
+#define DRV_USB_EHCI_RESET_DURATION                     100
+
+/* Maximum Control Transfer Size */
+#define DRV_USB_EHCI_CONTROL_TRANSFER_BUFFER_SIZE 512U
+
+/* Maximum Non Control Transfer Size */ 
+#define DRV_USB_EHCI_TRANSFER_BUFFER_SIZE  512
+
+    
+
+
+/*** USB OHCI Driver Configurations ***/
+
+#define DRV_USB_OHCI_INSTANCES_NUMBER                        1U
+
+/* Attach Debounce duration in milli Seconds */ 
+#define DRV_USB_OHCI_ATTACH_DEBOUNCE_DURATION           500
+
+/* Reset duration in milli Seconds */ 
+#define DRV_USB_OHCI_RESET_DURATION                     100
+
+/* Maximum Control Transfer Size */
+#define DRV_USB_OHCI_CONTROL_TRANSFER_BUFFER_SIZE 512U
+
+/* Maximum Non Control Transfer Size */ 
+#define DRV_USB_OHCI_TRANSFER_BUFFER_SIZE  512U
+
+
+/* Alignment for buffers that are submitted to USB Driver*/ 
+#ifndef USB_ALIGN
+#define USB_ALIGN __ALIGNED(32)
+#endif 
+
 
 
 // *****************************************************************************

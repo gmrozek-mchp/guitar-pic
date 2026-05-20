@@ -71,6 +71,24 @@
 #define AC69T88A_ENABLE_Get()               ((PIOC_REGS->PIO_PDSR >> 30U) & 0x1U)
 #define AC69T88A_ENABLE_PIN                  PIO_PIN_PC30
 
+/*** Macros for USBB_OVCUR pin ***/
+#define USBB_OVCUR_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<28U))
+#define USBB_OVCUR_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<28U))
+#define USBB_OVCUR_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<28U))
+#define USBB_OVCUR_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<28U))
+#define USBB_OVCUR_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<28U))
+#define USBB_OVCUR_Get()               ((PIOC_REGS->PIO_PDSR >> 28U) & 0x1U)
+#define USBB_OVCUR_PIN                  PIO_PIN_PC28
+
+/*** Macros for VBUS_AH_PC27_PowerEnable pin ***/
+#define VBUS_AH_PC27_PowerEnable_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<27U))
+#define VBUS_AH_PC27_PowerEnable_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<27U))
+#define VBUS_AH_PC27_PowerEnable_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<27U))
+#define VBUS_AH_PC27_PowerEnable_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<27U))
+#define VBUS_AH_PC27_PowerEnable_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<27U))
+#define VBUS_AH_PC27_PowerEnable_Get()               ((PIOC_REGS->PIO_PDSR >> 27U) & 0x1U)
+#define VBUS_AH_PC27_PowerEnable_PIN                  PIO_PIN_PC27
+
 /*** Macros for LED_BLUE pin ***/
 #define LED_BLUE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<20U))
 #define LED_BLUE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<20U))
@@ -88,6 +106,24 @@
 #define LED_GREEN_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<21U))
 #define LED_GREEN_Get()               ((PIOC_REGS->PIO_PDSR >> 21U) & 0x1U)
 #define LED_GREEN_PIN                  PIO_PIN_PC21
+
+/*** Macros for USBC_OVCUR pin ***/
+#define USBC_OVCUR_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<29U))
+#define USBC_OVCUR_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<29U))
+#define USBC_OVCUR_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<29U))
+#define USBC_OVCUR_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<29U))
+#define USBC_OVCUR_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<29U))
+#define USBC_OVCUR_Get()               ((PIOC_REGS->PIO_PDSR >> 29U) & 0x1U)
+#define USBC_OVCUR_PIN                  PIO_PIN_PC29
+
+/*** Macros for VBUS_AH_PC31_PowerEnable pin ***/
+#define VBUS_AH_PC31_PowerEnable_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<31U))
+#define VBUS_AH_PC31_PowerEnable_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<31U))
+#define VBUS_AH_PC31_PowerEnable_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<31U))
+#define VBUS_AH_PC31_PowerEnable_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<31U))
+#define VBUS_AH_PC31_PowerEnable_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<31U))
+#define VBUS_AH_PC31_PowerEnable_Get()               ((PIOC_REGS->PIO_PDSR >> 31U) & 0x1U)
+#define VBUS_AH_PC31_PowerEnable_PIN                  PIO_PIN_PC31
 
 /*** Macros for AC69T88A_BACKLIGHT_EN pin ***/
 #define AC69T88A_BACKLIGHT_EN_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<18U))

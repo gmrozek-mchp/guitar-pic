@@ -46,6 +46,7 @@
 #include "configuration.h"
 #include "definitions.h"
 #include "device.h"
+#include "peripheral/pio/plib_pio.h"
 
 
 // ****************************************************************************
@@ -144,6 +145,70 @@ SYSTEM_OBJECTS sysObj;
 // Section: Library/Stack Initialization Data
 // *****************************************************************************
 // *****************************************************************************
+/******************************************************
+ * USB Driver Initialization
+ ******************************************************/
+static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
+{
+    /* Note: USB Host applications should have a way for Enabling/Disabling the 
+       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
+       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
+       name it to "VBUS_AH". If you a see a build error from this function either 
+       you have not configured the VBUS Power Enable in MHC pin settings or the 
+       Pin name entered in MHC is not "VBUS_AH". */
+    if (enable == true)
+    {
+        /* Enable the VBUS */
+        VBUS_AH_PC27_PowerEnable_Set();
+        VBUS_AH_PC31_PowerEnable_Set();
+
+    }
+    else
+    {
+        /* Disable the VBUS */
+        VBUS_AH_PC27_PowerEnable_Clear();
+        VBUS_AH_PC31_PowerEnable_Clear();
+    }
+}
+
+static DRV_USB_EHCI_INIT drvUSBEHCIInit =
+{
+    /* Interrupt Source for USB module */
+    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+
+    /* USB base address */
+    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
+    
+    /* Ports Selection */ 
+    .bmPortSelect = 0x02,
+
+    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+    
+    /* Root hub available current in milliamperes */
+    .rootHubAvailableCurrent = 500,
+
+    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
+};
+
+static DRV_USB_OHCI_INIT drvUSBOHCIInit =
+{
+    /* Interrupt Source for USB module */
+    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+
+    /* USB base address */
+    .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
+
+     /* Ports Selection */ 
+    .bmPortSelect = 0x02,
+    
+    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+    
+    /* Root hub available current in milliamperes */
+    .rootHubAvailableCurrent = 500
+};
+
 
 
 // *****************************************************************************
@@ -285,13 +350,6 @@ void SYS_Initialize ( void* data )
 
 	PIT_TimerInitialize();
 
-    MMU_Initialize();
-
-    AIC_INT_Initialize();
-    
-    /* Disable WDT   */
-    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
-
  
     TC0_CH0_TimerInitialize(); 
      
@@ -299,6 +357,13 @@ void SYS_Initialize ( void* data )
     FLEXCOM6_TWI_Initialize();
 
     XLCDC_Initialize();
+
+    MMU_Initialize();
+
+    AIC_INT_Initialize();
+    
+    /* Disable WDT   */
+    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
 
     DBGU_Initialize();
 
@@ -332,8 +397,15 @@ void SYS_Initialize ( void* data )
     SYS_INP_Init();
 
 
+    /* Initialize the USB Host layer */
+    sysObj.usbHostObject0 = USB_HOST_Initialize (( SYS_MODULE_INIT *)& usbHostInitData );    
+
     // initialize UI library
     Legato_Initialize();
+
+     /* Initialize USB Driver */ 
+    sysObj.drvUSBEHCIObject = DRV_USB_EHCI_Initialize (DRV_USB_EHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBEHCIInit);
+    sysObj.drvUSBOHCIObject = DRV_USB_OHCI_Initialize (DRV_USB_OHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBOHCIInit);
 
 
     /* MISRAC 2023 deviation block end */

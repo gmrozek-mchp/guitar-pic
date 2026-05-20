@@ -2,7 +2,7 @@
 
 manifest_file_version: 1.0.0
 project: marvin_default
-creation_date: 2026-05-19T14:03:19.414-05:00[America/Chicago]
+creation_date: 2026-05-20T17:01:02.857-05:00[America/Chicago]
 operating_system: Mac OS X
 mcc_mode: VSCodePlugin
 mcc_mode_version: Unknown
@@ -21,5 +21,6 @@ modules:
 - {name: core, type: HARMONY, version: v3.16.3}
 - {name: csp, type: HARMONY, version: v3.25.2}
 - {name: vision, type: HARMONY, version: v3.2.1}
+- {name: usb, type: HARMONY, version: v3.16.0}
 - {name: FreeRTOS-Kernel, type: HARMONY, version: V11.3.0}
 - {name: gfx, type: HARMONY, version: v3.17.0}
