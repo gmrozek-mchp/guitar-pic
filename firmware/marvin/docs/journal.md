@@ -78,7 +78,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 - **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
 
-- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. Re-apply after every regen:
+- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. The 2026-05-20 USB-host regen added a fifth. Re-apply after every regen:
 
   1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
 
@@ -87,6 +87,8 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
   3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
 
   4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+
+  5. **`initialization.c` `DRV_USB_VBUSPowerEnable` — per-pin VBUS calls.** MCC emits a single `VBUS_AH_*_Set/Clear()` call expecting one pin named `VBUS_AH`, but our config has VBUS on two pins (PC27 + PC31, one per USB port). The pin-macro generator produces `VBUS_AH_PC27_PowerEnable_*` and `VBUS_AH_PC31_PowerEnable_*` separately and no unified wrapper, so the MCC-emitted code fails to compile. Replace lines 162-163 (Set branch) and 169-170 (Clear branch) with explicit calls to both per-pin macros — `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` and the matching Clear pair. The MCC comment in the function ("name it to 'VBUS_AH'") acknowledges the single-pin assumption.
 
   Previously listed but now resolved or moot:
   - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
@@ -105,6 +107,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+
+Long session covering three independent threads:
+
+1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+
+2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+
+3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
+
+Spec update: added §4.8 game-state awareness & control as a marvin subsystem (peer of detection but separate bus, video-frame consumer not a detector). Defers recognizer algorithm + arbitration boundary as Q10/Q11.
+
+Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
 
 ### 2026-05-20 — Video fan-out + per-frame buffer routing
 

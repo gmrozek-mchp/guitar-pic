@@ -23408,3 +23408,325 @@ index 874f84f..b82257c 100644
 +/* Provides Host pipes number */
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:38Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:45Z)**_
+
+Reviewed. The regen is what I'd expect: USB EHCI+OHCI drivers (HS host with FS companion), VBUS power-enable on PC27/PC31, two new MCC tasks (USB_HOST + DRV_USB_HOST), CDC host class layer with capacity for 1 device. `bmPortSelect=0x02` selects the second USB-A port — confirm that matches whichever port you'll plug the fretboard into. Block reordering in `configuration.h` is harmless MCC-regen churn.
+
+Staging specstory + committing.
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit USB CDC host MCC regen
+
+```bash
+git add .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git commit -m "$(cat <<'EOF'
+mcc: add USB CDC host stack on marvin
+
+USB host bring-up for the marvin↔fretboard link. EHCI + OHCI drivers
+(high-speed root with full-speed companion), CDC host class layer with
+one-device capacity. VBUS power-enable on PC27/PC31; bmPortSelect=0x02
+selects the secondary USB-A port. Two new Harmony tasks (USB_HOST and
+DRV_USB_HOST) created in tasks.c via dynamic xTaskCreate — MCC code,
+expected exception to the static-allocation rule.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status --short
+```
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos a6040ce] mcc: add USB CDC host stack on marvin
+ 47 files changed, 33515 insertions(+), 82 deletions(-)
+ create mode 100644 firmware/marvin/default/mcc/marvin_default/components/drv_usbhs_v1.yml
+ create mode 100644 firmware/marvin/default/mcc/marvin_default/components/usb_host.yml
+ create mode 100644 firmware/marvin/default/mcc/marvin_default/components/usb_host_cdc.yml
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/drv_usb.h
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/drv_usb_external_dependencies.h
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ohci.h
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci_local.h
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci_local.h
+ create mode 100644 firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_uhp_ohci_registers.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_external_dependencies.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_host.c
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_host_cdc_acm.c
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_host_cdc_local.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_host_hub_mapping.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/src/usb_host_local.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_cdc.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_chapter_9.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_common.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_ehci.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_host.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_host_cdc.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_host_client_driver.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_host_hub_interface.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_hub.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb/usb_ohci.h
+ create mode 100644 firmware/marvin/default/src/config/default/usb_host_init_data.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:09:51Z)**_
+
+Committed as `a6040ce`. Working tree is clean.
+
+Next move is the fretboard side — USB device CDC in MCC there. Want me to wait until that's regenerated too, or start sketching the wire-protocol design (slice 1 from earlier) on paper while you handle MCC?
+
+---
+
+_**User (2026-05-20 22:11:14Z)**_
+
+note that I had to make hand edits to initialization.c on lines 162-163 and 169-170 because MCC didn't generate the correct code. add this to whereever we're tracking stuff like this.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:18Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:19Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/initialization.c`
+
+```text
+150	 ******************************************************/
+151	static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
+152	{
+153	    /* Note: USB Host applications should have a way for Enabling/Disabling the 
+154	       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
+155	       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
+156	       name it to "VBUS_AH". If you a see a build error from this function either 
+157	       you have not configured the VBUS Power Enable in MHC pin settings or the 
+158	       Pin name entered in MHC is not "VBUS_AH". */
+159	    if (enable == true)
+160	    {
+161	        /* Enable the VBUS */
+162	        VBUS_AH_PC27_PowerEnable_Set();
+163	        VBUS_AH_PC31_PowerEnable_Set();
+164	
+165	    }
+166	    else
+167	    {
+168	        /* Disable the VBUS */
+169	        VBUS_AH_PC27_PowerEnable_Clear();
+170	        VBUS_AH_PC31_PowerEnable_Clear();
+171	    }
+172	}
+173	
+174	static DRV_USB_EHCI_INIT drvUSBEHCIInit =
+175	{
+176	    /* Interrupt Source for USB module */
+177	    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+178	
+179	    /* USB base address */
+180	    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
+181	    
+182	    /* Ports Selection */ 
+183	    .bmPortSelect = 0x02,
+184
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:32Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+See how MCC patches are currently tracked
+
+`grep -n "MCC\|regen\|hand-edit\|manual" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md | head -20`
+
+```text
+47:| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+48:| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+49:| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+50:| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+51:| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+52:| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+61:| 2026-05-20 | All marvin-owned FreeRTOS objects use `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic`; FreeRTOS heap stays at heap_1 only because MCC code (XLCDC/MAXTOUCH/LEGATO/SYS_INPUT tasks, OSAL, Legato variable heap) needs it | Project rule is static-only memory allocation. MCC-generated code can't be made static without forking, so we keep `configSUPPORT_DYNAMIC_ALLOCATION = 1` for MCC and route all our own code through the static APIs. MCC reconfigured to enable `configSUPPORT_STATIC_ALLOCATION = 1` and emit `vApplicationGetIdleTaskMemory` in `freertos_hooks.c`. Per-module `Static{Task,Queue,Semaphore}_t` plus stack/storage arrays at file scope. |
+62:| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+81:- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. Re-apply after every regen:
+83:  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+85:  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+87:  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+89:  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+92:  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+93:  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+95:  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:36Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:36Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+70	
+71	_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+72	
+73	- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+74	- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **deferred 2026-05-01**: TXACT has been observed at both 0 and 1 at various times after enable. Likely momentary (active-packet indicator, not stream-on flag). CSI_ERR=0 and HLT=0 consistently. Phase 5 frames-in-memory confirmed the chain works regardless.
+75	- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+76	
+77	**Carried into future sessions:**
+78	
+79	- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+80	
+81	- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. Re-apply after every regen:
+82	
+83	  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+84	
+85	  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+86	
+87	  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+88	
+89	  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+90	
+91	  Previously listed but now resolved or moot:
+92	  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+93	  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+94	
+95	  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+96	
+97	- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+98	
+99	- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+100	
+101	- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+102	
+103	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+104	
+105	---
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:50Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:11:50Z)**_
+
+Got it — adding to the existing MCC-patches list in the journal.
+
+_**Agent (claude-opus-4-7 2026-05-20 22:12:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:12:09Z)**_
+
+Logged as patch #5 in the maintenance list. The journal now tracks all five MCC re-apply patches in one place — when you next regen, that section is the single source of truth.
+
+---
+
+_**User (2026-05-20 22:12:45Z)**_
+
+please commit this (append previous commit?). Are we in a good place to wrap up for the evening.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 22:12:58Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:12:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+105	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+106	
+107	---
+108	
+109	## Session log
+110	
+111	### 2026-05-20 — Video fan-out + per-frame buffer routing
+112	
+113	Two-commit sequence opening up video capture for parallel CV consumers:
+114	
+115	1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+116	2. **Ring depth from 2 to 4.** Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+117	
+118	Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+119	
+120	### 2026-05-20 — M1 scaffolding landed
+121	
+122	Stood up the detector subsystem skeleton. New module at `default/src/detector/`:
+123	
+124	- `detector.h` — `detector_state_t` (canonical layout from spec §4.2.3), `fret_t` enum, `detector_id_t` enum, `Detector_Initialize`, `Detector_BusQueue`.
+125	- `detector.c` — owns `xDetectorStateQueue` (depth 8, holds `detector_state_t`) and a temporary `DetectorDrain` task that consumes the bus and logs records/sec at INFO. Drain task is M1-only scaffolding; the timing pipeline (M3) will replace it as sole consumer.
+126	- `cv_marvin_v1.{h,c}` — owns its FreeRTOS task. Creates a depth-1 frame queue, calls `Video_SubscribeFrames`, blocks on `xQueueReceive`, publishes one `detector_state_t` per frame with `frame_epoch = frame.frame_count`, `timestamp_us = xTaskGetTickCount() × CV_US_PER_TICK`, all-zero `fret[]`.
+127	
+128	Wired from `app.c`'s `APP_Initialize` after `Video_Initialize`. Added both `.c` files to `cmake/marvin/default/user.cmake`. No code change to video or capture; `Video_FrameInfo.bytes_per_pixel` already reports 3 (RGB888 packed).
+129	
+130	Spec touch-up: §4.2.2 "BGRX32 frames" → "RGB888-packed (3 B/pixel) frames". Surfaced the broader spec drift on capture format as a carried-forward open question — deserves a doc-only sweep before M5 (recording schema depends on it).
+131	
+132	Added per-detector enable/disable + single-active selector to the bus API (`Detector_Enable`/`Disable`/`IsEnabled` + `Detector_SetActive`/`GetActive`). Defaults all-disabled; app explicitly enables `DETECTOR_CV_MARVIN_V1` and selects it as active. cv_marvin_v1 still drains its frame queue when disabled but skips publishing. Future video CV tasks (menu, score) go in as video-frame consumers, not detectors — needs a multi-subscriber upgrade to `Video_SubscribeFrames` before the second one lands.
+133	
+134	Next session: pick Q8 (initial CV algorithm — leaning pixel-mean threshold per ROI as the simplest end-to-end bring-up) and start populating the `fret[]` field in cv_marvin_v1. ROI geometry calibration also needs a home — spec §4.7 (system config) is the planned destination.
+135	
+136	### 2026-05-20 — System spec drafted
+137	
+138	Stepped back from per-feature work and scoped marvin's role across the whole guitar-playing-robot system. Output is [`spec.md`](spec.md), a durable system-level description (versus this journal as running diary). Drafted in document order: §1 purpose & scope, §2 system context (three-tier diagram, ownership table, latency budget), §3 hardware platform inventory, §4 all seven subsystems (4.2 CV detection + detector-state bus and 4.6 reference-data recording fully drafted; 4.1 video capture summarized referencing existing docs; 4.3–4.5 + 4.7 sketched). §5–9 stubbed.
+139
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:13:13Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 22:13:14Z)**_
+
+Going with a new commit — project rule is "new commits rather than amending unless explicitly requested." Tell me if you'd rather I amend.
+
+Adding a session-log entry first to close out the session per the project's journal convention.
+
+_**Agent (claude-opus-4-7 2026-05-20 22:13:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+**Input:**
+
+- file_path: `/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md`
+- new_string:
+
+```
+### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+
+Long session covering three independent threads:
+
+1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+
+2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+
+3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
+
+Spec update: added §4.8 game-state awareness & control as a marvin subsystem (peer of detection but separate bus, video-frame consumer not a detector). Defers recognizer algorithm + arbitration boundary as Q10/Q11.
+
+Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
+
+### 2026-05-20 — Video fan-out + per-frame buffer routing
+```
+
+- old_string: `### 2026-05-20 — Video fan-out + per-frame buffer routing`
+- replace_all: `false`
+
+</details></tool-use>
