@@ -1,129 +1,43 @@
 # Guitar Hero Bot
 
-An autonomous system that plays Guitar Hero on PlayStation 2 or Nintendo Wii by observing the game screen and mechanically actuating a real guitar controller.
+An autonomous robot that plays Guitar Hero / Rock Band on a Nintendo Wii by watching the game video, detecting notes in real time, and pressing the buttons on a real Wii guitar controller.
 
-## Project Overview
+The system is built around a SAM9X75 host (**marvin**) that captures HDMI directly off the Wii, runs reference computer-vision note detection, schedules chord and strum timing, and sends fret/strum commands over UART to a small actuator MCU (**fretboard**) that drives the controller's buttons via open-drain GPIO. A separate Python tool (**fret-tuner**) is used at the bench for calibration and detector tuning, but is not in the runtime path.
 
-This project combines computer vision, real-time processing, and embedded systems to create a machine that can play Guitar Hero automatically:
+For the full system overview see [SPEC.md](SPEC.md).
 
-1. **Video Capture**: Captures console video output via USB capture device (Elgato Game Capture HD)
-2. **Vision Processing**: Detects notes, chords, and game state using OpenCV
-3. **Timing Scheduler**: Calculates when to press buttons accounting for system latency
-4. **Microcontroller**: PIC microcontroller controls actuators with precise timing
-5. **Mechanical Actuation**: Actuators press fret buttons and strum bar; servos control whammy and tilt
+## Where to start
 
-## Repository Structure
+| If you want to… | Read |
+|---|---|
+| Understand the whole system | [SPEC.md](SPEC.md) |
+| Work on the SAM9X75 host (capture, CV, timing, UI) | [firmware/marvin/docs/spec.md](firmware/marvin/docs/spec.md) + [journal](firmware/marvin/docs/journal.md) |
+| Work on the actuator MCU (sensors, GPIO output) | [firmware/fretboard/SPEC.md](firmware/fretboard/SPEC.md) |
+| Tune detection algorithms at the bench | [tools/fret-tuner/SPEC.md](tools/fret-tuner/SPEC.md) |
+| Work on actuator mechanical / PCB / 3D-print parts | [hardware/](hardware/) |
+
+## Repository layout
 
 ```
 guitar-pic/
-├── SPEC.md                 # Detailed project specification
-├── README.md               # This file
-├── docs/
-│   ├── hardware-bom.md     # Bill of materials
-│   ├── wiring-diagram.md   # Electrical connections
-│   ├── calibration.md      # Timing calibration guide
-│   ├── diy-solenoid-design.md      # DIY solenoid actuator design
-│   ├── electromagnet-design.md     # Electromagnet actuator design
-│   ├── electromagnet-test-protocol.md
-│   ├── voice-coil-design.md        # Voice coil actuator design
-│   └── voice-coil-test-protocol.md
-├── hardware/
-│   └── 3d-models/          # OpenSCAD files for 3D printed parts
-│       ├── voice-coil-parts.scad
-│       └── voice-coil-parts-dimensions.md
-├── vision/                 # Python vision system
-│   ├── requirements.txt    # Python dependencies
-│   ├── main.py            # Main entry point
-│   ├── capture.py         # Video capture module
-│   ├── detector.py        # Note detection
-│   ├── scheduler.py       # Timing and scheduling
-│   └── serial_comm.py     # MCU communication
-└── tests/                 # Unit tests
-    ├── test_detection.py  # Vision tests
-    └── test_serial.py     # Protocol tests
+├── README.md            # this file
+├── SPEC.md              # system spec
+├── CLAUDE.md            # workflow rules for Claude Code sessions
+├── firmware/
+│   ├── marvin/          # SAM9X75 host firmware
+│   ├── fretboard/       # PIC32CM6408 sensor/actuator MCU
+│   └── sam9x75_curiosity_emirror/   # Microchip reference (template only)
+├── tools/fret-tuner/    # Python dev/calibration tool
+├── hardware/            # PCB, mechanical, actuator design
+└── docs/
+    ├── SAM9X7-Series-Data-Sheet-DS60001813.pdf
+    └── archive/         # historical docs from the original architecture
 ```
 
-## Quick Start
+## Status
 
-### Prerequisites
+Working today: HDMI capture and live display through marvin (480p60 and 720p60), and standalone play on fretboard with its own light sensors and chord scheduling. In progress: marvin reference detector, marvin↔fretboard link, end-to-end play through marvin, and SD-card recording of reference data. Phasing detail in [SPEC.md §7](SPEC.md).
 
-- Python 3.8+
-- OpenCV (`pip install opencv-python`)
-- pyserial (`pip install pyserial`)
-- USB video capture device (Elgato Game Capture HD recommended)
-- PIC microcontroller + programmer (TBD)
+## License & acknowledgments
 
-### Vision System Setup
-
-```bash
-cd vision
-pip install -r requirements.txt
-
-# List available devices
-python main.py --list-devices
-
-# Run with debug display
-python main.py -d -v 0
-
-# Calibration mode
-python main.py -c
-```
-
-## Hardware Requirements
-
-| Component | Purpose | Quantity |
-|-----------|---------|----------|
-| PIC microcontroller | Main controller (TBD) | 1 |
-| Actuators | Fret buttons (see actuator docs) | 5-7 |
-| Actuators | Strum bar | 2 |
-| Servo motors | Whammy + Tilt | 2 |
-| Driver ICs | Actuator driver | 1+ |
-| 12V 5A PSU | Power supply | 1 |
-| Elgato Game Capture HD | Video input | 1 |
-| PS2 or Wii Guitar | Controller | 1 |
-
-See `docs/hardware-bom.md` for complete list.
-
-## Actuator Options
-
-Three actuator designs are documented for testing:
-
-1. **Voice Coil** - Quietest, fastest, proportional control
-2. **Electromagnet** - Very quiet, simple construction  
-3. **DIY Solenoid** - Proven technology, louder
-
-See `docs/voice-coil-design.md`, `docs/electromagnet-design.md`, `docs/diy-solenoid-design.md`.
-
-## Development Phases
-
-- [ ] **Phase 1**: Basic note detection + single solenoid test
-- [ ] **Phase 2**: Full 5-fret control + Easy difficulty
-- [ ] **Phase 3**: Star power + whammy + Medium/Hard
-- [ ] **Phase 4**: Expert difficulty optimization
-
-## Testing
-
-```bash
-cd tests
-pytest -v
-```
-
-## Documentation
-
-- [SPEC.md](SPEC.md) - Full project specification
-- [docs/hardware-bom.md](docs/hardware-bom.md) - Parts list
-- [docs/wiring-diagram.md](docs/wiring-diagram.md) - Wiring guide
-- [docs/calibration.md](docs/calibration.md) - Timing calibration
-- [docs/voice-coil-design.md](docs/voice-coil-design.md) - Voice coil actuator design
-- [docs/electromagnet-design.md](docs/electromagnet-design.md) - Electromagnet actuator design
-- [docs/diy-solenoid-design.md](docs/diy-solenoid-design.md) - DIY solenoid design
-
-## License
-
-MIT License - See LICENSE file for details.
-
-## Acknowledgments
-
-- Guitar Hero is a trademark of Activision
-- Wii and Wiimote are trademarks of Nintendo
-- This is a hobby/educational project for learning computer vision and embedded systems
+MIT License. Hobby / educational project. Guitar Hero and Rock Band are trademarks of Activision and Harmonix; Wii is a trademark of Nintendo.

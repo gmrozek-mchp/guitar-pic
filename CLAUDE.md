@@ -2,6 +2,13 @@
 
 These rules apply to every session on this repo. Follow them without being reminded.
 
+## Specs orient you; journals track progress
+
+The repo has three subprojects (marvin, fretboard, fret-tuner) plus a top-level system spec.
+
+- **[`SPEC.md`](SPEC.md) is the cross-subproject overview** — read it first if a task spans subprojects or if you're new to the repo. It points at each subproject's spec and journal.
+- For non-trivial work inside a single subproject, read that subproject's spec **and** journal first (see below).
+
 ## Journals are the source of truth for planning and progress
 
 This repo uses working journals to track planning, decisions, open questions, and work-in-progress *outside* the chat context so they survive across sessions, compactions, and restarts.
@@ -9,6 +16,7 @@ This repo uses working journals to track planning, decisions, open questions, an
 Current journals:
 
 - `firmware/marvin/docs/journal.md` — marvin firmware (SAM9X75 vision-based guitar-playing robot)
+  - System-level spec for marvin lives at `firmware/marvin/docs/spec.md` — **read it first** alongside the journal on any non-trivial marvin task. The spec is the durable description of what marvin is (purpose, subsystems, interfaces, milestones); the journal is the running diary.
 
 When working on a subproject that has a journal:
 
