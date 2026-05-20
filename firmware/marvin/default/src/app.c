@@ -37,6 +37,7 @@
 #include "definitions.h"
 #include "log.h"
 #include "video/video.h"
+#include "detector/detector.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -120,6 +121,15 @@ void APP_Initialize ( void )
     /* Default: arm the capture chain when source locks, and show video. */
     Video_CaptureEnable();
     Video_DisplayShow();
+
+    /* Reference detector (cv_marvin_v1) + detector-state bus. M1 stub
+     * publisher; real detection logic lands incrementally. Must follow
+     * Video_Initialize since cv_marvin_v1 subscribes to the video frame
+     * queue from inside its task. Detectors default disabled; explicitly
+     * enable + select the active one for the timing pipeline. */
+    Detector_Initialize();
+    Detector_Enable(DETECTOR_CV_MARVIN_V1);
+    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
 }
 
 

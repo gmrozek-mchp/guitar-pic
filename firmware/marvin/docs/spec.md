@@ -219,7 +219,7 @@ This is what makes marvin the *reference detector*. It runs computer-vision note
 
 A **detector** is anything that turns observation data into a `detector_state_t` event. marvin will host at least:
 
-- `cv_marvin_v1` — the reference vision detector. Reads BGRX32 frames from the video frame queue; emits one `detector_state_t` per frame.
+- `cv_marvin_v1` — the reference vision detector. Reads RGB888-packed (3 B/pixel) frames from the video frame queue; emits one `detector_state_t` per frame.
 - `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 500 Hz rate.
 
 Future detectors may include alternate CV algorithms running in parallel for comparison, or off-board detectors (Edge-AI MCU) feeding state in over UART/Ethernet.

@@ -14272,3 +14272,2225 @@ d9e506f Discard BASE DMA in HEO window (§44.6.4.7); drop unneeded HEO blend pat
 9bdd358 Yellow tinge resolved: drop refresh to 50 Hz (LVDSPLL 410.76 MHz)
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:50:54Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:50:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage doc-cleanup files; leave MCC churn alone
+
+`git add .gitignore CLAUDE.md docs/archive/SPEC-original.md docs/archive/README.md firmware/marvin/docs/journal.md firmware/marvin/docs/journal-archive.md firmware/marvin/docs/spec.md README.md SPEC.md hardware/README.md .specstory/ && git status`
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_02-28-19Z.md', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .gitignore
+	modified:   .specstory/history/2026-04-27_16-56-57Z-init.md
+	modified:   .specstory/history/2026-05-01_13-11-11Z-we-re-going-to.md
+	new file:   .specstory/history/2026-05-20_02-28-19Z.md
+	new file:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   CLAUDE.md
+	modified:   README.md
+	modified:   SPEC.md
+	new file:   docs/archive/README-original.md
+	new file:   docs/archive/README.md
+	new file:   docs/archive/SPEC-original.md
+	renamed:    docs/calibration.md -> docs/archive/calibration.md
+	renamed:    docs/hardware-bom.md -> docs/archive/hardware-bom.md
+	renamed:    docs/wiring-diagram.md -> docs/archive/wiring-diagram.md
+	new file:   firmware/marvin/docs/journal-archive.md
+	modified:   firmware/marvin/docs/journal.md
+	new file:   firmware/marvin/docs/spec.md
+	new file:   hardware/README.md
+	renamed:    docs/diy-solenoid-design.md -> hardware/actuators/diy-solenoid-design.md
+	renamed:    docs/electromagnet-design.md -> hardware/actuators/electromagnet-design.md
+	renamed:    docs/electromagnet-test-protocol.md -> hardware/actuators/electromagnet-test-protocol.md
+	renamed:    docs/voice-coil-design.md -> hardware/actuators/voice-coil-design.md
+	renamed:    docs/voice-coil-test-protocol.md -> hardware/actuators/voice-coil-test-protocol.md
+	deleted:    tests/test_detection.py
+	deleted:    tests/test_serial.py
+	deleted:    vision/capture.py
+	deleted:    vision/detector.py
+	deleted:    vision/main.py
+	deleted:    vision/requirements.txt
+	deleted:    vision/scheduler.py
+	deleted:    vision/serial_comm.py
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+	modified:   firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+	modified:   firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:51:09Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:51:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit doc cleanup
+
+```bash
+git commit -m "$(cat <<'EOF'
+docs: top-level reorg + marvin system spec, journal split
+
+Top-level docs now reflect the current three-tier architecture (marvin
+SAM9X75 host, fretboard PIC32CM6408 sensor/actuator MCU, off-band
+fret-tuner Python). Original PC-hosted/Elgato/PS2 design preserved
+under docs/archive/; legacy vision/ and tests/ Python deleted
+(recoverable from git history). Actuator design + test-protocol docs
+relocated under hardware/actuators/ alongside KiCad and 3D models.
+
+marvin gets a durable system-level spec at
+firmware/marvin/docs/spec.md covering all subsystems, interfaces,
+operating modes, and milestones M1-M8. Capture/display bring-up
+history (2026-05-01 -> 2026-05-15) split out of the working journal
+into firmware/marvin/docs/journal-archive.md so daily journal reads
+stay focused on current work.
+
+.gitignore excludes vendor datasheets in docs/.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status
+```
+
+```text
+[freertos 9226199] docs: top-level reorg + marvin system spec, journal split
+ 32 files changed, 23362 insertions(+), 4986 deletions(-)
+ create mode 100644 .specstory/history/2026-05-20_02-28-19Z.md
+ create mode 100644 .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+ create mode 100644 docs/archive/README-original.md
+ create mode 100644 docs/archive/README.md
+ create mode 100644 docs/archive/SPEC-original.md
+ rename docs/{ => archive}/calibration.md (100%)
+ rename docs/{ => archive}/hardware-bom.md (100%)
+ rename docs/{ => archive}/wiring-diagram.md (100%)
+ create mode 100644 firmware/marvin/docs/journal-archive.md
+ create mode 100644 firmware/marvin/docs/spec.md
+ create mode 100644 hardware/README.md
+ rename {docs => hardware/actuators}/diy-solenoid-design.md (100%)
+ rename {docs => hardware/actuators}/electromagnet-design.md (100%)
+ rename {docs => hardware/actuators}/electromagnet-test-protocol.md (100%)
+ rename {docs => hardware/actuators}/voice-coil-design.md (100%)
+ rename {docs => hardware/actuators}/voice-coil-test-protocol.md (100%)
+ delete mode 100644 tests/test_detection.py
+ delete mode 100644 tests/test_serial.py
+ delete mode 100644 vision/capture.py
+ delete mode 100644 vision/detector.py
+ delete mode 100644 vision/main.py
+ delete mode 100644 vision/requirements.txt
+ delete mode 100644 vision/scheduler.py
+ delete mode 100644 vision/serial_comm.py
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+	modified:   firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+	modified:   firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:51:17Z)**_
+
+Committed as `9226199` on `freertos`. 32 files changed; renames preserve history for the moved actuator docs and the legacy `docs/` files. Working tree is left with only the things we explicitly excluded — MCC manifest churn and a couple of specstory ticks that landed mid-commit.
+
+---
+
+_**User (2026-05-20 19:53:01Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/SPEC.md in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+looks good. where do we start next on project marving?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 19:53:06Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:53:06Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Get spec.md outline
+
+`grep -n "^## \|^### " /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md`
+
+```text
+9:## 1. Purpose & scope
+11:### 1.1 What marvin is
+24:### 1.2 What marvin is *not*
+31:### 1.3 North-star one-paragraph summary
+35:### 1.4 What's done, what's next
+52:## 2. System context
+54:### 2.1 Three-tier system
+121:### 2.2 Who owns what
+136:### 2.3 Data flow at a glance
+147:### 2.4 Latency budget (target, end-to-end)
+161:## 3. Hardware platform
+163:### 3.1 Boards and links
+176:### 3.2 SAM9X75 resources used / unused
+195:## 4. Subsystems
+197:### 4.1 Video capture & display ✅
+212:### 4.2 CV detection pipeline + detector-state bus 🚧
+265:### 4.3 Fretboard link 🚧
+273:### 4.4 Timing pipeline 🚧
+285:### 4.5 UI / operator surface 🚧
+296:### 4.6 Reference-data recording & export 🚧
+381:### 4.7 System services 🚧
+393:## 5. External interfaces 🚧
+401:## 6. Operating modes 🚧
+414:## 7. Build & deploy 🚧
+418:## 8. Phasing & milestones 🚧
+433:## 9. Open questions
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:53:09Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/spec.md`
+
+```text
+212	### 4.2 CV detection pipeline + detector-state bus 🚧
+213	
+214	#### 4.2.1 Role
+215	
+216	This is what makes marvin the *reference detector*. It runs computer-vision note detection on captured frames and publishes a structured detector-state record per frame onto a shared bus. Other detectors (fretboard ADC; future Edge-AI unit) publish onto the same bus. The timing pipeline (§4.4) consumes the bus.
+217	
+218	#### 4.2.2 Detector model
+219	
+220	A **detector** is anything that turns observation data into a `detector_state_t` event. marvin will host at least:
+221	
+222	- `cv_marvin_v1` — the reference vision detector. Reads BGRX32 frames from the video frame queue; emits one `detector_state_t` per frame.
+223	- `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 500 Hz rate.
+224	
+225	Future detectors may include alternate CV algorithms running in parallel for comparison, or off-board detectors (Edge-AI MCU) feeding state in over UART/Ethernet.
+226	
+227	#### 4.2.3 detector_state record (canonical shape)
+228	
+229	```
+230	typedef struct {
+231	    uint32_t frame_epoch;     // master sync token (§4.6.4)
+232	    uint64_t timestamp_us;    // monotonic, marvin-local
+233	    uint8_t  detector_id;     // 0=cv_marvin_v1, 1=adc_fretboard, ...
+234	    uint8_t  reserved[3];
+235	    struct {
+236	        uint8_t  pressed;     // 0/1 hard call
+237	        uint16_t confidence;  // 0..65535, detector-defined
+238	        uint16_t raw_value;   // detector-defined: ADC sample, pixel mean, etc.
+239	    } fret[5];                // FRET_GREEN..FRET_ORANGE
+240	} detector_state_t;
+241	```
+242	
+243	Fields are fixed-width, naturally aligned, little-endian — this is also the on-disk record layout for the state log (§4.6.5). `frame_epoch` is the master clock for cross-detector and cross-recording sync.
+244	
+245	#### 4.2.4 Bus mechanics
+246	
+247	- A single FreeRTOS queue (`xDetectorStateQueue`) carries `detector_state_t` records, one entry per detector emit.
+248	- The timing pipeline task (§4.4) is the sole consumer.
+249	- The recording task (§4.6) snoops the queue via a side-channel: each producer publishes simultaneously to the timing-pipeline queue and to a recording stream buffer. (Single producer→multiple consumers is implemented by tee'ing inside each detector, not by a broker; keeps queue semantics blocking and simple.)
+250	- Detectors run on their own FreeRTOS tasks (one per detector instance) so a slow detector cannot stall the frame pipeline.
+251	
+252	#### 4.2.5 Reference-detector responsibilities
+253	
+254	`cv_marvin_v1` is a *first-class* subsystem, not a debug aid. Its detector state is the ground-truth label for any reference-data recording (§4.6). Implications:
+255	
+256	- Algorithm changes are versioned (`cv_marvin_v1`, `cv_marvin_v2`, …). The version is stamped into recordings so training data stays attributable.
+257	- Calibration (sensor/strike-line ROIs in pixel space) is stored in the system config (§4.7) and reproducibly applied at startup.
+258	- The detector must run within one frame-time (≤ 16.7 ms) on Cortex-A5 — concrete algorithm choice is a future decision, but the budget is set.
+259	
+260	#### 4.2.6 Open questions surfaced here
+261	
+262	- Initial CV algorithm — pixel-mean threshold per ROI, edge-trough, optical-flow-based, or learned. (Defer; bring up the simplest first to validate end-to-end.)
+263	- ADC-detector logic location — port `fretboard/fret_button.c`'s detection (hysteresis edges) into marvin (`adc_fretboard` runs on raw samples), or have fretboard pre-process and stream edges. (Default: marvin runs the detector on raw samples; fretboard stays dumb.)
+264	
+265	### 4.3 Fretboard link 🚧
+266	
+267	UART between marvin and the fretboard MCU, bidirectional, framed.
+268	
+269	- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). Same intent as fret-tuner's existing 1-byte bitmask; precise framing TBD in §5.
+270	- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 500 Hz, plus enable/SW0 state. Reuses the fret-tuner 12-byte ADC frame format if practical.
+271	- **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:53:13Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/spec.md`
+
+```text
+418	## 8. Phasing & milestones 🚧
+419	
+420	Proposed order; each is a buildable demo:
+421	
+422	1. **M1 — Reference detector v0** (§4.2). One CV detector running on captured frames, publishing `detector_state_t` to the bus. No actuation. Proves the bus and the detection task structure.
+423	2. **M2 — Fretboard link** (§4.3). UART up; ADC stream ingested; `adc_fretboard` detector publishing onto the bus alongside `cv_marvin_v1`.
+424	3. **M3 — Timing pipeline + actuation** (§4.4). Chord FIFO + strum scheduling; commands sent over UART; fretboard actuates. End-to-end play possible.
+425	4. **M4 — Recording to SD** (§4.6). SDMMC + FAT mount; record task writes state/commands/ADC/keyframes during a session.
+426	5. **M5 — Operator UI v0** (§4.5). Live view with overlays; mode toggles. UI framework decided here.
+427	6. **M6 — Calibration UI** (§4.5). Per-fret ROI placement + threshold tuning on the device.
+428	7. **M7 — Replay** (§6). Load a recording from SD, replay through the timing pipeline.
+429	8. **M8 — Standalone-fretboard fallback** (§4.4). Marvin-disabled-pipeline mode validated.
+430	
+431	Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
+432	
+433	## 9. Open questions
+434	
+435	| # | Question | Status |
+436	|---|---|---|
+437	| Q1 | Reference-data format details — keyframe stride and per-fret patch sizes if patches are added later. | Direction set (§4.6.3); exact stride defaults to 60 frames, revisit after first training-data consumer exists. |
+438	| Q2 | Reference-data transport beyond SD — Ethernet live stream timing. | Deferred post-M8. |
+439	| Q3 | Detector-state bus shape — typed messages on a queue (§4.2.4) is the working choice; revisit if multi-consumer latency becomes a problem. | Working choice. |
+440	| Q4 | Timing pipeline location — marvin centralized with fretboard fallback. | Settled; implementation in M3 + M8. |
+441	| Q5 | UI framework — Legato vs custom on GFX2D. | Open. Decide at M5. |
+442	| Q6 | Operating-mode model — independent toggles. | Settled (§6). |
+443	| Q7 | Fret-tuner's long-term fate — survives as off-band dev/calibration tool. | Settled; not in runtime path. |
+444	| Q8 | Initial CV algorithm choice for `cv_marvin_v1`. | Open. Decide at M1. |
+445	| Q9 | Config persistence location (SD file vs internal flash). | Open. Decide at M4 alongside SDMMC bring-up. |
+446	
+447
+```
+</details></tool-use>
+
+---
+
+_**User (2026-05-20 19:54:30Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The conversation is a continuation from a prior session (which ran out of context) about the guitar-playing-robot project (`guitar-pic`). The conversation covered three sequential requests in this session:
+   
+   - **Request 1**: User asked whether the marvin journal (`firmware/marvin/docs/journal.md`) was getting too long (1639 lines) and whether multiple journals would help. I recommended archive-don't-split, and user said "yes please" to splitting completed capture/display work into a separate archive file.
+   
+   - **Request 2**: User asked "anything else you can think of regarding overall documentation / planning? If not, let's commit." User then made specific decisions on 5 items I surfaced: (1) gitignore datasheets, (2) exclude MCC churn from commit, (3) keep specstory history, (4) stage `docs/archive/SPEC-original.md` fully, (5) clean up the stale TC358743 code-comment item. User said "enough" for the CLAUDE.md archive-mention question.
+   
+   - **Request 3 (current/active)**: "looks good. where do we start next on project marving?" — User opened `SPEC.md` in IDE and is asking where to begin next on marvin development.
+
+2. Key Technical Concepts:
+   - SAM9X75 Curiosity (Cortex-A5, 800 MHz, 1 GB DDR3) running MPLAB Harmony v5.6.4 + FreeRTOS
+   - Three-tier architecture: marvin (SAM9X75) ↔ fretboard (PIC32CM6408) ↔ optional fret-tuner (Python PC)
+   - HDMI capture: Wii → ElectronWarp → TC358743 → MIPI CSI-2 → ISC → DDR (BGRX32 @ 720×480/1280×720 60fps)
+   - Display: 10.1" 1280×800 LVDS panel + maxtouch via XLCDC OVR1 + LVDSC
+   - Detector-state bus, `frame_epoch` master sync token, `detector_state_t` canonical record
+   - FreeRTOS queue (`xDetectorStateQueue`) shape for detector bus
+   - Operating modes as independent toggles: detect_enable, marvin_timing_enable, actuate_enable, record_enable
+   - 8 milestones M1-M8 (M1 = reference detector v0)
+   - Journal/spec separation: spec is durable, journal is running diary
+   - Archive pattern: lazy split when live journal grows crowded
+
+3. Files and Code Sections:
+   
+   - **`/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md`** (REWRITTEN)
+     - Reduced from 1639 lines to 113 lines.
+     - Kept: header + current focus (M1) + deep-dive references + decision log (entire) + open questions (entire incl. MCC clobber list) + only the 2026-05-20 session entry. Pointer to archive added at top and bottom.
+     - Removed (final cleanup edit before commit): stale "TC358743 code comment discipline" open-question item that referenced "Phase 6+" which was already complete.
+   
+   - **`/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md`** (CREATED)
+     - 1545 lines. Contains: archive header + lines 18-491 of original journal (Original focus, Hardware context, Reference sources, Integration approach, Phased plan with Phases 0-7, Known risks) + session log entries 584-1639 (2026-05-15 back through 2026-05-01).
+     - Built via bash: heredoc header + `sed -n '18,491p' journal.md` + separator heredoc + `sed -n '584,$p' journal.md`.
+   
+   - **`/Users/gregmrozek/Projects/microchip/guitar-pic/.gitignore`** (EDITED)
+     - Added `docs/*.pdf` pattern to exclude vendor datasheets like `SAM9X7-Series-Data-Sheet-DS60001813.pdf` (28MB).
+     - Final content:
+     ```
+     .venv/
+     
+     # Vendor datasheets and reference PDFs — fetch from the source, don't commit
+     docs/*.pdf
+     ```
+   
+   - **`/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md`** (READ for current task)
+     - §4.2 CV detection pipeline + detector-state bus 🚧
+     - Contains the canonical `detector_state_t` definition:
+     ```c
+     typedef struct {
+         uint32_t frame_epoch;     // master sync token (§4.6.4)
+         uint64_t timestamp_us;    // monotonic, marvin-local
+         uint8_t  detector_id;     // 0=cv_marvin_v1, 1=adc_fretboard, ...
+         uint8_t  reserved[3];
+         struct {
+             uint8_t  pressed;     // 0/1 hard call
+             uint16_t confidence;  // 0..65535, detector-defined
+             uint16_t raw_value;   // detector-defined: ADC sample, pixel mean, etc.
+         } fret[5];                // FRET_GREEN..FRET_ORANGE
+     } detector_state_t;
+     ```
+     - §4.2.4 Bus mechanics: single FreeRTOS queue `xDetectorStateQueue`, timing pipeline is sole consumer, recording snoops via tee, detectors run on their own FreeRTOS tasks.
+     - §4.2.5 cv_marvin_v1 must run within ≤16.7ms on Cortex-A5; algorithm choice is Q8 (open).
+     - §8 Phasing: M1 = One CV detector running on captured frames, publishing `detector_state_t` to the bus. No actuation. Proves the bus and detection task structure.
+     - §9 Q8 (Initial CV algorithm choice for `cv_marvin_v1`): Open. Decide at M1.
+
+4. Errors and fixes:
+   - **Initial concern about spestory in commits**: I had flagged `.specstory/` files as "should never be in commits" suggesting to gitignore them. User pushed back: "why no specstory history? this can be useful or otherwise why bother with spectory?" — I corrected course and staged all specstory files in the commit.
+   
+   - **CRLF warnings on specstory files**: When staging two new specstory files, git warned "CRLF will be replaced by LF the next time Git touches it" — harmless line-ending normalization, no action needed.
+   
+   - **README.md/SPEC.md showing as "modified" not "renamed"**: Once I added new top-level README.md and SPEC.md content, git's rename detection broke (the originals went to `docs/archive/` as `new file:` and the new ones registered as `modified:`). Content is preserved in git history regardless; this is acceptable behavior.
+
+5. Problem Solving:
+   - **Journal overflow**: Solved by archiving completed capture/display bring-up work into `journal-archive.md` (1545 lines) while keeping live journal at 113 lines focused on current M1 work. Used `git mv`-equivalent slicing via sed so content is preserved.
+   - **Datasheet PDF bloat**: Solved by adding `docs/*.pdf` to `.gitignore` rather than committing the 28MB PDF.
+   - **Stale open question**: Removed TC358743 code-comment discipline note that referenced archived "Phase 6+" work.
+   - **Commit scope discipline**: Staged only the doc-cleanup files explicitly, excluding 3 MCC manifest files (mcc-manifest-autosave.yml, mcc-manifest-generated-success.yml, harmony-manifest-success.yml) that were modified by routine MCC operations.
+
+6. All user messages:
+   - "for project marvin, is journal getting too long? I still want to keep journal(s), but could there be value in maintaining seperate journals for different parts of the development effort?"
+   - "yes please"
+   - "anything else you can think of regarding overall documentation / planning? If not, let's commit."
+   - "1. modify .gitignore to ignore datasheets like this. 2. do not include MCC churn. 3. why no specstory history? this can be useful or otherwise why bother with spectory? 4. both staged together. 5. clean it up. "enough" for the final claude.md question"
+   - "looks good. where do we start next on project marving?" (with IDE-opened SPEC.md notification)
+   
+   **Standing project rules to preserve verbatim:**
+   - "never `git commit` on my own initiative; only on explicit user ask or after prompting" (from auto-memory)
+   - "Code comments describe current code only" — no dev-diary in source comments (CLAUDE.md)
+   - "Journals are the source of truth for planning and progress" (CLAUDE.md)
+   - "prefer journal updates over re-stating plans in chat" (CLAUDE.md)
+   - Plan-mode constraint: only edit the active plan file when in plan mode; only read-only tools otherwise.
+
+7. Pending Tasks:
+   - Respond to user's question "where do we start next on project marving?" with a recommendation pointing at M1 (Reference detector v0) and concrete first steps.
+   - User has NOT yet committed to starting M1 implementation; this is a directional question, not an implementation request.
+
+8. Current Work:
+   Immediately before this summary, I was preparing to answer "where do we start next on project marvin?" The user opened SPEC.md in their IDE. I had just finished:
+   - Confirming the doc-cleanup commit landed as `9226199` ("docs: top-level reorg + marvin system spec, journal split", 32 files changed, 23362 insertions, 4986 deletions on `freertos` branch)
+   - Reading the spec.md outline via grep to find relevant sections
+   - Reading spec.md §4.2 (CV detection pipeline + detector-state bus, lines 212-271) — covers detector model, `detector_state_t` shape, bus mechanics, reference-detector responsibilities, M1-relevant open questions
+   - Reading spec.md §8 (milestones, lines 418-431) and §9 (open questions, lines 433-446)
+   
+   The directional answer per spec.md and journal "Current focus" is **M1 — Reference detector v0**: one CV detector (`cv_marvin_v1`) running on captured BGRX32 frames, publishing `detector_state_t` records to a FreeRTOS queue. Two specific decisions to make at M1: Q8 (initial CV algorithm — pixel-mean threshold per ROI is the simplest and was hinted in the spec as the right "bring up the simplest first" choice) and the structure of `xDetectorStateQueue` plus the detector task layout.
+
+9. Optional Next Step:
+   Send a text response answering the user's question "where do we start next on project marving?" — orient them toward M1 (Reference detector v0) per spec.md §4.2 and §8 and the journal's current focus. The response should:
+   - Confirm M1 is the next milestone
+   - Note what M1 produces (one CV detector + detector_state_t bus, no actuation)
+   - List the concrete decisions to settle at M1 start: Q8 (CV algorithm — recommend pixel-mean threshold per ROI as the simplest bring-up choice per spec §4.2.6: "Defer; bring up the simplest first to validate end-to-end") and the detector task/queue scaffolding
+   - Suggest the first practical step (likely: stub the detector task + queue, wire it to the existing video frame queue, publish dummy `detector_state_t` records to validate plumbing before adding any real detection logic)
+   - Keep it brief and offer to dig into any one direction
+   
+   This is directly in line with the user's most recent explicit request: "where do we start next on project marving?" — a directional question, not yet an implementation request, so the response should help orient without starting implementation.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 19:54:33Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:54:39Z)**_
+
+Next up is **M1 — Reference detector v0** (journal "Current focus", spec §8). The deliverable is one CV detector (`cv_marvin_v1`) running on captured BGRX32 frames and publishing `detector_state_t` records to the canonical bus. No actuation, no fretboard link, no recording — just prove the detection task structure and bus plumbing end-to-end.
+
+Two decisions to settle at the top of M1:
+
+- **Q8 — initial CV algorithm.** Spec §4.2.6 already hints at the answer: bring up the simplest thing first to validate the pipeline. Pixel-mean over a fixed ROI per fret with a fixed threshold is the obvious starting point — fits comfortably in the 16.7 ms budget on the A5, and the algorithm can be swapped without touching the bus.
+- **Bus + task scaffolding.** Decide the FreeRTOS task layout (`detector_cv_task` subscribing to the existing video frame queue), and stand up `xDetectorStateQueue` with the `detector_state_t` shape from spec §4.2.3. Single producer for now, single consumer stub (recording tap and timing pipeline come later).
+
+Concrete first step I'd suggest: scaffold the detector task and queue, subscribe to the video frame queue, and publish *dummy* `detector_state_t` records (e.g. all-zero or based on `frame_epoch` parity) at frame rate. That validates the wiring — task scheduling, queue depth, frame-epoch propagation, no frame drops — before any real detection logic. Then drop in the pixel-mean ROI detector on top.
+
+Want me to start with the scaffolding (task + queue + dummy publisher), or settle Q8 / ROI geometry first?
+
+---
+
+_**User (2026-05-20 19:57:28Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+yes start. note that the captured frames are XLCDC_RGB_COLOR_MODE_RGB_888_PACKED (24-bits per pixel), not BGRX32
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:33Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:33Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+1	#include "video.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	
+6	#include "FreeRTOS.h"
+7	#include "task.h"
+8	#include "queue.h"
+9	
+10	#include "definitions.h"
+11	#include "log.h"
+12	#include "tc358743.h"
+13	#include "isc_capture.h"
+14	
+15	#define LCD_PANEL_W  1280u
+16	#define LCD_PANEL_H  800u
+17	
+18	#define VIDEO_TASK_STACK_WORDS  1024u
+19	#define VIDEO_TASK_PRIORITY     1u
+20	#define VIDEO_POLL_MS           20u
+21	
+22	/* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match
+23	 * isc_capture's ISC_CAP_BPP. If that ever becomes runtime-configurable, push
+24	 * it into a getter. */
+25	#define VIDEO_BYTES_PER_PIXEL   3u
+26	
+27	/* Public intent — set via the API, read by the task body. Single-writer
+28	 * (each setter is called by one task), single-reader (video task), so
+29	 * plain volatile is sufficient on a 32-bit MCU. */
+30	static volatile bool s_capture_enabled;
+31	static volatile bool s_display_shown;
+32	
+33	/* Display window. Zero-initialized; the app must call Video_SetWindow
+34	 * before Video_DisplayShow has any visible effect. Layout is app policy,
+35	 * not module policy. */
+36	typedef struct { uint32_t x, y, w, h; } window_t;
+37	static volatile window_t s_window;
+38	
+39	/* Frame subscription. Set from any task; read from ISC IRQ. */
+40	static volatile QueueHandle_t s_frame_queue;
+41	
+42	/* Most-recent capture configuration — used to populate Video_FrameInfo and
+43	 * to compare against the display window for scaler decisions. Updated when
+44	 * ISC is armed. */
+45	static volatile uint16_t s_src_w;
+46	static volatile uint16_t s_src_h;
+47	
+48	/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+49	
+50	/* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+51	 * 1.0 (= 0x100000) means 1:1, no scaling. Mirrors plib_xlcdc.c's
+52	 * static CALC_SCALING_FACT. */
+53	static uint32_t scaler_factor(uint32_t src, uint32_t dst)
+54	{
+55	    if (dst == 0u) { return 0x100000u; }
+56	    return (uint32_t)(((uint64_t)src << 20) / dst);
+57	}
+58	
+59	/* ─── HEO bind / unbind ────────────────────────────────────────────────── */
+60	
+61	/* Point HEO at the capture buffer at (x, y) sized dst_w × dst_h. If the
+62	 * destination size matches the source size, the HEO scaler stays at its
+63	 * 1.0 factor (effectively bypassed). Otherwise the bilinear scaler is
+64	 * engaged. BASE DISCEN is set to the destination rect so BASE skips DMA
+65	 * for the area HEO covers (§44.6.4.7). */
+66	static void lcd_bind(uint32_t src_w, uint32_t src_h,
+67	                     uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+68	{
+69	    if (x + dst_w > LCD_PANEL_W || y + dst_h > LCD_PANEL_H)
+70	    {
+71	        LOG_WARN("VIDEO: window %lux%lu @(%lu,%lu) exceeds panel %ux%u; skipping bind\r\n",
+72	                 (unsigned long)dst_w, (unsigned long)dst_h,
+73	                 (unsigned long)x, (unsigned long)y,
+74	                 LCD_PANEL_W, LCD_PANEL_H);
+75	        return;
+76	    }
+77	
+78	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+79	    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
+80	                               XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+81	    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO,
+82	                          ISC_Capture_GetBufferAddress(), false);
+83	    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+84	    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
+85	
+86	    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4) are the same
+87	     * for 1:1 and differ for scaling. Write them directly — XLCDC_Set-
+88	     * LayerWindowXYSize writes both registers to the same value, which is
+89	     * only correct for 1:1. */
+90	    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u)
+91	                             | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
+92	    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
+93	                             | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+94	
+95	    bool scaling = (dst_w != src_w) || (dst_h != src_h);
+96	    if (scaling)
+97	    {
+98	        uint32_t hf = scaler_factor(src_w, dst_w);
+99	        uint32_t vf = scaler_factor(src_h, dst_h);
+100	
+101	        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
+102	                                  | LCDC_HEOCFG23_VXSCEN(1)
+103	                                  | LCDC_HEOCFG23_HXSYEN(1)
+104	                                  | LCDC_HEOCFG23_HXSCEN(1);
+105	        /* Bicubic luminance + bicubic chrominance, both planes. Mirrors
+106	         * MCC's surface-set path — best image quality for video. */
+107	        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1)
+108	                                  | LCDC_HEOCFG30_VXSYBICU(1)
+109	                                  | LCDC_HEOCFG30_VXSCCFG(1)
+110	                                  | LCDC_HEOCFG30_VXSCBICU(1);
+111	        XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1)
+112	                                  | LCDC_HEOCFG31_HXSYBICU(1)
+113	                                  | LCDC_HEOCFG31_HXSCCFG(1)
+114	                                  | LCDC_HEOCFG31_HXSCBICU(1);
+115	        XLCDC_REGS->LCDC_HEOCFG24 = LCDC_HEOCFG24_VXSYFACT(vf);
+116	        XLCDC_REGS->LCDC_HEOCFG25 = LCDC_HEOCFG25_VXSCFACT(vf);
+117	        XLCDC_REGS->LCDC_HEOCFG26 = LCDC_HEOCFG26_HXSYFACT(hf);
+118	        XLCDC_REGS->LCDC_HEOCFG27 = LCDC_HEOCFG27_HXSCFACT(hf);
+119	    }
+120	    else
+121	    {
+122	        /* Disable scaler — matches MCC's HEO-setup defaults. */
+123	        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(0)
+124	                                  | LCDC_HEOCFG23_VXSCEN(0)
+125	                                  | LCDC_HEOCFG23_HXSYEN(0)
+126	                                  | LCDC_HEOCFG23_HXSCEN(0);
+127	    }
+128	
+129	    /* §44.6.4.7 — discard BASE DMA in the destination rect. HEO with MCC's
+130	     * default SFACTC=4 (A0×As) / DFACTC=6 (1−A0×As) reaches 100% opacity
+131	     * for RGB_888_PACKED (no per-pixel alpha → As sourced from A0=255),
+132	     * so BASE pixels in this rect are blended out. DISCEN tells the BASE
+133	     * channel to skip fetching them. */
+134	    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x)
+135	                              | LCDC_BASECFG5_DISCYPOS(y);
+136	    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(dst_w - 1u)
+137	                              | LCDC_BASECFG6_DISCYSIZE(dst_h - 1u);
+138	    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+139	
+140	    /* HEO and BASE attribute updates triggered together. */
+141	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+142	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+143	
+144	    LOG_INFO("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
+145	             (unsigned long)src_w, (unsigned long)src_h,
+146	             (unsigned long)dst_w, (unsigned long)dst_h,
+147	             (unsigned long)x, (unsigned long)y,
+148	             scaling ? "scaled" : "1:1");
+149	}
+150	
+151	/* Hide HEO and let BASE (Legato UI) fill the whole panel. */
+152	static void lcd_unbind(void)
+153	{
+154	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+155	    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+156	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+157	}
+158	
+159	/* ─── Frame-done ISR (runs in IRQ context) ─────────────────────────────── */
+160	
+161	static void on_frame_done(uint32_t frame_count, uintptr_t ctx)
+162	{
+163	    (void)ctx;
+164	
+165	    QueueHandle_t q = s_frame_queue;
+166	    if (q == NULL) { return; }
+167	
+168	    Video_FrameInfo info =
+169	    {
+170	        .buffer          = (void *)(uintptr_t)ISC_Capture_GetBufferAddress(),
+171	        .frame_count     = frame_count,
+172	        .width           = s_src_w,
+173	        .height          = s_src_h,
+174	        .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
+175	    };
+176	
+177	    BaseType_t higher_priority_task_woken = pdFALSE;
+178	    (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+179	    portYIELD_FROM_ISR(higher_priority_task_woken);
+180	}
+181	
+182	/* ─── Capture state machine ────────────────────────────────────────────── */
+183	
+184	static bool s_capture_armed;   /* task-only state; tracks ISC running */
+185	static bool s_display_bound;   /* task-only state; tracks HEO bound  */
+186	
+187	static bool capture_arm(void)
+188	{
+189	    uint16_t w = 0, h = 0;
+190	    if (!TC358743_GetDetectedFormat(&w, &h)) { return false; }
+191	
+192	    if (!ISC_Capture_Configure(w, h)) { return false; }
+193	    s_src_w = w;
+194	    s_src_h = h;
+195	    (void)TC358743_EnableStream(true);
+196	    if (!ISC_Capture_Start())
+197	    {
+198	        (void)TC358743_EnableStream(false);
+199	        return false;
+200	    }
+201	    LOG_INFO("VIDEO: capture ARMED %ux%u\r\n", w, h);
+202	    return true;
+203	}
+204	
+205	static void capture_disarm(void)
+206	{
+207	    ISC_Capture_Stop();
+208	    (void)TC358743_EnableStream(false);
+209	    LOG_INFO("VIDEO: capture IDLE\r\n");
+210	}
+211	
+212	/* Bind/unbind display from current intent + most-recent source size +
+213	 * caller-set window. A zero-sized window means the app hasn't set one
+214	 * yet — silently skip the bind in that case rather than emit a malformed
+215	 * HEO geometry; DisplayShow without a prior SetWindow is a no-op. */
+216	static void display_apply(void)
+217	{
+218	    window_t w = s_window;
+219	    bool window_valid = (w.w != 0u) && (w.h != 0u);
+220	    bool source_valid = (s_src_w != 0u) && (s_src_h != 0u);
+221	    bool want = s_display_shown && source_valid && window_valid;
+222	
+223	    if (want && !s_display_bound)
+224	    {
+225	        lcd_bind(s_src_w, s_src_h, w.x, w.y, w.w, w.h);
+226	        s_display_bound = true;
+227	    }
+228	    else if (!want && s_display_bound)
+229	    {
+230	        lcd_unbind();
+231	        s_display_bound = false;
+232	    }
+233	}
+234	
+235	/* Each tick: align current chain state (capture armed / display bound) to
+236	 * the user's intent flags, given the current source-lock state. */
+237	static void reconcile(void)
+238	{
+239	    bool locked = TC358743_IsLocked();
+240	
+241	    /* Capture: armed iff intent + lock. */
+242	    bool want_capture = s_capture_enabled && locked;
+243	    if (want_capture && !s_capture_armed)
+244	    {
+245	        if (capture_arm()) { s_capture_armed = true; }
+246	    }
+247	    else if (!want_capture && s_capture_armed)
+248	    {
+249	        capture_disarm();
+250	        s_capture_armed = false;
+251	    }
+252	
+253	    /* Display: shown iff intent + we have a source size to work with. The
+254	     * source size is captured at arm time and persists across capture
+255	     * teardown so the user can leave HEO bound on a stale frame. */
+256	    display_apply();
+257	}
+258	
+259	/* ─── Task body ────────────────────────────────────────────────────────── */
+260	
+261	static void video_task(void *param)
+262	{
+263	    (void)param;
+264	
+265	    /* One-time init in task context (scheduler running, so synchronous I²C
+266	     * and SYS_TIME work). Brings up capture pipeline, TC358743 bridge,
+267	     * backlight, and parks the panel in UI-only mode. */
+268	    ISC_Capture_Initialize();
+269	    ISC_Capture_SetFrameCallback(on_frame_done, 0);
+270	    TC358743_Initialize();
+271	    XLCDC_EnableBacklight();
+272	    lcd_unbind();
+273	
+274	    for (;;)
+275	    {
+276	        TC358743_Tasks();
+277	        reconcile();
+278	        vTaskDelay(pdMS_TO_TICKS(VIDEO_POLL_MS));
+279	    }
+280	}
+281	
+282	/* ─── Public API ───────────────────────────────────────────────────────── */
+283	
+284	void Video_Initialize(void)
+285	{
+286	    (void)xTaskCreate(video_task,
+287	                      "VideoTask",
+288	                      VIDEO_TASK_STACK_WORDS,
+289	                      NULL,
+290	                      VIDEO_TASK_PRIORITY,
+291	                      NULL);
+292	}
+293	
+294	void Video_CaptureEnable(void)  { s_capture_enabled = true;  }
+295	void Video_CaptureDisable(void) { s_capture_enabled = false; }
+296	
+297	void Video_DisplayShow(void)    { s_display_shown = true;    }
+298	void Video_DisplayHide(void)    { s_display_shown = false;   }
+299	
+300	void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+301	{
+302	    window_t w = { x, y, dst_w, dst_h };
+303	    s_window = w;
+304	    /* Force a re-bind on next reconcile if we're currently shown. */
+305	    s_display_bound = false;
+306	}
+307	
+308	void Video_SubscribeFrames(QueueHandle_t q)
+309	{
+310	    s_frame_queue = q;
+311	}
+312	
+313	void Video_GetFrameInfo(Video_FrameInfo *info)
+314	{
+315	    if (info == NULL) { return; }
+316	    info->buffer          = (void *)(uintptr_t)ISC_Capture_GetBufferAddress();
+317	    info->frame_count     = ISC_Capture_FrameCount();
+318	    info->width           = s_src_w;
+319	    info->height          = s_src_h;
+320	    info->bytes_per_pixel = VIDEO_BYTES_PER_PIXEL;
+321	}
+322
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:39Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:40Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.h`
+
+```text
+1	#ifndef VIDEO_H
+2	#define VIDEO_H
+3	
+4	#include <stdint.h>
+5	
+6	#include "FreeRTOS.h"
+7	#include "queue.h"
+8	
+9	/* Video pipeline: HDMI source → TC358743 bridge → CSI-2 → CSI2DC → ISC →
+10	 * DDR → XLCDC HEO. The module owns its own FreeRTOS task; everything below
+11	 * (tc358743, isc_capture, HEO bind/unbind, capture/display state machine)
+12	 * runs inside that task except the frame-arrival notification which fires
+13	 * from the ISC IRQ via xQueueSendFromISR.
+14	 *
+15	 * Capture and display are independent. CaptureEnable arms the bridge +
+16	 * ISC chain when the source is locked; DisplayShow makes the HEO layer
+17	 * visible at the configured window. You can run capture without display
+18	 * (frames flow into DDR, BASE/UI fills the panel) or display without
+19	 * capture (HEO shows whatever is in the framebuffer — possibly stale).
+20	 *
+21	 * Defaults at Initialize: capture disabled, display hidden, window
+22	 * unset. Layout is app policy — DisplayShow is a no-op until the
+23	 * caller has set a window with Video_SetWindow. */
+24	
+25	void Video_Initialize(void);
+26	
+27	/* Capture chain control. ENABLE: arm ISC + bridge stream when source
+28	 * is locked, re-arm on every lost/regain cycle. DISABLE: stop ISC +
+29	 * stream and stay off regardless of lock state. */
+30	void Video_CaptureEnable(void);
+31	void Video_CaptureDisable(void);
+32	
+33	/* Display layer control. SHOW: HEO visible, BASE DISCEN cleared under
+34	 * the HEO rect (saves DDR read bandwidth). HIDE: HEO disabled, BASE
+35	 * owns full panel. Independent of capture state. */
+36	void Video_DisplayShow(void);
+37	void Video_DisplayHide(void);
+38	
+39	/* Destination rect on the 1280×800 panel. dst_w/dst_h matching the
+40	 * source frame size → 1:1, scaler bypassed. Otherwise HEO bilinear
+41	 * scaler engages and stretches to fill the rect. The rect must fit
+42	 * within the panel. Takes effect on the next display bind (next
+43	 * DisplayShow call, or when capture/lock state changes). */
+44	void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h);
+45	
+46	/* Frame metadata delivered to subscribers on every captured frame. */
+47	typedef struct
+48	{
+49	    void    *buffer;          /* pointer to most-recent complete frame in DDR */
+50	    uint32_t frame_count;     /* monotonic since last ISC start */
+51	    uint16_t width;
+52	    uint16_t height;
+53	    uint16_t bytes_per_pixel;
+54	} Video_FrameInfo;
+55	
+56	/* Subscribe a queue to frame-ready events. The video module sends a
+57	 * Video_FrameInfo from the ISC frame-done IRQ via xQueueSendFromISR
+58	 * each time a frame completes to DDR. Create the queue with:
+59	 *   QueueHandle_t q = xQueueCreate(N, sizeof(Video_FrameInfo));
+60	 * Use depth 1 for "process most recent frame, drop the rest" patterns;
+61	 * larger depths preserve every frame at the cost of memory and lag.
+62	 * Pass NULL to unsubscribe. Single subscriber. */
+63	void Video_SubscribeFrames(QueueHandle_t q);
+64	
+65	/* Synchronous read of the current frame state. Doesn't block. May
+66	 * report frame_count = 0 / buffer = NULL if capture has never armed. */
+67	void Video_GetFrameInfo(Video_FrameInfo *info);
+68	
+69	#endif
+70
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:43Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+List marvin source directories
+
+`ls /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/`
+
+```text
+app.c
+app.h
+config
+log.c
+log.h
+main.c
+packs
+third_party
+video
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:46Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+1	/*******************************************************************************
+2	  MPLAB Harmony Application Source File
+3	
+4	  Company:
+5	    Microchip Technology Inc.
+6	
+7	  File Name:
+8	    app.c
+9	
+10	  Summary:
+11	    This file contains the source code for the MPLAB Harmony application.
+12	
+13	  Description:
+14	    This file contains the source code for the MPLAB Harmony application.  It
+15	    implements the logic of the application's state machine and it may call
+16	    API routines of other MPLAB Harmony modules in the system, such as drivers,
+17	    system services, and middleware.  However, it does not call any of the
+18	    system interfaces (such as the "Initialize" and "Tasks" functions) of any of
+19	    the modules in the system or make any assumptions about when those functions
+20	    are called.  That is the responsibility of the configuration-specific system
+21	    files.
+22	 *******************************************************************************/
+23	
+24	// *****************************************************************************
+25	// *****************************************************************************
+26	// Section: Included Files
+27	// *****************************************************************************
+28	// *****************************************************************************
+29	
+30	#include <stdint.h>
+31	#include <stdio.h>
+32	
+33	#include "FreeRTOS.h"
+34	#include "task.h"
+35	
+36	#include "app.h"
+37	#include "definitions.h"
+38	#include "log.h"
+39	#include "video/video.h"
+40	
+41	// *****************************************************************************
+42	// *****************************************************************************
+43	// Section: Global Data Definitions
+44	// *****************************************************************************
+45	// *****************************************************************************
+46	
+47	// *****************************************************************************
+48	/* Application Data
+49	
+50	  Summary:
+51	    Holds application data
+52	
+53	  Description:
+54	    This structure holds the application's data.
+55	
+56	  Remarks:
+57	    This structure should be initialized by the APP_Initialize function.
+58	
+59	    Application strings and buffers are be defined outside this structure.
+60	*/
+61	
+62	APP_DATA appData;
+63	
+64	// *****************************************************************************
+65	// *****************************************************************************
+66	// Section: Application Callback Functions
+67	// *****************************************************************************
+68	// *****************************************************************************
+69	
+70	/* TODO:  Add any necessary callback functions.
+71	*/
+72	
+73	// *****************************************************************************
+74	// *****************************************************************************
+75	// Section: Application Local Functions
+76	// *****************************************************************************
+77	// *****************************************************************************
+78	
+79	
+80	/* TODO:  Add any necessary local functions.
+81	*/
+82	
+83	
+84	// *****************************************************************************
+85	// *****************************************************************************
+86	// Section: Application Initialization and State Machine Functions
+87	// *****************************************************************************
+88	// *****************************************************************************
+89	
+90	/*******************************************************************************
+91	  Function:
+92	    void APP_Initialize ( void )
+93	
+94	  Remarks:
+95	    See prototype in app.h.
+96	 */
+97	
+98	void APP_Initialize ( void )
+99	{
+100	    appData.state = APP_STATE_INIT;
+101	
+102	    /* Logging shim: thin wrapper over libc printf with severity filter
+103	     * and FreeRTOS-aware locking. Initialized first so subsequent code
+104	     * (including video task startup) can use LOG_*. Default level is
+105	     * INFO; flip to DEBUG via log_set_level() to enable verbose. */
+106	    log_init(LOG_LEVEL_INFO);
+107	
+108	    /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
+109	     * the task runs once the scheduler picks it up. The video module owns
+110	     * its capture-pipeline init (ISC, TC358743, backlight, HEO unbind),
+111	     * the capture/display state machine, and the bridge-status polling. */
+112	    Video_Initialize();
+113	
+114	    /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
+115	     * panel — 1:1 with the bridge's typical 480p source, leaves a UI
+116	     * strip below. Set before DisplayShow; the video module has no
+117	     * default window of its own. */
+118	    Video_SetWindow(280u, 76u, 720u, 480u);
+119	
+120	    /* Default: arm the capture chain when source locks, and show video. */
+121	    Video_CaptureEnable();
+122	    Video_DisplayShow();
+123	}
+124	
+125	
+126	/******************************************************************************
+127	  Function:
+128	    void APP_Tasks ( void )
+129	
+130	  Remarks:
+131	    See prototype in app.h.
+132	 */
+133	
+134	void APP_Tasks ( void )
+135	{
+136	    /* APP is a one-shot launcher — task creation happened in APP_Initialize.
+137	     * Self-delete here so the (1024-word) stack and TCB are released to the
+138	     * idle task. The MCC-generated lAPP_Tasks loop will not iterate again
+139	     * because vTaskDelete(NULL) never returns to its caller. */
+140	    vTaskDelete(NULL);
+141	}
+142	
+143	
+144	/*******************************************************************************
+145	 End of File
+146	 */
+147
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:51Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:52Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find cmake files
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin -name "user.cmake" -o -name "CMakeLists.txt" 2>/dev/null | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/CMakeLists.txt
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:54Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/cmake/marvin/default/user.cmake`
+
+```text
+1	target_sources(marvin_default_default_XC32_compile PRIVATE
+2	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/log.c"
+3	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/video.c"
+4	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/tc358743.c"
+5	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/isc_capture.c"
+6	)
+7	
+8	target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
+9	    CAMERA_ENABLE_DEBUG=0
+10	)
+11
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+List video module files
+
+`ls /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/`
+
+```text
+isc_capture.c
+isc_capture.h
+tc358743.c
+tc358743.h
+video.c
+video.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:59Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:57:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find detector_state_t references in spec
+
+`grep -n "detector_state_t\|detector_id\|FRET_GREEN\|FRET_ORANGE\|xDetectorStateQueue" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md | head -30`
+
+```text
+220:A **detector** is anything that turns observation data into a `detector_state_t` event. marvin will host at least:
+222:- `cv_marvin_v1` — the reference vision detector. Reads BGRX32 frames from the video frame queue; emits one `detector_state_t` per frame.
+223:- `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 500 Hz rate.
+233:    uint8_t  detector_id;     // 0=cv_marvin_v1, 1=adc_fretboard, ...
+239:    } fret[5];                // FRET_GREEN..FRET_ORANGE
+240:} detector_state_t;
+247:- A single FreeRTOS queue (`xDetectorStateQueue`) carries `detector_state_t` records, one entry per detector emit.
+320:    ├── state.bin              // dense detector_state_t records, all detectors, all frames
+329:- **`state.bin`** — append-only, fixed-size `detector_state_t` records (§4.2.3). At 60 Hz × 2 detectors × ~28 B = ~3.4 KB/s. Trivial.
+422:1. **M1 — Reference detector v0** (§4.2). One CV detector running on captured frames, publishing `detector_state_t` to the bus. No actuation. Proves the bus and the detection task structure.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:58:04Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/spec.md`
+
+```text
+220	A **detector** is anything that turns observation data into a `detector_state_t` event. marvin will host at least:
+221	
+222	- `cv_marvin_v1` — the reference vision detector. Reads BGRX32 frames from the video frame queue; emits one `detector_state_t` per frame.
+223	- `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 500 Hz rate.
+224	
+225	Future detectors may include alternate CV algorithms running in parallel for comparison, or off-board detectors (Edge-AI MCU) feeding state in over UART/Ethernet.
+226	
+227	#### 4.2.3 detector_state record (canonical shape)
+228	
+229	```
+230	typedef struct {
+231	    uint32_t frame_epoch;     // master sync token (§4.6.4)
+232	    uint64_t timestamp_us;    // monotonic, marvin-local
+233	    uint8_t  detector_id;     // 0=cv_marvin_v1, 1=adc_fretboard, ...
+234	    uint8_t  reserved[3];
+235	    struct {
+236	        uint8_t  pressed;     // 0/1 hard call
+237	        uint16_t confidence;  // 0..65535, detector-defined
+238	        uint16_t raw_value;   // detector-defined: ADC sample, pixel mean, etc.
+239	    } fret[5];                // FRET_GREEN..FRET_ORANGE
+240	} detector_state_t;
+241	```
+242	
+243	Fields are fixed-width, naturally aligned, little-endian — this is also the on-disk record layout for the state log (§4.6.5). `frame_epoch` is the master clock for cross-detector and cross-recording sync.
+244	
+245	#### 4.2.4 Bus mechanics
+246	
+247	- A single FreeRTOS queue (`xDetectorStateQueue`) carries `detector_state_t` records, one entry per detector emit.
+248	- The timing pipeline task (§4.4) is the sole consumer.
+249	- The recording task (§4.6) snoops the queue via a side-channel: each producer publishes simultaneously to the timing-pipeline queue and to a recording stream buffer. (Single producer→multiple consumers is implemented by tee'ing inside each detector, not by a broker; keeps queue semantics blocking and simple.)
+250	- Detectors run on their own FreeRTOS tasks (one per detector instance) so a slow detector cannot stall the frame pipeline.
+251	
+252	#### 4.2.5 Reference-detector responsibilities
+253	
+254	`cv_marvin_v1` is a *first-class* subsystem, not a debug aid. Its detector state is the ground-truth label for any reference-data recording (§4.6). Implications:
+255	
+256	- Algorithm changes are versioned (`cv_marvin_v1`, `cv_marvin_v2`, …). The version is stamped into recordings so training data stays attributable.
+257	- Calibration (sensor/strike-line ROIs in pixel space) is stored in the system config (§4.7) and reproducibly applied at startup.
+258	- The detector must run within one frame-time (≤ 16.7 ms) on Cortex-A5 — concrete algorithm choice is a future decision, but the budget is set.
+259	
+260	#### 4.2.6 Open questions surfaced here
+261	
+262	- Initial CV algorithm — pixel-mean threshold per ROI, edge-trough, optical-flow-based, or learned. (Defer; bring up the simplest first to validate end-to-end.)
+263	- ADC-detector logic location — port `fretboard/fret_button.c`'s detection (hysteresis edges) into marvin (`adc_fretboard` runs on raw samples), or have fretboard pre-process and stream edges. (Default: marvin runs the detector on raw samples; fretboard stays dumb.)
+264	
+265	### 4.3 Fretboard link 🚧
+266	
+267	UART between marvin and the fretboard MCU, bidirectional, framed.
+268	
+269	- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). Same intent as fret-tuner's existing 1-byte bitmask; precise framing TBD in §5.
+270	- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 500 Hz, plus enable/SW0 state. Reuses the fret-tuner 12-byte ADC frame format if practical.
+271	- **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
+272	
+273	### 4.4 Timing pipeline 🚧
+274	
+275	Centralized on marvin by default. Owns:
+276	
+277	- Chord-accumulation window (`CHORD_WINDOW_MS` ≈ 20–40 ms).
+278	- Pending-chord FIFO with per-chord `press_at` / `strum_at` ticks.
+279	- Per-fret release scheduling.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:58:58Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:02Z)**_
+
+Got it. The actual capture buffer is RGB888 packed at 3 bytes/pixel (per video.c line 25 and `Video_FrameInfo.bytes_per_pixel = 3`). The spec's §4.2.2 still says "BGRX32" — that's stale; I'll fix it as part of this work.
+
+Let me set up the M1 scaffold.
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:02Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Create detector module skeleton (detector.h/.c with types + bus queue)
+- [ ] 🌡️ Add cv_marvin_v1 stub task that subscribes to video frames and publishes dummy records
+- [ ] 🌡️ Add temporary bus drain/log task so the queue doesn't back up before timing pipeline lands
+- [ ] 🌡️ Wire Detector_Initialize from app.c and add new sources to user.cmake
+- [ ] 🌡️ Update journal + fix stale BGRX32 reference in spec.md §4.2.2
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:11Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check FreeRTOS config use patterns
+
+`grep -rn "configASSERT\|configTICK_RATE_HZ" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/*.c /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/ 2>/dev/null | head -10`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:14Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check FreeRTOS config values
+
+`grep -n "configTICK_RATE_HZ\|configASSERT" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h | head -5`
+
+```text
+63:/* configTICK_RATE_HZ sets frequency of the tick interrupt in Hz, normally
+65:#define configTICK_RATE_HZ                      ( ( TickType_t ) 1000 )
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:18Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Create detector source directory
+
+`mkdir /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef DETECTOR_H
+#define DETECTOR_H
+
+#include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "queue.h"
+
+/* Detector subsystem — see firmware/marvin/docs/spec.md §4.2.
+ *
+ * A detector is anything that turns observation data into a detector_state_t
+ * event: cv_marvin_v1 reads captured video frames; adc_fretboard (future)
+ * reads UART-streamed ADC samples from the fretboard MCU; off-board detectors
+ * may feed state in over UART/Ethernet.
+ *
+ * Every detector publishes detector_state_t records onto a single FreeRTOS
+ * queue (the "detector-state bus"). The timing pipeline (§4.4) is the sole
+ * consumer in steady state; until it lands a stub task drains the queue so
+ * producers don't block. */
+
+typedef enum
+{
+    FRET_GREEN  = 0,
+    FRET_RED    = 1,
+    FRET_YELLOW = 2,
+    FRET_BLUE   = 3,
+    FRET_ORANGE = 4,
+    FRET_COUNT  = 5,
+} fret_t;
+
+typedef enum
+{
+    DETECTOR_CV_MARVIN_V1  = 0,
+    DETECTOR_ADC_FRETBOARD = 1,
+} detector_id_t;
+
+/* Canonical record. Layout is fixed-width / naturally aligned / little-endian
+ * because this is also the on-disk format for state.bin (spec §4.6.5). Do not
+ * reorder fields without bumping the recording schema version. */
+typedef struct
+{
+    uint32_t frame_epoch;     /* master sync token, spec §4.6.4 */
+    uint64_t timestamp_us;    /* monotonic, marvin-local */
+    uint8_t  detector_id;     /* detector_id_t */
+    uint8_t  reserved[3];
+    struct
+    {
+        uint8_t  pressed;     /* 0/1 hard call */
+        uint16_t confidence;  /* 0..65535, detector-defined */
+        uint16_t raw_value;   /* detector-defined: ADC sample, pixel mean, etc. */
+    } fret[FRET_COUNT];
+} detector_state_t;
+
+/* Brings up the detector-state bus queue, the cv_marvin_v1 detector task,
+ * and (for now) a stub consumer. Call after Video_Initialize so the video
+ * frame queue can be subscribed to from inside cv_marvin_v1. */
+void Detector_Initialize(void);
+
+/* Producers post records here; consumers (timing pipeline, eventually) read
+ * them. Returns NULL until Detector_Initialize has run. */
+QueueHandle_t Detector_BusQueue(void);
+
+#endif
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.h (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 19:59:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "detector.h"
+#include "cv_marvin_v1.h"
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+
+#include "log.h"
+
+/* Sized for ~one detector × one frame-time of slack. With cv_marvin_v1
+ * publishing at 60 Hz and the stub consumer draining every tick, depth 8
+ * absorbs a few ms of consumer stall without dropping records. Bump when
+ * adding more producers or a slower consumer. */
+#define DETECTOR_BUS_DEPTH       8u
+
+#define DRAIN_TASK_STACK_WORDS   512u
+#define DRAIN_TASK_PRIORITY      1u
+#define DRAIN_LOG_INTERVAL_MS    1000u
+
+static QueueHandle_t s_bus_queue;
+
+static void drain_task(void *param)
+{
+    (void)param;
+
+    TickType_t window_start = xTaskGetTickCount();
+    uint32_t   window_count = 0;
+
+    for (;;)
+    {
+        detector_state_t state;
+        if (xQueueReceive(s_bus_queue, &state, portMAX_DELAY) != pdTRUE)
+        {
+            continue;
+        }
+        window_count++;
+
+        TickType_t now = xTaskGetTickCount();
+        if ((uint32_t)(now - window_start) >= pdMS_TO_TICKS(DRAIN_LOG_INTERVAL_MS))
+        {
+            LOG_INFO("DETECTOR: bus drain %lu records/s (last epoch=%lu id=%u)\r\n",
+                     (unsigned long)window_count,
+                     (unsigned long)state.frame_epoch,
+                     (unsigned)state.detector_id);
+            window_start = now;
+            window_count = 0;
+        }
+    }
+}
+
+void Detector_Initialize(void)
+{
+    s_bus_queue = xQueueCreate(DETECTOR_BUS_DEPTH, sizeof(detector_state_t));
+    configASSERT(s_bus_queue != NULL);
+
+    CvMarvinV1_Initialize();
+
+    (void)xTaskCreate(drain_task,
+                      "DetectorDrain",
+                      DRAIN_TASK_STACK_WORDS,
+                      NULL,
+                      DRAIN_TASK_PRIORITY,
+                      NULL);
+}
+
+QueueHandle_t Detector_BusQueue(void)
+{
+    return s_bus_queue;
+}
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.c (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:01Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Create detector module skeleton (detector.h/.c with types + bus queue)
+- [⚡] 🌡️ Add cv_marvin_v1 stub task that subscribes to video frames and publishes dummy records
+- [X] 🌡️ Add temporary bus drain/log task so the queue doesn't back up before timing pipeline lands
+- [ ] 🌡️ Wire Detector_Initialize from app.c and add new sources to user.cmake
+- [ ] 🌡️ Update journal + fix stale BGRX32 reference in spec.md §4.2.2
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef CV_MARVIN_V1_H
+#define CV_MARVIN_V1_H
+
+/* Reference vision detector. Owns its FreeRTOS task; subscribes to the video
+ * module's frame queue; publishes detector_state_t records onto the detector-
+ * state bus (spec §4.2). M1 stub: forwards frame metadata only — real
+ * detection logic (Q8) lands incrementally on top. */
+
+void CvMarvinV1_Initialize(void);
+
+#endif
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.h (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "cv_marvin_v1.h"
+#include "detector.h"
+
+#include <string.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+
+#include "log.h"
+#include "video/video.h"
+
+#define CV_TASK_STACK_WORDS    1024u
+#define CV_TASK_PRIORITY       2u
+#define CV_FRAME_QUEUE_DEPTH   1u
+
+/* Capture frames are RGB888 packed, 3 bytes per pixel. Confirmed at runtime
+ * via Video_FrameInfo.bytes_per_pixel; this constant is the value the
+ * detector is built against. */
+#define CV_BYTES_PER_PIXEL     3u
+
+/* Microseconds per FreeRTOS tick — pre-evaluates to a constant at config
+ * tick rate 1000. Used to project xTaskGetTickCount() into timestamp_us. */
+#define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
+
+static void cv_marvin_v1_task(void *param)
+{
+    (void)param;
+
+    QueueHandle_t frames = xQueueCreate(CV_FRAME_QUEUE_DEPTH,
+                                        sizeof(Video_FrameInfo));
+    configASSERT(frames != NULL);
+    Video_SubscribeFrames(frames);
+
+    QueueHandle_t bus = Detector_BusQueue();
+    configASSERT(bus != NULL);
+
+    LOG_INFO("CV: cv_marvin_v1 started (stub publisher)\r\n");
+
+    for (;;)
+    {
+        Video_FrameInfo frame;
+        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE)
+        {
+            continue;
+        }
+
+        detector_state_t state;
+        memset(&state, 0, sizeof(state));
+
+        /* frame_count is monotonic since the most-recent ISC_Capture_Start —
+         * it resets when the bridge re-arms. A persistent frame_epoch that
+         * survives ISC restart is needed for recording (§4.6.4) and lands
+         * with M5; until then this is a near-good-enough stand-in. */
+        state.frame_epoch  = frame.frame_count;
+        state.timestamp_us = (uint64_t)xTaskGetTickCount() * CV_US_PER_TICK;
+        state.detector_id  = (uint8_t)DETECTOR_CV_MARVIN_V1;
+
+        /* Real detection lands here. M1 publishes all-zero fret state to
+         * validate task scheduling, queue depth, and frame-epoch flow. */
+        (void)xQueueSend(bus, &state, 0);
+    }
+}
+
+void CvMarvinV1_Initialize(void)
+{
+    (void)xTaskCreate(cv_marvin_v1_task,
+                      "CvMarvinV1",
+                      CV_TASK_STACK_WORDS,
+                      NULL,
+                      CV_TASK_PRIORITY,
+                      NULL);
+}
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:36Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Create detector module skeleton (detector.h/.c with types + bus queue)
+- [X] 🌡️ Add cv_marvin_v1 stub task that subscribes to video frames and publishes dummy records
+- [X] 🌡️ Add temporary bus drain/log task so the queue doesn't back up before timing pipeline lands
+- [⚡] 🌡️ Wire Detector_Initialize from app.c and add new sources to user.cmake
+- [ ] 🌡️ Update journal + fix stale BGRX32 reference in spec.md §4.2.2
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:00:58Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:01:05Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:01:06Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Create detector module skeleton (detector.h/.c with types + bus queue)
+- [X] 🌡️ Add cv_marvin_v1 stub task that subscribes to video frames and publishes dummy records
+- [X] 🌡️ Add temporary bus drain/log task so the queue doesn't back up before timing pipeline lands
+- [X] 🌡️ Wire Detector_Initialize from app.c and add new sources to user.cmake
+- [⚡] 🌡️ Update journal + fix stale BGRX32 reference in spec.md §4.2.2
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:01:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate all BGRX/RGB references in spec
+
+`grep -n "BGRX32\|BGRX\|RGB888\|RGB_888" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md`
+
+```text
+33:A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGRX32, zero-copy). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over UART, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
+39:| HDMI capture (TC358743 → CSI-2 → ISC → DDR, BGRX32) | ✅ working at 480p60 and 720p60. See [`capture_pipeline.md`](capture_pipeline.md). |
+77:   │   ISC ──► DDR (BGRX32) ──► CV detect ──┐                   │   │
+125:| HDMI capture into memory | marvin | TC358743 + CSI-2 + ISC; 720×480 / 1280×720 @ 60 Hz, BGRX32. |
+138:1. **Frame ready** — ISC writes a BGRX32 frame to DDR; the video task notifies subscribers.
+180:| MIPI CSI-2 RX + ISC + CSI2DC | ✅ in use | 2 lanes, 972 Mbps/lane, BGRX32 to DDR. |
+181:| XLCDC + LVDSC | ✅ in use | OVR1 layer, ARGB_8888 byte order matching BGRX32, pillarbox/letterbox. |
+222:- `cv_marvin_v1` — the reference vision detector. Reads BGRX32 frames from the video frame queue; emits one `detector_state_t` per frame.
+324:        ├── 000000.bgrx        // raw BGRX32 keyframe (no encoder), filename = frame_epoch
+332:- **Keyframes** — raw BGRX32 dump every N captured frames. At 720×480 BGRX = 1.38 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.38 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~415 MB — comfortable on any modern SD card.
+352:  "capture": { "width": 720, "height": 480, "fps": 60, "format": "BGRX32" },
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:01:14Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:01:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm capture format in isc_capture.c
+
+`grep -n "ISC_CAP_BPP\|BGRX\|RGB.*PACKED\|RGB888\|bytes_per_pixel\|BPP" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c | head -20`
+
+```text
+17:#define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
+27:       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+66:     * CSI2DC byte-stream packs the MIPI RGB888 stream per CSI-2
+71:     * natively in RGB_888_PACKED mode (memory order B, G, R per pixel
+73:     * BGRX32 path (capture write + display read both shrink) while
+74:     * preserving full RGB888 quality for vision consumers. */
+159:    uint32_t frame_size = width * height * ISC_CAP_BPP;
+213:    uint32_t isc_samples_per_row = (width * ISC_CAP_BPP) / 4u;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:01:57Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/isc_capture.c`
+
+```text
+60	    {
+61	        LOG_ERROR("ISC_Capture: driver init returned NULL\r\n");
+62	        return;
+63	    }
+64	
+65	    /* BYPASS RLP + IMODE=PACKED32 + BPS=FORTY + CSI2DC RMS=1:
+66	     * CSI2DC byte-stream packs the MIPI RGB888 stream per CSI-2
+67	     * Recommended Memory Storage spec (Table 49.27): four BGR pixels
+68	     * across 12 bytes, dense 3 B/pixel BGR888 in memory. ISC PACKED32
+69	     * DMA writes 4 bytes per CSI2DC word (samples-per-row =
+70	     * (width × 3) / 4, COLMAX programmed accordingly). LCDC reads
+71	     * natively in RGB_888_PACKED mode (memory order B, G, R per pixel
+72	     * — Table 44.26). 25% less DDR bandwidth than the ARGB_8888 /
+73	     * BGRX32 path (capture write + display read both shrink) while
+74	     * preserving full RGB888 quality for vision consumers. */
+75	    iscObj->inputFormat           = ISC_INPUT_FORMAT_TYPE;  /* RGB */
+76	    iscObj->inputBits             = DRV_IMAGE_SENSOR_40_BIT; /* BPS=FORTY */
+77	    iscObj->rlpMode               = ISC_RLP_CFG_MODE_BYPASS;
+78	    iscObj->layout                = ISC_LAYOUT_PACKED8;
+79	    iscObj->bayerPattern          = ISC_BAYER_PATTERN_TYPE;
+80	    iscObj->enableMIPI            = ISC_ENABLE_MIPI_INTERFACE;
+81	    iscObj->enableVideoMode       = ISC_ENABLE_VIDEO_MODE;
+82	    iscObj->enableProgressiveMode = ISC_ENABLE_PROGRESSIVE_MODE;
+83	    iscObj->enableScaling         = ISC_ENABLE_SCALING;
+84	    iscObj->dpc.enableDPC         = ISC_ENABLE_DPC;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:02:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:02:40Z)**_
+
+The BGRX32 references are widespread in the spec — they reflect the old plan; the actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (see [isc_capture.c:65-74](firmware/marvin/default/src/video/isc_capture.c#L65-L74)). I'll fix §4.2.2 (the line the M1 detector reads against) and flag the rest as doc-correction debt in the journal rather than trying to sweep all 10 references in this session — some involve math (keyframe size, on-disk format) that deserves its own pass.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:02:41Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:02:51Z)**_
+
+Now the journal — current focus, decision log entry for cv_marvin_v1 scaffolding choices, and an open-question entry for the broader BGRX32 → RGB888 doc sweep.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:03:03Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:03:19Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:03:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:03:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:03:56Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Create detector module skeleton (detector.h/.c with types + bus queue)
+- [X] 🌡️ Add cv_marvin_v1 stub task that subscribes to video frames and publishes dummy records
+- [X] 🌡️ Add temporary bus drain/log task so the queue doesn't back up before timing pipeline lands
+- [X] 🌡️ Wire Detector_Initialize from app.c and add new sources to user.cmake
+- [X] 🌡️ Update journal + fix stale BGRX32 reference in spec.md §4.2.2
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:04:04Z)**_
+
+Scaffold's in. Build it and you should see `DETECTOR: bus drain ~60 records/s (last epoch=N id=0)` in the log once the source locks.
+
+Files added:
+- [firmware/marvin/default/src/detector/detector.h](firmware/marvin/default/src/detector/detector.h) — types + bus queue accessor
+- [firmware/marvin/default/src/detector/detector.c](firmware/marvin/default/src/detector/detector.c) — bus queue + temporary drain task
+- [firmware/marvin/default/src/detector/cv_marvin_v1.h](firmware/marvin/default/src/detector/cv_marvin_v1.h) + [cv_marvin_v1.c](firmware/marvin/default/src/detector/cv_marvin_v1.c) — frame-queue subscriber, dummy publisher
+
+Touched:
+- [firmware/marvin/default/src/app.c](firmware/marvin/default/src/app.c) — calls `Detector_Initialize()` after `Video_*`
+- [firmware/marvin/cmake/marvin/default/user.cmake](firmware/marvin/cmake/marvin/default/user.cmake) — adds the two new `.c` files
+- [firmware/marvin/docs/spec.md](firmware/marvin/docs/spec.md) — §4.2.2 BGRX32 → RGB888-packed
+- [firmware/marvin/docs/journal.md](firmware/marvin/docs/journal.md) — current focus update, two new decision-log entries, BGRX32 doc-drift carried forward, session-log entry
+
+What I didn't do: populate `fret[]`, settle Q8, calibrate ROIs, or sweep the rest of the spec's BGRX32 references. Those are the next session's first decisions — call out the algorithm choice and we can move on it.
+
+---
+
+_**User (2026-05-20 20:06:19Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.h in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+to make sure I understand, "detector" is meant to be generic interface to any detector? I'd like to have ability to enable one or more detectors at the same time for data capture, although only one should ever be active.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:07:24Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:07:36Z)**_
+
+Yes — `detector.{h,c}` is the generic side. Three things define the "interface":
+
+1. **The record shape** — `detector_state_t` (canonical layout per spec §4.2.3).
+2. **The bus** — `xDetectorStateQueue` (one queue, all detectors publish into it, every record carries its `detector_id`).
+3. **The convention that each detector owns its own task** so detector A can't stall detector B (spec §4.2.4).
+
+Each concrete detector (`cv_marvin_v1`, future `adc_fretboard`, etc.) is its own module that publishes onto that bus. The interface is *implicit* (record + queue + task convention) rather than a vtable — fine for a handful of detectors, no need for indirection until we have a reason.
+
+For your enable-many / active-one model, the cleanest split is:
+
+- **enable / disable** = "is this detector publishing?" Per-detector boolean. All enabled detectors emit records onto the bus; recording (M5) saves them all → side-by-side training data.
+- **active** = "which detector_id does the timing pipeline listen to?" Single global setting. The timing pipeline (M3) filters incoming records and only acts on those whose `detector_id == active_detector_id`. Non-active records still flow through to recording.
+
+That maps cleanly onto spec §6's mode toggles: `detect_enable` becomes per-detector; we add a new `active_detector` selector. Both belong in the system config (spec §4.7) once that lands.
+
+Concrete deltas to the current scaffold:
+
+- Add `Detector_Enable(detector_id_t)` / `Detector_Disable(detector_id_t)` and `Detector_SetActive(detector_id_t)` on the bus side.
+- Each detector task checks "am I enabled?" before posting (cheap atomic flag).
+- The drain stub stays unchanged (snoops everything); the M3 timing pipeline does the active-id filter when it lands.
+
+Want me to add the enable / active controls now while the scaffold is small, or wait until there's a second detector to make the abstraction concrete?
+
+---
+
+_**User (2026-05-20 20:10:40Z)**_
+
+Yes add enable / active now. One other thought, I may want to add additional computer vision tasks beyond note / strum detection. For example, reading scores, navigating game menues, etc. should we add this as a "detector" or should we have ability to register multiple consumers for video capture?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:22Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:26Z)**_
+
+Short answer: **not detectors**. Detectors are the narrow concept of "thing that emits `detector_state_t`" (a fret-press-shaped record). Score readers and menu navigators want different output types — score values, menu state, navigation commands — and forcing them through `detector_state_t` would mean either abusing `fret[]` as generic data or piling tagged-union complexity into the canonical record.
+
+The right cut is: **video frame fan-out is its own concept, separate from detector-state**. Each video CV task is just a frame-queue subscriber that owns whatever output type makes sense to it. `cv_marvin_v1` *happens* to be both a frame subscriber and a detector — but a menu reader is only the former.
+
+That means the next small piece of plumbing is generalizing `Video_SubscribeFrames` from single-subscriber to multi-subscriber. I'll offer that as a follow-up after the enable/active work.
+
+On to enable/active:
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:27Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Add Detector_Enable/Disable/IsEnabled and Detector_SetActive/GetActive to detector.{h,c}
+- [ ] 🌡️ Gate cv_marvin_v1 publishing on Detector_IsEnabled
+- [ ] 🌡️ Wire Detector_Enable + SetActive from app.c
+- [ ] 🌡️ Journal: enable-many / active-one decision + video-fan-out architecture note
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:53Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:11:59Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:12:05Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:12:10Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Add Detector_Enable/Disable/IsEnabled and Detector_SetActive/GetActive to detector.{h,c}
+- [⚡] 🌡️ Gate cv_marvin_v1 publishing on Detector_IsEnabled
+- [ ] 🌡️ Wire Detector_Enable + SetActive from app.c
+- [ ] 🌡️ Journal: enable-many / active-one decision + video-fan-out architecture note
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:12:20Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:12:24Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Add Detector_Enable/Disable/IsEnabled and Detector_SetActive/GetActive to detector.{h,c}
+- [X] 🌡️ Gate cv_marvin_v1 publishing on Detector_IsEnabled
+- [⚡] 🌡️ Wire Detector_Enable + SetActive from app.c
+- [ ] 🌡️ Journal: enable-many / active-one decision + video-fan-out architecture note
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:12:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:12:46Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Add Detector_Enable/Disable/IsEnabled and Detector_SetActive/GetActive to detector.{h,c}
+- [X] 🌡️ Gate cv_marvin_v1 publishing on Detector_IsEnabled
+- [X] 🌡️ Wire Detector_Enable + SetActive from app.c
+- [⚡] 🌡️ Journal: enable-many / active-one decision + video-fan-out architecture note
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:13:02Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:13:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:13:14Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Add Detector_Enable/Disable/IsEnabled and Detector_SetActive/GetActive to detector.{h,c}
+- [X] 🌡️ Gate cv_marvin_v1 publishing on Detector_IsEnabled
+- [X] 🌡️ Wire Detector_Enable + SetActive from app.c
+- [X] 🌡️ Journal: enable-many / active-one decision + video-fan-out architecture note
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:13:22Z)**_
+
+Done. Summary of API now in [detector.h](firmware/marvin/default/src/detector/detector.h):
+
+- `Detector_Enable(id)` / `Detector_Disable(id)` / `Detector_IsEnabled(id)` — bitmap-backed, taskENTER_CRITICAL on writes, naked atomic read on the per-frame check.
+- `Detector_SetActive(id)` / `Detector_GetActive()` — single 8-bit volatile, naturally atomic on Cortex-A5.
+- Defaults: all-disabled, active = `DETECTOR_CV_MARVIN_V1`. `app.c` explicitly enables + selects.
+
+[cv_marvin_v1.c](firmware/marvin/default/src/detector/cv_marvin_v1.c) drains the frame queue regardless of enable state (so video doesn't back up) and skips the bus publish when disabled.
+
+Journal got two new decision-log entries: the enable-many/active-one model, and the architectural note that menu/score CV tasks are video consumers — not detectors — which flags the multi-subscriber upgrade to `Video_SubscribeFrames` as next plumbing work.
+
+Want me to do the multi-subscriber video fan-out now, or pivot to Q8 (pick the v0 CV algorithm)?
+
+---
+
+_**User (2026-05-20 20:19:54Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/detector.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+let's commit this and then move to multi-subscriber to video capture. as part of video capture, I also want to investigate possibility of more than double buffer capture (I think this is what it is now?). Some cv tasks may not need to run at full 60fps and may need more processing time. Another approach could be use of gfx accelerator for blitting copy of frame or interesting smaller portions of frame to memory dedicated to specific cv task?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:09Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show working tree status
+
+`git status`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/cmake/marvin/default/user.cmake
+	modified:   firmware/marvin/default/src/app.c
+	modified:   firmware/marvin/docs/journal.md
+	modified:   firmware/marvin/docs/spec.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	firmware/marvin/default/src/detector/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show diff for modified non-doc files plus spec
+
+`git diff firmware/marvin/cmake/marvin/default/user.cmake firmware/marvin/default/src/app.c firmware/marvin/docs/spec.md`
+
+```text
+diff --git a/firmware/marvin/cmake/marvin/default/user.cmake b/firmware/marvin/cmake/marvin/default/user.cmake
+index 2e14134..ebb4f4d 100644
+--- a/firmware/marvin/cmake/marvin/default/user.cmake
++++ b/firmware/marvin/cmake/marvin/default/user.cmake
+@@ -3,6 +3,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
+     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/video.c"
+     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/tc358743.c"
+     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/isc_capture.c"
++    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/detector.c"
++    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/cv_marvin_v1.c"
+ )
+ 
+ target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
+diff --git a/firmware/marvin/default/src/app.c b/firmware/marvin/default/src/app.c
+index 84764d7..d69bcfd 100644
+--- a/firmware/marvin/default/src/app.c
++++ b/firmware/marvin/default/src/app.c
+@@ -37,6 +37,7 @@
+ #include "definitions.h"
+ #include "log.h"
+ #include "video/video.h"
++#include "detector/detector.h"
+ 
+ // *****************************************************************************
+ // *****************************************************************************
+@@ -120,6 +121,15 @@ void APP_Initialize ( void )
+     /* Default: arm the capture chain when source locks, and show video. */
+     Video_CaptureEnable();
+     Video_DisplayShow();
++
++    /* Reference detector (cv_marvin_v1) + detector-state bus. M1 stub
++     * publisher; real detection logic lands incrementally. Must follow
++     * Video_Initialize since cv_marvin_v1 subscribes to the video frame
++     * queue from inside its task. Detectors default disabled; explicitly
++     * enable + select the active one for the timing pipeline. */
++    Detector_Initialize();
++    Detector_Enable(DETECTOR_CV_MARVIN_V1);
++    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+ }
+ 
+ 
+diff --git a/firmware/marvin/docs/spec.md b/firmware/marvin/docs/spec.md
+index 5e4a6f2..796cad9 100644
+--- a/firmware/marvin/docs/spec.md
++++ b/firmware/marvin/docs/spec.md
+@@ -219,7 +219,7 @@ This is what makes marvin the *reference detector*. It runs computer-vision note
+ 
+ A **detector** is anything that turns observation data into a `detector_state_t` event. marvin will host at least:
+ 
+-- `cv_marvin_v1` — the reference vision detector. Reads BGRX32 frames from the video frame queue; emits one `detector_state_t` per frame.
++- `cv_marvin_v1` — the reference vision detector. Reads RGB888-packed (3 B/pixel) frames from the video frame queue; emits one `detector_state_t` per frame.
+ - `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 500 Hz rate.
+ 
+ Future detectors may include alternate CV algorithms running in parallel for comparison, or off-board detectors (Edge-AI MCU) feeding state in over UART/Ethernet.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:20Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:20:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show recent commit messages with bodies
+
+`git log -5 --format="%h %s%n%b%n---"`
+
+```text
+9226199 docs: top-level reorg + marvin system spec, journal split
+Top-level docs now reflect the current three-tier architecture (marvin
+SAM9X75 host, fretboard PIC32CM6408 sensor/actuator MCU, off-band
+fret-tuner Python). Original PC-hosted/Elgato/PS2 design preserved
+under docs/archive/; legacy vision/ and tests/ Python deleted
+(recoverable from git history). Actuator design + test-protocol docs
+relocated under hardware/actuators/ alongside KiCad and 3D models.
+
+marvin gets a durable system-level spec at
+firmware/marvin/docs/spec.md covering all subsystems, interfaces,
+operating modes, and milestones M1-M8. Capture/display bring-up
+history (2026-05-01 -> 2026-05-15) split out of the working journal
+into firmware/marvin/docs/journal-archive.md so daily journal reads
+stay focused on current work.
+
+.gitignore excludes vendor datasheets in docs/.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+---
+a79042f log: lightweight severity-filtered printf shim; convert callers
+Drop Harmony's SYS_CONSOLE/SYS_COMMAND/SYS_DEBUG stack and replace
+with a thin in-tree log module. The Harmony stack pulled in three
+extra services with their own task/mutex/queue plumbing; debugging
+unexplained boot hangs through that surface burned a session before
+we backed out. The new module is ~80 lines we own.
+
+src/log.{h,c}:
+  - log_init / log_set_level / log_get_level
+  - log_printf / log_vprintf with printf-style format
+  - LOG_ERROR / LOG_WARN / LOG_INFO / LOG_DEBUG convenience macros
+  - Output via libc vprintf → xc32_monitor → DBGU (no service tasks)
+  - Single FreeRTOS mutex, taken only when scheduler is running so
+    pre-vTaskStartScheduler callers (APP_Initialize) work too
+  - Default level INFO; flip to DEBUG to enable verbose dumps
+
+Call-site conversion in user code:
+  - video.c:        4 sites (WARN for window check, INFO for state)
+  - isc_capture.c:  20 sites (ERROR for failures, INFO for state,
+                    DEBUG for diag_dump_rx with early-return gate
+                    to skip register reads when level < DEBUG)
+  - tc358743.c:     33 sites (ERROR for init failures, INFO for
+                    probe / format-detect / status transitions,
+                    DEBUG for verbose chip-state snapshot — also
+                    runtime-gated to skip its I²C round-trips)
+
+Removes the obsolete TC358743_VERBOSE_FORMAT_DUMP compile-time
+macro; runtime log level handles it now.
+
+MCC-side: SYS_CONSOLE / SYS_COMMAND / SYS_DEBUG components are
+disabled (manifest + initialization.c reflect their absence).
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+---
+4b550ed app: self-delete after launching tasks
+APP_Initialize spawns the video task (and any future user tasks);
+APP_Tasks has nothing left to do. Replace the no-op state machine
+with vTaskDelete(NULL) so the lAPP_Tasks task stack (~1 KB) and
+TCB are reclaimed by the idle task. The MCC-generated lAPP_Tasks
+while(true) loop never iterates again.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+---
+e28c497 video: capture/display intent split, scaler, frame queue subscription
+Public API split into independent intent flags + explicit window:
+
+  Video_CaptureEnable / Disable     — frames-into-DDR intent
+  Video_DisplayShow / Hide          — HEO-visible intent
+  Video_SetWindow(x,y,w,h)          — destination rect; HEO bicubic
+                                       scaler engages if w/h ≠ source
+  Video_SubscribeFrames(QueueHandle_t) — frame-ready notification
+                                          via xQueueSendFromISR
+  Video_GetFrameInfo                — synchronous read of state
+
+Capture and display are independent. Capture without display lets
+frames flow to DDR for vision processing without taking over the
+panel; display without capture freezes on the last frame (or shows
+fixed UI content under the rect).
+
+The video module no longer carries layout defaults — DisplayShow
+is a silent no-op until the caller has SetWindow'd a non-zero rect.
+Layout is app policy. App side calls SetWindow(280, 76, 720, 480)
+before DisplayShow to match prior visual behavior.
+
+Frame notification: isc_capture exposes a single low-level callback
+hook (called from the ISC DMA-done IRQ); video.c's on_frame_done
+ISR delivers a Video_FrameInfo (buffer pointer, frame count, w/h,
+bytes/pixel) via xQueueSendFromISR + portYIELD_FROM_ISR. Latency
+is one context switch — effectively instant for the consumer task.
+
+HEO scaler: 12.20 fixed-point factor = (src/dst) << 20, mirrors
+plib_xlcdc.c's CALC_SCALING_FACT. Bicubic luminance + chrominance
+(HEOCFG30/31) for best image quality. Scaler stays disabled when
+src == dst so 1:1 paths look identical to before.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+---
+6b85d5e Extract video pipeline into its own FreeRTOS task module
+New src/video/ folder grouping everything the video pipeline needs:
+- video.c/.h — owns the FreeRTOS task. Public API is just
+  Video_Initialize() called from APP_Initialize. Inside the task
+  body: one-time init (ISC + TC358743 + backlight + HEO unbind),
+  then a poll loop with vTaskDelay(20ms) that drives TC358743_Tasks
+  and the NONE↔ACTIVE state machine.
+- tc358743.{c,h} and isc_capture.{c,h} moved here. They were only
+  ever used by the video pipeline; co-locating makes the dependency
+  direction explicit and keeps sibling includes prefix-free.
+
+app.c slimmed: APP_Initialize just calls Video_Initialize();
+APP_Tasks is a no-op state machine ready for future non-video logic.
+The lAPP_Tasks busy-loop becomes harmless — it does nothing and
+gets preempted normally.
+
+user.cmake updated for new paths. .generated/file.cmake will catch
+up on next MCC regen.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+---
+```
+</details></tool-use>
