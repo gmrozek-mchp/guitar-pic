@@ -15,7 +15,10 @@
 #define ISC_CAP_MAX_W        1920u
 #define ISC_CAP_MAX_H        1080u
 #define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
-#define ISC_CAP_NUM_BUFFERS  2u
+/* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
+ * before the producer laps. 4 → ~50 ms read window. Static pool max is
+ * 4×1920×1080×3 ≈ 24 MB, trivial on 1 GB DDR3. */
+#define ISC_CAP_NUM_BUFFERS  4u
 /* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
  * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
  * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps

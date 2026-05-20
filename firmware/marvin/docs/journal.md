@@ -106,7 +106,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 Two-commit sequence opening up video capture for parallel CV consumers:
 
 1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
-2. **Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+2. **Ring depth from 2 to 4.** Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
 
 Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
 

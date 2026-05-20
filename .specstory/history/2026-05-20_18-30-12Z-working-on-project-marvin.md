@@ -17580,39 +17580,466 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/jo
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-7 2026-05-20 20:30:01Z)**_
+_**Agent (claude-opus-4-7 2026-05-20 20:30:02Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
 <summary>Tool use: **Edit**</summary>
 
-**Input:**
-
-- file_path: `/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md`
-- new_string:
-
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
-## Session log
+</details></tool-use>
 
-### 2026-05-20 — Video fan-out + per-frame buffer routing
+_**Agent (claude-opus-4-7 2026-05-20 20:30:07Z)**_
 
-Two-commit sequence opening up video capture for parallel CV consumers:
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage video fan-out changes
 
-1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
-2. **Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+`git add firmware/marvin/default/src/video/isc_capture.h firmware/marvin/default/src/video/isc_capture.c firmware/marvin/default/src/video/video.h firmware/marvin/default/src/video/video.c firmware/marvin/default/src/detector/cv_marvin_v1.c firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git status`
 
-Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/detector/cv_marvin_v1.c
+	modified:   firmware/marvin/default/src/video/isc_capture.c
+	modified:   firmware/marvin/default/src/video/isc_capture.h
+	modified:   firmware/marvin/default/src/video/video.c
+	modified:   firmware/marvin/default/src/video/video.h
+	modified:   firmware/marvin/docs/journal.md
+```
+</details></tool-use>
 
-### 2026-05-20 — M1 scaffolding landed
+_**Agent (claude-opus-4-7 2026-05-20 20:30:13Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Bump ISC_Capture frame callback signature to include completed buffer address
+- [X] 🌡️ Refactor video.c: multi-subscriber array, IRQ updates HEO to latest buffer + fans out to all subs
+- [X] 🌡️ Update video.h with multi-subscriber API + comment on policy
+- [X] 🌡️ Verify cv_marvin_v1 still works with new Video_FrameInfo.buffer semantics
+- [⚡] 🌡️ Commit (1): per-frame buffer routing + multi-subscriber
+- [ ] 🌡️ Bump ISC_CAP_NUM_BUFFERS to 4; verify alignment + DDR sizing
+- [ ] 🌡️ Commit (2): ring depth 4
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:30:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit per-frame buffer routing + multi-subscriber
+
+```bash
+git commit -m "$(cat <<'EOF'
+video: per-frame buffer routing; multi-subscriber fan-out
+
+Pre-fix: ISC_Capture_GetBufferAddress() returned the framebuffer base
+regardless of which descriptor-ring slot ISC just wrote, and HEO was
+bound once to that base. With NUM_BUFFERS=2, slot 1 was being written
+by every other ISC pass and silently overwritten — neither display
+nor cv_marvin_v1 ever saw frames written there. Effective behavior
+was ~half-rate display from a 60 fps capture.
+
+ISC frame callback now delivers the buffer address that was just
+completed. The MCC ISC driver pre-increments DrvISCObj.frameIndex
+before invoking the user callback (drv_isc.c:47-50), so the
+just-finished slot is (frameIndex - 1 + N) % N. isc_capture.c
+computes that and passes base + slot * dma.size into the callback:
+
+  typedef void (*ISC_Capture_FrameCallback)(uint32_t frame_count,
+                                            uint32_t buffer_addr,
+                                            uintptr_t ctx);
+
+video.c on_frame_done IRQ:
+- Stores the address in s_latest_buffer (read by Video_GetFrameInfo).
+- Re-points HEO at the latest buffer with XLCDC_SetLayerAddress(...,
+  update=true), which latches at next vsync. Skipped when display is
+  hidden. s_display_bound is now volatile because the IRQ reads it.
+- Fans the frame info out to up to VIDEO_MAX_SUBSCRIBERS (4) queues.
+
+lcd_bind seeds the initial HEO address from s_latest_buffer when
+available, falling back to the framebuffer base — the IRQ overwrites
+it on the next captured frame.
+
+Multi-subscriber API:
+
+  bool Video_SubscribeFrames(QueueHandle_t q);
+  bool Video_UnsubscribeFrames(QueueHandle_t q);
+
+Static array of 4 QueueHandle_t slots. Aligned-pointer slot stores
+are atomic on Cortex-A5 so the IRQ scans without locking; subscribe/
+unsubscribe take taskENTER_CRITICAL only to keep two task-side
+writers from racing on the same empty slot. Producer always uses
+xQueueSendFromISR (drop-on-full); each subscriber chooses its own
+queue depth as the back-pressure policy — depth 1 = "newest only",
+deeper = "preserve every frame at the cost of latency".
+
+cv_marvin_v1 now asserts on subscribe failure rather than silently
+ignoring a full-table return.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git log -1 --format="%h %s"
 ```
 
-- old_string:
-
+```text
+[freertos f689f7e] video: per-frame buffer routing; multi-subscriber fan-out
+ 8 files changed, 1274 insertions(+), 38 deletions(-)
+f689f7e video: per-frame buffer routing; multi-subscriber fan-out
 ```
-## Session log
+</details></tool-use>
 
-### 2026-05-20 — M1 scaffolding landed
+---
+
+_**User (2026-05-20 20:31:51Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The session continues marvin firmware development on the SAM9X75-based guitar-playing robot. Sequential explicit requests in this session:
+   
+   - **Request 1**: "yes start" + correction "note that the captured frames are XLCDC_RGB_COLOR_MODE_RGB_888_PACKED (24-bits per pixel), not BGRX32" — start implementing M1 reference detector scaffold.
+   
+   - **Request 2**: "to make sure I understand, 'detector' is meant to be generic interface to any detector? I'd like to have ability to enable one or more detectors at the same time for data capture, although only one should ever be active." — confirm architecture; multiple detectors enabled, only one active driving timing.
+   
+   - **Request 3**: "Yes add enable / active now. One other thought, I may want to add additional computer vision tasks beyond note / strum detection. For example, reading scores, navigating game menues, etc. should we add this as a 'detector' or should we have ability to register multiple consumers for video capture?" — implement enable/active; ask about non-note CV tasks.
+   
+   - **Request 4**: "let's commit this and then move to multi-subscriber to video capture. as part of video capture, I also want to investigate possibility of more than double buffer capture (I think this is what it is now?). Some cv tasks may not need to run at full 60fps and may need more processing time. Another approach could be use of gfx accelerator for blitting copy of frame or interesting smaller portions of frame to memory dedicated to specific cv task?" — commit, investigate buffer architecture options.
+   
+   - **Request 5 (most recent)**: "split 1 and 2 into two commits. defer 3 for now." — split into: (1) GetBufferAddress fix + multi-subscriber, (2) ring depth bump, defer (3) DMA copy.
+
+   **Standing project rules to preserve verbatim:**
+   - "never `git commit` on my own initiative; only on explicit user ask or after prompting" (auto-memory)
+   - "Code comments describe current code only" — no dev-diary in source comments (CLAUDE.md)
+   - "Journals are the source of truth for planning and progress" (CLAUDE.md)
+   - "prefer journal updates over re-stating plans in chat" (CLAUDE.md)
+   - Specstory files SHOULD be staged in commits (user clarified earlier session)
+   - MCC manifest churn should NOT be in commits
+
+2. Key Technical Concepts:
+   - SAM9X75 Curiosity (Cortex-A5, 1 GB DDR3) running MPLAB Harmony v5.6.4 + FreeRTOS
+   - HDMI capture: TC358743 → MIPI CSI-2 → ISC → DDR
+   - **Capture format: BGR888 packed (3 B/pixel)**, NOT BGRX32 — BYPASS+PACKED32+RMS=1
+   - LCDC display: XLCDC OVR1 + LVDSC, RGB_888_PACKED mode
+   - ISC descriptor ring: N buffers auto-computed from address0 + dma.size; driver tracks frameIndex incremented BEFORE callback
+   - FreeRTOS queues, xQueueSendFromISR with portYIELD_FROM_ISR
+   - `detector_state_t` canonical record (frame_epoch + timestamp_us + detector_id + 5 frets)
+   - Three-axis design: multi-subscriber video, ring depth >2, XDMAC mem-to-mem (SAM9X75 has NO dedicated 2D blit engine)
+   - `XLCDC_SetLayerAddress(layer, addr, true)` latches at next vsync
+   - Cortex-A5 atomicity: aligned 32-bit reads/writes are atomic; taskENTER_CRITICAL disables IRQs
+
+3. Files and Code Sections:
+
+   - **`firmware/marvin/default/src/detector/detector.h`** (NEW, then edited)
+     Types `detector_state_t`, `fret_t`, `detector_id_t`. Added enable/active API:
+     ```c
+     void Detector_Enable(detector_id_t id);
+     void Detector_Disable(detector_id_t id);
+     bool Detector_IsEnabled(detector_id_t id);
+     void Detector_SetActive(detector_id_t id);
+     detector_id_t Detector_GetActive(void);
+     ```
+
+   - **`firmware/marvin/default/src/detector/detector.c`** (NEW)
+     Bus queue + DetectorDrain task. Storage:
+     ```c
+     static QueueHandle_t   s_bus_queue;
+     static volatile uint32_t s_enabled_mask;
+     static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
+     ```
+     Enable/Disable use taskENTER_CRITICAL; IsEnabled uses naked atomic 32-bit read.
+
+   - **`firmware/marvin/default/src/detector/cv_marvin_v1.{h,c}`** (NEW)
+     Subscribes to video frames, publishes dummy detector_state_t. Gated on Detector_IsEnabled. Latest version asserts on Video_SubscribeFrames return:
+     ```c
+     bool subscribed = Video_SubscribeFrames(frames);
+     configASSERT(subscribed);
+     ```
+
+   - **`firmware/marvin/default/src/video/isc_capture.h`** (MODIFIED)
+     New callback signature includes buffer_addr:
+     ```c
+     typedef void (*ISC_Capture_FrameCallback)(uint32_t frame_count,
+                                               uint32_t buffer_addr,
+                                               uintptr_t ctx);
+     ```
+
+   - **`firmware/marvin/default/src/video/isc_capture.c`** (MODIFIED)
+     New isc_frame_done computes completed slot:
+     ```c
+     static void isc_frame_done(uintptr_t ctx)
+     {
+         DRV_ISC_OBJ *obj = (DRV_ISC_OBJ *)ctx;
+         uint32_t n = obj->dmaDescSize;
+         uint32_t completed = (obj->frameIndex == 0u)
+                            ? (n - 1u)
+                            : (obj->frameIndex - 1u);
+         uint32_t addr = (uint32_t)(uintptr_t)g_framebuffer
+                       + completed * obj->dma.size;
+         g_frame_count++;
+         ISC_Capture_FrameCallback cb = s_frame_cb;
+         if (cb != NULL) { cb(g_frame_count, addr, s_frame_ctx); }
+     }
+     ```
+     `ISC_CAP_NUM_BUFFERS=2u` still — to bump in next commit.
+
+   - **`firmware/marvin/default/src/video/video.h`** (MODIFIED)
+     Multi-subscriber API:
+     ```c
+     bool Video_SubscribeFrames(QueueHandle_t q);
+     bool Video_UnsubscribeFrames(QueueHandle_t q);
+     ```
+     With detailed back-pressure policy comment.
+
+   - **`firmware/marvin/default/src/video/video.c`** (MODIFIED)
+     ```c
+     #define VIDEO_MAX_SUBSCRIBERS  4u
+     static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS];
+     static volatile uint32_t s_latest_buffer;
+     static volatile bool s_display_bound;  // now volatile, IRQ reads
+     ```
+     IRQ updates HEO and fans out:
+     ```c
+     static void on_frame_done(uint32_t frame_count, uint32_t buffer_addr, uintptr_t ctx)
+     {
+         s_latest_buffer = buffer_addr;
+         if (s_display_bound) {
+             XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, buffer_addr, true);
+         }
+         Video_FrameInfo info = { .buffer = (void*)buffer_addr, ... };
+         BaseType_t hp = pdFALSE;
+         for (uint8_t i = 0; i < VIDEO_MAX_SUBSCRIBERS; i++) {
+             if (s_subscribers[i] != NULL)
+                 (void)xQueueSendFromISR(s_subscribers[i], &info, &hp);
+         }
+         portYIELD_FROM_ISR(hp);
+     }
+     ```
+     Subscribe/Unsubscribe use taskENTER_CRITICAL for slot writes.
+     lcd_bind seeds initial HEO addr from s_latest_buffer || GetBufferAddress.
+
+   - **`firmware/marvin/default/src/app.c`** (MODIFIED)
+     Calls `Detector_Initialize(); Detector_Enable(DETECTOR_CV_MARVIN_V1); Detector_SetActive(DETECTOR_CV_MARVIN_V1);` after Video_*.
+
+   - **`firmware/marvin/cmake/marvin/default/user.cmake`** (MODIFIED)
+     Adds detector.c and cv_marvin_v1.c to target_sources.
+
+   - **`firmware/marvin/docs/journal.md`** (MODIFIED)
+     New decision-log entries for: M1 scaffold, frame_epoch source, detector control model, video-vs-detector architecture, per-frame buffer routing, multi-subscriber. Carried-forward open question on BGRX32 doc-drift. Two new session-log entries.
+
+   - **`firmware/marvin/docs/spec.md`** (MODIFIED)
+     §4.2.2 only: "BGRX32 frames" → "RGB888-packed (3 B/pixel) frames".
+
+4. Errors and fixes:
+   - **User correction on capture format**: User said capture is `XLCDC_RGB_COLOR_MODE_RGB_888_PACKED` (24-bit), not BGRX32 as documented in spec. I confirmed via isc_capture.c:17 (`ISC_CAP_BPP=3u`) and updated spec §4.2.2 inline; flagged broader 10-place spec sweep as carried-forward debt.
+   
+   - **Discovered latent bug: half-rate display**: `ISC_Capture_GetBufferAddress()` returned only base; HEO bound once meant only slot 0 was ever observed. Fixed by extending callback to deliver completed buffer address and re-pointing HEO each frame.
+
+   - **CRLF warnings on specstory files**: Harmless, expected.
+
+5. Problem Solving:
+   - Designed enable-many/active-one detector model: bitmap for enabled, single uint8 for active. taskENTER_CRITICAL on writes only since aligned reads are atomic.
+   - Architectural decision: non-note CV tasks (menu, score) are video-frame consumers, NOT detectors. detector_state_t stays narrow.
+   - Verified ISC driver auto-resets frameIndex on Configure (drv_isc.c:385), so stop/start cycles stay in sync after extending callback to use frameIndex.
+   - Verified SAM9X75 has only XDMAC for mem-to-mem (no dedicated 2D blit engine); deferred per-task DMA copy until first slow/sub-region consumer arrives.
+
+6. All user messages:
+   - "yes start. note that the captured frames are XLCDC_RGB_COLOR_MODE_RGB_888_PACKED (24-bits per pixel), not BGRX32"
+   - "to make sure I understand, 'detector' is meant to be generic interface to any detector? I'd like to have ability to enable one or more detectors at the same time for data capture, although only one should ever be active."
+   - "Yes add enable / active now. One other thought, I may want to add additional computer vision tasks beyond note / strum detection. For example, reading scores, navigating game menues, etc. should we add this as a 'detector' or should we have ability to register multiple consumers for video capture?"
+   - "let's commit this and then move to multi-subscriber to video capture. as part of video capture, I also want to investigate possibility of more than double buffer capture (I think this is what it is now?). Some cv tasks may not need to run at full 60fps and may need more processing time. Another approach could be use of gfx accelerator for blitting copy of frame or interesting smaller portions of frame to memory dedicated to specific cv task?"
+   - "split 1 and 2 into two commits. defer 3 for now."
+
+7. Pending Tasks:
+   - **Commit (2): bump `ISC_CAP_NUM_BUFFERS` from 2 to 4** in `firmware/marvin/default/src/video/isc_capture.c:18`. Verify alignment (32-byte buffer-start alignment for HEO requirement; current 720×480×3=1036800 % 32 = 0, OK). Verify DDR sizing (4×1080×1920×3 = ~24 MB out of 1 GB DDR3 — trivial). Update journal entry. Commit with appropriate message.
+   - **Deferred**: Per-task XDMAC sub-region copies for slow / sub-region CV consumers — wait until first such consumer arrives.
+
+8. Current Work:
+   Just committed commit (1) as `f689f7e` with message "video: per-frame buffer routing; multi-subscriber fan-out". The working tree is clean except for specstory updates that arrive after commit. Todo list state:
+   - All commit (1) tasks: COMPLETED
+   - "Bump ISC_CAP_NUM_BUFFERS to 4; verify alignment + DDR sizing": PENDING
+   - "Commit (2): ring depth 4": PENDING
+   
+   The journal already contains a session-log entry referencing commit (2) as "next commit": "Ring depth from 2 to 4 (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping."
+
+9. Optional Next Step:
+   Per user's explicit instruction: "split 1 and 2 into two commits. defer 3 for now." — having just completed commit (1), the next step is commit (2): bump `ISC_CAP_NUM_BUFFERS` from 2 to 4 in `firmware/marvin/default/src/video/isc_capture.c`, then commit.
+   
+   Direct quote from my last assistant message that names this task: "**Bump ring depth to 4 (or make it configurable).** Cheap; gives subscribers a ~50 ms read window. Defer 8 unless we have a consumer that wants it."
+   
+   And the journal entry just written: "**Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping."
+   
+   The commit message should note: depth 4 gives ~50 ms read window for subscribers holding a buffer pointer; static framebuffer pool grows to ~24 MB at max 1920×1080 (still trivial on 1 GB DDR3); 720×480×3 = 1.04 MB/buffer × 4 = 4.16 MB at typical use; alignment preserved (each buffer start is 32-byte aligned because frame_size at supported resolutions divides by 32).
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-20 20:31:54Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:31:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check git status and recent log
+
+`git status && git log --oneline -5`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+
+no changes added to commit (use "git add" and/or "git commit -a")
+f689f7e video: per-frame buffer routing; multi-subscriber fan-out
+d33bd87 detector: bus + cv_marvin_v1 stub; enable/active controls
+9226199 docs: top-level reorg + marvin system spec, journal split
+a79042f log: lightweight severity-filtered printf shim; convert callers
+4b550ed app: self-delete after launching tasks
 ```
+</details></tool-use>
 
-- replace_all: `false`
+_**Agent (claude-opus-4-7 2026-05-20 20:32:01Z)**_
 
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:06Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:14Z)**_
+
+Now let me check the journal for the entry I previously wrote about the upcoming ring-depth bump, and update it to reflect that it's landed.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:14Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find ring-depth entries in journal
+
+`grep -n "Ring depth\|ring depth\|NUM_BUFFERS\|next commit" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md | head -30`
+
+```text
+59:| 2026-05-20 | `Video_FrameInfo.buffer` now reflects the buffer that just completed (per-frame routing); HEO is re-pointed in the ISR every frame so the panel sees every captured frame | Pre-fix: `ISC_Capture_GetBufferAddress()` returned the framebuffer base regardless of which descriptor-ring slot ISC just wrote, and HEO was bound once to the base — so HEO only ever read slot 0, and slot 1 was written but never observed. Effective behavior was ~half-rate display. Fix: ISC IRQ computes `slot = (frameIndex - 1 + N) % N` (driver increments before callback per drv_isc.c:47-50), passes `base + slot * frame_size` into the user callback, and video.c re-points HEO at that address with `XLCDC_SetLayerAddress(..., update=true)` — latches at next vsync. Also unblocks ring depth > 2 since each subscriber sees the genuinely-just-written buffer. |
+109:2. **Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:17Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+95	
+96	- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+97	
+98	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+99	
+100	---
+101	
+102	## Session log
+103	
+104	### 2026-05-20 — Video fan-out + per-frame buffer routing
+105	
+106	Two-commit sequence opening up video capture for parallel CV consumers:
+107	
+108	1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+109	2. **Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+110	
+111	Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+112	
+113	### 2026-05-20 — M1 scaffolding landed
+114	
+115	Stood up the detector subsystem skeleton. New module at `default/src/detector/`:
+116	
+117	- `detector.h` — `detector_state_t` (canonical layout from spec §4.2.3), `fret_t` enum, `detector_id_t` enum, `Detector_Initialize`, `Detector_BusQueue`.
+118	- `detector.c` — owns `xDetectorStateQueue` (depth 8, holds `detector_state_t`) and a temporary `DetectorDrain` task that consumes the bus and logs records/sec at INFO. Drain task is M1-only scaffolding; the timing pipeline (M3) will replace it as sole consumer.
+119	- `cv_marvin_v1.{h,c}` — owns its FreeRTOS task. Creates a depth-1 frame queue, calls `Video_SubscribeFrames`, blocks on `xQueueReceive`, publishes one `detector_state_t` per frame with `frame_epoch = frame.frame_count`, `timestamp_us = xTaskGetTickCount() × CV_US_PER_TICK`, all-zero `fret[]`.
+120	
+121	Wired from `app.c`'s `APP_Initialize` after `Video_Initialize`. Added both `.c` files to `cmake/marvin/default/user.cmake`. No code change to video or capture; `Video_FrameInfo.bytes_per_pixel` already reports 3 (RGB888 packed).
+122	
+123	Spec touch-up: §4.2.2 "BGRX32 frames" → "RGB888-packed (3 B/pixel) frames". Surfaced the broader spec drift on capture format as a carried-forward open question — deserves a doc-only sweep before M5 (recording schema depends on it).
+124
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:22Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:25Z)**_
+
+Now let me verify the build by checking that the change compiles cleanly. Actually, let me first verify the diff is what I expect.
+
+_**Agent (claude-opus-4-7 2026-05-20 20:32:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Review pending changes
+
+`git diff firmware/marvin/default/src/video/isc_capture.c firmware/marvin/docs/journal.md`
+
+```text
+diff --git a/firmware/marvin/default/src/video/isc_capture.c b/firmware/marvin/default/src/video/isc_capture.c
+index 6bcde37..43509e3 100644
+--- a/firmware/marvin/default/src/video/isc_capture.c
++++ b/firmware/marvin/default/src/video/isc_capture.c
+@@ -15,7 +15,10 @@
+ #define ISC_CAP_MAX_W        1920u
+ #define ISC_CAP_MAX_H        1080u
+ #define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
+-#define ISC_CAP_NUM_BUFFERS  2u
++/* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
++ * before the producer laps. 4 → ~50 ms read window. Static pool max is
++ * 4×1920×1080×3 ≈ 24 MB, trivial on 1 GB DDR3. */
++#define ISC_CAP_NUM_BUFFERS  4u
+ /* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
+  * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
+  * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps
+diff --git a/firmware/marvin/docs/journal.md b/firmware/marvin/docs/journal.md
+index 4c96aa6..32dd1a7 100644
+--- a/firmware/marvin/docs/journal.md
++++ b/firmware/marvin/docs/journal.md
+@@ -106,7 +106,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
+ Two-commit sequence opening up video capture for parallel CV consumers:
+ 
+ 1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+-2. **Ring depth from 2 to 4** (next commit). Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
++2. **Ring depth from 2 to 4.** Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+ 
+ Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+```
 </details></tool-use>
