@@ -48355,3 +48355,131 @@ _**User (2026-05-21 04:52:20Z)**_
 _**User (2026-05-21 04:52:39Z)**_
 
 no! The MCC changes are part of this USB addition.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 04:52:43Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 04:52:45Z)**_
+
+Got it — the MCC files are the USB host regen artifacts, they belong in this commit. I'll add the unstaged code/doc changes to staging and commit everything together.
+
+_**Agent (claude-opus-4-7 2026-05-21 04:52:45Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage remaining files and show status
+
+`git add firmware/marvin/default/src/actuator/fretboard_link.c firmware/marvin/default/src/app.c firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git status`
+
+```text
+warning: in the working copy of 'firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c', CRLF will be replaced by LF the next time Git touches it
+On branch freertos
+Changes to be committed:
+  (use "git restore --staged <file>..." to unstage)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/mcc/marvin_default/components/FreeRTOS.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/core.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/dbgu.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/drv_usbhs_v1.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/flexcom6.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/le_gfx_driver_xlcdc.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/pit.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/components/tc0.yml
+	modified:   firmware/marvin/default/mcc/marvin_default/mcc-config.mc4
+	modified:   firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+	modified:   firmware/marvin/default/mcc/mcc-manifest-generated-success.yml
+	modified:   firmware/marvin/default/src/actuator/fretboard_link.c
+	modified:   firmware/marvin/default/src/app.c
+	modified:   firmware/marvin/default/src/config/default/configuration.h
+	modified:   firmware/marvin/default/src/config/default/definitions.h
+	modified:   firmware/marvin/default/src/config/default/harmony-manifest-success.yml
+	modified:   firmware/marvin/default/src/config/default/initialization.c
+	modified:   firmware/marvin/default/src/config/default/peripheral/clk/plib_clk.c
+	modified:   firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c
+	modified:   firmware/marvin/docs/journal.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 04:52:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit USB host CDC fix and related changes
+
+```bash
+git commit -m "$(cat <<'EOF'
+usb host: bind CDC class driver to EDBG composite bridges
+
+The host CDC class driver hardcoded bInterfaceProtocol == AT_V250 (0x01)
+in F_USB_HOST_CDC_InterfaceAssign for both the single-interface and IAD
+paths. EDBG-style USB-to-UART bridges (the on-board debugger CDC on the
+fretboard board) declare the comm interface with bInterfaceProtocol == 0
+(NO_CLASS_SPECIFIC). TPL/IAD match accepted the device but the per-
+interface check rejected it, the interrupt pipe never opened, the CDC
+instance flipped to STATE_ERROR, and the app-level attach handler never
+fired. Relax both checks to (AT_V250 || NO_CLASS_SPECIFIC). Logged as
+patch #7 in journal.md so it gets re-applied after future MCC regens.
+
+Also pulled in the host-side regen that drove this debug pass and reordered
+APP_Initialize to register the CDC attach listener (and a minimal
+USB_HOST_EVENT logger) before USB_HOST_BusEnable, since the host stack
+only matches a class driver if its attach handler is in place when
+enumeration completes.
+
+Stripped the diagnostic OHCI/EHCI register heartbeat from fretboard_link.c
+now that enumeration and CDC binding are working end-to-end. Startup
+banner and the CDC-attached log line stay.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[freertos 39c42b0] usb host: bind CDC class driver to EDBG composite bridges
+ 22 files changed, 17150 insertions(+), 734 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 04:52:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify commit and show recent log
+
+`git status && git log -3 --oneline`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+
+no changes added to commit (use "git add" and/or "git commit -a")
+39c42b0 usb host: bind CDC class driver to EDBG composite bridges
+408907c usb: assert VBUS GPIOs at app level, ahead of consumer init
+b46314b mcc: revert SYS_Initialize peripheral order broken by USB regen
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 04:53:03Z)**_
+
+Committed as `39c42b0`. Specstory updates from the commit itself are dirty again — that's normal, they auto-update post-commit.
+
+Good night. EDBG enumerates and CDC binds end-to-end; next session you've got a live actuator wire to start exercising the timing pipeline against.
+
+---
+
+_**User (2026-05-21 04:54:07Z)**_
+
+<command-name>/compact</command-name>
+            <command-message>compact</command-message>
+            <command-args></command-args>
+
+_**User (2026-05-21 07:14:23Z)**_
+
+<local-command-caveat>Caveat: The messages below were generated by the user while running local commands. DO NOT respond to these messages or otherwise consider them in your response unless the user explicitly asks you to.</local-command-caveat>
