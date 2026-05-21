@@ -1,0 +1,214 @@
+#include "fretboard_link.h"
+#include "timing_pipeline.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "semphr.h"
+
+#include "definitions.h"
+#include "log.h"
+#include "usb/usb_host.h"
+#include "usb/usb_host_cdc.h"
+#include "usb/usb_cdc.h"
+
+#define FBL_TASK_STACK_WORDS    768u
+#define FBL_TASK_PRIORITY       2u
+
+/* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
+ * a stalled detector or paused game can't leave a stale frets-active
+ * pattern stuck on the wire. 50 ms is well below human-perceptible. */
+#define FBL_HEARTBEAT_MS        50u
+
+#define FBL_WRITE_TIMEOUT_MS    100u
+
+/* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
+ * a sane default avoids implementation quirks on hosts that gate writes on
+ * a successful SET_LINE_CODING. Matches actuator.py. */
+#define FBL_BAUDRATE            115200u
+
+static QueueHandle_t s_cmd_queue;
+static StackType_t   s_task_stack[FBL_TASK_STACK_WORDS];
+static StaticTask_t  s_task_tcb;
+
+static SemaphoreHandle_t s_write_done;
+static StaticSemaphore_t s_write_done_buf;
+
+static volatile USB_HOST_CDC_OBJ    s_cdc_obj_pending = (USB_HOST_CDC_OBJ)0;
+static volatile bool                s_cdc_obj_valid;
+static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+static volatile bool                s_connected;
+static volatile USB_HOST_CDC_RESULT s_last_write_result;
+
+static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
+                                                    USB_HOST_CDC_EVENT event,
+                                                    void *eventData,
+                                                    uintptr_t context)
+{
+    (void)handle;
+    (void)context;
+
+    switch (event)
+    {
+        case USB_HOST_CDC_EVENT_WRITE_COMPLETE:
+        {
+            const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
+            s_last_write_result = d->result;
+            BaseType_t hpw = pdFALSE;
+            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+            portYIELD_FROM_ISR(hpw);
+            break;
+        }
+        case USB_HOST_CDC_EVENT_DEVICE_DETACHED:
+        {
+            s_connected = false;
+            /* Wake any pending writer so it observes the detach instead
+             * of waiting out the timeout. */
+            BaseType_t hpw = pdFALSE;
+            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+            portYIELD_FROM_ISR(hpw);
+            break;
+        }
+        default:
+            break;
+    }
+    return USB_HOST_CDC_EVENT_RESPONE_NONE;
+}
+
+static void cdc_attach_handler(USB_HOST_CDC_OBJ obj, uintptr_t context)
+{
+    (void)context;
+    /* Hand the object to the link task; opening the device must happen
+     * outside the host stack callback. */
+    s_cdc_obj_pending = obj;
+    s_cdc_obj_valid   = true;
+}
+
+static void close_cdc(void)
+{
+    if (s_cdc_handle != USB_HOST_CDC_HANDLE_INVALID)
+    {
+        USB_HOST_CDC_Close(s_cdc_handle);
+        s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+    }
+    s_connected = false;
+}
+
+static bool open_cdc(USB_HOST_CDC_OBJ obj)
+{
+    USB_HOST_CDC_HANDLE h = USB_HOST_CDC_Open(obj);
+    if (h == USB_HOST_CDC_HANDLE_INVALID) { return false; }
+
+    if (USB_HOST_CDC_EventHandlerSet(h, cdc_event_handler, 0u) != USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        USB_HOST_CDC_Close(h);
+        return false;
+    }
+
+    static const USB_CDC_LINE_CODING line_coding =
+    {
+        .dwDTERate   = FBL_BAUDRATE,
+        .bCharFormat = USB_CDC_LINE_CODING_STOP_1_BIT,
+        .bParityType = USB_CDC_LINE_CODING_PARITY_NONE,
+        .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
+    };
+    USB_HOST_CDC_REQUEST_HANDLE rh;
+    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, (USB_CDC_LINE_CODING *)&line_coding);
+
+    s_cdc_handle = h;
+    s_connected  = true;
+    LOG_INFO("FBL: CDC device attached, handle opened\r\n");
+    return true;
+}
+
+static bool send_one_byte(uint8_t mask)
+{
+    if (!s_connected) { return false; }
+
+    static uint8_t tx_byte;
+    tx_byte = (uint8_t)(mask & 0x7F);
+
+    /* Drain any prior signal so we wait for *this* write's completion. */
+    (void)xSemaphoreTake(s_write_done, 0);
+
+    USB_HOST_CDC_TRANSFER_HANDLE th;
+    USB_HOST_CDC_RESULT r = USB_HOST_CDC_Write(s_cdc_handle, &th, &tx_byte, 1u);
+    if (r != USB_HOST_CDC_RESULT_SUCCESS) { return false; }
+
+    if (xSemaphoreTake(s_write_done, pdMS_TO_TICKS(FBL_WRITE_TIMEOUT_MS)) != pdTRUE)
+    {
+        LOG_WARN("FBL: write timeout, marking detached\r\n");
+        close_cdc();
+        return false;
+    }
+    if (s_last_write_result != USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        return false;
+    }
+    return true;
+}
+
+static void fretboard_link_task(void *param)
+{
+    (void)param;
+
+    USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+    if (USB_HOST_BusEnable(USB_HOST_BUS_ALL) != USB_HOST_RESULT_SUCCESS)
+    {
+        LOG_ERROR("FBL: USB_HOST_BusEnable failed\r\n");
+    }
+
+    LOG_INFO("FBL: fretboard link started\r\n");
+
+    uint8_t last_mask = 0u;
+
+    for (;;)
+    {
+        if (s_cdc_obj_valid && s_cdc_handle == USB_HOST_CDC_HANDLE_INVALID)
+        {
+            s_cdc_obj_valid = false;
+            (void)open_cdc(s_cdc_obj_pending);
+        }
+
+        uint8_t mask;
+        if (xQueueReceive(s_cmd_queue, &mask, pdMS_TO_TICKS(FBL_HEARTBEAT_MS)) == pdTRUE)
+        {
+            last_mask = mask;
+        }
+        else
+        {
+            mask = last_mask;
+        }
+
+        if (s_connected)
+        {
+            (void)send_one_byte(mask);
+        }
+    }
+}
+
+void FretboardLink_Initialize(void)
+{
+    s_cmd_queue = TimingPipeline_CmdQueue();
+    configASSERT(s_cmd_queue != NULL);
+
+    s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
+    configASSERT(s_write_done != NULL);
+
+    (void)xTaskCreateStatic(fretboard_link_task,
+                            "FretLink",
+                            FBL_TASK_STACK_WORDS,
+                            NULL,
+                            FBL_TASK_PRIORITY,
+                            s_task_stack,
+                            &s_task_tcb);
+}
+
+bool FretboardLink_IsConnected(void)
+{
+    return s_connected;
+}

@@ -23698,35 +23698,4047 @@ Going with a new commit — project rule is "new commits rather than amending un
 
 Adding a session-log entry first to close out the session per the project's journal convention.
 
-_**Agent (claude-opus-4-7 2026-05-20 22:13:32Z)**_
+_**Agent (claude-opus-4-7 2026-05-20 22:13:33Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
 <summary>Tool use: **Edit**</summary>
 
-**Input:**
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
 
-- file_path: `/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md`
-- new_string:
+_**Agent (claude-opus-4-7 2026-05-20 22:13:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit journal updates closing the session
+
+```bash
+git status --short && git add firmware/marvin/docs/journal.md .specstory/ && git commit -m "$(cat <<'EOF'
+docs: log MCC USB VBUS patch + close out session
+
+Adds patch #5 to the MCC re-apply list (initialization.c VBUS power-
+enable can't use MCC's single-pin assumption when VBUS is configured
+on PC27+PC31), and a session-log entry covering today's three threads:
+static-allocation conversion, cv_marvin_v1 reference port, and USB
+CDC host bring-up.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status --short
+```
+
+```text
+ M .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+ M .specstory/statistics.json
+ M firmware/marvin/docs/journal.md
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos 0e9bc18] docs: log MCC USB VBUS patch + close out session
+ 3 files changed, 344 insertions(+), 6 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-20 22:13:44Z)**_
+
+Committed as `0e9bc18`. Working tree is clean.
+
+**Yes, good place to wrap.** State of play:
+
+- Build clean ✓
+- cv_marvin_v1 ported (unverified — needs hardware)
+- USB CDC host stack landed on marvin (unverified — needs fretboard endpoint)
+- Three commits today on `freertos` branch: cv_marvin_v1 + nocache → USB CDC host MCC → session-close docs
+- All MCC re-apply patches captured in journal (now five)
+
+**Next session pick-up:** USB device CDC in MCC on the fretboard side, then wire-protocol design on paper before either host or device code is written. Journal session-log entry has the breadcrumb.
+
+Goodnight.
+
+---
+
+_**User (2026-05-21 01:06:11Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/fret-tuner/actuator.py in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+already have device cdc on the fretboard side through the onboard debugger. Let's just implment the simiple protocol that we already implemented in fret-tuner actuator? Should we split up into multiple layers in marvin? Do actuators run the note / chord / strum queue? Something to consider is actuators may have different timing requirements. For example, direct digital signal assertion has effectively instantaneous assertion whereas different actuator like physical solenoid pressing button will have actuation delays.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:06:31Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:06:31Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./tools/fret-tuner/actuator.py`
+
+```text
+1	"""
+2	Actuator -- Python port of firmware/fretboard/fret_button.c
+3	
+4	Translates detector press/release edges into a timed sequence of
+5	fret assertions and strum pulses, then sends a 1-byte GPIO bitmask
+6	to the actuator microcontroller over its own UART.
+7	
+8	Driven by sample timestamps (not wall clock) so behavior is identical
+9	in live and CSV replay modes.
+10	
+11	The actuator is an always-on subsystem: it owns its own serial port
+12	(or shares one with the data source when the same physical device
+13	is used for both ADC streaming and GPIO output). Port selection,
+14	reconnect, and enable-gating are managed here so the timing pipeline
+15	runs regardless of which detector is active.
+16	"""
+17	
+18	import logging
+19	import threading
+20	import time
+21	from collections import deque
+22	from typing import Callable, Optional
+23	
+24	import serial
+25	
+26	from stream import CHANNELS
+27	
+28	log = logging.getLogger("fret-tuner.actuator")
+29	
+30	# Bitmask bit positions (must match cmd_receive.h)
+31	BIT_GREEN = 1 << 0
+32	BIT_RED = 1 << 1
+33	BIT_YELLOW = 1 << 2
+34	BIT_BLUE = 1 << 3
+35	BIT_ORANGE = 1 << 4
+36	BIT_STRUM_DOWN = 1 << 5
+37	BIT_STRUM_UP = 1 << 6
+38	
+39	CHANNEL_BITS = {
+40	    "green": BIT_GREEN,
+41	    "red": BIT_RED,
+42	    "yellow": BIT_YELLOW,
+43	    "blue": BIT_BLUE,
+44	    "orange": BIT_ORANGE,
+45	}
+46	
+47	FIFO_CAP = 16
+48	
+49	DEFAULT_TIMING = {
+50	    "STRUM_DELAY_MS": 220,
+51	    "FRET_EARLY_MS": 50,
+52	    "STRUM_PULSE_MS": 50,
+53	    "CHORD_WINDOW_MS": 20,
+54	}
+55	
+56	ACTUATOR_BAUDRATE = 115200
+57	RECONNECT_INTERVAL = 2.0
+58	
+59	
+60	class _PendingNote:
+61	    __slots__ = ("fret_mask", "assert_at")
+62	
+63	    def __init__(self, fret_mask: int, assert_at: float):
+64	        self.fret_mask = fret_mask
+65	        self.assert_at = assert_at
+66	
+67	
+68	class _PendingStrum:
+69	    __slots__ = ("fret_mask", "strum_at")
+70	
+71	    def __init__(self, fret_mask: int, strum_at: float):
+72	        self.fret_mask = fret_mask
+73	        self.strum_at = strum_at
+74	
+75	
+76	class Actuator:
+77	    """Strum timing pipeline + always-on serial GPIO output.
+78	
+79	    Two attach modes:
+80	
+81	    * **owned**: actuator opens the port itself and manages reconnect.
+82	      Use `attach(port_name)` / `detach()`.
+83	    * **shared**: a serial handle was opened elsewhere (the data-side
+84	      reader) and we just write to it. The owner is responsible for
+85	      reopening on disconnect; after each reopen they re-call
+86	      `attach_shared(...)` with the new handle.
+87	    """
+88	
+89	    def __init__(self):
+90	        self._ser: Optional[serial.Serial] = None
+91	        self._port_name: Optional[str] = None
+92	        self._owned: bool = False
+93	        self._connected: bool = False
+94	        self._enabled: bool = False
+95	
+96	        self.strum_delay_ms: float = DEFAULT_TIMING["STRUM_DELAY_MS"]
+97	        self.fret_early_ms: float = DEFAULT_TIMING["FRET_EARLY_MS"]
+98	        self.strum_pulse_ms: float = DEFAULT_TIMING["STRUM_PULSE_MS"]
+99	        self.chord_window_ms: float = DEFAULT_TIMING["CHORD_WINDOW_MS"]
+100	
+101	        self._note_q: deque[_PendingNote] = deque(maxlen=FIFO_CAP)
+102	        self._strum_q: deque[_PendingStrum] = deque(maxlen=FIFO_CAP)
+103	
+104	        self._release_at: dict[str, float] = {}
+105	        self._release_pending: dict[str, bool] = {ch: False for ch in CHANNELS}
+106	
+107	        self._chord_open = False
+108	        self._chord_start: float = 0.0
+109	        self._chord_mask: int = 0
+110	
+111	        self._frets_active: int = 0
+112	        self._strum_active = False
+113	        self._strum_release_at: float = 0.0
+114	        self._strum_direction = False
+115	
+116	        self._prev_pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
+117	        self._prev_press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
+118	        self._output_mask: int = 0
+119	
+120	        self._lock = threading.Lock()
+121	        self._listeners: list[Callable[[dict], None]] = []
+122	        self._reconnect_stop = threading.Event()
+123	        self._reconnect_thread: Optional[threading.Thread] = None
+124	
+125	    # ----- public introspection / config ---------------------------------
+126	
+127	    @property
+128	    def enabled(self) -> bool:
+129	        return self._enabled
+130	
+131	    @property
+132	    def output_mask(self) -> int:
+133	        return self._output_mask
+134	
+135	    def status(self) -> dict:
+136	        return {
+137	            "active": self._port_name is not None,
+138	            "port": self._port_name,
+139	            "owned": self._owned,
+140	            "connected": self._connected,
+141	            "enabled": self._enabled,
+142	        }
+143	
+144	    def add_status_listener(self, fn: Callable[[dict], None]) -> None:
+145	        self._listeners.append(fn)
+146	
+147	    def set_enabled(self, enabled: bool) -> None:
+148	        self._enabled = enabled
+149	        if not enabled:
+150	            self._release_all()
+151	        self._notify()
+152	
+153	    def set_timing(self, **params) -> None:
+154	        for key, val in params.items():
+155	            if key == "STRUM_DELAY_MS":
+156	                self.strum_delay_ms = float(val)
+157	            elif key == "FRET_EARLY_MS":
+158	                self.fret_early_ms = float(val)
+159	            elif key == "STRUM_PULSE_MS":
+160	                self.strum_pulse_ms = float(val)
+161	            elif key == "CHORD_WINDOW_MS":
+162	                self.chord_window_ms = float(val)
+163	
+164	    # ----- port lifecycle ------------------------------------------------
+165	
+166	    def attach(self, port_name: str) -> bool:
+167	        """Open `port_name` ourselves; the actuator owns the handle."""
+168	        self.detach()
+169	        try:
+170	            ser = serial.Serial(
+171	                port=port_name,
+172	                baudrate=ACTUATOR_BAUDRATE,
+173	                bytesize=serial.EIGHTBITS,
+174	                parity=serial.PARITY_NONE,
+175	                stopbits=serial.STOPBITS_ONE,
+176	                timeout=0.1,
+177	            )
+178	        except (serial.SerialException, OSError) as exc:
+179	            log.warning("actuator: open %s failed: %s", port_name, exc)
+180	            with self._lock:
+181	                self._port_name = port_name
+182	                self._owned = True
+183	                self._connected = False
+184	                self._ser = None
+185	            self._notify()
+186	            self._start_reconnect_worker()
+187	            return False
+188	
+189	        with self._lock:
+190	            self._ser = ser
+191	            self._port_name = port_name
+192	            self._owned = True
+193	            self._connected = True
+194	        log.info("actuator: opened %s", port_name)
+195	        self._notify()
+196	        self._start_reconnect_worker()
+197	        return True
+198	
+199	    def attach_shared(self, port_name: str, ser: serial.Serial) -> None:
+200	        """Use an externally-owned handle. Caller manages connect/reconnect."""
+201	        self.detach()
+202	        with self._lock:
+203	            self._ser = ser
+204	            self._port_name = port_name
+205	            self._owned = False
+206	            self._connected = bool(ser and ser.is_open)
+207	        log.info("actuator: attached shared port %s", port_name)
+208	        self._notify()
+209	
+210	    def detach(self) -> None:
+211	        """Release any current port (closes only if we own the handle)."""
+212	        self._stop_reconnect_worker()
+213	        with self._lock:
+214	            ser = self._ser
+215	            owned = self._owned
+216	            self._ser = None
+217	            self._port_name = None
+218	            self._owned = False
+219	            self._connected = False
+220	        if owned and ser is not None:
+221	            try:
+222	                ser.close()
+223	            except Exception:
+224	                pass
+225	        self._notify()
+226	
+227	    def is_using_port(self, port_name: str) -> bool:
+228	        with self._lock:
+229	            return self._port_name == port_name
+230	
+231	    # ----- timing pipeline -----------------------------------------------
+232	
+233	    def update(self, now_ms: float, detect_state: dict) -> int:
+234	        """Process one tick. Returns the 7-bit output bitmask."""
+235	        if not self._enabled:
+236	            self._output_mask = 0
+237	            return 0
+238	
+239	        presses = 0
+240	        releases = 0
+241	        for ch in CHANNELS:
+242	            ch_state = detect_state.get(ch, {})
+243	            pressed = ch_state.get("pressed", False)
+244	            was_pressed = self._prev_pressed[ch]
+245	
+246	            press_count = ch_state.get("press_count")
+247	            if press_count is not None:
+248	                if press_count != self._prev_press_count[ch]:
+249	                    presses |= CHANNEL_BITS[ch]
+250	                self._prev_press_count[ch] = press_count
+251	            else:
+252	                if pressed and not was_pressed:
+253	                    presses |= CHANNEL_BITS[ch]
+254	
+255	            if not pressed and was_pressed:
+256	                releases |= CHANNEL_BITS[ch]
+257	
+258	            self._prev_pressed[ch] = pressed
+259	
+260	        if presses:
+261	            if not self._chord_open:
+262	                self._chord_open = True
+263	                self._chord_start = now_ms
+264	                self._chord_mask = 0
+265	            self._chord_mask |= presses
+266	
+267	        for ch in CHANNELS:
+268	            bit = CHANNEL_BITS[ch]
+269	            if releases & bit:
+270	                self._release_at[ch] = now_ms + self.strum_delay_ms
+271	                self._release_pending[ch] = True
+272	
+273	        if self._chord_open and (now_ms - self._chord_start) >= self.chord_window_ms:
+274	            self._chord_commit(now_ms)
+275	
+276	        if self._strum_active and now_ms >= self._strum_release_at:
+277	            self._strum_active = False
+278	
+279	        self._process_notes(now_ms)
+280	        self._process_strums(now_ms)
+281	        self._process_releases(now_ms, detect_state)
+282	
+283	        mask = self._frets_active
+284	        if self._strum_active:
+285	            if self._strum_direction:
+286	                mask |= BIT_STRUM_UP
+287	            else:
+288	                mask |= BIT_STRUM_DOWN
+289	
+290	        self._output_mask = mask
+291	        self._send(mask)
+292	        return mask
+293	
+294	    def write_manual(self, mask: int) -> bool:
+295	        """Push a raw bitmask out the actuator port (used by the manual buttons).
+296	
+297	        Returns False if no port is attached or the write failed.
+298	        Does not touch the timing pipeline or the enable gate.
+299	        """
+300	        return self._send(int(mask) & 0x7F)
+301	
+302	    def _chord_commit(self, now_ms: float) -> None:
+303	        if len(self._note_q) >= FIFO_CAP or len(self._strum_q) >= FIFO_CAP:
+304	            self._chord_open = False
+305	            self._chord_mask = 0
+306	            return
+307	
+308	        assert_at = now_ms + self.strum_delay_ms - self.fret_early_ms
+309	        strum_at = now_ms + self.strum_delay_ms
+310	
+311	        if self._strum_q:
+312	            last = self._strum_q[-1]
+313	            earliest = last.strum_at + self.strum_pulse_ms
+314	            if assert_at < earliest:
+315	                assert_at = earliest
+316	                strum_at = assert_at + self.fret_early_ms
+317	
+318	        self._note_q.append(_PendingNote(self._chord_mask, assert_at))
+319	        self._strum_q.append(_PendingStrum(self._chord_mask, strum_at))
+320	
+321	        self._chord_open = False
+322	        self._chord_mask = 0
+323	
+324	    def _process_notes(self, now_ms: float) -> None:
+325	        while self._note_q:
+326	            n = self._note_q[0]
+327	            if now_ms < n.assert_at:
+328	                break
+329	
+330	            for ch in CHANNELS:
+331	                bit = CHANNEL_BITS[ch]
+332	                need = bool(n.fret_mask & bit)
+333	                have = bool(self._frets_active & bit)
+334	                if need and not have:
+335	                    self._frets_active |= bit
+336	                elif not need and have:
+337	                    self._frets_active &= ~bit
+338	
+339	            self._note_q.popleft()
+340	
+341	    def _process_strums(self, now_ms: float) -> None:
+342	        while self._strum_q:
+343	            s = self._strum_q[0]
+344	            if now_ms < s.strum_at:
+345	                break
+346	
+347	            self._strum_active = True
+348	            self._strum_direction = not self._strum_direction
+349	            self._strum_release_at = now_ms + self.strum_pulse_ms
+350	
+351	            self._strum_q.popleft()
+352	
+353	    def _process_releases(self, now_ms: float, detect_state: dict) -> None:
+354	        for ch in CHANNELS:
+355	            if not self._release_pending[ch]:
+356	                continue
+357	            if now_ms < self._release_at.get(ch, float("inf")):
+358	                continue
+359	
+360	            ch_state = detect_state.get(ch, {})
+361	            if ch_state.get("pressed", False):
+362	                continue
+363	
+364	            bit = CHANNEL_BITS[ch]
+365	            needed = False
+366	            for n in self._note_q:
+367	                if n.fret_mask & bit:
+368	                    needed = True
+369	                    break
+370	            if not needed:
+371	                for s in self._strum_q:
+372	                    if s.fret_mask & bit:
+373	                        needed = True
+374	                        break
+375	            if needed:
+376	                continue
+377	
+378	            self._frets_active &= ~bit
+379	            self._release_pending[ch] = False
+380	
+381	    def _release_all(self) -> None:
+382	        self._frets_active = 0
+383	        self._strum_active = False
+384	        self._note_q.clear()
+385	        self._strum_q.clear()
+386	        self._chord_open = False
+387	        self._chord_mask = 0
+388	        for ch in CHANNELS:
+389	            self._release_pending[ch] = False
+390	        self._output_mask = 0
+391	        self._send(0)
+392	
+393	    # ----- serial output -------------------------------------------------
+394	
+395	    def _send(self, mask: int) -> bool:
+396	        with self._lock:
+397	            ser = self._ser
+398	            connected = self._connected
+399	        if ser is None or not connected:
+400	            return False
+401	        if not ser.is_open:
+402	            self._mark_disconnected()
+403	            return False
+404	        try:
+405	            ser.write(bytes([mask & 0x7F]))
+406	            return True
+407	        except (serial.SerialException, OSError) as exc:
+408	            log.warning("actuator: write failed: %s", exc)
+409	            self._mark_disconnected()
+410	            return False
+411	
+412	    def _mark_disconnected(self) -> None:
+413	        owned = False
+414	        ser_to_close = None
+415	        with self._lock:
+416	            if self._connected:
+417	                self._connected = False
+418	                if self._owned:
+419	                    owned = True
+420	                    ser_to_close = self._ser
+421	                    self._ser = None
+422	        if owned and ser_to_close is not None:
+423	            try:
+424	                ser_to_close.close()
+425	            except Exception:
+426	                pass
+427	        self._notify()
+428	
+429	    # ----- reconnect (only for owned ports) ------------------------------
+430	
+431	    def _start_reconnect_worker(self) -> None:
+432	        if self._reconnect_thread and self._reconnect_thread.is_alive():
+433	            return
+434	        self._reconnect_stop.clear()
+435	        t = threading.Thread(
+436	            target=self._reconnect_loop, name="actuator-reconnect", daemon=True,
+437	        )
+438	        self._reconnect_thread = t
+439	        t.start()
+440	
+441	    def _stop_reconnect_worker(self) -> None:
+442	        self._reconnect_stop.set()
+443	        t = self._reconnect_thread
+444	        if t is not None and t.is_alive():
+445	            t.join(timeout=1.0)
+446	        self._reconnect_thread = None
+447	
+448	    def _reconnect_loop(self) -> None:
+449	        while not self._reconnect_stop.is_set():
+450	            if self._reconnect_stop.wait(RECONNECT_INTERVAL):
+451	                return
+452	            with self._lock:
+453	                want = self._port_name
+454	                owned = self._owned
+455	                connected = self._connected
+456	            if want is None or not owned or connected:
+457	                continue
+458	            try:
+459	                ser = serial.Serial(
+460	                    port=want,
+461	                    baudrate=ACTUATOR_BAUDRATE,
+462	                    bytesize=serial.EIGHTBITS,
+463	                    parity=serial.PARITY_NONE,
+464	                    stopbits=serial.STOPBITS_ONE,
+465	                    timeout=0.1,
+466	                )
+467	            except (serial.SerialException, OSError):
+468	                continue
+469	            with self._lock:
+470	                if self._port_name != want or not self._owned:
+471	                    try:
+472	                        ser.close()
+473	                    except Exception:
+474	                        pass
+475	                    continue
+476	                self._ser = ser
+477	                self._connected = True
+478	            log.info("actuator: reconnected on %s", want)
+479	            self._notify()
+480	
+481	    # ----- listeners -----------------------------------------------------
+482	
+483	    def _notify(self) -> None:
+484	        s = self.status()
+485	        for cb in list(self._listeners):
+486	            try:
+487	                cb(s)
+488	            except Exception as exc:
+489	                log.warning("actuator: status listener raised: %s", exc)
+490
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:07:16Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:07:28Z)**_
+
+Read fret-tuner's actuator.py end to end. Quick summary then my take:
+
+**Existing protocol is delightfully dumb:** one byte, latest-wins, 7 bits packed (G/R/Y/B/O + strum-down + strum-up). No framing, no acks. Sender is the timing pipeline; receiver is "mirror this byte to GPIO." That dumbness is a feature for direct-GPIO actuators.
+
+## On layering marvin
+
+Yes, split into three layers — gives clean seams for what comes next:
 
 ```
-### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
-
-Long session covering three independent threads:
-
-1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
-
-2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
-
-3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
-
-Spec update: added §4.8 game-state awareness & control as a marvin subsystem (peer of detection but separate bus, video-frame consumer not a detector). Defers recognizer algorithm + arbitration boundary as Q10/Q11.
-
-Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
-
-### 2026-05-20 — Video fan-out + per-frame buffer routing
+detector → xDetectorStateQueue
+         ↓
+[timing_pipeline]   chord aggregation, fret-early assert, strum-pulse FIFO
+         ↓
+       xActuatorCmdQueue  (or just byte stream)
+         ↓
+[fretboard_link]    USB CDC writer + reconnect
+         ↓
+       USB
 ```
 
-- old_string: `### 2026-05-20 — Video fan-out + per-frame buffer routing`
-- replace_all: `false`
+`timing_pipeline` is the C port of actuator.py minus the serial bits. `fretboard_link` is the USB CDC writer (and reconnect/idle-heartbeat). Keeping them separate means recording can snoop the actuator-cmd stream without owning the link, and we can stub the link for offline playback.
 
+## On where the queue lives
+
+This is the real question, and your actuator-latency observation is the thing that decides it.
+
+**Today (direct GPIO on PIC):** actuator latency ≈ 0. Putting the timing queue on marvin matches Python and Just Works. Fretboard side is a 5-line "read byte, mirror to GPIO" handler.
+
+**When mechanical actuators arrive (solenoid / voice coil):** latency is non-zero AND varies per-actuator-type. Two ways to compensate:
+
+1. **Marvin compensates.** Fretboard publishes its actuator-latency at handshake; marvin shifts the whole emitted timeline by that amount. Wire format unchanged.
+2. **Fretboard compensates.** Wire format gains a target-timestamp per command; fretboard's scheduler applies its own per-actuator advance. Marvin emits an idealized timeline, fretboard owns "how to physically realize it."
+
+Path 2 is architecturally cleaner — actuator hardware knowledge stays where the actuator is — but it means the wire format becomes timestamped events, not raw bytes. Path 1 is the minimum viable evolution from today's protocol.
+
+## My recommendation for M2
+
+- **Build the marvin layering now** (timing_pipeline + fretboard_link as separate modules). Even with direct GPIO this pays off in testability.
+- **Keep the 1-byte protocol as-is.** No timestamps, no framing — match Python exactly. Heartbeat byte at idle so the link doesn't go silent.
+- **Defer actuator-latency design** until we have a mechanical actuator on the bench. We'll know whether path 1 or path 2 fits when we can measure real numbers, and the change is small either way (it's literally adding `+ latency_ms` somewhere; the layer split makes "where" a one-file decision).
+
+Worth a journal note capturing this trade-off so future-you (or future-me) doesn't have to re-derive it. Want me to log it now, or save it for tomorrow when you're back in?
+
+---
+
+_**User (2026-05-21 01:11:31Z)**_
+
+back working for a little while. log it and start implementing
+
+_**User (2026-05-21 01:13:03Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   This session continues marvin firmware development on a SAM9X75-based guitar-playing robot. Sequential explicit user requests across the session:
+   
+   - **Request 1**: Move ISC ring to nocache, decide on schema rigidity (option 2A: bus canonical + detector private state), coordinates in native source format.
+   - **Request 2**: Investigate per-detector serialization options for recording output (deferred to M5).
+   - **Request 3**: "build is clean. proceed." — Implement cv_marvin_v1 port from fret-tuner detect_video.py.
+   - **Request 4**: "did you convert fret positions from the scaled values down to 720x480?" — Caught coord scaling bug.
+   - **Request 5**: "1 yes, scale to 720x480. 2. not placeholders, elgato capture was hdmi to usb converter." — Confirmed Wii target with same direct-pixel topology as Python detector.
+   - **Request 6**: "build successful. commit. what's next? the simple actuator implementation to talk to fretboard?"
+   - **Request 7**: "I think we start with simple protocol implemented in firmware/fretboard project. I think we'll plan on going through USB host CDC for all communications to actuators and detectors and such." — USB CDC over FLEXCOM UART.
+   - **Request 8**: "MCC USB CDC host added and staged. Please review and commit."
+   - **Request 9**: Log VBUS hand-edit at lines 162-163 and 169-170 of initialization.c "to wherever we're tracking stuff like this."
+   - **Request 10**: "please commit this (append previous commit?). Are we in a good place to wrap up for the evening."
+   - **Request 11 (latest)**: "already have device cdc on the fretboard side through the onboard debugger. Let's just implment the simiple protocol that we already implemented in fret-tuner actuator? Should we split up into multiple layers in marvin? Do actuators run the note / chord / strum queue? Something to consider is actuators may have different timing requirements. For example, direct digital signal assertion has effectively instantaneous assertion whereas different actuator like physical solenoid pressing button will have actuation delays."
+   - **Most recent**: "back working for a little while. log it and start implementing"
+
+   **Standing project rules to preserve verbatim:**
+   - "never `git commit` on my own initiative; only on explicit user ask or after prompting" (auto-memory)
+   - "Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing."
+   - "Code comments describe current code only" — no dev-diary in source comments
+   - "Journals are the source of truth for planning and progress"
+   - "prefer journal updates over re-stating plans in chat"
+   - Specstory files SHOULD be staged in commits
+   - MCC manifest churn should NOT be in commits
+   - "CRITICAL: Always create NEW commits rather than amending, unless the user explicitly requests a git amend."
+
+2. Key Technical Concepts:
+   - SAM9X75 Curiosity (Cortex-A5, 1 GB DDR3) running MPLAB Harmony v5.6.4 + FreeRTOS
+   - HDMI capture: TC358743 → MIPI CSI-2 → ISC → DDR
+   - Capture format: BGR888 packed (3 B/pixel), Wii target = 480p60 (720×480)
+   - FreeRTOS static allocation: xTaskCreateStatic, xQueueCreateStatic, xSemaphoreCreateMutexStatic
+   - ISC framebuffer in `.region_nocache` (16 MB region) — pool capped at 720p (4×1280×720×3 ≈ 11 MB)
+   - Detector subsystem: detector_state_t records on xDetectorStateQueue
+   - cv_marvin_v1: 5×5 patch BGR sampling, brightness hold-detect with hysteresis, color-filtered edge-detect with rising-edge press_count
+   - USB CDC host on marvin: EHCI + OHCI drivers, VBUS on PC27+PC31, bmPortSelect=0x02
+   - USB CDC device on fretboard via onboard debugger (no MCC work needed)
+   - fret-tuner actuator.py protocol: 1-byte mask, latest-wins, 7 bits (G/R/Y/B/O at bits 0-4, strum-down bit 5, strum-up bit 6), 115200 baud
+   - Timing pipeline: STRUM_DELAY_MS=220, FRET_EARLY_MS=50, STRUM_PULSE_MS=50, CHORD_WINDOW_MS=20, FIFO_CAP=16
+   - Three-layer marvin architecture: detector → timing_pipeline → fretboard_link
+   - Actuator latency compensation: deferred until mechanical actuators arrive
+
+3. Files and Code Sections:
+
+   - **firmware/marvin/default/src/video/isc_capture.c** (committed in 186872f)
+     - Reduced max capture to 720p, moved framebuffer to .region_nocache
+     ```c
+     #define ISC_CAP_MAX_W        1280u
+     #define ISC_CAP_MAX_H        720u
+     #define ISC_CAP_NUM_BUFFERS  4u
+     
+     static __attribute__((__section__(".region_nocache")))
+            __attribute__((__aligned__(32)))
+            uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+     ```
+
+   - **firmware/marvin/default/src/detector/cv_marvin_v1.c** (committed in 186872f)
+     - Full port of fret-tuner detect_video.py with 720×480-anchored coords
+     ```c
+     static const sensor_xy_t s_sensor_coords[FRET_COUNT] =
+     {
+         [FRET_GREEN]  = { 280, 311, 292, 311 },
+         [FRET_RED]    = { 318, 311, 330, 311 },
+         [FRET_YELLOW] = { 355, 311, 367, 311 },
+         [FRET_BLUE]   = { 391, 311, 379, 311 },
+         [FRET_ORANGE] = { 430, 311, 418, 311 },
+     };
+     ```
+     - Color filter table, brightness/color_signal helpers, sample_patch_bgr with center-clamp, detect_frame writes to bus with private press_count[]
+
+   - **firmware/marvin/docs/journal.md** (multiple updates)
+     - Three new decision-log entries: nocache move + 720p cap, private detector state, native-coord scaling, MCC patch #5 (VBUS), session-close session log
+
+   - **tools/fret-tuner/actuator.py** (READ for protocol reference)
+     - 1-byte protocol with bit positions:
+       ```python
+       BIT_GREEN = 1 << 0
+       BIT_RED = 1 << 1
+       BIT_YELLOW = 1 << 2
+       BIT_BLUE = 1 << 3
+       BIT_ORANGE = 1 << 4
+       BIT_STRUM_DOWN = 1 << 5
+       BIT_STRUM_UP = 1 << 6
+       ```
+     - Two FIFO queues (FIFO_CAP=16): _PendingNote (fret_mask, assert_at), _PendingStrum (fret_mask, strum_at)
+     - Default timing: STRUM_DELAY_MS=220, FRET_EARLY_MS=50, STRUM_PULSE_MS=50, CHORD_WINDOW_MS=20
+     - update(now_ms, detect_state) processes presses/releases, opens chord window, commits chord on chord_window expiry, processes notes/strums/releases
+     - _send(mask) writes single byte: `ser.write(bytes([mask & 0x7F]))`
+     - Driven by sample timestamps (not wall clock) for replay determinism
+
+   - **firmware/marvin/default/src/config/default/initialization.c** (committed in a6040ce with hand-edits)
+     - Lines 162-163: `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();`
+     - Lines 169-170: `VBUS_AH_PC27_PowerEnable_Clear(); VBUS_AH_PC31_PowerEnable_Clear();`
+     - Hand-edit needed because MCC assumes single VBUS pin named VBUS_AH
+
+4. Errors and fixes:
+   - **Coord scaling bug**: I copied Python's 1920×1080-anchored defaults verbatim into cv_marvin_v1.c, claiming "calibrated for 1280×720" in comment. User caught this. Fixed by scaling sx=3/8, sy=4/9 to 720×480 anchor; corrected journal entry.
+   - **ram_nocache too small**: When moving ISC framebuffer to nocache, the 24 MB pool didn't fit in 16 MB region. Fixed by capping max capture at 720p (~11 MB).
+   - **MCC VBUS hand-edit**: User had to manually edit initialization.c because MCC emitted single-pin VBUS_AH call but config has two VBUS pins (PC27+PC31). Logged as patch #5 in journal MCC re-apply list.
+
+5. Problem Solving:
+   - Settled bus schema design: option A (canonical bus + private detector state) over tagged union
+   - Coordinate scaling: native capture-frame space, anchored to Wii 480p (720×480)
+   - Cache coherence: moved to nocache (vs invalidate-per-frame) for simplicity
+   - Serialization deferred to M5: custom binary recommended over nanopb/CBOR
+   - USB CDC chosen over FLEXCOM UART for marvin↔fretboard link
+   - Architectural recommendation for M2: three-layer split (detector → timing_pipeline → fretboard_link), keep 1-byte protocol, defer actuator-latency to mechanical-actuator arrival
+
+6. All user messages:
+   - "1. move the ring to nocache. 2. different detectors might need different data in order to be able to analyze. not sure what this means overall, but maybe detector state is too rigid? 3. coordinates should be with respect to the native source format."
+   - "yes proceed 1. 2A. For purpose of capturing / outputting detector state, could each detector be responsible for serializing data into protobuf or similar? (Maybe protobuf is too heavy?)"
+   - "build is clean. proceed."
+   - "did you convert fret positions from the scaled values down to 720x480?"
+   - "1 yes, scale to 720x480. 2. not placeholders, elgato capture was hdmi to usb converter."
+   - "build successful. commit. what's next? the simple actuator implementation to talk to fretboard?"
+   - "I think we start with simple protocol implemented in firmware/fretboard project. I think we'll plan on going through USB host CDC for all communications to actuators and detectors and such. Let me see if I can get that added to MCC configuration first."
+   - "MCC USB CDC host added and staged. Please review and commit."
+   - "note that I had to make hand edits to initialization.c on lines 162-163 and 169-170 because MCC didn't generate the correct code. add this to whereever we're tracking stuff like this."
+   - "please commit this (append previous commit?). Are we in a good place to wrap up for the evening."
+   - "already have device cdc on the fretboard side through the onboard debugger. Let's just implment the simiple protocol that we already implemented in fret-tuner actuator? Should we split up into multiple layers in marvin? Do actuators run the note / chord / strum queue? Something to consider is actuators may have different timing requirements. For example, direct digital signal assertion has effectively instantaneous assertion whereas different actuator like physical solenoid pressing button will have actuation delays."
+   - "back working for a little while. log it and start implementing"
+
+7. Pending Tasks:
+   - Log the architectural trade-off (three-layer split, where queue lives, actuator latency deferred) in journal as decision-log entry
+   - Implement two new marvin modules:
+     - **timing_pipeline** — C port of actuator.py timing logic (chord window, FIFO, strum scheduling), consumes detector_state_t from xDetectorStateQueue, filters by Detector_GetActive(), produces output bitmask
+     - **fretboard_link** — USB CDC host writer task, opens CDC device on enumeration, writes 1-byte mask updates, idle heartbeat, reconnect handling
+   - Both new modules use static FreeRTOS allocation
+   - Wire into app.c initialization order
+   - Update cmake/marvin/default/user.cmake with new sources
+
+8. Current Work:
+   Immediately before the summary request, the user said: "back working for a little while. log it and start implementing"
+   
+   This refers to my previous message which laid out the architectural recommendation:
+   - Three-layer split: detector → xDetectorStateQueue → timing_pipeline → xActuatorCmdQueue → fretboard_link → USB
+   - Keep 1-byte bitmask protocol (matching fret-tuner actuator.py exactly)
+   - Heartbeat byte at idle
+   - Defer actuator-latency design until mechanical actuators arrive
+   - Two future paths for latency compensation: (1) marvin compensates with fretboard-published latency, (2) fretboard compensates with timestamped events
+   
+   The user explicitly said "log it" (the architectural trade-off in journal) and "start implementing" (the two new modules: timing_pipeline + fretboard_link).
+
+9. Optional Next Step:
+   Direct quote from most recent user message: "back working for a little while. log it and start implementing"
+   
+   This refers directly to my immediately preceding architectural recommendation message which ended with: "Worth a journal note capturing this trade-off so future-you (or future-me) doesn't have to re-derive it. Want me to log it now, or save it for tomorrow when you're back in?"
+   
+   The next steps in order:
+   
+   1. **Log the architectural decision in journal.md** — add a decision-log entry capturing: the three-layer split (detector → timing_pipeline → fretboard_link), the choice to keep marvin owning the timing queue for now, the 1-byte protocol decision, the deferred actuator-latency compensation question with both paths documented (marvin compensates vs fretboard with timestamped events), and the rationale that direct-GPIO actuator latency ≈ 0 means today's design is sound until mechanical actuators arrive.
+   
+   2. **Create timing_pipeline module** — new files `firmware/marvin/default/src/actuator/timing_pipeline.{c,h}`. C port of actuator.py:
+      - Static task subscribing to xDetectorStateQueue
+      - Filter by Detector_GetActive() (or accept all enabled detectors per spec)
+      - Two static FIFOs (depth 16): pending notes (fret_mask + assert_at) and pending strums (fret_mask + strum_at)
+      - Constants: STRUM_DELAY_MS=220, FRET_EARLY_MS=50, STRUM_PULSE_MS=50, CHORD_WINDOW_MS=20
+      - Bit definitions matching cmd_receive.h: BIT_GREEN=1<<0 through BIT_STRUM_UP=1<<6
+      - update() function processing presses/releases, chord window aggregation, note/strum FIFO commits
+      - Output: 7-bit mask on a new xActuatorCmdQueue (or direct to fretboard_link)
+   
+   3. **Create fretboard_link module** — new files `firmware/marvin/default/src/actuator/fretboard_link.{c,h}`:
+      - Static task consuming xActuatorCmdQueue
+      - USB CDC host: opens CDC device on enumeration (matches Microchip USB Host CDC client API), writes 1-byte commands
+      - Heartbeat byte at idle to keep link warm
+      - Reconnect handling on enumeration loss
+      - Match fret-tuner's 115200 baudrate (or whatever CDC default is — baud is irrelevant over USB CDC but the device may report one)
+   
+   4. **Wire into app.c** — initialize timing_pipeline + fretboard_link after Detector_Initialize
+   
+   5. **Update cmake/marvin/default/user.cmake** — add the four new source files
+   
+   I should start with logging the journal entry first (per the user's "log it" before "start implementing"), then implement timing_pipeline (consumes existing bus), then fretboard_link (consumes timing_pipeline output).
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:09Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check journal length and src layout
+
+`wc -l /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md && ls /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/`
+
+```text
+     167 /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md
+app.c
+app.h
+config
+detector
+log.c
+log.h
+main.c
+packs
+third_party
+video
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:12Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+1	# marvin — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	## Current focus
+8	
+9	**M1 — Reference detector v0.** First CV detector running on captured frames, publishing `detector_state_t` records onto the detector-state bus. No actuation yet. See [`spec.md`](spec.md) §4.2 for subsystem detail and §8 for the milestone progression.
+10	
+11	Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus queue + a temporary drain task that logs records-per-second; `detector/cv_marvin_v1.{h,c}` subscribes to the video frame queue and publishes one `detector_state_t` per frame with `frame_epoch = Video_FrameInfo.frame_count` and all-zero fret state. Next: pick the v0 algorithm (Q8) and start populating `fret[]`.
+12	
+13	**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+14	
+15	> **Deeper-dive references:**
+16	> - [`spec.md`](spec.md) — system-level spec (read first).
+17	> - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
+18	> - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
+19	
+20	> **Earlier entries** (capture/display bring-up, 2026-05-01 → 2026-05-15) are preserved in [`journal-archive.md`](journal-archive.md).
+21	
+22	---
+23	
+24	## Decision log
+25	
+26	| Date | Decision | Rationale |
+27	|------|----------|-----------|
+28	| 2026-05-20 | System-level spec lives at [`spec.md`](spec.md); read it first on any non-trivial marvin task | We're at the point where deferring system architecture would mean building feature-by-feature without a coherent target. The journal is the running diary; the spec is the durable description of what marvin is. |
+29	| 2026-05-20 | Marvin replaces the fret-tuner PC as the runtime brain | One-host architecture. fret-tuner persists as an off-band dev/calibration tool. fretboard stays a dumb relay (ADC out, bitmask in). |
+30	| 2026-05-20 | Marvin is the *reference detector* — not a debug aid | HDMI-direct CV is ground-truth for the system. Fretboard's photo-detection and any future Edge-AI MCU are trained against marvin's output. Recording reference data is therefore a first-class subsystem (spec §4.6), not an afterthought. |
+31	| 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
+32	| 2026-05-20 | Timing pipeline (chord window, FIFO, strum scheduling) lives on marvin by default; fretboard-takeover is a fallback mode | Centralized = single source of truth, easier multi-detector fusion. Latency budget allows a few ms of UART jitter. Fallback mode disables marvin's pipeline; fretboard runs its own existing `fret_button.c` and feeds emitted-command telemetry up to marvin for capture/display. Spec §4.4 + §6. |
+33	| 2026-05-20 | Reference-data export = SD card, format = detector-state + sparse keyframes | SD chosen over Ethernet/USB CDC because primary consumers are Edge-AI training (offline) and replay/sanity-check (offline). Live side-by-side comparison deferred. Format: dense `detector_state_t` records for all detectors + raw BGRX32 keyframes every 60 frames (1.38 MB/s sustained, comfortable on Class-10). No software JPEG (Cortex-A5 can't keep up; SAM9X75 has no HW encoder). Spec §4.6. |
+34	| 2026-05-20 | `frame_epoch` (32-bit, incremented per captured ISC frame) is the master sync token across recordings, detectors, and any future off-board observers | Need single shared timeline; off-board detectors (e.g. Edge-AI device) record in their own format keyed by marvin's `frame_epoch` so post-hoc training-data alignment is trivial. Wraps after ~830 days @ 60 Hz. |
+35	| 2026-05-20 | Operating modes are independent toggles (`detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`); named modes are presets over them | Matches `tools/fret-tuner/SPEC.md`'s detect/actuate split which has worked well in practice. Avoids a brittle global state machine. Spec §6. |
+36	| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+37	| 2026-05-01 | Reference source = mainline Linux tc358743 driver + community 480p dumps | Linux driver has correct state machine / EDID / IRQ handling; community dumps have verified 480p register values. |
+38	| 2026-05-01 | Integration shape (sensor vs standalone) deferred until Phase 3 | Avoid premature structure; real answer depends on how much state the driver actually needs. |
+39	| 2026-05-01 | Journal lives at `firmware/marvin/docs/journal.md` | Firmware docs co-located with firmware; top-level `docs/` is hardware/mechanical. |
+40	| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+41	| 2026-05-01 | REFCLK: **27 MHz** | Waveshare v1/v2 on-board XTAL. Kernel driver restricts REFCLK to {26, 27, 42} MHz (`tc358743.c:717-719`); 27 MHz is the Waveshare v1/v2 value. |
+42	| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+43	| 2026-05-01 | Register-access helpers will be a direct port from the kernel driver | `tc358743.c:131-269` has clean `i2c_rd/wr` + `i2c_rd8/wr8/rd16/wr16/rd32/wr32`. Map to FLEXCOM6 TWI underneath. |
+44	| 2026-05-01 | J29 (22-pin MIPI) pinout confirmed; PC19=pin 17, PC15=pin 18 (not 5/6) | Per SAM9X75-Curiosity User Guide §3.4.10 (queried via Microchip MCP). Pins 5/6 are MIPI_D1_N/P — CSI data lane 1 diff pairs, not GPIOs. Correct GPIO pins for RESET/INT are pin 17 (PC19, `MIPI_CSI_GPIO0`) and pin 18 (PC15, `MIPI_CSI_GPIO1`). I2C on pins 20 (PA25, `CAM_I²C_CLK`) and 21 (PA24, `CAM_I²C_DATA`) confirmed to match marvin's FLEXCOM6 pin assignment (`pin_configurations.csv:85-86`). |
+45	| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+46	| 2026-05-01 | Delays use Harmony's `SYS_TIME` service (non-blocking shape) | Already initialized in `SYS_Initialize`; existing marvin code (`drv_isc.c`, `plib_isc.c`) uses it with `SYS_TIME_DelayUS/MS` + `SYS_TIME_DelayIsComplete`. Non-blocking pattern inside our state machine keeps `APP_Tasks()` (and Legato) from stalling during reset hold times, and scales naturally into Phase 3's longer init sequence. |
+47	| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+48	| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+49	| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+50	| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+51	| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+52	| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+53	| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
+54	| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+55	| 2026-05-20 | M1 detector scaffolding: one task per detector, single shared bus queue (`xDetectorStateQueue`), temporary in-module drain task until the timing pipeline (M3) lands | Matches spec §4.2.4. Per-detector tasks isolate slow detectors from the frame pipeline; the shared queue is the hand-off point that the timing pipeline will eventually own as sole consumer. The drain task lives in `detector.c` so it travels with the bus and can be deleted in one place when M3 wires the real consumer. Records-per-second log line gives a coarse health signal during bring-up. |
+56	| 2026-05-20 | `frame_epoch` is sourced from `Video_FrameInfo.frame_count` for M1; a persistent counter that survives ISC restart is M5's problem | Recording (M5) is the first consumer that actually needs cross-restart continuity. Until then the post-arm-monotonic counter is fine for plumbing validation, and pretending otherwise would mean threading another counter through the video module before it has a real consumer. |
+57	| 2026-05-20 | Detector control model: per-detector `enable` (multiple may be on simultaneously for side-by-side recording) + single `active` selector (which detector_id the timing pipeline acts on) | Want side-by-side training data — every enabled detector publishes onto the bus; recording (M5) saves them all. But only one detector should ever drive actuation, so the timing pipeline (M3) filters the bus by `Detector_GetActive()` and ignores the rest. Cleaner than a global enum because it decouples "is this running?" from "is this canonical?", and lets us hot-swap the active detector without disabling its peers. Defaults: all-disabled, active=cv_marvin_v1. App explicitly calls `Detector_Enable` + `Detector_SetActive` after init. |
+58	| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+59	| 2026-05-20 | `Video_FrameInfo.buffer` now reflects the buffer that just completed (per-frame routing); HEO is re-pointed in the ISR every frame so the panel sees every captured frame | Pre-fix: `ISC_Capture_GetBufferAddress()` returned the framebuffer base regardless of which descriptor-ring slot ISC just wrote, and HEO was bound once to the base — so HEO only ever read slot 0, and slot 1 was written but never observed. Effective behavior was ~half-rate display. Fix: ISC IRQ computes `slot = (frameIndex - 1 + N) % N` (driver increments before callback per drv_isc.c:47-50), passes `base + slot * frame_size` into the user callback, and video.c re-points HEO at that address with `XLCDC_SetLayerAddress(..., update=true)` — latches at next vsync. Also unblocks ring depth > 2 since each subscriber sees the genuinely-just-written buffer. |
+60	| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+61	| 2026-05-20 | All marvin-owned FreeRTOS objects use `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic`; FreeRTOS heap stays at heap_1 only because MCC code (XLCDC/MAXTOUCH/LEGATO/SYS_INPUT tasks, OSAL, Legato variable heap) needs it | Project rule is static-only memory allocation. MCC-generated code can't be made static without forking, so we keep `configSUPPORT_DYNAMIC_ALLOCATION = 1` for MCC and route all our own code through the static APIs. MCC reconfigured to enable `configSUPPORT_STATIC_ALLOCATION = 1` and emit `vApplicationGetIdleTaskMemory` in `freertos_hooks.c`. Per-module `Static{Task,Queue,Semaphore}_t` plus stack/storage arrays at file scope. |
+62	| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+63	| 2026-05-20 | cv_marvin_v1 keeps detector internals (press_count, raw color distances) private; bus record stays canonical (`pressed[] / confidence / raw_value`) | Different detectors need different per-frame data, but downstream bus consumers (timing pipeline, recorder, fretboard link) only care about "is this fret pressed at frame N." Pushing detector-specific richness onto the bus would either grow the canonical record or force a tagged-union shape that complicates recording layout. Encapsulating internals in the detector module preserves the narrow bus and lets each detector evolve its own state independently. press_count specifically lives in a private `s_press_count[FRET_COUNT]` array; if the strum scheduler later wants it, expose via a getter or a second "detail" channel. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. |
+64	| 2026-05-20 | cv_marvin_v1 sensor coords are in native capture-frame space, no 1920×1080 reference scaling | fret-tuner detect_video.py carries a 1920×1080 reference frame and scales coords at runtime — that frame size is what the Elgato HDMI-to-USB bridge produced, not a per-camera variable. Marvin uses the TC358743 (different bridge chip, same direct-pixel topology) and captures at the source's native resolution. The Wii is the primary production source at 480p60 = 720×480, so the static defaults are scaled from Python's 1920×1080 values by (3/8, 4/9) once at port time and stored in 720×480 space. Same-pixel-strike-line geometry as the Python detector — these are real coords, not placeholders. Calibration UI (M6) will refine them. |
+65	| 2026-05-20 | Game-state awareness & high-level game control is a marvin subsystem (spec §4.8). Distinct from the gameplay note-detection path: a video-frame consumer (not a detector) emits typed game-state events on `xGameStateQueue`, and a controller layer translates verbs ("start single-player song X") into fret/strum sequences sent over the same fretboard link | Want marvin to drive whole-session play, not just notes once gameplay starts. Game-state observation belongs on marvin because it's CV on the same captured frames. Separating its bus from `xDetectorStateQueue` keeps `detector_state_t` narrow per the 2026-05-20 multi-detector decision. Per-game catalog (menu graph + song list) is metadata kept on marvin. Default arbitration with timing pipeline: mutually exclusive — controller runs only outside `gameplay` state. Phasing: M9 observer-only, M10 control. Open: recognizer algorithm (Q10), arbitration boundary (Q11). |
+66	
+67	---
+68	
+69	## Open questions
+70	
+71	_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+72	
+73	- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+74	- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **deferred 2026-05-01**: TXACT has been observed at both 0 and 1 at various times after enable. Likely momentary (active-packet indicator, not stream-on flag). CSI_ERR=0 and HLT=0 consistently. Phase 5 frames-in-memory confirmed the chain works regardless.
+75	- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+76	
+77	**Carried into future sessions:**
+78	
+79	- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+80	
+81	- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. The 2026-05-20 USB-host regen added a fifth. Re-apply after every regen:
+82	
+83	  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+84	
+85	  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+86	
+87	  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+88	
+89	  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+90	
+91	  5. **`initialization.c` `DRV_USB_VBUSPowerEnable` — per-pin VBUS calls.** MCC emits a single `VBUS_AH_*_Set/Clear()` call expecting one pin named `VBUS_AH`, but our config has VBUS on two pins (PC27 + PC31, one per USB port). The pin-macro generator produces `VBUS_AH_PC27_PowerEnable_*` and `VBUS_AH_PC31_PowerEnable_*` separately and no unified wrapper, so the MCC-emitted code fails to compile. Replace lines 162-163 (Set branch) and 169-170 (Clear branch) with explicit calls to both per-pin macros — `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` and the matching Clear pair. The MCC comment in the function ("name it to 'VBUS_AH'") acknowledges the single-pin assumption.
+92	
+93	  Previously listed but now resolved or moot:
+94	  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+95	  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+96	
+97	  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+98	
+99	- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+100	
+101	- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+102	
+103	- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+104	
+105	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+106	
+107	---
+108	
+109	## Session log
+110	
+111	### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+112	
+113	Long session covering three independent threads:
+114	
+115	1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+116	
+117	2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+118	
+119	3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
+120	
+121	Spec update: added §4.8 game-state awareness & control as a marvin subsystem (peer of detection but separate bus, video-frame consumer not a detector). Defers recognizer algorithm + arbitration boundary as Q10/Q11.
+122	
+123	Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
+124	
+125	### 2026-05-20 — Video fan-out + per-frame buffer routing
+126	
+127	Two-commit sequence opening up video capture for parallel CV consumers:
+128	
+129	1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+130	2. **Ring depth from 2 to 4.** Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+131	
+132	Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+133	
+134	### 2026-05-20 — M1 scaffolding landed
+135	
+136	Stood up the detector subsystem skeleton. New module at `default/src/detector/`:
+137	
+138	- `detector.h` — `detector_state_t` (canonical layout from spec §4.2.3), `fret_t` enum, `detector_id_t` enum, `Detector_Initialize`, `Detector_BusQueue`.
+139	- `detector.c` — owns `xDetectorStateQueue` (depth 8, holds `detector_state_t`) and a temporary `DetectorDrain` task that consumes the bus and logs records/sec at INFO. Drain task is M1-only scaffolding; the timing pipeline (M3) will replace it as sole consumer.
+140	- `cv_marvin_v1.{h,c}` — owns its FreeRTOS task. Creates a depth-1 frame queue, calls `Video_SubscribeFrames`, blocks on `xQueueReceive`, publishes one `detector_state_t` per frame with `frame_epoch = frame.frame_count`, `timestamp_us = xTaskGetTickCount() × CV_US_PER_TICK`, all-zero `fret[]`.
+141	
+142	Wired from `app.c`'s `APP_Initialize` after `Video_Initialize`. Added both `.c` files to `cmake/marvin/default/user.cmake`. No code change to video or capture; `Video_FrameInfo.bytes_per_pixel` already reports 3 (RGB888 packed).
+143	
+144	Spec touch-up: §4.2.2 "BGRX32 frames" → "RGB888-packed (3 B/pixel) frames". Surfaced the broader spec drift on capture format as a carried-forward open question — deserves a doc-only sweep before M5 (recording schema depends on it).
+145	
+146	Added per-detector enable/disable + single-active selector to the bus API (`Detector_Enable`/`Disable`/`IsEnabled` + `Detector_SetActive`/`GetActive`). Defaults all-disabled; app explicitly enables `DETECTOR_CV_MARVIN_V1` and selects it as active. cv_marvin_v1 still drains its frame queue when disabled but skips publishing. Future video CV tasks (menu, score) go in as video-frame consumers, not detectors — needs a multi-subscriber upgrade to `Video_SubscribeFrames` before the second one lands.
+147	
+148	Next session: pick Q8 (initial CV algorithm — leaning pixel-mean threshold per ROI as the simplest end-to-end bring-up) and start populating the `fret[]` field in cv_marvin_v1. ROI geometry calibration also needs a home — spec §4.7 (system config) is the planned destination.
+149	
+150	### 2026-05-20 — System spec drafted
+151	
+152	Stepped back from per-feature work and scoped marvin's role across the whole guitar-playing-robot system. Output is [`spec.md`](spec.md), a durable system-level description (versus this journal as running diary). Drafted in document order: §1 purpose & scope, §2 system context (three-tier diagram, ownership table, latency budget), §3 hardware platform inventory, §4 all seven subsystems (4.2 CV detection + detector-state bus and 4.6 reference-data recording fully drafted; 4.1 video capture summarized referencing existing docs; 4.3–4.5 + 4.7 sketched). §5–9 stubbed.
+153	
+154	Settled architectural decisions (all in the decision log above):
+155	- Marvin replaces fret-tuner PC as runtime brain.
+156	- Marvin is the reference detector; recording is first-class.
+157	- Multiple coexisting detectors on one canonical bus.
+158	- Timing pipeline centralized on marvin with a fretboard-takeover fallback mode.
+159	- Reference data = SD card + detector-state + sparse keyframes (60-frame stride, raw BGRX32).
+160	- `frame_epoch` is the master sync token.
+161	- Operating modes are independent toggles, not a state machine.
+162	
+163	Open questions moved into spec §9: UI framework choice (Q5), initial CV algorithm (Q8), config persistence location (Q9), Ethernet ref-data live stream (Q2; deferred post-M8).
+164	
+165	Next session resumes at **M1 — Reference detector v0** (one CV detector running on captured frames, publishing `detector_state_t` records). No code changed today.
+166	
+167	_(Earlier session entries — 2026-05-15 back through 2026-05-01 — are in [`journal-archive.md`](journal-archive.md).)_
+168
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:22Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+1	/*******************************************************************************
+2	  MPLAB Harmony Application Source File
+3	
+4	  Company:
+5	    Microchip Technology Inc.
+6	
+7	  File Name:
+8	    app.c
+9	
+10	  Summary:
+11	    This file contains the source code for the MPLAB Harmony application.
+12	
+13	  Description:
+14	    This file contains the source code for the MPLAB Harmony application.  It
+15	    implements the logic of the application's state machine and it may call
+16	    API routines of other MPLAB Harmony modules in the system, such as drivers,
+17	    system services, and middleware.  However, it does not call any of the
+18	    system interfaces (such as the "Initialize" and "Tasks" functions) of any of
+19	    the modules in the system or make any assumptions about when those functions
+20	    are called.  That is the responsibility of the configuration-specific system
+21	    files.
+22	 *******************************************************************************/
+23	
+24	// *****************************************************************************
+25	// *****************************************************************************
+26	// Section: Included Files
+27	// *****************************************************************************
+28	// *****************************************************************************
+29	
+30	#include <stdint.h>
+31	#include <stdio.h>
+32	
+33	#include "FreeRTOS.h"
+34	#include "task.h"
+35	
+36	#include "app.h"
+37	#include "definitions.h"
+38	#include "log.h"
+39	#include "video/video.h"
+40	#include "detector/detector.h"
+41	
+42	// *****************************************************************************
+43	// *****************************************************************************
+44	// Section: Global Data Definitions
+45	// *****************************************************************************
+46	// *****************************************************************************
+47	
+48	// *****************************************************************************
+49	/* Application Data
+50	
+51	  Summary:
+52	    Holds application data
+53	
+54	  Description:
+55	    This structure holds the application's data.
+56	
+57	  Remarks:
+58	    This structure should be initialized by the APP_Initialize function.
+59	
+60	    Application strings and buffers are be defined outside this structure.
+61	*/
+62	
+63	APP_DATA appData;
+64	
+65	// *****************************************************************************
+66	// *****************************************************************************
+67	// Section: Application Callback Functions
+68	// *****************************************************************************
+69	// *****************************************************************************
+70	
+71	/* TODO:  Add any necessary callback functions.
+72	*/
+73	
+74	// *****************************************************************************
+75	// *****************************************************************************
+76	// Section: Application Local Functions
+77	// *****************************************************************************
+78	// *****************************************************************************
+79	
+80	
+81	/* TODO:  Add any necessary local functions.
+82	*/
+83	
+84	
+85	// *****************************************************************************
+86	// *****************************************************************************
+87	// Section: Application Initialization and State Machine Functions
+88	// *****************************************************************************
+89	// *****************************************************************************
+90	
+91	/*******************************************************************************
+92	  Function:
+93	    void APP_Initialize ( void )
+94	
+95	  Remarks:
+96	    See prototype in app.h.
+97	 */
+98	
+99	void APP_Initialize ( void )
+100	{
+101	    appData.state = APP_STATE_INIT;
+102	
+103	    /* Logging shim: thin wrapper over libc printf with severity filter
+104	     * and FreeRTOS-aware locking. Initialized first so subsequent code
+105	     * (including video task startup) can use LOG_*. Default level is
+106	     * INFO; flip to DEBUG via log_set_level() to enable verbose. */
+107	    log_init(LOG_LEVEL_INFO);
+108	
+109	    /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
+110	     * the task runs once the scheduler picks it up. The video module owns
+111	     * its capture-pipeline init (ISC, TC358743, backlight, HEO unbind),
+112	     * the capture/display state machine, and the bridge-status polling. */
+113	    Video_Initialize();
+114	
+115	    /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
+116	     * panel — 1:1 with the bridge's typical 480p source, leaves a UI
+117	     * strip below. Set before DisplayShow; the video module has no
+118	     * default window of its own. */
+119	    Video_SetWindow(280u, 76u, 720u, 480u);
+120	
+121	    /* Default: arm the capture chain when source locks, and show video. */
+122	    Video_CaptureEnable();
+123	    Video_DisplayShow();
+124	
+125	    /* Reference detector (cv_marvin_v1) + detector-state bus. M1 stub
+126	     * publisher; real detection logic lands incrementally. Must follow
+127	     * Video_Initialize since cv_marvin_v1 subscribes to the video frame
+128	     * queue from inside its task. Detectors default disabled; explicitly
+129	     * enable + select the active one for the timing pipeline. */
+130	    Detector_Initialize();
+131	    Detector_Enable(DETECTOR_CV_MARVIN_V1);
+132	    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+133	}
+134	
+135	
+136	/******************************************************************************
+137	  Function:
+138	    void APP_Tasks ( void )
+139	
+140	  Remarks:
+141	    See prototype in app.h.
+142	 */
+143	
+144	void APP_Tasks ( void )
+145	{
+146	    /* APP is a one-shot launcher — task creation happened in APP_Initialize.
+147	     * Self-delete here so the (1024-word) stack and TCB are released to the
+148	     * idle task. The MCC-generated lAPP_Tasks loop will not iterate again
+149	     * because vTaskDelete(NULL) never returns to its caller. */
+150	    vTaskDelete(NULL);
+151	}
+152	
+153	
+154	/*******************************************************************************
+155	 End of File
+156	 */
+157
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:25Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/detector.c`
+
+```text
+1	#include "detector.h"
+2	#include "cv_marvin_v1.h"
+3	
+4	#include "FreeRTOS.h"
+5	#include "task.h"
+6	#include "queue.h"
+7	
+8	#include "log.h"
+9	
+10	/* Sized for ~one detector × one frame-time of slack. With cv_marvin_v1
+11	 * publishing at 60 Hz and the stub consumer draining every tick, depth 8
+12	 * absorbs a few ms of consumer stall without dropping records. Bump when
+13	 * adding more producers or a slower consumer. */
+14	#define DETECTOR_BUS_DEPTH       8u
+15	
+16	#define DRAIN_TASK_STACK_WORDS   512u
+17	#define DRAIN_TASK_PRIORITY      1u
+18	#define DRAIN_LOG_INTERVAL_MS    1000u
+19	
+20	static QueueHandle_t   s_bus_queue;
+21	static StaticQueue_t   s_bus_queue_buf;
+22	static uint8_t         s_bus_queue_storage[DETECTOR_BUS_DEPTH * sizeof(detector_state_t)];
+23	
+24	static StackType_t     s_drain_stack[DRAIN_TASK_STACK_WORDS];
+25	static StaticTask_t    s_drain_tcb;
+26	
+27	static volatile uint32_t s_enabled_mask;
+28	static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
+29	
+30	static void drain_task(void *param)
+31	{
+32	    (void)param;
+33	
+34	    TickType_t window_start = xTaskGetTickCount();
+35	    uint32_t   window_count = 0;
+36	
+37	    for (;;)
+38	    {
+39	        detector_state_t state;
+40	        if (xQueueReceive(s_bus_queue, &state, portMAX_DELAY) != pdTRUE)
+41	        {
+42	            continue;
+43	        }
+44	        window_count++;
+45	
+46	        TickType_t now = xTaskGetTickCount();
+47	        if ((uint32_t)(now - window_start) >= pdMS_TO_TICKS(DRAIN_LOG_INTERVAL_MS))
+48	        {
+49	            LOG_INFO("DETECTOR: bus drain %lu records/s (last epoch=%lu id=%u)\r\n",
+50	                     (unsigned long)window_count,
+51	                     (unsigned long)state.frame_epoch,
+52	                     (unsigned)state.detector_id);
+53	            window_start = now;
+54	            window_count = 0;
+55	        }
+56	    }
+57	}
+58	
+59	void Detector_Initialize(void)
+60	{
+61	    s_bus_queue = xQueueCreateStatic(DETECTOR_BUS_DEPTH,
+62	                                     sizeof(detector_state_t),
+63	                                     s_bus_queue_storage,
+64	                                     &s_bus_queue_buf);
+65	    configASSERT(s_bus_queue != NULL);
+66	
+67	    CvMarvinV1_Initialize();
+68	
+69	    (void)xTaskCreateStatic(drain_task,
+70	                            "DetectorDrain",
+71	                            DRAIN_TASK_STACK_WORDS,
+72	                            NULL,
+73	                            DRAIN_TASK_PRIORITY,
+74	                            s_drain_stack,
+75	                            &s_drain_tcb);
+76	}
+77	
+78	QueueHandle_t Detector_BusQueue(void)
+79	{
+80	    return s_bus_queue;
+81	}
+82	
+83	void Detector_Enable(detector_id_t id)
+84	{
+85	    taskENTER_CRITICAL();
+86	    s_enabled_mask |= (1u << (uint32_t)id);
+87	    taskEXIT_CRITICAL();
+88	}
+89	
+90	void Detector_Disable(detector_id_t id)
+91	{
+92	    taskENTER_CRITICAL();
+93	    s_enabled_mask &= ~(1u << (uint32_t)id);
+94	    taskEXIT_CRITICAL();
+95	}
+96	
+97	bool Detector_IsEnabled(detector_id_t id)
+98	{
+99	    return (s_enabled_mask & (1u << (uint32_t)id)) != 0u;
+100	}
+101	
+102	void Detector_SetActive(detector_id_t id)
+103	{
+104	    s_active_id = (uint8_t)id;
+105	}
+106	
+107	detector_id_t Detector_GetActive(void)
+108	{
+109	    return (detector_id_t)s_active_id;
+110	}
+111
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:28Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./tools/fret-tuner/actuator.py`
+
+```text
+1	"""
+2	Actuator -- Python port of firmware/fretboard/fret_button.c
+3	
+4	Translates detector press/release edges into a timed sequence of
+5	fret assertions and strum pulses, then sends a 1-byte GPIO bitmask
+6	to the actuator microcontroller over its own UART.
+7	
+8	Driven by sample timestamps (not wall clock) so behavior is identical
+9	in live and CSV replay modes.
+10	
+11	The actuator is an always-on subsystem: it owns its own serial port
+12	(or shares one with the data source when the same physical device
+13	is used for both ADC streaming and GPIO output). Port selection,
+14	reconnect, and enable-gating are managed here so the timing pipeline
+15	runs regardless of which detector is active.
+16	"""
+17	
+18	import logging
+19	import threading
+20	import time
+21	from collections import deque
+22	from typing import Callable, Optional
+23	
+24	import serial
+25	
+26	from stream import CHANNELS
+27	
+28	log = logging.getLogger("fret-tuner.actuator")
+29	
+30	# Bitmask bit positions (must match cmd_receive.h)
+31	BIT_GREEN = 1 << 0
+32	BIT_RED = 1 << 1
+33	BIT_YELLOW = 1 << 2
+34	BIT_BLUE = 1 << 3
+35	BIT_ORANGE = 1 << 4
+36	BIT_STRUM_DOWN = 1 << 5
+37	BIT_STRUM_UP = 1 << 6
+38	
+39	CHANNEL_BITS = {
+40	    "green": BIT_GREEN,
+41	    "red": BIT_RED,
+42	    "yellow": BIT_YELLOW,
+43	    "blue": BIT_BLUE,
+44	    "orange": BIT_ORANGE,
+45	}
+46	
+47	FIFO_CAP = 16
+48	
+49	DEFAULT_TIMING = {
+50	    "STRUM_DELAY_MS": 220,
+51	    "FRET_EARLY_MS": 50,
+52	    "STRUM_PULSE_MS": 50,
+53	    "CHORD_WINDOW_MS": 20,
+54	}
+55	
+56	ACTUATOR_BAUDRATE = 115200
+57	RECONNECT_INTERVAL = 2.0
+58	
+59	
+60	class _PendingNote:
+61	    __slots__ = ("fret_mask", "assert_at")
+62	
+63	    def __init__(self, fret_mask: int, assert_at: float):
+64	        self.fret_mask = fret_mask
+65	        self.assert_at = assert_at
+66	
+67	
+68	class _PendingStrum:
+69	    __slots__ = ("fret_mask", "strum_at")
+70	
+71	    def __init__(self, fret_mask: int, strum_at: float):
+72	        self.fret_mask = fret_mask
+73	        self.strum_at = strum_at
+74	
+75	
+76	class Actuator:
+77	    """Strum timing pipeline + always-on serial GPIO output.
+78	
+79	    Two attach modes:
+80	
+81	    * **owned**: actuator opens the port itself and manages reconnect.
+82	      Use `attach(port_name)` / `detach()`.
+83	    * **shared**: a serial handle was opened elsewhere (the data-side
+84	      reader) and we just write to it. The owner is responsible for
+85	      reopening on disconnect; after each reopen they re-call
+86	      `attach_shared(...)` with the new handle.
+87	    """
+88	
+89	    def __init__(self):
+90	        self._ser: Optional[serial.Serial] = None
+91	        self._port_name: Optional[str] = None
+92	        self._owned: bool = False
+93	        self._connected: bool = False
+94	        self._enabled: bool = False
+95	
+96	        self.strum_delay_ms: float = DEFAULT_TIMING["STRUM_DELAY_MS"]
+97	        self.fret_early_ms: float = DEFAULT_TIMING["FRET_EARLY_MS"]
+98	        self.strum_pulse_ms: float = DEFAULT_TIMING["STRUM_PULSE_MS"]
+99	        self.chord_window_ms: float = DEFAULT_TIMING["CHORD_WINDOW_MS"]
+100	
+101	        self._note_q: deque[_PendingNote] = deque(maxlen=FIFO_CAP)
+102	        self._strum_q: deque[_PendingStrum] = deque(maxlen=FIFO_CAP)
+103	
+104	        self._release_at: dict[str, float] = {}
+105	        self._release_pending: dict[str, bool] = {ch: False for ch in CHANNELS}
+106	
+107	        self._chord_open = False
+108	        self._chord_start: float = 0.0
+109	        self._chord_mask: int = 0
+110	
+111	        self._frets_active: int = 0
+112	        self._strum_active = False
+113	        self._strum_release_at: float = 0.0
+114	        self._strum_direction = False
+115	
+116	        self._prev_pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
+117	        self._prev_press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
+118	        self._output_mask: int = 0
+119	
+120	        self._lock = threading.Lock()
+121	        self._listeners: list[Callable[[dict], None]] = []
+122	        self._reconnect_stop = threading.Event()
+123	        self._reconnect_thread: Optional[threading.Thread] = None
+124	
+125	    # ----- public introspection / config ---------------------------------
+126	
+127	    @property
+128	    def enabled(self) -> bool:
+129	        return self._enabled
+130	
+131	    @property
+132	    def output_mask(self) -> int:
+133	        return self._output_mask
+134	
+135	    def status(self) -> dict:
+136	        return {
+137	            "active": self._port_name is not None,
+138	            "port": self._port_name,
+139	            "owned": self._owned,
+140	            "connected": self._connected,
+141	            "enabled": self._enabled,
+142	        }
+143	
+144	    def add_status_listener(self, fn: Callable[[dict], None]) -> None:
+145	        self._listeners.append(fn)
+146	
+147	    def set_enabled(self, enabled: bool) -> None:
+148	        self._enabled = enabled
+149	        if not enabled:
+150	            self._release_all()
+151	        self._notify()
+152	
+153	    def set_timing(self, **params) -> None:
+154	        for key, val in params.items():
+155	            if key == "STRUM_DELAY_MS":
+156	                self.strum_delay_ms = float(val)
+157	            elif key == "FRET_EARLY_MS":
+158	                self.fret_early_ms = float(val)
+159	            elif key == "STRUM_PULSE_MS":
+160	                self.strum_pulse_ms = float(val)
+161	            elif key == "CHORD_WINDOW_MS":
+162	                self.chord_window_ms = float(val)
+163	
+164	    # ----- port lifecycle ------------------------------------------------
+165	
+166	    def attach(self, port_name: str) -> bool:
+167	        """Open `port_name` ourselves; the actuator owns the handle."""
+168	        self.detach()
+169	        try:
+170	            ser = serial.Serial(
+171	                port=port_name,
+172	                baudrate=ACTUATOR_BAUDRATE,
+173	                bytesize=serial.EIGHTBITS,
+174	                parity=serial.PARITY_NONE,
+175	                stopbits=serial.STOPBITS_ONE,
+176	                timeout=0.1,
+177	            )
+178	        except (serial.SerialException, OSError) as exc:
+179	            log.warning("actuator: open %s failed: %s", port_name, exc)
+180	            with self._lock:
+181	                self._port_name = port_name
+182	                self._owned = True
+183	                self._connected = False
+184	                self._ser = None
+185	            self._notify()
+186	            self._start_reconnect_worker()
+187	            return False
+188	
+189	        with self._lock:
+190	            self._ser = ser
+191	            self._port_name = port_name
+192	            self._owned = True
+193	            self._connected = True
+194	        log.info("actuator: opened %s", port_name)
+195	        self._notify()
+196	        self._start_reconnect_worker()
+197	        return True
+198	
+199	    def attach_shared(self, port_name: str, ser: serial.Serial) -> None:
+200	        """Use an externally-owned handle. Caller manages connect/reconnect."""
+201	        self.detach()
+202	        with self._lock:
+203	            self._ser = ser
+204	            self._port_name = port_name
+205	            self._owned = False
+206	            self._connected = bool(ser and ser.is_open)
+207	        log.info("actuator: attached shared port %s", port_name)
+208	        self._notify()
+209	
+210	    def detach(self) -> None:
+211	        """Release any current port (closes only if we own the handle)."""
+212	        self._stop_reconnect_worker()
+213	        with self._lock:
+214	            ser = self._ser
+215	            owned = self._owned
+216	            self._ser = None
+217	            self._port_name = None
+218	            self._owned = False
+219	            self._connected = False
+220	        if owned and ser is not None:
+221	            try:
+222	                ser.close()
+223	            except Exception:
+224	                pass
+225	        self._notify()
+226	
+227	    def is_using_port(self, port_name: str) -> bool:
+228	        with self._lock:
+229	            return self._port_name == port_name
+230	
+231	    # ----- timing pipeline -----------------------------------------------
+232	
+233	    def update(self, now_ms: float, detect_state: dict) -> int:
+234	        """Process one tick. Returns the 7-bit output bitmask."""
+235	        if not self._enabled:
+236	            self._output_mask = 0
+237	            return 0
+238	
+239	        presses = 0
+240	        releases = 0
+241	        for ch in CHANNELS:
+242	            ch_state = detect_state.get(ch, {})
+243	            pressed = ch_state.get("pressed", False)
+244	            was_pressed = self._prev_pressed[ch]
+245	
+246	            press_count = ch_state.get("press_count")
+247	            if press_count is not None:
+248	                if press_count != self._prev_press_count[ch]:
+249	                    presses |= CHANNEL_BITS[ch]
+250	                self._prev_press_count[ch] = press_count
+251	            else:
+252	                if pressed and not was_pressed:
+253	                    presses |= CHANNEL_BITS[ch]
+254	
+255	            if not pressed and was_pressed:
+256	                releases |= CHANNEL_BITS[ch]
+257	
+258	            self._prev_pressed[ch] = pressed
+259	
+260	        if presses:
+261	            if not self._chord_open:
+262	                self._chord_open = True
+263	                self._chord_start = now_ms
+264	                self._chord_mask = 0
+265	            self._chord_mask |= presses
+266	
+267	        for ch in CHANNELS:
+268	            bit = CHANNEL_BITS[ch]
+269	            if releases & bit:
+270	                self._release_at[ch] = now_ms + self.strum_delay_ms
+271	                self._release_pending[ch] = True
+272	
+273	        if self._chord_open and (now_ms - self._chord_start) >= self.chord_window_ms:
+274	            self._chord_commit(now_ms)
+275	
+276	        if self._strum_active and now_ms >= self._strum_release_at:
+277	            self._strum_active = False
+278	
+279	        self._process_notes(now_ms)
+280	        self._process_strums(now_ms)
+281	        self._process_releases(now_ms, detect_state)
+282	
+283	        mask = self._frets_active
+284	        if self._strum_active:
+285	            if self._strum_direction:
+286	                mask |= BIT_STRUM_UP
+287	            else:
+288	                mask |= BIT_STRUM_DOWN
+289	
+290	        self._output_mask = mask
+291	        self._send(mask)
+292	        return mask
+293	
+294	    def write_manual(self, mask: int) -> bool:
+295	        """Push a raw bitmask out the actuator port (used by the manual buttons).
+296	
+297	        Returns False if no port is attached or the write failed.
+298	        Does not touch the timing pipeline or the enable gate.
+299	        """
+300	        return self._send(int(mask) & 0x7F)
+301	
+302	    def _chord_commit(self, now_ms: float) -> None:
+303	        if len(self._note_q) >= FIFO_CAP or len(self._strum_q) >= FIFO_CAP:
+304	            self._chord_open = False
+305	            self._chord_mask = 0
+306	            return
+307	
+308	        assert_at = now_ms + self.strum_delay_ms - self.fret_early_ms
+309	        strum_at = now_ms + self.strum_delay_ms
+310	
+311	        if self._strum_q:
+312	            last = self._strum_q[-1]
+313	            earliest = last.strum_at + self.strum_pulse_ms
+314	            if assert_at < earliest:
+315	                assert_at = earliest
+316	                strum_at = assert_at + self.fret_early_ms
+317	
+318	        self._note_q.append(_PendingNote(self._chord_mask, assert_at))
+319	        self._strum_q.append(_PendingStrum(self._chord_mask, strum_at))
+320	
+321	        self._chord_open = False
+322	        self._chord_mask = 0
+323	
+324	    def _process_notes(self, now_ms: float) -> None:
+325	        while self._note_q:
+326	            n = self._note_q[0]
+327	            if now_ms < n.assert_at:
+328	                break
+329	
+330	            for ch in CHANNELS:
+331	                bit = CHANNEL_BITS[ch]
+332	                need = bool(n.fret_mask & bit)
+333	                have = bool(self._frets_active & bit)
+334	                if need and not have:
+335	                    self._frets_active |= bit
+336	                elif not need and have:
+337	                    self._frets_active &= ~bit
+338	
+339	            self._note_q.popleft()
+340	
+341	    def _process_strums(self, now_ms: float) -> None:
+342	        while self._strum_q:
+343	            s = self._strum_q[0]
+344	            if now_ms < s.strum_at:
+345	                break
+346	
+347	            self._strum_active = True
+348	            self._strum_direction = not self._strum_direction
+349	            self._strum_release_at = now_ms + self.strum_pulse_ms
+350	
+351	            self._strum_q.popleft()
+352	
+353	    def _process_releases(self, now_ms: float, detect_state: dict) -> None:
+354	        for ch in CHANNELS:
+355	            if not self._release_pending[ch]:
+356	                continue
+357	            if now_ms < self._release_at.get(ch, float("inf")):
+358	                continue
+359	
+360	            ch_state = detect_state.get(ch, {})
+361	            if ch_state.get("pressed", False):
+362	                continue
+363	
+364	            bit = CHANNEL_BITS[ch]
+365	            needed = False
+366	            for n in self._note_q:
+367	                if n.fret_mask & bit:
+368	                    needed = True
+369	                    break
+370	            if not needed:
+371	                for s in self._strum_q:
+372	                    if s.fret_mask & bit:
+373	                        needed = True
+374	                        break
+375	            if needed:
+376	                continue
+377	
+378	            self._frets_active &= ~bit
+379	            self._release_pending[ch] = False
+380	
+381	    def _release_all(self) -> None:
+382	        self._frets_active = 0
+383	        self._strum_active = False
+384	        self._note_q.clear()
+385	        self._strum_q.clear()
+386	        self._chord_open = False
+387	        self._chord_mask = 0
+388	        for ch in CHANNELS:
+389	            self._release_pending[ch] = False
+390	        self._output_mask = 0
+391	        self._send(0)
+392	
+393	    # ----- serial output -------------------------------------------------
+394	
+395	    def _send(self, mask: int) -> bool:
+396	        with self._lock:
+397	            ser = self._ser
+398	            connected = self._connected
+399	        if ser is None or not connected:
+400	            return False
+401	        if not ser.is_open:
+402	            self._mark_disconnected()
+403	            return False
+404	        try:
+405	            ser.write(bytes([mask & 0x7F]))
+406	            return True
+407	        except (serial.SerialException, OSError) as exc:
+408	            log.warning("actuator: write failed: %s", exc)
+409	            self._mark_disconnected()
+410	            return False
+411	
+412	    def _mark_disconnected(self) -> None:
+413	        owned = False
+414	        ser_to_close = None
+415	        with self._lock:
+416	            if self._connected:
+417	                self._connected = False
+418	                if self._owned:
+419	                    owned = True
+420	                    ser_to_close = self._ser
+421	                    self._ser = None
+422	        if owned and ser_to_close is not None:
+423	            try:
+424	                ser_to_close.close()
+425	            except Exception:
+426	                pass
+427	        self._notify()
+428	
+429	    # ----- reconnect (only for owned ports) ------------------------------
+430	
+431	    def _start_reconnect_worker(self) -> None:
+432	        if self._reconnect_thread and self._reconnect_thread.is_alive():
+433	            return
+434	        self._reconnect_stop.clear()
+435	        t = threading.Thread(
+436	            target=self._reconnect_loop, name="actuator-reconnect", daemon=True,
+437	        )
+438	        self._reconnect_thread = t
+439	        t.start()
+440	
+441	    def _stop_reconnect_worker(self) -> None:
+442	        self._reconnect_stop.set()
+443	        t = self._reconnect_thread
+444	        if t is not None and t.is_alive():
+445	            t.join(timeout=1.0)
+446	        self._reconnect_thread = None
+447	
+448	    def _reconnect_loop(self) -> None:
+449	        while not self._reconnect_stop.is_set():
+450	            if self._reconnect_stop.wait(RECONNECT_INTERVAL):
+451	                return
+452	            with self._lock:
+453	                want = self._port_name
+454	                owned = self._owned
+455	                connected = self._connected
+456	            if want is None or not owned or connected:
+457	                continue
+458	            try:
+459	                ser = serial.Serial(
+460	                    port=want,
+461	                    baudrate=ACTUATOR_BAUDRATE,
+462	                    bytesize=serial.EIGHTBITS,
+463	                    parity=serial.PARITY_NONE,
+464	                    stopbits=serial.STOPBITS_ONE,
+465	                    timeout=0.1,
+466	                )
+467	            except (serial.SerialException, OSError):
+468	                continue
+469	            with self._lock:
+470	                if self._port_name != want or not self._owned:
+471	                    try:
+472	                        ser.close()
+473	                    except Exception:
+474	                        pass
+475	                    continue
+476	                self._ser = ser
+477	                self._connected = True
+478	            log.info("actuator: reconnected on %s", want)
+479	            self._notify()
+480	
+481	    # ----- listeners -----------------------------------------------------
+482	
+483	    def _notify(self) -> None:
+484	        s = self.status()
+485	        for cb in list(self._listeners):
+486	            try:
+487	                cb(s)
+488	            except Exception as exc:
+489	                log.warning("actuator: status listener raised: %s", exc)
+490
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:31Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate cmake and USB headers
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake -type f -name "*.cmake" 2>/dev/null | head -20 && ls /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb 2>/dev/null | head -30`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/.generated/toolchain.cmake
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/.generated/file.cmake
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/.generated/rule.cmake
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/.generated/overrides.cmake
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/.generated/main.cmake
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/.generated/exported.cmake
+src
+usb_cdc.h
+usb_chapter_9.h
+usb_common.h
+usb_ehci.h
+usb_host.h
+usb_host_cdc.h
+usb_host_client_driver.h
+usb_host_hub_interface.h
+usb_hub.h
+usb_ohci.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:35Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/cmake/marvin/default/user.cmake`
+
+```text
+1	target_sources(marvin_default_default_XC32_compile PRIVATE
+2	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/log.c"
+3	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/video.c"
+4	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/tc358743.c"
+5	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/isc_capture.c"
+6	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/detector.c"
+7	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/cv_marvin_v1.c"
+8	)
+9	
+10	target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
+11	    CAMERA_ENABLE_DEBUG=0
+12	)
+13
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect USB host CDC API
+
+`grep -l "USB_HOST_CDC\|USB_HOST_EVENT" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/*.h 2>/dev/null | head; grep -E "^(typedef|enum|USB_HOST_CDC_RESULT|USB_HOST_CDC_HANDLE|USB_HOST_CDC_EVENT|USB_HOST_CDC_TRANSFER_HANDLE).*" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host_cdc.h | head -60`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host_cdc.h
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h
+typedef uintptr_t USB_HOST_CDC_HANDLE;
+typedef uintptr_t USB_HOST_CDC_OBJ;
+typedef uintptr_t USB_HOST_CDC_TRANSFER_HANDLE;
+typedef uintptr_t USB_HOST_CDC_REQUEST_HANDLE;
+typedef enum
+typedef struct
+USB_HOST_CDC_EVENT_ACM_GET_LINE_CODING_COMPLETE_DATA,
+USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE_DATA,
+USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE_DATA,
+USB_HOST_CDC_EVENT_ACM_SEND_BREAK_COMPLETE_DATA;
+typedef struct
+USB_HOST_CDC_EVENT_SERIAL_STATE_NOTIFICATION_RECEIVED_DATA,
+USB_HOST_CDC_EVENT_READ_COMPLETE_DATA,
+USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA;
+typedef enum
+typedef void (* USB_HOST_CDC_ATTACH_EVENT_HANDLER)
+typedef enum
+typedef USB_HOST_CDC_EVENT_RESPONSE (* USB_HOST_CDC_EVENT_HANDLER)
+USB_HOST_CDC_RESULT USB_HOST_CDC_AttachEventHandlerSet
+USB_HOST_CDC_HANDLE USB_HOST_CDC_Open
+USB_HOST_CDC_RESULT USB_HOST_CDC_EventHandlerSet
+USB_HOST_CDC_RESULT USB_HOST_CDC_Write
+USB_HOST_CDC_RESULT USB_HOST_CDC_Read
+USB_HOST_CDC_RESULT USB_HOST_CDC_SerialStateNotificationGet
+USB_HOST_CDC_RESULT USB_HOST_CDC_ACM_LineCodingSet
+USB_HOST_CDC_RESULT USB_HOST_CDC_ACM_ControlLineStateSet
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:44Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/usb/usb_host_cdc.h`
+
+```text
+1	/*******************************************************************************
+2	  USB Host CDC Client Driver Interface Definition
+3	
+4	  Company:
+5	    Microchip Technology Inc.
+6	
+7	  File Name:
+8	    usb_host_cdc.h
+9	
+10	  Summary:
+11	    USB Host CDC Client Driver Interface Header
+12	
+13	  Description:
+14	    This header file contains the function prototypes and definitions of the
+15	    data types and constants that make up the interface to the USB Host CDC
+16	    Client Driver.
+17	*******************************************************************************/
+18	
+19	//DOM-IGNORE-BEGIN
+20	/*******************************************************************************
+21	* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
+22	*
+23	* Subject to your compliance with these terms, you may use Microchip software
+24	* and any derivatives exclusively with Microchip products. It is your
+25	* responsibility to comply with third party license terms applicable to your
+26	* use of third party software (including open source software) that may
+27	* accompany Microchip software.
+28	*
+29	* THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+30	* EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+31	* WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+32	* PARTICULAR PURPOSE.
+33	*
+34	* IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+35	* INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+36	* WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+37	* BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+38	* FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+39	* ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+40	* THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+41	 *******************************************************************************/
+42	#ifndef USB_HOST_CDC_H_
+43	#define USB_HOST_CDC_H_
+44	
+45	//DOM-IGNORE-END
+46	
+47	// ****************************************************************************
+48	// ****************************************************************************
+49	// Section: Included Files
+50	// ****************************************************************************
+51	// ****************************************************************************
+52	
+53	#include "usb/usb_host.h"
+54	#include "usb/usb_host_client_driver.h"
+55	#include "usb/usb_cdc.h"
+56	
+57	// DOM-IGNORE-BEGIN
+58	#ifdef __cplusplus  // Provide C++ Compatibility
+59	
+60	    extern "C" {
+61	
+62	#endif
+63	// DOM-IGNORE-END  
+64	
+65	// ****************************************************************************
+66	// ****************************************************************************
+67	// Section: Data Types and Constants
+68	// ****************************************************************************
+69	// ****************************************************************************
+70	
+71	/* MISRA C-2012 Rule 5.2, and 8.6 deviated below. Deviation record ID -  
+72	    H3_USB_MISRAC_2012_R_5_2_DR_1, H3_USB_MISRAC_2012_R_8_6_DR_1 */
+73	// *****************************************************************************
+74	/* USB Host CDC Client Driver Handle 
+75	 
+76	  Summary: 
+77	    Defines the type of the CDC Host Client Driver Handle 
+78	
+79	  Description:
+80	    This type defines the type of the handle returned by USB_HOST_CDC_Open()
+81	    function. This application uses this handle to specify the instance of the
+82	    CDC client driver being accessed while calling a CDC Client driver function.  
+83	
+84	  Remarks:
+85	    None.
+86	*/
+87	
+88	typedef uintptr_t USB_HOST_CDC_HANDLE;
+89	
+90	// *****************************************************************************
+91	/* USB Host CDC Client Driver Invalid Handle 
+92	 
+93	  Summary: 
+94	    Defines an Invalid CDC Client Driver Handle.
+95	
+96	  Description:
+97	    This type defines an Invalid CDC Client Driver Handle. The
+98	    USB_HOST_CDC_Open() function returns an invalid handle when it fails to open
+99	    the specified CDC device instance.
+100	
+101	  Remarks:
+102	    None.
+103	*/
+104	
+105	#define USB_HOST_CDC_HANDLE_INVALID ((USB_HOST_CDC_HANDLE)(-1))
+106	
+107	// *****************************************************************************
+108	/* USB HOST CDC Client Driver Interface
+109	 
+110	  Summary:
+111	    USB HOST CDC Client Driver Interface
+112	
+113	  Description:
+114	    This macro should be used by the application in TPL table while adding
+115	    support for the USB CDC Host Client Driver.
+116	
+117	  Remarks:
+118	    None.
+119	*/
+120	
+121	/*DOM-IGNORE-BEGIN*/extern USB_HOST_CLIENT_DRIVER gUSBHostCDCClientDriver; /*DOM-IGNORE-END*/
+122	#define USB_HOST_CDC_INTERFACE  /*DOM-IGNORE-BEGIN*/&gUSBHostCDCClientDriver /*DOM-IGNORE-END*/
+123	
+124	// *****************************************************************************
+125	/* USB Host CDC Object 
+126	 
+127	  Summary: 
+128	    Defines the type of the CDC Host Client Object.
+129	
+130	  Description:
+131	    This type defines the type of the CDC Host Client Object. This type
+132	    is returned by the Attach Event Handler and is used by the application to
+133	    open the attached CDC Device.  
+134	
+135	  Remarks:
+136	    None.
+137	*/
+138	
+139	typedef uintptr_t USB_HOST_CDC_OBJ;
+140	
+141	// *****************************************************************************
+142	/*  USB Host CDC Client Driver Transfer Handle
+143	
+144	  Summary:
+145	     USB Host CDC Client Driver Transfer Handle
+146	
+147	  Description:
+148	    This is returned by the CDC Client driver data transfer routines and should
+149	    be used by the application to track the transfer especially in cases where
+150	    transfers are queued.
+151	
+152	  Remarks:
+153	    None.
+154	*/
+155	
+156	typedef uintptr_t USB_HOST_CDC_TRANSFER_HANDLE;
+157	
+158	// *****************************************************************************
+159	/*  USB Host CDC Client Driver Invalid Transfer Handle Definition
+160	 
+161	  Summary:
+162	     USB Host CDC Client Driver Invalid Transfer Handle Definition.
+163	
+164	  Description:
+165	    This definition defines a  USB Host CDC Client Driver Invalid Transfer
+166	    Handle. A Invalid Transfer Handle is returned by the CDC Client Driver data
+167	    transfer routines when the request was not successful. 
+168	
+169	  Remarks:
+170	    None.
+171	*/
+172	
+173	#define USB_HOST_CDC_TRANSFER_HANDLE_INVALID ((USB_HOST_CDC_TRANSFER_HANDLE)(-1))
+174	
+175	// *****************************************************************************
+176	/*  USB Host CDC Client Driver Request Handle
+177	
+178	  Summary:
+179	     USB Host CDC Client Driver Request Handle
+180	
+181	  Description:
+182	    This is returned by the CDC Client driver command routines and should be
+183	    used by the application to track the command especially in cases where
+184	    transfers are queued.
+185	
+186	  Remarks:
+187	    None.
+188	*/
+189	
+190	typedef uintptr_t USB_HOST_CDC_REQUEST_HANDLE;
+191	
+192	// *****************************************************************************
+193	/*  USB Host CDC Client Driver Invalid Request Handle
+194	
+195	  Summary:
+196	     USB Host CDC Client Driver Invalid Request Handle
+197	
+198	  Description:
+199	    This is returned by the CDC Client driver command routines when the request
+200	    could not be scheduled.
+201	
+202	  Remarks:
+203	    None.
+204	*/
+205	
+206	#define USB_HOST_CDC_REQUEST_HANDLE_INVALID ((USB_HOST_CDC_REQUEST_HANDLE)(-1))
+207	
+208	/*DOM-IGNORE-BEGIN*/#define USB_HOST_CDC_RESULT_MIN -100 /*DOM-IGNORE-END*/
+209	
+210	// *****************************************************************************
+211	/* USB Host CDC Client Driver Result.
+212	 
+213	  Summary:
+214	    USB Host CDC Client Driver Result enumeration.
+215	
+216	  Description:
+217	    This enumeration lists the possible results the CDC client driver uses. Only
+218	    some results are applicable to some functions and events. Refer to the event
+219	    and function documentation for more details.
+220	
+221	  Remarks:
+222	    None.
+223	*/
+224	
+225	typedef enum
+226	{
+227	    /* An unknown failure has occurred */
+228	    USB_HOST_CDC_RESULT_FAILURE /*DOM-IGNORE-BEGIN*/ = USB_HOST_CDC_RESULT_MIN /*DOM-IGNORE-END*/,
+229	
+230	    /* The transfer or request could not be scheduled because internal
+231	     * queues are full. The request or transfer should be retried */
+232	    USB_HOST_CDC_RESULT_BUSY,
+233	
+234	    /* The request was stalled */
+235	    USB_HOST_CDC_RESULT_REQUEST_STALLED,
+236	
+237	    /* A required parameter was invalid */
+238	    USB_HOST_CDC_RESULT_INVALID_PARAMETER,
+239	
+240	    /* The associated device does not exist in the system. */
+241	    USB_HOST_CDC_RESULT_DEVICE_UNKNOWN,
+242	
+243	    /* The transfer or requested was aborted */
+244	    USB_HOST_CDC_RESULT_ABORTED,
+245	
+246	    /* The specified handle is not valid */
+247	    USB_HOST_CDC_RESULT_HANDLE_INVALID,
+248	
+249	    /* The operation was successful */
+250	    USB_HOST_CDC_RESULT_SUCCESS /*DOM-IGNORE-BEGIN*/ = 1 /*DOM-IGNORE-END*/
+251	
+252	} USB_HOST_CDC_RESULT;
+253	
+254	// *****************************************************************************
+255	/*  USB Host CDC Client Driver Command Event Data.
+256	 
+257	  Summary:
+258	     USB Host CDC Client Driver Command Event Data.
+259	
+260	  Description:
+261	    This data type defines the data structure returned by the driver along with
+262	    the following events:
+263	    USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE_DATA,
+264	    USB_HOST_CDC_EVENT_ACM_SEND_BREAK_COMPLETE_DATA,
+265	    USB_HOST_CDC_EVENT_ACM_GET_LINE_CODING_COMPLETE_DATA,
+266	    USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE_DATA,
+267	
+268	  Remarks:
+269	    None.
+270	*/
+271	
+272	typedef struct
+273	{
+274	    /* Request handle of this request */
+275	    USB_HOST_CDC_REQUEST_HANDLE requestHandle;
+276	
+277	    /* Termination status */
+278	    USB_HOST_CDC_RESULT result;
+279	
+280	    /* Size of the data transferred in the request */
+281	    size_t length;
+282	}
+283	USB_HOST_CDC_EVENT_ACM_GET_LINE_CODING_COMPLETE_DATA,
+284	USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE_DATA,
+285	USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE_DATA,
+286	USB_HOST_CDC_EVENT_ACM_SEND_BREAK_COMPLETE_DATA;
+287	
+288	// *****************************************************************************
+289	/* USB Host CDC Client Driver Event Data.
+290	 
+291	  Summary:
+292	     USB Host CDC Client Driver Event Data.
+293	
+294	  Description:
+295	    This data type defines the data structure returned by the driver along with
+296	    the following events:
+297	    USB_HOST_CDC_EVENT_READ_COMPLETE_DATA,
+298	    USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA,
+299	
+300	  Remarks:
+301	    None.
+302	*/
+303	
+304	typedef struct
+305	{
+306	    /* Transfer handle of this transfer */
+307	    USB_HOST_CDC_TRANSFER_HANDLE transferHandle;
+308	
+309	    /* Termination transfer status */
+310	    USB_HOST_CDC_RESULT result;
+311	
+312	    /* Size of the data transferred in the request */
+313	    size_t length;
+314	}
+315	USB_HOST_CDC_EVENT_SERIAL_STATE_NOTIFICATION_RECEIVED_DATA,
+316	USB_HOST_CDC_EVENT_READ_COMPLETE_DATA,
+317	USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA;
+318	
+319	// *****************************************************************************
+320	/* CDC Class Driver Events
+321	
+322	  Summary:
+323	    Identifies the possible events that the CDC Class Driver can generate.
+324	
+325	  Description:
+326	    This enumeration identifies the possible events that the CDC Class Driver
+327	    can generate. The application should register an event handler using the
+328	    USB_HOST_CDC_EventHandlerSet function to receive CDC Class Driver events.
+329	    
+330	    An event may have data associated with it.  Events that are generated due to
+331	    a transfer of data between the host and device are accompanied by data
+332	    structures that provide the status of the transfer termination. For example,
+333	    the USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE event is accompanied by a
+334	    pointer to a USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE_DATA data
+335	    structure. The transferStatus member of this data structure indicates the
+336	    success or failure of the transfer. A transfer may fail due to device not
+337	    responding on the bus, if the device stalls any stages of the transfer or
+338	    due to NAK timeouts. The event description provides details on the nature of
+339	    the event and the data that is associated with the event.
+340	
+341	  Remarks:
+342	    None.
+343	*/
+344	
+345	typedef enum
+346	{
+347	    /* This event occurs when a CDC Client Driver Read operation has completed
+348	       i.e when the data has been received from the connected CDC device. This
+349	       event is generated after the application calls the USB_HOST_CDC_Read
+350	       function. The eventData parameter in the event call back function will be
+351	       of a pointer to a USB_HOST_CDC_EVENT_READ_COMPLETE_DATA structure. This
+352	       contains details about the transfer handle associated with this read
+353	       request, the amount of data read and the termination status of the read
+354	       request. */
+355	
+356	    USB_HOST_CDC_EVENT_READ_COMPLETE,
+357	
+358	    /* This event occurs when a CDC Client Driver Write operation has completed
+359	       i.e when the data has been written to the connected CDC device. This
+360	       event is generated after the application calls the USB_HOST_CDC_Write
+361	       function. The eventData parameter in the event call back function will be
+362	       a pointer to a USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA structure. This
+363	       contains details about the transfer handle associated with this write
+364	       request, the amount of data written and the termination status of the write
+365	       request. */
+366	
+367	    USB_HOST_CDC_EVENT_WRITE_COMPLETE,
+368	
+369	    /* This event occurs when a CDC Client Driver Send Break 
+370	       request has completed. This event is generated after the application
+371	       calls the USB_HOST_CDC_ACM_BreakSend function and the device has either
+372	       acknowledged or stalled the request. The eventData parameter in the event
+373	       call back function will be of a pointer to a
+374	       USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE_DATA structure. This
+375	       contains details about the transfer handle associated with this request,
+376	       the amount of data sent and the termination status of the set request. */
+377	
+378	    USB_HOST_CDC_EVENT_ACM_SEND_BREAK_COMPLETE,
+379	
+380	    /* This event occurs when a CDC Client Driver Set Control Line State 
+381	       request has completed. This event is generated after the application
+382	       calls the USB_HOST_CDC_ACM_ControlLineStateSet function and the device has
+383	       either acknowledged or stalled the request. The eventData parameter in
+384	       the event call back function will be of a pointer to a
+385	       USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE_DATA structure. This
+386	       contains details about the transfer handle associated with this request,
+387	       the amount of data sent and the termination status of the set request. */
+388	
+389	    USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE,
+390	
+391	    /* This event occurs when a CDC Client Driver Set Line Coding
+392	       request has completed. This event is generated after the application
+393	       calls the USB_HOST_CDC_ACM_LineCodingSet function and the device either
+394	       acknowledged or stalled the request. The eventData parameter in the event
+395	       call back function will be of a pointer to a
+396	       USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE_DATA structure. This contains
+397	       details about the transfer handle associated with this request, the
+398	       amount of data sent and the termination status of the set request. */
+399	
+400	    USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE,
+401	
+402	    /* This event occurs when a CDC Client Driver Get Line Coding
+403	       request has completed.  This event is generated after the application
+404	       calls the USB_HOST_CDC_ACM_LineCodingGet function and the device sends the
+405	       line coding to the host. The eventData parameter in the event call back
+406	       function will be of a pointer to a
+407	       USB_HOST_CDC_EVENT_ACM_GET_LINE_CODING_COMPLETE_DATA structure.  This
+408	       contains details about the transfer handle associated with this request,
+409	       the amount of data received and the termination status of the get
+410	       request. */
+411	
+412	    USB_HOST_CDC_EVENT_ACM_GET_LINE_CODING_COMPLETE,
+413	
+414	    /* This event occurs when a CDC Client Driver Serial State Notification
+415	       Get operation has completed.  This event is generated after the
+416	       application calls the USB_HOST_CDC_SerialStateNotificationGet and the
+417	       device sends a serial state notification to the host. The eventData
+418	       parameter in the event call back function will be of a pointer to a
+419	       USB_HOST_CDC_EVENT_SERIAL_STATE_NOTIFICATION_RECEIVED_DATA structure.
+420	       This contains details about the transfer handle associated with this
+421	       request, the amount of data received and the termination status of the
+422	       get request. */
+423	
+424	    USB_HOST_CDC_EVENT_SERIAL_STATE_NOTIFICATION_RECEIVED,
+425	
+426	    /* This event occurs when the device that this client was connected to has
+427	     * been detached. The client should close the CDC instance. There is no
+428	     * event data associated with this event */
+429	    USB_HOST_CDC_EVENT_DEVICE_DETACHED
+430	
+431	} USB_HOST_CDC_EVENT;
+432	
+433	// *****************************************************************************
+434	/* USB Host CDC Client Driver Attach Event Handler Function Pointer Type.
+435	
+436	  Summary:
+437	    USB Host CDC Client Driver Attach Event Handler Function Pointer Type.
+438	
+439	  Description:
+440	    This data type defines the required function signature of the USB Host CDC
+441	    Client Driver attach event handling callback function. The application must
+442	    register a pointer to a CDC Client Driver attach events handling function
+443	    whose function signature (parameter and return value types) match the types
+444	    specified by this function pointer in order to receive attach event call
+445	    backs from the CDC Client Driver. The client driver will invoke this
+446	    function with event relevant parameters. The description of the event
+447	    handler function parameters is given here.
+448	
+449	    cdcObjHandle - Handle of the client to which this event is directed.
+450	    
+451	    context - Value identifying the context of the application that was
+452	    registered along with  the event handling function.
+453	
+454	  Remarks:
+455	    None.
+456	*/
+457	
+458	typedef void (* USB_HOST_CDC_ATTACH_EVENT_HANDLER)
+459	(
+460	    USB_HOST_CDC_OBJ cdcObjHandle, 
+461	    uintptr_t context
+462	);
+463	
+464	// *****************************************************************************
+465	/* USB Host CDC Event Handler Return Type 
+466	 
+467	  Summary: 
+468	    Return type of the USB CDC Host Client Driver Event Handler.
+469	
+470	  Description:
+471	    This enumeration list the possible return values of the USB CDC Host Client
+472	    Driver Event Handler.
+473	
+474	  Remarks:
+475	    None.
+476	*/
+477	
+478	typedef enum
+479	{
+480	    /* This means no response is required */
+481	    USB_HOST_CDC_EVENT_RESPONE_NONE   /*DOM-IGNORE-BEGIN*/= 0 /*DOM-IGNORE-END*/
+482	
+483	} USB_HOST_CDC_EVENT_RESPONSE;
+484	
+485	// *****************************************************************************
+486	/* USB Host CDC Client Driver Event Handler Function Pointer Type.
+487	
+488	  Summary:
+489	    USB Host CDC Client Driver Event Handler Function Pointer Type.
+490	
+491	  Description:
+492	    This data type defines the required function signature of the USB Host CDC
+493	    Client Driver event handling callback function. The application must
+494	    register a pointer to a CDC Client Driver events handling function whose
+495	    function signature (parameter and return value types) match the types
+496	    specified by this function pointer in order to receive event call backs from
+497	    the CDC Client Driver. The class driver will invoke this function with
+498	    event relevant parameters. The description of the event handler function
+499	    parameters is given here.
+500	
+501	    handle - Handle of the client to which this event is directed.
+502	    
+503	    event - Type of event generated.
+504	    
+505	    eventData - This parameter should be type casted to a event specific pointer
+506	    type based on the event that has occurred. Refer to the USB_HOST_CDC_EVENT
+507	    enumeration description for more details.
+508	    
+509	    context - Value identifying the context of the application that was
+510	    registered along with  the event handling function.
+511	
+512	  Remarks:
+513	    None.
+514	*/
+515	
+516	typedef USB_HOST_CDC_EVENT_RESPONSE (* USB_HOST_CDC_EVENT_HANDLER)
+517	(
+518	    USB_HOST_CDC_HANDLE cdcHandle,
+519	    USB_HOST_CDC_EVENT event,
+520	    void * eventData,
+521	    uintptr_t context
+522	);
+523	
+524	// ****************************************************************************
+525	// ****************************************************************************
+526	// Section: Client Access Functions
+527	// ****************************************************************************
+528	// ****************************************************************************
+529	
+530	// ****************************************************************************
+531	/* Function:
+532	    USB_HOST_CDC_RESULT USB_HOST_CDC_AttachEventHandlerSet
+533	    (
+534	        USB_HOST_CDC_ATTACH_EVENT_HANDLER eventHandler,
+535	        uintptr_t context
+536	    );
+537	           
+538	  Summary:
+539	    This function will set an attach event handler.
+540	
+541	  Description:
+542	    This function will set an attach event handler. The attach event handler
+543	    will be called when a CDC device has been attached. The context will be
+544	    returned in the event handler. This function should be called before the bus
+545	    has been enabled.
+546	
+547	  Precondition:
+548	    None.
+549	
+550	  Input:
+551	    eventHandler - pointer to the attach event handler
+552	    
+553	    context - an application defined context that will be returned in the event
+554	    handler.
+555	
+556	  Return:
+557	    USB_HOST_CDC_RESULT_SUCCESS - if the attach event handler was registered
+558	    successfully. 
+559	
+560	    USB_HOST_CDC_RESULT_FAILURE - if the number of registered event handlers has
+561	    exceeded USB_HOST_CDC_ATTACH_LISTENERS_NUMBER.
+562	
+563	  Example:
+564	    <code>
+565	    </code>
+566	
+567	  Remarks:
+568	    Function should be called before USB_HOST_BusEnable() function is called.
+569	*/
+570	
+571	USB_HOST_CDC_RESULT USB_HOST_CDC_AttachEventHandlerSet
+572	(
+573	    USB_HOST_CDC_ATTACH_EVENT_HANDLER eventHandler,
+574	    uintptr_t context
+575	);
+576	
+577	// ****************************************************************************
+578	/* Function:
+579	    USB_HOST_DEVICE_OBJ_HANDLE USB_HOST_CDC_DeviceObjHandleGet
+580	    (
+581	        USB_HOST_CDC_OBJ cdcDeviceObj
+582	    );
+583	           
+584	  Summary:
+585	    This function returns the Device Object Handle for this CDC device.
+586	
+587	  Description:
+588	    This function returns the Device Object Handle for this CDC device. This
+589	    returned Device Object Handle can be used by the application to perform
+590	    device level operations such as getting the string descriptors.
+591	
+592	  Precondition:
+593	    None.
+594	
+595	  Input:
+596	    cdcDeviceObj - CDC device object handle returned in the
+597	    USB_HOST_CDC_ATTACH_EVENT_HANDLER function.
+598	
+599	  Return:
+600	    Will return a valid device object handle if the device is still connected to
+601	    the system. Will return an USB_HOST_DEVICE_OBJ_HANDLE_INVALID otherwise.
+602	    
+603	  Example:
+604	    <code>
+605	    </code>
+606	
+607	  Remarks:
+608	    None.                                                                   
+609	*/
+610	
+611	USB_HOST_DEVICE_OBJ_HANDLE USB_HOST_CDC_DeviceObjHandleGet
+612	(
+613	    USB_HOST_CDC_OBJ cdcDeviceObj
+614	);
+615	
+616	// ****************************************************************************
+617	/* Function:
+618	    USB_HOST_CDC_HANDLE USB_HOST_CDC_Open
+619	    (
+620	        USB_HOST_CDC_OBJ cdcDeviceObj
+621	    );
+622	           
+623	  Summary:
+624	    This function opens the specified CDC device.
+625	
+626	  Description:
+627	    This function will open the specified CDC device. Once opened, the CDC
+628	    device can be accessed via the handle which this function returns. The
+629	    cdcDeviceObj parameter is the value returned in the
+630	    USB_HOST_CDC_ATTACH_EVENT_HANDLER event handling function.
+631	
+632	  Precondition:
+633	    The client handle should be valid.
+634	
+635	  Input:
+636	    cdcDeviceObj - CDC device object handle returned in the
+637	    USB_HOST_CDC_ATTACH_EVENT_HANDLER function.
+638	
+639	  Return:
+640	    Will return a valid handle if the device could be opened successfully, else
+641	    will return USB_HOST_CDC_HANDLE_INVALID. The function will return a valid
+642	    handle if the device is ready to be opened.
+643	    
+644	  Example:
+645	    <code>
+646	    </code>
+647	
+648	  Remarks:
+649	    None.                                                                   
+650	*/
+651	
+652	USB_HOST_CDC_HANDLE USB_HOST_CDC_Open
+653	(
+654	    USB_HOST_CDC_OBJ cdcDeviceObj
+655	);
+656	
+657	// ****************************************************************************
+658	/* Function:
+659	    void USB_HOST_CDC_Close
+660	    (
+661	        USB_HOST_CDC_HANDLE cdcDeviceHandle
+662	    );
+663	           
+664	  Summary:
+665	    This function closes the CDC device.
+666	
+667	  Description:
+668	    This function will close the open CDC device. This closes the association
+669	    between the application entity that opened the device and device. The driver
+670	    handle becomes invalid.
+671	
+672	  Precondition:
+673	    None.
+674	
+675	  Input:
+676	    cdcDeviceHandle - handle to the CDC device obtained from the
+677	    USB_HOST_CDC_Open() function.
+678	
+679	  Return:
+680	    None.
+681	    
+682	  Example:
+683	    <code>
+684	    </code>
+685	
+686	  Remarks:
+687	    The device handle becomes invalid after calling this function.                                                                   
+688	*/
+689	
+690	void USB_HOST_CDC_Close
+691	(
+692	    USB_HOST_CDC_HANDLE cdcDeviceHandle
+693	);
+694	
+695	// *****************************************************************************
+696	/* Function:
+697	    USB_HOST_CDC_RESULT USB_HOST_CDC_EventHandlerSet
+698	    (
+699	        USB_HOST_CDC_HANDLE handle,
+700	        USB_HOST_CDC_EVENT_HANDLER eventHandler,
+701	        uintptr_t context
+702	    );
+703	
+704	  Summary:
+705	    Registers an event handler with the CDC Host Client Driver.
+706	
+707	  Description:
+708	    This function registers a client specific CDC Host Client Driver event
+709	    handler. The CDC Host Client Driver will call this function with relevant
+710	    event and associated event data, in response to command requests and data
+711	    transfers that have been scheduled by the client.
+712	    
+713	  Precondition:
+714	    None.
+715	
+716	  Parameters:
+717	    handle  - handle to the CDC Host Client Driver.
+718	
+719	    eventHandler - A pointer to event handler function. If NULL, then events
+720	    will not be generated.
+721	    
+722	    context - Application specific context that is returned in the event handler.
+723	
+724	  Returns:
+725	    USB_HOST_CDC_RESULT_SUCCESS - The operation was successful
+726	    USB_HOST_CDC_RESULT_HANDLE_INVALID - The specified instance does 
+727	    not exist.
+728	    USB_HOST_CDC_RESULT_FAILURE - An unknown failure occurred.
+729	    
+730	  Example:
+731	    <code>
+732	    </code>
+733	
+734	  Remarks:
+735	    None.
+736	*/
+737	
+738	USB_HOST_CDC_RESULT USB_HOST_CDC_EventHandlerSet
+739	(
+740	    USB_HOST_CDC_HANDLE handle,
+741	    USB_HOST_CDC_EVENT_HANDLER eventHandler,
+742	    uintptr_t context
+743	);
+744	
+745	
+746	// ****************************************************************************
+747	// ****************************************************************************
+748	// Section: Data Transfer Functions
+749	// ****************************************************************************
+750	// ****************************************************************************
+751	
+752	// ****************************************************************************
+753	/* Function:
+754	    USB_HOST_CDC_RESULT USB_HOST_CDC_Write
+755	    (
+756	        USB_HOST_CDC_HANDLE handle,
+757	        USB_HOST_CDC_TRANSFER_HANDLE * transferHandle,
+758	        void * data,
+759	        size_t size
+760	    );
+761	           
+762	  Summary:
+763	    This function will write data to the attached device.
+764	
+765	  Description:
+766	    This function will write data to the attached CDC device. The function will
+767	    write size amount of bytes. If the request was accepted, transferHandle will
+768	    contain a valid transfer handle, else it will contain
+769	    USB_HOST_CDC_TRANSFER_HANDLE_INVALID. The completion of the request will be
+770	    indicated by the USB_HOST_CDC_EVENT_WRITE_COMPLETE event. The transfer
+771	    handle will be returned in the event. 
+772	
+773	  Precondition:
+774	    The client handle should be valid.
+775	
+776	  Input:
+777	    handle - handle to the CDC device instance to which the request should be
+778	    sent.
+779	    
+780	    transferHandle - Pointer to USB_HOST_CDC_TRANSFER_HANDLE type of a variable.
+781	    This will contain a valid transfer handle if the request was successful.
+782	
+783	    data - pointer to the buffer containing the data to be written. The
+784	    contents of the buffer should not be changed till the
+785	    USB_HOST_CDC_EVENT_WRITE_COMPLETE event has occurred.
+786	
+787	    size - Number of bytes to write.
+788	
+789	  Return:
+790	    USB_HOST_CDC_RESULT_SUCCESS - The operation was successful.
+791	
+792	    USB_HOST_CDC_RESULT_DEVICE_UNKNOWN - The device that this request was
+793	    targeted to does not exist in the system.
+794	
+795	    USB_HOST_CDC_RESULT_BUSY - The request could not be scheduled at this time.
+796	    The client should try again.
+797	
+798	    USB_HOST_CDC_RESULT_INVALID_PARAMETER - An input parameter was NULL.
+799	
+800	    USB_HOST_CDC_RESULT_FAILURE - An unknown failure occurred.
+801	
+802	    USB_HOST_CDC_RESULT_HANDLE_INVALID - The client handle is not valid.
+803	    
+804	  Example:
+805	    <code>
+806	    </code>
+807	
+808	  Remarks:
+809	    None.                                                                   
+810	*/
+811	
+812	USB_HOST_CDC_RESULT USB_HOST_CDC_Write
+813	(
+814	    USB_HOST_CDC_HANDLE handle,
+815	    USB_HOST_CDC_TRANSFER_HANDLE * transferHandle,
+816	    void * data,
+817	    size_t size
+818	);
+819	
+820	// ****************************************************************************
+821	/* Function:
+822	    USB_HOST_CDC_RESULT USB_HOST_CDC_Read
+823	    (
+824	        USB_HOST_CDC_HANDLE handle,
+825	        USB_HOST_CDC_TRANSFER_HANDLE * transferHandle,
+826	        void * data,
+827	        size_t size
+828	    );
+829	           
+830	  Summary:
+831	    This function will read data from the attached device.
+832	
+833	  Description:
+834	    This function will read data from the attached CDC device. The function will
+835	    try to read size amount of bytes but will stop reading when the device
+836	    terminates the USB transfer (sends a short packet or a ZLP). If the request
+837	    was accepted, transferHandle will contain a valid transfer handle, else it
+838	    will contain USB_HOST_CDC_TRANSFER_HANDLE_INVALID. The completion of the
+839	    request will be indicated by the USB_HOST_CDC_EVENT_READ_COMPLETE
+840	    event. The transfer handle will be returned in the event. 
+841	
+842	  Precondition:
+843	    The client handle should be valid.
+844	
+845	  Input:
+846	    handle - handle to the CDC device instance to which the request should be
+847	    sent.
+848	    
+849	    transferHandle - Pointer to USB_HOST_CDC_TRANSFER_HANDLE type of a variable.
+850	    This will contain a valid transfer handle if the request was successful.
+851	
+852	    data - pointer to the buffer where the received data will be stored. The
+853	    contents of the buffer will be valid only when the
+854	    USB_HOST_CDC_EVENT_READ_COMPLETE event has occurred.
+855	
+856	    size - size of the data buffer. Only these many bytes or less will be read.
+857	
+858	  Return:
+859	    USB_HOST_CDC_RESULT_SUCCESS - The operation was successful.
+860	
+861	    USB_HOST_CDC_RESULT_DEVICE_UNKNOWN - The device that this request was
+862	    targeted to does not exist in the system.
+863	
+864	    USB_HOST_CDC_RESULT_BUSY - The request could not be scheduled at this time.
+865	    The client should try again.
+866	
+867	    USB_HOST_CDC_RESULT_INVALID_PARAMETER - An input parameter was NULL.
+868	
+869	    USB_HOST_CDC_RESULT_FAILURE - An unknown failure occurred.
+870	
+871	    USB_HOST_CDC_RESULT_HANDLE_INVALID - The client handle is not valid.
+872	    
+873	  Example:
+874	    <code>
+875	    </code>
+876	
+877	  Remarks:
+878	    None.                                                                   
+879	*/
+880	
+881	USB_HOST_CDC_RESULT USB_HOST_CDC_Read
+882	(
+883	    USB_HOST_CDC_HANDLE handle,
+884	    USB_HOST_CDC_TRANSFER_HANDLE * transferHandle,
+885	    void * data,
+886	    size_t size
+887	);
+888	
+889	// ****************************************************************************
+890	/* Function:
+891	    USB_HOST_CDC_RESULT USB_HOST_CDC_SerialStateNotificationGet
+892	    (
+893	        USB_HOST_CDC_HANDLE handle,
+894	        USB_HOST_CDC_TRANSFER_HANDLE * transferHandle,
+895	        USB_CDC_SERIAL_STATE * serialState
+896	    );
+897	           
+898	  Summary:
+899	    This function will request Serial State Notification from the attached
+900	    device.
+901	
+902	  Description:
+903	    This function will request Serial State Notification from the attached
+904	    device. If the request was accepted, transferHandle will contain a valid
+905	    transfer handle, else it will contain USB_HOST_CDC_TRANSFER_HANDLE_INVALID.
+906	    The completion of the request will be indicated by the
+907	    USB_HOST_CDC_EVENT_SERIAL_STATE_NOTIFICATION_RECEIVED event. The transfer
+908	    handle will be returned in the event. 
+909	
+910	  Precondition:
+911	    The client handle should be valid.
+912	
+913	  Input:
+914	    handle - handle to the CDC device instance to which the request should be
+915	    sent.
+916	    
+917	    transferHandle - Pointer to USB_HOST_CDC_TRANSFER_HANDLE type of a variable.
+918	    This will contain a valid transfer handle if the request was successful.
+919	
+920	    serialState - Pointer to the serial state data structure where the received
+921	    serial state will be stored.
+922	
+923	  Return:
+924	    USB_HOST_CDC_RESULT_SUCCESS - The operation was successful.
+925	
+926	    USB_HOST_CDC_RESULT_DEVICE_UNKNOWN - The device that this request was
+927	    targeted to does not exist in the system.
+928	
+929	    USB_HOST_CDC_RESULT_BUSY - The request could not be scheduled at this time.
+930	    The client should try again.
+931	
+932	    USB_HOST_CDC_RESULT_INVALID_PARAMETER - An input parameter was NULL.
+933	
+934	    USB_HOST_CDC_RESULT_FAILURE - An unknown failure occurred.
+935	
+936	    USB_HOST_CDC_RESULT_HANDLE_INVALID - The client handle is not valid.
+937	    
+938	  Example:
+939	    <code>
+940	    </code>
+941	
+942	  Remarks:
+943	    None.                                                                   
+944	*/
+945	
+946	USB_HOST_CDC_RESULT USB_HOST_CDC_SerialStateNotificationGet
+947	(
+948	    USB_HOST_CDC_HANDLE handle,
+949	    USB_HOST_CDC_TRANSFER_HANDLE * transferHandle,
+950	    USB_CDC_SERIAL_STATE * serialState
+951	);
+952	
+953	// ****************************************************************************
+954	/* Function:
+955	    USB_HOST_CDC_RESULT USB_HOST_CDC_ACM_LineCodingSet
+956	    (
+957	        USB_HOST_CDC_HANDLE handle, 
+958	        USB_HOST_CDC_REQUEST_HANDLE * requestHandle, 
+959	        USB_CDC_LINE_CODING * lineCoding
+960	    );
+961	       
+962	  Summary:
+963	    This function sends a request to the attached device to set its Line Coding.
+964	
+965	  Description:
+966	    This function sends a request to the attached device to set its line coding.
+967	    The function schedules a SET LINE CODING control transfer. If successful,
+968	    the requestHandle parameter will contain a valid request handle, else it
+969	    will contain USB_HOST_CDC_REQUEST_HANDLE_INVALID. When completed, the CDC
+970	    client driver will generate a USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE
+971	    event. 
+972	
+973	  Remarks:
+974	    Refer to usb_host_cdc_acm.h for usage information.
+975	*/
+976	
+977	USB_HOST_CDC_RESULT USB_HOST_CDC_ACM_LineCodingSet
+978	(
+979	    USB_HOST_CDC_HANDLE handle, 
+980	    USB_HOST_CDC_REQUEST_HANDLE * requestHandle, 
+981	    USB_CDC_LINE_CODING * lineCoding
+982	);
+983	
+984	// ****************************************************************************
+985	/* Function:
+986	    USB_HOST_CDC_RESULT USB_HOST_CDC_ACM_ControlLineStateSet
+987	    (
+988	        USB_HOST_CDC_HANDLE handle,
+989	        USB_HOST_CDC_REQUEST_HANDLE * requestHandle, 
+990	        USB_CDC_CONTROL_LINE_STATE * controlLineState
+991	    );
+992	   
+993	  Summary:
+994	    This function sends a request to the attached device to set its Control Line
+995	    State.
+996	
+997	  Description:
+998	    This function sends a request to the attached to set its Control Line State.
+999	    The function schedules a SET CONTROL LINE STATE control transfer. If
+1000	    successful, the requestHandle parameter will contain a valid request handle,
+1001	    else it will contain USB_HOST_CDC_REQUEST_HANDLE_INVALID. When completed,
+1002	    the CDC client driver will generate a
+1003	    USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE event. 
+1004	
+1005	  Remarks:
+1006	    Refer to usb_host_cdc_acm.h for usage information.
+1007	*/
+1008	
+1009	USB_HOST_CDC_RESULT USB_HOST_CDC_ACM_ControlLineStateSet
+1010	(
+1011	    USB_HOST_CDC_HANDLE handle,
+1012	    USB_HOST_CDC_REQUEST_HANDLE * requestHandle, 
+1013	    USB_CDC_CONTROL_LINE_STATE * controlLineState
+1014	);
+1015	
+1016	
+1017	
+1018	/* MISRAC 2012 deviation block end */
+1019	//DOM-IGNORE-BEGIN
+1020	#ifdef __cplusplus
+1021	}
+1022	#endif
+1023	//DOM-IGNORE-END
+1024	
+1025	#endif
+1026
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:50Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find USB host bus enable usage
+
+`grep -rn "USB_HOST_BusEnable\|USB_Host_Tasks\|SYS_INIT_USB" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ 2>/dev/null | head -20; grep -rn "USB_HOST_BusEnable\|USB_HOST_BUS" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ 2>/dev/null | grep -v "config/default" | head -10`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host_cdc.h:568:    Function should be called before USB_HOST_BusEnable() function is called.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:944:    via the USB_HOST_BusEnable() function. This function will initialize all
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1119:    USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1129:    handler before the bus is enabled (before the USB_HOST_BusEnable()
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1153:    The Host Layer may generate events after the USB_HOST_BusEnable() function is
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1157:    USB_HOST_BusEnable() function is called.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1160:USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1174:    the USB_HOST_BusEnable() function is called, to check if the bus has been
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1220:    The USB_HOST_BusEnable() function should have been called to enable the bus.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1261:    The USB_HOST_BusEnable() function should have been called to enable the bus.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1311:    The USB_HOST_BusEnable() function should have been called to enable the bus.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1355:    The USB_HOST_BusEnable function should have been called to enable detection of
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1454:    The USB_HOST_BusEnable() function should have been called.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1585:    The USB_HOST_BusEnable() function should have been called.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h:1647:    The USB_HOST_BusEnable() function should have been called.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3160:    via the USB_HOST_BusEnable() function.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3660:    USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3670:    handler before the Host layer is enabled (before the USB_HOST_BusEnable()
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3678:USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3787:    the USB_HOST_BusEnable() function is called, to check if the bus has been
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:54Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Log architectural decision in journal.md
+- [ ] 🌡️ Create timing_pipeline module (C port of actuator.py timing logic)
+- [ ] 🌡️ Create fretboard_link module (USB CDC host writer)
+- [ ] 🌡️ Wire new modules into app.c
+- [ ] 🌡️ Update user.cmake with new sources
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:13:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check if BusEnable already wired
+
+`grep -n "USB_HOST_BusEnable\|USB_HOST_BusIsEnabled" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c | head -10; grep -n "USB_HOST_BusEnable" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/*.c 2>/dev/null`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:18Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect USB_HOST_BUS enum
+
+`grep -A 20 "USB_HOST_BUS$\|typedef enum.*USB_HOST_BUS" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h | head -40`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find USB_HOST_BUS definitions
+
+`grep -n "USB_HOST_BUS" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h | head -20`
+
+```text
+90:typedef uint8_t USB_HOST_BUS;
+156:    USB_HOST_BUS bus;
+227:#define USB_HOST_BUS_ALL ((USB_HOST_BUS)(0xFF))
+1119:    USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+1138:    bus - the bus to be enabled. If this is set to USB_HOST_BUS_ALL, all buses
+1160:USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus);
+1163:USB_HOST_RESULT USB_HOST_BusDisable(USB_HOST_BUS bus);
+1167:    USB_HOST_RESULT USB_HOST_BusIsEnabled(USB_HOST_BUS bus)
+1175:    enabled yet. If the bus parameter is set to USB_HOST_BUS_ALL, then the
+1185:    USB_HOST_BUS_ALL, all buses will be checked.
+1203:USB_HOST_RESULT USB_HOST_BusIsEnabled(USB_HOST_BUS bus);
+1205:USB_HOST_RESULT USB_HOST_BusIsDisabled(USB_HOST_BUS bus);
+1209:    USB_HOST_RESULT USB_HOST_BusSuspend (USB_HOST_BUS bus);
+1216:    bus  is specified as USB_HOST_BUS_ALL, all the buses managed by this host
+1223:    bus - The bus to be suspended or USB_HOST_BUS_ALL to suspend all buses.
+1238:    USB_HOST_BusSuspend(USB_HOST_BUS_ALL);
+1246:USB_HOST_RESULT USB_HOST_BusSuspend (USB_HOST_BUS bus);
+1250:    USB_HOST_RESULT USB_HOST_BusResume (USB_HOST_BUS bus);
+1257:    signaling. If bus is specified as USB_HOST_BUS_ALL, all the buses managed by
+1264:    bus - The bus to be resume or USB_HOST_BUS_ALL to resume all buses.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:30Z)**_
+
+Now I have everything I need. Let me start with the journal entry, then build the modules.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:51Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:51Z)**_
+
+Now the modules. Starting with timing_pipeline header.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:14:58Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef TIMING_PIPELINE_H
+#define TIMING_PIPELINE_H
+
+#include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "queue.h"
+
+/* Timing pipeline — spec §4.4. Consumes detector_state_t records from the
+ * detector-state bus (filtered by Detector_GetActive()), runs the chord-
+ * window + strum-scheduling state machine ported from
+ * tools/fret-tuner/actuator.py, and publishes a 7-bit GPIO bitmask onto the
+ * actuator-command queue. fretboard_link is the consumer.
+ *
+ * Bit layout matches firmware/fretboard/cmd_receive.h:
+ *   bit 0 = green   bit 1 = red    bit 2 = yellow
+ *   bit 3 = blue    bit 4 = orange bit 5 = strum-down bit 6 = strum-up
+ *
+ * Time base is detector frame timestamps, not wall clock — replay-
+ * deterministic and frees the task to advance only when state changes
+ * (with a periodic timeout for between-frame strum-pulse expiries). */
+
+#define TIMING_BIT_GREEN       (1u << 0)
+#define TIMING_BIT_RED         (1u << 1)
+#define TIMING_BIT_YELLOW      (1u << 2)
+#define TIMING_BIT_BLUE        (1u << 3)
+#define TIMING_BIT_ORANGE      (1u << 4)
+#define TIMING_BIT_STRUM_DOWN  (1u << 5)
+#define TIMING_BIT_STRUM_UP    (1u << 6)
+#define TIMING_BIT_FRET_MASK   0x1Fu
+#define TIMING_BIT_VALID_MASK  0x7Fu
+
+void          TimingPipeline_Initialize(void);
+QueueHandle_t TimingPipeline_CmdQueue(void);
+
+#endif
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.h (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:15:41Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "timing_pipeline.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+
+#include "log.h"
+#include "detector/detector.h"
+
+#define TP_TASK_STACK_WORDS    768u
+#define TP_TASK_PRIORITY       2u
+
+#define TP_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+
+/* Drives chord aggregation, strum scheduling, and pending release timing.
+ * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+#define TP_STRUM_DELAY_MS      220u
+#define TP_FRET_EARLY_MS       50u
+#define TP_STRUM_PULSE_MS      50u
+#define TP_CHORD_WINDOW_MS     20u
+
+#define TP_FIFO_CAP            16u
+
+/* Background tick: bound on between-frame latency for strum-pulse and
+ * note-assert deadlines that fall between detector publishes. 5 ms keeps
+ * jitter well under our 16 ms detector cadence and below human-perceptible
+ * timing error. */
+#define TP_TICK_MS             5u
+
+typedef struct
+{
+    uint32_t assert_at_ms;
+    uint8_t  fret_mask;
+} pending_note_t;
+
+typedef struct
+{
+    uint32_t strum_at_ms;
+    uint8_t  fret_mask;
+} pending_strum_t;
+
+static QueueHandle_t s_cmd_queue;
+static StaticQueue_t s_cmd_queue_buf;
+static uint8_t       s_cmd_queue_storage[TP_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
+
+static StackType_t   s_task_stack[TP_TASK_STACK_WORDS];
+static StaticTask_t  s_task_tcb;
+
+/* Pipeline state — touched only by the timing task. */
+static pending_note_t  s_note_q[TP_FIFO_CAP];
+static uint8_t         s_note_head, s_note_tail, s_note_count;
+static pending_strum_t s_strum_q[TP_FIFO_CAP];
+static uint8_t         s_strum_head, s_strum_tail, s_strum_count;
+
+static bool     s_chord_open;
+static uint32_t s_chord_start_ms;
+static uint8_t  s_chord_mask;
+
+static uint8_t  s_frets_active;
+static bool     s_strum_active;
+static uint32_t s_strum_release_at_ms;
+static bool     s_strum_direction;        /* toggles down/up each strum */
+
+static uint8_t  s_prev_pressed_mask;
+static uint16_t s_prev_press_count[FRET_COUNT];
+static bool     s_press_count_seen;
+static uint32_t s_release_at_ms[FRET_COUNT];
+static uint8_t  s_release_pending_mask;
+
+static uint8_t  s_output_mask;
+static uint32_t s_now_ms;
+static uint64_t s_last_frame_us;
+
+static const uint8_t s_fret_bit[FRET_COUNT] =
+{
+    [FRET_GREEN]  = TIMING_BIT_GREEN,
+    [FRET_RED]    = TIMING_BIT_RED,
+    [FRET_YELLOW] = TIMING_BIT_YELLOW,
+    [FRET_BLUE]   = TIMING_BIT_BLUE,
+    [FRET_ORANGE] = TIMING_BIT_ORANGE,
+};
+
+static inline bool note_q_empty(void) { return s_note_count == 0u; }
+static inline bool note_q_full(void)  { return s_note_count >= TP_FIFO_CAP; }
+static inline bool strum_q_empty(void){ return s_strum_count == 0u; }
+static inline bool strum_q_full(void) { return s_strum_count >= TP_FIFO_CAP; }
+
+static void note_q_push(pending_note_t n)
+{
+    s_note_q[s_note_tail] = n;
+    s_note_tail = (uint8_t)((s_note_tail + 1u) % TP_FIFO_CAP);
+    s_note_count++;
+}
+
+static void note_q_pop(void)
+{
+    s_note_head = (uint8_t)((s_note_head + 1u) % TP_FIFO_CAP);
+    s_note_count--;
+}
+
+static void strum_q_push(pending_strum_t s)
+{
+    s_strum_q[s_strum_tail] = s;
+    s_strum_tail = (uint8_t)((s_strum_tail + 1u) % TP_FIFO_CAP);
+    s_strum_count++;
+}
+
+static void strum_q_pop(void)
+{
+    s_strum_head = (uint8_t)((s_strum_head + 1u) % TP_FIFO_CAP);
+    s_strum_count--;
+}
+
+/* Iterator helpers for the "is this fret needed by an outstanding entry?"
+ * release-suppression check below. */
+static bool note_q_any_needs(uint8_t bit)
+{
+    for (uint8_t i = 0u; i < s_note_count; i++)
+    {
+        uint8_t idx = (uint8_t)((s_note_head + i) % TP_FIFO_CAP);
+        if (s_note_q[idx].fret_mask & bit) { return true; }
+    }
+    return false;
+}
+
+static bool strum_q_any_needs(uint8_t bit)
+{
+    for (uint8_t i = 0u; i < s_strum_count; i++)
+    {
+        uint8_t idx = (uint8_t)((s_strum_head + i) % TP_FIFO_CAP);
+        if (s_strum_q[idx].fret_mask & bit) { return true; }
+    }
+    return false;
+}
+
+static void publish_mask(uint8_t mask)
+{
+    s_output_mask = mask;
+    /* Overwrite makes the queue strictly latest-wins: the consumer never
+     * pulls a stale chord even if a USB write stalled. */
+    (void)xQueueOverwrite(s_cmd_queue, &mask);
+}
+
+/* Edge derivation:
+ *   - presses_mask: rising edge (press_count change preferred; pressed-edge
+ *     fallback if the detector doesn't expose press_count for that fret)
+ *   - releases_mask: falling edge of pressed
+ * confidence is unused by the pipeline but is the natural future home for
+ * a quality gate; left untouched here. */
+static void derive_edges(const detector_state_t *state,
+                         uint8_t *presses_mask, uint8_t *releases_mask,
+                         uint8_t *pressed_mask)
+{
+    uint8_t pm = 0u;
+    uint8_t rm = 0u;
+    uint8_t cm = 0u;
+
+    bool first = !s_press_count_seen;
+
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        bool pressed = state->fret[i].pressed != 0u;
+        if (pressed) { cm |= s_fret_bit[i]; }
+
+        bool was_pressed = (s_prev_pressed_mask & s_fret_bit[i]) != 0u;
+        uint16_t pc = state->fret[i].confidence;  /* placeholder slot */
+        (void)pc;
+
+        /* press_count is private to the detector; for now we infer rising
+         * edge from pressed transitions only. If a detector later exposes
+         * a press_count via a side channel, plug it in here. */
+        if (pressed && !was_pressed) { pm |= s_fret_bit[i]; }
+        if (!pressed && was_pressed) { rm |= s_fret_bit[i]; }
+
+        s_prev_press_count[i] = state->fret[i].confidence;
+    }
+
+    if (first) { s_press_count_seen = true; }
+
+    s_prev_pressed_mask = cm;
+    *presses_mask  = pm;
+    *releases_mask = rm;
+    *pressed_mask  = cm;
+}
+
+static void chord_commit(void)
+{
+    if (note_q_full() || strum_q_full())
+    {
+        s_chord_open = false;
+        s_chord_mask = 0u;
+        return;
+    }
+
+    uint32_t assert_at = s_now_ms + TP_STRUM_DELAY_MS - TP_FRET_EARLY_MS;
+    uint32_t strum_at  = s_now_ms + TP_STRUM_DELAY_MS;
+
+    if (!strum_q_empty())
+    {
+        uint8_t  last_idx = (uint8_t)((s_strum_tail + TP_FIFO_CAP - 1u) % TP_FIFO_CAP);
+        uint32_t earliest = s_strum_q[last_idx].strum_at_ms + TP_STRUM_PULSE_MS;
+        if ((int32_t)(assert_at - earliest) < 0)
+        {
+            assert_at = earliest;
+            strum_at  = assert_at + TP_FRET_EARLY_MS;
+        }
+    }
+
+    pending_note_t  n = { .assert_at_ms = assert_at, .fret_mask = s_chord_mask };
+    pending_strum_t s = { .strum_at_ms  = strum_at,  .fret_mask = s_chord_mask };
+    note_q_push(n);
+    strum_q_push(s);
+
+    s_chord_open = false;
+    s_chord_mask = 0u;
+}
+
+static void process_notes(void)
+{
+    while (!note_q_empty())
+    {
+        const pending_note_t *n = &s_note_q[s_note_head];
+        if ((int32_t)(s_now_ms - n->assert_at_ms) < 0) { break; }
+
+        for (uint8_t i = 0u; i < FRET_COUNT; i++)
+        {
+            uint8_t bit = s_fret_bit[i];
+            bool need = (n->fret_mask & bit) != 0u;
+            bool have = (s_frets_active & bit) != 0u;
+            if (need && !have)      { s_frets_active |= bit; }
+            else if (!need && have) { s_frets_active &= (uint8_t)~bit; }
+        }
+        note_q_pop();
+    }
+}
+
+static void process_strums(void)
+{
+    while (!strum_q_empty())
+    {
+        const pending_strum_t *s = &s_strum_q[s_strum_head];
+        if ((int32_t)(s_now_ms - s->strum_at_ms) < 0) { break; }
+
+        s_strum_active        = true;
+        s_strum_direction     = !s_strum_direction;
+        s_strum_release_at_ms = s_now_ms + TP_STRUM_PULSE_MS;
+
+        strum_q_pop();
+    }
+}
+
+static void process_releases(uint8_t live_pressed_mask)
+{
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        uint8_t bit = s_fret_bit[i];
+        if ((s_release_pending_mask & bit) == 0u) { continue; }
+        if ((int32_t)(s_now_ms - s_release_at_ms[i]) < 0) { continue; }
+        if (live_pressed_mask & bit) { continue; }
+        if (note_q_any_needs(bit) || strum_q_any_needs(bit)) { continue; }
+
+        s_frets_active        &= (uint8_t)~bit;
+        s_release_pending_mask &= (uint8_t)~bit;
+    }
+}
+
+static void advance(uint8_t live_pressed_mask)
+{
+    if (s_chord_open && (int32_t)(s_now_ms - s_chord_start_ms) >= (int32_t)TP_CHORD_WINDOW_MS)
+    {
+        chord_commit();
+    }
+
+    if (s_strum_active && (int32_t)(s_now_ms - s_strum_release_at_ms) >= 0)
+    {
+        s_strum_active = false;
+    }
+
+    process_notes();
+    process_strums();
+    process_releases(live_pressed_mask);
+
+    uint8_t mask = s_frets_active;
+    if (s_strum_active)
+    {
+        mask |= s_strum_direction ? TIMING_BIT_STRUM_UP : TIMING_BIT_STRUM_DOWN;
+    }
+    publish_mask(mask);
+}
+
+static void process_frame(const detector_state_t *state)
+{
+    /* Detector frame timestamps drive the clock so this is replay-
+     * deterministic. timestamp_us is monotonic per spec §4.2.3. */
+    s_now_ms = (uint32_t)(state->timestamp_us / 1000ull);
+    s_last_frame_us = state->timestamp_us;
+
+    uint8_t presses, releases, pressed_mask;
+    derive_edges(state, &presses, &releases, &pressed_mask);
+
+    if (presses)
+    {
+        if (!s_chord_open)
+        {
+            s_chord_open     = true;
+            s_chord_start_ms = s_now_ms;
+            s_chord_mask     = 0u;
+        }
+        s_chord_mask |= presses;
+    }
+
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        if (releases & s_fret_bit[i])
+        {
+            s_release_at_ms[i]      = s_now_ms + TP_STRUM_DELAY_MS;
+            s_release_pending_mask |= s_fret_bit[i];
+        }
+    }
+
+    advance(pressed_mask);
+}
+
+static void timing_pipeline_task(void *param)
+{
+    (void)param;
+
+    QueueHandle_t bus = Detector_BusQueue();
+    configASSERT(bus != NULL);
+
+    LOG_INFO("TIMING: pipeline started\r\n");
+
+    for (;;)
+    {
+        detector_state_t state;
+        if (xQueueReceive(bus, &state, pdMS_TO_TICKS(TP_TICK_MS)) == pdTRUE)
+        {
+            if ((detector_id_t)state.detector_id != Detector_GetActive())
+            {
+                continue;
+            }
+            process_frame(&state);
+        }
+        else
+        {
+            /* No new frame; advance the clock so deadlines that fell
+             * between frames (strum pulses, release timers) still fire. */
+            s_now_ms += TP_TICK_MS;
+            advance(s_prev_pressed_mask);
+        }
+    }
+}
+
+void TimingPipeline_Initialize(void)
+{
+    s_cmd_queue = xQueueCreateStatic(TP_CMD_QUEUE_DEPTH,
+                                     sizeof(uint8_t),
+                                     s_cmd_queue_storage,
+                                     &s_cmd_queue_buf);
+    configASSERT(s_cmd_queue != NULL);
+
+    (void)xTaskCreateStatic(timing_pipeline_task,
+                            "Timing",
+                            TP_TASK_STACK_WORDS,
+                            NULL,
+                            TP_TASK_PRIORITY,
+                            s_task_stack,
+                            &s_task_tcb);
+}
+
+QueueHandle_t TimingPipeline_CmdQueue(void)
+{
+    return s_cmd_queue;
+}
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:15:48Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:15:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm host CDC functions exist in source
+
+`grep -rn "USB_HOST_CDC_AttachEventHandlerSet\|USB_HOST_CDC_Open\|USB_HOST_CDC_Write\|USB_HOST_BusEnable" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/*.c 2>/dev/null | head -10`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c:1173:    USB_HOST_CDC_RESULT USB_HOST_CDC_AttachEventHandlerSet
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c:1192:USB_HOST_CDC_RESULT USB_HOST_CDC_AttachEventHandlerSet
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c:1230:    USB_HOST_CDC_HANDLE USB_HOST_CDC_Open
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c:1248:USB_HOST_CDC_HANDLE USB_HOST_CDC_Open
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c:1350:    USB_HOST_CDC_RESULT USB_HOST_CDC_Write
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host_cdc.c:1373:USB_HOST_CDC_RESULT USB_HOST_CDC_Write
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3160:    via the USB_HOST_BusEnable() function.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3660:    USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3670:    handler before the Host layer is enabled (before the USB_HOST_BusEnable()
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c:3678:USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:15:58Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef FRETBOARD_LINK_H
+#define FRETBOARD_LINK_H
+
+#include <stdbool.h>
+
+/* Fretboard link — USB CDC host writer that ferries the timing pipeline's
+ * 7-bit GPIO bitmask to the fretboard MCU as a stream of single-byte
+ * messages. Spec §4.4 calls this the "actuator transport"; for now it's
+ * the only one. Initialize after TimingPipeline_Initialize so the cmd
+ * queue exists by the time the writer task subscribes. Also enables the
+ * USB host bus, so call after SYS_Initialize. */
+
+void FretboardLink_Initialize(void);
+bool FretboardLink_IsConnected(void);
+
+#endif
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.h (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:01Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Log architectural decision in journal.md
+- [X] 🌡️ Create timing_pipeline module (C port of actuator.py timing logic)
+- [⚡] 🌡️ Create fretboard_link module (USB CDC host writer)
+- [ ] 🌡️ Wire new modules into app.c
+- [ ] 🌡️ Update user.cmake with new sources
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "fretboard_link.h"
+#include "timing_pipeline.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+#include "queue.h"
+#include "semphr.h"
+
+#include "definitions.h"
+#include "log.h"
+#include "usb/usb_host.h"
+#include "usb/usb_host_cdc.h"
+#include "usb/usb_cdc.h"
+
+#define FBL_TASK_STACK_WORDS    768u
+#define FBL_TASK_PRIORITY       2u
+
+/* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
+ * a stalled detector or paused game can't leave a stale frets-active
+ * pattern stuck on the wire. 50 ms is well below human-perceptible. */
+#define FBL_HEARTBEAT_MS        50u
+
+#define FBL_WRITE_TIMEOUT_MS    100u
+
+/* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
+ * a sane default avoids implementation quirks on hosts that gate writes on
+ * a successful SET_LINE_CODING. Matches actuator.py. */
+#define FBL_BAUDRATE            115200u
+
+static QueueHandle_t s_cmd_queue;
+static StackType_t   s_task_stack[FBL_TASK_STACK_WORDS];
+static StaticTask_t  s_task_tcb;
+
+static SemaphoreHandle_t s_write_done;
+static StaticSemaphore_t s_write_done_buf;
+
+static volatile USB_HOST_CDC_OBJ    s_cdc_obj_pending = (USB_HOST_CDC_OBJ)0;
+static volatile bool                s_cdc_obj_valid;
+static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+static volatile bool                s_connected;
+static volatile USB_HOST_CDC_RESULT s_last_write_result;
+
+static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
+                                                    USB_HOST_CDC_EVENT event,
+                                                    void *eventData,
+                                                    uintptr_t context)
+{
+    (void)handle;
+    (void)context;
+
+    switch (event)
+    {
+        case USB_HOST_CDC_EVENT_WRITE_COMPLETE:
+        {
+            const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
+            s_last_write_result = d->result;
+            BaseType_t hpw = pdFALSE;
+            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+            portYIELD_FROM_ISR(hpw);
+            break;
+        }
+        case USB_HOST_CDC_EVENT_DEVICE_DETACHED:
+        {
+            s_connected = false;
+            /* Wake any pending writer so it observes the detach instead
+             * of waiting out the timeout. */
+            BaseType_t hpw = pdFALSE;
+            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+            portYIELD_FROM_ISR(hpw);
+            break;
+        }
+        default:
+            break;
+    }
+    return USB_HOST_CDC_EVENT_RESPONE_NONE;
+}
+
+static void cdc_attach_handler(USB_HOST_CDC_OBJ obj, uintptr_t context)
+{
+    (void)context;
+    /* Hand the object to the link task; opening the device must happen
+     * outside the host stack callback. */
+    s_cdc_obj_pending = obj;
+    s_cdc_obj_valid   = true;
+}
+
+static void close_cdc(void)
+{
+    if (s_cdc_handle != USB_HOST_CDC_HANDLE_INVALID)
+    {
+        USB_HOST_CDC_Close(s_cdc_handle);
+        s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+    }
+    s_connected = false;
+}
+
+static bool open_cdc(USB_HOST_CDC_OBJ obj)
+{
+    USB_HOST_CDC_HANDLE h = USB_HOST_CDC_Open(obj);
+    if (h == USB_HOST_CDC_HANDLE_INVALID) { return false; }
+
+    if (USB_HOST_CDC_EventHandlerSet(h, cdc_event_handler, 0u) != USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        USB_HOST_CDC_Close(h);
+        return false;
+    }
+
+    static const USB_CDC_LINE_CODING line_coding =
+    {
+        .dwDTERate   = FBL_BAUDRATE,
+        .bCharFormat = (uint8_t)USB_CDC_ASYNCHRONOUS_LINE_CODING_STOP_BITS_1,
+        .bParityType = (uint8_t)USB_CDC_ASYNCHRONOUS_LINE_CODING_PARITY_TYPE_NONE,
+        .bDataBits   = 8u,
+    };
+    USB_HOST_CDC_REQUEST_HANDLE rh;
+    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, (USB_CDC_LINE_CODING *)&line_coding);
+
+    s_cdc_handle = h;
+    s_connected  = true;
+    LOG_INFO("FBL: CDC device attached, handle opened\r\n");
+    return true;
+}
+
+static bool send_one_byte(uint8_t mask)
+{
+    if (!s_connected) { return false; }
+
+    static uint8_t tx_byte;
+    tx_byte = (uint8_t)(mask & 0x7F);
+
+    /* Drain any prior signal so we wait for *this* write's completion. */
+    (void)xSemaphoreTake(s_write_done, 0);
+
+    USB_HOST_CDC_TRANSFER_HANDLE th;
+    USB_HOST_CDC_RESULT r = USB_HOST_CDC_Write(s_cdc_handle, &th, &tx_byte, 1u);
+    if (r != USB_HOST_CDC_RESULT_SUCCESS) { return false; }
+
+    if (xSemaphoreTake(s_write_done, pdMS_TO_TICKS(FBL_WRITE_TIMEOUT_MS)) != pdTRUE)
+    {
+        LOG_WARN("FBL: write timeout, marking detached\r\n");
+        close_cdc();
+        return false;
+    }
+    if (s_last_write_result != USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        return false;
+    }
+    return true;
+}
+
+static void fretboard_link_task(void *param)
+{
+    (void)param;
+
+    USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+    if (USB_HOST_BusEnable(USB_HOST_BUS_ALL) != USB_HOST_RESULT_SUCCESS)
+    {
+        LOG_ERR("FBL: USB_HOST_BusEnable failed\r\n");
+    }
+
+    LOG_INFO("FBL: fretboard link started\r\n");
+
+    uint8_t last_mask = 0u;
+
+    for (;;)
+    {
+        if (s_cdc_obj_valid && s_cdc_handle == USB_HOST_CDC_HANDLE_INVALID)
+        {
+            s_cdc_obj_valid = false;
+            (void)open_cdc(s_cdc_obj_pending);
+        }
+
+        uint8_t mask;
+        if (xQueueReceive(s_cmd_queue, &mask, pdMS_TO_TICKS(FBL_HEARTBEAT_MS)) == pdTRUE)
+        {
+            last_mask = mask;
+        }
+        else
+        {
+            mask = last_mask;
+        }
+
+        if (s_connected)
+        {
+            (void)send_one_byte(mask);
+        }
+    }
+}
+
+void FretboardLink_Initialize(void)
+{
+    s_cmd_queue = TimingPipeline_CmdQueue();
+    configASSERT(s_cmd_queue != NULL);
+
+    s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
+    configASSERT(s_write_done != NULL);
+
+    (void)xTaskCreateStatic(fretboard_link_task,
+                            "FretLink",
+                            FBL_TASK_STACK_WORDS,
+                            NULL,
+                            FBL_TASK_PRIORITY,
+                            s_task_stack,
+                            &s_task_tcb);
+}
+
+bool FretboardLink_IsConnected(void)
+{
+    return s_connected;
+}
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:33Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:33Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify LOG macros and CDC line coding type
+
+`grep -E "LOG_(INFO|WARN|ERR|DEBUG)" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/log.h | head -20; echo "---"; grep -E "USB_CDC_LINE_CODING|USB_CDC_ASYNCHRONOUS" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_cdc.h | head -20`
+
+```text
+#define LOG_ERROR(...) log_printf(LOG_LEVEL_ERROR, __VA_ARGS__)
+#define LOG_WARN(...)  log_printf(LOG_LEVEL_WARN,  __VA_ARGS__)
+#define LOG_INFO(...)  log_printf(LOG_LEVEL_INFO,  __VA_ARGS__)
+#define LOG_DEBUG(...) log_printf(LOG_LEVEL_DEBUG, __VA_ARGS__)
+---
+#define USB_CDC_LINE_CODING_STOP_1_BIT                  0x00
+#define USB_CDC_LINE_CODING_STOP_1_5_BIT                0x01
+#define USB_CDC_LINE_CODING_STOP_2_BIT                  0x02
+#define USB_CDC_LINE_CODING_PARITY_NONE                 0x00
+#define USB_CDC_LINE_CODING_PARITY_ODD                  0x01
+#define USB_CDC_LINE_CODING_PARITY_EVEN                 0x02
+#define USB_CDC_LINE_CODING_PARITY_MARK                 0x03
+#define USB_CDC_LINE_CODING_PARITY_SPACE                0x04
+#define USB_CDC_LINE_CODING_DATA_5_BIT                  0x05
+#define USB_CDC_LINE_CODING_DATA_6_BIT                  0x06
+#define USB_CDC_LINE_CODING_DATA_7_BIT                  0x07
+#define USB_CDC_LINE_CODING_DATA_8_BIT                  0x08
+#define USB_CDC_LINE_CODING_DATA_16_BIT                 0x10
+} USB_CDC_LINE_CODING;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Get USB_CDC_LINE_CODING struct layout
+
+`grep -B 1 -A 8 "^typedef struct[^{]*$" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_cdc.h | grep -B 2 -A 8 "LINE_CODING\|dwDTERate"`
+
+```text
+{
+    /* data terminal rate in bits per second */
+    uint32_t dwDTERate;
+
+    /* stop bits */
+    uint8_t bCharFormat;
+
+    /* Parity */
+--
+
+typedef struct __attribute__ ((packed))
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:42Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:44Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:58Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:16:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify struct field names
+
+`grep -A 12 "typedef struct __attribute__ ((packed))" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_cdc.h | head -30; echo "---"; grep "USB_HOST_RESULT_SUCCESS" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/usb_host.h | head -3`
+
+```text
+typedef struct __attribute__ ((packed))
+{
+    /* data terminal rate in bits per second */
+    uint32_t dwDTERate;
+
+    /* stop bits */
+    uint8_t bCharFormat;
+
+    /* Parity */
+    uint8_t bParityType;
+
+    /* Data bits */
+    uint8_t bDataBits;
+--
+typedef struct __attribute__ ((packed))
+{
+    /* indicates to DCE(device/modem) if DTE(host) is present or not*/
+    uint8_t dtr:1;
+    
+    /* Activate/deactivate carrier (RTS)*/
+    uint8_t carrier:1;
+    
+} USB_CDC_CONTROL_LINE_STATE;
+
+// *****************************************************************************
+/* CDC serial state.
+
+--
+typedef struct __attribute__ ((packed))
+{
+---
+    USB_HOST_RESULT_SUCCESS = USB_HOST_RESULT_TRUE
+    USB_HOST_RESULT_SUCCESS if the request was accepted. 
+    USB_HOST_RESULT_SUCCESS - if the request was successful.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:17:03Z)**_
+
+Good. Now wire into app.c and update cmake.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:17:05Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:17:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:17:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:17:21Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Log architectural decision in journal.md
+- [X] 🌡️ Create timing_pipeline module (C port of actuator.py timing logic)
+- [X] 🌡️ Create fretboard_link module (USB CDC host writer)
+- [X] 🌡️ Wire new modules into app.c
+- [X] 🌡️ Update user.cmake with new sources
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:17:31Z)**_
+
+M2 actuator path is in place: timing_pipeline + fretboard_link modules created, journal decision-log entry added, app.c wired, user.cmake updated.
+
+Summary of what landed:
+
+- [firmware/marvin/docs/journal.md](firmware/marvin/docs/journal.md) — new decision-log entry documenting the three-layer split (detector → timing_pipeline → fretboard_link), 1-byte protocol choice, latest-wins queue, and the deferred actuator-latency-compensation question with both future paths recorded.
+- [firmware/marvin/default/src/actuator/timing_pipeline.h](firmware/marvin/default/src/actuator/timing_pipeline.h) / [.c](firmware/marvin/default/src/actuator/timing_pipeline.c) — C port of `actuator.py`'s timing logic. Static FreeRTOS task subscribes to the detector bus, filters by `Detector_GetActive()`, runs chord-window + strum-FIFO scheduling using detector frame timestamps as the clock, with a 5 ms tick fallback so deadlines that fall between frames still fire. Output is a depth-1 latest-wins `uint8_t` queue (`xQueueOverwrite`).
+- [firmware/marvin/default/src/actuator/fretboard_link.h](firmware/marvin/default/src/actuator/fretboard_link.h) / [.c](firmware/marvin/default/src/actuator/fretboard_link.c) — USB CDC host writer. Registers attach handler, calls `USB_HOST_BusEnable`, opens the CDC device on enumeration, sets line coding to 115200/8N1, writes one byte per mask via `USB_HOST_CDC_Write` and waits on a binary semaphore signaled from the write-complete event. 50 ms heartbeat re-sends the last mask if the timing pipeline goes quiet; detach event closes the handle and re-arms for next attach.
+- [firmware/marvin/default/src/app.c:131-138](firmware/marvin/default/src/app.c#L131-L138) — initialize timing_pipeline before fretboard_link.
+- [firmware/marvin/cmake/marvin/default/user.cmake](firmware/marvin/cmake/marvin/default/user.cmake) — both new sources added.
+
+Ready for your build. Once you confirm it compiles I'll update the journal's "Current focus" and add a session-log entry.
+
+---
+
+_**User (2026-05-21 01:19:10Z)**_
+
+build successful. commit.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:19:13Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:19:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check git status and changes
+
+`git status && echo "---" && git diff --stat`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/cmake/marvin/default/user.cmake
+	modified:   firmware/marvin/default/src/app.c
+	modified:   firmware/marvin/docs/journal.md
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	firmware/marvin/default/src/actuator/
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+ ...26-05-20_18-30-12Z-working-on-project-marvin.md | 3979 +++++++++++++++++++-
+ .specstory/statistics.json                         |   26 +-
+ firmware/marvin/cmake/marvin/default/user.cmake    |    2 +
+ firmware/marvin/default/src/app.c                  |   10 +
+ firmware/marvin/docs/journal.md                    |    1 +
+ 5 files changed, 3991 insertions(+), 27 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:19:17Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:19:17Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check commit style
+
+`git log --oneline -8`
+
+```text
+0e9bc18 docs: log MCC USB VBUS patch + close out session
+a6040ce mcc: add USB CDC host stack on marvin
+186872f detector: cv_marvin_v1 reference port from detect_video.py
+4cd5fb1 spec: add game-state awareness & control subsystem (§4.8)
+7aa6b57 video: fix build — stdbool include + ISR-visible flag ordering
+06051fb freertos: convert marvin-owned objects to static allocation
+171749e video: deepen ISC ring from 2 to 4 buffers
+f689f7e video: per-frame buffer routing; multi-subscriber fan-out
+```
 </details></tool-use>

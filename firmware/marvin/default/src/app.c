@@ -38,6 +38,8 @@
 #include "log.h"
 #include "video/video.h"
 #include "detector/detector.h"
+#include "actuator/timing_pipeline.h"
+#include "actuator/fretboard_link.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -130,6 +132,14 @@ void APP_Initialize ( void )
     Detector_Initialize();
     Detector_Enable(DETECTOR_CV_MARVIN_V1);
     Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+
+    /* M2 actuator path: timing_pipeline turns detector_state_t edges into a
+     * 7-bit GPIO bitmask using the chord-window + strum scheduler ported
+     * from fret-tuner; fretboard_link writes that mask one byte at a time
+     * over USB CDC to the fretboard MCU. Initialize timing first so the
+     * cmd queue exists by the time fretboard_link subscribes. */
+    TimingPipeline_Initialize();
+    FretboardLink_Initialize();
 }
 
 
