@@ -27,6 +27,11 @@
 
 #define FBL_WRITE_TIMEOUT_MS    100u
 
+/* Status heartbeat — proves the link task is alive even when nothing is
+ * attached. Useful during bring-up; safe to leave on (one INFO line every
+ * 2 s costs essentially nothing). */
+#define FBL_STATUS_LOG_MS       2000u
+
 /* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
  * a sane default avoids implementation quirks on hosts that gate writes on
  * a successful SET_LINE_CODING. Matches actuator.py. */
@@ -168,7 +173,8 @@ static void fretboard_link_task(void *param)
 
     LOG_INFO("FBL: fretboard link started\r\n");
 
-    uint8_t last_mask = 0u;
+    uint8_t    last_mask    = 0u;
+    TickType_t status_start = xTaskGetTickCount();
 
     for (;;)
     {
@@ -191,6 +197,14 @@ static void fretboard_link_task(void *param)
         if (s_connected)
         {
             (void)send_one_byte(mask);
+        }
+
+        TickType_t now = xTaskGetTickCount();
+        if ((uint32_t)(now - status_start) >= pdMS_TO_TICKS(FBL_STATUS_LOG_MS))
+        {
+            LOG_INFO("FBL: connected=%c last_mask=0x%02X\r\n",
+                     s_connected ? 'Y' : 'N', (unsigned)last_mask);
+            status_start = now;
         }
     }
 }

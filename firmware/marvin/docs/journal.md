@@ -92,11 +92,13 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
   5. **`initialization.c` `DRV_USB_VBUSPowerEnable` — per-pin VBUS calls.** MCC emits a single `VBUS_AH_*_Set/Clear()` call expecting one pin named `VBUS_AH`, but our config has VBUS on two pins (PC27 + PC31, one per USB port). The pin-macro generator produces `VBUS_AH_PC27_PowerEnable_*` and `VBUS_AH_PC31_PowerEnable_*` separately and no unified wrapper, so the MCC-emitted code fails to compile. Replace lines 162-163 (Set branch) and 169-170 (Clear branch) with explicit calls to both per-pin macros — `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` and the matching Clear pair. The MCC comment in the function ("name it to 'VBUS_AH'") acknowledges the single-pin assumption.
 
+  6. **`initialization.c` `SYS_Initialize` — peripheral init order.** The USB-host MCC regen (2026-05-20) reordered SYS_Initialize so that `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize` run *before* `MMU_Initialize` and `AIC_INT_Initialize`. Symptom on hardware: TC358743 probe wedges on its first I²C write — `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` never returns because the FLEXCOM6 ISR never fires. (Display + capture totally dead; FBL heartbeat keeps printing because it doesn't depend on a peripheral interrupt.) Fix: move the `MMU_Initialize → AIC_INT_Initialize → WDT-disable` block back to *before* the TC0/FLEXCOM6/XLCDC inits, matching the pre-USB-regen order. After this revert, video came back immediately. Resolved on 2026-05-20.
+
   Previously listed but now resolved or moot:
   - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
   - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
 
-  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+  Recovery plan: re-apply all six (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
 
@@ -109,6 +111,16 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-20 — Hardware bring-up after USB CDC host regen: TC358743 wedge resolved
+
+First on-target test after the M2 actuator path landed. Symptoms: video stream not starting, USB ports unpowered, FBL heartbeat firing with `connected=N`. Boot stopped after `TC358743: probe starting`.
+
+Root cause: the USB MCC regen reordered SYS_Initialize so `MMU_Initialize` and `AIC_INT_Initialize` ran *after* `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize`. With AIC initialized late, the FLEXCOM6 interrupt vector wasn't owned by the AIC when the first I²C transfer ran; `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` blocked forever waiting for an ISR that never fired. FBL stayed alive because it's pure FreeRTOS — no peripheral interrupt dependency.
+
+Fix: reverted SYS_Initialize order so MMU/AIC/WDT-disable run before TC0/FLEXCOM6/XLCDC. Display + capture came back on first boot. Logged as patch #6 in the MCC re-apply list above.
+
+USB enumeration is still not working (VBUS not asserting, no device detected). That's a separate investigation — next session.
 
 ### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
 

@@ -28080,3 +28080,4159 @@ warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working
  8 files changed, 349 insertions(+), 46 deletions(-)
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:25:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit refactor
+
+```bash
+git add firmware/marvin/default/src/actuator/ firmware/marvin/default/src/app.c firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git commit -m "$(cat <<'EOF'
+actuator: move submit queue into fretboard_link
+
+Producers call FretboardLink_Send(mask) instead of writing to a
+timing-pipeline-owned queue. Makes room for the future game menu
+controller and manual test paths to share the same actuator
+transport without reaching through the scheduler. Latest-wins
+semantics unchanged (depth-1 + xQueueOverwrite); mode-level
+arbitration between producers stays a layer up.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status
+```
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos 44a52aa] actuator: move submit queue into fretboard_link
+ 8 files changed, 390 insertions(+), 46 deletions(-)
+On branch freertos
+nothing to commit, working tree clean
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:25:42Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:25:48Z)**_
+
+Committed as `44a52aa`. Now hardware testing.
+
+I'd stage this in three layers, smallest blast radius first:
+
+**Stage 1 — USB CDC enumeration only.** Plug fretboard into marvin's USB-A port, watch marvin's UART log for `FBL: CDC device attached, handle opened`. Pass = link is alive, host stack works, VBUS pins are right. Fail = USB host plumbing bug, which is much easier to chase without the rest of the pipeline in the way. No Wii or game needed. No detector needed.
+
+**Stage 2 — synthetic byte stream (no Wii).** Add a tiny test producer (FreeRTOS task or app-side timer) that calls `FretboardLink_Send` with a walking-1 pattern across the 5 fret bits + alternating strum bits, ~5 Hz. Verify the fretboard's actuator GPIOs follow it (scope, LEDs, or just probe). This validates the wire, the byte-protocol bit positions, and fretboard's CDC reception independently of the detector and timing pipeline. Cheap to add (~30 lines) and cheap to remove or leave behind a debug flag.
+
+**Stage 3 — full pipeline.** Wii + Guitar Hero on screen, camera pointed at the panel area where the strike line falls, watch the fretboard's outputs follow the actual game. This is where calibration drift, timing-pipeline edge cases, and detector accuracy all show up at once — much harder to debug if Stages 1-2 weren't proven first.
+
+A couple of things I need from you before recommending which stage to start with:
+
+_**Agent (claude-opus-4-7 2026-05-21 01:27:26Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**What's the current state of the fretboard side of the CDC link?**
+
+Options:
+- **Already accepts 1-byte protocol** - Fretboard firmware has a USB CDC device handler that consumes the same 7-bit mask format as fret-tuner's actuator.py — we can plug in and go.
+- **CDC enumerates, no protocol handler yet** - USB stack works (onboard debugger CDC enumerates) but no firmware handler reads bytes and asserts GPIOs — needs a cmd_receive port before Stage 2 is meaningful.
+- **Not sure, need to check** - Status of the fretboard's CDC RX handler is unknown; would investigate the firmware/fretboard tree before testing.
+
+**What observability do you have on the fretboard's actuator GPIOs?**
+
+Options:
+- **LEDs on each output** - Visual confirmation per fret + strum bit, easy to watch a walking-1 pattern.
+- **Scope / logic analyzer** - Can capture timing precisely, useful for verifying strum-pulse width and chord-window aggregation.
+- **Nothing wired yet** - GPIOs go to bare pins; need to add LEDs or hook up test gear before observation is possible.
+
+**Where do you want to start?**
+
+Options:
+- **Stage 1 — USB enumeration (Recommended)** - Smallest first step. Confirms marvin sees fretboard before we add any test scaffolding. Just plug in and check the log.
+- **Stage 1 + add Stage 2 test producer now** - Land both at once. Useful if you're ready to iterate on the link end-to-end and want a synthetic source ready when enumeration works.
+- **Skip to Stage 3** - Jump straight to live Guitar Hero. Faster if everything works; harder to localize the failure if it doesn't.
+
+
+**Answer:** Already accepts 1-byte protocol, is wired in paralell to wii guitar controller buttons. can observe actuations in game itself., Stage 1 — USB enumeration (Recommended)
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:27:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:27:48Z)**_
+
+Stage 1 is mostly "plug it in and watch the UART log." Here's what to look for and what each outcome means.
+
+**What to expect on boot, in order:**
+
+1. `FBL: fretboard link started` — task is running. Means `FretboardLink_Initialize` succeeded (queue + semaphore created, task spawned).
+2. (If `USB_HOST_BusEnable` fails) `FBL: USB_HOST_BusEnable failed` — host stack init problem. Likely VBUS pin patch or driver init issue. Investigate `initialization.c` and the EHCI/OHCI driver setup.
+3. **Plug fretboard into marvin's USB-A port.** Within ~1-2 seconds:
+4. `FBL: CDC device attached, handle opened` — full success. Bus enabled, fretboard enumerated, CDC class driver matched, device opened, line coding sent. Stage 1 passes.
+
+**Failure modes worth distinguishing:**
+
+- **No "device attached" log ever appears** — enumeration didn't happen. Could be VBUS not powered (probe PC27/PC31 for ~5 V), wrong USB port physically, fretboard not advertising CDC class (unlikely since you said it works), or host stack didn't initialize.
+- **"device attached" but no actuation in Stage 2 later** — means the link enumerated but writes silently fail or the protocol bits don't match. We'd add Stage-2 instrumentation then.
+
+**One small observability improvement worth considering before you plug in:** the link is currently silent between attach events. If you'd like, I can add a 2-second heartbeat log line showing `connected=Y/N last_mask=0xNN` so you can confirm at-a-glance whether the host loop is alive even before/without an attach. ~5 lines. Useful if Stage 1 fails silently; deletable if Stage 1 sails through. Want it?
+
+---
+
+_**User (2026-05-21 01:28:31Z)**_
+
+sure
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:28:34Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:28:34Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/fretboard_link.c`
+
+```text
+1	#include "fretboard_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "queue.h"
+10	#include "semphr.h"
+11	
+12	#include "definitions.h"
+13	#include "log.h"
+14	#include "usb/usb_host.h"
+15	#include "usb/usb_host_cdc.h"
+16	#include "usb/usb_cdc.h"
+17	
+18	#define FBL_TASK_STACK_WORDS    768u
+19	#define FBL_TASK_PRIORITY       2u
+20	
+21	#define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+22	
+23	/* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
+24	 * a stalled detector or paused game can't leave a stale frets-active
+25	 * pattern stuck on the wire. 50 ms is well below human-perceptible. */
+26	#define FBL_HEARTBEAT_MS        50u
+27	
+28	#define FBL_WRITE_TIMEOUT_MS    100u
+29	
+30	/* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
+31	 * a sane default avoids implementation quirks on hosts that gate writes on
+32	 * a successful SET_LINE_CODING. Matches actuator.py. */
+33	#define FBL_BAUDRATE            115200u
+34	
+35	static QueueHandle_t s_cmd_queue;
+36	static StaticQueue_t s_cmd_queue_buf;
+37	static uint8_t       s_cmd_queue_storage[FBL_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
+38	
+39	static StackType_t   s_task_stack[FBL_TASK_STACK_WORDS];
+40	static StaticTask_t  s_task_tcb;
+41	
+42	static SemaphoreHandle_t s_write_done;
+43	static StaticSemaphore_t s_write_done_buf;
+44	
+45	static volatile USB_HOST_CDC_OBJ    s_cdc_obj_pending = (USB_HOST_CDC_OBJ)0;
+46	static volatile bool                s_cdc_obj_valid;
+47	static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+48	static volatile bool                s_connected;
+49	static volatile USB_HOST_CDC_RESULT s_last_write_result;
+50	
+51	static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
+52	                                                    USB_HOST_CDC_EVENT event,
+53	                                                    void *eventData,
+54	                                                    uintptr_t context)
+55	{
+56	    (void)handle;
+57	    (void)context;
+58	
+59	    switch (event)
+60	    {
+61	        case USB_HOST_CDC_EVENT_WRITE_COMPLETE:
+62	        {
+63	            const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
+64	            s_last_write_result = d->result;
+65	            BaseType_t hpw = pdFALSE;
+66	            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+67	            portYIELD_FROM_ISR(hpw);
+68	            break;
+69	        }
+70	        case USB_HOST_CDC_EVENT_DEVICE_DETACHED:
+71	        {
+72	            s_connected = false;
+73	            /* Wake any pending writer so it observes the detach instead
+74	             * of waiting out the timeout. */
+75	            BaseType_t hpw = pdFALSE;
+76	            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+77	            portYIELD_FROM_ISR(hpw);
+78	            break;
+79	        }
+80	        default:
+81	            break;
+82	    }
+83	    return USB_HOST_CDC_EVENT_RESPONE_NONE;
+84	}
+85	
+86	static void cdc_attach_handler(USB_HOST_CDC_OBJ obj, uintptr_t context)
+87	{
+88	    (void)context;
+89	    /* Hand the object to the link task; opening the device must happen
+90	     * outside the host stack callback. */
+91	    s_cdc_obj_pending = obj;
+92	    s_cdc_obj_valid   = true;
+93	}
+94	
+95	static void close_cdc(void)
+96	{
+97	    if (s_cdc_handle != USB_HOST_CDC_HANDLE_INVALID)
+98	    {
+99	        USB_HOST_CDC_Close(s_cdc_handle);
+100	        s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+101	    }
+102	    s_connected = false;
+103	}
+104	
+105	static bool open_cdc(USB_HOST_CDC_OBJ obj)
+106	{
+107	    USB_HOST_CDC_HANDLE h = USB_HOST_CDC_Open(obj);
+108	    if (h == USB_HOST_CDC_HANDLE_INVALID) { return false; }
+109	
+110	    if (USB_HOST_CDC_EventHandlerSet(h, cdc_event_handler, 0u) != USB_HOST_CDC_RESULT_SUCCESS)
+111	    {
+112	        USB_HOST_CDC_Close(h);
+113	        return false;
+114	    }
+115	
+116	    static const USB_CDC_LINE_CODING line_coding =
+117	    {
+118	        .dwDTERate   = FBL_BAUDRATE,
+119	        .bCharFormat = USB_CDC_LINE_CODING_STOP_1_BIT,
+120	        .bParityType = USB_CDC_LINE_CODING_PARITY_NONE,
+121	        .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
+122	    };
+123	    USB_HOST_CDC_REQUEST_HANDLE rh;
+124	    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, (USB_CDC_LINE_CODING *)&line_coding);
+125	
+126	    s_cdc_handle = h;
+127	    s_connected  = true;
+128	    LOG_INFO("FBL: CDC device attached, handle opened\r\n");
+129	    return true;
+130	}
+131	
+132	static bool send_one_byte(uint8_t mask)
+133	{
+134	    if (!s_connected) { return false; }
+135	
+136	    static uint8_t tx_byte;
+137	    tx_byte = (uint8_t)(mask & 0x7F);
+138	
+139	    /* Drain any prior signal so we wait for *this* write's completion. */
+140	    (void)xSemaphoreTake(s_write_done, 0);
+141	
+142	    USB_HOST_CDC_TRANSFER_HANDLE th;
+143	    USB_HOST_CDC_RESULT r = USB_HOST_CDC_Write(s_cdc_handle, &th, &tx_byte, 1u);
+144	    if (r != USB_HOST_CDC_RESULT_SUCCESS) { return false; }
+145	
+146	    if (xSemaphoreTake(s_write_done, pdMS_TO_TICKS(FBL_WRITE_TIMEOUT_MS)) != pdTRUE)
+147	    {
+148	        LOG_WARN("FBL: write timeout, marking detached\r\n");
+149	        close_cdc();
+150	        return false;
+151	    }
+152	    if (s_last_write_result != USB_HOST_CDC_RESULT_SUCCESS)
+153	    {
+154	        return false;
+155	    }
+156	    return true;
+157	}
+158	
+159	static void fretboard_link_task(void *param)
+160	{
+161	    (void)param;
+162	
+163	    USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+164	    if (USB_HOST_BusEnable(USB_HOST_BUS_ALL) != USB_HOST_RESULT_SUCCESS)
+165	    {
+166	        LOG_ERROR("FBL: USB_HOST_BusEnable failed\r\n");
+167	    }
+168	
+169	    LOG_INFO("FBL: fretboard link started\r\n");
+170	
+171	    uint8_t last_mask = 0u;
+172	
+173	    for (;;)
+174	    {
+175	        if (s_cdc_obj_valid && s_cdc_handle == USB_HOST_CDC_HANDLE_INVALID)
+176	        {
+177	            s_cdc_obj_valid = false;
+178	            (void)open_cdc(s_cdc_obj_pending);
+179	        }
+180	
+181	        uint8_t mask;
+182	        if (xQueueReceive(s_cmd_queue, &mask, pdMS_TO_TICKS(FBL_HEARTBEAT_MS)) == pdTRUE)
+183	        {
+184	            last_mask = mask;
+185	        }
+186	        else
+187	        {
+188	            mask = last_mask;
+189	        }
+190	
+191	        if (s_connected)
+192	        {
+193	            (void)send_one_byte(mask);
+194	        }
+195	    }
+196	}
+197	
+198	void FretboardLink_Initialize(void)
+199	{
+200	    s_cmd_queue = xQueueCreateStatic(FBL_CMD_QUEUE_DEPTH,
+201	                                     sizeof(uint8_t),
+202	                                     s_cmd_queue_storage,
+203	                                     &s_cmd_queue_buf);
+204	    configASSERT(s_cmd_queue != NULL);
+205	
+206	    s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
+207	    configASSERT(s_write_done != NULL);
+208	
+209	    (void)xTaskCreateStatic(fretboard_link_task,
+210	                            "FretLink",
+211	                            FBL_TASK_STACK_WORDS,
+212	                            NULL,
+213	                            FBL_TASK_PRIORITY,
+214	                            s_task_stack,
+215	                            &s_task_tcb);
+216	}
+217	
+218	bool FretboardLink_IsConnected(void)
+219	{
+220	    return s_connected;
+221	}
+222	
+223	void FretboardLink_Send(uint8_t mask)
+224	{
+225	    if (s_cmd_queue == NULL) { return; }
+226	    uint8_t v = (uint8_t)(mask & 0x7F);
+227	    /* Overwrite is strictly latest-wins: a newer producer's mask replaces
+228	     * any unsent older one — keeps a stalled USB write from accumulating
+229	     * stale chord state. */
+230	    (void)xQueueOverwrite(s_cmd_queue, &v);
+231	}
+232
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:28:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:28:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:28:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:28:54Z)**_
+
+Heartbeat added — `FBL: connected=Y/N last_mask=0xNN` every 2 s. You'll see one even before the fretboard is plugged in, which proves the task loop is alive and `USB_HOST_BusEnable` didn't wedge things. Build and try plugging the fretboard in.
+
+---
+
+_**User (2026-05-21 01:57:02Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+video stream not starting and USB ports not powered up and not detecting connection. something stuck with USB addition. I think parts of MCC Harmony code getting stuck? Here's log. AT91Bootstrap SDMMC0 4.0.8-rc4 (Harmony GFX Custom 2023-12-15 19:26:55) 
+SD/MMC: Image: Read file harmony.bin to 0x23f00000
+MMC: ADMA supported
+SD: Card Capacity: High or Extended
+SD: Specification Version 3.0X
+SD/MMC: Done to load image
+CV: cv_marvin_v1 started
+FBL: fretboard link started
+TIMING: pipeline started
+ISC_Capture: initialized
+TC358743: probe starting
+FBL: connected=N last_mask=0x00
+FBL: connected=N last_mask=0x00
+FBL: connected=N last_mask=0x00
+FBL: connected=N last_mask=0x00
+FBL: connected=N last_mask=0x00
+FBL: connected=N last_mask=0x00
+FBL: connected=N last_mask=0x00
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:20Z)**_
+
+Two things are wedged at once. Let me look at how MCC wired the USB host into the FreeRTOS task list.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find tasks.c and initialization.c
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default -maxdepth 2 -name "tasks.c" -o -name "initialization.c" | head -5`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/tasks.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Look for USB host task wiring
+
+`grep -n "USB_HOST\|USB_Host\|_USB" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+63:static void F_USB_HOST_Tasks(  void *pvParameters  )
+68:        USB_HOST_Tasks(sysObj.usbHostObject0);
+114:static void F_DRV_USB_HOST_Tasks(  void *pvParameters  )
+119:        DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
+121:       DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
+178:        /* Create OS Thread for USB_HOST_Tasks. */
+179:    (void) xTaskCreate( F_USB_HOST_Tasks,
+180:        "USB_HOST_TASKS",
+197:    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
+198:        "DRV_USB_HOST_TASKS",
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:26Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+1	/*******************************************************************************
+2	 System Tasks File
+3	
+4	  File Name:
+5	    tasks.c
+6	
+7	  Summary:
+8	    This file contains source code necessary to maintain system's polled tasks.
+9	
+10	  Description:
+11	    This file contains source code necessary to maintain system's polled tasks.
+12	    It implements the "SYS_Tasks" function that calls the individual "Tasks"
+13	    functions for all polled MPLAB Harmony modules in the system.
+14	
+15	  Remarks:
+16	    This file requires access to the systemObjects global data structure that
+17	    contains the object handles to all MPLAB Harmony module objects executing
+18	    polled in the system.  These handles are passed into the individual module
+19	    "Tasks" functions to identify the instance of the module to maintain.
+20	 *******************************************************************************/
+21	
+22	// DOM-IGNORE-BEGIN
+23	/*******************************************************************************
+24	* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
+25	*
+26	* Subject to your compliance with these terms, you may use Microchip software
+27	* and any derivatives exclusively with Microchip products. It is your
+28	* responsibility to comply with third party license terms applicable to your
+29	* use of third party software (including open source software) that may
+30	* accompany Microchip software.
+31	*
+32	* THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+33	* EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+34	* WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+35	* PARTICULAR PURPOSE.
+36	*
+37	* IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+38	* INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+39	* WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+40	* BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+41	* FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+42	* ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+43	* THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+44	 *******************************************************************************/
+45	// DOM-IGNORE-END
+46	
+47	// *****************************************************************************
+48	// *****************************************************************************
+49	// Section: Included Files
+50	// *****************************************************************************
+51	// *****************************************************************************
+52	
+53	#include "configuration.h"
+54	#include "definitions.h"
+55	#include "sys_tasks.h"
+56	
+57	
+58	// *****************************************************************************
+59	// *****************************************************************************
+60	// Section: RTOS "Tasks" Routine
+61	// *****************************************************************************
+62	// *****************************************************************************
+63	static void F_USB_HOST_Tasks(  void *pvParameters  )
+64	{
+65	    while(true)
+66	    {
+67	        /* USB Host layer tasks routine */ 
+68	        USB_HOST_Tasks(sysObj.usbHostObject0);
+69	        vTaskDelay(10U / portTICK_PERIOD_MS);
+70	    }
+71	}
+72	
+73	void _XLCDC_Tasks(  void *pvParameters  )
+74	{
+75	    while(1)
+76	    {
+77	        DRV_XLCDC_Update();
+78	        vTaskDelay(10 / portTICK_PERIOD_MS);
+79	    }
+80	}
+81	
+82	void _DRV_MAXTOUCH_Tasks(  void *pvParameters  )
+83	{
+84	    while(1)
+85	    {
+86	        DRV_MAXTOUCH_Tasks(sysObj.drvMAXTOUCH);
+87	        vTaskDelay(10 / portTICK_PERIOD_MS);
+88	    }
+89	}
+90	
+91	
+92	/* Handle for the APP_Tasks. */
+93	TaskHandle_t xAPP_Tasks;
+94	
+95	
+96	
+97	static void lAPP_Tasks(  void *pvParameters  )
+98	{   
+99	    while(true)
+100	    {
+101	        APP_Tasks();
+102	    }
+103	}
+104	
+105	void _LEGATO_Tasks(  void *pvParameters  )
+106	{
+107	    while(1)
+108	    {
+109	        Legato_Tasks();
+110	        vTaskDelay(10 / portTICK_PERIOD_MS);
+111	    }
+112	}
+113	
+114	static void F_DRV_USB_HOST_Tasks(  void *pvParameters  )
+115	{
+116	    while(true)
+117	    {
+118	        /* USB EHCI Task Routine */
+119	        DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
+120	       /* USB OHCI Task Routine */
+121	       DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
+122	        vTaskDelay(10U / portTICK_PERIOD_MS);
+123	    }
+124	}
+125	
+126	void _SYS_INPUT_Tasks(  void *pvParameters  )
+127	{
+128	    while(1)
+129	    {
+130	        SYS_INP_Tasks();
+131	        vTaskDelay(10 / portTICK_PERIOD_MS);
+132	    }
+133	}
+134	
+135	
+136	
+137	
+138	// *****************************************************************************
+139	// *****************************************************************************
+140	// Section: System "Tasks" Routine
+141	// *****************************************************************************
+142	// *****************************************************************************
+143	
+144	/*******************************************************************************
+145	  Function:
+146	    void SYS_Tasks ( void )
+147	
+148	  Remarks:
+149	    See prototype in system/common/sys_module.h.
+150	*/
+151	void SYS_Tasks ( void )
+152	{
+153	    /* Maintain system services */
+154	    
+155	
+156	    /* Maintain Device Drivers */
+157	    
+158	    xTaskCreate( _XLCDC_Tasks,
+159	        "XLCDC_Tasks",
+160	        1024,
+161	        (void*)NULL,
+162	        1,
+163	        (TaskHandle_t*)NULL
+164	    );
+165	
+166	
+167	    xTaskCreate( _DRV_MAXTOUCH_Tasks,
+168	        "DRV_MAXTOUCH_Tasks",
+169	        1024,
+170	        (void*)NULL,
+171	        1,
+172	        (TaskHandle_t*)NULL
+173	    );
+174	
+175	
+176	
+177	    /* Maintain Middleware & Other Libraries */
+178	        /* Create OS Thread for USB_HOST_Tasks. */
+179	    (void) xTaskCreate( F_USB_HOST_Tasks,
+180	        "USB_HOST_TASKS",
+181	        1024,
+182	        (void*)NULL,
+183	        1,
+184	        (TaskHandle_t*)NULL
+185	    );
+186	
+187	
+188	    xTaskCreate( _LEGATO_Tasks,
+189	        "LEGATO_Tasks",
+190	        1024,
+191	        (void*)NULL,
+192	        1,
+193	        (TaskHandle_t*)NULL
+194	    );
+195	
+196	    /* Create OS Thread for USB Driver Tasks. */
+197	    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
+198	        "DRV_USB_HOST_TASKS",
+199	        1024,
+200	        (void*)NULL,
+201	        1,
+202	        (TaskHandle_t*)NULL
+203	    );
+204	
+205	
+206	    xTaskCreate( _SYS_INPUT_Tasks,
+207	        "SYS_INPUT_Tasks",
+208	        1024,
+209	        (void*)NULL,
+210	        1,
+211	        (TaskHandle_t*)NULL
+212	    );
+213	
+214	
+215	
+216	    /* Maintain the application's state machine. */
+217	    
+218	    /* Create OS Thread for APP_Tasks. */
+219	    (void) xTaskCreate(
+220	           (TaskFunction_t) lAPP_Tasks,
+221	           "APP_Tasks",
+222	           1024,
+223	           NULL,
+224	           1U ,
+225	           &xAPP_Tasks);
+226	
+227	
+228	
+229	    /* Start RTOS Scheduler. */
+230	    
+231	     /**********************************************************************
+232	     * Create all Threads for APP Tasks before starting FreeRTOS Scheduler *
+233	     ***********************************************************************/
+234	    vTaskStartScheduler(); /* This function never returns. */
+235	
+236	}
+237	
+238	/*******************************************************************************
+239	 End of File
+240	 */
+241	
+242
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:49Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:50Z)**_
+
+Let me look at the initialization order around USB.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:57:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/initialization.c`
+
+```text
+130	// </editor-fold>
+131	
+132	
+133	
+134	
+135	// *****************************************************************************
+136	// *****************************************************************************
+137	// Section: System Data
+138	// *****************************************************************************
+139	// *****************************************************************************
+140	/* Structure to hold the object handles for the modules in the system. */
+141	SYSTEM_OBJECTS sysObj;
+142	
+143	// *****************************************************************************
+144	// *****************************************************************************
+145	// Section: Library/Stack Initialization Data
+146	// *****************************************************************************
+147	// *****************************************************************************
+148	/******************************************************
+149	 * USB Driver Initialization
+150	 ******************************************************/
+151	static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
+152	{
+153	    /* Note: USB Host applications should have a way for Enabling/Disabling the 
+154	       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
+155	       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
+156	       name it to "VBUS_AH". If you a see a build error from this function either 
+157	       you have not configured the VBUS Power Enable in MHC pin settings or the 
+158	       Pin name entered in MHC is not "VBUS_AH". */
+159	    if (enable == true)
+160	    {
+161	        /* Enable the VBUS */
+162	        VBUS_AH_PC27_PowerEnable_Set();
+163	        VBUS_AH_PC31_PowerEnable_Set();
+164	
+165	    }
+166	    else
+167	    {
+168	        /* Disable the VBUS */
+169	        VBUS_AH_PC27_PowerEnable_Clear();
+170	        VBUS_AH_PC31_PowerEnable_Clear();
+171	    }
+172	}
+173	
+174	static DRV_USB_EHCI_INIT drvUSBEHCIInit =
+175	{
+176	    /* Interrupt Source for USB module */
+177	    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+178	
+179	    /* USB base address */
+180	    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
+181	    
+182	    /* Ports Selection */ 
+183	    .bmPortSelect = 0x02,
+184	
+185	    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+186	    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+187	    
+188	    /* Root hub available current in milliamperes */
+189	    .rootHubAvailableCurrent = 500,
+190	
+191	    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
+192	};
+193	
+194	static DRV_USB_OHCI_INIT drvUSBOHCIInit =
+195	{
+196	    /* Interrupt Source for USB module */
+197	    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+198	
+199	    /* USB base address */
+200	    .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
+201	
+202	     /* Ports Selection */ 
+203	    .bmPortSelect = 0x02,
+204	    
+205	    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+206	    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+207	    
+208	    /* Root hub available current in milliamperes */
+209	    .rootHubAvailableCurrent = 500
+210	};
+211	
+212	
+213	
+214	// *****************************************************************************
+215	// *****************************************************************************
+216	// Section: System Initialization
+217	// *****************************************************************************
+218	// *****************************************************************************
+219	// <editor-fold defaultstate="collapsed" desc="SYS_TIME Initialization Data">
+220	
+221	static const SYS_TIME_PLIB_INTERFACE sysTimePlibAPI = {
+222	    .timerCallbackSet = (SYS_TIME_PLIB_CALLBACK_REGISTER)TC0_CH0_TimerCallbackRegister,
+223	    .timerStart = (SYS_TIME_PLIB_START)TC0_CH0_TimerStart,
+224	    .timerStop = (SYS_TIME_PLIB_STOP)TC0_CH0_TimerStop ,
+225	    .timerFrequencyGet = (SYS_TIME_PLIB_FREQUENCY_GET)TC0_CH0_TimerFrequencyGet,
+226	    .timerPeriodSet = (SYS_TIME_PLIB_PERIOD_SET)TC0_CH0_TimerPeriodSet,
+227	    .timerCompareSet = (SYS_TIME_PLIB_COMPARE_SET)TC0_CH0_TimerCompareSet,
+228	    .timerCounterGet = (SYS_TIME_PLIB_COUNTER_GET)TC0_CH0_TimerCounterGet,
+229	};
+```
+</details></tool-use>
+
+---
+
+_**User (2026-05-21 01:59:21Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   This session continues marvin firmware development on a SAM9X75-based guitar-playing robot. The user's sequential explicit requests:
+   
+   - **Request 1**: "back working for a little while. log it and start implementing" — Refers to architectural recommendation from previous session: three-layer split (detector → timing_pipeline → fretboard_link), keep 1-byte protocol matching fret-tuner actuator.py, defer actuator-latency compensation. Log decision in journal, then implement timing_pipeline + fretboard_link modules.
+   
+   - **Request 2**: "build successful. commit."
+   
+   - **Request 3**: User raised architectural concern: "If we implement game menu control and such, then we need to be able to control actuator directly, not just through detector / timing pipeline. I think general architecture already will allow for this but might need to extend actuator api some?"
+   
+   - **Request 4**: "yes do it now." — Refactor to move submit queue into fretboard_link, add FretboardLink_Send public API.
+   
+   - **Request 5**: "build successful. please commit. Then I think we need to figure out how to best start testing this on hardware?"
+   
+   - **Request 6 (after AskUserQuestion answers)**: Start hardware testing at Stage 1 (USB enumeration). Fretboard already accepts 1-byte protocol. Observability via game itself (actuators wired parallel to Wii guitar controller buttons).
+   
+   - **Request 7**: "sure" — agreed to adding 2-second status heartbeat log.
+   
+   - **Most recent (Request 8)**: User reports hardware test failure: "video stream not starting and USB ports not powered up and not detecting connection. something stuck with USB addition. I think parts of MCC Harmony code getting stuck?"
+   
+   **Standing project rules (preserved verbatim):**
+   - "never `git commit` on my own initiative; only on explicit user ask or after prompting"
+   - "Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing."
+   - "Code comments describe current code only" — no dev-diary in source comments
+   - "Journals are the source of truth for planning and progress"
+   - "prefer journal updates over re-stating plans in chat"
+   - Specstory files SHOULD be staged in commits
+   - MCC manifest churn should NOT be in commits
+   - "CRITICAL: Always create NEW commits rather than amending"
+
+2. Key Technical Concepts:
+   - SAM9X75 Curiosity (Cortex-A5, 1 GB DDR3) running MPLAB Harmony v5.6.4 + FreeRTOS
+   - HDMI capture: TC358743 → MIPI CSI-2 → ISC → DDR (BGR888 packed, 3 B/pixel)
+   - Wii target = 480p60 (720×480)
+   - FreeRTOS static allocation: xTaskCreateStatic, xQueueCreateStatic, xSemaphoreCreateMutexStatic
+   - Detector subsystem: detector_state_t records on xDetectorStateQueue
+   - Three-layer M2 architecture: detector → timing_pipeline → fretboard_link
+   - 1-byte bitmask protocol: G/R/Y/B/O at bits 0-4, strum-down bit 5, strum-up bit 6
+   - Timing constants: STRUM_DELAY_MS=220, FRET_EARLY_MS=50, STRUM_PULSE_MS=50, CHORD_WINDOW_MS=20, FIFO_CAP=16
+   - USB CDC host on marvin: EHCI + OHCI drivers, VBUS on PC27+PC31, bmPortSelect=0x02
+   - USB CDC device on fretboard via onboard debugger (already accepts 1-byte protocol)
+   - Latest-wins queue: depth-1 + xQueueOverwrite
+   - Fretboard MCU: PIC32CM6408
+   - Actuators wired in parallel to Wii guitar controller buttons
+
+3. Files and Code Sections:
+
+   - **firmware/marvin/default/src/actuator/timing_pipeline.h** (NEW)
+     - C port of fret-tuner actuator.py timing logic
+     - Bit definitions matching cmd_receive.h:
+     ```c
+     #define TIMING_BIT_GREEN       (1u << 0)
+     #define TIMING_BIT_RED         (1u << 1)
+     #define TIMING_BIT_YELLOW      (1u << 2)
+     #define TIMING_BIT_BLUE        (1u << 3)
+     #define TIMING_BIT_ORANGE      (1u << 4)
+     #define TIMING_BIT_STRUM_DOWN  (1u << 5)
+     #define TIMING_BIT_STRUM_UP    (1u << 6)
+     #define TIMING_BIT_FRET_MASK   0x1Fu
+     #define TIMING_BIT_VALID_MASK  0x7Fu
+     
+     void TimingPipeline_Initialize(void);
+     ```
+     - After refactor: TimingPipeline_CmdQueue() removed; module now calls FretboardLink_Send
+
+   - **firmware/marvin/default/src/actuator/timing_pipeline.c** (NEW)
+     - Static FreeRTOS task subscribing to Detector_BusQueue()
+     - Filters by Detector_GetActive(), runs chord-window + strum-FIFO scheduling
+     - Time base: detector frame timestamps (timestamp_us / 1000)
+     - 5ms tick fallback for between-frame deadlines
+     - Initial version: had own queue with xQueueOverwrite
+     - After refactor: publish_mask() calls FretboardLink_Send(mask)
+     ```c
+     static void publish_mask(uint8_t mask)
+     {
+         s_output_mask = mask;
+         FretboardLink_Send(mask);
+     }
+     ```
+     - State: s_note_q, s_strum_q FIFOs (depth 16), s_chord_open/start_ms/mask, s_frets_active, s_strum_active/direction/release_at_ms, s_prev_pressed_mask, s_release_pending_mask, s_now_ms
+
+   - **firmware/marvin/default/src/actuator/fretboard_link.h** (NEW)
+     - Public API after refactor:
+     ```c
+     void FretboardLink_Initialize(void);
+     void FretboardLink_Send(uint8_t mask);
+     bool FretboardLink_IsConnected(void);
+     ```
+     - Doc comment notes: "Producers — timing_pipeline today, game menu controller (spec §4.8) and manual test inputs in the future — all submit through FretboardLink_Send."
+
+   - **firmware/marvin/default/src/actuator/fretboard_link.c** (NEW)
+     - USB CDC host writer with attach/detach handling
+     - After refactor: owns the depth-1 latest-wins cmd_queue
+     - After heartbeat addition: FBL_STATUS_LOG_MS=2000u, logs "FBL: connected=Y/N last_mask=0xNN"
+     - Key constants:
+     ```c
+     #define FBL_TASK_STACK_WORDS    768u
+     #define FBL_TASK_PRIORITY       2u
+     #define FBL_CMD_QUEUE_DEPTH     1u
+     #define FBL_HEARTBEAT_MS        50u
+     #define FBL_WRITE_TIMEOUT_MS    100u
+     #define FBL_STATUS_LOG_MS       2000u
+     #define FBL_BAUDRATE            115200u
+     ```
+     - cdc_event_handler signals s_write_done semaphore on WRITE_COMPLETE, marks s_connected=false on DEVICE_DETACHED
+     - cdc_attach_handler stores obj for later open in task context
+     - open_cdc: USB_HOST_CDC_Open → USB_HOST_CDC_EventHandlerSet → USB_HOST_CDC_ACM_LineCodingSet (115200/8N1)
+     - send_one_byte: drains semaphore, USB_HOST_CDC_Write 1 byte, waits on s_write_done with 100ms timeout
+     - Task loop: opens pending CDC device, receives mask (50ms heartbeat), sends if connected, logs status every 2s
+     - FretboardLink_Send: xQueueOverwrite with mask & 0x7F
+     ```c
+     void FretboardLink_Send(uint8_t mask)
+     {
+         if (s_cmd_queue == NULL) { return; }
+         uint8_t v = (uint8_t)(mask & 0x7F);
+         (void)xQueueOverwrite(s_cmd_queue, &v);
+     }
+     ```
+
+   - **firmware/marvin/default/src/app.c** — added init calls after Detector setup:
+     ```c
+     /* M2 actuator path: fretboard_link owns the submit queue + USB CDC
+      * writer; producers (timing_pipeline today, future game controller +
+      * manual test inputs) call FretboardLink_Send. ... Init link first so the
+      * queue exists by the time any producer task starts. */
+     FretboardLink_Initialize();
+     TimingPipeline_Initialize();
+     ```
+
+   - **firmware/marvin/cmake/marvin/default/user.cmake** — added two source files:
+     ```
+     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/timing_pipeline.c"
+     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
+     ```
+
+   - **firmware/marvin/docs/journal.md** — two decision-log entries added (in addition to existing ones):
+     1. "Fretboard-link submit queue belongs to `fretboard_link`, not `timing_pipeline`; producers call `FretboardLink_Send(mask)`" — explains why ownership moved, mentions game menu control (spec §4.8) and mode-level arbitration
+     2. "M2 fretboard link split into three layers — detector → timing_pipeline → fretboard_link" — three-layer split rationale, FIFO on marvin, 1-byte protocol, latest-wins, deferred actuator-latency compensation with both future paths documented
+
+   - **firmware/marvin/default/src/config/default/tasks.c** (READ during debugging)
+     - Confirmed USB host tasks ARE registered:
+     ```c
+     static void F_USB_HOST_Tasks(void *pvParameters) {
+         while(true) {
+             USB_HOST_Tasks(sysObj.usbHostObject0);
+             vTaskDelay(10U / portTICK_PERIOD_MS);
+         }
+     }
+     static void F_DRV_USB_HOST_Tasks(void *pvParameters) {
+         while(true) {
+             DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
+             DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
+             vTaskDelay(10U / portTICK_PERIOD_MS);
+         }
+     }
+     ```
+     - Both registered in SYS_Tasks() at priority 1
+
+   - **firmware/marvin/default/src/config/default/initialization.c** (READ during debugging)
+     - DRV_USB_VBUSPowerEnable hand-edit confirmed at lines 162-163 (Set) and 169-170 (Clear)
+     - drvUSBEHCIInit: bmPortSelect=0x02, companionDriverIndex=DRV_USB_OHCI_INDEX_0, rootHubAvailableCurrent=500
+     - drvUSBOHCIInit: bmPortSelect=0x02, rootHubAvailableCurrent=500
+
+4. Errors and fixes:
+   - **Wrong USB CDC line coding constants**: Used USB_CDC_ASYNCHRONOUS_LINE_CODING_STOP_BITS_1 / USB_CDC_ASYNCHRONOUS_LINE_CODING_PARITY_TYPE_NONE in fretboard_link.c. Fixed to USB_CDC_LINE_CODING_STOP_1_BIT, USB_CDC_LINE_CODING_PARITY_NONE, USB_CDC_LINE_CODING_DATA_8_BIT.
+   - **Wrong LOG macro**: Used LOG_ERR; correct is LOG_ERROR per log.h.
+   - **Architectural feedback from user**: User pointed out that game menu control needs direct actuator access. Fixed by moving submit queue from timing_pipeline to fretboard_link, exposing FretboardLink_Send as public submit API.
+   - **Hardware test failure (current)**: Video stream not starting, USB ports not powered, no enumeration. TC358743 probe stuck after "probe starting" log. FBL heartbeat firing showing connected=N. USB host tasks ARE registered in tasks.c — investigation incomplete.
+
+5. Problem Solving:
+   - **Architectural design for actuator submit queue**: Initial design had timing_pipeline owning the cmd queue. User raised concern about future menu controller. Resolved by moving queue ownership to fretboard_link with public Send API. Mode-level arbitration deferred to higher layer.
+   - **Hardware testing strategy**: Three-stage approach proposed — Stage 1 USB enumeration, Stage 2 synthetic byte stream, Stage 3 full pipeline. User chose Stage 1.
+   - **Hardware test failure (UNRESOLVED)**: TC358743 probe stuck + USB not powered. Investigation in progress when summarization triggered. Confirmed USB host tasks are registered correctly in tasks.c. Confirmed DRV_USB_VBUSPowerEnable hand-edit is in place. Need to investigate why USB driver tasks aren't asserting VBUS and why TC358743 probe is hanging.
+
+6. All user messages:
+   - "back working for a little while. log it and start implementing"
+   - "build successful. commit."
+   - "one more item to consider and make note of. If we implement game menu control and such, then we need to be able to control actuator directly, not just through detector / timing pipeline. I think general architecture already will allow for this but might need to extend actuator api some?"
+   - "yes do it now."
+   - "build successful. please commit. Then I think we need to figure out how to best start testing this on hardware?"
+   - [AskUserQuestion answers]: "Already accepts 1-byte protocol", "is wired in paralell to wii guitar controller buttons. can observe actuations in game itself.", "Stage 1 — USB enumeration (Recommended)"
+   - "sure"
+   - "video stream not starting and USB ports not powered up and not detecting connection. something stuck with USB addition. I think parts of MCC Harmony code getting stuck? Here's log. AT91Bootstrap SDMMC0 4.0.8-rc4 (Harmony GFX Custom 2023-12-15 19:26:55) / SD/MMC: Image: Read file harmony.bin to 0x23f00000 / MMC: ADMA supported / SD: Card Capacity: High or Extended / SD: Specification Version 3.0X / SD/MMC: Done to load image / CV: cv_marvin_v1 started / FBL: fretboard link started / TIMING: pipeline started / ISC_Capture: initialized / TC358743: probe starting / FBL: connected=N last_mask=0x00 [×7]"
+
+7. Pending Tasks:
+   - **Debug hardware test failure**: TC358743 probe stuck + USB ports not powered. Need to identify why USB host driver tasks aren't asserting VBUS and why TC358743 probe is hanging.
+
+8. Current Work:
+   Immediately before the summarization request, I was investigating the hardware test failure reported in the user's most recent message. The boot log showed:
+   - Subsystem startup logs all appeared (CV, FBL, TIMING, ISC_Capture)
+   - "TC358743: probe starting" appeared with no follow-up
+   - FBL heartbeat firing every 2s with "connected=N last_mask=0x00"
+   - USB ports not powered (VBUS not asserted)
+   
+   I had just read tasks.c and confirmed USB host tasks (F_USB_HOST_Tasks, F_DRV_USB_HOST_Tasks) are properly registered as FreeRTOS tasks at priority 1 with 10ms vTaskDelay loops. Then I read initialization.c lines 130-229 and confirmed:
+   - DRV_USB_VBUSPowerEnable hand-edit is in place (PC27+PC31 Set/Clear)
+   - drvUSBEHCIInit: bmPortSelect=0x02, companionDriverIndex=DRV_USB_OHCI_INDEX_0
+   - drvUSBOHCIInit: bmPortSelect=0x02
+   
+   The investigation was incomplete — I had not yet identified the root cause of why USB enumeration isn't happening and why TC358743 probe is hanging simultaneously.
+
+9. Optional Next Step:
+   Continue investigating the hardware test failure. The user's most recent statement: "video stream not starting and USB ports not powered up and not detecting connection. something stuck with USB addition. I think parts of MCC Harmony code getting stuck?"
+   
+   Next investigation steps should include:
+   - Check if SYS_Initialize is properly initializing the USB drivers (look for USB driver init calls in initialization.c)
+   - Check if there's a stack/heap exhaustion problem from adding USB
+   - Check FreeRTOS task priorities — FBL is at priority 2, USB host tasks at priority 1; this means FBL preempts USB host. This could starve USB tasks if FBL is busy. However, FBL spends most of its time blocked on xQueueReceive with timeout, so this shouldn't normally be an issue, but worth verifying.
+   - Examine why TC358743 probe is stuck — it might be waiting on I2C; could be related to USB clock setup affecting peripheral clocks
+   - Check if USB_HOST_BusEnable was called from FBL task vs requirements about when it must be called
+   - Consider whether the new task creation order or task priorities could be starving the USB host tasks
+   
+   I should ask the user for additional log output (waiting longer, looking for any error indicators) before making code changes, or investigate specific suspect code paths. The most actionable first step would be to check whether USB driver tasks are running by examining task creation order and priorities, and to verify SYS_Initialize calls the USB driver init functions correctly.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:27Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find USB/VBUS references in initialization.c
+
+`grep -n "USB\|VBUS\|PC27\|PC31" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c | head -80`
+
+```text
+149: * USB Driver Initialization
+151:static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
+153:    /* Note: USB Host applications should have a way for Enabling/Disabling the 
+154:       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
+155:       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
+156:       name it to "VBUS_AH". If you a see a build error from this function either 
+157:       you have not configured the VBUS Power Enable in MHC pin settings or the 
+158:       Pin name entered in MHC is not "VBUS_AH". */
+161:        /* Enable the VBUS */
+162:        VBUS_AH_PC27_PowerEnable_Set();
+163:        VBUS_AH_PC31_PowerEnable_Set();
+168:        /* Disable the VBUS */
+169:        VBUS_AH_PC27_PowerEnable_Clear();
+170:        VBUS_AH_PC31_PowerEnable_Clear();
+174:static DRV_USB_EHCI_INIT drvUSBEHCIInit =
+176:    /* Interrupt Source for USB module */
+179:    /* USB base address */
+185:    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+186:    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+191:    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
+194:static DRV_USB_OHCI_INIT drvUSBOHCIInit =
+196:    /* Interrupt Source for USB module */
+199:    /* USB base address */
+205:    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+206:    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+400:    /* Initialize the USB Host layer */
+401:    sysObj.usbHostObject0 = USB_HOST_Initialize (( SYS_MODULE_INIT *)& usbHostInitData );    
+406:     /* Initialize USB Driver */ 
+407:    sysObj.drvUSBEHCIObject = DRV_USB_EHCI_Initialize (DRV_USB_EHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBEHCIInit);
+408:    sysObj.drvUSBOHCIObject = DRV_USB_OHCI_Initialize (DRV_USB_OHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBOHCIInit);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check VBUS_AH pin definitions
+
+`grep -n "VBUS_AH\|PC27\|PC31" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.h | head -40`
+
+```text
+83:/*** Macros for VBUS_AH_PC27_PowerEnable pin ***/
+84:#define VBUS_AH_PC27_PowerEnable_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<27U))
+85:#define VBUS_AH_PC27_PowerEnable_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<27U))
+86:#define VBUS_AH_PC27_PowerEnable_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<27U))
+87:#define VBUS_AH_PC27_PowerEnable_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<27U))
+88:#define VBUS_AH_PC27_PowerEnable_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<27U))
+89:#define VBUS_AH_PC27_PowerEnable_Get()               ((PIOC_REGS->PIO_PDSR >> 27U) & 0x1U)
+90:#define VBUS_AH_PC27_PowerEnable_PIN                  PIO_PIN_PC27
+119:/*** Macros for VBUS_AH_PC31_PowerEnable pin ***/
+120:#define VBUS_AH_PC31_PowerEnable_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<31U))
+121:#define VBUS_AH_PC31_PowerEnable_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<31U))
+122:#define VBUS_AH_PC31_PowerEnable_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<31U))
+123:#define VBUS_AH_PC31_PowerEnable_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<31U))
+124:#define VBUS_AH_PC31_PowerEnable_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<31U))
+125:#define VBUS_AH_PC31_PowerEnable_Get()               ((PIOC_REGS->PIO_PDSR >> 31U) & 0x1U)
+126:#define VBUS_AH_PC31_PowerEnable_PIN                  PIO_PIN_PC31
+310:#define    PIO_PIN_PC27     (91U)
+314:#define    PIO_PIN_PC31     (95U)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check pin init for PC27/PC31
+
+`grep -n "PIO_PIN_PC27\|PIO_PIN_PC31\|PowerEnable\|VBUS_AH" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c | head -40`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find PIOC output enable initialization
+
+`grep -n "PIOC_REGS->PIO_OER\|PIO_PER\|PIO_OER" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c | head -20`
+
+```text
+65:    ((pio_registers_t*)PIO_PORT_A)->PIO_PER = ~0xf000000U;
+74:    ((pio_registers_t*)PIO_PORT_A)->PIO_OER = 0x20000U;
+84:    ((pio_registers_t*)PIO_PORT_B)->PIO_PER = 0xFFFFFFFFU;
+93:    ((pio_registers_t*)PIO_PORT_B)->PIO_OER = 0x0U;
+103:    ((pio_registers_t*)PIO_PORT_C)->PIO_PER = 0xFFFFFFFFU;
+113:    ((pio_registers_t*)PIO_PORT_C)->PIO_OER = 0xc83cc000U;
+123:    ((pio_registers_t*)PIO_PORT_D)->PIO_PER = 0xFFFFFFFFU;
+132:    ((pio_registers_t*)PIO_PORT_D)->PIO_OER = 0x0U;
+279:    ((pio_registers_t*)port)->PIO_OER = mask;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:47Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:47Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find TC358743 probe starting log location
+
+`grep -rn "probe starting" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ 2>/dev/null`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/tc358743.c:740:    LOG_INFO("TC358743: probe starting\r\n");
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:49Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/tc358743.c`
+
+```text
+720	    {
+721	        LOG_ERROR("TC358743: init: load_edid failed\r\n");
+722	        return false;
+723	    }
+724	
+725	    return true;
+726	}
+727	
+728	void TC358743_Initialize(void)
+729	{
+730	    uint16_t chipid;
+731	    uint8_t  sys_status;
+732	
+733	    i2cHandle = DRV_I2C_Open(DRV_I2C_INDEX_0, DRV_IO_INTENT_READWRITE);
+734	    if (i2cHandle == DRV_HANDLE_INVALID)
+735	    {
+736	        LOG_ERROR("TC358743: DRV_I2C_Open failed\r\n");
+737	        return;
+738	    }
+739	
+740	    LOG_INFO("TC358743: probe starting\r\n");
+741	
+742	    if (!tc358743_wr16(SYSCTL, SYSCTL_SRESET)
+743	        || !delay_ms(RESET_HOLD_MS)
+744	        || !tc358743_wr16(SYSCTL, 0x0000u)
+745	        || !delay_ms(RESET_HOLD_MS))
+746	    {
+747	        LOG_ERROR("TC358743: software reset failed\r\n");
+748	        return;
+749	    }
+750	
+751	    if (!tc358743_rd16(CHIPID, &chipid))
+752	    {
+753	        LOG_ERROR("TC358743: CHIPID read failed\r\n");
+754	        return;
+755	    }
+756	
+757	    if ((chipid & 0xFF00u) != 0x0000u)
+758	    {
+759	        LOG_ERROR("TC358743: unexpected chipid=0x%04X\r\n", chipid);
+760	        return;
+761	    }
+762	
+763	    LOG_INFO("TC358743: present (chipid=0x%04X)\r\n", chipid);
+764	    LOG_INFO("TC358743: init (2 lanes, %u Mbps/lane, RGB888 full-range)\r\n",
+765	             (unsigned)(CSI_BPS_PER_LANE / 1000000u));
+766	
+767	    if (!tc358743_do_init())
+768	    {
+769	        LOG_ERROR("TC358743: init aborted\r\n");
+770	        return;
+771	    }
+772	
+773	    if (!tc358743_rd8(SYS_STATUS, &sys_status))
+774	    {
+775	        LOG_ERROR("TC358743: init complete; SYS_STATUS read failed\r\n");
+776	        return;
+777	    }
+778	
+779	    LOG_INFO("TC358743: init complete; SYS_STATUS=0x%02X\r\n", sys_status);
+780	
+781	    (void)delay_ms(EDID_POST_RISE_MS);
+782	
+783	    if (tc358743_rd8(SYS_STATUS, &sys_status))
+784	    {
+785	        LOG_INFO("TC358743: post-HPD SYS_STATUS=0x%02X\r\n", sys_status);
+786	    }
+787	}
+788	
+789	static bool tc358743_enable_stream(bool enable)
+790	{
+791	    if (enable)
+792	    {
+793	        if (!tc358743_wr32(TXOPTIONCNTRL, 0u))                { return false; }
+794	        if (!tc358743_wr32(TXOPTIONCNTRL, MASK_CONTCLKMODE))  { return false; }
+795	        if (!tc358743_wr8(VI_MUTE, MASK_AUTO_MUTE))           { return false; }
+796	    }
+797	    else
+798	    {
+799	        if (!tc358743_wr8(VI_MUTE, MASK_AUTO_MUTE | MASK_VI_MUTE))
+800	        {
+801	            return false;
+802	        }
+803	    }
+804	    if (!tc358743_wr16_and_or(
+805	            CONFCTL,
+806	            (uint16_t)~(MASK_VBUFEN | MASK_ABUFEN),
+807	            enable ? (uint16_t)(MASK_VBUFEN | MASK_ABUFEN) : 0u))
+808	    {
+809	        return false;
+810	    }
+811	    /* On stream-off, re-run the full CSI-TX block setup to park the lanes
+812	     * in LP-11 cleanly. Mirrors the Linux driver's tc358743_s_stream
+813	     * (drivers/media/i2c/tc358743.c — "Put all lanes in LP-11 state"
+814	     * comment after enable_stream(false)). Without this the CSI-TX state
+815	     * machine stays in whatever state the abrupt input loss left it,
+816	     * and the next stream-on never produces packets the host can decode. */
+817	    if (!enable)
+818	    {
+819	        if (!tc358743_set_csi()) { return false; }
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:53Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find delay_ms implementation in tc358743
+
+`grep -n "static.*delay_ms\|^static bool delay_ms\|delay_ms(uint32" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/tc358743.c | head -5`
+
+```text
+219:static bool delay_ms(uint32_t ms)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:59:55Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/tc358743.c`
+
+```text
+100	#define EDID_LEN1               0x85CAu
+101	#define EDID_LEN2               0x85CBu
+102	#define LOCKDET_REF0            0x8630u
+103	#define LOCKDET_REF1            0x8631u
+104	#define LOCKDET_REF2            0x8632u
+105	#define NCO_F0_MOD              0x8670u
+106	#define EDID_RAM                0x8C00u
+107	
+108	#define MASK_CTXRST             0x0200u
+109	#define MASK_HDMIRST            0x0100u
+110	#define MASK_SLEEP              0x0001u
+111	#define MASK_IRRST              0x0800u
+112	#define MASK_CECRST             0x0400u
+113	#define MASK_YCBCRFMT           0x00C0u
+114	#define MASK_VBUFEN             0x0001u
+115	#define MASK_ABUFEN             0x0002u
+116	#define MASK_AUTOINDEX          0x0004u
+117	#define MASK_PLL_PRD            0xF000u
+118	#define MASK_PLL_FBD            0x01FFu
+119	#define MASK_PLL_FRS            0x0C00u
+120	#define MASK_CKEN               0x0010u
+121	#define MASK_RESETB             0x0002u
+122	#define MASK_PLL_EN             0x0001u
+123	#define MASK_CLW_LANEDISABLE    0x00000001u
+124	#define MASK_D0W_LANEDISABLE    0x00000001u
+125	#define MASK_D1W_LANEDISABLE    0x00000001u
+126	#define MASK_D2W_LANEDISABLE    0x00000001u
+127	#define MASK_D3W_LANEDISABLE    0x00000001u
+128	#define MASK_CLM_HSTXVREGEN     0x0001u
+129	#define MASK_D0M_HSTXVREGEN     0x0002u
+130	#define MASK_D1M_HSTXVREGEN     0x0004u
+131	#define MASK_D2M_HSTXVREGEN     0x0008u
+132	#define MASK_D3M_HSTXVREGEN     0x0010u
+133	#define MASK_CONTCLKMODE        0x00000001u
+134	#define MASK_START              0x00000001u
+135	#define MASK_STRT               0x00000001u
+136	#define MASK_MODE_SET           0xA0000000u
+137	#define MASK_MODE_CLEAR         0xC0000000u
+138	#define MASK_ADDRESS_CSI_CONTROL        0x03000000u
+139	#define MASK_ADDRESS_CSI_INT_ENA        0x06000000u
+140	#define MASK_ADDRESS_CSI_ERR_INTENA     0x14000000u
+141	#define MASK_ADDRESS_CSI_ERR_HALT       0x15000000u
+142	#define MASK_CSI_MODE           0x8000u
+143	#define MASK_TXHSMD             0x0080u
+144	#define MASK_NOL_2              0x0002u
+145	#define MASK_INTER              0x00000004u
+146	#define MASK_INER               0x00000200u
+147	#define MASK_WCER               0x00000100u
+148	#define MASK_QUNK               0x00000010u
+149	#define MASK_TXBRK              0x00000002u
+150	#define MASK_PHY_SYSCLK_IND     0x02u
+151	#define MASK_NCO_F0_MOD         0x03u
+152	#define MASK_NCO_F0_MOD_27MHZ   0x01u
+153	#define MASK_ENABLE_PHY         0x01u
+154	#define MASK_CSQ_CNT            0x0Fu
+155	#define MASK_PHY_AUTO_RST1      0xF0u
+156	#define MASK_FREQ_RANGE_MODE    0x0Fu
+157	#define MASK_PHY_AUTO_RSTn      0x07u
+158	#define MASK_HDMI_DET_V         0x30u
+159	#define MASK_H_PI_RST           0x20u
+160	#define MASK_V_PI_RST           0x10u
+161	#define MASK_DDC5V_MODE         0x03u
+162	#define MASK_EDID_MODE          0x03u
+163	#define MASK_EDID_MODE_E_DDC    0x02u
+164	#define MASK_RGB_DVI            0x08u
+165	#define MASK_SEL422             0x80u
+166	#define MASK_VOUT_422FIL_100    0x40u
+167	#define MASK_VOUT_COLOR_SEL     0xE0u
+168	#define MASK_IN_REP_HEN         0x10u   /* Input-repeat horizontal enable */
+169	#define MASK_IN_REP             0x0Fu   /* Input-repeat count (low nibble) */
+170	#define MASK_VOUT_COLOR_RGB_FULL 0x00u
+171	#define MASK_VOUT_COLOR_601_YCBCR_LIMITED  0x60u
+172	#define MASK_YCBCRFMT_422_8_BIT 0x00C0u
+173	#define MASK_VOUTCOLORMODE      0x03u
+174	#define MASK_VOUTCOLORMODE_AUTO 0x01u
+175	#define MASK_VOUT_EXTCNT        0x08u
+176	#define MASK_AUTO_MUTE          0xC0u
+177	#define MASK_VI_MUTE            0x10u
+178	
+179	#define MASK_S_DDC5V            0x01u
+180	#define MASK_S_TMDS             0x02u
+181	#define MASK_S_PHY_PLL          0x04u
+182	#define MASK_S_PHY_SCDT         0x08u
+183	#define MASK_S_HDMI             0x10u
+184	#define MASK_S_SYNC             0x80u
+185	#define MASK_S_V_INTERLACE      0x01u
+186	#define MASK_S_V_COLOR          0x1Eu
+187	#define MASK_LIMITED            0x01u
+188	
+189	#define MASK_S_WSYNC            0x0400u
+190	#define MASK_S_TXACT            0x0200u
+191	#define MASK_S_RXACT            0x0100u
+192	#define MASK_S_HLT              0x0001u
+193	
+194	#define STATUS_POLL_MS          100u
+195	
+196	#define DDC5V_DELAY_100_MS      2u
+197	
+198	#define SYSCTL_SRESET           0x0001u
+199	#define RESET_HOLD_MS           1u
+200	#define PLL_SETTLE_US           10u
+201	
+202	#define TC358743_TX_BUF_SIZE    132u
+203	
+204	#define EDID_BLOCK_SIZE         128u
+205	#define EDID_BLOCK_COUNT        2u
+206	#define EDID_TOTAL_SIZE         (EDID_BLOCK_SIZE * EDID_BLOCK_COUNT)
+207	#define EDID_POST_DROP_MS       150u
+208	#define EDID_POST_RISE_MS       200u
+209	
+210	#define MASK_HPD_OUT0           0x01u
+211	
+212	static DRV_HANDLE       i2cHandle = DRV_HANDLE_INVALID;
+213	static uint8_t          txBuf[TC358743_TX_BUF_SIZE];
+214	
+215	static volatile uint8_t  s_sysStatus      = 0u;
+216	static volatile uint16_t s_detectedWidth  = 0u;
+217	static volatile uint16_t s_detectedHeight = 0u;
+218	
+219	static bool delay_ms(uint32_t ms)
+220	{
+221	    SYS_TIME_HANDLE h = SYS_TIME_HANDLE_INVALID;
+222	    if (SYS_TIME_DelayMS(ms, &h) != SYS_TIME_SUCCESS) { return false; }
+223	    while (!SYS_TIME_DelayIsComplete(h)) { }
+224	    return true;
+225	}
+226	
+227	static bool delay_us(uint32_t us)
+228	{
+229	    SYS_TIME_HANDLE h = SYS_TIME_HANDLE_INVALID;
+230	    if (SYS_TIME_DelayUS(us, &h) != SYS_TIME_SUCCESS) { return false; }
+231	    while (!SYS_TIME_DelayIsComplete(h)) { }
+232	    return true;
+233	}
+234	
+235	static bool tc358743_wr(uint16_t reg, const uint8_t *vals, size_t n)
+236	{
+237	    if (n + 2u > TC358743_TX_BUF_SIZE) { return false; }
+238	
+239	    txBuf[0] = (uint8_t)(reg >> 8);
+240	    txBuf[1] = (uint8_t)(reg & 0xFFu);
+241	    for (size_t i = 0; i < n; i++) { txBuf[2u + i] = vals[i]; }
+242	
+243	    return DRV_I2C_WriteTransfer(i2cHandle, TC358743_I2C_ADDR,
+244	                                 txBuf, n + 2u);
+245	}
+246	
+247	static bool tc358743_rd(uint16_t reg, uint8_t *vals, size_t n)
+248	{
+249	    txBuf[0] = (uint8_t)(reg >> 8);
+250	    txBuf[1] = (uint8_t)(reg & 0xFFu);
+251	
+252	    return DRV_I2C_WriteReadTransfer(i2cHandle, TC358743_I2C_ADDR,
+253	                                     txBuf, 2u, vals, n);
+254	}
+255	
+256	static bool tc358743_wr8(uint16_t reg, uint8_t val)
+257	{
+258	    return tc358743_wr(reg, &val, 1u);
+259	}
+260	
+261	static bool tc358743_wr16(uint16_t reg, uint16_t val)
+262	{
+263	    uint8_t b[2] = { (uint8_t)(val & 0xFFu), (uint8_t)((val >> 8) & 0xFFu) };
+264	    return tc358743_wr(reg, b, 2u);
+265	}
+266	
+267	static bool tc358743_wr32(uint16_t reg, uint32_t val)
+268	{
+269	    uint8_t b[4] = {
+270	        (uint8_t)(val         & 0xFFu),
+271	        (uint8_t)((val >>  8) & 0xFFu),
+272	        (uint8_t)((val >> 16) & 0xFFu),
+273	        (uint8_t)((val >> 24) & 0xFFu),
+274	    };
+275	    return tc358743_wr(reg, b, 4u);
+276	}
+277	
+278	static bool tc358743_rd8(uint16_t reg, uint8_t *val)
+279	{
+280	    return tc358743_rd(reg, val, 1u);
+281	}
+282	
+283	static bool tc358743_rd16(uint16_t reg, uint16_t *val)
+284	{
+285	    uint8_t b[2];
+286	    if (!tc358743_rd(reg, b, 2u)) { return false; }
+287	    *val = (uint16_t)b[0] | ((uint16_t)b[1] << 8);
+288	    return true;
+289	}
+290	
+291	static bool tc358743_rd32(uint16_t reg, uint32_t *val)
+292	{
+293	    uint8_t b[4];
+294	    if (!tc358743_rd(reg, b, 4u)) { return false; }
+295	    *val = (uint32_t)b[0]
+296	         | ((uint32_t)b[1] << 8)
+297	         | ((uint32_t)b[2] << 16)
+298	         | ((uint32_t)b[3] << 24);
+299	    return true;
+300	}
+301	
+302	static bool tc358743_wr8_and_or(uint16_t reg, uint8_t mask, uint8_t val)
+303	{
+304	    uint8_t cur;
+305	    if (!tc358743_rd8(reg, &cur)) { return false; }
+306	    return tc358743_wr8(reg, (uint8_t)((cur & mask) | val));
+307	}
+308	
+309	static bool tc358743_wr16_and_or(uint16_t reg, uint16_t mask, uint16_t val)
+310	{
+311	    uint16_t cur;
+312	    if (!tc358743_rd16(reg, &cur)) { return false; }
+313	    return tc358743_wr16(reg, (uint16_t)((cur & mask) | val));
+314	}
+315	
+316	static bool tc358743_reset(uint16_t mask)
+317	{
+318	    uint16_t sysctl;
+319	    if (!tc358743_rd16(SYSCTL, &sysctl)) { return false; }
+320	    if (!tc358743_wr16(SYSCTL, (uint16_t)(sysctl | mask))) { return false; }
+321	    return tc358743_wr16(SYSCTL, (uint16_t)(sysctl & ~mask));
+322	}
+323	
+324	static bool tc358743_sleep_mode(bool enable)
+325	{
+326	    return tc358743_wr16_and_or(SYSCTL, (uint16_t)~MASK_SLEEP,
+327	                                enable ? MASK_SLEEP : 0u);
+328	}
+329	
+330	static bool tc358743_set_ref_clk(void)
+331	{
+332	    uint32_t sys_freq      = REFCLK_HZ / 10000u;
+333	    uint32_t fh_min        = REFCLK_HZ / 100000u;
+334	    uint32_t fh_max        = (fh_min * 66u) / 10u;
+335	    uint32_t lockdet_ref   = REFCLK_HZ / 100u;
+336	    uint32_t cec_freq      = (656u * sys_freq) / 4200u;
+337	
+338	    return tc358743_wr8(SYS_FREQ0,    (uint8_t)(sys_freq & 0xFFu))
+339	        && tc358743_wr8(SYS_FREQ1,    (uint8_t)((sys_freq >> 8) & 0xFFu))
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:01Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check tc358743 I2C synchronization
+
+`grep -n "DRV_I2C_WriteTransfer\|DRV_I2C_WriteReadTransfer\|i2c_done\|sem\|TransferEvent" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/tc358743.c | head -20`
+
+```text
+243:    return DRV_I2C_WriteTransfer(i2cHandle, TC358743_I2C_ADDR,
+252:    return DRV_I2C_WriteReadTransfer(i2cHandle, TC358743_I2C_ADDR,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:04Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find DRV_I2C_WriteTransfer signature
+
+`grep -n "DRV_I2C_WriteTransfer" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/i2c/drv_i2c.h`
+
+```text
+78:    DRV_I2C_WriteTransferAdd or DRV_I2C_WriteReadTransferAdd functions. This
+104:    handle is returned by DRV_I2C_ReadTransferAdd, DRV_I2C_WriteTransferAdd and
+123:    DRV_I2C_ReadTransferAdd, DRV_I2C_WriteTransferAdd or
+226:    The DRV_I2C_ReadTransferAdd, DRV_I2C_WriteTransferAdd and
+554:    void DRV_I2C_WriteTransferAdd(
+607:    DRV_I2C_WriteTransferAdd(myI2CHandle, slaveAddress, myBuffer, MY_BUFFER_SIZE, &transferHandle);
+626:void DRV_I2C_WriteTransferAdd(
+918:    When a client calls either the DRV_I2C_ReadTransferAdd, DRV_I2C_WriteTransferAdd
+1021:    Either the DRV_I2C_ReadTransferAdd, DRV_I2C_WriteTransferAdd or
+1062:    bool DRV_I2C_WriteTransfer(
+1100:    if (DRV_I2C_WriteTransfer(myI2CHandle, slaveAddress, myTxBuffer, MY_TX_BUFFER_SIZE) == false)
+1113:bool DRV_I2C_WriteTransfer(
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:08Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/driver/i2c/drv_i2c.h`
+
+```text
+<tool_use_error>InputValidationError: Read failed due to the following issue:
+The parameter `offset` type is expected as `number` but provided as `string`</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find I2C transfer implementation
+
+`grep -rn "DRV_I2C_WriteTransfer\b\|drv_i2c_func_table\|pTransferAdd" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/i2c/src/*.c | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/i2c/src/drv_i2c.c:536:bool DRV_I2C_WriteTransfer(
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:15Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/driver/i2c/src/drv_i2c.c`
+
+```text
+525	    return lDRV_I2C_WriteReadTransfer(
+526	        handle,
+527	        address,
+528	        NULL,
+529	        0,
+530	        readBuffer,
+531	        readSize,
+532	        DRV_I2C_TRANSFER_OBJ_FLAG_RD
+533	    );
+534	}
+535	
+536	bool DRV_I2C_WriteTransfer(
+537	    const DRV_HANDLE handle,
+538	    uint16_t address,
+539	    void* const writeBuffer,
+540	    const size_t writeSize
+541	)
+542	{
+543	    return lDRV_I2C_WriteReadTransfer(
+544	        handle,
+545	        address,
+546	        writeBuffer,
+547	        writeSize,
+548	        NULL,
+549	        0,
+550	        DRV_I2C_TRANSFER_OBJ_FLAG_WR
+551	    );
+552	}
+553	
+554	
+555	bool DRV_I2C_WriteReadTransfer (
+556	    const DRV_HANDLE handle,
+557	    uint16_t address,
+558	    void* const writeBuffer,
+559	    const size_t writeSize,
+560	    void* const readBuffer,
+561	    const size_t readSize
+562	)
+563	{
+564	    return lDRV_I2C_WriteReadTransfer(
+565	        handle,
+566	        address,
+567	        writeBuffer,
+568	        writeSize,
+569	        readBuffer,
+570	        readSize,
+571	        DRV_I2C_TRANSFER_OBJ_FLAG_WR_RD
+572	    );
+573	}
+574	/*******************************************************************************
+575	 End of File
+576	*/
+577
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:18Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find blocking sync mechanism
+
+`grep -n "lDRV_I2C_WriteReadTransfer\|OSAL_SEM_Pend\|transferDone" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/i2c/src/drv_i2c.c | head -30`
+
+```text
+136:    (void) OSAL_SEM_PostISR( &dObj->transferDone);
+190:    if (OSAL_SEM_Create(&dObj->transferDone,OSAL_SEM_TYPE_BINARY, 0, 0) == OSAL_RESULT_FAIL)
+390:static bool lDRV_I2C_WriteReadTransfer (
+488:            if (OSAL_SEM_Pend( &hDriver->transferDone, OSAL_WAIT_FOREVER ) == OSAL_RESULT_SUCCESS)
+525:    return lDRV_I2C_WriteReadTransfer(
+543:    return lDRV_I2C_WriteReadTransfer(
+564:    return lDRV_I2C_WriteReadTransfer(
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:21Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/driver/i2c/src/drv_i2c.c`
+
+```text
+385	            (void) OSAL_MUTEX_Unlock( &dObj->clientMutex );
+386	        }
+387	    }
+388	}
+389	
+390	static bool lDRV_I2C_WriteReadTransfer (
+391	    const DRV_HANDLE handle,
+392	    uint16_t address,
+393	    void* const writeBuffer,
+394	    const size_t writeSize,
+395	    void* const readBuffer,
+396	    const size_t readSize,
+397	    DRV_I2C_TRANSFER_OBJ_FLAGS transferFlags
+398	)
+399	{
+400	    DRV_I2C_CLIENT_OBJ* clientObj = (DRV_I2C_CLIENT_OBJ *)NULL;
+401	    DRV_I2C_OBJ* hDriver = (DRV_I2C_OBJ*)NULL;
+402	    bool isSuccess = false;
+403	    bool isReqAccepted = false;
+404	
+405	    /* Validate the driver handle */
+406	    clientObj = lDRV_I2C_DriverHandleValidate(handle);
+407	
+408	    if (clientObj == NULL)
+409	    {
+410	        return isSuccess;
+411	    }
+412	
+413	    if (transferFlags == DRV_I2C_TRANSFER_OBJ_FLAG_RD)
+414	    {
+415	        if((readSize == 0U) || (readBuffer == NULL))
+416	        {
+417	            return isSuccess;
+418	        }
+419	    }
+420	    else if ((transferFlags == DRV_I2C_TRANSFER_OBJ_FLAG_WR) || (transferFlags == DRV_I2C_TRANSFER_OBJ_FLAG_WR_FRCD))
+421	    {
+422	        if((writeSize == 0U) || (writeBuffer == NULL))
+423	        {
+424	            return isSuccess;
+425	        }
+426	    }
+427	    else
+428	    {
+429	        if((writeSize == 0U) || (writeBuffer == NULL) || (readSize == 0U) || (readBuffer == NULL))
+430	        {
+431	            return isSuccess;
+432	        }
+433	    }
+434	
+435	    hDriver = clientObj->hDriver;
+436	
+437	
+438	    /* Block other threads from accessing the PLIB */
+439	    if (OSAL_MUTEX_Lock(&hDriver->transferMutex, OSAL_WAIT_FOREVER ) == OSAL_RESULT_SUCCESS)
+440	    {
+441	        /* Error is cleared for every new transfer */
+442	        clientObj->errors = DRV_I2C_ERROR_NONE;
+443	
+444	        /* Errors if any, will be saved in the activeClient in the driver callback */
+445	        hDriver->activeClient = (uintptr_t)clientObj;
+446	
+447	        /* Check if the transfer setup for this client is different than the current transfer setup */
+448	        if (hDriver->currentTransferSetup.clockSpeed != clientObj->transferSetup.clockSpeed)
+449	        {
+450	            /* Set the new transfer setup */
+451	            (void) hDriver->i2cPlib->transferSetup(&clientObj->transferSetup, 0);
+452	
+453	            hDriver->currentTransferSetup.clockSpeed = clientObj->transferSetup.clockSpeed;
+454	        }
+455	
+456	        switch(transferFlags)
+457	        {
+458	            case DRV_I2C_TRANSFER_OBJ_FLAG_RD:
+459	                if (hDriver->i2cPlib->read_t(address, readBuffer, readSize) == true)
+460	                {
+461	                    isReqAccepted = true;
+462	                }
+463	                break;
+464	
+465	            case DRV_I2C_TRANSFER_OBJ_FLAG_WR:
+466	                if (hDriver->i2cPlib->write_t(address, writeBuffer, writeSize) == true)
+467	                {
+468	                    isReqAccepted = true;
+469	                }
+470	                break;
+471	
+472	
+473	            case DRV_I2C_TRANSFER_OBJ_FLAG_WR_RD:
+474	                if (hDriver->i2cPlib->writeRead(address, writeBuffer, writeSize, readBuffer, readSize) == true)
+475	                {
+476	                    isReqAccepted = true;
+477	                }
+478	                break;
+479	
+480	            default:
+481	                     /* Nothing to do */
+482	                break;
+483	        }
+484	
+485	        if (isReqAccepted == true)
+486	        {
+487	            /* Wait till transfer completes. This semaphore is released from ISR */
+488	            if (OSAL_SEM_Pend( &hDriver->transferDone, OSAL_WAIT_FOREVER ) == OSAL_RESULT_SUCCESS)
+489	            {
+490	                if (hDriver->transferStatus == DRV_I2C_TRANSFER_STATUS_COMPLETE)
+491	                {
+492	                    isSuccess = true;
+493	                }
+494	            }
+495	        }
+496	        else
+497	        {
+498	            /* Update error into the client object*/
+499	            clientObj->errors = hDriver->i2cPlib->errorGet();
+500	
+501	            if(clientObj->errors == DRV_I2C_ERROR_NONE)
+502	            {
+503	                hDriver->transferStatus = DRV_I2C_TRANSFER_STATUS_COMPLETE;
+504	            }
+505	            else
+506	            {
+507	                hDriver->transferStatus = DRV_I2C_TRANSFER_STATUS_ERROR;
+508	            }
+509	        }
+510	
+511	        /* Release the mutex to allow other threads to access the PLIB */
+512	        (void) OSAL_MUTEX_Unlock(&hDriver->transferMutex);
+513	    }
+514
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:42Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:43Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/initialization.c`
+
+```text
+300	  Summary:
+301	    Sets the buffering mode for stdin and stdout
+302	
+303	  Remarks:
+304	 ********************************************************************************/
+305	static void STDIO_BufferModeSet(void)
+306	{
+307	    /* MISRAC 2023 deviation block start */
+308	    /* MISRA C-2023 Rule 21.6 deviated 2 times in this file.  Deviation record ID -  H3_MISRAC_2023_R_21_6_DR_3 */
+309	
+310	    /* Make stdin unbuffered */
+311	    setbuf(stdin, NULL);
+312	
+313	    /* Make stdout unbuffered */
+314	    setbuf(stdout, NULL);
+315	    /* MISRAC 2023 deviation block end */
+316	}
+317	
+318	
+319	/* MISRAC 2023 deviation block end */
+320	
+321	/*******************************************************************************
+322	  Function:
+323	    void SYS_Initialize ( void *data )
+324	
+325	  Summary:
+326	    Initializes the board, services, drivers, application and other modules.
+327	
+328	  Remarks:
+329	 */
+330	
+331	void SYS_Initialize ( void* data )
+332	{
+333	
+334	    /* MISRAC 2023 deviation block start */
+335	    /* MISRA C-2023 Rule 2.2 deviated in this file.  Deviation record ID -  H3_MISRAC_2023_R_2_2_DR_1 */
+336	
+337		SYSC_Disable( );
+338	
+339	    STDIO_BufferModeSet();
+340	
+341	
+342	  
+343	    CLK_Initialize();
+344	
+345		PIO_Initialize();
+346	
+347	    XDMAC_Initialize();
+348	
+349	
+350	
+351		PIT_TimerInitialize();
+352	
+353	 
+354	    TC0_CH0_TimerInitialize(); 
+355	     
+356	    
+357	    FLEXCOM6_TWI_Initialize();
+358	
+359	    XLCDC_Initialize();
+360	
+361	    MMU_Initialize();
+362	
+363	    AIC_INT_Initialize();
+364	    
+365	    /* Disable WDT   */
+366	    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+367	
+368	    DBGU_Initialize();
+369	
+370	
+371	
+372	    /* MISRAC 2023 deviation block start */
+373	    /* Following MISRA-C rules deviated in this block  */
+374	    /* MISRA C-2023 Rule 11.3 - Deviation record ID - H3_MISRAC_2023_R_11_3_DR_1 */
+375	    /* MISRA C-2023 Rule 11.8 - Deviation record ID - H3_MISRAC_2023_R_11_8_DR_1 */
+376	
+377	    /* Initialize I2C0 Driver Instance */
+378	    sysObj.drvI2C0 = DRV_I2C_Initialize(DRV_I2C_INDEX_0, (SYS_MODULE_INIT *)&drvI2C0InitData);
+379	
+380	    DRV_XLCDC_Initialize();
+381	
+382	    LVDSC_Initialize();
+383	
+384	    DRV_GFX2D_Initialize();
+385	
+386	
+387	    sysObj.drvMAXTOUCH = DRV_MAXTOUCH_Initialize(0, (SYS_MODULE_INIT *)&drvMAXTOUCHInitData);
+388	
+389	
+390	    /* MISRA C-2023 Rule 11.3, 11.8 deviated below. Deviation record ID -
+391	    H3_MISRAC_2023_R_11_3_DR_1 & H3_MISRAC_2023_R_11_8_DR_1*/
+392	    
+393	    sysObj.sysTime = SYS_TIME_Initialize(SYS_TIME_INDEX_0, (SYS_MODULE_INIT *)&sysTimeInitData);
+394	
+395	    /* MISRAC 2012 deviation block end */
+396	
+397	    SYS_INP_Init();
+398	
+399	
+400	    /* Initialize the USB Host layer */
+401	    sysObj.usbHostObject0 = USB_HOST_Initialize (( SYS_MODULE_INIT *)& usbHostInitData );    
+402	
+403	    // initialize UI library
+404	    Legato_Initialize();
+405	
+406	     /* Initialize USB Driver */ 
+407	    sysObj.drvUSBEHCIObject = DRV_USB_EHCI_Initialize (DRV_USB_EHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBEHCIInit);
+408	    sysObj.drvUSBOHCIObject = DRV_USB_OHCI_Initialize (DRV_USB_OHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBOHCIInit);
+409	
+410	
+411	    /* MISRAC 2023 deviation block end */
+412	    APP_Initialize();
+413	
+414	
+415	
+416	
+417	    /* MISRAC 2023 deviation block end */
+418	}
+419	
+420	/*******************************************************************************
+421	 End of File
+422	*/
+423
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:47Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate EHCI init/ISR
+
+`grep -rn "DRV_USB_EHCI_Initialize\|EHCI_InterruptHandler\|usb_ehci_init\|EHCI_Tasks" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/ 2>/dev/null | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:100:    SYS_MODULE_INDEX parameter of the DRV_USB_EHCI_Initialize and
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:106:    should be passed into the DRV_USB_EHCI_Initialize and DRV_USB_EHCI_Open
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:231:    data, must be passed into the DRV_USB_EHCI_Initialize function.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:292:    SYS_MODULE_OBJ DRV_USB_EHCI_Initialize
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:304:    returns. The DRV_USB_EHCI_Tasks function must called periodically to
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:322:      start. It may have not completed and requires the DRV_USB_EHCI_Tasks
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:329:    DRV_USB_EHCI_Initialize(DRV_USB_EHCI_INDEX_0, (SYS_MODULE_INIT *) &usbInitData);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:339:SYS_MODULE_OBJ DRV_USB_EHCI_Initialize 
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:357:    The DRV_USB_EHCI_Initialize function must have been called before calling this
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:361:    object - Driver object handle, returned from the DRV_USB_EHCI_Initialize function.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:388:    void DRV_USB_EHCI_Tasks( SYS_MODULE_OBJ object )
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:399:    The DRV_USB_EHCI_Initialize function must have been called for the specified
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:404:    DRV_USB_EHCI_Initialize function).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:411:    SYS_MODULE_OBJ      object;     // Returned from DRV_USB_EHCI_Initialize
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:415:        DRV_USB_EHCI_Tasks(object);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:427:void DRV_USB_EHCI_Tasks(SYS_MODULE_OBJ object);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:431:    void DRV_USB_EHCI_Tasks_ISR( SYS_MODULE_OBJ object )
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:441:    The DRV_USB_EHCI_Initialize function must have been called for the specified
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:446:    DRV_USB_EHCI_Initialize).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:453:    SYS_MODULE_OBJ object;     // Returned from DRV_USB_EHCI_Initialize
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find EHCI ISR registration
+
+`grep -rn "InterruptHandlerSet\|AIC_InterruptHandlerSet\|drv_usb_ehci.*Interrupt\|UHPHS_IRQn\|interruptSource" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/*.c 2>/dev/null | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:573:                    interruptWasEnabled = SYS_INT_SourceDisable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:578:                        SYS_INT_SourceEnable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1275:                hDriver->interruptSource = drvInit->interruptSource;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1655:                            interruptWasEnabled = SYS_INT_SourceDisable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1820:                            SYS_INT_SourceEnable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1906:                            interruptWasEnabled = SYS_INT_SourceDisable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1980:                            SYS_INT_SourceEnable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:2060:                        interruptWasEnabled = SYS_INT_SourceDisable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:2106:                        SYS_INT_SourceEnable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:2230:                            interruptWasEnabled = SYS_INT_SourceDisable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:2268:                                SYS_INT_SourceEnable(hDriver->interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:2674:            result = SYS_INT_SourceDisable(gDrvUSBOHCIObj[drvIndex].interruptSource);
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:2724:                SYS_INT_SourceEnable(gDrvUSBOHCIObj[drvIndex].interruptSource);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:00:54Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/initialization.c`
+
+```text
+130	// </editor-fold>
+131	
+132	
+133	
+134	
+135	// *****************************************************************************
+136	// *****************************************************************************
+137	// Section: System Data
+138	// *****************************************************************************
+139	// *****************************************************************************
+140	/* Structure to hold the object handles for the modules in the system. */
+141	SYSTEM_OBJECTS sysObj;
+142	
+143	// *****************************************************************************
+144	// *****************************************************************************
+145	// Section: Library/Stack Initialization Data
+146	// *****************************************************************************
+147	// *****************************************************************************
+148	/******************************************************
+149	 * USB Driver Initialization
+150	 ******************************************************/
+151	static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
+152	{
+153	    /* Note: USB Host applications should have a way for Enabling/Disabling the 
+154	       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
+155	       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
+156	       name it to "VBUS_AH". If you a see a build error from this function either 
+157	       you have not configured the VBUS Power Enable in MHC pin settings or the 
+158	       Pin name entered in MHC is not "VBUS_AH". */
+159	    if (enable == true)
+160	    {
+161	        /* Enable the VBUS */
+162	        VBUS_AH_PC27_PowerEnable_Set();
+163	        VBUS_AH_PC31_PowerEnable_Set();
+164	
+165	    }
+166	    else
+167	    {
+168	        /* Disable the VBUS */
+169	        VBUS_AH_PC27_PowerEnable_Clear();
+170	        VBUS_AH_PC31_PowerEnable_Clear();
+171	    }
+172	}
+173	
+174	static DRV_USB_EHCI_INIT drvUSBEHCIInit =
+175	{
+176	    /* Interrupt Source for USB module */
+177	    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+178	
+179	    /* USB base address */
+180	    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
+181	    
+182	    /* Ports Selection */ 
+183	    .bmPortSelect = 0x02,
+184	
+185	    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+186	    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+187	    
+188	    /* Root hub available current in milliamperes */
+189	    .rootHubAvailableCurrent = 500,
+190	
+191	    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
+192	};
+193	
+194	static DRV_USB_OHCI_INIT drvUSBOHCIInit =
+195	{
+196	    /* Interrupt Source for USB module */
+197	    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
+198	
+199	    /* USB base address */
+200	    .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
+201	
+202	     /* Ports Selection */ 
+203	    .bmPortSelect = 0x02,
+204	    
+205	    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
+206	    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+207	    
+208	    /* Root hub available current in milliamperes */
+209	    .rootHubAvailableCurrent = 500
+210	};
+211	
+212	
+213	
+214	// *****************************************************************************
+215	// *****************************************************************************
+216	// Section: System Initialization
+217	// *****************************************************************************
+218	// *****************************************************************************
+219	// <editor-fold defaultstate="collapsed" desc="SYS_TIME Initialization Data">
+220	
+221	static const SYS_TIME_PLIB_INTERFACE sysTimePlibAPI = {
+222	    .timerCallbackSet = (SYS_TIME_PLIB_CALLBACK_REGISTER)TC0_CH0_TimerCallbackRegister,
+223	    .timerStart = (SYS_TIME_PLIB_START)TC0_CH0_TimerStart,
+224	    .timerStop = (SYS_TIME_PLIB_STOP)TC0_CH0_TimerStop ,
+225	    .timerFrequencyGet = (SYS_TIME_PLIB_FREQUENCY_GET)TC0_CH0_TimerFrequencyGet,
+226	    .timerPeriodSet = (SYS_TIME_PLIB_PERIOD_SET)TC0_CH0_TimerPeriodSet,
+227	    .timerCompareSet = (SYS_TIME_PLIB_COMPARE_SET)TC0_CH0_TimerCompareSet,
+228	    .timerCounterGet = (SYS_TIME_PLIB_COUNTER_GET)TC0_CH0_TimerCounterGet,
+229	};
+230	
+231	static const SYS_TIME_INIT sysTimeInitData =
+232	{
+233	    .timePlib = &sysTimePlibAPI,
+234	    .hwTimerIntNum = TC0_IRQn,
+235	};
+236	
+237	// </editor-fold>
+238	
+239	
+240	
+241	// *****************************************************************************
+242	// *****************************************************************************
+243	// Section: Local initialization functions
+244	// *****************************************************************************
+245	// *****************************************************************************
+246	/*******************************************************************************
+247	  Function:
+248	    void SYSC_Disable ( void )
+249	
+250	  Summary:
+251	    Disables ununsed SYSC peripherals
+252	
+253	  Remarks:
+254	 */
+255	static void SYSC_Disable( void )
+256	{
+257	    //save context and disable write protection
+258	    uint32_t sysc_wpmr = SYSCWP_REGS->SYSCWP_SYSC_WPMR &
+259	      (SYSCWP_SYSC_WPMR_WPEN_Msk | SYSCWP_SYSC_WPMR_WPITEN_Msk);
+260	    SYSCWP_REGS->SYSCWP_SYSC_WPMR = SYSCWP_SYSC_WPMR_WPKEY_PASSWD &
+261	                                    ~(SYSCWP_SYSC_WPMR_WPITEN_Msk |
+262	                                    SYSCWP_SYSC_WPMR_WPITEN_Msk);
+263	
+264	
+265	    /* ----------------------------   RTC  -------------------------------*/
+266	    //Disable interrupts
+267	    RTC_REGS->RTC_IDR = RTC_IDR_Msk;
+268	
+269	    //Clear interrupt status
+270	    RTC_REGS->RTC_SCCR = RTC_SCCR_Msk;
+271	
+272	    /* ----------------------------   RTT  -------------------------------*/
+273	    //Disable Timer and interrupt
+274	    uint32_t rtt_mr = RTT_REGS->RTT_MR;
+275	    RTT_REGS->RTT_MR = rtt_mr & ~(RTT_MR_RTTDIS_Msk | RTT_MR_RTTINCIEN_Msk);
+276	
+277	    //Clear status
+278	    RTT_REGS->RTT_SR;
+279	
+280	    /* ----------------------------   RSTC  ------------------------------*/
+281	    // Disable interrupt
+282	    uint32_t rstc_mr = RSTC_REGS->RSTC_MR & (RSTC_MR_ENGCLR_Msk |
+283	                                             RSTC_MR_ERSTL_Msk |
+284	                                             RSTC_MR_URSTIEN_Msk |
+285	                                             RSTC_MR_URSTASYNC_Msk |
+286	                                             RSTC_MR_SCKSW_Msk |
+287	                                             RSTC_MR_URSTEN_Msk);
+288	    rstc_mr = rstc_mr & (~RSTC_MR_URSTIEN_Msk);
+289	    RSTC_REGS->RSTC_MR = RSTC_MR_KEY_PASSWD | rstc_mr;
+290	
+291	   //Context restore SYSC write protect registers
+292	   SYSCWP_REGS->SYSCWP_SYSC_WPMR = (SYSCWP_SYSC_WPMR_WPKEY_PASSWD | sysc_wpmr);
+293	}
+294	
+295	
+296	/*******************************************************************************
+297	  Function:
+298	    void STDIO_BufferModeSet ( void )
+299	
+300	  Summary:
+301	    Sets the buffering mode for stdin and stdout
+302	
+303	  Remarks:
+304	 ********************************************************************************/
+305	static void STDIO_BufferModeSet(void)
+306	{
+307	    /* MISRAC 2023 deviation block start */
+308	    /* MISRA C-2023 Rule 21.6 deviated 2 times in this file.  Deviation record ID -  H3_MISRAC_2023_R_21_6_DR_3 */
+309	
+310	    /* Make stdin unbuffered */
+311	    setbuf(stdin, NULL);
+312	
+313	    /* Make stdout unbuffered */
+314	    setbuf(stdout, NULL);
+315	    /* MISRAC 2023 deviation block end */
+316	}
+317	
+318	
+319	/* MISRAC 2023 deviation block end */
+320	
+321	/*******************************************************************************
+322	  Function:
+323	    void SYS_Initialize ( void *data )
+324	
+325	  Summary:
+326	    Initializes the board, services, drivers, application and other modules.
+327	
+328	  Remarks:
+329	 */
+330	
+331	void SYS_Initialize ( void* data )
+332	{
+333	
+334	    /* MISRAC 2023 deviation block start */
+335	    /* MISRA C-2023 Rule 2.2 deviated in this file.  Deviation record ID -  H3_MISRAC_2023_R_2_2_DR_1 */
+336	
+337		SYSC_Disable( );
+338	
+339	    STDIO_BufferModeSet();
+340	
+341	
+342	  
+343	    CLK_Initialize();
+344	
+345		PIO_Initialize();
+346	
+347	    XDMAC_Initialize();
+348	
+349	
+350	
+351		PIT_TimerInitialize();
+352	
+353	 
+354	    TC0_CH0_TimerInitialize(); 
+355	     
+356	    
+357	    FLEXCOM6_TWI_Initialize();
+358	
+359	    XLCDC_Initialize();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:00Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:00Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect AIC interrupt config
+
+`grep -n "FLEXCOM6_IRQn\|UHPHS_IRQn\|TC0_IRQn\|TWIHS\|aicSourceList\|interrupt_a5\|AIC_INT_Initialize" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/aic/plib_aic.c 2>/dev/null | head -50`
+
+```text
+84:void AIC_INT_Initialize( void )
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:03Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/peripheral/aic/plib_aic.c`
+
+```text
+1	/*******************************************************************************
+2	  AIC PLIB Implementation
+3	
+4	  Company:
+5	    Microchip Technology Inc.
+6	
+7	  File Name:
+8	    plib_aic.h
+9	
+10	  Summary:
+11	    Function implementations for the AIC PLIB.
+12	
+13	  Description:
+14	    This PLIB provides a simple interface to configure the Advanced Interrupt
+15	    Controller.
+16	
+17	*******************************************************************************/
+18	
+19	//DOM-IGNORE-BEGIN
+20	/*******************************************************************************
+21	* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
+22	*
+23	* Subject to your compliance with these terms, you may use Microchip software
+24	* and any derivatives exclusively with Microchip products. It is your
+25	* responsibility to comply with third party license terms applicable to your
+26	* use of third party software (including open source software) that may
+27	* accompany Microchip software.
+28	*
+29	* THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+30	* EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+31	* WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+32	* PARTICULAR PURPOSE.
+33	*
+34	* IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+35	* INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+36	* WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+37	* BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+38	* FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+39	* ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+40	* THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+41	*******************************************************************************/
+42	//DOM-IGNORE-END
+43	#include <device.h>
+44	#include "definitions.h"
+45	#include "interrupts.h"
+46	
+47	// *****************************************************************************
+48	// *****************************************************************************
+49	// Section: Local defines
+50	// *****************************************************************************
+51	// *****************************************************************************
+52	
+53	typedef void (*pfn_handler_t)(void);
+54	
+55	// *****************************************************************************
+56	// *****************************************************************************
+57	// Section: Local Variables
+58	// *****************************************************************************
+59	// *****************************************************************************
+60	/* data for irq register initialization */
+61	static struct
+62	{
+63	    uint32_t        peripheralId;
+64	    pfn_handler_t   handler;
+65	    uint32_t        srcType;
+66	    uint32_t        priority;
+67	}irqData[] =
+68	{
+69	    { 1U,  SYSC_SharedHandler,         AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+70	    { 9U,  FLEXCOM6_InterruptHandler,  AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+71	    { 17U, TC0_InterruptHandler,       AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+72	    { 20U, XDMAC_InterruptHandler,     AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+73	    { 22U, UHPHS_Handler,              AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+74	    { 43U, ISC_Handler,                AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+75	    { 52U, CSI2DC_Handler,             AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+76	};
+77	
+78	// *****************************************************************************
+79	// *****************************************************************************
+80	// Section: AIC Implementation
+81	// *****************************************************************************
+82	// *****************************************************************************
+83	
+84	void AIC_INT_Initialize( void )
+85	{
+86	    const uint32_t MaxNumPeripherals = 70U;
+87	    const uint32_t MaxInterruptDepth = 8U;
+88	    uint32_t ii;
+89	    uint32_t irqDataEntryCount = sizeof(irqData) / sizeof(irqData[0]);
+90	
+91	    __disable_irq();
+92	    __DMB();
+93	    __ISB();
+94	
+95	    /* Disable all interrupts */
+96	    for( ii= 0; ii < MaxNumPeripherals; ++ii )
+97	    {
+98	        AIC_REGS->AIC_SSR = AIC_SSR_INTSEL(ii);
+99	        AIC_REGS->AIC_IDCR = AIC_IDCR_Msk;
+100	        AIC_REGS->AIC_FFDR = AIC_FFDR_Msk;
+101	        AIC_REGS->AIC_SVRRDR = AIC_SVRRDR_Msk;
+102	        __DSB();
+103	        __ISB();
+104	        AIC_REGS->AIC_ICCR = AIC_ICCR_INTCLR_Msk;
+105	    }
+106	
+107	    /* pop all possible nested interrupts from internal hw stack */
+108	    for( ii = 0; ii < MaxInterruptDepth; ++ii )
+109	    {
+110	        AIC_REGS->AIC_EOICR = AIC_EOICR_ENDIT_Msk;
+111	    }
+112	
+113	    /* Configure active interrupts */
+114	    for( ii = 0; ii < irqDataEntryCount; ++ii )
+115	    {
+116	        AIC_REGS->AIC_SSR = AIC_SSR_INTSEL(irqData[ii].peripheralId);
+117	        AIC_REGS->AIC_SMR = (AIC_REGS->AIC_SMR & ~AIC_SMR_SRCTYPE_Msk) | AIC_SMR_SRCTYPE( irqData[ii].srcType );
+118	        AIC_REGS->AIC_SMR = (AIC_REGS->AIC_SMR & ~AIC_SMR_PRIOR_Msk) | AIC_SMR_PRIOR(irqData[ii].priority);
+119	        AIC_REGS->AIC_SPU = (uint32_t) SPURIOUS_INTERRUPT_Handler;
+120	        AIC_REGS->AIC_SVR = (uint32_t) irqData[ii].handler;
+121	        AIC_REGS->AIC_IECR = AIC_IECR_Msk;
+122	    }
+123	
+124	    __DSB();
+125	    __enable_irq();
+126	    __ISB();
+127	}
+128	
+129	void AIC_INT_IrqEnable( void )
+130	{
+131	    __DMB();
+132	    __enable_irq();
+133	}
+134	
+135	bool AIC_INT_IrqDisable( void )
+136	{
+137	    /* Add a volatile qualifier to the return value to prevent the compiler from optimizing out this function */
+138	    volatile bool previousValue = ((CPSR_I_Msk & __get_CPSR()) == 0U);
+139	    __disable_irq();
+140	    __DMB();
+141	    return( previousValue );
+142	}
+143	
+144	void AIC_INT_IrqRestore( bool state )
+145	{
+146	    if(state)
+147	    {
+148	        __DMB();
+149	        __enable_irq();
+150	    }
+151	    else
+152	    {
+153	        __disable_irq();
+154	        __DMB();
+155	    }
+156	}
+157	
+158	static aic_registers_t * aicInstanceGet( IRQn_Type aSrcSelection )
+159	{
+160	    return( AIC_REGS );
+161	}
+162	
+163	bool AIC_INT_IsInterruptEnabled( IRQn_Type aSrcSelection )
+164	{
+165	    bool retval = false;
+166	    aic_registers_t * aicPtr = aicInstanceGet( aSrcSelection );
+167	    bool processorStatus = AIC_INT_IrqDisable();
+168	    aicPtr->AIC_SSR = AIC_SSR_INTSEL( (uint32_t) aSrcSelection );
+169	    if( (aicPtr->AIC_IMR & AIC_IMR_Msk) != 0U){
+170	        retval = true;
+171	    }
+172	    AIC_INT_IrqRestore(processorStatus);
+173	    return( retval );
+174	}
+175	
+176	bool AIC_INT_SourceDisable( IRQn_Type aSrcSelection )
+177	{
+178	    bool previousValue = AIC_INT_IsInterruptEnabled( aSrcSelection );
+179	    aic_registers_t * aicPtr = aicInstanceGet( aSrcSelection );
+180	    bool processorStatus = AIC_INT_IrqDisable();
+181	    aicPtr->AIC_SSR = AIC_SSR_INTSEL( (uint32_t) aSrcSelection );
+182	    aicPtr->AIC_IDCR = AIC_IDCR_Msk;
+183	    __DSB();
+184	    __ISB();
+185	    AIC_INT_IrqRestore(processorStatus);
+186	    return( previousValue );
+187	}
+188	
+189	void AIC_INT_SourceRestore( IRQn_Type aSrcSelection, bool status )
+190	{
+191	    if( status )
+192	    {
+193	        aic_registers_t * aicPtr = aicInstanceGet( aSrcSelection );
+194	        bool processorStatus = AIC_INT_IrqDisable();
+195	        aicPtr->AIC_SSR = AIC_SSR_INTSEL( (uint32_t) aSrcSelection );
+196	        aicPtr->AIC_IECR = AIC_IECR_Msk;
+197	        AIC_INT_IrqRestore(processorStatus);
+198	    }
+199	    return;
+200	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:14Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find task priorities
+
+`grep -rn "TASK_PRIORITY\|tskIDLE_PRIORITY\|configMAX_PRIORITIES\|configMINIMAL_STACK_SIZE\|configTOTAL_HEAP_SIZE" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ 2>/dev/null | grep -v ".specstory\|.git" | head -30`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c:19:#define VIDEO_TASK_PRIORITY     1u
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c:327:                            VIDEO_TASK_PRIORITY,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:93:/* configMAX_PRIORITIES Sets the number of available task priorities.  Tasks can
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:94: * be assigned priorities of 0 to (configMAX_PRIORITIES - 1).  Zero is the lowest
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:96:#define configMAX_PRIORITIES                    ( 5UL )
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:98:/* configMINIMAL_STACK_SIZE defines the size of the stack used by the Idle task
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:102:#define configMINIMAL_STACK_SIZE                ( 128 )
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:208:/* configTIMER_TASK_PRIORITY sets the priority used by the timer task.  Only
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:213:#define configTIMER_TASK_PRIORITY               0
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/FreeRTOSConfig.h:271:#define configTOTAL_HEAP_SIZE                   ( ( size_t ) 40960 )
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/freertos_hooks.c:90:*               configTOTAL_HEAP_SIZE in FreeRTOSConfig.h, and the
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/freertos_hooks.c:113:      heap available to pvPortMalloc() is defined by configTOTAL_HEAP_SIZE in
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/freertos_hooks.c:194:    static StackType_t uxIdleTaskStack[ configMINIMAL_STACK_SIZE ];
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/freertos_hooks.c:205:     * configMINIMAL_STACK_SIZE is specified in words, not bytes. */
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/freertos_hooks.c:206:    *pulIdleTaskStackSize = configMINIMAL_STACK_SIZE;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/timers.c:264:                                                                     ( ( UBaseType_t ) configTIMER_TASK_PRIORITY ) | portPRIVILEGE_BIT,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/timers.c:280:                                                      ( ( UBaseType_t ) configTIMER_TASK_PRIORITY ) | portPRIVILEGE_BIT,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/timers.c:299:                                                          ( ( UBaseType_t ) configTIMER_TASK_PRIORITY ) | portPRIVILEGE_BIT,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/timers.c:314:                                           ( ( UBaseType_t ) configTIMER_TASK_PRIORITY ) | portPRIVILEGE_BIT,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:476:PRIVILEGED_DATA static List_t pxReadyTasksLists[ configMAX_PRIORITIES ]; /**< Prioritised ready tasks. */
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:505:PRIVILEGED_DATA static volatile UBaseType_t uxTopReadyPriority = tskIDLE_PRIORITY;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:517:static const volatile UBaseType_t uxTopUsedPriority = configMAX_PRIORITIES - 1U;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:926:                /* System idle tasks are being assigned a priority of tskIDLE_PRIORITY - 1 here. */
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:963:                        if( ( xCurrentCoreTaskPriority > ( ( BaseType_t ) tskIDLE_PRIORITY - 1 ) ) &&
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1050:                    uxCurrentPriority = tskIDLE_PRIORITY;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1144:             * is tskIDLE_PRIORITY. uxCurrentPriority is never decreased to value blow
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1145:             * tskIDLE_PRIORITY. */
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1146:            if( uxCurrentPriority > tskIDLE_PRIORITY )
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1915:    configASSERT( uxPriority < configMAX_PRIORITIES );
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/FreeRTOS_tasks.c:1917:    if( uxPriority >= ( UBaseType_t ) configMAX_PRIORITIES )
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show tasks.c task priorities
+
+`grep -n "TASK_PRIORITY\|TaskPriority\|uxPriority\|priority *=\|xTaskCreate" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+158:    xTaskCreate( _XLCDC_Tasks,
+167:    xTaskCreate( _DRV_MAXTOUCH_Tasks,
+179:    (void) xTaskCreate( F_USB_HOST_Tasks,
+188:    xTaskCreate( _LEGATO_Tasks,
+197:    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
+206:    xTaskCreate( _SYS_INPUT_Tasks,
+219:    (void) xTaskCreate(
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:23Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+155	
+156	    /* Maintain Device Drivers */
+157	    
+158	    xTaskCreate( _XLCDC_Tasks,
+159	        "XLCDC_Tasks",
+160	        1024,
+161	        (void*)NULL,
+162	        1,
+163	        (TaskHandle_t*)NULL
+164	    );
+165	
+166	
+167	    xTaskCreate( _DRV_MAXTOUCH_Tasks,
+168	        "DRV_MAXTOUCH_Tasks",
+169	        1024,
+170	        (void*)NULL,
+171	        1,
+172	        (TaskHandle_t*)NULL
+173	    );
+174	
+175	
+176	
+177	    /* Maintain Middleware & Other Libraries */
+178	        /* Create OS Thread for USB_HOST_Tasks. */
+179	    (void) xTaskCreate( F_USB_HOST_Tasks,
+180	        "USB_HOST_TASKS",
+181	        1024,
+182	        (void*)NULL,
+183	        1,
+184	        (TaskHandle_t*)NULL
+185	    );
+186	
+187	
+188	    xTaskCreate( _LEGATO_Tasks,
+189	        "LEGATO_Tasks",
+190	        1024,
+191	        (void*)NULL,
+192	        1,
+193	        (TaskHandle_t*)NULL
+194	    );
+195	
+196	    /* Create OS Thread for USB Driver Tasks. */
+197	    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
+198	        "DRV_USB_HOST_TASKS",
+199	        1024,
+200	        (void*)NULL,
+201	        1,
+202	        (TaskHandle_t*)NULL
+203	    );
+204	
+205	
+206	    xTaskCreate( _SYS_INPUT_Tasks,
+207	        "SYS_INPUT_Tasks",
+208	        1024,
+209	        (void*)NULL,
+210	        1,
+211	        (TaskHandle_t*)NULL
+212	    );
+213	
+214	
+215	
+216	    /* Maintain the application's state machine. */
+217	    
+218	    /* Create OS Thread for APP_Tasks. */
+219	    (void) xTaskCreate(
+220	           (TaskFunction_t) lAPP_Tasks,
+221	           "APP_Tasks",
+222	           1024,
+223	           NULL,
+224	           1U ,
+225	           &xAPP_Tasks);
+226	
+227	
+228	
+229	    /* Start RTOS Scheduler. */
+230	    
+231	     /**********************************************************************
+232	     * Create all Threads for APP Tasks before starting FreeRTOS Scheduler *
+233	     ***********************************************************************/
+234	    vTaskStartScheduler(); /* This function never returns. */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:33Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:33Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Recent commit history
+
+`git log --oneline -20`
+
+```text
+44a52aa actuator: move submit queue into fretboard_link
+6c131e7 actuator: timing pipeline + fretboard link over USB CDC
+0e9bc18 docs: log MCC USB VBUS patch + close out session
+a6040ce mcc: add USB CDC host stack on marvin
+186872f detector: cv_marvin_v1 reference port from detect_video.py
+4cd5fb1 spec: add game-state awareness & control subsystem (§4.8)
+7aa6b57 video: fix build — stdbool include + ISR-visible flag ordering
+06051fb freertos: convert marvin-owned objects to static allocation
+171749e video: deepen ISC ring from 2 to 4 buffers
+f689f7e video: per-frame buffer routing; multi-subscriber fan-out
+d33bd87 detector: bus + cv_marvin_v1 stub; enable/active controls
+9226199 docs: top-level reorg + marvin system spec, journal split
+a79042f log: lightweight severity-filtered printf shim; convert callers
+4b550ed app: self-delete after launching tasks
+e28c497 video: capture/display intent split, scaler, frame queue subscription
+6b85d5e Extract video pipeline into its own FreeRTOS task module
+5a63704 MCC: enable FreeRTOS; switch I²C to sync OSAL API; SYS_TIME on TC0
+c632d0d Always-on UI + reliable video recovery; clean up app + tc358743
+a073082 Update legato design with concept of UI as fixed image with video overlay
+e2354ff MCC: add MaxTouch driver for 10.1" panel — touch working
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect USB CDC host stack commit stats
+
+`git show --stat a6040ce | head -40`
+
+```text
+commit a6040cef70eccbb200103b35be63b7a036560758
+Author: Greg Mrozek <greg.mrozek@microchip.com>
+Date:   Wed May 20 17:09:45 2026 -0500
+
+    mcc: add USB CDC host stack on marvin
+    
+    USB host bring-up for the marvin↔fretboard link. EHCI + OHCI drivers
+    (high-speed root with full-speed companion), CDC host class layer with
+    one-device capacity. VBUS power-enable on PC27/PC31; bmPortSelect=0x02
+    selects the secondary USB-A port. Two new Harmony tasks (USB_HOST and
+    DRV_USB_HOST) created in tasks.c via dynamic xTaskCreate — MCC code,
+    expected exception to the static-allocation rule.
+    
+    Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+ ...26-05-20_18-30-12Z-working-on-project-marvin.md |  656 ++
+ .specstory/statistics.json                         |   10 +-
+ firmware/marvin/.vscode/marvin.mplab.json          |   29 +-
+ .../default/mcc/marvin_default/components/core.yml |  206 +-
+ .../mcc/marvin_default/components/drv_usbhs_v1.yml |   31 +
+ .../mcc/marvin_default/components/usb_host.yml     |   42 +
+ .../mcc/marvin_default/components/usb_host_cdc.yml |   31 +
+ .../default/mcc/marvin_default/mcc-config.mc4      |   75 +-
+ .../marvin/default/mcc/mcc-manifest-autosave.yml   |    3 +-
+ .../default/mcc/mcc-manifest-generated-success.yml |    3 +-
+ .../default/src/config/default/configuration.h     |  122 +-
+ .../default/src/config/default/definitions.h       |   35 +-
+ .../src/config/default/driver/usb/drv_usb.h        |  419 ++
+ .../driver/usb/drv_usb_external_dependencies.h     |   68 +
+ .../config/default/driver/usb/uhp/drv_usb_ehci.h   | 1495 +++++
+ .../config/default/driver/usb/uhp/drv_usb_ohci.h   | 1533 +++++
+ .../default/driver/usb/uhp/src/drv_usb_ehci.c      | 3828 +++++++++++
+ .../driver/usb/uhp/src/drv_usb_ehci_local.h        |  607 ++
+ .../default/driver/usb/uhp/src/drv_usb_ohci.c      | 3702 +++++++++++
+ .../driver/usb/uhp/src/drv_usb_ohci_local.h        |  434 ++
+ .../usb/uhp/src/drv_usb_uhp_ohci_registers.h       |  981 +++
+ .../config/default/harmony-manifest-success.yml    |    3 +-
+ .../default/src/config/default/initialization.c    |   86 +-
+ .../marvin/default/src/config/default/interrupts.h |    1 +
+ .../src/config/default/peripheral/aic/plib_aic.c   |    1 +
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+More files from USB commit
+
+`git show --stat a6040ce | tail -30`
+
+```text
+ .../default/driver/usb/uhp/src/drv_usb_ohci.c      | 3702 +++++++++++
+ .../driver/usb/uhp/src/drv_usb_ohci_local.h        |  434 ++
+ .../usb/uhp/src/drv_usb_uhp_ohci_registers.h       |  981 +++
+ .../config/default/harmony-manifest-success.yml    |    3 +-
+ .../default/src/config/default/initialization.c    |   86 +-
+ .../marvin/default/src/config/default/interrupts.h |    1 +
+ .../src/config/default/peripheral/aic/plib_aic.c   |    1 +
+ .../src/config/default/peripheral/pio/plib_pio.c   |    7 +-
+ .../src/config/default/peripheral/pio/plib_pio.h   |   36 +
+ .../src/config/default/pin_configurations.csv      |    8 +-
+ firmware/marvin/default/src/config/default/tasks.c |   68 +-
+ .../default/usb/src/usb_external_dependencies.h    |   67 +
+ .../default/src/config/default/usb/src/usb_host.c  | 6788 ++++++++++++++++++++
+ .../src/config/default/usb/src/usb_host_cdc.c      | 1612 +++++
+ .../src/config/default/usb/src/usb_host_cdc_acm.c  |  569 ++
+ .../config/default/usb/src/usb_host_cdc_local.h    |  618 ++
+ .../config/default/usb/src/usb_host_hub_mapping.h  |   61 +
+ .../src/config/default/usb/src/usb_host_local.h    | 1213 ++++
+ .../default/src/config/default/usb/usb_cdc.h       |  637 ++
+ .../default/src/config/default/usb/usb_chapter_9.h |  905 +++
+ .../default/src/config/default/usb/usb_common.h    |  550 ++
+ .../default/src/config/default/usb/usb_ehci.h      |  320 +
+ .../default/src/config/default/usb/usb_host.h      | 1757 +++++
+ .../default/src/config/default/usb/usb_host_cdc.h  | 1025 +++
+ .../config/default/usb/usb_host_client_driver.h    | 2170 +++++++
+ .../config/default/usb/usb_host_hub_interface.h    |   98 +
+ .../default/src/config/default/usb/usb_hub.h       |  301 +
+ .../default/src/config/default/usb/usb_ohci.h      |  309 +
+ .../src/config/default/usb_host_init_data.c        |   77 +
+ 47 files changed, 33515 insertions(+), 82 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+PIO changes in USB commit
+
+`git show a6040ce -- firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c`
+
+```text
+commit a6040cef70eccbb200103b35be63b7a036560758
+Author: Greg Mrozek <greg.mrozek@microchip.com>
+Date:   Wed May 20 17:09:45 2026 -0500
+
+    mcc: add USB CDC host stack on marvin
+    
+    USB host bring-up for the marvin↔fretboard link. EHCI + OHCI drivers
+    (high-speed root with full-speed companion), CDC host class layer with
+    one-device capacity. VBUS power-enable on PC27/PC31; bmPortSelect=0x02
+    selects the secondary USB-A port. Two new Harmony tasks (USB_HOST and
+    DRV_USB_HOST) created in tasks.c via dynamic xTaskCreate — MCC code,
+    expected exception to the static-allocation rule.
+    
+    Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+diff --git a/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c b/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c
+index bec66dd..503f7c7 100644
+--- a/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c
++++ b/firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.c
+@@ -103,14 +103,15 @@ void PIO_Initialize ( void )
+     ((pio_registers_t*)PIO_PORT_C)->PIO_PER = 0xFFFFFFFFU;
+     ((pio_registers_t*)PIO_PORT_C)->PIO_MDDR = 0xFFFFFFFFU;
+     /* PORTC Pull Up Enable/Disable as per MHC selection */
+-    ((pio_registers_t*)PIO_PORT_C)->PIO_PUDR = 0xFFFFFFFFU;
++    ((pio_registers_t*)PIO_PORT_C)->PIO_PUDR = ~0x30000000U;
++    ((pio_registers_t*)PIO_PORT_C)->PIO_PUER = 0x30000000U;
+     /* PORTC Pull Down Enable/Disable as per MHC selection */
+     ((pio_registers_t*)PIO_PORT_C)->PIO_PPDDR = 0xFFFFFFFFU;
+     /* PORTC Output Write Enable */
+     ((pio_registers_t*)PIO_PORT_C)->PIO_OWER = PIO_OWER_Msk;
+     /* PORTC Output Direction Enable */
+-    ((pio_registers_t*)PIO_PORT_C)->PIO_OER = 0x403cc000U;
+-    ((pio_registers_t*)PIO_PORT_C)->PIO_ODR = ~0x403cc000U;
++    ((pio_registers_t*)PIO_PORT_C)->PIO_OER = 0xc83cc000U;
++    ((pio_registers_t*)PIO_PORT_C)->PIO_ODR = ~0xc83cc000U;
+     /* Initialize PORTC pin state */
+     ((pio_registers_t*)PIO_PORT_C)->PIO_ODSR = 0x400c0000U;
+     /* PORTC Slew rate control */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:46Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:01:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Init changes in USB commit
+
+`git show a6040ce -- firmware/marvin/default/src/config/default/initialization.c | head -150`
+
+```text
+commit a6040cef70eccbb200103b35be63b7a036560758
+Author: Greg Mrozek <greg.mrozek@microchip.com>
+Date:   Wed May 20 17:09:45 2026 -0500
+
+    mcc: add USB CDC host stack on marvin
+    
+    USB host bring-up for the marvin↔fretboard link. EHCI + OHCI drivers
+    (high-speed root with full-speed companion), CDC host class layer with
+    one-device capacity. VBUS power-enable on PC27/PC31; bmPortSelect=0x02
+    selects the secondary USB-A port. Two new Harmony tasks (USB_HOST and
+    DRV_USB_HOST) created in tasks.c via dynamic xTaskCreate — MCC code,
+    expected exception to the static-allocation rule.
+    
+    Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+diff --git a/firmware/marvin/default/src/config/default/initialization.c b/firmware/marvin/default/src/config/default/initialization.c
+index f33e7c8..45bbfc3 100644
+--- a/firmware/marvin/default/src/config/default/initialization.c
++++ b/firmware/marvin/default/src/config/default/initialization.c
+@@ -46,6 +46,7 @@
+ #include "configuration.h"
+ #include "definitions.h"
+ #include "device.h"
++#include "peripheral/pio/plib_pio.h"
+ 
+ 
+ // ****************************************************************************
+@@ -144,6 +145,70 @@ SYSTEM_OBJECTS sysObj;
+ // Section: Library/Stack Initialization Data
+ // *****************************************************************************
+ // *****************************************************************************
++/******************************************************
++ * USB Driver Initialization
++ ******************************************************/
++static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
++{
++    /* Note: USB Host applications should have a way for Enabling/Disabling the 
++       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
++       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
++       name it to "VBUS_AH". If you a see a build error from this function either 
++       you have not configured the VBUS Power Enable in MHC pin settings or the 
++       Pin name entered in MHC is not "VBUS_AH". */
++    if (enable == true)
++    {
++        /* Enable the VBUS */
++        VBUS_AH_PC27_PowerEnable_Set();
++        VBUS_AH_PC31_PowerEnable_Set();
++
++    }
++    else
++    {
++        /* Disable the VBUS */
++        VBUS_AH_PC27_PowerEnable_Clear();
++        VBUS_AH_PC31_PowerEnable_Clear();
++    }
++}
++
++static DRV_USB_EHCI_INIT drvUSBEHCIInit =
++{
++    /* Interrupt Source for USB module */
++    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
++
++    /* USB base address */
++    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
++    
++    /* Ports Selection */ 
++    .bmPortSelect = 0x02,
++
++    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
++    .portPowerEnable = DRV_USB_VBUSPowerEnable,
++    
++    /* Root hub available current in milliamperes */
++    .rootHubAvailableCurrent = 500,
++
++    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
++};
++
++static DRV_USB_OHCI_INIT drvUSBOHCIInit =
++{
++    /* Interrupt Source for USB module */
++    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
++
++    /* USB base address */
++    .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
++
++     /* Ports Selection */ 
++    .bmPortSelect = 0x02,
++    
++    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
++    .portPowerEnable = DRV_USB_VBUSPowerEnable,
++    
++    /* Root hub available current in milliamperes */
++    .rootHubAvailableCurrent = 500
++};
++
+ 
+ 
+ // *****************************************************************************
+@@ -285,13 +350,6 @@ void SYS_Initialize ( void* data )
+ 
+ 	PIT_TimerInitialize();
+ 
+-    MMU_Initialize();
+-
+-    AIC_INT_Initialize();
+-    
+-    /* Disable WDT   */
+-    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+-
+  
+     TC0_CH0_TimerInitialize(); 
+      
+@@ -300,6 +358,13 @@ void SYS_Initialize ( void* data )
+ 
+     XLCDC_Initialize();
+ 
++    MMU_Initialize();
++
++    AIC_INT_Initialize();
++    
++    /* Disable WDT   */
++    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
++
+     DBGU_Initialize();
+ 
+ 
+@@ -332,9 +397,16 @@ void SYS_Initialize ( void* data )
+     SYS_INP_Init();
+ 
+ 
++    /* Initialize the USB Host layer */
++    sysObj.usbHostObject0 = USB_HOST_Initialize (( SYS_MODULE_INIT *)& usbHostInitData );    
++
+     // initialize UI library
+     Legato_Initialize();
+ 
++     /* Initialize USB Driver */ 
++    sysObj.drvUSBEHCIObject = DRV_USB_EHCI_Initialize (DRV_USB_EHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBEHCIInit);
++    sysObj.drvUSBOHCIObject = DRV_USB_OHCI_Initialize (DRV_USB_OHCI_INDEX_0, (SYS_MODULE_INIT *) &drvUSBOHCIInit);
++
+ 
+     /* MISRAC 2023 deviation block end */
+     APP_Initialize();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:01Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:01Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/usb_host_init_data.c`
+
+```text
+1	 /*******************************************************************************
+2	  USB Host Initialization File
+3	
+4	  File Name:
+5	    usb_host_init_data.c
+6	
+7	  Summary:
+8	    This file contains source code necessary to initialize USB Host Stack.
+9	
+10	  Description:
+11	    This file contains source code necessary to initialize USB Host Stack.
+12	 *******************************************************************************/
+13	
+14	// DOM-IGNORE-BEGIN
+15	/*******************************************************************************
+16	* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
+17	*
+18	* Subject to your compliance with these terms, you may use Microchip software
+19	* and any derivatives exclusively with Microchip products. It is your
+20	* responsibility to comply with third party license terms applicable to your
+21	* use of third party software (including open source software) that may
+22	* accompany Microchip software.
+23	*
+24	* THIS SOFTWARE IS SUPPLIED BY MICROCHIP "AS IS". NO WARRANTIES, WHETHER
+25	* EXPRESS, IMPLIED OR STATUTORY, APPLY TO THIS SOFTWARE, INCLUDING ANY IMPLIED
+26	* WARRANTIES OF NON-INFRINGEMENT, MERCHANTABILITY, AND FITNESS FOR A
+27	* PARTICULAR PURPOSE.
+28	*
+29	* IN NO EVENT WILL MICROCHIP BE LIABLE FOR ANY INDIRECT, SPECIAL, PUNITIVE,
+30	* INCIDENTAL OR CONSEQUENTIAL LOSS, DAMAGE, COST OR EXPENSE OF ANY KIND
+31	* WHATSOEVER RELATED TO THE SOFTWARE, HOWEVER CAUSED, EVEN IF MICROCHIP HAS
+32	* BEEN ADVISED OF THE POSSIBILITY OR THE DAMAGES ARE FORESEEABLE. TO THE
+33	* FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
+34	* ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
+35	* THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
+36	 *******************************************************************************/
+37	// DOM-IGNORE-END
+38	#include "configuration.h"
+39	#include "definitions.h" 
+40	
+41	/* MISRA C-2012 Rule 11.8 deviated:2 and 20.7 devaited:4 deviated below. Deviation record ID -  
+42	    H3_USB_MISRAC_2012_R_11_8_DR_1, H3_USB_MISRAC_2012_R_20_7_DR_1 */
+43	
+44	static const USB_HOST_TPL_ENTRY USBTPList[1] = 
+45	{
+46	    TPL_INTERFACE_CLASS(0x02, NULL,  USB_HOST_CDC_INTERFACE),
+47	
+48	
+49	};
+50	
+51	static const USB_HOST_HCD hcdTable[2] = 
+52	{
+53	    {
+54	         /* EHCI Driver Index */ 
+55	        .drvIndex = DRV_USB_EHCI_INDEX_0,
+56	
+57	        /* Pointer to the USB Driver Functions. */
+58	        .hcdInterface = DRV_USB_EHCI_INTERFACE,
+59	    },
+60	    {
+61	        /* OHCI Driver Index */ 
+62	        .drvIndex = DRV_USB_OHCI_INDEX_0,
+63	
+64	         /* Pointer to the USB Driver Interface. */
+65	        .hcdInterface = DRV_USB_OHCI_INTERFACE
+66	    }
+67	};
+68	
+69	const USB_HOST_INIT usbHostInitData = 
+70	{
+71	    .nTPLEntries = 1 ,
+72	    .tplList = (USB_HOST_TPL_ENTRY *)USBTPList,
+73	    .hostControllerDrivers = (USB_HOST_HCD *)&hcdTable    
+74	};
+75	/* MISRAC 2012 deviation block end */
+76	
+77	// </editor-fold>
+78
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:15Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate when TC358743_Initialize runs
+
+`grep -n "TC358743_Initialize\|video_task\|vTask" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c | head -20`
+
+```text
+295:static void video_task(void *param)
+304:    TC358743_Initialize();
+312:        vTaskDelay(pdMS_TO_TICKS(VIDEO_POLL_MS));
+323:    (void)xTaskCreateStatic(video_task,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:19Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+290	    display_apply();
+291	}
+292	
+293	/* ─── Task body ────────────────────────────────────────────────────────── */
+294	
+295	static void video_task(void *param)
+296	{
+297	    (void)param;
+298	
+299	    /* One-time init in task context (scheduler running, so synchronous I²C
+300	     * and SYS_TIME work). Brings up capture pipeline, TC358743 bridge,
+301	     * backlight, and parks the panel in UI-only mode. */
+302	    ISC_Capture_Initialize();
+303	    ISC_Capture_SetFrameCallback(on_frame_done, 0);
+304	    TC358743_Initialize();
+305	    XLCDC_EnableBacklight();
+306	    lcd_unbind();
+307	
+308	    for (;;)
+309	    {
+310	        TC358743_Tasks();
+311	        reconcile();
+312	        vTaskDelay(pdMS_TO_TICKS(VIDEO_POLL_MS));
+313	    }
+314	}
+315	
+316	/* ─── Public API ───────────────────────────────────────────────────────── */
+317	
+318	static StackType_t  s_task_stack[VIDEO_TASK_STACK_WORDS];
+319	static StaticTask_t s_task_tcb;
+320	
+321	void Video_Initialize(void)
+322	{
+323	    (void)xTaskCreateStatic(video_task,
+324	                            "VideoTask",
+325	                            VIDEO_TASK_STACK_WORDS,
+326	                            NULL,
+327	                            VIDEO_TASK_PRIORITY,
+328	                            s_task_stack,
+329	                            &s_task_tcb);
+330	}
+331	
+332	void Video_CaptureEnable(void)  { s_capture_enabled = true;  }
+333	void Video_CaptureDisable(void) { s_capture_enabled = false; }
+334
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:44Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:45Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+log.c init details
+
+`grep -n "log_init\|LOG_INFO\|printf" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/log.c 2>/dev/null | head -20`
+
+```text
+15:void log_init(log_level_t initial_level)
+33:void log_vprintf(log_level_t lvl, const char *fmt, va_list ap)
+51:    (void)vprintf(fmt, ap);
+59:void log_printf(log_level_t lvl, const char *fmt, ...)
+63:    log_vprintf(lvl, fmt, ap);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:48Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/log.c`
+
+```text
+1	#include "log.h"
+2	
+3	#include <stdarg.h>
+4	#include <stdbool.h>
+5	#include <stdio.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "semphr.h"
+9	#include "task.h"
+10	
+11	static volatile log_level_t s_level = LOG_LEVEL_INFO;
+12	static SemaphoreHandle_t    s_mutex;
+13	static StaticSemaphore_t    s_mutex_buf;
+14	
+15	void log_init(log_level_t initial_level)
+16	{
+17	    s_level = initial_level;
+18	    /* Safe before vTaskStartScheduler; only Take/Give require the
+19	     * scheduler to be running. */
+20	    s_mutex = xSemaphoreCreateMutexStatic(&s_mutex_buf);
+21	}
+22	
+23	void log_set_level(log_level_t lvl)
+24	{
+25	    s_level = lvl;
+26	}
+27	
+28	log_level_t log_get_level(void)
+29	{
+30	    return s_level;
+31	}
+32	
+33	void log_vprintf(log_level_t lvl, const char *fmt, va_list ap)
+34	{
+35	    if ((int)lvl > (int)s_level) { return; }
+36	
+37	    /* Take the mutex only when the scheduler is running and the mutex
+38	     * was created. Pre-scheduler we're single-threaded so interleaving
+39	     * isn't possible; xSemaphoreTake with portMAX_DELAY would hang
+40	     * before vTaskStartScheduler. */
+41	    bool locked = false;
+42	    if (s_mutex != NULL
+43	        && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+44	    {
+45	        if (xSemaphoreTake(s_mutex, portMAX_DELAY) == pdTRUE)
+46	        {
+47	            locked = true;
+48	        }
+49	    }
+50	
+51	    (void)vprintf(fmt, ap);
+52	
+53	    if (locked)
+54	    {
+55	        (void)xSemaphoreGive(s_mutex);
+56	    }
+57	}
+58	
+59	void log_printf(log_level_t lvl, const char *fmt, ...)
+60	{
+61	    va_list ap;
+62	    va_start(ap, fmt);
+63	    log_vprintf(lvl, fmt, ap);
+64	    va_end(ap);
+65	}
+66
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:56Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find lAPP_Tasks definition
+
+`grep -n "lAPP_Tasks\|APP_Initialize\|APP_Tasks\b" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+92:/* Handle for the APP_Tasks. */
+93:TaskHandle_t xAPP_Tasks;
+97:static void lAPP_Tasks(  void *pvParameters  )
+101:        APP_Tasks();
+218:    /* Create OS Thread for APP_Tasks. */
+220:           (TaskFunction_t) lAPP_Tasks,
+221:           "APP_Tasks",
+225:           &xAPP_Tasks);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:02:59Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+85	    {
+86	        DRV_MAXTOUCH_Tasks(sysObj.drvMAXTOUCH);
+87	        vTaskDelay(10 / portTICK_PERIOD_MS);
+88	    }
+89	}
+90	
+91	
+92	/* Handle for the APP_Tasks. */
+93	TaskHandle_t xAPP_Tasks;
+94	
+95	
+96	
+97	static void lAPP_Tasks(  void *pvParameters  )
+98	{   
+99	    while(true)
+100	    {
+101	        APP_Tasks();
+102	    }
+103	}
+104	
+105	void _LEGATO_Tasks(  void *pvParameters  )
+106	{
+107	    while(1)
+108	    {
+109	        Legato_Tasks();
+110	        vTaskDelay(10 / portTICK_PERIOD_MS);
+111	    }
+112	}
+113	
+114	static void F_DRV_USB_HOST_Tasks(  void *pvParameters  )
+115	{
+116	    while(true)
+117	    {
+118	        /* USB EHCI Task Routine */
+119	        DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
+120	       /* USB OHCI Task Routine */
+121	       DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
+122	        vTaskDelay(10U / portTICK_PERIOD_MS);
+123	    }
+124	}
+125	
+126	void _SYS_INPUT_Tasks(  void *pvParameters  )
+127	{
+128	    while(1)
+129	    {
+130	        SYS_INP_Tasks();
+131	        vTaskDelay(10 / portTICK_PERIOD_MS);
+132	    }
+133	}
+134	
+135	
+136	
+137	
+138	// *****************************************************************************
+139	// *****************************************************************************
+140	// Section: System "Tasks" Routine
+141	// *****************************************************************************
+142	// *****************************************************************************
+143	
+144	/*******************************************************************************
+145	  Function:
+146	    void SYS_Tasks ( void )
+147	
+148	  Remarks:
+149	    See prototype in system/common/sys_module.h.
+150	*/
+151	void SYS_Tasks ( void )
+152	{
+153	    /* Maintain system services */
+154	    
+155	
+156	    /* Maintain Device Drivers */
+157	    
+158	    xTaskCreate( _XLCDC_Tasks,
+159	        "XLCDC_Tasks",
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:09Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find USB_HOST_BusEnable impl
+
+`grep -n "USB_HOST_BusEnable\b" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/src/usb_host.c | head -5`
+
+```text
+3160:    via the USB_HOST_BusEnable() function.
+3660:    USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+3670:    handler before the Host layer is enabled (before the USB_HOST_BusEnable()
+3678:USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+3787:    the USB_HOST_BusEnable() function is called, to check if the bus has been
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:14Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/usb/src/usb_host.c`
+
+```text
+3675	    See usb_host.h for usage information.
+3676	*/
+3677	
+3678	USB_HOST_RESULT USB_HOST_BusEnable(USB_HOST_BUS bus)
+3679	{
+3680	    USB_HOST_BUS_OBJ        *busObj;
+3681	    int32_t                      hcCount;
+3682	    USB_HOST_RESULT          status = (USB_HOST_RESULT)USB_HOST_RESULT_FALSE ;
+3683	
+3684	    /* Note that this function only sets the state of the bus object
+3685	     * to indicate that the bus needs will be enabled. The actual enabling is
+3686	     * performed in the USB Host Layer Tasks Routine. */
+3687	
+3688	    if ( bus == USB_HOST_BUS_ALL )
+3689	    {
+3690	        for ( hcCount = 0 ; hcCount < USB_HOST_CONTROLLERS_NUMBER ; hcCount++ )
+3691	        {
+3692	            busObj  = &(gUSBHostBusList[hcCount]);
+3693	
+3694	            if(busObj->state < USB_HOST_BUS_STATE_ENABLING)
+3695	            {
+3696	                /* This means the bus is not enabled. Set the state to enable
+3697	                 * the bus. */
+3698	                busObj->state = USB_HOST_BUS_STATE_ENABLING ;
+3699	                SYS_DEBUG_PRINT(SYS_ERROR_INFO, "\r\nUSB Host Layer: Bus %d About to Open Root Hub Driver.", hcCount);
+3700	            }
+3701	            status  =   USB_HOST_RESULT_SUCCESS ;
+3702	        }
+3703	    }
+3704	    /* Enable specific bus */
+3705	    else
+3706	    {
+3707	        /* Validate bus number */
+3708	        if( bus >= USB_HOST_CONTROLLERS_NUMBER )
+3709	        {
+3710	            status = USB_HOST_RESULT_BUS_UNKNOWN;
+3711	        }
+3712	        else
+3713	        {
+3714	            busObj  = &(gUSBHostBusList[bus]);
+3715	            if(busObj->state < USB_HOST_BUS_STATE_ENABLING)
+3716	            {
+3717	                /* This means the bus is not enabled. Set the state to enable
+3718	                 * the bus. */
+3719	                busObj->state = USB_HOST_BUS_STATE_ENABLING ;
+3720	                SYS_DEBUG_PRINT(SYS_ERROR_INFO, "\r\nUSB Host Layer: Bus %d About to Open Root Hub Driver.", bus);
+3721	            }
+3722	            status = USB_HOST_RESULT_SUCCESS;
+3723	        }
+3724	    }
+3725	
+3726	    return ( status );
+3727	}
+3728	
+3729	USB_HOST_RESULT USB_HOST_BusDisable(USB_HOST_BUS bus)
+3730	{
+3731	    USB_HOST_BUS_OBJ        *busObj;
+3732	    int32_t                      hcCount;
+3733	    USB_HOST_RESULT          status = (USB_HOST_RESULT)USB_HOST_RESULT_FALSE ;
+3734
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:24Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find FLEXCOM6 plib
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default -name "plib_flexcom6*" 2>/dev/null`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+FLEXCOM6 TWI init details
+
+`grep -n "FLEXCOM6_TWI_Initialize\|FLEXCOM6_InterruptHandler\|FLEXCOM6_REGS\|TWIHS_REGS\|TWI_IER\|TWI_IDR" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c | head -30`
+
+```text
+86:    void FLEXCOM6_TWI_Initialize(void)
+101:void FLEXCOM6_TWI_Initialize(void)
+104:    FLEXCOM6_REGS->FLEX_MR = FLEX_MR_OPMODE_TWI;
+107:    FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_SWRST_Msk;
+110:    FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_MSDIS_Msk |
+114:    FLEXCOM6_REGS->FLEX_TWI_CWGR = (FLEXCOM6_REGS->FLEX_TWI_CWGR & FLEX_TWI_CWGR_HOLD_Msk)  |
+121:    FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_THRCLR_Msk;
+124:    FLEXCOM6_REGS->FLEX_TWI_IDR = FLEX_TWI_IDR_TXCOMP_Msk | FLEX_TWI_IDR_TXRDY_Msk | FLEX_TWI_IDR_RXRDY_Msk;
+127:    FLEXCOM6_REGS->FLEX_TWI_IER = FLEX_TWI_IER_NACK_Msk |
+128:                                           FLEX_TWI_IER_ARBLST_Msk;
+131:    FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_MSEN_Msk;
+148:    FLEXCOM6_REGS->FLEX_TWI_MMR |= FLEX_TWI_MMR_MREAD_Msk;
+154:        FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_START_Msk | FLEX_TWI_CR_STOP_Msk;
+158:        FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_START_Msk;
+162:    FLEXCOM6_REGS->FLEX_TWI_IER = FLEX_TWI_IER_RXRDY_Msk | FLEX_TWI_IER_TXCOMP_Msk;
+175:        FLEXCOM6_REGS->FLEX_TWI_MMR = FLEX_TWI_MMR_DADR(((uint32_t)address & 0x00007F00U) >> 8U) |
+179:        FLEXCOM6_REGS->FLEX_TWI_IADR = FLEX_TWI_IADR_IADR((uint32_t)address & 0x000000FFU );
+184:        FLEXCOM6_REGS->FLEX_TWI_MMR = FLEX_TWI_MMR_DADR((uint32_t)address) | FLEX_TWI_MMR_IADRSZ(0U);
+203:                FLEXCOM6_REGS->FLEX_TWI_THR = FLEX_TWI_THR_TXDATA((uint32_t)flexcom6TwiObj.writeBuffer[0]);
+205:                FLEXCOM6_REGS->FLEX_TWI_CR =  FLEX_TWI_CR_STOP_Msk;
+206:                FLEXCOM6_REGS->FLEX_TWI_IER = FLEX_TWI_IER_TXCOMP_Msk;
+213:                FLEXCOM6_REGS->FLEX_TWI_THR = FLEX_TWI_THR_TXDATA((uint32_t)flexcom6TwiObj.writeBuffer[0]);
+216:                while((FLEXCOM6_REGS->FLEX_TWI_SR & (FLEX_TWI_SR_TXCOMP_Msk | FLEX_TWI_SR_TXRDY_Msk)) != 0U)
+220:                while((FLEXCOM6_REGS->FLEX_TWI_SR & (FLEX_TWI_SR_TXRDY_Msk)) == 0U)
+238:            FLEXCOM6_REGS->FLEX_TWI_THR = FLEX_TWI_THR_TXDATA((uint32_t)flexcom6TwiObj.writeBuffer[0]);
+240:            FLEXCOM6_REGS->FLEX_TWI_IER = FLEX_TWI_IDR_TXRDY_Msk | FLEX_TWI_IER_TXCOMP_Msk;
+261:    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+291:    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+316:    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+336:    if ((FLEXCOM6_REGS->FLEX_TWI_SR & (FLEX_TWI_SR_SDA_Msk | FLEX_TWI_SR_SCL_Msk)) != (FLEX_TWI_SR_SDA_Msk | FLEX_TWI_SR_SCL_Msk))
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:33Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+FLEXCOM6 ISR existence
+
+`grep -n "FLEXCOM6_InterruptHandler" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c`
+
+```text
+531:    void FLEXCOM6_InterruptHandler(void)
+555:void __attribute__((used)) FLEXCOM6_InterruptHandler(void)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:36Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c`
+
+```text
+555	void __attribute__((used)) FLEXCOM6_InterruptHandler(void)
+556	{
+557	    uint32_t status;
+558	    uintptr_t context = flexcom6TwiObj.context;
+559	
+560	    // Read the peripheral status
+561	    status = FLEXCOM6_REGS->FLEX_TWI_SR;
+562	
+563	    /* checks if Slave has Nacked */
+564	    if( (status & FLEX_TWI_SR_NACK_Msk) != 0U )
+565	    {
+566	        flexcom6TwiObj.state = FLEXCOM_TWI_STATE_ERROR;
+567	        flexcom6TwiObj.error = FLEXCOM_TWI_ERROR_NACK;
+568	    }
+569	
+570	    if( (status & FLEX_TWI_SR_TXCOMP_Msk) != 0U )
+571	    {
+572	        /* Disable and Enable I2C Master */
+573	        FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_MSDIS_Msk;
+574	        FLEXCOM6_REGS->FLEX_TWI_CR = FLEX_TWI_CR_MSEN_Msk;
+575	
+576	        /* Disable Interrupt */
+577	        FLEXCOM6_REGS->FLEX_TWI_IDR = FLEX_TWI_IDR_TXCOMP_Msk |
+578	                                 FLEX_TWI_IDR_TXRDY_Msk  |
+579	                                 FLEX_TWI_IDR_RXRDY_Msk;
+580	    }
+581	
+582	    /* checks if the arbitration is lost in multi-master scenario */
+583	    if( (status & FLEX_TWI_SR_ARBLST_Msk) != 0U )
+584	    {
+585	        /* Re-initiate the transfer if arbitration is lost in
+586	         * between of the transfer
+587	         */
+588	        flexcom6TwiObj.state = FLEXCOM_TWI_STATE_ADDR_SEND;
+589	    }
+590	
+591	    if( flexcom6TwiObj.error == FLEXCOM_TWI_ERROR_NONE )
+592	    {
+593	        switch( flexcom6TwiObj.state )
+594	        {
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:42Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Pin config diff
+
+`git show a6040ce -- firmware/marvin/default/src/config/default/pin_configurations.csv`
+
+```text
+commit a6040cef70eccbb200103b35be63b7a036560758
+Author: Greg Mrozek <greg.mrozek@microchip.com>
+Date:   Wed May 20 17:09:45 2026 -0500
+
+    mcc: add USB CDC host stack on marvin
+    
+    USB host bring-up for the marvin↔fretboard link. EHCI + OHCI drivers
+    (high-speed root with full-speed companion), CDC host class layer with
+    one-device capacity. VBUS power-enable on PC27/PC31; bmPortSelect=0x02
+    selects the secondary USB-A port. Two new Harmony tasks (USB_HOST and
+    DRV_USB_HOST) created in tasks.c via dynamic xTaskCreate — MCC code,
+    expected exception to the static-allocation rule.
+    
+    Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+
+diff --git a/firmware/marvin/default/src/config/default/pin_configurations.csv b/firmware/marvin/default/src/config/default/pin_configurations.csv
+index 5bac648..1abc69e 100644
+--- a/firmware/marvin/default/src/config/default/pin_configurations.csv
++++ b/firmware/marvin/default/src/config/default/pin_configurations.csv
+@@ -8,7 +8,7 @@ A8,PC12,,Available,In,,,,,,,,
+ A9,PB19,,Available,In,,,,,,,,
+ A10,PB17,,Available,In,,,,,,,,
+ A11,PB16,,Available,In,,,,,,,,
+-B1,PC28,,Available,In,,,,,,,,
++B1,PC28,USBB_OVCUR,GPIO,In,n/a,No,Disabled,Yes,No,Disabled,No,Low
+ B3,PC3,,Available,In,,,,,,,,
+ B4,PC5,,Available,In,,,,,,,,
+ B5,PC7,,Available,In,,,,,,,,
+@@ -20,7 +20,7 @@ B11,PB20,,Available,In,,,,,,,,
+ C1,PC24,,Available,In,,,,,,,,
+ C2,PC26,,Available,In,,,,,,,,
+ C4,PC25,,Available,In,,,,,,,,
+-C5,PC27,,Available,In,,,,,,,,
++C5,PC27,VBUS_AH_PC27_PowerEnable,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
+ C7,PB15,,Available,In,,,,,,,,
+ C8,PB23,,Available,In,,,,,,,,
+ C10,PB18,,Available,In,,,,,,,,
+@@ -29,8 +29,8 @@ C17,PD5,,Available,In,,,,,,,,
+ D1,PC20,LED_BLUE,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
+ D2,PC22,,Available,In,,,,,,,,
+ D3,PC21,LED_GREEN,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
+-D5,PC29,,Available,In,,,,,,,,
+-D7,PC31,,Available,In,,,,,,,,
++D5,PC29,USBC_OVCUR,GPIO,In,n/a,No,Disabled,Yes,No,Disabled,No,Low
++D7,PC31,VBUS_AH_PC31_PowerEnable,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
+ D8,PB25,,Available,In,,,,,,,,
+ D10,PB22,,Available,In,,,,,,,,
+ D16,PD10,,Available,In,,,,,,,,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:45Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:45Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Init.c diff lines only
+
+`git show a6040ce -- firmware/marvin/default/src/config/default/initialization.c | grep -E "^[+-]" | grep -v "^[+-]{3}" | head -60`
+
+```text
+--- a/firmware/marvin/default/src/config/default/initialization.c
++++ b/firmware/marvin/default/src/config/default/initialization.c
++#include "peripheral/pio/plib_pio.h"
++/******************************************************
++ * USB Driver Initialization
++ ******************************************************/
++static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
++{
++    /* Note: USB Host applications should have a way for Enabling/Disabling the 
++       VBUS. Applications can use a GPIO to turn VBUS on/off through a switch. 
++       In MHC Pin Settings select the pin used as VBUS Power Enable as output and 
++       name it to "VBUS_AH". If you a see a build error from this function either 
++       you have not configured the VBUS Power Enable in MHC pin settings or the 
++       Pin name entered in MHC is not "VBUS_AH". */
++    if (enable == true)
++    {
++        /* Enable the VBUS */
++        VBUS_AH_PC27_PowerEnable_Set();
++        VBUS_AH_PC31_PowerEnable_Set();
++
++    }
++    else
++    {
++        /* Disable the VBUS */
++        VBUS_AH_PC27_PowerEnable_Clear();
++        VBUS_AH_PC31_PowerEnable_Clear();
++    }
++}
++
++static DRV_USB_EHCI_INIT drvUSBEHCIInit =
++{
++    /* Interrupt Source for USB module */
++    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
++
++    /* USB base address */
++    .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
++    
++    /* Ports Selection */ 
++    .bmPortSelect = 0x02,
++
++    /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
++    .portPowerEnable = DRV_USB_VBUSPowerEnable,
++    
++    /* Root hub available current in milliamperes */
++    .rootHubAvailableCurrent = 500,
++
++    .companionDriverIndex = DRV_USB_OHCI_INDEX_0
++};
++
++static DRV_USB_OHCI_INIT drvUSBOHCIInit =
++{
++    /* Interrupt Source for USB module */
++    .interruptSource = (INT_SOURCE)UHPHS_IRQn,
++
++    /* USB base address */
++    .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
++
++     /* Ports Selection */ 
++    .bmPortSelect = 0x02,
++
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Removed lines only
+
+`git show a6040ce -- firmware/marvin/default/src/config/default/initialization.c | grep -E "^-" | grep -v "^---" | head -30`
+
+```text
+-    MMU_Initialize();
+-
+-    AIC_INT_Initialize();
+-    
+-    /* Disable WDT   */
+-    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+-
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:54Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:03:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Context for moved init block
+
+`git show a6040ce -- firmware/marvin/default/src/config/default/initialization.c | grep -B1 -A3 "MMU_Initialize\|AIC_INT_Initialize\|WDT" | head -30`
+
+```text
+-    MMU_Initialize();
+-
+-    AIC_INT_Initialize();
+-    
+-    /* Disable WDT   */
+-    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+-
+  
+     TC0_CH0_TimerInitialize(); 
+--
+ 
++    MMU_Initialize();
++
++    AIC_INT_Initialize();
++    
++    /* Disable WDT   */
++    WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
++
+     DBGU_Initialize();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:04:08Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:04:08Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check journal for known issues
+
+`grep -n "TC358743\|MMU\|AIC\|init order\|init reorder" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md 2>/dev/null | head -20`
+
+```text
+13:**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+36:| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+40:| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+42:| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+45:| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+48:| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+62:| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+64:| 2026-05-20 | cv_marvin_v1 sensor coords are in native capture-frame space, no 1920×1080 reference scaling | fret-tuner detect_video.py carries a 1920×1080 reference frame and scales coords at runtime — that frame size is what the Elgato HDMI-to-USB bridge produced, not a per-camera variable. Marvin uses the TC358743 (different bridge chip, same direct-pixel topology) and captures at the source's native resolution. The Wii is the primary production source at 480p60 = 720×480, so the static defaults are scaled from Python's 1920×1080 values by (3/8, 4/9) once at port time and stored in 720×480 space. Same-pixel-strike-line geometry as the Python detector — these are real coords, not placeholders. Calibration UI (M6) will refine them. |
+101:- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:04:12Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:04:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Recent journal entries
+
+`head -120 /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md`
+
+```text
+# marvin — Working Journal
+
+Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+
+---
+
+## Current focus
+
+**M1 — Reference detector v0.** First CV detector running on captured frames, publishing `detector_state_t` records onto the detector-state bus. No actuation yet. See [`spec.md`](spec.md) §4.2 for subsystem detail and §8 for the milestone progression.
+
+Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus queue + a temporary drain task that logs records-per-second; `detector/cv_marvin_v1.{h,c}` subscribes to the video frame queue and publishes one `detector_state_t` per frame with `frame_epoch = Video_FrameInfo.frame_count` and all-zero fret state. Next: pick the v0 algorithm (Q8) and start populating `fret[]`.
+
+**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+
+> **Deeper-dive references:**
+> - [`spec.md`](spec.md) — system-level spec (read first).
+> - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
+> - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
+
+> **Earlier entries** (capture/display bring-up, 2026-05-01 → 2026-05-15) are preserved in [`journal-archive.md`](journal-archive.md).
+
+---
+
+## Decision log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-05-20 | System-level spec lives at [`spec.md`](spec.md); read it first on any non-trivial marvin task | We're at the point where deferring system architecture would mean building feature-by-feature without a coherent target. The journal is the running diary; the spec is the durable description of what marvin is. |
+| 2026-05-20 | Marvin replaces the fret-tuner PC as the runtime brain | One-host architecture. fret-tuner persists as an off-band dev/calibration tool. fretboard stays a dumb relay (ADC out, bitmask in). |
+| 2026-05-20 | Marvin is the *reference detector* — not a debug aid | HDMI-direct CV is ground-truth for the system. Fretboard's photo-detection and any future Edge-AI MCU are trained against marvin's output. Recording reference data is therefore a first-class subsystem (spec §4.6), not an afterthought. |
+| 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
+| 2026-05-20 | Timing pipeline (chord window, FIFO, strum scheduling) lives on marvin by default; fretboard-takeover is a fallback mode | Centralized = single source of truth, easier multi-detector fusion. Latency budget allows a few ms of UART jitter. Fallback mode disables marvin's pipeline; fretboard runs its own existing `fret_button.c` and feeds emitted-command telemetry up to marvin for capture/display. Spec §4.4 + §6. |
+| 2026-05-20 | Reference-data export = SD card, format = detector-state + sparse keyframes | SD chosen over Ethernet/USB CDC because primary consumers are Edge-AI training (offline) and replay/sanity-check (offline). Live side-by-side comparison deferred. Format: dense `detector_state_t` records for all detectors + raw BGRX32 keyframes every 60 frames (1.38 MB/s sustained, comfortable on Class-10). No software JPEG (Cortex-A5 can't keep up; SAM9X75 has no HW encoder). Spec §4.6. |
+| 2026-05-20 | `frame_epoch` (32-bit, incremented per captured ISC frame) is the master sync token across recordings, detectors, and any future off-board observers | Need single shared timeline; off-board detectors (e.g. Edge-AI device) record in their own format keyed by marvin's `frame_epoch` so post-hoc training-data alignment is trivial. Wraps after ~830 days @ 60 Hz. |
+| 2026-05-20 | Operating modes are independent toggles (`detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`); named modes are presets over them | Matches `tools/fret-tuner/SPEC.md`'s detect/actuate split which has worked well in practice. Avoids a brittle global state machine. Spec §6. |
+| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+| 2026-05-01 | Reference source = mainline Linux tc358743 driver + community 480p dumps | Linux driver has correct state machine / EDID / IRQ handling; community dumps have verified 480p register values. |
+| 2026-05-01 | Integration shape (sensor vs standalone) deferred until Phase 3 | Avoid premature structure; real answer depends on how much state the driver actually needs. |
+| 2026-05-01 | Journal lives at `firmware/marvin/docs/journal.md` | Firmware docs co-located with firmware; top-level `docs/` is hardware/mechanical. |
+| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+| 2026-05-01 | REFCLK: **27 MHz** | Waveshare v1/v2 on-board XTAL. Kernel driver restricts REFCLK to {26, 27, 42} MHz (`tc358743.c:717-719`); 27 MHz is the Waveshare v1/v2 value. |
+| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+| 2026-05-01 | Register-access helpers will be a direct port from the kernel driver | `tc358743.c:131-269` has clean `i2c_rd/wr` + `i2c_rd8/wr8/rd16/wr16/rd32/wr32`. Map to FLEXCOM6 TWI underneath. |
+| 2026-05-01 | J29 (22-pin MIPI) pinout confirmed; PC19=pin 17, PC15=pin 18 (not 5/6) | Per SAM9X75-Curiosity User Guide §3.4.10 (queried via Microchip MCP). Pins 5/6 are MIPI_D1_N/P — CSI data lane 1 diff pairs, not GPIOs. Correct GPIO pins for RESET/INT are pin 17 (PC19, `MIPI_CSI_GPIO0`) and pin 18 (PC15, `MIPI_CSI_GPIO1`). I2C on pins 20 (PA25, `CAM_I²C_CLK`) and 21 (PA24, `CAM_I²C_DATA`) confirmed to match marvin's FLEXCOM6 pin assignment (`pin_configurations.csv:85-86`). |
+| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+| 2026-05-01 | Delays use Harmony's `SYS_TIME` service (non-blocking shape) | Already initialized in `SYS_Initialize`; existing marvin code (`drv_isc.c`, `plib_isc.c`) uses it with `SYS_TIME_DelayUS/MS` + `SYS_TIME_DelayIsComplete`. Non-blocking pattern inside our state machine keeps `APP_Tasks()` (and Legato) from stalling during reset hold times, and scales naturally into Phase 3's longer init sequence. |
+| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
+| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+| 2026-05-20 | M1 detector scaffolding: one task per detector, single shared bus queue (`xDetectorStateQueue`), temporary in-module drain task until the timing pipeline (M3) lands | Matches spec §4.2.4. Per-detector tasks isolate slow detectors from the frame pipeline; the shared queue is the hand-off point that the timing pipeline will eventually own as sole consumer. The drain task lives in `detector.c` so it travels with the bus and can be deleted in one place when M3 wires the real consumer. Records-per-second log line gives a coarse health signal during bring-up. |
+| 2026-05-20 | `frame_epoch` is sourced from `Video_FrameInfo.frame_count` for M1; a persistent counter that survives ISC restart is M5's problem | Recording (M5) is the first consumer that actually needs cross-restart continuity. Until then the post-arm-monotonic counter is fine for plumbing validation, and pretending otherwise would mean threading another counter through the video module before it has a real consumer. |
+| 2026-05-20 | Detector control model: per-detector `enable` (multiple may be on simultaneously for side-by-side recording) + single `active` selector (which detector_id the timing pipeline acts on) | Want side-by-side training data — every enabled detector publishes onto the bus; recording (M5) saves them all. But only one detector should ever drive actuation, so the timing pipeline (M3) filters the bus by `Detector_GetActive()` and ignores the rest. Cleaner than a global enum because it decouples "is this running?" from "is this canonical?", and lets us hot-swap the active detector without disabling its peers. Defaults: all-disabled, active=cv_marvin_v1. App explicitly calls `Detector_Enable` + `Detector_SetActive` after init. |
+| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+| 2026-05-20 | `Video_FrameInfo.buffer` now reflects the buffer that just completed (per-frame routing); HEO is re-pointed in the ISR every frame so the panel sees every captured frame | Pre-fix: `ISC_Capture_GetBufferAddress()` returned the framebuffer base regardless of which descriptor-ring slot ISC just wrote, and HEO was bound once to the base — so HEO only ever read slot 0, and slot 1 was written but never observed. Effective behavior was ~half-rate display. Fix: ISC IRQ computes `slot = (frameIndex - 1 + N) % N` (driver increments before callback per drv_isc.c:47-50), passes `base + slot * frame_size` into the user callback, and video.c re-points HEO at that address with `XLCDC_SetLayerAddress(..., update=true)` — latches at next vsync. Also unblocks ring depth > 2 since each subscriber sees the genuinely-just-written buffer. |
+| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+| 2026-05-20 | All marvin-owned FreeRTOS objects use `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic`; FreeRTOS heap stays at heap_1 only because MCC code (XLCDC/MAXTOUCH/LEGATO/SYS_INPUT tasks, OSAL, Legato variable heap) needs it | Project rule is static-only memory allocation. MCC-generated code can't be made static without forking, so we keep `configSUPPORT_DYNAMIC_ALLOCATION = 1` for MCC and route all our own code through the static APIs. MCC reconfigured to enable `configSUPPORT_STATIC_ALLOCATION = 1` and emit `vApplicationGetIdleTaskMemory` in `freertos_hooks.c`. Per-module `Static{Task,Queue,Semaphore}_t` plus stack/storage arrays at file scope. |
+| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+| 2026-05-20 | cv_marvin_v1 keeps detector internals (press_count, raw color distances) private; bus record stays canonical (`pressed[] / confidence / raw_value`) | Different detectors need different per-frame data, but downstream bus consumers (timing pipeline, recorder, fretboard link) only care about "is this fret pressed at frame N." Pushing detector-specific richness onto the bus would either grow the canonical record or force a tagged-union shape that complicates recording layout. Encapsulating internals in the detector module preserves the narrow bus and lets each detector evolve its own state independently. press_count specifically lives in a private `s_press_count[FRET_COUNT]` array; if the strum scheduler later wants it, expose via a getter or a second "detail" channel. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. |
+| 2026-05-20 | cv_marvin_v1 sensor coords are in native capture-frame space, no 1920×1080 reference scaling | fret-tuner detect_video.py carries a 1920×1080 reference frame and scales coords at runtime — that frame size is what the Elgato HDMI-to-USB bridge produced, not a per-camera variable. Marvin uses the TC358743 (different bridge chip, same direct-pixel topology) and captures at the source's native resolution. The Wii is the primary production source at 480p60 = 720×480, so the static defaults are scaled from Python's 1920×1080 values by (3/8, 4/9) once at port time and stored in 720×480 space. Same-pixel-strike-line geometry as the Python detector — these are real coords, not placeholders. Calibration UI (M6) will refine them. |
+| 2026-05-20 | Fretboard-link submit queue belongs to `fretboard_link`, not `timing_pipeline`; producers call `FretboardLink_Send(mask)` | Game menu control (spec §4.8) needs to drive the actuator without going through the chord-window scheduler — its inputs are "navigate menu, press start", not gameplay notes. If the queue lives in `timing_pipeline`, the controller has to either reach across modules or duplicate transport. Moving ownership down to `fretboard_link` makes timing_pipeline one of N producers; the menu controller and any manual-test path call the same `Send` API. Latest-wins (depth-1 + xQueueOverwrite) already gives the right behavior — newest submitter wins on the wire. **Mode-level arbitration** (which producer is allowed to submit when, e.g. timing-only during gameplay vs controller-only in menus) lives one layer up; the link stays dumb. |
+| 2026-05-20 | M2 fretboard link split into three layers — `detector → timing_pipeline → fretboard_link` — with the timing FIFO living on marvin and a 1-byte bitmask wire format | (a) Three-layer split keeps each concern small: detector emits state, timing_pipeline owns chord-window + strum scheduling, fretboard_link owns the USB CDC byte channel. Each can be replaced independently (different detector, different actuator transport) without touching the others. (b) Timing FIFO on marvin, not fretboard: marvin already runs the canonical detector and the recording pipeline, so co-locating timing keeps a single source of truth and avoids re-deriving state on the actuator side. Spec §4.4. The fretboard-takeover fallback (spec §6) is a separate mode where marvin disables its pipeline and fretboard runs `fret_button.c` standalone — that's the high-availability path, not the steady-state. (c) 1-byte bitmask matches `tools/fret-tuner/actuator.py` and `firmware/fretboard/cmd_receive.h` exactly (G/R/Y/B/O at bits 0..4, strum-down bit 5, strum-up bit 6) — no reason to invent a new framing while the protocol is this small. Latest-wins semantics on the marvin→fretboard queue (depth 1 + overwrite) so a stalled USB write can't accumulate stale chords. (d) **Actuator-latency compensation deferred until mechanical actuators arrive.** Today's actuator is direct GPIO assertion on the fretboard PCB — latency ≈ 0, so today's design is sound. Future paths considered: (1) marvin compensates by subtracting a fretboard-published latency from `assert_at`/`strum_at`; (2) fretboard compensates by accepting timestamped events and scheduling locally. Path 2 needs a richer wire format (event + abs-timestamp); path 1 keeps the byte protocol but pushes the timing math up. Pick when we know which actuator (voice coil / electromagnet / DIY solenoid) we're driving. |
+| 2026-05-20 | Game-state awareness & high-level game control is a marvin subsystem (spec §4.8). Distinct from the gameplay note-detection path: a video-frame consumer (not a detector) emits typed game-state events on `xGameStateQueue`, and a controller layer translates verbs ("start single-player song X") into fret/strum sequences sent over the same fretboard link | Want marvin to drive whole-session play, not just notes once gameplay starts. Game-state observation belongs on marvin because it's CV on the same captured frames. Separating its bus from `xDetectorStateQueue` keeps `detector_state_t` narrow per the 2026-05-20 multi-detector decision. Per-game catalog (menu graph + song list) is metadata kept on marvin. Default arbitration with timing pipeline: mutually exclusive — controller runs only outside `gameplay` state. Phasing: M9 observer-only, M10 control. Open: recognizer algorithm (Q10), arbitration boundary (Q11). |
+
+---
+
+## Open questions
+
+_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+
+- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **deferred 2026-05-01**: TXACT has been observed at both 0 and 1 at various times after enable. Likely momentary (active-packet indicator, not stream-on flag). CSI_ERR=0 and HLT=0 consistently. Phase 5 frames-in-memory confirmed the chain works regardless.
+- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+
+**Carried into future sessions:**
+
+- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+
+- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. The 2026-05-20 USB-host regen added a fifth. Re-apply after every regen:
+
+  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+
+  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+
+  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+
+  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+
+  5. **`initialization.c` `DRV_USB_VBUSPowerEnable` — per-pin VBUS calls.** MCC emits a single `VBUS_AH_*_Set/Clear()` call expecting one pin named `VBUS_AH`, but our config has VBUS on two pins (PC27 + PC31, one per USB port). The pin-macro generator produces `VBUS_AH_PC27_PowerEnable_*` and `VBUS_AH_PC31_PowerEnable_*` separately and no unified wrapper, so the MCC-emitted code fails to compile. Replace lines 162-163 (Set branch) and 169-170 (Clear branch) with explicit calls to both per-pin macros — `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` and the matching Clear pair. The MCC comment in the function ("name it to 'VBUS_AH'") acknowledges the single-pin assumption.
+
+  Previously listed but now resolved or moot:
+  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+
+  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+
+- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+
+- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+
+- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+
+- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+
+---
+
+## Session log
+
+### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+
+Long session covering three independent threads:
+
+1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+
+2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:04:34Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:04:47Z)**_
+
+Here's where I've landed on the hangup. Summary, then proposed action.
+
+**What's happening**
+- Video task is blocked inside `TC358743_Initialize` on its very first I²C write. The driver path `tc358743_wr16 → DRV_I2C_WriteTransfer → OSAL_SEM_Pend(WAIT_FOREVER)` waits for the FLEXCOM6 ISR to post `transferDone`. The semaphore is never given, so the task parks there forever.
+- FBL is alive (heartbeat firing). The fact that FBL heartbeats keep printing while the video task is wedged means the scheduler's running and tasks at priority 1 (USB host, USB driver, video) just aren't making forward progress on anything that depends on a peripheral interrupt.
+
+**Most likely culprit: SYS_Initialize ordering changed by the MCC USB regen.**
+In commit `a6040ce`, MCC moved `MMU_Initialize()` and `AIC_INT_Initialize()` from *before* the peripheral inits to *after* them ([initialization.c:343-364](firmware/marvin/default/src/config/default/initialization.c#L343-L364)). Old order:
+
+```
+PIT, MMU, AIC, WDT-disable, TC0, FLEXCOM6, XLCDC, …
+```
+
+New order:
+
+```
+PIT, TC0, FLEXCOM6, XLCDC, MMU, AIC, WDT-disable, …
+```
+
+So TWI/timer/LCD peripherals are now poked before MMU is configured and before AIC clears/owns the interrupt vector table. AIC_INT_Initialize disables all 70 sources and re-enables only the 7 it knows about — but if FLEXCOM6_TWI_Initialize already programmed AIC SVR/IECR for FLEXCOM6 before AIC_INT_Initialize ran, the wipe-then-restore in AIC init is the reason it should still work… in practice we know it doesn't here.
+
+This isn't yet on the "MCC patch list" in the journal (currently 5 items). It would be a 6th.
+
+**What I want to do next, before changing anything:** restore the original init order in [initialization.c](firmware/marvin/default/src/config/default/initialization.c#L343-L407) so MMU + AIC come back before TC0/FLEXCOM6/XLCDC, rebuild, and retest. If that brings TC358743 back, we add the order revert to the MCC-patch list in the journal and decide separately whether USB is also fixed by the same change or whether VBUS needs more diagnosis (e.g., checking that DRV_USB_HOST_TASKS is actually entering its callback).
+
+Want me to make that init-order revert now?
+
+---
+
+_**User (2026-05-21 02:05:46Z)**_
+
+yes test reorder
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:05:48Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:05:53Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:05:58Z)**_
+
+Init order restored — MMU + AIC + WDT-disable now run before TC0/FLEXCOM6/XLCDC, matching the pre-USB layout. Build + flash and let me know what the boot log shows. If TC358743 makes it past `probe starting`, the next thing I want to see is whether VBUS asserts on its own or whether USB enumeration is a separate problem.
+
+---
+
+_**User (2026-05-21 02:08:15Z)**_
+
+that fixed the display. USB still not detected. But let's make clear note of the init resolution and commit.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:08:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:08:19Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+85	  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+86	
+87	  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+88	
+89	  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+90	
+91	  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+92	
+93	  5. **`initialization.c` `DRV_USB_VBUSPowerEnable` — per-pin VBUS calls.** MCC emits a single `VBUS_AH_*_Set/Clear()` call expecting one pin named `VBUS_AH`, but our config has VBUS on two pins (PC27 + PC31, one per USB port). The pin-macro generator produces `VBUS_AH_PC27_PowerEnable_*` and `VBUS_AH_PC31_PowerEnable_*` separately and no unified wrapper, so the MCC-emitted code fails to compile. Replace lines 162-163 (Set branch) and 169-170 (Clear branch) with explicit calls to both per-pin macros — `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` and the matching Clear pair. The MCC comment in the function ("name it to 'VBUS_AH'") acknowledges the single-pin assumption.
+94	
+95	  Previously listed but now resolved or moot:
+96	  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+97	  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+98	
+99	  Recovery plan: re-apply all four (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+100	
+101	- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+102	
+103	- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+104	
+105	- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+106	
+107	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+108	
+109	---
+110	
+111	## Session log
+112	
+113	### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+114	
+115	Long session covering three independent threads:
+116	
+117	1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+118	
+119	2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:08:38Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:08:44Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:08:51Z)**_
+
+Now let me also add a short session-log note and a decision-log entry, then commit.
+
+_**Agent (claude-opus-4-7 2026-05-21 02:08:51Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+109	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+110	
+111	---
+112	
+113	## Session log
+114	
+115	### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+116	
+117	Long session covering three independent threads:
+118	
+119	1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+120	
+121	2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+122	
+123	3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
+124	
+125	Spec update: added §4.8 game-state awareness & control as a marvin subsystem (peer of detection but separate bus, video-frame consumer not a detector). Defers recognizer algorithm + arbitration boundary as Q10/Q11.
+126	
+127	Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
+128	
+129	### 2026-05-20 — Video fan-out + per-frame buffer routing
+130	
+131	Two-commit sequence opening up video capture for parallel CV consumers:
+132	
+133	1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+134	2. **Ring depth from 2 to 4.** Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+135	
+136	Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+137	
+138	### 2026-05-20 — M1 scaffolding landed
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:02Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:05Z)**_
+
+Now let me commit. First check git status to see what should be staged.
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:05Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Pre-commit status check
+
+`git status`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/actuator/fretboard_link.c
+	modified:   firmware/marvin/default/src/config/default/initialization.c
+	modified:   firmware/marvin/docs/journal.md
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:09Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check fretboard_link diff
+
+`git diff firmware/marvin/default/src/actuator/fretboard_link.c | head -60`
+
+```text
+diff --git a/firmware/marvin/default/src/actuator/fretboard_link.c b/firmware/marvin/default/src/actuator/fretboard_link.c
+index 34779f7..9a3b8cb 100644
+--- a/firmware/marvin/default/src/actuator/fretboard_link.c
++++ b/firmware/marvin/default/src/actuator/fretboard_link.c
+@@ -27,6 +27,11 @@
+ 
+ #define FBL_WRITE_TIMEOUT_MS    100u
+ 
++/* Status heartbeat — proves the link task is alive even when nothing is
++ * attached. Useful during bring-up; safe to leave on (one INFO line every
++ * 2 s costs essentially nothing). */
++#define FBL_STATUS_LOG_MS       2000u
++
+ /* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
+  * a sane default avoids implementation quirks on hosts that gate writes on
+  * a successful SET_LINE_CODING. Matches actuator.py. */
+@@ -168,7 +173,8 @@ static void fretboard_link_task(void *param)
+ 
+     LOG_INFO("FBL: fretboard link started\r\n");
+ 
+-    uint8_t last_mask = 0u;
++    uint8_t    last_mask    = 0u;
++    TickType_t status_start = xTaskGetTickCount();
+ 
+     for (;;)
+     {
+@@ -192,6 +198,14 @@ static void fretboard_link_task(void *param)
+         {
+             (void)send_one_byte(mask);
+         }
++
++        TickType_t now = xTaskGetTickCount();
++        if ((uint32_t)(now - status_start) >= pdMS_TO_TICKS(FBL_STATUS_LOG_MS))
++        {
++            LOG_INFO("FBL: connected=%c last_mask=0x%02X\r\n",
++                     s_connected ? 'Y' : 'N', (unsigned)last_mask);
++            status_start = now;
++        }
+     }
+ }
+```
+</details></tool-use>

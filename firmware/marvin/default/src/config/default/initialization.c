@@ -350,20 +350,20 @@ void SYS_Initialize ( void* data )
 
 	PIT_TimerInitialize();
 
- 
-    TC0_CH0_TimerInitialize(); 
-     
-    
-    FLEXCOM6_TWI_Initialize();
-
-    XLCDC_Initialize();
-
     MMU_Initialize();
 
     AIC_INT_Initialize();
-    
+
     /* Disable WDT   */
     WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+
+
+    TC0_CH0_TimerInitialize();
+
+
+    FLEXCOM6_TWI_Initialize();
+
+    XLCDC_Initialize();
 
     DBGU_Initialize();
 
