@@ -1,5 +1,4 @@
 #include "fretboard_link.h"
-#include "timing_pipeline.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -19,6 +18,8 @@
 #define FBL_TASK_STACK_WORDS    768u
 #define FBL_TASK_PRIORITY       2u
 
+#define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+
 /* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
  * a stalled detector or paused game can't leave a stale frets-active
  * pattern stuck on the wire. 50 ms is well below human-perceptible. */
@@ -32,6 +33,9 @@
 #define FBL_BAUDRATE            115200u
 
 static QueueHandle_t s_cmd_queue;
+static StaticQueue_t s_cmd_queue_buf;
+static uint8_t       s_cmd_queue_storage[FBL_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
+
 static StackType_t   s_task_stack[FBL_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
 
@@ -193,7 +197,10 @@ static void fretboard_link_task(void *param)
 
 void FretboardLink_Initialize(void)
 {
-    s_cmd_queue = TimingPipeline_CmdQueue();
+    s_cmd_queue = xQueueCreateStatic(FBL_CMD_QUEUE_DEPTH,
+                                     sizeof(uint8_t),
+                                     s_cmd_queue_storage,
+                                     &s_cmd_queue_buf);
     configASSERT(s_cmd_queue != NULL);
 
     s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
@@ -211,4 +218,14 @@ void FretboardLink_Initialize(void)
 bool FretboardLink_IsConnected(void)
 {
     return s_connected;
+}
+
+void FretboardLink_Send(uint8_t mask)
+{
+    if (s_cmd_queue == NULL) { return; }
+    uint8_t v = (uint8_t)(mask & 0x7F);
+    /* Overwrite is strictly latest-wins: a newer producer's mask replaces
+     * any unsent older one — keeps a stalled USB write from accumulating
+     * stale chord state. */
+    (void)xQueueOverwrite(s_cmd_queue, &v);
 }

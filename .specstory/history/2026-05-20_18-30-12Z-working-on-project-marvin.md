@@ -27742,3 +27742,341 @@ a6040ce mcc: add USB CDC host stack on marvin
 f689f7e video: per-frame buffer routing; multi-subscriber fan-out
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:19:23Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage and commit M2 actuator path
+
+```bash
+git add firmware/marvin/default/src/actuator/ firmware/marvin/default/src/app.c firmware/marvin/cmake/marvin/default/user.cmake firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json && git commit -m "$(cat <<'EOF'
+actuator: timing pipeline + fretboard link over USB CDC
+
+Three-layer M2 split: detector → timing_pipeline → fretboard_link.
+timing_pipeline ports the chord-window / strum-FIFO scheduler from
+fret-tuner's actuator.py and publishes a 7-bit GPIO bitmask on a
+latest-wins queue. fretboard_link writes that mask one byte at a
+time over USB CDC host to the fretboard MCU, with attach/detach
+handling, line-coding setup, and a 50 ms idle heartbeat.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)" && git status
+```
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+[freertos 6c131e7] actuator: timing pipeline + fretboard link over USB CDC
+ 9 files changed, 4696 insertions(+), 27 deletions(-)
+ create mode 100644 firmware/marvin/default/src/actuator/fretboard_link.c
+ create mode 100644 firmware/marvin/default/src/actuator/fretboard_link.h
+ create mode 100644 firmware/marvin/default/src/actuator/timing_pipeline.c
+ create mode 100644 firmware/marvin/default/src/actuator/timing_pipeline.h
+On branch freertos
+nothing to commit, working tree clean
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:19:25Z)**_
+
+Committed as `6c131e7`. Working tree clean.
+
+---
+
+_**User (2026-05-21 01:21:35Z)**_
+
+one more item to consider and make note of. If we implement game menu control and such, then we need to be able to control actuator directly, not just through detector / timing pipeline. I think general architecture already will allow for this but might need to extend actuator api some?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:21:48Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:21:52Z)**_
+
+You're right — the cleanest fix is small: move the cmd queue from `timing_pipeline` into `fretboard_link` and expose `FretboardLink_Send(uint8_t mask)`. Then `timing_pipeline` becomes one producer among several (future game controller, manual test UI, etc.) instead of owning the channel. Latest-wins semantics already match this — whichever producer wrote most recently is what goes on the wire. The arbitration question (timing vs controller mutually exclusive vs blended) lives one level up in mode selection, not in the link.
+
+Tradeoff: it slightly couples the link to "byte-mask wire format" rather than "anything in a queue", but that's already true today and the wire format is `cmd_receive.h`'s shape — not changing soon.
+
+Want me to do the refactor now (small, ~30 lines moved + a journal note), or just log the note and tackle it when M9/M10 menu control lands?
+
+---
+
+_**User (2026-05-21 01:22:33Z)**_
+
+yes do it now.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:22:44Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:22:44Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/timing_pipeline.c`
+
+```text
+1	#include "timing_pipeline.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "queue.h"
+10	
+11	#include "log.h"
+12	#include "detector/detector.h"
+13	
+14	#define TP_TASK_STACK_WORDS    768u
+15	#define TP_TASK_PRIORITY       2u
+16	
+17	#define TP_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+18	
+19	/* Drives chord aggregation, strum scheduling, and pending release timing.
+20	 * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+21	#define TP_STRUM_DELAY_MS      220u
+22	#define TP_FRET_EARLY_MS       50u
+23	#define TP_STRUM_PULSE_MS      50u
+24	#define TP_CHORD_WINDOW_MS     20u
+25	
+26	#define TP_FIFO_CAP            16u
+27	
+28	/* Background tick: bound on between-frame latency for strum-pulse and
+29	 * note-assert deadlines that fall between detector publishes. 5 ms keeps
+30	 * jitter well under our 16 ms detector cadence and below human-perceptible
+31	 * timing error. */
+32	#define TP_TICK_MS             5u
+33	
+34	typedef struct
+35	{
+36	    uint32_t assert_at_ms;
+37	    uint8_t  fret_mask;
+38	} pending_note_t;
+39	
+40	typedef struct
+41	{
+42	    uint32_t strum_at_ms;
+43	    uint8_t  fret_mask;
+44	} pending_strum_t;
+45	
+46	static QueueHandle_t s_cmd_queue;
+47	static StaticQueue_t s_cmd_queue_buf;
+48	static uint8_t       s_cmd_queue_storage[TP_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
+49	
+50	static StackType_t   s_task_stack[TP_TASK_STACK_WORDS];
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:22:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:22:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:22:59Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:03Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:06Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:17Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:22Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:24Z)**_
+
+Now move queue ownership into fretboard_link.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:38Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:23:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:24:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:24:08Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:24:13Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:24:18Z)**_
+
+Now add a journal note capturing the API decision.
+
+_**Agent (claude-opus-4-7 2026-05-21 01:24:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 01:24:33Z)**_
+
+Refactor done. Changes:
+
+- [fretboard_link.h](firmware/marvin/default/src/actuator/fretboard_link.h) — added `FretboardLink_Send(uint8_t mask)` public API; doc-comment now describes it as a multi-producer submit point.
+- [fretboard_link.c](firmware/marvin/default/src/actuator/fretboard_link.c) — owns the depth-1 latest-wins queue (was in timing_pipeline). `Send` does `xQueueOverwrite`.
+- [timing_pipeline.h](firmware/marvin/default/src/actuator/timing_pipeline.h) / [.c](firmware/marvin/default/src/actuator/timing_pipeline.c) — dropped `TimingPipeline_CmdQueue`. `publish_mask()` calls `FretboardLink_Send`.
+- [app.c:131-138](firmware/marvin/default/src/app.c#L131-L138) — init order flipped: `FretboardLink_Initialize()` before `TimingPipeline_Initialize()`.
+- [journal.md](firmware/marvin/docs/journal.md) — new decision-log entry documenting why the queue moved and where mode-level arbitration belongs.
+
+Ready for build verification.
+
+---
+
+_**User (2026-05-21 01:25:16Z)**_
+
+build successful. please commit. Then I think we need to figure out how to best start testing this on hardware?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 01:25:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 01:25:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check changes before commit
+
+`git status && echo "---" && git diff --stat`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/actuator/fretboard_link.c
+	modified:   firmware/marvin/default/src/actuator/fretboard_link.h
+	modified:   firmware/marvin/default/src/actuator/timing_pipeline.c
+	modified:   firmware/marvin/default/src/actuator/timing_pipeline.h
+	modified:   firmware/marvin/default/src/app.c
+	modified:   firmware/marvin/docs/journal.md
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+ ...26-05-20_18-30-12Z-working-on-project-marvin.md | 297 +++++++++++++++++++++
+ .specstory/statistics.json                         |  10 +-
+ .../marvin/default/src/actuator/fretboard_link.c   |  21 +-
+ .../marvin/default/src/actuator/fretboard_link.h   |  20 +-
+ .../marvin/default/src/actuator/timing_pipeline.c  |  22 +-
+ .../marvin/default/src/actuator/timing_pipeline.h  |  11 +-
+ firmware/marvin/default/src/app.c                  |  13 +-
+ firmware/marvin/docs/journal.md                    |   1 +
+ 8 files changed, 349 insertions(+), 46 deletions(-)
+```
+</details></tool-use>

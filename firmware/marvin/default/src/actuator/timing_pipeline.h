@@ -3,14 +3,12 @@
 
 #include <stdint.h>
 
-#include "FreeRTOS.h"
-#include "queue.h"
-
 /* Timing pipeline — spec §4.4. Consumes detector_state_t records from the
  * detector-state bus (filtered by Detector_GetActive()), runs the chord-
  * window + strum-scheduling state machine ported from
- * tools/fret-tuner/actuator.py, and publishes a 7-bit GPIO bitmask onto the
- * actuator-command queue. fretboard_link is the consumer.
+ * tools/fret-tuner/actuator.py, and submits a 7-bit GPIO bitmask via
+ * FretboardLink_Send. One of several possible producers — game menu
+ * control (spec §4.8) and manual test inputs share the same submit API.
  *
  * Bit layout matches firmware/fretboard/cmd_receive.h:
  *   bit 0 = green   bit 1 = red    bit 2 = yellow
@@ -30,7 +28,6 @@
 #define TIMING_BIT_FRET_MASK   0x1Fu
 #define TIMING_BIT_VALID_MASK  0x7Fu
 
-void          TimingPipeline_Initialize(void);
-QueueHandle_t TimingPipeline_CmdQueue(void);
+void TimingPipeline_Initialize(void);
 
 #endif

@@ -1,4 +1,5 @@
 #include "timing_pipeline.h"
+#include "fretboard_link.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -13,8 +14,6 @@
 
 #define TP_TASK_STACK_WORDS    768u
 #define TP_TASK_PRIORITY       2u
-
-#define TP_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
 
 /* Drives chord aggregation, strum scheduling, and pending release timing.
  * Matches the fret-tuner Python defaults so behavior carries 1:1. */
@@ -42,10 +41,6 @@ typedef struct
     uint32_t strum_at_ms;
     uint8_t  fret_mask;
 } pending_strum_t;
-
-static QueueHandle_t s_cmd_queue;
-static StaticQueue_t s_cmd_queue_buf;
-static uint8_t       s_cmd_queue_storage[TP_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
 
 static StackType_t   s_task_stack[TP_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
@@ -140,9 +135,7 @@ static bool strum_q_any_needs(uint8_t bit)
 static void publish_mask(uint8_t mask)
 {
     s_output_mask = mask;
-    /* Overwrite makes the queue strictly latest-wins: the consumer never
-     * pulls a stale chord even if a USB write stalled. */
-    (void)xQueueOverwrite(s_cmd_queue, &mask);
+    FretboardLink_Send(mask);
 }
 
 /* Edge derivation:
@@ -357,12 +350,6 @@ static void timing_pipeline_task(void *param)
 
 void TimingPipeline_Initialize(void)
 {
-    s_cmd_queue = xQueueCreateStatic(TP_CMD_QUEUE_DEPTH,
-                                     sizeof(uint8_t),
-                                     s_cmd_queue_storage,
-                                     &s_cmd_queue_buf);
-    configASSERT(s_cmd_queue != NULL);
-
     (void)xTaskCreateStatic(timing_pipeline_task,
                             "Timing",
                             TP_TASK_STACK_WORDS,
@@ -370,9 +357,4 @@ void TimingPipeline_Initialize(void)
                             TP_TASK_PRIORITY,
                             s_task_stack,
                             &s_task_tcb);
-}
-
-QueueHandle_t TimingPipeline_CmdQueue(void)
-{
-    return s_cmd_queue;
 }

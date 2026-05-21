@@ -133,13 +133,14 @@ void APP_Initialize ( void )
     Detector_Enable(DETECTOR_CV_MARVIN_V1);
     Detector_SetActive(DETECTOR_CV_MARVIN_V1);
 
-    /* M2 actuator path: timing_pipeline turns detector_state_t edges into a
-     * 7-bit GPIO bitmask using the chord-window + strum scheduler ported
-     * from fret-tuner; fretboard_link writes that mask one byte at a time
-     * over USB CDC to the fretboard MCU. Initialize timing first so the
-     * cmd queue exists by the time fretboard_link subscribes. */
-    TimingPipeline_Initialize();
+    /* M2 actuator path: fretboard_link owns the submit queue + USB CDC
+     * writer; producers (timing_pipeline today, future game controller +
+     * manual test inputs) call FretboardLink_Send. timing_pipeline runs
+     * the chord-window + strum scheduler against the active detector and
+     * pushes the resulting 7-bit mask through. Init link first so the
+     * queue exists by the time any producer task starts. */
     FretboardLink_Initialize();
+    TimingPipeline_Initialize();
 }
 
 
