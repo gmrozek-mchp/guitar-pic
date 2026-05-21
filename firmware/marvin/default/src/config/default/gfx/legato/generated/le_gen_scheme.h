@@ -7,6 +7,8 @@ extern const leScheme WhiteScheme;
 extern const leScheme RedScheme;
 extern const leScheme GreenScheme;
 extern const leScheme BlueScheme;
+extern const leScheme YellowScheme;
+extern const leScheme OrangeScheme;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility
