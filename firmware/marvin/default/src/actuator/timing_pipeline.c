@@ -19,10 +19,10 @@
  * Matches the fret-tuner Python defaults so behavior carries 1:1. */
 #define TP_STRUM_DELAY_MS      220u
 #define TP_FRET_EARLY_MS       50u
-#define TP_STRUM_PULSE_MS      50u
-#define TP_CHORD_WINDOW_MS     20u
+#define TP_STRUM_PULSE_MS      25u
+#define TP_CHORD_WINDOW_MS     30u
 
-#define TP_FIFO_CAP            16u
+#define TP_FIFO_CAP            32u
 
 /* Background tick: bound on between-frame latency for strum-pulse and
  * note-assert deadlines that fall between detector publishes. 5 ms keeps

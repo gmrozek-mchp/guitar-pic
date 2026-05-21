@@ -26,9 +26,9 @@
  * when it falls below CV_HOLD_THRESH × CV_HOLD_RELEASE_FRAC. Per-color
  * edge thresholds are uniform at 50 by default — separable later if any
  * fret needs its own. Mirrors fret-tuner detect_video.py defaults. */
-#define CV_HOLD_THRESH         50.0f
-#define CV_HOLD_RELEASE_FRAC   0.60f
-#define CV_EDGE_THRESH         50.0f
+#define CV_HOLD_THRESH         100.0f
+#define CV_HOLD_RELEASE_FRAC   0.78f
+#define CV_EDGE_THRESH         25.0f
 
 #define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
 
@@ -42,11 +42,11 @@ typedef struct { uint16_t hx, hy, ex, ey; } sensor_xy_t;
 
 static const sensor_xy_t s_sensor_coords[FRET_COUNT] =
 {
-    [FRET_GREEN]  = { 280, 311, 292, 311 },
-    [FRET_RED]    = { 318, 311, 330, 311 },
-    [FRET_YELLOW] = { 355, 311, 367, 311 },
-    [FRET_BLUE]   = { 391, 311, 379, 311 },
-    [FRET_ORANGE] = { 430, 311, 418, 311 },
+    [FRET_GREEN]  = { 280, 311, 293, 311 },
+    [FRET_RED]    = { 317, 311, 330, 311 },
+    [FRET_YELLOW] = { 355, 311, 368, 311 },
+    [FRET_BLUE]   = { 393, 311, 380, 311 },
+    [FRET_ORANGE] = { 430, 311, 417, 311 },
 };
 
 /* Per-fret BGR target / reject weights. Edge signal is
@@ -199,6 +199,107 @@ static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
     (void)xQueueSend(bus, &state, 0);
 }
 
+/* ─── Calibration overlay ──────────────────────────────────────────────── */
+
+/* Paints a per-fret ring at each sample point on the just-sampled frame so
+ * the user can visually verify alignment with on-screen note targets. The
+ * ring radius is outside the 5×5 sample patch — overdrawing here would
+ * not affect *this* frame's reads (detect_frame already ran) but a future
+ * re-sample on the same ring slot must still see clean source pixels. */
+#define CV_OVERLAY_RING_R    4u
+
+static const uint8_t s_overlay_hold_bgr[3] = { 255u, 255u, 255u };  /* white */
+static const uint8_t s_overlay_edge_bgr[FRET_COUNT][3] =
+{   /* { B,    G,    R } */
+    [FRET_GREEN]  = {   0u, 255u,   0u },
+    [FRET_RED]    = {   0u,   0u, 255u },
+    [FRET_YELLOW] = {   0u, 255u, 255u },
+    [FRET_BLUE]   = { 255u,   0u,   0u },
+    [FRET_ORANGE] = {   0u, 165u, 255u },
+};
+
+static inline void put_pixel_bgr(uint8_t *frame, int fw, int fh,
+                                 int x, int y,
+                                 uint8_t b, uint8_t g, uint8_t r)
+{
+    if (x < 0 || x >= fw || y < 0 || y >= fh) { return; }
+    uint8_t *p = frame + ((uint32_t)y * (uint32_t)fw + (uint32_t)x) * CV_BYTES_PER_PIXEL;
+    p[0] = b; p[1] = g; p[2] = r;
+}
+
+/* Bresenham midpoint circle — perimeter only, 8-way symmetric. */
+static void draw_ring(uint8_t *frame, int fw, int fh,
+                      int cx, int cy, int radius,
+                      uint8_t b, uint8_t g, uint8_t r)
+{
+    int x = radius, y = 0, err = 0;
+    while (x >= y)
+    {
+        put_pixel_bgr(frame, fw, fh, cx + x, cy + y, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx + y, cy + x, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx - y, cy + x, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx - x, cy + y, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx - x, cy - y, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx - y, cy - x, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx + y, cy - x, b, g, r);
+        put_pixel_bgr(frame, fw, fh, cx + x, cy - y, b, g, r);
+        y++;
+        err += 1 + 2 * y;
+        if (2 * (err - x) + 1 > 0) { x--; err += 1 - 2 * x; }
+    }
+}
+
+static void draw_filled_disk(uint8_t *frame, int fw, int fh,
+                             int cx, int cy, int radius,
+                             uint8_t b, uint8_t g, uint8_t r)
+{
+    int rr = radius * radius;
+    for (int dy = -radius; dy <= radius; dy++)
+    {
+        for (int dx = -radius; dx <= radius; dx++)
+        {
+            if (dx * dx + dy * dy <= rr)
+            {
+                put_pixel_bgr(frame, fw, fh, cx + dx, cy + dy, b, g, r);
+            }
+        }
+    }
+}
+
+/* Per-fret marker: position ring (always) + center dot when the matching
+ * detector is firing this frame. Hold dot = white => brightness over
+ * threshold. Edge dot = fret color => color-filtered edge over threshold.
+ * Lets the user watch chatter live: a stable note should show a steady
+ * dot for the hold duration; a strum window should flash the edge dot
+ * once. Constant flicker = noise pushing thresholds. */
+#define CV_OVERLAY_DOT_R     1u
+
+static void draw_overlay(uint8_t *frame, uint16_t fw, uint16_t fh)
+{
+    int w = (int)fw, h = (int)fh;
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        sensor_xy_t s = s_sensor_coords[i];
+        const uint8_t *e = s_overlay_edge_bgr[i];
+
+        draw_ring(frame, w, h, s.hx, s.hy, (int)CV_OVERLAY_RING_R,
+                  s_overlay_hold_bgr[0], s_overlay_hold_bgr[1], s_overlay_hold_bgr[2]);
+        draw_ring(frame, w, h, s.ex, s.ey, (int)CV_OVERLAY_RING_R,
+                  e[0], e[1], e[2]);
+
+        if (s_pressed[i])
+        {
+            draw_filled_disk(frame, w, h, s.hx, s.hy, (int)CV_OVERLAY_DOT_R,
+                             s_overlay_hold_bgr[0], s_overlay_hold_bgr[1], s_overlay_hold_bgr[2]);
+        }
+        if (s_edge_active[i])
+        {
+            draw_filled_disk(frame, w, h, s.ex, s.ey, (int)CV_OVERLAY_DOT_R,
+                             e[0], e[1], e[2]);
+        }
+    }
+}
+
 /* ─── Task ─────────────────────────────────────────────────────────────── */
 
 static void cv_marvin_v1_task(void *param)
@@ -230,6 +331,24 @@ static void cv_marvin_v1_task(void *param)
         if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
 
         detect_frame(&frame, bus);
+        draw_overlay((uint8_t *)frame.buffer, frame.width, frame.height);
+
+        // /* ~2 Hz signal dump for threshold tuning. hold/edge values shown
+        //  * vs the 50 threshold, with P/E flags reflecting current state. */
+        // if ((frame.frame_count % 30u) == 0u)
+        // {
+        //     LOG_INFO("CV: G %3d/%3d%c%c R %3d/%3d%c%c Y %3d/%3d%c%c B %3d/%3d%c%c O %3d/%3d%c%c\r\n",
+        //              (int)s_hold_dist[FRET_GREEN],  (int)s_edge_dist[FRET_GREEN],
+        //              s_pressed[FRET_GREEN]      ? 'P' : '.', s_edge_active[FRET_GREEN]  ? 'E' : '.',
+        //              (int)s_hold_dist[FRET_RED],    (int)s_edge_dist[FRET_RED],
+        //              s_pressed[FRET_RED]        ? 'P' : '.', s_edge_active[FRET_RED]    ? 'E' : '.',
+        //              (int)s_hold_dist[FRET_YELLOW], (int)s_edge_dist[FRET_YELLOW],
+        //              s_pressed[FRET_YELLOW]     ? 'P' : '.', s_edge_active[FRET_YELLOW] ? 'E' : '.',
+        //              (int)s_hold_dist[FRET_BLUE],   (int)s_edge_dist[FRET_BLUE],
+        //              s_pressed[FRET_BLUE]       ? 'P' : '.', s_edge_active[FRET_BLUE]   ? 'E' : '.',
+        //              (int)s_hold_dist[FRET_ORANGE], (int)s_edge_dist[FRET_ORANGE],
+        //              s_pressed[FRET_ORANGE]     ? 'P' : '.', s_edge_active[FRET_ORANGE] ? 'E' : '.');
+        // }
     }
 }
 

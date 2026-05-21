@@ -121,9 +121,37 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 - **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
 
+- **`TP_STRUM_DELAY_MS` likely needs to vary by difficulty.** 220 ms tuned well on Expert (notes are dense, the delay lines up against fast-moving notes near the strike line). Easy/Medium/Hard place notes higher up the highway with longer travel time, so the same 220 ms may strike too early. Open: per-difficulty preset, runtime-tunable from the manual-control surface, or auto-tuned from observed note-velocity. Defer until the game-state controller (spec §4.8) lands and difficulty is known to marvin — until then, expert-tuned 220 ms is the working default.
+
 ---
 
 ## Session log
+
+### 2026-05-21 — cv_marvin_v1 threshold tuning + timing-pipeline tweaks
+
+First end-to-end gameplay test on hardware. Detector was firing roughly random presses at first; resolved by reading actual signal values rather than guessing.
+
+**Visibility added:**
+- State-reactive overlay in `cv_marvin_v1.c` — position rings always; filled center dot when `s_pressed[i]` (white in the hold ring) or `s_edge_active[i]` (fret-color in the edge ring). Lets the user watch chatter live: stable note → steady dot for hold duration; strum window → flash on the edge dot.
+- Periodic ~2 Hz log dump (`frame_count % 30 == 0`) showing per-fret `hold_dist / edge_dist / P E` flags.
+
+**Diagnosis (Easy mode, no real B/O presses):**
+- Idle hold floor sits at 22–48 across all five frets, **not** the limited-range 16 floor `display_path.md` would suggest. Playfield-glow at the sample sites is well above the limited-range black point.
+- Real-press hold spikes to 67–186, leaving a clean gap above the noise ceiling.
+- Hold threshold 50 with release-frac 0.6 (release=30) was *below* the idle floor for Y and B → those frets latched permanently pressed and never released.
+- Edge threshold 50 was at the peak of real-edge signal (40–53), almost never tripping. timing_pipeline only uses `pressed` today, so dead edges aren't the chatter source — but lowering edge threshold lets `s_edge_active` overlay flicker meaningfully again.
+
+**Settings landed (in `cv_marvin_v1.c`):**
+- `CV_HOLD_THRESH`: 50 → **100** (after iterating 65 → 80 → 100; 100 cleanly above noise across all frets, real presses still spike to 150–186).
+- `CV_HOLD_RELEASE_FRAC`: 0.60 → **0.78** (release ≈ 78 — above the noise ceiling, comfortably below real-press floor).
+- `CV_EDGE_THRESH`: 50 → **25** (gives the overlay an honest edge indicator without affecting pipeline behavior).
+- Sample coords nudged 1 px on G/R/Y/B/O edges + B hold for slightly cleaner alignment.
+
+**Performance:** Expert-mode play is now quite good — clean note recognition, fret hold-through across consecutive same-fret notes confirmed by trace through `process_releases` (release suppressed when the next chord-commit's `note_q` entry already needs the bit, within `TP_STRUM_DELAY_MS − TP_CHORD_WINDOW_MS = 190 ms` of detector-release-to-detector-press).
+
+**Timing-pipeline tweaks** (Greg's hand-edits): `TP_STRUM_PULSE_MS` 50→25, `TP_CHORD_WINDOW_MS` 20→30, `TP_FIFO_CAP` 16→32.
+
+Open question added above: `TP_STRUM_DELAY_MS = 220 ms` is Expert-tuned; Easy/Medium/Hard may need different values because note travel time differs.
 
 ### 2026-05-21 — Manual fretboard-control producer + timing-pipeline gate
 
