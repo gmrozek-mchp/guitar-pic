@@ -506,4 +506,15 @@ data:
           type: Dynamic
         type: Values
       type: KeyValueSet
+    TC3_CLOCK_FREQ:
+      attributes:
+        id: TC3_CLOCK_FREQ
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

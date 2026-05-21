@@ -91,4 +91,26 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    BRG_VALUE:
+      attributes:
+        id: BRG_VALUE
+      children:
+      - children:
+        - attributes:
+            id: dbgu
+            value: '144'
+          type: Dynamic
+        type: Values
+      type: Integer
+    DBGU_CLOCK_FREQ:
+      attributes:
+        id: DBGU_CLOCK_FREQ
+      children:
+      - children:
+        - attributes:
+            id: dbgu
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

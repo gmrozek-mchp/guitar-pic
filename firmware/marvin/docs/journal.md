@@ -25,7 +25,8 @@ Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus qu
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
-| 2026-05-20 | System-level spec lives at [`spec.md`](spec.md); read it first on any non-trivial marvin task | We're at the point where deferring system architecture would mean building feature-by-feature without a coherent target. The journal is the running diary; the spec is the durable description of what marvin is. |
+| 2026-05-20 | Relax Microchip's host CDC-ACM Communications-interface protocol check to accept `bInterfaceProtocol == 0x00 (None)` in addition to `0x01 (AT_V250)` | The fretboard hardware exposes its UART to marvin via the on-board EDBG debugger's CDC ACM (composite VID=0x03EB PID=0x2175: HID + CDC ACM IAD + vendor + MSC). EDBG declares the comm interface with `bInterfaceProtocol=0x00` rather than the AT-command protocol Microchip hardcodes. The TPL/IAD match accepts the device (host stack does call `interfaceAssign`), but the per-interface check inside `F_USB_HOST_CDC_InterfaceAssign` then rejects the comm interface, the interrupt pipe never opens, the CDC instance flips to STATE_ERROR, and our attach handler never fires. Both are CDC ACM in practice and Linux/macOS accept either. Two-line OR per check in `usb_host_cdc.c`; logged as patch #7 in the re-apply list. |
+| 2026-05-20 | `USB_HOST_Initialize` ordering relative to `DRV_USB_EHCI/OHCI_Initialize` and `Legato_Initialize` is **not** load-bearing — keep MCC's emitted order | A prior session hand-edited `initialization.c` to move `USB_HOST_Initialize` *after* the EHCI/OHCI driver inits on the theory that the host layer needed the HCD interfaces present at init time. Empirical retest with the CDC diagnostic logging in place: MCC's original order (`USB_HOST_Initialize` → `Legato_Initialize` → driver inits) enumerates and binds the CDC IAD just as well. The host layer evidently looks up HCD interfaces lazily at `USB_HOST_BusEnable` time, not at `USB_HOST_Initialize`. Reverted the hand-edit; one fewer re-apply patch to maintain. (This is unrelated to patch #6, which is the *peripheral* init order — MMU/AIC ahead of TC0/FLEXCOM6/XLCDC — that one is still a real regression and stays in the list.) |
 | 2026-05-20 | Marvin replaces the fret-tuner PC as the runtime brain | One-host architecture. fret-tuner persists as an off-band dev/calibration tool. fretboard stays a dumb relay (ADC out, bitmask in). |
 | 2026-05-20 | Marvin is the *reference detector* — not a debug aid | HDMI-direct CV is ground-truth for the system. Fretboard's photo-detection and any future Edge-AI MCU are trained against marvin's output. Recording reference data is therefore a first-class subsystem (spec §4.6), not an afterthought. |
 | 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
@@ -94,6 +95,8 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
   6. **`initialization.c` `SYS_Initialize` — peripheral init order.** The USB-host MCC regen (2026-05-20) reordered SYS_Initialize so that `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize` run *before* `MMU_Initialize` and `AIC_INT_Initialize`. Symptom on hardware: TC358743 probe wedges on its first I²C write — `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` never returns because the FLEXCOM6 ISR never fires. (Display + capture totally dead; FBL heartbeat keeps printing because it doesn't depend on a peripheral interrupt.) Fix: move the `MMU_Initialize → AIC_INT_Initialize → WDT-disable` block back to *before* the TC0/FLEXCOM6/XLCDC inits, matching the pre-USB-regen order. After this revert, video came back immediately. Resolved on 2026-05-20.
 
+  7. **`usb_host_cdc.c` — accept `bInterfaceProtocol == 0` in CDC ACM Communications-interface match.** Two checks (single-interface path ~line 677, IAD path ~line 798) currently require `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG-style USB-to-UART bridges (the on-board PIC/AVR debugger CDC, common across Microchip dev boards — including the fretboard board this project uses) declare the comm interface with `bInterfaceProtocol = USB_CDC_PROTOCOL_NO_CLASS_SPECIFIC` (`0x00`). Without this patch the host CDC driver accepts the IAD via the TPL match (TPL ignores subclass/protocol) but rejects the comm interface inside `F_USB_HOST_CDC_InterfaceAssign`, the interrupt pipe never opens, the CDC instance flips to `STATE_ERROR`, and the app-level attach handler never fires. Patch: extend each check to `(... == AT_V250 || ... == NO_CLASS_SPECIFIC)`. Two one-line OR additions. Re-apply after every USB-host MCC regen.
+
   Previously listed but now resolved or moot:
   - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
   - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
@@ -111,6 +114,24 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-20 — USB CDC host attach: EDBG composite enumerates, CDC class driver now binds
+
+Picked up where the prior session left off — VBUS not asserting, no device detected. Closed both halves.
+
+**VBUS.** MCC's `DRV_USB_VBUSPowerEnable` callback is wired in the host driver but the host stack never invokes it on this build. Asserted the two VBUS GPIOs (`VBUS_AH_PC27_PowerEnable_Set` / `VBUS_AH_PC31_PowerEnable_Set`) directly from `APP_Initialize` ahead of consumer init and `USB_HOST_BusEnable`. EDBG immediately enumerates.
+
+**Class-driver binding.** Enumeration succeeded but the CDC attach handler never fired. Added per-interface descriptor logging inside `F_USB_HOST_UpdateDeviceTask` to see what was actually being matched. Output revealed VID `0x03EB` PID `0x2175` — an EDBG composite with five interfaces: HID/CMSIS-DAP, CDC ACM IAD pair (comm + data), vendor, MSC. The IAD passed TPL match and got assigned to the CDC driver, but the CDC instance still flipped to `STATE_ERROR` without our app-level handler ever seeing the attach.
+
+Root cause was inside Microchip's CDC class driver: `F_USB_HOST_CDC_InterfaceAssign` (both single-interface and IAD paths) requires the comm interface to declare `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG declares `0x00` (none) — functionally identical CDC ACM in practice; Linux/macOS accept either. The TPL/IAD pre-check passes (TPL wildcards subclass/protocol), the CDC driver gets the interface group, then immediately rejects it on the AT-V.250 check. The interrupt pipe never opens, the instance errors out, and the app-level listener stays silent.
+
+Fix: relaxed both checks to `(AT_V250 || NO_CLASS_SPECIFIC)`. After the patch the FBL log shows `CDC device attached, handle opened` and `c=Y` heartbeat as expected. Logged as patch #7 in the MCC re-apply list.
+
+Also tested a hypothesis from the prior session that `USB_HOST_Initialize` had to run *after* the EHCI/OHCI driver inits. With the diagnostic logging in place, MCC's emitted order (`USB_HOST_Initialize` → `Legato_Initialize` → driver inits) enumerates and binds the CDC IAD just as well — the host layer evidently looks up HCD interfaces lazily at `USB_HOST_BusEnable` time. Backed out the hand-edit; one fewer re-apply patch to maintain. Decision-log entry above.
+
+Diagnostic instrumentation stripped at the end of the session: the per-interface descriptor dump and enumeration state-change logger in `usb_host.c`, and the periodic OHCI/EHCI register heartbeat in `fretboard_link.c`. What remains on disk: the two `usb_host_cdc.c` protocol-relaxation lines (patch #7), the app-level VBUS asserts, and a minimal `USB_HOST_EVENT` printf so future host-stack drama still surfaces in the log.
+
+Next session: revisit timing-pipeline behavior end-to-end now that the actuator wire is live.
 
 ### 2026-05-20 — Hardware bring-up after USB CDC host regen: TC358743 wedge resolved
 

@@ -127,4 +127,26 @@ data:
           type: Dynamic
         type: Values
       type: String
+    PERIOD_TICKS:
+      attributes:
+        id: PERIOD_TICKS
+      children:
+      - children:
+        - attributes:
+            id: pit
+            value: '16666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    PIT_PERIOD_US:
+      attributes:
+        id: PIT_PERIOD_US
+      children:
+      - children:
+        - attributes:
+            id: pit
+            value: '1000'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

@@ -27,5 +27,25 @@ data:
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
-  symbols: {}
+  symbols:
+    USB_DRV_HOST_EHCI_PORTS_SELECTION:
+      attributes:
+        id: USB_DRV_HOST_EHCI_PORTS_SELECTION
+      children:
+      - children:
+        - attributes:
+            value: '0x06'
+          type: User
+        type: Values
+      type: String
+    USB_DRV_HOST_OHCI_PORTS_SELECTION:
+      attributes:
+        id: USB_DRV_HOST_OHCI_PORTS_SELECTION
+      children:
+      - children:
+        - attributes:
+            value: '0x06'
+          type: User
+        type: Values
+      type: String
   userData: {}

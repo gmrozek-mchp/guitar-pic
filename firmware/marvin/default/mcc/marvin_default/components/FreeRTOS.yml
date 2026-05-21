@@ -52,4 +52,15 @@ data:
           type: User
         type: Values
       type: Boolean
+    FREERTOS_CPU_CLOCK_HZ:
+      attributes:
+        id: FREERTOS_CPU_CLOCK_HZ
+      children:
+      - children:
+        - attributes:
+            id: FreeRTOS
+            value: '800000000'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

@@ -313,4 +313,37 @@ data:
           type: User
         type: Values
       type: Boolean
+    XClockGCLKOutHint:
+      attributes:
+        id: XClockGCLKOutHint
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '33333333'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XClockGCLKSrcHint:
+      attributes:
+        id: XClockGCLKSrcHint
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XPWMClockFreqHint:
+      attributes:
+        id: XPWMClockFreqHint
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: '32768'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

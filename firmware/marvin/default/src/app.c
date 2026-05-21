@@ -80,9 +80,15 @@ APP_DATA appData;
 // *****************************************************************************
 // *****************************************************************************
 
-
-/* TODO:  Add any necessary local functions.
-*/
+static USB_HOST_EVENT_RESPONSE app_usb_host_event_handler(USB_HOST_EVENT event,
+                                                         void *eventData,
+                                                         uintptr_t context)
+{
+    (void)eventData;
+    (void)context;
+    LOG_INFO("USB host event: %d\r\n", (int)event);
+    return USB_HOST_EVENT_RESPONSE_NONE;
+}
 
 
 // *****************************************************************************
@@ -138,19 +144,23 @@ void APP_Initialize ( void )
      * link today; future modules may add HID, MSC, etc.). VBUS_AH_PC27/PC31
      * gate external power switches on the SAM9X75 Curiosity. The Harmony
      * driver's portPowerEnable callback is wired but never invoked, so we
-     * assert these GPIOs directly. USB_HOST_BusEnable kicks the host stack
-     * into accepting attach events. */
+     * assert these GPIOs directly. Class-driver attach listeners (CDC etc.)
+     * must be registered before USB_HOST_BusEnable, so consumer module
+     * init runs first. */
     VBUS_AH_PC27_PowerEnable_Set();
     VBUS_AH_PC31_PowerEnable_Set();
-    USB_HOST_BusEnable(USB_HOST_BUS_ALL);
+    (void)USB_HOST_EventHandlerSet(app_usb_host_event_handler, 0u);
 
     /* M2 actuator path: fretboard_link owns the submit queue + USB CDC
-     * writer; producers (timing_pipeline today, future game controller +
-     * manual test inputs) call FretboardLink_Send. timing_pipeline runs
-     * the chord-window + strum scheduler against the active detector and
-     * pushes the resulting 7-bit mask through. Init link first so the
-     * queue exists by the time any producer task starts. */
+     * writer and registers the CDC attach listener. */
     FretboardLink_Initialize();
+
+    USB_HOST_RESULT be = USB_HOST_BusEnable(USB_HOST_BUS_ALL);
+    LOG_INFO("USB_HOST_BusEnable -> %d\r\n", (int)be);
+
+    /* timing_pipeline runs the chord-window + strum scheduler against the
+     * active detector and pushes the resulting 7-bit mask through
+     * FretboardLink_Send. */
     TimingPipeline_Initialize();
 }
 

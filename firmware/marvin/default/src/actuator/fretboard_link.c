@@ -27,11 +27,6 @@
 
 #define FBL_WRITE_TIMEOUT_MS    100u
 
-/* Status heartbeat — proves the link task is alive even when nothing is
- * attached. Useful during bring-up; safe to leave on (one INFO line every
- * 2 s costs essentially nothing). */
-#define FBL_STATUS_LOG_MS       2000u
-
 /* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
  * a sane default avoids implementation quirks on hosts that gate writes on
  * a successful SET_LINE_CODING. Matches actuator.py. */
@@ -165,15 +160,9 @@ static void fretboard_link_task(void *param)
 {
     (void)param;
 
-    /* VBUS + USB_HOST_BusEnable are app-level (see APP_Initialize) — host
-     * stack is shared across future USB consumers. Only register the
-     * CDC-class attach handler here. */
-    USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
-
     LOG_INFO("FBL: fretboard link started\r\n");
 
-    uint8_t    last_mask    = 0u;
-    TickType_t status_start = xTaskGetTickCount();
+    uint8_t last_mask = 0u;
 
     for (;;)
     {
@@ -197,14 +186,6 @@ static void fretboard_link_task(void *param)
         {
             (void)send_one_byte(mask);
         }
-
-        TickType_t now = xTaskGetTickCount();
-        if ((uint32_t)(now - status_start) >= pdMS_TO_TICKS(FBL_STATUS_LOG_MS))
-        {
-            LOG_INFO("FBL: connected=%c last_mask=0x%02X\r\n",
-                     s_connected ? 'Y' : 'N', (unsigned)last_mask);
-            status_start = now;
-        }
     }
 }
 
@@ -218,6 +199,12 @@ void FretboardLink_Initialize(void)
 
     s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
     configASSERT(s_write_done != NULL);
+
+    /* Register the CDC attach listener before the bus is enabled — the host
+     * stack only matches a class driver if its attach handler is in place
+     * when enumeration completes. App-level USB_HOST_BusEnable runs right
+     * after this init returns. */
+    (void)USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
 
     (void)xTaskCreateStatic(fretboard_link_task,
                             "FretLink",

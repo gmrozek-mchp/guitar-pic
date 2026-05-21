@@ -674,9 +674,13 @@ void F_USB_HOST_CDC_InterfaceAssign
              * descriptor because the number of interfaces is 1 */
             interfaceDescriptor = (USB_INTERFACE_DESCRIPTOR *)descriptor;
 
+            /* MCC PATCH: also accept bInterfaceProtocol == 0 (None). EDBG-style
+             * CDC bridges declare protocol=0 instead of AT V.250; functionally
+             * identical CDC-ACM. Re-apply after MCC regen. */
             if((interfaceDescriptor->bInterfaceClass == (uint32_t)USB_CDC_COMMUNICATIONS_INTERFACE_CLASS_CODE) &&
                     (interfaceDescriptor->bInterfaceSubClass == (uint32_t)USB_CDC_SUBCLASS_ABSTRACT_CONTROL_MODEL) &&
-                    (interfaceDescriptor->bInterfaceProtocol == (uint32_t)USB_CDC_PROTOCOL_AT_V250))
+                    ((interfaceDescriptor->bInterfaceProtocol == (uint32_t)USB_CDC_PROTOCOL_AT_V250) ||
+                     (interfaceDescriptor->bInterfaceProtocol == (uint32_t)USB_CDC_PROTOCOL_NO_CLASS_SPECIFIC)))
             {
                 /* This interface is the communications class interface. Get the
                  * endpoint number */
@@ -795,9 +799,12 @@ void F_USB_HOST_CDC_InterfaceAssign
                 /* If we have a valid interface descriptor find out its type */
                 if(interfaceDescriptor != NULL)
                 {
+                    /* MCC PATCH: also accept bInterfaceProtocol == 0 (None) on
+                     * the IAD path, same reason as the single-interface case. */
                     if((interfaceDescriptor->bInterfaceClass == USB_CDC_COMMUNICATIONS_INTERFACE_CLASS_CODE) &&
                             (interfaceDescriptor->bInterfaceSubClass == (uint32_t)USB_CDC_SUBCLASS_ABSTRACT_CONTROL_MODEL) &&
-                            (interfaceDescriptor->bInterfaceProtocol == (uint32_t)USB_CDC_PROTOCOL_AT_V250))
+                            ((interfaceDescriptor->bInterfaceProtocol == (uint32_t)USB_CDC_PROTOCOL_AT_V250) ||
+                             (interfaceDescriptor->bInterfaceProtocol == (uint32_t)USB_CDC_PROTOCOL_NO_CLASS_SPECIFIC)))
                     {
                         /* We found the communication class */
                         cdcInstance->commInterfaceNumber = interfaceDescriptor->bInterfaceNumber;

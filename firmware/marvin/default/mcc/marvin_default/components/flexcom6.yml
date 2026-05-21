@@ -470,4 +470,15 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    FLEXCOM_TWI_TIMEOUT_COUNT_VAL:
+      attributes:
+        id: FLEXCOM_TWI_TIMEOUT_COUNT_VAL
+      children:
+      - children:
+        - attributes:
+            id: flexcom6
+            value: '160000'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

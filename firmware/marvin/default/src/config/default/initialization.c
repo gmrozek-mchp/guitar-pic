@@ -46,7 +46,6 @@
 #include "configuration.h"
 #include "definitions.h"
 #include "device.h"
-#include "peripheral/pio/plib_pio.h"
 
 
 // ****************************************************************************
@@ -180,7 +179,7 @@ static DRV_USB_EHCI_INIT drvUSBEHCIInit =
     .usbID = ((uhphs_registers_t*)UHPHS_EHCI_ADDR),
     
     /* Ports Selection */ 
-    .bmPortSelect = 0x02,
+    .bmPortSelect = 0x06,
 
     /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
     .portPowerEnable = DRV_USB_VBUSPowerEnable,
@@ -200,7 +199,7 @@ static DRV_USB_OHCI_INIT drvUSBOHCIInit =
     .usbID = ((UhpOhci*)UHPHS_OHCI_ADDR),
 
      /* Ports Selection */ 
-    .bmPortSelect = 0x02,
+    .bmPortSelect = 0x06,
     
     /* USB Host Power Enable. USB Driver uses this function to Enable the VBUS */
     .portPowerEnable = DRV_USB_VBUSPowerEnable,

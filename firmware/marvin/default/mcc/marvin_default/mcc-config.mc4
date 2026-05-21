@@ -39,13 +39,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: 5e72489ba5579fba277e63c9d67603f07d2338368ea03efe537a9242c97bb1f5
 - file: ../src/config/default/configuration.h
-  hash: c34842619208255f85f7b51d5139f031407019bca28d45332974c1b621391042
+  hash: cd584ede08634178feda847dd40d208b9fb08a3f483d737780026010348ce4eb
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 39b1a098811f1da667f7dc4a555e849255fff82aaa25ebdbc0a536c9d50c631c
+  hash: 6ed01324bf56775abd38204a108c039ce3aa1a5852b76b45641b922f761466e9
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -605,7 +605,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: fa1781f0498051803e6b658317745422b026fc88585e3f0c478a9fa4fd0e25d0
+  hash: 63ccc769e4855967696d26f2113d32e498d46a3657e3445c24f5c6fc0bbab0be
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -623,7 +623,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: 2bc609ba69398e1d94810f59a053a2ce194e420d6a0bf8ca1439c1e2a264acd0
+  hash: ed14230a4e4a375f7b3e2c16523f75474c044f897e3c7fe4855b224ceabe73ee
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
