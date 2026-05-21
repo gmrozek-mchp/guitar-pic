@@ -42,6 +42,15 @@ static StaticTask_t  s_task_tcb;
 static SemaphoreHandle_t s_write_done;
 static StaticSemaphore_t s_write_done_buf;
 
+/* Signaled from cdc_event_handler (ISR context) when a control-pipe
+ * request completes. Used to serialize the LineCodingSet ->
+ * ControlLineStateSet pair in open_cdc; the host stack will silently
+ * drop the second request if it's issued before the first settles. */
+static SemaphoreHandle_t s_ctrl_done;
+static StaticSemaphore_t s_ctrl_done_buf;
+
+#define FBL_CTRL_TIMEOUT_MS     500u
+
 static volatile USB_HOST_CDC_OBJ    s_cdc_obj_pending = (USB_HOST_CDC_OBJ)0;
 static volatile bool                s_cdc_obj_valid;
 static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
@@ -64,6 +73,14 @@ static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
             s_last_write_result = d->result;
             BaseType_t hpw = pdFALSE;
             (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+            portYIELD_FROM_ISR(hpw);
+            break;
+        }
+        case USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE:
+        case USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE:
+        {
+            BaseType_t hpw = pdFALSE;
+            (void)xSemaphoreGiveFromISR(s_ctrl_done, &hpw);
             portYIELD_FROM_ISR(hpw);
             break;
         }
@@ -121,13 +138,21 @@ static bool open_cdc(USB_HOST_CDC_OBJ obj)
         .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
     };
     USB_HOST_CDC_REQUEST_HANDLE rh;
-    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding);
+    (void)xSemaphoreTake(s_ctrl_done, 0);
+    if (USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding) == USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
+    }
 
     /* Some EDBG-CDC firmwares hold the bridge UART idle until the host
      * raises DTR. Assert DTR + carrier so the bridge actually drives
      * bytes out to the fretboard MCU's SERCOM1 RX. */
     static USB_CDC_CONTROL_LINE_STATE cls = { .dtr = 1u, .carrier = 1u };
-    (void)USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls);
+    (void)xSemaphoreTake(s_ctrl_done, 0);
+    if (USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls) == USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
+    }
 
     s_cdc_handle = h;
     s_connected  = true;
@@ -210,6 +235,9 @@ void FretboardLink_Initialize(void)
 
     s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
     configASSERT(s_write_done != NULL);
+
+    s_ctrl_done = xSemaphoreCreateBinaryStatic(&s_ctrl_done_buf);
+    configASSERT(s_ctrl_done != NULL);
 
     /* Register the CDC attach listener before the bus is enabled — the host
      * stack only matches a class driver if its attach handler is in place
