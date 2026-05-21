@@ -41,6 +41,7 @@
 #include "detector/detector.h"
 #include "actuator/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
+#include "actuator/manual_control.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -162,6 +163,13 @@ void APP_Initialize ( void )
      * active detector and pushes the resulting 7-bit mask through
      * FretboardLink_Send. */
     TimingPipeline_Initialize();
+
+    /* manual_control is a peer producer for direct UI-driven actuation
+     * (game-menu navigation, manual test). UI buttons are authored in
+     * Microchip Graphics Composer; the generated screenShow_Screen0
+     * registers the event_Screen0_Button_Manual_* callbacks defined in
+     * ui/manual_input.c, so no explicit bind step is needed here. */
+    ManualControl_Initialize();
 }
 
 

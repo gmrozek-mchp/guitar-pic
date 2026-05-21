@@ -70,6 +70,8 @@ static uint8_t  s_output_mask;
 static uint32_t s_now_ms;
 static uint64_t s_last_frame_us;
 
+static volatile bool s_pipeline_enabled = true;
+
 static const uint8_t s_fret_bit[FRET_COUNT] =
 {
     [FRET_GREEN]  = TIMING_BIT_GREEN,
@@ -135,7 +137,10 @@ static bool strum_q_any_needs(uint8_t bit)
 static void publish_mask(uint8_t mask)
 {
     s_output_mask = mask;
-    FretboardLink_Send(mask);
+    if (s_pipeline_enabled)
+    {
+        FretboardLink_Send(mask);
+    }
 }
 
 /* Edge derivation:
@@ -357,4 +362,9 @@ void TimingPipeline_Initialize(void)
                             TP_TASK_PRIORITY,
                             s_task_stack,
                             &s_task_tcb);
+}
+
+void TimingPipeline_SetEnabled(bool enabled)
+{
+    s_pipeline_enabled = enabled;
 }

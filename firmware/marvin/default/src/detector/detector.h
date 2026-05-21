@@ -7,6 +7,8 @@
 #include "FreeRTOS.h"
 #include "queue.h"
 
+#include "game/fret.h"
+
 /* Detector subsystem — see firmware/marvin/docs/spec.md §4.2.
  *
  * A detector is anything that turns observation data into a detector_state_t
@@ -18,16 +20,6 @@
  * queue (the "detector-state bus"). The timing pipeline (§4.4) is the sole
  * consumer in steady state; until it lands a stub task drains the queue so
  * producers don't block. */
-
-typedef enum
-{
-    FRET_GREEN  = 0,
-    FRET_RED    = 1,
-    FRET_YELLOW = 2,
-    FRET_BLUE   = 3,
-    FRET_ORANGE = 4,
-    FRET_COUNT  = 5,
-} fret_t;
 
 typedef enum
 {

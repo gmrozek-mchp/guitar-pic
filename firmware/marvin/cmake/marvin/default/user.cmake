@@ -7,6 +7,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/cv_marvin_v1.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/timing_pipeline.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
 )
 
 target_compile_definitions(marvin_default_default_XC32_compile PRIVATE

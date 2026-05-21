@@ -15,6 +15,32 @@ extern "C" {
 // screen member widget declarations
 extern leWidget* Screen0_BackgroundPanel;
 extern leImageWidget* Screen0_ImageWidget_0;
+extern leButtonWidget* Screen0_Button_Manual_Green;
+extern leButtonWidget* Screen0_Button_Manual_Red;
+extern leButtonWidget* Screen0_Button_Manual_Yellow;
+extern leButtonWidget* Screen0_Button_Manual_Blue;
+extern leButtonWidget* Screen0_Button_Manual_Orange;
+extern leButtonWidget* Screen0_Button_Manual_StrumDown;
+extern leButtonWidget* Screen0_Button_Manual_StrumUp;
+extern leButtonWidget* Screen0_Button_Manual_Enable;
+
+// event handlers
+// !!THESE MUST BE IMPLEMENTED IN THE APPLICATION CODE!!
+void event_Screen0_Button_Manual_Green_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Green_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Red_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Red_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Yellow_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Yellow_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Blue_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Blue_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Orange_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Orange_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_StrumDown_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_StrumDown_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_StrumUp_OnPressed(leButtonWidget* btn);
+void event_Screen0_Button_Manual_StrumUp_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Enable_OnReleased(leButtonWidget* btn);
 
 // screen lifecycle functions
 // DO NOT CALL THESE DIRECTLY

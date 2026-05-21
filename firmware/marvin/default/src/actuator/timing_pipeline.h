@@ -2,6 +2,7 @@
 #define TIMING_PIPELINE_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 /* Timing pipeline — spec §4.4. Consumes detector_state_t records from the
  * detector-state bus (filtered by Detector_GetActive()), runs the chord-
@@ -29,5 +30,12 @@
 #define TIMING_BIT_VALID_MASK  0x7Fu
 
 void TimingPipeline_Initialize(void);
+
+/* Output gate. Default: true. When false, the pipeline still advances
+ * internal state but suppresses the FretboardLink_Send call so a peer
+ * producer (manual_control today, future game-state controller §4.8) can
+ * own the wire. Internal state stays current so the next advance() after
+ * re-enable republishes the right mask without a stale frame. */
+void TimingPipeline_SetEnabled(bool enabled);
 
 #endif

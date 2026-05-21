@@ -97,7 +97,7 @@ extern "C" {
 // widget inclusion
 #define LE_ARC_WIDGET_ENABLED              0
 #define LE_BARGRAPH_WIDGET_ENABLED         0
-#define LE_BUTTON_WIDGET_ENABLED           0
+#define LE_BUTTON_WIDGET_ENABLED           1
 #define LE_CHECKBOX_WIDGET_ENABLED         0
 #define LE_CIRCLE_WIDGET_ENABLED           0
 #define LE_CIRCULARGAUGE_WIDGET_ENABLED    0

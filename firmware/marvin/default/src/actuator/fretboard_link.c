@@ -113,7 +113,7 @@ static bool open_cdc(USB_HOST_CDC_OBJ obj)
         return false;
     }
 
-    static const USB_CDC_LINE_CODING line_coding =
+    static USB_CDC_LINE_CODING line_coding =
     {
         .dwDTERate   = FBL_BAUDRATE,
         .bCharFormat = USB_CDC_LINE_CODING_STOP_1_BIT,
@@ -121,7 +121,13 @@ static bool open_cdc(USB_HOST_CDC_OBJ obj)
         .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
     };
     USB_HOST_CDC_REQUEST_HANDLE rh;
-    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, (USB_CDC_LINE_CODING *)&line_coding);
+    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding);
+
+    /* Some EDBG-CDC firmwares hold the bridge UART idle until the host
+     * raises DTR. Assert DTR + carrier so the bridge actually drives
+     * bytes out to the fretboard MCU's SERCOM1 RX. */
+    static USB_CDC_CONTROL_LINE_STATE cls = { .dtr = 1u, .carrier = 1u };
+    (void)USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls);
 
     s_cdc_handle = h;
     s_connected  = true;
@@ -141,7 +147,11 @@ static bool send_one_byte(uint8_t mask)
 
     USB_HOST_CDC_TRANSFER_HANDLE th;
     USB_HOST_CDC_RESULT r = USB_HOST_CDC_Write(s_cdc_handle, &th, &tx_byte, 1u);
-    if (r != USB_HOST_CDC_RESULT_SUCCESS) { return false; }
+    if (r != USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        LOG_WARN("FBL: CDC_Write rejected, r=%d\r\n", (int)r);
+        return false;
+    }
 
     if (xSemaphoreTake(s_write_done, pdMS_TO_TICKS(FBL_WRITE_TIMEOUT_MS)) != pdTRUE)
     {
@@ -151,6 +161,7 @@ static bool send_one_byte(uint8_t mask)
     }
     if (s_last_write_result != USB_HOST_CDC_RESULT_SUCCESS)
     {
+        LOG_WARN("FBL: write completion err=%d\r\n", (int)s_last_write_result);
         return false;
     }
     return true;
