@@ -32236,3 +32236,828 @@ index 34779f7..9a3b8cb 100644
  }
 ```
 </details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:14Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage init reorder + FBL heartbeat + journal + specstory
+
+`git add firmware/marvin/default/src/config/default/initialization.c firmware/marvin/default/src/actuator/fretboard_link.c firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json`
+
+```text
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+warning: in the working copy of 'firmware/marvin/default/src/config/default/initialization.c', CRLF will be replaced by LF the next time Git touches it
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit init-order revert + FBL heartbeat + journal
+
+```bash
+git commit -m "$(cat <<'EOF'
+mcc: revert SYS_Initialize peripheral order broken by USB regen
+
+The USB CDC host regen reordered SYS_Initialize so TC0/FLEXCOM6/XLCDC
+inits ran before MMU_Initialize and AIC_INT_Initialize. With the AIC
+not yet owning the interrupt vector table, the FLEXCOM6 ISR never
+fired — TC358743 probe wedged on its first I²C write
+(OSAL_SEM_Pend(transferDone, WAIT_FOREVER) blocked forever) and video
++ display were dead. FBL heartbeat kept printing because it doesn't
+depend on a peripheral interrupt.
+
+Reverted to the pre-regen order: MMU → AIC → WDT-disable → TC0 →
+FLEXCOM6 → XLCDC. Display + capture come back on first boot. Logged
+as patch #6 in the marvin journal's MCC re-apply list.
+
+Also rolling in the FBL 2 s status heartbeat (one INFO line, helped
+prove the link task was alive while video was wedged) and the journal
+session-log entry documenting the fix.
+
+USB enumeration is still a separate, unsolved issue — VBUS not
+asserting. Next session.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[freertos b46314b] mcc: revert SYS_Initialize peripheral order broken by USB regen
+ 5 files changed, 4198 insertions(+), 16 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm clean post-commit
+
+`git status`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:09:32Z)**_
+
+Committed as `b46314b`. Journal now has a 6th MCC-patch entry plus a session-log note explaining the wedge and fix; the FBL heartbeat addition rode along since it's part of the same hardware bring-up loop.
+
+The remaining specstory churn is just the in-flight conversation log — leave it for the next commit. USB enumeration (VBUS not asserting, no device detected) is the next thread to pull whenever you're ready to dig in.
+
+---
+
+_**User (2026-05-21 02:13:02Z)**_
+
+For usb, let's look at power first. I don't think the ports have power based on lack of indicator on dev board. The power enable is on a couple pins. We need to figure out how these are controlled. Do we need to request power? Or is it supposed to be automatically managed by usb stack? or?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:12Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find when EHCI invokes portPowerEnable
+
+`grep -n "portPowerEnable\|drvInit->portPowerEnable" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c | head -20`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search portPowerEnable in driver+stack
+
+`grep -rn "portPowerEnable" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/ /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/usb/ 2>/dev/null | head -30`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci_local.h:357:    DRV_USB_OHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:261:    DRV_USB_EHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ohci.h:262:    DRV_USB_OHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci_local.h:502:    DRV_USB_EHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1277:                hDriver->portPowerEnable = drvInit->portPowerEnable;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:23Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:23Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+EHCI portPower handling
+
+`grep -n "portPowerEnable\|hDriver->portPower\|drvInit\|PortPower" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c | head -30`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Power/VBUS handling in EHCI
+
+`grep -ni "power\|vbus" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c | head -20`
+
+```text
+(Bash completed with no output)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Power references in OHCI
+
+`wc -l /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c; grep -n "PortPower\|portPower\|Power" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c | head -30`
+
+```text
+    3828 /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c
+    3701 /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c
+    7529 total
+1277:                hDriver->portPowerEnable = drvInit->portPowerEnable;
+2831:                    /* Power switch is global. Enable global power in HcRhStatus Register */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:35Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c`
+
+```text
+2800	
+2801	                /* Now place the HC in Operational state */
+2802	                usbID->UHP_OHCI_HCCONTROL = (usbID->UHP_OHCI_HCCONTROL & (uint32_t)(~UHP_OHCI_HCCONTROL_HCFS_Msk)) | UHP_OHCI_HCCONTROL_HCFS(USB_OHCI_FUNCTIONAL_STATE_OPERATIONAL);
+2803	
+2804	                /* Now power up each selected port */
+2805	                if((usbID->UHP_OHCI_HCRHDESCRIPTORA & UHP_OHCI_HCRHDESCRIPTORA_PSM_Msk) == UHP_OHCI_HCRHDESCRIPTORA_PSM_Msk)
+2806	                {
+2807	                    /* This means each port is powered independantly. Get the number of ports
+2808	                     * and adjust this against the number of provisioned ports */
+2809	                    nPorts = usbID->UHP_OHCI_HCRHDESCRIPTORA & UHP_OHCI_HCRHDESCRIPTORA_NDP_Msk;
+2810	                    nPorts = (nPorts > M_DRV_USB_OHCI_PORTS_NUMBER) ? M_DRV_USB_OHCI_PORTS_NUMBER : nPorts;
+2811	                    port = &usbID->UHP_OHCI_HCRHPORTSTATUS0;
+2812	                    for(i = 0; i < nPorts; i ++)
+2813	                    {
+2814	                        if(hDriver->ports[i].selected)
+2815	                        {
+2816	                            /* If the port is selected in this application, then power it up.
+2817	                             * Also take this opportunity to initialize the port data strucuture. */
+2818	                            hDriver->ports[i].portAttachState = DRV_USB_OHCI_PORT_ATTACH_STATE_WAITING_FOR_ATTACH;
+2819	                            hDriver->ports[i].attachedDeviceObjHandle = USB_HOST_DEVICE_OBJ_HANDLE_INVALID;
+2820	                            hDriver->ports[i].timerHandle = SYS_TIME_HANDLE_INVALID;
+2821	                            hDriver->ports[i].isResetting = false;
+2822	                            hDriver->ports[i].disableThisPort = false;
+2823	                            hDriver->ports[i].portSpeed = USB_SPEED_ERROR;
+2824	
+2825	                            port[i] |= UHP_OHCI_HCRHPORTSTATUS0_PPS_Msk;
+2826	                        }
+2827	                    }
+2828	                }
+2829	                else
+2830	                {
+2831	                    /* Power switch is global. Enable global power in HcRhStatus Register */
+2832	                    usbID->UHP_OHCI_HCRHSTATUS |= UHP_OHCI_HCRHSTATUS_LPSC_Msk;
+2833	                }
+2834	
+2835	                /* All ports are powered up. Now we implemetn the PO2PGT delaY. This delay is implemented
+2836	                 * in the operationIsEnabled function. */
+2837	                hDriver->operationEnableState = DRV_USB_OHCI_OPERATION_ENABLE_START_PO2PGT_DELAY;
+2838	            }
+2839	            else
+2840	            {
+2841	                /* Disable the OHCI controller. Start by disabling the lists */
+2842	                usbID->UHP_OHCI_HCCONTROL &= (~UHP_OHCI_HCCONTROL_CLE_Msk);
+2843	                usbID->UHP_OHCI_HCCONTROL &= (~UHP_OHCI_HCCONTROL_BLE_Msk);
+2844	                usbID->UHP_OHCI_HCCONTROL &= (~UHP_OHCI_HCCONTROL_PLE_Msk);
+2845	
+2846	                /* Disable all the interrupts */
+2847	                usbID->UHP_OHCI_HCINTERRUPTDISABLE = (UHP_OHCI_HCINTERRUPTENABLE_MIE_Msk | UHP_OHCI_HCINTERRUPTENABLE_RHSC_Msk | 
+2848	                        UHP_OHCI_HCINTERRUPTENABLE_UE_Msk | UHP_OHCI_HCINTERRUPTENABLE_WDH_Msk);
+2849	
+2850	                /* Clear all the interrupt flags */
+2851	                usbID->UHP_OHCI_HCINTERRUPTSTATUS = (UHP_OHCI_HCINTERRUPTSTATUS_RHSC_Msk | UHP_OHCI_HCINTERRUPTSTATUS_UE_Msk | 
+2852	                        UHP_OHCI_HCINTERRUPTSTATUS_WDH_Msk);
+2853	
+2854	                /* Place the module in Reset mode */
+2855	                usbID->UHP_OHCI_HCCONTROL = (usbID->UHP_OHCI_HCCONTROL & (uint32_t)(~UHP_OHCI_HCCONTROL_HCFS_Msk)) | UHP_OHCI_HCCONTROL_HCFS(USB_OHCI_FUNCTIONAL_STATE_RESET);
+2856	                hDriver->operationEnabled = false;
+2857	            }
+2858	        }
+2859	        else
+2860	        {
+2861	            SYS_DEBUG_MESSAGE(SYS_ERROR_INFO, "\r\nOHCI Driver: Invalid handle in OperationEnable function");
+2862	        }
+2863	    }            
+2864	    else
+2865	    {
+2866	        SYS_DEBUG_MESSAGE(SYS_ERROR_INFO, "\r\nOHCI Driver: Invalid instance in OperationEnable function");
+2867	    }
+2868	} 
+2869	
+2870	// *****************************************************************************
+2871	/* Function:
+2872	    bool DRV_USB_OHCI_OperationIsEnabled(DRV_HANDLE handle)
+2873	
+2874	  Summary:
+2875	    Returns true if root hub operation has been enabled.
+2876	
+2877	  Description:
+2878	    Function returns true if the root hub enable operation has completed.
+2879	
+2880	  Remarks:
+2881	    Refer to drv_usb_ohci.h for usage information.
+2882	
+2883	*/
+2884	
+2885	bool DRV_USB_OHCI_OperationIsEnabled(DRV_HANDLE handle)
+2886	{
+2887	    bool returnValue = false;
+2888	    uint16_t drvIndex = (uint16_t)(handle & 0xFFFFU);
+2889	    uint16_t clientUniqueKey = (uint16_t)((handle & 0xFFFF0000U) >> 16);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:42Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+All portPowerEnable refs in OHCI
+
+`grep -n "portPowerEnable\|PortPowerEnable\|portPowerEnable(" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c`
+
+```text
+1277:                hDriver->portPowerEnable = drvInit->portPowerEnable;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:13:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+All portPowerEnable usages anywhere
+
+`grep -rn "PortPowerEnable\|->portPowerEnable\b\|hDriver->portPower" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ 2>/dev/null | head -20`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1277:                hDriver->portPowerEnable = drvInit->portPowerEnable;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:14:00Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:14:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Comprehensive callback search
+
+`grep -rn "PortPowerEnable\|portPowerEnable\|DRV_USB_OHCI_PORT_POWER_ENABLE\|DRV_USB_EHCI_PORT_POWER_ENABLE" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/ 2>/dev/null`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c:186:    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/initialization.c:206:    .portPowerEnable = DRV_USB_VBUSPowerEnable,
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ohci.h:192:typedef void (* DRV_USB_OHCI_PORT_POWER_ENABLE)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ohci.h:262:    DRV_USB_OHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:191:typedef void (* DRV_USB_EHCI_PORT_POWER_ENABLE)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/drv_usb_ehci.h:261:    DRV_USB_EHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci_local.h:357:    DRV_USB_OHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci_local.h:502:    DRV_USB_EHCI_PORT_POWER_ENABLE portPowerEnable;
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c:1277:                hDriver->portPowerEnable = drvInit->portPowerEnable;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:14:07Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:14:14Z)**_
+
+Found it — and it's an MCC/Harmony footgun, not a config issue. The `portPowerEnable` callback is set up for both controllers in [initialization.c:186](firmware/marvin/default/src/config/default/initialization.c#L186) and [:206](firmware/marvin/default/src/config/default/initialization.c#L206), but **the callback is never actually invoked anywhere in the USB host stack**:
+
+- OHCI driver stores it in `hDriver->portPowerEnable` at [drv_usb_ohci.c:1277](firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c#L1277). That's the only reference. No call site.
+- EHCI driver doesn't even store it — it's just a dead field in its init struct.
+
+What the driver *does* drive is the OHCI controller's internal power bits ([HCRHPORTSTATUS0_PPS_Msk at line 2825](firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c#L2825), or the global `HCRHSTATUS_LPSC_Msk` at [line 2832](firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c#L2832)). On the SAM9X75 those are internal-controller signals — they don't reach the external power-switch enable on the Curiosity board, which is GPIO-only (PC27/PC31).
+
+So nothing ever asserts VBUS. We have to do it ourselves.
+
+**Fix options:**
+1. **Call the existing helper from app/FBL.** `DRV_USB_VBUSPowerEnable(0, true);` from the FBL task right after `USB_HOST_BusEnable` succeeds. The function is `static` in initialization.c — would need to either remove `static` or call the underlying GPIO `_Set()` macros directly.
+2. **Just bang the GPIOs from FBL.** `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` from the FBL task at startup. Simplest, no MCC-file edit needed.
+
+Recommend option 2 — it keeps the change inside our owned code, no MCC patch list growth. Want me to do that and journal it?
+
+---
+
+_**User (2026-05-21 02:15:23Z)**_
+
+option 2
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:15:28Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:15:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:15:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:15:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check plib_pio reach through definitions.h
+
+`grep -l "plib_pio.h" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/definitions.h /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/configuration.h 2>/dev/null`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/definitions.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:15:43Z)**_
+
+Good — `definitions.h` already pulls in `plib_pio.h`, so the VBUS macros are visible. Want to flash and test, then I'll journal + commit if it sticks?
+
+---
+
+_**User (2026-05-21 02:19:24Z)**_
+
+That did it for USB power. but I think these enables belong outside of fretboard link task as USB may be used by many different modules
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:19:37Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:19:37Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/fretboard_link.c`
+
+```text
+164	static void fretboard_link_task(void *param)
+165	{
+166	    (void)param;
+167	
+168	    /* Assert VBUS on both USB-A connectors. The Harmony USB host driver
+169	     * stores a portPowerEnable callback but never invokes it (EHCI ignores
+170	     * the field entirely; OHCI saves it and never calls it), so the
+171	     * external power-switch enables on PC27/PC31 stay deasserted unless
+172	     * the application drives them. Set both regardless of bmPortSelect —
+173	     * harmless on the unused port and avoids a second config knob. */
+174	    VBUS_AH_PC27_PowerEnable_Set();
+175	    VBUS_AH_PC31_PowerEnable_Set();
+176	
+177	    USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+178	    if (USB_HOST_BusEnable(USB_HOST_BUS_ALL) != USB_HOST_RESULT_SUCCESS)
+179	    {
+180	        LOG_ERROR("FBL: USB_HOST_BusEnable failed\r\n");
+181	    }
+182	
+183	    LOG_INFO("FBL: fretboard link started\r\n");
+184	
+185	    uint8_t    last_mask    = 0u;
+186	    TickType_t status_start = xTaskGetTickCount();
+187	
+188	    for (;;)
+189	    {
+190	        if (s_cdc_obj_valid && s_cdc_handle == USB_HOST_CDC_HANDLE_INVALID)
+191	        {
+192	            s_cdc_obj_valid = false;
+193	            (void)open_cdc(s_cdc_obj_pending);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:19:47Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:19:47Z)**_
+
+Moving VBUS + bus-enable to app-level so any future USB consumer (HID, mass storage, etc.) can rely on host being up. Keeping the CDC attach handler in FBL since it's class-specific.
+
+_**Agent (claude-opus-4-7 2026-05-21 02:19:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+---
+
+_**User (2026-05-21 02:21:21Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   This session continues marvin firmware development on a SAM9X75-based guitar-playing robot. Sequential explicit user requests:
+   
+   - **Request 1 (initial state from summary)**: Investigating hardware test failure: "video stream not starting and USB ports not powered up and not detecting connection. something stuck with USB addition."
+   
+   - **Request 2**: "yes test reorder" — Approved my proposed init-order revert in initialization.c
+   
+   - **Request 3**: "that fixed the display. USB still not detected. But let's make clear note of the init resolution and commit." — Update journal and commit the fix.
+   
+   - **Request 4**: "For usb, let's look at power first. I don't think the ports have power based on lack of indicator on dev board. The power enable is on a couple pins. We need to figure out how these are controlled. Do we need to request power? Or is it supposed to be automatically managed by usb stack? or?"
+   
+   - **Request 5**: "option 2" — Use the GPIO-bang approach from FBL task (after I offered: option 1 unstatic the helper, option 2 bang GPIOs directly).
+   
+   - **Most recent (Request 6)**: "That did it for USB power. but I think these enables belong outside of fretboard link task as USB may be used by many different modules" — Move VBUS GPIO setup out of FBL to a more general init point because USB host is shared across future consumers.
+   
+   **Standing project rules (preserved verbatim):**
+   - "never `git commit` on my own initiative; only on explicit user ask or after prompting"
+   - "Only use static memory allocation. For example static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS]; is good. If you think there is need for dynamic (e.g. malloc), rethink it. if still think a need, ask before doing."
+   - "Code comments describe current code only" — no dev-diary in source comments
+   - "Journals are the source of truth for planning and progress"
+   - "prefer journal updates over re-stating plans in chat"
+   - Specstory files SHOULD be staged in commits
+   - MCC manifest churn should NOT be in commits
+   - "CRITICAL: Always create NEW commits rather than amending"
+
+2. Key Technical Concepts:
+   - SAM9X75 Curiosity (Cortex-A5, 1 GB DDR3) running MPLAB Harmony v5.6.4 + FreeRTOS
+   - HDMI capture: TC358743 → MIPI CSI-2 → ISC → DDR (BGR888 packed, 3 B/pixel)
+   - FLEXCOM6 TWI for I2C to TC358743 (slave addr 0x0F)
+   - AIC (Advanced Interrupt Controller): peripheral IDs FLEXCOM6=9, TC0=17, UHPHS=22, ISC=43, CSI2DC=52
+   - SYS_Initialize ordering: MMU → AIC → WDT-disable must come BEFORE peripheral inits (TC0/FLEXCOM6/XLCDC) for ISRs to fire
+   - Harmony USB host stack: EHCI (high-speed) + OHCI (companion full-speed) drivers, CDC host class
+   - Harmony bug discovered: `portPowerEnable` callback in DRV_USB_EHCI_INIT/DRV_USB_OHCI_INIT is set but NEVER invoked anywhere in the driver code
+   - VBUS_AH_PC27_PowerEnable / VBUS_AH_PC31_PowerEnable GPIOs control external USB power switches (Curiosity board hardware)
+   - bmPortSelect=0x02 selects port 2 in EHCI/OHCI
+   - I2C driver synchronous wait pattern: `OSAL_SEM_Pend(transferDone, OSAL_WAIT_FOREVER)` blocks task until ISR signals
+   - FreeRTOS static allocation for marvin code; MCC code keeps dynamic (heap_1, heap size 40960 bytes)
+
+3. Files and Code Sections:
+   
+   - **firmware/marvin/default/src/config/default/initialization.c** (EDITED + COMMITTED)
+     - Reverted MCC's USB-regen-broken SYS_Initialize order. New order:
+     ```c
+     PIT_TimerInitialize();
+     MMU_Initialize();
+     AIC_INT_Initialize();
+     /* Disable WDT */
+     WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
+     TC0_CH0_TimerInitialize();
+     FLEXCOM6_TWI_Initialize();
+     XLCDC_Initialize();
+     DBGU_Initialize();
+     ```
+     - DRV_USB_VBUSPowerEnable callback function still exists (lines 151-172) but is now confirmed dead code (never invoked by stack)
+   
+   - **firmware/marvin/default/src/actuator/fretboard_link.c** (EDITED MULTIPLE TIMES)
+     - First edit (committed in b46314b): Added FBL_STATUS_LOG_MS=2000 heartbeat
+     - Second edit (in option 2): Added VBUS_AH_PC27/PC31 sets in fretboard_link_task
+     - Third edit (current, after user feedback): Removed VBUS sets and USB_HOST_BusEnable, kept only CDC attach handler. Current state of relevant block:
+     ```c
+     static void fretboard_link_task(void *param)
+     {
+         (void)param;
+     
+         /* VBUS + USB_HOST_BusEnable are app-level (see APP_Initialize) — host
+          * stack is shared across future USB consumers. Only register the
+          * CDC-class attach handler here. */
+         USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+     
+         LOG_INFO("FBL: fretboard link started\r\n");
+     
+         uint8_t    last_mask    = 0u;
+         TickType_t status_start = xTaskGetTickCount();
+         ...
+     ```
+   
+   - **firmware/marvin/default/src/app.c** (NEEDS EDIT — pending)
+     - Currently calls `FretboardLink_Initialize();` and `TimingPipeline_Initialize();` after detector setup.
+     - Needs VBUS GPIO sets + USB_HOST_BusEnable added to APP_Initialize before any USB consumer init.
+   
+   - **firmware/marvin/docs/journal.md** (EDITED + COMMITTED in b46314b)
+     - Added MCC patch #6 to maintenance risk list:
+     ```
+     6. **`initialization.c` `SYS_Initialize` — peripheral init order.** The USB-host MCC regen (2026-05-20) reordered SYS_Initialize so that `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize` run *before* `MMU_Initialize` and `AIC_INT_Initialize`. Symptom on hardware: TC358743 probe wedges on its first I²C write — `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` never returns because the FLEXCOM6 ISR never fires. ... Fix: move the `MMU_Initialize → AIC_INT_Initialize → WDT-disable` block back to *before* the TC0/FLEXCOM6/XLCDC inits, matching the pre-USB-regen order. After this revert, video came back immediately. Resolved on 2026-05-20.
+     ```
+     - Updated "re-apply all four" → "re-apply all six"
+     - Added session log entry "2026-05-20 — Hardware bring-up after USB CDC host regen: TC358743 wedge resolved" documenting symptoms, root cause, and fix.
+   
+   - **firmware/marvin/default/src/config/default/peripheral/pio/plib_pio.h** (READ)
+     - Confirmed VBUS_AH_PC27_PowerEnable_Set/_Clear and VBUS_AH_PC31_PowerEnable_Set/_Clear macros exist
+     - Reachable via `definitions.h` which already includes `plib_pio.h`
+   
+   - **firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c** (READ)
+     - Line 1277: `hDriver->portPowerEnable = drvInit->portPowerEnable;` — only place callback is stored, never called
+     - Lines 2825/2832: actual port power activation via `HCRHPORTSTATUS0_PPS_Msk` or `HCRHSTATUS_LPSC_Msk` (internal controller bits, don't reach external GPIO switches)
+   
+   - **firmware/marvin/default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c** (READ)
+     - Confirmed EHCI does not even store `portPowerEnable` field — completely dead
+
+4. Errors and fixes:
+   - **TC358743 probe wedge + USB ports unpowered**:
+     - **Root cause**: USB MCC regen reordered SYS_Initialize so MMU+AIC ran AFTER TC0/FLEXCOM6/XLCDC inits, leaving FLEXCOM6 ISR not properly routed when first I2C transfer started.
+     - **Fix**: Reverted init order in initialization.c so MMU → AIC → WDT-disable run before peripheral inits.
+     - **Result**: Display + capture working. Committed as b46314b.
+   - **USB ports not powered (separate issue)**:
+     - **Root cause**: Harmony USB host driver's `portPowerEnable` callback is set but never invoked. External GPIO power switches (PC27/PC31) on Curiosity board stay deasserted.
+     - **Fix attempt 1**: Added VBUS_AH_PC27/PC31 _Set() calls in fretboard_link_task. Worked — user confirmed "That did it for USB power."
+     - **User feedback on fix location**: "these enables belong outside of fretboard link task as USB may be used by many different modules" — User wants VBUS at app level, not FBL.
+     - **Fix in progress**: Move VBUS sets + USB_HOST_BusEnable from FBL to APP_Initialize. Removed from FBL successfully; need to add to app.c next.
+
+5. Problem Solving:
+   - **Solved**: TC358743 I2C wedge — diagnosed as MCC init order regression, fixed by reverting order. Logged as MCC patch #6 in journal.
+   - **Solved**: USB VBUS not asserting — diagnosed as Harmony portPowerEnable callback never invoked, worked around by directly setting GPIOs.
+   - **In progress**: Refactoring USB host bring-up to app level so multiple modules can share. VBUS removed from FBL; pending move to APP_Initialize.
+
+6. All user messages:
+   - "video stream not starting and USB ports not powered up and not detecting connection. something stuck with USB addition. I think parts of MCC Harmony code getting stuck? Here's log. AT91Bootstrap SDMMC0 4.0.8-rc4..." (carried from previous context)
+   - "yes test reorder"
+   - "that fixed the display. USB still not detected. But let's make clear note of the init resolution and commit."
+   - "For usb, let's look at power first. I don't think the ports have power based on lack of indicator on dev board. The power enable is on a couple pins. We need to figure out how these are controlled. Do we need to request power? Or is it supposed to be automatically managed by usb stack? or?"
+   - "option 2"
+   - "That did it for USB power. but I think these enables belong outside of fretboard link task as USB may be used by many different modules"
+
+7. Pending Tasks:
+   - Move VBUS_AH_PC27/PC31 _Set() calls from FBL to APP_Initialize in firmware/marvin/default/src/app.c
+   - Move USB_HOST_BusEnable(USB_HOST_BUS_ALL) call from FBL to APP_Initialize in app.c
+   - Verify build succeeds with the refactor
+   - User implicitly will test on hardware and confirm USB detection still works
+   - Commit the refactor (only after explicit user request)
+   - Update journal with the refactor decision/rationale
+
+8. Current Work:
+   Refactoring USB host bring-up out of FBL into APP_Initialize because user said: "these enables belong outside of fretboard link task as USB may be used by many different modules".
+   
+   Just completed: Edited fretboard_link.c to remove VBUS_AH_PC27/PC31 _Set() calls and USB_HOST_BusEnable call from fretboard_link_task. Replaced with a comment explaining that VBUS + bus enable are app-level. Kept USB_HOST_CDC_AttachEventHandlerSet in FBL since it's CDC-class-specific.
+   
+   Current FBL task body has only the CDC attach handler:
+   ```c
+   /* VBUS + USB_HOST_BusEnable are app-level (see APP_Initialize) — host
+    * stack is shared across future USB consumers. Only register the
+    * CDC-class attach handler here. */
+   USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+   
+   LOG_INFO("FBL: fretboard link started\r\n");
+   ```
+   
+   Not yet done: Add the VBUS sets and USB_HOST_BusEnable to APP_Initialize in app.c. After a system reminder fired (TodoWrite reminder), the conversation was interrupted with a summarization request before I could make this edit.
+
+9. Optional Next Step:
+   Edit `firmware/marvin/default/src/app.c` to add VBUS GPIO sets and USB_HOST_BusEnable in APP_Initialize, before any USB consumer module init. Specifically, before `FretboardLink_Initialize();` and ideally as a discrete "USB host bring-up" block with a comment explaining shared ownership.
+   
+   The user's most recent message verbatim: "That did it for USB power. but I think these enables belong outside of fretboard link task as USB may be used by many different modules" — confirms moving VBUS and bus enable to app-level scope. I removed them from FBL; the parallel addition to app.c is the next step. After that, ask the user to flash/test before committing (per their commit-only-on-explicit-ask rule).
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:21:24Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:21:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:21:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:21:39Z)**_
+
+VBUS + `USB_HOST_BusEnable` are now in `APP_Initialize` ahead of `FretboardLink_Initialize`, and FBL only registers the CDC attach handler. Flash and confirm USB still detects the fretboard; once it does, I'll log the refactor in the journal and we can commit.
+
+---
+
+_**User (2026-05-21 02:22:11Z)**_
+
+USB doesn't detect fretboard yet. We just got the power working. Still work to do on the detection.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:22:18Z)**_
+
+Got it — the refactor is just the location change for the VBUS/bus-enable, not a fix for detection. Detection work is the next thing.
+
+Want me to start digging into why attach isn't firing? A few likely places to look:
+
+1. **VBUS settle timing** — `USB_HOST_BusEnable` may run before the external power rail is stable; some hosts need a delay between asserting VBUS and enabling the bus.
+2. **EHCI/OHCI port routing** — `bmPortSelect=0x02` on both drivers; worth verifying which physical port the fretboard is plugged into and whether that port maps to EHCI vs OHCI for full-speed CDC.
+3. **Attach handler registration timing** — `USB_HOST_CDC_AttachEventHandlerSet` runs inside the FBL task, which starts after the scheduler. If the host stack already enumerated by then, the attach event for an already-connected device may have been missed. Worth moving that registration to `APP_Initialize` too, before `USB_HOST_BusEnable`.
+4. **USB host task running** — confirm `SYS_Tasks` / the Harmony USB host task is actually scheduled and ticking.
+
+My guess is (3) — the attach handler should be registered *before* the bus comes up, not from a task that may start later. Want me to move it?
+
+---
+
+_**User (2026-05-21 02:22:27Z)**_
+
+Let's commit power first
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 02:22:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check working tree status
+
+`git status`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/actuator/fretboard_link.c
+	modified:   firmware/marvin/default/src/app.c
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:22:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show unstaged changes
+
+`git diff`
+
+```text
+<persisted-output>
+Output too large (40.2KB). Full output saved to: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/28b62c4e-6744-4d86-82f3-94c2a5e8ab99/tool-results/b1ogv2bgn.txt
+
+Preview (first 2KB):
+warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
+diff --git a/.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md b/.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+index 8710048..d582f5d 100644
+--- a/.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
++++ b/.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md
+@@ -32236,3 +32236,663 @@ index 34779f7..9a3b8cb 100644
+  }
+ ```
+ </details></tool-use>
++
++_**Agent (claude-opus-4-7 2026-05-21 02:09:14Z)**_
++
++_**Agent (claude-opus-4-7 2026-05-21 02:09:15Z)**_
++
++<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
++<summary>Tool use: **Bash**</summary>
++Stage init reorder + FBL heartbeat + journal + specstory
++
++`git add firmware/marvin/default/src/config/default/initialization.c firmware/marvin/default/src/actuator/fretboard_link.c firmware/marvin/docs/journal.md .specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md .specstory/statistics.json`
++
++```text
++warning: in the working copy of '.specstory/history/2026-05-20_18-30-12Z-working-on-project-marvin.md', CRLF will be replaced by LF the next time Git touches it
++warning: in the working copy of 'firmware/marvin/default/src/config/default/initialization.c', CRLF will be replaced by LF the next time Git touches it
++```
++</details></tool-use>
++
++_**Agent (claude-opus-4-7 2026-05-21 02:09:25Z)**_
++
++<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
++<summary>Tool use: **Bash**</summary>
++Commit init-order revert + FBL heartbeat + journal
++
++```bash
++git commit -m "$(cat <<'EOF'
++mcc: revert SYS_Initialize peripheral order broken by USB regen
++
++The USB CDC host regen reordered SYS_Initialize so TC0/FLEXCOM6/XLCDC
++inits ran before MMU_Initialize and AIC_INT_Initialize. With the AIC
++not yet owning the interrupt vector table, the FLEXCOM6 ISR never
+...
+</persisted-output>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:22:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Recent commits
+
+`git log --oneline -10`
+
+```text
+b46314b mcc: revert SYS_Initialize peripheral order broken by USB regen
+44a52aa actuator: move submit queue into fretboard_link
+6c131e7 actuator: timing pipeline + fretboard link over USB CDC
+0e9bc18 docs: log MCC USB VBUS patch + close out session
+a6040ce mcc: add USB CDC host stack on marvin
+186872f detector: cv_marvin_v1 reference port from detect_video.py
+4cd5fb1 spec: add game-state awareness & control subsystem (§4.8)
+7aa6b57 video: fix build — stdbool include + ISR-visible flag ordering
+06051fb freertos: convert marvin-owned objects to static allocation
+171749e video: deepen ISC ring from 2 to 4 buffers
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 02:22:31Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 02:22:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show code changes only
+
+`git diff firmware/marvin/default/src/actuator/fretboard_link.c firmware/marvin/default/src/app.c`
+
+```text
+diff --git a/firmware/marvin/default/src/actuator/fretboard_link.c b/firmware/marvin/default/src/actuator/fretboard_link.c
+index 9a3b8cb..5a57c68 100644
+--- a/firmware/marvin/default/src/actuator/fretboard_link.c
++++ b/firmware/marvin/default/src/actuator/fretboard_link.c
+@@ -165,11 +165,10 @@ static void fretboard_link_task(void *param)
+ {
+     (void)param;
+ 
++    /* VBUS + USB_HOST_BusEnable are app-level (see APP_Initialize) — host
++     * stack is shared across future USB consumers. Only register the
++     * CDC-class attach handler here. */
+     USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+-    if (USB_HOST_BusEnable(USB_HOST_BUS_ALL) != USB_HOST_RESULT_SUCCESS)
+-    {
+-        LOG_ERROR("FBL: USB_HOST_BusEnable failed\r\n");
+-    }
+ 
+     LOG_INFO("FBL: fretboard link started\r\n");
+ 
+diff --git a/firmware/marvin/default/src/app.c b/firmware/marvin/default/src/app.c
+index 62e4d12..ce33a7a 100644
+--- a/firmware/marvin/default/src/app.c
++++ b/firmware/marvin/default/src/app.c
+@@ -36,6 +36,7 @@
+ #include "app.h"
+ #include "definitions.h"
+ #include "log.h"
++#include "usb/usb_host.h"
+ #include "video/video.h"
+ #include "detector/detector.h"
+ #include "actuator/timing_pipeline.h"
+@@ -133,6 +134,16 @@ void APP_Initialize ( void )
+     Detector_Enable(DETECTOR_CV_MARVIN_V1);
+     Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+ 
++    /* USB host bring-up — shared across all USB consumers (fretboard CDC
++     * link today; future modules may add HID, MSC, etc.). VBUS_AH_PC27/PC31
++     * gate external power switches on the SAM9X75 Curiosity. The Harmony
++     * driver's portPowerEnable callback is wired but never invoked, so we
++     * assert these GPIOs directly. USB_HOST_BusEnable kicks the host stack
++     * into accepting attach events. */
++    VBUS_AH_PC27_PowerEnable_Set();
++    VBUS_AH_PC31_PowerEnable_Set();
++    USB_HOST_BusEnable(USB_HOST_BUS_ALL);
++
+     /* M2 actuator path: fretboard_link owns the submit queue + USB CDC
+      * writer; producers (timing_pipeline today, future game controller +
+      * manual test inputs) call FretboardLink_Send. timing_pipeline runs
+```
+</details></tool-use>

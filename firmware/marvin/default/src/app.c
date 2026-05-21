@@ -36,6 +36,7 @@
 #include "app.h"
 #include "definitions.h"
 #include "log.h"
+#include "usb/usb_host.h"
 #include "video/video.h"
 #include "detector/detector.h"
 #include "actuator/timing_pipeline.h"
@@ -132,6 +133,16 @@ void APP_Initialize ( void )
     Detector_Initialize();
     Detector_Enable(DETECTOR_CV_MARVIN_V1);
     Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+
+    /* USB host bring-up — shared across all USB consumers (fretboard CDC
+     * link today; future modules may add HID, MSC, etc.). VBUS_AH_PC27/PC31
+     * gate external power switches on the SAM9X75 Curiosity. The Harmony
+     * driver's portPowerEnable callback is wired but never invoked, so we
+     * assert these GPIOs directly. USB_HOST_BusEnable kicks the host stack
+     * into accepting attach events. */
+    VBUS_AH_PC27_PowerEnable_Set();
+    VBUS_AH_PC31_PowerEnable_Set();
+    USB_HOST_BusEnable(USB_HOST_BUS_ALL);
 
     /* M2 actuator path: fretboard_link owns the submit queue + USB CDC
      * writer; producers (timing_pipeline today, future game controller +

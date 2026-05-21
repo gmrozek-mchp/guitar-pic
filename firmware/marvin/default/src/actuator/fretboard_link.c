@@ -165,11 +165,10 @@ static void fretboard_link_task(void *param)
 {
     (void)param;
 
+    /* VBUS + USB_HOST_BusEnable are app-level (see APP_Initialize) — host
+     * stack is shared across future USB consumers. Only register the
+     * CDC-class attach handler here. */
     USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
-    if (USB_HOST_BusEnable(USB_HOST_BUS_ALL) != USB_HOST_RESULT_SUCCESS)
-    {
-        LOG_ERROR("FBL: USB_HOST_BusEnable failed\r\n");
-    }
 
     LOG_INFO("FBL: fretboard link started\r\n");
 
