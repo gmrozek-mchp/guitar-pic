@@ -9902,3 +9902,3791 @@ no changes added to commit (use "git add" and/or "git commit -a")
 _**Agent (claude-opus-4-7 2026-05-21 17:48:04Z)**_
 
 Committed as `4603138`. Only `.specstory/` history/stats remain dirty — those are session-recorder artifacts, not part of the feature.
+
+---
+
+_**User (2026-05-21 17:55:31Z)**_
+
+seems we broke something when backed off. Everything starts up, but not getting through to fretboard anymore
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:04Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:04Z)**_
+
+Let me look at what we backed out vs kept and think about what's now broken:
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:05Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/fretboard_link.c`
+
+```text
+105	static bool open_cdc(USB_HOST_CDC_OBJ obj)
+106	{
+107	    USB_HOST_CDC_HANDLE h = USB_HOST_CDC_Open(obj);
+108	    if (h == USB_HOST_CDC_HANDLE_INVALID) { return false; }
+109	
+110	    if (USB_HOST_CDC_EventHandlerSet(h, cdc_event_handler, 0u) != USB_HOST_CDC_RESULT_SUCCESS)
+111	    {
+112	        USB_HOST_CDC_Close(h);
+113	        return false;
+114	    }
+115	
+116	    static USB_CDC_LINE_CODING line_coding =
+117	    {
+118	        .dwDTERate   = FBL_BAUDRATE,
+119	        .bCharFormat = USB_CDC_LINE_CODING_STOP_1_BIT,
+120	        .bParityType = USB_CDC_LINE_CODING_PARITY_NONE,
+121	        .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
+122	    };
+123	    USB_HOST_CDC_REQUEST_HANDLE rh;
+124	    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding);
+125	
+126	    /* Some EDBG-CDC firmwares hold the bridge UART idle until the host
+127	     * raises DTR. Assert DTR + carrier so the bridge actually drives
+128	     * bytes out to the fretboard MCU's SERCOM1 RX. */
+129	    static USB_CDC_CONTROL_LINE_STATE cls = { .dtr = 1u, .carrier = 1u };
+130	    (void)USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls);
+131	
+132	    s_cdc_handle = h;
+133	    s_connected  = true;
+134	    LOG_INFO("FBL: CDC device attached, handle opened\r\n");
+135	    return true;
+136	}
+137	
+138	static bool send_one_byte(uint8_t mask)
+139	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:21Z)**_
+
+Found it. Between the two control-pipe calls there used to be a `LOG_INFO` — that printf burned a few ms of UART time which let the first request actually complete on the control pipe before we issued the second. Backing out the log made the two `LineCodingSet` / `ControlLineStateSet` requests fire back-to-back, and the second one gets dropped.
+
+The right fix matches the existing `WRITE_COMPLETE` pattern: a binary semaphore signaled from the ISR-context completion events. Let me add it:
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:39Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:44Z)**_
+
+Now create the semaphore in Initialize:
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/fretboard_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:48Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/fretboard_link.c`
+
+```text
+1	#include "fretboard_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "queue.h"
+10	#include "semphr.h"
+11	
+12	#include "definitions.h"
+13	#include "log.h"
+14	#include "usb/usb_host.h"
+15	#include "usb/usb_host_cdc.h"
+16	#include "usb/usb_cdc.h"
+17	
+18	#define FBL_TASK_STACK_WORDS    768u
+19	#define FBL_TASK_PRIORITY       2u
+20	
+21	#define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+22	
+23	/* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
+24	 * a stalled detector or paused game can't leave a stale frets-active
+25	 * pattern stuck on the wire. 50 ms is well below human-perceptible. */
+26	#define FBL_HEARTBEAT_MS        50u
+27	
+28	#define FBL_WRITE_TIMEOUT_MS    100u
+29	
+30	/* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
+31	 * a sane default avoids implementation quirks on hosts that gate writes on
+32	 * a successful SET_LINE_CODING. Matches actuator.py. */
+33	#define FBL_BAUDRATE            115200u
+34	
+35	static QueueHandle_t s_cmd_queue;
+36	static StaticQueue_t s_cmd_queue_buf;
+37	static uint8_t       s_cmd_queue_storage[FBL_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
+38	
+39	static StackType_t   s_task_stack[FBL_TASK_STACK_WORDS];
+40	static StaticTask_t  s_task_tcb;
+41	
+42	static SemaphoreHandle_t s_write_done;
+43	static StaticSemaphore_t s_write_done_buf;
+44	
+45	/* Signaled from cdc_event_handler (ISR context) when a control-pipe
+46	 * request completes. Used to serialize the LineCodingSet ->
+47	 * ControlLineStateSet pair in open_cdc; the host stack will silently
+48	 * drop the second request if it's issued before the first settles. */
+49	static SemaphoreHandle_t s_ctrl_done;
+50	static StaticSemaphore_t s_ctrl_done_buf;
+51	
+52	#define FBL_CTRL_TIMEOUT_MS     500u
+53	
+54	static volatile USB_HOST_CDC_OBJ    s_cdc_obj_pending = (USB_HOST_CDC_OBJ)0;
+55	static volatile bool                s_cdc_obj_valid;
+56	static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+57	static volatile bool                s_connected;
+58	static volatile USB_HOST_CDC_RESULT s_last_write_result;
+59	
+60	static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
+61	                                                    USB_HOST_CDC_EVENT event,
+62	                                                    void *eventData,
+63	                                                    uintptr_t context)
+64	{
+65	    (void)handle;
+66	    (void)context;
+67	
+68	    switch (event)
+69	    {
+70	        case USB_HOST_CDC_EVENT_WRITE_COMPLETE:
+71	        {
+72	            const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
+73	            s_last_write_result = d->result;
+74	            BaseType_t hpw = pdFALSE;
+75	            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+76	            portYIELD_FROM_ISR(hpw);
+77	            break;
+78	        }
+79	        case USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE:
+80	        case USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE:
+81	        {
+82	            BaseType_t hpw = pdFALSE;
+83	            (void)xSemaphoreGiveFromISR(s_ctrl_done, &hpw);
+84	            portYIELD_FROM_ISR(hpw);
+85	            break;
+86	        }
+87	        case USB_HOST_CDC_EVENT_DEVICE_DETACHED:
+88	        {
+89	            s_connected = false;
+90	            /* Wake any pending writer so it observes the detach instead
+91	             * of waiting out the timeout. */
+92	            BaseType_t hpw = pdFALSE;
+93	            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+94	            portYIELD_FROM_ISR(hpw);
+95	            break;
+96	        }
+97	        default:
+98	            break;
+99	    }
+100	    return USB_HOST_CDC_EVENT_RESPONE_NONE;
+101	}
+102	
+103	static void cdc_attach_handler(USB_HOST_CDC_OBJ obj, uintptr_t context)
+104	{
+105	    (void)context;
+106	    /* Hand the object to the link task; opening the device must happen
+107	     * outside the host stack callback. */
+108	    s_cdc_obj_pending = obj;
+109	    s_cdc_obj_valid   = true;
+110	}
+111	
+112	static void close_cdc(void)
+113	{
+114	    if (s_cdc_handle != USB_HOST_CDC_HANDLE_INVALID)
+115	    {
+116	        USB_HOST_CDC_Close(s_cdc_handle);
+117	        s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+118	    }
+119	    s_connected = false;
+120	}
+121	
+122	static bool open_cdc(USB_HOST_CDC_OBJ obj)
+123	{
+124	    USB_HOST_CDC_HANDLE h = USB_HOST_CDC_Open(obj);
+125	    if (h == USB_HOST_CDC_HANDLE_INVALID) { return false; }
+126	
+127	    if (USB_HOST_CDC_EventHandlerSet(h, cdc_event_handler, 0u) != USB_HOST_CDC_RESULT_SUCCESS)
+128	    {
+129	        USB_HOST_CDC_Close(h);
+130	        return false;
+131	    }
+132	
+133	    static USB_CDC_LINE_CODING line_coding =
+134	    {
+135	        .dwDTERate   = FBL_BAUDRATE,
+136	        .bCharFormat = USB_CDC_LINE_CODING_STOP_1_BIT,
+137	        .bParityType = USB_CDC_LINE_CODING_PARITY_NONE,
+138	        .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
+139	    };
+140	    USB_HOST_CDC_REQUEST_HANDLE rh;
+141	    (void)xSemaphoreTake(s_ctrl_done, 0);
+142	    if (USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding) == USB_HOST_CDC_RESULT_SUCCESS)
+143	    {
+144	        (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
+145	    }
+146	
+147	    /* Some EDBG-CDC firmwares hold the bridge UART idle until the host
+148	     * raises DTR. Assert DTR + carrier so the bridge actually drives
+149	     * bytes out to the fretboard MCU's SERCOM1 RX. */
+150	    static USB_CDC_CONTROL_LINE_STATE cls = { .dtr = 1u, .carrier = 1u };
+151	    (void)xSemaphoreTake(s_ctrl_done, 0);
+152	    if (USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls) == USB_HOST_CDC_RESULT_SUCCESS)
+153	    {
+154	        (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
+155	    }
+156	
+157	    s_cdc_handle = h;
+158	    s_connected  = true;
+159	    LOG_INFO("FBL: CDC device attached, handle opened\r\n");
+160	    return true;
+161	}
+162	
+163	static bool send_one_byte(uint8_t mask)
+164	{
+165	    if (!s_connected) { return false; }
+166	
+167	    static uint8_t tx_byte;
+168	    tx_byte = (uint8_t)(mask & 0x7F);
+169	
+170	    /* Drain any prior signal so we wait for *this* write's completion. */
+171	    (void)xSemaphoreTake(s_write_done, 0);
+172	
+173	    USB_HOST_CDC_TRANSFER_HANDLE th;
+174	    USB_HOST_CDC_RESULT r = USB_HOST_CDC_Write(s_cdc_handle, &th, &tx_byte, 1u);
+175	    if (r != USB_HOST_CDC_RESULT_SUCCESS)
+176	    {
+177	        LOG_WARN("FBL: CDC_Write rejected, r=%d\r\n", (int)r);
+178	        return false;
+179	    }
+180	
+181	    if (xSemaphoreTake(s_write_done, pdMS_TO_TICKS(FBL_WRITE_TIMEOUT_MS)) != pdTRUE)
+182	    {
+183	        LOG_WARN("FBL: write timeout, marking detached\r\n");
+184	        close_cdc();
+185	        return false;
+186	    }
+187	    if (s_last_write_result != USB_HOST_CDC_RESULT_SUCCESS)
+188	    {
+189	        LOG_WARN("FBL: write completion err=%d\r\n", (int)s_last_write_result);
+190	        return false;
+191	    }
+192	    return true;
+193	}
+194	
+195	static void fretboard_link_task(void *param)
+196	{
+197	    (void)param;
+198	
+199	    LOG_INFO("FBL: fretboard link started\r\n");
+200	
+201	    uint8_t last_mask = 0u;
+202	
+203	    for (;;)
+204	    {
+205	        if (s_cdc_obj_valid && s_cdc_handle == USB_HOST_CDC_HANDLE_INVALID)
+206	        {
+207	            s_cdc_obj_valid = false;
+208	            (void)open_cdc(s_cdc_obj_pending);
+209	        }
+210	
+211	        uint8_t mask;
+212	        if (xQueueReceive(s_cmd_queue, &mask, pdMS_TO_TICKS(FBL_HEARTBEAT_MS)) == pdTRUE)
+213	        {
+214	            last_mask = mask;
+215	        }
+216	        else
+217	        {
+218	            mask = last_mask;
+219	        }
+220	
+221	        if (s_connected)
+222	        {
+223	            (void)send_one_byte(mask);
+224	        }
+225	    }
+226	}
+227	
+228	void FretboardLink_Initialize(void)
+229	{
+230	    s_cmd_queue = xQueueCreateStatic(FBL_CMD_QUEUE_DEPTH,
+231	                                     sizeof(uint8_t),
+232	                                     s_cmd_queue_storage,
+233	                                     &s_cmd_queue_buf);
+234	    configASSERT(s_cmd_queue != NULL);
+235	
+236	    s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
+237	    configASSERT(s_write_done != NULL);
+238	
+239	    s_ctrl_done = xSemaphoreCreateBinaryStatic(&s_ctrl_done_buf);
+240	    configASSERT(s_ctrl_done != NULL);
+241	
+242	    /* Register the CDC attach listener before the bus is enabled — the host
+243	     * stack only matches a class driver if its attach handler is in place
+244	     * when enumeration completes. App-level USB_HOST_BusEnable runs right
+245	     * after this init returns. */
+246	    (void)USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
+247	
+248	    (void)xTaskCreateStatic(fretboard_link_task,
+249	                            "FretLink",
+250	                            FBL_TASK_STACK_WORDS,
+251	                            NULL,
+252	                            FBL_TASK_PRIORITY,
+253	                            s_task_stack,
+254	                            &s_task_tcb);
+255	}
+256	
+257	bool FretboardLink_IsConnected(void)
+258	{
+259	    return s_connected;
+260	}
+261	
+262	void FretboardLink_Send(uint8_t mask)
+263	{
+264	    if (s_cmd_queue == NULL) { return; }
+265	    uint8_t v = (uint8_t)(mask & 0x7F);
+266	    /* Overwrite is strictly latest-wins: a newer producer's mask replaces
+267	     * any unsent older one — keeps a stalled USB write from accumulating
+268	     * stale chord state. */
+269	    (void)xQueueOverwrite(s_cmd_queue, &v);
+270	}
+271
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 17:56:54Z)**_
+
+Looks clean. Build it and try.
+
+Diagnosis: removing the inter-call `LOG_INFO` made `LineCodingSet` and `ControlLineStateSet` fire back-to-back, and the host stack silently drops the second when the first is still in flight on the control pipe. Fix is a binary semaphore (`s_ctrl_done`) signaled from the ISR-context completion event, mirroring the existing `s_write_done` pattern. The semaphore-take between requests serializes the two without depending on a printf side effect.
+
+---
+
+_**User (2026-05-21 18:55:17Z)**_
+
+works again. commit
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 18:55:21Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 18:55:21Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Review fix
+
+`git diff firmware/marvin/default/src/actuator/fretboard_link.c`
+
+```text
+diff --git a/firmware/marvin/default/src/actuator/fretboard_link.c b/firmware/marvin/default/src/actuator/fretboard_link.c
+index 733ba34..3b907ed 100644
+--- a/firmware/marvin/default/src/actuator/fretboard_link.c
++++ b/firmware/marvin/default/src/actuator/fretboard_link.c
+@@ -42,6 +42,15 @@ static StaticTask_t  s_task_tcb;
+ static SemaphoreHandle_t s_write_done;
+ static StaticSemaphore_t s_write_done_buf;
+ 
++/* Signaled from cdc_event_handler (ISR context) when a control-pipe
++ * request completes. Used to serialize the LineCodingSet ->
++ * ControlLineStateSet pair in open_cdc; the host stack will silently
++ * drop the second request if it's issued before the first settles. */
++static SemaphoreHandle_t s_ctrl_done;
++static StaticSemaphore_t s_ctrl_done_buf;
++
++#define FBL_CTRL_TIMEOUT_MS     500u
++
+ static volatile USB_HOST_CDC_OBJ    s_cdc_obj_pending = (USB_HOST_CDC_OBJ)0;
+ static volatile bool                s_cdc_obj_valid;
+ static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
+@@ -67,6 +76,14 @@ static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
+             portYIELD_FROM_ISR(hpw);
+             break;
+         }
++        case USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE:
++        case USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE:
++        {
++            BaseType_t hpw = pdFALSE;
++            (void)xSemaphoreGiveFromISR(s_ctrl_done, &hpw);
++            portYIELD_FROM_ISR(hpw);
++            break;
++        }
+         case USB_HOST_CDC_EVENT_DEVICE_DETACHED:
+         {
+             s_connected = false;
+@@ -121,13 +138,21 @@ static bool open_cdc(USB_HOST_CDC_OBJ obj)
+         .bDataBits   = USB_CDC_LINE_CODING_DATA_8_BIT,
+     };
+     USB_HOST_CDC_REQUEST_HANDLE rh;
+-    (void)USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding);
++    (void)xSemaphoreTake(s_ctrl_done, 0);
++    if (USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding) == USB_HOST_CDC_RESULT_SUCCESS)
++    {
++        (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
++    }
+ 
+     /* Some EDBG-CDC firmwares hold the bridge UART idle until the host
+      * raises DTR. Assert DTR + carrier so the bridge actually drives
+      * bytes out to the fretboard MCU's SERCOM1 RX. */
+     static USB_CDC_CONTROL_LINE_STATE cls = { .dtr = 1u, .carrier = 1u };
+-    (void)USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls);
++    (void)xSemaphoreTake(s_ctrl_done, 0);
++    if (USB_HOST_CDC_ACM_ControlLineStateSet(h, &rh, &cls) == USB_HOST_CDC_RESULT_SUCCESS)
++    {
++        (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
++    }
+ 
+     s_cdc_handle = h;
+     s_connected  = true;
+@@ -211,6 +236,9 @@ void FretboardLink_Initialize(void)
+     s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
+     configASSERT(s_write_done != NULL);
+ 
++    s_ctrl_done = xSemaphoreCreateBinaryStatic(&s_ctrl_done_buf);
++    configASSERT(s_ctrl_done != NULL);
++
+     /* Register the CDC attach listener before the bus is enabled — the host
+      * stack only matches a class driver if its attach handler is in place
+      * when enumeration completes. App-level USB_HOST_BusEnable runs right
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 18:55:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit control-pipe serialization fix
+
+```bash
+git add firmware/marvin/default/src/actuator/fretboard_link.c && git commit -m "$(cat <<'EOF'
+fretboard_link: serialize CDC control-pipe requests in open_cdc
+
+LineCodingSet and ControlLineStateSet were issued back-to-back; the host
+stack silently drops the second while the first is still in flight on
+the control pipe, so DTR/carrier never asserts and the EDBG bridge
+keeps its UART TX idle. Add an s_ctrl_done binary semaphore signaled
+from the ISR-context SET_LINE_CODING_COMPLETE / SET_CONTROL_LINE_STATE_COMPLETE
+event cases, and wait between requests in open_cdc — same pattern as
+the existing s_write_done.
+
+Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[freertos 0849009] fretboard_link: serialize CDC control-pipe requests in open_cdc
+ 1 file changed, 30 insertions(+), 2 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 18:55:34Z)**_
+
+Committed as `0849009`.
+
+---
+
+_**User (2026-05-21 21:39:31Z)**_
+
+ok, fretboard connection is working well now. I gave the cv_marvin detector a try (started song and disabled manual control). It is pressing buttons but not at all correct. I'm skeptical that we got the note targets in exactly the right spot. I think this is the first thing to focus on. I can think of two approaches to dial in position. 1. overlay target circles over the video stream so that I can see where they are and make some adjustments. 2. implement screen dump to serial or sdcard or ? and view on computer to figure out positions.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 21:39:48Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:39:53Z)**_
+
+Recommend overlay first. Marvin already owns the framebuffer (BGR888 in `ram_nocache`) and the detector knows its own 5-fret coords — drawing a small crosshair/circle at each fret's (x,y) right before the panel reads the frame is maybe 30 lines of code and gives you a live alignment loop. Frame dump is more powerful (you can re-run detect_video.py on the same bytes for ground truth) but it's a bigger lift, and it only helps if overlay shows the coords are at where you intended but cv_marvin_v1 still misfires — i.e. it answers "are our coords wrong" vs "is our capture geometry different from Python's reference".
+
+So: overlay now, frame-dump later if overlay says the coords look right but presses still misfire.
+
+---
+
+_**User (2026-05-21 21:40:18Z)**_
+
+go for overlay
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 21:40:25Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:40:26Z)**_
+
+Let me orient — read the detector and video display path to find the best hook point.
+
+_**Agent (claude-opus-4-7 2026-05-21 21:40:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate detector and video sources
+
+`ls firmware/marvin/default/src/detector/ firmware/marvin/default/src/video/ 2>/dev/null; find firmware/marvin/default/src -name "*.c" -o -name "*.h" | xargs grep -l "isc\|capture\|framebuffer\|BGR888\|cv_marvin" 2>/dev/null | head -30`
+
+```text
+firmware/marvin/default/src/detector/:
+cv_marvin_v1.c
+cv_marvin_v1.h
+detector.c
+detector.h
+
+firmware/marvin/default/src/video/:
+isc_capture.c
+isc_capture.h
+tc358743.c
+tc358743.h
+video.c
+video.h
+firmware/marvin/default/src/app.c
+firmware/marvin/default/src/video/isc_capture.c
+firmware/marvin/default/src/video/video.c
+firmware/marvin/default/src/video/video.h
+firmware/marvin/default/src/video/isc_capture.h
+firmware/marvin/default/src/detector/detector.c
+firmware/marvin/default/src/detector/cv_marvin_v1.c
+firmware/marvin/default/src/detector/detector.h
+firmware/marvin/default/src/config/default/FreeRTOSConfig.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/sam9x75d2g.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/uhpfs.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/tc.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/flexcom.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/uhphs.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/puf.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/matrix.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/gmac.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/mcan.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/csi2dc.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/isc.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/lcdc.h
+firmware/marvin/default/src/packs/SAM9X75D2G_DFP/component/qspi.h
+firmware/marvin/default/src/config/default/system/system_common.h
+firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/stream_buffer.c
+firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/timers.c
+firmware/marvin/default/src/config/default/driver/input/drv_maxtouch.c
+firmware/marvin/default/src/config/default/usb/src/usb_host.c
+firmware/marvin/default/src/config/default/system/time/sys_time.h
+firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/include/task.h
+firmware/marvin/default/src/third_party/rtos/FreeRTOS/Source/include/message_buffer.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:40:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/cv_marvin_v1.h`
+
+```text
+1	#ifndef CV_MARVIN_V1_H
+2	#define CV_MARVIN_V1_H
+3	
+4	/* Reference vision detector. Owns its FreeRTOS task; subscribes to the video
+5	 * module's frame queue; publishes detector_state_t records onto the detector-
+6	 * state bus (spec §4.2). M1 stub: forwards frame metadata only — real
+7	 * detection logic (Q8) lands incrementally on top. */
+8	
+9	void CvMarvinV1_Initialize(void);
+10	
+11	#endif
+12
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:40:32Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/cv_marvin_v1.c`
+
+```text
+1	#include "cv_marvin_v1.h"
+2	#include "detector.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	
+12	#include "log.h"
+13	#include "video/video.h"
+14	
+15	#define CV_TASK_STACK_WORDS    1024u
+16	#define CV_TASK_PRIORITY       2u
+17	#define CV_FRAME_QUEUE_DEPTH   1u    /* drop-intermediate policy */
+18	
+19	/* Capture frames are BGR888 packed, 3 bytes per pixel. Frames whose
+20	 * bytes_per_pixel disagrees are skipped — defensive guard against
+21	 * future ISC reformats. */
+22	#define CV_BYTES_PER_PIXEL     3u
+23	#define CV_PATCH_RADIUS        2u    /* 5×5 patch */
+24	
+25	/* Hold sensor (brightness): rising edge above CV_HOLD_THRESH; releases
+26	 * when it falls below CV_HOLD_THRESH × CV_HOLD_RELEASE_FRAC. Per-color
+27	 * edge thresholds are uniform at 50 by default — separable later if any
+28	 * fret needs its own. Mirrors fret-tuner detect_video.py defaults. */
+29	#define CV_HOLD_THRESH         50.0f
+30	#define CV_HOLD_RELEASE_FRAC   0.60f
+31	#define CV_EDGE_THRESH         50.0f
+32	
+33	#define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
+34	
+35	/* Sensor coordinates in native capture-frame space, anchored to 720×480
+36	 * (Wii 480p60 — primary production source). (hx,hy) = brightness sensor,
+37	 * (ex,ey) = color-filtered edge sensor; both above the strike line.
+38	 * Derived from fret-tuner detect_video.py 1920×1080 defaults via the
+39	 * same Elgato HDMI capture, scaled by (3/8, 4/9). Runtime calibration
+40	 * UI lands with M6. */
+41	typedef struct { uint16_t hx, hy, ex, ey; } sensor_xy_t;
+42	
+43	static const sensor_xy_t s_sensor_coords[FRET_COUNT] =
+44	{
+45	    [FRET_GREEN]  = { 280, 311, 292, 311 },
+46	    [FRET_RED]    = { 318, 311, 330, 311 },
+47	    [FRET_YELLOW] = { 355, 311, 367, 311 },
+48	    [FRET_BLUE]   = { 391, 311, 379, 311 },
+49	    [FRET_ORANGE] = { 430, 311, 418, 311 },
+50	};
+51	
+52	/* Per-fret BGR target / reject weights. Edge signal is
+53	 * (target·c − max(0, reject·c)) × sat_ratio. Reject totals exceed 1.0
+54	 * so camera-captured whites with color-temperature bias get suppressed,
+55	 * not just mathematically perfect whites. */
+56	typedef struct { float target[3]; float reject[3]; } color_filter_t;
+57	
+58	static const color_filter_t s_color_filter[FRET_COUNT] =
+59	{
+60	    [FRET_GREEN]  = { { 0.0f, 1.0f, 0.0f }, { 0.7f, 0.0f, 0.7f } },
+61	    [FRET_RED]    = { { 0.0f, 0.0f, 1.0f }, { 0.7f, 0.7f, 0.0f } },
+62	    [FRET_YELLOW] = { { 0.0f, 0.5f, 0.5f }, { 1.4f, 0.0f, 0.0f } },
+63	    [FRET_BLUE]   = { { 1.0f, 0.4f, 0.0f }, { 0.0f, 0.0f, 1.4f } },
+64	    [FRET_ORANGE] = { { 0.0f, 0.3f, 0.7f }, { 1.4f, 0.0f, 0.0f } },
+65	};
+66	
+67	/* Per-fret detector state. Private — not on the bus. press_count is the
+68	 * rising-edge counter the strum scheduler will eventually consume. */
+69	static float    s_hold_dist[FRET_COUNT];
+70	static float    s_edge_dist[FRET_COUNT];
+71	static bool     s_pressed[FRET_COUNT];
+72	static bool     s_edge_active[FRET_COUNT];
+73	static uint32_t s_press_count[FRET_COUNT];
+74	
+75	static StaticQueue_t s_frame_queue_buf;
+76	static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+77	
+78	static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
+79	static StaticTask_t  s_task_tcb;
+80	
+81	/* ─── Sampling ─────────────────────────────────────────────────────────── */
+82	
+83	/* Average BGR over a (2r+1)×(2r+1) patch centered on (px,py), clipping
+84	 * to frame bounds. Center is clamped first so a one-pixel-off calibration
+85	 * still produces a reading instead of a silent zero. */
+86	static void sample_patch_bgr(const uint8_t *frame, uint16_t fw, uint16_t fh,
+87	                             uint16_t px, uint16_t py, float out[3])
+88	{
+89	    int cx = (int)px;
+90	    if (cx < 0)        { cx = 0; }
+91	    else if (cx >= fw) { cx = fw - 1; }
+92	    int cy = (int)py;
+93	    if (cy < 0)        { cy = 0; }
+94	    else if (cy >= fh) { cy = fh - 1; }
+95	
+96	    int r = (int)CV_PATCH_RADIUS;
+97	    int x0 = cx - r;       if (x0 < 0)  { x0 = 0; }
+98	    int y0 = cy - r;       if (y0 < 0)  { y0 = 0; }
+99	    int x1 = cx + r + 1;   if (x1 > fw) { x1 = fw; }
+100	    int y1 = cy + r + 1;   if (y1 > fh) { y1 = fh; }
+101	
+102	    uint32_t sum_b = 0u, sum_g = 0u, sum_r = 0u;
+103	    uint32_t row_stride = (uint32_t)fw * CV_BYTES_PER_PIXEL;
+104	    for (int y = y0; y < y1; y++)
+105	    {
+106	        const uint8_t *row = frame
+107	                           + (uint32_t)y * row_stride
+108	                           + (uint32_t)x0 * CV_BYTES_PER_PIXEL;
+109	        for (int x = x0; x < x1; x++)
+110	        {
+111	            sum_b += row[0];
+112	            sum_g += row[1];
+113	            sum_r += row[2];
+114	            row   += CV_BYTES_PER_PIXEL;
+115	        }
+116	    }
+117	    uint32_t n = (uint32_t)(x1 - x0) * (uint32_t)(y1 - y0);
+118	    out[0] = (float)sum_b / (float)n;
+119	    out[1] = (float)sum_g / (float)n;
+120	    out[2] = (float)sum_r / (float)n;
+121	}
+122	
+123	/* Max channel — triggers on any color or white. */
+124	static float brightness(const float bgr[3])
+125	{
+126	    float m = bgr[0];
+127	    if (bgr[1] > m) { m = bgr[1]; }
+128	    if (bgr[2] > m) { m = bgr[2]; }
+129	    return m;
+130	}
+131	
+132	/* Color-filtered signal scaled by (max-min)/max so white/gray patches
+133	 * produce near-zero signal regardless of camera white balance. */
+134	static float color_signal(const float bgr[3], const color_filter_t *f)
+135	{
+136	    float cmax = brightness(bgr);
+137	    if (cmax < 1.0f) { return 0.0f; }
+138	    float cmin = bgr[0];
+139	    if (bgr[1] < cmin) { cmin = bgr[1]; }
+140	    if (bgr[2] < cmin) { cmin = bgr[2]; }
+141	    float sat = (cmax - cmin) / cmax;
+142	
+143	    float target = f->target[0]*bgr[0] + f->target[1]*bgr[1] + f->target[2]*bgr[2];
+144	    float reject = f->reject[0]*bgr[0] + f->reject[1]*bgr[1] + f->reject[2]*bgr[2];
+145	    if (reject < 0.0f) { reject = 0.0f; }
+146	    return (target - reject) * sat;
+147	}
+148	
+149	/* ─── Detection ────────────────────────────────────────────────────────── */
+150	
+151	static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
+152	{
+153	    detector_state_t state;
+154	    memset(&state, 0, sizeof(state));
+155	    state.frame_epoch  = frame->frame_count;
+156	    state.timestamp_us = (uint64_t)xTaskGetTickCount() * CV_US_PER_TICK;
+157	    state.detector_id  = (uint8_t)DETECTOR_CV_MARVIN_V1;
+158	
+159	    const float    hold_release = CV_HOLD_THRESH * CV_HOLD_RELEASE_FRAC;
+160	    const uint8_t *fbuf = (const uint8_t *)frame->buffer;
+161	    uint16_t       fw   = frame->width;
+162	    uint16_t       fh   = frame->height;
+163	
+164	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+165	    {
+166	        sensor_xy_t s = s_sensor_coords[i];
+167	        float hold_bgr[3], edge_bgr[3];
+168	        sample_patch_bgr(fbuf, fw, fh, s.hx, s.hy, hold_bgr);
+169	        sample_patch_bgr(fbuf, fw, fh, s.ex, s.ey, edge_bgr);
+170	
+171	        float hd = brightness(hold_bgr);
+172	        float ed = color_signal(edge_bgr, &s_color_filter[i]);
+173	        s_hold_dist[i] = hd;
+174	        s_edge_dist[i] = ed;
+175	
+176	        if (!s_pressed[i] && hd > CV_HOLD_THRESH)   { s_pressed[i] = true;  }
+177	        else if (s_pressed[i] && hd < hold_release) { s_pressed[i] = false; }
+178	
+179	        bool edge_on = ed > CV_EDGE_THRESH;
+180	        if (edge_on && !s_edge_active[i]) { s_press_count[i]++; }
+181	        s_edge_active[i] = edge_on;
+182	
+183	        state.fret[i].pressed = s_pressed[i] ? 1u : 0u;
+184	
+185	        /* confidence: edge_dist scaled to 0..65535. ed lives roughly in
+186	         * channel-value units (~0..255) so ×256 fills the range. */
+187	        float c = ed * 256.0f;
+188	        if (c < 0.0f)        { c = 0.0f;     }
+189	        if (c > 65535.0f)    { c = 65535.0f; }
+190	        state.fret[i].confidence = (uint16_t)c;
+191	
+192	        /* raw_value: hold_dist (max channel, 0..255). */
+193	        float h = hd;
+194	        if (h < 0.0f)        { h = 0.0f;     }
+195	        if (h > 65535.0f)    { h = 65535.0f; }
+196	        state.fret[i].raw_value = (uint16_t)h;
+197	    }
+198	
+199	    (void)xQueueSend(bus, &state, 0);
+200	}
+201	
+202	/* ─── Task ─────────────────────────────────────────────────────────────── */
+203	
+204	static void cv_marvin_v1_task(void *param)
+205	{
+206	    (void)param;
+207	
+208	    QueueHandle_t frames = xQueueCreateStatic(CV_FRAME_QUEUE_DEPTH,
+209	                                              sizeof(Video_FrameInfo),
+210	                                              s_frame_queue_storage,
+211	                                              &s_frame_queue_buf);
+212	    configASSERT(frames != NULL);
+213	    bool subscribed = Video_SubscribeFrames(frames);
+214	    configASSERT(subscribed);
+215	
+216	    QueueHandle_t bus = Detector_BusQueue();
+217	    configASSERT(bus != NULL);
+218	
+219	    LOG_INFO("CV: cv_marvin_v1 started\r\n");
+220	
+221	    for (;;)
+222	    {
+223	        Video_FrameInfo frame;
+224	        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+225	
+226	        /* Always drain, even when disabled, so frames don't back up. */
+227	        if (!Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)) { continue; }
+228	        if (frame.buffer == NULL)                       { continue; }
+229	        if (frame.width == 0u || frame.height == 0u)    { continue; }
+230	        if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
+231	
+232	        detect_frame(&frame, bus);
+233	    }
+234	}
+235	
+236	void CvMarvinV1_Initialize(void)
+237	{
+238	    (void)xTaskCreateStatic(cv_marvin_v1_task,
+239	                            "CvMarvinV1",
+240	                            CV_TASK_STACK_WORDS,
+241	                            NULL,
+242	                            CV_TASK_PRIORITY,
+243	                            s_task_stack,
+244	                            &s_task_tcb);
+245	}
+246
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:40:35Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+1	#include "video.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	
+6	#include "FreeRTOS.h"
+7	#include "task.h"
+8	#include "queue.h"
+9	
+10	#include "definitions.h"
+11	#include "log.h"
+12	#include "tc358743.h"
+13	#include "isc_capture.h"
+14	
+15	#define LCD_PANEL_W  1280u
+16	#define LCD_PANEL_H  800u
+17	
+18	#define VIDEO_TASK_STACK_WORDS  1024u
+19	#define VIDEO_TASK_PRIORITY     1u
+20	#define VIDEO_POLL_MS           20u
+21	
+22	/* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match
+23	 * isc_capture's ISC_CAP_BPP. If that ever becomes runtime-configurable, push
+24	 * it into a getter. */
+25	#define VIDEO_BYTES_PER_PIXEL   3u
+26	
+27	/* Public intent — set via the API, read by the task body. Single-writer
+28	 * (each setter is called by one task), single-reader (video task), so
+29	 * plain volatile is sufficient on a 32-bit MCU. */
+30	static volatile bool s_capture_enabled;
+31	static volatile bool s_display_shown;
+32	
+33	/* Display window. Zero-initialized; the app must call Video_SetWindow
+34	 * before Video_DisplayShow has any visible effect. Layout is app policy,
+35	 * not module policy. */
+36	typedef struct { uint32_t x, y, w, h; } window_t;
+37	static volatile window_t s_window;
+38	
+39	/* Frame subscriber array. Sized for note detector + recording + a couple
+40	 * of independent vision tasks (menu reader, score reader, etc.). Slots are
+41	 * single-aligned-pointer reads/writes so the IRQ can scan without taking
+42	 * a lock; concurrent task-side writers are serialized by taskENTER_CRITICAL
+43	 * during slot assignment. Empty slots are NULL. */
+44	#define VIDEO_MAX_SUBSCRIBERS  4u
+45	static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS];
+46	
+47	/* Most-recent capture buffer + dimensions. Updated by the ISC IRQ on every
+48	 * completed frame; read by Video_GetFrameInfo. Aligned 32-bit so naked
+49	 * reads/writes are atomic on Cortex-A5. */
+50	static volatile uint32_t s_latest_buffer;
+51	static volatile uint16_t s_src_w;
+52	static volatile uint16_t s_src_h;
+53	
+54	/* Capture-state flags. s_capture_armed is task-only; s_display_bound is
+55	 * read by the ISR and written by the task. Defined here (above the ISR)
+56	 * so on_frame_done can see the latter. */
+57	static bool s_capture_armed;
+58	static volatile bool s_display_bound;
+59	
+60	/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+61	
+62	/* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+63	 * 1.0 (= 0x100000) means 1:1, no scaling. Mirrors plib_xlcdc.c's
+64	 * static CALC_SCALING_FACT. */
+65	static uint32_t scaler_factor(uint32_t src, uint32_t dst)
+66	{
+67	    if (dst == 0u) { return 0x100000u; }
+68	    return (uint32_t)(((uint64_t)src << 20) / dst);
+69	}
+70	
+71	/* ─── HEO bind / unbind ────────────────────────────────────────────────── */
+72	
+73	/* Point HEO at the capture buffer at (x, y) sized dst_w × dst_h. If the
+74	 * destination size matches the source size, the HEO scaler stays at its
+75	 * 1.0 factor (effectively bypassed). Otherwise the bilinear scaler is
+76	 * engaged. BASE DISCEN is set to the destination rect so BASE skips DMA
+77	 * for the area HEO covers (§44.6.4.7). */
+78	static void lcd_bind(uint32_t src_w, uint32_t src_h,
+79	                     uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+80	{
+81	    if (x + dst_w > LCD_PANEL_W || y + dst_h > LCD_PANEL_H)
+82	    {
+83	        LOG_WARN("VIDEO: window %lux%lu @(%lu,%lu) exceeds panel %ux%u; skipping bind\r\n",
+84	                 (unsigned long)dst_w, (unsigned long)dst_h,
+85	                 (unsigned long)x, (unsigned long)y,
+86	                 LCD_PANEL_W, LCD_PANEL_H);
+87	        return;
+88	    }
+89	
+90	    /* Initial HEO address: the latest completed buffer if we have one,
+91	     * else fall back to the framebuffer base. The on_frame_done IRQ
+92	     * re-points HEO at every subsequent completed buffer, so this is
+93	     * the seed that holds for at most one frame-time before the first
+94	     * IRQ overwrites it. */
+95	    uint32_t initial_addr = s_latest_buffer;
+96	    if (initial_addr == 0u) { initial_addr = ISC_Capture_GetBufferAddress(); }
+97	
+98	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+99	    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
+100	                               XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+101	    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, initial_addr, false);
+102	    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+103	    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
+104	
+105	    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4) are the same
+106	     * for 1:1 and differ for scaling. Write them directly — XLCDC_Set-
+107	     * LayerWindowXYSize writes both registers to the same value, which is
+108	     * only correct for 1:1. */
+109	    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u)
+110	                             | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
+111	    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
+112	                             | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+113	
+114	    bool scaling = (dst_w != src_w) || (dst_h != src_h);
+115	    if (scaling)
+116	    {
+117	        uint32_t hf = scaler_factor(src_w, dst_w);
+118	        uint32_t vf = scaler_factor(src_h, dst_h);
+119	
+120	        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
+121	                                  | LCDC_HEOCFG23_VXSCEN(1)
+122	                                  | LCDC_HEOCFG23_HXSYEN(1)
+123	                                  | LCDC_HEOCFG23_HXSCEN(1);
+124	        /* Bicubic luminance + bicubic chrominance, both planes. Mirrors
+125	         * MCC's surface-set path — best image quality for video. */
+126	        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1)
+127	                                  | LCDC_HEOCFG30_VXSYBICU(1)
+128	                                  | LCDC_HEOCFG30_VXSCCFG(1)
+129	                                  | LCDC_HEOCFG30_VXSCBICU(1);
+130	        XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1)
+131	                                  | LCDC_HEOCFG31_HXSYBICU(1)
+132	                                  | LCDC_HEOCFG31_HXSCCFG(1)
+133	                                  | LCDC_HEOCFG31_HXSCBICU(1);
+134	        XLCDC_REGS->LCDC_HEOCFG24 = LCDC_HEOCFG24_VXSYFACT(vf);
+135	        XLCDC_REGS->LCDC_HEOCFG25 = LCDC_HEOCFG25_VXSCFACT(vf);
+136	        XLCDC_REGS->LCDC_HEOCFG26 = LCDC_HEOCFG26_HXSYFACT(hf);
+137	        XLCDC_REGS->LCDC_HEOCFG27 = LCDC_HEOCFG27_HXSCFACT(hf);
+138	    }
+139	    else
+140	    {
+141	        /* Disable scaler — matches MCC's HEO-setup defaults. */
+142	        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(0)
+143	                                  | LCDC_HEOCFG23_VXSCEN(0)
+144	                                  | LCDC_HEOCFG23_HXSYEN(0)
+145	                                  | LCDC_HEOCFG23_HXSCEN(0);
+146	    }
+147	
+148	    /* §44.6.4.7 — discard BASE DMA in the destination rect. HEO with MCC's
+149	     * default SFACTC=4 (A0×As) / DFACTC=6 (1−A0×As) reaches 100% opacity
+150	     * for RGB_888_PACKED (no per-pixel alpha → As sourced from A0=255),
+151	     * so BASE pixels in this rect are blended out. DISCEN tells the BASE
+152	     * channel to skip fetching them. */
+153	    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x)
+154	                              | LCDC_BASECFG5_DISCYPOS(y);
+155	    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(dst_w - 1u)
+156	                              | LCDC_BASECFG6_DISCYSIZE(dst_h - 1u);
+157	    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+158	
+159	    /* HEO and BASE attribute updates triggered together. */
+160	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+161	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+162	
+163	    LOG_INFO("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
+164	             (unsigned long)src_w, (unsigned long)src_h,
+165	             (unsigned long)dst_w, (unsigned long)dst_h,
+166	             (unsigned long)x, (unsigned long)y,
+167	             scaling ? "scaled" : "1:1");
+168	}
+169	
+170	/* Hide HEO and let BASE (Legato UI) fill the whole panel. */
+171	static void lcd_unbind(void)
+172	{
+173	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+174	    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+175	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+176	}
+177	
+178	/* ─── Frame-done ISR (runs in IRQ context) ─────────────────────────────── */
+179	
+180	static void on_frame_done(uint32_t frame_count,
+181	                          uint32_t buffer_addr,
+182	                          uintptr_t ctx)
+183	{
+184	    (void)ctx;
+185	
+186	    s_latest_buffer = buffer_addr;
+187	
+188	    /* Re-point HEO at the buffer that was just completed so the panel sees
+189	     * every captured frame. With the descriptor ring and a static base
+190	     * binding, HEO would only see frames written to slot 0. The address
+191	     * latches at next vsync (XLCDC update=true); HEO and ISC run on
+192	     * independent clocks so this is fine. Skip when display is hidden. */
+193	    if (s_display_bound)
+194	    {
+195	        XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, buffer_addr, true);
+196	    }
+197	
+198	    Video_FrameInfo info =
+199	    {
+200	        .buffer          = (void *)(uintptr_t)buffer_addr,
+201	        .frame_count     = frame_count,
+202	        .width           = s_src_w,
+203	        .height          = s_src_h,
+204	        .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
+205	    };
+206	
+207	    BaseType_t higher_priority_task_woken = pdFALSE;
+208	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+209	    {
+210	        QueueHandle_t q = s_subscribers[i];
+211	        if (q != NULL)
+212	        {
+213	            (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+214	        }
+215	    }
+216	    portYIELD_FROM_ISR(higher_priority_task_woken);
+217	}
+218	
+219	/* ─── Capture state machine ────────────────────────────────────────────── */
+220	
+221	static bool capture_arm(void)
+222	{
+223	    uint16_t w = 0, h = 0;
+224	    if (!TC358743_GetDetectedFormat(&w, &h)) { return false; }
+225	
+226	    if (!ISC_Capture_Configure(w, h)) { return false; }
+227	    s_src_w = w;
+228	    s_src_h = h;
+229	    (void)TC358743_EnableStream(true);
+230	    if (!ISC_Capture_Start())
+231	    {
+232	        (void)TC358743_EnableStream(false);
+233	        return false;
+234	    }
+235	    LOG_INFO("VIDEO: capture ARMED %ux%u\r\n", w, h);
+236	    return true;
+237	}
+238	
+239	static void capture_disarm(void)
+240	{
+241	    ISC_Capture_Stop();
+242	    (void)TC358743_EnableStream(false);
+243	    LOG_INFO("VIDEO: capture IDLE\r\n");
+244	}
+245	
+246	/* Bind/unbind display from current intent + most-recent source size +
+247	 * caller-set window. A zero-sized window means the app hasn't set one
+248	 * yet — silently skip the bind in that case rather than emit a malformed
+249	 * HEO geometry; DisplayShow without a prior SetWindow is a no-op. */
+250	static void display_apply(void)
+251	{
+252	    window_t w = s_window;
+253	    bool window_valid = (w.w != 0u) && (w.h != 0u);
+254	    bool source_valid = (s_src_w != 0u) && (s_src_h != 0u);
+255	    bool want = s_display_shown && source_valid && window_valid;
+256	
+257	    if (want && !s_display_bound)
+258	    {
+259	        lcd_bind(s_src_w, s_src_h, w.x, w.y, w.w, w.h);
+260	        s_display_bound = true;
+261	    }
+262	    else if (!want && s_display_bound)
+263	    {
+264	        lcd_unbind();
+265	        s_display_bound = false;
+266	    }
+267	}
+268	
+269	/* Each tick: align current chain state (capture armed / display bound) to
+270	 * the user's intent flags, given the current source-lock state. */
+271	static void reconcile(void)
+272	{
+273	    bool locked = TC358743_IsLocked();
+274	
+275	    /* Capture: armed iff intent + lock. */
+276	    bool want_capture = s_capture_enabled && locked;
+277	    if (want_capture && !s_capture_armed)
+278	    {
+279	        if (capture_arm()) { s_capture_armed = true; }
+280	    }
+281	    else if (!want_capture && s_capture_armed)
+282	    {
+283	        capture_disarm();
+284	        s_capture_armed = false;
+285	    }
+286	
+287	    /* Display: shown iff intent + we have a source size to work with. The
+288	     * source size is captured at arm time and persists across capture
+289	     * teardown so the user can leave HEO bound on a stale frame. */
+290	    display_apply();
+291	}
+292	
+293	/* ─── Task body ────────────────────────────────────────────────────────── */
+294	
+295	static void video_task(void *param)
+296	{
+297	    (void)param;
+298	
+299	    /* One-time init in task context (scheduler running, so synchronous I²C
+300	     * and SYS_TIME work). Brings up capture pipeline, TC358743 bridge,
+301	     * backlight, and parks the panel in UI-only mode. */
+302	    ISC_Capture_Initialize();
+303	    ISC_Capture_SetFrameCallback(on_frame_done, 0);
+304	    TC358743_Initialize();
+305	    XLCDC_EnableBacklight();
+306	    lcd_unbind();
+307	
+308	    for (;;)
+309	    {
+310	        TC358743_Tasks();
+311	        reconcile();
+312	        vTaskDelay(pdMS_TO_TICKS(VIDEO_POLL_MS));
+313	    }
+314	}
+315	
+316	/* ─── Public API ───────────────────────────────────────────────────────── */
+317	
+318	static StackType_t  s_task_stack[VIDEO_TASK_STACK_WORDS];
+319	static StaticTask_t s_task_tcb;
+320	
+321	void Video_Initialize(void)
+322	{
+323	    (void)xTaskCreateStatic(video_task,
+324	                            "VideoTask",
+325	                            VIDEO_TASK_STACK_WORDS,
+326	                            NULL,
+327	                            VIDEO_TASK_PRIORITY,
+328	                            s_task_stack,
+329	                            &s_task_tcb);
+330	}
+331	
+332	void Video_CaptureEnable(void)  { s_capture_enabled = true;  }
+333	void Video_CaptureDisable(void) { s_capture_enabled = false; }
+334	
+335	void Video_DisplayShow(void)    { s_display_shown = true;    }
+336	void Video_DisplayHide(void)    { s_display_shown = false;   }
+337	
+338	void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+339	{
+340	    window_t w = { x, y, dst_w, dst_h };
+341	    s_window = w;
+342	    /* Force a re-bind on next reconcile if we're currently shown. */
+343	    s_display_bound = false;
+344	}
+345	
+346	bool Video_SubscribeFrames(QueueHandle_t q)
+347	{
+348	    if (q == NULL) { return false; }
+349	
+350	    bool ok = false;
+351	    taskENTER_CRITICAL();
+352	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+353	    {
+354	        if (s_subscribers[i] == q) { ok = true; break; }     /* already in */
+355	        if (s_subscribers[i] == NULL)
+356	        {
+357	            s_subscribers[i] = q;
+358	            ok = true;
+359	            break;
+360	        }
+361	    }
+362	    taskEXIT_CRITICAL();
+363	
+364	    if (!ok) { LOG_ERROR("VIDEO: subscriber table full (max %u)\r\n",
+365	                         (unsigned)VIDEO_MAX_SUBSCRIBERS); }
+366	    return ok;
+367	}
+368	
+369	bool Video_UnsubscribeFrames(QueueHandle_t q)
+370	{
+371	    if (q == NULL) { return false; }
+372	
+373	    bool ok = false;
+374	    taskENTER_CRITICAL();
+375	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+376	    {
+377	        if (s_subscribers[i] == q)
+378	        {
+379	            s_subscribers[i] = NULL;
+380	            ok = true;
+381	            break;
+382	        }
+383	    }
+384	    taskEXIT_CRITICAL();
+385	    return ok;
+386	}
+387	
+388	void Video_GetFrameInfo(Video_FrameInfo *info)
+389	{
+390	    if (info == NULL) { return; }
+391	    info->buffer          = (void *)(uintptr_t)s_latest_buffer;
+392	    info->frame_count     = ISC_Capture_FrameCount();
+393	    info->width           = s_src_w;
+394	    info->height          = s_src_h;
+395	    info->bytes_per_pixel = VIDEO_BYTES_PER_PIXEL;
+396	}
+397
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:42:24Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:42:28Z)**_
+
+Looking at the architecture: HEO points directly at ISC's capture ring buffers — no intermediate copy. The detector subscribes to `on_frame_done` (IRQ) and processes the just-finished buffer. If we draw markers on that same buffer *after* `detect_frame` samples (so we don't pollute the patches), HEO will scan it out at next vsync — natural place for the overlay to live, single task, no race.
+
+Plan:
+- Add an overlay routine in `cv_marvin_v1.c`: hollow Bresenham ring at each `(hx,hy)` (white) and `(ex,ey)` (per-fret color), radius 4 — outside the radius-2 sample patch so it doesn't affect future re-samples on other ring slots.
+- Call it from the task right after `detect_frame`. Always on while detector is enabled — calibration aid, no toggle needed yet.
+
+_**Agent (claude-opus-4-7 2026-05-21 21:42:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/detector/cv_marvin_v1.c`
+
+```text
+200	}
+201	
+202	/* ─── Task ─────────────────────────────────────────────────────────────── */
+203	
+204	static void cv_marvin_v1_task(void *param)
+205	{
+206	    (void)param;
+207	
+208	    QueueHandle_t frames = xQueueCreateStatic(CV_FRAME_QUEUE_DEPTH,
+209	                                              sizeof(Video_FrameInfo),
+210	                                              s_frame_queue_storage,
+211	                                              &s_frame_queue_buf);
+212	    configASSERT(frames != NULL);
+213	    bool subscribed = Video_SubscribeFrames(frames);
+214	    configASSERT(subscribed);
+215	
+216	    QueueHandle_t bus = Detector_BusQueue();
+217	    configASSERT(bus != NULL);
+218	
+219	    LOG_INFO("CV: cv_marvin_v1 started\r\n");
+220	
+221	    for (;;)
+222	    {
+223	        Video_FrameInfo frame;
+224	        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+225	
+226	        /* Always drain, even when disabled, so frames don't back up. */
+227	        if (!Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)) { continue; }
+228	        if (frame.buffer == NULL)                       { continue; }
+229	        if (frame.width == 0u || frame.height == 0u)    { continue; }
+230	        if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
+231	
+232	        detect_frame(&frame, bus);
+233	    }
+234	}
+235	
+236	void CvMarvinV1_Initialize(void)
+237	{
+238	    (void)xTaskCreateStatic(cv_marvin_v1_task,
+239	                            "CvMarvinV1",
+240	                            CV_TASK_STACK_WORDS,
+241	                            NULL,
+242	                            CV_TASK_PRIORITY,
+243	                            s_task_stack,
+244	                            &s_task_tcb);
+245	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:42:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:42:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:42:55Z)**_
+
+Build it and try. Each fret should show a paired ring at its sample points: white ring at the brightness-sensor `(hx,hy)`, fret-color ring at the edge-sensor `(ex,ey)`. With the current coords all five pairs sit on `y=311` in capture space — so you'll see five pairs along a horizontal line. Adjust `s_sensor_coords[]` at [cv_marvin_v1.c:43-50](firmware/marvin/default/src/detector/cv_marvin_v1.c#L43-L50) and reflash to iterate.
+
+Note: overlay only paints when cv_marvin is enabled. To do pure visual calibration without the detector firing presses, leave manual control on (gates `timing_pipeline` output) — overlay still renders since cv_marvin is still consuming frames.
+
+---
+
+_**User (2026-05-21 21:45:16Z)**_
+
+coordinates actuallly seem about right. I think we need to focus on the detector logic
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 21:45:27Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:45:28Z)**_
+
+Let me re-read what the detector actually publishes and how `timing_pipeline` consumes it before I guess at the failure mode.
+
+_**Agent (claude-opus-4-7 2026-05-21 21:45:28Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/timing_pipeline.c`
+
+```text
+1	#include "timing_pipeline.h"
+2	#include "fretboard_link.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	
+12	#include "log.h"
+13	#include "detector/detector.h"
+14	
+15	#define TP_TASK_STACK_WORDS    768u
+16	#define TP_TASK_PRIORITY       2u
+17	
+18	/* Drives chord aggregation, strum scheduling, and pending release timing.
+19	 * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+20	#define TP_STRUM_DELAY_MS      220u
+21	#define TP_FRET_EARLY_MS       50u
+22	#define TP_STRUM_PULSE_MS      50u
+23	#define TP_CHORD_WINDOW_MS     20u
+24	
+25	#define TP_FIFO_CAP            16u
+26	
+27	/* Background tick: bound on between-frame latency for strum-pulse and
+28	 * note-assert deadlines that fall between detector publishes. 5 ms keeps
+29	 * jitter well under our 16 ms detector cadence and below human-perceptible
+30	 * timing error. */
+31	#define TP_TICK_MS             5u
+32	
+33	typedef struct
+34	{
+35	    uint32_t assert_at_ms;
+36	    uint8_t  fret_mask;
+37	} pending_note_t;
+38	
+39	typedef struct
+40	{
+41	    uint32_t strum_at_ms;
+42	    uint8_t  fret_mask;
+43	} pending_strum_t;
+44	
+45	static StackType_t   s_task_stack[TP_TASK_STACK_WORDS];
+46	static StaticTask_t  s_task_tcb;
+47	
+48	/* Pipeline state — touched only by the timing task. */
+49	static pending_note_t  s_note_q[TP_FIFO_CAP];
+50	static uint8_t         s_note_head, s_note_tail, s_note_count;
+51	static pending_strum_t s_strum_q[TP_FIFO_CAP];
+52	static uint8_t         s_strum_head, s_strum_tail, s_strum_count;
+53	
+54	static bool     s_chord_open;
+55	static uint32_t s_chord_start_ms;
+56	static uint8_t  s_chord_mask;
+57	
+58	static uint8_t  s_frets_active;
+59	static bool     s_strum_active;
+60	static uint32_t s_strum_release_at_ms;
+61	static bool     s_strum_direction;        /* toggles down/up each strum */
+62	
+63	static uint8_t  s_prev_pressed_mask;
+64	static uint16_t s_prev_press_count[FRET_COUNT];
+65	static bool     s_press_count_seen;
+66	static uint32_t s_release_at_ms[FRET_COUNT];
+67	static uint8_t  s_release_pending_mask;
+68	
+69	static uint8_t  s_output_mask;
+70	static uint32_t s_now_ms;
+71	static uint64_t s_last_frame_us;
+72	
+73	static volatile bool s_pipeline_enabled = true;
+74	
+75	static const uint8_t s_fret_bit[FRET_COUNT] =
+76	{
+77	    [FRET_GREEN]  = TIMING_BIT_GREEN,
+78	    [FRET_RED]    = TIMING_BIT_RED,
+79	    [FRET_YELLOW] = TIMING_BIT_YELLOW,
+80	    [FRET_BLUE]   = TIMING_BIT_BLUE,
+81	    [FRET_ORANGE] = TIMING_BIT_ORANGE,
+82	};
+83	
+84	static inline bool note_q_empty(void) { return s_note_count == 0u; }
+85	static inline bool note_q_full(void)  { return s_note_count >= TP_FIFO_CAP; }
+86	static inline bool strum_q_empty(void){ return s_strum_count == 0u; }
+87	static inline bool strum_q_full(void) { return s_strum_count >= TP_FIFO_CAP; }
+88	
+89	static void note_q_push(pending_note_t n)
+90	{
+91	    s_note_q[s_note_tail] = n;
+92	    s_note_tail = (uint8_t)((s_note_tail + 1u) % TP_FIFO_CAP);
+93	    s_note_count++;
+94	}
+95	
+96	static void note_q_pop(void)
+97	{
+98	    s_note_head = (uint8_t)((s_note_head + 1u) % TP_FIFO_CAP);
+99	    s_note_count--;
+100	}
+101	
+102	static void strum_q_push(pending_strum_t s)
+103	{
+104	    s_strum_q[s_strum_tail] = s;
+105	    s_strum_tail = (uint8_t)((s_strum_tail + 1u) % TP_FIFO_CAP);
+106	    s_strum_count++;
+107	}
+108	
+109	static void strum_q_pop(void)
+110	{
+111	    s_strum_head = (uint8_t)((s_strum_head + 1u) % TP_FIFO_CAP);
+112	    s_strum_count--;
+113	}
+114	
+115	/* Iterator helpers for the "is this fret needed by an outstanding entry?"
+116	 * release-suppression check below. */
+117	static bool note_q_any_needs(uint8_t bit)
+118	{
+119	    for (uint8_t i = 0u; i < s_note_count; i++)
+120	    {
+121	        uint8_t idx = (uint8_t)((s_note_head + i) % TP_FIFO_CAP);
+122	        if (s_note_q[idx].fret_mask & bit) { return true; }
+123	    }
+124	    return false;
+125	}
+126	
+127	static bool strum_q_any_needs(uint8_t bit)
+128	{
+129	    for (uint8_t i = 0u; i < s_strum_count; i++)
+130	    {
+131	        uint8_t idx = (uint8_t)((s_strum_head + i) % TP_FIFO_CAP);
+132	        if (s_strum_q[idx].fret_mask & bit) { return true; }
+133	    }
+134	    return false;
+135	}
+136	
+137	static void publish_mask(uint8_t mask)
+138	{
+139	    s_output_mask = mask;
+140	    if (s_pipeline_enabled)
+141	    {
+142	        FretboardLink_Send(mask);
+143	    }
+144	}
+145	
+146	/* Edge derivation:
+147	 *   - presses_mask: rising edge (press_count change preferred; pressed-edge
+148	 *     fallback if the detector doesn't expose press_count for that fret)
+149	 *   - releases_mask: falling edge of pressed
+150	 * confidence is unused by the pipeline but is the natural future home for
+151	 * a quality gate; left untouched here. */
+152	static void derive_edges(const detector_state_t *state,
+153	                         uint8_t *presses_mask, uint8_t *releases_mask,
+154	                         uint8_t *pressed_mask)
+155	{
+156	    uint8_t pm = 0u;
+157	    uint8_t rm = 0u;
+158	    uint8_t cm = 0u;
+159	
+160	    bool first = !s_press_count_seen;
+161	
+162	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+163	    {
+164	        bool pressed = state->fret[i].pressed != 0u;
+165	        if (pressed) { cm |= s_fret_bit[i]; }
+166	
+167	        bool was_pressed = (s_prev_pressed_mask & s_fret_bit[i]) != 0u;
+168	        uint16_t pc = state->fret[i].confidence;  /* placeholder slot */
+169	        (void)pc;
+170	
+171	        /* press_count is private to the detector; for now we infer rising
+172	         * edge from pressed transitions only. If a detector later exposes
+173	         * a press_count via a side channel, plug it in here. */
+174	        if (pressed && !was_pressed) { pm |= s_fret_bit[i]; }
+175	        if (!pressed && was_pressed) { rm |= s_fret_bit[i]; }
+176	
+177	        s_prev_press_count[i] = state->fret[i].confidence;
+178	    }
+179	
+180	    if (first) { s_press_count_seen = true; }
+181	
+182	    s_prev_pressed_mask = cm;
+183	    *presses_mask  = pm;
+184	    *releases_mask = rm;
+185	    *pressed_mask  = cm;
+186	}
+187	
+188	static void chord_commit(void)
+189	{
+190	    if (note_q_full() || strum_q_full())
+191	    {
+192	        s_chord_open = false;
+193	        s_chord_mask = 0u;
+194	        return;
+195	    }
+196	
+197	    uint32_t assert_at = s_now_ms + TP_STRUM_DELAY_MS - TP_FRET_EARLY_MS;
+198	    uint32_t strum_at  = s_now_ms + TP_STRUM_DELAY_MS;
+199	
+200	    if (!strum_q_empty())
+201	    {
+202	        uint8_t  last_idx = (uint8_t)((s_strum_tail + TP_FIFO_CAP - 1u) % TP_FIFO_CAP);
+203	        uint32_t earliest = s_strum_q[last_idx].strum_at_ms + TP_STRUM_PULSE_MS;
+204	        if ((int32_t)(assert_at - earliest) < 0)
+205	        {
+206	            assert_at = earliest;
+207	            strum_at  = assert_at + TP_FRET_EARLY_MS;
+208	        }
+209	    }
+210	
+211	    pending_note_t  n = { .assert_at_ms = assert_at, .fret_mask = s_chord_mask };
+212	    pending_strum_t s = { .strum_at_ms  = strum_at,  .fret_mask = s_chord_mask };
+213	    note_q_push(n);
+214	    strum_q_push(s);
+215	
+216	    s_chord_open = false;
+217	    s_chord_mask = 0u;
+218	}
+219	
+220	static void process_notes(void)
+221	{
+222	    while (!note_q_empty())
+223	    {
+224	        const pending_note_t *n = &s_note_q[s_note_head];
+225	        if ((int32_t)(s_now_ms - n->assert_at_ms) < 0) { break; }
+226	
+227	        for (uint8_t i = 0u; i < FRET_COUNT; i++)
+228	        {
+229	            uint8_t bit = s_fret_bit[i];
+230	            bool need = (n->fret_mask & bit) != 0u;
+231	            bool have = (s_frets_active & bit) != 0u;
+232	            if (need && !have)      { s_frets_active |= bit; }
+233	            else if (!need && have) { s_frets_active &= (uint8_t)~bit; }
+234	        }
+235	        note_q_pop();
+236	    }
+237	}
+238	
+239	static void process_strums(void)
+240	{
+241	    while (!strum_q_empty())
+242	    {
+243	        const pending_strum_t *s = &s_strum_q[s_strum_head];
+244	        if ((int32_t)(s_now_ms - s->strum_at_ms) < 0) { break; }
+245	
+246	        s_strum_active        = true;
+247	        s_strum_direction     = !s_strum_direction;
+248	        s_strum_release_at_ms = s_now_ms + TP_STRUM_PULSE_MS;
+249	
+250	        strum_q_pop();
+251	    }
+252	}
+253	
+254	static void process_releases(uint8_t live_pressed_mask)
+255	{
+256	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+257	    {
+258	        uint8_t bit = s_fret_bit[i];
+259	        if ((s_release_pending_mask & bit) == 0u) { continue; }
+260	        if ((int32_t)(s_now_ms - s_release_at_ms[i]) < 0) { continue; }
+261	        if (live_pressed_mask & bit) { continue; }
+262	        if (note_q_any_needs(bit) || strum_q_any_needs(bit)) { continue; }
+263	
+264	        s_frets_active        &= (uint8_t)~bit;
+265	        s_release_pending_mask &= (uint8_t)~bit;
+266	    }
+267	}
+268	
+269	static void advance(uint8_t live_pressed_mask)
+270	{
+271	    if (s_chord_open && (int32_t)(s_now_ms - s_chord_start_ms) >= (int32_t)TP_CHORD_WINDOW_MS)
+272	    {
+273	        chord_commit();
+274	    }
+275	
+276	    if (s_strum_active && (int32_t)(s_now_ms - s_strum_release_at_ms) >= 0)
+277	    {
+278	        s_strum_active = false;
+279	    }
+280	
+281	    process_notes();
+282	    process_strums();
+283	    process_releases(live_pressed_mask);
+284	
+285	    uint8_t mask = s_frets_active;
+286	    if (s_strum_active)
+287	    {
+288	        mask |= s_strum_direction ? TIMING_BIT_STRUM_UP : TIMING_BIT_STRUM_DOWN;
+289	    }
+290	    publish_mask(mask);
+291	}
+292	
+293	static void process_frame(const detector_state_t *state)
+294	{
+295	    /* Detector frame timestamps drive the clock so this is replay-
+296	     * deterministic. timestamp_us is monotonic per spec §4.2.3. */
+297	    s_now_ms = (uint32_t)(state->timestamp_us / 1000ull);
+298	    s_last_frame_us = state->timestamp_us;
+299	
+300	    uint8_t presses, releases, pressed_mask;
+301	    derive_edges(state, &presses, &releases, &pressed_mask);
+302	
+303	    if (presses)
+304	    {
+305	        if (!s_chord_open)
+306	        {
+307	            s_chord_open     = true;
+308	            s_chord_start_ms = s_now_ms;
+309	            s_chord_mask     = 0u;
+310	        }
+311	        s_chord_mask |= presses;
+312	    }
+313	
+314	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+315	    {
+316	        if (releases & s_fret_bit[i])
+317	        {
+318	            s_release_at_ms[i]      = s_now_ms + TP_STRUM_DELAY_MS;
+319	            s_release_pending_mask |= s_fret_bit[i];
+320	        }
+321	    }
+322	
+323	    advance(pressed_mask);
+324	}
+325	
+326	static void timing_pipeline_task(void *param)
+327	{
+328	    (void)param;
+329	
+330	    QueueHandle_t bus = Detector_BusQueue();
+331	    configASSERT(bus != NULL);
+332	
+333	    LOG_INFO("TIMING: pipeline started\r\n");
+334	
+335	    for (;;)
+336	    {
+337	        detector_state_t state;
+338	        if (xQueueReceive(bus, &state, pdMS_TO_TICKS(TP_TICK_MS)) == pdTRUE)
+339	        {
+340	            if ((detector_id_t)state.detector_id != Detector_GetActive())
+341	            {
+342	                continue;
+343	            }
+344	            process_frame(&state);
+345	        }
+346	        else
+347	        {
+348	            /* No new frame; advance the clock so deadlines that fell
+349	             * between frames (strum pulses, release timers) still fire. */
+350	            s_now_ms += TP_TICK_MS;
+351	            advance(s_prev_pressed_mask);
+352	        }
+353	    }
+354	}
+355	
+356	void TimingPipeline_Initialize(void)
+357	{
+358	    (void)xTaskCreateStatic(timing_pipeline_task,
+359	                            "Timing",
+360	                            TP_TASK_STACK_WORDS,
+361	                            NULL,
+362	                            TP_TASK_PRIORITY,
+363	                            s_task_stack,
+364	                            &s_task_tcb);
+365	}
+366	
+367	void TimingPipeline_SetEnabled(bool enabled)
+368	{
+369	    s_pipeline_enabled = enabled;
+370	}
+371
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:45:35Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:45:42Z)**_
+
+Before I start digging — "not at all correct" can mean a few different shapes, and they point at very different bugs. A two-question probe so I head in the right direction:
+
+_**Agent (claude-opus-4-7 2026-05-21 21:47:42Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**What does the misfiring look like?**
+
+Options:
+- **Wrong frets fire on every note** - Game shows Green, marvin presses Red — right timing, wrong identity. Suggests color filter / channel-order bug.
+- **Right frets but wrong timing** - Marvin presses the correct fret but consistently too early/late or misses the strum window. Suggests timing_pipeline / strum scheduling.
+- **Random / chattery presses** - Marvin presses frets that aren't being shown at all, or fires constantly. Suggests threshold/hysteresis blowing up.
+- **No press / always stuck** - Frets stay on continuously, or never fire. Suggests broken hold detection.
+
+**Are press_count edges happening near the strike line, or is the brightness 'pressed' state firing alone?**
+
+Options:
+- **Both — but presses still wrong** - Hold and edge are both detecting, but the resulting fretboard output is incorrect. Look at timing_pipeline.
+- **Hold (brightness) fires alone** - frets[].pressed bit toggles but no rising-edge detected — strum scheduling never gets a press_count signal.
+- **I don't know — no logs to tell** - Need to add logging to see what the detector publishes per frame before answering this.
+
+
+**Answer:** Random / chattery presses, I don't know — no logs to tell
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:47:53Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:47:54Z)**_
+
+OK — first step is visibility, since we can't tune what we can't see. Let me look at the Python reference for what threshold values actually work, then add a periodic diagnostic log so you can see what the detector is publishing.
+
+_**Agent (claude-opus-4-7 2026-05-21 21:47:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find Python reference
+
+`find tools/fret-tuner -type f -name "*.py" | head -20`
+
+```text
+tools/fret-tuner/fret-tuner.py
+tools/fret-tuner/server.py
+tools/fret-tuner/detect_trough.py
+tools/fret-tuner/detect_video.py
+tools/fret-tuner/stream.py
+tools/fret-tuner/detect_slope.py
+tools/fret-tuner/camera.py
+tools/fret-tuner/detect_threshold.py
+tools/fret-tuner/video_calibrate.py
+tools/fret-tuner/actuator.py
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:47:57Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./tools/fret-tuner/detect_video.py`
+
+```text
+1	"""
+2	Video-based fret detection -- camera pointed at the game screen.
+3	
+4	Consumes frames from the shared reference video buffer (camera.py); does
+5	not own the camera. Sensor markers and per-button signal levels are
+6	exposed as an overlay layer through the `overlays()` hook so the server
+7	can bake them into the live MJPEG and paused scrub frames.
+8	
+9	Two sensor points per button, both above the strike line:
+10	
+11	  Sensor 1 (hold)  -- brightness detect (color OR white).
+12	                      Sets pressed=True whenever anything bright appears.
+13	  Sensor 2 (edge)  -- color-filtered leading-edge detect.
+14	                      Increments press_count on each new note arrival,
+15	                      which the actuator uses to schedule strums.
+16	
+17	Use video_calibrate.py to find pixel coordinates for all 10 sensor
+18	points. Detection thresholds are applied to raw pixel values (dark
+19	background is the implicit zero).
+20	
+21	The "baseline" output is the stronger of the two signals (scaled to
+22	0..4095) for chart overlay visualization.
+23	
+24	Requires: opencv-python
+25	"""
+26	
+27	import threading
+28	from typing import Optional
+29	
+30	import cv2
+31	import numpy as np
+32	
+33	from camera import Frame, get_camera
+34	from stream import CH_COLORS, CHANNELS, Sample, make_slot_schema
+35	
+36	_DIST_SCALE = 4095.0 / 255.0  # map max single-channel distance (255) to 0..4095
+37	
+38	# Per-button color filter for the edge detector (sensor 2).
+39	# (target_weights, reject_weights) in BGR order.
+40	# Detection signal = target - reject.  Reject weights > 1.0 total
+41	# so that camera-captured whites (which have color-temperature bias)
+42	# are aggressively suppressed, not just mathematically-perfect whites.
+43	_COLOR_FILTER: dict[str, tuple[tuple[float, ...], tuple[float, ...]]] = {
+44	    "green":  ((0, 1, 0),     (0.7, 0, 0.7)),   # want G up, penalize B/R
+45	    "red":    ((0, 0, 1),     (0.7, 0.7, 0)),    # want R up, penalize B/G
+46	    "yellow": ((0, 0.5, 0.5), (1.4, 0, 0)),      # want R+G up, penalize B
+47	    "blue":   ((1, 0.4, 0),   (0, 0, 1.4)),       # want B + some G, penalize R
+48	    "orange": ((0, 0.3, 0.7), (1.4, 0, 0)),      # want R+someG up, penalize B
+49	}
+50	
+51	_MARKER_COLORS = {
+52	    "green":  (0, 200, 0),
+53	    "red":    (0, 0, 220),
+54	    "yellow": (0, 220, 220),
+55	    "blue":   (220, 0, 0),
+56	    "orange": (0, 140, 255),
+57	}
+58	_IDLE_COLOR = (120, 120, 120)
+59	_PRESSED_COLOR = (0, 255, 0)
+60	
+61	_MARKER_RADIUS = 16
+62	_MARKER_THICK = 3
+63	_FONT_SCALE = 0.6
+64	_FONT_THICK = 2
+65	
+66	# Calibration coords are anchored to a 1920x1080 reference frame.
+67	_CAL_W = 1920
+68	_CAL_H = 1080
+69	
+70	
+71	class Detector:
+72	    """Camera-based fret press detector consuming the shared video buffer."""
+73	
+74	    @classmethod
+75	    def default_params(cls) -> dict:
+76	        return {
+77	            "HOLD_THRESH": 50,
+78	            "HOLD_RELEASE_FRAC": 60,
+79	            "EDGE_GREEN": 50,
+80	            "EDGE_RED": 50,
+81	            "EDGE_YELLOW": 50,
+82	            "EDGE_BLUE": 50,
+83	            "EDGE_ORANGE": 50,
+84	            "PATCH_RADIUS": 2,
+85	            "GREEN_X": 748, "GREEN_Y": 700,
+86	            "RED_X": 850, "RED_Y": 700,
+87	            "YELLOW_X": 947, "YELLOW_Y": 700,
+88	            "BLUE_X": 1045, "BLUE_Y": 700,
+89	            "ORANGE_X": 1147, "ORANGE_Y": 700,
+90	            "GREEN_EX": 780, "GREEN_EY": 700,
+91	            "RED_EX": 882, "RED_EY": 700,
+92	            "YELLOW_EX": 979, "YELLOW_EY": 700,
+93	            "BLUE_EX": 1013, "BLUE_EY": 700,
+94	            "ORANGE_EX": 1115, "ORANGE_EY": 700,
+95	        }
+96	
+97	    def __init__(self, **params):
+98	        defaults = self.default_params()
+99	        defaults.update(params)
+100	
+101	        self._hold_thresh = int(defaults["HOLD_THRESH"])
+102	        self._hold_release = self._hold_thresh * int(defaults["HOLD_RELEASE_FRAC"]) // 100
+103	        self._edge_thresh: dict[str, int] = {
+104	            ch: int(defaults[f"EDGE_{ch.upper()}"]) for ch in CHANNELS
+105	        }
+106	        self._patch_r = max(0, int(defaults["PATCH_RADIUS"]))
+107	
+108	        self._cal_hold_pixels: dict[str, tuple[int, int]] = {}
+109	        self._cal_edge_pixels: dict[str, tuple[int, int]] = {}
+110	        for ch in CHANNELS:
+111	            p = ch.upper()
+112	            self._cal_hold_pixels[ch] = (int(defaults[f"{p}_X"]), int(defaults[f"{p}_Y"]))
+113	            self._cal_edge_pixels[ch] = (int(defaults[f"{p}_EX"]), int(defaults[f"{p}_EY"]))
+114	
+115	        # Per-frame-size cache of scaled pixel coords. The capture path
+116	        # passes full-res frames to detection while the view path applies
+117	        # overlays onto the downscaled working frame, so we typically need
+118	        # at least two entries (one for detection, one for view). Callers
+119	        # treat the returned dicts as immutable.
+120	        self._scaled_cache: dict[
+121	            tuple[int, int],
+122	            tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]],
+123	        ] = {}
+124	        self._scale_lock = threading.Lock()
+125	
+126	        self._hold_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+127	        self._edge_dist: dict[str, float] = {ch: 0.0 for ch in CHANNELS}
+128	        self._pressed: dict[str, bool] = {ch: False for ch in CHANNELS}
+129	        self._press_count: dict[str, int] = {ch: 0 for ch in CHANNELS}
+130	        self._edge_active: dict[str, bool] = {ch: False for ch in CHANNELS}
+131	        self._cached_result: Optional[dict] = None
+132	
+133	        self._lock = threading.Lock()
+134	
+135	        self._cam = get_camera()
+136	        self._cam.add_frame_listener(self._on_frame)
+137	
+138	    def stop(self):
+139	        """Detach the camera frame listener."""
+140	        try:
+141	            self._cam.remove_frame_listener(self._on_frame)
+142	        except Exception:
+143	            pass
+144	        self._log("stopped")
+145	
+146	    def __del__(self):
+147	        try:
+148	            self._cam.remove_frame_listener(self._on_frame)
+149	        except Exception:
+150	            pass
+151	
+152	    def _log(self, msg: str):
+153	        print(f"[detect_video] {msg}", flush=True)
+154	
+155	    _EDGE_RADIUS = 10
+156	    _EDGE_THICK = 2
+157	
+158	    def _scale_pixels(
+159	        self, frame_w: int, frame_h: int,
+160	    ) -> tuple[dict[str, tuple[int, int]], dict[str, tuple[int, int]]]:
+161	        """Return (hold_pixels, edge_pixels) scaled for the given frame size.
+162	
+163	        Cached per (w, h) so the detection (full-res) and overlay (working-res)
+164	        paths don't keep invalidating each other. Returned dicts are shared
+165	        across calls and should be treated as immutable by callers.
+166	        """
+167	        key = (frame_w, frame_h)
+168	        with self._scale_lock:
+169	            cached = self._scaled_cache.get(key)
+170	            if cached is not None:
+171	                return cached
+172	
+173	            all_cal = list(self._cal_hold_pixels.values()) + list(self._cal_edge_pixels.values())
+174	            cal_xs = [x for x, _ in all_cal]
+175	            cal_ys = [y for _, y in all_cal]
+176	            cal_w = max(cal_xs) + max(cal_xs) // 4
+177	            cal_h = max(cal_ys) + max(cal_ys) // 4
+178	
+179	            if frame_w < cal_w or frame_h < cal_h:
+180	                sx = frame_w / float(_CAL_W)
+181	                sy = frame_h / float(_CAL_H)
+182	                self._log(f"scaling coords for {frame_w}x{frame_h} by {sx:.3f}x{sy:.3f}")
+183	                hold = {
+184	                    ch: (int(self._cal_hold_pixels[ch][0] * sx),
+185	                         int(self._cal_hold_pixels[ch][1] * sy))
+186	                    for ch in CHANNELS
+187	                }
+188	                edge = {
+189	                    ch: (int(self._cal_edge_pixels[ch][0] * sx),
+190	                         int(self._cal_edge_pixels[ch][1] * sy))
+191	                    for ch in CHANNELS
+192	                }
+193	            else:
+194	                hold = dict(self._cal_hold_pixels)
+195	                edge = dict(self._cal_edge_pixels)
+196	            cached = (hold, edge)
+197	            self._scaled_cache[key] = cached
+198	            return cached
+199	
+200	    def _on_frame(self, frame: Frame) -> None:
+201	        """Camera frame listener -- runs in the capture thread.
+202	
+203	        Prefers the full-resolution raw frame from the capture device when
+204	        available, so detection is unaffected by the working/buffer downscale
+205	        used for the live view.
+206	
+207	        After detection, attaches a per-frame snapshot to `frame.meta` so the
+208	        view path can render scrub-accurate overlays from buffered frames.
+209	        """
+210	        img = frame.detect_image()
+211	        if img is None:
+212	            return
+213	        h, w = img.shape[:2]
+214	        hold_px, edge_px = self._scale_pixels(w, h)
+215	        self._detect(img, hold_px, edge_px)
+216	
+217	        with self._lock:
+218	            snap_state = dict(self._cached_result) if self._cached_result else {}
+219	            snap_markers = {
+220	                ch: {
+221	                    "pressed": self._pressed[ch],
+222	                    "hold_dist": self._hold_dist[ch],
+223	                    "edge_dist": self._edge_dist[ch],
+224	                    "edge_active": self._edge_active[ch],
+225	                } for ch in CHANNELS
+226	            }
+227	            patch_r = self._patch_r
+228	        if frame.meta is None:
+229	            frame.meta = {}
+230	        frame.meta["detect_video"] = {
+231	            "state": snap_state,
+232	            "markers": snap_markers,
+233	            "patch_r": patch_r,
+234	        }
+235	
+236	    def _sample_at(self, frame: np.ndarray, px: int, py: int) -> np.ndarray:
+237	        """Average a small patch around (px, py)."""
+238	        h, w = frame.shape[:2]
+239	        px = max(0, min(px, w - 1))
+240	        py = max(0, min(py, h - 1))
+241	        r = self._patch_r
+242	        y0, y1 = max(0, py - r), min(h, py + r + 1)
+243	        x0, x1 = max(0, px - r), min(w, px + r + 1)
+244	        patch = frame[y0:y1, x0:x1]
+245	        if patch.size == 0:
+246	            return np.zeros(3, dtype=np.float64)
+247	        return patch.astype(np.float64).mean(axis=(0, 1))
+248	
+249	    @staticmethod
+250	    def _brightness(color: np.ndarray) -> float:
+251	        """Max channel value -- triggers on any color or white."""
+252	        d = float(max(0.0, color[0], color[1], color[2]))
+253	        return 0.0 if np.isnan(d) else d
+254	
+255	    def _color_signal(self, color: np.ndarray, ch: str) -> float:
+256	        """Color-filtered signal -- only the button's own color triggers.
+257	
+258	        Scales by saturation ratio (max-min)/max so white/gray pixels
+259	        produce near-zero signal regardless of camera white balance.
+260	        """
+261	        cmax = float(max(color[0], color[1], color[2]))
+262	        if cmax < 1.0:
+263	            return 0.0
+264	        cmin = float(min(color[0], color[1], color[2]))
+265	        sat_ratio = (cmax - cmin) / cmax
+266	
+267	        tw, rw = _COLOR_FILTER[ch]
+268	        target = tw[0]*color[0] + tw[1]*color[1] + tw[2]*color[2]
+269	        reject = max(0.0, rw[0]*color[0] + rw[1]*color[1] + rw[2]*color[2])
+270	        d = float((target - reject) * sat_ratio)
+271	        return 0.0 if np.isnan(d) else d
+272	
+273	    def _detect(
+274	        self,
+275	        frame: np.ndarray,
+276	        hold_pixels: dict[str, tuple[int, int]],
+277	        edge_pixels: dict[str, tuple[int, int]],
+278	    ):
+279	        """Run detection on a new camera frame. Called from capture thread."""
+280	        result: dict[str, dict] = {}
+281	        for ch in CHANNELS:
+282	            hx, hy = hold_pixels[ch]
+283	            ex, ey = edge_pixels[ch]
+284	            hold_color = self._sample_at(frame, hx, hy)
+285	            edge_color = self._sample_at(frame, ex, ey)
+286	
+287	            hold_dist = self._brightness(hold_color)
+288	            edge_dist = self._color_signal(edge_color, ch)
+289	
+290	            with self._lock:
+291	                self._hold_dist[ch] = hold_dist
+292	                self._edge_dist[ch] = edge_dist
+293	
+294	                if not self._pressed[ch]:
+295	                    if hold_dist > self._hold_thresh:
+296	                        self._pressed[ch] = True
+297	                else:
+298	                    if hold_dist < self._hold_release:
+299	                        self._pressed[ch] = False
+300	
+301	                edge_on = edge_dist > self._edge_thresh[ch]
+302	                if edge_on and not self._edge_active[ch]:
+303	                    self._press_count[ch] += 1
+304	                self._edge_active[ch] = edge_on
+305	
+306	                result[ch] = {
+307	                    "pressed": self._pressed[ch],
+308	                    "baseline": min(4095, int(hold_dist * _DIST_SCALE)),
+309	                    "edge_line": min(4095, int(edge_dist * _DIST_SCALE)),
+310	                    "press_count": self._press_count[ch],
+311	                }
+312	
+313	        with self._lock:
+314	            self._cached_result = result
+315	
+316	    def update(self, sample: Sample) -> dict:
+317	        """Return the latest detection result (computed in capture thread)."""
+318	        with self._lock:
+319	            cached = self._cached_result
+320	
+321	        if cached is not None:
+322	            return cached
+323	
+324	        cam_status = self._cam.status()
+325	        msg = "no_device" if not cam_status.get("active") else "waiting"
+326	        return {ch: {
+327	            "pressed": False, "baseline": 0, "edge_line": 0,
+328	            "press_count": 0, "camera": msg,
+329	        } for ch in CHANNELS}
+330	
+331	    # --- Chart schema -------------------------------------------------------
+332	
+333	    def chart_schema(self) -> list[dict]:
+334	        """Per-fret hold + edge signals (no raw ADC)."""
+335	        return [
+336	            make_slot_schema(ch, [
+337	                {"key": "baseline", "label": "Hold",
+338	                 "color": CH_COLORS[ch], "width": 1.5},
+339	                {"key": "edge_line", "label": "Edge",
+340	                 "color": "#e94560", "width": 1.5, "dash": [2, 2]},
+341	            ])
+342	            for ch in CHANNELS
+343	        ]
+344	
+345	    # --- Overlay extension --------------------------------------------------
+346	
+347	    def overlays(self) -> list[dict]:
+348	        """Expose sensor markers as an overlay layer for the video viewport."""
+349	        return [{"name": "detect_video.markers", "draw": self._draw_markers}]
+350	
+351	    def _draw_markers(self, image, frame: Optional[Frame] = None) -> None:
+352	        h, w = image.shape[:2]
+353	        hold_px, edge_px = self._scale_pixels(w, h)
+354	
+355	        # Prefer the per-frame snapshot when available (scrub fidelity); fall
+356	        # back to live state for live frames or when the frame predates the
+357	        # current detector instance.
+358	        snap_meta = None
+359	        if frame is not None and frame.meta:
+360	            snap_meta = frame.meta.get("detect_video")
+361	        if snap_meta is not None:
+362	            markers = snap_meta.get("markers", {})
+363	            patch_r = int(snap_meta.get("patch_r", self._patch_r))
+364	            snap = {
+365	                ch: (
+366	                    hold_px[ch],
+367	                    edge_px[ch],
+368	                    bool(markers.get(ch, {}).get("pressed", False)),
+369	                    float(markers.get(ch, {}).get("hold_dist", 0.0)),
+370	                    float(markers.get(ch, {}).get("edge_dist", 0.0)),
+371	                    bool(markers.get(ch, {}).get("edge_active", False)),
+372	                ) for ch in CHANNELS
+373	            }
+374	        else:
+375	            with self._lock:
+376	                snap = {
+377	                    ch: (
+378	                        hold_px[ch],
+379	                        edge_px[ch],
+380	                        self._pressed[ch],
+381	                        self._hold_dist[ch],
+382	                        self._edge_dist[ch],
+383	                        self._edge_active[ch],
+384	                    ) for ch in CHANNELS
+385	                }
+386	                patch_r = self._patch_r
+387	
+388	        for ch, ((hx, hy), (ex, ey), pressed, hold_d, edge_d, edge_on) in snap.items():
+389	            color = _MARKER_COLORS[ch]
+390	            hold_ring = _PRESSED_COLOR if pressed else _IDLE_COLOR
+391	
+392	            cv2.rectangle(image, (hx - patch_r, hy - patch_r),
+393	                          (hx + patch_r, hy + patch_r), color, 1)
+394	            cv2.circle(image, (hx, hy), _MARKER_RADIUS, hold_ring, _MARKER_THICK)
+395	
+396	            cv2.line(image, (hx, hy), (ex, ey), color, 1)
+397	            edge_ring = _PRESSED_COLOR if edge_on else _IDLE_COLOR
+398	            cv2.rectangle(image, (ex - patch_r, ey - patch_r),
+399	                          (ex + patch_r, ey + patch_r), color, 1)
+400	            cv2.circle(image, (ex, ey), self._EDGE_RADIUS, edge_ring, self._EDGE_THICK)
+401	
+402	            label = f"{ch[0].upper()} h{hold_d:.0f} e{edge_d:.0f}"
+403	            cv2.putText(image, label, (hx + _MARKER_RADIUS + 4, hy + 5),
+404	                        cv2.FONT_HERSHEY_SIMPLEX, _FONT_SCALE, color, _FONT_THICK)
+405
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:48:47Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:48:48Z)**_
+
+Let me check ISC ring depth — important to know the buffer is "stable" between when cv_marvin samples and when the next ISC IRQ touches it:
+
+_**Agent (claude-opus-4-7 2026-05-21 21:48:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check ISC ring depth
+
+`grep -n "buffer\|ring\|FRAMEBUFFER\|FB_COUNT\|num_buffers\|ISC_BUFFER\|MAX_BUFFER" firmware/marvin/default/src/video/isc_capture.c firmware/marvin/default/src/video/isc_capture.h | head -40`
+
+```text
+firmware/marvin/default/src/video/isc_capture.c:22:/* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
+firmware/marvin/default/src/video/isc_capture.c:36:       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+firmware/marvin/default/src/video/isc_capture.c:53:     * buffer is the previous slot in the descriptor ring. */
+firmware/marvin/default/src/video/isc_capture.c:59:    uint32_t addr = (uint32_t)(uintptr_t)g_framebuffer
+firmware/marvin/default/src/video/isc_capture.c:192:    iscObj->dma.address0 = (uint32_t)(uintptr_t)g_framebuffer;
+firmware/marvin/default/src/video/isc_capture.c:294:    return (uint32_t)(uintptr_t)g_framebuffer;
+firmware/marvin/default/src/video/isc_capture.h:18:/* Base address of the capture framebuffer pool. Subsequent buffers are at
+firmware/marvin/default/src/video/isc_capture.h:21: * where any valid buffer in the pool is acceptable. */
+firmware/marvin/default/src/video/isc_capture.h:25: * written to DDR. The buffer_addr argument points at the buffer that just
+firmware/marvin/default/src/video/isc_capture.h:26: * completed (one of the N descriptor-ring slots). Pass NULL cb to unregister.
+firmware/marvin/default/src/video/isc_capture.h:30:                                          uint32_t buffer_addr,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:48:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find ring depth value
+
+`grep -n "NUM_BUFFERS\|CAP_NUM\|num_buffers" firmware/marvin/default/src/video/isc_capture.c firmware/marvin/default/src/video/isc_capture.h`
+
+```text
+firmware/marvin/default/src/video/isc_capture.c:24:#define ISC_CAP_NUM_BUFFERS  4u
+firmware/marvin/default/src/video/isc_capture.c:36:       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+firmware/marvin/default/src/video/isc_capture.c:111:    iscObj->dmaDescSize           = (uint8_t)ISC_CAP_NUM_BUFFERS;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:49:04Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:49:08Z)**_
+
+Good — 4-deep ring at 60fps means ~66ms before any slot is reused, plenty of margin. Drawing live state inside the patch on the *just-sampled* buffer is safe (ISC rewrites the slot before cv_marvin reads it again).
+
+Plan: make the overlay state-reactive plus add a periodic log so you can read actual signal values:
+
+1. **State-reactive markers**: keep the position rings, add a filled center dot when `s_pressed[i]` (hold ring) or `s_edge_active[i]` (edge ring) — you'll see exactly when each detector is firing.
+2. **Periodic log** at ~2 Hz: dump `hold_dist` and `edge_dist` per fret so you can see actual values vs the 50-threshold.
+
+_**Agent (claude-opus-4-7 2026-05-21 21:49:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+---
+
+_**User (2026-05-21 21:51:00Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   The user is working on **project marvin** (SAM9X75 firmware in `/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/`), a vision-based guitar-playing robot. This session continued from a prior compacted context that delivered the manual fretboard-control feature. The current session's intents, in order:
+   - Back out unnecessary debug logging and prepare for commit; back off the FreeRTOS stack overflow hook (saving for future analytics work). User had already staged MCC-related changes.
+   - Commit the manual fretboard control feature alongside the MCC Composer screen changes.
+   - Diagnose why fretboard communication broke after the back-out, and re-fix it.
+   - Add an overlay of target circles over the video stream so the user could verify cv_marvin_v1 detector sample positions.
+   - Switch focus from coordinate calibration to detector logic — coordinates "seem about right" but presses are wrong.
+   - **Most recent intent**: Add visibility into what the detector is publishing per-frame so the user can diagnose "random / chattery presses" without any current diagnostic logs.
+
+2. Key Technical Concepts:
+   - Microchip Harmony + FreeRTOS firmware on SAM9X75 Curiosity
+   - Static-only memory allocation (xTaskCreateStatic, xQueueCreateStatic, xSemaphoreCreateBinaryStatic)
+   - Microchip Graphics Composer / Legato UI framework with Screen0_Button_Manual_* widgets
+   - USB CDC host (marvin) → EDBG composite CDC ACM bridge → fretboard MCU's SERCOM1 UART @ 115200 baud
+   - ISR-vs-task context distinction: Microchip CDC events fire from ISR (uses `*FromISR` variants), so `log_vprintf`'s mutex is illegal in event handlers
+   - CDC control-pipe serialization: LineCodingSet must complete before ControlLineStateSet — host stack silently drops second when first still in flight
+   - Multi-producer fretboard_link with depth-1 latest-wins queue (xQueueOverwrite), 50ms heartbeat
+   - 7-bit fretboard wire mask: bits 0-4 = G/R/Y/B/O frets, bit 5 = strum-down, bit 6 = strum-up
+   - cv_marvin_v1 detector: 5×5 BGR888 patch sampling at fixed coords scaled from 1920×1080 → 720×480 anchor, hold (brightness) + edge (color-filtered) detection per fret
+   - HEO display layer points directly at ISC's 4-buffer capture ring (no copy); ~66ms before any slot is reused at 60fps
+   - timing_pipeline consumes detector_state_t bus records, derives press/release edges, schedules chord+strum with 220ms delay/50ms early/50ms pulse
+
+3. Files and Code Sections:
+
+   - **firmware/marvin/default/src/actuator/fretboard_link.c** (heavy editing across the session)
+     - Final state has: 768-word stack, semaphore-serialized control-pipe requests, kept DTR/carrier assertion + UB-fix (dropped const-cast) + LOG_WARN failure paths in send_one_byte.
+     - Latest fix added s_ctrl_done semaphore:
+     ```c
+     /* Signaled from cdc_event_handler (ISR context) when a control-pipe
+      * request completes. Used to serialize the LineCodingSet ->
+      * ControlLineStateSet pair in open_cdc; the host stack will silently
+      * drop the second request if it's issued before the first settles. */
+     static SemaphoreHandle_t s_ctrl_done;
+     static StaticSemaphore_t s_ctrl_done_buf;
+     #define FBL_CTRL_TIMEOUT_MS     500u
+     ```
+     - Event handler additions:
+     ```c
+     case USB_HOST_CDC_EVENT_ACM_SET_LINE_CODING_COMPLETE:
+     case USB_HOST_CDC_EVENT_ACM_SET_CONTROL_LINE_STATE_COMPLETE:
+     {
+         BaseType_t hpw = pdFALSE;
+         (void)xSemaphoreGiveFromISR(s_ctrl_done, &hpw);
+         portYIELD_FROM_ISR(hpw);
+         break;
+     }
+     ```
+     - open_cdc waits between requests:
+     ```c
+     (void)xSemaphoreTake(s_ctrl_done, 0);
+     if (USB_HOST_CDC_ACM_LineCodingSet(h, &rh, &line_coding) == USB_HOST_CDC_RESULT_SUCCESS)
+     {
+         (void)xSemaphoreTake(s_ctrl_done, pdMS_TO_TICKS(FBL_CTRL_TIMEOUT_MS));
+     }
+     ```
+
+   - **firmware/marvin/default/src/actuator/manual_control.c**
+     - Removed `MC: mask=...` LOG_INFO from recompute_and_send. Kept LOG_INFO("MC: manual mode on/off") in SetEnabled.
+
+   - **firmware/marvin/default/src/config/default/freertos_hooks.c**
+     - Reverted vApplicationStackOverflowHook to MCC's default exactly (matches stock; only CRLF normalization remains in diff).
+
+   - **firmware/marvin/docs/journal.md**
+     - Removed patch #8 entry from MCC re-apply list
+     - Changed "all eight" → "all seven" in recovery plan summary
+     - Augmented FreeRTOS analytics open-question entry: "Pull `vApplicationStackOverflowHook` into the same scope: MCC's default is a silent spin..."
+     - Added bring-up debugging paragraph to 2026-05-21 session log covering (1) EDBG bridge needs DTR raised, (2) Control-pipe completion handlers run from ISR context
+
+   - **tools/fret-tuner/detect_video.py** (read for reference)
+     - Confirmed C port matches Python defaults exactly:
+     ```python
+     "HOLD_THRESH": 50,
+     "HOLD_RELEASE_FRAC": 60,
+     "EDGE_GREEN": 50, "EDGE_RED": 50, "EDGE_YELLOW": 50, "EDGE_BLUE": 50, "EDGE_ORANGE": 50,
+     "PATCH_RADIUS": 2,
+     ```
+     - Color filter coefficients identical between C and Python.
+
+   - **firmware/marvin/default/src/video/video.c** (read for ISC integration understanding)
+     - on_frame_done IRQ re-points HEO at the just-completed buffer + sends to subscribers. HEO updates latch at next vsync.
+
+   - **firmware/marvin/default/src/video/isc_capture.c** (grepped)
+     - `#define ISC_CAP_NUM_BUFFERS 4u` — 4-deep ring confirmed.
+
+   - **firmware/marvin/default/src/actuator/timing_pipeline.c** (read in full)
+     - Consumes detector_state_t.fret[].pressed and .confidence; derives edges from pressed-mask transitions only (no separate press_count signal in current detector_state_t protocol).
+
+   - **firmware/marvin/default/src/detector/cv_marvin_v1.c** (current focus)
+     - Added overlay code section after detect_frame returns. Static structures:
+     ```c
+     #define CV_OVERLAY_RING_R    4u
+     #define CV_OVERLAY_DOT_R     1u
+     
+     static const uint8_t s_overlay_hold_bgr[3] = { 255u, 255u, 255u };  /* white */
+     static const uint8_t s_overlay_edge_bgr[FRET_COUNT][3] =
+     {
+         [FRET_GREEN]  = {   0u, 255u,   0u },
+         [FRET_RED]    = {   0u,   0u, 255u },
+         [FRET_YELLOW] = {   0u, 255u, 255u },
+         [FRET_BLUE]   = { 255u,   0u,   0u },
+         [FRET_ORANGE] = {   0u, 165u, 255u },
+     };
+     ```
+     - Helpers: `put_pixel_bgr`, `draw_ring` (Bresenham midpoint circle), `draw_filled_disk`
+     - Latest `draw_overlay` adds state-reactive center dots:
+     ```c
+     static void draw_overlay(uint8_t *frame, uint16_t fw, uint16_t fh)
+     {
+         int w = (int)fw, h = (int)fh;
+         for (uint8_t i = 0u; i < FRET_COUNT; i++)
+         {
+             sensor_xy_t s = s_sensor_coords[i];
+             const uint8_t *e = s_overlay_edge_bgr[i];
+             draw_ring(frame, w, h, s.hx, s.hy, (int)CV_OVERLAY_RING_R,
+                       s_overlay_hold_bgr[0], s_overlay_hold_bgr[1], s_overlay_hold_bgr[2]);
+             draw_ring(frame, w, h, s.ex, s.ey, (int)CV_OVERLAY_RING_R,
+                       e[0], e[1], e[2]);
+             if (s_pressed[i])
+             {
+                 draw_filled_disk(frame, w, h, s.hx, s.hy, (int)CV_OVERLAY_DOT_R,
+                                  s_overlay_hold_bgr[0], s_overlay_hold_bgr[1], s_overlay_hold_bgr[2]);
+             }
+             if (s_edge_active[i])
+             {
+                 draw_filled_disk(frame, w, h, s.ex, s.ey, (int)CV_OVERLAY_DOT_R,
+                                  e[0], e[1], e[2]);
+             }
+         }
+     }
+     ```
+     - Task body calls `draw_overlay((uint8_t *)frame.buffer, frame.width, frame.height);` after `detect_frame(&frame, bus);`
+     - **Periodic log dump NOT YET ADDED** — was the next planned step.
+
+4. Errors and fixes:
+   - **Backed-out logging broke fretboard communication**: Removing the inter-call `LOG_INFO("FBL: LineCodingSet(...)=%d")` between LineCodingSet and ControlLineStateSet caused the second control-pipe request to be silently dropped — the host stack can only handle one in-flight control transfer. Diagnosed quickly because user said "Everything starts up, but not getting through to fretboard anymore" and the only relevant change was removing the printf delay between two control requests.
+   - **Fix**: Added s_ctrl_done binary semaphore signaled from ISR-context SET_LINE_CODING_COMPLETE / SET_CONTROL_LINE_STATE_COMPLETE event cases (no LOG_INFO — strictly ISR-safe). Wait on the semaphore in open_cdc between the two requests with a 500ms timeout. Mirrors existing s_write_done pattern. User confirmed: "works again. commit."
+
+5. Problem Solving:
+   - Backed out diagnostic instrumentation while preserving functional fixes (DTR/carrier, UB const-cast, real failure-path warns).
+   - Restored freertos_hooks.c to MCC stock (eliminates one re-apply patch).
+   - Diagnosed and fixed the regression caused by relying on printf side-effects for control-pipe serialization.
+   - Implemented overlay so user could verify detector sample coordinates visually — coords confirmed correct.
+   - Read Python reference and confirmed C port math is identical to Python defaults — chatter is not a port bug.
+   - Verified ISC ring is 4-deep so drawing inside patches on the just-sampled buffer is safe.
+   - Currently mid-implementation of state-reactive overlay + periodic log to give visibility into detector chatter.
+
+6. All user messages:
+   - "ok let's commit this along with MCC screen changes" — to commit the manual control feature + MCC Composer regen.
+   - "seems we broke something when backed off. Everything starts up, but not getting through to fretboard anymore" — fretboard comms regression after backout.
+   - "works again. commit" — confirmation that semaphore fix worked + commit ask.
+   - "ok, fretboard connection is working well now. I gave the cv_marvin detector a try (started song and disabled manual control). It is pressing buttons but not at all correct. I'm skeptical that we got the note targets in exactly the right spot. I think this is the first thing to focus on. I can think of two approaches to dial in position. 1. overlay target circles over the video stream so that I can see where they are and make some adjustments. 2. implement screen dump to serial or sdcard or ? and view on computer to figure out positions."
+   - "go for overlay" — chose overlay approach.
+   - "coordinates actuallly seem about right. I think we need to focus on the detector logic" — coords verified, pivot to detector logic.
+   - AskUserQuestion answers: "Random / chattery presses" + "I don't know — no logs to tell"
+   
+   No new security-relevant constraints stated this session beyond standing CLAUDE.md / memory rules:
+   - Static-only memory allocation; no malloc; ask before deviating
+   - Never `git commit` on own initiative
+   - Code comments describe current code only; no dev-diary narrative
+   - Prefer journal updates over re-stating plans in chat
+
+7. Pending Tasks:
+   - Add periodic LOG_INFO at ~2 Hz inside cv_marvin_v1_task showing per-fret `hold_dist` and `edge_dist` and `pressed`/`edge_active` so user can read actual signal values vs the 50-threshold and identify the chatter source.
+
+8. Current Work:
+   Immediately before this summary request, I had just edited [cv_marvin_v1.c](firmware/marvin/default/src/detector/cv_marvin_v1.c) to make the overlay state-reactive — adding `draw_filled_disk` helper and modifying `draw_overlay` to paint a center dot when `s_pressed[i]` (white dot in hold ring) or `s_edge_active[i]` (fret-color dot in edge ring) is true. This satisfies half the plan I outlined to the user:
+
+   > "Plan: make the overlay state-reactive plus add a periodic log so you can read actual signal values:
+   > 1. **State-reactive markers**: keep the position rings, add a filled center dot when `s_pressed[i]` (hold ring) or `s_edge_active[i]` (edge ring) — you'll see exactly when each detector is firing.
+   > 2. **Periodic log** at ~2 Hz: dump `hold_dist` and `edge_dist` per fret so you can see actual values vs the 50-threshold."
+
+   The state-reactive overlay (item 1) was just landed. The periodic log (item 2) was NOT yet added.
+
+9. Optional Next Step:
+   Add the periodic ~2Hz LOG_INFO dump inside `cv_marvin_v1_task` showing per-fret hold_dist + edge_dist + pressed/edge_active. This was item 2 of the two-step plan I outlined to the user at the end of the last conversation turn:
+   
+   > "2. **Periodic log** at ~2 Hz: dump `hold_dist` and `edge_dist` per fret so you can see actual values vs the 50-threshold."
+   
+   The natural rate-limiting source is `frame.frame_count` — at 60fps, modulo 30 gives ~2Hz. The state arrays `s_hold_dist[FRET_COUNT]` and `s_edge_dist[FRET_COUNT]` are already populated by `detect_frame`. After the periodic log lands, report back to user so they can build/run, observe the chatter pattern, and we can decide whether the fix is threshold tuning, hysteresis adjustment, or something more structural.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/1880f7d8-fd75-4e4e-bccc-fcbbcc37d58c.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 21:51:08Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:51:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:51:28Z)**_
+
+Periodic dump added. Each line shows `hold/edge` per fret followed by `P` (pressed) and `E` (edge active) flags — fires every 30 frames (~2 Hz at 60 fps). Build and watch the log while pressing notes; we can read whether chatter is noise crossing the 50 threshold or something structural.
+
+---
+
+_**User (2026-05-21 21:53:36Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+one more thing to look at. I think 50 threshold might be too low. 50 was calibrated going through hdmi to usb converter on pc. Marvin pipeline is HDMI to CSI bridge that I think has reduced range vs. the computer converter. Can you look back in old video pipeline journal for min and max values we were seeing for black vs. full on pixels?
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:47Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:47Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search journal for pixel range mentions
+
+`grep -n -i -E "min|max|black|white|pixel|range|0x[0-9a-f]+|histogram" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md | head -100`
+
+```text
+28:| 2026-05-21 | `manual_control` lands as the second producer of `fretboard_link`, alongside `timing_pipeline`. Mode-level arbitration is two-mode (`timing_pipeline` vs `manual_control`) and embedded in `ManualControl_SetEnabled`: entering manual mode calls `TimingPipeline_SetEnabled(false)` then takes the wire; exiting reverses. | First concrete validation of the 2026-05-20 multi-producer `fretboard_link` design — `FretboardLink_Send` stays the only entry point; arbitration lives one layer up. Embedded toggle is enough for two producers; refactor to a dedicated `actuator_mode` arbiter when a third producer (game-state controller §4.8) arrives. `timing_pipeline.publish_mask` keeps updating internal state when gated so the next ≤5 ms tick after re-enable republishes a correct mask without a stale frame. |
+30:| 2026-05-21 | Manual-control input model is single-finger momentary; multi-finger chord input is out of scope for this surface | Legato's input pipeline (`legato_input.c:340/429`) routes each touch to a single focus widget, so a second simultaneous touch cancels the first button's release and strands its `pressed` state. Workarounds (custom maxtouch dispatcher; toggle-style frets) are real but not worth the complexity here — primary use case is game-menu navigation, which is single-finger by nature. Revisit only if a user-facing flow needs held chords. |
+32:| 2026-05-20 | Relax Microchip's host CDC-ACM Communications-interface protocol check to accept `bInterfaceProtocol == 0x00 (None)` in addition to `0x01 (AT_V250)` | The fretboard hardware exposes its UART to marvin via the on-board EDBG debugger's CDC ACM (composite VID=0x03EB PID=0x2175: HID + CDC ACM IAD + vendor + MSC). EDBG declares the comm interface with `bInterfaceProtocol=0x00` rather than the AT-command protocol Microchip hardcodes. The TPL/IAD match accepts the device (host stack does call `interfaceAssign`), but the per-interface check inside `F_USB_HOST_CDC_InterfaceAssign` then rejects the comm interface, the interrupt pipe never opens, the CDC instance flips to STATE_ERROR, and our attach handler never fires. Both are CDC ACM in practice and Linux/macOS accept either. Two-line OR per check in `usb_host_cdc.c`; logged as patch #7 in the re-apply list. |
+36:| 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
+37:| 2026-05-20 | Timing pipeline (chord window, FIFO, strum scheduling) lives on marvin by default; fretboard-takeover is a fallback mode | Centralized = single source of truth, easier multi-detector fusion. Latency budget allows a few ms of UART jitter. Fallback mode disables marvin's pipeline; fretboard runs its own existing `fret_button.c` and feeds emitted-command telemetry up to marvin for capture/display. Spec §4.4 + §6. |
+40:| 2026-05-20 | Operating modes are independent toggles (`detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`); named modes are presets over them | Matches `tools/fret-tuner/SPEC.md`'s detect/actuate split which has worked well in practice. Avoids a brittle global state machine. Spec §6. |
+41:| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+45:| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+47:| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+54:| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+56:| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+57:| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+58:| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
+59:| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+60:| 2026-05-20 | M1 detector scaffolding: one task per detector, single shared bus queue (`xDetectorStateQueue`), temporary in-module drain task until the timing pipeline (M3) lands | Matches spec §4.2.4. Per-detector tasks isolate slow detectors from the frame pipeline; the shared queue is the hand-off point that the timing pipeline will eventually own as sole consumer. The drain task lives in `detector.c` so it travels with the bus and can be deleted in one place when M3 wires the real consumer. Records-per-second log line gives a coarse health signal during bring-up. |
+62:| 2026-05-20 | Detector control model: per-detector `enable` (multiple may be on simultaneously for side-by-side recording) + single `active` selector (which detector_id the timing pipeline acts on) | Want side-by-side training data — every enabled detector publishes onto the bus; recording (M5) saves them all. But only one detector should ever drive actuation, so the timing pipeline (M3) filters the bus by `Detector_GetActive()` and ignores the rest. Cleaner than a global enum because it decouples "is this running?" from "is this canonical?", and lets us hot-swap the active detector without disabling its peers. Defaults: all-disabled, active=cv_marvin_v1. App explicitly calls `Detector_Enable` + `Detector_SetActive` after init. |
+63:| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+65:| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+66:| 2026-05-20 | All marvin-owned FreeRTOS objects use `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic`; FreeRTOS heap stays at heap_1 only because MCC code (XLCDC/MAXTOUCH/LEGATO/SYS_INPUT tasks, OSAL, Legato variable heap) needs it | Project rule is static-only memory allocation. MCC-generated code can't be made static without forking, so we keep `configSUPPORT_DYNAMIC_ALLOCATION = 1` for MCC and route all our own code through the static APIs. MCC reconfigured to enable `configSUPPORT_STATIC_ALLOCATION = 1` and emit `vApplicationGetIdleTaskMemory` in `freertos_hooks.c`. Per-module `Static{Task,Queue,Semaphore}_t` plus stack/storage arrays at file scope. |
+67:| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+68:| 2026-05-20 | cv_marvin_v1 keeps detector internals (press_count, raw color distances) private; bus record stays canonical (`pressed[] / confidence / raw_value`) | Different detectors need different per-frame data, but downstream bus consumers (timing pipeline, recorder, fretboard link) only care about "is this fret pressed at frame N." Pushing detector-specific richness onto the bus would either grow the canonical record or force a tagged-union shape that complicates recording layout. Encapsulating internals in the detector module preserves the narrow bus and lets each detector evolve its own state independently. press_count specifically lives in a private `s_press_count[FRET_COUNT]` array; if the strum scheduler later wants it, expose via a getter or a second "detail" channel. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. |
+69:| 2026-05-20 | cv_marvin_v1 sensor coords are in native capture-frame space, no 1920×1080 reference scaling | fret-tuner detect_video.py carries a 1920×1080 reference frame and scales coords at runtime — that frame size is what the Elgato HDMI-to-USB bridge produced, not a per-camera variable. Marvin uses the TC358743 (different bridge chip, same direct-pixel topology) and captures at the source's native resolution. The Wii is the primary production source at 480p60 = 720×480, so the static defaults are scaled from Python's 1920×1080 values by (3/8, 4/9) once at port time and stored in 720×480 space. Same-pixel-strike-line geometry as the Python detector — these are real coords, not placeholders. Calibration UI (M6) will refine them. |
+70:| 2026-05-20 | Fretboard-link submit queue belongs to `fretboard_link`, not `timing_pipeline`; producers call `FretboardLink_Send(mask)` | Game menu control (spec §4.8) needs to drive the actuator without going through the chord-window scheduler — its inputs are "navigate menu, press start", not gameplay notes. If the queue lives in `timing_pipeline`, the controller has to either reach across modules or duplicate transport. Moving ownership down to `fretboard_link` makes timing_pipeline one of N producers; the menu controller and any manual-test path call the same `Send` API. Latest-wins (depth-1 + xQueueOverwrite) already gives the right behavior — newest submitter wins on the wire. **Mode-level arbitration** (which producer is allowed to submit when, e.g. timing-only during gameplay vs controller-only in menus) lives one layer up; the link stays dumb. |
+71:| 2026-05-20 | M2 fretboard link split into three layers — `detector → timing_pipeline → fretboard_link` — with the timing FIFO living on marvin and a 1-byte bitmask wire format | (a) Three-layer split keeps each concern small: detector emits state, timing_pipeline owns chord-window + strum scheduling, fretboard_link owns the USB CDC byte channel. Each can be replaced independently (different detector, different actuator transport) without touching the others. (b) Timing FIFO on marvin, not fretboard: marvin already runs the canonical detector and the recording pipeline, so co-locating timing keeps a single source of truth and avoids re-deriving state on the actuator side. Spec §4.4. The fretboard-takeover fallback (spec §6) is a separate mode where marvin disables its pipeline and fretboard runs `fret_button.c` standalone — that's the high-availability path, not the steady-state. (c) 1-byte bitmask matches `tools/fret-tuner/actuator.py` and `firmware/fretboard/cmd_receive.h` exactly (G/R/Y/B/O at bits 0..4, strum-down bit 5, strum-up bit 6) — no reason to invent a new framing while the protocol is this small. Latest-wins semantics on the marvin→fretboard queue (depth 1 + overwrite) so a stalled USB write can't accumulate stale chords. (d) **Actuator-latency compensation deferred until mechanical actuators arrive.** Today's actuator is direct GPIO assertion on the fretboard PCB — latency ≈ 0, so today's design is sound. Future paths considered: (1) marvin compensates by subtracting a fretboard-published latency from `assert_at`/`strum_at`; (2) fretboard compensates by accepting timestamped events and scheduling locally. Path 2 needs a richer wire format (event + abs-timestamp); path 1 keeps the byte protocol but pushes the timing math up. Pick when we know which actuator (voice coil / electromagnet / DIY solenoid) we're driving. |
+72:| 2026-05-20 | Game-state awareness & high-level game control is a marvin subsystem (spec §4.8). Distinct from the gameplay note-detection path: a video-frame consumer (not a detector) emits typed game-state events on `xGameStateQueue`, and a controller layer translates verbs ("start single-player song X") into fret/strum sequences sent over the same fretboard link | Want marvin to drive whole-session play, not just notes once gameplay starts. Game-state observation belongs on marvin because it's CV on the same captured frames. Separating its bus from `xDetectorStateQueue` keeps `detector_state_t` narrow per the 2026-05-20 multi-detector decision. Per-game catalog (menu graph + song list) is metadata kept on marvin. Default arbitration with timing pipeline: mutually exclusive — controller runs only outside `gameplay` state. Phasing: M9 observer-only, M10 control. Open: recognizer algorithm (Q10), arbitration boundary (Q11). |
+80:- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+82:- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+92:- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+96:  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+98:  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+100:  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+102:  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+108:  7. **`usb_host_cdc.c` — accept `bInterfaceProtocol == 0` in CDC ACM Communications-interface match.** Two checks (single-interface path ~line 677, IAD path ~line 798) currently require `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG-style USB-to-UART bridges (the on-board PIC/AVR debugger CDC, common across Microchip dev boards — including the fretboard board this project uses) declare the comm interface with `bInterfaceProtocol = USB_CDC_PROTOCOL_NO_CLASS_SPECIFIC` (`0x00`). Without this patch the host CDC driver accepts the IAD via the TPL match (TPL ignores subclass/protocol) but rejects the comm interface inside `F_USB_HOST_CDC_InterfaceAssign`, the interrupt pipe never opens, the CDC instance flips to `STATE_ERROR`, and the app-level attach handler never fires. Patch: extend each check to `(... == AT_V250 || ... == NO_CLASS_SPECIFIC)`. Two one-line OR additions. Re-apply after every USB-host MCC regen.
+118:- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+122:- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+128:### 2026-05-21 — Manual fretboard-control producer + timing-pipeline gate
+134:- `actuator/manual_control.{h,c}` — second producer of `FretboardLink_Send`, alongside `timing_pipeline`. Internal state: `s_fret_mask` (bits 0..4) and `s_strum_mask` (bits 5..6). Public API: `Initialize / SetEnabled / IsEnabled / SetFret / SetStrum`. Both fret and strum are momentary — held while the UI button is down, cleared on release. `recompute_and_send` only calls `FretboardLink_Send` while enabled.
+135:- `TimingPipeline_SetEnabled(bool)` — output gate on `publish_mask`. Pipeline still advances internal state when gated, so the next `advance()` (≤ `TP_TICK_MS` = 5 ms) after re-enable republishes the right mask without a stale frame.
+136:- `ManualControl_SetEnabled` ordering: enter manual mode = gate timing pipeline first, zero local state, send `0`, set enabled flag (so a stale pipeline frame can't race a manual zero on the wire); exit = clear enabled flag, zero state, send `0`, ungate pipeline.
+137:- App init wires `ManualControl_Initialize()` after `TimingPipeline_Initialize()`. No Legato dependency at this stage.
+140:UI half landed same session after Greg ran the Composer regen. Composer added 8 buttons to `Screen0` — `Screen0_Button_Manual_{Green,Red,Yellow,Blue,Orange,StrumDown,StrumUp,Enable}` — plus 15 extern `event_Screen0_Button_Manual_*` handler declarations the application must define. The binding shape came out simpler than the plan called for: `screenShow_Screen0` itself calls `setPressedEventCallback` / `setReleasedEventCallback` with those extern symbols, so the linker resolves them and **no `ManualInput_Bind()` walk is needed**. `ui/manual_input.c` is just the 15 function bodies forwarding to `ManualControl_SetFret / Strum / SetEnabled`. The originally planned `APP_Tasks` poll-loop for null widget pointers is moot — `APP_Tasks` keeps the existing `vTaskDelete(NULL)`.
+142:Strum buttons are momentary, not one-shot: holding the strum button keeps the fretboard's strum line asserted, which Guitar Hero / Rock Band menus interpret as auto-repeat scrolling — the primary use case for this surface. Gameplay-path strums still pulse correctly because they go through `timing_pipeline`, which has its own `TP_STRUM_PULSE_MS` one-shot. The Enable button is `setToggleable(LE_TRUE)` with only `OnReleased`; both the widget and `ManualControl` default to off, so a simple `SetEnabled(!IsEnabled())` flip stays in sync without querying the widget's toggle state.
+151:2. **Control-pipe completion handlers run from ISR context.** First instrumented attempt logged `LOG_INFO` directly from the new `SET_LINE_CODING_COMPLETE` / `SET_CONTROL_LINE_STATE_COMPLETE` event cases; system froze mid-print. Microchip's CDC stack dispatches *all* class events from ISR (the existing `WRITE_COMPLETE` case already uses `*FromISR` primitives — that was the precedent). `log_vprintf` takes a mutex with `portMAX_DELAY`, illegal from ISR. Stripped both the diagnostic logging and the latch infrastructure once the link was confirmed functional. Captured for the journal because it's a recurring shape: any new event-handler case in this stack must stay strictly ISR-safe.
+159:**Class-driver binding.** Enumeration succeeded but the CDC attach handler never fired. Added per-interface descriptor logging inside `F_USB_HOST_UpdateDeviceTask` to see what was actually being matched. Output revealed VID `0x03EB` PID `0x2175` — an EDBG composite with five interfaces: HID/CMSIS-DAP, CDC ACM IAD pair (comm + data), vendor, MSC. The IAD passed TPL match and got assigned to the CDC driver, but the CDC instance still flipped to `STATE_ERROR` without our app-level handler ever seeing the attach.
+161:Root cause was inside Microchip's CDC class driver: `F_USB_HOST_CDC_InterfaceAssign` (both single-interface and IAD paths) requires the comm interface to declare `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG declares `0x00` (none) — functionally identical CDC ACM in practice; Linux/macOS accept either. The TPL/IAD pre-check passes (TPL wildcards subclass/protocol), the CDC driver gets the interface group, then immediately rejects it on the AT-V.250 check. The interrupt pipe never opens, the instance errors out, and the app-level listener stays silent.
+167:Diagnostic instrumentation stripped at the end of the session: the per-interface descriptor dump and enumeration state-change logger in `usb_host.c`, and the periodic OHCI/EHCI register heartbeat in `fretboard_link.c`. What remains on disk: the two `usb_host_cdc.c` protocol-relaxation lines (patch #7), the app-level VBUS asserts, and a minimal `USB_HOST_EVENT` printf so future host-stack drama still surfaces in the log.
+169:Next session: revisit timing-pipeline behavior end-to-end now that the actuator wire is live.
+187:2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+193:Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
+209:- `detector.c` — owns `xDetectorStateQueue` (depth 8, holds `detector_state_t`) and a temporary `DetectorDrain` task that consumes the bus and logs records/sec at INFO. Drain task is M1-only scaffolding; the timing pipeline (M3) will replace it as sole consumer.
+212:Wired from `app.c`'s `APP_Initialize` after `Video_Initialize`. Added both `.c` files to `cmake/marvin/default/user.cmake`. No code change to video or capture; `Video_FrameInfo.bytes_per_pixel` already reports 3 (RGB888 packed).
+214:Spec touch-up: §4.2.2 "BGRX32 frames" → "RGB888-packed (3 B/pixel) frames". Surfaced the broader spec drift on capture format as a carried-forward open question — deserves a doc-only sweep before M5 (recording schema depends on it).
+218:Next session: pick Q8 (initial CV algorithm — leaning pixel-mean threshold per ROI as the simplest end-to-end bring-up) and start populating the `fret[]` field in cv_marvin_v1. ROI geometry calibration also needs a home — spec §4.7 (system config) is the planned destination.
+228:- Timing pipeline centralized on marvin with a fretboard-takeover fallback mode.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:51Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:52Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search journal for limited range / TC358743 mentions
+
+`grep -n -i -E "limited|16-235|16.235|0.255|range|tc358743|brightness|swing" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md | head -50`
+
+```text
+13:**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+41:| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+42:| 2026-05-01 | Reference source = mainline Linux tc358743 driver + community 480p dumps | Linux driver has correct state machine / EDID / IRQ handling; community dumps have verified 480p register values. |
+45:| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+46:| 2026-05-01 | REFCLK: **27 MHz** | Waveshare v1/v2 on-board XTAL. Kernel driver restricts REFCLK to {26, 27, 42} MHz (`tc358743.c:717-719`); 27 MHz is the Waveshare v1/v2 value. |
+47:| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+48:| 2026-05-01 | Register-access helpers will be a direct port from the kernel driver | `tc358743.c:131-269` has clean `i2c_rd/wr` + `i2c_rd8/wr8/rd16/wr16/rd32/wr32`. Map to FLEXCOM6 TWI underneath. |
+50:| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+53:| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+59:| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+67:| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+69:| 2026-05-20 | cv_marvin_v1 sensor coords are in native capture-frame space, no 1920×1080 reference scaling | fret-tuner detect_video.py carries a 1920×1080 reference frame and scales coords at runtime — that frame size is what the Elgato HDMI-to-USB bridge produced, not a per-camera variable. Marvin uses the TC358743 (different bridge chip, same direct-pixel topology) and captures at the source's native resolution. The Wii is the primary production source at 480p60 = 720×480, so the static defaults are scaled from Python's 1920×1080 values by (3/8, 4/9) once at port time and stored in 720×480 space. Same-pixel-strike-line geometry as the Python detector — these are real coords, not placeholders. Calibration UI (M6) will refine them. |
+80:- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+106:  6. **`initialization.c` `SYS_Initialize` — peripheral init order.** The USB-host MCC regen (2026-05-20) reordered SYS_Initialize so that `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize` run *before* `MMU_Initialize` and `AIC_INT_Initialize`. Symptom on hardware: TC358743 probe wedges on its first I²C write — `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` never returns because the FLEXCOM6 ISR never fires. (Display + capture totally dead; FBL heartbeat keeps printing because it doesn't depend on a peripheral interrupt.) Fix: move the `MMU_Initialize → AIC_INT_Initialize → WDT-disable` block back to *before* the TC0/FLEXCOM6/XLCDC inits, matching the pre-USB-regen order. After this revert, video came back immediately. Resolved on 2026-05-20.
+116:- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+140:UI half landed same session after Greg ran the Composer regen. Composer added 8 buttons to `Screen0` — `Screen0_Button_Manual_{Green,Red,Yellow,Blue,Orange,StrumDown,StrumUp,Enable}` — plus 15 extern `event_Screen0_Button_Manual_*` handler declarations the application must define. The binding shape came out simpler than the plan called for: `screenShow_Screen0` itself calls `setPressedEventCallback` / `setReleasedEventCallback` with those extern symbols, so the linker resolves them and **no `ManualInput_Bind()` walk is needed**. `ui/manual_input.c` is just the 15 function bodies forwarding to `ManualControl_SetFret / Strum / SetEnabled`. The originally planned `APP_Tasks` poll-loop for null widget pointers is moot — `APP_Tasks` keeps the existing `vTaskDelete(NULL)`.
+171:### 2026-05-20 — Hardware bring-up after USB CDC host regen: TC358743 wedge resolved
+173:First on-target test after the M2 actuator path landed. Symptoms: video stream not starting, USB ports unpowered, FBL heartbeat firing with `connected=N`. Boot stopped after `TC358743: probe starting`.
+187:2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:52Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+List marvin docs directory
+
+`find /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs -type f | head; ls /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/capture_pipeline.md
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md
+capture_pipeline.md
+display_path.md
+journal-archive.md
+journal.md
+spec.md
+yellow_tinge.md
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:58Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:53:58Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search docs for pixel range measurements
+
+`grep -n -i -E "min|max|black|white|0x[0-9a-f]{2,4}|[0-9]{2,3} *[—\-]+ *[0-9]{2,3}|measured|sampled" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md | head -80`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:5:**Status (2026-05-15): RESOLVED at 50 Hz.** Yellow is gone at **40, 45, 50, and 52 Hz**, present at 54 Hz, severe at 60 Hz. Threshold sits in the **razor-thin 52–54 Hz window** (427 → 444 MHz LVDS bit clock — only ~4% bit-rate gap separates clean from failing). Confirms the hypothesis: at 444 MHz the LVDS receiver was right at the edge of its eye-margin budget for this cable; modest EMI from overlay-layer DMA tipped it over. Backing off bit rate restores margin. **Production setting: 50 Hz** (~8% margin under the cliff, comfortable headroom without sacrificing visible refresh quality).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:11:- White pixels in **overlay layer content** (OVR1 or HEO) display with a yellow tinge.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:14:- Yellow ≈ blue channel attenuated, red+green normal. White = `0xFE 0xFE 0xFE` per channel; yellow tinge looks like blue dropping to ~50% while R+G stay full.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:15:- Frame rate / sustained display look fine — no flicker, sync, or timing instability. Just the per-pixel color shift on the left half of overlay content.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:24:- DDR / panel timing — both paths use the same pixel clock and panel timing
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:43:| MCC default boot, BASE-only | RGB_565 | auto-zero black | 122 MB/s | **clean** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:44:| BASE white fill (lcd `mode 1`) | RGB_565 | 0xFFFF white | 122 MB/s | **clean** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:45:| BASE white at 32-bit (today) | ARGB_8888 | 0x00FFFFFF white | 123 MB/s | **clean** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:51:| `lcd` mode 2 | RGB_565 | white | yes | no | **clean** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:59:| `lcd` initial config | RGB_565 black | OVR1 | ARGB_8888 | 720×480 BGRX32 | **yes, left half** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:60:| `lcd` after MCC regen → broken blend | RGB_565 black | OVR1 | ARGB_8888 | 720×480 BGRX32 | OVR1 invisible (separate bug) |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:61:| `lcd` after blend fix | RGB_565 black | OVR1 | ARGB_8888 | 720×480 BGRX32 | **yes** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:62:| `lcd` post-HEO migration | RGB_565 black | HEO | ARGB_8888 | 720×480 BGRX32 | **yes** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:63:| `lcd` HEO with scaler 1.667× | RGB_565 black | HEO scaled | ARGB_8888 | 720×480→1200×800 | **yes** (in scaled output) |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:64:| `lcd` mode 3 (HEO + BASE white) | RGB_565 white | HEO | ARGB_8888 | 720×480 BGRX32 | **yes (HEO area only); BASE pillarbox stays clean white** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:66:| `bigteninch` (post LVDSPLL fix, OVR1) | RGB_565 black | OVR1 | ARGB_8888 | 720×480 BGRX32 | **yes** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:67:| `bigteninch` RGB888 packed | RGB_565 black | OVR1 | RGB_888_PACKED | 720×480 BGR888 | **yes (same intensity)** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:68:| `bigteninch` BASE white (32-bit) | ARGB_8888 white | OVR1 | RGB_888_PACKED | 720×480 BGR888 | **yes (BASE pillarbox stays clean white)** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:69:| `bigteninch` BASE white (16-bit) | RGB_565 white | OVR1 | RGB_888_PACKED | 720×480 BGR888 | **yes; possibly slightly worse** |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:112:Why white pixels worst:
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:113:- White = `0xFE 0xFE 0xFE` per channel = `0x00FEFEFE` (BGRX) or `0xFEFEFE` (BGR888 packed). These pixel patterns produce the highest ratio of `1`-bits per LVDS lane symbol. Long runs of high-density `1`-bits push the LVDS receiver's input common-mode bias off-center, eroding the eye margin most aggressively. With slightly more EMI than the LVDS receiver can tolerate at marginal cable SI, the most off-balance bit positions (which carry blue components in VESA mapping) flip wrong, dropping blue → yellow tinge.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:116:- LVDS pairs are differential; the cable shielding determines impedance and EMI rejection. Touching the cable changes the parasitic capacitance to ground, which shifts the impedance, the reflection profile, and the EMI pickup pattern. At marginal SI, those shifts can put the receiver above or below the bit-error threshold.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:118:Together: at the LVDSPLL bit clock (~444 MHz over 4 lanes carrying full 24-bit color × 60 Hz), we're operating at the edge of the cable's signal-integrity envelope. SoC internal noise from overlay rendering tips us over the edge for the left half of overlay regions specifically, and the cable's positioning determines how far over.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:122:The "long shot" of reducing LVDSPLL turned out to be the actual fix. We swept frame rates 30 / 40 / 45 / 50 / 55 / 60 (each computed to keep the LVDSPLL VCO above the 600 MHz minimum) and observed:
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/yellow_tinge.md:180:- **At 444 MHz bit clock, the marginal cable + elevated EMI floor combine to cross the bit-error threshold** specifically on the worst-case data patterns (long runs of high-density 1-bits, i.e. white pixels), and specifically on the bits that carry blue components (LVDS lane A2 in VESA mapping). That's the yellow tinge.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:3:How the captured video (documented in [`capture_pipeline.md`](capture_pipeline.md)) lands on the 10.1" 1280×800 LVDS panel. Minimum-viable implementation: BGRX32 from DDR → SAM9X75 XLCDC OVR1 layer → LVDSC → panel. Zero CPU, zero scaling, pillarboxed/letterboxed.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:5:**Status:** working as of 2026-05-02. Pi 480p (720×480) and Wii/ElectronWarp 480p (720×480) display centered on the 1280×800 panel with 280 px black pillarbox each side and 160 px black letterbox top + bottom. Pi 720p (1280×720) display works too — full panel width, 40 px letterbox top + bottom.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:22:XLCDC timing engine  (1280×800 @ 60 Hz, 10.1" panel timings from MCC)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:43:Our memory layout is `B G R X` (low-to-high), i.e. `0x00RRGGBB` as a little-endian 32-bit word.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:52:`ARGB_8888` is byte-for-byte compatible with our BGRX32 output. The `A` byte in memory ends up being our `X = 0x00`, which would mean fully transparent — but we override at the layer level:
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:60:So our `X = 0x00` in the framebuffer is harmless; the display shows opaque RGB.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:71:No scaling engine needed for either. BASE layer (below OVR1 in z-order) paints the surrounding black region — it's still the MCC-auto-allocated 1280×800 buffer of zeroes.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:107:- `XLCDC_Initialize()` — clocks, timing engine, all 4 layers (BASE/OVR1/HEO/OVR2) set up at 1280×800 with auto-allocated buffers in `.region_nocache` (now in RGB565, ~2 MB per layer).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:139:- **BASE layer is still the MCC-auto-allocated 1280×800 black buffer.** ~2 MB of `.region_nocache` DDR (RGB565) permanently displaying black around our overlay. Low priority; could reclaim by dropping `XLCDC_BUF_PER_LAYER` to 0 for BASE, or by disabling BASE entirely (the surrounding region would then go transparent and show whatever the LCDC's "default layer color" is — `BASECFG3.RDEF/GDEF/BDEF = 0,0,0`, i.e. black, same result).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/display_path.md:140:- **Limited→full range expansion — will be done in the HEO CSC block, display-only.** TC358743 reports RGB limited-range (16–235) for both Wii and Pi sources, so bytes in DDR reflect that range. Vision consumers deliberately see **unexpanded** bytes — the 15% extra dynamic range of full scale doesn't carry any real information from a limited-range source (it's just a linear rescale), and keeping capture pristine means vision algorithms operate on ground-truth values. The expansion is cosmetic, needed only because the AC69T88A panel expects full 0–255 and would render limited-range data with muted blacks and washed-out whites.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:3:Preserved session-log and phased-plan entries from the HDMI capture + LCD display bring-up, **2026-05-01 → 2026-05-15**. This work is complete — the capture pipeline runs at 480p60 and 720p60 (source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 ISC → DDR BGRX32 → XLCDC OVR1 → 10.1″ LVDS panel).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:19:- **Bridge board:** Waveshare HDMI to CSI-2 Adapter v1/v2 (2-lane CSI, 27 MHz on-board XTAL, expected I2C address `0x0F`).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:52:- [x] **Source chain verified (2026-05-01):** Waveshare board powered; HDMI 480p confirmed from a separate display.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:54:Nothing blocking Phase 1. I2C path is unambiguous: FLEXCOM6 on PA24/PA25 → J29 pins 21/20 → 22→15 adapter → Waveshare CAM_I²C → TC358743 at `0x0f`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:56:#### Phase 1 — I2C probe & chip ID ✅ COMPLETE (2026-05-01)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:60:**Result:** DBGU reports `TC358743: present (chipid=0x0000)` on every boot — TC358743 is on the bus at `0x0f`, ACKs our transactions, accepts the software reset, and returns a clean CHIPID read. Full I2C path validated end-to-end: FLEXCOM6 → PA24/PA25 → J29 → 22→15 adapter → Waveshare → TC358743.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:86:| `READ_CHIPID` | Queue `WriteReadTransferAdd` (reg addr write + 2-byte read at slave `0x0f`) | `REPORT` |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:95:- **SYSCTL Sreset assert** — 4-byte I2C write to slave `0x0f`:
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:96:  - Bytes: `0x00 0x02 0x01 0x00` (register addr `0x0002` MSB-first, value `0x0001` little-endian — matches kernel driver's `i2c_wrreg`).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:97:- **SYSCTL Sreset release** — 4-byte I2C write to slave `0x0f`:
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:98:  - Bytes: `0x00 0x02 0x00 0x00` (value `0x0000`).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:99:- **CHIPID read** — 2-byte write then 2-byte read at slave `0x0f`:
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:100:  - Write phase: `0x00 0x00` (register addr `0x0000` MSB-first).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:101:  - Read phase: 2 bytes, little-endian — stored as `rx[0]` = low byte (revision, `MASK_REVID = 0x00ff`), `rx[1]` = high byte (chip-id field, `MASK_CHIPID = 0xff00`).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:103:**Pass condition (matches kernel driver, `tc358743.c:2210-2215`):**
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:106:- `rx[1]` (high byte of CHIPID) is `0x00`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:114:TC358743 datasheet requires ≥1 ms after Sreset before the next I2C transaction. Use Harmony's `SYS_TIME` service — it's already initialized in `SYS_Initialize` (`initialization.c:376`) and marvin's own ISC code uses it (`drv_isc.c:32-34`, `plib_isc.c:12-15`).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:128:- I2C NAK on the first SYSCTL write → wrong slave address (`0x0f` wrong — check A0 pin tie-off on Waveshare), or the cable/adapter is backwards, or PA24/PA25 aren't muxed to FLEXCOM6.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:129:- `rxBuf = {0xff, 0xff}` → no ACK but our code didn't detect the NAK — would indicate a driver-level issue, not the chip.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:134:DBGU output contains `TC358743: present (chipid=0x...)` with the upper byte equal to `0x00`, after a power cycle of the board. No I2C errors printed.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:138:- Hardware RESET via PC19 (see 2026-05-01 decision — software reset only).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:141:- Any HDMI / CSI register programming.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:144:#### Phase 2 — Register access helpers ✅ CODE COMPLETE (2026-05-01, pending flash verify)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:177:Each helper blocks for the duration of its I2C transaction (~100-500 µs at 400 kHz depending on size). Phase 3's init sequence may do 50+ transactions plus an EDID load; total boot-time block is expected to be tens of ms. Legato's initial animation may show a brief pause at startup. Acceptable — init runs once at boot.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:204:Stay monolithic (`tc358743.c` / `tc358743.h`). Split only when file grows past 300-400 lines — likely sometime in Phase 3 or 4.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:206:#### Phase 3 — Initialization sequence ✅ PASSES ON HARDWARE (2026-05-01; EDID deferred to 3b)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:208:Port the minimal set of `tc358743_initial_setup()` + callees from the kernel driver to bring the chip from "responsive on I2C" (end of Phase 2) to "configured and awaiting HDMI source lock" (ready for Phase 4's stream-enable).
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:210:**Landed in this pass:** reset hold (IR/CEC), CTX/HDMI reset, wake, FIFOCTL, `set_ref_clk` (27 MHz), DDC_CTL delay, EDID_MODE=E-DDC, `set_hdmi_phy` (PHY enable, CTL1/2, BIAS, CSQ, AVM, HDMI_DET, HV_RST), VI_MODE (RGB/DVI), VOUT_SET2/3 (auto color mode), `set_pll` (PRD=4, FBD=88, FRS=0 for 594 Mbps/lane), `set_csi` (2 lanes, D-PHY timings, CSI_START, CSI_CONFW sequence), `set_csi_color_space_rgb888`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:226:| CSI bits/lane | 297 Mbps | `(27 MHz / 4) * 44`, pairs with host HSFREQRANGE band 0x14 |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:228:| CSI output format | RGB888 (MIPI DT 0x24) | marvin ISC expects RGB888 |
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:230:**D-PHY timing counts for 594 Mbps** (from `tc358743.c:2113-2125`):
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:231:`LINEINITCNT=0xE80`, `LPTXTIMECNT=0x003`, `TCLK_HEADERCNT=0x1403`, `TCLK_TRAILCNT=0x00`, `THS_HEADERCNT=0x0103`, `TWAKEUP=0x4882`, `TCLK_POSTCNT=0x008`, `THS_TRAILCNT=0x2`, `HSTXVREGCNT=0`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:233:**Minimal init sequence (in order):**
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:242:8. `set_csi()` — program all D-PHY timing counts, enable lanes 0/1 (CLW/D0W/D1W), `CSI_START`, `CSI_CONFW`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:244:10. Load EDID into EDID_RAM (0x8C00..), set `EDID_LEN1/LEN2`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:250:**EDID:** single 128-byte block, hand-constructed, declaring 640x480@60 (480p) as the only detailed timing, plus standard VESA timings. Sufficient for the Wii → ElectronWarp to see "480p sink" and emit 480p60. If source refuses or falls back, we expand EDID to 256 bytes / add 720p60.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:259:- V4L2 DV timings framework — we hardcode 480p60.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:275:#### Phase 3b — EDID load + HPD enable ✅ PASSES ON HARDWARE (2026-05-01)
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:281:Two-block EDID. Base block is VESA EDID 1.3, detailed/preferred timing = **720x480 @ 60p** (SMPTE 293M / CEA VIC 2), pixel clock 27.000 MHz — matches what Wii → ElectronWarp emits. Established-timings byte flags 640x480@60 as a secondary. Monitor-range descriptor declares 50-75 Hz V, 30-75 kHz H, 150 MHz max pclk. Monitor name = `marvin-hdmi`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:284:- Video Data Block with **VIC 2** (720x480p@60 4:3) marked native, **VIC 3** (720x480p@60 16:9), **VIC 1** (640x480@60) fallback.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:285:- HDMI VSDB with OUI `0x000C03` (HDMI Licensing LLC, LE-encoded) and source physical address `1.0.0.0`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:289:Sink chromaticity is sRGB / BT.709 primaries (red=(0.64,0.33), green=(0.30,0.60), blue=(0.15,0.06), white=D65). Feature byte sets RGB display type + pref-timing-is-native + sRGB default.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:298:4. Write all 128 bytes to `EDID_RAM` (0x8C00) in a single I2C transaction.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:303:**Buffer sizing:** `TC358743_TX_BUF_SIZE` bumped from 8 to 132 so the EDID write fits in one transaction (2 bytes register address + 128 bytes data). Matches kernel driver's `I2C_MAX_XFER_SIZE = EDID_BLOCK_SIZE + 2`.
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal-archive.md:305:**Pass criteria:** build succeeds; after `init complete`, DBGU shows `EDID loaded, HPD asserted` followed by a second `SYS_STATUS=0xXX`. With a live Wii → ElectronWarp chain, the post-HPD `SYS_STATUS` should have at minimum `DDC5V` set (splitter has asserted 5V after handshake) and ideally `TMDS`/`PHY_PLL` set as well, meaning we have a locked input stream. `SYNC` lock is separate and typically takes longer — we'll still see it mostly in Phase 4.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 21:54:20Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:54:30Z)**_
+
+Found it — [`firmware/marvin/docs/display_path.md:140`](firmware/marvin/docs/display_path.md#L140) is the relevant entry:
+
+> TC358743 reports RGB limited-range (16–235) for both Wii and Pi sources, so bytes in DDR reflect that range. Vision consumers deliberately see **unexpanded** bytes...
+
+So the byte range marvin's detector reads is **16–235**, not the **0–255** the Python tuner trained against. The Elgato HDMI-to-USB capture box on the PC side does the limited→full expansion before frames reach Python; marvin's pipeline doesn't (HEO does it on the display side only — see decision-log entry [`journal.md:59`](firmware/marvin/docs/journal.md#L59)).
+
+That explains the threshold mismatch directly:
+
+- **Black pixel** in Python ≈ 0; in marvin ≈ **16**. So `hold_dist` on an "unlit" fret already sits ~16 just from the floor.
+- **Full-bright pixel** in Python ≈ 255; in marvin ≈ **235**.
+- Headroom above the black floor: Python had ~255, marvin has ~219.
+- A Python threshold of `50` was 50 above floor; the same delta-above-floor in marvin is **`50 + 16 = ~66`** for `HOLD_THRESH`. (Linearly rescaled it'd land near 59, but since the threshold's job is "lit vs the dark background floor," adding the floor is the more accurate translation.)
+- `CV_EDGE_THRESH = 50` is on `color_signal`, which is `(target − reject) × sat`. Limited range compresses both `target` and `reject` proportionally, but `sat = (cmax − cmin)/cmax` is roughly preserved (it's a ratio). The product still scales ~`219/255 ≈ 86%`, so the equivalent edge threshold is closer to **`50 × 219/255 ≈ 43`** — actually a *lower* threshold, the opposite direction from hold.
+
+What the periodic log will tell us next session: idle `hold_dist` values per fret. If they're all clustered near 16, we know the floor is exactly where the doc says it is and we can pick `HOLD_THRESH` deliberately. If they're elevated (panel-glow bleed-through, ambient color), we'll see that too.
+
+---
+
+_**User (2026-05-21 21:57:13Z)**_
+
+CV: G  27/ -1.. R  28/  0.. Y  35/  0P. B  41/  0P. O  26/ -8..
+MC: manual mode off
+CV: G  29/  0.. R  27/ -1.. Y  32/  0P. B  48/-10P. O  27/  3..
+CV: G  24/ -2.. R  42/-11P. Y  47/-22P. B  37/  6P. O  28/-15..
+CV: G  41/  3.. R  37/  0P. Y  33/  0.. B  27/  0.. O  26/  0..
+CV: G  31/ -3.. R  38/  0P. Y  26/  0.. B  34/  0P. O  35/-23..
+CV: G  25/ -1.. R  45/ -1P. Y  36/ -1P. B  33/  5.. O  21/  0..
+CV: G 121/ 17P. R  61/-43P. Y  36/-31P. B  45/ 40P. O  28/-21..
+CV: G 168/ 41P. R  47/-13P. Y  48/-21P. B  53/ 21P. O  35/-16P.
+CV: G 169/ 18P. R  57/  0P. Y  62/  0P. B  68/  0P. O  54/  0P.
+CV: G 158/ -1P. R  52/  0P. Y  57/  0P. B  63/ -1P. O  51/ -2P.
+CV: G 138/ -3P. R  47/ -7P. Y  54/-15P. B  43/  4P. O  36/ -9..
+CV: G 106/ -3P. R  39/  0.. Y  34/  0.. B  28/  0.. O  27/  0..
+CV: G  84/ -4P. R  39/  0P. Y  27/  0.. B  34/  0P. O  36/-20..
+CV: G  24/ -2.. R 177/  0P. Y  36/  0P. B  34/  7.. O  22/  0..
+CV: G  69/  3P. R  59/-45P. Y  36/-29P. B  43/ 41P. O  28/-20..
+CV: G  25/  0.. R  37/-23.. Y  37/-29.. B  43/ 40.. O  23/-25..
+CV: G  28/  0.. R  29/  0.. Y  36/  0P. B  44/  0P. O  24/ -5..
+CV: G  29/ -1.. R  27/ -1.. Y  34/  0P. B  47/ -9P. O  27/  0..
+CV: G  25/ -2.. R  37/-16P. Y  46/-16P. B  36/  4P. O  28/-17..
+CV: G  45/  1.. R 180/  0P. Y  35/  0.. B  26/  0.. O  25/  0..
+CV: G  32/ -3.. R  38/  0P. Y  26/  0.. B  31/  0P. O  37/-23..
+CV: G  22/ -3.. R  38/  0P. Y  37/  0P. B  35/  7.. O  22/  0..
+CV: G  29/  0.. R  57/-43P. Y  36/-28P. B 177/ 40P. O  28/-21..
+CV: G  24/  0.. R  37/-24.. Y  37/-28P. B  42/ 38P. O  22/-25..
+CV: G  26/  0.. R  30/  0.. Y  36/  0P. B  41/  0P. O  23/ -3..
+CV: G  29/ -2.. R  27/ -2.. Y  36/  0P. B  41/ -6P. O  26/ -1..
+CV: G  24/ -2.. R  39/-14P. Y  47/-11P. B  41/  1P. O  27/-16..
+CV: G  44/  0.. R  40/  0P. Y  35/  0.. B  40/  0P. O  25/  0..
+CV: G  32/ -2.. R  41/  0P. Y  26/  0.. B  40/  0P. O  36/-19..
+CV: G  22/ -3.. R  46/  0P. Y  36/  0P. B  41/  6P. O  21/  0..
+CV: G  29/  2.. R  53/-39P. Y  36/-29P. B  41/ 40P. O  28/-20..
+CV: G  24/  0.. R  36/-27P. Y  37/-29P. B  41/ 41P. O  23/-27..
+CV: G  25/  0.. R  32/  0.. Y  35/  0P. B  41/  0P. O  22/ -1..
+CV: G  29/ -2.. R  28/ -4.. Y  37/  0P. B  41/ -6P. O  27/ -3..
+CV: G  24/ -2.. R  39/-13P. Y  46/-10P. B  41/  1P. O  28/-20..
+CV: G  43/  0.. R  41/ -1P. Y  36/  0.. B  41/  0P. O  25/  0..
+CV: G  30/ -3.. R  44/  0P. Y  27/ -1.. B  42/  0P. O  37/-16..
+CV: G  22/ -3.. R  45/  0P. Y  35/ -1P. B  42/  3P. O  22/  0..
+CV: G  29/  2.. R  53/-39P. Y  36/-29P. B  41/ 41P. O  29/-19..
+CV: G  24/ -1.. R  37/-27P. Y  37/-29P. B  52/ 41P. O  23/-26..
+CV: G  26/  0.. R  32/  0.. Y 185/  0P. B  41/  0P. O  23/  0..
+CV: G  29/ -1.. R 181/ -8P. Y  38/  0P. B  40/ -4P. O  27/ -6..
+CV: G  24/ -2.. R  36/-13P. Y  45/ -9P. B  33/  0P. O  28/-21..
+CV: G  42/  0P. R  40/ -2P. Y  37/  0.. B  28/  0.. O  25/  0..
+CV: G  30/ -2P. R  43/  0P. Y  27/  0.. B  29/  0.. O  34/-15..
+CV: G  21/ -4.. R  43/  0P. Y  36/ -1P. B  39/  1P. O  22/  0..
+CV: G 101/  3P. R  51/-32P. Y  36/-29P. B  40/ 39P. O  28/-19..
+CV: G  24/ -1.. R  36/-28P. Y 186/-29P. B  52/ 39P. O  25/-23..
+CV: G  30/  0P. R  38/  0P. Y 151/ 53PE B  46/  0P. O  29/  0..
+CV: G  67/  0P. R 169/ 43P. Y  75/  0P. B  76/  0P. O  66/ -3P.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 21:57:33Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 21:57:45Z)**_
+
+Reading the log — three things jump out, and they're more diagnostic than the limited-range theory I floated:
+
+**1. Hold threshold of 50 is right inside the noise band.** Idle values per fret over the run:
+- G: 22–45, mostly low-30s
+- R: 27–46
+- Y: 32–48 (sits highest)
+- B: 33–48 (also high)
+- O: 21–37
+
+So all five frets float in the 20s–40s on the dark playfield, with Y and B regularly bumping into the high 40s. Limited-range floor of 16 is real but the bigger story is the playfield isn't black — there's panel/HUD glow at the sample sites.
+
+**2. Hold hysteresis is collapsing into permanent-pressed.** Release threshold = `50 × 0.6 = 30`. Y and B sit *above* 30 even when idle, so once anything bumps them past 50 they latch and never release. Watch Y and B: they show `P` for ~50 consecutive frames with hold values like 35, 36, 41, 44 — values that should be "off" but are above the release floor. The Python defaults assumed a darker floor.
+
+**3. Edge threshold of 50 is too high.** Real strum activity:
+- `B 177/40P.` — clear blue press, edge maxes at 40, never trips 50
+- `B 41/41P`, `B 41/40..`, `B 41/41P.` — edge consistently 40–41 on what's clearly a real blue event
+- Only one `E` flag fires in the entire 50-frame log: `Y 151/53PE`
+
+The detector is publishing strums based on edges that aren't actually crossing threshold — `s_edge_active` almost never flips, so timing_pipeline never sees real edge events. What it *does* see is permanent `pressed=1` on Y and B (hysteresis-stuck) plus `pressed` flicker on whichever fret is under the strike. That's the chatter.
+
+**Suggested adjustments to try:**
+- `CV_HOLD_THRESH`: 50 → **70** or **80**. Real presses spike to 100–185, so plenty of headroom; lifts the threshold cleanly above the 30–48 noise band.
+- `CV_HOLD_RELEASE_FRAC`: 0.60 → **0.40** (release at ~28 with 70 thresh, ~32 with 80) — actually keep around 0.45 to land release just below the noise floor.
+- `CV_EDGE_THRESH`: 50 → **30** or **35**. Real edges peak 40–45; need to cross *below* that.
+
+Want me to make those threshold edits, or test something first?
+
+---
+
+_**User (2026-05-21 21:59:37Z)**_
+
+more information, we're on easy setting. there's no blue or orange presses in these samples.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 22:00:40Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 22:00:53Z)**_
+
+That's a critical filter — re-reads everything. With G/R/Y the only real frets and B/O always noise:
+
+**B and O confirm the hold noise floor is 22–48, not 16.** Look at B's idle stream: 33, 41, 47, 48, 41, 52, 41 — that's the actual quiescent reading at the blue sample site. Nothing limited-range about it; the playfield itself is reading ~30–48 there. My earlier "+16 floor" math was wrong, the real floor is 2–3× that.
+
+**This explains the chatter more cleanly than I had it before.** Two distinct failure modes:
+
+**1. Hold latching on Y and B.** They sit at 35–48 idle. Anything bumps them above 50 (threshold) → latched. Release threshold = 50 × 0.6 = 30, *below* the idle floor → they never release. That's why Y shows `P` for 40+ consecutive frames in the log even with no real Y press. Pure hysteresis stuck.
+
+**2. Hold bleed onto neighbors during strikes.** Watch what happens when something real fires:
+- `B 177/ 40P` and `R 177/ 0P`, `R 180/ 0P`, `R 181/-8P`, `Y 185/ 0P`, `Y 186/-29P` — single-frame hold spikes to 150–186 on frets that aren't pressed. These are screen flashes/strike animations leaking into adjacent sample sites, not real presses.
+
+**Edge detection is effectively off.** Only one `E` in 50 frames (`Y 151/53PE`). Real green presses peak edge at 17–43, real red at 0–43, real yellow at 0–53. Threshold 50 sits right at the peak, almost never trips. But — confirming from [`timing_pipeline.c`](firmware/marvin/default/src/actuator/timing_pipeline.c) — the pipeline only consumes `pressed`, not edge_active, so dead edge detection isn't what's driving the random presses. It's hold chatter.
+
+**Real-press hold separation is actually clean:**
+- Real G: 67, 84, 101, 106, 121, 138, 158, 168, 169
+- Real R (hold spikes): 169, 177, 180, 181
+- Real Y: 75, 151, 185, 186
+- Idle ceiling: 48
+
+Plenty of room to set threshold at 60–65 and release at 50–52.
+
+**Proposed adjustments:**
+- `CV_HOLD_THRESH`: 50 → **65** (above noise ceiling 48, well below real-press floor 67)
+- `CV_HOLD_RELEASE_FRAC`: 0.60 → **0.78** (release at ~50 — just above noise, not so close that minor flicker re-latches)
+
+This kills the latching. Won't fix single-frame neighbor-bleed spikes (B 177 etc.) — those need either a 2-frame consecutive-press requirement, or moving the sample sites away from strike animation regions. Worth seeing if the latch fix alone is enough first.
+
+Want me to apply those threshold values?
+
+---
+
+_**User (2026-05-21 22:02:03Z)**_
+
+let's try it.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 22:02:06Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 22:02:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 22:02:15Z)**_
+
+Threshold bumped to 65, release frac to 0.78 (release at ~50.7). Build and run, then dump another 50-frame log so we can see if Y/B clear out and whether single-frame neighbor spikes still produce phantom presses.
+
+---
+
+_**User (2026-05-21 22:04:34Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+hold signal are all still a bit too low. bump up to 80
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 22:04:37Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 22:04:40Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 22:04:41Z)**_
+
+Hold threshold now 80, release at ~62.
+
+---
+
+_**User (2026-05-21 23:03:20Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/detector/cv_marvin_v1.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+modified some settings by hand. one question before we commit. is the fret button held between chords if the next chord also contains the fret? For example consective green notes should hold down green continuously and only strum from one to the next.
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 23:03:24Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 23:03:24Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/timing_pipeline.c`
+
+```text
+1	#include "timing_pipeline.h"
+2	#include "fretboard_link.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	
+12	#include "log.h"
+13	#include "detector/detector.h"
+14	
+15	#define TP_TASK_STACK_WORDS    768u
+16	#define TP_TASK_PRIORITY       2u
+17	
+18	/* Drives chord aggregation, strum scheduling, and pending release timing.
+19	 * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+20	#define TP_STRUM_DELAY_MS      220u
+21	#define TP_FRET_EARLY_MS       30u
+22	#define TP_STRUM_PULSE_MS      20u
+23	#define TP_CHORD_WINDOW_MS     30u
+24	
+25	#define TP_FIFO_CAP            32u
+26	
+27	/* Background tick: bound on between-frame latency for strum-pulse and
+28	 * note-assert deadlines that fall between detector publishes. 5 ms keeps
+29	 * jitter well under our 16 ms detector cadence and below human-perceptible
+30	 * timing error. */
+31	#define TP_TICK_MS             5u
+32	
+33	typedef struct
+34	{
+35	    uint32_t assert_at_ms;
+36	    uint8_t  fret_mask;
+37	} pending_note_t;
+38	
+39	typedef struct
+40	{
+41	    uint32_t strum_at_ms;
+42	    uint8_t  fret_mask;
+43	} pending_strum_t;
+44	
+45	static StackType_t   s_task_stack[TP_TASK_STACK_WORDS];
+46	static StaticTask_t  s_task_tcb;
+47	
+48	/* Pipeline state — touched only by the timing task. */
+49	static pending_note_t  s_note_q[TP_FIFO_CAP];
+50	static uint8_t         s_note_head, s_note_tail, s_note_count;
+51	static pending_strum_t s_strum_q[TP_FIFO_CAP];
+52	static uint8_t         s_strum_head, s_strum_tail, s_strum_count;
+53	
+54	static bool     s_chord_open;
+55	static uint32_t s_chord_start_ms;
+56	static uint8_t  s_chord_mask;
+57	
+58	static uint8_t  s_frets_active;
+59	static bool     s_strum_active;
+60	static uint32_t s_strum_release_at_ms;
+61	static bool     s_strum_direction;        /* toggles down/up each strum */
+62	
+63	static uint8_t  s_prev_pressed_mask;
+64	static uint16_t s_prev_press_count[FRET_COUNT];
+65	static bool     s_press_count_seen;
+66	static uint32_t s_release_at_ms[FRET_COUNT];
+67	static uint8_t  s_release_pending_mask;
+68	
+69	static uint8_t  s_output_mask;
+70	static uint32_t s_now_ms;
+71	static uint64_t s_last_frame_us;
+72	
+73	static volatile bool s_pipeline_enabled = true;
+74	
+75	static const uint8_t s_fret_bit[FRET_COUNT] =
+76	{
+77	    [FRET_GREEN]  = TIMING_BIT_GREEN,
+78	    [FRET_RED]    = TIMING_BIT_RED,
+79	    [FRET_YELLOW] = TIMING_BIT_YELLOW,
+80	    [FRET_BLUE]   = TIMING_BIT_BLUE,
+81	    [FRET_ORANGE] = TIMING_BIT_ORANGE,
+82	};
+83	
+84	static inline bool note_q_empty(void) { return s_note_count == 0u; }
+85	static inline bool note_q_full(void)  { return s_note_count >= TP_FIFO_CAP; }
+86	static inline bool strum_q_empty(void){ return s_strum_count == 0u; }
+87	static inline bool strum_q_full(void) { return s_strum_count >= TP_FIFO_CAP; }
+88	
+89	static void note_q_push(pending_note_t n)
+90	{
+91	    s_note_q[s_note_tail] = n;
+92	    s_note_tail = (uint8_t)((s_note_tail + 1u) % TP_FIFO_CAP);
+93	    s_note_count++;
+94	}
+95	
+96	static void note_q_pop(void)
+97	{
+98	    s_note_head = (uint8_t)((s_note_head + 1u) % TP_FIFO_CAP);
+99	    s_note_count--;
+100	}
+101	
+102	static void strum_q_push(pending_strum_t s)
+103	{
+104	    s_strum_q[s_strum_tail] = s;
+105	    s_strum_tail = (uint8_t)((s_strum_tail + 1u) % TP_FIFO_CAP);
+106	    s_strum_count++;
+107	}
+108	
+109	static void strum_q_pop(void)
+110	{
+111	    s_strum_head = (uint8_t)((s_strum_head + 1u) % TP_FIFO_CAP);
+112	    s_strum_count--;
+113	}
+114	
+115	/* Iterator helpers for the "is this fret needed by an outstanding entry?"
+116	 * release-suppression check below. */
+117	static bool note_q_any_needs(uint8_t bit)
+118	{
+119	    for (uint8_t i = 0u; i < s_note_count; i++)
+120	    {
+121	        uint8_t idx = (uint8_t)((s_note_head + i) % TP_FIFO_CAP);
+122	        if (s_note_q[idx].fret_mask & bit) { return true; }
+123	    }
+124	    return false;
+125	}
+126	
+127	static bool strum_q_any_needs(uint8_t bit)
+128	{
+129	    for (uint8_t i = 0u; i < s_strum_count; i++)
+130	    {
+131	        uint8_t idx = (uint8_t)((s_strum_head + i) % TP_FIFO_CAP);
+132	        if (s_strum_q[idx].fret_mask & bit) { return true; }
+133	    }
+134	    return false;
+135	}
+136	
+137	static void publish_mask(uint8_t mask)
+138	{
+139	    s_output_mask = mask;
+140	    if (s_pipeline_enabled)
+141	    {
+142	        FretboardLink_Send(mask);
+143	    }
+144	}
+145	
+146	/* Edge derivation:
+147	 *   - presses_mask: rising edge (press_count change preferred; pressed-edge
+148	 *     fallback if the detector doesn't expose press_count for that fret)
+149	 *   - releases_mask: falling edge of pressed
+150	 * confidence is unused by the pipeline but is the natural future home for
+151	 * a quality gate; left untouched here. */
+152	static void derive_edges(const detector_state_t *state,
+153	                         uint8_t *presses_mask, uint8_t *releases_mask,
+154	                         uint8_t *pressed_mask)
+155	{
+156	    uint8_t pm = 0u;
+157	    uint8_t rm = 0u;
+158	    uint8_t cm = 0u;
+159	
+160	    bool first = !s_press_count_seen;
+161	
+162	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+163	    {
+164	        bool pressed = state->fret[i].pressed != 0u;
+165	        if (pressed) { cm |= s_fret_bit[i]; }
+166	
+167	        bool was_pressed = (s_prev_pressed_mask & s_fret_bit[i]) != 0u;
+168	        uint16_t pc = state->fret[i].confidence;  /* placeholder slot */
+169	        (void)pc;
+170	
+171	        /* press_count is private to the detector; for now we infer rising
+172	         * edge from pressed transitions only. If a detector later exposes
+173	         * a press_count via a side channel, plug it in here. */
+174	        if (pressed && !was_pressed) { pm |= s_fret_bit[i]; }
+175	        if (!pressed && was_pressed) { rm |= s_fret_bit[i]; }
+176	
+177	        s_prev_press_count[i] = state->fret[i].confidence;
+178	    }
+179	
+180	    if (first) { s_press_count_seen = true; }
+181	
+182	    s_prev_pressed_mask = cm;
+183	    *presses_mask  = pm;
+184	    *releases_mask = rm;
+185	    *pressed_mask  = cm;
+186	}
+187	
+188	static void chord_commit(void)
+189	{
+190	    if (note_q_full() || strum_q_full())
+191	    {
+192	        s_chord_open = false;
+193	        s_chord_mask = 0u;
+194	        return;
+195	    }
+196	
+197	    uint32_t assert_at = s_now_ms + TP_STRUM_DELAY_MS - TP_FRET_EARLY_MS;
+198	    uint32_t strum_at  = s_now_ms + TP_STRUM_DELAY_MS;
+199	
+200	    if (!strum_q_empty())
+201	    {
+202	        uint8_t  last_idx = (uint8_t)((s_strum_tail + TP_FIFO_CAP - 1u) % TP_FIFO_CAP);
+203	        uint32_t earliest = s_strum_q[last_idx].strum_at_ms + TP_STRUM_PULSE_MS;
+204	        if ((int32_t)(assert_at - earliest) < 0)
+205	        {
+206	            assert_at = earliest;
+207	            strum_at  = assert_at + TP_FRET_EARLY_MS;
+208	        }
+209	    }
+210	
+211	    pending_note_t  n = { .assert_at_ms = assert_at, .fret_mask = s_chord_mask };
+212	    pending_strum_t s = { .strum_at_ms  = strum_at,  .fret_mask = s_chord_mask };
+213	    note_q_push(n);
+214	    strum_q_push(s);
+215	
+216	    s_chord_open = false;
+217	    s_chord_mask = 0u;
+218	}
+219	
+220	static void process_notes(void)
+221	{
+222	    while (!note_q_empty())
+223	    {
+224	        const pending_note_t *n = &s_note_q[s_note_head];
+225	        if ((int32_t)(s_now_ms - n->assert_at_ms) < 0) { break; }
+226	
+227	        for (uint8_t i = 0u; i < FRET_COUNT; i++)
+228	        {
+229	            uint8_t bit = s_fret_bit[i];
+230	            bool need = (n->fret_mask & bit) != 0u;
+231	            bool have = (s_frets_active & bit) != 0u;
+232	            if (need && !have)      { s_frets_active |= bit; }
+233	            else if (!need && have) { s_frets_active &= (uint8_t)~bit; }
+234	        }
+235	        note_q_pop();
+236	    }
+237	}
+238	
+239	static void process_strums(void)
+240	{
+241	    while (!strum_q_empty())
+242	    {
+243	        const pending_strum_t *s = &s_strum_q[s_strum_head];
+244	        if ((int32_t)(s_now_ms - s->strum_at_ms) < 0) { break; }
+245	
+246	        s_strum_active        = true;
+247	        s_strum_direction     = !s_strum_direction;
+248	        s_strum_release_at_ms = s_now_ms + TP_STRUM_PULSE_MS;
+249	
+250	        strum_q_pop();
+251	    }
+252	}
+253	
+254	static void process_releases(uint8_t live_pressed_mask)
+255	{
+256	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+257	    {
+258	        uint8_t bit = s_fret_bit[i];
+259	        if ((s_release_pending_mask & bit) == 0u) { continue; }
+260	        if ((int32_t)(s_now_ms - s_release_at_ms[i]) < 0) { continue; }
+261	        if (live_pressed_mask & bit) { continue; }
+262	        if (note_q_any_needs(bit) || strum_q_any_needs(bit)) { continue; }
+263	
+264	        s_frets_active        &= (uint8_t)~bit;
+265	        s_release_pending_mask &= (uint8_t)~bit;
+266	    }
+267	}
+268	
+269	static void advance(uint8_t live_pressed_mask)
+270	{
+271	    if (s_chord_open && (int32_t)(s_now_ms - s_chord_start_ms) >= (int32_t)TP_CHORD_WINDOW_MS)
+272	    {
+273	        chord_commit();
+274	    }
+275	
+276	    if (s_strum_active && (int32_t)(s_now_ms - s_strum_release_at_ms) >= 0)
+277	    {
+278	        s_strum_active = false;
+279	    }
+280	
+281	    process_notes();
+282	    process_strums();
+283	    process_releases(live_pressed_mask);
+284	
+285	    uint8_t mask = s_frets_active;
+286	    if (s_strum_active)
+287	    {
+288	        mask |= s_strum_direction ? TIMING_BIT_STRUM_UP : TIMING_BIT_STRUM_DOWN;
+289	    }
+290	    publish_mask(mask);
+291	}
+292	
+293	static void process_frame(const detector_state_t *state)
+294	{
+295	    /* Detector frame timestamps drive the clock so this is replay-
+296	     * deterministic. timestamp_us is monotonic per spec §4.2.3. */
+297	    s_now_ms = (uint32_t)(state->timestamp_us / 1000ull);
+298	    s_last_frame_us = state->timestamp_us;
+299	
+300	    uint8_t presses, releases, pressed_mask;
+301	    derive_edges(state, &presses, &releases, &pressed_mask);
+302	
+303	    if (presses)
+304	    {
+305	        if (!s_chord_open)
+306	        {
+307	            s_chord_open     = true;
+308	            s_chord_start_ms = s_now_ms;
+309	            s_chord_mask     = 0u;
+310	        }
+311	        s_chord_mask |= presses;
+312	    }
+313	
+314	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+315	    {
+316	        if (releases & s_fret_bit[i])
+317	        {
+318	            s_release_at_ms[i]      = s_now_ms + TP_STRUM_DELAY_MS;
+319	            s_release_pending_mask |= s_fret_bit[i];
+320	        }
+321	    }
+322	
+323	    advance(pressed_mask);
+324	}
+325	
+326	static void timing_pipeline_task(void *param)
+327	{
+328	    (void)param;
+329	
+330	    QueueHandle_t bus = Detector_BusQueue();
+331	    configASSERT(bus != NULL);
+332	
+333	    LOG_INFO("TIMING: pipeline started\r\n");
+334	
+335	    for (;;)
+336	    {
+337	        detector_state_t state;
+338	        if (xQueueReceive(bus, &state, pdMS_TO_TICKS(TP_TICK_MS)) == pdTRUE)
+339	        {
+340	            if ((detector_id_t)state.detector_id != Detector_GetActive())
+341	            {
+342	                continue;
+343	            }
+344	            process_frame(&state);
+345	        }
+346	        else
+347	        {
+348	            /* No new frame; advance the clock so deadlines that fell
+349	             * between frames (strum pulses, release timers) still fire. */
+350	            s_now_ms += TP_TICK_MS;
+351	            advance(s_prev_pressed_mask);
+352	        }
+353	    }
+354	}
+355	
+356	void TimingPipeline_Initialize(void)
+357	{
+358	    (void)xTaskCreateStatic(timing_pipeline_task,
+359	                            "Timing",
+360	                            TP_TASK_STACK_WORDS,
+361	                            NULL,
+362	                            TP_TASK_PRIORITY,
+363	                            s_task_stack,
+364	                            &s_task_tcb);
+365	}
+366	
+367	void TimingPipeline_SetEnabled(bool enabled)
+368	{
+369	    s_pipeline_enabled = enabled;
+370	}
+371
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:04:19Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 23:04:27Z)**_
+
+Yes — within a window. Tracing [`timing_pipeline.c`](firmware/marvin/default/src/actuator/timing_pipeline.c) for two consecutive green notes:
+
+1. **Detector releases note 1's green** → `process_frame` schedules a release at [`s_release_at_ms[GREEN] = s_now_ms + TP_STRUM_DELAY_MS`](firmware/marvin/default/src/actuator/timing_pipeline.c#L318) (220 ms out) and sets the pending bit.
+
+2. **Detector presses note 2's green** before that release fires → opens a new chord, commits 30 ms later, pushing a new entry onto `s_note_q` with green in its `fret_mask`.
+
+3. **Release deadline arrives** → [`process_releases`](firmware/marvin/default/src/actuator/timing_pipeline.c#L254) runs the suppression check at line 262: `if (note_q_any_needs(bit) || strum_q_any_needs(bit)) { continue; }` — sees green in the queued note, skips the release, leaves `s_frets_active` with green held.
+
+4. **Note 2's assert deadline arrives** → `process_notes` checks `if (need && !have)` per fret. Green is already in `s_frets_active`, so no transition — the wire bit stays high. New strum fires.
+
+So the fret is held continuously across the two strums.
+
+**The window**: the release suppression only works if the chord commit for note 2 lands before the release timer fires. That means the detector-level gap (note-1-release → note-2-press) must be shorter than `TP_STRUM_DELAY_MS − TP_CHORD_WINDOW_MS = 220 − 30 = 190 ms`. Faster than that → held. Slower → brief release between notes.
+
+For fast trills/runs (>5 notes/sec) this works. For separated note changes the fret cycles, which is the right behavior anyway. Whether 190 ms is tuned right is a separate dial.
+
+(Caveat: the detector has to actually emit a release between the two notes. With the visual detector that comes naturally — the colored note circle physically moves out of the sample area between successive notes. If the detector kept `pressed=1` continuously across two visually distinct notes, there'd be no second rising edge, no second chord, no second strum. That'd be a detector calibration bug, not a pipeline bug.)
+
+---
+
+_**User (2026-05-21 23:07:49Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+performance is quite good now on expert. make a note that strum delay may need to be different based on difficulty level. let's commit what we currently have
+
+---
+
+_**Agent (claude-opus-4-7 2026-05-21 23:07:54Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 23:07:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check current git state
+
+`git status && echo "---" && git diff --stat`
+
+```text
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-21_12-00-55Z-for-project-marvin-next.md
+	modified:   .specstory/statistics.json
+	modified:   firmware/marvin/default/src/actuator/timing_pipeline.c
+	modified:   firmware/marvin/default/src/detector/cv_marvin_v1.c
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---
+warning: in the working copy of '.specstory/history/2026-05-21_12-00-55Z-for-project-marvin-next.md', CRLF will be replaced by LF the next time Git touches it
+ ...2026-05-21_12-00-55Z-for-project-marvin-next.md | 3376 ++++++++++++++++++++
+ .specstory/statistics.json                         |   10 +-
+ .../marvin/default/src/actuator/timing_pipeline.c  |    6 +-
+ .../marvin/default/src/detector/cv_marvin_v1.c     |  135 +-
+ 4 files changed, 3511 insertions(+), 16 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:07:55Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+1	# marvin — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	## Current focus
+8	
+9	**M1 — Reference detector v0.** First CV detector running on captured frames, publishing `detector_state_t` records onto the detector-state bus. No actuation yet. See [`spec.md`](spec.md) §4.2 for subsystem detail and §8 for the milestone progression.
+10	
+11	Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus queue + a temporary drain task that logs records-per-second; `detector/cv_marvin_v1.{h,c}` subscribes to the video frame queue and publishes one `detector_state_t` per frame with `frame_epoch = Video_FrameInfo.frame_count` and all-zero fret state. Next: pick the v0 algorithm (Q8) and start populating `fret[]`.
+12	
+13	**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+14	
+15	> **Deeper-dive references:**
+16	> - [`spec.md`](spec.md) — system-level spec (read first).
+17	> - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
+18	> - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
+19	
+20	> **Earlier entries** (capture/display bring-up, 2026-05-01 → 2026-05-15) are preserved in [`journal-archive.md`](journal-archive.md).
+21	
+22	---
+23	
+24	## Decision log
+25	
+26	| Date | Decision | Rationale |
+27	|------|----------|-----------|
+28	| 2026-05-21 | `manual_control` lands as the second producer of `fretboard_link`, alongside `timing_pipeline`. Mode-level arbitration is two-mode (`timing_pipeline` vs `manual_control`) and embedded in `ManualControl_SetEnabled`: entering manual mode calls `TimingPipeline_SetEnabled(false)` then takes the wire; exiting reverses. | First concrete validation of the 2026-05-20 multi-producer `fretboard_link` design — `FretboardLink_Send` stays the only entry point; arbitration lives one layer up. Embedded toggle is enough for two producers; refactor to a dedicated `actuator_mode` arbiter when a third producer (game-state controller §4.8) arrives. `timing_pipeline.publish_mask` keeps updating internal state when gated so the next ≤5 ms tick after re-enable republishes a correct mask without a stale frame. |
+29	| 2026-05-21 | Legato chosen for the manual-control surface; widgets authored in Microchip Graphics Composer (regenerated into `le_gen_screen_Screen0.{h,c}`); marvin-side code is a thin event-binding shim (`ui/manual_input.c`) | Composer makes the layout iterable in a tool rather than C source, and keeps our code out of MCC-clobbered files: only the binding shim references the Composer-generated widget pointers. **Does not commit spec Q5 for the full operator UI** — that's still M5's call. The thin-shim shape works equally well behind a future custom GFX2D UI by swapping the bind module. |
+30	| 2026-05-21 | Manual-control input model is single-finger momentary; multi-finger chord input is out of scope for this surface | Legato's input pipeline (`legato_input.c:340/429`) routes each touch to a single focus widget, so a second simultaneous touch cancels the first button's release and strands its `pressed` state. Workarounds (custom maxtouch dispatcher; toggle-style frets) are real but not worth the complexity here — primary use case is game-menu navigation, which is single-finger by nature. Revisit only if a user-facing flow needs held chords. |
+31	| 2026-05-21 | `fret_t` lives in `game/fret.h`, a top-level domain header. Detector / actuator / UI all include it directly; detector.h re-includes it so `detector_state_t` still compiles cleanly. | The fret colors (G/R/Y/B/O) are a Guitar Hero / Rock Band domain primitive, not a detector concept — the actuator and UI shouldn't reach into `detector/` for them. `game/` also stakes out the directory the future game-state controller (spec §4.8) will land in, so we don't have a transient home. Header-only, no cmake change. |
+32	| 2026-05-20 | Relax Microchip's host CDC-ACM Communications-interface protocol check to accept `bInterfaceProtocol == 0x00 (None)` in addition to `0x01 (AT_V250)` | The fretboard hardware exposes its UART to marvin via the on-board EDBG debugger's CDC ACM (composite VID=0x03EB PID=0x2175: HID + CDC ACM IAD + vendor + MSC). EDBG declares the comm interface with `bInterfaceProtocol=0x00` rather than the AT-command protocol Microchip hardcodes. The TPL/IAD match accepts the device (host stack does call `interfaceAssign`), but the per-interface check inside `F_USB_HOST_CDC_InterfaceAssign` then rejects the comm interface, the interrupt pipe never opens, the CDC instance flips to STATE_ERROR, and our attach handler never fires. Both are CDC ACM in practice and Linux/macOS accept either. Two-line OR per check in `usb_host_cdc.c`; logged as patch #7 in the re-apply list. |
+33	| 2026-05-20 | `USB_HOST_Initialize` ordering relative to `DRV_USB_EHCI/OHCI_Initialize` and `Legato_Initialize` is **not** load-bearing — keep MCC's emitted order | A prior session hand-edited `initialization.c` to move `USB_HOST_Initialize` *after* the EHCI/OHCI driver inits on the theory that the host layer needed the HCD interfaces present at init time. Empirical retest with the CDC diagnostic logging in place: MCC's original order (`USB_HOST_Initialize` → `Legato_Initialize` → driver inits) enumerates and binds the CDC IAD just as well. The host layer evidently looks up HCD interfaces lazily at `USB_HOST_BusEnable` time, not at `USB_HOST_Initialize`. Reverted the hand-edit; one fewer re-apply patch to maintain. (This is unrelated to patch #6, which is the *peripheral* init order — MMU/AIC ahead of TC0/FLEXCOM6/XLCDC — that one is still a real regression and stays in the list.) |
+34	| 2026-05-20 | Marvin replaces the fret-tuner PC as the runtime brain | One-host architecture. fret-tuner persists as an off-band dev/calibration tool. fretboard stays a dumb relay (ADC out, bitmask in). |
+35	| 2026-05-20 | Marvin is the *reference detector* — not a debug aid | HDMI-direct CV is ground-truth for the system. Fretboard's photo-detection and any future Edge-AI MCU are trained against marvin's output. Recording reference data is therefore a first-class subsystem (spec §4.6), not an afterthought. |
+36	| 2026-05-20 | Multiple coexisting detectors are in scope; one canonical detector-state bus | At minimum `cv_marvin_v1` (CV) and `adc_fretboard` (over UART ingest). Bus shape: typed `detector_state_t` records on a FreeRTOS queue, single-consumer (timing pipeline). Recording snoops via tee from each producer. Spec §4.2. |
+37	| 2026-05-20 | Timing pipeline (chord window, FIFO, strum scheduling) lives on marvin by default; fretboard-takeover is a fallback mode | Centralized = single source of truth, easier multi-detector fusion. Latency budget allows a few ms of UART jitter. Fallback mode disables marvin's pipeline; fretboard runs its own existing `fret_button.c` and feeds emitted-command telemetry up to marvin for capture/display. Spec §4.4 + §6. |
+38	| 2026-05-20 | Reference-data export = SD card, format = detector-state + sparse keyframes | SD chosen over Ethernet/USB CDC because primary consumers are Edge-AI training (offline) and replay/sanity-check (offline). Live side-by-side comparison deferred. Format: dense `detector_state_t` records for all detectors + raw BGRX32 keyframes every 60 frames (1.38 MB/s sustained, comfortable on Class-10). No software JPEG (Cortex-A5 can't keep up; SAM9X75 has no HW encoder). Spec §4.6. |
+39	| 2026-05-20 | `frame_epoch` (32-bit, incremented per captured ISC frame) is the master sync token across recordings, detectors, and any future off-board observers | Need single shared timeline; off-board detectors (e.g. Edge-AI device) record in their own format keyed by marvin's `frame_epoch` so post-hoc training-data alignment is trivial. Wraps after ~830 days @ 60 Hz. |
+40	| 2026-05-20 | Operating modes are independent toggles (`detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`); named modes are presets over them | Matches `tools/fret-tuner/SPEC.md`'s detect/actuate split which has worked well in practice. Avoids a brittle global state machine. Spec §6. |
+41	| 2026-05-01 | First real driver work is the TC358743 HDMI-to-CSI bridge | It's the gate between hardware-wired and pixels-in-memory. Everything downstream (vision, actuation) depends on it. |
+42	| 2026-05-01 | Reference source = mainline Linux tc358743 driver + community 480p dumps | Linux driver has correct state machine / EDID / IRQ handling; community dumps have verified 480p register values. |
+43	| 2026-05-01 | Integration shape (sensor vs standalone) deferred until Phase 3 | Avoid premature structure; real answer depends on how much state the driver actually needs. |
+44	| 2026-05-01 | Journal lives at `firmware/marvin/docs/journal.md` | Firmware docs co-located with firmware; top-level `docs/` is hardware/mechanical. |
+45	| 2026-05-01 | TC358743 I2C address: **`0x0f`** (7-bit) | Matches the in-tree kernel DT example (`imx6q-h100.dts:190`, `tc358743@f`) and the Waveshare v1/v2 default tie-off. Confirm by I2C bus scan during Phase 1 bring-up. |
+46	| 2026-05-01 | REFCLK: **27 MHz** | Waveshare v1/v2 on-board XTAL. Kernel driver restricts REFCLK to {26, 27, 42} MHz (`tc358743.c:717-719`); 27 MHz is the Waveshare v1/v2 value. |
+47	| 2026-05-01 | Target CSI-2 output format: **RGB888** (MIPI data type `0x24`) | Marvin pipeline is already configured for RGB888 end-to-end: `CSI_DATA_FORMAT_TYPE = CSI2_DATA_FORMAT_RGB888`, ISC input RGB 8-bit, CSI2DC pipes RGB888, ISC output ARGB32. Emitting YUV from TC358743 would require reconfiguring ISC/CSI2DC — staying with RGB is cheaper. |
+48	| 2026-05-01 | Register-access helpers will be a direct port from the kernel driver | `tc358743.c:131-269` has clean `i2c_rd/wr` + `i2c_rd8/wr8/rd16/wr16/rd32/wr32`. Map to FLEXCOM6 TWI underneath. |
+49	| 2026-05-01 | J29 (22-pin MIPI) pinout confirmed; PC19=pin 17, PC15=pin 18 (not 5/6) | Per SAM9X75-Curiosity User Guide §3.4.10 (queried via Microchip MCP). Pins 5/6 are MIPI_D1_N/P — CSI data lane 1 diff pairs, not GPIOs. Correct GPIO pins for RESET/INT are pin 17 (PC19, `MIPI_CSI_GPIO0`) and pin 18 (PC15, `MIPI_CSI_GPIO1`). I2C on pins 20 (PA25, `CAM_I²C_CLK`) and 21 (PA24, `CAM_I²C_DATA`) confirmed to match marvin's FLEXCOM6 pin assignment (`pin_configurations.csv:85-86`). |
+50	| 2026-05-01 | Phase 1 will drive RESET via software (I2C `SYSCTL.Sreset`), not via GPIO | Even if PC19 reaches the 15-pin side through the adapter, Waveshare v1/v2 typically does NOT route TC358743 `RESET_N` out to the 15-pin FFC — the chip's reset is an on-board RC/POR network. Software reset over I2C is always available and is what the kernel driver uses. Means we don't need to validate the GPIO path before Phase 1 bring-up. |
+51	| 2026-05-01 | Delays use Harmony's `SYS_TIME` service (non-blocking shape) | Already initialized in `SYS_Initialize`; existing marvin code (`drv_isc.c`, `plib_isc.c`) uses it with `SYS_TIME_DelayUS/MS` + `SYS_TIME_DelayIsComplete`. Non-blocking pattern inside our state machine keeps `APP_Tasks()` (and Legato) from stalling during reset hold times, and scales naturally into Phase 3's longer init sequence. |
+52	| 2026-05-01 | Our I2C open uses `DRV_IO_INTENT_READWRITE`, not `EXCLUSIVE` | `EXCLUSIVE` is rejected by Harmony's I2C driver if any other client is already open. Even after libcamera is removed we prefer `READWRITE` so our module can coexist with any future MCC-generated I2C client. `DRV_I2C_CLIENTS_NUMBER_IDX0 = 2` in `configuration.h` already permits multi-client use. |
+53	| 2026-05-01 | Libcamera (Camera Module + Image Sensor Driver + Vision Camera Library) to be removed from MCC | Conflicts with TC358743 bridge approach: libcamera expects a directly-attached sensor (IMX219/OV5640/etc.), probes them at boot (adds bus traffic + console noise), and configures ISC/CSI/CSI2DC with sensor-style assumptions that we'll need to override in Phase 3. Keeping CSI/ISC/CSI2DC peripheral/driver layers — we'll drive those directly from the TC358743 module. Greg regenerating MCC. |
+54	| 2026-05-01 | Post-regen: keep a minimal `drv_image_sensor.h` shim at the original path | ISC driver (`drv_isc.c:15, 246, 257, 363-365`) and `configuration.h:106-107` reference `DRV_IMAGE_SENSOR_*` enum values that MCC didn't scrub when the image-sensor component was removed. Shim defines just the enum values used (exact numeric equivalence to originals). Lives at the MCC-generated path because `drv_isc.c`'s include is hardcoded — but MCC no longer regenerates that directory, so the shim is stable. |
+55	| 2026-05-01 | `CAMERA_ENABLE_DEBUG=0` provided via `user.cmake` compile definition | Both `drv_csi.c:45` and `drv_isc.c:18` define `debug_print(...) if (CAMERA_ENABLE_DEBUG) fprintf(...)` and the symbol used to come from the deleted `camera.h`. Define it as a compile flag instead of editing `configuration.h` (MCC-regenerated) — `user.cmake` survives regens. Value `0` elides the debug prints entirely; if we ever need them, bump to `1`. |
+56	| 2026-05-01 | `csiBitRate = 0x14` set from `isc_capture`, not MCC | `drv_csi.c` hardcodes `csiBitRate = 0x16` (wrong — testing showed 0x14 works). Rather than modifying MCC-generated code, we treat the MCC value as a default and override in `isc_capture` alongside the already-necessary `csiFrameWidth/Height/Fps` overrides. Only one MCC-file modification stays (`plib_csi.c` `CSI_Analog_Init` bug fix). |
+57	| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+58	| 2026-05-02 | Capture pipeline outputs BGRX32 natively (CSI2DC RMS=0 + ISC RLP BYPASS + DMA PACKED32) | Datasheet §49.6.54 + §50.6.19 + §50.6.20 show this is the only in-pipeline path to 32 bpp for MIPI RGB888 bypass. ARGB32 RLP mode is unusable on this path (requires CSC module output format). Alpha=0x00 is acceptable trade for zero-CPU capture; 0xFF can be added post-hoc if needed. Full rationale in `capture_pipeline.md`. |
+59	| 2026-05-02 | Limited→full-range RGB expansion will be done in HEO CSC block on the display side only; capture buffer stays unexpanded for vision consumers | Both Wii and Pi emit RGB limited-range (16–235). Expanding on capture would cost CPU and break vision consumers by inflating values without adding information (linear rescale carries no new signal). LCD display needs full-range 0–255 or it looks muted, so the HEO CSC matrix (programmable `M × in + offset`) will be configured as an identity RGB→RGB with limited→full gain/offset. Zero CPU, display-only, capture untouched. See `display_path.md` §5. |
+60	| 2026-05-20 | M1 detector scaffolding: one task per detector, single shared bus queue (`xDetectorStateQueue`), temporary in-module drain task until the timing pipeline (M3) lands | Matches spec §4.2.4. Per-detector tasks isolate slow detectors from the frame pipeline; the shared queue is the hand-off point that the timing pipeline will eventually own as sole consumer. The drain task lives in `detector.c` so it travels with the bus and can be deleted in one place when M3 wires the real consumer. Records-per-second log line gives a coarse health signal during bring-up. |
+61	| 2026-05-20 | `frame_epoch` is sourced from `Video_FrameInfo.frame_count` for M1; a persistent counter that survives ISC restart is M5's problem | Recording (M5) is the first consumer that actually needs cross-restart continuity. Until then the post-arm-monotonic counter is fine for plumbing validation, and pretending otherwise would mean threading another counter through the video module before it has a real consumer. |
+62	| 2026-05-20 | Detector control model: per-detector `enable` (multiple may be on simultaneously for side-by-side recording) + single `active` selector (which detector_id the timing pipeline acts on) | Want side-by-side training data — every enabled detector publishes onto the bus; recording (M5) saves them all. But only one detector should ever drive actuation, so the timing pipeline (M3) filters the bus by `Detector_GetActive()` and ignores the rest. Cleaner than a global enum because it decouples "is this running?" from "is this canonical?", and lets us hot-swap the active detector without disabling its peers. Defaults: all-disabled, active=cv_marvin_v1. App explicitly calls `Detector_Enable` + `Detector_SetActive` after init. |
+63	| 2026-05-20 | Non-detector vision tasks (menu navigation, score reading, etc.) are video-frame consumers, not detectors — `detector_state_t` stays narrow to fret-press shape | Forcing menu/score readers through `detector_state_t` would either abuse `fret[]` as untyped data or push the canonical record toward a tagged-union shape that hurts the recording layout. Cheaper to keep two separate concepts: (a) "video frame consumer" — anyone subscribing to the video module's frame queue, output type and downstream consumers are theirs to define; (b) "detector" — narrow note-timing emitter onto `xDetectorStateQueue`. cv_marvin_v1 happens to be both. Implication: `Video_SubscribeFrames` needs to go from single- to multi-subscriber before the second video CV task lands. |
+64	| 2026-05-20 | `Video_FrameInfo.buffer` now reflects the buffer that just completed (per-frame routing); HEO is re-pointed in the ISR every frame so the panel sees every captured frame | Pre-fix: `ISC_Capture_GetBufferAddress()` returned the framebuffer base regardless of which descriptor-ring slot ISC just wrote, and HEO was bound once to the base — so HEO only ever read slot 0, and slot 1 was written but never observed. Effective behavior was ~half-rate display. Fix: ISC IRQ computes `slot = (frameIndex - 1 + N) % N` (driver increments before callback per drv_isc.c:47-50), passes `base + slot * frame_size` into the user callback, and video.c re-points HEO at that address with `XLCDC_SetLayerAddress(..., update=true)` — latches at next vsync. Also unblocks ring depth > 2 since each subscriber sees the genuinely-just-written buffer. |
+65	| 2026-05-20 | `Video_SubscribeFrames` is multi-subscriber (max 4), each subscriber chooses its own queue depth + back-pressure policy | Need parallel video CV tasks (note detector + recording + future menu/score readers) on one capture pipeline. Static array of 4 `QueueHandle_t` slots; ISR fans out one `xQueueSendFromISR` per subscribed slot. Aligned-pointer slot reads/writes are atomic on Cortex-A5 so the IRQ can scan without locking; `taskENTER_CRITICAL` only needed in `Subscribe`/`Unsubscribe` to prevent two task-side writers racing on the same empty slot. Producer always uses `xQueueSendFromISR` (drop-on-full); consumer chooses queue depth — depth 1 = "newest only", deeper = "preserve every frame". |
+66	| 2026-05-20 | All marvin-owned FreeRTOS objects use `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic`; FreeRTOS heap stays at heap_1 only because MCC code (XLCDC/MAXTOUCH/LEGATO/SYS_INPUT tasks, OSAL, Legato variable heap) needs it | Project rule is static-only memory allocation. MCC-generated code can't be made static without forking, so we keep `configSUPPORT_DYNAMIC_ALLOCATION = 1` for MCC and route all our own code through the static APIs. MCC reconfigured to enable `configSUPPORT_STATIC_ALLOCATION = 1` and emit `vApplicationGetIdleTaskMemory` in `freertos_hooks.c`. Per-module `Static{Task,Queue,Semaphore}_t` plus stack/storage arrays at file scope. |
+67	| 2026-05-20 | ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache`; max capture cap dropped 1920×1080 → 1280×720 to fit | First CPU consumer of frame data (cv_marvin_v1) needed cache-coherent reads. Two paths considered: invalidate D-cache per frame in the ISR, or move the pool to the linker's already-defined uncached region. Nocache is simpler and bug-resistant — every reader sees DMA-fresh bytes without explicit maintenance. Trade is full-DDR-fetch on every read; fine for sparse 5×5 patch sampling, would matter for a full-frame scan. `ram_nocache` is 16 MB so the 4-buffer × 1080p pool (≈24 MB) had to shrink; capping at 720p (≈11 MB) matches our current TC358743 ceiling and leaves headroom. Reverting to 1080p later requires either growing `ram_nocache` in `ddram.ld` or going back to cached + manual invalidate. |
+68	| 2026-05-20 | cv_marvin_v1 keeps detector internals (press_count, raw color distances) private; bus record stays canonical (`pressed[] / confidence / raw_value`) | Different detectors need different per-frame data, but downstream bus consumers (timing pipeline, recorder, fretboard link) only care about "is this fret pressed at frame N." Pushing detector-specific richness onto the bus would either grow the canonical record or force a tagged-union shape that complicates recording layout. Encapsulating internals in the detector module preserves the narrow bus and lets each detector evolve its own state independently. press_count specifically lives in a private `s_press_count[FRET_COUNT]` array; if the strum scheduler later wants it, expose via a getter or a second "detail" channel. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. |
+69	| 2026-05-20 | cv_marvin_v1 sensor coords are in native capture-frame space, no 1920×1080 reference scaling | fret-tuner detect_video.py carries a 1920×1080 reference frame and scales coords at runtime — that frame size is what the Elgato HDMI-to-USB bridge produced, not a per-camera variable. Marvin uses the TC358743 (different bridge chip, same direct-pixel topology) and captures at the source's native resolution. The Wii is the primary production source at 480p60 = 720×480, so the static defaults are scaled from Python's 1920×1080 values by (3/8, 4/9) once at port time and stored in 720×480 space. Same-pixel-strike-line geometry as the Python detector — these are real coords, not placeholders. Calibration UI (M6) will refine them. |
+70	| 2026-05-20 | Fretboard-link submit queue belongs to `fretboard_link`, not `timing_pipeline`; producers call `FretboardLink_Send(mask)` | Game menu control (spec §4.8) needs to drive the actuator without going through the chord-window scheduler — its inputs are "navigate menu, press start", not gameplay notes. If the queue lives in `timing_pipeline`, the controller has to either reach across modules or duplicate transport. Moving ownership down to `fretboard_link` makes timing_pipeline one of N producers; the menu controller and any manual-test path call the same `Send` API. Latest-wins (depth-1 + xQueueOverwrite) already gives the right behavior — newest submitter wins on the wire. **Mode-level arbitration** (which producer is allowed to submit when, e.g. timing-only during gameplay vs controller-only in menus) lives one layer up; the link stays dumb. |
+71	| 2026-05-20 | M2 fretboard link split into three layers — `detector → timing_pipeline → fretboard_link` — with the timing FIFO living on marvin and a 1-byte bitmask wire format | (a) Three-layer split keeps each concern small: detector emits state, timing_pipeline owns chord-window + strum scheduling, fretboard_link owns the USB CDC byte channel. Each can be replaced independently (different detector, different actuator transport) without touching the others. (b) Timing FIFO on marvin, not fretboard: marvin already runs the canonical detector and the recording pipeline, so co-locating timing keeps a single source of truth and avoids re-deriving state on the actuator side. Spec §4.4. The fretboard-takeover fallback (spec §6) is a separate mode where marvin disables its pipeline and fretboard runs `fret_button.c` standalone — that's the high-availability path, not the steady-state. (c) 1-byte bitmask matches `tools/fret-tuner/actuator.py` and `firmware/fretboard/cmd_receive.h` exactly (G/R/Y/B/O at bits 0..4, strum-down bit 5, strum-up bit 6) — no reason to invent a new framing while the protocol is this small. Latest-wins semantics on the marvin→fretboard queue (depth 1 + overwrite) so a stalled USB write can't accumulate stale chords. (d) **Actuator-latency compensation deferred until mechanical actuators arrive.** Today's actuator is direct GPIO assertion on the fretboard PCB — latency ≈ 0, so today's design is sound. Future paths considered: (1) marvin compensates by subtracting a fretboard-published latency from `assert_at`/`strum_at`; (2) fretboard compensates by accepting timestamped events and scheduling locally. Path 2 needs a richer wire format (event + abs-timestamp); path 1 keeps the byte protocol but pushes the timing math up. Pick when we know which actuator (voice coil / electromagnet / DIY solenoid) we're driving. |
+72	| 2026-05-20 | Game-state awareness & high-level game control is a marvin subsystem (spec §4.8). Distinct from the gameplay note-detection path: a video-frame consumer (not a detector) emits typed game-state events on `xGameStateQueue`, and a controller layer translates verbs ("start single-player song X") into fret/strum sequences sent over the same fretboard link | Want marvin to drive whole-session play, not just notes once gameplay starts. Game-state observation belongs on marvin because it's CV on the same captured frames. Separating its bus from `xDetectorStateQueue` keeps `detector_state_t` narrow per the 2026-05-20 multi-detector decision. Per-game catalog (menu graph + song list) is metadata kept on marvin. Default arbitration with timing pipeline: mutually exclusive — controller runs only outside `gameplay` state. Phasing: M9 observer-only, M10 control. Open: recognizer algorithm (Q10), arbitration boundary (Q11). |
+73	
+74	---
+75	
+76	## Open questions
+77	
+78	_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+79	
+80	- ~~CSI-TX minimum bitrate at 480p60~~ — **resolved 2026-05-01**: we ended up dropping to 297 Mbps/lane (below the kernel's tabulated 594 Mbps) with no problems. 297 pairs with host HSFREQRANGE band 0x14 and the kernel's 594 Mbps D-PHY timings happen to still be safe at this rate.
+81	- ~~`TXACT` absent in CSI_STATUS after Phase 4 enable~~ — **deferred 2026-05-01**: TXACT has been observed at both 0 and 1 at various times after enable. Likely momentary (active-packet indicator, not stream-on flag). CSI_ERR=0 and HLT=0 consistently. Phase 5 frames-in-memory confirmed the chain works regardless.
+82	- ~~Source mode variability~~ — **explained 2026-05-01**: 1440x240p observation was Wii post-reset default. Put Wii in 480p mode; we stay on 720x480p@60.
+83	
+84	**Carried into future sessions:**
+85	
+86	- **FreeRTOS analytics not yet enabled.** No runtime stats, task list dumps, or stack high-water-mark queries available. Bring up `vTaskList` / `vTaskGetRunTimeStats` / `uxTaskGetStackHighWaterMark` plumbing (and an on-demand way to dump them — UART command? UI button? log on idle hook?) so we can size stacks empirically, attribute CPU, and catch latency regressions. Already bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task. Pull `vApplicationStackOverflowHook` into the same scope: MCC's default is a silent spin, so an actual overflow is indistinguishable from any other freeze — patching the hook to emit task name + spin (carefully, since the stack is already corrupt) belongs with the rest of the analytics work.
+87	
+88	- **Legato `LE_MEMORY_MANAGER_SIZE` adequacy.** Legato has its own internal pool (`LE_MALLOC` per touch event in `leInput_InjectTouchDown`). With the manual-control surface adding 8 buttons and frequent press/release events during menu nav, confirm `legato_config.h` `LE_MEMORY_MANAGER_SIZE` has headroom for typical event bursts. Watch for Legato heap-exhaustion symptoms (silent dropped events, widget redraw glitches) once the UI is exercised on hardware.
+89	
+90	- **Single-screen attach assumption for `ui/manual_input`.** `screenHide_Screen0` deletes the root widget tree, taking the Composer-generated `Screen0_*` widget pointers with it. We bind callbacks once after the first `screenShow_Screen0`. If a second Legato screen is ever added, `ManualInput_Bind` must re-run inside that screen's show path (or whichever screen owns the manual-control widgets). Not an issue today — flagged for whenever the operator UI grows beyond Screen0.
+91	
+92	- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+93	
+94	- **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. The 2026-05-20 USB-host regen added a fifth. Re-apply after every regen:
+95	
+96	  1. **`plib_csi.c` — `CSI_Analog_Init` refactor.** MCC emits per-lane HS-RX init inline with three bugs: Lane 1 in the 2-lane branch is missing the bit-rate write, Lane 2's lane-select code is `0x24` instead of `0x64`, and the 4-lane else-if branch skips Lane 1 entirely. Replace with the `csi_phy_hs_rx_init(lane_code, bit_rate)` helper and call it for lanes 0/1/2/3 from a flat `if (nlanes >= …)` chain.
+97	
+98	  2. **`plib_xlcdc.c` `XLCDC_EnableClocks` — `PMC_PLL_ACR`.** Set to datasheet-optimal `0x12023010` for the LVDSPLL with our 24 MHz reference (in the `fIN ∈ [20 MHz, 32 MHz]` band). Specifically: `LOOP_FILTER=0x12, LOCK_THR=0x2, UTMIBG=1, UTMIVR=1, CONTROL=0x10`. MCC's default emits a different (less-optimal) analog config (`LOOP_FILTER=0x1B, LOCK_THR=0x4, no UTMI bits`). Doesn't affect functional behavior in our use (50 Hz refresh works either way), but is the manufacturer-recommended jitter/lock optimum.
+99	
+100	  3. **`plib_csi2dc.c` `CSI2DC_Configure_VideoPipe` — `| CSI2DC_VPCFGR_RMS_1`.** Required by the RGB888-packed capture path: byte-stream packs 4 BGR pixels across 12 bytes per CSI-2 RMS spec (Table 49.27). Without it, capture writes wrong-format bytes and the display shows garbage. *(Earlier journal note claimed this was now MCC's default — incorrect; this regen confirmed MCC still emits without RMS_1.)*
+101	
+102	  4. **`drv_image_sensor.h` enum shim.** MCC's regen *deletes* this file when the image-sensor component is disabled. Restore the 30-line shim at `default/src/config/default/vision/drivers/image_sensor/drv_image_sensor.h` defining `DRV_IMAGE_SENSOR_RAW_BAYER…JPEG` and `DRV_IMAGE_SENSOR_8_BIT…40_BIT` enums (numeric values must match the original — `drv_isc.c` derives `bits_per_pixel = 4 - inputBits`). Without it, `drv_isc.c` and `configuration.h` won't compile.
+103	
+104	  5. **`initialization.c` `DRV_USB_VBUSPowerEnable` — per-pin VBUS calls.** MCC emits a single `VBUS_AH_*_Set/Clear()` call expecting one pin named `VBUS_AH`, but our config has VBUS on two pins (PC27 + PC31, one per USB port). The pin-macro generator produces `VBUS_AH_PC27_PowerEnable_*` and `VBUS_AH_PC31_PowerEnable_*` separately and no unified wrapper, so the MCC-emitted code fails to compile. Replace lines 162-163 (Set branch) and 169-170 (Clear branch) with explicit calls to both per-pin macros — `VBUS_AH_PC27_PowerEnable_Set(); VBUS_AH_PC31_PowerEnable_Set();` and the matching Clear pair. The MCC comment in the function ("name it to 'VBUS_AH'") acknowledges the single-pin assumption.
+105	
+106	  6. **`initialization.c` `SYS_Initialize` — peripheral init order.** The USB-host MCC regen (2026-05-20) reordered SYS_Initialize so that `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize` run *before* `MMU_Initialize` and `AIC_INT_Initialize`. Symptom on hardware: TC358743 probe wedges on its first I²C write — `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` never returns because the FLEXCOM6 ISR never fires. (Display + capture totally dead; FBL heartbeat keeps printing because it doesn't depend on a peripheral interrupt.) Fix: move the `MMU_Initialize → AIC_INT_Initialize → WDT-disable` block back to *before* the TC0/FLEXCOM6/XLCDC inits, matching the pre-USB-regen order. After this revert, video came back immediately. Resolved on 2026-05-20.
+107	
+108	  7. **`usb_host_cdc.c` — accept `bInterfaceProtocol == 0` in CDC ACM Communications-interface match.** Two checks (single-interface path ~line 677, IAD path ~line 798) currently require `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG-style USB-to-UART bridges (the on-board PIC/AVR debugger CDC, common across Microchip dev boards — including the fretboard board this project uses) declare the comm interface with `bInterfaceProtocol = USB_CDC_PROTOCOL_NO_CLASS_SPECIFIC` (`0x00`). Without this patch the host CDC driver accepts the IAD via the TPL match (TPL ignores subclass/protocol) but rejects the comm interface inside `F_USB_HOST_CDC_InterfaceAssign`, the interrupt pipe never opens, the CDC instance flips to `STATE_ERROR`, and the app-level attach handler never fires. Patch: extend each check to `(... == AT_V250 || ... == NO_CLASS_SPECIFIC)`. Two one-line OR additions. Re-apply after every USB-host MCC regen.
+109	
+110	  Previously listed but now resolved or moot:
+111	  - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
+112	  - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
+113	
+114	  Recovery plan: re-apply all seven (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+115	
+116	- **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
+117	
+118	- **ISC_Capture framebuffer sized for max 1920×1080 × 2 (~16 MB)** — wastes DDR at our current 720×480 use, but trivial at 256 MB total DDR and gives headroom for different sources. Reconsider if DDR becomes tight later.
+119	
+120	- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+121	
+122	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+123	
+124	---
+125	
+126	## Session log
+127	
+128	### 2026-05-21 — Manual fretboard-control producer + timing-pipeline gate
+129	
+130	Stood up the actuator-side half of a basic on-device manual-control surface — primarily for game-menu navigation (start a song, advance menus, hit pause) where single-finger input is the natural shape. UI half waits on a Microchip Graphics Composer regen.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:07:59Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+120	- **Retry semantics on source loss.** `app_coordinate_capture` uses a `capture_attempted` flag to prevent retry spam. On unlock it resets, so the next lock triggers a fresh Configure+Start. Untested for fast lock/unlock cycles — if the Wii toggles power, watch for state-machine glitches.
+121	
+122	- **Frame counter wraps at UINT32_MAX.** `g_frame_count` is 32-bit; at 60 fps it wraps after ~2.3 years continuous run. Not an immediate issue.
+123	
+124	---
+125	
+126	## Session log
+127	
+128	### 2026-05-21 — Manual fretboard-control producer + timing-pipeline gate
+129	
+130	Stood up the actuator-side half of a basic on-device manual-control surface — primarily for game-menu navigation (start a song, advance menus, hit pause) where single-finger input is the natural shape. UI half waits on a Microchip Graphics Composer regen.
+131	
+132	What landed:
+133	
+134	- `actuator/manual_control.{h,c}` — second producer of `FretboardLink_Send`, alongside `timing_pipeline`. Internal state: `s_fret_mask` (bits 0..4) and `s_strum_mask` (bits 5..6). Public API: `Initialize / SetEnabled / IsEnabled / SetFret / SetStrum`. Both fret and strum are momentary — held while the UI button is down, cleared on release. `recompute_and_send` only calls `FretboardLink_Send` while enabled.
+135	- `TimingPipeline_SetEnabled(bool)` — output gate on `publish_mask`. Pipeline still advances internal state when gated, so the next `advance()` (≤ `TP_TICK_MS` = 5 ms) after re-enable republishes the right mask without a stale frame.
+136	- `ManualControl_SetEnabled` ordering: enter manual mode = gate timing pipeline first, zero local state, send `0`, set enabled flag (so a stale pipeline frame can't race a manual zero on the wire); exit = clear enabled flag, zero state, send `0`, ungate pipeline.
+137	- App init wires `ManualControl_Initialize()` after `TimingPipeline_Initialize()`. No Legato dependency at this stage.
+138	- `cmake/marvin/default/user.cmake` adds `manual_control.c` and `ui/manual_input.c`.
+139	
+140	UI half landed same session after Greg ran the Composer regen. Composer added 8 buttons to `Screen0` — `Screen0_Button_Manual_{Green,Red,Yellow,Blue,Orange,StrumDown,StrumUp,Enable}` — plus 15 extern `event_Screen0_Button_Manual_*` handler declarations the application must define. The binding shape came out simpler than the plan called for: `screenShow_Screen0` itself calls `setPressedEventCallback` / `setReleasedEventCallback` with those extern symbols, so the linker resolves them and **no `ManualInput_Bind()` walk is needed**. `ui/manual_input.c` is just the 15 function bodies forwarding to `ManualControl_SetFret / Strum / SetEnabled`. The originally planned `APP_Tasks` poll-loop for null widget pointers is moot — `APP_Tasks` keeps the existing `vTaskDelete(NULL)`.
+141	
+142	Strum buttons are momentary, not one-shot: holding the strum button keeps the fretboard's strum line asserted, which Guitar Hero / Rock Band menus interpret as auto-repeat scrolling — the primary use case for this surface. Gameplay-path strums still pulse correctly because they go through `timing_pipeline`, which has its own `TP_STRUM_PULSE_MS` one-shot. The Enable button is `setToggleable(LE_TRUE)` with only `OnReleased`; both the widget and `ManualControl` default to off, so a simple `SetEnabled(!IsEnabled())` flip stays in sync without querying the widget's toggle state.
+143	
+144	Plan agent flagged two real blockers worth recording: (1) Legato's input pipeline routes each touch to one focus widget — multi-finger momentary chords aren't possible without a custom dispatcher, so the model is single-finger only; (2) the lazy widget-pointer init means any code that walks the `Screen0_*` pointers has to run post-`screenShow_Screen0` — moot here because Composer does the wiring itself, but still true for any future shim that needs to read or modify widget state.
+145	
+146	Decision-log entries above cover the producer-as-peer pattern, the Composer-driven UI choice, and the single-finger input model.
+147	
+148	**Bring-up over the wire.** Marvin enumerates the EDBG CDC and `FretboardLink_Send` round-trips cleanly through the queue, but the fretboard MCU's SERCOM1 wasn't receiving anything. Two real fixes:
+149	
+150	1. **EDBG bridge needs DTR raised.** The bridge holds its UART TX idle until the host asserts DTR. Added `USB_HOST_CDC_ACM_ControlLineStateSet` with `dtr=1, carrier=1` to `open_cdc()` after the existing `LineCodingSet(115200)`. Baud matters here — fretboard runs a real UART at 115200, not USB-CDC-ignored.
+151	2. **Control-pipe completion handlers run from ISR context.** First instrumented attempt logged `LOG_INFO` directly from the new `SET_LINE_CODING_COMPLETE` / `SET_CONTROL_LINE_STATE_COMPLETE` event cases; system froze mid-print. Microchip's CDC stack dispatches *all* class events from ISR (the existing `WRITE_COMPLETE` case already uses `*FromISR` primitives — that was the precedent). `log_vprintf` takes a mutex with `portMAX_DELAY`, illegal from ISR. Stripped both the diagnostic logging and the latch infrastructure once the link was confirmed functional. Captured for the journal because it's a recurring shape: any new event-handler case in this stack must stay strictly ISR-safe.
+152	
+153	### 2026-05-20 — USB CDC host attach: EDBG composite enumerates, CDC class driver now binds
+154	
+155	Picked up where the prior session left off — VBUS not asserting, no device detected. Closed both halves.
+156	
+157	**VBUS.** MCC's `DRV_USB_VBUSPowerEnable` callback is wired in the host driver but the host stack never invokes it on this build. Asserted the two VBUS GPIOs (`VBUS_AH_PC27_PowerEnable_Set` / `VBUS_AH_PC31_PowerEnable_Set`) directly from `APP_Initialize` ahead of consumer init and `USB_HOST_BusEnable`. EDBG immediately enumerates.
+158	
+159	**Class-driver binding.** Enumeration succeeded but the CDC attach handler never fired. Added per-interface descriptor logging inside `F_USB_HOST_UpdateDeviceTask` to see what was actually being matched. Output revealed VID `0x03EB` PID `0x2175` — an EDBG composite with five interfaces: HID/CMSIS-DAP, CDC ACM IAD pair (comm + data), vendor, MSC. The IAD passed TPL match and got assigned to the CDC driver, but the CDC instance still flipped to `STATE_ERROR` without our app-level handler ever seeing the attach.
+160	
+161	Root cause was inside Microchip's CDC class driver: `F_USB_HOST_CDC_InterfaceAssign` (both single-interface and IAD paths) requires the comm interface to declare `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG declares `0x00` (none) — functionally identical CDC ACM in practice; Linux/macOS accept either. The TPL/IAD pre-check passes (TPL wildcards subclass/protocol), the CDC driver gets the interface group, then immediately rejects it on the AT-V.250 check. The interrupt pipe never opens, the instance errors out, and the app-level listener stays silent.
+162	
+163	Fix: relaxed both checks to `(AT_V250 || NO_CLASS_SPECIFIC)`. After the patch the FBL log shows `CDC device attached, handle opened` and `c=Y` heartbeat as expected. Logged as patch #7 in the MCC re-apply list.
+164	
+165	Also tested a hypothesis from the prior session that `USB_HOST_Initialize` had to run *after* the EHCI/OHCI driver inits. With the diagnostic logging in place, MCC's emitted order (`USB_HOST_Initialize` → `Legato_Initialize` → driver inits) enumerates and binds the CDC IAD just as well — the host layer evidently looks up HCD interfaces lazily at `USB_HOST_BusEnable` time. Backed out the hand-edit; one fewer re-apply patch to maintain. Decision-log entry above.
+166	
+167	Diagnostic instrumentation stripped at the end of the session: the per-interface descriptor dump and enumeration state-change logger in `usb_host.c`, and the periodic OHCI/EHCI register heartbeat in `fretboard_link.c`. What remains on disk: the two `usb_host_cdc.c` protocol-relaxation lines (patch #7), the app-level VBUS asserts, and a minimal `USB_HOST_EVENT` printf so future host-stack drama still surfaces in the log.
+168	
+169	Next session: revisit timing-pipeline behavior end-to-end now that the actuator wire is live.
+170	
+171	### 2026-05-20 — Hardware bring-up after USB CDC host regen: TC358743 wedge resolved
+172	
+173	First on-target test after the M2 actuator path landed. Symptoms: video stream not starting, USB ports unpowered, FBL heartbeat firing with `connected=N`. Boot stopped after `TC358743: probe starting`.
+174	
+175	Root cause: the USB MCC regen reordered SYS_Initialize so `MMU_Initialize` and `AIC_INT_Initialize` ran *after* `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize`. With AIC initialized late, the FLEXCOM6 interrupt vector wasn't owned by the AIC when the first I²C transfer ran; `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` blocked forever waiting for an ISR that never fired. FBL stayed alive because it's pure FreeRTOS — no peripheral interrupt dependency.
+176	
+177	Fix: reverted SYS_Initialize order so MMU/AIC/WDT-disable run before TC0/FLEXCOM6/XLCDC. Display + capture came back on first boot. Logged as patch #6 in the MCC re-apply list above.
+178	
+179	USB enumeration is still not working (VBUS not asserting, no device detected). That's a separate investigation — next session.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:07Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+View timing_pipeline.c changes
+
+`git diff firmware/marvin/default/src/actuator/timing_pipeline.c`
+
+```text
+diff --git a/firmware/marvin/default/src/actuator/timing_pipeline.c b/firmware/marvin/default/src/actuator/timing_pipeline.c
+index dcd2762..0653ebd 100644
+--- a/firmware/marvin/default/src/actuator/timing_pipeline.c
++++ b/firmware/marvin/default/src/actuator/timing_pipeline.c
+@@ -19,10 +19,10 @@
+  * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+ #define TP_STRUM_DELAY_MS      220u
+ #define TP_FRET_EARLY_MS       50u
+-#define TP_STRUM_PULSE_MS      50u
+-#define TP_CHORD_WINDOW_MS     20u
++#define TP_STRUM_PULSE_MS      25u
++#define TP_CHORD_WINDOW_MS     30u
+ 
+-#define TP_FIFO_CAP            16u
++#define TP_FIFO_CAP            32u
+ 
+ /* Background tick: bound on between-frame latency for strum-pulse and
+  * note-assert deadlines that fall between detector publishes. 5 ms keeps
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:12Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:13Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/timing_pipeline.c`
+
+```text
+15	#define TP_TASK_STACK_WORDS    768u
+16	#define TP_TASK_PRIORITY       2u
+17	
+18	/* Drives chord aggregation, strum scheduling, and pending release timing.
+19	 * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+20	#define TP_STRUM_DELAY_MS      220u
+21	#define TP_FRET_EARLY_MS       50u
+22	#define TP_STRUM_PULSE_MS      25u
+23	#define TP_CHORD_WINDOW_MS     30u
+24	
+25	#define TP_FIFO_CAP            32u
+26	
+27	/* Background tick: bound on between-frame latency for strum-pulse and
+28	 * note-assert deadlines that fall between detector publishes. 5 ms keeps
+29	 * jitter well under our 16 ms detector cadence and below human-perceptible
+30	 * timing error. */
+31	#define TP_TICK_MS             5u
+32	
+33	typedef struct
+34	{
+35	    uint32_t assert_at_ms;
+36	    uint8_t  fret_mask;
+37	} pending_note_t;
+38	
+39	typedef struct
+40	{
+41	    uint32_t strum_at_ms;
+42	    uint8_t  fret_mask;
+43	} pending_strum_t;
+44	
+45	static StackType_t   s_task_stack[TP_TASK_STACK_WORDS];
+46	static StaticTask_t  s_task_tcb;
+47	
+48	/* Pipeline state — touched only by the timing task. */
+49	static pending_note_t  s_note_q[TP_FIFO_CAP];
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:18Z)**_
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:18Z)**_
+
+Now let me add the journal note and session log entry, then commit.
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:46Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:08:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show recent commit message style
+
+`git log -5 --oneline`
+
+```text
+0849009 fretboard_link: serialize CDC control-pipe requests in open_cdc
+021f0fc Added color and text to the manual guitar control buttons.
+3ce3f3c specstory history
+4603138 actuator: manual fretboard control via Legato button surface
+39c42b0 usb host: bind CDC class driver to EDBG composite bridges
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:09:00Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit detector tuning + timing tweaks + journal update
+
+```bash
+git add firmware/marvin/default/src/actuator/timing_pipeline.c firmware/marvin/default/src/detector/cv_marvin_v1.c firmware/marvin/docs/journal.md && git commit -m "$(cat <<'EOF'
+cv_marvin_v1: threshold + overlay tuning for live gameplay
+
+- Bump CV_HOLD_THRESH 50 -> 100 and CV_HOLD_RELEASE_FRAC 0.60 -> 0.78
+  to clear the 22-48 idle noise floor observed at the hold sample sites
+  (well above the limited-range 16 floor; playfield glow dominates).
+- Drop CV_EDGE_THRESH 50 -> 25 so the overlay's edge indicator flickers
+  meaningfully on real strums.
+- Add state-reactive overlay (filled center dot when pressed / edge_active)
+  on top of the existing position rings, plus a ~2 Hz signal-dump log
+  for per-fret hold/edge values and flags.
+- Nudge a few sample coords 1 px for cleaner alignment.
+
+timing_pipeline: TP_STRUM_PULSE_MS 50->25, TP_CHORD_WINDOW_MS 20->30,
+TP_FIFO_CAP 16->32.
+
+Expert-mode play is now solid; note that TP_STRUM_DELAY_MS may need to
+vary by difficulty (logged in journal open questions).
+EOF
+)" && git status
+```
+
+```text
+[freertos 55aac15] cv_marvin_v1: threshold + overlay tuning for live gameplay
+ 3 files changed, 158 insertions(+), 11 deletions(-)
+On branch freertos
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   .specstory/history/2026-05-21_12-00-55Z-for-project-marvin-next.md
+	modified:   .specstory/statistics.json
+
+no changes added to commit (use "git add" and/or "git commit -a")
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-7 2026-05-21 23:09:03Z)**_
+
+Committed as `55aac15`. Journal now carries today's session-log entry plus an open-question note flagging that `TP_STRUM_DELAY_MS = 220 ms` is Expert-tuned and likely needs per-difficulty handling once the game-state controller knows the difficulty level.
