@@ -43,7 +43,6 @@
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "perf_log/perf_log.h"
-#include "diag/diag.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -178,10 +177,6 @@ void APP_Initialize ( void )
      * registers the event_Screen0_Button_Manual_* callbacks defined in
      * ui/manual_input.c, so no explicit bind step is needed here. */
     ManualControl_Initialize();
-
-    /* Periodic UART diag dump: task list, run-time stats, heap. Diagnostic
-     * band — runs above idle, below every functional task. */
-    Diag_Initialize();
 
     /* Drain task is launched last so every producer's queue handle is
      * already valid when the first records hit the sink. Marvin creates
