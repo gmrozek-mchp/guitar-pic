@@ -55,9 +55,10 @@ static StaticSemaphore_t s_write_done_buf;
  * collide with neighboring data. */
 static uint8_t CACHE_ALIGN s_tx_frame[SINK_FRAME_BYTES_MAX];
 
-/* RX staging — one bulk-OUT max-packet (64 B at high speed). Cache-
- * aligned for the same reason as s_tx_frame. */
-#define SINK_RX_BUF_BYTES  64u
+/* RX staging — one bulk-OUT max-packet at HS (512 B). Must be ≥ MPS or
+ * the UDPHS driver rejects the IRP / drops the packet. Cache-aligned for
+ * the same reason as s_tx_frame. */
+#define SINK_RX_BUF_BYTES  512u
 static uint8_t CACHE_ALIGN s_rx_buf[SINK_RX_BUF_BYTES];
 
 static void prime_rx_read(void)
