@@ -7,25 +7,27 @@ from typing import Union
 from .records import (
     Detector,
     Drop,
-    FRET_COUNT,
     Header,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
-    Patch,
-    PatchFret,
-    PATCH_FRET_SIZE,
     RecordType,
     Session,
     Stamp,
+    STRIP_BPP,
+    STRIP_HDR_BYTES,
+    STRIP_MAX_BYTES,
+    Strip,
     TaskHighwater,
+    TaskRuntime,
     Timing,
     UnknownRecord,
-    _PATCH_FRET_FMT,
+    _STRIP_BODY,
 )
 
 
 Record = Union[
-    Session, Stamp, Detector, Timing, Drop, TaskHighwater, Patch, UnknownRecord
+    Session, Stamp, Detector, Timing, Drop, TaskHighwater, TaskRuntime,
+    Strip, UnknownRecord,
 ]
 
 
@@ -64,7 +66,6 @@ def _decode_stamp(hdr: Header, payload: bytes) -> Stamp:
 def _decode_detector(hdr: Header, payload: bytes) -> Detector:
     _check(payload, Detector.SIZE, "Detector")
     fields = Detector._BODY.unpack_from(payload, HDR_SIZE)
-    # 5 hold, 5 edge, pressed_mask, edge_active_mask, reserved
     hold = tuple(fields[0:5])
     edge = tuple(fields[5:10])
     pressed_mask = fields[10]
@@ -94,13 +95,13 @@ def _decode_timing(hdr: Header, payload: bytes) -> Timing:
 
 def _decode_drop(hdr: Header, payload: bytes) -> Drop:
     _check(payload, Drop.SIZE, "Drop")
-    dropped_state, dropped_patch, dropped_sink, _reserved = Drop._BODY.unpack_from(
+    dropped_state, dropped_strip, dropped_sink, _reserved = Drop._BODY.unpack_from(
         payload, HDR_SIZE
     )
     return Drop(
         hdr=hdr,
         dropped_state=dropped_state,
-        dropped_patch=dropped_patch,
+        dropped_strip=dropped_strip,
         dropped_sink=dropped_sink,
     )
 
@@ -111,26 +112,39 @@ def _decode_task_highwater(hdr: Header, payload: bytes) -> TaskHighwater:
     return TaskHighwater(hdr=hdr, task_id=task_id, words=words)
 
 
-def _decode_patch(hdr: Header, payload: bytes) -> Patch:
-    _check(payload, Patch.SIZE, "Patch")
-    frame_w, frame_h, _reserved = Patch._PRELUDE.unpack_from(payload, HDR_SIZE)
-    fret_offset = HDR_SIZE + Patch._PRELUDE.size
-    fret = []
-    for i in range(FRET_COUNT):
-        off = fret_offset + i * PATCH_FRET_SIZE
-        hx, hy, ex, ey, hold_bgr, edge_bgr = _PATCH_FRET_FMT.unpack_from(payload, off)
-        fret.append(
-            PatchFret(
-                hx=hx, hy=hy, ex=ex, ey=ey,
-                hold_bgr=hold_bgr, edge_bgr=edge_bgr,
-            )
-        )
-    return Patch(
-        hdr=hdr,
-        frame_w=frame_w,
-        frame_h=frame_h,
-        fret=tuple(fret),  # type: ignore[arg-type]
+def _decode_task_runtime(hdr: Header, payload: bytes) -> TaskRuntime:
+    _check(payload, TaskRuntime.SIZE, "TaskRuntime")
+    task_id, state, priority, _reserved, run_time_counter, _reserved2 = (
+        TaskRuntime._BODY.unpack_from(payload, HDR_SIZE)
     )
+    return TaskRuntime(
+        hdr=hdr,
+        task_id=task_id,
+        state=state,
+        priority=priority,
+        run_time_counter=run_time_counter,
+    )
+
+
+def _decode_strip(hdr: Header, payload: bytes) -> Strip:
+    if len(payload) < STRIP_HDR_BYTES:
+        raise DecodeError(
+            f"Strip: payload {len(payload)} < header {STRIP_HDR_BYTES}"
+        )
+    x, y, w, h, kind, _reserved = _STRIP_BODY.unpack_from(payload, HDR_SIZE)
+    expected_pixels = w * h * STRIP_BPP
+    if expected_pixels > STRIP_MAX_BYTES:
+        raise DecodeError(
+            f"Strip: w*h*bpp {expected_pixels} > max {STRIP_MAX_BYTES}"
+        )
+    expected_total = STRIP_HDR_BYTES + expected_pixels
+    if len(payload) != expected_total:
+        raise DecodeError(
+            f"Strip: payload {len(payload)} != expected {expected_total} "
+            f"({w}×{h}×{STRIP_BPP})"
+        )
+    bgr = bytes(payload[STRIP_HDR_BYTES:expected_total])
+    return Strip(hdr=hdr, x=x, y=y, w=w, h=h, kind=kind, bgr=bgr)
 
 
 _DISPATCH = {
@@ -140,7 +154,8 @@ _DISPATCH = {
     RecordType.TIMING: _decode_timing,
     RecordType.DROP: _decode_drop,
     RecordType.TASK_HIGHWATER: _decode_task_highwater,
-    RecordType.PATCH: _decode_patch,
+    RecordType.TASK_RUNTIME: _decode_task_runtime,
+    RecordType.STRIP: _decode_strip,
 }
 
 

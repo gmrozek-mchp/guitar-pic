@@ -38,11 +38,17 @@ void PerfLog_EmitTiming(uint32_t frame_epoch,
                         uint8_t  chord_window_fill,
                         uint8_t  fifo_depth,
                         uint8_t  strum_dir);
-void PerfLog_EmitPatch(uint32_t frame_epoch,
-                       uint16_t frame_w, uint16_t frame_h,
-                       const perf_patch_fret_t fret[FRET_COUNT]);
+void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
+                                perf_strip_kind_t kind,
+                                const uint8_t *frame, uint32_t frame_stride,
+                                uint16_t x, uint16_t y,
+                                uint16_t w, uint16_t h);
 
 void PerfLog_EmitTaskHighwater(perf_task_id_t id, uint32_t words);
+void PerfLog_EmitTaskRuntime(perf_task_id_t id,
+                             perf_task_state_t state,
+                             uint8_t priority,
+                             uint32_t run_time_counter);
 
 /* Each marvin task module hands its TaskHandle_t to perf_log after
  * xTaskCreateStatic. The 1 Hz drain task samples uxTaskGetStackHighWaterMark
@@ -61,5 +67,14 @@ void PerfLog_EmitStampFromISR(perf_stage_t stage,
  * device attached). Argument is a count of bytes dropped, accumulated
  * into the next PERF_REC_DROP. */
 void PerfLog_NoteSinkDrop(uint32_t bytes_dropped);
+
+/* ─── Record-type filter (host-controlled) ───────────────────────────────────
+ *
+ * Bit n (n = perf_rec_type_t value) gates emission of record type n. Set
+ * via the host→device PERF_CMD_SET_TYPE_MASK command; default is all-on.
+ * SESSION is always emitted regardless of mask. Read lock-free at emit
+ * time (32-bit aligned single-load is atomic on Cortex-A). */
+void     PerfLog_SetEnabledMask(uint32_t mask);
+uint32_t PerfLog_GetEnabledMask(void);
 
 #endif /* PERF_LOG_H */

@@ -43,7 +43,7 @@ def _stamp(stage: Stage, *, epoch: int, ts: int) -> Stamp:
                  stage_id=int(stage), aux=0)
 
 
-def _session(*, schema: int = 1, freq: int = 1_000_000) -> Session:
+def _session(*, schema: int = 2, freq: int = 1_000_000) -> Session:
     return Session(
         hdr=_hdr(RecordType.SESSION),
         timer_freq_hz=freq,
@@ -118,22 +118,22 @@ def test_compute_latencies_zero_freq_returns_empty_hists() -> None:
 
 def test_compute_drops_tracks_max_delta_and_final() -> None:
     drops = [
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_patch=0, dropped_sink=0),
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=2, dropped_patch=1, dropped_sink=0),
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=2, dropped_patch=5, dropped_sink=10),
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=3, dropped_patch=5, dropped_sink=10),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_strip=0, dropped_sink=0),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=2, dropped_strip=1, dropped_sink=0),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=2, dropped_strip=5, dropped_sink=10),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=3, dropped_strip=5, dropped_sink=10),
     ]
     summary = compute_drops(drops)
     assert summary.n_drop_records == 4
     assert summary.final_state == 3
-    assert summary.final_patch == 5
+    assert summary.final_strip == 5
     assert summary.final_sink_bytes == 10
     assert summary.max_state_delta == 2
-    assert summary.max_patch_delta == 4
+    assert summary.max_strip_delta == 4
     assert summary.max_sink_bytes_delta == 10
     # Baseline = first DROP (all zeros) so since-session == cumulative here.
     assert summary.since_session_state == 3
-    assert summary.since_session_patch == 5
+    assert summary.since_session_strip == 5
     assert summary.since_session_sink_bytes == 10
 
 
@@ -143,15 +143,15 @@ def test_compute_drops_baseline_subtracts_pre_attach_carry() -> None:
     # since-session view should report Δ0 / Δ0 / Δ0 until something new
     # actually fails post-attach.
     drops = [
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_patch=0, dropped_sink=8384),
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_patch=0, dropped_sink=8384),
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_patch=0, dropped_sink=8384),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_strip=0, dropped_sink=8384),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_strip=0, dropped_sink=8384),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_strip=0, dropped_sink=8384),
     ]
     summary = compute_drops(drops)
     assert summary.final_sink_bytes == 8384
     assert summary.since_session_sink_bytes == 0
     assert summary.since_session_state == 0
-    assert summary.since_session_patch == 0
+    assert summary.since_session_strip == 0
 
 
 def test_compute_drops_no_drop_records() -> None:
@@ -186,12 +186,12 @@ def test_compute_hwm_groups_by_task_id() -> None:
 
 
 def test_check_schema_match_passes() -> None:
-    check_schema(_session(schema=1))  # no exception
+    check_schema(_session(schema=2))  # no exception
 
 
 def test_check_schema_mismatch_raises() -> None:
     with pytest.raises(SchemaVersionMismatch):
-        check_schema(_session(schema=2))
+        check_schema(_session(schema=1))
 
 
 def test_check_schema_no_session_is_ok() -> None:
@@ -233,7 +233,7 @@ def test_frame_epoch_monotonic_skips_session_drop_hwm() -> None:
     # SESSION/DROP/TASK_HIGHWATER ride at frame_epoch=0 — must not trip.
     records = [
         _stamp(Stage.ISC_IRQ, epoch=10, ts=0),
-        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_patch=0, dropped_sink=0),
+        Drop(hdr=_hdr(RecordType.DROP), dropped_state=0, dropped_strip=0, dropped_sink=0),
         _stamp(Stage.VIDEO_PUBLISH, epoch=10, ts=10),
     ]
     assert check_frame_epoch_monotonic(records) == []

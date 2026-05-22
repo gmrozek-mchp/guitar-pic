@@ -14,17 +14,25 @@ from enum import IntEnum
 from typing import ClassVar
 
 
-EXPECTED_SCHEMA_VERSION = 1
+EXPECTED_SCHEMA_VERSION = 2
 
 PERF_LOG_HDR_MAGIC = 0x4D56  # 'M','V' little-endian
+PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
+
+PERF_CMD_SET_TYPE_MASK = 0x01
 
 SOF_BYTES = bytes((0x55, 0x4D, 0x52, 0x56))  # "UMRV"
 
 FRET_COUNT = 5
 
-PATCH_DIM = 5
-PATCH_PIXELS = PATCH_DIM * PATCH_DIM
-PATCH_BYTES = PATCH_PIXELS * 3  # 75 B per BGR patch
+# Strip is the variable-size BGR888 region-of-interest record. Today's
+# producers use 240×32 sensing + 240×32 strike; the wire format treats
+# (kind, x, y, w, h) as fully variable per record so future kinds can
+# carry different rectangles without a schema bump.
+STRIP_BPP = 3
+STRIP_MAX_W = 240
+STRIP_MAX_H = 32
+STRIP_MAX_BYTES = STRIP_MAX_W * STRIP_MAX_H * STRIP_BPP  # 23040
 
 
 class RecordType(IntEnum):
@@ -32,9 +40,24 @@ class RecordType(IntEnum):
     STAMP = 0x02
     DETECTOR = 0x03
     TIMING = 0x04
-    PATCH = 0x05
+    STRIP = 0x05
     DROP = 0x06
     TASK_HIGHWATER = 0x07
+    TASK_RUNTIME = 0x08
+
+
+class StripKind(IntEnum):
+    SENSING = 0
+    STRIKE = 1
+
+
+class TaskState(IntEnum):
+    RUNNING = 0
+    READY = 1
+    BLOCKED = 2
+    SUSPENDED = 3
+    DELETED = 4
+    INVALID = 5
 
 
 class Stage(IntEnum):
@@ -131,7 +154,7 @@ class Timing:
 class Drop:
     hdr: Header
     dropped_state: int
-    dropped_patch: int
+    dropped_strip: int
     dropped_sink: int
 
     SIZE: ClassVar[int] = HDR_SIZE + 16
@@ -148,34 +171,44 @@ class TaskHighwater:
     _BODY: ClassVar[struct.Struct] = struct.Struct("<B3sI")
 
 
-# Patch is a fixed 814 B record carrying 5 fret entries of 158 B each. The 5x5
-# BGR pixel payloads are intentionally stored as the raw bytes-slice (not
-# decoded into ndarrays) — v0 only needs counts; the v1 web UI materializes
-# pixels on demand.
+# Strip — variable length: HDR + 12 B body (x, y, w, h, kind, reserved[3]) +
+# w*h*3 BGR888 bytes. Today's producers crop 240×32 → 23040 B pixel payload,
+# 23068 B total record. Decoder validates len(bgr) == w*h*3 against the on-
+# wire dimensions, not against a compile-time constant — future kinds may
+# use other rectangles within STRIP_MAX_BYTES.
 
-_PATCH_FRET_FMT = struct.Struct(f"<HHHH{PATCH_BYTES}s{PATCH_BYTES}s")
-PATCH_FRET_SIZE = _PATCH_FRET_FMT.size  # 158
-
-
-@dataclass(frozen=True)
-class PatchFret:
-    hx: int
-    hy: int
-    ex: int
-    ey: int
-    hold_bgr: bytes
-    edge_bgr: bytes
+_STRIP_BODY = struct.Struct("<HHHHB3s")
+STRIP_HDR_BYTES = HDR_SIZE + _STRIP_BODY.size  # 28
 
 
 @dataclass(frozen=True)
-class Patch:
+class Strip:
     hdr: Header
-    frame_w: int
-    frame_h: int
-    fret: tuple[PatchFret, PatchFret, PatchFret, PatchFret, PatchFret]
+    x: int
+    y: int
+    w: int
+    h: int
+    kind: int  # StripKind value, kept as int for forward-compat
+    bgr: bytes
 
-    SIZE: ClassVar[int] = HDR_SIZE + 8 + FRET_COUNT * PATCH_FRET_SIZE  # 814
-    _PRELUDE: ClassVar[struct.Struct] = struct.Struct("<HHI")
+    @property
+    def kind_name(self) -> str:
+        try:
+            return StripKind(self.kind).name.lower()
+        except ValueError:
+            return f"kind_{self.kind}"
+
+
+@dataclass(frozen=True)
+class TaskRuntime:
+    hdr: Header
+    task_id: int  # TaskId value, kept as int for forward-compat
+    state: int    # TaskState value
+    priority: int
+    run_time_counter: int
+
+    SIZE: ClassVar[int] = HDR_SIZE + 12
+    _BODY: ClassVar[struct.Struct] = struct.Struct("<BBBBII")
 
 
 @dataclass(frozen=True)
@@ -185,4 +218,24 @@ class UnknownRecord:
 
 
 # Largest record bytes — used by framing.py to bound LEN sanity check.
-MAX_RECORD_BYTES = Patch.SIZE  # 814
+MAX_RECORD_BYTES = STRIP_HDR_BYTES + STRIP_MAX_BYTES  # 23068
+
+
+# ─── Host→device commands ────────────────────────────────────────────────────
+
+# Bit n of the type-mask is RecordType value n. Bit 0 is unused.
+RECORD_TYPE_BY_NAME: dict[str, int] = {rt.name: int(rt) for rt in RecordType}
+
+# Common preset masks used by the CLI.
+TYPE_MASK_ALL = 0xFFFFFFFF
+TYPE_MASK_MIN = (1 << RecordType.SESSION) | (1 << RecordType.DROP)
+
+
+_CMD_SET_MASK_FMT = struct.Struct("<HBBI")  # magic, cmd_id, reserved, mask
+
+
+def encode_set_mask_payload(mask: int) -> bytes:
+    """Pack a SET_TYPE_MASK command payload (no SOF/LEN/CRC framing)."""
+    return _CMD_SET_MASK_FMT.pack(
+        PERF_CMD_HDR_MAGIC, PERF_CMD_SET_TYPE_MASK, 0, mask & 0xFFFFFFFF
+    )

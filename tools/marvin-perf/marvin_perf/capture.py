@@ -20,7 +20,7 @@ from typing import Any
 
 from .decode import Record, decode_record
 from .framing import FrameStats, iter_frames
-from .records import Drop, Session, TaskHighwater
+from .records import Drop, Session, TaskHighwater, TaskRuntime
 from .transport import FileSource
 
 
@@ -137,9 +137,9 @@ def synthesize_manifest(
                 schema_version = rec.schema_version
                 fw_git_short = rec.fw_git_short
                 timer_freq_hz = rec.timer_freq_hz
-            # frame_epoch == 0 records (SESSION/DROP/TASK_HIGHWATER) are not
-            # frame-tied — skip them when bounding the epoch range.
-            if isinstance(rec, (Session, Drop, TaskHighwater)):
+            # frame_epoch == 0 records (SESSION/DROP/TASK_HIGHWATER/TASK_RUNTIME)
+            # are not frame-tied — skip them when bounding the epoch range.
+            if isinstance(rec, (Session, Drop, TaskHighwater, TaskRuntime)):
                 continue
             ep = rec.hdr.frame_epoch
             if epoch_first is None or ep < epoch_first:

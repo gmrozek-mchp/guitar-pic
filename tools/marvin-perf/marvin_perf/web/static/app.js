@@ -5,9 +5,13 @@
 // MINIMAP, etc.) is one entry here plus the matching CSS slot.
 
 const STRIP_KIND_REGISTRY = {
-  0: { id: "sensing", label: "Sensing line", zoom: 2, cadence: "60 Hz" },
-  1: { id: "strike",  label: "Strike line",  zoom: 2, cadence: "60 Hz" },
+  0: { id: "sensing", label: "Sensing line", color: "#6cb4ff", cadence: "60 Hz" },
+  1: { id: "strike",  label: "Strike line",  color: "#4ade80", cadence: "60 Hz" },
 };
+
+// Display zoom for the shared frame-relative pane. Same factor for all kinds
+// so spatial offsets between strips match the source frame.
+const STRIP_PANE_ZOOM = 2;
 
 // ── Stage colors for timeline scatter ───────────────────────────────────────
 
@@ -335,38 +339,86 @@ function renderStripSlots() {
   }
   $("#strip-hint").classList.add("hidden");
 
-  // Render a card for every kind in the registry (so future kinds get slots
-  // even if absent in this capture), plus any unknown kinds present.
+  // Take the first record per kind as the canonical (x, y, w, h). All records
+  // for a kind share the same crop window today (producer-side constants), so
+  // bbox computed once is correct for every frame.
   const knownKinds = Object.keys(STRIP_KIND_REGISTRY).map(Number);
   const allKinds = Array.from(new Set([...knownKinds, ...observedKinds]));
+  const positioned = [];
+  const unpositioned = [];
   for (const kind of allKinds) {
     const cfg = STRIP_KIND_REGISTRY[kind];
     const id = cfg ? cfg.id : `kind-${kind}`;
     const label = cfg ? cfg.label : `Kind ${kind} (unknown)`;
-    const zoom = cfg ? cfg.zoom : 1;
+    const color = cfg ? cfg.color : "#8a93a0";
     const recs = state.byKind[kind] || [];
+    const sample = recs[0];
+    if (sample) {
+      positioned.push({ kind, id, label, color, recs,
+                        x: sample.x, y: sample.y, w: sample.w, h: sample.h });
+    } else {
+      unpositioned.push({ kind, id, label, color });
+    }
+  }
 
-    const card = document.createElement("div");
-    card.className = "strip-card" + (recs.length === 0 ? " empty" : "");
-    card.dataset.kind = String(kind);
+  if (positioned.length > 0) {
+    const minX = Math.min(...positioned.map((p) => p.x));
+    const minY = Math.min(...positioned.map((p) => p.y));
+    const maxX = Math.max(...positioned.map((p) => p.x + p.w));
+    const maxY = Math.max(...positioned.map((p) => p.y + p.h));
+    const z = STRIP_PANE_ZOOM;
 
-    const hdr = document.createElement("div");
-    hdr.className = "label";
-    const lhs = document.createElement("span"); lhs.textContent = label;
-    const rhs = document.createElement("span");
-    rhs.textContent = recs.length ? `${recs.length} samples` : "(no samples)";
-    hdr.appendChild(lhs); hdr.appendChild(rhs);
+    const legend = document.createElement("div");
+    legend.className = "strip-legend";
+    for (const p of positioned) {
+      const li = document.createElement("span");
+      li.className = "strip-legend-item";
+      li.innerHTML = `<span class="dot" style="background:${p.color}"></span>` +
+                     `${p.label} · ${p.w}×${p.h} @ (${p.x},${p.y}) · ${p.recs.length} samples`;
+      legend.appendChild(li);
+    }
+    wrap.appendChild(legend);
 
-    const canvas = document.createElement("canvas");
-    canvas.id = `strip-canvas-${id}`;
-    // Phase-1 default size; updated when a real strip is drawn.
-    canvas.width = 240; canvas.height = 32;
-    canvas.style.width = `${240 * zoom}px`;
-    canvas.style.height = `${32 * zoom}px`;
+    const pane = document.createElement("div");
+    pane.className = "strip-pane";
+    pane.style.width  = `${(maxX - minX) * z}px`;
+    pane.style.height = `${(maxY - minY) * z}px`;
+    pane.dataset.bboxOriginX = String(minX);
+    pane.dataset.bboxOriginY = String(minY);
 
-    card.appendChild(hdr);
-    card.appendChild(canvas);
-    wrap.appendChild(card);
+    for (const p of positioned) {
+      const card = document.createElement("div");
+      card.className = "strip-card positioned";
+      card.dataset.kind = String(p.kind);
+      card.style.left   = `${(p.x - minX) * z}px`;
+      card.style.top    = `${(p.y - minY) * z}px`;
+      card.style.width  = `${p.w * z}px`;
+      card.style.height = `${p.h * z}px`;
+      card.style.outlineColor = p.color;
+
+      const canvas = document.createElement("canvas");
+      canvas.id = `strip-canvas-${p.id}`;
+      canvas.width  = p.w;
+      canvas.height = p.h;
+      canvas.style.width  = `${p.w * z}px`;
+      canvas.style.height = `${p.h * z}px`;
+      card.appendChild(canvas);
+      pane.appendChild(card);
+    }
+    wrap.appendChild(pane);
+  }
+
+  if (unpositioned.length > 0) {
+    const empty = document.createElement("div");
+    empty.className = "strip-empty-list";
+    for (const p of unpositioned) {
+      const item = document.createElement("div");
+      item.className = "strip-empty-item";
+      item.innerHTML = `<span class="dot" style="background:${p.color}"></span>` +
+                       `${p.label} · (no samples)`;
+      empty.appendChild(item);
+    }
+    wrap.appendChild(empty);
   }
 }
 
@@ -386,9 +438,8 @@ function updateStripsAtPlayhead() {
     img.onload = () => {
       if (canvas.width !== img.width || canvas.height !== img.height) {
         canvas.width = img.width; canvas.height = img.height;
-        const zoom = cfg ? cfg.zoom : 1;
-        canvas.style.width = `${img.width * zoom}px`;
-        canvas.style.height = `${img.height * zoom}px`;
+        canvas.style.width = `${img.width * STRIP_PANE_ZOOM}px`;
+        canvas.style.height = `${img.height * STRIP_PANE_ZOOM}px`;
       }
       const ctx = canvas.getContext("2d");
       ctx.imageSmoothingEnabled = false;
@@ -422,7 +473,7 @@ function renderTimeline() {
   const dropTrace = {
     x: drops.map((r) => tickToMs(r.ts_counter)),
     y: drops.map(() => "DROP"),
-    text: drops.map((r) => `state=${r.dropped_state} patch=${r.dropped_patch} sink=${r.dropped_sink}`),
+    text: drops.map((r) => `state=${r.dropped_state} strip=${r.dropped_strip} sink=${r.dropped_sink}`),
     name: "Drop",
     mode: "markers",
     type: "scatter",

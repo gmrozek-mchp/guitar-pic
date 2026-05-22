@@ -334,6 +334,18 @@ static void cv_marvin_v1_task(void *param)
         PerfLog_EmitStamp(PERF_STAGE_CV_START, frame.frame_count, 0u);
         detect_frame(&frame, bus);
         PerfLog_EmitStamp(PERF_STAGE_CV_END, frame.frame_count, 0u);
+
+        /* Sensing strip centers on the sensor row (y=311); strike strip is
+         * below the sensors at the strum trigger zone. Both pre-overlay so
+         * the host viewer sees the same pixels the detector consumed. */
+        const uint32_t fstride = (uint32_t)frame.width * CV_BYTES_PER_PIXEL;
+        PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_SENSING,
+                                   (const uint8_t *)frame.buffer, fstride,
+                                   265u, 310, 185u, 16u);
+        PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_STRIKE,
+                                   (const uint8_t *)frame.buffer, fstride,
+                                   212u, 395u, 290u, 20u);
+
         draw_overlay((uint8_t *)frame.buffer, frame.width, frame.height);
 
         // /* ~2 Hz signal dump for threshold tuning. hold/edge values shown

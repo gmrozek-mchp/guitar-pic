@@ -43,7 +43,7 @@ def _write_bin(path: Path, payloads: list[bytes]) -> None:
 
 def test_manifest_round_trip_through_json(tmp_path: Path) -> None:
     m = Manifest(
-        schema_version=1,
+        schema_version=2,
         fw_git_short=0xCAFEBABE,
         timer_freq_hz=266_000_000,
         captured_at="2026-05-22T14:33:01Z",
@@ -88,17 +88,17 @@ def test_synthesize_manifest_extracts_session_and_epoch_range(tmp_path: Path) ->
         bin_path,
         [
             build_session_payload(
-                timer_freq_hz=266_000_000, schema_version=1, fw_git_short=0xDEADBEEF
+                timer_freq_hz=266_000_000, schema_version=2, fw_git_short=0xDEADBEEF
             ),
             build_stamp_payload(stage=Stage.ISC_IRQ, frame_epoch=10, ts_counter=0),
             build_detector_payload(frame_epoch=10),
             build_stamp_payload(stage=Stage.ISC_IRQ, frame_epoch=42, ts_counter=100),
-            build_drop_payload(dropped_state=1, dropped_patch=2, dropped_sink=3),
+            build_drop_payload(dropped_state=1, dropped_strip=2, dropped_sink=3),
             build_task_highwater_payload(task_id=int(TaskId.PERF_DRAIN), words=200),
         ],
     )
     m = synthesize_manifest(bin_path)
-    assert m.schema_version == 1
+    assert m.schema_version == 2
     assert m.timer_freq_hz == 266_000_000
     assert m.fw_git_short == 0xDEADBEEF
     assert m.frame_epoch_first == 10
@@ -136,7 +136,7 @@ def test_synthesize_manifest_only_session_no_frame_records(tmp_path: Path) -> No
     bin_path = tmp_path / "session_only.bin"
     _write_bin(bin_path, [build_session_payload()])
     m = synthesize_manifest(bin_path)
-    assert m.schema_version == 1
+    assert m.schema_version == 2
     assert m.frame_epoch_first is None
     assert m.frame_epoch_last is None
     assert m.n_records == 1
@@ -160,7 +160,7 @@ def test_open_capture_directory_with_manifest(tmp_path: Path) -> None:
     assert cap.is_legacy_bin is False
     assert cap.bin_path == cap_dir / BIN_NAME
     assert cap.manifest.source.kind == "serial"
-    assert cap.manifest.schema_version == 1
+    assert cap.manifest.schema_version == 2
 
 
 def test_open_capture_directory_missing_manifest_synthesizes(tmp_path: Path) -> None:
@@ -172,7 +172,7 @@ def test_open_capture_directory_missing_manifest_synthesizes(tmp_path: Path) -> 
     )
     cap = open_capture(cap_dir)
     assert cap.is_legacy_bin is False
-    assert cap.manifest.schema_version == 1
+    assert cap.manifest.schema_version == 2
     # Synth-only — must not have written manifest.json to disk.
     assert not (cap_dir / MANIFEST_NAME).exists()
 

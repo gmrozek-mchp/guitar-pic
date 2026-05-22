@@ -118,31 +118,45 @@ body {
 
 /* ── Strip canvases ────────────────────────────────────────────────────── */
 
-#strip-slots { display: flex; flex-direction: column; gap: 14px; }
-.strip-card {
-  background: var(--bg-3);
+#strip-slots { display: flex; flex-direction: column; gap: 10px; }
+
+.strip-legend {
+  display: flex; flex-wrap: wrap; gap: 14px;
+  font-family: var(--mono); font-size: 11px; color: var(--fg-dim);
+}
+.strip-legend-item, .strip-empty-item {
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.strip-legend .dot, .strip-empty-item .dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block;
+}
+
+/* The pane is sized to the bbox of all observed strips (in source-frame
+ * pixels × STRIP_PANE_ZOOM). Strip cards are absolutely positioned within
+ * it so the visual offset between sensing and strike matches the offset
+ * in the source frame. */
+.strip-pane {
+  position: relative;
+  background: #000;
   border: 1px solid var(--border);
   border-radius: 4px;
-  padding: 8px;
 }
-.strip-card .label {
-  display: flex;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--fg-dim);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 4px;
-  font-family: var(--mono);
-}
-.strip-card canvas {
-  display: block;
+.strip-card.positioned {
+  position: absolute;
+  outline: 1px solid var(--border);
+  outline-offset: 0;
   background: #000;
-  image-rendering: pixelated;
-  border: 1px solid var(--border);
 }
-.strip-card.empty canvas {
-  background: repeating-linear-gradient(45deg, #1a1f26, #1a1f26 6px, #14181d 6px, #14181d 12px);
+.strip-card.positioned canvas {
+  display: block;
+  image-rendering: pixelated;
+}
+
+.strip-empty-list {
+  display: flex; flex-direction: column; gap: 4px;
+  font-family: var(--mono); font-size: 12px; color: var(--fg-dim);
+  font-style: italic;
 }
 .strip-empty-hint {
   margin-top: 12px;

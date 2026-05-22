@@ -130,17 +130,17 @@ class DropSummary:
     # are records (the firmware-side counter unit mismatch lives in
     # perf_log_sink_cdc.c:223 / perf_log.c:218,278).
     final_state: int = 0
-    final_patch: int = 0
+    final_strip: int = 0
     final_sink_bytes: int = 0
     # Deltas from the first DROP record observed in this capture, which is
     # what users actually want when they attach mid-session: the pre-attach
     # cumulative is noise.
     since_session_state: int = 0
-    since_session_patch: int = 0
+    since_session_strip: int = 0
     since_session_sink_bytes: int = 0
     n_drop_records: int = 0
     max_state_delta: int = 0
-    max_patch_delta: int = 0
+    max_strip_delta: int = 0
     max_sink_bytes_delta: int = 0
 
 
@@ -159,19 +159,19 @@ def compute_drops(records: Iterable[Record]) -> DropSummary:
             summary.max_state_delta = max(
                 summary.max_state_delta, rec.dropped_state - prev.dropped_state
             )
-            summary.max_patch_delta = max(
-                summary.max_patch_delta, rec.dropped_patch - prev.dropped_patch
+            summary.max_strip_delta = max(
+                summary.max_strip_delta, rec.dropped_strip - prev.dropped_strip
             )
             summary.max_sink_bytes_delta = max(
                 summary.max_sink_bytes_delta, rec.dropped_sink - prev.dropped_sink
             )
         summary.final_state = rec.dropped_state
-        summary.final_patch = rec.dropped_patch
+        summary.final_strip = rec.dropped_strip
         summary.final_sink_bytes = rec.dropped_sink
         prev = rec
     if baseline is not None:
         summary.since_session_state = summary.final_state - baseline.dropped_state
-        summary.since_session_patch = summary.final_patch - baseline.dropped_patch
+        summary.since_session_strip = summary.final_strip - baseline.dropped_strip
         summary.since_session_sink_bytes = (
             summary.final_sink_bytes - baseline.dropped_sink
         )

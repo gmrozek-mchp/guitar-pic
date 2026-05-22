@@ -19,11 +19,11 @@
 #define PL_DRAIN_PRIORITY       3u
 
 #define PL_STATE_QUEUE_DEPTH    128u
-#define PL_PATCH_QUEUE_DEPTH    8u
+#define PL_STRIP_QUEUE_DEPTH    4u
 
 /* State-queue slot is sized to the largest small record. */
 #define PL_STATE_SLOT_BYTES     (sizeof(perf_rec_state_slot_t))
-#define PL_PATCH_SLOT_BYTES     (sizeof(perf_rec_patch_t))
+#define PL_STRIP_SLOT_BYTES     (sizeof(perf_rec_strip_t))
 
 #define PL_DROP_REPORT_PERIOD_MS   1000u
 #define PL_DRAIN_RX_TIMEOUT_MS     20u
@@ -42,6 +42,7 @@ typedef union
     perf_rec_timing_t          timing;
     perf_rec_drop_t            drop;
     perf_rec_task_highwater_t  hwm;
+    perf_rec_task_runtime_t    runtime;
 } perf_rec_state_slot_t;
 
 /* ─── Static storage ─────────────────────────────────────────────────────── */
@@ -50,9 +51,9 @@ static QueueHandle_t s_state_q;
 static StaticQueue_t s_state_q_buf;
 static uint8_t       s_state_q_storage[PL_STATE_QUEUE_DEPTH * sizeof(perf_rec_state_slot_t)];
 
-static QueueHandle_t s_patch_q;
-static StaticQueue_t s_patch_q_buf;
-static uint8_t       s_patch_q_storage[PL_PATCH_QUEUE_DEPTH * sizeof(perf_rec_patch_t)];
+static QueueHandle_t s_strip_q;
+static StaticQueue_t s_strip_q_buf;
+static uint8_t       s_strip_q_storage[PL_STRIP_QUEUE_DEPTH * sizeof(perf_rec_strip_t)];
 
 static StackType_t   s_drain_stack[PL_DRAIN_STACK_WORDS];
 static StaticTask_t  s_drain_tcb;
@@ -61,10 +62,19 @@ static StaticTask_t  s_drain_tcb;
 static TaskHandle_t  s_task_handles[PL_TASK_SLOT_COUNT];
 
 static volatile uint32_t s_drop_state;
-static volatile uint32_t s_drop_patch;
+static volatile uint32_t s_drop_strip;
 static volatile uint32_t s_drop_sink;
 
 static volatile bool s_running;
+
+/* All-on at boot; host narrows on connect via PERF_CMD_SET_TYPE_MASK. */
+static volatile uint32_t s_enabled_mask = 0xFFFFFFFFu;
+
+static inline bool type_enabled(uint8_t type)
+{
+    if (type == PERF_REC_SESSION) { return true; }
+    return (s_enabled_mask & (1u << type)) != 0u;
+}
 
 /* ─── Header fill ────────────────────────────────────────────────────────── */
 
@@ -90,8 +100,18 @@ static uint16_t record_size(const perf_rec_state_slot_t *r)
         case PERF_REC_TIMING:         return (uint16_t)sizeof(perf_rec_timing_t);
         case PERF_REC_DROP:           return (uint16_t)sizeof(perf_rec_drop_t);
         case PERF_REC_TASK_HIGHWATER: return (uint16_t)sizeof(perf_rec_task_highwater_t);
+        case PERF_REC_TASK_RUNTIME:   return (uint16_t)sizeof(perf_rec_task_runtime_t);
         default:                      return (uint16_t)sizeof(perf_hdr_t);
     }
+}
+
+/* Variable-length: queue slot is max-sized, but on the wire we send only
+ * HDR + body + the actually-used pixel bytes. */
+static uint16_t strip_record_size(const perf_rec_strip_t *r)
+{
+    uint32_t pix = (uint32_t)r->w * (uint32_t)r->h * PERF_STRIP_BPP;
+    if (pix > PERF_STRIP_MAX_BYTES) { pix = PERF_STRIP_MAX_BYTES; }
+    return (uint16_t)(PERF_STRIP_HDR_BYTES + pix);
 }
 
 /* ─── Drain task ─────────────────────────────────────────────────────────── */
@@ -112,7 +132,7 @@ static void emit_drop_record(void)
     memset(&r, 0, sizeof(r));
     hdr_fill(&r.hdr, PERF_REC_DROP, 0u, 0u);
     r.dropped_state = s_drop_state;
-    r.dropped_patch = s_drop_patch;
+    r.dropped_strip = s_drop_strip;
     r.dropped_sink  = s_drop_sink;
     PerfLogSinkCdc_WriteFramed(&r, (uint16_t)sizeof(r));
 }
@@ -125,6 +145,44 @@ static void sample_and_emit_hwms(void)
         if (h == NULL) { continue; }
         uint32_t words = (uint32_t)uxTaskGetStackHighWaterMark(h);
         PerfLog_EmitTaskHighwater((perf_task_id_t)i, words);
+    }
+}
+
+/* Map FreeRTOS eTaskState → wire enum. Same numeric ordering today, but
+ * cast through this so a future RTOS-side enum reshuffle doesn't silently
+ * skew the wire format. */
+static perf_task_state_t map_task_state(eTaskState s)
+{
+    switch (s)
+    {
+        case eRunning:   return PERF_TASK_STATE_RUNNING;
+        case eReady:     return PERF_TASK_STATE_READY;
+        case eBlocked:   return PERF_TASK_STATE_BLOCKED;
+        case eSuspended: return PERF_TASK_STATE_SUSPENDED;
+        case eDeleted:   return PERF_TASK_STATE_DELETED;
+        default:         return PERF_TASK_STATE_INVALID;
+    }
+}
+
+#define PL_RUNTIME_TASK_BUF  16u
+
+static void sample_and_emit_runtimes(void)
+{
+    static TaskStatus_t buf[PL_RUNTIME_TASK_BUF];
+    UBaseType_t n = uxTaskGetSystemState(buf, PL_RUNTIME_TASK_BUF, NULL);
+
+    for (UBaseType_t k = 0u; k < n; k++)
+    {
+        const TaskStatus_t *t = &buf[k];
+        for (uint8_t i = 0u; i < PL_TASK_SLOT_COUNT; i++)
+        {
+            if (s_task_handles[i] != t->xHandle) { continue; }
+            PerfLog_EmitTaskRuntime((perf_task_id_t)i,
+                                    map_task_state(t->eCurrentState),
+                                    (uint8_t)t->uxCurrentPriority,
+                                    (uint32_t)t->ulRunTimeCounter);
+            break;
+        }
     }
 }
 
@@ -154,10 +212,10 @@ static void perf_log_drain_task(void *param)
             PerfLogSinkCdc_WriteFramed(&srec, record_size(&srec));
         }
 
-        perf_rec_patch_t prec;
-        while (xQueueReceive(s_patch_q, &prec, 0) == pdTRUE)
+        static perf_rec_strip_t s_strip_drain;   /* one slot reused; drain-task only */
+        while (xQueueReceive(s_strip_q, &s_strip_drain, 0) == pdTRUE)
         {
-            PerfLogSinkCdc_WriteFramed(&prec, (uint16_t)sizeof(prec));
+            PerfLogSinkCdc_WriteFramed(&s_strip_drain, strip_record_size(&s_strip_drain));
         }
 
         if ((xTaskGetTickCount() - last_drop) >= pdMS_TO_TICKS(PL_DROP_REPORT_PERIOD_MS))
@@ -165,6 +223,7 @@ static void perf_log_drain_task(void *param)
             last_drop = xTaskGetTickCount();
             emit_drop_record();
             sample_and_emit_hwms();
+            sample_and_emit_runtimes();
         }
     }
 }
@@ -179,11 +238,11 @@ void PerfLog_Initialize(void)
                                    &s_state_q_buf);
     configASSERT(s_state_q != NULL);
 
-    s_patch_q = xQueueCreateStatic(PL_PATCH_QUEUE_DEPTH,
-                                   sizeof(perf_rec_patch_t),
-                                   s_patch_q_storage,
-                                   &s_patch_q_buf);
-    configASSERT(s_patch_q != NULL);
+    s_strip_q = xQueueCreateStatic(PL_STRIP_QUEUE_DEPTH,
+                                   sizeof(perf_rec_strip_t),
+                                   s_strip_q_storage,
+                                   &s_strip_q_buf);
+    configASSERT(s_strip_q != NULL);
 }
 
 void PerfLog_Start(void)
@@ -235,6 +294,7 @@ static inline void counter_add_isr(volatile uint32_t *p, uint32_t v)
 static inline void send_state(const perf_rec_state_slot_t *slot)
 {
     if (s_state_q == NULL) { return; }
+    if (!type_enabled(slot->hdr.type)) { return; }
     if (xQueueSend(s_state_q, slot, 0) != pdTRUE)
     {
         counter_add_task(&s_drop_state, 1u);
@@ -293,20 +353,59 @@ void PerfLog_EmitTaskHighwater(perf_task_id_t id, uint32_t words)
     send_state(&slot);
 }
 
-void PerfLog_EmitPatch(uint32_t frame_epoch,
-                       uint16_t frame_w, uint16_t frame_h,
-                       const perf_patch_fret_t fret[FRET_COUNT])
+void PerfLog_EmitTaskRuntime(perf_task_id_t id,
+                             perf_task_state_t state,
+                             uint8_t priority,
+                             uint32_t run_time_counter)
 {
-    if (s_patch_q == NULL) { return; }
-    perf_rec_patch_t r;
-    memset(&r, 0, sizeof(r));
-    hdr_fill(&r.hdr, PERF_REC_PATCH, 0u, frame_epoch);
-    r.frame_w = frame_w;
-    r.frame_h = frame_h;
-    memcpy(r.fret, fret, sizeof(r.fret));
-    if (xQueueSend(s_patch_q, &r, 0) != pdTRUE)
+    perf_rec_state_slot_t slot;
+    memset(&slot, 0, sizeof(slot));
+    hdr_fill(&slot.runtime.hdr, PERF_REC_TASK_RUNTIME, 0u, 0u);
+    slot.runtime.task_id          = (uint8_t)id;
+    slot.runtime.state            = (uint8_t)state;
+    slot.runtime.priority         = priority;
+    slot.runtime.run_time_counter = run_time_counter;
+    send_state(&slot);
+}
+
+/* Strip producer: row-copies a w×h BGR888 region out of a strided source
+ * frame into the queue slot. Total pixel bytes (w*h*3) must fit the queue
+ * slot's bgr[] capacity (PERF_STRIP_MAX_BYTES); per-axis shape is
+ * unconstrained beyond that. Drop-on-full; counter incremented under
+ * critical section. */
+void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
+                                perf_strip_kind_t kind,
+                                const uint8_t *frame, uint32_t frame_stride,
+                                uint16_t x, uint16_t y,
+                                uint16_t w, uint16_t h)
+{
+    if (s_strip_q == NULL || frame == NULL) { return; }
+    if (!type_enabled(PERF_REC_STRIP)) { return; }
+    if (w == 0u || h == 0u) { return; }
+    if ((uint32_t)w * (uint32_t)h * PERF_STRIP_BPP > PERF_STRIP_MAX_BYTES) { return; }
+
+    static perf_rec_strip_t r;     /* one staging slot; producer is single-task */
+    memset(&r, 0, PERF_STRIP_HDR_BYTES);
+    hdr_fill(&r.hdr, PERF_REC_STRIP, 0u, frame_epoch);
+    r.x    = x;
+    r.y    = y;
+    r.w    = w;
+    r.h    = h;
+    r.kind = (uint8_t)kind;
+
+    const uint32_t row_bytes = (uint32_t)w * PERF_STRIP_BPP;
+    const uint8_t *src = frame + (uint32_t)y * frame_stride + (uint32_t)x * PERF_STRIP_BPP;
+    uint8_t *dst = r.bgr;
+    for (uint16_t row = 0u; row < h; row++)
     {
-        counter_add_task(&s_drop_patch, 1u);
+        memcpy(dst, src, row_bytes);
+        src += frame_stride;
+        dst += row_bytes;
+    }
+
+    if (xQueueSend(s_strip_q, &r, 0) != pdTRUE)
+    {
+        counter_add_task(&s_drop_strip, 1u);
     }
 }
 
@@ -318,6 +417,7 @@ void PerfLog_EmitStampFromISR(perf_stage_t stage,
                               BaseType_t *higher_priority_task_woken)
 {
     if (s_state_q == NULL) { return; }
+    if (!type_enabled(PERF_REC_STAMP)) { return; }
     perf_rec_state_slot_t slot;
     memset(&slot, 0, sizeof(slot));
     hdr_fill(&slot.stamp.hdr, PERF_REC_STAMP, PERF_FLAG_FROM_ISR, frame_epoch);
@@ -334,4 +434,17 @@ void PerfLog_EmitStampFromISR(perf_stage_t stage,
 void PerfLog_NoteSinkDrop(uint32_t bytes_dropped)
 {
     counter_add_task(&s_drop_sink, bytes_dropped);
+}
+
+/* ─── Record-type filter ─────────────────────────────────────────────────── */
+
+void PerfLog_SetEnabledMask(uint32_t mask)
+{
+    s_enabled_mask = mask;
+    LOG_INFO("PerfLog: mask=0x%08lx\r\n", (unsigned long)mask);
+}
+
+uint32_t PerfLog_GetEnabledMask(void)
+{
+    return s_enabled_mask;
 }

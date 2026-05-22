@@ -13,7 +13,7 @@
  * are framed on the wire by the drain task (SOF magic + length + CRC);
  * the structs below are the framed payload only. */
 
-#define PERF_LOG_SCHEMA_VERSION   1u
+#define PERF_LOG_SCHEMA_VERSION   2u
 
 #define PERF_LOG_HDR_MAGIC        0x4D56u   /* 'M','V' little-endian */
 
@@ -30,9 +30,10 @@ typedef enum
     PERF_REC_STAMP          = 0x02,
     PERF_REC_DETECTOR       = 0x03,
     PERF_REC_TIMING         = 0x04,
-    PERF_REC_PATCH          = 0x05,
+    PERF_REC_STRIP          = 0x05,
     PERF_REC_DROP           = 0x06,
     PERF_REC_TASK_HIGHWATER = 0x07,
+    PERF_REC_TASK_RUNTIME   = 0x08,
 } perf_rec_type_t;
 
 /* stage_id values for PERF_REC_STAMP. Producer call sites map 1:1. */
@@ -122,7 +123,7 @@ typedef struct __attribute__((packed))
 {
     perf_hdr_t hdr;
     uint32_t   dropped_state;
-    uint32_t   dropped_patch;
+    uint32_t   dropped_strip;
     uint32_t   dropped_sink;
     uint32_t   reserved;
 } perf_rec_drop_t;
@@ -148,29 +149,93 @@ typedef struct __attribute__((packed))
     uint32_t   words;
 } perf_rec_task_highwater_t;
 
-/* PERF_REC_PATCH — Tier 2 ROI dump. Two 5×5 BGR patches per fret
- * (hold sensor + edge sensor). Coords are the (hx,hy) / (ex,ey) the
- * detector actually sampled — host can replay the detector math
- * pixel-for-pixel. */
-#define PERF_PATCH_DIM        5u    /* matches CV_PATCH_RADIUS = 2 */
-#define PERF_PATCH_PIXELS     (PERF_PATCH_DIM * PERF_PATCH_DIM)
-#define PERF_PATCH_BYTES      (PERF_PATCH_PIXELS * 3u)   /* 75 B per patch */
+/* PERF_REC_STRIP — variable-size BGR888 region of interest, kind-tagged.
+ * Today's producers emit SENSING (row through the sensor patches) and
+ * STRIKE (row through the strum trigger zone), each 240×32 once per ISC
+ * frame. Future kinds (SCORE, MINIMAP, etc.) plug into the same record
+ * type — adding one is an enum entry plus a producer; no schema bump.
+ *
+ * Wire payload size is HDR + 12 B body + w*h*PERF_STRIP_BPP bytes,
+ * tightly packed. The queue slot is sized to PERF_STRIP_MAX_BYTES; the
+ * drain task computes the on-wire length from (w, h) and frames only
+ * what's used. */
+typedef enum
+{
+    PERF_STRIP_SENSING = 0,
+    PERF_STRIP_STRIKE  = 1,
+} perf_strip_kind_t;
+
+#define PERF_STRIP_BPP        3u
+
+#define PERF_STRIP_MAX_W      240u
+#define PERF_STRIP_MAX_H      32u
+#define PERF_STRIP_MAX_BYTES  ((uint32_t)PERF_STRIP_MAX_W * PERF_STRIP_MAX_H * PERF_STRIP_BPP)
+
+#define PERF_STRIP_HDR_BYTES  (sizeof(perf_hdr_t) + 12u)   /* hdr + body */
 
 typedef struct __attribute__((packed))
 {
-    uint16_t hx, hy;
-    uint16_t ex, ey;
-    uint8_t  hold_bgr[PERF_PATCH_BYTES];
-    uint8_t  edge_bgr[PERF_PATCH_BYTES];
-} perf_patch_fret_t;        /* 8 + 75 + 75 = 158 B */
+    perf_hdr_t hdr;
+    uint16_t   x, y;          /* top-left in source frame */
+    uint16_t   w, h;          /* per-record dimensions */
+    uint8_t    kind;          /* perf_strip_kind_t */
+    uint8_t    reserved[3];
+    uint8_t    bgr[PERF_STRIP_MAX_BYTES];   /* sized to max in queue slot */
+} perf_rec_strip_t;
+
+/* PERF_REC_TASK_RUNTIME — per-task snapshot of state, priority, and
+ * cumulative run-time counter. Drain task emits one record per known
+ * task at 1 Hz alongside DROP and TASK_HIGHWATER. Host computes per-
+ * window CPU% as Δrun_time_counter[task] / ΣΔrun_time_counter. */
+typedef enum
+{
+    PERF_TASK_STATE_RUNNING   = 0,
+    PERF_TASK_STATE_READY     = 1,
+    PERF_TASK_STATE_BLOCKED   = 2,
+    PERF_TASK_STATE_SUSPENDED = 3,
+    PERF_TASK_STATE_DELETED   = 4,
+    PERF_TASK_STATE_INVALID   = 5,
+} perf_task_state_t;
 
 typedef struct __attribute__((packed))
 {
-    perf_hdr_t        hdr;
-    uint16_t          frame_w;
-    uint16_t          frame_h;
-    uint32_t          reserved;
-    perf_patch_fret_t fret[FRET_COUNT];   /* 5 × 158 = 790 B */
-} perf_rec_patch_t;          /* 16 + 8 + 790 = 814 B */
+    perf_hdr_t hdr;
+    uint8_t    task_id;            /* perf_task_id_t */
+    uint8_t    state;              /* perf_task_state_t (mirrors eTaskState) */
+    uint8_t    priority;           /* uxCurrentPriority */
+    uint8_t    reserved;
+    uint32_t   run_time_counter;   /* low 32 bits of ulRunTimeCounter */
+    uint32_t   reserved2;
+} perf_rec_task_runtime_t;
+
+/* ─── Host→device commands ───────────────────────────────────────────────────
+ *
+ * Wrapped in the same SOF/LEN/CRC framer as TX records. Magic is distinct
+ * from PERF_LOG_HDR_MAGIC so a misrouted record frame can't be parsed as
+ * a command (or vice versa). The device reads commands on the CDC OUT
+ * endpoint; the host writes them via marvin-perf's set-mask path. */
+
+#define PERF_CMD_HDR_MAGIC   0x4D43u   /* 'M','C' little-endian */
+
+typedef enum
+{
+    PERF_CMD_SET_TYPE_MASK = 0x01u,
+} perf_cmd_t;
+
+typedef struct __attribute__((packed))
+{
+    uint16_t magic;        /* PERF_CMD_HDR_MAGIC */
+    uint8_t  cmd_id;       /* perf_cmd_t */
+    uint8_t  reserved;
+} perf_cmd_hdr_t;
+
+/* PERF_CMD_SET_TYPE_MASK — bit i (i = perf_rec_type_t value) gates record
+ * type i. SESSION is always emitted regardless of mask so the host can
+ * still derive timer_freq_hz on attach. */
+typedef struct __attribute__((packed))
+{
+    perf_cmd_hdr_t hdr;
+    uint32_t       enabled_mask;
+} perf_cmd_set_mask_t;
 
 #endif /* PERF_LOG_RECORDS_H */

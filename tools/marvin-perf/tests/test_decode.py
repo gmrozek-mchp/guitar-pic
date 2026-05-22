@@ -13,14 +13,16 @@ from marvin_perf.records import (
     Drop,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
-    Patch,
-    PATCH_BYTES,
     RecordType,
     Session,
     Stage,
     Stamp,
+    Strip,
+    StripKind,
     TaskHighwater,
     TaskId,
+    TaskRuntime,
+    TaskState,
     Timing,
     UnknownRecord,
 )
@@ -29,10 +31,11 @@ from .conftest import (
     build_detector_payload,
     build_drop_payload,
     build_header,
-    build_patch_payload,
     build_session_payload,
     build_stamp_payload,
+    build_strip_payload,
     build_task_highwater_payload,
+    build_task_runtime_payload,
     build_timing_payload,
     wrap_frame,
 )
@@ -56,12 +59,12 @@ def _round_trip_via_iter_frames(payload: bytes):
 
 def test_session_round_trip() -> None:
     payload = build_session_payload(
-        timer_freq_hz=266_000_000, schema_version=1, fw_git_short=0xCAFEBABE
+        timer_freq_hz=266_000_000, schema_version=2, fw_git_short=0xCAFEBABE
     )
     rec = _round_trip_via_iter_frames(payload)
     assert isinstance(rec, Session)
     assert rec.timer_freq_hz == 266_000_000
-    assert rec.schema_version == 1
+    assert rec.schema_version == 2
     assert rec.fw_git_short == 0xCAFEBABE
     assert rec.hdr.magic == PERF_LOG_HDR_MAGIC
     assert rec.hdr.type == int(RecordType.SESSION)
@@ -109,11 +112,11 @@ def test_timing_round_trip() -> None:
 
 
 def test_drop_round_trip() -> None:
-    payload = build_drop_payload(dropped_state=10, dropped_patch=20, dropped_sink=30)
+    payload = build_drop_payload(dropped_state=10, dropped_strip=20, dropped_sink=30)
     rec = _round_trip_via_iter_frames(payload)
     assert isinstance(rec, Drop)
     assert rec.dropped_state == 10
-    assert rec.dropped_patch == 20
+    assert rec.dropped_strip == 20
     assert rec.dropped_sink == 30
 
 
@@ -125,18 +128,50 @@ def test_task_highwater_round_trip() -> None:
     assert rec.words == 173
 
 
-def test_patch_round_trip() -> None:
-    payload = build_patch_payload(frame_epoch=3)
+def test_task_runtime_round_trip() -> None:
+    payload = build_task_runtime_payload(
+        task_id=int(TaskId.PERF_DRAIN),
+        state=int(TaskState.BLOCKED),
+        priority=3,
+        run_time_counter=12345,
+    )
     rec = _round_trip_via_iter_frames(payload)
-    assert isinstance(rec, Patch)
-    assert rec.frame_w == 720
-    assert rec.frame_h == 480
-    assert len(rec.fret) == 5
-    # Spot-check fret 2 — conftest fills hold/edge with constant bytes.
-    f2 = rec.fret[2]
-    assert f2.hx == 0 + 10 * 2
-    assert f2.hold_bgr == bytes((2 * 5 + 1,) * PATCH_BYTES)
-    assert f2.edge_bgr == bytes((2 * 5 + 2,) * PATCH_BYTES)
+    assert isinstance(rec, TaskRuntime)
+    assert rec.task_id == int(TaskId.PERF_DRAIN)
+    assert rec.state == int(TaskState.BLOCKED)
+    assert rec.priority == 3
+    assert rec.run_time_counter == 12345
+
+
+def test_strip_round_trip() -> None:
+    payload = build_strip_payload(
+        frame_epoch=11, kind=int(StripKind.SENSING), x=240, y=295, w=4, h=2, fill=0x42
+    )
+    rec = _round_trip_via_iter_frames(payload)
+    assert isinstance(rec, Strip)
+    assert rec.kind == int(StripKind.SENSING)
+    assert rec.kind_name == "sensing"
+    assert (rec.x, rec.y, rec.w, rec.h) == (240, 295, 4, 2)
+    assert rec.bgr == bytes((0x42,) * (4 * 2 * 3))
+    assert rec.hdr.frame_epoch == 11
+
+
+def test_strip_unknown_kind_renders_as_kind_n() -> None:
+    payload = build_strip_payload(kind=99, w=1, h=1)
+    rec = _round_trip_via_iter_frames(payload)
+    assert isinstance(rec, Strip)
+    assert rec.kind == 99
+    assert rec.kind_name == "kind_99"
+
+
+def test_strip_dimension_mismatch_raises() -> None:
+    # Build a strip with header claiming 4×2 but supply only 4 pixel bytes.
+    from marvin_perf.records import _STRIP_BODY
+    body = _STRIP_BODY.pack(0, 0, 4, 2, 0, b"\x00\x00\x00")
+    bgr = b"\x00" * 4  # truncated
+    payload = build_header(RecordType.STRIP) + body + bgr
+    with pytest.raises(DecodeError):
+        decode_record(payload)
 
 
 # ─── Forward-compat: unknown record type ─────────────────────────────────────

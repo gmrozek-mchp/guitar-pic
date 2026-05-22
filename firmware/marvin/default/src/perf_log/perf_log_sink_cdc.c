@@ -26,10 +26,10 @@
  * one write at a time, wait for WRITE_COMPLETE, then post the next. A
  * second writer would overlap on the staging buffer. */
 
-/* Header(6) + max payload (sizeof patch record) + CRC(2), padded up to
- * a cache-line multiple so UDPHS DMA can't share a line with whatever
+/* Header(6) + max payload (sizeof perf_rec_strip_t) + CRC(2), padded up
+ * to a cache-line multiple so UDPHS DMA can't share a line with whatever
  * sits next to us in BSS. */
-#define SINK_FRAME_BYTES_MAX  832u
+#define SINK_FRAME_BYTES_MAX  23104u
 
 #define SINK_OPEN_RETRY_MS    50u
 #define SINK_CONFIG_WAIT_MS   100u

@@ -46,11 +46,11 @@ def _populated_capture(tmp_path: Path) -> Path:
     cap_dir = tmp_path / "cap"
     init_capture_dir(cap_dir)
     payloads = [
-        build_session_payload(timer_freq_hz=1_000_000, schema_version=1),
+        build_session_payload(timer_freq_hz=1_000_000, schema_version=2),
         build_stamp_payload(stage=Stage.ISC_IRQ, frame_epoch=1, ts_counter=0),
         build_stamp_payload(stage=Stage.VIDEO_PUBLISH, frame_epoch=1, ts_counter=500),
         build_stamp_payload(stage=Stage.ISC_IRQ, frame_epoch=2, ts_counter=16_667),
-        build_drop_payload(dropped_state=0, dropped_patch=0, dropped_sink=128),
+        build_drop_payload(dropped_state=0, dropped_strip=0, dropped_sink=128),
         build_task_highwater_payload(task_id=int(TaskId.PERF_DRAIN), words=200),
         build_task_highwater_payload(task_id=int(TaskId.VIDEO), words=300),
     ]
@@ -71,7 +71,7 @@ def test_open_returns_id_and_manifest(client: TestClient, tmp_path: Path) -> Non
     body = resp.json()
     assert "capture_id" in body
     m = body["manifest"]
-    assert m["schema_version"] == 1
+    assert m["schema_version"] == 2
     assert m["timer_freq_hz"] == 1_000_000
     assert m["frame_epoch_first"] == 1
     assert m["frame_epoch_last"] == 2
@@ -93,7 +93,7 @@ def test_manifest_round_trip(client: TestClient, tmp_path: Path) -> None:
     cid = open_resp.json()["capture_id"]
     resp = client.get(f"/api/capture/{cid}/manifest")
     assert resp.status_code == 200
-    assert resp.json()["schema_version"] == 1
+    assert resp.json()["schema_version"] == 2
 
 
 # ─── /summary ────────────────────────────────────────────────────────────────

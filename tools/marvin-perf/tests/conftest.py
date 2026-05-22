@@ -18,17 +18,19 @@ from marvin_perf.records import (
     Drop,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
-    Patch,
-    PATCH_BYTES,
-    PATCH_FRET_SIZE,
     RecordType,
     Session,
     SOF_BYTES,
+    STRIP_BPP,
+    STRIP_HDR_BYTES,
     Stamp,
     Stage,
+    Strip,
+    StripKind,
     TaskHighwater,
+    TaskRuntime,
     Timing,
-    _PATCH_FRET_FMT,
+    _STRIP_BODY,
 )
 
 
@@ -56,7 +58,7 @@ def build_header(
 
 
 def build_session_payload(
-    *, timer_freq_hz: int = 266_000_000, schema_version: int = 1, fw_git_short: int = 0
+    *, timer_freq_hz: int = 266_000_000, schema_version: int = 2, fw_git_short: int = 0
 ) -> bytes:
     body = Session._BODY.pack(timer_freq_hz, schema_version, 0, fw_git_short, 0)
     return build_header(RecordType.SESSION) + body
@@ -98,9 +100,9 @@ def build_timing_payload(
 
 
 def build_drop_payload(
-    *, dropped_state: int = 0, dropped_patch: int = 0, dropped_sink: int = 0
+    *, dropped_state: int = 0, dropped_strip: int = 0, dropped_sink: int = 0
 ) -> bytes:
-    body = Drop._BODY.pack(dropped_state, dropped_patch, dropped_sink, 0)
+    body = Drop._BODY.pack(dropped_state, dropped_strip, dropped_sink, 0)
     return build_header(RecordType.DROP) + body
 
 
@@ -109,18 +111,26 @@ def build_task_highwater_payload(*, task_id: int, words: int) -> bytes:
     return build_header(RecordType.TASK_HIGHWATER) + body
 
 
-def build_patch_payload(*, frame_epoch: int = 1) -> bytes:
-    prelude = Patch._PRELUDE.pack(720, 480, 0)
-    fret_blocks = b""
-    for i in range(5):
-        hold = bytes((i * 5 + 1,) * PATCH_BYTES)
-        edge = bytes((i * 5 + 2,) * PATCH_BYTES)
-        fret_blocks += _PATCH_FRET_FMT.pack(
-            10 * i, 20 * i, 30 * i, 40 * i, hold, edge
-        )
-    payload = build_header(RecordType.PATCH, frame_epoch=frame_epoch) + prelude + fret_blocks
-    assert len(payload) == Patch.SIZE
-    return payload
+def build_task_runtime_payload(
+    *, task_id: int, state: int, priority: int, run_time_counter: int = 0
+) -> bytes:
+    body = TaskRuntime._BODY.pack(task_id, state, priority, 0, run_time_counter, 0)
+    return build_header(RecordType.TASK_RUNTIME) + body
+
+
+def build_strip_payload(
+    *,
+    frame_epoch: int = 1,
+    kind: int = int(StripKind.SENSING),
+    x: int = 240,
+    y: int = 295,
+    w: int = 4,
+    h: int = 2,
+    fill: int = 0x55,
+) -> bytes:
+    body = _STRIP_BODY.pack(x, y, w, h, kind, b"\x00\x00\x00")
+    bgr = bytes((fill,) * (w * h * STRIP_BPP))
+    return build_header(RecordType.STRIP, frame_epoch=frame_epoch) + body + bgr
 
 
 # ─── Frame wrapper (SOF + LEN + payload + CRC) ───────────────────────────────

@@ -35,12 +35,14 @@ from ..decode import Record, decode_record
 from ..framing import FrameStats, iter_frames
 from ..records import (
     Drop,
-    Patch,
     Session,
     Stage,
     Stamp,
+    Strip,
     TaskHighwater,
     TaskId,
+    TaskRuntime,
+    TaskState,
 )
 from ..transport import FileSource
 from .render import StripRenderError, render_strip_png
@@ -213,13 +215,13 @@ def capture_summary(capture_id: str) -> dict[str, Any]:
         "drops": {
             "n_drop_records": drops.n_drop_records,
             "final_state": drops.final_state,
-            "final_patch": drops.final_patch,
+            "final_strip": drops.final_strip,
             "final_sink_bytes": drops.final_sink_bytes,
             "since_session_state": drops.since_session_state,
-            "since_session_patch": drops.since_session_patch,
+            "since_session_strip": drops.since_session_strip,
             "since_session_sink_bytes": drops.since_session_sink_bytes,
             "max_state_delta": drops.max_state_delta,
-            "max_patch_delta": drops.max_patch_delta,
+            "max_strip_delta": drops.max_strip_delta,
             "max_sink_bytes_delta": drops.max_sink_bytes_delta,
         },
         "hwm": {
@@ -282,21 +284,12 @@ def capture_records(
 
 @router.get("/capture/{capture_id:path}/strip/{epoch}/{kind}.png")
 def capture_strip_png(capture_id: str, epoch: int, kind: str) -> Response:
-    """Render the strip at (epoch, kind) as a PNG.
-
-    Phase 1: PATCH records (v1 schema) carry per-fret 5×5 thumbnails — there
-    are no STRIP records yet. Returning 404 here is the correct, forward-
-    compatible behavior; Phase 2 wires v2 STRIP records to the same lookup.
-    """
+    """Render the strip at (epoch, kind) as a PNG."""
     loaded = _REGISTRY.get(capture_id)
     indexes = loaded.by_epoch.get(epoch, [])
     for i in indexes:
         rec = loaded.records[i]
-        # v2 STRIP record is wired via decode dispatch; until then there is
-        # nothing to render. We still type-check defensively so the path is
-        # ready when v2 lands.
-        strip_kind = getattr(rec, "kind_name", None)
-        if strip_kind == kind:
+        if isinstance(rec, Strip) and rec.kind_name == kind:
             try:
                 png = render_strip_png(
                     rec.bgr,  # type: ignore[attr-defined]
@@ -335,12 +328,12 @@ def capture_health(capture_id: str) -> dict[str, Any]:
         },
         "drops_since_session": {
             "state_records": drops.since_session_state,
-            "patch_records": drops.since_session_patch,
+            "strip_records": drops.since_session_strip,
             "sink_bytes": drops.since_session_sink_bytes,
         },
         "drops_max_delta": {
             "state_records": drops.max_state_delta,
-            "patch_records": drops.max_patch_delta,
+            "strip_records": drops.max_strip_delta,
             "sink_bytes": drops.max_sink_bytes_delta,
         },
         # Phase-2 fields wired here when v2 schema lands:
@@ -398,9 +391,10 @@ def capture_rtos(capture_id: str) -> dict[str, Any]:
 # ─── Record → JSON ───────────────────────────────────────────────────────────
 
 
-def _record_to_dict(rec: Record) -> dict[str, Any]:
-    """Compact, JSON-friendly view of a record. Avoid sending raw pixel bytes
-    over JSON — strips travel out as PNG via the dedicated endpoint."""
+def _record_to_dict(rec: Record, *, include_bgr: bool = False) -> dict[str, Any]:
+    """Compact, JSON-friendly view of a record. Offline mode keeps strip
+    pixels on the dedicated PNG endpoint; live mode passes ``include_bgr=True``
+    so the WS push carries pixel bytes (base64) for client-side canvas render."""
     hdr = rec.hdr  # type: ignore[union-attr]
     base: dict[str, Any] = {
         "type": type(rec).__name__,
@@ -424,7 +418,7 @@ def _record_to_dict(rec: Record) -> dict[str, Any]:
     elif isinstance(rec, Drop):
         base.update(
             dropped_state=rec.dropped_state,
-            dropped_patch=rec.dropped_patch,
+            dropped_strip=rec.dropped_strip,
             dropped_sink=rec.dropped_sink,
         )
     elif isinstance(rec, TaskHighwater):
@@ -434,10 +428,27 @@ def _record_to_dict(rec: Record) -> dict[str, Any]:
             base["task_name"] = f"task_{rec.task_id}"
         base["task_id"] = rec.task_id
         base["words"] = rec.words
-    elif isinstance(rec, Patch):
-        base["frame_w"] = rec.frame_w
-        base["frame_h"] = rec.frame_h
-        # Pixels travel via the strip PNG endpoint — don't inline them.
+    elif isinstance(rec, TaskRuntime):
+        try:
+            base["task_name"] = TaskId(rec.task_id).name
+        except ValueError:
+            base["task_name"] = f"task_{rec.task_id}"
+        try:
+            base["state_name"] = TaskState(rec.state).name
+        except ValueError:
+            base["state_name"] = f"state_{rec.state}"
+        base["task_id"] = rec.task_id
+        base["state"] = rec.state
+        base["priority"] = rec.priority
+        base["run_time_counter"] = rec.run_time_counter
+    elif isinstance(rec, Strip):
+        base.update(
+            x=rec.x, y=rec.y, w=rec.w, h=rec.h,
+            kind=rec.kind, kind_name=rec.kind_name,
+        )
+        if include_bgr:
+            import base64
+            base["bgr_b64"] = base64.b64encode(rec.bgr).decode("ascii")
     else:
         # Detector, Timing, UnknownRecord — keep generic field projection.
         for fname in getattr(rec, "__dataclass_fields__", {}):
