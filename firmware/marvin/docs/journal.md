@@ -127,6 +127,101 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-21 — FreeRTOS resource inventory + priority/analytics review
+
+Stood up the work to enable FreeRTOS analytics (`vTaskListTasks`, `vTaskGetRunTimeStatistics`, `uxTaskGetStackHighWaterMark`) and audit task priority assignments across marvin. Three findings worth logging — one outright bug, one priority inversion, one structural problem with the priority budget.
+
+**Resource inventory (16 tasks, 8 sync primitives).**
+
+Hand-written (under `default/src/`, all `xTaskCreateStatic` per the static-allocation rule):
+
+| Task | Prio | Stack (words) | File:Line | Cadence | Notes |
+|---|---:|---:|---|---|---|
+| `VideoTask` | 1 | 1024 | [video.c:323](../default/src/video/video.c#L323) | 20 ms poll | Capture-pipeline state machine; arms ISC on TC358743 lock; rebinds HEO per frame in ISR |
+| `CvMarvinV1` | 2 | 1024 | [cv_marvin_v1.c:357](../default/src/detector/cv_marvin_v1.c#L357) | event (frame queue, portMAX_DELAY) | 5×5 patch sample + threshold + bus publish |
+| `Timing` | 2 | 768 | [timing_pipeline.c:358](../default/src/actuator/timing_pipeline.c#L358) | event (bus queue, 5 ms timeout) | Chord window + strum scheduler |
+| `FretLink` | 2 | 768 | [fretboard_link.c:248](../default/src/actuator/fretboard_link.c#L248) | event (cmd queue, 50 ms timeout) | USB-host CDC writer + 50 ms heartbeat republish |
+| `PerfDrain` | 2 | 512 | [perf_log.c:176](../default/src/perf_log/perf_log.c#L176) | event (state queue, 20 ms timeout) | Frames + writes to USB-device CDC sink |
+| `DetectorDrain` | 1 | 512 | [detector.c:69](../default/src/detector/detector.c#L69) | event (bus queue, portMAX_DELAY) | **M1 stub consumer; should have been deleted when M3 wired Timing** |
+
+(`ManualControl` has no task — it's a synchronous API that calls `FretboardLink_Send` directly.)
+
+MCC-generated (under `default/src/config/default/`, all `xTaskCreate` dynamic, all priority 1, all 1024-word stacks, all 10 ms `vTaskDelay` polling loops):
+
+| Task | File:Line |
+|---|---|
+| `XLCDC_Tasks` | [tasks.c:178](../default/src/config/default/tasks.c#L178) |
+| `DRV_MAXTOUCH_Tasks` | [tasks.c:187](../default/src/config/default/tasks.c#L187) |
+| `USB_DEVICE_TASKS` | [tasks.c:199](../default/src/config/default/tasks.c#L199) |
+| `USB_HOST_TASKS` | [tasks.c:208](../default/src/config/default/tasks.c#L208) |
+| `DRV_USB_UDPHS_TASKS` | [tasks.c:217](../default/src/config/default/tasks.c#L217) |
+| `LEGATO_Tasks` | [tasks.c:226](../default/src/config/default/tasks.c#L226) |
+| `DRV_USB_HOST_TASKS` | [tasks.c:235](../default/src/config/default/tasks.c#L235) — wraps EHCI + OHCI |
+| `SYS_INPUT_Tasks` | [tasks.c:244](../default/src/config/default/tasks.c#L244) |
+| `APP_Tasks` | [tasks.c:257](../default/src/config/default/tasks.c#L257) — self-deletes after one tick (see [app.c:198-205](../default/src/app.c#L198-L205)) |
+
+Sync primitives (all hand-written, all static):
+
+| Primitive | Type | Depth × item | Producers → Consumers |
+|---|---|---|---|
+| `s_bus_queue` ([detector.c:61](../default/src/detector/detector.c#L61)) | Queue | 8 × `detector_state_t` | CvMarvinV1 → **Timing + DetectorDrain (bug)** |
+| `frames` ([cv_marvin_v1.c:309](../default/src/detector/cv_marvin_v1.c#L309)) | Queue | 1 × `Video_FrameInfo` | Video ISR → CvMarvinV1 |
+| `s_cmd_queue` ([fretboard_link.c:230](../default/src/actuator/fretboard_link.c#L230)) | Queue | 1 × `uint8_t` (overwrite) | Timing + ManualControl → FretLink |
+| `s_state_q` ([perf_log.c:161](../default/src/perf_log/perf_log.c#L161)) | Queue | 128 × 40 B union slot | All perf producers → PerfDrain |
+| `s_patch_q` ([perf_log.c:167](../default/src/perf_log/perf_log.c#L167)) | Queue | 8 × `perf_rec_patch_t` | CvMarvinV1 (future) → PerfDrain |
+| `s_write_done` ([fretboard_link.c:236](../default/src/actuator/fretboard_link.c#L236)) | BinarySemaphore | — | Host CDC ISR → FretLink |
+| `s_ctrl_done` ([fretboard_link.c:239](../default/src/actuator/fretboard_link.c#L239)) | BinarySemaphore | — | Host CDC ISR → FretLink |
+| `s_write_done` ([perf_log_sink_cdc.c:50](../default/src/perf_log/perf_log_sink_cdc.c#L50)) | BinarySemaphore | — | Device CDC ISR → PerfDrain |
+| `s_mutex` ([log.c:20](../default/src/log.c#L20)) | Mutex | — | log_vprintf() — **`portMAX_DELAY` ⇒ ISR-illegal**, see 2026-05-21 freeze entry |
+
+No event groups, no stream/message buffers, no task notifications anywhere in the codebase today.
+
+**Finding 1 (bug, fix before next test): `DetectorDrain` is double-consuming the bus.** Both `DetectorDrain` (priority 1, [detector.c:30-57](../default/src/detector/detector.c#L30-L57)) and `Timing` (priority 2, [timing_pipeline.c:330,338](../default/src/actuator/timing_pipeline.c#L330)) call `xQueueReceive` on `s_bus_queue`. FreeRTOS queues are single-consumer-per-record by design, so each task sees roughly half the records — the half DetectorDrain gets is silently dropped. Plays nicely with what we observe (gameplay still works, but timing decisions are derived from every other detector publish at best). The 2026-05-20 plan-of-record explicitly said `DetectorDrain` would be deleted when M3 wired the real consumer; that step was missed. Fix is one-line: delete the `xTaskCreateStatic(drain_task, …)` call in `Detector_Initialize` and the supporting `drain_task` function. Throughput logging it provided is moot now that the perf-log path exists.
+
+**Finding 2 (priority inversion): `VideoTask` runs below its consumers.** `VideoTask` is the source of frames `CvMarvinV1` blocks on, but it's at priority 1 while `CvMarvinV1`/`Timing`/`FretLink`/`PerfDrain` all sit at 2. A late-frame condition (TC358743 lock churn, ISC retry) needs `VideoTask` to push the capture-pipeline state machine forward, but any priority-2 work currently runnable will preempt it. The detector then blocks on an empty frame queue while the video task can't run. Empirically not biting because `CvMarvinV1` only runs on frame arrival (event-driven, blocks immediately after consuming), but it's a latent class of stall whenever a priority-2 task ends up briefly busy. `VideoTask` belongs at priority 2 (or above) — the producer of the real-time pipeline shouldn't be in the same priority band as MCC's polling tasks.
+
+**Finding 3 (structural): the priority budget is too narrow.** `configMAX_PRIORITIES = 5` (priorities 0..4). Idle is 0. With time-slicing on (`configUSE_TIME_SLICING = 1`, `configIDLE_SHOULD_YIELD = 1`) and round-robin between equal-priority Ready tasks, current bunching is:
+
+- Priority 4: (unused)
+- Priority 3: (unused)
+- Priority 2: CvMarvinV1, Timing, FretLink, PerfDrain (4 tasks — real-time path, all event-driven, mostly mutually exclusive)
+- Priority 1: 9 MCC polling tasks + VideoTask + DetectorDrain (11 tasks)
+- Priority 0: idle
+
+With 11 tasks ready at priority 1 and the tick rate at 1 kHz, each priority-1 task gets ≈ 1 ms of every ≈ 11 ms — tolerable but means each MCC stack does its 10 ms `vTaskDelay` poll on roughly the cadence it asks for plus or minus a tick of jitter. The bigger problem is that we have *zero* headroom for further structure: there's no place to put a faster-than-detector watchdog, a strict-priority audio path, or anything that should clearly outrank `Timing` without sharing. If we ever hit a priority-inversion class problem the kernel can't help via priority inheritance because there's nowhere to invert *to*. Preferred fix is to bump `configMAX_PRIORITIES` to 8 — costs 3 × `sizeof(List_t)` ≈ 60 bytes of BSS per extra band on this port, trivial — and reorganize as:
+
+- 4: real-time strum-critical (Timing, FretLink)
+- 3: real-time vision (VideoTask, CvMarvinV1)
+- 2: PerfDrain + MCC USB host/device + DRV_USB_UDPHS (anything where stalling means a missed enumeration window)
+- 1: MCC display/touch/Legato/SYS_INPUT (UI tasks; visible jitter only, not failure)
+- 0: idle
+
+The MCC tasks are dynamic-created but their priority arg comes from a single MCC config knob per task; we can override via the existing `user.cmake` patch list rather than editing `tasks.c` directly. Worth doing alongside enabling analytics — once HWM + run-time-stats are live we'll have the data to confirm the split is correct.
+
+**Analytics enable plan.** Three flags + one macro pair in `FreeRTOSConfig.h`:
+
+```c
+#define configGENERATE_RUN_TIME_STATS         1
+#define configUSE_TRACE_FACILITY              1
+#define configUSE_STATS_FORMATTING_FUNCTIONS  1
+#define INCLUDE_uxTaskGetStackHighWaterMark   1
+```
+
+`configGENERATE_RUN_TIME_STATS` requires a counter source via two macros:
+
+```c
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()  /* SYS_TIME init runs in SYS_Initialize already, no-op */
+#define portGET_RUN_TIME_COUNTER_VALUE()          ((uint32_t)SYS_TIME_CounterGet())
+```
+
+Same TC0-CH0 source as the perf-log timestamps, so the units are consistent across both surfaces. Cost: `configUSE_TRACE_FACILITY` adds two pointers + a `UBaseType_t` per TCB; on 16 tasks that's a couple hundred bytes. Run-time stats arithmetic on every context switch is one 32-bit subtract + add. Acceptable.
+
+Once enabled, dump on an SBC-style trigger — initially a 10-second-cadence `PERF_REC_TASK_HIGHWATER` from the perf-log drain task is the cheapest path (record format already exists in `perf_log_records.h`), and host-side decoder work makes it visible in the same Gantt view. Stretch: a console UART command to dump `vTaskListTasks` + `vTaskGetRunTimeStatistics` on demand, decoupled from the perf-log path so it works without USB.
+
+Carry-forward "FreeRTOS analytics not yet enabled" note in §Open questions can come out once this lands.
+
+**Implementation order.** (1) Delete `DetectorDrain` (finding 1) and rebuild + smoke-test gameplay — straightforward win, isolates from everything else. (2) Bump `VideoTask` to priority 2 (finding 2) — single-line change, retest. (3) Enable analytics flags + counter macros, take a baseline run-time-stats + HWM snapshot to feed the `PERF_REC_TASK_HIGHWATER` schema. (4) Bump `configMAX_PRIORITIES` and re-tier the eight bands — this is the larger change and benefits from having stats data first. Decision-log entry for the priority restructuring lands when (4) does.
+
 ### 2026-05-21 — Perf-log producer-side module landed
 
 Built the perf-log subsystem end-to-end on the producer side, including the real USB-device CDC ACM sink. Producers are not yet wired (module is dark beyond a SESSION + 1 Hz DROP heartbeat), but the wire path is live: a `PERF_REC_SESSION` is re-emitted on every host DTR-rising edge, so reconnecting a terminal mid-session always sees the schema record.
