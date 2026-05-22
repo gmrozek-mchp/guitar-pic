@@ -75,7 +75,7 @@ static inline void hdr_fill(perf_hdr_t *h, uint8_t type, uint8_t flags,
     h->type        = type;
     h->flags       = flags;
     h->frame_epoch = frame_epoch;
-    h->ts_counter  = (uint64_t)SYS_TIME_CounterGet();
+    h->ts_counter  = SYS_TIME_Counter64Get();
 }
 
 /* ─── Record-size dispatch ───────────────────────────────────────────────── */
