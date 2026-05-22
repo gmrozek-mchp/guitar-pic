@@ -137,6 +137,24 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-22 — Host-side perf-log decoder landed (`tools/marvin-perf/`)
+
+Built v0 of the host decoder for the perf-log USB CDC stream. Runs under **uv** — `uv run marvin-perf ...` is the canonical invocation, `pyproject.toml` is the dep source-of-truth, `uv.lock` committed for reproducibility, no `requirements.txt`. Python 3.12 pinned via `.python-version`.
+
+Layout (`tools/marvin-perf/`):
+
+- `marvin_perf/records.py` — schema mirror of [`perf_log_records.h`](../default/src/perf_log/perf_log_records.h) (`EXPECTED_SCHEMA_VERSION = 1`). Hand-mirror, not codegen — small + version-gated, and a hand-mirror is the diff a reviewer reads when the schema bumps. `Patch` keeps the 5×150 B BGR payload as raw bytes; v0 doesn't render pixels.
+- `marvin_perf/framing.py` — table-based CRC-16/CCITT-FALSE (verified against the canonical `0x29B1` test vector) + a streaming SOF-resync state machine that handles arbitrary chunk boundaries, oversized/undersized LEN, mid-payload SOF false positives, and CRC drops. `FrameStats` exposes counters (`frames_ok`, `bytes_resync_dropped`, `crc_mismatches`, `bad_lengths`) for diagnostics.
+- `marvin_perf/decode.py` — `Header.unpack` + per-type decoders dispatched by `RecordType`. Unknown types yield `UnknownRecord` rather than aborting, so a forward-schema firmware doesn't crash an older host.
+- `marvin_perf/transport.py` — `FileSource(path)`, `SerialSource(port)` (lazy `import serial`, asserts DTR on open to trip the firmware sink's re-emit-SESSION path), `TeeSource(upstream, out_path)` (live + record).
+- `marvin_perf/analyze.py` — adjacent stage-pair latency histograms (p50/p95/p99/max), drop deltas, per-task HWM trend. Sanity checks: schema-version match (hard fail), `frame_epoch` monotonicity, VIDEO_PUBLISH cadence (16.67 ms ± 2 ms at 60 Hz).
+- `marvin_perf/cli.py` — argparse subcommands `live` / `record` / `decode` / `summarize`.
+- `tests/` — 42 passing pytest cases covering CRC vectors, frame round-trips per record type, SOF resync, partial-chunk reassembly, length sanity, decode-error paths, and analysis math (drops, HWM, schema mismatch, cadence).
+
+Updated `perf_log_records.h:8-9` to point the mirror reference at `tools/marvin-perf` (was the placeholder `tools/perf-log-decoder`).
+
+Producer wiring is still incomplete (per the 2026-05-21 perf-log entry — only `SESSION` on DTR + 1 Hz `DROP` heartbeat fire today), but the decoder is built and tested against the wire format that's settled, so it stays correct as STAMP/DETECTOR/TIMING/PATCH/TASK_HIGHWATER come online. `summarize` will produce real latency tables and HWM trends as soon as those producers land — closes the carry-forward "FreeRTOS analytics dump path" on the host side once `PERF_REC_TASK_HIGHWATER` emission lands.
+
 ### 2026-05-21 — FreeRTOS resource inventory + priority/analytics review
 
 Stood up the work to enable FreeRTOS analytics (`vTaskListTasks`, `vTaskGetRunTimeStatistics`, `uxTaskGetStackHighWaterMark`) and audit task priority assignments across marvin. Three findings worth logging — one outright bug, one priority inversion, one structural problem with the priority budget.

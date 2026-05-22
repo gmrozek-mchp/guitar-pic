@@ -6,7 +6,7 @@
 #include "game/fret.h"
 
 /* Perf-log wire format. Mirror this header byte-for-byte in the host
- * decoder (tools/perf-log-decoder). Bump PERF_LOG_SCHEMA_VERSION on
+ * decoder (tools/marvin-perf). Bump PERF_LOG_SCHEMA_VERSION on
  * every layout change; the host refuses streams that don't match.
  *
  * All fields little-endian, naturally aligned, fixed width. Records
