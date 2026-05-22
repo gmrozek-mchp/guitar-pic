@@ -127,6 +127,79 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-21 — Perf-log producer-side module landed
+
+Built the perf-log subsystem end-to-end on the producer side, including the real USB-device CDC ACM sink. Producers are not yet wired (module is dark beyond a SESSION + 1 Hz DROP heartbeat), but the wire path is live: a `PERF_REC_SESSION` is re-emitted on every host DTR-rising edge, so reconnecting a terminal mid-session always sees the schema record.
+
+**What landed under [`firmware/marvin/default/src/perf_log/`](../default/src/perf_log/):**
+- `perf_log_records.h` — wire format, schema version 1. 16 B common header (`magic` 0x4D56 'MV', `type`, `flags`, `frame_epoch`, `ts_counter`). Record types: SESSION, STAMP, DETECTOR, TIMING, PATCH, DROP, TASK_HIGHWATER. Stage IDs cover ISC_IRQ, VIDEO_PUBLISH, CV_START, CV_END, TP_TICK, FBL_SEND, CDC_WRITE_COMPLETE.
+- `perf_log.{h,c}` — façade with separate task / `*FromISR` entry points (mirrors `xQueueSend` / `xQueueSendFromISR`). Two queues sized for the 30× small/large record-size ratio: state queue (slot = 40 B largest small record, depth 128) and patch queue (slot = `sizeof(perf_rec_patch_t)` = 814 B, depth 8). Drop-on-full, never block. Per-queue + sink drop counters RMW under `taskENTER_CRITICAL` / `taskENTER_CRITICAL_FROM_ISR` (the XC32 ARM926 port doesn't link libatomic; GCC's `__atomic_add_fetch` falls through to a libcall and won't link). Drain task at `tskIDLE_PRIORITY + 2` (above idle, below detector/timing) with 2 KB stack; emits one `PERF_REC_DROP` per second.
+- `perf_log_sink.h` + `perf_log_sink_cdc.c` — sink interface and USB-device CDC ACM implementation. CRC-16/CCITT-FALSE over `LEN || PAYLOAD`; framing is `0x55 0x4D 0x52 0x56 || u16 LEN || PAYLOAD || u16 CRC`. MCC now ships USB-device + USB-device-CDC class config (UDPHS); the sink owns the application side: opens `USB_DEVICE_INDEX_0`, registers the device-layer event handler (Attach on POWER_DETECTED, register CDC handler on CONFIGURED), and exposes a blocking `WriteFramed`. CDC class events handle GET/SET line coding, control-line state (DTR latched into `s_cls`), and signal `WRITE_COMPLETE` via `xSemaphoreGiveFromISR` on a binary semaphore. Single producer (the drain task); writes are serialized one at a time on a single cache-aligned 832 B staging buffer (header + max patch payload + CRC). DTR-gated: if the host hasn't asserted DTR, frames are dropped into `s_drop_sink`. Write timeout (100 ms) drops + accumulates and the next state-machine pass observes DECONFIGURED if the host went away.
++ Cold-boot-with-cable required an explicit `Detach → 100 ms → Attach` edge after handler registration; relying on the driver's natural VBUS-edge `POWER_DETECTED` event to fire after-the-fact didn't enumerate (suspected: host gave up retrying after observing transient pull-up state during early boot, or the UDPHS driver's `vbusLevel` tracking races with handler-registration timing). The forced edge gives the host an unambiguous device-arrival regardless.
+- μs timestamps via `SYS_TIME_CounterGet()` (TC0 CH0 raw counter) — host divides by `timer_freq_hz` from the SESSION record. Explicitly *not* the `xTaskGetTickCount() * (1000000 / configTICK_RATE_HZ)` pattern at [cv_marvin_v1.c:156](../default/src/detector/cv_marvin_v1.c#L156); that's ms-resolution masquerading as μs and is useless for sub-frame attribution.
+
+**Wired into [`app.c`](../default/src/app.c):** `PerfLog_Initialize()` after `Video_Initialize()` (queues exist before any producer can post); `PerfLog_Start()` at the end of `APP_Initialize` (creates the drain task; Harmony brings the scheduler up after `APP_Initialize` returns, so this is the standard "create static tasks before `vTaskStartScheduler`" pattern). `cmake/marvin/default/user.cmake` updated.
+
+**Producers not yet wired** — module is dark today. Next steps land them in this order: (1) ISR producers (`video.c` ISC_IRQ + VIDEO_PUBLISH; `fretboard_link.c` CDC_WRITE_COMPLETE — *no* `LOG_INFO` from this ISR per the 2026-05-20/21 freeze pattern); (2) task producers in `cv_marvin_v1`, `timing_pipeline`, `fretboard_link.FretboardLink_Send`. Replaces the commented-out 2 Hz dump at [`cv_marvin_v1.c:336-351`](../default/src/detector/cv_marvin_v1.c#L336-L351). `PERF_REC_PATCH` emission slots in last (Tier 2 — reuses already-sampled 5×5 patches, no new I/O).
+
+### 2026-05-21 — Perf-logging bandwidth/capacity scoping
+
+Crunched numbers ahead of designing a frame-by-frame perf log (video + detector + actuator state) so we know which resolutions and which transports are actually in scope. Detail below; takeaway is that the spec's already-chosen "sparse keyframes + dense state" point (~1 MB/s) is the only real sweet spot, and the "full-rate raw video" wish is dead on arrival across every transport SAM9X75 has.
+
+**Baseline — 720×480 RGB888 (BGR888-packed in our pipeline) @ 60 Hz**
+
+- Per frame: 720 × 480 × 3 = **1.04 MB**.
+- Per second: **62.2 MB/s ≈ 498 Mb/s**.
+- All state payload (detector_state_t × 2 detectors + actuator + timing snapshot + per-frame metadata header) is ~150 B/frame ≈ **9 KB/s** — rounding error against pixels. This is a video-bandwidth problem, not a state-volume problem.
+
+**Scaled-down variants (per-second bandwidth)**
+
+| Variant | B/s |
+|---|---|
+| Full 720×480 RGB888 @ 60 Hz | 62.2 MB/s |
+| Same @ 30 Hz | 31.1 MB/s |
+| 720×480 RGB565 @ 60 Hz | 41.5 MB/s |
+| 720×480 grayscale @ 60 Hz | 20.7 MB/s |
+| 360×240 RGB888 @ 60 Hz | 15.6 MB/s |
+| 360×240 RGB888 @ 30 Hz | 7.78 MB/s |
+| 180×120 RGB888 @ 30 Hz | 1.94 MB/s |
+| Strike-line strip 720×80 @ 60 Hz | 10.4 MB/s |
+| 5 ROI patches 32×32 RGB888 @ 60 Hz | 922 KB/s |
+| State-only (no pixels) @ 60 Hz | 9.1 KB/s |
+
+**Capacity over a session length**
+
+| Stream | 1 min | 5 min (song) | 10 min |
+|---|---|---|---|
+| Full @ 60 Hz | 3.73 GB | 18.7 GB | 37.3 GB |
+| 360×240 @ 30 Hz | 467 MB | 2.33 GB | 4.67 GB |
+| 1 keyframe/s + state (≈ spec §4.6) | 62 MB | 311 MB | 622 MB |
+| ROI patches 60 Hz | 55 MB | 277 MB | 553 MB |
+| State only | 547 KB | 2.7 MB | 5.5 MB |
+
+**Transport ceilings on this hardware** (sustained, realistic)
+
+| Channel | Sustained | Peripheral status |
+|---|---|---|
+| UART 115.2 kBd (console) | ~11 KB/s | in use (FLEXCOM4) |
+| UART 921.6 kBd | ~92 KB/s | EDBG bridge cap |
+| UART 3 Mbd (FLEXCOM max) | ~300 KB/s | unlikely through bridges |
+| USB CDC ACM (HS device, class-stack overhead) | ~5–15 MB/s | device peripheral unused |
+| USB Bulk (HS device, custom class) | ~30–40 MB/s | needs custom host-side reader |
+| SDMMC Class-10 via FAT32 | ~5–10 MB/s | already planned for §4.6 keyframes |
+| SDMMC UHS-I | ~25–50 MB/s | bus capable, FS overhead bites |
+| GMAC Ethernet UDP | ~30–60 MB/s | GMAC unused |
+| GMAC Ethernet TCP | ~10–20 MB/s | GMAC unused |
+
+**What fits where**
+
+- **State-only (9 KB/s)** fits everywhere including the console UART — no new transport needed if the goal is just "trace detector + timing + actuator decisions per frame."
+- **ROI patches 60 Hz (~1 MB/s)** preserves everything cv_marvin_v1 actually samples; streams comfortably over USB CDC, fits an entire song on SD with room to spare.
+- **1 keyframe/s + dense state (~1 MB/s)** is what spec §4.6 already commits to, fits any modern SD card, and survives over USB CDC or Ethernet.
+- **Full 60 Hz (62 MB/s)** doesn't fit any transport sustained, *and* a 5-minute song at that rate is 18.7 GB — DOA.
+
+**Implication for what to build next.** The scoping confirms the spec's existing reference-data architecture is the right place to start; perf-logging is a *consumer* of the same infrastructure, not a separate path. Next step is to figure out which questions the perf log actually has to answer (latency attribution? frame-rate stability? detector confidence over time? actuator jitter?) and pick the minimum stream that answers them. State-only might already be enough for the latency/jitter questions; ROI patches are the cheapest way to get "did the detector see what I think it saw" replayability.
+
 ### 2026-05-21 — cv_marvin_v1 threshold tuning + timing-pipeline tweaks
 
 First end-to-end gameplay test on hardware. Detector was firing roughly random presses at first; resolved by reading actual signal values rather than guessing.

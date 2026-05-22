@@ -9,6 +9,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
 )
 
 target_compile_definitions(marvin_default_default_XC32_compile PRIVATE

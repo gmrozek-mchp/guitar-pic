@@ -42,6 +42,7 @@
 #include "actuator/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
+#include "perf_log/perf_log.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -122,6 +123,12 @@ void APP_Initialize ( void )
      * the capture/display state machine, and the bridge-status polling. */
     Video_Initialize();
 
+    /* Per-frame performance log: producer-side queues + drain task.
+     * Init the queues here so any producer that posts before the
+     * scheduler starts will not crash; the drain task is launched
+     * separately by PerfLog_Start once the scheduler is up. */
+    PerfLog_Initialize();
+
     /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
      * panel — 1:1 with the bridge's typical 480p source, leaves a UI
      * strip below. Set before DisplayShow; the video module has no
@@ -170,6 +177,13 @@ void APP_Initialize ( void )
      * registers the event_Screen0_Button_Manual_* callbacks defined in
      * ui/manual_input.c, so no explicit bind step is needed here. */
     ManualControl_Initialize();
+
+    /* Drain task is launched last so every producer's queue handle is
+     * already valid when the first records hit the sink. Marvin creates
+     * all tasks pre-scheduler (Harmony brings the scheduler up after
+     * APP_Initialize returns); xTaskCreateStatic before vTaskStartScheduler
+     * is the standard FreeRTOS pattern. */
+    PerfLog_Start();
 }
 
 
