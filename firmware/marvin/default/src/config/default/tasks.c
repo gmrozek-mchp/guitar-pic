@@ -179,7 +179,7 @@ void SYS_Tasks ( void )
         "XLCDC_Tasks",
         1024,
         (void*)NULL,
-        1,
+        2,
         (TaskHandle_t*)NULL
     );
 
@@ -188,7 +188,7 @@ void SYS_Tasks ( void )
         "DRV_MAXTOUCH_Tasks",
         1024,
         (void*)NULL,
-        1,
+        2,
         (TaskHandle_t*)NULL
     );
 
@@ -200,7 +200,7 @@ void SYS_Tasks ( void )
         "USB_DEVICE_TASKS",
         1024,
         (void*)NULL,
-        1,
+        3,
         (TaskHandle_t*)NULL
     );
 
@@ -209,7 +209,7 @@ void SYS_Tasks ( void )
         "USB_HOST_TASKS",
         1024,
         (void*)NULL,
-        1,
+        5,
         (TaskHandle_t*)NULL
     );
 
@@ -218,7 +218,7 @@ void SYS_Tasks ( void )
         "DRV_USB_UDPHS_TASKS",
         1024,
         (void*)NULL,
-        1,
+        3,
         (TaskHandle_t*)NULL
     );
 
@@ -227,7 +227,7 @@ void SYS_Tasks ( void )
         "LEGATO_Tasks",
         1024,
         (void*)NULL,
-        1,
+        2,
         (TaskHandle_t*)NULL
     );
 
@@ -236,7 +236,7 @@ void SYS_Tasks ( void )
         "DRV_USB_HOST_TASKS",
         1024,
         (void*)NULL,
-        1,
+        5,
         (TaskHandle_t*)NULL
     );
 
@@ -245,7 +245,7 @@ void SYS_Tasks ( void )
         "SYS_INPUT_Tasks",
         1024,
         (void*)NULL,
-        1,
+        2,
         (TaskHandle_t*)NULL
     );
 

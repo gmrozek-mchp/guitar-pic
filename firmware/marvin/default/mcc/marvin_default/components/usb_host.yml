@@ -39,4 +39,14 @@ data:
           type: Dynamic
         type: Values
       type: Integer
+    USB_HOST_RTOS_TASK_PRIORITY:
+      attributes:
+        id: USB_HOST_RTOS_TASK_PRIORITY
+      children:
+      - children:
+        - attributes:
+            value: '5'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

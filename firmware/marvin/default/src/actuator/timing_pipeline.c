@@ -13,7 +13,7 @@
 #include "detector/detector.h"
 
 #define TP_TASK_STACK_WORDS    768u
-#define TP_TASK_PRIORITY       2u
+#define TP_TASK_PRIORITY       5u
 
 /* Drives chord aggregation, strum scheduling, and pending release timing.
  * Matches the fret-tuner Python defaults so behavior carries 1:1. */

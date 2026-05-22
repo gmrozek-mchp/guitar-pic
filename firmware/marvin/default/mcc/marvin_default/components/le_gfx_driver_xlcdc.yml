@@ -346,4 +346,14 @@ data:
           type: Dynamic
         type: Values
       type: Integer
+    RTOSTaskPriority:
+      attributes:
+        id: RTOSTaskPriority
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

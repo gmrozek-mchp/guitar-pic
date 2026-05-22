@@ -16,7 +16,7 @@
 #include "usb/usb_cdc.h"
 
 #define FBL_TASK_STACK_WORDS    768u
-#define FBL_TASK_PRIORITY       2u
+#define FBL_TASK_PRIORITY       5u
 
 #define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
 

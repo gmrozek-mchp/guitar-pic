@@ -63,4 +63,14 @@ data:
           type: Dynamic
         type: Values
       type: Integer
+    FREERTOS_MAX_PRIORITIES:
+      attributes:
+        id: FREERTOS_MAX_PRIORITIES
+      children:
+      - children:
+        - attributes:
+            value: '8'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

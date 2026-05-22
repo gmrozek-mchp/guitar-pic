@@ -16,7 +16,7 @@
 #define LCD_PANEL_H  800u
 
 #define VIDEO_TASK_STACK_WORDS  1024u
-#define VIDEO_TASK_PRIORITY     1u
+#define VIDEO_TASK_PRIORITY     4u
 #define VIDEO_POLL_MS           20u
 
 /* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match

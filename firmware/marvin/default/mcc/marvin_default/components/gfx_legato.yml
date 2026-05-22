@@ -90,4 +90,14 @@ data:
           type: Dynamic
         type: Values
       type: String
+    rtosTaskPriority:
+      attributes:
+        id: rtosTaskPriority
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

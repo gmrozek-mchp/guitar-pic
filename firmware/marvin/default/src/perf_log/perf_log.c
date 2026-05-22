@@ -16,7 +16,7 @@
 /* ─── Configuration ──────────────────────────────────────────────────────── */
 
 #define PL_DRAIN_STACK_WORDS    512u                 /* 2 KB */
-#define PL_DRAIN_PRIORITY       (tskIDLE_PRIORITY + 2u)
+#define PL_DRAIN_PRIORITY       3u
 
 #define PL_STATE_QUEUE_DEPTH    128u
 #define PL_PATCH_QUEUE_DEPTH    8u

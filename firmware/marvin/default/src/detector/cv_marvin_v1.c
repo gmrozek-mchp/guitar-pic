@@ -13,7 +13,7 @@
 #include "video/video.h"
 
 #define CV_TASK_STACK_WORDS    1024u
-#define CV_TASK_PRIORITY       2u
+#define CV_TASK_PRIORITY       4u
 #define CV_FRAME_QUEUE_DEPTH   1u    /* drop-intermediate policy */
 
 /* Capture frames are BGR888 packed, 3 bytes per pixel. Frames whose

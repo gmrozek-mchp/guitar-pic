@@ -125,4 +125,14 @@ data:
           type: User
         type: Values
       type: Boolean
+    USB_DEVICE_RTOS_TASK_PRIORITY:
+      attributes:
+        id: USB_DEVICE_RTOS_TASK_PRIORITY
+      children:
+      - children:
+        - attributes:
+            value: '3'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

@@ -52,4 +52,14 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    RTOSTaskPriority:
+      attributes:
+        id: RTOSTaskPriority
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
   userData: {}

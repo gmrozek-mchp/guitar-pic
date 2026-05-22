@@ -25,6 +25,7 @@ Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus qu
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-05-21 | `configMAX_PRIORITIES` bumped 5 → 8; tasks re-tiered into 4 active bands (UI=2, diagnostic+perf-wire=3, vision=4, strum-critical+host-wire=5) plus 3 reserve bands (1, 6, 7) and idle (0). MCC tasks re-prioritised via the per-component yml files so future regens preserve the layout. | Pre-change layout had 11 tasks bunched at priority 1 (9 MCC pollers + VideoTask + DetectorDrain) and 4 at priority 2, with no headroom. Two concrete problems: (a) VideoTask was *below* its consumer CvMarvinV1, a classic priority inversion that would bite during any priority-2 busy spell; (b) Legato (UI rendering) at the same priority as USB host driver tasks meant a heavy frame redraw could stall fretboard wire transit. The new layout puts strum-critical output above vision-real-time above diagnostic-I/O above UI, which matches the failure-cost ordering: a late strum is a missed note, a late detector tick recovers next frame, a late UI paint is jitter only. Reserve bands cost ~60 B BSS each, leave room for future watchdog or fault-recovery work to land without re-shuffling. Setting priorities in MCC yml (rather than patching `tasks.c` post-regen) avoids a re-apply patch — the source of truth and the emitted code now agree. |
 | 2026-05-21 | `manual_control` lands as the second producer of `fretboard_link`, alongside `timing_pipeline`. Mode-level arbitration is two-mode (`timing_pipeline` vs `manual_control`) and embedded in `ManualControl_SetEnabled`: entering manual mode calls `TimingPipeline_SetEnabled(false)` then takes the wire; exiting reverses. | First concrete validation of the 2026-05-20 multi-producer `fretboard_link` design — `FretboardLink_Send` stays the only entry point; arbitration lives one layer up. Embedded toggle is enough for two producers; refactor to a dedicated `actuator_mode` arbiter when a third producer (game-state controller §4.8) arrives. `timing_pipeline.publish_mask` keeps updating internal state when gated so the next ≤5 ms tick after re-enable republishes a correct mask without a stale frame. |
 | 2026-05-21 | Legato chosen for the manual-control surface; widgets authored in Microchip Graphics Composer (regenerated into `le_gen_screen_Screen0.{h,c}`); marvin-side code is a thin event-binding shim (`ui/manual_input.c`) | Composer makes the layout iterable in a tool rather than C source, and keeps our code out of MCC-clobbered files: only the binding shim references the Composer-generated widget pointers. **Does not commit spec Q5 for the full operator UI** — that's still M5's call. The thin-shim shape works equally well behind a future custom GFX2D UI by swapping the bind module. |
 | 2026-05-21 | Manual-control input model is single-finger momentary; multi-finger chord input is out of scope for this surface | Legato's input pipeline (`legato_input.c:340/429`) routes each touch to a single focus widget, so a second simultaneous touch cancels the first button's release and strands its `pressed` state. Workarounds (custom maxtouch dispatcher; toggle-style frets) are real but not worth the complexity here — primary use case is game-menu navigation, which is single-finger by nature. Revisit only if a user-facing flow needs held chords. |
@@ -220,7 +221,30 @@ Once enabled, dump on an SBC-style trigger — initially a 10-second-cadence `PE
 
 Carry-forward "FreeRTOS analytics not yet enabled" note in §Open questions can come out once this lands.
 
-**Implementation order.** (1) Delete `DetectorDrain` (finding 1) and rebuild + smoke-test gameplay — straightforward win, isolates from everything else. (2) Bump `VideoTask` to priority 2 (finding 2) — single-line change, retest. (3) Enable analytics flags + counter macros, take a baseline run-time-stats + HWM snapshot to feed the `PERF_REC_TASK_HIGHWATER` schema. (4) Bump `configMAX_PRIORITIES` and re-tier the eight bands — this is the larger change and benefits from having stats data first. Decision-log entry for the priority restructuring lands when (4) does.
+**What landed (findings 1–3 resolved).**
+
+Finding 1 fixed in its own commit: `DetectorDrain` task and its supporting storage deleted from `detector.c`; bus queue create stays. Smoke-tested on hardware before continuing.
+
+Findings 2+3 landed together as a single re-tiering pass after deciding it was cleaner to size the priority budget once with the full layout in mind than to bump VideoTask now and re-shuffle later. `configMAX_PRIORITIES` 5 → 8 (room for 0..7; 60 B BSS for the extra ready-list bands; CLZ-based selection stays constant-time up to 32). Per-task priorities ended up:
+
+| Band | Tasks | Role |
+|---:|---|---|
+| 7 | (reserved) | Future emergency-stop / hard watchdog |
+| 6 | (reserved) | Future soft watchdog / fault recovery |
+| 5 | `Timing`, `FretLink`, `USB_HOST_TASKS`, `DRV_USB_HOST_TASKS` | Strum-critical output (and the wire it travels) |
+| 4 | `VideoTask`, `CvMarvinV1` | Vision real-time |
+| 3 | `PerfDrain`, `USB_DEVICE_TASKS`, `DRV_USB_UDPHS_TASKS` | Diagnostic + perf-log wire |
+| 2 | `LEGATO_Tasks`, `DRV_MAXTOUCH_Tasks`, `XLCDC_Tasks`, `SYS_INPUT_Tasks` | UI |
+| 1 | (reserved) | Background housekeeping |
+| 0 | idle, `APP_Tasks` (self-deletes) | — |
+
+The MCC priorities are set in the per-component yml files (`gfx_legato.yml`, `usb_host.yml`, `drv_usbhs_v1.yml`, `drv_usb_udphs.yml`, `usb_device.yml`, `gfx_maxtouch_controller.yml`, `le_gfx_driver_xlcdc.yml`, `sys_input.yml`) plus `FreeRTOS.yml` for `FREERTOS_MAX_PRIORITIES = 8`, so MCC regen will produce the same `tasks.c` priority arguments — **no MCC re-apply patch needed for this layout**.
+
+Hand-written tasks already had `*_TASK_PRIORITY` constants at file top; updates are one-line each in [video.c](../default/src/video/video.c), [cv_marvin_v1.c](../default/src/detector/cv_marvin_v1.c), [timing_pipeline.c](../default/src/actuator/timing_pipeline.c), [fretboard_link.c](../default/src/actuator/fretboard_link.c), and [perf_log.c](../default/src/perf_log/perf_log.c). Normalized `perf_log.c`'s priority constant from `(tskIDLE_PRIORITY + N)` to a bare integer literal to match the rest of the marvin code; `tskIDLE_PRIORITY` is `0` so this is a stylistic change only.
+
+Hardware behavior post-change: gameplay path unaffected (Easy/Expert smoke-tested). One observation: framebuffer paint is visibly slower to come up during boot, which is expected — Legato is now in band 2, below USB (3/5), VideoTask + CvMarvinV1 (4), and Timing + FretLink (5), so the early-boot window where USB is enumerating, capture is locking, and the detector is spinning up gives Legato less CPU. Steady-state UI responsiveness is unchanged because higher-priority tasks all spend most time blocked.
+
+**Still pending: enable analytics flags + counter macros.** Once that lands, the 10 s `PERF_REC_TASK_HIGHWATER` cadence (record type already in [perf_log_records.h](../default/src/perf_log/perf_log_records.h)) gives stack high-water + per-task run-time-stats visibility through the perf-log decoder, which is the bigger payoff than the priority work alone — every "is this task starving?" or "did we actually need 1024 stack words?" question becomes data-driven.
 
 ### 2026-05-21 — Perf-log producer-side module landed
 

@@ -27,5 +27,15 @@ data:
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
-  symbols: {}
+  symbols:
+    USB_DRIVER_RTOS_TASK_PRIORITY:
+      attributes:
+        id: USB_DRIVER_RTOS_TASK_PRIORITY
+      children:
+      - children:
+        - attributes:
+            value: '3'
+          type: User
+        type: Values
+      type: Integer
   userData: {}
