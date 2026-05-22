@@ -322,6 +322,9 @@ static void process_frame(const detector_state_t *state)
     }
 
     advance(pressed_mask);
+
+    PerfLog_EmitStamp(PERF_STAGE_TP_TICK, state->frame_epoch,
+                      (uint32_t)s_output_mask);
 }
 
 static void timing_pipeline_task(void *param)

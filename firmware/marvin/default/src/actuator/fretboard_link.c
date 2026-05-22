@@ -73,6 +73,8 @@ static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
             const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
             s_last_write_result = d->result;
             BaseType_t hpw = pdFALSE;
+            PerfLog_EmitStampFromISR(PERF_STAGE_CDC_WRITE_COMPLETE, 0u,
+                                     (uint32_t)d->result, &hpw);
             (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
             portYIELD_FROM_ISR(hpw);
             break;
@@ -178,6 +180,7 @@ static bool send_one_byte(uint8_t mask)
         LOG_WARN("FBL: CDC_Write rejected, r=%d\r\n", (int)r);
         return false;
     }
+    PerfLog_EmitStamp(PERF_STAGE_FBL_SEND, 0u, (uint32_t)tx_byte);
 
     if (xSemaphoreTake(s_write_done, pdMS_TO_TICKS(FBL_WRITE_TIMEOUT_MS)) != pdTRUE)
     {

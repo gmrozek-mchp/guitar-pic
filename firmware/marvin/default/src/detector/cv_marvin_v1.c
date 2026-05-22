@@ -331,7 +331,9 @@ static void cv_marvin_v1_task(void *param)
         if (frame.width == 0u || frame.height == 0u)    { continue; }
         if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
 
+        PerfLog_EmitStamp(PERF_STAGE_CV_START, frame.frame_count, 0u);
         detect_frame(&frame, bus);
+        PerfLog_EmitStamp(PERF_STAGE_CV_END, frame.frame_count, 0u);
         draw_overlay((uint8_t *)frame.buffer, frame.width, frame.height);
 
         // /* ~2 Hz signal dump for threshold tuning. hold/edge values shown

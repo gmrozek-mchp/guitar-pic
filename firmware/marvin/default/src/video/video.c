@@ -184,6 +184,10 @@ static void on_frame_done(uint32_t frame_count,
 {
     (void)ctx;
 
+    BaseType_t higher_priority_task_woken = pdFALSE;
+    PerfLog_EmitStampFromISR(PERF_STAGE_ISC_IRQ, frame_count, 0u,
+                             &higher_priority_task_woken);
+
     s_latest_buffer = buffer_addr;
 
     /* Re-point HEO at the buffer that was just completed so the panel sees
@@ -205,15 +209,18 @@ static void on_frame_done(uint32_t frame_count,
         .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
     };
 
-    BaseType_t higher_priority_task_woken = pdFALSE;
+    uint32_t subscriber_mask = 0u;
     for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
     {
         QueueHandle_t q = s_subscribers[i];
         if (q != NULL)
         {
             (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+            subscriber_mask |= (1u << i);
         }
     }
+    PerfLog_EmitStampFromISR(PERF_STAGE_VIDEO_PUBLISH, frame_count,
+                             subscriber_mask, &higher_priority_task_woken);
     portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
