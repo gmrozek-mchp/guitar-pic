@@ -14,6 +14,12 @@ marvin-perf = "marvin_perf.cli:main"
 dev = [
     "pytest>=8.0",
 ]
+viewer = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "pillow>=10.0",
+    "httpx>=0.27",
+]
 
 [build-system]
 requires = ["hatchling"]

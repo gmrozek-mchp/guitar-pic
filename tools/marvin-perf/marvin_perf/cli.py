@@ -19,6 +19,13 @@ from .analyze import (
     compute_latencies,
     find_session,
 )
+from .capture import (
+    BIN_NAME,
+    CaptureSource,
+    finalize_capture_dir,
+    init_capture_dir,
+    open_capture,
+)
 from .decode import Record, decode_record
 from .framing import FrameStats, iter_frames
 from .records import (
@@ -166,12 +173,40 @@ def _live_loop(records: Iterator[Record], stats: FrameStats) -> int:
     return 0
 
 
+def _resolve_bin_path(path: str) -> Path:
+    """Accept either a capture directory or a bare .bin and return the bin."""
+    p = Path(path)
+    if p.is_dir():
+        bin_path = p / BIN_NAME
+        if not bin_path.exists():
+            raise FileNotFoundError(f"capture directory missing {BIN_NAME}: {p}")
+        return bin_path
+    return p
+
+
 def cmd_record(args: argparse.Namespace) -> int:
-    """Pure pass-through to disk; no decode."""
-    out = Path(args.out)
+    """Pure pass-through to disk; no decode.
+
+    Two modes: `--out FILE.bin` writes a raw legacy file; `--out-dir DIR`
+    writes a capture directory (DIR/perf.bin + manifest.json finalized on
+    close).
+    """
+    if (args.out is None) == (args.out_dir is None):
+        print("record: exactly one of --out or --out-dir is required", file=sys.stderr)
+        return 2
+
+    if args.out_dir is not None:
+        cap_dir = init_capture_dir(args.out_dir, exist_ok=False)
+        bin_path = cap_dir / BIN_NAME
+        label = f"capture {cap_dir.name}/"
+    else:
+        cap_dir = None
+        bin_path = Path(args.out)
+        label = f"recording {bin_path.name}"
+
     bytes_written = 0
     last_status = time.monotonic()
-    with SerialSource(args.port) as ser, out.open("wb") as fh:
+    with SerialSource(args.port) as ser, bin_path.open("wb") as fh:
         try:
             for chunk in ser:
                 fh.write(chunk)
@@ -179,21 +214,29 @@ def cmd_record(args: argparse.Namespace) -> int:
                 bytes_written += len(chunk)
                 now = time.monotonic()
                 if (now - last_status) >= 1.0:
-                    print(
-                        f"recording {out.name}: {bytes_written} B",
-                        file=sys.stderr,
-                        flush=True,
-                    )
+                    print(f"{label}: {bytes_written} B", file=sys.stderr, flush=True)
                     last_status = now
         except KeyboardInterrupt:
             print(f"\nstopped after {bytes_written} B", file=sys.stderr)
+
+    if cap_dir is not None:
+        manifest = finalize_capture_dir(
+            cap_dir,
+            source=CaptureSource(kind="serial", port=args.port),
+        )
+        print(
+            f"finalized {cap_dir}/manifest.json — {manifest.n_records} records, "
+            f"types={manifest.producer_capabilities}",
+            file=sys.stderr,
+        )
     return 0
 
 
 def cmd_decode(args: argparse.Namespace) -> int:
     stats = FrameStats()
     drop_baseline = _DropBaseline()
-    with FileSource(args.path) as src:
+    bin_path = _resolve_bin_path(args.path)
+    with FileSource(bin_path) as src:
         for rec in _decode_stream(src, stats):
             print(_format_record(rec, drop_baseline=drop_baseline))
     print(
@@ -207,7 +250,8 @@ def cmd_decode(args: argparse.Namespace) -> int:
 def cmd_summarize(args: argparse.Namespace) -> int:
     stats = FrameStats()
     records: list[Record] = []
-    with FileSource(args.path) as src:
+    bin_path = _resolve_bin_path(args.path)
+    with FileSource(bin_path) as src:
         records.extend(_decode_stream(src, stats))
 
     session = find_session(records)
@@ -316,20 +360,50 @@ def build_parser() -> argparse.ArgumentParser:
     p_live.add_argument("--also-record", help="Optionally also write raw bytes to FILE")
     p_live.set_defaults(func=cmd_live)
 
-    p_record = sub.add_parser("record", help="Capture raw bytes to a file (no decode).")
+    p_record = sub.add_parser("record", help="Capture raw bytes (no decode).")
     p_record.add_argument("--port", required=True)
-    p_record.add_argument("--out", required=True)
+    p_record.add_argument("--out", help="Write a bare .bin (legacy)")
+    p_record.add_argument("--out-dir", help="Write a capture directory (perf.bin + manifest.json)")
     p_record.set_defaults(func=cmd_record)
 
-    p_decode = sub.add_parser("decode", help="Pretty-print every record in a captured file.")
+    p_decode = sub.add_parser(
+        "decode", help="Pretty-print every record in a capture (.bin or directory)."
+    )
     p_decode.add_argument("path")
     p_decode.set_defaults(func=cmd_decode)
 
-    p_summary = sub.add_parser("summarize", help="Run analysis pass over a captured file.")
+    p_summary = sub.add_parser(
+        "summarize", help="Run analysis pass over a capture (.bin or directory)."
+    )
     p_summary.add_argument("path")
     p_summary.set_defaults(func=cmd_summarize)
 
+    p_serve = sub.add_parser(
+        "serve", help="Run the visual review server (requires viewer dep group)."
+    )
+    p_serve.add_argument("--host", default="127.0.0.1")
+    p_serve.add_argument("--port", type=int, default=8765)
+    p_serve.add_argument(
+        "--capture",
+        help="Optional capture path (directory or .bin) to pre-load on startup.",
+    )
+    p_serve.set_defaults(func=cmd_serve)
+
     return p
+
+
+def cmd_serve(args: argparse.Namespace) -> int:
+    try:
+        from .web.server import run as run_server
+    except ImportError as e:
+        print(
+            "marvin-perf serve requires the 'viewer' dep group.\n"
+            "  uv sync --group viewer\n"
+            f"  (import error: {e})",
+            file=sys.stderr,
+        )
+        return 2
+    return run_server(host=args.host, port=args.port, capture=args.capture)
 
 
 def main(argv: list[str] | None = None) -> int:
