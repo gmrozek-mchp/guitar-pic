@@ -11,6 +11,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/diag/diag.c"
 )
 
 target_compile_definitions(marvin_default_default_XC32_compile PRIVATE

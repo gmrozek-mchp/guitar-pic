@@ -417,9 +417,10 @@ void vConfigureTickInterrupt(void);
 void vClear_Tick_Interrupt(void);
 #define configCLEAR_TICK_INTERRUPT vClear_Tick_Interrupt
 
-extern uint32_t SYS_TIME_CounterGet(void);
+extern uint64_t SYS_TIME_Counter64Get(void);
+#define configRUN_TIME_COUNTER_TYPE             uint64_t
 #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
-#define portGET_RUN_TIME_COUNTER_VALUE()        SYS_TIME_CounterGet()
+#define portGET_RUN_TIME_COUNTER_VALUE()        SYS_TIME_Counter64Get()
 
 /* MISRAC 2012 deviation block end */
 #endif /* FREERTOS_CONFIG_H */
