@@ -137,6 +137,22 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-22 — marvin-perf web viewer: live-mode frontend (Phase 2 of 3)
+
+Frontend half of "browser is the iteration surface." Single-page app gains a Mode toggle (Offline/Live), port `<select>`, Start/Stop buttons, mask display, and an 8-checkbox types panel with ALL/MIN presets. Records stream over the WS into a sliding-window buffer (last 30 s, hard-capped at 10 k). STRIP records render client-side from the `bgr_b64` payload — no server PNG round-trip. The existing offline path is unchanged: every offline route + UI element still works as before; the mode toggle is the boundary.
+
+**State machine.** Added `state.fsm = "live"` and `state.mode = "live" | "offline"`. Live disables transport (prev/next/play-pause/speed) — playhead is always "now". Crossing the mode boundary calls `resetCaptureState()` to clear the previous mode's records, panels, and Plotly charts so leftover state can't bleed across.
+
+**Sliding window.** Each WS record append calls `pruneLiveBuffer()` which drops anything older than the newest record's `ts_counter` minus `LIVE_BUFFER_SECONDS * timer_freq_hz`, then enforces `LIVE_MAX_RECORDS`. `state.ts0` re-pins to the oldest survivor so timeline x-axis stays sensible as the window slides. Plotly redraw is debounced 250 ms; the playhead text + strip canvas update inline so per-frame visuals stay smooth.
+
+**Mask checkboxes.** SESSION is pinned-on (firmware always emits it; checkbox disabled). Any change debounces 200 ms then `POST /api/live/set-mask` with the integer mask; server reply updates the displayed `0x…` value. ALL / MIN preset buttons map to `0xFFFFFFFF` and `(SESSION|DROP)` respectively. The very first start fires an immediate set-mask so server and UI start synchronized.
+
+**Strip render.** `paintBgrIntoCanvas(canvas, b64, w, h)` decodes base64 → BGR-byte string → `ImageData` (RGBA via per-pixel byte swap) → `putImageData`. First STRIP record of a new kind triggers `indexByKind() + renderStripSlots()` so the canvas exists before paint; subsequent strips paint directly. Offline strip path still uses the PNG endpoint — `updateStripsAtPlayhead` prefers `rec.bgr_b64` when present, falls through to PNG otherwise.
+
+**WS lifecycle.** Open on Live-Start (after `/api/live/start` returns OK), close on Live-Stop. Auto-reconnect on unexpected close: 1 s × attempt-count, capped at 5 s. Server's `session_replay` on reconnect re-binds `timer_freq_hz`. Close code 4409 ("already in use") surfaces as a banner without retry. On page reload mid-session, `probeLiveSession()` sees the active session via `/api/live/status` and re-attaches the WS — no manual restart.
+
+**Out of scope this commit:** recording start/stop UI + backend (Phase 3), debounced timeline patching via `Plotly.extendTraces` (current full-replot is fine at the 250 ms cadence), and a "drops since session" live counter.
+
 ### 2026-05-22 — marvin-perf web viewer: live-mode backend (Phase 1 of 3)
 
 Backend half of "make the browser the iteration surface." Single-tenant live session: one serial reader thread, one open `SerialSource`, one WebSocket peer at a time (a second WS gets close code 4409 with reason `"live already in use"`). REST for control (`/api/live/{start,stop,set-mask,status}`, `/api/serial/ports`), WS for the data stream (`/api/live/ws`); browser sends nothing over WS. No frontend changes yet — frontend live mode + record-types panel is Phase 2; recording start/stop is Phase 3.

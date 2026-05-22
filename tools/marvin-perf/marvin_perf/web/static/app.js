@@ -27,6 +27,33 @@ const STAGE_COLORS = {
 };
 const STAGE_FALLBACK = "#8a93a0";
 
+// ── Record types (mirrors records.RecordType for the mask checkboxes) ──────
+
+const RECORD_TYPES = [
+  { name: "SESSION",        typeName: "Session",       bit: 1, alwaysOn: true,  defaultOn: true  },
+  { name: "STAMP",          typeName: "Stamp",         bit: 2, alwaysOn: false, defaultOn: true  },
+  { name: "DETECTOR",       typeName: "Detector",      bit: 3, alwaysOn: false, defaultOn: true  },
+  { name: "TIMING",         typeName: "Timing",        bit: 4, alwaysOn: false, defaultOn: true  },
+  // STRIP carries ~10 KB/frame at 60 Hz × 2 kinds — opt-in to avoid
+  // saturating the WS+JSON pipe before the user has asked for pixels.
+  { name: "STRIP",          typeName: "Strip",         bit: 5, alwaysOn: false, defaultOn: false },
+  { name: "DROP",           typeName: "Drop",          bit: 6, alwaysOn: false, defaultOn: true  },
+  { name: "TASK_HIGHWATER", typeName: "TaskHighwater", bit: 7, alwaysOn: false, defaultOn: true  },
+  { name: "TASK_RUNTIME",   typeName: "TaskRuntime",   bit: 8, alwaysOn: false, defaultOn: true  },
+];
+const TYPE_NAME_TO_BIT = Object.fromEntries(RECORD_TYPES.map((t) => [t.typeName, t.bit]));
+const MASK_ALL = 0xFFFFFFFF >>> 0;
+// SESSION + DROP — minimum useful mask; mirrors records.TYPE_MASK_MIN.
+const MASK_MIN = ((1 << 1) | (1 << 6)) >>> 0;
+
+// Sliding-window bounds for live mode. The 30-s window plus a 10-k absolute
+// cap keeps Plotly redraws bounded — at 60 Hz × ~8 stamp stages we see ~14 k
+// timeline points per 30 s, so the cap kicks in only on extreme bursts.
+const LIVE_BUFFER_SECONDS = 30;
+const LIVE_MAX_RECORDS = 10_000;
+const LIVE_REDRAW_DEBOUNCE_MS = 250;
+const MASK_DEBOUNCE_MS = 200;
+
 // ── App state ───────────────────────────────────────────────────────────────
 
 const state = {
@@ -40,10 +67,20 @@ const state = {
   timerFreqHz: 0,
   playheadTs: 0,          // ts_counter (raw ticks)
   ts0: 0,                 // ts_counter of first record (origin for ms display)
-  fsm: "idle",            // idle | loaded | playing | paused
+  fsm: "idle",            // idle | loaded | playing | paused | live
   speed: 1.0,
   rafHandle: null,
   rafLastWall: 0,
+
+  mode: "offline",        // offline | live
+  // Live-mode bookkeeping.
+  ws: null,
+  liveStopRequested: false,
+  reconnectAttempts: 0,
+  lastSession: null,
+  pendingRedrawHandle: null,
+  pendingMaskHandle: null,
+  liveMask: MASK_ALL,
 };
 
 // ── DOM helpers ─────────────────────────────────────────────────────────────
@@ -434,6 +471,11 @@ function updateStripsAtPlayhead() {
     const id = cfg ? cfg.id : `kind-${kind}`;
     const canvas = document.getElementById(`strip-canvas-${id}`);
     if (!canvas) continue;
+    if (rec.bgr_b64) {
+      paintBgrIntoCanvas(canvas, rec.bgr_b64, rec.w, rec.h);
+      continue;
+    }
+    if (!state.captureId) continue;
     const img = new Image();
     img.onload = () => {
       if (canvas.width !== img.width || canvas.height !== img.height) {
@@ -448,6 +490,27 @@ function updateStripsAtPlayhead() {
     const enc = encodeURIComponent(state.captureId);
     img.src = `/api/capture/${enc}/strip/${rec.frame_epoch}/${cfg ? cfg.id : kind}.png`;
   }
+}
+
+function paintBgrIntoCanvas(canvas, b64, w, h) {
+  if (canvas.width !== w || canvas.height !== h) {
+    canvas.width = w; canvas.height = h;
+    canvas.style.width = `${w * STRIP_PANE_ZOOM}px`;
+    canvas.style.height = `${h * STRIP_PANE_ZOOM}px`;
+  }
+  const bin = atob(b64);
+  const ctx = canvas.getContext("2d");
+  const img = ctx.createImageData(w, h);
+  const data = img.data;
+  // BGR (3 B/pixel) → RGBA (4 B/pixel).
+  for (let i = 0, j = 0; i < bin.length; i += 3, j += 4) {
+    data[j]     = bin.charCodeAt(i + 2);
+    data[j + 1] = bin.charCodeAt(i + 1);
+    data[j + 2] = bin.charCodeAt(i);
+    data[j + 3] = 255;
+  }
+  ctx.imageSmoothingEnabled = false;
+  ctx.putImageData(img, 0, 0);
 }
 
 // ── Timeline ────────────────────────────────────────────────────────────────
@@ -506,16 +569,22 @@ function renderTimeline() {
     shapes: [playheadShape()],
   };
 
-  Plotly.newPlot("timeline-chart", traces, layout, {
-    displayModeBar: false, responsive: true,
-  });
+  // `react` reuses the existing plot's DOM scaffolding, which is dramatically
+  // cheaper than `newPlot`'s tear-down-and-rebuild — important for the live
+  // mode's 1 Hz redraw with 10k+ points.
+  const node = document.getElementById("timeline-chart");
+  const isInitialized = node && node.data && node.layout;
+  const fn = isInitialized ? Plotly.react : Plotly.newPlot;
+  fn(node, traces, layout, { displayModeBar: false, responsive: true });
 
-  $("#timeline-chart").on("plotly_click", (ev) => {
-    if (!ev.points || !ev.points.length) return;
-    const ms = ev.points[0].x;
-    const ticks = state.ts0 + (ms / 1000.0) * state.timerFreqHz;
-    seekTo(ticks);
-  });
+  if (!isInitialized) {
+    node.on("plotly_click", (ev) => {
+      if (!ev.points || !ev.points.length) return;
+      const ms = ev.points[0].x;
+      const ticks = state.ts0 + (ms / 1000.0) * state.timerFreqHz;
+      seekTo(ticks);
+    });
+  }
 }
 
 function playheadShape() {
@@ -625,9 +694,390 @@ function changeSpeed(delta) {
   state.speed = choices[idx];
 }
 
+// ── Mode toggle ─────────────────────────────────────────────────────────────
+
+function setMode(mode) {
+  if (state.mode === mode) return;
+  state.mode = mode;
+  $("#mode-offline").classList.toggle("active", mode === "offline");
+  $("#mode-live").classList.toggle("active", mode === "live");
+  $("#offline-controls").classList.toggle("hidden", mode !== "offline");
+  $("#live-controls").classList.toggle("hidden", mode !== "live");
+  $("#types-panel").classList.toggle("hidden", mode !== "live");
+  $("#badge-live").classList.toggle("hidden", mode !== "live");
+  setLiveTransportEnabled(mode !== "live");
+
+  // Reset capture-state when crossing the mode boundary so leftover offline
+  // records don't bleed into a live session and vice versa.
+  resetCaptureState();
+  if (mode === "live") {
+    buildTypesPanel();
+    refreshSerialPorts();
+    setBanner("Pick a port and click Start to stream from the device.");
+  } else {
+    closeWS({ userInitiated: true });
+    setBanner("");
+  }
+}
+
+function setLiveTransportEnabled(enabled) {
+  for (const id of ["#step-prev", "#play-pause", "#step-next", "#speed"]) {
+    const el = $(id);
+    if (el) el.disabled = !enabled;
+  }
+}
+
+function resetCaptureState() {
+  pause();
+  state.captureId = null;
+  state.manifest = null;
+  state.summary = null;
+  state.health = null;
+  state.rtos = null;
+  state.records = [];
+  state.byKind = {};
+  state.timerFreqHz = 0;
+  state.ts0 = 0;
+  state.playheadTs = 0;
+  state.fsm = "idle";
+  state.lastSession = null;
+  // Clear panels so the previous mode's contents don't linger.
+  fillMeta($("#event-meta"), []);
+  fillMeta($("#session-meta"), []);
+  fillMeta($("#drops-meta"), []);
+  $("#warnings-list").innerHTML = "";
+  $("#warnings-list").classList.add("empty");
+  $("#strip-slots").innerHTML = "";
+  $("#strip-hint").classList.remove("hidden");
+  $("#strip-hint").textContent = "(no records yet)";
+  Plotly.purge("timeline-chart");
+  Plotly.purge("rtos-hwm-chart");
+  setBadge("badge-link", null, "link ●");
+  setBadge("badge-rtos", null, "rtos ●");
+  $("#ph-epoch").textContent = "—";
+  $("#ph-ts").textContent = "—";
+}
+
+// ── Live: serial ports ──────────────────────────────────────────────────────
+
+async function refreshSerialPorts() {
+  try {
+    const ports = await api("/api/serial/ports");
+    const sel = $("#live-port");
+    const prev = sel.value;
+    sel.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = ""; placeholder.textContent = "(select port)";
+    sel.appendChild(placeholder);
+    for (const p of ports) {
+      const opt = document.createElement("option");
+      opt.value = p.device;
+      opt.textContent = p.description ? `${p.device} — ${p.description}` : p.device;
+      sel.appendChild(opt);
+    }
+    if (prev && ports.find((p) => p.device === prev)) sel.value = prev;
+  } catch (e) {
+    setBanner(`Could not list serial ports: ${e.message}`, "error");
+  }
+}
+
+// ── Live: start / stop / WS ─────────────────────────────────────────────────
+
+async function liveStart() {
+  const port = $("#live-port").value;
+  if (!port) { setBanner("Pick a serial port first.", "error"); return; }
+  resetCaptureState();
+  state.fsm = "live";
+  state.liveStopRequested = false;
+  state.reconnectAttempts = 0;
+  setBanner("Starting…");
+  try {
+    await api("/api/live/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ port }),
+    });
+  } catch (e) {
+    setBanner(e.message, "error");
+    state.fsm = "idle";
+    return;
+  }
+  $("#live-start").disabled = true;
+  $("#live-stop").disabled = false;
+  $("#live-port").disabled = true;
+  setBadge("badge-live", "yellow", "live …");
+  // Push the initial mask before WS attach so the server's `hello` reflects
+  // what the user actually wants (otherwise hello reports 0xffffffff and
+  // clobbers the user's STRIP-off default).
+  await applyMaskFromCheckboxes({ immediate: true });
+  openWS();
+}
+
+async function liveStop() {
+  state.liveStopRequested = true;
+  closeWS({ userInitiated: true });
+  try {
+    await api("/api/live/stop", { method: "POST" });
+  } catch (e) {
+    setBanner(e.message, "error");
+  }
+  $("#live-start").disabled = false;
+  $("#live-stop").disabled = true;
+  $("#live-port").disabled = false;
+  setBadge("badge-live", null, "live ●");
+  state.fsm = "idle";
+}
+
+function openWS() {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${proto}//${location.host}/api/live/ws`);
+  state.ws = ws;
+  ws.addEventListener("open", () => {
+    state.reconnectAttempts = 0;
+    setBadge("badge-live", "green", "live ●");
+    setBanner("");
+  });
+  ws.addEventListener("message", (ev) => {
+    let msg;
+    try { msg = JSON.parse(ev.data); } catch { return; }
+    handleWSMessage(msg);
+  });
+  ws.addEventListener("close", (ev) => {
+    state.ws = null;
+    if (state.liveStopRequested) {
+      setBadge("badge-live", null, "live ●");
+      return;
+    }
+    setBadge("badge-live", "yellow", `live ✗ ${ev.code}`);
+    if (ev.code === 4409) {
+      setBanner("Another client is using the live session.", "error");
+      return;
+    }
+    scheduleReconnect();
+  });
+  ws.addEventListener("error", () => {
+    // 'close' will follow; reconnect handled there.
+  });
+}
+
+function closeWS({ userInitiated }) {
+  if (!state.ws) return;
+  if (userInitiated) state.liveStopRequested = true;
+  try { state.ws.close(); } catch {}
+  state.ws = null;
+}
+
+function scheduleReconnect() {
+  if (state.mode !== "live" || state.liveStopRequested) return;
+  state.reconnectAttempts += 1;
+  const delay = Math.min(5000, 1000 * state.reconnectAttempts);
+  setBanner(`WS dropped — reconnecting in ${(delay / 1000).toFixed(1)}s…`);
+  setTimeout(() => {
+    if (state.mode === "live" && !state.liveStopRequested && !state.ws) openWS();
+  }, delay);
+}
+
+function handleWSMessage(msg) {
+  switch (msg.type) {
+    case "hello":
+      state.liveMask = parseInt(msg.session.mask, 16) >>> 0;
+      $("#live-mask").textContent = `0x${state.liveMask.toString(16).padStart(8, "0")}`;
+      applyMaskToCheckboxes(state.liveMask);
+      break;
+    case "session_replay":
+    case "record":
+      appendLiveRecord(msg.rec);
+      break;
+    case "mask":
+      state.liveMask = parseInt(msg.value, 16) >>> 0;
+      $("#live-mask").textContent = `0x${state.liveMask.toString(16).padStart(8, "0")}`;
+      if (msg.source === "server") applyMaskToCheckboxes(state.liveMask);
+      break;
+    case "framing_stats":
+      // (Phase-2: stash on state if we want to render a counter; for now,
+      // the per-record append already keeps badges fresh enough.)
+      break;
+    case "error":
+      setBanner(`device error: ${msg.code}: ${msg.msg}`, "error");
+      break;
+  }
+}
+
+// ── Live: record append + sliding window ────────────────────────────────────
+
+function appendLiveRecord(rec) {
+  // Client-side mask filter. The device-side mask change has serial RTT
+  // latency plus already-buffered frames in flight, so for ~hundreds of ms
+  // after the user unticks a box, records of that type still arrive over
+  // the WS. Drop them here so the UI reacts immediately. Session is always
+  // accepted so timer_freq_hz / replay still binds on reconnect.
+  if (rec.type !== "Session") {
+    const bit = TYPE_NAME_TO_BIT[rec.type];
+    if (bit !== undefined && (state.liveMask & (1 << bit)) === 0) return;
+  }
+  if (!state.records.length) {
+    state.ts0 = rec.ts_counter;
+  }
+  if (rec.type === "Session") {
+    state.timerFreqHz = rec.timer_freq_hz || state.timerFreqHz;
+    state.lastSession = rec;
+    renderLiveSessionMeta(rec);
+  }
+  state.records.push(rec);
+  pruneLiveBuffer();
+  state.playheadTs = rec.ts_counter;
+
+  // Strip records: ensure a slot exists, then paint immediately.
+  if (rec.type === "Strip" && rec.bgr_b64) {
+    if (!(rec.kind in state.byKind) || state.byKind[rec.kind].length === 0) {
+      // First strip of this kind in the buffer — re-index + re-render slots.
+      indexByKind();
+      renderStripSlots();
+    } else {
+      (state.byKind[rec.kind] ||= []).push(rec);
+    }
+    const cfg = STRIP_KIND_REGISTRY[rec.kind];
+    const id = cfg ? cfg.id : `kind-${rec.kind}`;
+    const canvas = document.getElementById(`strip-canvas-${id}`);
+    if (canvas) paintBgrIntoCanvas(canvas, rec.bgr_b64, rec.w, rec.h);
+  } else if (typeof rec.kind === "number") {
+    (state.byKind[rec.kind] ||= []).push(rec);
+  }
+
+  $("#ph-epoch").textContent = rec.frame_epoch;
+  $("#ph-ts").textContent = state.timerFreqHz ? fmtMs(rec.ts_counter) : `${rec.ts_counter} t`;
+  scheduleLiveRedraw();
+}
+
+function pruneLiveBuffer() {
+  // Drop records older than LIVE_BUFFER_SECONDS; cap absolute count.
+  if (state.timerFreqHz > 0 && state.records.length > 1) {
+    const cutoffTicks = state.records[state.records.length - 1].ts_counter
+                      - LIVE_BUFFER_SECONDS * state.timerFreqHz;
+    let drop = 0;
+    while (drop < state.records.length
+           && state.records[drop].ts_counter < cutoffTicks) {
+      drop += 1;
+    }
+    if (drop > 0) state.records.splice(0, drop);
+  }
+  if (state.records.length > LIVE_MAX_RECORDS) {
+    state.records.splice(0, state.records.length - LIVE_MAX_RECORDS);
+  }
+  if (state.records.length) {
+    state.ts0 = state.records[0].ts_counter;
+  }
+}
+
+function scheduleLiveRedraw() {
+  if (state.pendingRedrawHandle != null) return;
+  // Throttle harder when the buffer is large — a 50 k-record Plotly redraw
+  // on every tick is what makes the UI jumpy.
+  const debounceMs = state.records.length > 5000
+    ? LIVE_REDRAW_DEBOUNCE_MS * 4
+    : LIVE_REDRAW_DEBOUNCE_MS;
+  state.pendingRedrawHandle = setTimeout(() => {
+    state.pendingRedrawHandle = null;
+    indexByKind();
+    renderTimeline();
+    updatePlayheadInspector();
+  }, debounceMs);
+}
+
+function renderLiveSessionMeta(rec) {
+  fillMeta($("#session-meta"), [
+    ["schema", rec.schema_version ?? "—"],
+    ["timer_hz", rec.timer_freq_hz ?? "—"],
+    ["fw_git", rec.fw_git_short ?? "—"],
+    ["mode", "live"],
+  ]);
+}
+
+// ── Live: types panel + mask ────────────────────────────────────────────────
+
+function buildTypesPanel() {
+  const wrap = $("#types-checkboxes");
+  wrap.innerHTML = "";
+  for (const t of RECORD_TYPES) {
+    const lbl = document.createElement("label");
+    lbl.className = "type-cb";
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.dataset.bit = String(t.bit);
+    cb.checked = t.defaultOn;
+    if (t.alwaysOn) cb.disabled = true;
+    cb.addEventListener("change", () => applyMaskFromCheckboxes());
+    const span = document.createElement("span");
+    span.textContent = t.name;
+    lbl.appendChild(cb);
+    lbl.appendChild(span);
+    wrap.appendChild(lbl);
+  }
+}
+
+function applyMaskToCheckboxes(mask) {
+  $$("#types-checkboxes input").forEach((cb) => {
+    const bit = Number(cb.dataset.bit);
+    cb.checked = (mask & (1 << bit)) !== 0;
+  });
+}
+
+function applyMaskFromCheckboxes({ immediate } = {}) {
+  if (state.pendingMaskHandle != null) {
+    clearTimeout(state.pendingMaskHandle);
+    state.pendingMaskHandle = null;
+  }
+  let mask = 0;
+  $$("#types-checkboxes input").forEach((cb) => {
+    const bit = Number(cb.dataset.bit);
+    if (cb.checked) mask |= (1 << bit);
+  });
+  mask = mask >>> 0;
+  // Apply locally up front so appendLiveRecord drops disabled types as soon
+  // as the click registers, without waiting for the device-side ack.
+  state.liveMask = mask;
+  $("#live-mask").textContent = `0x${mask.toString(16).padStart(8, "0")}`;
+  state.records = [];
+  state.byKind = {};
+  if (state.pendingRedrawHandle != null) {
+    clearTimeout(state.pendingRedrawHandle);
+    state.pendingRedrawHandle = null;
+  }
+  Plotly.purge("timeline-chart");
+  $("#strip-slots").innerHTML = "";
+
+  const fire = async () => {
+    state.pendingMaskHandle = null;
+    try {
+      await api("/api/live/set-mask", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mask }),
+      });
+    } catch (e) {
+      setBanner(`set-mask failed: ${e.message}`, "error");
+    }
+  };
+  if (immediate) return fire();
+  state.pendingMaskHandle = setTimeout(fire, MASK_DEBOUNCE_MS);
+  return Promise.resolve();
+}
+
+function applyMaskPreset(mask) {
+  $$("#types-checkboxes input").forEach((cb) => {
+    if (cb.disabled) return;
+    const bit = Number(cb.dataset.bit);
+    cb.checked = (mask & (1 << bit)) !== 0;
+  });
+  applyMaskFromCheckboxes({ immediate: true });
+}
+
 // ── Wire-up ─────────────────────────────────────────────────────────────────
 
 function setupControls() {
+  $("#mode-offline").addEventListener("click", () => setMode("offline"));
+  $("#mode-live").addEventListener("click", () => setMode("live"));
+
   $("#open-btn").addEventListener("click", async () => {
     const path = $("#capture-path").value.trim();
     if (!path) return;
@@ -637,6 +1087,13 @@ function setupControls() {
   $("#capture-path").addEventListener("keydown", (e) => {
     if (e.key === "Enter") $("#open-btn").click();
   });
+
+  $("#live-port-refresh").addEventListener("click", refreshSerialPorts);
+  $("#live-start").addEventListener("click", liveStart);
+  $("#live-stop").addEventListener("click", liveStop);
+  $("#types-all").addEventListener("click", () => applyMaskPreset(MASK_ALL));
+  $("#types-min").addEventListener("click", () => applyMaskPreset(MASK_MIN));
+
   $("#play-pause").addEventListener("click", togglePlay);
   $("#step-prev").addEventListener("click", () => stepEvent(-1));
   $("#step-next").addEventListener("click", () => stepEvent(1));
@@ -647,6 +1104,7 @@ function setupControls() {
   document.addEventListener("keydown", (e) => {
     const tag = (e.target && e.target.tagName) || "";
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (state.mode === "live") return;  // transport is offline-only
     switch (e.key) {
       case " ":          e.preventDefault(); togglePlay(); break;
       case "ArrowLeft":   e.shiftKey ? stepEpoch(-1) : stepEvent(-1); break;
@@ -669,8 +1127,31 @@ async function probePreloaded() {
   }
 }
 
+async function probeLiveSession() {
+  // If the server already has an active live session (e.g. page reload
+  // during streaming), switch to live mode and re-attach the WS.
+  try {
+    const s = await api("/api/live/status");
+    if (s.active) {
+      setMode("live");
+      $("#live-port").value = s.port || "";
+      $("#live-port").disabled = true;
+      $("#live-start").disabled = true;
+      $("#live-stop").disabled = false;
+      state.fsm = "live";
+      state.liveMask = parseInt(s.mask, 16) >>> 0;
+      $("#live-mask").textContent = s.mask;
+      applyMaskToCheckboxes(state.liveMask);
+      openWS();
+    }
+  } catch {
+    // Pre-Phase-2 backend or transient — fall through.
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   setupTabs();
   setupControls();
   await probePreloaded();
+  await probeLiveSession();
 });

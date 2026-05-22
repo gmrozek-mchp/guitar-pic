@@ -9,9 +9,20 @@
 <body>
 
 <header class="toolbar">
-  <div class="tb-group">
+  <div class="tb-group mode-toggle">
+    <button id="mode-offline" class="mode-btn active" data-mode="offline">Offline</button>
+    <button id="mode-live"    class="mode-btn"        data-mode="live">Live</button>
+  </div>
+  <div class="tb-group" id="offline-controls">
     <input id="capture-path" type="text" placeholder="capture path or .bin" spellcheck="false">
     <button id="open-btn">Open</button>
+  </div>
+  <div class="tb-group hidden" id="live-controls">
+    <select id="live-port"><option value="">(select port)</option></select>
+    <button id="live-port-refresh" title="Rescan ports">⟳</button>
+    <button id="live-start">Start</button>
+    <button id="live-stop" disabled>Stop</button>
+    <span class="kv"><span class="k">mask</span> <span id="live-mask" class="v">—</span></span>
   </div>
   <div class="tb-group transport">
     <button id="step-prev" title="Prev event (←)">⏮</button>
@@ -35,8 +46,15 @@
   <div class="tb-group badges">
     <span id="badge-link" class="badge" title="Link health">link ●</span>
     <span id="badge-rtos" class="badge" title="RTOS health">rtos ●</span>
+    <span id="badge-live" class="badge hidden" title="Live session">live ●</span>
   </div>
   <div id="banner" class="banner hidden"></div>
+  <div class="tb-group types-panel hidden" id="types-panel">
+    <span class="types-label">types</span>
+    <span id="types-checkboxes"><!-- checkboxes injected --></span>
+    <button id="types-all"  class="types-preset">ALL</button>
+    <button id="types-min"  class="types-preset">MIN</button>
+  </div>
 </header>
 
 <main class="layout">

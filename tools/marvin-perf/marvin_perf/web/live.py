@@ -30,7 +30,11 @@ from ..records import (
 from ..transport import SerialSource
 
 
-_QUEUE_MAX = 10_000
+# Bounded so a slow WS write can't stack up minutes of stale records: the
+# user wants "fresh" data when they toggle a mask, not the queue's history.
+# At 60 Hz the queue holds ~8 s of all-types backlog before drop-oldest kicks
+# in; for STRIP-heavy streams it's much less, which is the desired shape.
+_QUEUE_MAX = 512
 
 
 @dataclass
@@ -117,6 +121,9 @@ class _LiveSession:
                 raise RuntimeError("live session not active")
             self._state.mask = m
         ser.send_command(frame_encode(encode_set_mask_payload(m)))
+        # Drain the WS queue so the browser sees fresh records under the new
+        # mask immediately, rather than draining 5–10 s of stale backlog.
+        self._drain_queue()
         self._post("mask", {"value": f"0x{m:08x}", "source": "client"})
         return m
 
@@ -239,13 +246,40 @@ class _LiveSession:
             pass
 
     def _queue_put_nowait(self, msg_type: str, payload: dict[str, Any]) -> None:
-        # Runs on the asyncio loop thread.
+        # Runs on the asyncio loop thread (single producer/consumer here).
+        # On overflow, drop the oldest item so the WS receiver always sees
+        # the freshest data — useful when STRIP records swamp the link.
         if self._queue is None:
             return
         try:
             self._queue.put_nowait((msg_type, payload))
         except asyncio.QueueFull:
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
+            try:
+                self._queue.put_nowait((msg_type, payload))
+            except asyncio.QueueFull:
+                pass
+
+    def _drain_queue(self) -> None:
+        loop = self._loop
+        if loop is None:
+            return
+        try:
+            loop.call_soon_threadsafe(self._queue_drain)
+        except RuntimeError:
             pass
+
+    def _queue_drain(self) -> None:
+        if self._queue is None:
+            return
+        while True:
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                return
 
 
 SESSION = _LiveSession()
