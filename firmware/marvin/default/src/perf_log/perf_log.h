@@ -42,6 +42,14 @@ void PerfLog_EmitPatch(uint32_t frame_epoch,
                        uint16_t frame_w, uint16_t frame_h,
                        const perf_patch_fret_t fret[FRET_COUNT]);
 
+void PerfLog_EmitTaskHighwater(perf_task_id_t id, uint32_t words);
+
+/* Each marvin task module hands its TaskHandle_t to perf_log after
+ * xTaskCreateStatic. The 1 Hz drain task samples uxTaskGetStackHighWaterMark
+ * for every registered handle and emits a PERF_REC_TASK_HIGHWATER record.
+ * Unregistered slots are skipped. */
+void PerfLog_RegisterTaskForHighwater(perf_task_id_t id, TaskHandle_t handle);
+
 /* ─── ISR-context emit ───────────────────────────────────────────────────── */
 
 void PerfLog_EmitStampFromISR(perf_stage_t stage,

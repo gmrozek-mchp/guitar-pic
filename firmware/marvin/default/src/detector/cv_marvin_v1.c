@@ -11,6 +11,7 @@
 
 #include "log.h"
 #include "video/video.h"
+#include "perf_log/perf_log.h"
 
 #define CV_TASK_STACK_WORDS    1024u
 #define CV_TASK_PRIORITY       4u
@@ -354,11 +355,12 @@ static void cv_marvin_v1_task(void *param)
 
 void CvMarvinV1_Initialize(void)
 {
-    (void)xTaskCreateStatic(cv_marvin_v1_task,
-                            "CvMarvinV1",
-                            CV_TASK_STACK_WORDS,
-                            NULL,
-                            CV_TASK_PRIORITY,
-                            s_task_stack,
-                            &s_task_tcb);
+    TaskHandle_t h = xTaskCreateStatic(cv_marvin_v1_task,
+                                       "CvMarvinV1",
+                                       CV_TASK_STACK_WORDS,
+                                       NULL,
+                                       CV_TASK_PRIORITY,
+                                       s_task_stack,
+                                       &s_task_tcb);
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_CV_MARVIN_V1, h);
 }

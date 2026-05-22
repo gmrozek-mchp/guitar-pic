@@ -57,6 +57,9 @@ static uint8_t       s_patch_q_storage[PL_PATCH_QUEUE_DEPTH * sizeof(perf_rec_pa
 static StackType_t   s_drain_stack[PL_DRAIN_STACK_WORDS];
 static StaticTask_t  s_drain_tcb;
 
+#define PL_TASK_SLOT_COUNT  6u   /* one per perf_task_id_t */
+static TaskHandle_t  s_task_handles[PL_TASK_SLOT_COUNT];
+
 static volatile uint32_t s_drop_state;
 static volatile uint32_t s_drop_patch;
 static volatile uint32_t s_drop_sink;
@@ -114,6 +117,17 @@ static void emit_drop_record(void)
     PerfLogSinkCdc_WriteFramed(&r, (uint16_t)sizeof(r));
 }
 
+static void sample_and_emit_hwms(void)
+{
+    for (uint8_t i = 0u; i < PL_TASK_SLOT_COUNT; i++)
+    {
+        TaskHandle_t h = s_task_handles[i];
+        if (h == NULL) { continue; }
+        uint32_t words = (uint32_t)uxTaskGetStackHighWaterMark(h);
+        PerfLog_EmitTaskHighwater((perf_task_id_t)i, words);
+    }
+}
+
 static void perf_log_drain_task(void *param)
 {
     (void)param;
@@ -150,6 +164,7 @@ static void perf_log_drain_task(void *param)
         {
             last_drop = xTaskGetTickCount();
             emit_drop_record();
+            sample_and_emit_hwms();
         }
     }
 }
@@ -173,13 +188,20 @@ void PerfLog_Initialize(void)
 
 void PerfLog_Start(void)
 {
-    (void)xTaskCreateStatic(perf_log_drain_task,
-                            "PerfDrain",
-                            PL_DRAIN_STACK_WORDS,
-                            NULL,
-                            PL_DRAIN_PRIORITY,
-                            s_drain_stack,
-                            &s_drain_tcb);
+    TaskHandle_t h = xTaskCreateStatic(perf_log_drain_task,
+                                       "PerfDrain",
+                                       PL_DRAIN_STACK_WORDS,
+                                       NULL,
+                                       PL_DRAIN_PRIORITY,
+                                       s_drain_stack,
+                                       &s_drain_tcb);
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_PERF_DRAIN, h);
+}
+
+void PerfLog_RegisterTaskForHighwater(perf_task_id_t id, TaskHandle_t handle)
+{
+    if ((unsigned)id >= PL_TASK_SLOT_COUNT) { return; }
+    s_task_handles[id] = handle;
 }
 
 bool PerfLog_IsRunning(void)
@@ -258,6 +280,16 @@ void PerfLog_EmitTiming(uint32_t frame_epoch,
     slot.timing.chord_window_fill = chord_window_fill;
     slot.timing.fifo_depth        = fifo_depth;
     slot.timing.strum_dir         = strum_dir;
+    send_state(&slot);
+}
+
+void PerfLog_EmitTaskHighwater(perf_task_id_t id, uint32_t words)
+{
+    perf_rec_state_slot_t slot;
+    memset(&slot, 0, sizeof(slot));
+    hdr_fill(&slot.hwm.hdr, PERF_REC_TASK_HIGHWATER, 0u, 0u);
+    slot.hwm.task_id = (uint8_t)id;
+    slot.hwm.words   = words;
     send_state(&slot);
 }
 

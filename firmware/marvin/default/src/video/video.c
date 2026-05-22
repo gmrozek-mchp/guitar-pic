@@ -11,6 +11,7 @@
 #include "log.h"
 #include "tc358743.h"
 #include "isc_capture.h"
+#include "perf_log/perf_log.h"
 
 #define LCD_PANEL_W  1280u
 #define LCD_PANEL_H  800u
@@ -320,13 +321,14 @@ static StaticTask_t s_task_tcb;
 
 void Video_Initialize(void)
 {
-    (void)xTaskCreateStatic(video_task,
-                            "VideoTask",
-                            VIDEO_TASK_STACK_WORDS,
-                            NULL,
-                            VIDEO_TASK_PRIORITY,
-                            s_task_stack,
-                            &s_task_tcb);
+    TaskHandle_t h = xTaskCreateStatic(video_task,
+                                       "VideoTask",
+                                       VIDEO_TASK_STACK_WORDS,
+                                       NULL,
+                                       VIDEO_TASK_PRIORITY,
+                                       s_task_stack,
+                                       &s_task_tcb);
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_VIDEO, h);
 }
 
 void Video_CaptureEnable(void)  { s_capture_enabled = true;  }

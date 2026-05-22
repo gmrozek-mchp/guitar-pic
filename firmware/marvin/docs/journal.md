@@ -84,7 +84,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **FreeRTOS analytics — kernel flags now on, dump path still TODO.** 2026-05-21: `configGENERATE_RUN_TIME_STATS`, `configUSE_TRACE_FACILITY`, `configUSE_STATS_FORMATTING_FUNCTIONS`, `INCLUDE_uxTaskGetStackHighWaterMark` enabled via MCC; run-time counter wired to `SYS_TIME_CounterGet` in `FreeRTOSConfig.h` (patch #8). Still missing: an on-demand way to surface the data (UART command? UI button? log on idle hook?), and a periodic `PERF_REC_TASK_HIGHWATER` emission on the perf-log channel. Pull `vApplicationStackOverflowHook` into the same scope: MCC's default is a silent spin, so an actual overflow is indistinguishable from any other freeze — patching the hook to emit task name + spin (carefully, since the stack is already corrupt) belongs with the rest of the analytics work. Already bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task.
+- **FreeRTOS analytics — HWM emission landed 2026-05-22; CPU% and overflow hook still TODO.** 2026-05-21: `configGENERATE_RUN_TIME_STATS`, `configUSE_TRACE_FACILITY`, `configUSE_STATS_FORMATTING_FUNCTIONS`, `INCLUDE_uxTaskGetStackHighWaterMark` enabled via MCC; run-time counter wired to `SYS_TIME_CounterGet` in `FreeRTOSConfig.h` (patch #8). 2026-05-22: periodic `PERF_REC_TASK_HIGHWATER` emission wired (drain task samples each registered handle at 1 Hz; viewer renders the trend in the RTOS tab). Still missing: per-task CPU% via `PERF_REC_TASK_RUNTIME` (lands at v2 schema bump alongside STRIP), and `vApplicationStackOverflowHook` — MCC's default is a silent spin, so an actual overflow is indistinguishable from any other freeze. Patching the hook to emit task name + spin (carefully, since the stack is already corrupt) belongs with the rest of the analytics work. The HWM gap already bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task.
 
 - **Legato `LE_MEMORY_MANAGER_SIZE` adequacy.** Legato has its own internal pool (`LE_MALLOC` per touch event in `leInput_InjectTouchDown`). With the manual-control surface adding 8 buttons and frequent press/release events during menu nav, confirm `legato_config.h` `LE_MEMORY_MANAGER_SIZE` has headroom for typical event bursts. Watch for Legato heap-exhaustion symptoms (silent dropped events, widget redraw glitches) once the UI is exercised on hardware.
 
@@ -136,6 +136,25 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-22 — Visual review viewer (Phase 1) + HWM producer wired
+
+Phase 1 of the marvin perf-log visual review tool landed. Plan in `~/.claude/plans/start-planning-on-host-iterative-floyd.md`. Two halves shipped together:
+
+**Host (`tools/marvin-perf/marvin_perf/web/`):**
+- Capture-as-directory container — `manifest.json` + `perf.bin`. `record --out-dir DIR` writes both; legacy `--out FILE.bin` still works. Viewer accepts a directory or a bare `.bin` (synthesizes manifest by scanning the bin once).
+- FastAPI server gated behind a `viewer` dep group (`uv sync --group viewer`). Routes: `/api/capture/open`, `/manifest`, `/summary`, `/records?from=&to=&types=`, `/strip/{epoch}/{kind}.png`, `/health`, `/rtos`, plus `/api/preloaded` so `marvin-perf serve --capture PATH` auto-loads in the browser.
+- Pure-fn layers (`render.py` for BGR888 → PNG via Pillow, `capture.py` for dir round-trip) tested without uvicorn.
+- Vanilla-JS frontend — three-pane layout (strips / inspector / Plotly timeline), playback FSM (`idle | loaded | playing | paused`), `requestAnimationFrame` advancing the playhead in `ts_counter` space, click-to-seek on timeline, kbd shortcuts (space, ←/→, Shift+←/→, [/]). Strip panel is **kind-driven** via a `STRIP_KIND_REGISTRY` so future kinds (score, minimap) are one entry each. RTOS tab renders HWM trend per task.
+- 42 → 60 passing pytests; new: `test_capture.py`, `test_render.py`, `test_api.py`. End-to-end demo with a synthetic 369-record capture verified the `/api/preloaded` auto-load path works.
+- Frontend commit: `b83b938`.
+
+**Firmware (`firmware/marvin/default/src/perf_log/`):**
+- `PerfLog_EmitTaskHighwater(task_id, words)` and `PerfLog_RegisterTaskForHighwater(task_id, handle)` added to `perf_log.h`/`.c`. Drain task at 1 Hz now iterates a `s_task_handles[PL_TASK_SLOT_COUNT]` array, samples `uxTaskGetStackHighWaterMark`, and emits one `PERF_REC_TASK_HIGHWATER` per registered task. Unregistered slots are skipped (so `PERF_TASK_DETECTOR_DRAIN`, whose task was deleted earlier, is silently absent — wire-format slot stays in the enum for stability).
+- Per-task self-registration: each marvin task module captures the `TaskHandle_t` returned by `xTaskCreateStatic` and calls `PerfLog_RegisterTaskForHighwater` immediately after. Wired in [`video.c`](../default/src/video/video.c), [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c), [`timing_pipeline.c`](../default/src/actuator/timing_pipeline.c), [`fretboard_link.c`](../default/src/actuator/fretboard_link.c), and the drain task self-registers as `PERF_TASK_PERF_DRAIN` inside `PerfLog_Start`. Coupling stays minimal — modules call the registrar; `perf_log` doesn't reach into them.
+- Cost: 24 B per record × 5 active tasks × 1 Hz = 120 B/s, dwarfed by the strip budget that lands in Phase 2.
+
+This closes the host side of the carry-forward "FreeRTOS analytics — dump path still TODO" item: HWM is now visible in the viewer's RTOS panel as soon as a capture is opened. Phase 2 (live WS + STRIP + TASK_RUNTIME, schema bump to v2) is the next chunk.
 
 ### 2026-05-22 — Host-side perf-log decoder landed (`tools/marvin-perf/`)
 

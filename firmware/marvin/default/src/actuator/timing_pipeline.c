@@ -11,6 +11,7 @@
 
 #include "log.h"
 #include "detector/detector.h"
+#include "perf_log/perf_log.h"
 
 #define TP_TASK_STACK_WORDS    768u
 #define TP_TASK_PRIORITY       5u
@@ -355,13 +356,14 @@ static void timing_pipeline_task(void *param)
 
 void TimingPipeline_Initialize(void)
 {
-    (void)xTaskCreateStatic(timing_pipeline_task,
-                            "Timing",
-                            TP_TASK_STACK_WORDS,
-                            NULL,
-                            TP_TASK_PRIORITY,
-                            s_task_stack,
-                            &s_task_tcb);
+    TaskHandle_t h = xTaskCreateStatic(timing_pipeline_task,
+                                       "Timing",
+                                       TP_TASK_STACK_WORDS,
+                                       NULL,
+                                       TP_TASK_PRIORITY,
+                                       s_task_stack,
+                                       &s_task_tcb);
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_TIMING, h);
 }
 
 void TimingPipeline_SetEnabled(bool enabled)

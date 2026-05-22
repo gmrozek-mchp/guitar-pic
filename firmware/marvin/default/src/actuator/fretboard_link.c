@@ -14,6 +14,7 @@
 #include "usb/usb_host.h"
 #include "usb/usb_host_cdc.h"
 #include "usb/usb_cdc.h"
+#include "perf_log/perf_log.h"
 
 #define FBL_TASK_STACK_WORDS    768u
 #define FBL_TASK_PRIORITY       5u
@@ -245,13 +246,14 @@ void FretboardLink_Initialize(void)
      * after this init returns. */
     (void)USB_HOST_CDC_AttachEventHandlerSet(cdc_attach_handler, 0u);
 
-    (void)xTaskCreateStatic(fretboard_link_task,
-                            "FretLink",
-                            FBL_TASK_STACK_WORDS,
-                            NULL,
-                            FBL_TASK_PRIORITY,
-                            s_task_stack,
-                            &s_task_tcb);
+    TaskHandle_t h = xTaskCreateStatic(fretboard_link_task,
+                                       "FretLink",
+                                       FBL_TASK_STACK_WORDS,
+                                       NULL,
+                                       FBL_TASK_PRIORITY,
+                                       s_task_stack,
+                                       &s_task_tcb);
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_FRETBOARD_LINK, h);
 }
 
 bool FretboardLink_IsConnected(void)
