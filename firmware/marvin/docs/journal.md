@@ -84,7 +84,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **FreeRTOS analytics not yet enabled.** No runtime stats, task list dumps, or stack high-water-mark queries available. Bring up `vTaskList` / `vTaskGetRunTimeStats` / `uxTaskGetStackHighWaterMark` plumbing (and an on-demand way to dump them — UART command? UI button? log on idle hook?) so we can size stacks empirically, attribute CPU, and catch latency regressions. Already bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task. Pull `vApplicationStackOverflowHook` into the same scope: MCC's default is a silent spin, so an actual overflow is indistinguishable from any other freeze — patching the hook to emit task name + spin (carefully, since the stack is already corrupt) belongs with the rest of the analytics work.
+- **FreeRTOS analytics — kernel flags now on, dump path still TODO.** 2026-05-21: `configGENERATE_RUN_TIME_STATS`, `configUSE_TRACE_FACILITY`, `configUSE_STATS_FORMATTING_FUNCTIONS`, `INCLUDE_uxTaskGetStackHighWaterMark` enabled via MCC; run-time counter wired to `SYS_TIME_CounterGet` in `FreeRTOSConfig.h` (patch #8). Still missing: an on-demand way to surface the data (UART command? UI button? log on idle hook?), and a periodic `PERF_REC_TASK_HIGHWATER` emission on the perf-log channel. Pull `vApplicationStackOverflowHook` into the same scope: MCC's default is a silent spin, so an actual overflow is indistinguishable from any other freeze — patching the hook to emit task name + spin (carefully, since the stack is already corrupt) belongs with the rest of the analytics work. Already bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task.
 
 - **Legato `LE_MEMORY_MANAGER_SIZE` adequacy.** Legato has its own internal pool (`LE_MALLOC` per touch event in `leInput_InjectTouchDown`). With the manual-control surface adding 8 buttons and frequent press/release events during menu nav, confirm `legato_config.h` `LE_MEMORY_MANAGER_SIZE` has headroom for typical event bursts. Watch for Legato heap-exhaustion symptoms (silent dropped events, widget redraw glitches) once the UI is exercised on hardware.
 
@@ -108,11 +108,19 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
   7. **`usb_host_cdc.c` — accept `bInterfaceProtocol == 0` in CDC ACM Communications-interface match.** Two checks (single-interface path ~line 677, IAD path ~line 798) currently require `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG-style USB-to-UART bridges (the on-board PIC/AVR debugger CDC, common across Microchip dev boards — including the fretboard board this project uses) declare the comm interface with `bInterfaceProtocol = USB_CDC_PROTOCOL_NO_CLASS_SPECIFIC` (`0x00`). Without this patch the host CDC driver accepts the IAD via the TPL match (TPL ignores subclass/protocol) but rejects the comm interface inside `F_USB_HOST_CDC_InterfaceAssign`, the interrupt pipe never opens, the CDC instance flips to `STATE_ERROR`, and the app-level attach handler never fires. Patch: extend each check to `(... == AT_V250 || ... == NO_CLASS_SPECIFIC)`. Two one-line OR additions. Re-apply after every USB-host MCC regen.
 
+  8. **`FreeRTOSConfig.h` — `portCONFIGURE_TIMER_FOR_RUN_TIME_STATS` / `portGET_RUN_TIME_COUNTER_VALUE` macros.** With `configGENERATE_RUN_TIME_STATS = 1` (set via `FREERTOS_GENERATE_RUN_TIME_STATS` MCC symbol), FreeRTOS expects the application to provide a free-running counter. MCC's FreeRTOS Harmony component does not expose a knob for an app-specific counter source. Append at the end of `FreeRTOSConfig.h` (just before `#endif`):
+     ```c
+     extern uint32_t SYS_TIME_CounterGet(void);
+     #define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
+     #define portGET_RUN_TIME_COUNTER_VALUE()        SYS_TIME_CounterGet()
+     ```
+     `SYS_TIME` is already initialised by Harmony before the scheduler starts, so the configure macro is a no-op. `SYS_TIME_CounterGet` returns the low 32 bits of the underlying TC0 CH0 counter and wraps every ~16 s at 266 MHz — fine for FreeRTOS's delta-based percentage calculations. Bare `extern` (rather than including a Harmony header) keeps `FreeRTOSConfig.h` consumable by low-level kernel sources that don't pull in `definitions.h`. (`SYS_TIME_Counter64Get` exists for the un-truncated value when needed elsewhere.)
+
   Previously listed but now resolved or moot:
   - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
   - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
 
-  Recovery plan: re-apply all seven (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+  Recovery plan: re-apply all eight (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
 

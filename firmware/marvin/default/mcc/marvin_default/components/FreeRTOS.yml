@@ -73,4 +73,52 @@ data:
           type: User
         type: Values
       type: Integer
+    FREERTOS_USE_TRACE_FACILITY:
+      attributes:
+        id: FREERTOS_USE_TRACE_FACILITY
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    FREERTOS_USE_STATS_FORMATTING_FUNCTIONS:
+      attributes:
+        id: FREERTOS_USE_STATS_FORMATTING_FUNCTIONS
+      children:
+      - children:
+        - attributes:
+            id: visible
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    FREERTOS_INCLUDE_UXTASKGETSTACKHIGHWATERMARK:
+      attributes:
+        id: FREERTOS_INCLUDE_UXTASKGETSTACKHIGHWATERMARK
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    FREERTOS_GENERATE_RUN_TIME_STATS:
+      attributes:
+        id: FREERTOS_GENERATE_RUN_TIME_STATS
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}

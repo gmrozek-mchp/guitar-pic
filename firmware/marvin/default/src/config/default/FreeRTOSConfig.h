@@ -338,20 +338,20 @@
  * processing time used by each task.  Set to 0 to not collect the data.  The
  * application writer needs to provide a clock source if set to 1.  Defaults to 0
  * if left undefined.  See https://www.freertos.org/rtos-run-time-stats.html. */
-#define configGENERATE_RUN_TIME_STATS           0
+#define configGENERATE_RUN_TIME_STATS           1
 
 /* Set configUSE_TRACE_FACILITY to include additional task structure members
  * are used by trace and visualisation functions and tools.  Set to 0 to exclude
  * the additional information from the structures. Defaults to 0 if left
  * undefined. */
-#define configUSE_TRACE_FACILITY                0
+#define configUSE_TRACE_FACILITY                1
 
 /* Set to 1 to include the vTaskList() and vTaskGetRunTimeStats() functions in
  * the build.  Set to 0 to exclude these functions from the build.  These two
  * functions introduce a dependency on string formatting functions that would
  * otherwise not exist - hence they are kept separate.  Defaults to 0 if left
  * undefined. */
-#define configUSE_STATS_FORMATTING_FUNCTIONS    0
+#define configUSE_STATS_FORMATTING_FUNCTIONS    1
 
 /******************************************************************************/
 /* Co-routine related definitions. ********************************************/
@@ -398,7 +398,7 @@
 #define INCLUDE_vTaskDelay                      1
 #define INCLUDE_xTaskGetSchedulerState          1
 #define INCLUDE_xTaskGetCurrentTaskHandle       1
-#define INCLUDE_uxTaskGetStackHighWaterMark     0
+#define INCLUDE_uxTaskGetStackHighWaterMark     1
 #define INCLUDE_xTaskGetIdleTaskHandle          0
 #define INCLUDE_eTaskGetState                   0
 #define INCLUDE_xEventGroupSetBitFromISR        1
@@ -416,6 +416,10 @@ void vConfigureTickInterrupt(void);
 #define configEOI_ADDRESS 0xFFFFF138U
 void vClear_Tick_Interrupt(void);
 #define configCLEAR_TICK_INTERRUPT vClear_Tick_Interrupt
+
+extern uint32_t SYS_TIME_CounterGet(void);
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()
+#define portGET_RUN_TIME_COUNTER_VALUE()        SYS_TIME_CounterGet()
 
 /* MISRAC 2012 deviation block end */
 #endif /* FREERTOS_CONFIG_H */
