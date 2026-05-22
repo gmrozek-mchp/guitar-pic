@@ -137,6 +137,26 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-22 — STAMP producers wired across pipeline; 64-bit ts_counter; diag UART dump retired
+
+Follow-on session to Phase 1 — wired the seven `perf_stage_t` producers that had been declared since the schema landed but had no emitters, fixed a 32-bit timer truncation that was poisoning the timeline, and retired the 10 s diag UART dump now that the perf-log channel covers RTOS analytics.
+
+**STAMP producers (commit `f4e8aa8`).** One emitter per stage:
+- [`video.c`](../default/src/video/video.c) `on_frame_done` ISR → `ISC_IRQ` at top, `VIDEO_PUBLISH` after the subscriber fan-out (subscriber bitmap in aux).
+- [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c) task → `CV_START` / `CV_END` bracketing `detect_frame`.
+- [`timing_pipeline.c`](../default/src/actuator/timing_pipeline.c) `process_frame` → `TP_TICK` at end with `s_output_mask` in aux.
+- [`fretboard_link.c`](../default/src/actuator/fretboard_link.c) → `FBL_SEND` after a successful `USB_HOST_CDC_Write` (tx byte in aux), `CDC_WRITE_COMPLETE` from the CDC event ISR (USB result code in aux).
+
+Five frame-side stages share `frame_epoch` from the ISC frame counter; `FBL_SEND`/`CDC_WRITE_COMPLETE` use `frame_epoch=0` since the cmd queue between TimingPipeline and FretboardLink carries only the fret mask byte. Host pairs that two-stage segment by `ts_counter` adjacency rather than threading an epoch through the queue — the plan's design choice.
+
+Hardware-verified with a 53.4 s capture: 3199 frames at 59.9 Hz, 5 stages × 3199 records each, `dropped_state = 0`, `dropped_patch = 0` over the full run. `dropped_sink ≈ 1 MB` is fixed first→last drop record (pre-attach accumulation, no in-capture loss).
+
+**64-bit `ts_counter` (commit `2cad94a`).** First post-Phase-1 capture showed the timeline collapsing to ~16 s with negative deltas — `hdr_fill` was casting a 32-bit `SYS_TIME_CounterGet()` to `uint64_t` *after* truncation, so the counter wrapped every `UINT32_MAX / 266 MHz ≈ 16.1 s`. Switched to `SYS_TIME_Counter64Get()` (already declared in `sys_time.h` and used by FreeRTOSConfig patch #8). One-line change at [`perf_log.c:78`](../default/src/perf_log/perf_log.c#L78). Captures now hold their full duration end-to-end.
+
+**Diag UART dump retired (commit `895eece`).** The 10 s `vTaskListTasks` + run-time-stats UART dump in `diag/diag.c` (added 2026-05-21) was the temporary observation channel pending perf-log RTOS records. With `PERF_REC_TASK_HIGHWATER` shipping at 1 Hz and `PERF_REC_TASK_RUNTIME` queued for the v2 schema bump, the UART path no longer earns its keep — the perf-log channel reaches the visual viewer; the UART output was invisible to it and lost to history. Deleted `diag.c`/`diag.h` and the `app.c` init call. `vTaskListTasks` / `vTaskGetRunTimeStatistics` / `uxTaskGetStackHighWaterMark` stay enabled in `FreeRTOSConfig.h` since the perf-log producers are their consumers now.
+
+Phase 2 (live WS + STRIP + TASK_RUNTIME, schema bump to v2) is the next chunk.
+
 ### 2026-05-22 — Visual review viewer (Phase 1) + HWM producer wired
 
 Phase 1 of the marvin perf-log visual review tool landed. Plan in `~/.claude/plans/start-planning-on-host-iterative-floyd.md`. Two halves shipped together:
