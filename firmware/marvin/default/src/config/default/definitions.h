@@ -52,12 +52,16 @@
 #include "peripheral/pit/plib_pit.h"
 #include "usb/usb_host_cdc.h"
 #include "usb/usb_cdc.h"
-#include "peripheral/tc/plib_tc0.h"
+#include "usb/usb_chapter_9.h"
+#include "usb/usb_device.h"
 #include "peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h"
+#include "peripheral/tc/plib_tc0.h"
 #include "driver/i2c/drv_i2c.h"
 #include "system/time/sys_time.h"
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_host.h"
+#include "usb/usb_device_cdc.h"
+#include "usb/usb_cdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
 #include "gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h"
 #include "gfx/driver/processor/gfx2d/drv_gfx2d.h"
@@ -66,6 +70,7 @@
 #include "system/cache/sys_cache.h"
 #include "osal/osal.h"
 #include "system/debug/sys_debug.h"
+#include "driver/usb/udphs/drv_usb_udphs.h"
 #include "gfx/legato/generated/le_gen_harmony.h"
 #include "peripheral/mmu/plib_mmu.h"
 #include "peripheral/clk/plib_clk.h"
@@ -213,10 +218,14 @@ typedef struct
     /* I2C0 Driver Object */
     SYS_MODULE_OBJ drvI2C0;
 
+    SYS_MODULE_OBJ  usbDevObject0;
+
     SYS_MODULE_OBJ  sysTime;
     SYS_MODULE_OBJ  usbHostObject0;
 
     SYS_MODULE_OBJ  drvMAXTOUCH;
+
+    SYS_MODULE_OBJ  drvUSBUDPHSObject;
 
     SYS_MODULE_OBJ  drvUSBEHCIObject;
     SYS_MODULE_OBJ  drvUSBOHCIObject;
@@ -229,6 +238,8 @@ typedef struct
 // Section: extern declarations
 // *****************************************************************************
 // *****************************************************************************
+
+extern const USB_DEVICE_INIT usbDevInitData; 
 
 extern const USB_HOST_INIT usbHostInitData; 
 

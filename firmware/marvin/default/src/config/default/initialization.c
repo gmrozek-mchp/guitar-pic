@@ -147,6 +147,43 @@ SYSTEM_OBJECTS sysObj;
 /******************************************************
  * USB Driver Initialization
  ******************************************************/
+ 
+static DRV_USB_VBUS_LEVEL DRV_USB_UDPHS_VBUS_Comparator(void)
+{
+    DRV_USB_VBUS_LEVEL retVal = DRV_USB_VBUS_LEVEL_INVALID;
+    if(1U == USB_VBUS_SENSE_Get())
+    {
+        retVal = DRV_USB_VBUS_LEVEL_VALID;
+    }
+    return (retVal);
+
+}
+
+static const DRV_USB_UDPHS_INIT drvUSBInit =
+{
+
+
+    .interruptSource = (INT_SOURCE)UDPHS_IRQn,
+
+
+    /* System module initialization */
+    .moduleInit = {0},
+
+    /* To operate in USB Normal Mode */
+    .operationSpeed = USB_SPEED_HIGH,
+
+    /* Identifies peripheral (PLIB-level) ID */
+    .usbID = UDPHS_REGS,
+
+    
+    /* Function to check for VBus */
+    .vbusComparator = DRV_USB_UDPHS_VBUS_Comparator
+};
+
+
+/******************************************************
+ * USB Driver Initialization
+ ******************************************************/
 static void DRV_USB_VBUSPowerEnable(uint8_t port, bool enable)
 {
     /* Note: USB Host applications should have a way for Enabling/Disabling the 
@@ -396,8 +433,16 @@ void SYS_Initialize ( void* data )
     SYS_INP_Init();
 
 
+
+    /* Initialize the USB device layer */
+    sysObj.usbDevObject0 = USB_DEVICE_Initialize (USB_DEVICE_INDEX_0 , ( SYS_MODULE_INIT* ) & usbDevInitData);
+
+
     /* Initialize the USB Host layer */
     sysObj.usbHostObject0 = USB_HOST_Initialize (( SYS_MODULE_INIT *)& usbHostInitData );    
+
+    /* Initialize USB Driver */ 
+    sysObj.drvUSBUDPHSObject = DRV_USB_UDPHS_Initialize(DRV_USB_UDPHS_INDEX_0, (SYS_MODULE_INIT *) &drvUSBInit);    
 
     // initialize UI library
     Legato_Initialize();

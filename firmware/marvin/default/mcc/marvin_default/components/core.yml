@@ -2351,6 +2351,101 @@ data:
           type: User
         type: Values
       type: Boolean
+    UDPHS_INTERRUPT_ENABLE:
+      attributes:
+        id: UDPHS_INTERRUPT_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: drv_usb_udphs
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    UDPHS_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: UDPHS_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: drv_usb_udphs
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    UDPHS_INTERRUPT_HANDLER:
+      attributes:
+        id: UDPHS_INTERRUPT_HANDLER
+      children:
+      - children:
+        - attributes:
+            id: drv_usb_udphs
+            value: DRV_USB_UDPHS_Handler
+          type: Dynamic
+        type: Values
+      type: String
+    UDPHS_CLOCK_ENABLE:
+      attributes:
+        id: UDPHS_CLOCK_ENABLE
+      children:
+      - children:
+        - attributes:
+            id: drv_usb_udphs
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    PIN_92_FUNCTION_TYPE:
+      attributes:
+        id: PIN_92_FUNCTION_TYPE
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_92_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_92_PERIPHERAL_FUNCTION
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_92_FUNCTION_NAME:
+      attributes:
+        id: PIN_92_FUNCTION_NAME
+      children:
+      - children:
+        - attributes:
+            value: USB_VBUS_SENSE
+          type: User
+        type: Values
+      type: String
+    PIOC_PPDEN_VALUE:
+      attributes:
+        id: PIOC_PPDEN_VALUE
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '256'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_92_PD:
+      attributes:
+        id: PIN_92_PD
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
   userData:
     children:
     - attributes:

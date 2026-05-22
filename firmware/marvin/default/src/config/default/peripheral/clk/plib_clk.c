@@ -122,6 +122,7 @@ static void initPeriphClk(void)
         { ID_TC0, 1, 0, 0, 0},
         { ID_XDMAC, 1, 0, 0, 0},
         { ID_UHPHS, 1, 0, 0, 0},
+        { ID_UDPHS, 1, 0, 0, 0},
         { ID_GFX2D, 1, 0, 0, 0},
         { ID_ISC, 1, 0, 0, 0},
         { ID_PIOD, 1, 0, 0, 0},

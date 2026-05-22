@@ -1,11 +1,11 @@
 configVersion: 1.0.0
-componentName: drv_usbhs_v1
+componentName: usb_device_cdc
 coreVersion: 5.8.4
 device: SAM9X75D2G
 library: []
 dependency:
 - dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
-  name: drv_usbhs_v1
+  name: usb_device_cdc
   type: module
   version: ''
 - dependencyPackage: ''
@@ -21,31 +21,22 @@ data:
     children:
     - children:
       - attributes:
-          id: drv_usbhs_v1
-          x: '15'
-          y: '614'
+          id: usb_device_cdc
+          x: '397'
+          y: '695'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
   symbols:
-    USB_DRV_HOST_EHCI_PORTS_SELECTION:
+    CONFIG_USB_DEVICE_CDC_INSTANCES:
       attributes:
-        id: USB_DRV_HOST_EHCI_PORTS_SELECTION
+        id: CONFIG_USB_DEVICE_CDC_INSTANCES
       children:
       - children:
         - attributes:
-            value: '0x06'
-          type: User
+            id: usb_device_cdc
+            value: '1'
+          type: Dynamic
         type: Values
-      type: String
-    USB_DRV_HOST_OHCI_PORTS_SELECTION:
-      attributes:
-        id: USB_DRV_HOST_OHCI_PORTS_SELECTION
-      children:
-      - children:
-        - attributes:
-            value: '0x06'
-          type: User
-        type: Values
-      type: String
+      type: Integer
   userData: {}

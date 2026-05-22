@@ -1,22 +1,23 @@
 /*******************************************************************************
- System Interrupts File
+  USB Driver Feature Variant Implementations
 
   Company:
     Microchip Technology Inc.
 
   File Name:
-    interrupt.h
+    drv_usb_udphs_variant_mapping.h
 
   Summary:
-    Interrupt vectors mapping
+    USB Driver Feature Variant Implementations
 
   Description:
-    This file contains declarations of device vectors used by Harmony 3
- *******************************************************************************/
+    This file implements the functions which differ based on different parts
+    and various implementations of the same feature.
+*******************************************************************************/
 
-// DOM-IGNORE-BEGIN
+//DOM-IGNORE-BEGIN
 /*******************************************************************************
-* Copyright (C) 2025 Microchip Technology Inc. and its subsidiaries.
+* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
 *
 * Subject to your compliance with these terms, you may use Microchip software
 * and any derivatives exclusively with Microchip products. It is your
@@ -37,38 +38,41 @@
 * ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
 * THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
  *******************************************************************************/
-// DOM-IGNORE-END
+//DOM-IGNORE-END
 
-#ifndef INTERRUPTS_H
-#define INTERRUPTS_H
+#ifndef DRV_USB_UDPHS_VARIANT_MAPPING_H
+#define DRV_USB_UDPHS_VARIANT_MAPPING_H
+
 
 // *****************************************************************************
 // *****************************************************************************
 // Section: Included Files
 // *****************************************************************************
 // *****************************************************************************
-#include <stdint.h>
 
 
+#include "configuration.h"
 
-// *****************************************************************************
-// *****************************************************************************
-// Section: Handler Routines
-// *****************************************************************************
-// *****************************************************************************
-void SYSC_SharedHandler (void);
-void FLEXCOM6_InterruptHandler (void);
-void TC0_InterruptHandler (void);
-void XDMAC_InterruptHandler (void);
-void UHPHS_Handler (void);
-void DRV_USB_UDPHS_Handler (void);
-void ISC_Handler (void);
-void CSI2DC_Handler (void);
-
-void PIT_InterruptHandler (void);
-
-/* Interrupt Handler for spurious interrupts */
-void SPURIOUS_INTERRUPT_Handler (void);
+/**********************************************
+ * Macro Mapping
+ **********************************************/
 
 
-#endif // INTERRUPTS_H
+#if defined(DRV_USB_INSTANCES_NUMBER)
+    #define DRV_USB_UDPHS_INSTANCES_NUMBER  DRV_USB_INSTANCES_NUMBER
+#endif
+
+#if defined(DRV_USB_ENDPOINTS_NUMBER)
+    #define DRV_USB_UDPHS_ENDPOINTS_NUMBER  DRV_USB_ENDPOINTS_NUMBER
+#endif
+
+/**********************************************
+ * Sets up driver mode-specific init routine
+ * based on selected support.
+ *********************************************/
+#define M_DRV_USB_UDPHS_ISR(x)                 DRV_USB_UDPHS_Tasks_ISR(x)
+#define M_DRV_USB_UDPHS_DEVICE_INIT(x, y)      F_DRV_USB_UDPHS_DEVICE_Initialize(x , y)
+#define M_DRV_USB_UDPHS_DEVICE_TASKS_ISR(x)    F_DRV_USB_UDPHS_DEVICE_Tasks_ISR(x)
+#define M_DRV_USB_UDPHS_FOR_DEVICE(x, y)       x y
+
+#endif
