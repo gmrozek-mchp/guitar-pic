@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, WebSocket
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -45,6 +45,7 @@ from ..records import (
     TaskState,
 )
 from ..transport import FileSource
+from .live import SESSION as _LIVE
 from .render import StripRenderError, render_strip_png
 
 
@@ -146,6 +147,15 @@ class OpenRequest(BaseModel):
 class OpenResponse(BaseModel):
     capture_id: str
     manifest: dict[str, Any]
+
+
+class LiveStartRequest(BaseModel):
+    port: str
+
+
+class SetMaskRequest(BaseModel):
+    mask: int | None = None
+    types: list[str] | None = None
 
 
 # ─── Routes ──────────────────────────────────────────────────────────────────
@@ -462,3 +472,62 @@ def _record_to_dict(rec: Record, *, include_bgr: bool = False) -> dict[str, Any]
             else:
                 base[fname] = v
     return base
+
+
+# Late-bind the JSON projector so live.py doesn't need to import api.py.
+_LIVE.configure(record_to_dict=_record_to_dict)
+
+
+# ─── Live routes ─────────────────────────────────────────────────────────────
+
+
+@router.get("/serial/ports")
+def serial_ports() -> list[dict[str, Any]]:
+    from serial.tools import list_ports
+    return [
+        {"device": p.device, "description": p.description or ""}
+        for p in list_ports.comports()
+    ]
+
+
+@router.get("/live/status")
+def live_status() -> dict[str, Any]:
+    return _LIVE.status()
+
+
+@router.post("/live/start")
+def live_start(req: LiveStartRequest) -> dict[str, Any]:
+    try:
+        _LIVE.start(req.port)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    except Exception as e:
+        raise HTTPException(500, f"failed to open serial port: {e}")
+    return _LIVE.status()
+
+
+@router.post("/live/stop")
+def live_stop() -> dict[str, Any]:
+    _LIVE.stop()
+    return _LIVE.status()
+
+
+@router.post("/live/set-mask")
+def live_set_mask(req: SetMaskRequest) -> dict[str, Any]:
+    if req.mask is None and req.types is None:
+        raise HTTPException(400, "must supply 'mask' or 'types'")
+    try:
+        if req.types is not None:
+            resolved = _LIVE.set_mask_from_names(req.types)
+        else:
+            resolved = _LIVE.set_mask_from_int(int(req.mask))
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"mask": f"0x{resolved:08x}"}
+
+
+@router.websocket("/live/ws")
+async def live_ws(ws: WebSocket) -> None:
+    await _LIVE.attach_ws(ws)

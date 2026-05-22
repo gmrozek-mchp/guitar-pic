@@ -197,3 +197,17 @@ def test_encode_command_known_vector() -> None:
     # CRC over LEN || PAYLOAD.
     expected_crc = crc16_ccitt_false(framed[4:6 + 8])
     assert framed[6 + 8 : 6 + 8 + 2] == struct.pack("<H", expected_crc)
+
+
+# ─── FrameBytes.framed (recorder needs the original wire bytes) ──────────────
+
+
+def test_iter_frames_yields_framed_bytes() -> None:
+    a = wrap_frame(build_session_payload())
+    b = wrap_frame(build_drop_payload())
+    out = list(iter_frames([a + b], FrameStats()))
+    assert [f.framed for f in out] == [a, b]
+    # And feeding `framed` back through iter_frames yields the same payloads.
+    re_in = b"".join(f.framed for f in out)
+    out2 = list(iter_frames([re_in], FrameStats()))
+    assert [f.payload for f in out2] == [f.payload for f in out]

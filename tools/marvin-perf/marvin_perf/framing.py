@@ -72,6 +72,7 @@ class FrameBytes:
 
     payload: bytes
     bytes_skipped_before: int  # diagnostic: bytes dropped resyncing to this frame
+    framed: bytes = b""        # full SOF+LEN+payload+CRC for re-emission to disk
 
 
 class FrameError(Exception):
@@ -160,11 +161,13 @@ def iter_frames(
                 del buf[0]
                 continue
 
-            # Good frame — consume it from the buffer and yield.
+            # Good frame — capture the full framed bytes, consume, yield.
+            framed = bytes(buf[:total])
             del buf[:total]
             stats.frames_ok += 1
             yield FrameBytes(
                 payload=payload,
                 bytes_skipped_before=skipped_since_last_ok,
+                framed=framed,
             )
             skipped_since_last_ok = 0

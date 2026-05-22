@@ -137,6 +137,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-22 — marvin-perf web viewer: live-mode backend (Phase 1 of 3)
+
+Backend half of "make the browser the iteration surface." Single-tenant live session: one serial reader thread, one open `SerialSource`, one WebSocket peer at a time (a second WS gets close code 4409 with reason `"live already in use"`). REST for control (`/api/live/{start,stop,set-mask,status}`, `/api/serial/ports`), WS for the data stream (`/api/live/ws`); browser sends nothing over WS. No frontend changes yet — frontend live mode + record-types panel is Phase 2; recording start/stop is Phase 3.
+
+**Module shape.** New [`web/live.py`](../../../tools/marvin-perf/marvin_perf/web/live.py) owns a mutex-guarded `_LiveSession` singleton. Reader thread runs `iter_frames(SerialSource, stats) → decode_record(frame.payload) → _record_to_dict(rec, include_bgr=True)` and posts onto a per-WS-attach `asyncio.Queue` via `loop.call_soon_threadsafe`. Disconnects in either direction flow through the same shutdown path that joins the thread and closes the port. `_record_to_dict` is late-bound from `api.py` to avoid the import cycle.
+
+**Recording groundwork.** Added `framed: bytes` field to `FrameBytes`, populated from the same `buf[:total]` slice `iter_frames` already constructs — Phase 3's record path becomes a one-line write of validated frame bytes with no extra CRC compute. The existing `transport.TeeSource` would tee resync garbage too, so it's not the right shape for live recording.
+
+**Strip pixels in WS messages.** Offline mode keeps strip pixels on the dedicated PNG endpoint, but live mode has no `capture_id` to hang a URL off. `_record_to_dict` grew an `include_bgr` flag — when set, Strip records carry `bgr_b64` (base64) so the browser can render client-side onto the existing strip canvas without a server round-trip.
+
+**Tests.** 92/92 pass. New `test_iter_frames_yields_framed_bytes`, plus 8 in `test_live.py` (lifecycle, mask round-trip via fake `SerialSource`, error paths, status). Test injection point on `_LiveSession.start(port, *, ser_factory=...)` lets unit tests substitute a context-managed fake that yields nothing until `__exit__` fires — exercises the thread-join and stop-event paths without real serial.
+
+**Out of scope this commit:** all frontend changes (mode toggle, port `<select>`, record-types checkboxes, sliding-window timeline append, client-side strip render, WS reconnect) and the recording REST routes. Verification beyond unit tests waits on the frontend landing — `curl POST /api/live/start` + `websocat ws://…/api/live/ws` is the Phase-1 hardware smoke check.
+
 ### 2026-05-22 — perf-log host→device record-type masking
 
 Bidirectional control on the perf-log channel. Host can now narrow which record types the device emits per-capture without rebuilding firmware. Default is all-on (parity with prior behavior); host sends a `PERF_CMD_SET_TYPE_MASK` over the same SOF/LEN/CRC framer that's used for records, with a distinct command magic (`0x4D43` 'MC' vs records' `0x4D56` 'MV') so misrouted bytes can't be parsed in the wrong direction.
