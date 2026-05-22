@@ -27,19 +27,25 @@ from .capture import (
     open_capture,
 )
 from .decode import Record, decode_record
-from .framing import FrameStats, iter_frames
+from .framing import FrameStats, frame_encode, iter_frames
 from .records import (
+    RECORD_TYPE_BY_NAME,
+    TYPE_MASK_ALL,
+    TYPE_MASK_MIN,
     Detector,
     Drop,
-    Patch,
     RecordType,
     Session,
     Stage,
     Stamp,
+    Strip,
     TaskHighwater,
     TaskId,
+    TaskRuntime,
+    TaskState,
     Timing,
     UnknownRecord,
+    encode_set_mask_payload,
 )
 from .transport import FileSource, SerialSource, TeeSource
 
@@ -65,13 +71,13 @@ def _stage_name(stage_id: int) -> str:
 def _format_drop(rec: Drop, baseline: Drop | None) -> str:
     if baseline is None:
         return (
-            f"DROP       state={rec.dropped_state} patch={rec.dropped_patch} "
+            f"DROP       state={rec.dropped_state} strip={rec.dropped_strip} "
             f"sink_bytes={rec.dropped_sink}  (baseline)"
         )
     return (
         f"DROP       "
         f"state={rec.dropped_state} (Δ{rec.dropped_state - baseline.dropped_state:+d})  "
-        f"patch={rec.dropped_patch} (Δ{rec.dropped_patch - baseline.dropped_patch:+d})  "
+        f"strip={rec.dropped_strip} (Δ{rec.dropped_strip - baseline.dropped_strip:+d})  "
         f"sink_bytes={rec.dropped_sink} (Δ{rec.dropped_sink - baseline.dropped_sink:+d})"
     )
 
@@ -126,11 +132,74 @@ def _format_record(rec: Record, *, drop_baseline: _DropBaseline | None = None) -
         except ValueError:
             name = f"task_{rec.task_id}"
         return f"HWM        task={name:<16} words_free={rec.words}"
-    if isinstance(rec, Patch):
-        return f"PATCH      epoch={epoch:>8} {rec.frame_w}×{rec.frame_h}  (5 frets, 75 B BGR each)"
+    if isinstance(rec, Strip):
+        return (
+            f"STRIP      epoch={epoch:>8} ts={ts:>12} "
+            f"kind={rec.kind_name:<8} {rec.w}×{rec.h} @ ({rec.x},{rec.y})"
+        )
+    if isinstance(rec, TaskRuntime):
+        try:
+            name = TaskId(rec.task_id).name
+        except ValueError:
+            name = f"task_{rec.task_id}"
+        try:
+            sname = TaskState(rec.state).name
+        except ValueError:
+            sname = f"state_{rec.state}"
+        return (
+            f"RUNTIME    task={name:<16} state={sname:<9} prio={rec.priority} "
+            f"rtc={rec.run_time_counter}"
+        )
     if isinstance(rec, UnknownRecord):
         return f"UNKNOWN    type={rec.hdr.type:#04x} ({len(rec.raw)} B)"
     return repr(rec)
+
+
+# ─── Type-mask CLI parsing ───────────────────────────────────────────────────
+
+
+def parse_types_arg(spec: str | None) -> int | None:
+    """Resolve a `--types` spec to a u32 mask. Returns None if `spec` is None.
+
+    Accepts a comma-separated list of RecordType names plus the special tokens
+    `ALL` (0xFFFFFFFF) and `MIN` (SESSION|DROP). Case-insensitive.
+    """
+    if spec is None:
+        return None
+    mask = 0
+    for raw in spec.split(","):
+        token = raw.strip().upper()
+        if not token:
+            continue
+        if token == "ALL":
+            return TYPE_MASK_ALL
+        if token == "MIN":
+            mask |= TYPE_MASK_MIN
+            continue
+        if token not in RECORD_TYPE_BY_NAME:
+            valid = ", ".join(sorted(RECORD_TYPE_BY_NAME))
+            raise argparse.ArgumentTypeError(
+                f"unknown record type {token!r}; valid: {valid}, ALL, MIN"
+            )
+        mask |= 1 << RECORD_TYPE_BY_NAME[token]
+    return mask
+
+
+def _types_help() -> str:
+    bit_lines = ", ".join(
+        f"{name}={int(rt)}" for name, rt in sorted(RECORD_TYPE_BY_NAME.items())
+    )
+    return (
+        "Comma-separated record types to enable on the device. "
+        f"Names: {bit_lines}. Special: ALL (default), MIN (SESSION+DROP). "
+        "SESSION is always emitted regardless of mask. Old firmware ignores the command."
+    )
+
+
+def _send_mask(ser: SerialSource, mask: int) -> None:
+    payload = encode_set_mask_payload(mask)
+    ser.send_command(frame_encode(payload))
+    print(f"[mask] sent 0x{mask:08x}", file=sys.stderr, flush=True)
 
 
 # ─── Subcommands ─────────────────────────────────────────────────────────────
@@ -138,16 +207,18 @@ def _format_record(rec: Record, *, drop_baseline: _DropBaseline | None = None) -
 
 def cmd_live(args: argparse.Namespace) -> int:
     stats = FrameStats()
-    record_count = 0
-    last_status = time.monotonic()
-    drop_records = 0
+    mask = parse_types_arg(args.types)
 
     serial_src = SerialSource(args.port)
     if args.also_record:
         with serial_src as ser, TeeSource(ser, args.also_record) as tee:
+            if mask is not None:
+                _send_mask(ser, mask)
             return _live_loop(_decode_stream(tee, stats), stats)
     else:
         with serial_src as ser:
+            if mask is not None:
+                _send_mask(ser, mask)
             return _live_loop(_decode_stream(ser, stats), stats)
 
 
@@ -204,9 +275,12 @@ def cmd_record(args: argparse.Namespace) -> int:
         bin_path = Path(args.out)
         label = f"recording {bin_path.name}"
 
+    mask = parse_types_arg(args.types)
     bytes_written = 0
     last_status = time.monotonic()
     with SerialSource(args.port) as ser, bin_path.open("wb") as fh:
+        if mask is not None:
+            _send_mask(ser, mask)
         try:
             for chunk in ser:
                 fh.write(chunk)
@@ -358,13 +432,23 @@ def build_parser() -> argparse.ArgumentParser:
     p_live = sub.add_parser("live", help="Live decode from a USB-CDC serial port.")
     p_live.add_argument("--port", required=True, help="Serial port (e.g. /dev/cu.usbmodem...)")
     p_live.add_argument("--also-record", help="Optionally also write raw bytes to FILE")
+    p_live.add_argument("--types", help=_types_help())
     p_live.set_defaults(func=cmd_live)
 
     p_record = sub.add_parser("record", help="Capture raw bytes (no decode).")
     p_record.add_argument("--port", required=True)
     p_record.add_argument("--out", help="Write a bare .bin (legacy)")
     p_record.add_argument("--out-dir", help="Write a capture directory (perf.bin + manifest.json)")
+    p_record.add_argument("--types", help=_types_help())
     p_record.set_defaults(func=cmd_record)
+
+    p_set_mask = sub.add_parser(
+        "set-mask",
+        help="Send a SET_TYPE_MASK command to a running device and exit.",
+    )
+    p_set_mask.add_argument("--port", required=True)
+    p_set_mask.add_argument("--types", required=True, help=_types_help())
+    p_set_mask.set_defaults(func=cmd_set_mask)
 
     p_decode = sub.add_parser(
         "decode", help="Pretty-print every record in a capture (.bin or directory)."
@@ -390,6 +474,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_serve.set_defaults(func=cmd_serve)
 
     return p
+
+
+def cmd_set_mask(args: argparse.Namespace) -> int:
+    mask = parse_types_arg(args.types)
+    if mask is None:
+        print("set-mask: --types is required", file=sys.stderr)
+        return 2
+    with SerialSource(args.port) as ser:
+        _send_mask(ser, mask)
+    return 0
 
 
 def cmd_serve(args: argparse.Namespace) -> int:

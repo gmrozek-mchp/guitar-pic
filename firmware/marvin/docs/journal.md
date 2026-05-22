@@ -137,6 +137,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-22 — perf-log host→device record-type masking
+
+Bidirectional control on the perf-log channel. Host can now narrow which record types the device emits per-capture without rebuilding firmware. Default is all-on (parity with prior behavior); host sends a `PERF_CMD_SET_TYPE_MASK` over the same SOF/LEN/CRC framer that's used for records, with a distinct command magic (`0x4D43` 'MC' vs records' `0x4D56` 'MV') so misrouted bytes can't be parsed in the wrong direction.
+
+**Device side.** New [`perf_log_rx.{h,c}`](../default/src/perf_log/perf_log_rx.c) holds a small SOF-resync state machine fed from the CDC sink's `USB_DEVICE_CDC_EVENT_READ_COMPLETE` handler; valid `SET_TYPE_MASK` frames call `PerfLog_SetEnabledMask`. The CDC sink primes a 64-byte read on `EVENT_DEVICE_CONFIGURED` and re-primes after each completion. Filter is one `s_enabled_mask` (volatile u32, lock-free single-load on Cortex-A) checked at three early-return points: `send_state` (covers all state records), `PerfLog_EmitStripFromFrame`, and `PerfLog_EmitStampFromISR`. SESSION is always emitted regardless of mask — the host needs `timer_freq_hz` on attach.
+
+**Host side.** New `frame_encode` in [`framing.py`](../../../tools/marvin-perf/marvin_perf/framing.py) (mirror of the device framer); `encode_set_mask_payload` + `RECORD_TYPE_BY_NAME` in [`records.py`](../../../tools/marvin-perf/marvin_perf/records.py); `SerialSource.send_command` in [`transport.py`](../../../tools/marvin-perf/marvin_perf/transport.py). CLI `live` and `record` get `--types STAMP,SESSION,DROP,…` (special tokens `ALL`, `MIN`); new `set-mask` subcommand pokes a running capture from another terminal. 9 new tests; 83/83 passing.
+
+**Why now.** The 1.88 MB/s STRIP-dominated load was masking HWM/RUNTIME records (state-queue starvation, ~707 dropped/s — see prior entry). Cutting record types at the source is a cleaner fix than enlarging queues we don't actually want full. With STRIP off, expected sink load drops to ~25 KB/s, and the state queue should drain freely.
+
+**Out of scope.** No schema bump (purely additive at the host→device edge — v2 stays v2). No flash persistence of the mask. No mask-state echo back (host knows what it sent). No viewer UI checkbox panel — deferred to when live-WS lands.
+
+**Verification pending hardware.** Bench check: `marvin-perf record --types STAMP,SESSION,DROP,HIGHWATER,RUNTIME --port … --out-dir …` should produce a capture with zero STRIP/DETECTOR/TIMING records and `dropped_state == 0`. Sanity: firmware UART log shows `PerfLog: mask=0x...` when the host attaches.
+
 ### 2026-05-22 — USB CDC bandwidth headroom + state-queue starvation diagnosis
 
 End-to-end strip viewer is up and rendering after the user adjusted strip dimensions in [`cv_marvin_v1.c:341-347`](../default/src/detector/cv_marvin_v1.c#L341-L347) to sensing 185×16 @ (265, 310) and strike 290×20 @ (212, 395). At those dimensions current device→host load is **1.88 MB/s** (≈8.9 KB sensing + ≈17.4 KB strike per frame × 60 Hz + ~25 KB/s state pipeline + ~80 B/frame record overhead) — the link badge is green and `dropped_strip`/`dropped_sink` are flat. But we were dropping at slightly higher dimensions just before this, so our practical CDC-ACM ceiling is < 5 MB/s on this firmware build today. Two concrete things came out of investigating that:

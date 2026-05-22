@@ -49,6 +49,20 @@ def crc16_ccitt_false(data: bytes | memoryview, init: int = 0xFFFF) -> int:
     return crc
 
 
+def frame_encode(payload: bytes) -> bytes:
+    """SOF + LEN(u16LE) + payload + CRC16-CCITT-FALSE(u16LE).
+
+    Mirror of the device-side framer; CRC covers LEN || PAYLOAD (not SOF).
+    """
+    length = len(payload)
+    if length > 0xFFFF:
+        raise ValueError(f"payload too large: {length} bytes")
+    len_bytes = bytes((length & 0xFF, (length >> 8) & 0xFF))
+    crc = crc16_ccitt_false(len_bytes + payload)
+    crc_bytes = bytes((crc & 0xFF, (crc >> 8) & 0xFF))
+    return SOF_BYTES + len_bytes + payload + crc_bytes
+
+
 # ─── Frame iterator ──────────────────────────────────────────────────────────
 
 

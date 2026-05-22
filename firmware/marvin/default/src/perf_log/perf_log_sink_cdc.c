@@ -1,5 +1,6 @@
 #include "perf_log_sink.h"
 #include "perf_log.h"
+#include "perf_log_rx.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -53,6 +54,18 @@ static StaticSemaphore_t s_write_done_buf;
  * keep it cache-aligned so the driver's cache-maintenance ops don't
  * collide with neighboring data. */
 static uint8_t CACHE_ALIGN s_tx_frame[SINK_FRAME_BYTES_MAX];
+
+/* RX staging — one bulk-OUT max-packet (64 B at high speed). Cache-
+ * aligned for the same reason as s_tx_frame. */
+#define SINK_RX_BUF_BYTES  64u
+static uint8_t CACHE_ALIGN s_rx_buf[SINK_RX_BUF_BYTES];
+
+static void prime_rx_read(void)
+{
+    USB_DEVICE_CDC_TRANSFER_HANDLE th = USB_DEVICE_CDC_TRANSFER_HANDLE_INVALID;
+    (void)USB_DEVICE_CDC_Read(USB_DEVICE_CDC_INDEX_0, &th,
+                              s_rx_buf, SINK_RX_BUF_BYTES);
+}
 
 /* CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflect, no xorout). */
 static uint16_t crc16_ccitt(uint16_t crc, const uint8_t *p, uint16_t len)
@@ -123,6 +136,17 @@ static USB_DEVICE_CDC_EVENT_RESPONSE cdc_event_handler(
         }
 
         case USB_DEVICE_CDC_EVENT_READ_COMPLETE:
+        {
+            const USB_DEVICE_CDC_EVENT_DATA_READ_COMPLETE *rd = pData;
+            if (rd != NULL && rd->status == USB_DEVICE_CDC_RESULT_OK
+                && rd->length > 0u)
+            {
+                PerfLogRx_Feed(s_rx_buf, (uint32_t)rd->length);
+            }
+            prime_rx_read();
+            break;
+        }
+
         case USB_DEVICE_CDC_EVENT_CONTROL_TRANSFER_DATA_SENT:
         default:
             break;
@@ -153,6 +177,7 @@ static void device_event_handler(USB_DEVICE_EVENT event, void *eventData,
                                                     cdc_event_handler, 0u);
                 s_is_configured = true;
                 LOG_INFO("PERF: USB device CDC configured\r\n");
+                prime_rx_read();
             }
             break;
         }
@@ -181,6 +206,8 @@ void PerfLogSinkCdc_Initialize(void)
 {
     s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
     configASSERT(s_write_done != NULL);
+
+    PerfLogRx_Initialize();
 
     /* Open may fail until USB_DEVICE_Initialize finishes its own first
      * task tick — retry until success. Drain task is alive at this

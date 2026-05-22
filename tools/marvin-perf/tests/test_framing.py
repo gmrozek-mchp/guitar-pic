@@ -6,8 +6,14 @@ import struct
 
 import pytest
 
-from marvin_perf.framing import FrameStats, crc16_ccitt_false, iter_frames
-from marvin_perf.records import MAX_RECORD_BYTES, SOF_BYTES
+from marvin_perf.framing import FrameStats, crc16_ccitt_false, frame_encode, iter_frames
+from marvin_perf.records import (
+    MAX_RECORD_BYTES,
+    PERF_CMD_HDR_MAGIC,
+    PERF_CMD_SET_TYPE_MASK,
+    SOF_BYTES,
+    encode_set_mask_payload,
+)
 
 from .conftest import build_session_payload, build_drop_payload, wrap_frame
 
@@ -153,3 +159,41 @@ def test_empty_chunks_skipped() -> None:
     stats = FrameStats()
     out = list(iter_frames([b"", frame, b""], stats))
     assert len(out) == 1
+
+
+# ─── frame_encode (host→device) ──────────────────────────────────────────────
+
+
+def test_encode_round_trip() -> None:
+    # 16-byte payload satisfies iter_frames's LEN≥16 sanity check.
+    payload = build_session_payload()
+    framed = frame_encode(payload)
+    # SOF(4) + LEN(2) + payload + CRC(2)
+    assert framed[:4] == SOF_BYTES
+    assert framed[4:6] == struct.pack("<H", len(payload))
+    out = list(iter_frames([framed], FrameStats()))
+    assert len(out) == 1
+    assert out[0].payload == payload
+
+
+def test_encode_command_known_vector() -> None:
+    # SET_TYPE_MASK with mask=0x000000FE: magic=0x4D43, cmd=0x01, rsv=0x00,
+    # mask=0xFE 0x00 0x00 0x00. Total payload 8 bytes.
+    payload = encode_set_mask_payload(0x000000FE)
+    expected_payload = bytes(
+        (
+            PERF_CMD_HDR_MAGIC & 0xFF, (PERF_CMD_HDR_MAGIC >> 8) & 0xFF,
+            PERF_CMD_SET_TYPE_MASK,
+            0x00,
+            0xFE, 0x00, 0x00, 0x00,
+        )
+    )
+    assert payload == expected_payload
+
+    framed = frame_encode(payload)
+    assert framed[:4] == SOF_BYTES
+    assert framed[4:6] == struct.pack("<H", 8)
+    assert framed[6:6 + 8] == expected_payload
+    # CRC over LEN || PAYLOAD.
+    expected_crc = crc16_ccitt_false(framed[4:6 + 8])
+    assert framed[6 + 8 : 6 + 8 + 2] == struct.pack("<H", expected_crc)

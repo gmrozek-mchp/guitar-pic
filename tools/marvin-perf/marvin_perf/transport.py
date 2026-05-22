@@ -92,6 +92,15 @@ class SerialSource(AbstractContextManager["SerialSource"]):
             finally:
                 self._ser = None
 
+    def send_command(self, framed: bytes) -> int:
+        """Write pre-framed command bytes to the device.
+
+        Caller frames via `framing.frame_encode`. Returns bytes written.
+        """
+        if self._ser is None:
+            raise RuntimeError("SerialSource must be used as a context manager")
+        return self._ser.write(framed)  # type: ignore[attr-defined,no-any-return]
+
     def __iter__(self) -> Iterator[bytes]:
         if self._ser is None:
             raise RuntimeError("SerialSource must be used as a context manager")
