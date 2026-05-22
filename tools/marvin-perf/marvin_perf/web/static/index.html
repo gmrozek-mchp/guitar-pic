@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>marvin-perf viewer</title>
+<link rel="stylesheet" href="/static/styles.css">
+<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+</head>
+<body>
+
+<header class="toolbar">
+  <div class="tb-group">
+    <input id="capture-path" type="text" placeholder="capture path or .bin" spellcheck="false">
+    <button id="open-btn">Open</button>
+  </div>
+  <div class="tb-group transport">
+    <button id="step-prev" title="Prev event (←)">⏮</button>
+    <button id="play-pause" title="Play / Pause (space)">▶</button>
+    <button id="step-next" title="Next event (→)">⏭</button>
+  </div>
+  <div class="tb-group">
+    <label>speed</label>
+    <select id="speed">
+      <option value="0.25">0.25×</option>
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+  </div>
+  <div class="tb-group">
+    <span class="kv"><span class="k">epoch</span> <span id="ph-epoch" class="v">—</span></span>
+    <span class="kv"><span class="k">t</span> <span id="ph-ts" class="v">—</span></span>
+  </div>
+  <div class="tb-group badges">
+    <span id="badge-link" class="badge" title="Link health">link ●</span>
+    <span id="badge-rtos" class="badge" title="RTOS health">rtos ●</span>
+  </div>
+  <div id="banner" class="banner hidden"></div>
+</header>
+
+<main class="layout">
+  <section class="strips">
+    <div id="strip-slots"><!-- canvases injected per kind in registry --></div>
+    <div class="strip-empty-hint" id="strip-hint">No STRIP records — Phase 2 wires producers.</div>
+  </section>
+
+  <aside class="inspector">
+    <div class="tabs">
+      <button class="tab active" data-tab="event">Event</button>
+      <button class="tab" data-tab="rtos">RTOS</button>
+    </div>
+    <div class="tab-pane" id="tab-event">
+      <h3>At playhead</h3>
+      <div id="event-meta" class="meta"></div>
+      <h3>Session</h3>
+      <div id="session-meta" class="meta"></div>
+      <h3>Drops since session</h3>
+      <div id="drops-meta" class="meta"></div>
+      <h3>Warnings</h3>
+      <ul id="warnings-list" class="warnings"></ul>
+    </div>
+    <div class="tab-pane hidden" id="tab-rtos">
+      <h3>Stack high-water (words free)</h3>
+      <div id="rtos-hwm-chart" class="chart-sm"></div>
+      <h3>Per task</h3>
+      <table id="rtos-table" class="rtos-table"></table>
+    </div>
+  </aside>
+
+  <section class="timeline">
+    <div id="timeline-chart"></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

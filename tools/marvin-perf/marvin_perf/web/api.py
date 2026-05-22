@@ -124,11 +124,14 @@ class _Registry:
 
 
 _REGISTRY = _Registry()
+_PRELOADED_ID: str | None = None
 
 
 def _preload(path: str | Path) -> None:
     """Eagerly load a capture passed via `marvin-perf serve --capture PATH`."""
-    _REGISTRY.open(path)
+    global _PRELOADED_ID
+    capture_id, _ = _REGISTRY.open(path)
+    _PRELOADED_ID = capture_id
 
 
 # ─── Pydantic request/response models ────────────────────────────────────────
@@ -156,6 +159,15 @@ def capture_open(req: OpenRequest) -> OpenResponse:
     except FileNotFoundError as e:
         raise HTTPException(404, str(e))
     return OpenResponse(capture_id=capture_id, manifest=loaded.manifest.to_dict())
+
+
+@router.get("/preloaded")
+def preloaded() -> dict[str, Any]:
+    """Capture loaded by `serve --capture PATH`. Returns null id if none."""
+    if _PRELOADED_ID is None:
+        return {"capture_id": None, "manifest": None}
+    loaded = _REGISTRY.get(_PRELOADED_ID)
+    return {"capture_id": _PRELOADED_ID, "manifest": loaded.manifest.to_dict()}
 
 
 @router.get("/capture/{capture_id:path}/manifest")
