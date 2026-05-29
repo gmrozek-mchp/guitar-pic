@@ -25,6 +25,11 @@ Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus qu
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-05-29 | Patch the UDPHS device driver to arm DMA for queued IRPs in completion ISRs. New helper `F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp` called after queue advance in `Tasks_ISR_DMA` and the ZLP-completion path. Logged as patch #9. | Stock Harmony USB v3.16.0 driver only programs the DMA channel in `IRPSubmit`'s queue-empty branch — IRPs appended to a non-empty queue link in the linked list but never get armed for transmission. Without this, `queueSizeWrite > 1` accepts writes but only ever transmits the first of any batch — we'd accept three perf-log strips, transmit one, the other two stranded forever. The IRP-queue infrastructure is *already there* in the driver, the missing piece is the post-completion arm. Fix is additive (new helper, two new call sites, no refactor of existing IRPSubmit body), making it easy to find/maintain after MCC regen. Future Harmony versions may obviate this if upstream wires it up. |
+| 2026-05-29 | Strip queue uses 1-byte slot indices into a static `s_strip_pool[depth+2]` instead of pass-by-value `perf_rec_strip_t` items. | FreeRTOS queues are pass-by-value: every `xQueueSend`/`xQueueReceive` does `memcpy(slot, src, item_size)` inside a critical section (interrupts disabled). At `sizeof(perf_rec_strip_t) = 23-61 KB`, that was 38-100 µs of interrupts-off time per queue op × ~240 ops/s. Pool-and-index pattern moves the pixel data into a static pool indexed by 1-byte handles; queue ops drop to 1 µs critical sections. Same total BSS footprint (eliminates the producer's `static r;` and drain's `static s_strip_drain;` — pool size matches old "queue + 2 staging" footprint). Pool size `depth + 2` covers "1 slot in producer's hand + 1 in drain's hand" while preserving drop-on-full semantics. |
+| 2026-05-29 | Fletcher-16 (mod 255, init 0xFFFF) replaces CRC-16/CCITT-FALSE in the framing layer. `crc_*` field names renamed to `fcs_*` end-to-end. | USB hardware already CRCs every bulk packet on the wire; our framing-layer checksum's job is *firmware-side framing-bug detection* and *resync alignment* (false SOF in the middle of a corrupt stream). Fletcher-16 catches single-byte changes, adjacent swaps, and most non-adjacent swaps with ~1/65536 false-positive rate against random byte streams — sufficient for that job at ~2 cycles/byte (vs ~25 cycles for the bit-by-bit CRC, ~6 cycles for table-driven). SAM9X75 has no CRCCU peripheral (verified against `packs/SAM9X75D2G_DFP/component/`), so DMA-driven CRC isn't available. Wire format unchanged (still SOF+LEN+payload+16-bit checksum). One-shot wire-format break — old `.bin` captures aren't readable with new code; fine for dev. |
+| 2026-05-29 | Single `PERF_STRIP_MAX_BYTES = 65000u` constant; `PERF_STRIP_MAX_W`/`MAX_H` removed. | The W×H pair was arbitrary — producer code only ever checks total bytes (`w * h * BPP <= PERF_STRIP_MAX_BYTES`). Real binding constraint is the wire LEN field, which is `uint16_t` → max 65535 byte payload → max ~65 KB pixel per strip. Tighter than the UDPHS DMA cap (128 KB at `DRV_USB_UDPHS_DMA_MAX_TRANSFER_SIZE = 2`). Picking 65000 lands just under the LEN cap with margin. Producer accepts any (w, h) shape under that — practical envelope at 60 fps: 720×30, 480×45, 320×64, 290×72. Going beyond requires bumping LEN to u32, which is a wire-format break and not worth doing casually since wire bandwidth caps out around the same point at 60 fps. |
+| 2026-05-29 | Default-disable high-rate perf-log record types at firmware boot — start mask is `DROP | TASK_HIGHWATER | TASK_RUNTIME` only; STAMP, DETECTOR, TIMING, STRIP off until host enables. | Avoids the unattended-firmware case where boot generates multi-MB/s of strip records that all get dropped at the sink (no DTR), burning producer-side CPU on framing/Fletcher work that goes nowhere. Host viewer enables higher-rate types via `PERF_CMD_SET_TYPE_MASK` on attach (the live mode's mask UI). SESSION is always emitted regardless of mask so the host gets `timer_freq_hz` on attach. |
 | 2026-05-21 | `configMAX_PRIORITIES` bumped 5 → 8; tasks re-tiered into 4 active bands (UI=2, diagnostic+perf-wire=3, vision=4, strum-critical+host-wire=5) plus 3 reserve bands (1, 6, 7) and idle (0). MCC tasks re-prioritised via the per-component yml files so future regens preserve the layout. | Pre-change layout had 11 tasks bunched at priority 1 (9 MCC pollers + VideoTask + DetectorDrain) and 4 at priority 2, with no headroom. Two concrete problems: (a) VideoTask was *below* its consumer CvMarvinV1, a classic priority inversion that would bite during any priority-2 busy spell; (b) Legato (UI rendering) at the same priority as USB host driver tasks meant a heavy frame redraw could stall fretboard wire transit. The new layout puts strum-critical output above vision-real-time above diagnostic-I/O above UI, which matches the failure-cost ordering: a late strum is a missed note, a late detector tick recovers next frame, a late UI paint is jitter only. Reserve bands cost ~60 B BSS each, leave room for future watchdog or fault-recovery work to land without re-shuffling. Setting priorities in MCC yml (rather than patching `tasks.c` post-regen) avoids a re-apply patch — the source of truth and the emitted code now agree. |
 | 2026-05-21 | `manual_control` lands as the second producer of `fretboard_link`, alongside `timing_pipeline`. Mode-level arbitration is two-mode (`timing_pipeline` vs `manual_control`) and embedded in `ManualControl_SetEnabled`: entering manual mode calls `TimingPipeline_SetEnabled(false)` then takes the wire; exiting reverses. | First concrete validation of the 2026-05-20 multi-producer `fretboard_link` design — `FretboardLink_Send` stays the only entry point; arbitration lives one layer up. Embedded toggle is enough for two producers; refactor to a dedicated `actuator_mode` arbiter when a third producer (game-state controller §4.8) arrives. `timing_pipeline.publish_mask` keeps updating internal state when gated so the next ≤5 ms tick after re-enable republishes a correct mask without a stale frame. |
 | 2026-05-21 | Legato chosen for the manual-control surface; widgets authored in Microchip Graphics Composer (regenerated into `le_gen_screen_Screen0.{h,c}`); marvin-side code is a thin event-binding shim (`ui/manual_input.c`) | Composer makes the layout iterable in a tool rather than C source, and keeps our code out of MCC-clobbered files: only the binding shim references the Composer-generated widget pointers. **Does not commit spec Q5 for the full operator UI** — that's still M5's call. The thin-shim shape works equally well behind a future custom GFX2D UI by swapping the bind module. |
@@ -84,7 +89,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 **Carried into future sessions:**
 
-- **FreeRTOS analytics — HWM/RUNTIME emit but are getting dropped by state-queue overrun (see 2026-05-22 USB bandwidth + state-queue session entry below).** 2026-05-21: `configGENERATE_RUN_TIME_STATS`, `configUSE_TRACE_FACILITY`, `configUSE_STATS_FORMATTING_FUNCTIONS`, `INCLUDE_uxTaskGetStackHighWaterMark` enabled via MCC; run-time counter wired to `SYS_TIME_CounterGet` in `FreeRTOSConfig.h` (patch #8). 2026-05-22: periodic `PERF_REC_TASK_HIGHWATER` (Phase 1) and `PERF_REC_TASK_RUNTIME` (v2 schema bump) producers wired in [`perf_log.c`](../default/src/perf_log/perf_log.c) — drain task samples each registered handle at 1 Hz. Viewer's RTOS tab is wired to render both. **Producers are correct; the records aren't reaching the host** because the 1 Hz HWM/RUNTIME emits compete for slots in the 128-deep shared state queue with the 60 Hz × multiple-stages STAMP traffic, and the bursty stamp emitters are winning. Diagnosis and fix options are in the session-log entry below. Still missing entirely: `vApplicationStackOverflowHook` — MCC's default is a silent spin, so an actual overflow is indistinguishable from any other freeze. Patching the hook to emit task name + spin (carefully, since the stack is already corrupt) belongs with the rest of the analytics work. The HWM gap already bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task.
+- **`vApplicationStackOverflowHook` is a silent infinite-loop.** ([freertos_hooks.c:62-76](../default/src/config/default/freertos_hooks.c#L62-L76)) MCC's default is `taskDISABLE_INTERRUPTS()` then `for (;;)`. An actual overflow is indistinguishable from any other freeze on hardware. Patch the hook to emit a `LOG_ERR` line naming the offending task before the spin (carefully — the stack is already corrupt, so the hook should avoid using locals or large stack frames). Already nearly bit us once: 2026-05-21 freeze in `open_cdc()` was first misdiagnosed as a stack overflow because we had no visibility into actual stack usage of the FBL task. (HWM/RUNTIME records reach the host now post-2026-05-29 work, so we have *steady-state* stack visibility — but a real overflow still freezes silently.)
 
 - **Legato `LE_MEMORY_MANAGER_SIZE` adequacy.** Legato has its own internal pool (`LE_MALLOC` per touch event in `leInput_InjectTouchDown`). With the manual-control surface adding 8 buttons and frequent press/release events during menu nav, confirm `legato_config.h` `LE_MEMORY_MANAGER_SIZE` has headroom for typical event bursts. Watch for Legato heap-exhaustion symptoms (silent dropped events, widget redraw glitches) once the UI is exercised on hardware.
 
@@ -117,11 +122,22 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
      ```
      `SYS_TIME` is already initialised by Harmony before the scheduler starts, so the configure macro is a no-op. `SYS_TIME_Counter64Get` returns the full 64-bit TC0 CH0 counter; the matching `configRUN_TIME_COUNTER_TYPE = uint64_t` overrides FreeRTOS's `uint32_t` default so cumulative `ulRunTimeCounter` values don't wrap (uint32_t at 266 MHz wraps after ~16 s of accumulated CPU time across all tasks, which made percentages garbage almost immediately). Bare `extern` (rather than including a Harmony header) keeps `FreeRTOSConfig.h` consumable by low-level kernel sources that don't pull in `definitions.h`.
 
+  9. **`drv_usb_udphs_device.c` — multi-IRP DMA arming in completion ISRs.** Stock UDPHS device driver only programs the DMA channel in `IRPSubmit`'s queue-empty branch (line 1604+); IRPs appended to a non-empty queue link in (line 2273-2284 of patched file via `iterator->next = irp_t`) but never get armed for transmission. `Tasks_ISR_DMA` advances `irpQueue = irp->next` after firing the callback but does not re-program DMA hardware. Result: only one IRP per "queue idle" sequence ever transmits — the rest sit `STATUS_PENDING` forever.
+
+      Fix is additive (no refactor of working code): add a static helper `F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp` just before `DRV_USB_UDPHS_DEVICE_IRPSubmit`, mirroring the existing inline DMA-program block (~80 lines covering both DEVICE_TO_HOST and HOST_TO_DEVICE directions). Then add a call after the queue advance in **two** places:
+
+      - `Tasks_ISR_DMA` immediately after `endpointObj->irpQueue = irp->next; irp->callback(...)` — the normal DMA-completion path.
+      - The ZLP-completion path inside `Tasks_ISR` (under "endpoint interrupt on a DMA capable endpoint, so it should be a ZLP"), same place: after queue advance.
+
+      Both call sites guarded by `if (endpointObj->irpQueue != NULL)`. Patch markers `/* PATCH: */` make the change findable after MCC regen. Helper carries the same cache-clean and DMA-program shape as the inline original, including the `__DSB(); __ISB();` barriers and the `SYS_CACHE_CleanDCache_by_Addr` for the IRP data buffer.
+
+      Without this patch, the lever-1 multi-IRP work (`queueSizeWrite=3`, `USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED=5`) accepts writes but only ever transmits the first of any batch. With it, multi-IRP pipelining works as designed at the driver level. Patch is specific to Harmony USB v3.16.0 device driver; check whether future versions wire the post-completion arm and obviate the patch.
+
   Previously listed but now resolved or moot:
   - ~~`plib_xlcdc.c` LVDSPLL multiplier~~ — MCC now emits the chosen `MUL/FRACR/DIVPMC` for our 50 Hz target once the XLCDC driver MCC config was set correctly. Manual override no longer needed.
   - ~~`plib_lvdsc.c` `LVDSC_CFGR.DEN_POL`~~ — Latest Harmony gfx library intentionally omits the DEN_POL field. File reverted to MCC default; not load-bearing.
 
-  Recovery plan: re-apply all eight (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
+  Recovery plan: re-apply all nine (small, self-contained diffs). Long-term options are (a) file MCC bugs, (b) shim into our own files, (c) live with periodic re-application.
 
 - **`log_csi_status` was removed** (Phase 5 restructure — tc358743 no longer auto-enables stream). If we ever want to re-query TC358743 CSI_STATUS/CSI_ERR bits, re-add the helper. The register addresses and masks are still defined in the file.
 
@@ -136,6 +152,98 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-05-29 — perf-log USB throughput: multi-IRP, drain refactor, Fletcher-16, single MAX_BYTES
+
+Day-long push to unblock perf-log throughput beyond the ~1.88 MB/s ceiling that the journal's [2026-05-22 USB CDC bandwidth headroom](#2026-05-22--usb-cdc-bandwidth-headroom--state-queue-starvation-diagnosis) entry diagnosed. Outcome on hardware (185×32 sensing + 290×32 strike strips, 60 fps, 20 s capture): **2.77 MB/s sustained, zero drops anywhere, every record type flowing at 100% of its design rate, ts_counter inversions bounded to 5 ms (queue-interleave noise only), drain CPU recovered from ~26% (soft CRC) to ~2% (Fletcher), UI responsive again**. Several discrete landings, documented in causal order along with the diagnostic that drove each.
+
+| Metric (185×32 + 290×32 strips, 20 s) | Before this session | After |
+|---|---|---|
+| Sustained wire | 1.88 MB/s ceiling, ~700 state drops/s | **2.77 MB/s, no ceiling reached, 0 state drops** |
+| Sink drops | 0 at 1.88, climbing above | **0**, headroom remaining |
+| Strip drops | growing at higher dims | **0** |
+| Frame-side stamps | 71% delivery (CV_END worst at 8%) | **100%** (60.0/s exactly) |
+| FBL_SEND / CDC_WRITE_COMPLETE | 71% | **100%** (240/s exactly) |
+| HWM/RUNTIME records | absent (lost at state queue) | **5/s each, flowing** |
+| ts_counter inversion p99 | 7,345 ms (queue lag) | **5.2 ms** (drain-cycle interleave only) |
+| Drain CPU on CRC | ~26% (soft, bit-by-bit) | **~2%** (Fletcher) |
+
+**Multi-IRP pipelining via UDPHS driver patch.** The journal's "lever 1" hypothesis (pipeline CDC writes for 2-3× win) had a hidden gotcha. The CDC layer accepts multiple in-flight IRPs (`queueSizeWrite` and `USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED` are both knobs), but the underlying UDPHS device driver only programs the DMA channel in `IRPSubmit`'s queue-empty branch. Subsequent IRPs are linked into the endpoint's queue but *never armed for transmission* — `Tasks_ISR_DMA` advances `irpQueue = irp->next` after a callback fires but doesn't re-program the DMA hardware. Net effect: even with all three layers configured for N=3 in-flight, only one IRP ever transmitted; the other two sat as `STATUS_PENDING` in the linked list forever.
+
+Walked the IRPSubmit and Tasks_ISR_DMA paths line by line in [drv_usb_udphs_device.c](../default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_device.c) before convincing myself this was a real driver-side limitation. Fix: extracted the existing inline DMA-arm code (~80 lines mirroring lines 1880-2008 of the IRPSubmit body) into a static helper `F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp` and added a call after the queue advance in two places — `Tasks_ISR_DMA` (DMA-completion ISR) and the ZLP-completion path inside `Tasks_ISR`. Patch markers (`/* PATCH: */`) make the change findable after MCC regen. Logged as **patch #9** in the re-apply list. False starts before getting here:
+
+- N=3 ring + counting semaphore + sink reject path (correct in principle, blocked by `queueSizeWrite=1` cap in MCC's emitted CDC init).
+- Bumped combined queue depth to 5 + per-instance `queueSizeWrite` to 3 (correct, but blocked by missing DMA arm in driver).
+- Patched the driver (real fix).
+
+The MCC-side prerequisites for the patch to do anything useful:
+- `usb_device_cdc_0.yml` adds `CONFIG_USB_DEVICE_FUNCTION_WRITE_Q_SIZE = 3` (per-instance write queue).
+- `usb_device_cdc.yml` adds `CONFIG_USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED = 5` (RX prime + write queue + serialState — exact fit, no slack).
+- `usb_device_init_data.c` shows `.queueSizeWrite = 3` after regen.
+- `configuration.h` shows `USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED = 5U`.
+All three are now in MCC yml — regen preserves them, no re-apply patch needed for the config side. Just the driver change is patch #9.
+
+**Sink rewrite to N=3 staging ring + counting semaphore.** With multi-IRP working at the driver, [perf_log_sink_cdc.c](../default/src/perf_log/perf_log_sink_cdc.c) swapped the single staging buffer + binary `s_write_done` semaphore for a 3-deep `s_tx_ring[3][SINK_FRAME_BYTES_MAX]` + counting semaphore (init=3) `s_tx_credits`. Producer takes a credit, fills `s_tx_ring[s_tx_head]`, submits non-blocking, advances head; ISR `WRITE_COMPLETE` returns one credit. Single producer (drain task) + FIFO completion order on the bulk endpoint = no race. `SINK_FRAME_BYTES_MAX` derived from `PERF_STRIP_MAX_BYTES + record/framing overhead, rounded to cache-line` so the two constants can't drift again — the hand-tuned `23104u` literal had already drifted once when the strip max bumped.
+
+**`PL_STATE_QUEUE_DEPTH` 128 → 1024.** Phase A. State queue was overflowing under STAMP burst traffic — 60 Hz × multiple frame stages plus 240/s FBL_SEND/CDC_WRITE_COMPLETE = ~780/s producer rate. 1024 covers ~1.3 s at full producer rate with drain stalled. Kept after analysis even though current load uses <1% of that — BSS cost is 35 KB on 240 MB cached DDR (rounding error), and the headroom matters if a future strip-size bump pushes toward wire saturation (drain blocks on credit timeouts, state queue accumulates during the block).
+
+**Drain-loop fix: drain ALL state records per outer iteration.** First symptom after the multi-IRP work landed: at 185×32 + 290×20 strips (2.14 MB/s), state queue was clean. Bumped strike to 290×32 (2.65 MB/s) and state queue started dropping at 240/s while sink and strip queues stayed clean. Root cause: drain-task loop had `if (xQueueReceive(state_q,…)) WriteFramed(…)` — *one* state record per outer iteration. Strips dominate per-iteration time (~5 ms each on the wire), so state drained at ~50 records/s while produced at ~700/s. Fixed by adding an inner `while` loop that drains every currently-queued state record before moving to the strip drain. After: state delta = 0 across 20 s captures.
+
+**Pointer-pool refactor for the strip queue.** FreeRTOS queues are pass-by-value: every `xQueueSend`/`xQueueReceive` does `memcpy(slot, src, item_size)` inside a critical section. With `sizeof(perf_rec_strip_t)` at 23-61 KB depending on `PERF_STRIP_MAX_H`, that's 38-100 µs of *interrupts-off* time per queue op × 240 ops/s = 9-24 ms/s of ISR-latency stretching. Discovered when bumping `PERF_STRIP_MAX_H` to 64 caused the firmware to exhibit erratic behaviour even before any cv_marvin dimension change — the bigger queue items alone were the trigger, via critical-section duration.
+
+Refactored: [perf_log.c](../default/src/perf_log/perf_log.c) `s_strip_q` now carries 1-byte slot indices into a static `s_strip_pool[6]` (queue depth + 2 to cover "1 slot in producer's hand, 1 in drain's hand" while preserving drop-on-full semantics). A second small queue, `s_strip_free_q` (depth 6, 1-byte items), holds the free-list. Producer claims a free index, fills the pool slot directly via pointer, queues just the index. Drain dequeues the index, processes via pointer, returns the index to the free list. Removed the producer's `static perf_rec_strip_t r;` and the drain's `static perf_rec_strip_t s_strip_drain;` — same total BSS, no extra copies. Critical sections drop from ~38-100 µs to ~1 µs per queue op.
+
+**Fletcher-16 replaces CRC-16/CCITT-FALSE in the framing layer.** Soft CRC bit-by-bit was burning ~26% CPU at 2.65 MB/s — the biggest remaining CPU sink and the cause of the UI sluggishness symptom under load. SAM9X75 has **no CRCCU peripheral** (the journal lever-2 entry was wrong about that — verified by the device pack header list at `packs/SAM9X75D2G_DFP/component/`: AES, SHA, TDES, TRNG, PMECC, but no CRCCU). Hardware-DMA CRC isn't an option on this part.
+
+Considered alternatives:
+
+| Option | Cycles/byte | CPU @ 2.65 MB/s | Detection |
+|---|---|---|---|
+| CRC-16 bit-by-bit (current) | ~25 | ~26% | full CRC strength |
+| CRC-16 table-driven (256 × u16 LUT) | ~6 | ~6% | full CRC strength |
+| **Fletcher-16** | **~2** | **~2%** | single-byte changes, adjacent swaps, most non-adjacent swaps; ~1/65536 false-positive rate against random byte sequences |
+| Sum-16 / XOR-16 | ~1 | ~1% | far weaker (misses swaps and most reorders) |
+| No checksum | 0 | 0% | rely on USB hardware + record magic + length bounds |
+
+USB hardware already CRCs every bulk packet on the wire, so our framing-layer checksum's job is *firmware-side framing-bug detection* + *resync alignment* (false SOF in the middle of a corrupt stream). Both jobs are well-served by Fletcher-16. Picked it.
+
+Wire format unchanged (still SOF | LEN | PAYLOAD | 16-bit checksum). Old `.bin` captures from before this change can't be decoded with new code (one-shot break, fine for dev). Updated both ends:
+
+- Firmware [perf_log_sink_cdc.c](../default/src/perf_log/perf_log_sink_cdc.c) TX path — block-mod Fletcher pattern from RFC 1146 (deferred mod once per ~5800 iterations to keep uint32 from overflowing).
+- Firmware [perf_log_rx.c](../default/src/perf_log/perf_log_rx.c) RX state machine — streaming Fletcher with byte-at-a-time mod 255 (single-byte pace, no overflow concern).
+- Host [framing.py](../../../tools/marvin-perf/marvin_perf/framing.py) — `fletcher16()` replaces `crc16_ccitt_false`. `FrameStats.fcs_mismatches` (was `crc_mismatches`).
+- All `crc_*` field names renamed to `fcs_*` across host (decode.py, records.py, web/api.py, web/live.py, cli.py, web/static/app.js).
+- Test vector `fletcher16(b"123456789") == 0x1EDE` (hand-computed, verified end-to-end).
+
+Net CPU win at 2.77 MB/s wire: drain task drops from ~26% (CRC) to ~2% (Fletcher). UI responsiveness recovered immediately on flash.
+
+**`PERF_STRIP_MAX_W`/`MAX_H` collapsed to single `PERF_STRIP_MAX_BYTES`.** The split-into-W*H pair was always arbitrary — producer code only ever checks total bytes (`w * h * BPP <= PERF_STRIP_MAX_BYTES`), not the per-axis dimensions. Discovered the *actual* binding constraint isn't the UDPHS DMA cap (128 KB at current `DRV_USB_UDPHS_DMA_MAX_TRANSFER_SIZE = 2`) but the wire LEN field, which is `uint16_t` → max 65535-byte payload → max ~65,507 byte pixel data per strip. Replaced both constants on both ends with `PERF_STRIP_MAX_BYTES = 65000u` (just under the LEN cap with a small margin). Producer accepts any (w, h) shape under that. Practical envelope: 720×30, 480×45, 320×64, 290×72. Going beyond requires bumping LEN to u32 — wire-format break, not worth doing casually since the wire-bandwidth ceiling kicks in around the same point at 60 fps.
+
+**Default-disabled strips at boot.** Firmware now initializes the type mask to `DROP | TASK_HIGHWATER | TASK_RUNTIME` only — the cheap diagnostic types (~300 B/s combined). Higher-rate types (STAMP, DETECTOR, TIMING, STRIP) start disabled; host viewer enables them via `PERF_CMD_SET_TYPE_MASK` once it's ready to consume them. Avoids the unattended-firmware case where boot generates ~3 MB/s of strip records that all get dropped at the sink (no DTR), wasting producer-side CPU. SESSION is still always emitted regardless of mask (host needs `timer_freq_hz` on attach).
+
+**Host-side manifest improvements.** Working through diagnosis, hit two real gaps:
+
+1. `frame_epoch_first` was reporting 0 because `FBL_SEND` and `CDC_WRITE_COMPLETE` STAMPs use `frame_epoch=0` as a "no frame association" sentinel — the chord queue between `timing_pipeline` and `fretboard_link` strips the epoch (decision logged 2026-05-20). The earlier filter enumerated record types (SESSION/DROP/TASK_HIGHWATER/TASK_RUNTIME); now it just skips `frame_epoch == 0` records, type-agnostic.
+2. Manifest gained `recording_started_at`, `recording_stopped_at`, `recording_duration_s` — the live recorder ([web/live.py](../../../tools/marvin-perf/marvin_perf/web/live.py)) already tracked `_Recording.started_at` but didn't write it to disk. Now it does. Also added `timer_freq_hz` fallback from the cached SESSION dict (`_state.last_session_dict`), so captures starting mid-stream still get the freq for ts_counter conversion.
+
+**RTOS stack/CPU snapshot at 2.77 MB/s** (from RUNTIME records, percentages relative to recorded tasks — idle excluded):
+
+| Task | % of busy time | Stack used |
+|---|---|---|
+| `CV_MARVIN_V1` | 71.97 | 153 / 1024 words |
+| `PERF_DRAIN` | 26.99 | 138 / 512 words |
+| `FRETBOARD_LINK` | 0.71 | 109 / 768 |
+| `TIMING` | 0.26 | 127 / 768 |
+| `VIDEO` | 0.08 | 187 / 1024 |
+
+System overall is mostly idle — non-idle CPU is single-digit % absolute. CV_MARVIN's 72% relative is detect_frame + the per-strip producer fill (memcpy from frame buffer to pool slot). PERF_DRAIN's 27% is Fletcher + the pool→ring memcpy + USB submit per write.
+
+**Out of scope today, sequenced for later:**
+
+- **Lever 5 (zero-copy DMA scatter-gather from frame buffer)** — would eliminate the producer-side memcpy and the drain's pool→ring memcpy. Requires programming UDPHS DMA descriptors with one entry per pixel-row plus header/trailer. Modest CPU win (~2%); only worth it if a CRCCU equivalent ever shows up. The frame buffer is already in `.region_nocache` so cache coherence is free.
+- **Lever 4 (move bulk-IN from EP3 → EP2 for 3-bank FIFO depth)** — would matter if we approach wire saturation; not needed at current load. Single-knob change in `usb_device_cdc_0.yml`.
+- **Boot-time SESSION re-emit on host command** — would close the `timer_freq_hz: null` case for live captures starting mid-stream when DTR didn't toggle. Either (a) host sends a "request session" command on WS attach, or (b) firmware emits SESSION at 0.1 Hz alongside DROP. Latter is simpler.
+- **Stack-overflow hook is still silent infinite-loop** — `vApplicationStackOverflowHook` would benefit from a UART log line naming the offending task. Carried forward separately.
 
 ### 2026-05-22 — marvin-perf web viewer: live-mode recording (Phase 3 of 3)
 
