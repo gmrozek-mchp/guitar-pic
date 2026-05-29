@@ -4,6 +4,7 @@
 			"path": "."
 		},
 		{
+			"name": "fretboard",
 			"path": "firmware/fretboard"
 		},
 		{
@@ -17,14 +18,14 @@
 	],
 	"settings": {
 		"specstory.cloudSync.enabled": "never",
-		"mplab.clangd.compileCommandsDir": "${workspaceFolder}/firmware/fretboard/_build/fretboard/default",
-		"mplab.clangd.path": "/Applications/microchip/xc32/v5.10/bin/xc32-clangd",
 		"memory-inspector.debugTypes": [
 			"arm-debugger",
 			"embedded-debug",
 			"gdb",
 			"mplab-core-da"
 		],
-		"mplab.project.workspace.addNewSourceFiles": "Never"
+		"mplab.project.workspace.addNewSourceFiles": "Never",
+		"mplab.clangd.compileCommandsDir": "${workspaceFolder}/firmware/marvin/_build/marvin/default",
+		"mplab.clangd.path": "/Applications/microchip/xc32/v4.60/bin/xc32-clangd"
 	}
 }
