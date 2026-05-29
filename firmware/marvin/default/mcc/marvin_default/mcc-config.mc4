@@ -43,13 +43,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: fac11ebd806968519f8e6627e91bb643f3d24b441197e99e251407fec919ddb2
 - file: ../src/config/default/configuration.h
-  hash: b025e20c6ba900d16db15ac296f66276d2b9ac07dccd8c5a0d1b7b80b8690e5e
+  hash: b86fa0f00d19978985f14280a4f13ac04a5de3a2be8f8f2e31f24d2940cfe507
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 2468097646bc1b67d17f8a4e3b1e88c96496cc1d3b9ed5a0fbc8ce44db28d4b8
+  hash: 557c7808c30558329940028fb882b54033b24b331468ddfc4c213a7121d68ee1
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -619,7 +619,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: b410aefcc276394f703345d713bd0890860c19fcdcad19bb0b186605f8de8964
+  hash: 84b6cdd40d18c06be148460c6ced68e2313da8011f2dc174acaf8ed5f73e7c14
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -787,7 +787,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/usb/usb_ohci.h
   hash: 6e333a4861c360fa58927cf7b2f43f5c565fabbc2d22eda0ea01b899ff413f48
 - file: ../src/config/default/usb_device_init_data.c
-  hash: 569e1e2299a4c7e87750d9d97ba28bcfa8f0fdafff9200003383045a51d16d97
+  hash: 0c579dce6e86e67a53208cf420748e7b20acfd489b41174de71559b916b1837e
 - file: ../src/config/default/usb_host_init_data.c
   hash: b0485187db650e2be8090b28912f11e5471b2ef074b421a6fab929981ad838d0
 - file: ../src/config/default/user.h

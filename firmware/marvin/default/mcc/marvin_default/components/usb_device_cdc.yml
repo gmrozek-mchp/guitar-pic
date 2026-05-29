@@ -39,4 +39,15 @@ data:
           type: Dynamic
         type: Values
       type: Integer
+    CONFIG_USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED:
+      attributes:
+        id: CONFIG_USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED
+      children:
+      - children:
+        - attributes:
+            id: usb_device_cdc
+            value: '5'
+          type: Dynamic
+        type: Values
+      type: Integer
   userData: {}

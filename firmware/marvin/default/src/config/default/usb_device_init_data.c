@@ -53,7 +53,7 @@
 static const USB_DEVICE_CDC_INIT cdcInit0 =
 {
     .queueSizeRead = 1,
-    .queueSizeWrite = 1,
+    .queueSizeWrite = 3,
     .queueSizeSerialStateNotification = 1
 };
 /* MISRAC 2012 deviation block end */   

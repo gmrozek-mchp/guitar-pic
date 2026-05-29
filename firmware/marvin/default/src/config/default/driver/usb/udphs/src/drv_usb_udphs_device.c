@@ -1449,6 +1449,134 @@ bool DRV_USB_UDPHS_DEVICE_EndpointIsStalled
   Remarks:
     See drv_usb_udphs.h for usage information.
  */
+
+/* PATCH: arm DMA for a queued IRP. Stock driver only programs DMA in the
+ * queue-empty branch of IRPSubmit; IRPs appended behind an in-flight one
+ * are accepted but never transmitted. Called from the DMA / ZLP completion
+ * paths to start the next pending IRP. Mirrors the DMA-program block in
+ * IRPSubmit (non-zero endpoint, DMA-capable, non-ZLP). Caller must hold
+ * the driver mutex or be in ISR context. */
+static void F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp(
+    DRV_USB_UDPHS_OBJ *hDriver,
+    DRV_USB_UDPHS_DEVICE_ENDPOINT_OBJ *endpointObj,
+    USB_DEVICE_IRP_LOCAL *irp_t,
+    uint8_t endpoint)
+{
+    udphs_registers_t *usbID = hDriver->usbID;
+    uint32_t dmaEpIndex = (uint32_t)endpoint - 1U + M_DRV_UDPHS_DMA_OFFSET;
+    uint32_t dmaMaxTransfer;
+    uint32_t remainder_t;
+    uint8_t *data;
+    uint32_t i;
+
+    if (irp_t->size == 0U)
+    {
+        /* Zero-size IRPs aren't handled by the DMA arm path. */
+        return;
+    }
+
+    irp_t->status = USB_DEVICE_IRP_STATUS_IN_PROGRESS;
+
+    __DSB();
+    __ISB();
+
+    dmaMaxTransfer = irp_t->size / (64U * 1024U);
+    remainder_t    = irp_t->size % (64U * 1024U);
+    if (remainder_t != 0U)
+    {
+        dmaMaxTransfer++;
+    }
+
+    if (dmaMaxTransfer > (uint32_t)DRV_USB_UDPHS_DMA_MAX_TRANSFER_SIZE)
+    {
+        /* Transfer too large to pipeline. Abort and fire callback so the
+         * app sees the error rather than silently stalling the queue. */
+        irp_t->status = USB_DEVICE_IRP_STATUS_ABORTED;
+        endpointObj->irpQueue = irp_t->next;
+        if (irp_t->callback != NULL)
+        {
+            irp_t->callback((USB_DEVICE_IRP *)irp_t);
+        }
+        return;
+    }
+
+    if (endpointObj->endpointDirection == USB_DATA_DIRECTION_DEVICE_TO_HOST)
+    {
+        data = (uint8_t *)irp_t->data;
+        SYS_CACHE_CleanDCache_by_Addr((uint32_t *)irp_t->data, (int32_t)irp_t->size);
+
+        for (i = 0; i < dmaMaxTransfer; i++)
+        {
+            endpointObj->dmaTransferDescriptor[i].bufferAddress = (void *)&data[64U * 1024U * i];
+
+            if (i == (dmaMaxTransfer - 1U))
+            {
+                endpointObj->dmaTransferDescriptor[i].nextDescriptorAddress = NULL;
+                endpointObj->dmaTransferDescriptor[i].dmaControl =
+                     (UDPHS_DMACONTROL_BUFF_LENGTH(remainder_t)
+                    | UDPHS_DMACONTROL_END_B_EN_Msk
+                    | UDPHS_DMACONTROL_END_BUFFIT_Msk
+                    | UDPHS_DMACONTROL_CHANN_ENB_Msk);
+            }
+            else
+            {
+                endpointObj->dmaTransferDescriptor[i].nextDescriptorAddress =
+                    (void *)&endpointObj->dmaTransferDescriptor[i + 1U];
+                endpointObj->dmaTransferDescriptor[i].dmaControl =
+                     (UDPHS_DMACONTROL_BUFF_LENGTH(0UL)
+                    | UDPHS_DMACONTROL_LDNXT_DSC_Msk
+                    | UDPHS_DMACONTROL_CHANN_ENB_Msk);
+            }
+        }
+
+        SYS_CACHE_CleanDCache_by_Addr((uint32_t *)endpointObj, (int32_t)sizeof(endpointObj));
+
+        usbID->UDPHS_DMA[dmaEpIndex].UDPHS_DMANXTDSC  = (uint32_t)endpointObj->dmaTransferDescriptor;
+        usbID->UDPHS_DMA[dmaEpIndex].UDPHS_DMACONTROL = UDPHS_DMACONTROL_LDNXT_DSC_Msk;
+        usbID->UDPHS_IEN |= (UDPHS_IEN_DMA_1_Msk << (endpoint - 1U));
+    }
+    else
+    {
+        /* HOST_TO_DEVICE — bulk-OUT receive path. */
+        SYS_CACHE_InvalidateDCache_by_Addr((uint32_t *)irp_t->data, (int32_t)irp_t->size);
+        data = (uint8_t *)irp_t->data;
+
+        for (i = 0; i < dmaMaxTransfer; i++)
+        {
+            endpointObj->dmaTransferDescriptor[i].bufferAddress = (void *)&data[64U * 1024U * i];
+
+            if (i == (dmaMaxTransfer - 1U))
+            {
+                endpointObj->dmaTransferDescriptor[i].nextDescriptorAddress = NULL;
+                endpointObj->dmaTransferDescriptor[i].dmaControl =
+                     (UDPHS_DMACONTROL_BUFF_LENGTH(remainder_t)
+                    | UDPHS_DMACONTROL_END_TR_EN_Msk
+                    | UDPHS_DMACONTROL_END_TR_IT_Msk
+                    | UDPHS_DMACONTROL_END_B_EN_Msk
+                    | UDPHS_DMACONTROL_END_BUFFIT_Msk
+                    | UDPHS_DMACONTROL_CHANN_ENB_Msk);
+            }
+            else
+            {
+                endpointObj->dmaTransferDescriptor[i].nextDescriptorAddress =
+                    (void *)&endpointObj->dmaTransferDescriptor[i + 1U];
+                endpointObj->dmaTransferDescriptor[i].dmaControl =
+                     (UDPHS_DMACONTROL_BUFF_LENGTH(0UL)
+                    | UDPHS_DMACONTROL_END_TR_EN_Msk
+                    | UDPHS_DMACONTROL_END_TR_IT_Msk
+                    | UDPHS_DMACONTROL_LDNXT_DSC_Msk
+                    | UDPHS_DMACONTROL_CHANN_ENB_Msk);
+            }
+        }
+
+        SYS_CACHE_CleanDCache_by_Addr((uint32_t *)endpointObj, (int32_t)sizeof(endpointObj));
+
+        usbID->UDPHS_IEN |= (UDPHS_IEN_DMA_1_Msk << (endpoint - 1U));
+        usbID->UDPHS_DMA[dmaEpIndex].UDPHS_DMANXTDSC  = (uint32_t)endpointObj->dmaTransferDescriptor;
+        usbID->UDPHS_DMA[dmaEpIndex].UDPHS_DMACONTROL = UDPHS_DMACONTROL_LDNXT_DSC_Msk;
+    }
+}
+
 USB_ERROR DRV_USB_UDPHS_DEVICE_IRPSubmit
 (
     DRV_HANDLE client,
@@ -2529,12 +2657,20 @@ void F_DRV_USB_UDPHS_DEVICE_Tasks_ISR_DMA(DRV_USB_UDPHS_OBJ * hDriver, uint8_t N
             
             /* Callback */
             if (irp->nPendingBytes == 0U)
-            {       
+            {
                 endpointObj->irpQueue = irp->next;
                 if(irp->callback != NULL)
                 {
                     irp->callback((USB_DEVICE_IRP *)irp);
-                }        
+                }
+
+                /* PATCH: arm DMA for the next pending IRP, if any. Stock
+                 * driver leaves it stranded with status PENDING. */
+                if (endpointObj->irpQueue != NULL)
+                {
+                    F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp(
+                        hDriver, endpointObj, endpointObj->irpQueue, NumEndpoint);
+                }
             }
         }
     }
@@ -3098,6 +3234,16 @@ void F_DRV_USB_UDPHS_DEVICE_Tasks_ISR
                                 if(irp->callback != NULL)
                                 {
                                     irp->callback((USB_DEVICE_IRP *)irp);
+                                }
+
+                                /* PATCH: arm DMA for the next pending IRP,
+                                 * if any. Reaches this branch after a ZLP
+                                 * completion. */
+                                if (endpointObj->irpQueue != NULL)
+                                {
+                                    F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp(
+                                        hDriver, endpointObj,
+                                        endpointObj->irpQueue, eptIndex);
                                 }
                             }
                             else

@@ -124,6 +124,11 @@ extern "C" {
 #define DRV_MAXTOUCH_I2C_MODULE_INDEX   0
 
 
+/*** CSI Driver Configuration ***/
+#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
+#define CSI_NUM_LANES				CSI_DATA_LANES_2
+
+
 /*** ISC Image Sensor Configuration ***/
 #define ISC_INPUT_FORMAT_TYPE			DRV_IMAGE_SENSOR_RGB
 #define ISC_INPUT_BIT_WIDTH				DRV_IMAGE_SENSOR_8_BIT
@@ -178,23 +183,12 @@ extern "C" {
 #define ISC_VSYNC_POLARITY_VAL		0
 
 
-/*** CSI Driver Configuration ***/
-#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
-#define CSI_NUM_LANES				CSI_DATA_LANES_2
-
-
 
 // *****************************************************************************
 // *****************************************************************************
 // Section: Middleware & Other Library Configuration
 // *****************************************************************************
 // *****************************************************************************
-/* Number of CDC Function driver instances in the application */
-#define USB_HOST_CDC_INSTANCES_NUMBER         1U
-
-/* Number of CDC Attach Listeners */ 
-#define USB_HOST_CDC_ATTACH_LISTENERS_NUMBER        1U
-
 /* Number of Endpoints used */
 #define DRV_USB_UDPHS_ENDPOINTS_NUMBER                    4U
 
@@ -207,6 +201,12 @@ extern "C" {
 /* EP0 size in bytes */
 #define USB_DEVICE_EP0_BUFFER_SIZE                          64U
 
+
+/* Number of CDC Function driver instances in the application */
+#define USB_HOST_CDC_INSTANCES_NUMBER         1U
+
+/* Number of CDC Attach Listeners */ 
+#define USB_HOST_CDC_ATTACH_LISTENERS_NUMBER        1U
 
 // *****************************************************************************
 // *****************************************************************************
@@ -240,7 +240,7 @@ extern "C" {
 /* CDC Transfer Queue Size for both read and
    write. Applicable to all instances of the
    function driver */
-#define USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED                 3U
+#define USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED                 5U
 
 /*** USB Driver Configuration ***/
 
