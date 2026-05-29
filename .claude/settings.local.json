@@ -4,7 +4,9 @@
       "WebFetch(domain:ww1.microchip.com)",
       "WebFetch(domain:api.microchip.com)",
       "mcp__microchip__search_microchip_product_documents",
-      "WebSearch"
+      "WebSearch",
+      "Bash(uv run *)",
+      "Bash(uv sync *)"
     ]
   }
 }
