@@ -118,6 +118,32 @@ body {
 .kv .k { color: var(--fg-dim); margin-right: 4px; }
 .kv .v { color: var(--fg); }
 
+/* ── Recording pill ────────────────────────────────────────────────────── */
+#record-controls input { width: 220px; }
+#record-start {
+  color: var(--red) !important;
+  border-color: rgba(248, 113, 113, 0.4) !important;
+}
+.rec-pill {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 10px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+}
+.rec-pill.rec-active {
+  color: var(--red);
+  border-color: rgba(248, 113, 113, 0.5);
+  animation: rec-pulse 1.4s ease-in-out infinite;
+}
+.rec-pill.rec-stopped { color: var(--green); border-color: rgba(74, 222, 128, 0.4); }
+@keyframes rec-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.55; }
+}
+
 .badges { margin-left: auto; }
 .badge {
   font-family: var(--mono);

@@ -7,7 +7,10 @@ reused — `frame_encode`, `encode_set_mask_payload`, `SerialSource.send_command
 — so the wire-level concerns sit in transport.py / framing.py / records.py
 and this module only composes them.
 
-Recording (write framed bytes to a capture dir) is wired in Phase 3.
+Recording: while a recording is active, the reader thread mirrors the
+validated framed bytes to ``<capture_dir>/perf.bin``. Stop / serial error /
+``stop()`` all funnel through the same finalize path so the bin is always
+opened cleanly by offline mode.
 """
 
 from __future__ import annotations
@@ -16,10 +19,17 @@ import asyncio
 import threading
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any
+from pathlib import Path
+from typing import IO, Any
 
 from fastapi import WebSocket, WebSocketDisconnect
 
+from ..capture import (
+    BIN_NAME,
+    CaptureSource,
+    finalize_capture_dir,
+    init_capture_dir,
+)
 from ..decode import decode_record
 from ..framing import FrameStats, frame_encode, iter_frames
 from ..records import (
@@ -46,6 +56,15 @@ class _State:
     last_session_dict: dict[str, Any] | None = None
 
 
+@dataclass
+class _Recording:
+    fh: IO[bytes]
+    dir: Path
+    started_at: str
+    bytes_written: int = 0
+    n_frames: int = 0
+
+
 class _LiveSession:
     """Process-singleton; mutex guards all field writes."""
 
@@ -58,6 +77,7 @@ class _LiveSession:
         self._queue: asyncio.Queue[tuple[str, dict[str, Any]]] | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ws: WebSocket | None = None
+        self._rec: _Recording | None = None
         # Late-bound to avoid a cycle: api.py passes this on import.
         self._record_to_dict = None  # type: ignore[var-annotated]
 
@@ -96,7 +116,14 @@ class _LiveSession:
             self._thread.start()
 
     def stop(self) -> None:
-        """Idempotent: safe to call when not active."""
+        """Idempotent: safe to call when not active. Auto-finalizes any
+        in-flight recording so the bin is openable from offline mode."""
+        # Finalize first: while the reader is still alive, in-flight frames
+        # land in the bin instead of being lost to the close race.
+        try:
+            self.record_stop()
+        except Exception:
+            pass
         with self._lock:
             self._stop_event.set()
             ser = self._ser
@@ -149,7 +176,7 @@ class _LiveSession:
                 "active": active,
                 "port": self._state.port if active else None,
                 "mask": f"0x{self._state.mask:08x}" if active else None,
-                "recording": None,  # Phase 3
+                "recording": self._recording_dict_locked(),
                 "started_at": self._state.started_at if active else None,
                 "framing": {
                     "frames_ok": self._state.framing_stats.frames_ok,
@@ -158,6 +185,76 @@ class _LiveSession:
                     "bad_lengths": self._state.framing_stats.bad_lengths,
                 },
             }
+
+    def _recording_dict_locked(self) -> dict[str, Any] | None:
+        rec = self._rec
+        if rec is None:
+            return None
+        return {
+            "capture_dir": str(rec.dir),
+            "bytes_written": rec.bytes_written,
+            "n_frames": rec.n_frames,
+            "started_at": rec.started_at,
+        }
+
+    # ─── recording ──────────────────────────────────────────────────────
+
+    def record_start(self, out_dir: str | Path) -> dict[str, Any]:
+        """Open ``<out_dir>/perf.bin`` and start mirroring framed bytes.
+
+        Reader thread picks up the new ``self._rec`` on its next iteration
+        and writes ``frame.framed`` per validated frame.
+        """
+        with self._lock:
+            if not self.is_active():
+                raise RuntimeError("live session not active")
+            if self._rec is not None:
+                raise RuntimeError("already recording")
+            cap_dir = init_capture_dir(out_dir, exist_ok=False)
+            bin_path = cap_dir / BIN_NAME
+            fh = bin_path.open("wb")
+            self._rec = _Recording(
+                fh=fh,
+                dir=cap_dir,
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+            snapshot = self._recording_dict_locked()
+        self._post("recording", {"state": "started", **(snapshot or {})})
+        return snapshot or {}
+
+    def record_stop(self) -> dict[str, Any] | None:
+        """Idempotent. Closes the bin, writes manifest.json, returns the
+        manifest summary. ``None`` if not recording."""
+        with self._lock:
+            rec = self._rec
+            self._rec = None
+            port = self._state.port
+        if rec is None:
+            return None
+        try:
+            rec.fh.flush()
+        except Exception:
+            pass
+        try:
+            rec.fh.close()
+        except Exception:
+            pass
+        manifest_dict: dict[str, Any]
+        try:
+            manifest = finalize_capture_dir(
+                rec.dir, source=CaptureSource(kind="serial", port=port or ""),
+            )
+            manifest_dict = manifest.to_dict()
+        except Exception as e:
+            manifest_dict = {"error": str(e)}
+        result = {
+            "capture_dir": str(rec.dir),
+            "bytes_written": rec.bytes_written,
+            "n_frames": rec.n_frames,
+            "manifest": manifest_dict,
+        }
+        self._post("recording", {"state": "stopped", **result})
+        return result
 
     # ─── WS attachment ──────────────────────────────────────────────────
 
@@ -181,7 +278,7 @@ class _LiveSession:
                     "started_at": self._state.started_at,
                     "port": self._state.port,
                     "mask": f"0x{self._state.mask:08x}",
-                    "recording": None,
+                    "recording": self._recording_dict_locked(),
                 },
             }
             replay = self._state.last_session_dict
@@ -201,6 +298,8 @@ class _LiveSession:
                     break
                 elif msg_type == "framing_stats":
                     await ws.send_json({"type": "framing_stats", **payload})
+                elif msg_type == "recording":
+                    await ws.send_json({"type": "recording", **payload})
         except WebSocketDisconnect:
             pass
         finally:
@@ -219,6 +318,7 @@ class _LiveSession:
             for frame in iter_frames(ser, stats):
                 if self._stop_event.is_set():
                     break
+                self._mirror_to_recording(frame.framed)
                 try:
                     rec = decode_record(frame.payload)
                 except Exception:
@@ -232,6 +332,36 @@ class _LiveSession:
                 self._post("record", rec_dict)
         except Exception as e:
             self._post("error", {"code": "serial-error", "msg": str(e)})
+        finally:
+            # Reader exit (clean stop or serial error): finalize any
+            # active recording so the bin is left in an openable state.
+            try:
+                self.record_stop()
+            except Exception:
+                pass
+
+    def _mirror_to_recording(self, framed: bytes) -> None:
+        """Reader-thread tap: write validated framed bytes to the active
+        recording, if any. Disable the recording on write failure rather
+        than tear down the whole session."""
+        with self._lock:
+            rec = self._rec
+            if rec is None:
+                return
+            try:
+                rec.fh.write(framed)
+                rec.bytes_written += len(framed)
+                rec.n_frames += 1
+                return
+            except OSError as e:
+                self._rec = None
+                err_msg = str(e)
+                fh = rec.fh
+        try:
+            fh.close()
+        except Exception:
+            pass
+        self._post("error", {"code": "record-write", "msg": err_msg})
 
     # ─── internal: cross-thread queue post ──────────────────────────────
 

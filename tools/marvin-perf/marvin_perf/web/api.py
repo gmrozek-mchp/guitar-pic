@@ -158,6 +158,10 @@ class SetMaskRequest(BaseModel):
     types: list[str] | None = None
 
 
+class RecordStartRequest(BaseModel):
+    out_dir: str
+
+
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -526,6 +530,26 @@ def live_set_mask(req: SetMaskRequest) -> dict[str, Any]:
     except ValueError as e:
         raise HTTPException(400, str(e))
     return {"mask": f"0x{resolved:08x}"}
+
+
+@router.post("/live/record/start")
+def live_record_start(req: RecordStartRequest) -> dict[str, Any]:
+    try:
+        return _LIVE.record_start(req.out_dir)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    except FileExistsError as e:
+        raise HTTPException(409, f"capture dir already exists: {e}")
+    except (OSError, ValueError) as e:
+        raise HTTPException(400, f"could not open capture dir: {e}")
+
+
+@router.post("/live/record/stop")
+def live_record_stop() -> dict[str, Any]:
+    result = _LIVE.record_stop()
+    if result is None:
+        return {"recording": None}
+    return result
 
 
 @router.websocket("/live/ws")

@@ -137,6 +137,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-05-22 — marvin-perf web viewer: live-mode recording (Phase 3 of 3)
+
+Closes the iteration loop. While a live session is up, the user picks an out-dir, hits Record, and the reader thread mirrors validated framed bytes (`FrameBytes.framed`) to `<dir>/perf.bin` directly — no second decode, no resync garbage. Stop / Live-Stop / serial-error all funnel through the same `record_stop()` finalize path that `cli.cmd_record` uses (`finalize_capture_dir(..., source=CaptureSource(kind="serial", port=…))`), so the resulting capture opens cleanly in Offline mode without any extra handling.
+
+**Reader-thread tap.** Per-frame, under the session lock: if `_rec` is set, `rec.fh.write(frame.framed)` then bump byte/frame counters. Lock is held briefly (microseconds) — reader is single-producer, control endpoints are the only other contender. Write failures (disk full, ENOSPC) disable the recording in place and post a `record-write` error over the WS rather than tearing down the whole session.
+
+**Auto-finalize.** `_LiveSession.stop()` calls `record_stop()` first, while the reader is still alive, so in-flight frames land in the bin instead of being lost to the close race. The reader's own `finally` block also calls `record_stop()` to cover the serial-disconnect path. Both calls hit the same idempotent path (lock-take fh, null `_rec`, close, `finalize_capture_dir`).
+
+**REST + WS shape.** `POST /api/live/record/{start,stop}`. Start body `{out_dir}`; 409 on already-recording or session-inactive, 409 on `init_capture_dir(exist_ok=False)` collision so the user gets explicit feedback rather than silently overwriting. Stop is idempotent; returns `{capture_dir, bytes_written, n_frames, manifest}` for scripting use. WS broadcasts `{type:"recording", state:"started"|"stopped", …}` so a passively-attached browser sees state changes from any source — including auto-finalize.
+
+**Frontend.** New record-controls toolbar group: out-dir input (suggested `captures/web-YYYYMMDD-HHMMSS` on live-start), Record/Stop buttons, and a pill that pulses red while recording. UI flips on the WS broadcast, not the REST response, so a re-attached browser mid-recording reflects reality. Reload during a live recording: `probeLiveSession()` reads `/api/live/status`, sees `recording != null`, re-attaches the WS, and the pill picks up the in-flight session.
+
+**Out of scope.** Resumable / appendable recordings (each Record click is a fresh dir), client-side progress meter (REST manifest summary in the stop banner is enough), and dual-mode "open the just-finalized capture in offline tab" auto-handoff.
+
 ### 2026-05-22 — marvin-perf web viewer: live-mode frontend (Phase 2 of 3)
 
 Frontend half of "browser is the iteration surface." Single-page app gains a Mode toggle (Offline/Live), port `<select>`, Start/Stop buttons, mask display, and an 8-checkbox types panel with ALL/MIN presets. Records stream over the WS into a sliding-window buffer (last 30 s, hard-capped at 10 k). STRIP records render client-side from the `bgr_b64` payload — no server PNG round-trip. The existing offline path is unchanged: every offline route + UI element still works as before; the mode toggle is the boundary.

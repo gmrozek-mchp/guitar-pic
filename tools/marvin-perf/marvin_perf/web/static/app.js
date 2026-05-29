@@ -81,6 +81,7 @@ const state = {
   pendingRedrawHandle: null,
   pendingMaskHandle: null,
   liveMask: MASK_ALL,
+  recording: null,        // null | { capture_dir, started_at }
 };
 
 // ── DOM helpers ─────────────────────────────────────────────────────────────
@@ -703,6 +704,7 @@ function setMode(mode) {
   $("#mode-live").classList.toggle("active", mode === "live");
   $("#offline-controls").classList.toggle("hidden", mode !== "offline");
   $("#live-controls").classList.toggle("hidden", mode !== "live");
+  $("#record-controls").classList.toggle("hidden", mode !== "live");
   $("#types-panel").classList.toggle("hidden", mode !== "live");
   $("#badge-live").classList.toggle("hidden", mode !== "live");
   setLiveTransportEnabled(mode !== "live");
@@ -741,6 +743,11 @@ function resetCaptureState() {
   state.playheadTs = 0;
   state.fsm = "idle";
   state.lastSession = null;
+  state.recording = null;
+  setRecordingPill(null);
+  $("#record-start").disabled = true;
+  $("#record-stop").disabled = true;
+  $("#record-out-dir").disabled = false;
   // Clear panels so the previous mode's contents don't linger.
   fillMeta($("#event-meta"), []);
   fillMeta($("#session-meta"), []);
@@ -805,7 +812,9 @@ async function liveStart() {
   $("#live-start").disabled = true;
   $("#live-stop").disabled = false;
   $("#live-port").disabled = true;
+  $("#record-start").disabled = false;
   setBadge("badge-live", "yellow", "live …");
+  suggestRecordOutDir();
   // Push the initial mask before WS attach so the server's `hello` reflects
   // what the user actually wants (otherwise hello reports 0xffffffff and
   // clobbers the user's STRIP-off default).
@@ -817,6 +826,8 @@ async function liveStop() {
   state.liveStopRequested = true;
   closeWS({ userInitiated: true });
   try {
+    // Server-side `live/stop` auto-finalizes any in-flight recording, so the
+    // bin lands openable on disk without a separate POST from the browser.
     await api("/api/live/stop", { method: "POST" });
   } catch (e) {
     setBanner(e.message, "error");
@@ -824,6 +835,9 @@ async function liveStop() {
   $("#live-start").disabled = false;
   $("#live-stop").disabled = true;
   $("#live-port").disabled = false;
+  $("#record-start").disabled = true;
+  $("#record-stop").disabled = true;
+  setRecordingPill(null);
   setBadge("badge-live", null, "live ●");
   state.fsm = "idle";
 }
@@ -883,6 +897,8 @@ function handleWSMessage(msg) {
       state.liveMask = parseInt(msg.session.mask, 16) >>> 0;
       $("#live-mask").textContent = `0x${state.liveMask.toString(16).padStart(8, "0")}`;
       applyMaskToCheckboxes(state.liveMask);
+      // Re-attach mid-recording: reflect the server's view in the UI.
+      applyRecordingState(msg.session.recording || null);
       break;
     case "session_replay":
     case "record":
@@ -896,6 +912,19 @@ function handleWSMessage(msg) {
     case "framing_stats":
       // (Phase-2: stash on state if we want to render a counter; for now,
       // the per-record append already keeps badges fresh enough.)
+      break;
+    case "recording":
+      if (msg.state === "started") {
+        applyRecordingState({
+          capture_dir: msg.capture_dir,
+          started_at: msg.started_at,
+        });
+      } else if (msg.state === "stopped") {
+        applyRecordingState(null);
+        const dir = msg.capture_dir || "(unknown)";
+        const n = msg.n_frames ?? msg.manifest?.n_records ?? "?";
+        setBanner(`Recorded ${n} frames → ${dir}`);
+      }
       break;
     case "error":
       setBanner(`device error: ${msg.code}: ${msg.msg}`, "error");
@@ -1072,6 +1101,83 @@ function applyMaskPreset(mask) {
   applyMaskFromCheckboxes({ immediate: true });
 }
 
+// ── Live: recording ─────────────────────────────────────────────────────────
+
+function suggestRecordOutDir() {
+  const inp = $("#record-out-dir");
+  if (!inp || inp.value.trim()) return;
+  const d = new Date();
+  const stamp = d.getFullYear().toString() +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    String(d.getDate()).padStart(2, "0") + "-" +
+    String(d.getHours()).padStart(2, "0") +
+    String(d.getMinutes()).padStart(2, "0") +
+    String(d.getSeconds()).padStart(2, "0");
+  inp.value = `captures/web-${stamp}`;
+}
+
+async function recordStart() {
+  const dir = $("#record-out-dir").value.trim();
+  if (!dir) { setBanner("Pick an output dir for the recording.", "error"); return; }
+  $("#record-start").disabled = true;
+  try {
+    await api("/api/live/record/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ out_dir: dir }),
+    });
+    // The actual UI flip happens when the WS broadcasts {state:"started"}.
+  } catch (e) {
+    setBanner(`record start failed: ${e.message}`, "error");
+    $("#record-start").disabled = false;
+  }
+}
+
+async function recordStop() {
+  $("#record-stop").disabled = true;
+  try {
+    await api("/api/live/record/stop", { method: "POST" });
+    // UI flip on the WS broadcast; if WS already closed the REST result has
+    // the manifest summary, but we don't render it here.
+  } catch (e) {
+    setBanner(`record stop failed: ${e.message}`, "error");
+  }
+}
+
+function applyRecordingState(rec) {
+  state.recording = rec;
+  if (rec) {
+    setRecordingPill("active", `REC · ${shortDir(rec.capture_dir)}`);
+    $("#record-start").disabled = true;
+    $("#record-stop").disabled = false;
+    $("#record-out-dir").disabled = true;
+  } else {
+    setRecordingPill(null);
+    $("#record-start").disabled = state.fsm !== "live";
+    $("#record-stop").disabled = true;
+    $("#record-out-dir").disabled = false;
+  }
+}
+
+function setRecordingPill(level, label) {
+  const el = $("#record-pill");
+  if (!el) return;
+  el.classList.remove("rec-idle", "rec-active", "rec-stopped");
+  if (!level) {
+    el.classList.add("rec-idle");
+    el.textContent = "idle";
+    return;
+  }
+  el.classList.add(`rec-${level}`);
+  el.textContent = label || level;
+}
+
+function shortDir(path) {
+  if (!path) return "?";
+  const segs = path.replace(/\\/g, "/").split("/").filter(Boolean);
+  return segs.length > 1 ? `…/${segs[segs.length - 1]}` : path;
+}
+
 // ── Wire-up ─────────────────────────────────────────────────────────────────
 
 function setupControls() {
@@ -1091,6 +1197,8 @@ function setupControls() {
   $("#live-port-refresh").addEventListener("click", refreshSerialPorts);
   $("#live-start").addEventListener("click", liveStart);
   $("#live-stop").addEventListener("click", liveStop);
+  $("#record-start").addEventListener("click", recordStart);
+  $("#record-stop").addEventListener("click", recordStop);
   $("#types-all").addEventListener("click", () => applyMaskPreset(MASK_ALL));
   $("#types-min").addEventListener("click", () => applyMaskPreset(MASK_MIN));
 
@@ -1138,10 +1246,13 @@ async function probeLiveSession() {
       $("#live-port").disabled = true;
       $("#live-start").disabled = true;
       $("#live-stop").disabled = false;
+      $("#record-start").disabled = !!s.recording;
       state.fsm = "live";
       state.liveMask = parseInt(s.mask, 16) >>> 0;
       $("#live-mask").textContent = s.mask;
       applyMaskToCheckboxes(state.liveMask);
+      applyRecordingState(s.recording || null);
+      suggestRecordOutDir();
       openWS();
     }
   } catch {
