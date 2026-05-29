@@ -20,17 +20,27 @@
 /* USB-device CDC ACM sink. The MCC config provides USB_DEVICE_Initialize
  * + the USB_DEVICE_Tasks worker; we own the application-side state
  * machine: open the device handle, register event handlers, attach
- * on VBUS, and provide a blocking write API for the perf-log drain
- * task.
+ * on VBUS, and provide a write API for the perf-log drain task.
  *
- * Single producer (the drain task). Not thread-safe by design: serialize
- * one write at a time, wait for WRITE_COMPLETE, then post the next. A
- * second writer would overlap on the staging buffer. */
+ * Single producer (the drain task). Not thread-safe by design: a second
+ * writer would race on s_tx_head and could allocate the same ring slot
+ * twice. */
 
 /* Header(6) + max payload (sizeof perf_rec_strip_t) + CRC(2), padded up
  * to a cache-line multiple so UDPHS DMA can't share a line with whatever
- * sits next to us in BSS. */
-#define SINK_FRAME_BYTES_MAX  23104u
+ * sits next to us in BSS. Derived from PERF_STRIP_MAX_BYTES so the two
+ * constants can't drift — a too-small sink buffer silently rejects
+ * larger strips at the size check, accumulating dropped_sink. */
+#define SINK_FRAME_BYTES_RAW  (6u + PERF_STRIP_HDR_BYTES + PERF_STRIP_MAX_BYTES + 2u)
+#define SINK_FRAME_BYTES_MAX  ((SINK_FRAME_BYTES_RAW + 63u) & ~63u)
+
+/* Depth of the staging ring. Three independent capacities must all
+ * permit N concurrent in-flight writes:
+ *   - this ring depth                                       (here)
+ *   - CDC per-instance queueSizeWrite                       (usb_device_init_data.c via MCC yml)
+ *   - USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED minus RX/notif use (configuration.h via MCC yml)
+ * MCC config has all three sized for N=3; bump together if changed. */
+#define SINK_TX_RING_DEPTH    3u
 
 #define SINK_OPEN_RETRY_MS    50u
 #define SINK_CONFIG_WAIT_MS   100u
@@ -47,17 +57,24 @@ static volatile USB_CDC_LINE_CODING s_line_coding =
 };
 static volatile USB_CDC_CONTROL_LINE_STATE s_cls;
 
-static SemaphoreHandle_t s_write_done;
-static StaticSemaphore_t s_write_done_buf;
+/* Counting semaphore: tokens = ring slots free for the producer to fill.
+ * Init = SINK_TX_RING_DEPTH (all slots free). Take before claiming a
+ * slot; ISR gives one back per WRITE_COMPLETE. */
+static SemaphoreHandle_t s_tx_credits;
+static StaticSemaphore_t s_tx_credits_buf;
 
-/* Staging buffer for one outgoing frame. UDPHS DMAs from this address;
- * keep it cache-aligned so the driver's cache-maintenance ops don't
- * collide with neighboring data. */
-static uint8_t CACHE_ALIGN s_tx_frame[SINK_FRAME_BYTES_MAX];
+/* Staging ring for outgoing frames. UDPHS DMAs from these addresses;
+ * keeping the outer array CACHE_ALIGN with SINK_FRAME_BYTES_MAX a
+ * multiple of CACHE_LINE_SIZE keeps every inner buffer line-aligned
+ * so the driver's cache-maintenance ops don't collide with neighbors.
+ * s_tx_head advances one slot per accepted submission; producer is the
+ * single drain task so no lock is needed. */
+static uint8_t CACHE_ALIGN s_tx_ring[SINK_TX_RING_DEPTH][SINK_FRAME_BYTES_MAX];
+static uint32_t s_tx_head;
 
 /* RX staging — one bulk-OUT max-packet at HS (512 B). Must be ≥ MPS or
  * the UDPHS driver rejects the IRP / drops the packet. Cache-aligned for
- * the same reason as s_tx_frame. */
+ * the same reason as s_tx_ring. */
 #define SINK_RX_BUF_BYTES  512u
 static uint8_t CACHE_ALIGN s_rx_buf[SINK_RX_BUF_BYTES];
 
@@ -68,19 +85,35 @@ static void prime_rx_read(void)
                               s_rx_buf, SINK_RX_BUF_BYTES);
 }
 
-/* CRC-16/CCITT-FALSE (poly 0x1021, init 0xFFFF, no reflect, no xorout). */
-static uint16_t crc16_ccitt(uint16_t crc, const uint8_t *p, uint16_t len)
+/* Fletcher-16 (mod 255, init 0xFFFF). USB hardware already CRCs every
+ * bulk packet on the wire, so this checksum's job is *framing-layer*
+ * detection only — false SOF matches during resync, firmware bugs that
+ * write a wrong LEN or a partial frame. Fletcher catches single-byte
+ * changes, adjacent swaps, and most non-adjacent swaps with ~1/65536
+ * accidental-match rate against random byte streams — plenty for that
+ * job, at ~2 cycles/byte vs ~6 for a table-driven CRC-16. Block-mod
+ * pattern from RFC 1146 / Wikipedia: defer the modulo until uint32
+ * could overflow, which gives ~5800 iterations between reductions. */
+static uint16_t fletcher16(uint16_t init, const uint8_t *p, uint16_t len)
 {
-    while (len--)
+    uint32_t s1 = (uint32_t)(init & 0xFFu);
+    uint32_t s2 = (uint32_t)((init >> 8) & 0xFFu);
+
+    while (len > 0u)
     {
-        crc ^= (uint16_t)(*p++) << 8;
-        for (uint8_t i = 0u; i < 8u; i++)
+        uint16_t blk = (len > 5802u) ? 5802u : len;
+        len = (uint16_t)(len - blk);
+        do
         {
-            crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u)
-                                  : (uint16_t)(crc << 1);
-        }
+            s1 += *p++;
+            s2 += s1;
+            blk--;
+        } while (blk > 0u);
+        s1 %= 255u;
+        s2 %= 255u;
     }
-    return crc;
+
+    return (uint16_t)((s2 << 8) | s1);
 }
 
 /* ─── CDC class event handler ────────────────────────────────────────────── */
@@ -130,8 +163,9 @@ static USB_DEVICE_CDC_EVENT_RESPONSE cdc_event_handler(
 
         case USB_DEVICE_CDC_EVENT_WRITE_COMPLETE:
         {
+            /* One ring slot has cleared the wire — return its credit. */
             BaseType_t hpw = pdFALSE;
-            (void)xSemaphoreGiveFromISR(s_write_done, &hpw);
+            (void)xSemaphoreGiveFromISR(s_tx_credits, &hpw);
             portYIELD_FROM_ISR(hpw);
             break;
         }
@@ -205,8 +239,10 @@ static void device_event_handler(USB_DEVICE_EVENT event, void *eventData,
 
 void PerfLogSinkCdc_Initialize(void)
 {
-    s_write_done = xSemaphoreCreateBinaryStatic(&s_write_done_buf);
-    configASSERT(s_write_done != NULL);
+    s_tx_credits = xSemaphoreCreateCountingStatic(SINK_TX_RING_DEPTH,
+                                                  SINK_TX_RING_DEPTH,
+                                                  &s_tx_credits_buf);
+    configASSERT(s_tx_credits != NULL);
 
     PerfLogRx_Initialize();
 
@@ -259,38 +295,46 @@ void PerfLogSinkCdc_WriteFramed(const void *payload, uint16_t len)
         return;
     }
 
-    s_tx_frame[0] = 0x55u;
-    s_tx_frame[1] = 0x4Du;
-    s_tx_frame[2] = 0x52u;
-    s_tx_frame[3] = 0x56u;
-    s_tx_frame[4] = (uint8_t)(len & 0xFFu);
-    s_tx_frame[5] = (uint8_t)((len >> 8) & 0xFFu);
-    memcpy(&s_tx_frame[6], payload, len);
-
-    uint16_t crc = 0xFFFFu;
-    crc = crc16_ccitt(crc, &s_tx_frame[4], (uint16_t)(2u + len));
-    s_tx_frame[6u + len]      = (uint8_t)(crc & 0xFFu);
-    s_tx_frame[6u + len + 1u] = (uint8_t)((crc >> 8) & 0xFFu);
-
-    /* Drain any prior signal so we wait for *this* write's completion. */
-    (void)xSemaphoreTake(s_write_done, 0);
-
-    USB_DEVICE_CDC_TRANSFER_HANDLE th = USB_DEVICE_CDC_TRANSFER_HANDLE_INVALID;
-    USB_DEVICE_CDC_RESULT r = USB_DEVICE_CDC_Write(USB_DEVICE_CDC_INDEX_0,
-                                                  &th,
-                                                  s_tx_frame, total,
-                                                  USB_DEVICE_CDC_TRANSFER_FLAGS_DATA_COMPLETE);
-    if (r != USB_DEVICE_CDC_RESULT_OK)
+    /* Wait for a free ring slot. With N=3 against the lower CDC layer's
+     * 3-deep transfer queue, this only blocks when the host has stalled
+     * — under load the producer pipelines at the rate ISR returns
+     * credits. Timeout drops the record and lets the next sink state-
+     * machine pass observe DECONFIGURED if the host went away. */
+    if (xSemaphoreTake(s_tx_credits,
+                       pdMS_TO_TICKS(SINK_WRITE_TIMEOUT_MS)) != pdTRUE)
     {
         PerfLog_NoteSinkDrop((uint32_t)len);
         return;
     }
 
-    if (xSemaphoreTake(s_write_done,
-                       pdMS_TO_TICKS(SINK_WRITE_TIMEOUT_MS)) != pdTRUE)
+    uint8_t *frame = s_tx_ring[s_tx_head];
+
+    frame[0] = 0x55u;
+    frame[1] = 0x4Du;
+    frame[2] = 0x52u;
+    frame[3] = 0x56u;
+    frame[4] = (uint8_t)(len & 0xFFu);
+    frame[5] = (uint8_t)((len >> 8) & 0xFFu);
+    memcpy(&frame[6], payload, len);
+
+    uint16_t fcs = fletcher16(0xFFFFu, &frame[4], (uint16_t)(2u + len));
+    frame[6u + len]      = (uint8_t)(fcs & 0xFFu);
+    frame[6u + len + 1u] = (uint8_t)((fcs >> 8) & 0xFFu);
+
+    USB_DEVICE_CDC_TRANSFER_HANDLE th = USB_DEVICE_CDC_TRANSFER_HANDLE_INVALID;
+    USB_DEVICE_CDC_RESULT r = USB_DEVICE_CDC_Write(USB_DEVICE_CDC_INDEX_0,
+                                                  &th,
+                                                  frame, total,
+                                                  USB_DEVICE_CDC_TRANSFER_FLAGS_DATA_COMPLETE);
+    if (r != USB_DEVICE_CDC_RESULT_OK)
     {
-        /* Host went away mid-write or stalled. Mark dropped and let
-         * the next state-machine pass observe DECONFIGURED. */
+        /* Submission rejected: ISR won't fire for this slot, so hand
+         * the credit back ourselves. Slot stays free; head doesn't
+         * advance. */
+        (void)xSemaphoreGive(s_tx_credits);
         PerfLog_NoteSinkDrop((uint32_t)len);
+        return;
     }
+
+    s_tx_head = (s_tx_head + 1u) % SINK_TX_RING_DEPTH;
 }

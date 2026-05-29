@@ -19,27 +19,24 @@ typedef enum
     RX_READ_LEN_0,
     RX_READ_LEN_1,
     RX_READ_PAYLOAD,
-    RX_READ_CRC_0,
-    RX_READ_CRC_1,
+    RX_READ_FCS_0,
+    RX_READ_FCS_1,
 } rx_state_t;
 
 static rx_state_t s_state;
 static uint16_t   s_len;
 static uint16_t   s_payload_idx;
 static uint8_t    s_payload[PL_RX_PAYLOAD_MAX];
-static uint16_t   s_crc_calc;
-static uint16_t   s_crc_rx;
+/* Streaming Fletcher-16 (mod 255). init from 0xFFFF: s1 = s2 = 0xFF. */
+static uint8_t    s_fcs_s1;
+static uint8_t    s_fcs_s2;
+static uint16_t   s_fcs_rx;
 static uint32_t   s_drops;
 
-static uint16_t crc16_ccitt(uint16_t crc, uint8_t b)
+static inline void fcs_byte(uint8_t b)
 {
-    crc ^= (uint16_t)b << 8;
-    for (uint8_t i = 0u; i < 8u; i++)
-    {
-        crc = (crc & 0x8000u) ? (uint16_t)((crc << 1) ^ 0x1021u)
-                              : (uint16_t)(crc << 1);
-    }
-    return crc;
+    s_fcs_s1 = (uint8_t)(((uint16_t)s_fcs_s1 + b) % 255u);
+    s_fcs_s2 = (uint8_t)(((uint16_t)s_fcs_s2 + s_fcs_s1) % 255u);
 }
 
 static void reset(void)
@@ -47,8 +44,9 @@ static void reset(void)
     s_state       = RX_WAIT_SOF_0;
     s_len         = 0u;
     s_payload_idx = 0u;
-    s_crc_calc    = 0xFFFFu;
-    s_crc_rx      = 0u;
+    s_fcs_s1      = 0xFFu;
+    s_fcs_s2      = 0xFFu;
+    s_fcs_rx      = 0u;
 }
 
 static void drop_and_reset(void)
@@ -126,33 +124,36 @@ void PerfLogRx_Feed(const uint8_t *bytes, uint32_t len)
                 break;
 
             case RX_READ_LEN_0:
-                s_len      = b;
-                s_crc_calc = crc16_ccitt(s_crc_calc, b);
-                s_state    = RX_READ_LEN_1;
+                s_len   = b;
+                fcs_byte(b);
+                s_state = RX_READ_LEN_1;
                 break;
 
             case RX_READ_LEN_1:
-                s_len     |= (uint16_t)b << 8;
-                s_crc_calc = crc16_ccitt(s_crc_calc, b);
+                s_len  |= (uint16_t)b << 8;
+                fcs_byte(b);
                 if (s_len == 0u || s_len > PL_RX_PAYLOAD_MAX) { drop_and_reset(); }
                 else                                          { s_state = RX_READ_PAYLOAD; }
                 break;
 
             case RX_READ_PAYLOAD:
                 s_payload[s_payload_idx++] = b;
-                s_crc_calc = crc16_ccitt(s_crc_calc, b);
-                if (s_payload_idx >= s_len) { s_state = RX_READ_CRC_0; }
+                fcs_byte(b);
+                if (s_payload_idx >= s_len) { s_state = RX_READ_FCS_0; }
                 break;
 
-            case RX_READ_CRC_0:
-                s_crc_rx = b;
-                s_state  = RX_READ_CRC_1;
+            case RX_READ_FCS_0:
+                s_fcs_rx = b;
+                s_state  = RX_READ_FCS_1;
                 break;
 
-            case RX_READ_CRC_1:
-                s_crc_rx |= (uint16_t)b << 8;
-                if (s_crc_rx == s_crc_calc) { dispatch_payload(); reset(); }
-                else                        { drop_and_reset(); }
+            case RX_READ_FCS_1:
+                s_fcs_rx |= (uint16_t)b << 8;
+                {
+                    uint16_t fcs_calc = (uint16_t)(((uint16_t)s_fcs_s2 << 8) | s_fcs_s1);
+                    if (s_fcs_rx == fcs_calc) { dispatch_payload(); reset(); }
+                    else                      { drop_and_reset(); }
+                }
                 break;
 
             default:

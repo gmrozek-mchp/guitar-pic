@@ -341,10 +341,10 @@ static void cv_marvin_v1_task(void *param)
         const uint32_t fstride = (uint32_t)frame.width * CV_BYTES_PER_PIXEL;
         PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_SENSING,
                                    (const uint8_t *)frame.buffer, fstride,
-                                   265u, 300, 185u, 16u);
+                                   265u, 300, 185u, 32u);
         PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_STRIKE,
                                    (const uint8_t *)frame.buffer, fstride,
-                                   212u, 395u, 290u, 20u);
+                                   212u, 395u, 290u, 32u);
 
         draw_overlay((uint8_t *)frame.buffer, frame.width, frame.height);
 

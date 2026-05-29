@@ -167,9 +167,31 @@ typedef enum
 
 #define PERF_STRIP_BPP        3u
 
-#define PERF_STRIP_MAX_W      240u
-#define PERF_STRIP_MAX_H      32u
-#define PERF_STRIP_MAX_BYTES  ((uint32_t)PERF_STRIP_MAX_W * PERF_STRIP_MAX_H * PERF_STRIP_BPP)
+/* Wire-bound on the strip pixel-data size. Two stacked caps determine
+ * the maximum payload a strip can carry:
+ *
+ *   1. Wire LEN field is u16 → max payload 65535 bytes
+ *      → max pixel = 65535 − HDR(16) − BODY(12) = 65507
+ *   2. UDPHS DMA single-transfer cap is
+ *      DRV_USB_UDPHS_DMA_MAX_TRANSFER_SIZE × 64 KB
+ *      (currently 2 × 64 KB = 128 KB; well above the LEN cap)
+ *
+ * The u16 LEN field is the binding constraint. Set at 65000 to land just
+ * under it with a small margin. Producers may use any (w, h) shape as
+ * long as w * h * PERF_STRIP_BPP <= PERF_STRIP_MAX_BYTES.
+ *
+ * Practical strip-size envelope (pixel area = w*h ≤ ~21666):
+ *   720×30  640×33  480×45  320×64  290×72
+ *
+ * Buffer footprint scales with this:
+ *   pool      = PL_STRIP_POOL_SIZE × (28 + PERF_STRIP_MAX_BYTES)
+ *   sink ring = SINK_TX_RING_DEPTH × round_up_64(36 + PERF_STRIP_MAX_BYTES)
+ * Together ~585 KB BSS at 65000; trivially fits in the 240 MB cached DDR.
+ *
+ * To go beyond u16 LEN, the wire format itself needs a schema break (LEN
+ * → u32). Don't do that lightly — at 60 fps × 65 KB = ~3.9 MB/s, this cap
+ * already lines up with what the wire can sustainably carry. */
+#define PERF_STRIP_MAX_BYTES  65000u
 
 #define PERF_STRIP_HDR_BYTES  (sizeof(perf_hdr_t) + 12u)   /* hdr + body */
 

@@ -18,12 +18,18 @@
 #define PL_DRAIN_STACK_WORDS    512u                 /* 2 KB */
 #define PL_DRAIN_PRIORITY       3u
 
-#define PL_STATE_QUEUE_DEPTH    128u
+#define PL_STATE_QUEUE_DEPTH    1024u
 #define PL_STRIP_QUEUE_DEPTH    4u
+
+/* Strip slots live in a static pool; the strip queue and free list carry
+ * just slot indices. Pool size = queue depth + 2 leaves room for one slot
+ * being filled by the producer and one being processed by the drain at
+ * the moment the queue is full, preserving the old drop-on-queue-full
+ * semantics without ever stalling either side. */
+#define PL_STRIP_POOL_SIZE      (PL_STRIP_QUEUE_DEPTH + 2u)
 
 /* State-queue slot is sized to the largest small record. */
 #define PL_STATE_SLOT_BYTES     (sizeof(perf_rec_state_slot_t))
-#define PL_STRIP_SLOT_BYTES     (sizeof(perf_rec_strip_t))
 
 #define PL_DROP_REPORT_PERIOD_MS   1000u
 #define PL_DRAIN_RX_TIMEOUT_MS     20u
@@ -51,9 +57,19 @@ static QueueHandle_t s_state_q;
 static StaticQueue_t s_state_q_buf;
 static uint8_t       s_state_q_storage[PL_STATE_QUEUE_DEPTH * sizeof(perf_rec_state_slot_t)];
 
+/* Strip pool: data lives here from producer fill through drain write to the
+ * sink — no copy at queue ops. Both queues carry uint8_t slot indices. The
+ * "in-flight" queue holds full slots awaiting drain; the "free" queue holds
+ * available slots for the producer to claim. */
+static perf_rec_strip_t s_strip_pool[PL_STRIP_POOL_SIZE];
+
 static QueueHandle_t s_strip_q;
 static StaticQueue_t s_strip_q_buf;
-static uint8_t       s_strip_q_storage[PL_STRIP_QUEUE_DEPTH * sizeof(perf_rec_strip_t)];
+static uint8_t       s_strip_q_storage[PL_STRIP_QUEUE_DEPTH * sizeof(uint8_t)];
+
+static QueueHandle_t s_strip_free_q;
+static StaticQueue_t s_strip_free_q_buf;
+static uint8_t       s_strip_free_q_storage[PL_STRIP_POOL_SIZE * sizeof(uint8_t)];
 
 static StackType_t   s_drain_stack[PL_DRAIN_STACK_WORDS];
 static StaticTask_t  s_drain_tcb;
@@ -67,8 +83,22 @@ static volatile uint32_t s_drop_sink;
 
 static volatile bool s_running;
 
-/* All-on at boot; host narrows on connect via PERF_CMD_SET_TYPE_MASK. */
-static volatile uint32_t s_enabled_mask = 0xFFFFFFFFu;
+/* Boot with only the cheap diagnostic types enabled: DROP (1 Hz),
+ * TASK_HIGHWATER (~6/s), TASK_RUNTIME (~6/s). The host viewer enables
+ * higher-rate types (STAMP, DETECTOR, TIMING, STRIP) via
+ * PERF_CMD_SET_TYPE_MASK once it's ready to consume them. SESSION is
+ * always emitted regardless of mask.
+ *
+ * Why default-off for the high-rate types — and STRIP especially:
+ * before a host attaches and clears the wire, every emitted record
+ * burns producer CPU (queue ops, framing, Fletcher) only to be dropped
+ * at the sink for lack of DTR. STRIP at 60 Hz is the worst case
+ * (multiple MB/s of pixel data thrown away) but STAMP isn't free either
+ * (~700/s of state-queue traffic). */
+static volatile uint32_t s_enabled_mask =
+    (1u << PERF_REC_DROP) |
+    (1u << PERF_REC_TASK_HIGHWATER) |
+    (1u << PERF_REC_TASK_RUNTIME);
 
 static inline bool type_enabled(uint8_t type)
 {
@@ -210,12 +240,25 @@ static void perf_log_drain_task(void *param)
                           pdMS_TO_TICKS(PL_DRAIN_RX_TIMEOUT_MS)) == pdTRUE)
         {
             PerfLogSinkCdc_WriteFramed(&srec, record_size(&srec));
+            /* Drain all currently queued state records before moving on.
+             * Strips cost ~5 ms apiece on the wire, so a one-state-per-
+             * iteration loop runs at ~50 Hz under load — well below the
+             * ~700 stamps/s production rate. Same shape as the strip
+             * drain below. */
+            while (xQueueReceive(s_state_q, &srec, 0) == pdTRUE)
+            {
+                PerfLogSinkCdc_WriteFramed(&srec, record_size(&srec));
+            }
         }
 
-        static perf_rec_strip_t s_strip_drain;   /* one slot reused; drain-task only */
-        while (xQueueReceive(s_strip_q, &s_strip_drain, 0) == pdTRUE)
+        /* Strip drain: dequeue slot index, write the slot's data via
+         * pointer (no copy), return slot to the free pool. */
+        uint8_t slot_idx;
+        while (xQueueReceive(s_strip_q, &slot_idx, 0) == pdTRUE)
         {
-            PerfLogSinkCdc_WriteFramed(&s_strip_drain, strip_record_size(&s_strip_drain));
+            const perf_rec_strip_t *r = &s_strip_pool[slot_idx];
+            PerfLogSinkCdc_WriteFramed(r, strip_record_size(r));
+            (void)xQueueSend(s_strip_free_q, &slot_idx, 0);
         }
 
         if ((xTaskGetTickCount() - last_drop) >= pdMS_TO_TICKS(PL_DROP_REPORT_PERIOD_MS))
@@ -239,10 +282,22 @@ void PerfLog_Initialize(void)
     configASSERT(s_state_q != NULL);
 
     s_strip_q = xQueueCreateStatic(PL_STRIP_QUEUE_DEPTH,
-                                   sizeof(perf_rec_strip_t),
+                                   sizeof(uint8_t),
                                    s_strip_q_storage,
                                    &s_strip_q_buf);
     configASSERT(s_strip_q != NULL);
+
+    s_strip_free_q = xQueueCreateStatic(PL_STRIP_POOL_SIZE,
+                                        sizeof(uint8_t),
+                                        s_strip_free_q_storage,
+                                        &s_strip_free_q_buf);
+    configASSERT(s_strip_free_q != NULL);
+
+    /* Seed the free list with all pool indices. */
+    for (uint8_t i = 0u; i < PL_STRIP_POOL_SIZE; i++)
+    {
+        (void)xQueueSend(s_strip_free_q, &i, 0);
+    }
 }
 
 void PerfLog_Start(void)
@@ -368,34 +423,44 @@ void PerfLog_EmitTaskRuntime(perf_task_id_t id,
     send_state(&slot);
 }
 
-/* Strip producer: row-copies a w×h BGR888 region out of a strided source
- * frame into the queue slot. Total pixel bytes (w*h*3) must fit the queue
- * slot's bgr[] capacity (PERF_STRIP_MAX_BYTES); per-axis shape is
- * unconstrained beyond that. Drop-on-full; counter incremented under
- * critical section. */
+/* Strip producer: claim a free slot from the pool, row-copy a w×h BGR888
+ * region out of the strided source frame directly into the slot, then
+ * enqueue just the slot index. No struct memcpy in the queue critical
+ * section — only a 1-byte index transfer.
+ *
+ * Total pixel bytes (w*h*3) must fit the slot's bgr[] capacity
+ * (PERF_STRIP_MAX_BYTES); per-axis shape is unconstrained beyond that.
+ * Drop-on-pool-empty; counter incremented under critical section. */
 void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
                                 perf_strip_kind_t kind,
                                 const uint8_t *frame, uint32_t frame_stride,
                                 uint16_t x, uint16_t y,
                                 uint16_t w, uint16_t h)
 {
-    if (s_strip_q == NULL || frame == NULL) { return; }
+    if (s_strip_q == NULL || s_strip_free_q == NULL || frame == NULL) { return; }
     if (!type_enabled(PERF_REC_STRIP)) { return; }
     if (w == 0u || h == 0u) { return; }
     if ((uint32_t)w * (uint32_t)h * PERF_STRIP_BPP > PERF_STRIP_MAX_BYTES) { return; }
 
-    static perf_rec_strip_t r;     /* one staging slot; producer is single-task */
-    memset(&r, 0, PERF_STRIP_HDR_BYTES);
-    hdr_fill(&r.hdr, PERF_REC_STRIP, 0u, frame_epoch);
-    r.x    = x;
-    r.y    = y;
-    r.w    = w;
-    r.h    = h;
-    r.kind = (uint8_t)kind;
+    uint8_t slot_idx;
+    if (xQueueReceive(s_strip_free_q, &slot_idx, 0) != pdTRUE)
+    {
+        counter_add_task(&s_drop_strip, 1u);
+        return;
+    }
+
+    perf_rec_strip_t *r = &s_strip_pool[slot_idx];
+    memset(r, 0, PERF_STRIP_HDR_BYTES);
+    hdr_fill(&r->hdr, PERF_REC_STRIP, 0u, frame_epoch);
+    r->x    = x;
+    r->y    = y;
+    r->w    = w;
+    r->h    = h;
+    r->kind = (uint8_t)kind;
 
     const uint32_t row_bytes = (uint32_t)w * PERF_STRIP_BPP;
     const uint8_t *src = frame + (uint32_t)y * frame_stride + (uint32_t)x * PERF_STRIP_BPP;
-    uint8_t *dst = r.bgr;
+    uint8_t *dst = r->bgr;
     for (uint16_t row = 0u; row < h; row++)
     {
         memcpy(dst, src, row_bytes);
@@ -403,8 +468,12 @@ void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
         dst += row_bytes;
     }
 
-    if (xQueueSend(s_strip_q, &r, 0) != pdTRUE)
+    if (xQueueSend(s_strip_q, &slot_idx, 0) != pdTRUE)
     {
+        /* In-flight queue full (pool sized depth+2 makes this rare; only
+         * possible if the drain task is blocked while strip_q is at depth
+         * and the producer also holds a slot). Return slot to free pool. */
+        (void)xQueueSend(s_strip_free_q, &slot_idx, 0);
         counter_add_task(&s_drop_strip, 1u);
     }
 }
