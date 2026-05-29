@@ -1,4 +1,4 @@
-"""Wire-framing tests: CRC, SOF resync, length sanity, partial chunks."""
+"""Wire-framing tests: FCS, SOF resync, length sanity, partial chunks."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import struct
 
 import pytest
 
-from marvin_perf.framing import FrameStats, crc16_ccitt_false, frame_encode, iter_frames
+from marvin_perf.framing import FrameStats, fletcher16, frame_encode, iter_frames
 from marvin_perf.records import (
     MAX_RECORD_BYTES,
     PERF_CMD_HDR_MAGIC,
@@ -18,17 +18,18 @@ from marvin_perf.records import (
 from .conftest import build_session_payload, build_drop_payload, wrap_frame
 
 
-# ─── CRC vector ──────────────────────────────────────────────────────────────
+# ─── Fletcher-16 vector ──────────────────────────────────────────────────────
 
 
-def test_crc_known_vector() -> None:
-    # CRC-16/CCITT-FALSE("123456789") = 0x29B1, the canonical test vector.
-    assert crc16_ccitt_false(b"123456789") == 0x29B1
+def test_fletcher_known_vector() -> None:
+    # Fletcher-16(mod 255, init=0xFFFF) of "123456789" = 0x1EDE. Hand-computed
+    # and verifiable against the reference implementation in RFC 1146.
+    assert fletcher16(b"123456789") == 0x1EDE
 
 
-def test_crc_empty() -> None:
+def test_fletcher_empty() -> None:
     # init=0xFFFF, no input => stays 0xFFFF.
-    assert crc16_ccitt_false(b"") == 0xFFFF
+    assert fletcher16(b"") == 0xFFFF
 
 
 # ─── Happy-path framing ──────────────────────────────────────────────────────
@@ -43,7 +44,7 @@ def test_single_frame_round_trip() -> None:
     assert out[0].bytes_skipped_before == 0
     assert stats.frames_ok == 1
     assert stats.bytes_resync_dropped == 0
-    assert stats.crc_mismatches == 0
+    assert stats.fcs_mismatches == 0
 
 
 def test_two_frames_back_to_back() -> None:
@@ -105,17 +106,17 @@ def test_resync_after_truncated_lookalike() -> None:
     assert stats.bad_lengths >= 1
 
 
-# ─── CRC mismatch ────────────────────────────────────────────────────────────
+# ─── FCS mismatch ────────────────────────────────────────────────────────────
 
 
-def test_corrupt_crc_drops_frame() -> None:
-    bad = wrap_frame(build_session_payload(), corrupt_crc=True)
+def test_corrupt_fcs_drops_frame() -> None:
+    bad = wrap_frame(build_session_payload(), corrupt_fcs=True)
     good = wrap_frame(build_drop_payload())
     stats = FrameStats()
     out = list(iter_frames([bad + good], stats))
     # The bad frame is rejected; the good one still arrives.
     assert len(out) == 1
-    assert stats.crc_mismatches >= 1
+    assert stats.fcs_mismatches >= 1
     assert stats.frames_ok == 1
 
 
@@ -168,7 +169,7 @@ def test_encode_round_trip() -> None:
     # 16-byte payload satisfies iter_frames's LEN≥16 sanity check.
     payload = build_session_payload()
     framed = frame_encode(payload)
-    # SOF(4) + LEN(2) + payload + CRC(2)
+    # SOF(4) + LEN(2) + payload + FCS(2)
     assert framed[:4] == SOF_BYTES
     assert framed[4:6] == struct.pack("<H", len(payload))
     out = list(iter_frames([framed], FrameStats()))
@@ -194,9 +195,9 @@ def test_encode_command_known_vector() -> None:
     assert framed[:4] == SOF_BYTES
     assert framed[4:6] == struct.pack("<H", 8)
     assert framed[6:6 + 8] == expected_payload
-    # CRC over LEN || PAYLOAD.
-    expected_crc = crc16_ccitt_false(framed[4:6 + 8])
-    assert framed[6 + 8 : 6 + 8 + 2] == struct.pack("<H", expected_crc)
+    # FCS over LEN || PAYLOAD.
+    expected_fcs = fletcher16(framed[4:6 + 8])
+    assert framed[6 + 8 : 6 + 8 + 2] == struct.pack("<H", expected_fcs)
 
 
 # ─── FrameBytes.framed (recorder needs the original wire bytes) ──────────────

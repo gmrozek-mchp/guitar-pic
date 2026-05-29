@@ -46,5 +46,5 @@ existing venv automatically.
     uv run pytest
 
 Fixtures under [`tests/fixtures/`](tests/fixtures/) are hand-built byte streams
-covering one frame per record type plus framing edge cases (CRC mismatch,
+covering one frame per record type plus framing edge cases (FCS mismatch,
 truncated payload, mid-stream join needing SOF resync).

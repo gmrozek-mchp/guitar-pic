@@ -236,7 +236,7 @@ def _live_loop(records: Iterator[Record], stats: FrameStats) -> int:
         if (now - last_status) >= 1.0:
             print(
                 f"  [status] frames={stats.frames_ok} resync_drop={stats.bytes_resync_dropped} "
-                f"crc_err={stats.crc_mismatches} drop_recs={drop_records}",
+                f"fcs_err={stats.fcs_mismatches} drop_recs={drop_records}",
                 file=sys.stderr,
                 flush=True,
             )
@@ -315,7 +315,7 @@ def cmd_decode(args: argparse.Namespace) -> int:
             print(_format_record(rec, drop_baseline=drop_baseline))
     print(
         f"\n[decode] frames_ok={stats.frames_ok} resync_drop={stats.bytes_resync_dropped} "
-        f"crc_err={stats.crc_mismatches} bad_len={stats.bad_lengths}",
+        f"fcs_err={stats.fcs_mismatches} bad_len={stats.bad_lengths}",
         file=sys.stderr,
     )
     return 0
@@ -340,7 +340,7 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     print("=== marvin perf-log summary ===")
     print(f"file: {args.path}")
     print(f"frames_ok={stats.frames_ok}  bytes_resync_dropped={stats.bytes_resync_dropped}  "
-          f"crc_err={stats.crc_mismatches}  bad_len={stats.bad_lengths}")
+          f"fcs_err={stats.fcs_mismatches}  bad_len={stats.bad_lengths}")
     print(f"records: {len(records)}")
 
     if session is None:

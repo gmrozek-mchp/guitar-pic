@@ -222,7 +222,7 @@ def capture_summary(capture_id: str) -> dict[str, Any]:
         "framing": {
             "frames_ok": loaded.framing_stats.frames_ok,
             "bytes_resync_dropped": loaded.framing_stats.bytes_resync_dropped,
-            "crc_mismatches": loaded.framing_stats.crc_mismatches,
+            "fcs_mismatches": loaded.framing_stats.fcs_mismatches,
             "bad_lengths": loaded.framing_stats.bad_lengths,
         },
         "record_type_counts": dict(type_counts),
@@ -337,7 +337,7 @@ def capture_health(capture_id: str) -> dict[str, Any]:
         "framing": {
             "frames_ok": loaded.framing_stats.frames_ok,
             "bytes_resync_dropped": loaded.framing_stats.bytes_resync_dropped,
-            "crc_mismatches": loaded.framing_stats.crc_mismatches,
+            "fcs_mismatches": loaded.framing_stats.fcs_mismatches,
             "bad_lengths": loaded.framing_stats.bad_lengths,
         },
         "drops_since_session": {

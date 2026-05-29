@@ -1,10 +1,12 @@
 """Wire-frame parser for the perf-log USB CDC stream.
 
-Wire layout (mirrors firmware perf_log_sink_cdc.c:234-245):
+Wire layout (mirrors firmware perf_log_sink_cdc.c):
 
-    SOF(4)  | LEN(u16 LE) | PAYLOAD(LEN bytes) | CRC(u16 LE)
+    SOF(4)  | LEN(u16 LE) | PAYLOAD(LEN bytes) | FCS(u16 LE)
 
-CRC is CRC-16/CCITT-FALSE computed over `LEN || PAYLOAD` (NOT including SOF).
+FCS is Fletcher-16 (mod 255, init 0xFFFF) computed over `LEN || PAYLOAD`
+(NOT including SOF). USB hardware already CRCs the wire; the framing
+checksum is just for resync alignment + firmware-bug detection.
 
 This module is purely byte-level. It does not understand record types — that's
 decode.py's job. It exists to (a) resync after mid-stream join or byte loss,
@@ -19,48 +21,36 @@ from dataclasses import dataclass
 from .records import MAX_RECORD_BYTES, SOF_BYTES
 
 
-# ─── CRC-16/CCITT-FALSE ──────────────────────────────────────────────────────
-
-_CRC_TABLE: list[int] = []
+# ─── Fletcher-16 (mod 255, init 0xFFFF) ──────────────────────────────────────
 
 
-def _build_crc_table() -> list[int]:
-    table: list[int] = []
-    for byte in range(256):
-        crc = byte << 8
-        for _ in range(8):
-            crc = ((crc << 1) ^ 0x1021) if (crc & 0x8000) else (crc << 1)
-            crc &= 0xFFFF
-        table.append(crc)
-    return table
+def fletcher16(data: bytes | memoryview, init: int = 0xFFFF) -> int:
+    """Fletcher-16 with mod 255. Mirrors firmware perf_log_sink_cdc.c.
 
-
-_CRC_TABLE = _build_crc_table()
-
-
-def crc16_ccitt_false(data: bytes | memoryview, init: int = 0xFFFF) -> int:
-    """CRC-16/CCITT-FALSE: poly 0x1021, init 0xFFFF, no reflection, no xorout.
-
-    Mirrors firmware perf_log_sink_cdc.c:58-70 byte-for-byte.
+    Detection: single-byte changes, adjacent swaps, most non-adjacent swaps.
+    Strong enough for framing-layer alignment + firmware-bug detection on
+    top of USB's wire-level CRC. ~3× cheaper than CRC-16 in C and Python.
     """
-    crc = init
+    s1 = init & 0xFF
+    s2 = (init >> 8) & 0xFF
     for b in data:
-        crc = ((crc << 8) ^ _CRC_TABLE[(crc >> 8) ^ b]) & 0xFFFF
-    return crc
+        s1 = (s1 + b) % 255
+        s2 = (s2 + s1) % 255
+    return (s2 << 8) | s1
 
 
 def frame_encode(payload: bytes) -> bytes:
-    """SOF + LEN(u16LE) + payload + CRC16-CCITT-FALSE(u16LE).
+    """SOF + LEN(u16LE) + payload + Fletcher-16(u16LE).
 
-    Mirror of the device-side framer; CRC covers LEN || PAYLOAD (not SOF).
+    Mirror of the device-side framer; FCS covers LEN || PAYLOAD (not SOF).
     """
     length = len(payload)
     if length > 0xFFFF:
         raise ValueError(f"payload too large: {length} bytes")
     len_bytes = bytes((length & 0xFF, (length >> 8) & 0xFF))
-    crc = crc16_ccitt_false(len_bytes + payload)
-    crc_bytes = bytes((crc & 0xFF, (crc >> 8) & 0xFF))
-    return SOF_BYTES + len_bytes + payload + crc_bytes
+    fcs = fletcher16(len_bytes + payload)
+    fcs_bytes = bytes((fcs & 0xFF, (fcs >> 8) & 0xFF))
+    return SOF_BYTES + len_bytes + payload + fcs_bytes
 
 
 # ─── Frame iterator ──────────────────────────────────────────────────────────
@@ -76,7 +66,7 @@ class FrameBytes:
 
 
 class FrameError(Exception):
-    """Wire-level frame error (CRC mismatch, length out of range)."""
+    """Wire-level frame error (FCS mismatch, length out of range)."""
 
 
 class FrameStats:
@@ -85,7 +75,7 @@ class FrameStats:
     def __init__(self) -> None:
         self.frames_ok: int = 0
         self.bytes_resync_dropped: int = 0
-        self.crc_mismatches: int = 0
+        self.fcs_mismatches: int = 0
         self.bad_lengths: int = 0
 
 
@@ -97,7 +87,7 @@ def iter_frames(
 
     The iterator handles arbitrary chunk boundaries (a frame may straddle as
     many chunks as it likes), resyncs on the 4-byte SOF after byte loss, and
-    drops frames whose CRC does not match. Counters are accumulated into
+    drops frames whose FCS does not match. Counters are accumulated into
     `stats` if supplied.
     """
     if stats is None:
@@ -149,13 +139,13 @@ def iter_frames(
                 break
 
             payload = bytes(buf[6 : 6 + length])
-            crc_observed = buf[6 + length] | (buf[6 + length + 1] << 8)
-            crc_expected = crc16_ccitt_false(buf[4 : 6 + length])
+            fcs_observed = buf[6 + length] | (buf[6 + length + 1] << 8)
+            fcs_expected = fletcher16(buf[4 : 6 + length])
 
-            if crc_observed != crc_expected:
-                # Bad CRC. Likely a false-positive SOF in the middle of an
+            if fcs_observed != fcs_expected:
+                # Bad FCS. Likely a false-positive SOF in the middle of an
                 # earlier frame; step past one byte and rescan.
-                stats.crc_mismatches += 1
+                stats.fcs_mismatches += 1
                 skipped_since_last_ok += 1
                 stats.bytes_resync_dropped += 1
                 del buf[0]

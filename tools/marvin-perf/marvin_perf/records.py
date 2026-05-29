@@ -25,14 +25,17 @@ SOF_BYTES = bytes((0x55, 0x4D, 0x52, 0x56))  # "UMRV"
 
 FRET_COUNT = 5
 
-# Strip is the variable-size BGR888 region-of-interest record. Today's
-# producers use 240×32 sensing + 240×32 strike; the wire format treats
-# (kind, x, y, w, h) as fully variable per record so future kinds can
-# carry different rectangles without a schema bump.
+# Strip is the variable-size BGR888 region-of-interest record. The wire
+# format treats (kind, x, y, w, h) as fully variable per record so future
+# kinds can carry different rectangles without a schema bump.
+#
+# STRIP_MAX_BYTES is a sanity bound on decoded pixel data — must mirror
+# firmware perf_log_records.h:PERF_STRIP_MAX_BYTES exactly. The firmware
+# value lands just under the u16 wire-LEN cap (65535 bytes − record
+# header overhead). To raise it, the LEN field needs to grow to u32 —
+# wire format break, both ends must update together.
 STRIP_BPP = 3
-STRIP_MAX_W = 240
-STRIP_MAX_H = 32
-STRIP_MAX_BYTES = STRIP_MAX_W * STRIP_MAX_H * STRIP_BPP  # 23040
+STRIP_MAX_BYTES = 65000  # mirrors firmware PERF_STRIP_MAX_BYTES
 
 
 class RecordType(IntEnum):
@@ -235,7 +238,7 @@ _CMD_SET_MASK_FMT = struct.Struct("<HBBI")  # magic, cmd_id, reserved, mask
 
 
 def encode_set_mask_payload(mask: int) -> bytes:
-    """Pack a SET_TYPE_MASK command payload (no SOF/LEN/CRC framing)."""
+    """Pack a SET_TYPE_MASK command payload (no SOF/LEN/FCS framing)."""
     return _CMD_SET_MASK_FMT.pack(
         PERF_CMD_HDR_MAGIC, PERF_CMD_SET_TYPE_MASK, 0, mask & 0xFFFFFFFF
     )

@@ -180,7 +180,7 @@ class _LiveSession:
                 "started_at": self._state.started_at if active else None,
                 "framing": {
                     "frames_ok": self._state.framing_stats.frames_ok,
-                    "crc_err": self._state.framing_stats.crc_mismatches,
+                    "fcs_err": self._state.framing_stats.fcs_mismatches,
                     "resync_drop": self._state.framing_stats.bytes_resync_dropped,
                     "bad_lengths": self._state.framing_stats.bad_lengths,
                 },
@@ -229,8 +229,16 @@ class _LiveSession:
             rec = self._rec
             self._rec = None
             port = self._state.port
+            session = self._state.last_session_dict
         if rec is None:
             return None
+        stopped_at_dt = datetime.now(timezone.utc)
+        stopped_at = stopped_at_dt.isoformat()
+        try:
+            started_at_dt = datetime.fromisoformat(rec.started_at)
+            duration_s = (stopped_at_dt - started_at_dt).total_seconds()
+        except Exception:
+            duration_s = None
         try:
             rec.fh.flush()
         except Exception:
@@ -239,10 +247,23 @@ class _LiveSession:
             rec.fh.close()
         except Exception:
             pass
+        # Pull timer_freq_hz from the cached SESSION if we saw one on the
+        # WS at any point. Bin-derived freq still wins inside synthesize.
+        timer_freq_fallback = None
+        if session is not None:
+            try:
+                timer_freq_fallback = int(session.get("timer_freq_hz"))
+            except (TypeError, ValueError):
+                timer_freq_fallback = None
         manifest_dict: dict[str, Any]
         try:
             manifest = finalize_capture_dir(
-                rec.dir, source=CaptureSource(kind="serial", port=port or ""),
+                rec.dir,
+                source=CaptureSource(kind="serial", port=port or ""),
+                timer_freq_hz_fallback=timer_freq_fallback,
+                recording_started_at=rec.started_at,
+                recording_stopped_at=stopped_at,
+                recording_duration_s=duration_s,
             )
             manifest_dict = manifest.to_dict()
         except Exception as e:

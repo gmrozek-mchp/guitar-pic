@@ -346,8 +346,8 @@ function renderBadges() {
   const f = h.framing || {};
   const d = h.drops_since_session || {};
   let level = "green", label = "link ●";
-  if ((f.crc_mismatches || 0) > 0 || (f.bytes_resync_dropped || 0) > 0) {
-    level = "red"; label = `link ✗ ${f.crc_mismatches || 0} crc`;
+  if ((f.fcs_mismatches || 0) > 0 || (f.bytes_resync_dropped || 0) > 0) {
+    level = "red"; label = `link ✗ ${f.fcs_mismatches || 0} fcs`;
   } else if ((d.state_records || 0) + (d.patch_records || 0) + (d.sink_bytes || 0) > 0) {
     level = "yellow"; label = "link drops";
   }

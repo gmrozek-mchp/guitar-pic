@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import struct
 
-from marvin_perf.framing import crc16_ccitt_false
+from marvin_perf.framing import fletcher16
 from marvin_perf.records import (
     Detector,
     Drop,
@@ -133,13 +133,13 @@ def build_strip_payload(
     return build_header(RecordType.STRIP, frame_epoch=frame_epoch) + body + bgr
 
 
-# ─── Frame wrapper (SOF + LEN + payload + CRC) ───────────────────────────────
+# ─── Frame wrapper (SOF + LEN + payload + FCS) ───────────────────────────────
 
 
-def wrap_frame(payload: bytes, *, corrupt_crc: bool = False) -> bytes:
+def wrap_frame(payload: bytes, *, corrupt_fcs: bool = False) -> bytes:
     length = len(payload)
     length_bytes = struct.pack("<H", length)
-    crc = crc16_ccitt_false(length_bytes + payload)
-    if corrupt_crc:
-        crc ^= 0xFFFF
-    return SOF_BYTES + length_bytes + payload + struct.pack("<H", crc)
+    fcs = fletcher16(length_bytes + payload)
+    if corrupt_fcs:
+        fcs ^= 0xFFFF
+    return SOF_BYTES + length_bytes + payload + struct.pack("<H", fcs)

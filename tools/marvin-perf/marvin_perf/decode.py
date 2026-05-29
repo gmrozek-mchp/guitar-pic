@@ -160,9 +160,9 @@ _DISPATCH = {
 
 
 def decode_record(payload: bytes) -> Record:
-    """Decode a CRC-validated frame payload into a typed Record dataclass.
+    """Decode an FCS-validated frame payload into a typed Record dataclass.
 
-    Caller (framing.iter_frames) has already verified CRC and length sanity.
+    Caller (framing.iter_frames) has already verified FCS and length sanity.
     Unknown record types are surfaced as UnknownRecord so a forward-schema
     firmware does not crash an older host.
     """

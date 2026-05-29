@@ -63,6 +63,11 @@ class Manifest:
     frame_epoch_last: int | None
     producer_capabilities: list[str]
     n_records: int
+    # Recording window in wall-clock terms — populated by the live recorder
+    # when it can. None for legacy/CLI captures that don't track these.
+    recording_started_at: str | None = None
+    recording_stopped_at: str | None = None
+    recording_duration_s: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -76,6 +81,9 @@ class Manifest:
             "frame_epoch_last": self.frame_epoch_last,
             "producer_capabilities": list(self.producer_capabilities),
             "n_records": self.n_records,
+            "recording_started_at": self.recording_started_at,
+            "recording_stopped_at": self.recording_stopped_at,
+            "recording_duration_s": self.recording_duration_s,
         }
 
     @classmethod
@@ -91,6 +99,9 @@ class Manifest:
             frame_epoch_last=d.get("frame_epoch_last"),
             producer_capabilities=list(d.get("producer_capabilities", [])),
             n_records=int(d.get("n_records", 0)),
+            recording_started_at=d.get("recording_started_at"),
+            recording_stopped_at=d.get("recording_stopped_at"),
+            recording_duration_s=d.get("recording_duration_s"),
         )
 
 
@@ -110,6 +121,10 @@ def synthesize_manifest(
     *,
     source: CaptureSource | None = None,
     captured_at: str | None = None,
+    timer_freq_hz_fallback: int | None = None,
+    recording_started_at: str | None = None,
+    recording_stopped_at: str | None = None,
+    recording_duration_s: float | None = None,
 ) -> Manifest:
     """Scan a `perf.bin` end-to-end and derive a minimal manifest.
 
@@ -137,11 +152,14 @@ def synthesize_manifest(
                 schema_version = rec.schema_version
                 fw_git_short = rec.fw_git_short
                 timer_freq_hz = rec.timer_freq_hz
-            # frame_epoch == 0 records (SESSION/DROP/TASK_HIGHWATER/TASK_RUNTIME)
-            # are not frame-tied — skip them when bounding the epoch range.
-            if isinstance(rec, (Session, Drop, TaskHighwater, TaskRuntime)):
-                continue
+            # frame_epoch == 0 is the sentinel for "no frame association."
+            # SESSION/DROP/TASK_HIGHWATER/TASK_RUNTIME use it; so do
+            # FBL_SEND/CDC_WRITE_COMPLETE stamps (the actuator wire crosses
+            # a chord queue that strips the epoch). Filter on the sentinel
+            # directly instead of enumerating types.
             ep = rec.hdr.frame_epoch
+            if ep == 0:
+                continue
             if epoch_first is None or ep < epoch_first:
                 epoch_first = ep
             if epoch_last is None or ep > epoch_last:
@@ -150,7 +168,8 @@ def synthesize_manifest(
     return Manifest(
         schema_version=schema_version,
         fw_git_short=fw_git_short,
-        timer_freq_hz=timer_freq_hz,
+        # Bin-derived freq wins; fallback only if the bin had no SESSION.
+        timer_freq_hz=timer_freq_hz if timer_freq_hz is not None else timer_freq_hz_fallback,
         captured_at=captured_at or _now_utc_iso(),
         host_user=_host_user(),
         source=source or CaptureSource(kind="file", file=str(bin_path)),
@@ -158,6 +177,9 @@ def synthesize_manifest(
         frame_epoch_last=epoch_last,
         producer_capabilities=sorted(types),
         n_records=n_records,
+        recording_started_at=recording_started_at,
+        recording_stopped_at=recording_stopped_at,
+        recording_duration_s=recording_duration_s,
     )
 
 
@@ -227,12 +249,22 @@ def finalize_capture_dir(
     *,
     source: CaptureSource,
     captured_at: str | None = None,
+    timer_freq_hz_fallback: int | None = None,
+    recording_started_at: str | None = None,
+    recording_stopped_at: str | None = None,
+    recording_duration_s: float | None = None,
 ) -> Manifest:
     """Scan the just-written bin, write manifest.json, return the manifest."""
     p = Path(dir_path)
     bin_path = p / BIN_NAME
     manifest = synthesize_manifest(
-        bin_path, source=source, captured_at=captured_at or _now_utc_iso()
+        bin_path,
+        source=source,
+        captured_at=captured_at or _now_utc_iso(),
+        timer_freq_hz_fallback=timer_freq_hz_fallback,
+        recording_started_at=recording_started_at,
+        recording_stopped_at=recording_stopped_at,
+        recording_duration_s=recording_duration_s,
     )
     write_manifest(p, manifest)
     return manifest
