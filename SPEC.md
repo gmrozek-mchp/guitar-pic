@@ -23,7 +23,7 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
    │           │       (operator UI)    │                  │
    │           └────────── SD card ─────┘  (recording)    │
    └────────┬──────────────────────────┬───────────────────┘
-            │ UART cmds (frets/strum)  │ UART (raw ADC)
+            │ USB CDC host (cmds)      │ USB CDC host (ADC)
             ▼                          │
    ┌──────────────────────────────────┐│
    │   fretboard (PIC32CM6408)        │┘
@@ -50,6 +50,7 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
 | marvin | [`firmware/marvin/docs/spec.md`](firmware/marvin/docs/spec.md) | [`firmware/marvin/docs/journal.md`](firmware/marvin/docs/journal.md) |
 | fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) | — |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
+| marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 
 marvin's spec also has deeper-dive documents for its capture and display paths ([`capture_pipeline.md`](firmware/marvin/docs/capture_pipeline.md), [`display_path.md`](firmware/marvin/docs/display_path.md)).
 
@@ -65,7 +66,8 @@ guitar-pic/
 │   ├── fretboard/               # PIC32CM6408 sensor/actuator MCU firmware
 │   └── sam9x75_curiosity_emirror/   # Microchip reference project (template only)
 ├── tools/
-│   └── fret-tuner/              # Python dev/calibration tool
+│   ├── fret-tuner/              # Python dev/calibration tool
+│   └── marvin-perf/             # marvin perf-log decoder + web viewer
 ├── hardware/
 │   ├── actuators/               # voice coil / electromagnet / DIY solenoid design + test protocols
 │   ├── 3d-models/               # OpenSCAD + STL for printed actuator parts
@@ -94,7 +96,7 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 
 - **Architecture pivot.** The original PC-hosted / Elgato-USB-capture / PS2 / single-PIC-actuator design is retired. Source documents are preserved at [`docs/archive/`](docs/archive/) for design-rationale reference; they are *not* maintained.
 - **`frame_epoch` is the master sync token.** A 32-bit counter incremented by marvin's video task on every captured ISC frame. Every detector-state record, emitted command, and recording artifact — including data from off-board observers — keys off this token so multi-source data can be aligned post-hoc. Detail in [marvin spec §4.6](firmware/marvin/docs/spec.md).
-- **Reference data persists on marvin's SD card.** Detector-state + sparse raw-BGRX32 keyframes (default 1 keyframe/sec) + raw ADC stream + emitted commands. Off-board detectors record their own data keyed by `frame_epoch` and align offline.
+- **Reference data persists on marvin's SD card.** Detector-state + sparse raw BGR888 keyframes (default 1 keyframe/sec) + raw ADC stream + emitted commands. Off-board detectors record their own data keyed by `frame_epoch` and align offline.
 - **Centralized timing on marvin, with a fretboard-takeover fallback.** marvin runs the chord-window FIFO and strum scheduler by default; an operator-mode toggle hands timing back to fretboard's standalone `fret_button.c` while marvin still records observations.
 - **Operating modes are independent toggles**, not a global state machine: `detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`. Named modes (idle / calibrate / dry-run / play / replay / record) are presets over them.
 
@@ -102,17 +104,18 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 
 | Status | Item |
 |---|---|
-| ✅ | marvin HDMI capture → DDR (BGRX32) at 480p60 and 720p60 |
-| ✅ | marvin DDR → 10.1″ LVDS panel display (pillarboxed/letterboxed) |
-| ✅ | marvin FreeRTOS scheduler + video task split |
+| ✅ | marvin HDMI capture → DDR (BGR888 packed) at 480p60 and 720p60 |
+| ✅ | marvin DDR → 10.1″ LVDS panel display (HEO, per-frame swap, pillarboxed/letterboxed) |
+| ✅ | marvin FreeRTOS scheduler, video task, static task priorities, analytics |
 | ✅ | fretboard standalone play (phototransistors + open-drain GPIO) |
 | ✅ | fret-tuner used at the bench for detector tuning |
-| 🚧 | **M1** — marvin reference detector v0 (one CV detector publishing onto the detector-state bus) |
-| 🚧 | **M2** — fretboard ↔ marvin UART link (ADC ingest + command TX) |
-| 🚧 | **M3** — end-to-end play (marvin commands actuating through fretboard) |
+| ✅ | marvin perf-log USB CDC export — live RTOS analytics + pixel strip viewer (`tools/marvin-perf`) |
+| ✅ | **M1** — marvin reference detector v0 (`cv_marvin_v1` running, `detector_state_t` bus active) |
+| ✅ | **M2** — fretboard ↔ marvin link (USB CDC host over EDBG; commands flowing) |
+| ✅ | **M3** — end-to-end play (timing pipeline + fretboard actuation; Expert and Easy tested) |
 | 🚧 | **M4** — recording-to-SD (detector-state + keyframes + ADC + commands) |
-| 🚧 | **M5** — operator UI v0 (live view + mode toggles) |
-| 🚧 | **M6**+ — calibration UI, replay, fretboard-takeover validation |
+| 🚧 | **M5** — operator UI v0; manual-control surface (8 buttons) done; full live-view + mode-toggle UI not started |
+| 🚧 | **M6**+ — calibration UI, replay, fretboard-takeover validation, game-state controller |
 
 Detail (definitions of done, demos) in [marvin spec §8](firmware/marvin/docs/spec.md).
 
