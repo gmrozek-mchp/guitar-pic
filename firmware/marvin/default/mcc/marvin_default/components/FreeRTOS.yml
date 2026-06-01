@@ -121,4 +121,24 @@ data:
           type: User
         type: Values
       type: Boolean
+    FREERTOS_INCLUDE_XTASKGETIDLETASKHANDLE:
+      attributes:
+        id: FREERTOS_INCLUDE_XTASKGETIDLETASKHANDLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    FREERTOS_INCLUDE_XTASKGETHANDLE:
+      attributes:
+        id: FREERTOS_INCLUDE_XTASKGETHANDLE
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}

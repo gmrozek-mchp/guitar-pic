@@ -208,6 +208,15 @@ extern "C" {
 /* Number of CDC Attach Listeners */ 
 #define USB_HOST_CDC_ATTACH_LISTENERS_NUMBER        1U
 
+/* Maximum instances of CDC function driver */
+#define USB_DEVICE_CDC_INSTANCES_NUMBER                     1U
+
+
+/* CDC Transfer Queue Size for both read and
+   write. Applicable to all instances of the
+   function driver */
+#define USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED                 5U
+
 // *****************************************************************************
 // *****************************************************************************
 // Section: USB Host Layer Configuration
@@ -232,15 +241,6 @@ extern "C" {
 /* Provides Host pipes number */
 #define USB_HOST_PIPES_NUMBER                               10U
 
-
-/* Maximum instances of CDC function driver */
-#define USB_DEVICE_CDC_INSTANCES_NUMBER                     1U
-
-
-/* CDC Transfer Queue Size for both read and
-   write. Applicable to all instances of the
-   function driver */
-#define USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED                 5U
 
 /*** USB Driver Configuration ***/
 
