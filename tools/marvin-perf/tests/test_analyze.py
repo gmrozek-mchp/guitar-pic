@@ -186,7 +186,7 @@ def test_compute_hwm_groups_by_task_id() -> None:
 
 
 def test_check_schema_match_passes() -> None:
-    check_schema(_session(schema=2))  # no exception
+    check_schema(_session(schema=3))  # no exception
 
 
 def test_check_schema_mismatch_raises() -> None:

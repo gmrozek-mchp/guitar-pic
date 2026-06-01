@@ -25,6 +25,7 @@ Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus qu
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-01 | Perf-log v3 schema bump: add `DETECTOR_CONFIG` (cv_marvin_v1 sample coords/thresholds/color filters), `ACTUATOR` (intended/asserted masks + `producer_id` + ack timing), extend `TIMING` to a per-frame snapshot (chord window mask, note/strum queue head + deadlines, release timers, frets_active), and add `PERF_TASK_IDLE` + `PERF_TASK_OTHER` pseudo-slots so per-window CPU% adds to 100%. | Wire's job pivots from "prove bytes survived and the pipeline isn't dropping" (v1/v2 integrity story, complete) to "show the host what the detection algorithm and actuator are thinking" (tuning visibility). Bundling four additions into one schema cut avoids three rounds of firmware/host sync. Granular MCC-task breakdown deferred — not needed at this time. Causal-trace `TIMING_EVENT`, ISR latency histograms, Cortex-A5 PMU counters, free-heap reporting also out of scope this round. Plan details in 2026-06-01 session log entry. |
 | 2026-05-29 | Patch the UDPHS device driver to arm DMA for queued IRPs in completion ISRs. New helper `F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp` called after queue advance in `Tasks_ISR_DMA` and the ZLP-completion path. Logged as patch #9. | Stock Harmony USB v3.16.0 driver only programs the DMA channel in `IRPSubmit`'s queue-empty branch — IRPs appended to a non-empty queue link in the linked list but never get armed for transmission. Without this, `queueSizeWrite > 1` accepts writes but only ever transmits the first of any batch — we'd accept three perf-log strips, transmit one, the other two stranded forever. The IRP-queue infrastructure is *already there* in the driver, the missing piece is the post-completion arm. Fix is additive (new helper, two new call sites, no refactor of existing IRPSubmit body), making it easy to find/maintain after MCC regen. Future Harmony versions may obviate this if upstream wires it up. |
 | 2026-05-29 | Strip queue uses 1-byte slot indices into a static `s_strip_pool[depth+2]` instead of pass-by-value `perf_rec_strip_t` items. | FreeRTOS queues are pass-by-value: every `xQueueSend`/`xQueueReceive` does `memcpy(slot, src, item_size)` inside a critical section (interrupts disabled). At `sizeof(perf_rec_strip_t) = 23-61 KB`, that was 38-100 µs of interrupts-off time per queue op × ~240 ops/s. Pool-and-index pattern moves the pixel data into a static pool indexed by 1-byte handles; queue ops drop to 1 µs critical sections. Same total BSS footprint (eliminates the producer's `static r;` and drain's `static s_strip_drain;` — pool size matches old "queue + 2 staging" footprint). Pool size `depth + 2` covers "1 slot in producer's hand + 1 in drain's hand" while preserving drop-on-full semantics. |
 | 2026-05-29 | Fletcher-16 (mod 255, init 0xFFFF) replaces CRC-16/CCITT-FALSE in the framing layer. `crc_*` field names renamed to `fcs_*` end-to-end. | USB hardware already CRCs every bulk packet on the wire; our framing-layer checksum's job is *firmware-side framing-bug detection* and *resync alignment* (false SOF in the middle of a corrupt stream). Fletcher-16 catches single-byte changes, adjacent swaps, and most non-adjacent swaps with ~1/65536 false-positive rate against random byte streams — sufficient for that job at ~2 cycles/byte (vs ~25 cycles for the bit-by-bit CRC, ~6 cycles for table-driven). SAM9X75 has no CRCCU peripheral (verified against `packs/SAM9X75D2G_DFP/component/`), so DMA-driven CRC isn't available. Wire format unchanged (still SOF+LEN+payload+16-bit checksum). One-shot wire-format break — old `.bin` captures aren't readable with new code; fine for dev. |
@@ -152,6 +153,51 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-06-01 — perf-log v3 plan: pivot to tuning visibility
+
+The low-level perf-log channel work is done (v1 framing/integrity, v2 STRIP + TASK_RUNTIME, multi-IRP throughput at 2.77 MB/s with zero drops). The wire's job pivots: from "prove bytes survived and the pipeline isn't dropping" to "show the host what the detection algorithm and actuator are thinking." Integrity records (SESSION, DROP, framing layer) keep their existing semantics — the trust they buy is load-bearing for everything else on the wire. Tuning records expand.
+
+One schema bump (v2 → v3) bundles four additions to avoid multiple rounds of firmware/host sync.
+
+**`DETECTOR_CONFIG` (new, low-rate / on-change).** Carries cv_marvin_v1 per-fret configuration the host needs to interpret the per-frame DETECTOR record:
+- sample coords `(hx, hy, ex, ey)` per fret
+- `hold_thresh`, `hold_release_frac`, `edge_thresh`
+- color filter `target[3]`, `reject[3]` per fret
+
+Static today (compile-time tables in [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c)); will become tunable when M6 calibration UI lands. Strip-relative pixel coords are computed host-side: `sample_x_in_strip = hx − strip.x`, since STRIP records already carry `(x, y, w, h)` in frame space.
+
+**`ACTUATOR` (new, per-publish or 1 Hz heartbeat).** Replaces the partial picture from `FBL_SEND` STAMP + `TIMING.publish_mask`:
+- `intended_mask` — what the active producer wants
+- `asserted_mask` — what's currently on the wire
+- `strum_dir` — next direction (toggles each strum)
+- `producer_id` — 1 byte tag (`timing_pipeline`, `manual_control`, future `game_state_controller`). The arbitration signal that's invisible today: when manual_control takes the wire, nothing on the wire indicates the handoff.
+- ack timing fields — relate ACTUATOR ts to last `CDC_WRITE_COMPLETE` for transport-side latency.
+
+**`TIMING` (extended, per-frame snapshot).** Today's record carries counts only (`chord_window_fill`, `fifo_depth`). v3 carries the snapshot needed to answer "why did it publish *that* mask":
+- `now_ms` (pipeline clock, anchors all `*_at_ms` deltas)
+- `chord_open`, `chord_age_ms`, `chord_mask` — open window's accumulating mask
+- `note_q_count`, `note_head_at_ms`, `note_head_mask`, `note_tail_mask` — front of queue + union of remainder
+- `strum_q_count`, `strum_head_at_ms`, `strum_head_mask`, `strum_dir_next`
+- `frets_active`, `strum_active`, `strum_release_at_ms`
+- `release_pending_mask`, `release_min_at_ms`
+- `publish_mask` (kept)
+
+~36 B body, per-detector-frame rate (60 Hz) ≈ 2 KB/s. Snapshot, not causal trace; if push/pop trace becomes necessary later, a sibling `TIMING_EVENT` record plugs in cleanly without revisiting this design.
+
+**CPU accounting completion.** TASK_RUNTIME already supports per-window CPU% (host subtracts adjacent `run_time_counter` records — wrap-safe modular subtraction; uint32 wire field is fine since 1-second window delta at 266 MHz is ~266M counts, well under 2³²). Three additions:
+- `PERF_TASK_IDLE` — register `xTaskGetIdleTaskHandle()` so absolute CPU% = `1 − idle_delta / Σ_all_delta` is computable.
+- **MCC per-task slots** (`LEGATO`, `XLCDC`, `MAXTOUCH`, `SYS_INPUT`, `USB_DEVICE`, `USB_HOST`, `DRV_USB_UDPHS`, `DRV_USB_HOST`, `APP`) — registered by string name via `xTaskGetHandle` from the perf-drain task at startup (pcName matches MCC's emitted `tasks.c` literals). MCC tasks are created in `SYS_Tasks()` just before `vTaskStartScheduler`, so handle lookup must happen *after* scheduler start — drain task does it on first iteration. Missing names log a warning and fall through into OTHER. Legato is the primary tuning target (Composer + Legato render path is the biggest single MCC CPU consumer); the rest come along essentially for free.
+- `PERF_TASK_OTHER` — pseudo-slot that emits `Σ all-task runtime − Σ registered-task runtime` from `uxTaskGetSystemState`. With every notable named task registered, OTHER should normally idle near zero — a non-trivial OTHER means a task is active that we aren't naming yet (e.g. an unanticipated Harmony service).
+
+**Host-side pickups (marvin-perf).** [`web/api.py`](../../../tools/marvin-perf/marvin_perf/web/api.py)'s `/capture/{id}/rtos` endpoint currently returns `cpu_pct: None  # Phase 2` and `cpu_pct_idle: None  # Phase 2`. With idle + OTHER on the wire, the per-window math fills those in. Viewer also gets:
+- Strip overlays — sample dots in fret colors at `(hx,hy)` / `(ex,ey)` from DETECTOR_CONFIG, per-frame value labels from DETECTOR's `hold_dist` / `edge_dist`, threshold reference lines.
+- Actuator panel — intended vs asserted mask, producer name, strum_dir history.
+- Timing detail panel — chord window mask, note/strum queue head with deadlines, release-pending visualization.
+
+**What stays.** Framing layer (SOF + LEN + Fletcher-16), `SESSION`, `DROP`, `STAMP`, `STRIP`, `DETECTOR`, `TASK_HIGHWATER` all unchanged.
+
+**Out of scope this round.** Causal-trace `TIMING_EVENT` records, per-task MCC breakdown, ISR latency histograms, Cortex-A5 PMU instrumentation (cycles / cache misses / instructions retired), free-heap reporting (heap_1 is static post-init; Legato pool needs separate APIs).
 
 ### 2026-06-01 — doc accuracy sweep
 

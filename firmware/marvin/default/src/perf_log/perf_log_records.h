@@ -13,7 +13,7 @@
  * are framed on the wire by the drain task (SOF magic + length + CRC);
  * the structs below are the framed payload only. */
 
-#define PERF_LOG_SCHEMA_VERSION   2u
+#define PERF_LOG_SCHEMA_VERSION   3u
 
 #define PERF_LOG_HDR_MAGIC        0x4D56u   /* 'M','V' little-endian */
 
@@ -26,14 +26,16 @@
 
 typedef enum
 {
-    PERF_REC_SESSION        = 0x01,
-    PERF_REC_STAMP          = 0x02,
-    PERF_REC_DETECTOR       = 0x03,
-    PERF_REC_TIMING         = 0x04,
-    PERF_REC_STRIP          = 0x05,
-    PERF_REC_DROP           = 0x06,
-    PERF_REC_TASK_HIGHWATER = 0x07,
-    PERF_REC_TASK_RUNTIME   = 0x08,
+    PERF_REC_SESSION         = 0x01,
+    PERF_REC_STAMP           = 0x02,
+    PERF_REC_DETECTOR        = 0x03,
+    PERF_REC_TIMING          = 0x04,
+    PERF_REC_STRIP           = 0x05,
+    PERF_REC_DROP            = 0x06,
+    PERF_REC_TASK_HIGHWATER  = 0x07,
+    PERF_REC_TASK_RUNTIME    = 0x08,
+    PERF_REC_DETECTOR_CONFIG = 0x09,
+    PERF_REC_ACTUATOR        = 0x0A,
 } perf_rec_type_t;
 
 /* stage_id values for PERF_REC_STAMP. Producer call sites map 1:1. */
@@ -104,17 +106,37 @@ typedef struct __attribute__((packed))
     uint16_t   reserved;
 } perf_rec_detector_t;
 
-/* PERF_REC_TIMING — timing_pipeline state at the per-frame tick. */
+/* PERF_REC_TIMING — per-frame snapshot of timing_pipeline internal state.
+ * v3 widens the v2 counts-only record into a full snapshot so the host
+ * can answer "why did it publish that mask at frame N" by replaying
+ * detector events forward through the visible queue state. All *_at_ms
+ * deadlines are deltas from the same now_ms field; chord_age_ms is
+ * (now_ms - chord_start_ms) for the currently-open chord window. Counts
+ * are 0..TP_FIFO_CAP (32 today). Masks use the same TIMING_BIT_* bit
+ * layout as the wire byte to fretboard. */
 typedef struct __attribute__((packed))
 {
     perf_hdr_t hdr;
-    uint8_t    publish_mask;       /* low 7 bits = chord on the wire */
-    uint8_t    chord_window_fill;  /* records currently held in chord window */
-    uint8_t    fifo_depth;         /* delay FIFO depth */
-    uint8_t    strum_dir;          /* 0 = none, 1 = down, 2 = up */
-    uint32_t   reserved;
-    uint32_t   reserved2;
-    uint32_t   reserved3;
+    uint32_t   now_ms;                /* timing pipeline clock */
+    uint8_t    chord_open;            /* 0/1 — window currently accepting */
+    uint8_t    chord_mask;            /* mask accumulated in the open window */
+    uint16_t   chord_age_ms;          /* now_ms - chord_start_ms when open */
+    uint8_t    note_q_count;
+    uint8_t    note_head_mask;        /* mask of front-of-queue (next to fire) */
+    uint8_t    note_tail_mask;        /* union of all queued note masks */
+    uint8_t    reserved;
+    uint32_t   note_head_at_ms;       /* assert_at_ms of front-of-queue */
+    uint8_t    strum_q_count;
+    uint8_t    strum_head_mask;
+    uint8_t    strum_dir_next;        /* 0=none, 1=down, 2=up — next strum */
+    uint8_t    reserved2;
+    uint32_t   strum_head_at_ms;      /* strum_at_ms of front-of-queue */
+    uint8_t    frets_active;          /* asserted mask, pre-strum overlay */
+    uint8_t    strum_active;          /* 0/1 — strum pulse currently held */
+    uint8_t    release_pending_mask;  /* frets with pending release timer */
+    uint8_t    publish_mask;          /* final wire output mask */
+    uint32_t   strum_release_at_ms;   /* deadline for current strum pulse */
+    uint32_t   release_min_at_ms;     /* earliest pending-release deadline */
 } perf_rec_timing_t;
 
 /* PERF_REC_DROP — drain task emits at 1 Hz. Counters are cumulative
@@ -130,7 +152,18 @@ typedef struct __attribute__((packed))
 
 /* PERF_REC_TASK_HIGHWATER — periodic stack high-water dump. task_id is
  * a stable enum mirrored in the host decoder; words is the
- * uxTaskGetStackHighWaterMark return (StackType_t units). */
+ * uxTaskGetStackHighWaterMark return (StackType_t units).
+ *
+ * Marvin-owned tasks (0..5) are registered at task creation. IDLE is
+ * the FreeRTOS idle task (xTaskGetIdleTaskHandle) — its run_time_counter
+ * is what makes absolute CPU% computable on the host
+ * (1 - idle_delta / Σ_all_delta). MCC tasks (LEGATO..APP) are looked up
+ * by string name with xTaskGetHandle from the perf-drain task at startup.
+ * OTHER is a pseudo-slot: not a real task, just an aggregate of "all
+ * tasks not in this enum" that the drain emits each runtime cycle so
+ * per-window CPU% adds to 100. HWM is meaningless for OTHER (no single
+ * stack); the runtime-side producer emits TASK_RUNTIME for OTHER but
+ * skips TASK_HIGHWATER. */
 typedef enum
 {
     PERF_TASK_VIDEO          = 0,
@@ -139,6 +172,17 @@ typedef enum
     PERF_TASK_TIMING         = 3,
     PERF_TASK_FRETBOARD_LINK = 4,
     PERF_TASK_PERF_DRAIN     = 5,
+    PERF_TASK_IDLE           = 6,
+    PERF_TASK_LEGATO         = 7,
+    PERF_TASK_XLCDC          = 8,
+    PERF_TASK_MAXTOUCH       = 9,
+    PERF_TASK_SYS_INPUT      = 10,
+    PERF_TASK_USB_DEVICE     = 11,
+    PERF_TASK_USB_HOST       = 12,
+    PERF_TASK_DRV_USB_UDPHS  = 13,
+    PERF_TASK_DRV_USB_HOST   = 14,
+    PERF_TASK_APP            = 15,
+    PERF_TASK_OTHER          = 16,
 } perf_task_id_t;
 
 typedef struct __attribute__((packed))
@@ -229,6 +273,65 @@ typedef struct __attribute__((packed))
     uint32_t   run_time_counter;   /* low 32 bits of ulRunTimeCounter */
     uint32_t   reserved2;
 } perf_rec_task_runtime_t;
+
+/* PERF_REC_DETECTOR_CONFIG — cv_marvin_v1 per-fret configuration. Static
+ * today (compile-time tables); becomes runtime-tunable when M6 calibration
+ * UI lands. Emitted on connect-up edge and on change so the host always
+ * has a current copy. Sample coords are in capture-frame space (matching
+ * STRIP record (x, y) anchors). Floats are IEEE 754 little-endian — same
+ * representation on both sides. Used by the host to render sample
+ * dots / threshold reference lines onto STRIP canvases. */
+typedef struct __attribute__((packed))
+{
+    perf_hdr_t hdr;
+    uint16_t   sensor_hx[FRET_COUNT];          /* hold-sensor x per fret */
+    uint16_t   sensor_hy[FRET_COUNT];          /* hold-sensor y per fret */
+    uint16_t   sensor_ex[FRET_COUNT];          /* edge-sensor x per fret */
+    uint16_t   sensor_ey[FRET_COUNT];          /* edge-sensor y per fret */
+    float      hold_thresh;                    /* CV_HOLD_THRESH (brightness) */
+    float      hold_release_frac;              /* CV_HOLD_RELEASE_FRAC */
+    float      edge_thresh;                    /* CV_EDGE_THRESH */
+    float      color_target_b[FRET_COUNT];     /* per-fret target weights */
+    float      color_target_g[FRET_COUNT];
+    float      color_target_r[FRET_COUNT];
+    float      color_reject_b[FRET_COUNT];     /* per-fret reject weights */
+    float      color_reject_g[FRET_COUNT];
+    float      color_reject_r[FRET_COUNT];
+} perf_rec_detector_config_t;
+
+/* PERF_REC_ACTUATOR — emitted on every FretboardLink_Send call (i.e. on
+ * intent), one record per call. Closes the gap between TIMING.publish_mask
+ * (intent on the timing pipeline side) and FBL_SEND STAMP (a byte hit the
+ * USB DMA): with multiple producers (timing_pipeline, manual_control, future
+ * game_state_controller per spec §4.8), the wire byte alone doesn't say
+ * who asserted what.
+ *
+ * intended_mask: what the producer asked for this Send (low 7 bits).
+ * asserted_mask: what's currently held on the link (last byte queued).
+ * strum_dir: from the bit pattern (0=none, 1=down, 2=up).
+ * producer_id: perf_actuator_producer_t — the arbitration signal that's
+ *              invisible on the wire today.
+ * last_ack_*:  most recent CDC_WRITE_COMPLETE result and timestamp,
+ *              snapshotted at Send-time so the host can compute transport-
+ *              side latency without joining FBL_SEND/CDC_WRITE_COMPLETE
+ *              stamps (still useful, but redundant for the common case). */
+typedef enum
+{
+    PERF_ACTUATOR_PRODUCER_NONE   = 0,
+    PERF_ACTUATOR_PRODUCER_TIMING = 1,
+    PERF_ACTUATOR_PRODUCER_MANUAL = 2,
+} perf_actuator_producer_t;
+
+typedef struct __attribute__((packed))
+{
+    perf_hdr_t hdr;
+    uint8_t    intended_mask;
+    uint8_t    asserted_mask;
+    uint8_t    strum_dir;            /* 0=none, 1=down, 2=up */
+    uint8_t    producer_id;          /* perf_actuator_producer_t */
+    int32_t    last_ack_result;      /* USB_HOST_CDC_RESULT_*, signed for safety */
+    uint64_t   last_ack_ts_counter;  /* SYS_TIME at most-recent CDC_WRITE_COMPLETE */
+} perf_rec_actuator_t;
 
 /* ─── Host→device commands ───────────────────────────────────────────────────
  *

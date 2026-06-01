@@ -9,8 +9,12 @@ import pytest
 from marvin_perf.decode import DecodeError, decode_record
 from marvin_perf.framing import FrameStats, iter_frames
 from marvin_perf.records import (
+    Actuator,
+    ActuatorProducer,
     Detector,
+    DetectorConfig,
     Drop,
+    FRET_COUNT,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
     RecordType,
@@ -59,12 +63,12 @@ def _round_trip_via_iter_frames(payload: bytes):
 
 def test_session_round_trip() -> None:
     payload = build_session_payload(
-        timer_freq_hz=266_000_000, schema_version=2, fw_git_short=0xCAFEBABE
+        timer_freq_hz=266_000_000, schema_version=3, fw_git_short=0xCAFEBABE
     )
     rec = _round_trip_via_iter_frames(payload)
     assert isinstance(rec, Session)
     assert rec.timer_freq_hz == 266_000_000
-    assert rec.schema_version == 2
+    assert rec.schema_version == 3
     assert rec.fw_git_short == 0xCAFEBABE
     assert rec.hdr.magic == PERF_LOG_HDR_MAGIC
     assert rec.hdr.type == int(RecordType.SESSION)
@@ -101,14 +105,46 @@ def test_detector_round_trip() -> None:
 
 def test_timing_round_trip() -> None:
     payload = build_timing_payload(
-        frame_epoch=9, publish_mask=0x03, chord_window_fill=4, fifo_depth=2, strum_dir=1
+        frame_epoch=9,
+        now_ms=12_345,
+        chord_open=1,
+        chord_mask=0x05,
+        chord_age_ms=12,
+        note_q_count=3,
+        note_head_mask=0x01,
+        note_tail_mask=0x07,
+        note_head_at_ms=12_555,
+        strum_q_count=2,
+        strum_head_mask=0x05,
+        strum_dir_next=2,
+        strum_head_at_ms=12_580,
+        frets_active=0x03,
+        strum_active=1,
+        release_pending_mask=0x10,
+        publish_mask=0x23,
+        strum_release_at_ms=12_400,
+        release_min_at_ms=12_700,
     )
     rec = _round_trip_via_iter_frames(payload)
     assert isinstance(rec, Timing)
-    assert rec.publish_mask == 0x03
-    assert rec.chord_window_fill == 4
-    assert rec.fifo_depth == 2
-    assert rec.strum_dir == 1
+    assert rec.now_ms == 12_345
+    assert rec.chord_open == 1
+    assert rec.chord_mask == 0x05
+    assert rec.chord_age_ms == 12
+    assert rec.note_q_count == 3
+    assert rec.note_head_mask == 0x01
+    assert rec.note_tail_mask == 0x07
+    assert rec.note_head_at_ms == 12_555
+    assert rec.strum_q_count == 2
+    assert rec.strum_head_mask == 0x05
+    assert rec.strum_dir_next == 2
+    assert rec.strum_head_at_ms == 12_580
+    assert rec.frets_active == 0x03
+    assert rec.strum_active == 1
+    assert rec.release_pending_mask == 0x10
+    assert rec.publish_mask == 0x23
+    assert rec.strum_release_at_ms == 12_400
+    assert rec.release_min_at_ms == 12_700
 
 
 def test_drop_round_trip() -> None:
@@ -208,3 +244,61 @@ def test_wrong_size_for_known_type_raises() -> None:
     hdr = build_header(RecordType.SESSION)
     with pytest.raises(DecodeError):
         decode_record(hdr + b"\x00" * 4)
+
+
+# ─── v3 records: DETECTOR_CONFIG and ACTUATOR ────────────────────────────────
+
+
+def test_detector_config_round_trip() -> None:
+    n = FRET_COUNT
+    hx = (280, 317, 355, 393, 430)
+    hy = (311, 311, 311, 311, 311)
+    ex = (293, 330, 368, 380, 417)
+    ey = (311, 311, 311, 311, 311)
+    tb = (0.0, 0.0, 0.0, 1.0, 0.0)
+    tg = (1.0, 0.0, 0.5, 0.4, 0.3)
+    tr = (0.0, 1.0, 0.5, 0.0, 0.7)
+    rb = (0.7, 0.7, 1.4, 0.0, 1.4)
+    rg = (0.0, 0.7, 0.0, 0.0, 0.0)
+    rr = (0.7, 0.0, 0.0, 1.4, 0.0)
+    body = DetectorConfig._BODY.pack(
+        *hx, *hy, *ex, *ey,
+        100.0, 0.78, 25.0,
+        *tb, *tg, *tr, *rb, *rg, *rr,
+    )
+    payload = build_header(RecordType.DETECTOR_CONFIG) + body
+    rec = _round_trip_via_iter_frames(payload)
+    assert isinstance(rec, DetectorConfig)
+    assert rec.sensor_hx == hx
+    assert rec.sensor_hy == hy
+    assert rec.sensor_ex == ex
+    assert rec.sensor_ey == ey
+    assert rec.hold_thresh == pytest.approx(100.0)
+    assert rec.hold_release_frac == pytest.approx(0.78)
+    assert rec.edge_thresh == pytest.approx(25.0)
+    for got, want in zip(rec.color_target_b, tb):
+        assert got == pytest.approx(want)
+    for got, want in zip(rec.color_reject_r, rr):
+        assert got == pytest.approx(want)
+    assert len(rec.color_target_g) == n
+
+
+def test_actuator_round_trip() -> None:
+    body = Actuator._BODY.pack(
+        0x23,                                    # intended_mask
+        0x21,                                    # asserted_mask (last actually-sent)
+        2,                                       # strum_dir = up
+        int(ActuatorProducer.TIMING),
+        0,                                       # last_ack_result = SUCCESS
+        0xDEADBEEFCAFE,                          # last_ack_ts_counter
+    )
+    payload = build_header(RecordType.ACTUATOR) + body
+    rec = _round_trip_via_iter_frames(payload)
+    assert isinstance(rec, Actuator)
+    assert rec.intended_mask == 0x23
+    assert rec.asserted_mask == 0x21
+    assert rec.strum_dir == 2
+    assert rec.producer_id == int(ActuatorProducer.TIMING)
+    assert rec.producer_name == "timing"
+    assert rec.last_ack_result == 0
+    assert rec.last_ack_ts_counter == 0xDEADBEEFCAFE

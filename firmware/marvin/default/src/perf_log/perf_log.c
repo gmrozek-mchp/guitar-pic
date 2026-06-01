@@ -38,17 +38,21 @@
 
 /* Discriminated slot for the state queue. The drain task switches on
  * hdr.type and writes only the populated bytes. Sized to the largest
- * small record so all types fit in one slot. */
+ * small record so all types fit in one slot — DETECTOR_CONFIG is by far
+ * the largest at ~188 B; the others fit in 32-51 B. The slot grew with
+ * v3; queue depth × slot size is still trivial against 240 MB DDR. */
 typedef union
 {
-    perf_hdr_t                 hdr;
-    perf_rec_session_t         session;
-    perf_rec_stamp_t           stamp;
-    perf_rec_detector_t        detector;
-    perf_rec_timing_t          timing;
-    perf_rec_drop_t            drop;
-    perf_rec_task_highwater_t  hwm;
-    perf_rec_task_runtime_t    runtime;
+    perf_hdr_t                  hdr;
+    perf_rec_session_t          session;
+    perf_rec_stamp_t            stamp;
+    perf_rec_detector_t         detector;
+    perf_rec_timing_t           timing;
+    perf_rec_drop_t             drop;
+    perf_rec_task_highwater_t   hwm;
+    perf_rec_task_runtime_t     runtime;
+    perf_rec_detector_config_t  detector_config;
+    perf_rec_actuator_t         actuator;
 } perf_rec_state_slot_t;
 
 /* ─── Static storage ─────────────────────────────────────────────────────── */
@@ -74,7 +78,7 @@ static uint8_t       s_strip_free_q_storage[PL_STRIP_POOL_SIZE * sizeof(uint8_t)
 static StackType_t   s_drain_stack[PL_DRAIN_STACK_WORDS];
 static StaticTask_t  s_drain_tcb;
 
-#define PL_TASK_SLOT_COUNT  6u   /* one per perf_task_id_t */
+#define PL_TASK_SLOT_COUNT  17u  /* one per perf_task_id_t — IDLE + 9 MCC slots + OTHER added v3 */
 static TaskHandle_t  s_task_handles[PL_TASK_SLOT_COUNT];
 
 static volatile uint32_t s_drop_state;
@@ -124,14 +128,16 @@ static uint16_t record_size(const perf_rec_state_slot_t *r)
 {
     switch (r->hdr.type)
     {
-        case PERF_REC_SESSION:        return (uint16_t)sizeof(perf_rec_session_t);
-        case PERF_REC_STAMP:          return (uint16_t)sizeof(perf_rec_stamp_t);
-        case PERF_REC_DETECTOR:       return (uint16_t)sizeof(perf_rec_detector_t);
-        case PERF_REC_TIMING:         return (uint16_t)sizeof(perf_rec_timing_t);
-        case PERF_REC_DROP:           return (uint16_t)sizeof(perf_rec_drop_t);
-        case PERF_REC_TASK_HIGHWATER: return (uint16_t)sizeof(perf_rec_task_highwater_t);
-        case PERF_REC_TASK_RUNTIME:   return (uint16_t)sizeof(perf_rec_task_runtime_t);
-        default:                      return (uint16_t)sizeof(perf_hdr_t);
+        case PERF_REC_SESSION:         return (uint16_t)sizeof(perf_rec_session_t);
+        case PERF_REC_STAMP:           return (uint16_t)sizeof(perf_rec_stamp_t);
+        case PERF_REC_DETECTOR:        return (uint16_t)sizeof(perf_rec_detector_t);
+        case PERF_REC_TIMING:          return (uint16_t)sizeof(perf_rec_timing_t);
+        case PERF_REC_DROP:            return (uint16_t)sizeof(perf_rec_drop_t);
+        case PERF_REC_TASK_HIGHWATER:  return (uint16_t)sizeof(perf_rec_task_highwater_t);
+        case PERF_REC_TASK_RUNTIME:    return (uint16_t)sizeof(perf_rec_task_runtime_t);
+        case PERF_REC_DETECTOR_CONFIG: return (uint16_t)sizeof(perf_rec_detector_config_t);
+        case PERF_REC_ACTUATOR:        return (uint16_t)sizeof(perf_rec_actuator_t);
+        default:                       return (uint16_t)sizeof(perf_hdr_t);
     }
 }
 
@@ -194,24 +200,85 @@ static perf_task_state_t map_task_state(eTaskState s)
     }
 }
 
-#define PL_RUNTIME_TASK_BUF  16u
+/* Sized to comfortably exceed total live task count: marvin owns ~7
+ * (CV / detector-drain / timing / fretboard-link / video / perf-drain /
+ * idle) plus MCC-driven tasks (XLCDC, MAXTOUCH, LEGATO, SYS_INPUT, USB
+ * host EHCI/OHCI/HUB/CDC) — call it ≤ 20 today, bump if we ever overflow. */
+#define PL_RUNTIME_TASK_BUF  24u
 
 static void sample_and_emit_runtimes(void)
 {
     static TaskStatus_t buf[PL_RUNTIME_TASK_BUF];
     UBaseType_t n = uxTaskGetSystemState(buf, PL_RUNTIME_TASK_BUF, NULL);
 
+    uint64_t sum_all = 0u, sum_registered = 0u;
+
     for (UBaseType_t k = 0u; k < n; k++)
     {
         const TaskStatus_t *t = &buf[k];
+        sum_all += (uint64_t)t->ulRunTimeCounter;
+
         for (uint8_t i = 0u; i < PL_TASK_SLOT_COUNT; i++)
         {
             if (s_task_handles[i] != t->xHandle) { continue; }
+            sum_registered += (uint64_t)t->ulRunTimeCounter;
             PerfLog_EmitTaskRuntime((perf_task_id_t)i,
                                     map_task_state(t->eCurrentState),
                                     (uint8_t)t->uxCurrentPriority,
                                     (uint32_t)t->ulRunTimeCounter);
             break;
+        }
+    }
+
+    /* OTHER pseudo-slot: every cycle not accounted to a registered task
+     * (including IDLE, which is registered). Lets the host close the
+     * books — Σ per-window CPU% = 100. State/priority don't have a
+     * single value here; emit READY/0 as harmless placeholders. */
+    PerfLog_EmitTaskRuntime(PERF_TASK_OTHER,
+                            PERF_TASK_STATE_READY,
+                            0u,
+                            (uint32_t)(sum_all - sum_registered));
+}
+
+/* MCC tasks are created in SYS_Tasks() right before vTaskStartScheduler,
+ * not at SYS_Initialize time — so the handles aren't lookup-able from
+ * APP_Initialize where PerfLog_Start runs. The drain task itself runs
+ * after the scheduler is up and all SYS_Tasks() xTaskCreate calls have
+ * landed; it does the lookup here once at startup.
+ *
+ * Names match the pcName argument in default/tasks.c xTaskCreate calls.
+ * If MCC ever renames one (regen risk), xTaskGetHandle returns NULL and
+ * that slot stays unregistered — its CPU runtime falls into OTHER, and
+ * the host viewer sees a flat-zero series for that task as a hint. */
+static const struct
+{
+    perf_task_id_t id;
+    const char    *name;
+} s_mcc_task_names[] =
+{
+    { PERF_TASK_LEGATO,        "LEGATO_Tasks"        },
+    { PERF_TASK_XLCDC,         "XLCDC_Tasks"         },
+    { PERF_TASK_MAXTOUCH,      "DRV_MAXTOUCH_Tasks"  },
+    { PERF_TASK_SYS_INPUT,     "SYS_INPUT_Tasks"     },
+    { PERF_TASK_USB_DEVICE,    "USB_DEVICE_TASKS"    },
+    { PERF_TASK_USB_HOST,      "USB_HOST_TASKS"      },
+    { PERF_TASK_DRV_USB_UDPHS, "DRV_USB_UDPHS_TASKS" },
+    { PERF_TASK_DRV_USB_HOST,  "DRV_USB_HOST_TASKS"  },
+    { PERF_TASK_APP,           "APP_Tasks"           },
+};
+
+static void register_mcc_tasks(void)
+{
+    for (uint8_t i = 0u; i < sizeof(s_mcc_task_names) / sizeof(s_mcc_task_names[0]); i++)
+    {
+        TaskHandle_t h = xTaskGetHandle(s_mcc_task_names[i].name);
+        if (h != NULL)
+        {
+            PerfLog_RegisterTaskForHighwater(s_mcc_task_names[i].id, h);
+        }
+        else
+        {
+            LOG_WARN("PerfLog: MCC task '%s' not found\r\n", s_mcc_task_names[i].name);
         }
     }
 }
@@ -221,6 +288,7 @@ static void perf_log_drain_task(void *param)
     (void)param;
 
     PerfLogSinkCdc_Initialize();
+    register_mcc_tasks();
     s_running = true;
 
     TickType_t last_drop = xTaskGetTickCount();
@@ -310,6 +378,12 @@ void PerfLog_Start(void)
                                        s_drain_stack,
                                        &s_drain_tcb);
     PerfLog_RegisterTaskForHighwater(PERF_TASK_PERF_DRAIN, h);
+
+    /* Register the FreeRTOS idle task so its run-time counter shows up in
+     * TASK_RUNTIME records — host needs idle's delta to compute absolute
+     * CPU% (= 1 − idle_delta / Σ_all_delta). Idle has a real stack so
+     * TASK_HIGHWATER for it is also meaningful. */
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_IDLE, xTaskGetIdleTaskHandle());
 }
 
 void PerfLog_RegisterTaskForHighwater(perf_task_id_t id, TaskHandle_t handle)
@@ -382,19 +456,59 @@ void PerfLog_EmitDetector(uint32_t frame_epoch,
     send_state(&slot);
 }
 
-void PerfLog_EmitTiming(uint32_t frame_epoch,
-                        uint8_t  publish_mask,
-                        uint8_t  chord_window_fill,
-                        uint8_t  fifo_depth,
-                        uint8_t  strum_dir)
+void PerfLog_EmitTiming(uint32_t frame_epoch, const perf_timing_snapshot_t *s)
 {
+    if (s == NULL) { return; }
     perf_rec_state_slot_t slot;
     memset(&slot, 0, sizeof(slot));
     hdr_fill(&slot.timing.hdr, PERF_REC_TIMING, 0u, frame_epoch);
-    slot.timing.publish_mask      = publish_mask;
-    slot.timing.chord_window_fill = chord_window_fill;
-    slot.timing.fifo_depth        = fifo_depth;
-    slot.timing.strum_dir         = strum_dir;
+    slot.timing.now_ms               = s->now_ms;
+    slot.timing.chord_open           = s->chord_open;
+    slot.timing.chord_mask           = s->chord_mask;
+    slot.timing.chord_age_ms         = s->chord_age_ms;
+    slot.timing.note_q_count         = s->note_q_count;
+    slot.timing.note_head_mask       = s->note_head_mask;
+    slot.timing.note_tail_mask       = s->note_tail_mask;
+    slot.timing.note_head_at_ms      = s->note_head_at_ms;
+    slot.timing.strum_q_count        = s->strum_q_count;
+    slot.timing.strum_head_mask      = s->strum_head_mask;
+    slot.timing.strum_dir_next       = s->strum_dir_next;
+    slot.timing.strum_head_at_ms     = s->strum_head_at_ms;
+    slot.timing.frets_active         = s->frets_active;
+    slot.timing.strum_active         = s->strum_active;
+    slot.timing.release_pending_mask = s->release_pending_mask;
+    slot.timing.publish_mask         = s->publish_mask;
+    slot.timing.strum_release_at_ms  = s->strum_release_at_ms;
+    slot.timing.release_min_at_ms    = s->release_min_at_ms;
+    send_state(&slot);
+}
+
+void PerfLog_EmitDetectorConfig(const perf_rec_detector_config_t *cfg)
+{
+    if (cfg == NULL) { return; }
+    perf_rec_state_slot_t slot;
+    memset(&slot, 0, sizeof(slot));
+    slot.detector_config = *cfg;
+    hdr_fill(&slot.detector_config.hdr, PERF_REC_DETECTOR_CONFIG, 0u, 0u);
+    send_state(&slot);
+}
+
+void PerfLog_EmitActuator(uint8_t  intended_mask,
+                          uint8_t  asserted_mask,
+                          uint8_t  strum_dir,
+                          uint8_t  producer_id,
+                          int32_t  last_ack_result,
+                          uint64_t last_ack_ts_counter)
+{
+    perf_rec_state_slot_t slot;
+    memset(&slot, 0, sizeof(slot));
+    hdr_fill(&slot.actuator.hdr, PERF_REC_ACTUATOR, 0u, 0u);
+    slot.actuator.intended_mask       = intended_mask;
+    slot.actuator.asserted_mask       = asserted_mask;
+    slot.actuator.strum_dir           = strum_dir;
+    slot.actuator.producer_id         = producer_id;
+    slot.actuator.last_ack_result     = last_ack_result;
+    slot.actuator.last_ack_ts_counter = last_ack_ts_counter;
     send_state(&slot);
 }
 

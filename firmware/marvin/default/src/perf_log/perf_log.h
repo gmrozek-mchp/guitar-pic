@@ -33,11 +33,51 @@ void PerfLog_EmitDetector(uint32_t frame_epoch,
                           const uint16_t edge_dist[FRET_COUNT],
                           uint8_t  pressed_mask,
                           uint8_t  edge_active_mask);
-void PerfLog_EmitTiming(uint32_t frame_epoch,
-                        uint8_t  publish_mask,
-                        uint8_t  chord_window_fill,
-                        uint8_t  fifo_depth,
-                        uint8_t  strum_dir);
+
+/* Snapshot the producer (timing_pipeline) fills in once per frame, then
+ * hands to PerfLog_EmitTiming. Field-for-field mirror of perf_rec_timing_t
+ * minus the header — kept as a separate struct so producers don't have to
+ * know about wire framing. */
+typedef struct
+{
+    uint32_t now_ms;
+    uint8_t  chord_open;
+    uint8_t  chord_mask;
+    uint16_t chord_age_ms;
+    uint8_t  note_q_count;
+    uint8_t  note_head_mask;
+    uint8_t  note_tail_mask;
+    uint32_t note_head_at_ms;
+    uint8_t  strum_q_count;
+    uint8_t  strum_head_mask;
+    uint8_t  strum_dir_next;
+    uint32_t strum_head_at_ms;
+    uint8_t  frets_active;
+    uint8_t  strum_active;
+    uint8_t  release_pending_mask;
+    uint8_t  publish_mask;
+    uint32_t strum_release_at_ms;
+    uint32_t release_min_at_ms;
+} perf_timing_snapshot_t;
+
+void PerfLog_EmitTiming(uint32_t frame_epoch, const perf_timing_snapshot_t *snap);
+
+/* DETECTOR_CONFIG: producer fills in the perf_rec_detector_config_t struct
+ * (sample coords, thresholds, color filter weights) and hands it over;
+ * perf_log fills the header and queues. Emit on connect-up edge and on
+ * change so the host always has a current copy for STRIP overlays. */
+void PerfLog_EmitDetectorConfig(const perf_rec_detector_config_t *cfg);
+
+/* ACTUATOR: emitted by fretboard_link on every Send call. producer_id
+ * uses perf_actuator_producer_t; last_ack_* are the most-recent
+ * CDC_WRITE_COMPLETE result and SYS_TIME counter snapshotted at Send. */
+void PerfLog_EmitActuator(uint8_t  intended_mask,
+                          uint8_t  asserted_mask,
+                          uint8_t  strum_dir,
+                          uint8_t  producer_id,
+                          int32_t  last_ack_result,
+                          uint64_t last_ack_ts_counter);
+
 void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
                                 perf_strip_kind_t kind,
                                 const uint8_t *frame, uint32_t frame_stride,

@@ -27,7 +27,7 @@ static void recompute_and_send(void)
 {
     if (!s_enabled) { return; }
     uint8_t mask = (uint8_t)(s_fret_mask | s_strum_mask);
-    FretboardLink_Send(mask);
+    FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
 }
 
 void ManualControl_Initialize(void)
@@ -52,7 +52,7 @@ void ManualControl_SetEnabled(bool enabled)
         s_fret_mask = 0u;
         s_strum_mask = 0u;
         s_enabled = true;
-        FretboardLink_Send(0u);
+        FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
         LOG_INFO("MC: manual mode on\r\n");
     }
     else
@@ -63,7 +63,7 @@ void ManualControl_SetEnabled(bool enabled)
         s_enabled = false;
         s_fret_mask = 0u;
         s_strum_mask = 0u;
-        FretboardLink_Send(0u);
+        FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
         TimingPipeline_SetEnabled(true);
         LOG_INFO("MC: manual mode off\r\n");
     }

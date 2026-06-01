@@ -58,7 +58,7 @@ def build_header(
 
 
 def build_session_payload(
-    *, timer_freq_hz: int = 266_000_000, schema_version: int = 2, fw_git_short: int = 0
+    *, timer_freq_hz: int = 266_000_000, schema_version: int = 3, fw_git_short: int = 0
 ) -> bytes:
     body = Session._BODY.pack(timer_freq_hz, schema_version, 0, fw_git_short, 0)
     return build_header(RecordType.SESSION) + body
@@ -88,13 +88,34 @@ def build_detector_payload(
 def build_timing_payload(
     *,
     frame_epoch: int = 1,
+    now_ms: int = 0,
+    chord_open: int = 0,
+    chord_mask: int = 0,
+    chord_age_ms: int = 0,
+    note_q_count: int = 0,
+    note_head_mask: int = 0,
+    note_tail_mask: int = 0,
+    note_head_at_ms: int = 0,
+    strum_q_count: int = 0,
+    strum_head_mask: int = 0,
+    strum_dir_next: int = 1,
+    strum_head_at_ms: int = 0,
+    frets_active: int = 0,
+    strum_active: int = 0,
+    release_pending_mask: int = 0,
     publish_mask: int = 0x01,
-    chord_window_fill: int = 1,
-    fifo_depth: int = 2,
-    strum_dir: int = 1,
+    strum_release_at_ms: int = 0,
+    release_min_at_ms: int = 0,
 ) -> bytes:
     body = Timing._BODY.pack(
-        publish_mask, chord_window_fill, fifo_depth, strum_dir, 0, 0, 0
+        now_ms,
+        chord_open, chord_mask, chord_age_ms,
+        note_q_count, note_head_mask, note_tail_mask, 0,
+        note_head_at_ms,
+        strum_q_count, strum_head_mask, strum_dir_next, 0,
+        strum_head_at_ms,
+        frets_active, strum_active, release_pending_mask, publish_mask,
+        strum_release_at_ms, release_min_at_ms,
     )
     return build_header(RecordType.TIMING, frame_epoch=frame_epoch) + body
 

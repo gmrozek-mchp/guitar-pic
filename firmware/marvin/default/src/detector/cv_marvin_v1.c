@@ -301,6 +301,35 @@ static void draw_overlay(uint8_t *frame, uint16_t fw, uint16_t fh)
     }
 }
 
+/* ─── Detector-config publish ──────────────────────────────────────────── */
+
+/* Snapshot the static cv_marvin_v1 tables (sample coords, thresholds,
+ * color filter weights) into a wire record. Static today; when M6
+ * calibration UI lands and these become runtime-tunable, this function
+ * is the single point that re-publishes after each tweak. */
+static void publish_detector_config(void)
+{
+    perf_rec_detector_config_t cfg;
+    memset(&cfg, 0, sizeof(cfg));
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        cfg.sensor_hx[i]      = s_sensor_coords[i].hx;
+        cfg.sensor_hy[i]      = s_sensor_coords[i].hy;
+        cfg.sensor_ex[i]      = s_sensor_coords[i].ex;
+        cfg.sensor_ey[i]      = s_sensor_coords[i].ey;
+        cfg.color_target_b[i] = s_color_filter[i].target[0];
+        cfg.color_target_g[i] = s_color_filter[i].target[1];
+        cfg.color_target_r[i] = s_color_filter[i].target[2];
+        cfg.color_reject_b[i] = s_color_filter[i].reject[0];
+        cfg.color_reject_g[i] = s_color_filter[i].reject[1];
+        cfg.color_reject_r[i] = s_color_filter[i].reject[2];
+    }
+    cfg.hold_thresh       = CV_HOLD_THRESH;
+    cfg.hold_release_frac = CV_HOLD_RELEASE_FRAC;
+    cfg.edge_thresh       = CV_EDGE_THRESH;
+    PerfLog_EmitDetectorConfig(&cfg);
+}
+
 /* ─── Task ─────────────────────────────────────────────────────────────── */
 
 static void cv_marvin_v1_task(void *param)
@@ -320,6 +349,8 @@ static void cv_marvin_v1_task(void *param)
 
     LOG_INFO("CV: cv_marvin_v1 started\r\n");
 
+    publish_detector_config();
+
     for (;;)
     {
         Video_FrameInfo frame;
@@ -334,6 +365,13 @@ static void cv_marvin_v1_task(void *param)
         PerfLog_EmitStamp(PERF_STAGE_CV_START, frame.frame_count, 0u);
         detect_frame(&frame, bus);
         PerfLog_EmitStamp(PERF_STAGE_CV_END, frame.frame_count, 0u);
+
+        /* Re-emit detector config at ~1 Hz so a mid-stream host attach
+         * picks it up within a second of frames flowing. Cheap (~188 B/s
+         * × 1 record/s). When config becomes runtime-tunable, this becomes
+         * the heartbeat — on-change emits land via publish_detector_config
+         * directly from the setter path. */
+        if ((frame.frame_count % 60u) == 0u) { publish_detector_config(); }
 
         /* Sensing strip centers on the sensor row (y=311); strike strip is
          * below the sensors at the strum trigger zone. Both pre-overlay so

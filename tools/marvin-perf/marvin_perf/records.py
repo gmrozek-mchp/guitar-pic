@@ -14,7 +14,7 @@ from enum import IntEnum
 from typing import ClassVar
 
 
-EXPECTED_SCHEMA_VERSION = 2
+EXPECTED_SCHEMA_VERSION = 3
 
 PERF_LOG_HDR_MAGIC = 0x4D56  # 'M','V' little-endian
 PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
@@ -47,6 +47,8 @@ class RecordType(IntEnum):
     DROP = 0x06
     TASK_HIGHWATER = 0x07
     TASK_RUNTIME = 0x08
+    DETECTOR_CONFIG = 0x09
+    ACTUATOR = 0x0A
 
 
 class StripKind(IntEnum):
@@ -80,6 +82,23 @@ class TaskId(IntEnum):
     TIMING = 3
     FRETBOARD_LINK = 4
     PERF_DRAIN = 5
+    IDLE = 6
+    LEGATO = 7
+    XLCDC = 8
+    MAXTOUCH = 9
+    SYS_INPUT = 10
+    USB_DEVICE = 11
+    USB_HOST = 12
+    DRV_USB_UDPHS = 13
+    DRV_USB_HOST = 14
+    APP = 15
+    OTHER = 16  # pseudo-slot — Σ all − Σ registered tasks (host CPU% closure)
+
+
+class ActuatorProducer(IntEnum):
+    NONE = 0
+    TIMING = 1
+    MANUAL = 2
 
 
 class PerfFlag(IntEnum):
@@ -143,14 +162,41 @@ class Detector:
 
 @dataclass(frozen=True)
 class Timing:
-    hdr: Header
-    publish_mask: int
-    chord_window_fill: int
-    fifo_depth: int
-    strum_dir: int
+    """v3 per-frame snapshot of timing_pipeline state.
 
-    SIZE: ClassVar[int] = HDR_SIZE + 16
-    _BODY: ClassVar[struct.Struct] = struct.Struct("<BBBBIII")
+    Replaces the v2 counts-only record. Deadlines (`*_at_ms`) are absolute
+    in the pipeline's clock (`now_ms`); for empty queues they are 0 and
+    the corresponding `*_count` is 0. `chord_age_ms` is meaningful only
+    when `chord_open == 1`.
+    """
+
+    hdr: Header
+    now_ms: int
+    chord_open: int
+    chord_mask: int
+    chord_age_ms: int
+    note_q_count: int
+    note_head_mask: int
+    note_tail_mask: int
+    note_head_at_ms: int
+    strum_q_count: int
+    strum_head_mask: int
+    strum_dir_next: int
+    strum_head_at_ms: int
+    frets_active: int
+    strum_active: int
+    release_pending_mask: int
+    publish_mask: int
+    strum_release_at_ms: int
+    release_min_at_ms: int
+
+    # Body: now_ms + chord(open,mask,age) + note(count,head,tail,_pad,at) +
+    #       strum(count,head,dir,_pad,at) + (frets,strum_active,rel_pend,publish) +
+    #       (strum_rel_at, release_min_at)
+    _BODY: ClassVar[struct.Struct] = struct.Struct(
+        "<I BBH BBBBI BBBBI BBBB II"
+    )
+    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 35 = 51
 
 
 @dataclass(frozen=True)
@@ -212,6 +258,69 @@ class TaskRuntime:
 
     SIZE: ClassVar[int] = HDR_SIZE + 12
     _BODY: ClassVar[struct.Struct] = struct.Struct("<BBBBII")
+
+
+@dataclass(frozen=True)
+class DetectorConfig:
+    """cv_marvin_v1 per-fret configuration. Static today; becomes runtime-
+    tunable when M6 calibration UI lands. Floats are IEEE 754 little-endian
+    on the wire — same representation Python's struct delivers.
+
+    Sample coords are in capture-frame space, matching STRIP record (x, y)
+    anchors so host overlay code computes strip-relative pixels as
+    `sample_x - strip.x`, `sample_y - strip.y`.
+    """
+
+    hdr: Header
+    sensor_hx: tuple[int, ...]   # length FRET_COUNT
+    sensor_hy: tuple[int, ...]
+    sensor_ex: tuple[int, ...]
+    sensor_ey: tuple[int, ...]
+    hold_thresh: float
+    hold_release_frac: float
+    edge_thresh: float
+    color_target_b: tuple[float, ...]
+    color_target_g: tuple[float, ...]
+    color_target_r: tuple[float, ...]
+    color_reject_b: tuple[float, ...]
+    color_reject_g: tuple[float, ...]
+    color_reject_r: tuple[float, ...]
+
+    # 4 × (5×u16) + 3 × f32 + 6 × (5×f32) = 40 + 12 + 120 = 172 B body
+    _BODY: ClassVar[struct.Struct] = struct.Struct(
+        "<5H5H5H5H fff 5f5f5f 5f5f5f"
+    )
+    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 172 = 188
+
+
+@dataclass(frozen=True)
+class Actuator:
+    """Emitted on every FretboardLink_Send call (one per producer intent).
+
+    `producer_id` is the arbitration signal that's invisible from the wire
+    byte alone — when manual_control takes the wire from timing_pipeline,
+    nothing about the byte itself changes. `last_ack_*` snapshot the most
+    recent CDC_WRITE_COMPLETE so host can compute Send-to-ack latency
+    without joining FBL_SEND/CDC_WRITE_COMPLETE stamps.
+    """
+
+    hdr: Header
+    intended_mask: int
+    asserted_mask: int
+    strum_dir: int        # 0=none, 1=down, 2=up
+    producer_id: int      # ActuatorProducer value
+    last_ack_result: int  # USB_HOST_CDC_RESULT_*, signed
+    last_ack_ts_counter: int
+
+    _BODY: ClassVar[struct.Struct] = struct.Struct("<BBBBiQ")
+    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 16 = 32
+
+    @property
+    def producer_name(self) -> str:
+        try:
+            return ActuatorProducer(self.producer_id).name.lower()
+        except ValueError:
+            return f"producer_{self.producer_id}"
 
 
 @dataclass(frozen=True)

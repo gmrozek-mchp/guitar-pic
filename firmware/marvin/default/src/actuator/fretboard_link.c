@@ -14,6 +14,7 @@
 #include "usb/usb_host.h"
 #include "usb/usb_host_cdc.h"
 #include "usb/usb_cdc.h"
+#include "timing_pipeline.h"
 #include "perf_log/perf_log.h"
 
 #define FBL_TASK_STACK_WORDS    768u
@@ -58,6 +59,21 @@ static USB_HOST_CDC_HANDLE          s_cdc_handle = USB_HOST_CDC_HANDLE_INVALID;
 static volatile bool                s_connected;
 static volatile USB_HOST_CDC_RESULT s_last_write_result;
 
+/* Asserted-mask snapshot: most recent byte that successfully landed at the
+ * USB DMA layer (i.e. a CDC_Write call that returned SUCCESS). Producer-side
+ * intent goes out on the same wire byte but may be overwritten before it
+ * actually transmits if Send is called repeatedly faster than the link
+ * services. The PERF_REC_ACTUATOR record carries both. */
+static volatile uint8_t  s_last_sent_byte;
+
+/* Last CDC_WRITE_COMPLETE result + timestamp, captured in the ISR. The
+ * ACTUATOR record snapshots these at Send-time so the host can compute
+ * Send-to-ack latency without joining FBL_SEND/CDC_WRITE_COMPLETE
+ * stamps. SYS_TIME_Counter64Get is ISR-safe (a register read; same
+ * thing PerfLog's hdr_fill does from ISR context). */
+static volatile int32_t  s_last_ack_result;
+static volatile uint64_t s_last_ack_ts_counter;
+
 static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
                                                     USB_HOST_CDC_EVENT event,
                                                     void *eventData,
@@ -71,7 +87,9 @@ static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
         case USB_HOST_CDC_EVENT_WRITE_COMPLETE:
         {
             const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
-            s_last_write_result = d->result;
+            s_last_write_result    = d->result;
+            s_last_ack_result      = (int32_t)d->result;
+            s_last_ack_ts_counter  = SYS_TIME_Counter64Get();
             BaseType_t hpw = pdFALSE;
             PerfLog_EmitStampFromISR(PERF_STAGE_CDC_WRITE_COMPLETE, 0u,
                                      (uint32_t)d->result, &hpw);
@@ -193,6 +211,7 @@ static bool send_one_byte(uint8_t mask)
         LOG_WARN("FBL: write completion err=%d\r\n", (int)s_last_write_result);
         return false;
     }
+    s_last_sent_byte = tx_byte;
     return true;
 }
 
@@ -264,12 +283,19 @@ bool FretboardLink_IsConnected(void)
     return s_connected;
 }
 
-void FretboardLink_Send(uint8_t mask)
+void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 {
     if (s_cmd_queue == NULL) { return; }
-    uint8_t v = (uint8_t)(mask & 0x7F);
+    uint8_t v = (uint8_t)(mask & TIMING_BIT_VALID_MASK);
     /* Overwrite is strictly latest-wins: a newer producer's mask replaces
      * any unsent older one — keeps a stalled USB write from accumulating
      * stale chord state. */
     (void)xQueueOverwrite(s_cmd_queue, &v);
+
+    uint8_t strum_dir = 0u;
+    if      (v & TIMING_BIT_STRUM_DOWN) { strum_dir = 1u; }
+    else if (v & TIMING_BIT_STRUM_UP)   { strum_dir = 2u; }
+
+    PerfLog_EmitActuator(v, s_last_sent_byte, strum_dir, producer_id,
+                         s_last_ack_result, s_last_ack_ts_counter);
 }

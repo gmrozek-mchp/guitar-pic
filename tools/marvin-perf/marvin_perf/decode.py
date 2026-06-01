@@ -5,8 +5,11 @@ from __future__ import annotations
 from typing import Union
 
 from .records import (
+    Actuator,
     Detector,
+    DetectorConfig,
     Drop,
+    FRET_COUNT,
     Header,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
@@ -27,7 +30,7 @@ from .records import (
 
 Record = Union[
     Session, Stamp, Detector, Timing, Drop, TaskHighwater, TaskRuntime,
-    Strip, UnknownRecord,
+    Strip, DetectorConfig, Actuator, UnknownRecord,
 ]
 
 
@@ -81,15 +84,76 @@ def _decode_detector(hdr: Header, payload: bytes) -> Detector:
 
 def _decode_timing(hdr: Header, payload: bytes) -> Timing:
     _check(payload, Timing.SIZE, "Timing")
-    publish_mask, chord_window_fill, fifo_depth, strum_dir, *_ = (
-        Timing._BODY.unpack_from(payload, HDR_SIZE)
-    )
+    fields = Timing._BODY.unpack_from(payload, HDR_SIZE)
+    (
+        now_ms,
+        chord_open, chord_mask, chord_age_ms,
+        note_q_count, note_head_mask, note_tail_mask, _note_pad,
+        note_head_at_ms,
+        strum_q_count, strum_head_mask, strum_dir_next, _strum_pad,
+        strum_head_at_ms,
+        frets_active, strum_active, release_pending_mask, publish_mask,
+        strum_release_at_ms, release_min_at_ms,
+    ) = fields
     return Timing(
         hdr=hdr,
+        now_ms=now_ms,
+        chord_open=chord_open,
+        chord_mask=chord_mask,
+        chord_age_ms=chord_age_ms,
+        note_q_count=note_q_count,
+        note_head_mask=note_head_mask,
+        note_tail_mask=note_tail_mask,
+        note_head_at_ms=note_head_at_ms,
+        strum_q_count=strum_q_count,
+        strum_head_mask=strum_head_mask,
+        strum_dir_next=strum_dir_next,
+        strum_head_at_ms=strum_head_at_ms,
+        frets_active=frets_active,
+        strum_active=strum_active,
+        release_pending_mask=release_pending_mask,
         publish_mask=publish_mask,
-        chord_window_fill=chord_window_fill,
-        fifo_depth=fifo_depth,
+        strum_release_at_ms=strum_release_at_ms,
+        release_min_at_ms=release_min_at_ms,
+    )
+
+
+def _decode_detector_config(hdr: Header, payload: bytes) -> DetectorConfig:
+    _check(payload, DetectorConfig.SIZE, "DetectorConfig")
+    fields = DetectorConfig._BODY.unpack_from(payload, HDR_SIZE)
+    n = FRET_COUNT
+    return DetectorConfig(
+        hdr=hdr,
+        sensor_hx=tuple(fields[0 * n : 1 * n]),
+        sensor_hy=tuple(fields[1 * n : 2 * n]),
+        sensor_ex=tuple(fields[2 * n : 3 * n]),
+        sensor_ey=tuple(fields[3 * n : 4 * n]),
+        hold_thresh=fields[4 * n + 0],
+        hold_release_frac=fields[4 * n + 1],
+        edge_thresh=fields[4 * n + 2],
+        color_target_b=tuple(fields[4 * n + 3 + 0 * n : 4 * n + 3 + 1 * n]),
+        color_target_g=tuple(fields[4 * n + 3 + 1 * n : 4 * n + 3 + 2 * n]),
+        color_target_r=tuple(fields[4 * n + 3 + 2 * n : 4 * n + 3 + 3 * n]),
+        color_reject_b=tuple(fields[4 * n + 3 + 3 * n : 4 * n + 3 + 4 * n]),
+        color_reject_g=tuple(fields[4 * n + 3 + 4 * n : 4 * n + 3 + 5 * n]),
+        color_reject_r=tuple(fields[4 * n + 3 + 5 * n : 4 * n + 3 + 6 * n]),
+    )
+
+
+def _decode_actuator(hdr: Header, payload: bytes) -> Actuator:
+    _check(payload, Actuator.SIZE, "Actuator")
+    (
+        intended_mask, asserted_mask, strum_dir, producer_id,
+        last_ack_result, last_ack_ts_counter,
+    ) = Actuator._BODY.unpack_from(payload, HDR_SIZE)
+    return Actuator(
+        hdr=hdr,
+        intended_mask=intended_mask,
+        asserted_mask=asserted_mask,
         strum_dir=strum_dir,
+        producer_id=producer_id,
+        last_ack_result=last_ack_result,
+        last_ack_ts_counter=last_ack_ts_counter,
     )
 
 
@@ -156,6 +220,8 @@ _DISPATCH = {
     RecordType.TASK_HIGHWATER: _decode_task_highwater,
     RecordType.TASK_RUNTIME: _decode_task_runtime,
     RecordType.STRIP: _decode_strip,
+    RecordType.DETECTOR_CONFIG: _decode_detector_config,
+    RecordType.ACTUATOR: _decode_actuator,
 }
 
 

@@ -140,7 +140,7 @@ static void publish_mask(uint8_t mask)
     s_output_mask = mask;
     if (s_pipeline_enabled)
     {
-        FretboardLink_Send(mask);
+        FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
     }
 }
 
@@ -291,6 +291,65 @@ static void advance(uint8_t live_pressed_mask)
     publish_mask(mask);
 }
 
+/* Build the per-frame TIMING snapshot from current pipeline state. Called
+ * once per process_frame after advance() has settled all queues and the
+ * publish_mask. Deadlines for empty queues are zeroed; host inspects the
+ * count fields before treating *_at_ms as meaningful. */
+static void fill_timing_snapshot(perf_timing_snapshot_t *snap)
+{
+    memset(snap, 0, sizeof(*snap));
+    snap->now_ms = s_now_ms;
+
+    snap->chord_open   = s_chord_open ? 1u : 0u;
+    snap->chord_mask   = s_chord_open ? s_chord_mask : 0u;
+    snap->chord_age_ms = s_chord_open
+                       ? (uint16_t)(s_now_ms - s_chord_start_ms)
+                       : 0u;
+
+    snap->note_q_count = s_note_count;
+    if (s_note_count > 0u)
+    {
+        const pending_note_t *head = &s_note_q[s_note_head];
+        snap->note_head_mask  = head->fret_mask;
+        snap->note_head_at_ms = head->assert_at_ms;
+        uint8_t tail_union = 0u;
+        for (uint8_t i = 0u; i < s_note_count; i++)
+        {
+            uint8_t idx = (uint8_t)((s_note_head + i) % TP_FIFO_CAP);
+            tail_union |= s_note_q[idx].fret_mask;
+        }
+        snap->note_tail_mask = tail_union;
+    }
+
+    snap->strum_q_count = s_strum_count;
+    if (s_strum_count > 0u)
+    {
+        const pending_strum_t *head = &s_strum_q[s_strum_head];
+        snap->strum_head_mask  = head->fret_mask;
+        snap->strum_head_at_ms = head->strum_at_ms;
+    }
+    /* strum_dir toggles each fired strum; report the *next* direction
+     * (what would fire if the front of strum_q reaches its deadline now). */
+    snap->strum_dir_next = s_strum_direction ? 2u /*up*/ : 1u /*down*/;
+
+    snap->frets_active         = s_frets_active;
+    snap->strum_active         = s_strum_active ? 1u : 0u;
+    snap->release_pending_mask = s_release_pending_mask;
+    snap->publish_mask         = s_output_mask;
+    snap->strum_release_at_ms  = s_strum_active ? s_strum_release_at_ms : 0u;
+
+    if (s_release_pending_mask != 0u)
+    {
+        uint32_t min_at = 0xFFFFFFFFu;
+        for (uint8_t i = 0u; i < FRET_COUNT; i++)
+        {
+            if ((s_release_pending_mask & s_fret_bit[i]) == 0u) { continue; }
+            if (s_release_at_ms[i] < min_at) { min_at = s_release_at_ms[i]; }
+        }
+        snap->release_min_at_ms = (min_at == 0xFFFFFFFFu) ? 0u : min_at;
+    }
+}
+
 static void process_frame(const detector_state_t *state)
 {
     /* Detector frame timestamps drive the clock so this is replay-
@@ -325,6 +384,10 @@ static void process_frame(const detector_state_t *state)
 
     PerfLog_EmitStamp(PERF_STAGE_TP_TICK, state->frame_epoch,
                       (uint32_t)s_output_mask);
+
+    perf_timing_snapshot_t snap;
+    fill_timing_snapshot(&snap);
+    PerfLog_EmitTiming(state->frame_epoch, &snap);
 }
 
 static void timing_pipeline_task(void *param)
