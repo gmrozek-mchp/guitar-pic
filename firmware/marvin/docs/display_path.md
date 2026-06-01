@@ -1,8 +1,8 @@
-# marvin BGRX32 → LCD Display Path
+# marvin BGR888 → LCD Display Path
 
-How the captured video (documented in [`capture_pipeline.md`](capture_pipeline.md)) lands on the 10.1" 1280×800 LVDS panel. Minimum-viable implementation: BGRX32 from DDR → SAM9X75 XLCDC OVR1 layer → LVDSC → panel. Zero CPU, zero scaling, pillarboxed/letterboxed.
+How the captured video (documented in [`capture_pipeline.md`](capture_pipeline.md)) lands on the 10.1" 1280×800 LVDS panel. Implementation: BGR888 packed from DDR → SAM9X75 XLCDC HEO layer → LVDSC → panel. Zero CPU, zero scaling, pillarboxed/letterboxed, per-frame pointer swap on ISC frame-done ISR.
 
-**Status:** working as of 2026-05-02. Pi 480p (720×480) and Wii/ElectronWarp 480p (720×480) display centered on the 1280×800 panel with 280 px black pillarbox each side and 160 px black letterbox top + bottom. Pi 720p (1280×720) display works too — full panel width, 40 px letterbox top + bottom.
+**Status:** working. Pi 480p (720×480) and Wii/ElectronWarp 480p (720×480) display centered on the 1280×800 panel with 280 px black pillarbox each side and 160 px black letterbox top + bottom. Pi 720p (1280×720) display works too — full panel width, 40 px letterbox top + bottom.
 
 ---
 
@@ -10,13 +10,13 @@ How the captured video (documented in [`capture_pipeline.md`](capture_pipeline.m
 
 ```
 DDR framebuffer (g_framebuffer in isc_capture.c)
-  BGRX32, 32-byte aligned, in .region_cache_aligned
+  BGR888 packed, 32-byte aligned, in .region_nocache
         │                     <── XLCDC DMA reads
         ▼
-XLCDC OVR1 layer (Overlay 1)
-  ARGB_8888 color mode (memory byte order matches BGRX32)
-  src_w × src_h window, centered on the 1280×800 panel via lcd_bind_capture()
-  alpha=255 global, per-pixel A ignored
+XLCDC HEO layer (High-End Overlay, with hardware scaler)
+  RGB_888_PACKED color mode (memory order B, G, R per pixel)
+  src_w × src_h window, centered on the 1280×800 panel via lcd_bind()
+  alpha=255 global; pointer re-set to just-completed buffer on every ISC ISR
         │
         ▼
 XLCDC timing engine  (1280×800 @ 60 Hz, 10.1" panel timings from MCC)
@@ -32,32 +32,26 @@ LVDSC  (LVDS serializer)
 
 ## 2. Key decisions, with rationale
 
-### 2.1 OVR1, not BASE
+### 2.1 HEO, not OVR1 or BASE
 
-The SAM9X75 XLCDC BASE layer has **no window position or size registers** (`XLCDC_SetupBaseLayer` in `plib_xlcdc.c` configures `BASECFG0..BASECFG6` but no XPOS/YPOS/XSIZE/YSIZE). Its window is always the full configured display size. Pointing BASE at a 720-wide framebuffer while the display is 800 wide produces an 80 px/row skew because LCDC reads 800 × 4 = 3200 B/row but memory only has 720 × 4 = 2880 B/row — each row drifts left.
+The SAM9X75 XLCDC BASE layer has **no window position or size registers** — its window is always the full configured display size. Pointing BASE at a 720-wide framebuffer while the display is 800 wide produces an 80 px/row skew.
 
-Overlays (OVR1, OVR2, HEO) have `OVRxCFG2` (XPOS/YPOS) and `OVRxCFG3` (XSIZE/YSIZE), so their window can be smaller than the panel and positioned anywhere. OVR1 is the simplest overlay (no scaling, no chroma key). That's what we use.
+Overlays (OVR1, OVR2, HEO) have position/size registers so their window can be smaller than the panel and positioned anywhere. **We use HEO** (High-End Overlay) because:
+- It has a built-in hardware scaler (`HEOCFG3`/`HEOCFG4` separate display vs. memory rect) — used when we later need to scale a source smaller than 720p up to fit the panel.
+- It natively supports `RGB_888_PACKED` color mode, which matches our BGR888 capture format exactly.
+- OVR1 lacks a scaler; adding one later would require migrating the bind call anyway.
 
-### 2.2 `XLCDC_RGB_COLOR_MODE_ARGB_8888`
+### 2.2 `XLCDC_RGB_COLOR_MODE_RGB_888_PACKED`
 
-Our memory layout is `B G R X` (low-to-high), i.e. `0x00RRGGBB` as a little-endian 32-bit word.
+Our capture format is BGR888 packed — memory byte order per pixel is `B, G, R` (low address to high), dense with no padding byte.
 
-The MCC XLCDC enum exposes only `ARGB_8888` and `RGBA_8888`. Per SAM9X75 LCDC convention:
-
-| Mode | Memory byte order (low → high) |
-|---|---|
-| `ARGB_8888` | **B, G, R, A** |
-| `RGBA_8888` | A, B, G, R |
-
-`ARGB_8888` is byte-for-byte compatible with our BGRX32 output. The `A` byte in memory ends up being our `X = 0x00`, which would mean fully transparent — but we override at the layer level:
+The XLCDC `RGB_888_PACKED` mode reads memory in this byte order (per SAM9X75 LCDC datasheet Table 44.26). Setting this mode on the HEO layer lets LCDC DMA read the capture buffer directly with zero conversion.
 
 ### 2.3 Global alpha via `XLCDC_SetLayerOpts(layer, 255, true, false)`
 
-OVR1's layer opts take a global alpha (0–255) and an `enable_dma` flag. We pass `alpha = 255` + `enable_dma = true`:
-- `enable_dma = true` → pixel data comes from the framebuffer via DMA (RGB channels only).
-- `alpha = 255` → the layer is fully opaque regardless of the per-pixel A byte.
-
-So our `X = 0x00` in the framebuffer is harmless; the display shows opaque RGB.
+HEO's layer opts take a global alpha (0–255) and an `enable_dma` flag. We pass `alpha = 255` + `enable_dma = true`:
+- `enable_dma = true` → pixel data comes from the framebuffer via DMA.
+- `alpha = 255` → the layer is fully opaque.
 
 ### 2.4 Pillarbox, not scale
 
@@ -68,28 +62,19 @@ Panel is 1280×800. Source dimensions vary; `lcd_bind_capture(w, h)` centers the
 | 720×480 (Wii / Pi 480p) | 720×480 at (280, 160) | 280 px each | 160 px each |
 | 1280×720 (Pi 720p) | 1280×720 at (0, 40) | 0 (fills width) | 40 px each |
 
-No scaling engine needed for either. BASE layer (below OVR1 in z-order) paints the surrounding black region — it's still the MCC-auto-allocated 1280×800 buffer of zeroes.
+No scaling engine needed for either source yet. BASE layer (below HEO in z-order) paints the surrounding black region — it's still the MCC-auto-allocated 1280×800 buffer of zeroes.
 
-If the source is larger than 1280×800 (e.g. 1080p), `lcd_bind_capture` bails with `LCD: source exceeds panel` and the bind step is skipped (capture pipeline still runs into DDR, just nothing on screen). Downscaling a > 1280×800 source requires the HEO layer's hardware scaler, which the MCC plib does not expose — it'd need direct `HEOCFG*` register writes. Deferred until needed.
+If the source is larger than 1280×800 (e.g. 1080p), `lcd_bind` bails with a log error and the bind step is skipped (capture pipeline still runs into DDR, just nothing on screen). Downscaling uses the HEO hardware scaler — `HEOCFG3`/`HEOCFG4` set the display rect vs. source-memory rect independently.
 
-### 2.5 Single-buffer read, tear-tolerant
+### 2.5 Per-frame pointer swap
 
-XLCDC DMA re-reads the OVR1 base address on each of its own frame refreshes (60 Hz panel). We point it at **buffer 0** of the double-buffer pool (`ISC_Capture_GetBufferAddress()` returns the pool base = buffer 0). ISC DMA alternates writes between buffer 0 and buffer 1, so about half the captured frames are only visible to the CPU/vision stage, not to the display.
-
-Practical effect: display effective refresh is ~30 Hz (every other ISC write) and a scanline-level tear is possible where an LCDC read crosses mid-frame an ISC write. Good enough for a sanity check and for static/slow content. Upgrades when needed:
-- **Synchronized pointer swap:** on ISC frame-done ISR, call `XLCDC_SetLayerAddress(OVR1, just_filled_buffer, true)`. The "update" flag delays the effect until the next panel VSYNC, so no mid-frame read tear.
-- **Single-buffer capture:** set `iscObj->dmaDescSize = 1`. ISC overwrites the same buffer continuously; display tracks it at full 60 Hz with some scanline tear but no frame drop.
+On every ISC frame-done ISR, `video.c` calls `XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, just_completed_addr, true)`. The `update=true` flag latches the new address at the next panel VSYNC, so LCDC never reads mid-frame and the display tracks every captured frame at the full 60 Hz ISC rate. With a 4-deep capture ring, there is no buffer aliasing — ISC is never writing the same buffer the display is reading.
 
 ---
 
 ## 3. Cache coherency
 
-`g_framebuffer` lives in `.region_cache_aligned` (cached DDR). Consumers should read it like this:
-
-- **CPU does not write to the buffer** → no flush needed. ISC DMA writes bypass CPU cache and go straight to DDR; LCDC DMA reads straight from DDR. Both see the same data.
-- **If CPU (vision, overlay rendering, alpha stamp) ever writes to the buffer** → call `SYS_CACHE_CleanDCache_by_Addr((uint32_t *)addr, size)` before yielding to LCDC, and `SYS_CACHE_InvalidateDCache_by_Addr` before reading something that DMA wrote.
-
-MCC's `drv_gfx_xlcdc.c` places its own auto-allocated buffers in `.region_nocache` to sidestep this entirely. We don't need that for a read-only display, but it's the standard pattern for CPU-rendered content.
+`g_framebuffer` lives in `.region_nocache` (uncached DDR). All DMA consumers (ISC write, LCDC read, CPU vision reads) see the same bytes directly from DDR — no cache flush or invalidate calls needed. This is the simplest correct choice for a buffer written by DMA and read by multiple consumers including the CPU.
 
 ---
 
@@ -111,32 +96,22 @@ MCC's auto-initialization (`SYS_Initialize`) already ran:
 
 Backlight is *not* turned on by auto-init. We do it ourselves.
 
-### 4.2 Per-capture (`app_coordinate_capture` → `lcd_bind_capture`)
+### 4.2 Per-capture (`app_coordinate_capture` → `lcd_bind`)
 
-Runs once when TC358743 reports a lock and `ISC_Capture_Configure(w, h)` succeeds:
+Runs once when TC358743 reports a lock and `ISC_Capture_Configure(w, h)` succeeds. See `video.c` `lcd_bind()` for the current implementation. Key settings:
 
-```c
-XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
-XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1, XLCDC_RGB_COLOR_MODE_ARGB_8888, false);
-XLCDC_SetLayerAddress(XLCDC_LAYER_OVR1, ISC_Capture_GetBufferAddress(), false);
-XLCDC_SetLayerXStride(XLCDC_LAYER_OVR1, 0u, false);
-XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_OVR1, (800-w)/2, (480-h)/2, false);
-XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_OVR1, w, h, false);
-XLCDC_SetLayerOpts(XLCDC_LAYER_OVR1, 255u, true, false);
-XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, true, true);
-```
+- `XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO, XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, ...)`
+- `XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, ...)` — centered: `x = (1280-w)/2`, `y = (800-h)/2`
+- `XLCDC_SetLayerWindowXYSize` and `HEOCFG3`/`HEOCFG4` for display and source-memory rects respectively
+- All `update=false` until the final `SetLayerEnable(true, true)` which commits atomically
 
-Note the `update = false` on all but the last call. The last `SetLayerEnable(true, true)` commits the pending config atomically, so the layer doesn't briefly render with a mix of old/new settings.
-
-`XStride = 0` means "no extra bytes between rows" — source memory is tightly packed at `window_width × 4 B/row`. If we later consume a buffer wider than the window (e.g. cropping a 1280×720 source down to an 800-wide visible strip), XStride would be `(source_width - window_width) × 4`.
+`XStride = 0` means no padding bytes between rows — source memory is tightly packed at `width × 3 B/row` for BGR888.
 
 ---
 
 ## 5. Current limitations / next steps
 
-- **Panel-exceeding sources aren't displayed.** Pi 720p (1280×720) now fits the 1280×800 panel; only 1080p and beyond would need HEO scaling.
-- **No double-buffer swap** — LCDC stuck on buffer 0, ~30 Hz effective with possible tear. Switch to ISR-driven pointer swap when motion clarity matters.
-- **BASE layer is still the MCC-auto-allocated 1280×800 black buffer.** ~2 MB of `.region_nocache` DDR (RGB565) permanently displaying black around our overlay. Low priority; could reclaim by dropping `XLCDC_BUF_PER_LAYER` to 0 for BASE, or by disabling BASE entirely (the surrounding region would then go transparent and show whatever the LCDC's "default layer color" is — `BASECFG3.RDEF/GDEF/BDEF = 0,0,0`, i.e. black, same result).
-- **Limited→full range expansion — will be done in the HEO CSC block, display-only.** TC358743 reports RGB limited-range (16–235) for both Wii and Pi sources, so bytes in DDR reflect that range. Vision consumers deliberately see **unexpanded** bytes — the 15% extra dynamic range of full scale doesn't carry any real information from a limited-range source (it's just a linear rescale), and keeping capture pristine means vision algorithms operate on ground-truth values. The expansion is cosmetic, needed only because the AC69T88A panel expects full 0–255 and would render limited-range data with muted blacks and washed-out whites.
-  - **Chosen path:** HEO layer Color Space Conversion matrix (`HEOCFG14..17` on this chip). Programmable `out = M × in + offset` configured as an identity RGB→RGB with the correct gain/offset for the 219-step expansion. Zero CPU, happens at display time only, capture framebuffer unchanged.
-  - Rejected alternatives: CPU LUT pass (burns cycles, and would either expand the capture buffer in place — breaking vision — or require a second buffer), GFX2D blit (not clear the engine has a linear gain mode at all).
+- **Panel-exceeding sources aren't displayed.** Pi 720p (1280×720) fits the 1280×800 panel; only 1080p and beyond need the HEO scaler enabled.
+- **BASE layer is still the MCC-auto-allocated 1280×800 black buffer.** ~2 MB of `.region_nocache` DDR (RGB565) permanently displaying black around our overlay. Low priority; could reclaim by dropping `XLCDC_BUF_PER_LAYER` to 0 for BASE.
+- **Limited→full range expansion — not yet done.** TC358743 reports RGB limited-range (16–235) for both Wii and Pi sources, so bytes in DDR reflect that range. Vision consumers deliberately see unexpanded bytes (linear rescale carries no new signal). The expansion is cosmetic, needed only because the panel expects 0–255 and renders limited-range data with muted blacks/whites.
+  - **Planned path:** HEO layer Color Space Conversion matrix (`HEOCFG14..17`). Programmable `out = M × in + offset` configured as identity RGB→RGB with the 219-step limited→full gain/offset. Zero CPU, display-only, capture framebuffer unchanged.

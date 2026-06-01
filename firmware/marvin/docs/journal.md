@@ -95,7 +95,7 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 - **Single-screen attach assumption for `ui/manual_input`.** `screenHide_Screen0` deletes the root widget tree, taking the Composer-generated `Screen0_*` widget pointers with it. We bind callbacks once after the first `screenShow_Screen0`. If a second Legato screen is ever added, `ManualInput_Bind` must re-run inside that screen's show path (or whichever screen owns the manual-control widgets). Not an issue today — flagged for whenever the operator UI grows beyond Screen0.
 
-- **Spec ↔ implementation drift on capture format.** Spec still uses "BGRX32" in ~10 places (§2 status table, §2.1 diagram, §3.1 hardware list, §4.1 video task, §4.2 detector input, §4.6.5 keyframe filename + size math, §4.7 sample config). The actual capture has been BGR888 packed (3 B/pixel) since the 2026-05-02 switch (`isc_capture.c:65-74`). Fixed §4.2.2 inline 2026-05-20 because M1 reads against it; the rest needs a sweep — including recalc of keyframe size (720×480 × 3 = 1.04 MB, not 1.38 MB) and on-disk recording layout. Defer to a doc-only pass before M5.
+- ~~**Spec ↔ implementation drift on capture format.**~~ **Resolved 2026-06-01** in doc sweep: spec.md, capture_pipeline.md, and display_path.md all updated to reflect BGR888 packed (3 B/pixel, CSI2DC RMS=1), HEO layer (not OVR1), RGB\_888\_PACKED color mode, and `.region_nocache` framebuffer. Keyframe size corrected to 1.04 MB (720×480 × 3). README.md updated with project intro.
 
 - **MCC-file modifications maintenance risk.** A from-scratch MCC regen on 2026-05-15 confirmed **four** local modifications get clobbered. The 2026-05-20 USB-host regen added a fifth. Re-apply after every regen:
 
@@ -152,6 +152,15 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-06-01 — doc accuracy sweep
+
+Swept all marvin docs for accuracy relative to the current implementation. Changes made:
+
+- **`spec.md`** — §1.3/1.4/2.1/2.2/2.3/3.2: BGRX32 → BGR888 packed throughout. §1.4 status table: updated CV detection (M1 done), fretboard link (✅ USB CDC host), timing pipeline (✅ working), operator UI, and system services to reflect current state. §3.1: fretboard connection note updated from "UART" to USB CDC host over EDBG. §3.2: USB device now ✅ in use (perf-log), USB host row added ✅ in use (fretboard link). §4.3: changed from "UART" to USB CDC host description.  §4.6: `.bgrx` → `.bgr` keyframe extension, 1.38 MB → 1.04 MB keyframe size, `"format": "BGRX32"` → `"BGR888"` in manifest sample.
+- **`capture_pipeline.md`** — Title, header, §1 pipeline diagram, §2.4 (RMS=0 → RMS=1 — documents current path, includes patch #3 code), §2.5 COLMAX formula updated for RMS=1, §2.7 DMA IMODE description, §2.8 framebuffer layout (4 B/px → 3 B/px, 4-deep ring, `.region_nocache`).
+- **`display_path.md`** — Title, header, §1 overview diagram (OVR1 → HEO, ARGB_8888 → RGB_888_PACKED, `.region_cache_aligned` → `.region_nocache`), §2.1 (OVR1 → HEO with rationale), §2.2 (ARGB_8888 → RGB_888_PACKED), §2.5 (single-buffer limitation → per-frame pointer swap done), §3 cache coherency simplified (nocache = no maintenance needed), §4.2 call sequence updated, §5 limitations updated.
+- **`README.md`** — Added one-sentence project description and pointers to spec.md and journal.md.
 
 ### 2026-05-29 — perf-log USB throughput: multi-IRP, drain refactor, Fletcher-16, single MAX_BYTES
 

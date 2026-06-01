@@ -31,22 +31,22 @@ In short: marvin is the runtime brain *and* the reference-detector data source f
 
 ### 1.3 North-star one-paragraph summary
 
-A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGRX32, zero-copy). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over UART, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
+A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGR888 packed, 3 B/pixel). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over USB CDC, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
 
 ### 1.4 What's done, what's next
 
 | Subsystem | Status |
 |---|---|
-| HDMI capture (TC358743 → CSI-2 → ISC → DDR, BGRX32) | ✅ working at 480p60 and 720p60. See [`capture_pipeline.md`](capture_pipeline.md). |
-| Display path (DDR → XLCDC OVR1 → LVDSC → panel) | ✅ working, pillarboxed/letterboxed. See [`display_path.md`](display_path.md). |
-| FreeRTOS scheduler, video task, OSAL I²C | ✅ landed (commits `5a63704`, `6b85d5e`, `e28c497`). |
-| Lightweight log shim | ✅ landed (commit `a79042f`). |
-| CV detection pipeline | 🚧 not started. §4.2. |
-| Fretboard UART link | 🚧 not started. §4.3. |
-| Timing pipeline (chord FIFO, strum) | 🚧 not started. §4.4. |
-| Operator UI (Legato vs custom) | 🚧 init-only Legato; full UI not started. §4.5, open Q5. |
-| Reference-data recording & export | 🚧 not started. §4.6, open Q1/Q2. |
-| System services (config, time, watchdog) | 🚧 partial (logging done). §4.7. |
+| HDMI capture (TC358743 → CSI-2 → ISC → DDR, BGR888 packed) | ✅ working at 480p60 and 720p60. See [`capture_pipeline.md`](capture_pipeline.md). |
+| Display path (DDR → XLCDC HEO → LVDSC → panel) | ✅ working, pillarboxed/letterboxed, per-frame pointer swap. See [`display_path.md`](display_path.md). |
+| FreeRTOS scheduler, video task, OSAL I²C | ✅ landed. |
+| Lightweight log shim, FreeRTOS analytics, task priorities | ✅ done. |
+| CV detection pipeline | 🚧 M1 complete: `cv_marvin_v1` running on captured frames, `detector_state_t` bus active. No actuation path through detector yet. §4.2. |
+| Fretboard link (USB CDC host over EDBG) | ✅ working; commands flowing, gameplay tested. §4.3. |
+| Timing pipeline (chord FIFO, strum) | ✅ working; end-to-end gameplay tested on Expert and Easy. §4.4. |
+| Operator UI (Legato) | 🚧 Manual-control surface (8 buttons, Legato Composer) done; full calibration/log UI not started. §4.5, open Q5. |
+| Reference-data recording & export (SD) | 🚧 SD recording not started. Perf-log USB CDC export (separate dev-tooling path) complete at 2.77 MB/s. §4.6, open Q1/Q2. |
+| System services (config, time, watchdog) | 🚧 Partial: logging, FreeRTOS analytics, static task priorities done; config persistence and watchdog not started. §4.7. |
 | Game-state awareness & high-level game control | 🚧 not started. §4.8, open Q10/Q11. |
 
 ---
@@ -76,7 +76,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
    ┌────────────────────────────────────────────────────────────┐   │
    │                    marvin (SAM9X75)                        │   │
    │                                                            │   │
-   │   ISC ──► DDR (BGRX32) ──► CV detect ──┐                   │   │
+   │   ISC ──► DDR (BGR888) ──► CV detect ──┐                   │   │
    │                              │         │                   │   │
    │                              ▼         ▼                   │   │
    │                          XLCDC ──► LVDS panel              │   │
@@ -92,8 +92,8 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
    │      reference-data export                   │ │           │   │
    │       (Ethernet / SD / USB CDC — §4.6)       │ │           │   │
    └──────────────┬────────────────────────────┬──┴─┘           │   │
-                  │ UART (frets/strum cmds)    │ UART (ADC      │   │
-                  │ bitmask                    │ stream)        │   │
+                  │ USB CDC host               │ USB CDC host   │   │
+                  │ (frets/strum cmds)         │ (ADC stream)   │   │
                   ▼                            │                │   │
    ┌────────────────────────────────────┐      │                │   │
    │      fretboard (PIC32CM6408)       │──────┘                │   │
@@ -124,7 +124,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 
 | Concern | Owner | Notes |
 |---|---|---|
-| HDMI capture into memory | marvin | TC358743 + CSI-2 + ISC; 720×480 / 1280×720 @ 60 Hz, BGRX32. |
+| HDMI capture into memory | marvin | TC358743 + CSI-2 + ISC; 720×480 / 1280×720 @ 60 Hz, BGR888 packed (3 B/pixel). |
 | Reference-quality CV note detection | marvin | Ground truth; multiple algorithms may coexist on the bus. |
 | ADC-based note detection | fretboard → marvin | fretboard scans 5 phototransistors @ 500 Hz, streams raw values; marvin runs the detector logic. |
 | Detector-state fusion / arbitration | marvin | One canonical detector-state bus; the active source feeds the timing pipeline. |
@@ -140,7 +140,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 
 ### 2.3 Data flow at a glance
 
-1. **Frame ready** — ISC writes a BGRX32 frame to DDR; the video task notifies subscribers.
+1. **Frame ready** — ISC writes a BGR888 packed frame to DDR; the video task notifies subscribers.
 2. **CV detect** — one or more CV detectors read the frame and emit detector-state events.
 3. **ADC ingest** — a UART task receives raw ADC samples from the fretboard and runs an ADC detector that emits detector-state events on the same bus.
 4. **Arbitrate** — the timing pipeline picks the active detector (or fuses), maintains the chord-accumulation window, and pushes finished chords onto its FIFO.
@@ -172,7 +172,7 @@ The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees
 | **SAM9X75 Curiosity** | marvin host (CPU, DDR, peripherals, panel/touch ports) | — |
 | **Waveshare HDMI → CSI-2 adapter** (TC358743) | HDMI → MIPI CSI-2 bridge | I²C (FLEXCOM6, PA24/PA25, 400 kHz, addr `0x0F`) for control; 2-lane CSI-2 RX for data; PC15 PWD, PC19 RESET (currently unused — software reset over I²C). |
 | **Microchip 10.1″ 1280×800 LVDS panel + maxtouch** | Operator UI | LVDSC pair from XLCDC; I²C for maxtouch (existing Harmony driver). |
-| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | UART (FLEXCOM TBD on marvin, SERCOM1 PB00/PB01 on fretboard, 115 200 Bd default). |
+| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | USB CDC host (marvin is USB host to fretboard's on-board EDBG composite, VID=0x03EB PID=0x2175; CDC ACM bridged to SERCOM1 PB00/PB01 at 115 200 Bd). |
 | **Wii guitar controller** | Physical input target | Open-drain GPIO on fretboard, not directly on marvin. |
 | **(optional) dev PC** | Calibration / training-data ingest / replay viewer | SD card swap (primary) or USB CDC for live debug; no runtime dependency. |
 
@@ -182,15 +182,16 @@ Pin assignments live in `firmware/marvin/default/src/config/default/pin_configur
 
 | Peripheral | Status | Notes |
 |---|---|---|
-| MIPI CSI-2 RX + ISC + CSI2DC | ✅ in use | 2 lanes, 972 Mbps/lane, BGRX32 to DDR. |
-| XLCDC + LVDSC | ✅ in use | OVR1 layer, ARGB_8888 byte order matching BGRX32, pillarbox/letterbox. |
+| MIPI CSI-2 RX + ISC + CSI2DC | ✅ in use | 2 lanes, 972 Mbps/lane; BGR888 packed to DDR (CSI2DC RMS=1, 3 B/pixel). |
+| XLCDC + LVDSC | ✅ in use | HEO layer, RGB\_888\_PACKED, per-frame pointer swap, pillarbox/letterbox. |
 | FLEXCOM6 (I²C) | ✅ in use | TC358743 control. |
 | FLEXCOM4 (UART, DBGU/console) | ✅ in use | `printf` retarget; lightweight log shim. |
 | FreeRTOS (Harmony OSAL) | ✅ in use | Scheduler running; video task split out (commit `6b85d5e`). |
 | TC0 (SYS_TIME) | ✅ in use | OSAL synchronous I²C requires it. |
 | GMAC (Ethernet) | ⚪ unused | Reserved for future live-stream ref-data export (not MVP). |
 | SDMMC | 🚧 to be enabled | MVP transport for reference-data recording (§4.6). |
-| USB device | ⚪ unused | Possible future CDC for dev convenience; not required. |
+| USB host (EHCI + OHCI) | ✅ in use | Fretboard link — marvin is USB host to fretboard EDBG CDC. |
+| USB device (UDPHS) | ✅ in use | Perf-log CDC ACM sink; marvin presents as USB device to dev PC, streams perf records at up to 2.77 MB/s. |
 | Maxtouch I²C | 🚧 to be enabled | Operator UI (§4.5). |
 | Watchdog | 🚧 not configured | System services (§4.7). |
 | Free FLEXCOMs | several available | Fretboard UART link (§4.3) needs one. |
@@ -267,9 +268,9 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 - Initial CV algorithm — pixel-mean threshold per ROI, edge-trough, optical-flow-based, or learned. (Defer; bring up the simplest first to validate end-to-end.)
 - ADC-detector logic location — port `fretboard/fret_button.c`'s detection (hysteresis edges) into marvin (`adc_fretboard` runs on raw samples), or have fretboard pre-process and stream edges. (Default: marvin runs the detector on raw samples; fretboard stays dumb.)
 
-### 4.3 Fretboard link 🚧
+### 4.3 Fretboard link ✅
 
-UART between marvin and the fretboard MCU, bidirectional, framed.
+USB CDC host between marvin and the fretboard MCU. Marvin acts as USB host to the fretboard's on-board EDBG debugger (composite device exposing CDC ACM). EDBG bridges the CDC ACM interface to the fretboard's SERCOM1 UART at 115 200 Bd.
 
 - **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). Same intent as fret-tuner's existing 1-byte bitmask; precise framing TBD in §5.
 - **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 500 Hz, plus enable/SW0 state. Reuses the fret-tuner 12-byte ADC frame format if practical.
@@ -326,15 +327,15 @@ recordings/
     ├── commands.bin           // emitted fret/strum commands with frame_epoch
     ├── adc_raw.bin            // raw fretboard ADC stream with frame_epoch interleave
     └── keyframes/
-        ├── 000000.bgrx        // raw BGRX32 keyframe (no encoder), filename = frame_epoch
-        ├── 000060.bgrx
+        ├── 000000.bgr         // raw BGR888 keyframe (no encoder), filename = frame_epoch
+        ├── 000060.bgr
         └── ...
 ```
 
 - **`state.bin`** — append-only, fixed-size `detector_state_t` records (§4.2.3). At 60 Hz × 2 detectors × ~28 B = ~3.4 KB/s. Trivial.
 - **`commands.bin`** — fret/strum bitmask + direction + emit timestamp + frame_epoch, ~16 B per emit. Sparse.
 - **`adc_raw.bin`** — fretboard 12-byte frames at 500 Hz with `frame_epoch` annotation = ~6 KB/s. Modest.
-- **Keyframes** — raw BGRX32 dump every N captured frames. At 720×480 BGRX = 1.38 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.38 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~415 MB — comfortable on any modern SD card.
+- **Keyframes** — raw BGR888 packed dump every N captured frames. At 720×480 × 3 B = 1.04 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.04 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~312 MB — comfortable on any modern SD card.
 - No software JPEG / video encode. SAM9X75 has no hardware JPEG; CPU encode at 60 fps is infeasible. Keyframes stay raw; offline tools can transcode if desired.
 
 Filename convention: directory name is ISO-8601 timestamp at session start (UTC); keyframe filenames are zero-padded `frame_epoch` so chronological order matches lexical order.
@@ -354,7 +355,7 @@ Minimum fields:
   "schema_version": 1,
   "session_started_utc": "2026-05-20T14:32:08Z",
   "marvin_firmware_git": "<hash>",
-  "capture": { "width": 720, "height": 480, "fps": 60, "format": "BGRX32" },
+  "capture": { "width": 720, "height": 480, "fps": 60, "format": "BGR888" },
   "keyframe_stride_frames": 60,
   "detectors": [
     { "id": "cv_marvin_v1", "version": "1.0.0", "calibration": { ... } },
@@ -369,7 +370,7 @@ Written at session start; `ended_utc` is patched on a clean stop.
 
 #### 4.6.6 On-device buffering
 
-A FreeRTOS task (`record_task`) owns SD writes. State / command / ADC streams are small and write through directly. Keyframes are larger — a single keyframe at 1.38 MB cannot block the video pipeline, so the record task receives a **frame buffer pointer** (the same DDR buffer the ISC writes into; refcounted by the video task) and writes from DDR while the next frame is being captured into another buffer. We need ≥ 3 capture frame buffers (one capturing, one displaying, one being recorded) when recording is active; today the video task already has multiple frames pre-allocated — exact count is verified during implementation.
+A FreeRTOS task (`record_task`) owns SD writes. State / command / ADC streams are small and write through directly. Keyframes are larger — a single keyframe at 1.04 MB cannot block the video pipeline, so the record task receives a **frame buffer pointer** (the same DDR buffer the ISC writes into; refcounted by the video task) and writes from DDR while the next frame is being captured into another buffer. We need ≥ 3 capture frame buffers (one capturing, one displaying, one being recorded) when recording is active; today the video task already has multiple frames pre-allocated — exact count is verified during implementation.
 
 If the SD write FIFO falls behind (rare; only a sustained-throughput problem), the recorder drops keyframes (logs a `RECORD_DROP` event into `state.bin`'s metadata channel) but **never** drops detector-state records.
 

@@ -1,8 +1,8 @@
-# marvin HDMI → BGRX32 Capture Pipeline
+# marvin HDMI → BGR888 Capture Pipeline
 
 Authoritative configuration reference for the 720p60 HDMI capture path on SAM9X75. Every stage, every register bit that matters, with datasheet citations. When something breaks, start here before grepping code.
 
-**Status:** working as of 2026-05-02. Validated at **1280×720p60** and **720×480p60**, native BGRX32 in DDR, no CPU post-processing. The pipeline is resolution-agnostic — PFE crop, DMA size, and framebuffer offsets all scale from the TC358743-detected `{width, height}` automatically.
+**Status:** working as of 2026-05-02. Validated at **1280×720p60** and **720×480p60**, native BGR888 packed (3 B/pixel) in DDR, no CPU post-processing. The pipeline is resolution-agnostic — PFE crop, DMA size, and framebuffer offsets all scale from the TC358743-detected `{width, height}` automatically.
 
 Datasheet references are to **SAM9X7 Series DS60001813** (sections 48 = MIPI CSI / D-PHY, 49 = CSI2DC, 50 = ISC). TC358743 refs are to the Toshiba datasheet + mainline Linux `drivers/media/i2c/tc358743.c`.
 
@@ -23,28 +23,28 @@ SAM9X75 DWC D-PHY RX Gen3
         │
         ▼                          <── 40-bit isc_data bus
 CSI2DC (Demultiplexer Controller)
-  VPCFGR: DT=0x24, VC=0, PA=0, RMS=0
-  → demux_data = 0x00_00RRGGBB, one pixel per VP word
+  VPCFGR: DT=0x24, VC=0, PA=0, RMS=1  (byte-stream mode)
+  → 4 BGR pixels packed into 12 bytes per CSI-2 RMS spec (Table 49.27)
         │
-        ▼                          <── 40-bit vp_data bus
+        ▼                          <── byte-stream on vp_data bus
 ISC — Parallel Front End (PFE)
   PFE_CFG0: MIPI=1, BPS=FORTY, MODE=PROGRESSIVE, CONT=1, COLEN=1, ROWEN=1
-  PFE_CFG1: COLMIN=0, COLMAX=W-1   (1279)
+  PFE_CFG1: COLMIN=0, COLMAX=(W×3/4)-1   (e.g. 959 at 1280px)
   PFE_CFG2: ROWMIN=0, ROWMAX=H-1   (719)
         │
-        ▼                          <── sub420_data[39:0] (unmodified through ISC)
+        ▼                          <── sub420_data[39:0]
 ISC — Rounding/Limiting/Packing (RLP)
   RLP_CFG: MODE=BYPASS (15)
-  → rlp_data[31:0] = sub420_data[31:0] = 0x00RRGGBB
+  → rlp_data[31:0] = sub420_data[31:0] (pass-through)
         │
         ▼                          <── rlp_data[31:0]
 ISC — DMA Host
   DCFG: IMODE=PACKED32, YMBSIZE=BEATS32, CMBSIZE=BEATS32
-  → stores 32-bit words to DDR; little-endian = B G R 00 = BGRX32
+  → stores 32-bit words to DDR; RMS=1 byte-stream → dense BGR888
         │
         ▼
-DDR3 framebuffer  (1280 × 720 × 4 = 3,686,400 B/frame)
-  B G R 00  B G R 00  B G R 00  ...
+DDR3 framebuffer  (1280 × 720 × 3 = 2,764,800 B/frame)
+  B G R  B G R  B G R  ...  (dense, no padding byte)
 ```
 
 ---
@@ -106,38 +106,37 @@ Other CSI settings:
 - `CSI_NUM_LANES = 2` (matches TC358743).
 - `csiObj->csiFps = 60u` (informational; drives some timing in the driver).
 
-### 2.4 CSI2DC — the RMS=0 lever
+### 2.4 CSI2DC — the RMS=1 lever
 
-**This is the key decision that enables in-pipeline BGRX32.** DS60001813 §49.6.54:
+**This is the key decision that enables in-pipeline BGR888 packed.** DS60001813 §49.6.54:
 
 | VPCFGR Field | Value | Reason |
 |---|---|---|
 | DT (bits 5:0) | 0x24 | RGB888 (matches TC358743 emission) |
 | VC (bits 7:6) | 0 | Virtual channel 0 |
 | PA (bit 14) | **0** | LSB-aligned. PA=1 is for 10/12-bit Bayer sensors being packed onto ISC's 12-bit internal bus. Irrelevant for MIPI RGB888 bypass. |
-| **RMS (bit 13)** | **0** | **Critical.** See below. |
-| RGB36MAP (bit 15) | 0 | Use Table 49.25 pixel mapping |
+| **RMS (bit 13)** | **1** | **Critical.** See below. |
+| RGB36MAP (bit 15) | 0 | Use Table 49.27 pixel mapping |
 
 `RMS` (Recommended Memory Storage) per datasheet:
 
-- `RMS=0` — "CSI2DC outputs 1 pixel per component per clock cycle, compliant with the ISC processing engine." → Table 49.25: `demux_data[39:24]=0`, `[23:16]=R`, `[15:8]=G`, `[7:0]=B`. **One pixel per 40-bit VP word.**
-- `RMS=1` — "CSI2DC generates a byte stream compliant with the CSI-2 specification memory format." → Table 49.27: 4 BGR pixels packed into 12 bytes. This is what MCC's default config produces — results in **dense 3 B/pixel BGR** (not what we want for direct display).
+- `RMS=0` — "CSI2DC outputs 1 pixel per component per clock cycle, compliant with the ISC processing engine." → Table 49.25: `demux_data[39:24]=0`, `[23:16]=R`, `[15:8]=G`, `[7:0]=B`. One pixel per 40-bit VP word — gives BGRX32 (4 B/pixel, 25% extra DDR bandwidth, X byte always 0x00).
+- `RMS=1` — "CSI2DC generates a byte stream compliant with the CSI-2 specification memory format." → Table 49.27: 4 BGR pixels packed into 12 bytes. Results in **dense 3 B/pixel BGR888** — 25% less DDR bandwidth, and XLCDC HEO reads natively in `RGB_888_PACKED` mode.
 
-**MCC hardcodes RMS=1.** We override it:
+**MCC's default omits RMS=1.** We add it (re-apply patch #3):
 
 ```c
 // firmware/marvin/default/src/config/default/vision/drivers/csi2dc/plib_csi2dc.c
 void CSI2DC_Configure_VideoPipe(uint32_t dt, uint32_t vc, uint32_t align_isc) {
     CSI2DC_REGS->CSI2DC_VPCFGR = CSI2DC_VPCFGR_DT(dt)
                                | CSI2DC_VPCFGR_VC(vc)
-                               | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0);
-    /* NOTE: do NOT OR in CSI2DC_VPCFGR_RMS_1 — we want RMS=0 so each pixel
-     *       occupies a full 40-bit VP word with the low 32 bits = 0x00RRGGBB. */
+                               | (align_isc ? CSI2DC_VPCFGR_PA_1 : 0)
+                               | CSI2DC_VPCFGR_RMS_1;  /* PATCH #3: byte-stream mode */
 }
 ```
 
 Other CSI2DC config:
-- `GCFGR.MIPIFRN = 0` (free-running, matches TC358743's continuous-clock mode). MCC default is gated (`MIPIFRN=1`); mismatch leaves `CSI2DC.GSR.ARSTIP` stuck on reset. Override via `csi2dcObj->enableMIPIFreeRun = true;` in `isc_capture.c:91`.
+- `GCFGR.MIPIFRN = 0` (free-running, matches TC358743's continuous-clock mode). MCC default is gated (`MIPIFRN=1`); mismatch leaves `CSI2DC.GSR.ARSTIP` stuck on reset. Override via `csi2dcObj->enableMIPIFreeRun = true;` in `isc_capture.c`.
 - `VPER = 1` (video pipe enabled).
 
 ### 2.5 ISC — Parallel Front End (PFE)
@@ -166,18 +165,18 @@ Key settings configured by `DRV_ISC_Configure()`:
 
 MCC's `ISC_PFE_Crop_Area()` function is defined in `plib_isc.c` but **never called**. Without COLEN+ROWEN and valid COLMAX/ROWMAX, the PFE expects a 1×1 frame and fires HDTO (Horizontal Detection Timeout) on the first real line. The Linux `mchp-isc` driver sets both bits; we match that.
 
-We program these directly after `DRV_ISC_Configure()`:
+We program these directly after `DRV_ISC_Configure()`. With RMS=1, COLMAX is in ISC sample units (32-bit byte-stream words), so the formula is `(width × 3 / 4) - 1`:
 
 ```c
-// isc_capture.c:204-209
+// isc_capture.c
 ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
-                       | ISC_PFE_CFG1_COLMAX((uint32_t)width - 1u);   // 1279 at 720p
+                       | ISC_PFE_CFG1_COLMAX((width * 3u / 4u) - 1u);  // 959 at 1280px
 ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
-                       | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);  // 719  at 720p
+                       | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);   // 719 at 720p
 ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
 ```
 
-With RMS=0, COLMAX is in **pixel units** (1 sample per pixel). Under the previous RMS=1 path, COLMAX was `(W × 3) / 4 - 1` because the ISC counted 32-bit byte-stream words.
+With RMS=1, COLMAX is in **byte-stream word units** (4 bytes per ISC sample), so COLMAX = `(W × 3) / 4 - 1`. Under the previous RMS=0 path, COLMAX was in pixel units (`W - 1`).
 
 ### 2.6 ISC — Rounding, Limiting, Packing (RLP)
 
@@ -209,7 +208,7 @@ DS60001813 §50.6.20, §50.7.70.
 
 | DCFG field | Value | Reason |
 |---|---|---|
-| **IMODE (2:0)** | **2 = PACKED32** | "32 bits, single channel packed." Stores each `rlp_data[31:0]` as 4 contiguous bytes in memory. Little-endian → `B G R 00`. |
+| **IMODE (2:0)** | **2 = PACKED32** | "32 bits, single channel packed." Stores each `rlp_data[31:0]` as 4 contiguous bytes in memory. With RMS=1 byte-stream, this writes dense BGR888 — every 3rd byte is the start of the next pixel, no padding. |
 | YMBSIZE (6:4) | 4 = BEATS32 | 32-beat AXI burst (sama7g5 / SAM9X7 — MCC's PACKED8 default is BEATS8 which is the sama5d2 value, undersized for this SoC). |
 | CMBSIZE (10:8) | 4 = BEATS32 | Same rationale as YMBSIZE. |
 | ARQOS / AWQOS | 0 | Dynamic QoS based on FIFO level (recommended default) |
@@ -230,21 +229,22 @@ The write is safe because nothing in MCC writes DCFG again after this point (the
 ### 2.8 Framebuffer layout in DDR
 
 ```c
-// isc_capture.c:17-29
-#define ISC_CAP_MAX_W        1920u
-#define ISC_CAP_MAX_H        1080u
-#define ISC_CAP_BPP          4u      /* BGRX32 */
-#define ISC_CAP_NUM_BUFFERS  2u
+// isc_capture.c
+#define ISC_CAP_MAX_W        1280u
+#define ISC_CAP_MAX_H        720u
+#define ISC_CAP_BPP          3u      /* BGR888 packed */
+#define ISC_CAP_NUM_BUFFERS  4u
 
-static __attribute__((__section__(".region_cache_aligned")))
+static __attribute__((__section__(".region_nocache")))
        __attribute__((__aligned__(32)))
        uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
 ```
 
-- Pool size: 1920×1080×4×2 = 16.6 MB, in the cacheable DDR region.
-- 32-byte aligned (cache line boundary for ARM926 L1).
-- At 720p: only 3,686,400 B × 2 = 7.37 MB actually used.
-- Double-buffered for tear-free consumption by the display stage (ISR toggles `frameIndex`; probe reads the *previous* completed buffer).
+- Pool size: 1280×720×3×4 = ~11 MB, in the **uncached** DDR region (`.region_nocache`).
+- Uncached so CPU vision consumers (cv_marvin_v1) see DMA-fresh bytes without D-cache invalidation.
+- 32-byte aligned (cache line boundary).
+- At 480p: only 720×480×3×4 = ~4.1 MB actually used.
+- 4-deep ring gives slow consumers up to ~50 ms read window before lapping.
 
 Pixel access pattern (0-indexed, little-endian):
 
