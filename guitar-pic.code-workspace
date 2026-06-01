@@ -26,6 +26,9 @@
 		],
 		"mplab.project.workspace.addNewSourceFiles": "Never",
 		"mplab.clangd.compileCommandsDir": "${workspaceFolder}/firmware/marvin/_build/marvin/default",
-		"mplab.clangd.path": "/Applications/microchip/xc32/v4.60/bin/xc32-clangd"
+		"mplab.clangd.path": "/Applications/microchip/xc32/v4.60/bin/xc32-clangd",
+		"files.watcherExclude": {
+		    "**/firmware/marvin/default/src/**": true
+		}
 	}
 }
