@@ -9,6 +9,7 @@ from marvin_perf.analyze import (
     check_frame_epoch_monotonic,
     check_schema,
     check_video_publish_cadence,
+    compute_cpu_snapshot,
     compute_drops,
     compute_hwm,
     compute_latencies,
@@ -25,6 +26,7 @@ from marvin_perf.records import (
     Stamp,
     TaskHighwater,
     TaskId,
+    TaskRuntime,
 )
 
 
@@ -262,3 +264,76 @@ def test_video_publish_cadence_flags_outlier() -> None:
 def test_video_publish_cadence_zero_freq_no_warns() -> None:
     records = [_stamp(Stage.VIDEO_PUBLISH, epoch=1, ts=0)]
     assert check_video_publish_cadence(records, timer_freq_hz=0) == []
+
+
+# ─── CPU snapshot ────────────────────────────────────────────────────────────
+
+
+def _runtime(task_id: int, *, ts: int, run: int, prio: int = 1) -> TaskRuntime:
+    return TaskRuntime(
+        hdr=_hdr(RecordType.TASK_RUNTIME, ts=ts),
+        task_id=task_id,
+        state=0,
+        priority=prio,
+        run_time_counter=run,
+    )
+
+
+def test_compute_cpu_snapshot_simple_three_tasks() -> None:
+    # Two emissions one second apart at a 1 MHz timer. Across the window
+    # CV_MARVIN_V1 spent 700_000 ticks, PERF_DRAIN 270_000, IDLE 30_000 →
+    # 70 / 27 / 3 % CPU.
+    recs = [
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=0,         run=0),
+        _runtime(int(TaskId.PERF_DRAIN),   ts=0,         run=0),
+        _runtime(int(TaskId.IDLE),         ts=0,         run=0),
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=1_000_000, run=700_000),
+        _runtime(int(TaskId.PERF_DRAIN),   ts=1_000_000, run=270_000),
+        _runtime(int(TaskId.IDLE),         ts=1_000_000, run=30_000),
+    ]
+    cpu = compute_cpu_snapshot(recs)
+    assert cpu[int(TaskId.CV_MARVIN_V1)].cpu_pct == pytest.approx(70.0, abs=1e-9)
+    assert cpu[int(TaskId.PERF_DRAIN)].cpu_pct == pytest.approx(27.0, abs=1e-9)
+    assert cpu[int(TaskId.IDLE)].cpu_pct == pytest.approx(3.0, abs=1e-9)
+    # Σ = 100 % within rounding.
+    assert sum(s.cpu_pct for s in cpu.values()) == pytest.approx(100.0, abs=1e-9)
+
+
+def test_compute_cpu_snapshot_uses_last_two_only() -> None:
+    # Three emissions: only the last two count toward the snapshot.
+    recs = [
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=0,   run=0),
+        _runtime(int(TaskId.IDLE),         ts=0,   run=0),
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=100, run=10),    # ignored
+        _runtime(int(TaskId.IDLE),         ts=100, run=90),    # ignored
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=200, run=60),    # Δ=50
+        _runtime(int(TaskId.IDLE),         ts=200, run=140),   # Δ=50
+    ]
+    cpu = compute_cpu_snapshot(recs)
+    assert cpu[int(TaskId.CV_MARVIN_V1)].cpu_pct == pytest.approx(50.0, abs=1e-9)
+    assert cpu[int(TaskId.IDLE)].cpu_pct == pytest.approx(50.0, abs=1e-9)
+
+
+def test_compute_cpu_snapshot_uint32_wrap() -> None:
+    # run_time_counter is uint32; wrap from 0xFFFFFFF0 to 0x0000000F is Δ=31.
+    recs = [
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=0,   run=0xFFFFFFF0),
+        _runtime(int(TaskId.IDLE),         ts=0,   run=0),
+        _runtime(int(TaskId.CV_MARVIN_V1), ts=100, run=0x0000000F),
+        _runtime(int(TaskId.IDLE),         ts=100, run=69),
+    ]
+    cpu = compute_cpu_snapshot(recs)
+    # Δcv = 31, Δidle = 69 → 31% / 69%.
+    assert cpu[int(TaskId.CV_MARVIN_V1)].run_time_delta == 31
+    assert cpu[int(TaskId.CV_MARVIN_V1)].cpu_pct == pytest.approx(31.0, abs=1e-9)
+    assert cpu[int(TaskId.IDLE)].cpu_pct == pytest.approx(69.0, abs=1e-9)
+
+
+def test_compute_cpu_snapshot_single_sample_returns_empty() -> None:
+    recs = [_runtime(int(TaskId.CV_MARVIN_V1), ts=0, run=0)]
+    assert compute_cpu_snapshot(recs) == {}
+
+
+def test_compute_cpu_snapshot_no_runtime_records_returns_empty() -> None:
+    recs = [_stamp(Stage.ISC_IRQ, epoch=1, ts=0)]
+    assert compute_cpu_snapshot(recs) == {}

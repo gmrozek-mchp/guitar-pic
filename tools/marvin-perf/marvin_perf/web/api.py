@@ -25,6 +25,7 @@ from ..analyze import (
     check_frame_epoch_monotonic,
     check_schema,
     check_video_publish_cadence,
+    compute_cpu_snapshot,
     compute_drops,
     compute_hwm,
     compute_latencies,
@@ -367,21 +368,28 @@ def capture_rtos(capture_id: str) -> dict[str, Any]:
     """
     loaded = _REGISTRY.get(capture_id)
     hwm = compute_hwm(loaded.records)
+    cpu = compute_cpu_snapshot(loaded.records)
+    task_ids = sorted(set(hwm.keys()) | set(cpu.keys()))
     tasks = []
-    for task_id, series in sorted(hwm.items()):
-        first = series.samples[0][1] if series.samples else None
-        last = series.samples[-1][1] if series.samples else None
+    for task_id in task_ids:
+        series = hwm.get(task_id)
+        snap = cpu.get(task_id)
+        try:
+            task_name = TaskId(task_id).name
+        except ValueError:
+            task_name = f"task_{task_id}"
+        first = series.samples[0][1] if series and series.samples else None
+        last = series.samples[-1][1] if series and series.samples else None
         tasks.append({
             "task_id": int(task_id),
-            "task_name": series.task_name,
+            "task_name": task_name,
             "hwm_words": {
                 "first": first,
                 "last": last,
-                "min": series.min_words if series.samples else None,
-                "samples": series.samples,
+                "min": series.min_words if series and series.samples else None,
+                "samples": series.samples if series else [],
             },
-            # Phase-2 fields:
-            "cpu_pct": None,
+            "cpu_pct": snap.cpu_pct if snap else None,
             "state_histogram": None,
             "priority_history": None,
             "warnings": [],
@@ -392,12 +400,15 @@ def capture_rtos(capture_id: str) -> dict[str, Any]:
     any_below_32 = any(
         t["hwm_words"]["min"] is not None and t["hwm_words"]["min"] < 32 for t in tasks
     )
+    idle_snap = cpu.get(int(TaskId.IDLE))
+    cpu_pct_idle = idle_snap.cpu_pct if idle_snap else None
     return {
         "tasks": tasks,
         "totals": {
             "any_task_below_64_words": any_below_64,
             "any_task_below_32_words": any_below_32,
-            "cpu_pct_idle": None,  # Phase 2
+            "cpu_pct_idle": cpu_pct_idle,
+            "cpu_pct_busy": (100.0 - cpu_pct_idle) if cpu_pct_idle is not None else None,
         },
     }
 

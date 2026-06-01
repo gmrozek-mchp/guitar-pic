@@ -283,32 +283,148 @@ function updatePlayheadInspector() {
 
 // ── RTOS panel ──────────────────────────────────────────────────────────────
 
+// Live mode computes the same shape /api/capture/{id}/rtos returns from the
+// records buffer, so renderRtosPanel reads `state.rtos` uniformly.
+function recomputeLiveRtos() {
+  const hwm = {};       // task_id → { samples: [[ts, words], ...] }
+  const runtimes = {};  // task_id → [TaskRuntime, ...] (last two kept)
+  const taskNames = {}; // task_id → name
+  for (const rec of state.records) {
+    if (rec.type === "TaskHighwater") {
+      const tid = rec.task_id;
+      taskNames[tid] = rec.task_name || taskNames[tid] || `task_${tid}`;
+      (hwm[tid] ||= { samples: [] }).samples.push([rec.ts_counter, rec.words]);
+    } else if (rec.type === "TaskRuntime") {
+      const tid = rec.task_id;
+      taskNames[tid] = rec.task_name || taskNames[tid] || `task_${tid}`;
+      const bucket = (runtimes[tid] ||= []);
+      bucket.push(rec);
+      if (bucket.length > 2) bucket.shift();
+    }
+  }
+
+  // CPU snapshot: Δrun_time_counter / Σ across all tasks. uint32-wrap-safe.
+  const deltas = {};
+  for (const tid of Object.keys(runtimes)) {
+    const b = runtimes[tid];
+    if (b.length < 2) continue;
+    deltas[tid] = (b[1].run_time_counter - b[0].run_time_counter) >>> 0;
+  }
+  const total = Object.values(deltas).reduce((a, b) => a + b, 0);
+  const cpu = {};
+  if (total > 0) {
+    for (const tid of Object.keys(deltas)) {
+      cpu[tid] = (100.0 * deltas[tid]) / total;
+    }
+  }
+
+  const taskIds = Array.from(new Set([...Object.keys(hwm), ...Object.keys(cpu)]))
+    .map((s) => Number(s))
+    .sort((a, b) => a - b);
+
+  const tasks = taskIds.map((tid) => {
+    const series = hwm[tid];
+    const samples = series ? series.samples : [];
+    const wordsArr = samples.map(([, w]) => w);
+    return {
+      task_id: tid,
+      task_name: taskNames[tid] || `task_${tid}`,
+      hwm_words: {
+        first: samples.length ? samples[0][1] : null,
+        last: samples.length ? samples[samples.length - 1][1] : null,
+        min: wordsArr.length ? Math.min(...wordsArr) : null,
+        samples,
+      },
+      cpu_pct: cpu[tid] ?? null,
+    };
+  });
+  // TaskId.IDLE = 6 (mirrors records.py).
+  const cpuIdle = cpu[6] ?? null;
+  const anyBelow64 = tasks.some(
+    (t) => t.hwm_words.min !== null && t.hwm_words.min < 64
+  );
+  const anyBelow32 = tasks.some(
+    (t) => t.hwm_words.min !== null && t.hwm_words.min < 32
+  );
+  state.rtos = {
+    tasks,
+    totals: {
+      any_task_below_64_words: anyBelow64,
+      any_task_below_32_words: anyBelow32,
+      cpu_pct_idle: cpuIdle,
+      cpu_pct_busy: cpuIdle === null ? null : 100.0 - cpuIdle,
+    },
+  };
+}
+
 function renderRtosPanel() {
   const r = state.rtos;
+  const totalsNode = $("#rtos-cpu-totals");
   const tbl = $("#rtos-table");
   tbl.innerHTML = "";
   if (!r || !r.tasks || r.tasks.length === 0) {
     tbl.innerHTML = "<tr><td>(no RTOS records)</td></tr>";
+    fillMeta(totalsNode, []);
     Plotly.purge("rtos-hwm-chart");
     return;
   }
+
+  // TaskId.IDLE = 6, TaskId.OTHER = 16 — mirrored from records.py.
+  const TID_IDLE = 6, TID_OTHER = 16;
+  const t = r.totals || {};
+  const idleTask = r.tasks.find((tk) => tk.task_id === TID_IDLE);
+  const otherTask = r.tasks.find((tk) => tk.task_id === TID_OTHER);
+  const totalsRows = [];
+  if (t.cpu_pct_busy !== null && t.cpu_pct_busy !== undefined) {
+    totalsRows.push(["busy", `${t.cpu_pct_busy.toFixed(1)} %`]);
+    totalsRows.push(["idle", `${t.cpu_pct_idle.toFixed(1)} %`]);
+    if (otherTask && otherTask.cpu_pct !== null && otherTask.cpu_pct !== undefined) {
+      // OTHER = Σ all − Σ registered. Should idle near zero; nonzero means
+      // a task running but not yet given a slot in s_task_handles[].
+      totalsRows.push([
+        "other",
+        otherTask.cpu_pct >= 0.5
+          ? `${otherTask.cpu_pct.toFixed(1)} %  (unnamed task)`
+          : `${otherTask.cpu_pct.toFixed(1)} %`,
+      ]);
+    }
+  } else {
+    totalsRows.push(["cpu", "(waiting for 2 TASK_RUNTIME samples)"]);
+  }
+  fillMeta(totalsNode, totalsRows);
+
   const head = document.createElement("tr");
-  for (const h of ["task", "id", "min words", "first", "last", "samples"]) {
+  for (const h of ["task", "id", "cpu %", "min words", "first", "last", "samples"]) {
     const th = document.createElement("th"); th.textContent = h; head.appendChild(th);
   }
   tbl.appendChild(head);
-  for (const t of r.tasks) {
+  // IDLE and OTHER are surfaced in the totals header above; keep them out of
+  // the per-task table so the table is the workload view (sorted by CPU%
+  // desc, hottest first; tasks without CPU samples fall to the end).
+  const sortedTasks = r.tasks
+    .filter((tk) => tk.task_id !== TID_IDLE && tk.task_id !== TID_OTHER)
+    .sort((a, b) => {
+      const ac = a.cpu_pct ?? -1, bc = b.cpu_pct ?? -1;
+      if (ac !== bc) return bc - ac;
+      return a.task_id - b.task_id;
+    });
+  for (const tk of sortedTasks) {
     const tr = document.createElement("tr");
+    const cpuStr = tk.cpu_pct === null || tk.cpu_pct === undefined
+      ? "—"
+      : tk.cpu_pct.toFixed(1);
     const cells = [
-      t.task_name, t.task_id,
-      t.hwm_words.min ?? "—",
-      t.hwm_words.first ?? "—",
-      t.hwm_words.last ?? "—",
-      (t.hwm_words.samples || []).length,
+      tk.task_name, tk.task_id,
+      cpuStr,
+      tk.hwm_words.min ?? "—",
+      tk.hwm_words.first ?? "—",
+      tk.hwm_words.last ?? "—",
+      (tk.hwm_words.samples || []).length,
     ];
     cells.forEach((c, i) => {
       const td = document.createElement("td"); td.textContent = String(c);
-      if (i === 2 && typeof c === "number") {
+      // i==2 is cpu%, i==3 is min words.
+      if (i === 3 && typeof c === "number") {
         if (c < 32) td.classList.add("danger");
         else if (c < 64) td.classList.add("warn");
       }
@@ -318,10 +434,10 @@ function renderRtosPanel() {
   }
 
   // HWM trend per task: Plotly line chart.
-  const traces = r.tasks.map((t) => {
-    const xs = (t.hwm_words.samples || []).map(([ts]) => tickToMs(ts));
-    const ys = (t.hwm_words.samples || []).map(([, w]) => w);
-    return { x: xs, y: ys, name: t.task_name, mode: "lines+markers", type: "scatter" };
+  const traces = r.tasks.map((tk) => {
+    const xs = (tk.hwm_words.samples || []).map(([ts]) => tickToMs(ts));
+    const ys = (tk.hwm_words.samples || []).map(([, w]) => w);
+    return { x: xs, y: ys, name: tk.task_name, mode: "lines+markers", type: "scatter" };
   });
   Plotly.newPlot("rtos-hwm-chart", traces, {
     margin: { l: 36, r: 8, t: 4, b: 28 },
@@ -1010,6 +1126,9 @@ function scheduleLiveRedraw() {
     indexByKind();
     renderTimeline();
     updatePlayheadInspector();
+    recomputeLiveRtos();
+    renderRtosPanel();
+    renderBadges();
   }, debounceMs);
 }
 

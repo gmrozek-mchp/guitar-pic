@@ -133,10 +133,15 @@ def build_task_highwater_payload(*, task_id: int, words: int) -> bytes:
 
 
 def build_task_runtime_payload(
-    *, task_id: int, state: int, priority: int, run_time_counter: int = 0
+    *,
+    task_id: int,
+    state: int,
+    priority: int,
+    run_time_counter: int = 0,
+    ts_counter: int = 0,
 ) -> bytes:
     body = TaskRuntime._BODY.pack(task_id, state, priority, 0, run_time_counter, 0)
-    return build_header(RecordType.TASK_RUNTIME) + body
+    return build_header(RecordType.TASK_RUNTIME, ts_counter=ts_counter) + body
 
 
 def build_strip_payload(

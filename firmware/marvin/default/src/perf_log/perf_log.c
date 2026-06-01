@@ -242,9 +242,10 @@ static void sample_and_emit_runtimes(void)
 
 /* MCC tasks are created in SYS_Tasks() right before vTaskStartScheduler,
  * not at SYS_Initialize time — so the handles aren't lookup-able from
- * APP_Initialize where PerfLog_Start runs. The drain task itself runs
- * after the scheduler is up and all SYS_Tasks() xTaskCreate calls have
- * landed; it does the lookup here once at startup.
+ * APP_Initialize where PerfLog_Start runs. Same goes for the FreeRTOS
+ * idle task: xTaskGetIdleTaskHandle() returns NULL until vTaskStartScheduler
+ * creates it. The drain task runs after the scheduler is up and all
+ * SYS_Tasks() xTaskCreate calls have landed; it does both lookups here.
  *
  * Names match the pcName argument in default/tasks.c xTaskCreate calls.
  * If MCC ever renames one (regen risk), xTaskGetHandle returns NULL and
@@ -267,8 +268,18 @@ static const struct
     { PERF_TASK_APP,           "APP_Tasks"           },
 };
 
-static void register_mcc_tasks(void)
+static void register_post_scheduler_tasks(void)
 {
+    TaskHandle_t idle = xTaskGetIdleTaskHandle();
+    if (idle != NULL)
+    {
+        PerfLog_RegisterTaskForHighwater(PERF_TASK_IDLE, idle);
+    }
+    else
+    {
+        LOG_WARN("PerfLog: idle task handle not available\r\n");
+    }
+
     for (uint8_t i = 0u; i < sizeof(s_mcc_task_names) / sizeof(s_mcc_task_names[0]); i++)
     {
         TaskHandle_t h = xTaskGetHandle(s_mcc_task_names[i].name);
@@ -288,7 +299,7 @@ static void perf_log_drain_task(void *param)
     (void)param;
 
     PerfLogSinkCdc_Initialize();
-    register_mcc_tasks();
+    register_post_scheduler_tasks();
     s_running = true;
 
     TickType_t last_drop = xTaskGetTickCount();
@@ -378,12 +389,9 @@ void PerfLog_Start(void)
                                        s_drain_stack,
                                        &s_drain_tcb);
     PerfLog_RegisterTaskForHighwater(PERF_TASK_PERF_DRAIN, h);
-
-    /* Register the FreeRTOS idle task so its run-time counter shows up in
-     * TASK_RUNTIME records — host needs idle's delta to compute absolute
-     * CPU% (= 1 − idle_delta / Σ_all_delta). Idle has a real stack so
-     * TASK_HIGHWATER for it is also meaningful. */
-    PerfLog_RegisterTaskForHighwater(PERF_TASK_IDLE, xTaskGetIdleTaskHandle());
+    /* Idle handle isn't valid until vTaskStartScheduler creates the idle
+     * task — registered from the drain task post-scheduler instead, see
+     * register_post_scheduler_tasks. */
 }
 
 void PerfLog_RegisterTaskForHighwater(perf_task_id_t id, TaskHandle_t handle)

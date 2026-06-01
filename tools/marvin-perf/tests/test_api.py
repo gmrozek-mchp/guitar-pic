@@ -26,6 +26,7 @@ from .conftest import (
     build_session_payload,
     build_stamp_payload,
     build_task_highwater_payload,
+    build_task_runtime_payload,
     wrap_frame,
 )
 
@@ -223,6 +224,39 @@ def test_rtos_reports_hwm_per_task(client: TestClient, tmp_path: Path) -> None:
     # v2-only fields must be present and null.
     assert perf["cpu_pct"] is None
     assert r["totals"]["cpu_pct_idle"] is None
+
+
+def test_rtos_reports_cpu_snapshot_when_runtime_records_present(
+    client: TestClient, tmp_path: Path
+) -> None:
+    cap_dir = tmp_path / "rt"
+    init_capture_dir(cap_dir)
+    # Two emissions one second apart at 1 MHz timer. CV_MARVIN_V1 70%, IDLE 30%.
+    payloads = [
+        build_session_payload(timer_freq_hz=1_000_000, schema_version=3),
+        build_task_runtime_payload(task_id=int(TaskId.CV_MARVIN_V1), state=0, priority=4,
+                                   run_time_counter=0, ts_counter=0),
+        build_task_runtime_payload(task_id=int(TaskId.IDLE), state=1, priority=0,
+                                   run_time_counter=0, ts_counter=0),
+        build_task_runtime_payload(task_id=int(TaskId.CV_MARVIN_V1), state=0, priority=4,
+                                   run_time_counter=700_000, ts_counter=1_000_000),
+        build_task_runtime_payload(task_id=int(TaskId.IDLE), state=1, priority=0,
+                                   run_time_counter=300_000, ts_counter=1_000_000),
+    ]
+    with (cap_dir / BIN_NAME).open("wb") as fh:
+        for p in payloads:
+            fh.write(wrap_frame(p))
+    finalize_capture_dir(cap_dir, source=CaptureSource(kind="file", file=str(cap_dir)))
+
+    cid = client.post("/api/capture/open", json={"path": str(cap_dir)}).json()[
+        "capture_id"
+    ]
+    r = client.get(f"/api/capture/{cid}/rtos").json()
+    by_name = {t["task_name"]: t for t in r["tasks"]}
+    assert by_name["CV_MARVIN_V1"]["cpu_pct"] == pytest.approx(70.0, abs=1e-9)
+    assert by_name["IDLE"]["cpu_pct"] == pytest.approx(30.0, abs=1e-9)
+    assert r["totals"]["cpu_pct_idle"] == pytest.approx(30.0, abs=1e-9)
+    assert r["totals"]["cpu_pct_busy"] == pytest.approx(70.0, abs=1e-9)
 
 
 def test_rtos_flags_stack_pressure_below_64(
