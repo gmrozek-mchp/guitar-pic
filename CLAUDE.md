@@ -2,6 +2,10 @@
 
 These rules apply to every session on this repo. Follow them without being reminded.
 
+## Git commits require explicit approval
+
+Never run `git commit` on your own initiative. Always ask first and wait for explicit confirmation before committing — even when wrapping up a session or completing a doc sweep.
+
 ## Specs orient you; journals track progress
 
 The repo has three subprojects (marvin, fretboard, fret-tuner) plus a top-level system spec.
