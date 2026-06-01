@@ -19,27 +19,25 @@ All Python work runs through [**uv**](https://docs.astral.sh/uv/). First-time
 bootstrap:
 
     cd tools/marvin-perf
-    uv sync
+    uv sync --group viewer   # include viewer deps for the serve command
 
 `uv sync` creates `.venv/` and writes `uv.lock`. Subsequent invocations use the
-existing venv automatically.
+existing venv automatically. Omit `--group viewer` if you only need the CLI
+decode/record commands.
 
 ## Usage
 
-    # Live decode from the marvin USB-device CDC port
-    uv run marvin-perf live --port /dev/cu.usbmodem...
+    # Launch the visual review server (default when no subcommand is given)
+    uv run marvin-perf
+    uv run marvin-perf serve
+    uv run marvin-perf serve --host 0.0.0.0 --port 8765
+    uv run marvin-perf serve --capture session.bin   # pre-load a capture on startup
 
-    # Live decode and capture raw bytes to disk in parallel
-    uv run marvin-perf live --port /dev/cu.usbmodem... --also-record session.bin
-
-    # Capture raw bytes only (no decode)
+    # Capture raw bytes from the marvin USB-device CDC port (no decode)
     uv run marvin-perf record --port /dev/cu.usbmodem... --out session.bin
 
-    # Pretty-print every record in a captured file
-    uv run marvin-perf decode session.bin
-
-    # Run the full analysis pass over a captured file
-    uv run marvin-perf summarize session.bin
+    # Push a type-mask to a running device without attaching for capture
+    uv run marvin-perf set-mask --port /dev/cu.usbmodem... --types ALL
 
 ## Tests
 

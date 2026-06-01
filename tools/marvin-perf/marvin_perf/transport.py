@@ -6,10 +6,9 @@ the framer handles arbitrary boundaries.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterator
 from contextlib import AbstractContextManager
 from pathlib import Path
-from typing import BinaryIO
 
 
 # ─── File source ──────────────────────────────────────────────────────────────
@@ -115,45 +114,3 @@ class SerialSource(AbstractContextManager["SerialSource"]):
                 yield chunk
 
 
-# ─── Tee — passthrough source that also records to disk ──────────────────────
-
-
-class TeeSource(AbstractContextManager["TeeSource"]):
-    """Wrap any byte source so every chunk is also appended to a file.
-
-    Used by `marvin-perf live --also-record FILE` so a single live session
-    yields both inline decode output and a `.bin` capture for later
-    summarize/replay.
-    """
-
-    def __init__(
-        self,
-        upstream: Iterable[bytes] | AbstractContextManager[Iterable[bytes]],
-        out_path: str | Path,
-    ) -> None:
-        self.upstream = upstream
-        self.out_path = Path(out_path)
-        self._fh: BinaryIO | None = None
-
-    def __enter__(self) -> "TeeSource":
-        self._fh = self.out_path.open("wb")
-        if isinstance(self.upstream, AbstractContextManager):
-            self.upstream.__enter__()
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> None:
-        try:
-            if isinstance(self.upstream, AbstractContextManager):
-                self.upstream.__exit__(exc_type, exc, tb)
-        finally:
-            if self._fh is not None:
-                self._fh.close()
-                self._fh = None
-
-    def __iter__(self) -> Iterator[bytes]:
-        if self._fh is None:
-            raise RuntimeError("TeeSource must be used as a context manager")
-        for chunk in self.upstream:  # type: ignore[union-attr]
-            self._fh.write(chunk)
-            self._fh.flush()
-            yield chunk

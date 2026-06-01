@@ -12,7 +12,7 @@ can be O(1) lookups against pre-built dicts.
 from __future__ import annotations
 
 from collections import defaultdict
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields as dc_fields
 from pathlib import Path
 from typing import Any
 
@@ -464,17 +464,21 @@ def _record_to_dict(rec: Record, *, include_bgr: bool = False) -> dict[str, Any]
             import base64
             base["bgr_b64"] = base64.b64encode(rec.bgr).decode("ascii")
     else:
-        # Detector, Timing, UnknownRecord — keep generic field projection.
-        for fname in getattr(rec, "__dataclass_fields__", {}):
-            if fname == "hdr":
-                continue
-            v = getattr(rec, fname)
-            if isinstance(v, (bytes, bytearray)):
-                base[fname] = f"<{len(v)} B>"
-            elif isinstance(v, tuple):
-                base[fname] = list(v)
-            else:
-                base[fname] = v
+        # Detector, Timing, Actuator, DetectorConfig, UnknownRecord — generic
+        # field projection. Use dataclasses.fields() rather than
+        # __dataclass_fields__ so ClassVar entries (`_BODY`, `SIZE`) stay out
+        # — `from __future__ import annotations` keeps them in the latter.
+        if hasattr(rec, "__dataclass_fields__"):
+            for f in dc_fields(rec):
+                if f.name == "hdr":
+                    continue
+                v = getattr(rec, f.name)
+                if isinstance(v, (bytes, bytearray)):
+                    base[f.name] = f"<{len(v)} B>"
+                elif isinstance(v, tuple):
+                    base[f.name] = list(v)
+                else:
+                    base[f.name] = v
     return base
 
 
