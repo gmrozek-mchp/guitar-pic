@@ -61,10 +61,6 @@
         {
             "name": "default",
             "files": [
-                {
-                    "include": "**/*",
-                    "exclude": "**/(_build|out|cmake|.vscode)/**/*"
-                },
                 "default/src/config/default/device.h",
                 "default/src/packs/SAM9X75D2G_DFP/component/rstc.h",
                 "default/src/packs/SAM9X75D2G_DFP/component/adc.h",
