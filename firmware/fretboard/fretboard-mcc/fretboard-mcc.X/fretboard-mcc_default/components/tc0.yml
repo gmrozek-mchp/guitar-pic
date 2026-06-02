@@ -1,0 +1,99 @@
+configVersion: 1.0.0
+componentName: tc0
+coreVersion: 5.8.4
+device: PIC32CM6408PL10048
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: tc0
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: csp
+  type: package
+  version: v3.25.1
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments: {}
+  elementPosition:
+    attributes:
+      id: __ROOTVIEW
+    children:
+    - children:
+      - attributes:
+          id: tc0
+          x: '5'
+          y: '288'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    TC_CTRLA_PRESCALER:
+      attributes:
+        id: TC_CTRLA_PRESCALER
+      children:
+      - children:
+        - attributes:
+            value: '1'
+          type: User
+        type: Values
+      type: KeyValueSet
+    TC_FREQUENCY:
+      attributes:
+        id: TC_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: tc0
+            value: '12000000'
+          type: Dynamic
+        type: Values
+      type: Integer
+    TC_TIMER_PERIOD:
+      attributes:
+        id: TC_TIMER_PERIOD
+      children:
+      - children:
+        - attributes:
+            id: max
+          children:
+          - type: Value
+            value: '65535'
+          type: Long
+        type: Attributes
+      - children:
+        - attributes:
+            id: tc0
+            value: '49999'
+          type: Dynamic
+        type: Values
+      type: Long
+    TC_TIMER_TIME_MS:
+      attributes:
+        id: TC_TIMER_TIME_MS
+      children:
+      - children:
+        - attributes:
+            id: max
+          children:
+          - type: Value
+            value: '5461333.5'
+          type: Float
+        type: Attributes
+      - children:
+        - attributes:
+            value: '4166667.0'
+          type: User
+        type: Values
+      type: Float
+    TC_TIMER_UNIT:
+      attributes:
+        id: TC_TIMER_UNIT
+      children:
+      - children:
+        - attributes:
+            value: nanosecond
+          type: User
+        type: Values
+      type: Combo
+  userData: {}

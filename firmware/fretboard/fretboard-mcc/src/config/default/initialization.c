@@ -155,7 +155,8 @@ void SYS_Initialize ( void* data )
 
 
     ADC0_Initialize();
-	SYSTICK_TimerInitialize();
+    TC0_TimerInitialize();
+
 
     NVIC_Initialize();
 

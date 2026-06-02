@@ -76,8 +76,9 @@
                 "fretboard-mcc/src/config/default/peripheral/port/plib_port.h",
                 "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom_usart_common.h",
                 "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c",
-                "fretboard-mcc/src/config/default/peripheral/systick/plib_systick.h",
-                "fretboard-mcc/src/config/default/peripheral/systick/plib_systick.c",
+                "fretboard-mcc/src/config/default/peripheral/tc/plib_tc_common.h",
+                "fretboard-mcc/src/config/default/peripheral/tc/plib_tc0.h",
+                "fretboard-mcc/src/config/default/peripheral/tc/plib_tc0.c",
                 "fretboard-mcc/src/config/default/stdio/xc32_monitor.c"
             ]
         }

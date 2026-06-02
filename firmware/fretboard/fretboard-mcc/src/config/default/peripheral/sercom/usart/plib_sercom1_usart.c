@@ -58,8 +58,8 @@
 // *****************************************************************************
 
 
-/* SERCOM1 USART baud value for 115200 Hz baud rate */
-#define SERCOM1_USART_INT_BAUD_VALUE            (60502UL)
+/* SERCOM1 USART baud value for 500000 Hz baud rate */
+#define SERCOM1_USART_INT_BAUD_VALUE            (3UL)
 
 static volatile SERCOM_USART_RING_BUFFER_OBJECT sercom1USARTObj;
 
@@ -93,10 +93,10 @@ void SERCOM1_USART_Initialize( void )
      * Configures Sampling rate
      * Configures IBON
      */
-    SERCOM1_REGS->USART.SERCOM_CTRLA = SERCOM_USART_CTRLA_MODE_USART_INT | SERCOM_USART_CTRLA_RXPO(0x1UL) | SERCOM_USART_CTRLA_TXPO(0x0UL) | SERCOM_USART_CTRLA_DORD_Msk | SERCOM_USART_CTRLA_IBON_Msk | SERCOM_USART_CTRLA_FORM(0x0UL) | SERCOM_USART_CTRLA_SAMPR(0UL) ;
+    SERCOM1_REGS->USART.SERCOM_CTRLA = SERCOM_USART_CTRLA_MODE_USART_INT | SERCOM_USART_CTRLA_RXPO(0x1UL) | SERCOM_USART_CTRLA_TXPO(0x0UL) | SERCOM_USART_CTRLA_DORD_Msk | SERCOM_USART_CTRLA_IBON_Msk | SERCOM_USART_CTRLA_FORM(0x0UL) | SERCOM_USART_CTRLA_SAMPR(1UL) ;
 
     /* Configure Baud Rate */
-    SERCOM1_REGS->USART.SERCOM_BAUD = (uint16_t)SERCOM_USART_BAUD_ARITH_BAUD(SERCOM1_USART_INT_BAUD_VALUE);
+    SERCOM1_REGS->USART.SERCOM_BAUD = (uint16_t)SERCOM_USART_BAUD_FRAC_BAUD(SERCOM1_USART_INT_BAUD_VALUE);
 
     /*
      * Configures RXEN
@@ -165,6 +165,9 @@ bool SERCOM1_USART_SerialSetup( USART_SERIAL_SETUP * serialSetup, uint32_t clkFr
     uint32_t baudValue     = 0U;
     uint32_t sampleRate    = 0U;
     uint32_t sampleCount   = 0U;
+    float f_baudValue      = 0.0f;
+    float f_temp           = 0.0f;
+    uint32_t fractionPart  = 0U;
 
     if((serialSetup != NULL) && (serialSetup->baudRate != 0U))
     {
@@ -175,24 +178,31 @@ bool SERCOM1_USART_SerialSetup( USART_SERIAL_SETUP * serialSetup, uint32_t clkFr
 
         if(clkFrequency >= (16U * serialSetup->baudRate))
         {
-            sampleRate = 0U;
+            sampleRate = 1U;
             sampleCount = 16U;
         }
-        else if(clkFrequency >= (8U * serialSetup->baudRate))
+        else if (clkFrequency >= (8U * serialSetup->baudRate))
         {
-            sampleRate = 2U;
+            sampleRate = 3U;
             sampleCount = 8U;
-        }
-        else if(clkFrequency >= (3U * serialSetup->baudRate))
-        {
-            sampleRate = 4U;
-            sampleCount = 3U;
         }
         else
         {
-            /* Do nothing */
+            return setupStatus;
         }
-        baudValue = 65536U - (uint32_t)(((uint64_t)65536U * sampleCount * serialSetup->baudRate) / clkFrequency);
+
+        f_baudValue = (float)clkFrequency/((float)sampleCount * (float)serialSetup->baudRate);
+        f_temp = ((f_baudValue - ((float)((int)f_baudValue))) * 8.0f);
+        fractionPart = ((uint32_t)f_temp & 0xFFU);
+        baudValue = (uint32_t)f_baudValue;
+        if ((baudValue == 0U) || (baudValue >= 8192U))
+        {
+            baudValue = 0U;
+        }
+        else
+        {
+            baudValue |= (fractionPart << 13U);
+        }
 
         /* Disable the USART before configurations */
         SERCOM1_REGS->USART.SERCOM_CTRLA &= ~SERCOM_USART_CTRLA_ENABLE_Msk;
@@ -204,7 +214,7 @@ bool SERCOM1_USART_SerialSetup( USART_SERIAL_SETUP * serialSetup, uint32_t clkFr
         }
 
         /* Configure Baud Rate */
-        SERCOM1_REGS->USART.SERCOM_BAUD = (uint16_t)SERCOM_USART_BAUD_ARITH_BAUD(baudValue);
+        SERCOM1_REGS->USART.SERCOM_BAUD = (uint16_t)SERCOM_USART_BAUD_FRAC_BAUD(baudValue);
 
         /* Configure Parity Options */
         if(serialSetup->parity == USART_PARITY_NONE)
