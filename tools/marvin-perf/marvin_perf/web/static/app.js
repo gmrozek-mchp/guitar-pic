@@ -31,19 +31,25 @@ const STAGE_FALLBACK = "#8a93a0";
 // ── Record types (mirrors records.RecordType for the mask checkboxes) ──────
 
 const RECORD_TYPES = [
-  { name: "SESSION",        typeName: "Session",       bit: 1,  alwaysOn: true,  defaultOn: true  },
-  { name: "STAMP",          typeName: "Stamp",         bit: 2,  alwaysOn: false, defaultOn: true  },
-  { name: "DETECTOR",       typeName: "Detector",      bit: 3,  alwaysOn: false, defaultOn: true  },
-  { name: "TIMING",         typeName: "Timing",        bit: 4,  alwaysOn: false, defaultOn: true  },
+  { name: "SESSION",         typeName: "Session",        bit: 1,  alwaysOn: true,  defaultOn: true  },
+  { name: "STAMP",           typeName: "Stamp",          bit: 2,  alwaysOn: false, defaultOn: true  },
+  { name: "DETECTOR",        typeName: "Detector",       bit: 3,  alwaysOn: false, defaultOn: true  },
+  { name: "TIMING",          typeName: "Timing",         bit: 4,  alwaysOn: false, defaultOn: true  },
   // STRIP carries ~10 KB/frame at 60 Hz × 2 kinds — opt-in to avoid
   // saturating the WS+JSON pipe before the user has asked for pixels.
-  { name: "STRIP",          typeName: "Strip",         bit: 5,  alwaysOn: false, defaultOn: false },
-  { name: "DROP",           typeName: "Drop",          bit: 6,  alwaysOn: false, defaultOn: true  },
-  { name: "TASK_HIGHWATER", typeName: "TaskHighwater", bit: 7,  alwaysOn: false, defaultOn: true  },
-  { name: "TASK_RUNTIME",   typeName: "TaskRuntime",   bit: 8,  alwaysOn: false, defaultOn: true  },
+  { name: "STRIP",           typeName: "Strip",          bit: 5,  alwaysOn: false, defaultOn: false },
+  { name: "DROP",            typeName: "Drop",           bit: 6,  alwaysOn: false, defaultOn: true  },
+  { name: "TASK_HIGHWATER",  typeName: "TaskHighwater",  bit: 7,  alwaysOn: false, defaultOn: true  },
+  { name: "TASK_RUNTIME",    typeName: "TaskRuntime",    bit: 8,  alwaysOn: false, defaultOn: true  },
+  // DETECTOR_CONFIG is sparse — emitted on attach + on change + every
+  // 60 frames (≤1 Hz). Cheap and useful for STRIP overlay rendering.
+  { name: "DETECTOR_CONFIG", typeName: "DetectorConfig", bit: 9,  alwaysOn: false, defaultOn: true  },
+  // ACTUATOR fires per FretboardLink_Send (≈ timing-pipeline tick rate
+  // when active, 0 when idle) — small record, default-on.
+  { name: "ACTUATOR",        typeName: "Actuator",       bit: 10, alwaysOn: false, defaultOn: true  },
   // FRETBOARD_RAW is 240 Hz × 28 B = ~6.7 KB/s — opt-in like STRIP so
   // captures stay lean unless the user is collecting Edge-AI training data.
-  { name: "FRETBOARD_RAW",  typeName: "FretboardRaw",  bit: 11, alwaysOn: false, defaultOn: false },
+  { name: "FRETBOARD_RAW",   typeName: "FretboardRaw",   bit: 11, alwaysOn: false, defaultOn: false },
 ];
 const TYPE_NAME_TO_BIT = Object.fromEntries(RECORD_TYPES.map((t) => [t.typeName, t.bit]));
 const MASK_ALL = 0xFFFFFFFF >>> 0;
@@ -641,6 +647,14 @@ function renderTimeline() {
   const stamps = state.records.filter((r) => r.type === "Stamp");
   const drops = state.records.filter((r) => r.type === "Drop");
 
+  // SVG scatter degrades sharply past ~5k points (long DOM rebuilds = the UI
+  // freeze symptom). Switch to scattergl above that threshold; the trade-off
+  // is a slightly heavier first-render and no per-stage marker symbols, but
+  // it stays interactive at 30k+ points.
+  const useGl = stamps.length > 5000;
+  const stampType = useGl ? "scattergl" : "scatter";
+  const stampSymbol = useGl ? "line-ns" : "line-ns-open";
+
   const stampsByStage = {};
   for (const s of stamps) {
     (stampsByStage[s.stage] ||= []).push(s);
@@ -651,8 +665,8 @@ function renderTimeline() {
     text: recs.map((r) => `epoch ${r.frame_epoch}`),
     name: stage,
     mode: "markers",
-    type: "scatter",
-    marker: { color: STAGE_COLORS[stage] || STAGE_FALLBACK, size: 8, symbol: "line-ns-open" },
+    type: stampType,
+    marker: { color: STAGE_COLORS[stage] || STAGE_FALLBACK, size: 8, symbol: stampSymbol },
   }));
 
   const dropTrace = {

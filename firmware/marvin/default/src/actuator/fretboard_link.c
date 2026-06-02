@@ -119,9 +119,6 @@ static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
         {
             const USB_HOST_CDC_EVENT_READ_COMPLETE_DATA *d = eventData;
             BaseType_t hpw = pdFALSE;
-            uint32_t aux = ((uint32_t)d->result << 24)
-                         | ((uint32_t)d->length & 0x00FFFFFFu);
-            PerfLog_EmitStampFromISR(PERF_STAGE_FBL_READ_COMPLETE, 0u, aux, &hpw);
             if (d->result == USB_HOST_CDC_RESULT_SUCCESS && d->length > 0u)
             {
                 (void)xStreamBufferSendFromISR(s_rx_stream, s_rx_buf,

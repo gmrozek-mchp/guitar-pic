@@ -49,7 +49,13 @@ typedef enum
     PERF_STAGE_TP_TICK            = 0x30,
     PERF_STAGE_FBL_SEND           = 0x40,
     PERF_STAGE_CDC_WRITE_COMPLETE = 0x41,
-    PERF_STAGE_FBL_READ_COMPLETE  = 0x42,
+    /* PERF_STAGE_FBL_READ_COMPLETE = 0x42 — slot reserved; per-Read emit
+     * was tried during fretboard-RX bring-up but at the fretboard's 240 Hz
+     * polling rate it doubled the timeline marker count and made Plotly's
+     * SVG scatter freeze the live page. FRETBOARD_RAW records carry their
+     * own ts_counter so the same Read-side timing is recoverable offline
+     * without a per-Read stamp. Re-enable here only if a sub-frame USB
+     * latency tuning task explicitly needs it. */
 } perf_stage_t;
 
 #define PERF_FLAG_FROM_ISR        0x01u
@@ -83,10 +89,7 @@ typedef struct __attribute__((packed))
  *   CV_START / CV_END : reserved (0)
  *   TP_TICK           : publish_mask (low 7 bits)
  *   FBL_SEND          : queued mask
- *   CDC_WRITE_COMPLETE: USB CDC result code
- *   FBL_READ_COMPLETE : low 24 bits = bytes received this completion, high
- *                       8 bits = USB_HOST_CDC_RESULT_*. length=0 means the
- *                       transfer ended with no payload (e.g. error). */
+ *   CDC_WRITE_COMPLETE: USB CDC result code */
 typedef struct __attribute__((packed))
 {
     perf_hdr_t hdr;
