@@ -21,6 +21,8 @@ Current journals:
 
 - `firmware/marvin/docs/journal.md` — marvin firmware (SAM9X75 vision-based guitar-playing robot)
   - System-level spec for marvin lives at `firmware/marvin/docs/spec.md` — **read it first** alongside the journal on any non-trivial marvin task. The spec is the durable description of what marvin is (purpose, subsystems, interfaces, milestones); the journal is the running diary.
+- `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM I/O bridge: ADC stream out + button-bitmask in)
+  - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
 
 When working on a subproject that has a journal:
 
