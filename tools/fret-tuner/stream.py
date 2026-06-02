@@ -132,7 +132,7 @@ class SerialStream:
     is provided the caller owns its lifetime -- samples() will not close it.
     """
 
-    def __init__(self, port: str = "", baudrate: int = 115200,
+    def __init__(self, port: str = "", baudrate: int = 500000,
                  ser: serial.Serial | None = None):
         self.port = port
         self.baudrate = baudrate

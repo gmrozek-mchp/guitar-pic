@@ -126,7 +126,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 |---|---|---|
 | HDMI capture into memory | marvin | TC358743 + CSI-2 + ISC; 720×480 / 1280×720 @ 60 Hz, BGR888 packed (3 B/pixel). |
 | Reference-quality CV note detection | marvin | Ground truth; multiple algorithms may coexist on the bus. |
-| ADC-based note detection | fretboard → marvin | fretboard scans 5 phototransistors @ 500 Hz, streams raw values; marvin runs the detector logic. |
+| ADC-based note detection | fretboard → marvin | fretboard scans 5 phototransistors @ 240 Hz, streams raw values; marvin runs the detector logic. |
 | Detector-state fusion / arbitration | marvin | One canonical detector-state bus; the active source feeds the timing pipeline. |
 | Chord-window FIFO + strum scheduling | marvin | Open Q4: stays on marvin (centralized) vs migrates to fretboard. Default: marvin. |
 | Fret/strum GPIO output | fretboard | Open-drain pin drive only; receives a bitmask over UART. |
@@ -226,7 +226,7 @@ This is what makes marvin the *reference detector*. It runs computer-vision note
 A **detector** is anything that turns observation data into a `detector_state_t` event. marvin will host at least:
 
 - `cv_marvin_v1` — the reference vision detector. Reads RGB888-packed (3 B/pixel) frames from the video frame queue; emits one `detector_state_t` per frame.
-- `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 500 Hz rate.
+- `adc_fretboard` — runs on top of raw ADC samples streamed from the fretboard MCU (§4.3); emits `detector_state_t` events at the fretboard's 240 Hz rate.
 
 Future detectors may include alternate CV algorithms running in parallel for comparison, or off-board detectors (Edge-AI MCU) feeding state in over UART/Ethernet.
 
@@ -270,10 +270,10 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 
 ### 4.3 Fretboard link ✅
 
-USB CDC host between marvin and the fretboard MCU. Marvin acts as USB host to the fretboard's on-board EDBG debugger (composite device exposing CDC ACM). EDBG bridges the CDC ACM interface to the fretboard's SERCOM1 UART at 115 200 Bd.
+USB CDC host between marvin and the fretboard MCU. Marvin acts as USB host to the fretboard's on-board EDBG debugger (composite device exposing CDC ACM). EDBG bridges the CDC ACM interface to the fretboard's SERCOM1 UART at 500 000 Bd.
 
-- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). Same intent as fret-tuner's existing 1-byte bitmask; precise framing TBD in §5.
-- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 500 Hz, plus enable/SW0 state. Reuses the fret-tuner 12-byte ADC frame format if practical.
+- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing.
+- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 12-byte start/end-bracketed frame.
 - **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
 
 ### 4.4 Timing pipeline 🚧
@@ -334,7 +334,7 @@ recordings/
 
 - **`state.bin`** — append-only, fixed-size `detector_state_t` records (§4.2.3). At 60 Hz × 2 detectors × ~28 B = ~3.4 KB/s. Trivial.
 - **`commands.bin`** — fret/strum bitmask + direction + emit timestamp + frame_epoch, ~16 B per emit. Sparse.
-- **`adc_raw.bin`** — fretboard 12-byte frames at 500 Hz with `frame_epoch` annotation = ~6 KB/s. Modest.
+- **`adc_raw.bin`** — fretboard 12-byte frames at 240 Hz with `frame_epoch` annotation = ~2.9 KB/s. Modest.
 - **Keyframes** — raw BGR888 packed dump every N captured frames. At 720×480 × 3 B = 1.04 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.04 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~312 MB — comfortable on any modern SD card.
 - No software JPEG / video encode. SAM9X75 has no hardware JPEG; CPU encode at 60 fps is infeasible. Keyframes stay raw; offline tools can transcode if desired.
 

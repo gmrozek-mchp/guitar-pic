@@ -29,10 +29,11 @@
 
 #define FBL_WRITE_TIMEOUT_MS    100u
 
-/* CDC line coding — fretboard side ignores baud over USB CDC, but supplying
- * a sane default avoids implementation quirks on hosts that gate writes on
- * a successful SET_LINE_CODING. Matches actuator.py. */
-#define FBL_BAUDRATE            115200u
+/* CDC line coding — the link rides the fretboard's on-board EDBG-CDC USB-UART
+ * bridge, so this baud is what EDBG actually clocks out to the PIC32 SERCOM1.
+ * Must match the PIC32-side setting (firmware/fretboard) or every byte
+ * arrives corrupt. */
+#define FBL_BAUDRATE            500000u
 
 static QueueHandle_t s_cmd_queue;
 static StaticQueue_t s_cmd_queue_buf;

@@ -86,7 +86,7 @@ def main() -> None:
     else:
         ser_obj = serial.Serial(
             port=args.port,
-            baudrate=115200,
+            baudrate=500000,
             bytesize=serial.EIGHTBITS,
             parity=serial.PARITY_NONE,
             stopbits=serial.STOPBITS_ONE,

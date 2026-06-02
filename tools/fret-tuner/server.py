@@ -184,7 +184,7 @@ def _sources_msg() -> dict:
 def _try_reopen_serial() -> tuple:
     ser = serial.Serial(
         port=_serial_port,
-        baudrate=115200,
+        baudrate=500000,
         bytesize=serial.EIGHTBITS,
         parity=serial.PARITY_NONE,
         stopbits=serial.STOPBITS_ONE,

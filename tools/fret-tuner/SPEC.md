@@ -97,7 +97,7 @@ firmware/fretboard/
 
 ### UART Binary Frame (micro → PC)
 
-The fretboard firmware streams 12-byte packed frames at **500 Hz** over SERCOM1 USART at **115200 baud** (8N1):
+The fretboard firmware streams 12-byte packed frames at **240 Hz** over SERCOM1 USART at **500000 baud** (8N1):
 
 ```
 Offset  Size   Field
