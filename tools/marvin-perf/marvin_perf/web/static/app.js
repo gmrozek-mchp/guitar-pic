@@ -24,22 +24,26 @@ const STAGE_COLORS = {
   VIDEO_PUBLISH:      "#fb923c",
   FBL_SEND:           "#f472b6",
   CDC_WRITE_COMPLETE: "#f87171",
+  FBL_READ_COMPLETE:  "#a78bfa",
 };
 const STAGE_FALLBACK = "#8a93a0";
 
 // ── Record types (mirrors records.RecordType for the mask checkboxes) ──────
 
 const RECORD_TYPES = [
-  { name: "SESSION",        typeName: "Session",       bit: 1, alwaysOn: true,  defaultOn: true  },
-  { name: "STAMP",          typeName: "Stamp",         bit: 2, alwaysOn: false, defaultOn: true  },
-  { name: "DETECTOR",       typeName: "Detector",      bit: 3, alwaysOn: false, defaultOn: true  },
-  { name: "TIMING",         typeName: "Timing",        bit: 4, alwaysOn: false, defaultOn: true  },
+  { name: "SESSION",        typeName: "Session",       bit: 1,  alwaysOn: true,  defaultOn: true  },
+  { name: "STAMP",          typeName: "Stamp",         bit: 2,  alwaysOn: false, defaultOn: true  },
+  { name: "DETECTOR",       typeName: "Detector",      bit: 3,  alwaysOn: false, defaultOn: true  },
+  { name: "TIMING",         typeName: "Timing",        bit: 4,  alwaysOn: false, defaultOn: true  },
   // STRIP carries ~10 KB/frame at 60 Hz × 2 kinds — opt-in to avoid
   // saturating the WS+JSON pipe before the user has asked for pixels.
-  { name: "STRIP",          typeName: "Strip",         bit: 5, alwaysOn: false, defaultOn: false },
-  { name: "DROP",           typeName: "Drop",          bit: 6, alwaysOn: false, defaultOn: true  },
-  { name: "TASK_HIGHWATER", typeName: "TaskHighwater", bit: 7, alwaysOn: false, defaultOn: true  },
-  { name: "TASK_RUNTIME",   typeName: "TaskRuntime",   bit: 8, alwaysOn: false, defaultOn: true  },
+  { name: "STRIP",          typeName: "Strip",         bit: 5,  alwaysOn: false, defaultOn: false },
+  { name: "DROP",           typeName: "Drop",          bit: 6,  alwaysOn: false, defaultOn: true  },
+  { name: "TASK_HIGHWATER", typeName: "TaskHighwater", bit: 7,  alwaysOn: false, defaultOn: true  },
+  { name: "TASK_RUNTIME",   typeName: "TaskRuntime",   bit: 8,  alwaysOn: false, defaultOn: true  },
+  // FRETBOARD_RAW is 240 Hz × 28 B = ~6.7 KB/s — opt-in like STRIP so
+  // captures stay lean unless the user is collecting Edge-AI training data.
+  { name: "FRETBOARD_RAW",  typeName: "FretboardRaw",  bit: 11, alwaysOn: false, defaultOn: false },
 ];
 const TYPE_NAME_TO_BIT = Object.fromEntries(RECORD_TYPES.map((t) => [t.typeName, t.bit]));
 const MASK_ALL = 0xFFFFFFFF >>> 0;
@@ -398,11 +402,12 @@ function renderRtosPanel() {
     const th = document.createElement("th"); th.textContent = h; head.appendChild(th);
   }
   tbl.appendChild(head);
-  // IDLE and OTHER are surfaced in the totals header above; keep them out of
-  // the per-task table so the table is the workload view (sorted by CPU%
-  // desc, hottest first; tasks without CPU samples fall to the end).
+  // The totals header above gives the busy / idle / other snapshot, but the
+  // per-task table includes IDLE and OTHER too — they're useful directly in
+  // the workload row context (e.g. comparing a task's CPU% to IDLE's).
+  // Sorted by CPU% desc, hottest first; tasks without CPU samples fall last.
   const sortedTasks = r.tasks
-    .filter((tk) => tk.task_id !== TID_IDLE && tk.task_id !== TID_OTHER)
+    .slice()
     .sort((a, b) => {
       const ac = a.cpu_pct ?? -1, bc = b.cpu_pct ?? -1;
       if (ac !== bc) return bc - ac;

@@ -8,6 +8,7 @@
 #include "task.h"
 #include "queue.h"
 #include "semphr.h"
+#include "stream_buffer.h"
 
 #include "definitions.h"
 #include "log.h"
@@ -16,11 +17,24 @@
 #include "usb/usb_cdc.h"
 #include "timing_pipeline.h"
 #include "perf_log/perf_log.h"
+#include "video/video.h"
+#include "game/fret.h"
 
 #define FBL_TASK_STACK_WORDS    768u
 #define FBL_TASK_PRIORITY       5u
 
 #define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+
+/* RX side — sized to absorb a brief task-scheduling stall without losing
+ * frames. At 240 Hz × 12 B = 2.88 KB/s, 512 B is ~180 ms of headroom over
+ * the producer rate; FBL_RX_READ_BYTES is the per-USB-Read chunk size. */
+#define FBL_RX_STREAM_BYTES     512u
+#define FBL_RX_READ_BYTES       64u
+#define FBL_RX_TASK_STACK_WORDS 512u
+
+#define DS_FRAME_LEN            12u
+#define DS_START_BYTE           0x03u
+#define DS_END_BYTE             0xFCu
 
 /* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
  * a stalled detector or paused game can't leave a stale frets-active
@@ -75,16 +89,50 @@ static volatile uint8_t  s_last_sent_byte;
 static volatile int32_t  s_last_ack_result;
 static volatile uint64_t s_last_ack_ts_counter;
 
+/* RX path: ISR pushes received bytes into s_rx_stream then re-arms the
+ * Read into s_rx_buf; fretboard_rx_task pops bytes and parses 12-byte
+ * data frames. */
+static StreamBufferHandle_t s_rx_stream;
+static StaticStreamBuffer_t s_rx_stream_buf;
+static uint8_t              s_rx_stream_storage[FBL_RX_STREAM_BYTES + 1u];
+static uint8_t              s_rx_buf[FBL_RX_READ_BYTES];
+
+static StackType_t   s_rx_task_stack[FBL_RX_TASK_STACK_WORDS];
+static StaticTask_t  s_rx_task_tcb;
+
+static inline USB_HOST_CDC_RESULT arm_rx_read(USB_HOST_CDC_HANDLE handle)
+{
+    USB_HOST_CDC_TRANSFER_HANDLE th;
+    return USB_HOST_CDC_Read(handle, &th, s_rx_buf, sizeof(s_rx_buf));
+}
+
 static USB_HOST_CDC_EVENT_RESPONSE cdc_event_handler(USB_HOST_CDC_HANDLE handle,
                                                     USB_HOST_CDC_EVENT event,
                                                     void *eventData,
                                                     uintptr_t context)
 {
-    (void)handle;
     (void)context;
 
     switch (event)
     {
+        case USB_HOST_CDC_EVENT_READ_COMPLETE:
+        {
+            const USB_HOST_CDC_EVENT_READ_COMPLETE_DATA *d = eventData;
+            BaseType_t hpw = pdFALSE;
+            uint32_t aux = ((uint32_t)d->result << 24)
+                         | ((uint32_t)d->length & 0x00FFFFFFu);
+            PerfLog_EmitStampFromISR(PERF_STAGE_FBL_READ_COMPLETE, 0u, aux, &hpw);
+            if (d->result == USB_HOST_CDC_RESULT_SUCCESS && d->length > 0u)
+            {
+                (void)xStreamBufferSendFromISR(s_rx_stream, s_rx_buf,
+                                               d->length, &hpw);
+            }
+            /* Re-arm immediately. If this fails (e.g. detach mid-read) the
+             * detach event will reset state — drop silently here. */
+            (void)arm_rx_read(handle);
+            portYIELD_FROM_ISR(hpw);
+            break;
+        }
         case USB_HOST_CDC_EVENT_WRITE_COMPLETE:
         {
             const USB_HOST_CDC_EVENT_WRITE_COMPLETE_DATA *d = eventData;
@@ -178,6 +226,18 @@ static bool open_cdc(USB_HOST_CDC_OBJ obj)
 
     s_cdc_handle = h;
     s_connected  = true;
+
+    /* Drop any stale bytes left from a previous attach so the parser
+     * doesn't open mid-frame. Then arm the first Read; the READ_COMPLETE
+     * handler keeps re-arming itself from then on. */
+    (void)xStreamBufferReset(s_rx_stream);
+    USB_HOST_CDC_RESULT rr = arm_rx_read(h);
+    if (rr != USB_HOST_CDC_RESULT_SUCCESS)
+    {
+        LOG_WARN("FBL: initial RX arm rejected, r=%d\r\n", (int)rr);
+    }
+    LOG_DEBUG("FBL: initial RX arm r=%d\r\n", (int)rr);
+
     LOG_INFO("FBL: CDC device attached, handle opened\r\n");
     return true;
 }
@@ -249,6 +309,62 @@ static void fretboard_link_task(void *param)
     }
 }
 
+/* Pull bytes off the RX stream buffer and emit one PERF_REC_FRETBOARD_RAW
+ * per parsed 12-byte frame. Resync logic mirrors tools/ds_monitor.py: a
+ * frame is valid only when buf[0]==0x03 AND buf[11]==0xFC; otherwise drop
+ * the leading byte and retry alignment. The FSM-free buffered approach is
+ * easier to reason about than a state machine and the frame is short. */
+static void fretboard_rx_task(void *param)
+{
+    (void)param;
+
+    uint8_t  frame[DS_FRAME_LEN];
+    size_t   filled = 0u;
+    uint32_t parsed = 0u;
+    uint32_t skipped_bytes = 0u;
+
+    for (;;)
+    {
+        size_t want = DS_FRAME_LEN - filled;
+        size_t got  = xStreamBufferReceive(s_rx_stream, &frame[filled],
+                                           want, portMAX_DELAY);
+        if (got == 0u) { continue; }
+        filled += got;
+        if (filled < DS_FRAME_LEN) { continue; }
+
+        if (frame[0] != DS_START_BYTE || frame[DS_FRAME_LEN - 1u] != DS_END_BYTE)
+        {
+            /* Misaligned: drop one byte and shift, then loop to refill. */
+            memmove(&frame[0], &frame[1], DS_FRAME_LEN - 1u);
+            filled = DS_FRAME_LEN - 1u;
+            skipped_bytes++;
+            continue;
+        }
+
+        uint16_t adc[FRET_COUNT];
+        for (uint8_t i = 0u; i < FRET_COUNT; i++)
+        {
+            adc[i] = (uint16_t)frame[1u + i * 2u]
+                   | (uint16_t)((uint16_t)frame[2u + i * 2u] << 8);
+        }
+
+        Video_FrameInfo info;
+        Video_GetFrameInfo(&info);
+        PerfLog_EmitFretboardRaw(adc, info.frame_count);
+
+        parsed++;
+        if (parsed == 1u || (parsed % 240u) == 0u)
+        {
+            LOG_DEBUG("FBL: rx parsed=%u skipped=%u G=%u R=%u Y=%u B=%u O=%u\r\n",
+                      (unsigned)parsed, (unsigned)skipped_bytes,
+                      (unsigned)adc[0], (unsigned)adc[1], (unsigned)adc[2],
+                      (unsigned)adc[3], (unsigned)adc[4]);
+        }
+
+        filled = 0u;
+    }
+}
+
 void FretboardLink_Initialize(void)
 {
     s_cmd_queue = xQueueCreateStatic(FBL_CMD_QUEUE_DEPTH,
@@ -262,6 +378,14 @@ void FretboardLink_Initialize(void)
 
     s_ctrl_done = xSemaphoreCreateBinaryStatic(&s_ctrl_done_buf);
     configASSERT(s_ctrl_done != NULL);
+
+    /* Storage array is FBL_RX_STREAM_BYTES + 1 per FreeRTOS — the +1 byte is
+     * used by the buffer impl, not application data. Pass the *application*
+     * size, not the storage size, as xBufferSizeBytes. */
+    s_rx_stream = xStreamBufferCreateStatic(FBL_RX_STREAM_BYTES, 1u,
+                                            s_rx_stream_storage,
+                                            &s_rx_stream_buf);
+    configASSERT(s_rx_stream != NULL);
 
     /* Register the CDC attach listener before the bus is enabled — the host
      * stack only matches a class driver if its attach handler is in place
@@ -277,6 +401,15 @@ void FretboardLink_Initialize(void)
                                        s_task_stack,
                                        &s_task_tcb);
     PerfLog_RegisterTaskForHighwater(PERF_TASK_FRETBOARD_LINK, h);
+
+    TaskHandle_t hr = xTaskCreateStatic(fretboard_rx_task,
+                                        "FretRx",
+                                        FBL_RX_TASK_STACK_WORDS,
+                                        NULL,
+                                        FBL_TASK_PRIORITY,
+                                        s_rx_task_stack,
+                                        &s_rx_task_tcb);
+    PerfLog_RegisterTaskForHighwater(PERF_TASK_FRETBOARD_RX, hr);
 }
 
 bool FretboardLink_IsConnected(void)

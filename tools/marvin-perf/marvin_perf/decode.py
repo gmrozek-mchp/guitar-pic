@@ -9,6 +9,7 @@ from .records import (
     Detector,
     DetectorConfig,
     Drop,
+    FretboardRaw,
     FRET_COUNT,
     Header,
     HDR_SIZE,
@@ -30,7 +31,7 @@ from .records import (
 
 Record = Union[
     Session, Stamp, Detector, Timing, Drop, TaskHighwater, TaskRuntime,
-    Strip, DetectorConfig, Actuator, UnknownRecord,
+    Strip, DetectorConfig, Actuator, FretboardRaw, UnknownRecord,
 ]
 
 
@@ -157,6 +158,12 @@ def _decode_actuator(hdr: Header, payload: bytes) -> Actuator:
     )
 
 
+def _decode_fretboard_raw(hdr: Header, payload: bytes) -> FretboardRaw:
+    _check(payload, FretboardRaw.SIZE, "FretboardRaw")
+    fields = FretboardRaw._BODY.unpack_from(payload, HDR_SIZE)
+    return FretboardRaw(hdr=hdr, adc=tuple(fields[:FRET_COUNT]))
+
+
 def _decode_drop(hdr: Header, payload: bytes) -> Drop:
     _check(payload, Drop.SIZE, "Drop")
     dropped_state, dropped_strip, dropped_sink, _reserved = Drop._BODY.unpack_from(
@@ -222,6 +229,7 @@ _DISPATCH = {
     RecordType.STRIP: _decode_strip,
     RecordType.DETECTOR_CONFIG: _decode_detector_config,
     RecordType.ACTUATOR: _decode_actuator,
+    RecordType.FRETBOARD_RAW: _decode_fretboard_raw,
 }
 
 

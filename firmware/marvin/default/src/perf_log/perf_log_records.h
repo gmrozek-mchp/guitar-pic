@@ -36,6 +36,7 @@ typedef enum
     PERF_REC_TASK_RUNTIME    = 0x08,
     PERF_REC_DETECTOR_CONFIG = 0x09,
     PERF_REC_ACTUATOR        = 0x0A,
+    PERF_REC_FRETBOARD_RAW   = 0x0B,
 } perf_rec_type_t;
 
 /* stage_id values for PERF_REC_STAMP. Producer call sites map 1:1. */
@@ -48,6 +49,7 @@ typedef enum
     PERF_STAGE_TP_TICK            = 0x30,
     PERF_STAGE_FBL_SEND           = 0x40,
     PERF_STAGE_CDC_WRITE_COMPLETE = 0x41,
+    PERF_STAGE_FBL_READ_COMPLETE  = 0x42,
 } perf_stage_t;
 
 #define PERF_FLAG_FROM_ISR        0x01u
@@ -81,7 +83,10 @@ typedef struct __attribute__((packed))
  *   CV_START / CV_END : reserved (0)
  *   TP_TICK           : publish_mask (low 7 bits)
  *   FBL_SEND          : queued mask
- *   CDC_WRITE_COMPLETE: USB CDC result code */
+ *   CDC_WRITE_COMPLETE: USB CDC result code
+ *   FBL_READ_COMPLETE : low 24 bits = bytes received this completion, high
+ *                       8 bits = USB_HOST_CDC_RESULT_*. length=0 means the
+ *                       transfer ended with no payload (e.g. error). */
 typedef struct __attribute__((packed))
 {
     perf_hdr_t hdr;
@@ -183,6 +188,7 @@ typedef enum
     PERF_TASK_DRV_USB_HOST   = 14,
     PERF_TASK_APP            = 15,
     PERF_TASK_OTHER          = 16,
+    PERF_TASK_FRETBOARD_RX   = 17,
 } perf_task_id_t;
 
 typedef struct __attribute__((packed))
@@ -332,6 +338,20 @@ typedef struct __attribute__((packed))
     int32_t    last_ack_result;      /* USB_HOST_CDC_RESULT_*, signed for safety */
     uint64_t   last_ack_ts_counter;  /* SYS_TIME at most-recent CDC_WRITE_COMPLETE */
 } perf_rec_actuator_t;
+
+/* PERF_REC_FRETBOARD_RAW — one record per parsed 12-byte fretboard data
+ * frame (firmware/fretboard/data_stream.c). The 5×u16 ADC values are 12-bit
+ * unsigned (0–4095, lower = brighter sensor) indexed by fret_t (G/R/Y/B/O).
+ * Fretboard emits at ~240 Hz; with video at 60 Hz the same frame_epoch
+ * value tags ~4 consecutive records — ts_counter (stamped by hdr_fill at
+ * record-emit time) disambiguates within the frame. Default-disabled at
+ * boot like the other high-rate types. */
+typedef struct __attribute__((packed))
+{
+    perf_hdr_t hdr;
+    uint16_t   adc[FRET_COUNT];      /* 5 × 2 = 10 B */
+    uint16_t   reserved;
+} perf_rec_fretboard_raw_t;
 
 /* ─── Host→device commands ───────────────────────────────────────────────────
  *

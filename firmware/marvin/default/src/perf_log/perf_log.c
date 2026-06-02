@@ -53,6 +53,7 @@ typedef union
     perf_rec_task_runtime_t     runtime;
     perf_rec_detector_config_t  detector_config;
     perf_rec_actuator_t         actuator;
+    perf_rec_fretboard_raw_t    fretboard_raw;
 } perf_rec_state_slot_t;
 
 /* ─── Static storage ─────────────────────────────────────────────────────── */
@@ -78,7 +79,7 @@ static uint8_t       s_strip_free_q_storage[PL_STRIP_POOL_SIZE * sizeof(uint8_t)
 static StackType_t   s_drain_stack[PL_DRAIN_STACK_WORDS];
 static StaticTask_t  s_drain_tcb;
 
-#define PL_TASK_SLOT_COUNT  17u  /* one per perf_task_id_t — IDLE + 9 MCC slots + OTHER added v3 */
+#define PL_TASK_SLOT_COUNT  18u  /* one per perf_task_id_t — IDLE + 9 MCC slots + OTHER + FRETBOARD_RX */
 static TaskHandle_t  s_task_handles[PL_TASK_SLOT_COUNT];
 
 static volatile uint32_t s_drop_state;
@@ -137,6 +138,7 @@ static uint16_t record_size(const perf_rec_state_slot_t *r)
         case PERF_REC_TASK_RUNTIME:    return (uint16_t)sizeof(perf_rec_task_runtime_t);
         case PERF_REC_DETECTOR_CONFIG: return (uint16_t)sizeof(perf_rec_detector_config_t);
         case PERF_REC_ACTUATOR:        return (uint16_t)sizeof(perf_rec_actuator_t);
+        case PERF_REC_FRETBOARD_RAW:   return (uint16_t)sizeof(perf_rec_fretboard_raw_t);
         default:                       return (uint16_t)sizeof(perf_hdr_t);
     }
 }
@@ -517,6 +519,16 @@ void PerfLog_EmitActuator(uint8_t  intended_mask,
     slot.actuator.producer_id         = producer_id;
     slot.actuator.last_ack_result     = last_ack_result;
     slot.actuator.last_ack_ts_counter = last_ack_ts_counter;
+    send_state(&slot);
+}
+
+void PerfLog_EmitFretboardRaw(const uint16_t adc[FRET_COUNT], uint32_t frame_epoch)
+{
+    if (adc == NULL) { return; }
+    perf_rec_state_slot_t slot;
+    memset(&slot, 0, sizeof(slot));
+    hdr_fill(&slot.fretboard_raw.hdr, PERF_REC_FRETBOARD_RAW, 0u, frame_epoch);
+    memcpy(slot.fretboard_raw.adc, adc, sizeof(slot.fretboard_raw.adc));
     send_state(&slot);
 }
 

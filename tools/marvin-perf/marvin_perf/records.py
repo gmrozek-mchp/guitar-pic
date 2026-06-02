@@ -49,6 +49,7 @@ class RecordType(IntEnum):
     TASK_RUNTIME = 0x08
     DETECTOR_CONFIG = 0x09
     ACTUATOR = 0x0A
+    FRETBOARD_RAW = 0x0B
 
 
 class StripKind(IntEnum):
@@ -73,6 +74,7 @@ class Stage(IntEnum):
     TP_TICK = 0x30
     FBL_SEND = 0x40
     CDC_WRITE_COMPLETE = 0x41
+    FBL_READ_COMPLETE = 0x42
 
 
 class TaskId(IntEnum):
@@ -93,6 +95,7 @@ class TaskId(IntEnum):
     DRV_USB_HOST = 14
     APP = 15
     OTHER = 16  # pseudo-slot — Σ all − Σ registered tasks (host CPU% closure)
+    FRETBOARD_RX = 17
 
 
 class ActuatorProducer(IntEnum):
@@ -321,6 +324,26 @@ class Actuator:
             return ActuatorProducer(self.producer_id).name.lower()
         except ValueError:
             return f"producer_{self.producer_id}"
+
+
+@dataclass(frozen=True)
+class FretboardRaw:
+    """One parsed 12-byte fretboard data frame (firmware/fretboard).
+
+    `adc` is a 5-tuple of 12-bit unsigned ADC samples (0–4095, lower means
+    a brighter sensor) ordered by `fret_t`: green, red, yellow, blue, orange.
+
+    At ~240 Hz fretboard rate against 60 Hz video, the same `frame_epoch`
+    tags ~4 consecutive records — `hdr.ts_counter` (stamped at producer
+    emit time) gives sub-frame ordering for offline join against
+    `Detector` records.
+    """
+
+    hdr: Header
+    adc: tuple[int, ...]   # length FRET_COUNT, indexed by fret_t
+
+    _BODY: ClassVar[struct.Struct] = struct.Struct("<HHHHHH")  # 5×u16 + reserved
+    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 12 = 28
 
 
 @dataclass(frozen=True)

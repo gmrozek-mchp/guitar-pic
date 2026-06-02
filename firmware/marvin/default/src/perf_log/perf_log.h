@@ -78,6 +78,13 @@ void PerfLog_EmitActuator(uint8_t  intended_mask,
                           int32_t  last_ack_result,
                           uint64_t last_ack_ts_counter);
 
+/* FRETBOARD_RAW: one record per parsed 12-byte fretboard data frame.
+ * Producer (fretboard_link RX task) supplies the 5×u16 ADC values and
+ * the most recent video frame_epoch from Video_GetFrameInfo; perf_log
+ * fills the header. Default-disabled at boot. */
+void PerfLog_EmitFretboardRaw(const uint16_t adc[FRET_COUNT],
+                              uint32_t frame_epoch);
+
 void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
                                 perf_strip_kind_t kind,
                                 const uint8_t *frame, uint32_t frame_stride,

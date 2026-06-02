@@ -273,7 +273,7 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 USB CDC host between marvin and the fretboard MCU. Marvin acts as USB host to the fretboard's on-board EDBG debugger (composite device exposing CDC ACM). EDBG bridges the CDC ACM interface to the fretboard's SERCOM1 UART at 500 000 Bd.
 
 - **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing.
-- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 12-byte start/end-bracketed frame.
+- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 12-byte start/end-bracketed frame. Marvin's `fretboard_link` issues a continuously-rearming `USB_HOST_CDC_Read` and a sibling `fretboard_rx_task` parses each valid frame and republishes it as a `PERF_REC_FRETBOARD_RAW` perf-log record (default-disabled, host enables via `PERF_CMD_SET_TYPE_MASK`). This is the on-board capture path until the SD-card recorder lands; it's also the substrate for the future `adc_fretboard` detector (§4.2).
 - **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
 
 ### 4.4 Timing pipeline 🚧
@@ -334,7 +334,7 @@ recordings/
 
 - **`state.bin`** — append-only, fixed-size `detector_state_t` records (§4.2.3). At 60 Hz × 2 detectors × ~28 B = ~3.4 KB/s. Trivial.
 - **`commands.bin`** — fret/strum bitmask + direction + emit timestamp + frame_epoch, ~16 B per emit. Sparse.
-- **`adc_raw.bin`** — fretboard 12-byte frames at 240 Hz with `frame_epoch` annotation = ~2.9 KB/s. Modest.
+- **`adc_raw.bin`** — fretboard 12-byte frames at 240 Hz with `frame_epoch` annotation = ~2.9 KB/s. Modest. Until the SD recorder lands, the same data is available live as `PERF_REC_FRETBOARD_RAW` records (28 B framed) in any marvin-perf capture (default-disabled; enable with `set-mask`).
 - **Keyframes** — raw BGR888 packed dump every N captured frames. At 720×480 × 3 B = 1.04 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.04 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~312 MB — comfortable on any modern SD card.
 - No software JPEG / video encode. SAM9X75 has no hardware JPEG; CPU encode at 60 fps is infeasible. Keyframes stay raw; offline tools can transcode if desired.
 
