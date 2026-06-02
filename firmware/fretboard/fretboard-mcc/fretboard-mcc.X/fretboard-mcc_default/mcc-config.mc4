@@ -72,8 +72,6 @@ generatedFileHashHistoryMap:
   hash: 858f8710d4287200a5ee7f3b3ad7c24f505aed9c05c16956ab0ff9f7bb162a6a
 - file: ../src/config/default/toolchain_specifics.h
   hash: a4f1774c6f1f8c6cd522567536c9e9d75ca63259b868015ac9b0fb0aeeffe1f4
-- file: ../src/main.c
-  hash: d3c233d419e6304bfacbafc18cc68c0f5c26e365f23b20ea40ccfac458f664c5
 - file: ../src/packs/CMSIS/CMSIS/Core/Include/cachel1_armv7.h
   hash: 6cdb5b324f2fd1bb5b2f47298ba6e6777e735d7cad3bb8d942cd36e2c6e65328
 - file: ../src/packs/CMSIS/CMSIS/Core/Include/cmsis_armcc.h

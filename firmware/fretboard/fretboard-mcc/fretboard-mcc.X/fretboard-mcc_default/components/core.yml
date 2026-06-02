@@ -26,7 +26,7 @@ data:
             id: enabled
           children:
           - type: Value
-            value: 'true'
+            value: 'false'
           type: Boolean
         type: Attributes
       type: File
@@ -1973,6 +1973,16 @@ data:
       - children:
         - attributes:
             value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    CoreMainFile:
+      attributes:
+        id: CoreMainFile
+      children:
+      - children:
+        - attributes:
+            value: 'false'
           type: User
         type: Values
       type: Boolean
