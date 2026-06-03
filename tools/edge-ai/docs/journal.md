@@ -53,16 +53,28 @@ Primary path is programmatic PyTorch; MPLAB ML is a later demonstration track (s
 
 ## Session log
 
+### 2026-06-03 — Phase 2 first training: baseline fails the gate, overfit reveals a ceiling
+
+- First baseline (window 60, /4095 scaling) failed badly: held-out frets 80–94 %, strum recall ~30 %, timing pinned at the tolerance cap. Diagnosed as underfitting (loss monotonically falling, green crawling +4 % over 30 epochs).
+- **Fix that worked:** per-channel input **standardisation** (raw /4095 left inputs in a narrow ~[0.24, 0.95] band, starving gradients). Added to `data.build_arrays`; stats saved in the checkpoint, deploy-safe via the int8 input affine. Also added `--overfit`, `--strum-dilate`, `--strum-weight` knobs.
+- **Decisive diagnostic — overfit one song (train == eval, dirty):** even memorising its *own* data the model caps at **frets 93–96 % (yellow worst .932), strum recall ~0.86 / precision ~0.61, strum timing p50 8–12 ms / p95 pinned at the 5-sample tol.** Loss plateaus ~0.20. A model that can't fit its own training labels is hitting **irreducible label ambiguity**, not a generalisation gap.
+- The ~2–3-sample (8–12 ms) strum-timing floor ≈ the ~12 ms cross-stream burst interval — strongly implicating the logged label↔feature skew as the ceiling, *but* `StrumNet` is only ~590 params so **capacity is an unresolved confound.**
+- **Decisive test result (big-model overfit, 64ch/1.3M MACs — 13× over budget, diagnostic only):** the ceiling splits in two:
+  - **Strum *recall* is capacity-limited** — tiny model ~0.86, big model **~0.99**. Fixable with a better/bigger architecture (two-head event detector is the parameter-efficient candidate, review.md Shape D).
+  - **Strum *timing* is data-limited** — even the 1.3M-MAC model on its own training data, with tolerance widened to 62 ms (uncensored), can't beat **p50 ~1–2 samples / p95 ~5 samples (~20 ms)**. That floor ≈ the ~12 ms cross-stream burst jitter → **confirms the label↔feature skew is the timing ceiling.** No model beats it; only the fretboard data-sync firmware fix (open-questions #3/#4) does.
+  - **Frets** improve with capacity (yellow ~.93→~.96) but plateau short of 99% — residual is the same transition-region label skew.
+- **Reframing the gate:** the rollout `strum p95 ≤ 20 ms` gate is almost certainly stricter than the game needs (GH/RB hit windows ≈ ±50–100 ms). We're at ~20 ms on *training data with an oversized model* — the synthetic threshold may be moot. The real gate is game score (Phase 5). **Decision pending (with user): fix data-sync firmware now vs optimise a budget model + fast-track a real gameplay test to see if the skew actually costs notes.**
+
 ### 2026-06-03 — Phase 2 kickoff: primary path switched to PyTorch, Expert-only corpus
 
 - Decided to make programmatic PyTorch the primary training path and demote MPLAB ML / SensiML to a later demonstration track (see decision log for the temporal-strum-timing reasoning). Updated [`training.md`](training.md) §5 and [`review.md`](review.md) accordingly.
 - Decided v1 trains on **Expert only**. Surfaced the observability argument: if scroll speed varies by difficulty, mixing difficulties is ill-posed for single-row sensors, not just under-sampled. Rewrote the old "train on all difficulties" guidance.
 - Captured two forward ideas: a dedicated **fret-line/scroll-speed sensor** (6th channel) that could let one model span difficulties (user's idea), and **measuring** the photo→strum lag from data to size the window instead of guessing.
 - Built the `tools/edge-ai` PyTorch package: stdlib data loader + causal row-index windowing, a stdlib-runnable lag-measurement utility, stdlib metrics (per-bit accuracy/F1 + strum-event timing), a baseline causal 1D-CNN (`StrumNet`), weighted-BCE loss, and a train/eval harness + CLI (`edge-ai {lag,train,eval}`). torch/numpy install needs the user's machine (sandbox can't reach PyPI); the stdlib modules were validated here.
-- **Lag measured on real Expert data** (`edge-ai lag`): peak ≈ **33–34 samples (~140 ms)**, *consistent across two different songs* (dirty 137.5 ms / slowride 141.7 ms) — strong confirmation that the photo→strum lag is fixed at fixed difficulty, which is exactly the premise the single-difficulty + distillation design rests on. The correlation has a right-skewed tail (centroid ~280–320 ms). **Window sizing:** a 60-sample (250 ms) window covers the peak comfortably; sweep up to 96 samples (400 ms) to capture the tail. Baseline window = 60.
+- **Lag measured on real Expert data** (`edge-ai lag`): peak ≈ **33 samples (137.5 ms)** on dirty/hitme/rockroll/story and 34 (141.7 ms) on slowride — a **1-sample (~4 ms) spread across five different songs**. About as strong a confirmation as possible that the photo→strum lag is a fixed constant at fixed difficulty — exactly the premise the single-difficulty + distillation design rests on. The correlation has a right-skewed tail (centroid ~280–320 ms). **Window sizing:** a 60-sample (250 ms) window covers the peak comfortably; sweep up to 96 samples (400 ms) to capture the tail. Baseline window = 60.
   - **Observation to dig into:** peak lag (~140 ms) is *shorter* than `TP_STRUM_DELAY_MS = 220`. If the photoxistors were above the strike line the lag should be >220 ms (220 + scroll-time). Shorter suggests the sensors may sit at/below marvin's CV row, or the dip's leading edge dominates the correlation. Doesn't block training (the window covers it) but worth understanding for sensor-placement (review.md Q5).
   - Strum density differs by song (dirty 9.0 %, slowride 5.8 %) → strum `pos_weight` ≈ 10–16.
-- Corpus status: `dirty` + `slowride` exported to CSV; `hitme` still needs `marvin-perf export-ml --labels=actuator` (perf.bin captured). Need ≥1 more song to hold one out and still train on ≥2.
+- Corpus status: **5 Expert songs exported** — dirty (53029 rows, 9.0%), hitme (40757, 7.5%), rockroll (51232, 6.5%), slowride (59958, 5.8%), story (83830, 7.2%); ~289k rows / ~3256 strum events total. Enough to train on 4 and hold one out.
 
 ### 2026-06-03 — Phase 1 exporter built
 

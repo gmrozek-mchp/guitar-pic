@@ -22,7 +22,7 @@ import csv
 from dataclasses import dataclass
 from pathlib import Path
 
-from . import ADC_MAX, FRET_COUNT, N_LABELS
+from . import FRET_COUNT, N_LABELS
 
 EXPECTED_HEADER = [
     "timestamp",
@@ -107,25 +107,70 @@ def causal_window_indices(n_rows: int, window: int) -> list[tuple[int, int, int]
     return [(i - window + 1, i + 1, i) for i in range(window - 1, n_rows)]
 
 
-def build_arrays(captures: list[Capture], window: int, *, adc_scale: float = float(ADC_MAX)):
-    """Materialise (X, Y) for all captures, windowed independently per capture.
+def compute_norm_stats(captures: list[Capture]):
+    """Per-channel (mean, std) over all rows, for input standardisation.
+
+    Standardising the narrow ADC band (idle ≈ 3900, dips ≈ 1000) is what makes
+    the net trainable; raw /4095 leaves inputs clustered near 0.95 and starves
+    gradients. The affine folds into the int8 input quantisation at deploy, so
+    this stays deploy-compatible. Returns numpy arrays (mean[5], std[5]).
+    """
+    import numpy as np
+
+    rows = np.concatenate(
+        [np.asarray(c.adc, dtype=np.float32) for c in captures if len(c) > 0], axis=0
+    )
+    mean = rows.mean(axis=0)
+    std = rows.std(axis=0)
+    std[std < 1e-6] = 1.0
+    return mean, std
+
+
+def _dilate_strum(strum, k: int):
+    """Widen each strum positive by ±k samples (training labels only)."""
+    import numpy as np
+
+    out = strum.copy()
+    for off in range(1, k + 1):
+        out[off:] = np.maximum(out[off:], strum[:-off])
+        out[:-off] = np.maximum(out[:-off], strum[off:])
+    return out
+
+
+def build_arrays(
+    captures: list[Capture],
+    window: int,
+    *,
+    stats=None,
+    strum_dilate: int = 0,
+):
+    """Materialise (X, Y, stats) for all captures, windowed per capture.
 
     X: float32 (n_windows, FRET_COUNT, window) — channels-first for Conv1d,
-       scaled to [0, 1] by `adc_scale` (fixed affine, deploy-friendly).
+       per-channel standardised by `stats` (computed from `captures` if None).
     Y: float32 (n_windows, N_LABELS) — the 6 label bits at each window's
-       label_row.
+       label_row. With `strum_dilate>0` the strum label (bit 5) is widened by
+       ±k samples so a near-miss isn't fully penalised — use for *training*
+       only, never for eval.
 
     Windows never cross capture boundaries (no song bleeds into another).
     """
     import numpy as np
+
+    if stats is None:
+        stats = compute_norm_stats(captures)
+    mean, std = stats
 
     xs = []
     ys = []
     for cap in captures:
         if len(cap) < window:
             continue
-        adc = np.asarray(cap.adc, dtype=np.float32) / adc_scale  # (rows, 5)
-        lab = np.asarray(cap.labels, dtype=np.float32)           # (rows, 6)
+        adc = (np.asarray(cap.adc, dtype=np.float32) - mean) / std  # (rows, 5)
+        lab = np.asarray(cap.labels, dtype=np.float32)              # (rows, 6)
+        if strum_dilate > 0:
+            lab = lab.copy()
+            lab[:, 5] = _dilate_strum(lab[:, 5], strum_dilate)
         idx = causal_window_indices(len(cap), window)
         for start, end, label_row in idx:
             xs.append(adc[start:end].T)        # (5, window)
@@ -134,7 +179,7 @@ def build_arrays(captures: list[Capture], window: int, *, adc_scale: float = flo
         raise DataError(
             f"no windows produced — every capture shorter than window={window}?"
         )
-    return np.stack(xs).astype(np.float32), np.stack(ys).astype(np.float32)
+    return np.stack(xs).astype(np.float32), np.stack(ys).astype(np.float32), stats
 
 
 def strum_pos_weight(captures: list[Capture]) -> float:

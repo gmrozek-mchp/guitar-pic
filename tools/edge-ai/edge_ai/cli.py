@@ -36,6 +36,13 @@ def cmd_lag(args) -> int:
 
 
 def cmd_train(args) -> int:
+    if not args.overfit:
+        if not args.holdout:
+            print("train: need --holdout HELD.csv (or --overfit FILE.csv)", file=sys.stderr)
+            return 2
+        if not args.data:
+            print("train: need training CSV(s) (or --overfit FILE.csv)", file=sys.stderr)
+            return 2
     from .train import train
     train(args)
     return 0
@@ -48,12 +55,16 @@ def cmd_eval(args) -> int:
     from .train import evaluate
     from .metrics import LABEL_NAMES
 
+    import numpy as np
+
     ckpt = torch.load(args.model, map_location="cpu")
     model = StrumNet(channels=ckpt["channels"], kernel=ckpt["kernel"])
     model.load_state_dict(ckpt["state_dict"])
     window = ckpt["window"]
+    stats = (np.asarray(ckpt["norm_mean"], dtype=np.float32),
+             np.asarray(ckpt["norm_std"], dtype=np.float32))
     caps = [load_capture(p) for p in args.captures]
-    rep = evaluate(model, caps, window, tol_samples=args.tol)
+    rep = evaluate(model, caps, window, stats, tol_samples=args.tol)
     print(" ".join(f"{n}={a:.3f}" for n, a in zip(LABEL_NAMES, rep.per_bit_acc)))
     print("f1: " + " ".join(f"{n}={a:.3f}" for n, a in zip(LABEL_NAMES, rep.per_bit_f1)))
     print(rep.strum.summary())
@@ -72,14 +83,19 @@ def build_parser() -> argparse.ArgumentParser:
     pl.set_defaults(func=cmd_lag)
 
     pt = sub.add_parser("train", help="Train the baseline StrumNet.")
-    pt.add_argument("data", nargs="+", help="training CSVs (holdout excluded if listed)")
-    pt.add_argument("--holdout", required=True, help="held-out CSV for validation")
+    pt.add_argument("data", nargs="*", help="training CSVs (holdout excluded if listed)")
+    pt.add_argument("--holdout", help="held-out CSV for validation")
+    pt.add_argument("--overfit", help="diagnostic: train AND eval on this single CSV")
     pt.add_argument("--window", type=int, default=60)
     pt.add_argument("--channels", type=int, default=8)
     pt.add_argument("--kernel", type=int, default=5)
     pt.add_argument("--epochs", type=int, default=30)
     pt.add_argument("--batch", type=int, default=256)
     pt.add_argument("--lr", type=float, default=1e-3)
+    pt.add_argument("--strum-dilate", type=int, default=0,
+                    help="widen strum training labels by ±N samples (eval unaffected)")
+    pt.add_argument("--strum-weight", type=float, default=0.0,
+                    help="override strum BCE pos_weight (0 = auto inverse-frequency)")
     pt.add_argument("--tol", type=int, default=5, help="strum match tolerance (samples)")
     pt.add_argument("--seed", type=int, default=0)
     pt.add_argument("--out", help="checkpoint path (.pt)")
