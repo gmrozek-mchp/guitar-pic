@@ -51,6 +51,7 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
 | fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) | — |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
+| edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; not yet implemented. | — |
 
 marvin's spec also has deeper-dive documents for its capture and display paths ([`capture_pipeline.md`](firmware/marvin/docs/capture_pipeline.md), [`display_path.md`](firmware/marvin/docs/display_path.md)).
 
