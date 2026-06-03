@@ -145,25 +145,50 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
     """Export a finished capture as a SensiML-format CSV for MPLAB ML.
 
     One row per fretboard ADC sample (~240 Hz); each row carries the five
-    raw 12-bit ADC values plus five binary labels (one per fret) drawn
-    from the most-recent cv_marvin_v1 detector record's pressed_mask.
+    raw 12-bit ADC values plus binary labels. With --labels=detector the
+    labels are the five per-fret pressed bits from cv_marvin_v1's
+    pressed_mask; with --labels=actuator they are the five frets plus a
+    collapsed strum bit from the timing pipeline's intended_mask (the
+    edge-ai distillation target).
     """
     try:
-        stats = export_sensiml_csv(args.capture, args.out, strict=args.strict)
+        stats = export_sensiml_csv(
+            args.capture, args.out, labels=args.labels, strict=args.strict
+        )
     except ExportError as e:
         print(f"export-ml: {e}", file=sys.stderr)
         return 1
-    print(
-        f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
-        f"({stats.n_detector_records} detector records, "
-        f"{stats.n_fretboard_records} fretboard records, "
-        f"{stats.n_skipped_unlabeled} skipped)",
-        file=sys.stderr,
-    )
+    if args.labels == "actuator":
+        print(
+            f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
+            f"({stats.n_actuator_records} actuator records, "
+            f"{stats.n_strum_events} strum events, "
+            f"{stats.n_fretboard_records} fretboard records, "
+            f"{stats.n_skipped_unlabeled} skipped)",
+            file=sys.stderr,
+        )
+    else:
+        print(
+            f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
+            f"({stats.n_detector_records} detector records, "
+            f"{stats.n_fretboard_records} fretboard records, "
+            f"{stats.n_skipped_unlabeled} skipped)",
+            file=sys.stderr,
+        )
     # Loud failure modes: a structurally-valid CSV with zero usable labels is
     # training-useless and easy to miss from a one-line summary. Surface as a
     # warning the user can't ignore, and exit non-zero so scripts notice.
-    if stats.n_rows > 0 and stats.n_detector_records == 0:
+    if args.labels == "actuator" and stats.n_rows > 0 and stats.n_actuator_records == 0:
+        print(
+            "WARNING: capture contains no ACTUATOR records — every row's "
+            "fret_*/strum columns are all zeros. The CSV is unlabelled and "
+            "not useful for training. Re-record with both ACTUATOR and "
+            "FRETBOARD_RAW enabled in the Types panel (or "
+            "--types ACTUATOR,FRETBOARD_RAW for `marvin-perf record`).",
+            file=sys.stderr,
+        )
+        return 2
+    if args.labels == "detector" and stats.n_rows > 0 and stats.n_detector_records == 0:
         print(
             "WARNING: capture contains no DETECTOR records — every row's "
             "label_* columns are all zeros. The CSV is unlabelled and not "
@@ -230,9 +255,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_export_ml.add_argument("capture", help="Capture directory or .bin file")
     p_export_ml.add_argument("--out", required=True, help="Output CSV path")
     p_export_ml.add_argument(
+        "--labels",
+        choices=("detector", "actuator"),
+        default="detector",
+        help="Label source: 'detector' = 5 per-fret pressed bits from "
+             "cv_marvin_v1 (default); 'actuator' = 5 frets + collapsed strum "
+             "from the timing pipeline's intended_mask (edge-ai target).",
+    )
+    p_export_ml.add_argument(
         "--strict",
         action="store_true",
-        help="Drop fretboard rows that arrive before the first detector "
+        help="Drop fretboard rows that arrive before the first label-source "
              "record (default: emit them with all labels = 0).",
     )
     p_export_ml.set_defaults(func=cmd_export_ml)

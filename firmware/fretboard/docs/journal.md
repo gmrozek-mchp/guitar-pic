@@ -30,6 +30,8 @@ Today's session added [`tools/ds_monitor.py`](../tools/ds_monitor.py), a host-si
 
 2. **No host→firmware framing.** Command stream is raw bitmask bytes with no start byte. A spurious byte (e.g. line glitch on RX) becomes a button command. Acceptable for now because the line is short and runs over the same EDBG-CDC pair as TX, but worth revisiting if we see ghost presses.
 
+3. **Data frame carries no sample timestamp (request from edge-ai).** The 12-byte frame has no notion of *when* the ADC scan happened — marvin timestamps each frame at USB-CDC RX time, which is bursty (~3 frames arrive together every ~12 ms, not evenly at 4.17 ms). The first edge-ai training capture surfaced this; see the edge-ai journal ([`tools/edge-ai/docs/journal.md`](../../../tools/edge-ai/docs/journal.md), 2026-06-03, "Fretboard ADC samples carry no true sample timestamp"). Candidate fix: stamp each frame with a fretboard-side sample-time counter and carry it on the wire, giving marvin the absolute sample-time truth. Cost: larger frame + a `FretboardRaw` schema add on marvin's perf-log side. Deferred — edge-ai is proceeding with row-index windowing at an assumed uniform 240 Hz; revisit only if that label skew measurably hurts training.
+
 ---
 
 ## Session log

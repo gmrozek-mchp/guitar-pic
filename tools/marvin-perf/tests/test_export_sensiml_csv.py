@@ -14,10 +14,16 @@ from marvin_perf.exporters.sensiml_csv import (
 )
 
 from .conftest import (
+    build_actuator_payload,
     build_detector_payload,
     build_fretboard_raw_payload,
     wrap_frame,
 )
+
+
+# Wire-byte strum bits: bit 5 = strum-down, bit 6 = strum-up.
+_STRUM_DOWN = 1 << 5  # 0x20
+_STRUM_UP = 1 << 6    # 0x40
 
 
 _TIMER_HZ = 1_000_000  # 1 MHz → ts_counter == microseconds (easy arithmetic)
@@ -243,3 +249,162 @@ def test_missing_session_raises_export_error(tmp_path):
         export_sensiml_csv(cap, out)
     # Partial file should be cleaned up
     assert not out.exists()
+
+
+# ─── labels="actuator" path ──────────────────────────────────────────────────
+
+
+def _make_actuator_capture(tmp_path: Path) -> Path:
+    """SESSION + ACTUATOR + FRETBOARD_RAW covering frets and both strum dirs.
+
+      epoch 1  mask=0                      → frets 00000, strum 0
+      epoch 2  mask=green                  → frets 10000, strum 0
+      epoch 3  mask=green|strum-down       → frets 10000, strum 1  (event 1)
+      epoch 4  mask=green                  → frets 10000, strum 0
+      epoch 5  mask=green|yellow|strum-up  → frets 10100, strum 1  (event 2)
+
+    One ACTUATOR record then 4 FRETBOARD_RAW per epoch (240 Hz vs 60 Hz).
+    """
+    payloads: list[bytes] = [_build_session_first(ts_counter=0)]
+    base = 10_000
+    adc = (1234, 2345, 3456, 1500, 2500)
+    masks = [
+        (1, 0x00),
+        (2, 0x01),
+        (3, 0x01 | _STRUM_DOWN),
+        (4, 0x01),
+        (5, 0x01 | 0x04 | _STRUM_UP),
+    ]
+    for i, (epoch, mask) in enumerate(masks):
+        act_ts = base + i * _TS_PER_FRAME
+        payloads.append(
+            build_actuator_payload(
+                frame_epoch=epoch, ts_counter=act_ts, intended_mask=mask
+            )
+        )
+        for k in range(4):
+            fb_ts = act_ts + k * _TS_PER_FRETBOARD
+            payloads.append(
+                build_fretboard_raw_payload(
+                    frame_epoch=epoch, ts_counter=fb_ts, adc=adc
+                )
+            )
+    return _write_capture(tmp_path, payloads)
+
+
+def test_actuator_header_matches_documented_schema(tmp_path):
+    cap = _make_actuator_capture(tmp_path)
+    out = tmp_path / "out.csv"
+    export_sensiml_csv(cap, out, labels="actuator")
+    header, _ = _read_csv(out)
+    assert header == [
+        "timestamp",
+        "ph_green", "ph_red", "ph_yellow", "ph_blue", "ph_orange",
+        "fret_green", "fret_red", "fret_yellow", "fret_blue", "fret_orange",
+        "strum",
+    ]
+
+
+def test_actuator_fret_and_strum_labels(tmp_path):
+    cap = _make_actuator_capture(tmp_path)
+    out = tmp_path / "out.csv"
+    stats = export_sensiml_csv(cap, out, labels="actuator")
+    _, rows = _read_csv(out)
+    assert len(rows) == 20  # 5 epochs × 4 fretboard each
+    # epoch 1: idle
+    for r in rows[0:4]:
+        assert r[6:12] == ["0", "0", "0", "0", "0", "0"]
+    # epoch 2: green held, no strum
+    for r in rows[4:8]:
+        assert r[6:12] == ["1", "0", "0", "0", "0", "0"]
+    # epoch 3: green + strum-down → strum collapses to 1
+    for r in rows[8:12]:
+        assert r[6:12] == ["1", "0", "0", "0", "0", "1"]
+    # epoch 4: green, strum released
+    for r in rows[12:16]:
+        assert r[6:12] == ["1", "0", "0", "0", "0", "0"]
+    # epoch 5: green + yellow + strum-up → strum collapses to 1
+    for r in rows[16:20]:
+        assert r[6:12] == ["1", "0", "1", "0", "0", "1"]
+    assert stats.labels == "actuator"
+    assert stats.n_actuator_records == 5
+    assert stats.n_fretboard_records == 20
+    assert stats.n_rows == 20
+
+
+def test_actuator_strum_event_count_is_rising_edges(tmp_path):
+    cap = _make_actuator_capture(tmp_path)
+    out = tmp_path / "out.csv"
+    stats = export_sensiml_csv(cap, out, labels="actuator")
+    # Two distinct strums (epoch 3 down, epoch 5 up), each a 0→1 rising edge.
+    assert stats.n_strum_events == 2
+
+
+def test_actuator_adc_columns_match(tmp_path):
+    cap = _make_actuator_capture(tmp_path)
+    out = tmp_path / "out.csv"
+    export_sensiml_csv(cap, out, labels="actuator")
+    _, rows = _read_csv(out)
+    for r in rows:
+        assert r[1:6] == ["1234", "2345", "3456", "1500", "2500"]
+
+
+def test_actuator_strict_drops_rows_before_first_actuator(tmp_path):
+    payloads = [
+        _build_session_first(ts_counter=0),
+        build_fretboard_raw_payload(frame_epoch=0, ts_counter=5_000, adc=(1, 2, 3, 4, 5)),
+        build_fretboard_raw_payload(frame_epoch=0, ts_counter=6_000, adc=(1, 2, 3, 4, 5)),
+        build_actuator_payload(frame_epoch=1, ts_counter=10_000, intended_mask=0x02),
+        build_fretboard_raw_payload(frame_epoch=1, ts_counter=11_000, adc=(1, 2, 3, 4, 5)),
+    ]
+    cap = _write_capture(tmp_path, payloads)
+    out = tmp_path / "out.csv"
+    stats = export_sensiml_csv(cap, out, labels="actuator", strict=True)
+    _, rows = _read_csv(out)
+    assert stats.n_skipped_unlabeled == 2
+    assert len(rows) == 1
+    # red bit set, no strum
+    assert rows[0][6:12] == ["0", "1", "0", "0", "0", "0"]
+
+
+def test_actuator_unlabeled_rows_zero_by_default(tmp_path):
+    payloads = [
+        _build_session_first(ts_counter=0),
+        build_fretboard_raw_payload(frame_epoch=0, ts_counter=5_000, adc=(1, 2, 3, 4, 5)),
+        build_actuator_payload(frame_epoch=1, ts_counter=10_000, intended_mask=0x02),
+        build_fretboard_raw_payload(frame_epoch=1, ts_counter=11_000, adc=(1, 2, 3, 4, 5)),
+    ]
+    cap = _write_capture(tmp_path, payloads)
+    out = tmp_path / "out.csv"
+    stats = export_sensiml_csv(cap, out, labels="actuator")  # strict=False
+    _, rows = _read_csv(out)
+    assert len(rows) == 2
+    assert rows[0][6:12] == ["0", "0", "0", "0", "0", "0"]  # no actuator yet
+    assert rows[1][6:12] == ["0", "1", "0", "0", "0", "0"]  # red pressed
+    assert stats.n_skipped_unlabeled == 0
+
+
+def test_unknown_labels_mode_raises(tmp_path):
+    cap = _make_actuator_capture(tmp_path)
+    out = tmp_path / "out.csv"
+    with pytest.raises(ExportError):
+        export_sensiml_csv(cap, out, labels="bogus")
+
+
+def test_detector_mode_unaffected_by_actuator_records(tmp_path):
+    """An ACTUATOR record present in the capture must not perturb the
+    detector label path (back-compat)."""
+    payloads = [
+        _build_session_first(ts_counter=0),
+        build_detector_payload(frame_epoch=1, pressed_mask=0b00001, edge_active_mask=0),
+        build_actuator_payload(frame_epoch=1, ts_counter=9_000, intended_mask=0x7F),
+        build_fretboard_raw_payload(frame_epoch=1, ts_counter=10_000, adc=(1, 2, 3, 4, 5)),
+    ]
+    cap = _write_capture(tmp_path, payloads)
+    out = tmp_path / "out.csv"
+    stats = export_sensiml_csv(cap, out)  # default detector mode
+    header, rows = _read_csv(out)
+    assert header[-1] == "label_orange"  # detector schema, no strum column
+    assert len(rows) == 1
+    assert rows[0][6:11] == ["1", "0", "0", "0", "0"]
+    assert stats.labels == "detector"

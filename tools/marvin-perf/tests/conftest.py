@@ -14,6 +14,7 @@ import struct
 
 from marvin_perf.framing import fletcher16
 from marvin_perf.records import (
+    Actuator,
     Detector,
     Drop,
     FRET_COUNT,
@@ -140,6 +141,30 @@ def build_fretboard_raw_payload(
     body = FretboardRaw._BODY.pack(*adc, 0)  # 5×u16 + reserved
     return build_header(
         RecordType.FRETBOARD_RAW, frame_epoch=frame_epoch, ts_counter=ts_counter
+    ) + body
+
+
+def build_actuator_payload(
+    *,
+    frame_epoch: int = 1,
+    ts_counter: int = 0,
+    intended_mask: int = 0x00,
+    asserted_mask: int = 0x00,
+    strum_dir: int = 0,        # 0=none, 1=down, 2=up
+    producer_id: int = 1,      # PERF_ACTUATOR_PRODUCER_TIMING
+    last_ack_result: int = 0,
+    last_ack_ts_counter: int = 0,
+) -> bytes:
+    body = Actuator._BODY.pack(
+        intended_mask,
+        asserted_mask,
+        strum_dir,
+        producer_id,
+        last_ack_result,
+        last_ack_ts_counter,
+    )
+    return build_header(
+        RecordType.ACTUATOR, frame_epoch=frame_epoch, ts_counter=ts_counter
     ) + body
 
 

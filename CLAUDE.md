@@ -23,6 +23,8 @@ Current journals:
   - System-level spec for marvin lives at `firmware/marvin/docs/spec.md` — **read it first** alongside the journal on any non-trivial marvin task. The spec is the durable description of what marvin is (purpose, subsystems, interfaces, milestones); the journal is the running diary.
 - `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM I/O bridge: ADC stream out + button-bitmask in)
   - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
+- `tools/edge-ai/docs/journal.md` — edge-ai (distill marvin's gameplay commands into a small ML model for the fretboard MCU)
+  - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
 
 When working on a subproject that has a journal:
 
