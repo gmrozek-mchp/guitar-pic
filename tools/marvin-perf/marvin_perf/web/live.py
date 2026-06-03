@@ -34,9 +34,16 @@ from ..decode import decode_record
 from ..framing import FrameStats, frame_encode, iter_frames
 from ..records import (
     RECORD_TYPE_BY_NAME,
+    DetectorConfig,
     Session,
     encode_set_mask_payload,
 )
+
+# Record types whose latest framed bytes get prepended to a new recording's
+# bin so the file is self-contained. Order matters for downstream parsers
+# that key on first-seen-of-type — SESSION must come first so timer_freq_hz
+# resolves before any record carrying a ts_counter is seen.
+_PREPEND_TYPES: tuple[type, ...] = (Session, DetectorConfig)
 from ..transport import SerialSource
 
 
@@ -54,6 +61,14 @@ class _State:
     started_at: str | None = None
     framing_stats: FrameStats = field(default_factory=FrameStats)
     last_session_dict: dict[str, Any] | None = None
+    # Most-recent framed bytes of records that should be prepended to a
+    # new recording so the bin is self-contained from byte 0. Keyed by
+    # record-class name. SESSION is one-shot per sink-attach (firmware
+    # only emits it on connect-up edge) so without prepending we'd miss
+    # timer_freq_hz. DETECTOR_CONFIG re-emits at ~1 Hz, but a short
+    # capture might end before the next heartbeat — prepending keeps
+    # STRIP-overlay rendering correct even on sub-second captures.
+    prepend_framed: dict[str, bytes] = field(default_factory=dict)
 
 
 @dataclass
@@ -213,10 +228,24 @@ class _LiveSession:
             cap_dir = init_capture_dir(out_dir, exist_ok=False)
             bin_path = cap_dir / BIN_NAME
             fh = bin_path.open("wb")
+            # Prepend cached one-shot / heartbeat records (SESSION,
+            # DETECTOR_CONFIG) in _PREPEND_TYPES order so the bin is
+            # self-contained from byte 0 even when recording starts
+            # mid-session. Skipped silently if a type wasn't seen yet.
+            bytes_written = 0
+            n_frames = 0
+            for cls in _PREPEND_TYPES:
+                framed = self._state.prepend_framed.get(cls.__name__)
+                if framed is not None:
+                    fh.write(framed)
+                    bytes_written += len(framed)
+                    n_frames += 1
             self._rec = _Recording(
                 fh=fh,
                 dir=cap_dir,
                 started_at=datetime.now(timezone.utc).isoformat(),
+                bytes_written=bytes_written,
+                n_frames=n_frames,
             )
             snapshot = self._recording_dict_locked()
         self._post("recording", {"state": "started", **(snapshot or {})})
@@ -350,6 +379,9 @@ class _LiveSession:
                 if isinstance(rec, Session):
                     with self._lock:
                         self._state.last_session_dict = rec_dict
+                if isinstance(rec, _PREPEND_TYPES):
+                    with self._lock:
+                        self._state.prepend_framed[type(rec).__name__] = frame.framed
                 self._post("record", rec_dict)
         except Exception as e:
             self._post("error", {"code": "serial-error", "msg": str(e)})

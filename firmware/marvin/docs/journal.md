@@ -156,6 +156,60 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-03 — cv_marvin_v1: wire PerfLog_EmitDetector
+
+First end-to-end export-ml run on hardware produced a 248-second CSV with **0 DETECTOR records** despite the firmware-side enabled-mask correctly carrying bit 3 (`PerfLog: mask=0x0000084a` = SESSION+DETECTOR+DROP+FRETBOARD_RAW). Root cause: `PerfLog_EmitDetector` was defined in [`perf_log.c:453`](../default/src/perf_log/perf_log.c#L453) and declared in [`perf_log.h:31`](../default/src/perf_log/perf_log.h#L31) but **never actually called from anywhere**. cv_marvin_v1's `detect_frame` was building a `detector_state_t`, posting it to the detector bus (which is why the actuator/timing pipeline runs and the game plays correctly), but skipping the perf-log mirror of the same per-frame decision.
+
+Fix: add the call at the bottom of [`cv_marvin_v1.c:detect_frame`](../default/src/detector/cv_marvin_v1.c) right after the bus push. Build `hold_dist[]` / `edge_dist[]` / `pressed_mask` / `edge_active_mask` from the same struct fields the bus message carried (`state.fret[i].raw_value`, `state.fret[i].confidence`, `s_pressed[i]`, `s_edge_active[i]`). The perf-log struct's hold/edge values already share the 0..65535 scaling with `detector_state_t.{raw_value, confidence}` per the schema comment, so no rescaling needed.
+
+Also confirmed via grep that all other `PerfLog_Emit*` declarations have at least one caller — this was a singleton miss.
+
+### 2026-06-03 — marvin-perf: prepend cached SESSION + DETECTOR_CONFIG to recordings
+
+First real export-ml run on hardware tripped over a missing `SESSION` record in the bin: the firmware emits SESSION exactly once per sink-attach edge, but the web-mode recorder doesn't start mirroring framed bytes to disk until the user clicks Record — usually well after attach. By then the SESSION has been received and consumed by the reader thread, but it's never written to the recording's bin, so the offline exporter can't recover `timer_freq_hz`.
+
+Fix in [`tools/marvin-perf/marvin_perf/web/live.py`](../../../tools/marvin-perf/marvin_perf/web/live.py): cache the framed bytes of each "prepend-worthy" record type into a `prepend_framed: dict[str, bytes]`. On `record_start`, write the cached bytes to the new bin in declared order before letting the live mirror take over. The two types covered today:
+
+- **SESSION** — strictly one-shot per attach; without it the bin has no `timer_freq_hz` anchor and downstream tools can't convert `ts_counter` to seconds.
+- **DETECTOR_CONFIG** — re-emits at ~1 Hz from cv_marvin_v1 ([cv_marvin_v1.c:374](../default/src/detector/cv_marvin_v1.c#L374)) but a sub-second capture might end before the next heartbeat. Carries cv sample coords + thresholds + colour weights — needed by the offline review UI to render STRIP overlays from frame 0 and useful for auditability of the detector configuration that produced the labels.
+
+Other 1 Hz heartbeats (`DROP`, `TASK_HIGHWATER`, `TASK_RUNTIME`) are cumulative counters; the second sample (1 second in) gives the same info, no prepend needed. Per-event records (`STAMP`, `DETECTOR`, `TIMING`, `STRIP`, `ACTUATOR`, `FRETBOARD_RAW`) are high-rate and self-contained. New types added in the future just need an entry in `_PREPEND_TYPES`.
+
+Also tightened the exporter so the first emitted CSV row's timestamp is **0.0** instead of `(first_row.ts_counter - session.ts_counter) / freq` — closer to SensiML's "elapsed since logging started" convention and friendlier when sessions span minutes between attach and record-start.
+
+The headless `marvin-perf record` path was never affected: opening the serial port toggles DTR, which fires the firmware-side SESSION emit, which lands in the very first frames of the bin.
+
+### 2026-06-02 — marvin-perf export-ml: SensiML CSV from a capture
+
+Step 2 of the Edge-AI training-dataset workstream. Capture pipeline was already wiring `PERF_REC_FRETBOARD_RAW` (240 Hz) and `PERF_REC_DETECTOR` (60 Hz) through marvin-perf's recording sink; this session adds the offline export that turns one of those captures into a labelled CSV ready for [MPLAB Machine Learning Development Suite](https://www.microchip.com/en-us/tools-resources/develop/mplab-machine-learning-development-suite) / SensiML Data Capture Lab.
+
+**Phototransistor placement note (clarified this session).** The fretboard sensors sit *upstream* of the strike line, at roughly the same vertical position as cv_marvin_v1's hold sense line. So the cv detector's `pressed_mask` aligns instantaneously with each fretboard ADC sample at the same moment in time — no need to time-shift labels backward. The downstream actuator (timing pipeline) owns sensor→strike-line propagation as a fixed deterministic delay. Edge-AI model's job is therefore just per-fret presence detection: "is a note at my sensor right now?" — five independent binary classifiers.
+
+**v0 export shape:**
+- One CSV per capture, one row per `FRETBOARD_RAW` record (~240 Hz).
+- Columns: `timestamp, ph_green, ph_red, ph_yellow, ph_blue, ph_orange, label_green, label_red, label_yellow, label_blue, label_orange`.
+- `timestamp` is decimal seconds since the SESSION record's `ts_counter`, matching the [MPLAB Data Visualizer SensiML CSV preset](https://onlinedocs.microchip.com/oxy/GUID-4FF3C687-0C30-4D21-82D0-5AE401E8BE9D-en-US-8/GUID-6D2B490A-A171-4C9F-8F48-68438016B07D.html).
+- `ph_*` are raw 12-bit ints (no normalisation; SensiML normalises during training).
+- `label_*` are five independent binaries from `pressed_mask`, broadcast forward by `frame_epoch` (one cv frame ~ four fretboard rows).
+
+**Implementation:**
+- New package [`tools/marvin-perf/marvin_perf/exporters/`](../../../tools/marvin-perf/marvin_perf/exporters/), single module `sensiml_csv.py` with `export_sensiml_csv(capture_path, out_path, *, strict=False) -> ExportStats`. Stream-decode (no all-in-memory load) walking SESSION → DETECTOR-cursor → emit-row-per-FRETBOARD_RAW. Stdlib `csv.writer`; no pandas dep added.
+- New CLI subcommand `marvin-perf export-ml <capture> --out <csv>` (`cli.py`). Mirrors the shape of the existing `record` / `set-mask` / `serve` subcommands; intentionally does NOT pull in the `viewer` dep group (no fastapi import) so it works in headless contexts.
+- `ExportError` raised if the capture has no SESSION record (no `timer_freq_hz` → no way to compute timestamps); partial output file is unlinked on failure.
+- New `build_fretboard_raw_payload` test helper in `tests/conftest.py`.
+
+**Edge cases handled:**
+- `FretboardRaw` records arriving before any `Detector` record — emitted with all labels = 0 by default; `--strict` drops them so every row carries a real label.
+- `frame_epoch == 0` records — included; the cursor's most-recent label still applies.
+
+**Tests:** 8 new in `test_export_sensiml_csv.py` covering header schema, row count, ADC-column passthrough, label step-function correctness, timestamp arithmetic, both pre-detector strict/non-strict paths, and the missing-SESSION error. 82/82 host pytests pass.
+
+**Out of scope (deliberate):**
+- `.dcli` segment-label sidecar — defer until segmentation policy is decided after first SensiML import attempt.
+- Per-fret CSV split — single combined CSV is simpler; user creates 5 SensiML projects each focused on one `label_*` column.
+- Edge prediction / windowed samples — Data Capture Lab does its own segmenting after import.
+- `_LoadedCapture` lift from `web/api.py` to a non-web home — kept as-is to keep this diff small; the exporter does its own streaming decode and avoids the cross-import.
+
 ### 2026-06-02 — fretboard ADC stream into perf-log
 
 Step 1 of the Edge-AI training-dataset workstream. Goal: route fretboard 5-channel ADC samples through marvin's perf-log so an offline tool can join them with `cv_marvin_v1` detector output for labelled training data. (Edge-AI MCU = future device that has only the fretboard sensors, no HDMI; `cv_marvin_v1` is ground truth.)

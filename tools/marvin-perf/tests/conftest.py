@@ -16,6 +16,8 @@ from marvin_perf.framing import fletcher16
 from marvin_perf.records import (
     Detector,
     Drop,
+    FRET_COUNT,
+    FretboardRaw,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
     RecordType,
@@ -125,6 +127,20 @@ def build_drop_payload(
 ) -> bytes:
     body = Drop._BODY.pack(dropped_state, dropped_strip, dropped_sink, 0)
     return build_header(RecordType.DROP) + body
+
+
+def build_fretboard_raw_payload(
+    *,
+    frame_epoch: int = 1,
+    ts_counter: int = 0,
+    adc: tuple[int, ...] = (1000, 2000, 3000, 4000, 500),
+) -> bytes:
+    if len(adc) != FRET_COUNT:
+        raise ValueError(f"adc must have {FRET_COUNT} entries, got {len(adc)}")
+    body = FretboardRaw._BODY.pack(*adc, 0)  # 5×u16 + reserved
+    return build_header(
+        RecordType.FRETBOARD_RAW, frame_epoch=frame_epoch, ts_counter=ts_counter
+    ) + body
 
 
 def build_task_highwater_payload(*, task_id: int, words: int) -> bytes:

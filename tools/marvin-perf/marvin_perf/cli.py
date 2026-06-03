@@ -18,6 +18,8 @@ from .capture import (
     finalize_capture_dir,
     init_capture_dir,
 )
+from .exporters import export_sensiml_csv
+from .exporters.sensiml_csv import ExportError
 from .framing import frame_encode
 from .records import (
     RECORD_TYPE_BY_NAME,
@@ -139,6 +141,49 @@ def cmd_set_mask(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_ml(args: argparse.Namespace) -> int:
+    """Export a finished capture as a SensiML-format CSV for MPLAB ML.
+
+    One row per fretboard ADC sample (~240 Hz); each row carries the five
+    raw 12-bit ADC values plus five binary labels (one per fret) drawn
+    from the most-recent cv_marvin_v1 detector record's pressed_mask.
+    """
+    try:
+        stats = export_sensiml_csv(args.capture, args.out, strict=args.strict)
+    except ExportError as e:
+        print(f"export-ml: {e}", file=sys.stderr)
+        return 1
+    print(
+        f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
+        f"({stats.n_detector_records} detector records, "
+        f"{stats.n_fretboard_records} fretboard records, "
+        f"{stats.n_skipped_unlabeled} skipped)",
+        file=sys.stderr,
+    )
+    # Loud failure modes: a structurally-valid CSV with zero usable labels is
+    # training-useless and easy to miss from a one-line summary. Surface as a
+    # warning the user can't ignore, and exit non-zero so scripts notice.
+    if stats.n_rows > 0 and stats.n_detector_records == 0:
+        print(
+            "WARNING: capture contains no DETECTOR records — every row's "
+            "label_* columns are all zeros. The CSV is unlabelled and not "
+            "useful for training. Re-record with both DETECTOR and "
+            "FRETBOARD_RAW enabled in the Types panel (or "
+            "--types DETECTOR,FRETBOARD_RAW for `marvin-perf record`).",
+            file=sys.stderr,
+        )
+        return 2
+    if stats.n_rows == 0:
+        print(
+            "WARNING: capture contains no FRETBOARD_RAW records — output "
+            "CSV has only the header row. Re-record with FRETBOARD_RAW "
+            "enabled.",
+            file=sys.stderr,
+        )
+        return 2
+    return 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         from .web.server import run as run_server
@@ -177,6 +222,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_set_mask.add_argument("--port", required=True)
     p_set_mask.add_argument("--types", required=True, help=_types_help())
     p_set_mask.set_defaults(func=cmd_set_mask)
+
+    p_export_ml = sub.add_parser(
+        "export-ml",
+        help="Export a capture as a SensiML-format CSV for MPLAB ML training.",
+    )
+    p_export_ml.add_argument("capture", help="Capture directory or .bin file")
+    p_export_ml.add_argument("--out", required=True, help="Output CSV path")
+    p_export_ml.add_argument(
+        "--strict",
+        action="store_true",
+        help="Drop fretboard rows that arrive before the first detector "
+             "record (default: emit them with all labels = 0).",
+    )
+    p_export_ml.set_defaults(func=cmd_export_ml)
 
     p_serve = sub.add_parser(
         "serve", help="Run the visual review server (requires viewer dep group)."

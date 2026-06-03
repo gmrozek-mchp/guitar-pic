@@ -198,6 +198,25 @@ static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
     }
 
     (void)xQueueSend(bus, &state, 0);
+
+    /* Mirror the same per-frame decision into the perf-log so offline tools
+     * (marvin-perf, export-ml) can join detector ground truth with sensor
+     * input. raw_value/confidence already scale 0..65535 to match the
+     * perf-log struct. masks are LSB-first per fret_t. Default-disabled at
+     * boot like the other high-rate types; host enables via SET_TYPE_MASK. */
+    uint16_t hold_dist[FRET_COUNT];
+    uint16_t edge_dist[FRET_COUNT];
+    uint8_t  pressed_mask = 0u;
+    uint8_t  edge_active_mask = 0u;
+    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+    {
+        hold_dist[i] = state.fret[i].raw_value;
+        edge_dist[i] = state.fret[i].confidence;
+        if (s_pressed[i])     { pressed_mask     |= (uint8_t)(1u << i); }
+        if (s_edge_active[i]) { edge_active_mask |= (uint8_t)(1u << i); }
+    }
+    PerfLog_EmitDetector(state.frame_epoch, hold_dist, edge_dist,
+                         pressed_mask, edge_active_mask);
 }
 
 /* ─── Calibration overlay ──────────────────────────────────────────────── */
