@@ -183,6 +183,7 @@ def build_arrays(
     *,
     stats=None,
     strum_dilate: int = 0,
+    label_lead: int = 0,
 ):
     """Materialise (X, Y, stats) for all captures, windowed per capture.
 
@@ -215,10 +216,11 @@ def build_arrays(
             if run_len < window:
                 continue
             for start, end, label_row in causal_window_indices(run_len, window):
-                s = run_start + start
-                e = run_start + end
-                xs.append(adc[s:e].T)                    # (5, window)
-                ys.append(lab[run_start + label_row])    # (6,)
+                lr = label_row + label_lead   # >0 = predict the command N samples ahead
+                if lr >= run_len:
+                    continue                  # no future label that far ahead in this run
+                xs.append(adc[run_start + start:run_start + end].T)   # (5, window)
+                ys.append(lab[run_start + lr])                        # (6,)
     if not xs:
         raise DataError(
             f"no windows produced — every capture shorter than window={window}?"

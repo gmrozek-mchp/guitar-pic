@@ -48,11 +48,12 @@ def cmd_lag(args) -> int:
 
 def cmd_train(args) -> int:
     if not args.overfit:
-        if not args.holdout:
-            print("train: need --holdout HELD.csv (or --overfit FILE.csv)", file=sys.stderr)
-            return 2
         if not args.data:
             print("train: need training CSV(s) (or --overfit FILE.csv)", file=sys.stderr)
+            return 2
+        if not args.holdout and not args.no_holdout:
+            print("train: need --holdout HELD.csv, --no-holdout (deploy model on all "
+                  "data), or --overfit FILE.csv", file=sys.stderr)
             return 2
     from .train import train
     train(args)
@@ -144,7 +145,13 @@ def build_parser() -> argparse.ArgumentParser:
     pt = sub.add_parser("train", help="Train the baseline StrumNet.")
     pt.add_argument("data", nargs="*", help="training CSVs (holdout excluded if listed)")
     pt.add_argument("--holdout", help="held-out CSV for validation")
+    pt.add_argument("--no-holdout", action="store_true",
+                    help="deploy model: train on ALL --data, no held-out song "
+                         "(eval is then on the training set — optimistic)")
     pt.add_argument("--overfit", help="diagnostic: train AND eval on this single CSV")
+    pt.add_argument("--label-lead", type=int, default=0,
+                    help="shift training labels earlier by N samples (lead "
+                         "compensation for on-device lag); eval uses true labels")
     pt.add_argument("--window", type=int, default=60)
     pt.add_argument("--channels", type=int, default=8)
     pt.add_argument("--kernel", type=int, default=5)

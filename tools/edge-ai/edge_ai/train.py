@@ -130,6 +130,14 @@ def train(args) -> None:
         eval_caps = [cap]
         print(f"OVERFIT mode: train==eval on {cap.name} "
               f"({len(cap)} rows, strum {cap.strum_fraction*100:.1f}%)")
+    elif getattr(args, "no_holdout", False):
+        train_caps = [load_capture(p) for p in args.data]
+        eval_caps = train_caps   # deploy model: use everything; eval = train (optimistic)
+        print(f"DEPLOY mode: train on all {len(train_caps)} captures, no holdout "
+              f"(eval = training set)")
+        for c in train_caps:
+            print(f"  {c.name}: {len(c)} rows, strum {c.strum_fraction*100:.1f}%, "
+                  f"{c.n_strum_events} events")
     else:
         holdout_path = Path(args.holdout)
         train_caps = [load_capture(p) for p in args.data if Path(p) != holdout_path]
@@ -139,11 +147,14 @@ def train(args) -> None:
             print(f"  {c.name}: {len(c)} rows, strum {c.strum_fraction*100:.1f}%, "
                   f"{c.n_strum_events} events")
 
+    lead = getattr(args, "label_lead", 0)
     stats = compute_norm_stats(train_caps)
-    X, Y, _ = build_arrays(train_caps, args.window, stats=stats, strum_dilate=args.strum_dilate)
+    X, Y, _ = build_arrays(train_caps, args.window, stats=stats,
+                           strum_dilate=args.strum_dilate, label_lead=lead)
     pos_w = args.strum_weight if args.strum_weight else strum_pos_weight(train_caps)
     print(f"windows: {X.shape[0]}, input {X.shape[1:]} | strum pos_weight={pos_w:.1f}"
-          f"{' | strum_dilate=' + str(args.strum_dilate) if args.strum_dilate else ''}")
+          f"{' | strum_dilate=' + str(args.strum_dilate) if args.strum_dilate else ''}"
+          f"{' | label_lead=' + str(lead) if lead else ''}")
 
     model = StrumNet(channels=args.channels, kernel=args.kernel, dilations=args.dilations)
     print(f"dilations={args.dilations} | ~{count_macs(model, args.window)} MACs/inference "
@@ -180,6 +191,7 @@ def train(args) -> None:
                     "channels": args.channels,
                     "kernel": args.kernel,
                     "dilations": list(args.dilations),
+                    "label_lead": lead,
                     "norm_mean": stats[0].tolist(),
                     "norm_std": stats[1].tolist()}, args.out)
         print(f"saved {args.out}")
