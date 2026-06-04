@@ -87,6 +87,49 @@ def cmd_eval(args) -> int:
     return 0
 
 
+def cmd_quantize(args) -> int:
+    import numpy as np
+    import torch
+
+    from .data import load_capture
+    from .metrics import LABEL_NAMES
+    from .model import StrumNet
+    from .quantize import quantize, evaluate_int8, emit_c_header
+    from .train import evaluate
+
+    caps = [load_capture(p) for p in args.calib]
+    qp = quantize(args.model, caps, strum_thresh=args.strum_thresh,
+                  strum_hold=args.strum_hold, strum_refractory=args.strum_refractory)
+
+    # float reference (same captures, same knobs) for the int8-vs-float delta
+    ckpt = torch.load(args.model, map_location="cpu")
+    model = StrumNet(channels=ckpt["channels"], kernel=ckpt["kernel"],
+                     dilations=tuple(ckpt.get("dilations", (1, 4))))
+    model.load_state_dict(ckpt["state_dict"])
+    stats = (np.asarray(ckpt["norm_mean"], dtype=np.float32),
+             np.asarray(ckpt["norm_std"], dtype=np.float32))
+    common = dict(tol_samples=args.tol, hold=args.strum_hold,
+                  refractory=args.strum_refractory)
+    flt = evaluate(model, caps, ckpt["window"], stats, strum_thresh=args.strum_thresh, **common)
+    q8 = evaluate_int8(qp, caps, **common)
+
+    print(f"calib: {len(caps)} capture(s); strum_thresh={args.strum_thresh}")
+    print("per-bit accuracy (float -> int8, Δ):")
+    for n, f, q in zip(LABEL_NAMES, flt.per_bit_acc, q8.per_bit_acc):
+        print(f"  {n:7s} {f:.3f} -> {q:.3f}  ({q - f:+.3f})")
+    print(f"strum float: {flt.strum.summary()}")
+    print(f"strum int8 : {q8.strum.summary()}")
+    if flt.strum_post is not None:
+        print(f"mono  float: {flt.strum_post.summary()}")
+        print(f"mono  int8 : {q8.strum_post.summary()}")
+
+    if args.out:
+        with open(args.out, "w") as fh:
+            fh.write(emit_c_header(qp, name=args.name))
+        print(f"wrote {args.out} (model_{args.name})")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="edge-ai", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -138,6 +181,21 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("--strum-thresh", type=float, default=0.5,
                     help="decision threshold for the strum bit (raise to trade recall for precision)")
     pe.set_defaults(func=cmd_eval)
+
+    pq = sub.add_parser("quantize", help="int8 post-training quantise + emit model_weights.h.")
+    pq.add_argument("calib", nargs="+", help="calibration CSV(s) (typically the training corpus)")
+    pq.add_argument("--model", required=True, help="float checkpoint .pt")
+    pq.add_argument("--out", help="output C header path (e.g. firmware/fretboard/model_weights.h)")
+    pq.add_argument("--name", default="model",
+                    help="model name -> model_<name> / MODEL_DEFAULT in the header "
+                         "(e.g. 'hard', 'expert' for per-difficulty models)")
+    pq.add_argument("--tol", type=int, default=5)
+    pq.add_argument("--strum-hold", type=int, default=0,
+                    help="monostable hold ticks for the int8-vs-float comparison (0=off)")
+    pq.add_argument("--strum-refractory", type=int, default=4)
+    pq.add_argument("--strum-thresh", type=float, default=0.5,
+                    help="strum decision threshold; folded into the integer output threshold")
+    pq.set_defaults(func=cmd_quantize)
     return p
 
 
