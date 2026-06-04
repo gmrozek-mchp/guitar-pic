@@ -6,27 +6,9 @@
 #include "fret_scan.h"
 #include "cmd_receive.h"
 #include "data_stream.h"
+#include "fretboard_config.h"
 #include "model_infer.h"
 
-/* Build-time operating mode.
- *   MARVIN_DRIVEN — apply the command byte streamed from marvin over SERCOM1.
- *   MODEL_DRIVEN  — run the on-device model and drive the outputs from its
- *                   output (standalone, marvin disconnected). */
-#define MARVIN_DRIVEN 0
-#define MODEL_DRIVEN  1
-#ifndef FRETBOARD_MODE
-#define FRETBOARD_MODE MODEL_DRIVEN
-#endif
-
-/* Within MODEL_DRIVEN, choose the inference implementation:
- *   0 = recompute (model_infer.c): re-runs the receptive field each tick; works
- *       with any trained window, but ~93 Hz at 16ch (command lags ~13 ms).
- *   1 = streaming (model_infer_stream.c): caches per-layer columns, ~1 col/layer
- *       per sample, clears 240 Hz. REQUIRES a model trained at window >= 85 (the
- *       receptive field) — the streaming module _Static_asserts it. */
-#ifndef MODEL_INFER_STREAMING
-#define MODEL_INFER_STREAMING 0
-#endif
 #if FRETBOARD_MODE == MODEL_DRIVEN && MODEL_INFER_STREAMING
 #include "model_infer_stream.h"
 #define ADC_Q_LEN 16   /* ISR->main sample queue; streaming must consume every sample */

@@ -1,3 +1,8 @@
+/* Streaming inference. Compiled only when streaming is ON, so when recompute is
+ * selected this translation unit is empty and allocates no static buffers. */
+#include "fretboard_config.h"
+#if MODEL_INFER_STREAMING
+
 #include "model_infer_stream.h"
 #include "model_weights.h"
 
@@ -70,6 +75,18 @@ static void conv_col(const int8_t *w, const int32_t *b, int cin, int dil,
                      int32_t mult, int shift, const int8_t *ring, int ring_len,
                      int stride, int head, int8_t out[MODEL_CHANNELS])
 {
+    /* Tap ring index depends only on k (not the channels) — hoist it out of the
+     * hot loop so the (non-power-of-two) modulo runs K times per column, not
+     * C*Cin*K times (the M0+ has no hardware divide). -1 = before stream start. */
+    int tap[MODEL_KERNEL];
+    for (int k = 0; k < MODEL_KERNEL; k++)
+    {
+        int off = (MODEL_KERNEL - 1 - k) * dil;
+        tap[k] = ((uint32_t)off >= s_count)
+                     ? -1
+                     : ((head - off) % ring_len + ring_len) % ring_len;
+    }
+
     for (int o = 0; o < MODEL_CHANNELS; o++)
     {
         int32_t acc = b[o];
@@ -78,10 +95,8 @@ static void conv_col(const int8_t *w, const int32_t *b, int cin, int dil,
             const int8_t *wo = &w[(o * cin + i) * MODEL_KERNEL];
             for (int k = 0; k < MODEL_KERNEL; k++)
             {
-                int off = (MODEL_KERNEL - 1 - k) * dil;
-                if ((uint32_t)off >= s_count) { continue; }
-                int idx = ((head - off) % ring_len + ring_len) % ring_len;
-                acc += (int32_t)wo[k] * (int32_t)ring[idx * stride + i];
+                if (tap[k] < 0) { continue; }
+                acc += (int32_t)wo[k] * (int32_t)ring[tap[k] * stride + i];
             }
         }
         if (acc < 0) { acc = 0; }   /* ReLU */
@@ -162,3 +177,5 @@ uint8_t model_infer_stream_step(const uint16_t adc[5])
 
     return mask;
 }
+
+#endif /* MODEL_INFER_STREAMING */

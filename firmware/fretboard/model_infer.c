@@ -1,3 +1,9 @@
+/* Recompute inference. Compiled only when streaming is OFF, so when streaming is
+ * selected this translation unit is empty and allocates no static buffers (the
+ * 16ch window-85 s_act alone is ~4 KB) — both modules can coexist in the project. */
+#include "fretboard_config.h"
+#if !MODEL_INFER_STREAMING
+
 #include "model_infer.h"
 #include "model_weights.h"
 
@@ -189,3 +195,5 @@ uint8_t model_infer_run(void)
 
     return mask;
 }
+
+#endif /* !MODEL_INFER_STREAMING */

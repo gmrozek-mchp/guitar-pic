@@ -74,11 +74,12 @@ def test_c_matches_int8_sim(tmp_path):
     # shadow it with the committed firmware header).
     shutil.copy(FW_DIR / "model_infer.c", tmp_path / "model_infer.c")
     shutil.copy(FW_DIR / "model_infer.h", tmp_path / "model_infer.h")
+    shutil.copy(FW_DIR / "fretboard_config.h", tmp_path / "fretboard_config.h")
     (tmp_path / "model_weights.h").write_text(emit_c_header(qp))
 
     exe = tmp_path / "infer_host"
     subprocess.run(
-        [CC, "-O2", "-std=c11", "-I", str(tmp_path),
+        [CC, "-O2", "-std=c11", "-DMODEL_INFER_STREAMING=0", "-I", str(tmp_path),
          str(HARNESS), str(tmp_path / "model_infer.c"), "-o", str(exe)],
         check=True,
     )

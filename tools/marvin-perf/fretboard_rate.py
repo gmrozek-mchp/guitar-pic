@@ -120,7 +120,9 @@ def main() -> None:
                 infer_hz = ((w_last_infer - w_first_infer) & 0xFFFFFFFF) / dt
                 drop = span - (w_recv - 1)
                 flag = "" if tick_hz >= 238 else " tick<240"
-                iflag = "" if infer_hz >= 238 else "  <-- INFER < 240 Hz"
+                # streaming locks infer to the sample rate; only flag a real shortfall
+                # (inference falling behind sampling -> command lag growing)
+                iflag = "" if infer_hz >= tick_hz - 5 else "  <-- INFER LAGGING SAMPLES"
                 print(f"tick={tick_hz:6.1f} Hz | infer={infer_hz:6.1f} Hz | "
                       f"drop={drop:4d} | active={100*w_active/max(1,w_recv):3.0f}% | "
                       f"strums={w_strums/dt:4.1f}/s{flag}{iflag}")
