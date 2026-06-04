@@ -114,3 +114,98 @@ def strum_event_timing(
         recall=recall,
         errors_ms=errors_ms,
     )
+
+
+def _runs_of_ones(seq: list[int]) -> list[tuple[int, int]]:
+    """Maximal [start, end) runs where seq == 1."""
+    runs = []
+    i, n = 0, len(seq)
+    while i < n:
+        if seq[i]:
+            j = i
+            while j < n and seq[j]:
+                j += 1
+            runs.append((i, j))
+            i = j
+        else:
+            i += 1
+    return runs
+
+
+@dataclass(frozen=True)
+class PulseStats:
+    """Shape of a predicted strum stream — what matters for in-game registration.
+
+    The rising edge is what the game catches; duration matters only insofar as
+    the pulse is long enough to register and free of mid-pulse dropouts. So we
+    report pulse count, how many are too short to register, and how many brief
+    0-gaps sit between pulses (glitches that would register as a double-strum).
+    """
+
+    n_pulses: int
+    n_glitches: int
+    n_too_short: int
+    durations_ticks: list[int]
+
+    def median_ms(self) -> float:
+        if not self.durations_ticks:
+            return 0.0
+        d = sorted(self.durations_ticks)
+        return d[len(d) // 2] / SAMPLE_RATE_HZ * 1000.0
+
+    def summary(self) -> str:
+        return (
+            f"pulses={self.n_pulses} median={self.median_ms():.1f}ms "
+            f"glitches={self.n_glitches} too_short={self.n_too_short}"
+        )
+
+
+def strum_pulse_stats(
+    seq: list[int],
+    *,
+    min_ticks: int = 6,
+    glitch_max_ticks: int = 2,
+) -> PulseStats:
+    """Describe the pulse shape of a binary strum stream.
+
+    `min_ticks`: a pulse shorter than this may not register in-game (marvin
+    asserts ~6 ticks / 25 ms). `glitch_max_ticks`: a 0-gap this short between
+    two pulses is treated as a mid-strum dropout (one strum split in two).
+    """
+    runs = _runs_of_ones(seq)
+    durations = [e - s for s, e in runs]
+    n_too_short = sum(1 for d in durations if d < min_ticks)
+    n_glitches = sum(
+        1 for k in range(1, len(runs))
+        if (runs[k][0] - runs[k - 1][1]) <= glitch_max_ticks
+    )
+    return PulseStats(
+        n_pulses=len(runs),
+        n_glitches=n_glitches,
+        n_too_short=n_too_short,
+        durations_ticks=durations,
+    )
+
+
+def monostable(seq: list[int], *, hold: int, refractory: int) -> list[int]:
+    """Deploy-time strum post-processor: rising-edge-triggered one-shot.
+
+    Triggers only on a 0→1 transition (one strum = one rising edge; you can't
+    strum twice without releasing). On a trigger, force the output high for
+    `hold` ticks, then block new triggers for `refractory` more ticks. So a
+    single sustained input assertion yields exactly one pulse (no retriggering
+    inside it), mid-pulse glitches are absorbed, and two real strums must be
+    ≥ hold+refractory apart. Cheap enough for the MCU runtime (a small counter).
+    """
+    out = [0] * len(seq)
+    hold_until = 0     # output forced high while i < hold_until
+    block_until = 0    # no new trigger while i < block_until
+    prev = 0
+    for i, v in enumerate(seq):
+        if v == 1 and prev == 0 and i >= block_until:
+            hold_until = i + hold
+            block_until = i + hold + refractory
+        if i < hold_until:
+            out[i] = 1
+        prev = v
+    return out

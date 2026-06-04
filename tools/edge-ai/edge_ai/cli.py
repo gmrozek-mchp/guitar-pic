@@ -64,10 +64,14 @@ def cmd_eval(args) -> int:
     stats = (np.asarray(ckpt["norm_mean"], dtype=np.float32),
              np.asarray(ckpt["norm_std"], dtype=np.float32))
     caps = [load_capture(p) for p in args.captures]
-    rep = evaluate(model, caps, window, stats, tol_samples=args.tol)
+    rep = evaluate(model, caps, window, stats, tol_samples=args.tol,
+                   hold=args.strum_hold, refractory=args.strum_refractory,
+                   strum_thresh=args.strum_thresh)
     print(" ".join(f"{n}={a:.3f}" for n, a in zip(LABEL_NAMES, rep.per_bit_acc)))
     print("f1: " + " ".join(f"{n}={a:.3f}" for n, a in zip(LABEL_NAMES, rep.per_bit_f1)))
-    print(rep.strum.summary())
+    print(f"raw  {rep.strum.summary()} | {rep.pulse.summary()}")
+    if rep.strum_post is not None:
+        print(f"mono {rep.strum_post.summary()} | {rep.pulse_post.summary()}")
     return 0
 
 
@@ -97,6 +101,12 @@ def build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--strum-weight", type=float, default=0.0,
                     help="override strum BCE pos_weight (0 = auto inverse-frequency)")
     pt.add_argument("--tol", type=int, default=5, help="strum match tolerance (samples)")
+    pt.add_argument("--strum-hold", type=int, default=0,
+                    help="monostable hold ticks for the strum post-processor (0=off)")
+    pt.add_argument("--strum-refractory", type=int, default=4,
+                    help="monostable refractory ticks after a strum")
+    pt.add_argument("--strum-thresh", type=float, default=0.5,
+                    help="decision threshold for the strum bit (raise to trade recall for precision)")
     pt.add_argument("--seed", type=int, default=0)
     pt.add_argument("--out", help="checkpoint path (.pt)")
     pt.set_defaults(func=cmd_train)
@@ -105,6 +115,12 @@ def build_parser() -> argparse.ArgumentParser:
     pe.add_argument("captures", nargs="+", help="CSV(s) to evaluate")
     pe.add_argument("--model", required=True, help="checkpoint .pt")
     pe.add_argument("--tol", type=int, default=5)
+    pe.add_argument("--strum-hold", type=int, default=0,
+                    help="monostable hold ticks for the strum post-processor (0=off)")
+    pe.add_argument("--strum-refractory", type=int, default=4,
+                    help="monostable refractory ticks after a strum")
+    pe.add_argument("--strum-thresh", type=float, default=0.5,
+                    help="decision threshold for the strum bit (raise to trade recall for precision)")
     pe.set_defaults(func=cmd_eval)
     return p
 

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from edge_ai.data import Capture
 from edge_ai.lag import measure_lag
-from edge_ai.metrics import strum_event_timing
+from edge_ai.metrics import monostable, strum_event_timing, strum_pulse_stats
 
 
 def _synthetic_capture(n: int, lag: int, *, period: int = 80, dip_width: int = 4) -> Capture:
@@ -73,3 +73,41 @@ def test_strum_event_timing_miss_outside_tol():
     st = strum_event_timing(pred, true, tol_samples=5)
     assert st.matched == 0
     assert st.recall == 0.0
+
+
+def test_monostable_fixed_hold_and_refractory():
+    # a 1-tick blip becomes a `hold`-long pulse
+    seq = [0, 1, 0, 0, 0, 0, 0, 0, 0, 0]
+    out = monostable(seq, hold=4, refractory=2)
+    assert out == [0, 1, 1, 1, 1, 0, 0, 0, 0, 0]
+
+
+def test_monostable_absorbs_glitch():
+    # a 1-0-1 glitch within the hold window collapses to one clean pulse
+    seq = [1, 0, 1, 1, 0, 0, 0, 0]
+    out = monostable(seq, hold=5, refractory=2)
+    assert out == [1, 1, 1, 1, 1, 0, 0, 0]  # single 5-tick pulse, glitch gone
+
+
+def test_monostable_one_pulse_per_rising_edge():
+    # a single sustained assertion is ONE strum -> one pulse, no retriggering
+    seq = [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    out = monostable(seq, hold=3, refractory=3)
+    assert out == [1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+
+
+def test_monostable_retrigger_needs_release_then_edge():
+    # second strum requires a release (0) and a fresh rising edge past refractory
+    seq = [1, 0, 0, 0, 0, 1, 0, 0]   # rising edges at 0 and 5
+    out = monostable(seq, hold=2, refractory=2)
+    # trigger@0: hold 0,1; block until 4. rising@5 (>=4): hold 5,6
+    assert out == [1, 1, 0, 0, 0, 1, 1, 0]
+
+
+def test_strum_pulse_stats_glitch_and_short():
+    # two pulses: a 1-tick one (too short) then a glitchy pair (gap of 1)
+    seq = [1, 0, 0, 0, 1, 1, 1, 0, 1, 1, 1]
+    ps = strum_pulse_stats(seq, min_ticks=3, glitch_max_ticks=2)
+    assert ps.n_pulses == 3
+    assert ps.n_too_short == 1          # the leading 1-tick pulse
+    assert ps.n_glitches == 1           # the 1-tick gap between the last two pulses
