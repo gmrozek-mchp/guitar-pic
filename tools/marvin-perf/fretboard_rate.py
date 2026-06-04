@@ -83,7 +83,7 @@ def main() -> None:
     tot_recv = tot_drop = tot_span = tot_strums = 0
     w_first_seq = w_last_seq = None
     w_first_infer = w_last_infer = None
-    w_recv = w_active = w_strums = 0
+    w_recv = w_active = w_strums = w_drop = 0
     w_start = time.monotonic()
     run_start = w_start
     try:
@@ -93,8 +93,9 @@ def main() -> None:
                 step = (seq - last_seq) & 0xFFFFFFFF
                 if 1 <= step < 1000:          # ignore wrap/garbage
                     tot_span += step
-                    if step > 1:
+                    if step > 1:               # a real gap = dropped frame(s)
                         tot_drop += step - 1
+                        w_drop += step - 1
             last_seq = seq
             tot_recv += 1
 
@@ -118,7 +119,7 @@ def main() -> None:
                 span = (w_last_seq - w_first_seq) & 0xFFFFFFFF
                 tick_hz = span / dt
                 infer_hz = ((w_last_infer - w_first_infer) & 0xFFFFFFFF) / dt
-                drop = span - (w_recv - 1)
+                drop = w_drop   # real sequence gaps in this window (0 = none)
                 flag = "" if tick_hz >= 238 else " tick<240"
                 # streaming locks infer to the sample rate; only flag a real shortfall
                 # (inference falling behind sampling -> command lag growing)
@@ -126,8 +127,8 @@ def main() -> None:
                 print(f"tick={tick_hz:6.1f} Hz | infer={infer_hz:6.1f} Hz | "
                       f"drop={drop:4d} | active={100*w_active/max(1,w_recv):3.0f}% | "
                       f"strums={w_strums/dt:4.1f}/s{flag}{iflag}")
-                w_start, w_first_seq, w_first_infer, w_recv, w_active, w_strums = \
-                    now, seq, infer, 0, 0, 0
+                w_start, w_first_seq, w_first_infer, w_recv, w_active, w_strums, w_drop = \
+                    now, seq, infer, 0, 0, 0, 0
     except KeyboardInterrupt:
         dt = time.monotonic() - run_start
         print(f"\nsummary: {tot_recv} frames in {dt:.1f}s | "
