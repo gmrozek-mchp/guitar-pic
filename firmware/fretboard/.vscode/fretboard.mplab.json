@@ -53,6 +53,8 @@
                 "cmd_receive.h",
                 "model_infer.c",
                 "model_infer.h",
+                "model_infer_stream.c",
+                "model_infer_stream.h",
                 "model_weights.h",
                 "fretboard-mcc/src/config/default/definitions.h",
                 "fretboard-mcc/src/config/default/device_cache.h",
