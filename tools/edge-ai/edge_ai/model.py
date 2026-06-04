@@ -1,13 +1,14 @@
 """Baseline causal 1D-CNN: 5 ADC channels over a window → 6 logits.
 
-Two dilated causal conv layers, then a linear head on the last timestep.
-Output is 6 logits (5 frets + collapsed strum) for independent weighted-BCE.
-int8 quantisation is a Phase-3 concern; this trains in float32.
+Dilated causal conv layers (one per dilation factor), then a linear head on the
+last timestep. Output is 6 logits (5 frets + collapsed strum) for independent
+weighted-BCE. int8 quantisation is a Phase-3 concern; this trains in float32.
 
-NOTE: with dilations (1, 4) and kernel 5 the receptive field is only 21 samples
-(~88 ms) — smaller than `window`, so the head sees just the last 21 inputs.
-See docs/model.md §4; widening the RF (more dilations / a pooling head) is the
-likely next change. Imports torch — only loaded when training/eval run.
+The receptive field must cover the ~48-sample photo->strum lag, or the head
+can't hold a fret to the strike line: dilations (1, 4, 16) kernel 5 give RF 85
+(~354 ms) and overfit frets to ~0.99, whereas (1, 4) [RF 21] caps at ~0.86 on
+actuator-fb labels. See docs/model.md §4. Imports torch — only loaded when
+training/eval run.
 """
 
 from __future__ import annotations
@@ -37,7 +38,7 @@ class StrumNet(nn.Module):
         *,
         channels: int = 8,
         kernel: int = 5,
-        dilations: tuple[int, ...] = (1, 4),
+        dilations: tuple[int, ...] = (1, 4, 16),
         n_in: int = FRET_COUNT,
         n_out: int = N_LABELS,
     ):

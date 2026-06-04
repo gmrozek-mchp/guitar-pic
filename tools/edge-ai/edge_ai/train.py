@@ -145,8 +145,9 @@ def train(args) -> None:
     print(f"windows: {X.shape[0]}, input {X.shape[1:]} | strum pos_weight={pos_w:.1f}"
           f"{' | strum_dilate=' + str(args.strum_dilate) if args.strum_dilate else ''}")
 
-    model = StrumNet(channels=args.channels, kernel=args.kernel)
-    print(f"~{count_macs(model, args.window)} MACs/inference (budget ≈100k @ 24MHz)")
+    model = StrumNet(channels=args.channels, kernel=args.kernel, dilations=args.dilations)
+    print(f"dilations={args.dilations} | ~{count_macs(model, args.window)} MACs/inference "
+          f"(budget ≈100k @ 24MHz)")
 
     pos_weight = torch.tensor([1.0] * (N_LABELS - 1) + [pos_w], dtype=torch.float32)
     loss_fn = torch.nn.BCEWithLogitsLoss(pos_weight=pos_weight)
@@ -178,6 +179,7 @@ def train(args) -> None:
                     "window": args.window,
                     "channels": args.channels,
                     "kernel": args.kernel,
+                    "dilations": list(args.dilations),
                     "norm_mean": stats[0].tolist(),
                     "norm_std": stats[1].tolist()}, args.out)
         print(f"saved {args.out}")

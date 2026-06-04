@@ -16,6 +16,17 @@ import argparse
 import sys
 
 
+def _parse_dilations(s: str) -> tuple[int, ...]:
+    """Parse a comma-separated dilation list, e.g. '1,4,16' -> (1, 4, 16)."""
+    try:
+        vals = tuple(int(x) for x in s.split(","))
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"dilations must be comma-separated ints, got {s!r}")
+    if not vals or any(v < 1 for v in vals):
+        raise argparse.ArgumentTypeError("dilations must be one or more positive ints")
+    return vals
+
+
 def cmd_lag(args) -> int:
     from .data import load_capture
     from .lag import measure_lag
@@ -58,7 +69,8 @@ def cmd_eval(args) -> int:
     import numpy as np
 
     ckpt = torch.load(args.model, map_location="cpu")
-    model = StrumNet(channels=ckpt["channels"], kernel=ckpt["kernel"])
+    model = StrumNet(channels=ckpt["channels"], kernel=ckpt["kernel"],
+                     dilations=tuple(ckpt.get("dilations", (1, 4))))
     model.load_state_dict(ckpt["state_dict"])
     window = ckpt["window"]
     stats = (np.asarray(ckpt["norm_mean"], dtype=np.float32),
@@ -93,6 +105,10 @@ def build_parser() -> argparse.ArgumentParser:
     pt.add_argument("--window", type=int, default=60)
     pt.add_argument("--channels", type=int, default=8)
     pt.add_argument("--kernel", type=int, default=5)
+    pt.add_argument("--dilations", type=_parse_dilations, default=(1, 4, 16),
+                    help="comma-separated causal-conv dilation factors, one conv layer "
+                         "each; default '1,4,16' (RF 85) covers the photo->strum lag. "
+                         "'1,4' (RF 21) is too short for actuator-fb labels")
     pt.add_argument("--epochs", type=int, default=30)
     pt.add_argument("--batch", type=int, default=256)
     pt.add_argument("--lr", type=float, default=1e-3)

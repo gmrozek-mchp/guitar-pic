@@ -2,7 +2,7 @@
 
 What the model *is*, layer by layer, with the numbers that matter. Code: [`edge_ai/model.py`](../edge_ai/model.py). For the data it consumes see [`training.md`](training.md); for why we chose a CNN over MPLAB ML see the [journal](journal.md) decision log.
 
-> **TL;DR.** A tiny causal 1D-CNN: 5 ADC channels → 2 dilated conv layers → a linear head on the **last timestep** → 6 sigmoids (5 frets + 1 strum). ~590 params at the default width. Two facts dominate everything: its **receptive field is only 21 samples (~88 ms)**, and the **deploy cost is far below what `count_macs` prints**.
+> **TL;DR.** A tiny causal 1D-CNN: 5 ADC channels → 3 dilated conv layers → a linear head on the **last timestep** → 6 sigmoids (5 frets + 1 strum). Two facts dominate everything: the **receptive field must cover the ~48-sample photo→strum lag** — the default is now `dilations=(1,4,16)` → **RF 85 (~354 ms)**, after the A/B below showed the old `(1,4)` RF-21 default capped `actuator-fb` frets at ~0.86 — and the **deploy cost is far below what `count_macs` prints**.
 
 ---
 
@@ -47,7 +47,7 @@ What the model *is*, layer by layer, with the numbers that matter. Code: [`edge_
                       clean strum pulse → wire byte bit 5
 ```
 
-Default `StrumNet(channels=8, kernel=5, dilations=(1,4))`:
+Default `StrumNet(channels=8, kernel=5, dilations=(1,4,16))`:
 
 | Layer | Op | Out shape | Params |
 |---|---|---|---|
@@ -56,11 +56,13 @@ Default `StrumNet(channels=8, kernel=5, dilations=(1,4))`:
 | ReLU | — | (8, W) | — |
 | `CausalConv1d` 2 | Conv1d(8→8, k=5, **d=4**) + left-pad 16 | (8, W) | 8·8·5 + 8 = **328** |
 | ReLU | — | (8, W) | — |
+| `CausalConv1d` 3 | Conv1d(8→8, k=5, **d=16**) + left-pad 64 | (8, W) | 8·8·5 + 8 = **328** |
+| ReLU | — | (8, W) | — |
 | take last timestep | `h[:, :, -1]` | (8,) | — |
 | `head` | Linear(8→6) | (6,) | 8·6 + 6 = **54** |
-| | | **total** | **590** |
+| | | **total** | **918** |
 
-At `channels=64` (the diagnostic runs) it's **~22.6 k params** — RF and depth are unchanged, only width.
+The old 2-layer `(1,4)` default was 590 params (RF 21); adding the d=16 layer is +328 params for RF 85. At `channels=64` (the diagnostic runs) it's larger again — only width changes there, not depth.
 
 ### Causal convolution
 [`CausalConv1d`](../edge_ai/model.py) left-pads the input by `(kernel-1)·dilation` and uses a normal `Conv1d`, so `output[t]` depends only on inputs `≤ t` — no future leakage. That's what lets us train on whole windows and deploy as a streaming "predict-now" model.
@@ -90,7 +92,18 @@ So the prediction at "now" depends **only on the last 21 ADC samples**, regardle
 2. **RF (21) < the photo→strum lag (≈48 samples / 200 ms on hard).** The causal photo dip that *causes* a strum sits ~48 samples back — **outside the receptive field.** The model can't see the dip directly. It works on hard mode only because slow scrolling makes each note's sensor occlusion *wide* enough that its tail reaches into the last 21 samples. Faster difficulties → narrower occlusion → less of it inside the RF → harder. This is a second, independent reason Expert was worse.
 3. **The detector-fb fret result was flattered by timing.** detector-`pressed` (y=311) sits ~coincident with the photo dip (~5 samples apart), *inside* the RF — so frets hit 0.99 easily. **But `actuator-fb` frets are at strike-line timing (~48 samples after the dip), outside the RF.** Expect frets on the correctly-timed line-263 dataset to be **harder than the detfb 0.99**, limited by the same RF wall as strum — not because the structure is wrong, but because the network can't reach back to the cue.
 
-**Fix direction (not yet done):** enlarge the RF to cover the lag by adding a dilated layer — `dilations=(1, 4, 16)` → RF = 1 + 4·(1+4+16) = **85 samples (~354 ms)** — while **keeping the last-timestep head**. (A temporal-pooling head would also use the whole window, but for a precise predict-*now* task — strum onset especially — pooling blurs *when*; widening the RF with dilations is the better fix.) This is the most likely next architecture change once we're on the consistent dataset.
+**Fix (done, confirmed 2026-06-04 — now the default):** enlarge the RF to cover the lag by adding a dilated layer — `dilations=(1, 4, 16)` → RF = 1 + 4·(1+4+16) = **85 samples (~354 ms)** — while **keeping the last-timestep head**. (A temporal-pooling head would also use the whole window, but for a precise predict-*now* task — strum onset especially — pooling blurs *when*; widening the RF with dilations is the better fix.)
+
+Overfit A/B on the line-263 `actuator-fb` data (slowride-hard, train==eval) confirmed prediction #3 and the fix in one shot:
+
+| | RF 21 `(1,4)` | RF 85 `(1,4,16)` |
+|---|---|---|
+| frets (G/R/Y/B/O) | 0.86 / 0.84 / 0.89 / 0.91 / 0.94 | **0.97 / 0.97 / 0.98 / 0.98 / 0.99** |
+| loss (plateau) | 0.309 | **0.080** |
+| strum recall / precision | 0.84 / 0.53 | **0.97 / 0.82** |
+| strum p95 | 20.8 ms | 16.7 ms |
+
+RF 21 can't reach back to the cue → caps at ~0.86; RF 85 recovers to ~0.99 at 50 k MACs (under budget). `(1,4,16)` is now the default in `model.py`/`cli.py`.
 
 ## 5. Compute cost — `count_macs` is a loose upper bound
 
@@ -126,8 +139,8 @@ So against the ~100 k MAC/tick budget at 24 MHz, **even the 64-channel model fit
 
 ## 8. Known limitations / open design questions
 
-- **Receptive field too small for the lag** (§4) — the headline issue. Almost certainly needs more dilation/depth or a pooling head before the correctly-timed `actuator-fb` frets and the strum can hit the gate robustly.
-- **Last-timestep head** — correct for a predict-*now* model; fine as-is once the RF covers the lag. (Pooling over time would use more of the window but blur onset timing — not the right fix here.)
+- **~~Receptive field too small for the lag~~ (resolved §4)** — was the headline issue; the `(1,4,16)` RF-85 default now covers the lag (overfit frets ~0.99). Held-out generalisation across songs is the remaining check.
+- **Last-timestep head** — correct for a predict-*now* model; fine as-is now the RF covers the lag. (Pooling over time would use more of the window but blur onset timing — not the right fix here.)
 - **Per-bit independence** — chords occupy a tiny subset of 2⁶; a chord-shape head or the two-head event detector ([review.md](review.md)) is the fallback if independence caps accuracy.
 - **Capacity vs width** — 8 ch underfits strum recall, 64 ch fits well and (per §5) likely deploys fine; the right width is an open sweep, no longer obviously budget-bound.
 - **No quantisation-aware training yet** — int8 effects on the tiny conv are unmeasured.
