@@ -1,11 +1,13 @@
 """Baseline causal 1D-CNN: 5 ADC channels over a window → 6 logits.
 
-Two dilated causal conv layers (so the receptive field spans the window with
-few parameters), then a linear head on the last timestep. Output is 6 logits
-(5 frets + collapsed strum) for independent weighted-BCE. int8 quantisation is
-a Phase-3 concern; this trains in float32.
+Two dilated causal conv layers, then a linear head on the last timestep.
+Output is 6 logits (5 frets + collapsed strum) for independent weighted-BCE.
+int8 quantisation is a Phase-3 concern; this trains in float32.
 
-Imports torch — only loaded when training/eval actually run.
+NOTE: with dilations (1, 4) and kernel 5 the receptive field is only 21 samples
+(~88 ms) — smaller than `window`, so the head sees just the last 21 inputs.
+See docs/model.md §4; widening the RF (more dilations / a pooling head) is the
+likely next change. Imports torch — only loaded when training/eval run.
 """
 
 from __future__ import annotations

@@ -57,6 +57,7 @@ The key insight that makes this work: **distilling against marvin's commands dis
 |---|---|
 | [architecture.md](architecture.md) | Training-time and inference-time data flow; cadence; sanity-check that the shape addresses §2 |
 | [training.md](training.md) | Exporter changes, CSV schema, capture protocol, model architecture |
+| [model.md](model.md) | The actual network (StrumNet) layer by layer — receptive field, params, deploy MAC cost, limitations |
 | [runtime.md](runtime.md) | Eventual on-device deployment integration — module shape, callback wiring, mode toggle |
 | [rollout.md](rollout.md) | Phased plan with explicit offline/hardware split, plus per-phase verification |
 | [review.md](review.md) | Risks, open questions surfaced for reviewer pushback, and alternatives considered |
