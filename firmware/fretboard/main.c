@@ -18,6 +18,20 @@
 #define FRETBOARD_MODE MODEL_DRIVEN
 #endif
 
+/* Within MODEL_DRIVEN, choose the inference implementation:
+ *   0 = recompute (model_infer.c): re-runs the receptive field each tick; works
+ *       with any trained window, but ~93 Hz at 16ch (command lags ~13 ms).
+ *   1 = streaming (model_infer_stream.c): caches per-layer columns, ~1 col/layer
+ *       per sample, clears 240 Hz. REQUIRES a model trained at window >= 85 (the
+ *       receptive field) — the streaming module _Static_asserts it. */
+#ifndef MODEL_INFER_STREAMING
+#define MODEL_INFER_STREAMING 0
+#endif
+#if FRETBOARD_MODE == MODEL_DRIVEN && MODEL_INFER_STREAMING
+#include "model_infer_stream.h"
+#define ADC_Q_LEN 16   /* ISR->main sample queue; streaming must consume every sample */
+#endif
+
 #if FRETBOARD_MODE == MODEL_DRIVEN
 /* SW0 (PB03) momentary button toggles model control on each press; LED0 (PB02)
  * lit while enabled. Boots disabled: outputs released, LED off, until pressed.
@@ -48,9 +62,23 @@
  * the ISR so it can't starve the 240 Hz sampling or the serial TX interrupt. */
 static volatile uint8_t s_latest_cmd;
 
+/* Total inferences run in the main loop; streamed each tick so the host can
+ * measure the real inference rate (vs the 240 Hz sample rate). 32-bit aligned
+ * → atomic single-word access on the M0+. */
+static volatile uint32_t s_infer_count;
+
 static bool    s_model_enabled;
 static bool    s_sw_pressed;          /* debounced button state */
 static uint8_t s_sw_stable;           /* consecutive reads pushing toward a flip */
+
+#if MODEL_INFER_STREAMING
+/* SPSC sample queue: the ISR pushes one scan/tick, the main loop steps the
+ * stateful streaming model once per sample (it must consume every sample in
+ * order). Stays near-empty while inference keeps up (>240 Hz). */
+static volatile uint16_t s_adc_q[ADC_Q_LEN][FRET_COUNT];
+static volatile uint16_t s_q_wr;      /* ISR-advanced write index */
+static volatile uint16_t s_q_rd;      /* main-advanced read index */
+#endif
 
 static bool model_control_enabled(void)
 {
@@ -78,6 +106,14 @@ void Callback_TC0 (TC_TIMER_STATUS status, uintptr_t context)
     fret_scan_all();
 
 #if FRETBOARD_MODE == MODEL_DRIVEN
+#if MODEL_INFER_STREAMING
+    uint16_t wi = s_q_wr;
+    for (int c = 0; c < FRET_COUNT; c++)
+    {
+        s_adc_q[wi % ADC_Q_LEN][c] = fret_scan_result((fret_channel_t)c);
+    }
+    s_q_wr = (uint16_t)(wi + 1u);   /* publish the sample to the main loop */
+#else
     uint16_t scan[FRET_COUNT] = {
         fret_scan_result(FRET_GREEN),
         fret_scan_result(FRET_RED),
@@ -86,10 +122,11 @@ void Callback_TC0 (TC_TIMER_STATUS status, uintptr_t context)
         fret_scan_result(FRET_ORANGE),
     };
     model_infer_push(scan);   /* sample the window at a clean 240 Hz */
-    /* Apply the most recent inference result; the heavy model_infer_run() runs
-     * in the main loop, not here, so this ISR stays short. */
+#endif
+    /* Apply the most recent inference result; the heavy inference runs in the
+     * main loop, not here, so this ISR stays short. */
     cmd_receive_apply_mask(model_control_enabled() ? s_latest_cmd : 0u);
-    data_stream_send();   /* applied_mask carries the model's command (0 if disabled) */
+    data_stream_send_model(s_infer_count);   /* carries applied_mask + inference count */
 #else
     data_stream_send();
     cmd_receive_update();
@@ -104,7 +141,11 @@ int main(void)
     cmd_receive_init();
     data_stream_init();
 #if FRETBOARD_MODE == MODEL_DRIVEN
+#if MODEL_INFER_STREAMING
+    model_infer_stream_init();
+#else
     model_infer_init();
+#endif
     LED0_OFF();   /* boot disabled: LED off */
 #endif
 
@@ -113,9 +154,23 @@ int main(void)
 
     while (true) {
 #if FRETBOARD_MODE == MODEL_DRIVEN
-        /* Best-effort inference, decoupled from the 240 Hz sampling/apply in the
-         * ISR. Publishes the latest command for the ISR to apply. */
+#if MODEL_INFER_STREAMING
+        /* Drain the sample queue: one streaming step per sample, in order. */
+        while (s_q_rd != s_q_wr)
+        {
+            uint16_t ri = s_q_rd;
+            uint16_t s[FRET_COUNT];
+            for (int c = 0; c < FRET_COUNT; c++) { s[c] = s_adc_q[ri % ADC_Q_LEN][c]; }
+            s_latest_cmd = model_infer_stream_step(s);
+            s_q_rd = (uint16_t)(ri + 1u);
+            s_infer_count++;
+        }
+#else
+        /* Best-effort recompute inference, decoupled from the 240 Hz sampling/apply
+         * in the ISR. Publishes the latest command for the ISR to apply. */
         s_latest_cmd = model_infer_run();
+        s_infer_count++;
+#endif
 #endif
     }
 

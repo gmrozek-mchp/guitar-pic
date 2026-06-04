@@ -29,8 +29,8 @@ import serial  # pyserial (a marvin-perf dependency)
 
 START = 0x03
 END = 0xFC
-FRAME_LEN = 17
-_FMT = "<B5HIBB"  # start, 5x adc, sample_seq, applied_mask, end  = 17 bytes
+FRAME_LEN = 21  # MODEL_DRIVEN frame
+_FMT = "<B5HIIBB"  # start, 5x adc, sample_seq, infer_count, applied_mask, end = 21 bytes
 assert struct.calcsize(_FMT) == FRAME_LEN
 
 
@@ -45,7 +45,7 @@ def find_port(cli: str | None) -> str:
 
 
 def frames(ser: serial.Serial):
-    """Yield (seq, applied_mask, adc5) per valid frame; resync on bad framing."""
+    """Yield (seq, infer_count, applied_mask, adc5) per valid frame; resync on bad framing."""
     buf = bytearray()
     while True:
         chunk = ser.read(512)
@@ -60,7 +60,7 @@ def frames(ser: serial.Serial):
                 continue
             vals = struct.unpack(_FMT, bytes(buf[:FRAME_LEN]))
             del buf[:FRAME_LEN]
-            yield vals[6], vals[7], vals[1:6]
+            yield vals[6], vals[7], vals[8], vals[1:6]
         if not chunk:
             time.sleep(0.001)
 
@@ -82,11 +82,12 @@ def main() -> None:
     prev_strum = 0
     tot_recv = tot_drop = tot_span = tot_strums = 0
     w_first_seq = w_last_seq = None
+    w_first_infer = w_last_infer = None
     w_recv = w_active = w_strums = 0
     w_start = time.monotonic()
     run_start = w_start
     try:
-        for seq, mask, _adc in frames(ser):
+        for seq, infer, mask, _adc in frames(ser):
             now = time.monotonic()
             if last_seq is not None:
                 step = (seq - last_seq) & 0xFFFFFFFF
@@ -105,7 +106,9 @@ def main() -> None:
 
             if w_first_seq is None:
                 w_first_seq = seq
+                w_first_infer = infer
             w_last_seq = seq
+            w_last_infer = infer
             w_recv += 1
             if mask & 0x3F:                    # any fret or strum asserted
                 w_active += 1
@@ -114,17 +117,19 @@ def main() -> None:
                 dt = now - w_start
                 span = (w_last_seq - w_first_seq) & 0xFFFFFFFF
                 tick_hz = span / dt
-                recv_hz = w_recv / dt
+                infer_hz = ((w_last_infer - w_first_infer) & 0xFFFFFFFF) / dt
                 drop = span - (w_recv - 1)
-                flag = "" if tick_hz >= 238 else "  <-- BELOW 240 Hz"
-                print(f"tick={tick_hz:6.1f} Hz | recv={recv_hz:6.1f} fps | "
+                flag = "" if tick_hz >= 238 else " tick<240"
+                iflag = "" if infer_hz >= 238 else "  <-- INFER < 240 Hz"
+                print(f"tick={tick_hz:6.1f} Hz | infer={infer_hz:6.1f} Hz | "
                       f"drop={drop:4d} | active={100*w_active/max(1,w_recv):3.0f}% | "
-                      f"strums={w_strums/dt:4.1f}/s{flag}")
-                w_start, w_first_seq, w_recv, w_active, w_strums = now, seq, 0, 0, 0
+                      f"strums={w_strums/dt:4.1f}/s{flag}{iflag}")
+                w_start, w_first_seq, w_first_infer, w_recv, w_active, w_strums = \
+                    now, seq, infer, 0, 0, 0
     except KeyboardInterrupt:
         dt = time.monotonic() - run_start
         print(f"\nsummary: {tot_recv} frames in {dt:.1f}s | "
-              f"device tick ~{tot_span/dt:.1f} Hz | recv ~{tot_recv/dt:.1f} fps | "
+              f"device tick ~{tot_span/dt:.1f} Hz | "
               f"drops {tot_drop} ({100*tot_drop/max(1,tot_span):.1f}%) | "
               f"strums {tot_strums} (~{tot_strums/dt:.1f}/s)")
 
