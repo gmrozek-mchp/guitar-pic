@@ -31,7 +31,8 @@
             "properties": {
                 "compiler.extra-include-directories": [
                     "fretboard-mcc/src/config/default"
-                ]
+                ],
+                "compiler.optimization-level": "-O3"
             }
         }
     ],
@@ -50,6 +51,9 @@
                 "fret_button.h",
                 "cmd_receive.c",
                 "cmd_receive.h",
+                "model_infer.c",
+                "model_infer.h",
+                "model_weights.h",
                 "fretboard-mcc/src/config/default/definitions.h",
                 "fretboard-mcc/src/config/default/device_cache.h",
                 "fretboard-mcc/src/config/default/device_vectors.h",

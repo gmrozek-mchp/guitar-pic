@@ -33,6 +33,10 @@ void cmd_receive_init(void);
 /* Call each tick.  Drains RX buffer and applies the latest bitmask. */
 void cmd_receive_update(void);
 
+/* Drive the outputs from an explicit bitmask (CMD_BIT_* layout). Lets the
+ * standalone model path reuse the same GPIO assert/release logic. */
+void cmd_receive_apply_mask(uint8_t mask);
+
 /* The bitmask currently driven on the outputs (most recent applied command).
  * Bit layout matches CMD_BIT_*. */
 uint8_t cmd_receive_current_mask(void);

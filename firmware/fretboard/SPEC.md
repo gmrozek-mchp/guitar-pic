@@ -9,8 +9,15 @@ out continuously; the host runs detection / chord / strum logic and
 sends back a single-byte bitmask that drives the controller's button
 GPIOs directly.
 
-The firmware deliberately contains **no game logic** — it only scans
-ADCs, emits frames, and applies received bitmasks.
+In its `MARVIN_DRIVEN` mode the firmware contains **no game logic** — it only
+scans ADCs, emits frames, and applies received bitmasks. A second build-time
+mode, **`MODEL_DRIVEN`** (`FRETBOARD_MODE` in `main.c`, the current default),
+makes the board standalone: an on-device int8 neural net (`model_infer.c`,
+weights in the generated `model_weights.h`) maps the ADC window to the button
+bitmask itself, no host required. SW0 toggles it; LED0 shows the state.
+Inference runs in the main loop; the 240 Hz TC0 ISR only samples and applies.
+See [`docs/journal.md`](docs/journal.md) and edge-ai
+[`runtime.md`](../../tools/edge-ai/docs/runtime.md).
 
 ## Hardware
 

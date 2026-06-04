@@ -34,7 +34,7 @@ static void strum_down_release(void) { BUTTON_STRUM_DOWN_InputEnable(); }
 static void strum_up_assert(void)    { BUTTON_STRUM_UP_Clear();    BUTTON_STRUM_UP_OutputEnable(); }
 static void strum_up_release(void)   { BUTTON_STRUM_UP_InputEnable(); }
 
-static void apply_mask(uint8_t mask)
+void cmd_receive_apply_mask(uint8_t mask)
 {
     apply_output(mask, CMD_BIT_GREEN,      green_assert,      green_release);
     apply_output(mask, CMD_BIT_RED,        red_assert,        red_release);
@@ -48,7 +48,7 @@ static void apply_mask(uint8_t mask)
 
 void cmd_receive_init(void)
 {
-    apply_mask(0);
+    cmd_receive_apply_mask(0);
 }
 
 void cmd_receive_update(void)
@@ -61,7 +61,7 @@ void cmd_receive_update(void)
     size_t n = (avail > sizeof(buf)) ? sizeof(buf) : avail;
     SERCOM1_USART_Read(buf, n);
 
-    apply_mask(buf[n - 1]);
+    cmd_receive_apply_mask(buf[n - 1]);
 }
 
 uint8_t cmd_receive_current_mask(void)
