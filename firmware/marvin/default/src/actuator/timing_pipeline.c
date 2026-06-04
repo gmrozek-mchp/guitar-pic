@@ -113,24 +113,35 @@ static void strum_q_pop(void)
     s_strum_count--;
 }
 
-/* Iterator helpers for the "is this fret needed by an outstanding entry?"
- * release-suppression check below. */
-static bool note_q_any_needs(uint8_t bit)
+/* Iterator helpers for the release-suppression check below: is this fret
+ * needed again by an outstanding entry whose deadline falls at or before
+ * `by_ms`? Bounding by the scheduled release time releases the fret between
+ * separate notes (clean per-note command) and holds it only across genuinely
+ * back-to-back notes, where releasing+repressing would just churn. */
+static bool note_q_needs_by(uint8_t bit, uint32_t by_ms)
 {
     for (uint8_t i = 0u; i < s_note_count; i++)
     {
         uint8_t idx = (uint8_t)((s_note_head + i) % TP_FIFO_CAP);
-        if (s_note_q[idx].fret_mask & bit) { return true; }
+        const pending_note_t *n = &s_note_q[idx];
+        if ((n->fret_mask & bit) && (int32_t)(n->assert_at_ms - by_ms) <= 0)
+        {
+            return true;
+        }
     }
     return false;
 }
 
-static bool strum_q_any_needs(uint8_t bit)
+static bool strum_q_needs_by(uint8_t bit, uint32_t by_ms)
 {
     for (uint8_t i = 0u; i < s_strum_count; i++)
     {
         uint8_t idx = (uint8_t)((s_strum_head + i) % TP_FIFO_CAP);
-        if (s_strum_q[idx].fret_mask & bit) { return true; }
+        const pending_strum_t *s = &s_strum_q[idx];
+        if ((s->fret_mask & bit) && (int32_t)(s->strum_at_ms - by_ms) <= 0)
+        {
+            return true;
+        }
     }
     return false;
 }
@@ -260,7 +271,10 @@ static void process_releases(uint8_t live_pressed_mask)
         if ((s_release_pending_mask & bit) == 0u) { continue; }
         if ((int32_t)(s_now_ms - s_release_at_ms[i]) < 0) { continue; }
         if (live_pressed_mask & bit) { continue; }
-        if (note_q_any_needs(bit) || strum_q_any_needs(bit)) { continue; }
+        /* Hold only if re-needed at/before this release (back-to-back); a need
+         * further out releases now for a clean per-note command. */
+        if (note_q_needs_by(bit, s_release_at_ms[i]) ||
+            strum_q_needs_by(bit, s_release_at_ms[i])) { continue; }
 
         s_frets_active        &= (uint8_t)~bit;
         s_release_pending_mask &= (uint8_t)~bit;
