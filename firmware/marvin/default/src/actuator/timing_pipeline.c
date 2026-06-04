@@ -18,9 +18,9 @@
 
 /* Drives chord aggregation, strum scheduling, and pending release timing.
  * Matches the fret-tuner Python defaults so behavior carries 1:1. */
-#define TP_STRUM_DELAY_MS      220u
+#define TP_STRUM_DELAY_MS      300u
 #define TP_FRET_EARLY_MS       50u
-#define TP_STRUM_PULSE_MS      25u
+#define TP_STRUM_PULSE_MS      40u
 #define TP_CHORD_WINDOW_MS     30u
 
 #define TP_FIFO_CAP            32u
