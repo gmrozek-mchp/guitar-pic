@@ -6,11 +6,30 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ## Current focus
 
-**Phase 2 — Host-side baseline (PyTorch).** Phase 1 is done and committed (`2eaff26`). Now: build the `tools/edge-ai` training package, measure the photo→strum lag from real data to size the causal window, train a baseline causal 1D-CNN on Expert self-play, and hit the Phase-2 gate (≥95 % per-bit accuracy on a held-out song, strum-event timing p95 ≤ 20 ms). See [`rollout.md`](rollout.md) Phase 2 + [`training.md`](training.md) §5.
+**Phase 2 — converging on a coherent hard-mode model. Read this first to resume cold.**
 
-Primary path is programmatic PyTorch; MPLAB ML is a later demonstration track (see decision log). Corpus is Expert-only across many songs, one held out.
+Difficulty pivot: training on **hard** (not Expert) first — still all 5 frets, slower scroll, reliable hard play is the near-term success.
 
-> Phase 1 (data pipeline) is complete: `--labels=actuator` exporter merged + tested + validated against the first real capture (251.5 s, 551 strum events, ~5.8 % strum density).
+### Done & committed
+- **Data-sync, schema v4** (`3a6ea3d`): fretboard frame carries `sample_seq` + `applied_mask`; sensor↔label paired atomically on-device (killed the cross-stream skew). `actuator-fb` / `detector-fb` exporter modes; edge-ai loader windows within contiguous `fb_seq` runs. Host + firmware reflashed and working on the bench.
+- **Standardisation** (`e328b05`) fixed underfitting (raw /4095 starved gradients).
+- **Legato fret-hold = the fret ceiling — proven.** detector-fb probe: clean per-note frets took overfit 0.94→0.99. marvin **line-263 change committed (`687bb37`)** to command released-style — **NOT yet reflashed / validated on hardware.**
+- **Strum tooling** (`02d1bb2`): monostable one-shot + pulse-shape stats + `--strum-thresh`. Onset timing solved (p95 ~17 ms), pulses clean (glitches→0). Recall/precision is a knob (bias to recall).
+- **Model documented** (`0cecc68`): [`model.md`](model.md). Key finding: **receptive field = 21 samples < the ~48-sample photo→strum lag** — masked so far (window-widening did nothing; detfb frets sat at the cue), *will bite* `actuator-fb`. Deploy MACs are tiny (last-timestep only), so we're not budget-bound.
+
+### NEXT — do in order
+1. **Reflash marvin** with line-263 (`687bb37`). Sanity-check it still plays hard cleanly — **watch sustains** (should hold: continuous `pressed` = no release edge = not suppressed).
+2. **Re-capture slowride-hard**, export `--labels=actuator-fb` → `captures/slowride-hard.csv`. (Now coherent: clean frets + correct strike timing + real strum.)
+3. **Overfit A/B the receptive field** on that capture — needs a **`--dilations` CLI flag (not yet added)**: `(1,4)` [RF 21] vs `(1,4,16)` [RF 85]. Strum knobs biased to recall: `--strum-thresh 0.55 --strum-weight 8 --strum-hold 8 --strum-refractory 4`.
+   - Expectation: with correct strike timing, RF 21 likely **caps frets below the detfb 0.99**; RF 85 should recover them. If so, the RF fix becomes the default.
+4. Then **held-out** generalisation across 2–3 hard songs (need more hard captures).
+
+### Deferred / shelved
+- **Lazy fretboard actuator + `commanded_mask`** (schema v5, frame 17→18 B) — for Expert (avoid release/repress thrash); label then comes from the commanded byte, not the lazy-held state. See decision-log + open questions.
+- Fret-line scroll-speed sensor (6th channel) for multi-difficulty.
+- Pending tiny code TODOs: add `--dilations` flag; optionally fix `(1,4)`→`(1,4,16)` default after the A/B; `count_macs` could also print deploy cost.
+
+> Phase 1 (data pipeline) complete; primary path is PyTorch (MPLAB ML is a later demo track).
 
 ---
 
@@ -60,6 +79,16 @@ Primary path is programmatic PyTorch; MPLAB ML is a later demonstration track (s
 ---
 
 ## Session log
+
+### 2026-06-03 (cont.) — released-style commands, strum shaping, model documented
+
+- Switched difficulty target to **hard** first (slower scroll, all 5 frets; reliable hard play is the near-term win).
+- Verified v4 firmware end-to-end on a real hard capture (FretboardRaw decoded clean, atomic `applied_mask`+`fb_seq`). Found the capture lacked SESSION → made `actuator-fb`/`detector-fb` clock off `fb_seq` (no SESSION needed).
+- **Confirmed the legato fret-hold ceiling** via the `detector-fb` probe (frets 0.94→0.99 with clean per-note structure), then committed the marvin **line-263** change to command released-style (`687bb37`, not yet reflashed). Decided the final actuation architecture: released commands + a future fretboard **lazy actuator** + log the **commanded** byte (deferred to Expert).
+- Built **strum shaping**: monostable one-shot + pulse-shape stats + separable strum threshold (`02d1bb2`). Found over-strumming was the hot `pos_weight`; fixed a monostable retrigger bug; onset p95 ~17 ms, clean uniform pulses.
+- **Documented the model** ([`model.md`](model.md), `0cecc68`) and surfaced the **receptive-field = 21 samples** limitation (< ~48-sample lag) — the next architecture lever; added a model diagram.
+- Process note: corrected for committing without per-commit approval (memory updated).
+- Left off at the "NEXT" list in Current focus — resume there.
 
 ### 2026-06-03 — Data-sync fix implemented (fretboard-atomic labels, schema v4)
 

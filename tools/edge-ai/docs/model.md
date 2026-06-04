@@ -21,6 +21,32 @@ What the model *is*, layer by layer, with the numbers that matter. Code: [`edge_
 
 ## 3. Architecture, layer by layer
 
+```
+  5 ADC channels × W samples              input  (5, W)
+  (G R Y B O), per-channel standardised
+            │
+            ▼
+  ┌─────────────────────────────────────┐
+  │ CausalConv1d  5→8  k=5  d=1  + ReLU  │  left-pad 4    → (8, W)
+  └─────────────────────────────────────┘
+            │
+            ▼
+  ┌─────────────────────────────────────┐
+  │ CausalConv1d  8→8  k=5  d=4  + ReLU  │  left-pad 16   → (8, W)
+  └─────────────────────────────────────┘
+            │
+            ▼   last timestep only:  h[:, :, -1]          → (8,)
+  ┌─────────────────────────────────────┐
+  │ Linear  8→6                          │               → 6 logits
+  └─────────────────────────────────────┘
+            │
+            ▼   sigmoid → threshold (frets 0.5, strum tunable)
+     [ G  R  Y  B  O │ strum ]
+                         │
+                         ▼   deploy only (not in the net): monostable one-shot
+                      clean strum pulse → wire byte bit 5
+```
+
 Default `StrumNet(channels=8, kernel=5, dilations=(1,4))`:
 
 | Layer | Op | Out shape | Params |
@@ -47,13 +73,24 @@ Only the **last timestep** feeds the head (`h[:, :, -1]`). Its receptive field i
 RF = 1 + Σ (kernel-1)·dilation = 1 + (5-1)·1 + (5-1)·4 = 21 samples ≈ 87.5 ms
 ```
 
+```
+  prediction at "now" depends ONLY on the last 21 samples:
+
+    … now-48 ………………………… now-21 ──────────────── now
+       │                       │<───────── RF = 21 ─────────>│
+       ▼                       │        (all the head sees)  │
+  photo dip that CAUSES        └─────────────────────────────┘
+  this strum is HERE  ✗  — ~48 samples back, outside the receptive field
+  (samples older than now-21 are convolved but never reach the head)
+```
+
 So the prediction at "now" depends **only on the last 21 ADC samples**, regardless of `channels`, and **regardless of `--window`**. Three consequences, all of which we've already seen:
 
 1. **Widening the window does nothing.** Inputs older than 21 samples are convolved but never reach the head. This is exactly why `--window 96` and `128` gave no improvement over `60` — anything past ~21 is discarded.
 2. **RF (21) < the photo→strum lag (≈48 samples / 200 ms on hard).** The causal photo dip that *causes* a strum sits ~48 samples back — **outside the receptive field.** The model can't see the dip directly. It works on hard mode only because slow scrolling makes each note's sensor occlusion *wide* enough that its tail reaches into the last 21 samples. Faster difficulties → narrower occlusion → less of it inside the RF → harder. This is a second, independent reason Expert was worse.
 3. **The detector-fb fret result was flattered by timing.** detector-`pressed` (y=311) sits ~coincident with the photo dip (~5 samples apart), *inside* the RF — so frets hit 0.99 easily. **But `actuator-fb` frets are at strike-line timing (~48 samples after the dip), outside the RF.** Expect frets on the correctly-timed line-263 dataset to be **harder than the detfb 0.99**, limited by the same RF wall as strum — not because the structure is wrong, but because the network can't reach back to the cue.
 
-**Fix direction (not yet done):** enlarge the RF to cover the lag — e.g. dilations `(1, 4, 16)` → RF = 1+4+16+64 = **85 samples (~354 ms)**, or a third layer, or replace the last-timestep head with temporal pooling over the window. This is the most likely next architecture change once we're on the consistent dataset.
+**Fix direction (not yet done):** enlarge the RF to cover the lag by adding a dilated layer — `dilations=(1, 4, 16)` → RF = 1 + 4·(1+4+16) = **85 samples (~354 ms)** — while **keeping the last-timestep head**. (A temporal-pooling head would also use the whole window, but for a precise predict-*now* task — strum onset especially — pooling blurs *when*; widening the RF with dilations is the better fix.) This is the most likely next architecture change once we're on the consistent dataset.
 
 ## 5. Compute cost — `count_macs` is a loose upper bound
 
@@ -90,7 +127,7 @@ So against the ~100 k MAC/tick budget at 24 MHz, **even the 64-channel model fit
 ## 8. Known limitations / open design questions
 
 - **Receptive field too small for the lag** (§4) — the headline issue. Almost certainly needs more dilation/depth or a pooling head before the correctly-timed `actuator-fb` frets and the strum can hit the gate robustly.
-- **Last-timestep head discards the window** — a temporal pool (avg/max/attention over time) would actually *use* the window we feed and naturally widen the effective context.
+- **Last-timestep head** — correct for a predict-*now* model; fine as-is once the RF covers the lag. (Pooling over time would use more of the window but blur onset timing — not the right fix here.)
 - **Per-bit independence** — chords occupy a tiny subset of 2⁶; a chord-shape head or the two-head event detector ([review.md](review.md)) is the fallback if independence caps accuracy.
 - **Capacity vs width** — 8 ch underfits strum recall, 64 ch fits well and (per §5) likely deploys fine; the right width is an open sweep, no longer obviously budget-bound.
 - **No quantisation-aware training yet** — int8 effects on the tiny conv are unmeasured.
