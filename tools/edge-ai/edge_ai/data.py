@@ -1,15 +1,18 @@
-"""Load actuator-labelled SensiML CSVs and build causal training windows.
+"""Load actuator-fb SensiML CSVs and build causal training windows.
 
-The CSV is produced by `marvin-perf export-ml --labels=actuator`:
+The CSV is produced by `marvin-perf export-ml --labels=actuator-fb`:
 
-    timestamp,
+    timestamp, fb_seq,
     ph_green,ph_red,ph_yellow,ph_blue,ph_orange,
     fret_green,fret_red,fret_yellow,fret_blue,fret_orange,
     strum
 
-Each row is one true 240 Hz fretboard sample. Windows are sliced **by row
-index**, never by the `timestamp` column — timestamps are bursty (stamped at
-marvin's USB-CDC RX time, not the sample instant; see the edge-ai journal).
+Each row is one true 240 Hz fretboard sample with its label (the actuator
+bitmask the fretboard was driving during the scan) paired atomically at the
+source — no cross-stream join, so timing is clean. `fb_seq` is the fretboard's
+monotonic sample counter; gaps mean frames dropped in transit. Windows are
+sliced **by row index** and never span a `fb_seq` gap (see `contiguous_runs`),
+so a dropped frame can't silently stitch two non-adjacent samples together.
 
 CSV parsing, the window-index logic, and label/feature extraction are
 stdlib-only. `build_arrays` materialises numpy tensors and imports numpy
@@ -25,11 +28,14 @@ from pathlib import Path
 from . import FRET_COUNT, N_LABELS
 
 EXPECTED_HEADER = [
-    "timestamp",
+    "timestamp", "fb_seq",
     "ph_green", "ph_red", "ph_yellow", "ph_blue", "ph_orange",
     "fret_green", "fret_red", "fret_yellow", "fret_blue", "fret_orange",
     "strum",
 ]
+
+_ADC_COL0 = 2   # first ph_ column index
+_LABEL_COL0 = 7  # first fret_ column index
 
 
 class DataError(Exception):
@@ -38,15 +44,24 @@ class DataError(Exception):
 
 @dataclass(frozen=True)
 class Capture:
-    """One loaded capture. `adc[i]` is a 5-tuple, `labels[i]` a 6-tuple."""
+    """One loaded capture. `adc[i]` is a 5-tuple, `labels[i]` a 6-tuple,
+    `fb_seq[i]` the fretboard sample counter for row i."""
 
     name: str
     timestamps: list[float]
+    fb_seq: list[int]
     adc: list[tuple[int, ...]]
     labels: list[tuple[int, ...]]
 
     def __len__(self) -> int:
         return len(self.adc)
+
+    @property
+    def n_seq_gaps(self) -> int:
+        return sum(
+            1 for i in range(1, len(self.fb_seq))
+            if self.fb_seq[i] != self.fb_seq[i - 1] + 1
+        )
 
     @property
     def strum_fraction(self) -> float:
@@ -66,7 +81,7 @@ class Capture:
 
 
 def load_capture(path: str | Path) -> Capture:
-    """Read one actuator-labelled CSV into a Capture (stdlib only)."""
+    """Read one actuator-fb CSV into a Capture (stdlib only)."""
     path = Path(path)
     with path.open(newline="") as fh:
         reader = csv.reader(fh)
@@ -76,21 +91,46 @@ def load_capture(path: str | Path) -> Capture:
             raise DataError(f"{path}: empty file")
         if header != EXPECTED_HEADER:
             raise DataError(
-                f"{path}: header is not the actuator schema.\n"
+                f"{path}: header is not the actuator-fb schema.\n"
                 f"  expected: {EXPECTED_HEADER}\n"
                 f"  got:      {header}\n"
-                "Export with `marvin-perf export-ml --labels=actuator`."
+                "Export with `marvin-perf export-ml --labels=actuator-fb`."
             )
         timestamps: list[float] = []
+        fb_seq: list[int] = []
         adc: list[tuple[int, ...]] = []
         labels: list[tuple[int, ...]] = []
         for lineno, row in enumerate(reader, start=2):
             if len(row) != len(EXPECTED_HEADER):
-                raise DataError(f"{path}:{lineno}: expected 12 fields, got {len(row)}")
+                raise DataError(
+                    f"{path}:{lineno}: expected {len(EXPECTED_HEADER)} fields, "
+                    f"got {len(row)}"
+                )
             timestamps.append(float(row[0]))
-            adc.append(tuple(int(row[1 + c]) for c in range(FRET_COUNT)))
-            labels.append(tuple(int(row[6 + b]) for b in range(N_LABELS)))
-    return Capture(name=path.stem, timestamps=timestamps, adc=adc, labels=labels)
+            fb_seq.append(int(row[1]))
+            adc.append(tuple(int(row[_ADC_COL0 + c]) for c in range(FRET_COUNT)))
+            labels.append(tuple(int(row[_LABEL_COL0 + b]) for b in range(N_LABELS)))
+    return Capture(
+        name=path.stem, timestamps=timestamps, fb_seq=fb_seq, adc=adc, labels=labels
+    )
+
+
+def contiguous_runs(fb_seq: list[int]) -> list[tuple[int, int]]:
+    """Index ranges `[start, end)` over which `fb_seq` increments by exactly 1.
+
+    A break (dropped frame → seq jump) starts a new run, so windowing within a
+    run never stitches two non-adjacent samples across a gap.
+    """
+    if not fb_seq:
+        return []
+    runs = []
+    start = 0
+    for i in range(1, len(fb_seq)):
+        if fb_seq[i] != fb_seq[i - 1] + 1:
+            runs.append((start, i))
+            start = i
+    runs.append((start, len(fb_seq)))
+    return runs
 
 
 def causal_window_indices(n_rows: int, window: int) -> list[tuple[int, int, int]]:
@@ -153,7 +193,8 @@ def build_arrays(
        ±k samples so a near-miss isn't fully penalised — use for *training*
        only, never for eval.
 
-    Windows never cross capture boundaries (no song bleeds into another).
+    Windows never cross capture boundaries, and never span a `fb_seq` gap
+    within a capture (each contiguous run is windowed independently).
     """
     import numpy as np
 
@@ -164,17 +205,20 @@ def build_arrays(
     xs = []
     ys = []
     for cap in captures:
-        if len(cap) < window:
-            continue
         adc = (np.asarray(cap.adc, dtype=np.float32) - mean) / std  # (rows, 5)
         lab = np.asarray(cap.labels, dtype=np.float32)              # (rows, 6)
         if strum_dilate > 0:
             lab = lab.copy()
             lab[:, 5] = _dilate_strum(lab[:, 5], strum_dilate)
-        idx = causal_window_indices(len(cap), window)
-        for start, end, label_row in idx:
-            xs.append(adc[start:end].T)        # (5, window)
-            ys.append(lab[label_row])          # (6,)
+        for run_start, run_end in contiguous_runs(cap.fb_seq):
+            run_len = run_end - run_start
+            if run_len < window:
+                continue
+            for start, end, label_row in causal_window_indices(run_len, window):
+                s = run_start + start
+                e = run_start + end
+                xs.append(adc[s:e].T)                    # (5, window)
+                ys.append(lab[run_start + label_row])    # (6,)
     if not xs:
         raise DataError(
             f"no windows produced — every capture shorter than window={window}?"

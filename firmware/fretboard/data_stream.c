@@ -1,5 +1,6 @@
 #include "data_stream.h"
 #include "fret_detect.h"
+#include "cmd_receive.h"
 #include "definitions.h"
 
 #define DS_START_BYTE  0x03
@@ -12,10 +13,14 @@ typedef struct __attribute__((packed)) {
     uint16_t yellow;
     uint16_t blue;
     uint16_t orange;
+    uint32_t sample_seq;    /* monotonic, one per tick — host detects gaps */
+    uint8_t  applied_mask;  /* actuator bitmask driven during this scan */
     uint8_t  end;
 } ds_frame_t;
 
-_Static_assert(sizeof(ds_frame_t) == 12, "frame must be 12 bytes");
+_Static_assert(sizeof(ds_frame_t) == 17, "frame must be 17 bytes");
+
+static uint32_t s_sample_seq;
 
 void data_stream_init(void)
 {
@@ -23,6 +28,10 @@ void data_stream_init(void)
 
 bool data_stream_send(void)
 {
+    /* Advance per tick (before the buffer check) so a dropped send leaves a
+     * gap in the transmitted sequence the host can detect. */
+    uint32_t seq = s_sample_seq++;
+
     if (SERCOM1_USART_WriteFreeBufferCountGet() < sizeof(ds_frame_t))
         return false;
 
@@ -33,6 +42,8 @@ bool data_stream_send(void)
         .yellow         = fret_scan_result(FRET_YELLOW),
         .blue           = fret_scan_result(FRET_BLUE),
         .orange         = fret_scan_result(FRET_ORANGE),
+        .sample_seq     = seq,
+        .applied_mask   = cmd_receive_current_mask(),
         .end            = DS_END_BYTE,
     };
 

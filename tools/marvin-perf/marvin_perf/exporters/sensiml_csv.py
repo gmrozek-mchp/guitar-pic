@@ -16,6 +16,15 @@ ADC values plus a set of binary labels whose meaning depends on `labels`:
       timestamp,ph_green,...,ph_orange,
       fret_green,fret_red,fret_yellow,fret_blue,fret_orange,strum
 
+- `labels="actuator-fb"` (preferred edge-ai target, schema v4+): same six
+  labels, but sourced from the actuator bitmask the fretboard reports *inside*
+  each FRETBOARD_RAW frame (`applied_mask`) — paired with the ADC atomically on
+  the device, with no cross-stream forward-fill. Adds an `fb_seq` column (the
+  fretboard's monotonic sample counter) so downstream can detect dropped frames.
+  Columns:
+      timestamp,fb_seq,ph_green,...,ph_orange,
+      fret_green,fret_red,fret_yellow,fret_blue,fret_orange,strum
+
 The collapse is a property of *this* exporter mode, not the raw capture:
 PERF_REC_ACTUATOR keeps both strum bits as marvin emitted them, so a future
 direction-aware corpus can preserve them. See tools/edge-ai/docs/training.md §2.
@@ -56,7 +65,24 @@ _HEADER_ACTUATOR = (
     "strum",
 )
 
-LABEL_MODES = ("detector", "actuator")
+# actuator-fb adds fb_seq (the fretboard's own sample counter) so downstream
+# can detect frames dropped in transit and avoid windowing across a gap.
+_HEADER_ACTUATOR_FB = (
+    "timestamp", "fb_seq",
+    "ph_green", "ph_red", "ph_yellow", "ph_blue", "ph_orange",
+    "fret_green", "fret_red", "fret_yellow", "fret_blue", "fret_orange",
+    "strum",
+)
+
+LABEL_MODES = ("detector", "actuator", "actuator-fb", "detector-fb")
+
+# Modes that clock row timestamps off the fretboard's own fb_sample_seq (no
+# SESSION/ts_counter needed) and prepend an fb_seq column.
+_FB_CLOCK_MODES = ("actuator-fb", "detector-fb")
+
+# Fretboard tick rate — actuator-fb derives row timestamps from fb_sample_seq
+# at this rate (fb_seq is the clock; no SESSION/ts_counter needed).
+FRETBOARD_HZ = 240.0
 
 
 class ExportError(Exception):
@@ -83,9 +109,12 @@ class ExportStats:
     timer_freq_hz: int
     labels: str = "detector"
     n_actuator_records: int = 0
-    # Rising-edge count of the collapsed strum bit (actuator mode only): the
+    # Rising-edge count of the collapsed strum bit (actuator modes only): the
     # number of distinct strums in the corpus, for sanity against the song.
     n_strum_events: int = 0
+    # Discontinuities in fb_sample_seq (actuator-fb mode): frames dropped in
+    # transit. 0 means a clean, fully-contiguous capture.
+    n_seq_gaps: int = 0
 
     @property
     def duration_s(self) -> float:
@@ -102,8 +131,12 @@ def export_sensiml_csv(
     """Read `capture_path`, write SensiML-format CSV to `out_path`.
 
     `labels` selects the label source: "detector" (per-fret pressed_mask,
-    default, back-compat) or "actuator" (5 frets + collapsed strum from
-    Actuator.intended_mask — the edge-ai distillation target).
+    default, back-compat), "actuator" (5 frets + collapsed strum from
+    Actuator.intended_mask, cross-stream), "actuator-fb" (same from the
+    fretboard's in-frame applied_mask + fb_seq column), or "detector-fb" (a
+    diagnostic probe: detector pressed_mask frets — clean per-note structure
+    without the pipeline's legato hold — plus the in-frame applied strum and
+    fb_seq). The fb modes clock off fb_seq and need no SESSION.
 
     `strict=True` drops FretboardRaw rows that arrive before the first
     label-source record (so every emitted row has a real label). Default is
@@ -126,11 +159,18 @@ def export_sensiml_csv(
     n_fretboard_records = 0
     n_rows = 0
     n_strum_events = 0
+    n_seq_gaps = 0
     prev_strum = 0
+    prev_seq: int | None = None
     t_baseline: int | None = None  # ts_counter of the first emitted row
     t_end_s = 0.0
 
-    header = _HEADER_ACTUATOR if labels == "actuator" else _HEADER_DETECTOR
+    fb_clock = labels in _FB_CLOCK_MODES
+    header = {
+        "actuator": _HEADER_ACTUATOR,
+        "actuator-fb": _HEADER_ACTUATOR_FB,
+        "detector-fb": _HEADER_ACTUATOR_FB,  # same schema, detector-sourced frets
+    }.get(labels, _HEADER_DETECTOR)
 
     out_path = Path(out_path)
     with FileSource(capture.bin_path) as src, out_path.open("w", newline="") as fh:
@@ -160,61 +200,76 @@ def export_sensiml_csv(
 
             if isinstance(rec, FretboardRaw):
                 n_fretboard_records += 1
-                if session is None:
-                    # No timer_freq_hz yet → can't write a real timestamp.
+
+                # Track dropped frames via the fretboard's own sample counter.
+                if prev_seq is not None and rec.fb_sample_seq != (prev_seq + 1):
+                    n_seq_gaps += 1
+                prev_seq = rec.fb_sample_seq
+
+                # fb-clock modes derive the timestamp from fb_sample_seq (the
+                # fretboard's own 240 Hz clock), so they need no SESSION; other
+                # modes need timer_freq_hz from SESSION for the ts_counter clock.
+                if session is None and not fb_clock:
                     # Defer rejection to after the loop so we still tally
                     # how many records were skipped for diagnostics.
                     n_skipped_unlabeled += 1
                     continue
 
-                have_label = (
-                    last_actuator is not None
-                    if labels == "actuator"
-                    else last_detector is not None
-                )
+                # actuator-fb labels live inside the frame → always present;
+                # other modes need their forward-filled source record.
+                if labels == "actuator":
+                    have_label = last_actuator is not None
+                elif labels == "actuator-fb":
+                    have_label = True
+                else:  # detector, detector-fb
+                    have_label = last_detector is not None
                 if not have_label and strict:
                     n_skipped_unlabeled += 1
                     continue
 
-                if t_baseline is None:
-                    t_baseline = rec.hdr.ts_counter
-                t_s = (rec.hdr.ts_counter - t_baseline) / float(
-                    session.timer_freq_hz
-                )
+                if fb_clock:
+                    if t_baseline is None:
+                        t_baseline = rec.fb_sample_seq
+                    t_s = (rec.fb_sample_seq - t_baseline) / FRETBOARD_HZ
+                else:
+                    if t_baseline is None:
+                        t_baseline = rec.hdr.ts_counter
+                    t_s = (rec.hdr.ts_counter - t_baseline) / float(
+                        session.timer_freq_hz
+                    )
                 t_end_s = t_s
 
                 adc = (
                     rec.adc[0], rec.adc[1], rec.adc[2], rec.adc[3], rec.adc[4],
                 )
-                if labels == "actuator":
-                    mask = last_actuator.intended_mask if last_actuator else 0
-                    strum = _collapse_strum(mask)
+                if labels == "detector":
+                    pressed = last_detector.pressed_mask if last_detector else 0
+                    row = [f"{t_s:.6f}", *adc, *[(pressed >> b) & 1 for b in range(5)]]
+                else:
+                    # Fret-bit source differs by mode; strum source is the
+                    # in-frame applied_mask for fb modes, else the actuator.
+                    if labels == "actuator":
+                        fret_src = last_actuator.intended_mask if last_actuator else 0
+                        strum_src = fret_src
+                    elif labels == "actuator-fb":
+                        fret_src = rec.applied_mask
+                        strum_src = rec.applied_mask
+                    else:  # detector-fb: detector frets + in-frame applied strum
+                        fret_src = last_detector.pressed_mask if last_detector else 0
+                        strum_src = rec.applied_mask
+                    strum = _collapse_strum(strum_src)
                     if strum and not prev_strum:
                         n_strum_events += 1
                     prev_strum = strum
-                    row = [
-                        f"{t_s:.6f}", *adc,
-                        (mask >> 0) & 1,
-                        (mask >> 1) & 1,
-                        (mask >> 2) & 1,
-                        (mask >> 3) & 1,
-                        (mask >> 4) & 1,
-                        strum,
-                    ]
-                else:
-                    pressed = last_detector.pressed_mask if last_detector else 0
-                    row = [
-                        f"{t_s:.6f}", *adc,
-                        (pressed >> 0) & 1,
-                        (pressed >> 1) & 1,
-                        (pressed >> 2) & 1,
-                        (pressed >> 3) & 1,
-                        (pressed >> 4) & 1,
-                    ]
+                    fret_bits = [(fret_src >> b) & 1 for b in range(5)]
+                    if fb_clock:
+                        row = [f"{t_s:.6f}", rec.fb_sample_seq, *adc, *fret_bits, strum]
+                    else:
+                        row = [f"{t_s:.6f}", *adc, *fret_bits, strum]
                 writer.writerow(row)
                 n_rows += 1
 
-    if session is None:
+    if session is None and not fb_clock:
         # Tear out the partial file before raising — exporting half a file
         # with no header is more confusing than an absent file.
         try:
@@ -223,7 +278,8 @@ def export_sensiml_csv(
             pass
         raise ExportError(
             f"capture {capture.path} has no SESSION record — cannot derive "
-            "timer_freq_hz to compute timestamps"
+            "timer_freq_hz to compute timestamps (not needed for "
+            "--labels=actuator-fb, which clocks off fb_seq)"
         )
 
     return ExportStats(
@@ -233,8 +289,9 @@ def export_sensiml_csv(
         n_fretboard_records=n_fretboard_records,
         t_start_s=0.0,
         t_end_s=t_end_s,
-        timer_freq_hz=session.timer_freq_hz,
+        timer_freq_hz=session.timer_freq_hz if session else 0,
         labels=labels,
         n_actuator_records=n_actuator_records,
         n_strum_events=n_strum_events,
+        n_seq_gaps=n_seq_gaps,
     )

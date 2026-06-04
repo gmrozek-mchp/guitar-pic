@@ -16,6 +16,7 @@ from marvin_perf.analyze import (
     find_session,
 )
 from marvin_perf.records import (
+    EXPECTED_SCHEMA_VERSION,
     Detector,
     Drop,
     Header,
@@ -188,7 +189,7 @@ def test_compute_hwm_groups_by_task_id() -> None:
 
 
 def test_check_schema_match_passes() -> None:
-    check_schema(_session(schema=3))  # no exception
+    check_schema(_session(schema=EXPECTED_SCHEMA_VERSION))  # no exception
 
 
 def test_check_schema_mismatch_raises() -> None:

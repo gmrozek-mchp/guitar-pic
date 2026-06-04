@@ -135,10 +135,13 @@ def build_fretboard_raw_payload(
     frame_epoch: int = 1,
     ts_counter: int = 0,
     adc: tuple[int, ...] = (1000, 2000, 3000, 4000, 500),
+    fb_sample_seq: int = 0,
+    applied_mask: int = 0,
 ) -> bytes:
     if len(adc) != FRET_COUNT:
         raise ValueError(f"adc must have {FRET_COUNT} entries, got {len(adc)}")
-    body = FretboardRaw._BODY.pack(*adc, 0)  # 5×u16 + reserved
+    # 5×u16 adc + u32 seq + u8 applied_mask + u8 reserved
+    body = FretboardRaw._BODY.pack(*adc, fb_sample_seq, applied_mask, 0)
     return build_header(
         RecordType.FRETBOARD_RAW, frame_epoch=frame_epoch, ts_counter=ts_counter
     ) + body

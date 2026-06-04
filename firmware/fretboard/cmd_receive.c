@@ -63,3 +63,8 @@ void cmd_receive_update(void)
 
     apply_mask(buf[n - 1]);
 }
+
+uint8_t cmd_receive_current_mask(void)
+{
+    return current_mask;
+}

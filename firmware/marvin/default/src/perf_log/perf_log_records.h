@@ -13,7 +13,7 @@
  * are framed on the wire by the drain task (SOF magic + length + CRC);
  * the structs below are the framed payload only. */
 
-#define PERF_LOG_SCHEMA_VERSION   3u
+#define PERF_LOG_SCHEMA_VERSION   4u
 
 #define PERF_LOG_HDR_MAGIC        0x4D56u   /* 'M','V' little-endian */
 
@@ -342,18 +342,27 @@ typedef struct __attribute__((packed))
     uint64_t   last_ack_ts_counter;  /* SYS_TIME at most-recent CDC_WRITE_COMPLETE */
 } perf_rec_actuator_t;
 
-/* PERF_REC_FRETBOARD_RAW — one record per parsed 12-byte fretboard data
+/* PERF_REC_FRETBOARD_RAW — one record per parsed 17-byte fretboard data
  * frame (firmware/fretboard/data_stream.c). The 5×u16 ADC values are 12-bit
  * unsigned (0–4095, lower = brighter sensor) indexed by fret_t (G/R/Y/B/O).
  * Fretboard emits at ~240 Hz; with video at 60 Hz the same frame_epoch
  * value tags ~4 consecutive records — ts_counter (stamped by hdr_fill at
- * record-emit time) disambiguates within the frame. Default-disabled at
+ * record-emit time) disambiguates within the frame.
+ *
+ * fb_sample_seq and applied_mask are stamped by the fretboard itself and
+ * carried on the wire: the sequence counter (one per fretboard tick) lets the
+ * host reconstruct true sample order and detect frames dropped in transit,
+ * and applied_mask is the actuator bitmask the fretboard was driving during
+ * this very scan — so sensor and actuator state are paired atomically at the
+ * source instead of joined across marvin's TX/RX clocks. Default-disabled at
  * boot like the other high-rate types. */
 typedef struct __attribute__((packed))
 {
     perf_hdr_t hdr;
     uint16_t   adc[FRET_COUNT];      /* 5 × 2 = 10 B */
-    uint16_t   reserved;
+    uint32_t   fb_sample_seq;        /* fretboard tick counter (monotonic) */
+    uint8_t    applied_mask;         /* actuator bitmask driven this scan */
+    uint8_t    reserved;
 } perf_rec_fretboard_raw_t;
 
 /* ─── Host→device commands ───────────────────────────────────────────────────

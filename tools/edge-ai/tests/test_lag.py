@@ -24,6 +24,7 @@ def _synthetic_capture(n: int, lag: int, *, period: int = 80, dip_width: int = 4
     return Capture(
         name="syn",
         timestamps=[i / 240.0 for i in range(n)],
+        fb_seq=list(range(n)),
         adc=[tuple(r) for r in adc],
         labels=[tuple(r) for r in labels],
     )
@@ -41,6 +42,7 @@ def test_measure_lag_no_strums_is_safe():
     cap = Capture(
         name="empty",
         timestamps=[0.0, 0.004],
+        fb_seq=[0, 1],
         adc=[(3900,) * 5, (3900,) * 5],
         labels=[(0,) * 6, (0,) * 6],
     )

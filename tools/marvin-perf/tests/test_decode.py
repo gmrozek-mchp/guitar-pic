@@ -15,6 +15,7 @@ from marvin_perf.records import (
     DetectorConfig,
     Drop,
     FRET_COUNT,
+    FretboardRaw,
     HDR_SIZE,
     PERF_LOG_HDR_MAGIC,
     RecordType,
@@ -34,6 +35,7 @@ from marvin_perf.records import (
 from .conftest import (
     build_detector_payload,
     build_drop_payload,
+    build_fretboard_raw_payload,
     build_header,
     build_session_payload,
     build_stamp_payload,
@@ -302,3 +304,19 @@ def test_actuator_round_trip() -> None:
     assert rec.producer_name == "timing"
     assert rec.last_ack_result == 0
     assert rec.last_ack_ts_counter == 0xDEADBEEFCAFE
+
+
+def test_fretboard_raw_round_trip() -> None:
+    payload = build_fretboard_raw_payload(
+        frame_epoch=7,
+        adc=(100, 200, 300, 400, 500),
+        fb_sample_seq=0xCAFEBABE,
+        applied_mask=0x61,  # green + strum-down + strum-up bits set
+    )
+    rec = _round_trip_via_iter_frames(payload)
+    assert isinstance(rec, FretboardRaw)
+    assert rec.adc == (100, 200, 300, 400, 500)
+    assert rec.fb_sample_seq == 0xCAFEBABE
+    assert rec.applied_mask == 0x61
+    assert rec.hdr.frame_epoch == 7
+    assert FretboardRaw.SIZE == 32

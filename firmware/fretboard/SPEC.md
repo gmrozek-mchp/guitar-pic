@@ -82,7 +82,7 @@ TC0 callback (240 Hz)
 fret_scan_all()          Blocking ADC read of all 5 channels
     |
     v
-data_stream_send()       12-byte frame over SERCOM1 TX
+data_stream_send()       17-byte frame over SERCOM1 TX
     |
     v
 cmd_receive_update()     Drains SERCOM1 RX, applies latest bitmask
@@ -107,7 +107,7 @@ FRET_GREEN = 0, FRET_RED = 1, FRET_YELLOW = 2, FRET_BLUE = 3, FRET_ORANGE = 4
 
 #### data_stream ([data_stream.c](data_stream.c) / [data_stream.h](data_stream.h))
 
-Emits one 12-byte little-endian frame per tick over SERCOM1 TX:
+Emits one 17-byte little-endian frame per tick over SERCOM1 TX:
 
 | Offset | Size | Field |
 |-------:|-----:|-------|
@@ -117,11 +117,17 @@ Emits one 12-byte little-endian frame per tick over SERCOM1 TX:
 | 5 | 2 | yellow |
 | 7 | 2 | blue |
 | 9 | 2 | orange |
-| 11 | 1 | end = `0xFC` (`~start`) |
+| 11 | 4 | sample_seq (uint32) — monotonic, one per tick |
+| 15 | 1 | applied_mask — actuator bitmask driven this scan |
+| 16 | 1 | end = `0xFC` (`~start`) |
 
-The frame is dropped silently if the TX free-buffer count is below the
-frame size. At 240 Hz this is 2 880 B/s — well within the 50 000 B/s
-budget at 500 000 baud.
+`sample_seq` lets the host reconstruct true sample order and detect frames
+dropped in transit (it advances per tick even when a send is skipped).
+`applied_mask` is the bitmask `cmd_receive` currently drives, captured in the
+same tick as the scan so sensor and actuator state are paired at the source
+(used by edge-ai training-data export). The frame is dropped silently if the
+TX free-buffer count is below the frame size. At 240 Hz this is 4 080 B/s —
+well within the 50 000 B/s budget at 500 000 baud.
 
 #### cmd_receive ([cmd_receive.c](cmd_receive.c) / [cmd_receive.h](cmd_receive.h))
 

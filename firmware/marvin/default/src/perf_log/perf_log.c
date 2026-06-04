@@ -522,13 +522,16 @@ void PerfLog_EmitActuator(uint8_t  intended_mask,
     send_state(&slot);
 }
 
-void PerfLog_EmitFretboardRaw(const uint16_t adc[FRET_COUNT], uint32_t frame_epoch)
+void PerfLog_EmitFretboardRaw(const uint16_t adc[FRET_COUNT], uint32_t frame_epoch,
+                              uint32_t fb_sample_seq, uint8_t applied_mask)
 {
     if (adc == NULL) { return; }
     perf_rec_state_slot_t slot;
     memset(&slot, 0, sizeof(slot));
     hdr_fill(&slot.fretboard_raw.hdr, PERF_REC_FRETBOARD_RAW, 0u, frame_epoch);
     memcpy(slot.fretboard_raw.adc, adc, sizeof(slot.fretboard_raw.adc));
+    slot.fretboard_raw.fb_sample_seq = fb_sample_seq;
+    slot.fretboard_raw.applied_mask  = applied_mask;
     send_state(&slot);
 }
 

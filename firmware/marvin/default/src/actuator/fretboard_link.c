@@ -26,13 +26,13 @@
 #define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
 
 /* RX side — sized to absorb a brief task-scheduling stall without losing
- * frames. At 240 Hz × 12 B = 2.88 KB/s, 512 B is ~180 ms of headroom over
+ * frames. At 240 Hz × 17 B = 4.08 KB/s, 512 B is ~125 ms of headroom over
  * the producer rate; FBL_RX_READ_BYTES is the per-USB-Read chunk size. */
 #define FBL_RX_STREAM_BYTES     512u
 #define FBL_RX_READ_BYTES       64u
 #define FBL_RX_TASK_STACK_WORDS 512u
 
-#define DS_FRAME_LEN            12u
+#define DS_FRAME_LEN            17u
 #define DS_START_BYTE           0x03u
 #define DS_END_BYTE             0xFCu
 
@@ -345,9 +345,16 @@ static void fretboard_rx_task(void *param)
                    | (uint16_t)((uint16_t)frame[2u + i * 2u] << 8);
         }
 
+        /* seq: u32 LE at bytes 11-14, applied_mask: u8 at byte 15. */
+        uint32_t fb_seq = (uint32_t)frame[11]
+                        | ((uint32_t)frame[12] << 8)
+                        | ((uint32_t)frame[13] << 16)
+                        | ((uint32_t)frame[14] << 24);
+        uint8_t  applied_mask = frame[15];
+
         Video_FrameInfo info;
         Video_GetFrameInfo(&info);
-        PerfLog_EmitFretboardRaw(adc, info.frame_count);
+        PerfLog_EmitFretboardRaw(adc, info.frame_count, fb_seq, applied_mask);
 
         parsed++;
         if (parsed == 1u || (parsed % 240u) == 0u)

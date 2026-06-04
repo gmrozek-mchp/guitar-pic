@@ -14,7 +14,7 @@ from enum import IntEnum
 from typing import ClassVar
 
 
-EXPECTED_SCHEMA_VERSION = 3
+EXPECTED_SCHEMA_VERSION = 4
 
 PERF_LOG_HDR_MAGIC = 0x4D56  # 'M','V' little-endian
 PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
@@ -328,22 +328,31 @@ class Actuator:
 
 @dataclass(frozen=True)
 class FretboardRaw:
-    """One parsed 12-byte fretboard data frame (firmware/fretboard).
+    """One parsed 17-byte fretboard data frame (firmware/fretboard).
 
     `adc` is a 5-tuple of 12-bit unsigned ADC samples (0–4095, lower means
     a brighter sensor) ordered by `fret_t`: green, red, yellow, blue, orange.
 
+    `fb_sample_seq` and `applied_mask` are stamped by the fretboard itself
+    and carried on the wire (schema v4+): the sequence counter (one per
+    fretboard tick, monotonic) reconstructs true sample order and exposes
+    frames dropped in transit, and `applied_mask` is the 7-bit actuator
+    bitmask the fretboard was driving during this scan — sensor and actuator
+    paired atomically at the source, not joined across marvin's TX/RX clocks.
+
     At ~240 Hz fretboard rate against 60 Hz video, the same `frame_epoch`
-    tags ~4 consecutive records — `hdr.ts_counter` (stamped at producer
-    emit time) gives sub-frame ordering for offline join against
-    `Detector` records.
+    tags ~4 consecutive records — `fb_sample_seq` (or `hdr.ts_counter`)
+    gives sub-frame ordering.
     """
 
     hdr: Header
     adc: tuple[int, ...]   # length FRET_COUNT, indexed by fret_t
+    fb_sample_seq: int
+    applied_mask: int
 
-    _BODY: ClassVar[struct.Struct] = struct.Struct("<HHHHHH")  # 5×u16 + reserved
-    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 12 = 28
+    # 5×u16 adc + u32 seq + u8 applied_mask + u8 reserved
+    _BODY: ClassVar[struct.Struct] = struct.Struct("<5H I B B")
+    SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 16 = 32
 
 
 @dataclass(frozen=True)

@@ -149,7 +149,9 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
     labels are the five per-fret pressed bits from cv_marvin_v1's
     pressed_mask; with --labels=actuator they are the five frets plus a
     collapsed strum bit from the timing pipeline's intended_mask (the
-    edge-ai distillation target).
+    edge-ai distillation target); with --labels=actuator-fb the same labels
+    come from the actuator bitmask the fretboard reports inside each frame
+    (atomically paired with the ADC; preferred — adds an fb_seq column).
     """
     try:
         stats = export_sensiml_csv(
@@ -158,7 +160,25 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
     except ExportError as e:
         print(f"export-ml: {e}", file=sys.stderr)
         return 1
-    if args.labels == "actuator":
+    if args.labels == "actuator-fb":
+        print(
+            f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
+            f"({stats.n_strum_events} strum events, "
+            f"{stats.n_fretboard_records} fretboard records, "
+            f"{stats.n_seq_gaps} seq gaps, "
+            f"{stats.n_skipped_unlabeled} skipped)",
+            file=sys.stderr,
+        )
+    elif args.labels == "detector-fb":
+        print(
+            f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
+            f"({stats.n_detector_records} detector records, "
+            f"{stats.n_strum_events} strum events, "
+            f"{stats.n_fretboard_records} fretboard records, "
+            f"{stats.n_seq_gaps} seq gaps)",
+            file=sys.stderr,
+        )
+    elif args.labels == "actuator":
         print(
             f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
             f"({stats.n_actuator_records} actuator records, "
@@ -188,13 +208,21 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    if args.labels == "detector" and stats.n_rows > 0 and stats.n_detector_records == 0:
+    if args.labels in ("detector", "detector-fb") and stats.n_rows > 0 and stats.n_detector_records == 0:
         print(
             "WARNING: capture contains no DETECTOR records — every row's "
-            "label_* columns are all zeros. The CSV is unlabelled and not "
+            "fret columns are all zeros. The CSV is unlabelled and not "
             "useful for training. Re-record with both DETECTOR and "
             "FRETBOARD_RAW enabled in the Types panel (or "
             "--types DETECTOR,FRETBOARD_RAW for `marvin-perf record`).",
+            file=sys.stderr,
+        )
+        return 2
+    if args.labels == "actuator-fb" and stats.n_rows > 0 and stats.n_strum_events == 0:
+        print(
+            "WARNING: no strum events in the in-frame actuator bitmask — the "
+            "fretboard reported no actuation. Either this isn't gameplay, or "
+            "the firmware predates schema v4 (frames carry no applied_mask).",
             file=sys.stderr,
         )
         return 2
@@ -256,11 +284,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_export_ml.add_argument("--out", required=True, help="Output CSV path")
     p_export_ml.add_argument(
         "--labels",
-        choices=("detector", "actuator"),
+        choices=("detector", "actuator", "actuator-fb", "detector-fb"),
         default="detector",
         help="Label source: 'detector' = 5 per-fret pressed bits from "
              "cv_marvin_v1 (default); 'actuator' = 5 frets + collapsed strum "
-             "from the timing pipeline's intended_mask (edge-ai target).",
+             "from the timing pipeline's intended_mask (cross-stream join); "
+             "'actuator-fb' = same labels from the fretboard-reported "
+             "applied_mask, paired atomically in-frame, plus an fb_seq column "
+             "(preferred edge-ai target; needs schema v4+); 'detector-fb' = "
+             "diagnostic probe: detector pressed_mask frets (clean per-note "
+             "structure, no legato hold) + in-frame applied strum + fb_seq.",
     )
     p_export_ml.add_argument(
         "--strict",

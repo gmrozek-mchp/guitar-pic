@@ -33,4 +33,8 @@ void cmd_receive_init(void);
 /* Call each tick.  Drains RX buffer and applies the latest bitmask. */
 void cmd_receive_update(void);
 
+/* The bitmask currently driven on the outputs (most recent applied command).
+ * Bit layout matches CMD_BIT_*. */
+uint8_t cmd_receive_current_mask(void);
+
 #endif

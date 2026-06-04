@@ -6,7 +6,7 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ## Current focus
 
-**Pure I/O bridge.** Loop runs at 240 Hz from a TC0 timer callback: scan five ADCs, emit a 12-byte data frame on SERCOM1 TX, drain SERCOM1 RX and apply the latest button bitmask. All chord / strum / SW0 / LED logic lives off-board (marvin or fret-tuner). Baud bumped to 500 000 to keep TX headroom comfortable at the new tick rate.
+**Pure I/O bridge.** Loop runs at 240 Hz from a TC0 timer callback: scan five ADCs, emit a 17-byte data frame on SERCOM1 TX, drain SERCOM1 RX and apply the latest button bitmask. The frame now carries a monotonic sample-sequence counter and the currently-applied actuator bitmask alongside the ADC values (for edge-ai training-data sync — see decision log). All chord / strum / SW0 / LED logic lives off-board (marvin or fret-tuner). Baud is 500 000.
 
 Today's session added [`tools/ds_monitor.py`](../tools/ds_monitor.py), a host-side framing/rate sanity-check, and rewrote [`../SPEC.md`](../SPEC.md) to match the new I/O-bridge architecture (the old version still described 500 Hz + 17-byte frames + on-device `fret_detect` / `fret_button`).
 
@@ -16,6 +16,7 @@ Today's session added [`tools/ds_monitor.py`](../tools/ds_monitor.py), a host-si
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-03 | Data-stream frame grows 12→17 bytes: `0x03 \| g r y b o (5×u16 LE) \| sample_seq (u32 LE) \| applied_mask (u8) \| 0xFC`. `sample_seq` is a monotonic counter incremented once per tick in `data_stream_send` (before the TX-buffer check, so a dropped send shows as a gap); `applied_mask` comes from a new `cmd_receive_current_mask()` getter. Resolves open-questions #3 and #4. | Closes the edge-ai data-sync hole (edge-ai journal 2026-06-03). Pairing the actuator state with the ADC scan *in the same frame* makes label↔feature alignment atomic at the source, instead of marvin reconstructing it across its bursty USB RX and separate TX clocks — which Phase-2 training showed floored strum timing at ~20 ms. The seq counter lets the host reconstruct true 240 Hz ordering and detect dropped frames. Callback order is scan→send→receive, so `current_mask` at send time is exactly the state driven *during* this scan. Wire-format break: requires marvin's RX parser + `perf_rec_fretboard_raw_t` (schema v4) to update in lockstep. 17 B × 240 Hz = 4.08 KB/s, still ~12× under the 500 000-baud budget. |
 | 2026-06-02 | Leave the orphaned `fret_detect.*` and `fret_button.*` modules in place (still in MPLAB fileSet, still building, no callers). Don't delete, don't move to a `fallback/` directory. | Marvin's 2026-05-20 decision keeps a "fretboard-takeover" fallback mode in scope — `fret_button.c` is the existing implementation of that mode and is cheap to keep around. Cost is small (a few KB of flash + the stale `#include "fret_detect.h"` in `data_stream.c`). Revisit if the takeover mode is formally dropped or if these files start drifting against a refactor. |
 | 2026-06-02 | Loop period moved to 240 Hz, driven by TC0 callback (was 500 Hz from SYSTICK). | Game logic now runs on marvin; the host is the rate-setter and 240 Hz comfortably covers Guitar Hero note-onset timing while leaving SAM9X75 RX-side budget. TC0 callback removes any drift from a polled-SYSTICK loop. |
 | 2026-06-02 | SERCOM1 baud raised to 500 000 (was lower). | At 240 Hz × 12-byte TX frames + sporadic RX command bytes, 500 000 baud (≈ 50 000 B/s usable) gives ~17× headroom over the 2 880 B/s steady-state — plenty for jitter and back-pressure without flow control. |
@@ -30,13 +31,17 @@ Today's session added [`tools/ds_monitor.py`](../tools/ds_monitor.py), a host-si
 
 2. **No host→firmware framing.** Command stream is raw bitmask bytes with no start byte. A spurious byte (e.g. line glitch on RX) becomes a button command. Acceptable for now because the line is short and runs over the same EDBG-CDC pair as TX, but worth revisiting if we see ghost presses.
 
-3. **Data frame carries no sample timestamp (request from edge-ai).** The 12-byte frame has no notion of *when* the ADC scan happened — marvin timestamps each frame at USB-CDC RX time, which is bursty (~3 frames arrive together every ~12 ms, not evenly at 4.17 ms). The first edge-ai training capture surfaced this; see the edge-ai journal ([`tools/edge-ai/docs/journal.md`](../../../tools/edge-ai/docs/journal.md), 2026-06-03, "Fretboard ADC samples carry no true sample timestamp"). Candidate fix: stamp each frame with a fretboard-side sample-time counter and carry it on the wire, giving marvin the absolute sample-time truth. Cost: larger frame + a `FretboardRaw` schema add on marvin's perf-log side. Deferred — edge-ai is proceeding with row-index windowing at an assumed uniform 240 Hz; revisit only if that label skew measurably hurts training.
-
-4. **Data frame carries no applied actuator state (request from edge-ai).** The TC0 callback scans the ADCs and applies the latest button bitmask in the same tick, but the outgoing frame reports only the ADC values — so the sensor data and the actuator state that was driven *during that scan* are never paired at the source. marvin currently reconstructs the pairing by joining the ADC stream (received over USB) against its own emitted-command stream (sent over USB) — two opposite directions with independent latency, so the join is skewed. Candidate fix (pairs with #3 — same frame-growth change): include the **currently-applied bitmask** in each data frame so (ADC scan, actuator state) is captured atomically on-device. For edge-ai this is the ideal training label (it's exactly the function a fretboard-resident model would replace). See edge-ai journal 2026-06-03, "Label↔feature pairing crosses two USB directions." Deferred together with #3.
+> Resolved 2026-06-03 (see decision log): #3 "no sample timestamp" and #4 "no applied actuator state" — both fixed by growing the frame to 17 bytes with `sample_seq` + `applied_mask`.
 
 ---
 
 ## Session log
+
+### 2026-06-03 — 17-byte frame: sample_seq + applied_mask for edge-ai sync
+
+- Grew the data frame 12→17 B (decision log). `data_stream.c`: added `sample_seq` (file-static `s_sample_seq`, incremented per tick before the TX-buffer guard) and `applied_mask` (from the new `cmd_receive_current_mask()` getter); `_Static_assert` 17; included `cmd_receive.h`. `cmd_receive.{c,h}`: exposed `current_mask` via the getter.
+- Lockstep partners updated the same day: marvin RX parser (`fretboard_link.c`, `DS_FRAME_LEN` 12→17, extract seq+mask) and `perf_rec_fretboard_raw_t` (perf-log schema **v4** — see marvin journal), host `marvin-perf` decoder, and the `--labels=actuator-fb` exporter + edge-ai loader (windows within contiguous `fb_seq` runs).
+- **Not yet built/flashed** — needs MPLAB + the rig. Deploy fretboard + marvin together (wire-format break). Then re-capture the Expert corpus and A/B the new atomic labels against the old cross-stream join (edge-ai journal).
 
 ### 2026-06-03 — Edge-AI design proposal authored, then promoted to its own subproject
 

@@ -161,7 +161,13 @@ def _decode_actuator(hdr: Header, payload: bytes) -> Actuator:
 def _decode_fretboard_raw(hdr: Header, payload: bytes) -> FretboardRaw:
     _check(payload, FretboardRaw.SIZE, "FretboardRaw")
     fields = FretboardRaw._BODY.unpack_from(payload, HDR_SIZE)
-    return FretboardRaw(hdr=hdr, adc=tuple(fields[:FRET_COUNT]))
+    # fields: adc[0..4], fb_sample_seq, applied_mask, reserved
+    return FretboardRaw(
+        hdr=hdr,
+        adc=tuple(fields[:FRET_COUNT]),
+        fb_sample_seq=fields[FRET_COUNT],
+        applied_mask=fields[FRET_COUNT + 1],
+    )
 
 
 def _decode_drop(hdr: Header, payload: bytes) -> Drop:
