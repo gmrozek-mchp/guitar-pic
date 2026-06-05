@@ -1,6 +1,6 @@
 # edge-ai — Design Specification
 
-> **Status:** design in progress. No code yet. Phases 1–4 are offline Python on a dev PC; phase 5 is the first hardware touch. See [rollout.md](rollout.md) for phase definitions and [review.md](review.md) for open questions, risks, and rejected alternatives.
+> **Status:** running on hardware (2026-06-04). A 16-channel int8 StrumNet, distilled from marvin's hard-mode play across 5 songs, runs standalone on the fretboard PIC32CM — reads its own photosensors, drives the controller, plays hard reasonably well on the bench with marvin disconnected. Offline phases (data pipeline, training, int8 quantisation) and the on-device port are done; remaining work is play-quality polish and difficulty/timing coverage. See [rollout.md](rollout.md) for phase status, the [journal](journal.md) for current focus, and [review.md](review.md) for open questions, risks, and rejected alternatives.
 
 ## 1. Purpose & scope
 
@@ -12,7 +12,7 @@ This is intentionally an **offline-first development effort**. Almost all of the
 
 - Training-data plumbing: a new export mode in [tools/marvin-perf](../../marvin-perf/) that turns marvin self-play perf-log captures into labelled CSV.
 - Host-side training, validation, and model artifacts.
-- Eventual on-device runtime integration. Today's intended target is the fretboard MCU (PIC32CM6408PL10048, M0+ @ 24 MHz) — see [runtime.md](runtime.md) — but the offline phases are MCU-agnostic and the target can be revisited if the model size/shape demands it.
+- On-device runtime integration (**built**). The deployment target is the fretboard MCU (PIC32CM6408PL10048, M0+ @ 24 MHz) — see [runtime.md](runtime.md); the offline phases were MCU-agnostic and the target could have been revisited if the model size/shape demanded it, but the int8 model fits with large margin.
 
 **Out of scope:**
 
@@ -57,7 +57,7 @@ The key insight that makes this work: **distilling against marvin's commands dis
 |---|---|
 | [architecture.md](architecture.md) | Training-time and inference-time data flow; cadence; sanity-check that the shape addresses §2 |
 | [training.md](training.md) | Exporter changes, CSV schema, capture protocol, model architecture |
-| [model.md](model.md) | The actual network (StrumNet) layer by layer — receptive field, params, deploy MAC cost, limitations |
-| [runtime.md](runtime.md) | Eventual on-device deployment integration — module shape, callback wiring, mode toggle |
-| [rollout.md](rollout.md) | Phased plan with explicit offline/hardware split, plus per-phase verification |
+| [model.md](model.md) | The actual network (StrumNet) layer by layer — design rationale, receptive field, params, int8 deploy path, limitations |
+| [runtime.md](runtime.md) | On-device deployment (as built) — the two int8 inference modules (streaming / recompute), callback wiring, mode toggle, memory budget |
+| [rollout.md](rollout.md) | Phased plan with explicit offline/hardware split, plus per-phase verification (offline + on-device port done) |
 | [review.md](review.md) | Risks, open questions surfaced for reviewer pushback, and alternatives considered |

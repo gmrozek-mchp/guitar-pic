@@ -1,21 +1,25 @@
 # runtime
 
-Eventual on-device deployment shape. Phase 5 in [rollout.md](rollout.md) is the first time anything in this doc actually lands in firmware — phases 1–4 are entirely offline.
+On-device deployment shape. **As built and running standalone on the fretboard MCU (2026-06-04).** The int8 model reads its own photosensors and drives the controller with marvin disconnected.
 
 ## 1. Intended target
 
-PIC32CM6408PL10048, Cortex-M0+ @ 24 MHz, no FPU, **64 KB Flash / 8 KB SRAM** (datasheet DS40002667). The current fretboard MCU. See [SPEC.md §3](SPEC.md#3-decisions-locked) on why this is a soft target rather than a locked one — the offline phases are MCU-agnostic, and if the trained model exceeds the budget the target gets revisited before phase 5 commits.
+PIC32CM6408PL10048, Cortex-M0+ @ 24 MHz, no FPU, **64 KB Flash / 8 KB SRAM** (datasheet DS40002667). The current fretboard MCU. See [SPEC.md §3](SPEC.md#3-decisions-locked) on why this is a soft target rather than a locked one — the offline phases are MCU-agnostic. The deployed 16-channel int8 model fits with large margin (§5, §6).
 
-## 2. Module (as built)
+## 2. Two inference modules (as built)
 
-[`model_infer.c`](../../../firmware/fretboard/model_infer.c) / [`.h`](../../../firmware/fretboard/model_infer.h):
+There are **two** int8 inference implementations of the same model; one is selected at build time by `MODEL_INFER_STREAMING` in [`fretboard_config.h`](../../../firmware/fretboard/fretboard_config.h). Both are integer-only (no FPU), bit-exact with the host reference `edge_ai.quantize.int8_sim`, share the `model_def_t` weight struct from the generated `model_weights.h`, and apply the same strum monostable.
 
-- Owns the 60-sample × 5-channel input ring.
-- `model_infer_push(const uint16_t adc[5])` — called from the TC0 ISR each tick.
-- `model_infer_run()` — integer-only int8 inference (last-timestep-only conv + integer threshold + strum monostable) returning the `uint8_t` command byte. **Runs in the main loop, not the ISR** (see §3).
-- `model_infer_set_model(const model_def_t *m)` — runtime weight swap (per-difficulty); weights/scales live in the generated `model_weights.h`.
+**Streaming — [`model_infer_stream.c`](../../../firmware/fretboard/model_infer_stream.c) (default, `MODEL_INFER_STREAMING=1`).** Computes a *continuous* causal convolution: one new conv column per layer per tick, caching prior columns in small per-layer rings (depths 5 / 17 / 65, sized to each layer's deepest tap). ~3 k MACs/tick at 16 ch — locks comfortably to 240 Hz. The catch: a continuous conv is only bit-exact with a model **trained at `window ≥ receptive field` (= 85 for `(1,4,16)`)** — at a shorter window the windowed model's moving zero-pad boundary wouldn't match. A `_Static_assert(MODEL_WINDOW >= 85)` guards this. The cascade is hard-coded for the 3-layer / kernel-5 / 5-in / 6-out arch (an `#error` guards a mismatched regeneration). `model_infer_stream_step(adc[5])` is called once per scan, in order.
 
-## 3. Inference must run OUTSIDE the TC0 ISR — proven on hardware (2026-06-04)
+**Recompute — [`model_infer.c`](../../../firmware/fretboard/model_infer.c) (`MODEL_INFER_STREAMING=0`).** Owns a `MODEL_WINDOW × 5` input ring; each tick re-runs only the conv positions the last timestep transitively needs (a back-propagated `s_need` table — 21 / 5 / 1 positions per layer at window 85), skipping the dense per-position conv. Works at **any** trained window, so it's the general-window fallback, but it re-runs the receptive field each tick (~16 k MACs at 16 ch / window 85, measured ~93 Hz) so it **must run in the main loop, not the ISR** (§3). `model_infer_push(adc[5])` from the ISR, `model_infer_run()` from the main loop.
+
+Both modules guard their entire body on `MODEL_INFER_STREAMING`, so the inactive translation unit is empty and allocates no static buffers — both can stay in the MPLAB project; flip the mode in `fretboard_config.h` (or with `-D`) with no add/remove of source files. `model_infer_set_model(const model_def_t *m)` (each module) does the runtime weight swap (per-difficulty).
+
+## 3. The recompute path must run OUTSIDE the TC0 ISR — proven on hardware (2026-06-04)
+
+> Applies to the **recompute** path (`model_infer.c`). The streaming path is cheap enough (~3 k MACs/tick) to run inline; this section is why the recompute path can't.
+
 
 The first bring-up ran `model_infer_run()` *inside* the 240 Hz TC0 callback. That fails two ways at once: the long ISR delays the next tick (sampling drops to ~150–190 Hz, so the model's window is no longer 250 ms and its learned photo→strum lag is wrong → late/missed notes), **and** it starves the interrupt-driven SERCOM TX, collapsing the data stream (recv ~22 fps with heavy drops). Measured with [`tools/marvin-perf/fretboard_rate.py`](../../marvin-perf/fretboard_rate.py), which reads `sample_seq` to report the true tick rate.
 
@@ -45,19 +49,26 @@ Build-time `FRETBOARD_MODE` (`MODEL_DRIVEN` default, `MARVIN_DRIVEN` to restore 
 
 ## 5. Inference budget
 
-24 MHz × 4.17 ms ≈ 100 k cycles per tick. A model with ≲1 k MACs at int8 fits comfortably with margin for ring-buffer copy + feature extraction. Phase 3 of [rollout.md](rollout.md) measures actual latency; phase 5 cannot proceed if measured latency consumes more than half the tick.
+24 MHz × 4.17 ms ≈ 100 k cycles per tick. The deployed 16-channel model costs ~3 k MACs/tick streaming (the recompute path ~16 k at window 85) — both well inside budget; the dense `count_macs` figure (~252 k) is a loose upper bound that assumes every window position is computed (see [model.md §5](model.md)). Measured rates: streaming locks to 240 Hz; recompute ~93 Hz at 16 ch.
 
 ## 6. Memory budget (8 KB SRAM)
 
-As built (RF85 `(1,4,16)`, channels 8, window 60), `model_infer` static scratch:
+**Streaming (deployed: `(1,4,16)`, channels 16, window 85)** — `model_infer_stream.c` static scratch:
 
-- Input ring: 60 × 5 × 2 B = 600 B.
-- Standardised int8 input `s_qin`: 60 × 5 = 300 B.
-- Per-layer int8 activations `s_act`: 3 × 60 × 8 = 1440 B.
-- Needed-position table `s_need`: 3 × 60 = 180 B.
-- ≈ **2.5 KB total**. The weights are flash-`const` (0 RAM).
+- `s_qin` ring: 5 × 5 = 25 B.
+- L0 ring: 17 × 16 = 272 B.
+- L1 ring: 65 × 16 = 1040 B.
+- ≈ **1.4 KB total** (rings + monostable state). No full-window buffer — the streaming cascade keeps only each layer's deepest-tap history.
 
-That leaves ample room in 8 KB for stack + SERCOM buffers. A **RAM-resident programmable weight set** (for loading weights over serial without reflashing) would add ≈ **1.1 KB** (840 B int8 conv weights + biases + head + scales) → ~3.6 KB, still comfortable; confirm against the linker `.map`. Multiple RAM-resident models would not fit — one override slot does.
+**Recompute (`model_infer.c`, channels 16, window 85)** static scratch, for contrast:
+
+- Input ring: 85 × 5 × 2 B = 850 B.
+- Standardised int8 input `s_qin`: 85 × 5 = 425 B.
+- Per-layer int8 activations `s_act`: 3 × 85 × 16 ≈ 4.1 KB.
+- Needed-position table `s_need`: 3 × 85 = 255 B.
+- ≈ **5.6 KB total** (the `s_act` window×channels term dominates — this is what makes 32 ch RAM-bound).
+
+Weights are flash-`const` (0 RAM) in both. A **RAM-resident programmable weight set** (loading weights over serial without reflashing) would add ≈ **1.1 KB** (int8 conv weights + biases + head + scales); confirm against the linker `.map`. One override slot fits; multiple RAM-resident models would not.
 
 ## 7. Runtime weight swap (built) + programmable weights (future)
 

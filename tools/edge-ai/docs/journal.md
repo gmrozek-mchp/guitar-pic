@@ -93,6 +93,14 @@ Difficulty target was **hard** first (all 5 frets, slower scroll). **Open next-s
 
 ## Session log
 
+### 2026-06-04 — docs synced to implementation (model.md focus)
+
+- Swept all `docs/` against the actual code + firmware to remove drift accumulated across the RF-85, int8-quantise, 16ch-deploy, and streaming-inference milestones. No code changed.
+- **`model.md` rewritten** around the design *rationale* (the user's ask: why the model is the way it is). Fixed the §3 ASCII diagram (was missing the 3rd `d=16` conv layer); added a "why these layers" subsection (1D conv vs dense/RNN, causal padding, geometric RF growth from dilation, last-timestep head); reframed §4 from the stale "RF 21 is the current default, RF 85 is a pending fix" into "RF 85 is the shipped default and here's the A/B that decided it"; updated §5 MAC table to 3 layers + both on-device paths (streaming ~3k, recompute ~16k at 16ch/w85, verified by computing `count_macs` + the firmware `s_need` cost); rewrote §7 from "Quantisation (Phase 3, not done)" to the as-built int8 path (PTQ lossless, bit-exact gate, streaming vs recompute); added `dilations`/`label_lead` to the checkpoint-contents list.
+- **`runtime.md`**: documented *both* inference modules (`model_infer_stream.c` streaming default + `model_infer.c` recompute fallback), the `MODEL_INFER_STREAMING` build flag, the window≥RF(85) streaming requirement, and corrected the memory budget to the deployed 16ch/w85 figures (streaming ~1.4 KB, recompute ~5.6 KB).
+- **`training.md`**: hard (not Expert) as v1 target + the timing-regime pin; 3-layer `(1,4,16)` arch pointer to model.md; `actuator-fb` atomic schema with `fb_seq`; int8 (not int16) activations; strum density ~7–13%.
+- **`architecture.md`**: on-device flow shows streaming step + `cmd_receive_apply_mask` + SW0; window 85; real MAC figures. **`SPEC.md`**: status → "running on hardware". **`rollout.md`**: phases 1–3 ✓, 4 subsumed, 5 in progress (game-score open). **`review.md`**: marked the strum-imbalance + window-too-short risks resolved. **`README.md`**: added `quantize.py` + a quantise example.
+
 ### 2026-06-04 — line-263 validated on hardware; RF A/B picks (1,4,16); clean labels confirmed
 
 - **Reflashed marvin** with the line-263 released-style change and confirmed it still plays hard cleanly (user). Deleted the old corpus wholesale — Expert captures were schema v3 (no in-frame `applied_mask`, can't do `actuator-fb`) and the lone hard capture was pre-line-263 (legato baked in); none forward-usable, nothing git-tracked, so a clean slate.

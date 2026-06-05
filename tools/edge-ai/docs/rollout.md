@@ -1,13 +1,13 @@
 # rollout
 
-Phased plan with explicit offline / hardware split. Phases 1–4 are entirely offline (Python on a dev PC, no firmware changes). Phase 5 is the first hardware touch.
+Phased plan with explicit offline / hardware split. **Status (2026-06-04): phases 1–2 done; phases 3–5 collapsed into a single standalone on-device bring-up that is running on the bench** (marvin out of the loop — see the journal). Remaining: play-quality scoring vs a baseline (the original Phase 5 gate) and difficulty/timing coverage.
 
 ## Offline phases
 
-| Phase | Goal | Done when |
+| Phase | Goal | Status / done when |
 |---|---|---|
-| **1. Data pipeline** | Distillation labels available end-to-end | `--labels=actuator` exporter merged in [tools/marvin-perf](../../marvin-perf/); one captured-gameplay CSV inspected and shows plausible fret + strum timing |
-| **2. Host-side baseline** | Train on PC; validate offline | MPLAB ML / PyTorch model achieves ≥95% per-bit accuracy on held-out song; strum-event timing error p95 ≤ 20 ms (one ADC sample) |
+| **1. Data pipeline** | Distillation labels available end-to-end | **✓ Done.** `--labels=actuator`/`actuator-fb` exporters in [tools/marvin-perf](../../marvin-perf/); real captures inspected, plausible fret + strum timing. |
+| **2. Host-side baseline** | Train on PC; validate offline | **✓ Done (PyTorch).** RF-85 model: held-out per-bit accuracy ≥0.96 (red ~0.89), strum recall ~0.965 / p95 ~20 ms. The synthetic p95 ≤ 20 ms gate is likely stricter than the game needs (real gate is game score, below). |
 
 ### Phase 1 verification
 
@@ -23,11 +23,13 @@ Training script reports per-bit accuracy and strum-event timing distribution on 
 
 ## Hardware-touching phases
 
-| Phase | Goal | Done when |
+Scoped with the user into a single **standalone model-driven** bring-up (marvin out of the loop, fretboard debugger + serial on the PC) rather than the staged 3→4→5 dry-run, since the model owns the wire directly.
+
+| Phase | Goal | Status / done when |
 |---|---|---|
-| **3. On-device port** | Same model running on PIC32 | Inference latency < 1 ms (well inside the 4.17 ms tick); on-device output matches host inference bit-for-bit on a recorded ADC trace (within int8 quant tolerance) |
-| **4. Side-by-side dry-run** | AI predicts but doesn't drive | New perf-log record `PERF_REC_MODEL_OUT` mirrors `Actuator` shape; recorded alongside marvin's commands; per-tick agreement tracked over a real session |
-| **5. Cut-over** | AI drives the controller | Fretboard mode-switch flips wire ownership from `cmd_receive` to `model_infer`; gameplay scoring measured against marvin-driven baseline |
+| **3. On-device port** | Same model running on PIC32 | **✓ Done.** int8 PTQ ([`quantize.py`](../edge_ai/quantize.py)); two inference modules ([runtime.md](runtime.md)) **bit-exact** with the host reference (gated by `tests/test_bitexact.py` + `test_stream_bitexact.py`). Streaming locks to 240 Hz. |
+| **4. Side-by-side dry-run** | AI predicts but doesn't drive | **Subsumed.** Went straight to standalone model-driven; `applied_mask` telemetry carries the model's command for live inspection instead of a separate `PERF_REC_MODEL_OUT`. |
+| **5. Cut-over** | AI drives the controller | **In progress.** Build-time `FRETBOARD_MODE=MODEL_DRIVEN` + SW0 runtime toggle flips wire ownership from `cmd_receive` to the model; plays hard on the bench. **Open:** gameplay scoring against a marvin-driven baseline. |
 
 ### Phase 3 verification
 
