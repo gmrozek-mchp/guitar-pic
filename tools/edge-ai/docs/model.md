@@ -57,6 +57,10 @@ The shipped model: `StrumNet(channels=16, kernel=5, dilations=(1,4,16))`, traine
                       clean strum pulse → wire byte bit 5
 ```
 
+The same structure traced from the shipped 16-channel checkpoint (`edge-ai viz`), with tensor shapes at `window=85`. Note the growing left-pad (89 → 101 → 149 from `d=1,4,16`) and the `__getitem__` last-timestep pluck `(1,16,85) → (1,16)` feeding the linear head:
+
+![StrumNet layer graph: input (1,5,85) through three CausalConv1d+ReLU blocks, last-timestep slice, then Linear to 6 logits](img/strumnet-graph.png)
+
 Parameter counts at the training default `StrumNet(channels=8, kernel=5, dilations=(1,4,16))`:
 
 | Layer | Op | Out shape | Params |
@@ -90,6 +94,31 @@ Only the **last timestep** feeds the head (`h[:, :, -1]`). Its receptive field �
 ```
 RF = 1 + Σ (kernel-1)·dilation = 1 + (5-1)·(1 + 4 + 16) = 85 samples ≈ 354 ms
 ```
+
+**What "dilation" is.** A kernel-5 conv always has 5 weights; dilation `d` sets how far apart in time those 5 taps reach — it inserts `d-1` skipped samples between them:
+
+```
+ d=1  (normal):  t  t-1  t-2  t-3  t-4              5 adjacent samples,  spans  5
+ d=4          :  t  t-4  t-8  t-12 t-16             5 taps, gap 3,       spans 17
+ d=16         :  t  t-16 t-32 t-48 t-64             5 taps, gap 15,      spans 65
+```
+
+A dilated layer leaves holes, but the layer below has already summarised them: each `conv2` output condenses a `d=4` neighbourhood, each `conv1` output condenses 5 adjacent inputs, so when `conv3` (d=16) samples 5 coarse points each one already carries its surroundings — **no input sample is ignored** even though the top layer touches only 1 in 16 directly. That is what buys the *geometric* RF growth for a *linear* parameter cost (the §3 "why these layers" point): `1→4→16` reaches RF 85 in **3 layers**, where plain `d=1` kernel-5 layers would need ~21.
+
+The cone below (`edge-ai viz --rf-cone`) is that sum drawn out — the head reads one `conv3` output (top), whose `d=16` taps fan back to 5 `conv2` positions, each fanning through `d=4` then `d=1` until the taps tile a **contiguous 85-sample input span**, gap-free by construction:
+
+![Receptive-field cone: output[t] fans back through conv3 (d=16), conv2 (d=4), conv1 (d=1) to a contiguous 85-sample input span](img/receptive-field-cone.png)
+
+Reading it top→bottom, the dot counts go **1 → 5 → 21 → 85** as each fan-out multiplies the spread:
+
+| Row (label = that layer's own dilation) | Dots | Why |
+|---|---|---|
+| `conv3 out (d=16)` | 1 | the single `output[t]` the head reads |
+| `conv2 out (d=4)` | 5 | conv3's d=16 taps → 5 points spaced **16** apart |
+| `conv1 out (d=1)` | 21 | each fans to 5 points spaced **4** apart; they tile to 21 |
+| `input (5 ch)` | 85 | each fans to 5 **adjacent** points; they tile to the full 85 |
+
+(The `(d=X)` in a row label is *that layer's own* dilation — the spacing it uses to read the row below. The spacing of the dots you *see* in a row comes from the layer above sampling it, so the `conv2 out (d=4)` row shows dots 16 apart, set by conv3.)
 
 This single number governs the architecture, because of three consequences:
 

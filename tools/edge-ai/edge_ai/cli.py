@@ -8,6 +8,10 @@
 
   edge-ai eval --model model.pt CAPTURE.csv [CAPTURE.csv ...]
         Evaluate a checkpoint and print per-bit accuracy + strum timing.
+
+  edge-ai viz [--model model.pt] [--rf-cone cone.png] [--graph graph.svg]
+        Visualise the model: torchinfo summary, torchview graph, RF cone
+        (needs the `viz` dep group).
 """
 
 from __future__ import annotations
@@ -131,6 +135,72 @@ def cmd_quantize(args) -> int:
     return 0
 
 
+def _viz_arch(args):
+    """Resolve (model, channels, kernel, dilations, window) from --model or flags.
+
+    model is built (with weights) only when --model is given; otherwise it's None
+    and callers that need a module build a fresh StrumNet from the dims.
+    """
+    from .viz import receptive_field
+
+    if args.model:
+        import torch
+
+        from .model import StrumNet
+
+        ckpt = torch.load(args.model, map_location="cpu")
+        channels = ckpt["channels"]
+        kernel = ckpt["kernel"]
+        dilations = tuple(ckpt.get("dilations", (1, 4)))
+        window = args.window or ckpt["window"]
+        model = StrumNet(channels=channels, kernel=kernel, dilations=dilations)
+        model.load_state_dict(ckpt["state_dict"])
+    else:
+        channels, kernel, dilations = args.channels, args.kernel, args.dilations
+        # A window shorter than the RF would crop the cone; default to the RF.
+        window = args.window or receptive_field(kernel, dilations)
+        model = None
+    return model, channels, kernel, dilations, window
+
+
+def cmd_viz(args) -> int:
+    from .viz import receptive_field
+
+    model, channels, kernel, dilations, window = _viz_arch(args)
+    rf = receptive_field(kernel, dilations)
+    print(f"arch: channels={channels} kernel={kernel} dilations={dilations} "
+          f"window={window}")
+    print(f"receptive field: {rf} samples ≈ {rf / 240 * 1000:.0f} ms at 240 Hz")
+
+    if args.rf_cone:
+        from .viz import rf_cone_plot
+
+        out = rf_cone_plot(args.rf_cone, kernel=kernel, dilations=dilations)
+        print(f"wrote {out} (receptive-field cone)")
+
+    # The summary table and graph need a built model (torch). Skip if neither
+    # was requested so the RF cone works on a stock Python without torch.
+    if args.no_summary and not args.graph:
+        return 0
+
+    if model is None:
+        from .model import StrumNet
+
+        model = StrumNet(channels=channels, kernel=kernel, dilations=dilations)
+
+    if not args.no_summary:
+        from .viz import summary_text
+
+        print(summary_text(model, window))
+
+    if args.graph:
+        from .viz import render_graph
+
+        out = render_graph(model, window, args.graph)
+        print(f"wrote {out} (torchview layer graph)")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="edge-ai", description=__doc__,
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -203,6 +273,23 @@ def build_parser() -> argparse.ArgumentParser:
     pq.add_argument("--strum-thresh", type=float, default=0.5,
                     help="strum decision threshold; folded into the integer output threshold")
     pq.set_defaults(func=cmd_quantize)
+
+    pv = sub.add_parser("viz", help="Visualise the model (summary, graph, RF cone).")
+    pv.add_argument("--model", help="checkpoint .pt to read arch from (else use flags)")
+    pv.add_argument("--channels", type=int, default=16)
+    pv.add_argument("--kernel", type=int, default=5)
+    pv.add_argument("--dilations", type=_parse_dilations, default=(1, 4, 16))
+    pv.add_argument("--window", type=int, default=0,
+                    help="window length (0 = checkpoint's, or the RF if no --model)")
+    pv.add_argument("--rf-cone", metavar="OUT.png",
+                    help="write the receptive-field cone plot (needs the viz group; "
+                         "no torch required)")
+    pv.add_argument("--graph", metavar="OUT.svg",
+                    help="write the torchview layer graph (needs the viz group + the "
+                         "graphviz binary)")
+    pv.add_argument("--no-summary", action="store_true",
+                    help="skip the torchinfo summary table (printed by default)")
+    pv.set_defaults(func=cmd_viz)
     return p
 
 
