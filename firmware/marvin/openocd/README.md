@@ -52,6 +52,9 @@ Attach a debugger:
 arm-none-eabi-gdb -ex 'target remote :3333'
 ```
 
+`reset`, `reset halt`, and `reset init` work via the nRST line (AD5). For
+example, `reset halt` resets the SoC and stops in boot ROM (`pc ≈ 0x44`).
+
 A `Warn : libusb_detach_kernel_driver() failed with LIBUSB_ERROR_ACCESS` line on
 macOS is harmless — OpenOCD claims the interface anyway.
 
@@ -66,9 +69,19 @@ openocd -c "set FTDI_SERIAL W16-2026-413" -f sam9x75-chybrid.cfg
 
 Leave `FTDI_SERIAL` unset to use the first FT4232H found.
 
+## Channel A reset / clock pinout
+
+| Signal | FT4232H pin | Notes |
+|--------|-------------|-------|
+| nSRST  | AD5 | open-drain system reset (`reset_config srst_only srst_open_drain`) |
+| RTCK   | AD7 | return clock; enables adaptive clocking via `adapter speed 0` |
+| nTRST  | — | not wired (AD4/AD6 are N/C); TAP reset uses TMS |
+
 ## Scope / limitations
 
-This config supports **attach, halt, resume, and memory/register access**. It
-does **not** yet drive nTRST/nSRST (those FT4232H GPIOs are not in the layout)
-or initialise external DDR, so reset-halt and flashing to RAM/NAND are not set
-up. Core debug of running firmware works today.
+This config supports **attach, halt, resume, memory/register access, reset**
+(`reset` / `reset halt` / `reset init` via nSRST), and **adaptive clocking**
+(`adapter speed 0`, using RTCK). It does **not** yet initialise external DDR or
+define flash banks, so loading code to RAM and programming NAND/QSPI/SD over
+JTAG are not set up — use SAM-BA or MPLAB for production programming, or extend
+this config with a `reset-init` event handler that brings up the DDR controller.
