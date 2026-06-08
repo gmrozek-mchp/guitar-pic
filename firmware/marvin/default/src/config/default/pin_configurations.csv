@@ -94,7 +94,7 @@ R17,PA18,CLASSD_L0,CLASSD_L0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T1,PA27,DBGU_TX,DBGU_DTXD,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T3,PA30,,Available,In,,,,,,,,
 T4,PA28,,Available,In,,,,,,,,
-T5,PA14,,Available,In,,,,,,,,
+T5,PA14,GUITAR_RX,FLEXCOM2_IO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T7,PA7,LED_3,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 T8,PB11,,Available,In,,,,,,,,
 T9,PA1,SDMMC0_CMD,SDMMC0_CMD,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
@@ -104,4 +104,4 @@ U7,PA20,BSP_MAXTOUCH_CHG,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low
 U8,PA16,,Available,In,,,,,,,,
 U9,PA23,SDMMC0_CD,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low
 U10,PA22,LED_1,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
-U11,PA13,,Available,In,,,,,,,,
+U11,PA13,GUITAR_TX,FLEXCOM2_IO0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low

@@ -13,6 +13,7 @@ modules:
 - drv_i2c
 - drv_i2c_0
 - drv_usb_udphs
+- flexcom2
 - flexcom8
 - gfx_bridge_lvdsc_plib
 - gfx_display_comp_nvdi_10_1in
@@ -46,7 +47,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: bb7537fcd5ce98e6aae66c55d6582bf33c8200be5c77ace82bae2d92d319aff7
+  hash: f91c6a7b4c92244e8a86c12df521f51a9945fe669f167a28e65704d495937dbe
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -600,11 +601,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 5f243d7a9f645543305f55654e68e56e679ac70a6ffcef4ee6a0a1f70d22b8ca
+  hash: abc248424ae1c10d1afc1330479ce8a3ccfbc3ae813915866f82b0ae372c3517
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
-  hash: c35c26b69a82ae6cb6ea2daabe531a5be79ebc50aacb0859daa6ec44f63f245d
+  hash: 3f5a33f2629f4932e5c900c6943a48b29b706bc2bdb55ce0bd5f589d40215346
 - file: ../src/config/default/osal/osal.h
   hash: 1cfe3b61d9693b2369922041eef33fe16b3c1ccd9c85d4ded808b805f90a869c
 - file: ../src/config/default/osal/osal_definitions.h
@@ -614,11 +615,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/osal/osal_freertos.h
   hash: f9d8c97ce37bbb7516242ec37c4b0db387090cfed54580af683bc0ce126094e0
 - file: ../src/config/default/peripheral/aic/plib_aic.c
-  hash: cf49716c8edf8bced61eba37c289b3e342237a7564185855e39f6961493f372a
+  hash: 7e03b057db78062313ebff61337781bfc04aae4cba6fe255155fb235adb3678b
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: b8260b43d986254b565ece0b9f787054dde4d5ec2170550d3eeab224d644d07c
+  hash: 5004f7e8ccf8529a8191a42c413edbf85cd6b752a23c07eb0fa478f2a8edc742
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -633,6 +634,12 @@ generatedFileHashHistoryMap:
   hash: 35245134dc1519103ec0f7b96f480ff3172fdf7510382f4cb1f4bc8c7aa7e925
 - file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom_twi_master_common.h
   hash: b167387d3ed43ed5aec18b601bf7d5da73592c102a83e21d56351bb98c67807a
+- file: ../src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.c
+  hash: 1c4b0b0b16e6156b96667c17cf616161424c4d284dec7b5c4558d8e8e64404fd
+- file: ../src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.h
+  hash: 9b6fc85eb33cc56876eed23bb7c6f2d0534ea228eb45078cd9e891361677a228
+- file: ../src/config/default/peripheral/flexcom/usart/plib_flexcom_usart_local.h
+  hash: 44c68d2efb80f2837e7bbcb39073972a6672c61ea2daf8f63e8c7e7da6e1208c
 - file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.c
   hash: c143979d6918aa64bf68fc768cca5b8179fa78d66349e301c14f94658ac48c00
 - file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.h
@@ -644,9 +651,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/mmu/plib_mmu.h
   hash: 7fb6e6b8ad6a80b7fc04c0264b7cdf49e6d6b887e4f3c5aa394eda88e32e0116
 - file: ../src/config/default/peripheral/pio/plib_pio.c
-  hash: 9a8e02ec2651b9575791221fa3709d0d4435a3e1ca9ed4d76ce0e4a1769ea81d
+  hash: df24378c4e3d38830f877ddf1b17970d2fd08e2c62bbb6ded2b67ac39f1c575c
 - file: ../src/config/default/peripheral/pio/plib_pio.h
-  hash: 744ff499ae2bcf3a8d9af402e9db1a4533ea18588767bb43f2ff6e561f5f534f
+  hash: f44a98a9831cb41dc6646b966d012440b05c423a5d6a487fcfdea09877cc7b2b
 - file: ../src/config/default/peripheral/pit/plib_pit.c
   hash: 8a0cc770abe2faed88127bb7e1a489749d3c9f971094fc9addf001a7a7ded5fa
 - file: ../src/config/default/peripheral/pit/plib_pit.h
@@ -664,7 +671,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
   hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
-  hash: c5a99b655d9f83dbd7554eb373dbeae9fc9c80876a3d27d2afe332a9d18db7b8
+  hash: 6a54875ed5fc57e9b417f2f5c00e32d8826df371bbea6f186874a1a2b9635b3d
 - file: ../src/config/default/stdio/xc32_monitor.c
   hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/sys_tasks.h

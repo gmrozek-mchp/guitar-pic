@@ -359,7 +359,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '202113087'
+            value: '202137663'
           type: Dynamic
         type: Values
       type: Hex
@@ -4569,6 +4569,132 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    PIN_238_FUNCTION_TYPE:
+      attributes:
+        id: PIN_238_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM2_IO0
+          type: User
+        type: Values
+      type: String
+    PIN_238_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_238_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_218_FUNCTION_TYPE:
+      attributes:
+        id: PIN_218_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM2_IO1
+          type: User
+        type: Values
+      type: String
+    PIN_218_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_218_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    FLEXCOM2_CLOCK_ENABLE:
+      attributes:
+        id: FLEXCOM2_CLOCK_ENABLE
+        label: FLEXCOM2
+      children:
+      - children:
+        - attributes:
+            id: flexcom2
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM2_INTERRUPT_ENABLE:
+      attributes:
+        id: FLEXCOM2_INTERRUPT_ENABLE
+        label: Enable 7 -- Flexcom 2
+      children:
+      - children:
+        - attributes:
+            id: flexcom2
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM2_INTERRUPT_HANDLER:
+      attributes:
+        id: FLEXCOM2_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: flexcom2
+            value: FLEXCOM2_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    FLEXCOM2_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: FLEXCOM2_INTERRUPT_HANDLER_LOCK
+        label: FLEXCOM2_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: flexcom2
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM2_CLOCK_FREQUENCY:
+      attributes:
+        id: FLEXCOM2_CLOCK_FREQUENCY
+        label: FLEXCOM2_CLOCK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    PIN_238_FUNCTION_NAME:
+      attributes:
+        id: PIN_238_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: GUITAR_TX
+          type: User
+        type: Values
+      type: String
+    PIN_218_FUNCTION_NAME:
+      attributes:
+        id: PIN_218_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: GUITAR_RX
+          type: User
+        type: Values
+      type: String
   userData:
     children:
     - attributes:

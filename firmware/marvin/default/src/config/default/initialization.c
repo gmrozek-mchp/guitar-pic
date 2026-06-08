@@ -332,6 +332,7 @@ void SYS_Initialize ( void* data )
 
     TC0_CH0_TimerInitialize();
 
+    FLEXCOM2_USART_Initialize();
 
     FLEXCOM8_TWI_Initialize();
 

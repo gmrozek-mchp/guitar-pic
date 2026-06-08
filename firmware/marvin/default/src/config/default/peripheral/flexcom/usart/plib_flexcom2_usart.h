@@ -1,22 +1,26 @@
 /*******************************************************************************
- System Interrupts File
+  FLEXCOM2 USART PLIB
 
-  Company:
+  Company
     Microchip Technology Inc.
 
-  File Name:
-    interrupt.h
+  File Name
+    plib_flexcom2_usart.h
 
-  Summary:
-    Interrupt vectors mapping
+  Summary
+    FLEXCOM2 USART peripheral library interface.
 
-  Description:
-    This file contains declarations of device vectors used by Harmony 3
- *******************************************************************************/
+  Description
+    This file defines the interface to the FLEXCOM2 USART peripheral library. This
+    library provides access to and control of the associated peripheral
+    instance.
 
-// DOM-IGNORE-BEGIN
+  Remarks:
+    None.
+*******************************************************************************/
+
 /*******************************************************************************
-* Copyright (C) 2025 Microchip Technology Inc. and its subsidiaries.
+* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
 *
 * Subject to your compliance with these terms, you may use Microchip software
 * and any derivatives exclusively with Microchip products. It is your
@@ -36,39 +40,66 @@
 * FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
 * ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
 * THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
- *******************************************************************************/
-// DOM-IGNORE-END
+*******************************************************************************/
 
-#ifndef INTERRUPTS_H
-#define INTERRUPTS_H
+#ifndef PLIB_FLEXCOM2_USART_H // Guards against multiple inclusion
+#define PLIB_FLEXCOM2_USART_H
 
 // *****************************************************************************
 // *****************************************************************************
 // Section: Included Files
 // *****************************************************************************
 // *****************************************************************************
-#include <stdint.h>
 
+#include "device.h"
+#include "plib_flexcom_usart_local.h"
 
+// DOM-IGNORE-BEGIN
+#ifdef __cplusplus // Provide C++ Compatibility
+extern "C" {
+#endif
+// DOM-IGNORE-END
 
 // *****************************************************************************
 // *****************************************************************************
-// Section: Handler Routines
+// Section: Interface Routines
 // *****************************************************************************
 // *****************************************************************************
-void SYSC_SharedHandler (void);
-void FLEXCOM2_InterruptHandler (void);
-void FLEXCOM8_InterruptHandler (void);
-void TC0_InterruptHandler (void);
-void XDMAC_InterruptHandler (void);
-void DRV_USB_UDPHS_Handler (void);
-void ISC_Handler (void);
-void CSI2DC_Handler (void);
+#define FLEXCOM2_USART_FrequencyGet()    (uint32_t)(266666666UL)
 
-void PIT_InterruptHandler (void);
+/****************************** FLEXCOM2 USART API *********************************/
 
-/* Interrupt Handler for spurious interrupts */
-void SPURIOUS_INTERRUPT_Handler (void);
+void FLEXCOM2_USART_Initialize( void );
+
+FLEXCOM_USART_ERROR FLEXCOM2_USART_ErrorGet( void );
+
+bool FLEXCOM2_USART_SerialSetup( FLEXCOM_USART_SERIAL_SETUP *setup, uint32_t srcClkFreq );
+
+bool FLEXCOM2_USART_Write( void *buffer, const size_t size );
+
+bool FLEXCOM2_USART_Read( void *buffer, const size_t size );
+
+bool FLEXCOM2_USART_WriteIsBusy( void );
+
+bool FLEXCOM2_USART_ReadIsBusy( void );
+
+size_t FLEXCOM2_USART_WriteCountGet( void );
+
+size_t FLEXCOM2_USART_ReadCountGet( void );
+
+bool FLEXCOM2_USART_ReadAbort(void);
+
+void FLEXCOM2_USART_WriteCallbackRegister( FLEXCOM_USART_CALLBACK callback, uintptr_t context );
+
+void FLEXCOM2_USART_ReadCallbackRegister( FLEXCOM_USART_CALLBACK callback, uintptr_t context );
+
+bool FLEXCOM2_USART_TransmitComplete( void );
 
 
-#endif // INTERRUPTS_H
+// DOM-IGNORE-BEGIN
+#ifdef __cplusplus  // Provide C++ Compatibility
+    }
+#endif
+// DOM-IGNORE-END
+
+#endif //PLIB_FLEXCOM2_USART_H

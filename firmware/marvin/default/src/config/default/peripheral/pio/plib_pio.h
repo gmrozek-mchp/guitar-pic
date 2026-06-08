@@ -406,6 +406,10 @@
 #define DBGU_TX_Get()               ((PIOA_REGS->PIO_PDSR >> 27U) & 0x1U)
 #define DBGU_TX_PIN                  PIO_PIN_PA27
 
+/*** Macros for GUITAR_RX pin ***/
+#define GUITAR_RX_Get()               ((PIOA_REGS->PIO_PDSR >> 14U) & 0x1U)
+#define GUITAR_RX_PIN                  PIO_PIN_PA14
+
 /*** Macros for LED_3 pin ***/
 #define LED_3_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<7U))
 #define LED_3_Clear()             (PIOA_REGS->PIO_CODR = ((uint32_t)1U<<7U))
@@ -445,6 +449,10 @@
 #define LED_1_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<22U))
 #define LED_1_Get()               ((PIOA_REGS->PIO_PDSR >> 22U) & 0x1U)
 #define LED_1_PIN                  PIO_PIN_PA22
+
+/*** Macros for GUITAR_TX pin ***/
+#define GUITAR_TX_Get()               ((PIOA_REGS->PIO_PDSR >> 13U) & 0x1U)
+#define GUITAR_TX_PIN                  PIO_PIN_PA13
 
 
 // *****************************************************************************

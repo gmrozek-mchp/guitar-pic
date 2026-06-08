@@ -56,6 +56,7 @@
 #include "peripheral/tc/plib_tc0.h"
 #include "system/time/sys_time.h"
 #include "driver/i2c/drv_i2c.h"
+#include "peripheral/flexcom/usart/plib_flexcom2_usart.h"
 #include "usb/usb_device_cdc.h"
 #include "usb/usb_cdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
