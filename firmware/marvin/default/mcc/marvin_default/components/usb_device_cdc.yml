@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: usb_device_cdc
-coreVersion: 5.8.4
+coreVersion: 5.9.0
 device: SAM9X75D2G
 library: []
 dependency:
@@ -22,8 +22,8 @@ data:
     - children:
       - attributes:
           id: usb_device_cdc
-          x: '397'
-          y: '695'
+          x: '408'
+          y: '693'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

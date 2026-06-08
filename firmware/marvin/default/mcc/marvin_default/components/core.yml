@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: core
-coreVersion: 5.8.4
+coreVersion: 5.9.0
 device: SAM9X75D2G
 library: []
 dependency:
@@ -256,6 +256,7 @@ data:
     PIN_79_DIR:
       attributes:
         id: PIN_79_DIR
+        label: Direction
       children:
       - children:
         - attributes:
@@ -296,36 +297,40 @@ data:
     PIN_94_FUNCTION_NAME:
       attributes:
         id: PIN_94_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: CAMERA_RESET
+            value: ''
           type: User
         type: Values
       type: String
     PIN_94_FUNCTION_TYPE:
       attributes:
         id: PIN_94_FUNCTION_TYPE
+        label: Type
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: ''
           type: User
         type: Values
       type: String
     PIN_94_PERIPHERAL_FUNCTION:
       attributes:
         id: PIN_94_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: ''
           type: User
         type: Values
       type: String
     PIOA_ABCDSR1_VALUE:
       attributes:
         id: PIOA_ABCDSR1_VALUE
+        label: PIOA_ABCDSR1
       children:
       - children:
         - attributes:
@@ -337,28 +342,31 @@ data:
     PIOA_ABCDSR2_VALUE:
       attributes:
         id: PIOA_ABCDSR2_VALUE
+        label: PIOA_ABCDSR2
       children:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '786432'
           type: Dynamic
         type: Values
       type: Hex
     PIOA_PDR_VALUE:
       attributes:
         id: PIOA_PDR_VALUE
+        label: PIOA_PDR
       children:
       - children:
         - attributes:
             id: core
-            value: '251658240'
+            value: '202113087'
           type: Dynamic
         type: Values
       type: Hex
     PIOC_ABCDSR1_VALUE:
       attributes:
         id: PIOC_ABCDSR1_VALUE
+        label: PIOC_ABCDSR1
       children:
       - children:
         - attributes:
@@ -370,6 +378,7 @@ data:
     PIOC_ABCDSR2_VALUE:
       attributes:
         id: PIOC_ABCDSR2_VALUE
+        label: PIOC_ABCDSR2
       children:
       - children:
         - attributes:
@@ -436,17 +445,19 @@ data:
     PIOC_OER_VALUE:
       attributes:
         id: PIOC_OER_VALUE
+        label: PIOC_OER
       children:
       - children:
         - attributes:
             id: core
-            value: '3359424512'
+            value: '2016722944'
           type: Dynamic
         type: Values
       type: Hex
     PIOC_PDR_VALUE:
       attributes:
         id: PIOC_PDR_VALUE
+        label: PIOC_PDR
       children:
       - children:
         - attributes:
@@ -553,11 +564,12 @@ data:
     PIOC_SODR_VALUE:
       attributes:
         id: PIOC_SODR_VALUE
+        label: PIOC_SODR
       children:
       - children:
         - attributes:
             id: core
-            value: '1074528256'
+            value: '1074003968'
           type: Dynamic
         type: Values
       type: Hex
@@ -574,6 +586,7 @@ data:
     PIN_66_FUNCTION_TYPE:
       attributes:
         id: PIN_66_FUNCTION_TYPE
+        label: Type
       children:
       - children:
         - attributes:
@@ -584,6 +597,7 @@ data:
     PIN_66_PERIPHERAL_FUNCTION:
       attributes:
         id: PIN_66_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
       children:
       - children:
         - attributes:
@@ -594,6 +608,7 @@ data:
     PIN_66_FUNCTION_NAME:
       attributes:
         id: PIN_66_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
@@ -604,6 +619,7 @@ data:
     PIN_66_DIR:
       attributes:
         id: PIN_66_DIR
+        label: Direction
       children:
       - children:
         - attributes:
@@ -614,6 +630,7 @@ data:
     PIN_66_LAT:
       attributes:
         id: PIN_66_LAT
+        label: Initial Latch Value
       children:
       - children:
         - attributes:
@@ -624,72 +641,79 @@ data:
     PIN_196_FUNCTION_TYPE:
       attributes:
         id: PIN_196_FUNCTION_TYPE
+        label: Type
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: ''
           type: User
         type: Values
       type: String
     PIN_196_PERIPHERAL_FUNCTION:
       attributes:
         id: PIN_196_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: ''
           type: User
         type: Values
       type: String
     PIN_196_FUNCTION_NAME:
       attributes:
         id: PIN_196_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: AC69T88A_DISP
+            value: ''
           type: User
         type: Values
       type: String
     PIOA_OER_VALUE:
       attributes:
         id: PIOA_OER_VALUE
+        label: PIOA_OER
       children:
       - children:
         - attributes:
             id: core
-            value: '131072'
+            value: '4194432'
           type: Dynamic
         type: Values
       type: Hex
     PIN_196_DIR:
       attributes:
         id: PIN_196_DIR
+        label: Direction
       children:
       - children:
         - attributes:
-            value: Out
+            value: ''
           type: User
         type: Values
       type: String
     PIOA_SODR_VALUE:
       attributes:
         id: PIOA_SODR_VALUE
+        label: PIOA_SODR
       children:
       - children:
         - attributes:
             id: core
-            value: '131072'
+            value: '0'
           type: Dynamic
         type: Values
       type: Hex
     PIN_196_LAT:
       attributes:
         id: PIN_196_LAT
+        label: Initial Latch Value
       children:
       - children:
         - attributes:
-            value: High
+            value: ''
           type: User
         type: Values
       type: String
@@ -932,10 +956,11 @@ data:
     PIN_67_FUNCTION_NAME:
       attributes:
         id: PIN_67_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: CAMERA_PWD
+            value: LED_4
           type: User
         type: Values
       type: String
@@ -952,60 +977,66 @@ data:
     PIN_94_DIR:
       attributes:
         id: PIN_94_DIR
+        label: Direction
       children:
       - children:
         - attributes:
-            value: Out
+            value: ''
           type: User
         type: Values
       type: String
     PIN_94_LAT:
       attributes:
         id: PIN_94_LAT
+        label: Initial Latch Value
       children:
       - children:
         - attributes:
-            value: High
+            value: ''
           type: User
         type: Values
       type: String
     PIN_198_FUNCTION_TYPE:
       attributes:
         id: PIN_198_FUNCTION_TYPE
+        label: Type
       children:
       - children:
         - attributes:
-            value: FLEXCOM6_IO1
+            value: ''
           type: User
         type: Values
       type: String
     PIN_198_PERIPHERAL_FUNCTION:
       attributes:
         id: PIN_198_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
       children:
       - children:
         - attributes:
-            value: A
+            value: ''
           type: User
         type: Values
       type: String
     PIN_200_FUNCTION_TYPE:
       attributes:
         id: PIN_200_FUNCTION_TYPE
+        label: Type
       children:
       - children:
         - attributes:
-            value: FLEXCOM6_IO0
+            value: ''
           type: User
         type: Values
       type: String
     PIN_200_PERIPHERAL_FUNCTION:
       attributes:
         id: PIN_200_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
       children:
       - children:
         - attributes:
-            value: A
+            value: ''
           type: User
         type: Values
       type: String
@@ -1318,10 +1349,11 @@ data:
     PIN_35_FUNCTION_NAME:
       attributes:
         id: PIN_35_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: VBUS_AH_PC27_PowerEnable
+            value: LED_6
           type: User
         type: Values
       type: String
@@ -1348,10 +1380,11 @@ data:
     PIN_16_FUNCTION_NAME:
       attributes:
         id: PIN_16_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: USBB_OVCUR
+            value: LED_5
           type: User
         type: Values
       type: String
@@ -1388,40 +1421,44 @@ data:
     PIN_52_FUNCTION_NAME:
       attributes:
         id: PIN_52_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: USBC_OVCUR
+            value: LED_7
           type: User
         type: Values
       type: String
     PIN_54_FUNCTION_TYPE:
       attributes:
         id: PIN_54_FUNCTION_TYPE
+        label: Type
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: ''
           type: User
         type: Values
       type: String
     PIN_54_PERIPHERAL_FUNCTION:
       attributes:
         id: PIN_54_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: ''
           type: User
         type: Values
       type: String
     PIN_54_FUNCTION_NAME:
       attributes:
         id: PIN_54_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: VBUS_AH_PC31_PowerEnable
+            value: ''
           type: User
         type: Values
       type: String
@@ -1459,10 +1496,11 @@ data:
     PIN_54_DIR:
       attributes:
         id: PIN_54_DIR
+        label: Direction
       children:
       - children:
         - attributes:
-            value: Out
+            value: ''
           type: User
         type: Values
       type: String
@@ -2418,10 +2456,11 @@ data:
     PIN_92_FUNCTION_NAME:
       attributes:
         id: PIN_92_FUNCTION_NAME
+        label: Name
       children:
       - children:
         - attributes:
-            value: USB_VBUS_SENSE
+            value: USBA_VBUS_DETECT
           type: User
         type: Values
       type: String
@@ -2443,6 +2482,2072 @@ data:
       - children:
         - attributes:
             value: 'True'
+          type: User
+        type: Values
+      type: String
+    PIN_212_FUNCTION_TYPE:
+      attributes:
+        id: PIN_212_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_212_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_212_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_212_FUNCTION_NAME:
+      attributes:
+        id: PIN_212_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_1
+          type: User
+        type: Values
+      type: String
+    PIN_150_FUNCTION_TYPE:
+      attributes:
+        id: PIN_150_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIOB_PDR_VALUE:
+      attributes:
+        id: PIOB_PDR_VALUE
+        label: PIOB_PDR
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '33030192'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIOB_ABCDSR1_VALUE:
+      attributes:
+        id: PIOB_ABCDSR1_VALUE
+        label: PIOB_ABCDSR1
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '48'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIOB_ABCDSR2_VALUE:
+      attributes:
+        id: PIOB_ABCDSR2_VALUE
+        label: PIOB_ABCDSR2
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_150_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_150_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_150_FUNCTION_NAME:
+      attributes:
+        id: PIN_150_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_2
+          type: User
+        type: Values
+      type: String
+    PIN_152_FUNCTION_TYPE:
+      attributes:
+        id: PIN_152_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_152_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_152_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_152_FUNCTION_NAME:
+      attributes:
+        id: PIN_152_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_3
+          type: User
+        type: Values
+      type: String
+    PIN_209_FUNCTION_TYPE:
+      attributes:
+        id: PIN_209_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_209_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_209_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_209_FUNCTION_NAME:
+      attributes:
+        id: PIN_209_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_4
+          type: User
+        type: Values
+      type: String
+    PIN_103_FUNCTION_TYPE:
+      attributes:
+        id: PIN_103_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_103_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_103_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_103_FUNCTION_NAME:
+      attributes:
+        id: PIN_103_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_5
+          type: User
+        type: Values
+      type: String
+    PIN_115_FUNCTION_TYPE:
+      attributes:
+        id: PIN_115_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_115_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_115_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_115_FUNCTION_NAME:
+      attributes:
+        id: PIN_115_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_6
+          type: User
+        type: Values
+      type: String
+    PIN_178_FUNCTION_TYPE:
+      attributes:
+        id: PIN_178_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_178_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_178_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_178_FUNCTION_NAME:
+      attributes:
+        id: PIN_178_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_7
+          type: User
+        type: Values
+      type: String
+    PIN_210_FUNCTION_TYPE:
+      attributes:
+        id: PIN_210_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_210_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_210_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_210_FUNCTION_NAME:
+      attributes:
+        id: PIN_210_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: BUTTON_8
+          type: User
+        type: Values
+      type: String
+    PIN_237_FUNCTION_TYPE:
+      attributes:
+        id: PIN_237_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_237_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_237_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_237_FUNCTION_NAME:
+      attributes:
+        id: PIN_237_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LED_1
+          type: User
+        type: Values
+      type: String
+    PIN_237_DIR:
+      attributes:
+        id: PIN_237_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_102_FUNCTION_TYPE:
+      attributes:
+        id: PIN_102_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_102_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_102_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_102_FUNCTION_NAME:
+      attributes:
+        id: PIN_102_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LED_2
+          type: User
+        type: Values
+      type: String
+    PIN_219_FUNCTION_TYPE:
+      attributes:
+        id: PIN_219_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_219_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_219_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_219_FUNCTION_NAME:
+      attributes:
+        id: PIN_219_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LED_3
+          type: User
+        type: Values
+      type: String
+    PIOB_OER_VALUE:
+      attributes:
+        id: PIOB_OER_VALUE
+        label: PIOB_OER
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '131073'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_102_DIR:
+      attributes:
+        id: PIN_102_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_219_DIR:
+      attributes:
+        id: PIN_219_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_16_DIR:
+      attributes:
+        id: PIN_16_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_52_DIR:
+      attributes:
+        id: PIN_52_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_9_FUNCTION_TYPE:
+      attributes:
+        id: PIN_9_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_9_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_9_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_9_FUNCTION_NAME:
+      attributes:
+        id: PIN_9_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LED_8
+          type: User
+        type: Values
+      type: String
+    PIN_9_DIR:
+      attributes:
+        id: PIN_9_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
+      type: String
+    PIN_126_FUNCTION_TYPE:
+      attributes:
+        id: PIN_126_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM8_IO0
+          type: User
+        type: Values
+      type: String
+    PIN_126_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_126_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: B
+          type: User
+        type: Values
+      type: String
+    PIN_177_FUNCTION_TYPE:
+      attributes:
+        id: PIN_177_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM8_IO1
+          type: User
+        type: Values
+      type: String
+    PIN_177_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_177_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: B
+          type: User
+        type: Values
+      type: String
+    PIN_40_FUNCTION_TYPE:
+      attributes:
+        id: PIN_40_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_40_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_40_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_40_FUNCTION_NAME:
+      attributes:
+        id: PIN_40_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_40_DIR:
+      attributes:
+        id: PIN_40_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIOB_SODR_VALUE:
+      attributes:
+        id: PIOB_SODR_VALUE
+        label: PIOB_SODR
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_40_LAT:
+      attributes:
+        id: PIN_40_LAT
+        label: Initial Latch Value
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_7_FUNCTION_TYPE:
+      attributes:
+        id: PIN_7_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A3M
+          type: User
+        type: Values
+      type: String
+    PIN_7_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_7_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_22_FUNCTION_TYPE:
+      attributes:
+        id: PIN_22_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A3P
+          type: User
+        type: Values
+      type: String
+    PIN_22_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_22_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_22_FUNCTION_NAME:
+      attributes:
+        id: PIN_22_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D3_P
+          type: User
+        type: Values
+      type: String
+    PIN_7_FUNCTION_NAME:
+      attributes:
+        id: PIN_7_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D3_N
+          type: User
+        type: Values
+      type: String
+    PIN_20_FUNCTION_TYPE:
+      attributes:
+        id: PIN_20_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A2P
+          type: User
+        type: Values
+      type: String
+    PIN_20_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_20_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_5_FUNCTION_TYPE:
+      attributes:
+        id: PIN_5_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A2M
+          type: User
+        type: Values
+      type: String
+    PIN_5_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_5_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_5_FUNCTION_NAME:
+      attributes:
+        id: PIN_5_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D2_N
+          type: User
+        type: Values
+      type: String
+    PIN_20_FUNCTION_NAME:
+      attributes:
+        id: PIN_20_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D2_P
+          type: User
+        type: Values
+      type: String
+    PIN_6_FUNCTION_TYPE:
+      attributes:
+        id: PIN_6_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_CLK1M
+          type: User
+        type: Values
+      type: String
+    PIN_6_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_6_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_21_FUNCTION_TYPE:
+      attributes:
+        id: PIN_21_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_CLK1P
+          type: User
+        type: Values
+      type: String
+    PIN_21_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_21_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_21_FUNCTION_NAME:
+      attributes:
+        id: PIN_21_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_CK_P
+          type: User
+        type: Values
+      type: String
+    PIN_6_FUNCTION_NAME:
+      attributes:
+        id: PIN_6_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_CK_N
+          type: User
+        type: Values
+      type: String
+    PIN_19_FUNCTION_TYPE:
+      attributes:
+        id: PIN_19_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A1P
+          type: User
+        type: Values
+      type: String
+    PIN_19_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_19_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_4_FUNCTION_TYPE:
+      attributes:
+        id: PIN_4_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A1M
+          type: User
+        type: Values
+      type: String
+    PIN_4_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_4_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_19_FUNCTION_NAME:
+      attributes:
+        id: PIN_19_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D1_P
+          type: User
+        type: Values
+      type: String
+    PIN_4_FUNCTION_NAME:
+      attributes:
+        id: PIN_4_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D1_N
+          type: User
+        type: Values
+      type: String
+    PIN_3_FUNCTION_TYPE:
+      attributes:
+        id: PIN_3_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A0M
+          type: User
+        type: Values
+      type: String
+    PIN_3_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_3_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_3_FUNCTION_NAME:
+      attributes:
+        id: PIN_3_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D0_N
+          type: User
+        type: Values
+      type: String
+    PIN_18_FUNCTION_TYPE:
+      attributes:
+        id: PIN_18_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: LVDSPHY_LVDS_A0P
+          type: User
+        type: Values
+      type: String
+    PIN_18_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_18_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: Alternate
+          type: User
+        type: Values
+      type: String
+    PIN_18_FUNCTION_NAME:
+      attributes:
+        id: PIN_18_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_LVDS_D0_P
+          type: User
+        type: Values
+      type: String
+    PIN_116_FUNCTION_TYPE:
+      attributes:
+        id: PIN_116_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT0
+          type: User
+        type: Values
+      type: String
+    PIN_116_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_116_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_195_FUNCTION_TYPE:
+      attributes:
+        id: PIN_195_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT1
+          type: User
+        type: Values
+      type: String
+    PIN_195_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_195_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_127_FUNCTION_TYPE:
+      attributes:
+        id: PIN_127_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT2
+          type: User
+        type: Values
+      type: String
+    PIN_127_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_127_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_148_FUNCTION_TYPE:
+      attributes:
+        id: PIN_148_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT3
+          type: User
+        type: Values
+      type: String
+    PIN_148_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_148_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_116_FUNCTION_NAME:
+      attributes:
+        id: PIN_116_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT0
+          type: User
+        type: Values
+      type: String
+    PIN_195_FUNCTION_NAME:
+      attributes:
+        id: PIN_195_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT1
+          type: User
+        type: Values
+      type: String
+    PIN_127_FUNCTION_NAME:
+      attributes:
+        id: PIN_127_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT2
+          type: User
+        type: Values
+      type: String
+    PIN_148_FUNCTION_NAME:
+      attributes:
+        id: PIN_148_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_DAT3
+          type: User
+        type: Values
+      type: String
+    PIN_140_FUNCTION_TYPE:
+      attributes:
+        id: PIN_140_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_CK
+          type: User
+        type: Values
+      type: String
+    PIN_140_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_140_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_140_FUNCTION_NAME:
+      attributes:
+        id: PIN_140_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_CK
+          type: User
+        type: Values
+      type: String
+    PIN_221_FUNCTION_TYPE:
+      attributes:
+        id: PIN_221_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_CMD
+          type: User
+        type: Values
+      type: String
+    PIN_221_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_221_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_221_FUNCTION_NAME:
+      attributes:
+        id: PIN_221_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_CMD
+          type: User
+        type: Values
+      type: String
+    PIN_236_FUNCTION_TYPE:
+      attributes:
+        id: PIN_236_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_236_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_236_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
+      type: String
+    PIN_236_FUNCTION_NAME:
+      attributes:
+        id: PIN_236_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: SDMMC0_CD
+          type: User
+        type: Values
+      type: String
+    PIN_23_FUNCTION_TYPE:
+      attributes:
+        id: PIN_23_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: QSPI_QIO0
+          type: User
+        type: Values
+      type: String
+    PIN_23_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_23_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_57_FUNCTION_TYPE:
+      attributes:
+        id: PIN_57_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: QSPI_QIO1
+          type: User
+        type: Values
+      type: String
+    PIN_57_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_57_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_38_FUNCTION_TYPE:
+      attributes:
+        id: PIN_38_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: QSPI_QIO2
+          type: User
+        type: Values
+      type: String
+    PIN_38_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_38_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_24_FUNCTION_TYPE:
+      attributes:
+        id: PIN_24_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: QSPI_QIO3
+          type: User
+        type: Values
+      type: String
+    PIN_24_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_24_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_8_FUNCTION_TYPE:
+      attributes:
+        id: PIN_8_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: QSPI_QSCK
+          type: User
+        type: Values
+      type: String
+    PIN_8_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_8_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_25_FUNCTION_TYPE:
+      attributes:
+        id: PIN_25_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: QSPI_QCS
+          type: User
+        type: Values
+      type: String
+    PIN_25_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_25_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_23_FUNCTION_NAME:
+      attributes:
+        id: PIN_23_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: QSPI_IO0
+          type: User
+        type: Values
+      type: String
+    PIN_57_FUNCTION_NAME:
+      attributes:
+        id: PIN_57_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: QSPI_IO1
+          type: User
+        type: Values
+      type: String
+    PIN_38_FUNCTION_NAME:
+      attributes:
+        id: PIN_38_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: QSPI_IO2
+          type: User
+        type: Values
+      type: String
+    PIN_24_FUNCTION_NAME:
+      attributes:
+        id: PIN_24_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: QSPI_IO3
+          type: User
+        type: Values
+      type: String
+    PIN_8_FUNCTION_NAME:
+      attributes:
+        id: PIN_8_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: QSPI_SCK
+          type: User
+        type: Values
+      type: String
+    PIN_25_FUNCTION_NAME:
+      attributes:
+        id: PIN_25_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: QSPI_CS
+          type: User
+        type: Values
+      type: String
+    PIN_192_FUNCTION_TYPE:
+      attributes:
+        id: PIN_192_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT0
+          type: User
+        type: Values
+      type: String
+    PIOD_PDR_VALUE:
+      attributes:
+        id: PIOD_PDR_VALUE
+        label: PIOD_PDR
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '32735'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIOD_ABCDSR1_VALUE:
+      attributes:
+        id: PIOD_ABCDSR1_VALUE
+        label: PIOD_ABCDSR1
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIOD_ABCDSR2_VALUE:
+      attributes:
+        id: PIOD_ABCDSR2_VALUE
+        label: PIOD_ABCDSR2
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_192_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_192_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_194_FUNCTION_TYPE:
+      attributes:
+        id: PIN_194_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT1
+          type: User
+        type: Values
+      type: String
+    PIN_194_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_194_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_114_FUNCTION_TYPE:
+      attributes:
+        id: PIN_114_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT2
+          type: User
+        type: Values
+      type: String
+    PIN_114_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_114_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_207_FUNCTION_TYPE:
+      attributes:
+        id: PIN_207_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT3
+          type: User
+        type: Values
+      type: String
+    PIN_207_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_207_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_194_FUNCTION_NAME:
+      attributes:
+        id: PIN_194_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D1
+          type: User
+        type: Values
+      type: String
+    PIN_114_FUNCTION_NAME:
+      attributes:
+        id: PIN_114_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D2
+          type: User
+        type: Values
+      type: String
+    PIN_207_FUNCTION_NAME:
+      attributes:
+        id: PIN_207_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D3
+          type: User
+        type: Values
+      type: String
+    PIN_192_FUNCTION_NAME:
+      attributes:
+        id: PIN_192_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D0
+          type: User
+        type: Values
+      type: String
+    PIN_63_FUNCTION_TYPE:
+      attributes:
+        id: PIN_63_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT4
+          type: User
+        type: Values
+      type: String
+    PIN_63_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_63_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_176_FUNCTION_TYPE:
+      attributes:
+        id: PIN_176_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT5
+          type: User
+        type: Values
+      type: String
+    PIN_176_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_176_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_138_FUNCTION_TYPE:
+      attributes:
+        id: PIN_138_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT6
+          type: User
+        type: Values
+      type: String
+    PIN_138_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_138_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_187_FUNCTION_TYPE:
+      attributes:
+        id: PIN_187_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDDAT7
+          type: User
+        type: Values
+      type: String
+    PIN_187_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_187_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_63_FUNCTION_NAME:
+      attributes:
+        id: PIN_63_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D4
+          type: User
+        type: Values
+      type: String
+    PIN_176_FUNCTION_NAME:
+      attributes:
+        id: PIN_176_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D5
+          type: User
+        type: Values
+      type: String
+    PIN_138_FUNCTION_NAME:
+      attributes:
+        id: PIN_138_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D6
+          type: User
+        type: Values
+      type: String
+    PIN_187_FUNCTION_NAME:
+      attributes:
+        id: PIN_187_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_D7
+          type: User
+        type: Values
+      type: String
+    PIN_77_FUNCTION_TYPE:
+      attributes:
+        id: PIN_77_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDRDY
+          type: User
+        type: Values
+      type: String
+    PIN_77_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_77_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_77_FUNCTION_NAME:
+      attributes:
+        id: PIN_77_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_RDY
+          type: User
+        type: Values
+      type: String
+    PIN_173_FUNCTION_TYPE:
+      attributes:
+        id: PIN_173_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDOE
+          type: User
+        type: Values
+      type: String
+    PIN_173_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_173_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_113_FUNCTION_TYPE:
+      attributes:
+        id: PIN_113_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDWE
+          type: User
+        type: Values
+      type: String
+    PIN_113_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_113_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_190_FUNCTION_TYPE:
+      attributes:
+        id: PIN_190_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDALE
+          type: User
+        type: Values
+      type: String
+    PIN_190_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_190_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_101_FUNCTION_TYPE:
+      attributes:
+        id: PIN_101_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDCLE
+          type: User
+        type: Values
+      type: String
+    PIN_101_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_101_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_189_FUNCTION_TYPE:
+      attributes:
+        id: PIN_189_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: EBI_NANDCS
+          type: User
+        type: Values
+      type: String
+    PIN_189_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_189_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_173_FUNCTION_NAME:
+      attributes:
+        id: PIN_173_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_RE
+          type: User
+        type: Values
+      type: String
+    PIN_113_FUNCTION_NAME:
+      attributes:
+        id: PIN_113_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_WE
+          type: User
+        type: Values
+      type: String
+    PIN_190_FUNCTION_NAME:
+      attributes:
+        id: PIN_190_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_ALE
+          type: User
+        type: Values
+      type: String
+    PIN_101_FUNCTION_NAME:
+      attributes:
+        id: PIN_101_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_CLE
+          type: User
+        type: Values
+      type: String
+    PIN_189_FUNCTION_NAME:
+      attributes:
+        id: PIN_189_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: NAND_CS
+          type: User
+        type: Values
+      type: String
+    PIN_213_FUNCTION_TYPE:
+      attributes:
+        id: PIN_213_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: CLASSD_L0
+          type: User
+        type: Values
+      type: String
+    PIN_213_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_213_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: C
+          type: User
+        type: Values
+      type: String
+    PIN_179_FUNCTION_TYPE:
+      attributes:
+        id: PIN_179_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: CLASSD_L1
+          type: User
+        type: Values
+      type: String
+    PIN_179_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_179_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: C
+          type: User
+        type: Values
+      type: String
+    PIN_213_FUNCTION_NAME:
+      attributes:
+        id: PIN_213_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: CLASSD_L0
+          type: User
+        type: Values
+      type: String
+    PIN_179_FUNCTION_NAME:
+      attributes:
+        id: PIN_179_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: CLASSD_L1
+          type: User
+        type: Values
+      type: String
+    PIN_169_FUNCTION_NAME:
+      attributes:
+        id: PIN_169_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: DBGU_RX
+          type: User
+        type: Values
+      type: String
+    PIN_214_FUNCTION_NAME:
+      attributes:
+        id: PIN_214_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: DBGU_TX
+          type: User
+        type: Values
+      type: String
+    PIN_126_FUNCTION_NAME:
+      attributes:
+        id: PIN_126_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_MIPI_SDA
+          type: User
+        type: Values
+      type: String
+    PIN_177_FUNCTION_NAME:
+      attributes:
+        id: PIN_177_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: LCD_MIPI_SCL
+          type: User
+        type: Values
+      type: String
+    PIOC_MDER_VALUE:
+      attributes:
+        id: PIOC_MDER_VALUE
+        label: PIOC_MDER
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_66_OD:
+      attributes:
+        id: PIN_66_OD
+        label: Open Drain
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_34_FUNCTION_TYPE:
+      attributes:
+        id: PIN_34_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_34_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_34_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_34_FUNCTION_NAME:
+      attributes:
+        id: PIN_34_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_34_DIR:
+      attributes:
+        id: PIN_34_DIR
+        label: Direction
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
+      type: String
+    PIN_34_LAT:
+      attributes:
+        id: PIN_34_LAT
+        label: Initial Latch Value
+      children:
+      - children:
+        - attributes:
+            value: ''
           type: User
         type: Values
       type: String

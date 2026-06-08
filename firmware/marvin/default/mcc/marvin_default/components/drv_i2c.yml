@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: drv_i2c
-coreVersion: 5.8.4
+coreVersion: 5.9.0
 device: SAM9X75D2G
 library: []
 dependency:
@@ -22,8 +22,8 @@ data:
     - children:
       - attributes:
           id: drv_i2c
-          x: '204'
-          y: '399'
+          x: '195'
+          y: '394'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

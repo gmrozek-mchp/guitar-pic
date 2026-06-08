@@ -2,15 +2,15 @@
 
 manifest_file_version: 1.0.0
 project: marvin_default
-creation_date: 2026-06-01T12:29:23.034-05:00[America/Chicago]
+creation_date: 2026-06-07T23:19:46.814-05:00[America/Chicago]
 operating_system: Mac OS X
 mcc_mode: VSCodePlugin
 mcc_mode_version: Unknown
 device_name: SAM9X75D2G
 compiler: N/A
-mcc_version: 5.6.4
-mcc_core_version: 5.8.4
-content_manager_version: 6.0.4
+mcc_version: 5.7.0
+mcc_core_version: 5.9.0
+content_manager_version: 7.0.0
 is_mcc_offline: false
 is_using_prerelease_versions: false
 mcc_content_registries: https://registry.npmjs.org/
@@ -20,7 +20,7 @@ packs: {name: SAM9X7_DFP, version: 1.13.225}
 modules:
 - {name: core, type: HARMONY, version: v3.16.3}
 - {name: csp, type: HARMONY, version: v3.25.2}
-- {name: vision, type: HARMONY, version: v3.2.1}
+- {name: vision, type: HARMONY, version: v3.2.2}
 - {name: usb, type: HARMONY, version: v3.16.0}
 - {name: FreeRTOS-Kernel, type: HARMONY, version: V11.3.0}
 - {name: gfx, type: HARMONY, version: v3.17.0}

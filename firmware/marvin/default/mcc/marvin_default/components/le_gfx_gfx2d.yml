@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: le_gfx_gfx2d
-coreVersion: 5.8.4
+coreVersion: 5.9.0
 device: SAM9X75D2G
 library: []
 dependency:
