@@ -6,11 +6,13 @@
 
 #include "perf_log/perf_log_records.h"  /* perf_actuator_producer_t */
 
-/* Fretboard link — USB CDC host writer that ferries a 7-bit GPIO bitmask
- * to the fretboard MCU as a stream of single-byte messages. Spec §4.4
- * actuator transport. Initialize first among the actuator modules so the
- * submit queue exists by the time any producer task starts running. Also
- * enables the USB host bus, so call after SYS_Initialize.
+/* Fretboard link — FLEXCOM2 USART (ring-buffer) writer that ferries a 7-bit
+ * GPIO bitmask to the fretboard MCU as a stream of single-byte messages, and
+ * a parse task that drains the fretboard's 17-byte ADC frames off the RX ring
+ * into PERF_REC_FRETBOARD_RAW records. Spec §4.4 actuator transport.
+ * Initialize first among the actuator modules so the submit queue exists by
+ * the time any producer task starts running. Call after SYS_Initialize so the
+ * FLEXCOM2 peripheral is up.
  *
  * Producers — timing_pipeline today, manual_control during operator UI
  * mode, future game menu controller (spec §4.8) — all submit through

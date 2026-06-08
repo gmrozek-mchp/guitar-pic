@@ -23,7 +23,7 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
    │           │       (operator UI)    │                  │
    │           └────────── SD card ─────┘  (recording)    │
    └────────┬──────────────────────────┬───────────────────┘
-            │ USB CDC host (cmds)      │ USB CDC host (ADC)
+            │ FLEXCOM2 UART (cmds)     │ FLEXCOM2 UART (ADC)
             ▼                          │
    ┌──────────────────────────────────┐│
    │   fretboard (PIC32CM6408)        │┘
@@ -112,7 +112,7 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 | ✅ | fret-tuner used at the bench for detector tuning |
 | ✅ | marvin perf-log USB CDC export — live RTOS analytics + pixel strip viewer (`tools/marvin-perf`) |
 | ✅ | **M1** — marvin reference detector v0 (`cv_marvin_v1` running, `detector_state_t` bus active) |
-| ✅ | **M2** — fretboard ↔ marvin link (USB CDC host over EDBG; commands flowing) |
+| ✅ | **M2** — fretboard ↔ marvin link (commands flowing; link rewired USB CDC host → FLEXCOM2 UART for the Curiosity Hybrid board, pending on-hardware re-validation) |
 | ✅ | **M3** — end-to-end play (timing pipeline + fretboard actuation; Expert and Easy tested) |
 | 🚧 | **M4** — recording-to-SD (detector-state + keyframes + ADC + commands) |
 | 🚧 | **M5** — operator UI v0; manual-control surface (8 buttons) done; full live-view + mode-toggle UI not started |

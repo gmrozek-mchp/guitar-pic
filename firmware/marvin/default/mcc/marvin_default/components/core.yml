@@ -2418,7 +2418,7 @@ data:
       children:
       - children:
         - attributes:
-            value: USBA_VBUS_DETECT
+            value: USB_VBUS_SENSE
           type: User
         type: Values
       type: String

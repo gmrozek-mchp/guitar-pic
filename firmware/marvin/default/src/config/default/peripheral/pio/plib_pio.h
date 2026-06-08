@@ -224,14 +224,14 @@
 #define LED_RED_Get()               ((PIOC_REGS->PIO_PDSR >> 14U) & 0x1U)
 #define LED_RED_PIN                  PIO_PIN_PC14
 
-/*** Macros for USBA_VBUS_DETECT pin ***/
-#define USBA_VBUS_DETECT_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<8U))
-#define USBA_VBUS_DETECT_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<8U))
-#define USBA_VBUS_DETECT_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<8U))
-#define USBA_VBUS_DETECT_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<8U))
-#define USBA_VBUS_DETECT_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<8U))
-#define USBA_VBUS_DETECT_Get()               ((PIOC_REGS->PIO_PDSR >> 8U) & 0x1U)
-#define USBA_VBUS_DETECT_PIN                  PIO_PIN_PC8
+/*** Macros for USB_VBUS_SENSE pin ***/
+#define USB_VBUS_SENSE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<8U))
+#define USB_VBUS_SENSE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<8U))
+#define USB_VBUS_SENSE_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<8U))
+#define USB_VBUS_SENSE_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<8U))
+#define USB_VBUS_SENSE_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<8U))
+#define USB_VBUS_SENSE_Get()               ((PIOC_REGS->PIO_PDSR >> 8U) & 0x1U)
+#define USB_VBUS_SENSE_PIN                  PIO_PIN_PC8
 
 /*** Macros for NAND_CLE pin ***/
 #define NAND_CLE_Get()               ((PIOD_REGS->PIO_PDSR >> 3U) & 0x1U)

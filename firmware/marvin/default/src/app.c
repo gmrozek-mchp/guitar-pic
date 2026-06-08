@@ -36,7 +36,6 @@
 #include "app.h"
 #include "definitions.h"
 #include "log.h"
-#include "usb/usb_host.h"
 #include "video/video.h"
 #include "detector/detector.h"
 #include "actuator/timing_pipeline.h"
@@ -81,17 +80,6 @@ APP_DATA appData;
 // Section: Application Local Functions
 // *****************************************************************************
 // *****************************************************************************
-
-static USB_HOST_EVENT_RESPONSE app_usb_host_event_handler(USB_HOST_EVENT event,
-                                                         void *eventData,
-                                                         uintptr_t context)
-{
-    (void)eventData;
-    (void)context;
-    LOG_INFO("USB host event: %d\r\n", (int)event);
-    return USB_HOST_EVENT_RESPONSE_NONE;
-}
-
 
 // *****************************************************************************
 // *****************************************************************************
@@ -148,23 +136,11 @@ void APP_Initialize ( void )
     Detector_Enable(DETECTOR_CV_MARVIN_V1);
     Detector_SetActive(DETECTOR_CV_MARVIN_V1);
 
-    /* USB host bring-up — shared across all USB consumers (fretboard CDC
-     * link today; future modules may add HID, MSC, etc.). VBUS_AH_PC27/PC31
-     * gate external power switches on the SAM9X75 Curiosity. The Harmony
-     * driver's portPowerEnable callback is wired but never invoked, so we
-     * assert these GPIOs directly. Class-driver attach listeners (CDC etc.)
-     * must be registered before USB_HOST_BusEnable, so consumer module
-     * init runs first. */
-    VBUS_AH_PC27_PowerEnable_Set();
-    VBUS_AH_PC31_PowerEnable_Set();
-    (void)USB_HOST_EventHandlerSet(app_usb_host_event_handler, 0u);
-
-    /* M2 actuator path: fretboard_link owns the submit queue + USB CDC
-     * writer and registers the CDC attach listener. */
+    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM2
+     * USART writer and the RX parse task. The FLEXCOM2 peripheral is brought
+     * up by SYS_Initialize (FLEXCOM2_USART_Initialize), so this just arms the
+     * ring-buffer RX notification and starts the link tasks. */
     FretboardLink_Initialize();
-
-    USB_HOST_RESULT be = USB_HOST_BusEnable(USB_HOST_BUS_ALL);
-    LOG_INFO("USB_HOST_BusEnable -> %d\r\n", (int)be);
 
     /* timing_pipeline runs the chord-window + strum scheduler against the
      * active detector and pushes the resulting 7-bit mask through

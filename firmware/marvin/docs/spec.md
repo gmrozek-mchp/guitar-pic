@@ -31,7 +31,7 @@ In short: marvin is the runtime brain *and* the reference-detector data source f
 
 ### 1.3 North-star one-paragraph summary
 
-A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGR888 packed, 3 B/pixel). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over USB CDC, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
+A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGR888 packed, 3 B/pixel). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over a FLEXCOM2 UART link, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
 
 ### 1.4 What's done, what's next
 
@@ -42,7 +42,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 | FreeRTOS scheduler, video task, OSAL I²C | ✅ landed. |
 | Lightweight log shim, FreeRTOS analytics, task priorities | ✅ done. |
 | CV detection pipeline | 🚧 M1 complete: `cv_marvin_v1` running on captured frames, `detector_state_t` bus active. No actuation path through detector yet. §4.2. |
-| Fretboard link (USB CDC host over EDBG) | ✅ working; commands flowing, gameplay tested. §4.3. |
+| Fretboard link (FLEXCOM2 USART) | ✅ working; gameplay tested over the original USB CDC host link. Link rewired to a direct FLEXCOM2 UART for the Curiosity Hybrid board (no host-capable USB port); pending on-hardware re-validation. §4.3. |
 | Timing pipeline (chord FIFO, strum) | ✅ working; end-to-end gameplay tested on Expert and Easy. §4.4. |
 | Operator UI (Legato) | 🚧 Manual-control surface (8 buttons, Legato Composer) done; full calibration/log UI not started. §4.5, open Q5. |
 | Reference-data recording & export (SD) | 🚧 SD recording not started. Perf-log USB CDC export (separate dev-tooling path) complete at 2.77 MB/s. §4.6, open Q1/Q2. |
@@ -92,7 +92,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
    │      reference-data export                   │ │           │   │
    │       (Ethernet / SD / USB CDC — §4.6)       │ │           │   │
    └──────────────┬────────────────────────────┬──┴─┘           │   │
-                  │ USB CDC host               │ USB CDC host   │   │
+                  │ FLEXCOM2 UART              │ FLEXCOM2 UART  │   │
                   │ (frets/strum cmds)         │ (ADC stream)   │   │
                   ▼                            │                │   │
    ┌────────────────────────────────────┐      │                │   │
@@ -170,9 +170,9 @@ The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees
 | Board | Role | Connection to marvin |
 |---|---|---|
 | **SAM9X75 Curiosity** | marvin host (CPU, DDR, peripherals, panel/touch ports) | — |
-| **Waveshare HDMI → CSI-2 adapter** (TC358743) | HDMI → MIPI CSI-2 bridge | I²C (FLEXCOM6, PA24/PA25, 400 kHz, addr `0x0F`) for control; 2-lane CSI-2 RX for data; PC15 PWD, PC19 RESET (currently unused — software reset over I²C). |
+| **Waveshare HDMI → CSI-2 adapter** (TC358743) | HDMI → MIPI CSI-2 bridge | I²C (FLEXCOM8 TWI, PB4/PB5, 400 kHz, addr `0x0F`) for control; 2-lane CSI-2 RX for data; PC15 PWD, PC19 RESET (currently unused — software reset over I²C). |
 | **Microchip 10.1″ 1280×800 LVDS panel + maxtouch** | Operator UI | LVDSC pair from XLCDC; I²C for maxtouch (existing Harmony driver). |
-| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | USB CDC host (marvin is USB host to fretboard's on-board EDBG composite, VID=0x03EB PID=0x2175; CDC ACM bridged to SERCOM1 PB00/PB01 at 115 200 Bd). |
+| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | FLEXCOM2 USART (marvin PA13 TX / PA14 RX ↔ fretboard SERCOM1 PB01 RX / PB00 TX, 500 000 Bd 8N1, ring-buffer mode). |
 | **Wii guitar controller** | Physical input target | Open-drain GPIO on fretboard, not directly on marvin. |
 | **(optional) dev PC** | Calibration / training-data ingest / replay viewer | SD card swap (primary) or USB CDC for live debug; no runtime dependency. |
 
@@ -184,17 +184,18 @@ Pin assignments live in `firmware/marvin/default/src/config/default/pin_configur
 |---|---|---|
 | MIPI CSI-2 RX + ISC + CSI2DC | ✅ in use | 2 lanes, 972 Mbps/lane; BGR888 packed to DDR (CSI2DC RMS=1, 3 B/pixel). |
 | XLCDC + LVDSC | ✅ in use | HEO layer, RGB\_888\_PACKED, per-frame pointer swap, pillarbox/letterbox. |
-| FLEXCOM6 (I²C) | ✅ in use | TC358743 control. |
+| FLEXCOM8 (I²C/TWI) | ✅ in use | TC358743 control + display MIPI I²C, shared bus on PB4/PB5 (`DRV_I2C_INDEX_0`). Was FLEXCOM6/PA24-PA25 on the original Curiosity board; moved during the Hybrid port. |
 | FLEXCOM4 (UART, DBGU/console) | ✅ in use | `printf` retarget; lightweight log shim. |
+| FLEXCOM2 (USART) | ✅ in use | Fretboard link — 500 000 Bd 8N1, ring-buffer mode, PA13 TX / PA14 RX (§4.3). |
 | FreeRTOS (Harmony OSAL) | ✅ in use | Scheduler running; video task split out (commit `6b85d5e`). |
 | TC0 (SYS_TIME) | ✅ in use | OSAL synchronous I²C requires it. |
 | GMAC (Ethernet) | ⚪ unused | Reserved for future live-stream ref-data export (not MVP). |
 | SDMMC | 🚧 to be enabled | MVP transport for reference-data recording (§4.6). |
-| USB host (EHCI + OHCI) | ✅ in use | Fretboard link — marvin is USB host to fretboard EDBG CDC. |
+| USB host (EHCI + OHCI) | ⚪ removed | Was the fretboard link on the original Curiosity board; the Curiosity Hybrid has no host-capable port, so the link moved to FLEXCOM2 (§4.3). |
 | USB device (UDPHS) | ✅ in use | Perf-log CDC ACM sink; marvin presents as USB device to dev PC, streams perf records at up to 2.77 MB/s. |
 | Maxtouch I²C | 🚧 to be enabled | Operator UI (§4.5). |
 | Watchdog | 🚧 not configured | System services (§4.7). |
-| Free FLEXCOMs | several available | Fretboard UART link (§4.3) needs one. |
+| Free FLEXCOMs | several available | FLEXCOM2 now drives the fretboard link (§4.3); others remain free. |
 
 ---
 
@@ -270,10 +271,10 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 
 ### 4.3 Fretboard link ✅
 
-USB CDC host between marvin and the fretboard MCU. Marvin acts as USB host to the fretboard's on-board EDBG debugger (composite device exposing CDC ACM). EDBG bridges the CDC ACM interface to the fretboard's SERCOM1 UART at 500 000 Bd.
+Direct **FLEXCOM2 USART** link between marvin and the fretboard MCU — a plain UART wire, no USB. marvin's `PA13` (FLEXCOM2_IO0, `GUITAR_TX`) and `PA14` (FLEXCOM2_IO1, `GUITAR_RX`) connect to the fretboard's SERCOM1 (`PB01` RX / `PB00` TX). Both ends run **500 000 baud, 8N1**. The FLEXCOM2 USART runs in Harmony ring-buffer mode so RX never drops bytes between reads.
 
-- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing.
-- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 12-byte start/end-bracketed frame. Marvin's `fretboard_link` issues a continuously-rearming `USB_HOST_CDC_Read` and a sibling `fretboard_rx_task` parses each valid frame and republishes it as a `PERF_REC_FRETBOARD_RAW` perf-log record (default-disabled, host enables via `PERF_CMD_SET_TYPE_MASK`). This is the on-board capture path until the SD-card recorder lands; it's also the substrate for the future `adc_fretboard` detector (§4.2).
+- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing. `fretboard_link_task` writes the latest mask via `FLEXCOM2_USART_Write`.
+- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 17-byte start/end-bracketed frame (`0x03 … 0xFC`, with `sample_seq` + `applied_mask`). The FLEXCOM2 RX ring fills continuously from its ISR; a persistent read-threshold notification wakes `fretboard_rx_task`, which drains the ring, resyncs on the frame markers, and republishes each valid frame as a `PERF_REC_FRETBOARD_RAW` perf-log record (default-disabled, host enables via `PERF_CMD_SET_TYPE_MASK`). This is the on-board capture path until the SD-card recorder lands; it's also the substrate for the future `adc_fretboard` detector (§4.2).
 - **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
 
 ### 4.4 Timing pipeline 🚧
