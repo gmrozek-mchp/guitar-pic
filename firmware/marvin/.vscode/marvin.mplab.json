@@ -246,7 +246,6 @@
                 "default/src/config/default/vision/libcamera/camera.h",
                 "default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h",
                 "default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom_twi_master_common.h",
-                "default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c",
                 "default/src/config/default/vision/drivers/csi/drv_csi.c",
                 "default/src/config/default/vision/drivers/csi/drv_csi.h",
                 "default/src/config/default/vision/drivers/csi/plib_csi.c",
@@ -571,12 +570,8 @@
                 "default/src/config/default/system/time/src/sys_time_local.h",
                 "default/src/config/default/usb/usb_host_cdc.h",
                 "default/src/config/default/usb/usb_cdc.h",
-                "default/src/config/default/usb/src/usb_host_cdc.c",
-                "default/src/config/default/usb/src/usb_host_cdc_acm.c",
                 "default/src/config/default/usb/src/usb_host_cdc_local.h",
-                "default/src/config/default/usb_host_init_data.c",
                 "default/src/config/default/usb/usb_host.h",
-                "default/src/config/default/usb/src/usb_host.c",
                 "default/src/config/default/usb/src/usb_host_local.h",
                 "default/src/config/default/usb/usb_common.h",
                 "default/src/config/default/usb/usb_chapter_9.h",
@@ -594,8 +589,6 @@
                 "default/src/config/default/usb/usb_hub.h",
                 "default/src/config/default/usb/usb_ehci.h",
                 "default/src/config/default/usb/usb_ohci.h",
-                "default/src/config/default/driver/usb/uhp/src/drv_usb_ehci.c",
-                "default/src/config/default/driver/usb/uhp/src/drv_usb_ohci.c",
                 "default/src/config/default/usb_device_init_data.c",
                 "default/src/config/default/usb/usb_device.h",
                 "default/src/config/default/usb/src/usb_device_local.h",
@@ -610,7 +603,8 @@
                 "default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_variant_mapping.h",
                 "default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_local.h",
                 "default/src/config/default/driver/usb/udphs/src/drv_usb_udphs.c",
-                "default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_device.c"
+                "default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_device.c",
+                "default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom8_twi_master.c"
             ]
         }
     ]

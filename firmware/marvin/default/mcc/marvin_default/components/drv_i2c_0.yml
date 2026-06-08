@@ -25,13 +25,13 @@ data:
               id: targetComponentID
             children:
             - type: Value
-              value: flexcom6
+              value: flexcom8
             type: String
           - attributes:
               id: targetAttachmentID
             children:
             - type: Value
-              value: FLEXCOM6_I2C
+              value: FLEXCOM8_I2C
             type: String
           type: Attributes
         type: DirectDependency
@@ -52,11 +52,12 @@ data:
     DRV_I2C_PLIB:
       attributes:
         id: DRV_I2C_PLIB
+        label: PLIB Used
       children:
       - children:
         - attributes:
             id: drv_i2c_0
-            value: FLEXCOM6
+            value: FLEXCOM8
           type: Dynamic
         type: Values
       type: String

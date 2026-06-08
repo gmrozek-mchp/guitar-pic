@@ -57,10 +57,9 @@
 // *****************************************************************************
 // *****************************************************************************
 void SYSC_SharedHandler (void);
-void FLEXCOM6_InterruptHandler (void);
+void FLEXCOM8_InterruptHandler (void);
 void TC0_InterruptHandler (void);
 void XDMAC_InterruptHandler (void);
-void UHPHS_Handler (void);
 void DRV_USB_UDPHS_Handler (void);
 void ISC_Handler (void);
 void CSI2DC_Handler (void);

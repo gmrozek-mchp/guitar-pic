@@ -50,16 +50,12 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include "peripheral/pit/plib_pit.h"
+#include "peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h"
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_device.h"
-#include "usb/usb_host_cdc.h"
-#include "usb/usb_cdc.h"
 #include "peripheral/tc/plib_tc0.h"
-#include "peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h"
 #include "system/time/sys_time.h"
 #include "driver/i2c/drv_i2c.h"
-#include "usb/usb_chapter_9.h"
-#include "usb/usb_host.h"
 #include "usb/usb_device_cdc.h"
 #include "usb/usb_cdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
@@ -77,8 +73,6 @@
 #include "peripheral/pio/plib_pio.h"
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
-#include "driver/usb/uhp/drv_usb_ehci.h"
-#include "driver/usb/uhp/drv_usb_ohci.h"
 #include "system/input/sys_input.h"
 #include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
 #include "peripheral/dbgu/plib_dbgu.h"
@@ -221,14 +215,9 @@ typedef struct
     SYS_MODULE_OBJ  usbDevObject0;
 
     SYS_MODULE_OBJ  sysTime;
-    SYS_MODULE_OBJ  usbHostObject0;
-
     SYS_MODULE_OBJ  drvMAXTOUCH;
 
     SYS_MODULE_OBJ  drvUSBUDPHSObject;
-
-    SYS_MODULE_OBJ  drvUSBEHCIObject;
-    SYS_MODULE_OBJ  drvUSBOHCIObject;
 
 
 } SYSTEM_OBJECTS;
@@ -240,8 +229,6 @@ typedef struct
 // *****************************************************************************
 
 extern const USB_DEVICE_INIT usbDevInitData; 
-
-extern const USB_HOST_INIT usbHostInitData; 
 
 
 

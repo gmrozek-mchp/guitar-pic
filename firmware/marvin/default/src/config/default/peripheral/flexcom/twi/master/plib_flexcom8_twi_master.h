@@ -5,7 +5,7 @@
     Microchip Technology Inc.
 
   File Name
-    plib_flexcom6_twi_master.h
+    plib_flexcom8_twi_master.h
 
   Summary
     FLEXCOM TWI Master peripheral library interface.
@@ -44,8 +44,8 @@
 *******************************************************************************/
 // DOM-IGNORE-END
 
-#ifndef PLIB_FLEXCOM6_TWI_MASTER_H
-#define PLIB_FLEXCOM6_TWI_MASTER_H
+#ifndef PLIB_FLEXCOM8_TWI_MASTER_H
+#define PLIB_FLEXCOM8_TWI_MASTER_H
 
 // *****************************************************************************
 // *****************************************************************************
@@ -83,7 +83,7 @@
 
 // *****************************************************************************
 /* Function:
-    void FLEXCOM6_TWI_Initialize(void)
+    void FLEXCOM8_TWI_Initialize(void)
 
    Summary:
     Initializes given instance of the FLEXCOM TWI peripheral.
@@ -103,18 +103,18 @@
 
    Example:
     <code>
-    FLEXCOM6_TWI_Initialize();
+    FLEXCOM8_TWI_Initialize();
     </code>
 
    Remarks:
     Stops the FLEXCOM TWI if it was already running and reinitializes it.
 */
 
-void FLEXCOM6_TWI_Initialize(void);
+void FLEXCOM8_TWI_Initialize(void);
 
 // *****************************************************************************
 /* Function:
-    void FLEXCOM6_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t contextHandle)
+    void FLEXCOM8_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t contextHandle)
 
    Summary:
     Sets the pointer to the function (and it's context) to be called when the
@@ -127,7 +127,7 @@ void FLEXCOM6_TWI_Initialize(void);
     function when it is called.
 
    Precondition:
-    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+    FLEXCOM8_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
 
    Parameters:
     callback - A pointer to a function with a calling signature defined
@@ -141,7 +141,7 @@ void FLEXCOM6_TWI_Initialize(void);
 
    Example:
     <code>
-    FLEXCOM6_TWI_CallbackRegister(MyFlexcomTwiCallback, &myData);
+    FLEXCOM8_TWI_CallbackRegister(MyFlexcomTwiCallback, &myData);
     </code>
 
    Remarks:
@@ -150,11 +150,11 @@ void FLEXCOM6_TWI_Initialize(void);
     See the FLEXCOM_TWI_CALLBACK type definition for additional information.
 */
 
-void FLEXCOM6_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t contextHandle);
+void FLEXCOM8_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t contextHandle);
 
 // *****************************************************************************
 /* Function:
-    bool FLEXCOM6_TWI_IsBusy(void)
+    bool FLEXCOM8_TWI_IsBusy(void)
 
    Summary:
     Returns the Peripheral busy status.
@@ -163,7 +163,7 @@ void FLEXCOM6_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t cont
     This function returns the peripheral's busy status.
 
    Precondition:
-    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+    FLEXCOM8_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
 
    Parameters:
     None.
@@ -176,9 +176,9 @@ void FLEXCOM6_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t cont
     <code>
         uint8_t myData [NUM_BYTES] = {'1', '0', ' ', 'B', 'Y', 'T', 'E', 'S', '!', '!',};
 
-        while(FLEXCOM6_TWI_IsBusy( ));
+        while(FLEXCOM8_TWI_IsBusy( ));
 
-        if(!FLEXCOM6_TWI_Write( SLAVE_ADDR, &myData[0], NUM_BYTES ))
+        if(!FLEXCOM8_TWI_Write( SLAVE_ADDR, &myData[0], NUM_BYTES ))
         {
 
         }
@@ -189,11 +189,11 @@ void FLEXCOM6_TWI_CallbackRegister(FLEXCOM_TWI_CALLBACK callback, uintptr_t cont
     None.
 */
 
-bool FLEXCOM6_TWI_IsBusy(void);
+bool FLEXCOM8_TWI_IsBusy(void);
 
 // *****************************************************************************
 /* Function:
-    bool FLEXCOM6_TWI_Read(uint16_t address, uint8_t *pdata, size_t length)
+    bool FLEXCOM8_TWI_Read(uint16_t address, uint8_t *pdata, size_t length)
 
    Summary:
     Reads data from the slave.
@@ -204,7 +204,7 @@ bool FLEXCOM6_TWI_IsBusy(void);
     completion of the read.
 
    Precondition:
-    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+    FLEXCOM8_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
 
    Parameters:
     address - 7-bit / 10-bit slave address.
@@ -220,7 +220,7 @@ bool FLEXCOM6_TWI_IsBusy(void);
     <code>
         uint8_t myData [NUM_BYTES];
 
-        if(!FLEXCOM6_TWI_Read( SLAVE_ADDR, &myData[0], NUM_BYTES ))
+        if(!FLEXCOM8_TWI_Read( SLAVE_ADDR, &myData[0], NUM_BYTES ))
         {
 
         }
@@ -230,11 +230,11 @@ bool FLEXCOM6_TWI_IsBusy(void);
     None.
 */
 
-bool FLEXCOM6_TWI_Read(uint16_t address, uint8_t *pdata, size_t length);
+bool FLEXCOM8_TWI_Read(uint16_t address, uint8_t *pdata, size_t length);
 
 // *****************************************************************************
 /* Function:
-    bool FLEXCOM6_TWI_Write(uint16_t address, uint8_t *pdata, size_t length)
+    bool FLEXCOM8_TWI_Write(uint16_t address, uint8_t *pdata, size_t length)
 
    Summary:
     Writes data onto the slave.
@@ -245,7 +245,7 @@ bool FLEXCOM6_TWI_Read(uint16_t address, uint8_t *pdata, size_t length);
     condition after completion of the write.
 
    Precondition:
-    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+    FLEXCOM8_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
 
    Parameters:
     address - 7-bit / 10-bit slave address.
@@ -261,7 +261,7 @@ bool FLEXCOM6_TWI_Read(uint16_t address, uint8_t *pdata, size_t length);
     <code>
         uint8_t myData [NUM_BYTES] = {'1', '0', ' ', 'B', 'Y', 'T', 'E', 'S', '!', '!',};
 
-        if(!FLEXCOM6_TWI_Write( SLAVE_ADDR, &myData[0], NUM_BYTES ))
+        if(!FLEXCOM8_TWI_Write( SLAVE_ADDR, &myData[0], NUM_BYTES ))
         {
 
         }
@@ -271,11 +271,11 @@ bool FLEXCOM6_TWI_Read(uint16_t address, uint8_t *pdata, size_t length);
     None.
 */
 
-bool FLEXCOM6_TWI_Write(uint16_t address, uint8_t *pdata, size_t length);
+bool FLEXCOM8_TWI_Write(uint16_t address, uint8_t *pdata, size_t length);
 
 // *****************************************************************************
 /* Function:
-    bool FLEXCOM6_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, uint8_t *rdata, size_t rlength)
+    bool FLEXCOM8_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, uint8_t *rdata, size_t rlength)
 
    Summary:
     Write and Read data from Slave.
@@ -288,7 +288,7 @@ bool FLEXCOM6_TWI_Write(uint16_t address, uint8_t *pdata, size_t length);
     condition after reading the data.
 
    Precondition:
-    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+    FLEXCOM8_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
 
    Parameters:
     address - 7-bit / 10-bit slave address.
@@ -307,7 +307,7 @@ bool FLEXCOM6_TWI_Write(uint16_t address, uint8_t *pdata, size_t length);
         uint8_t myTxData [NUM_BYTES] = {'1', '0', ' ', 'B', 'Y', 'T', 'E', 'S', '!', '!'};
         uint8_t myRxData [NUM_BYTES] = {0};
 
-        if(!FLEXCOM6_TWI_WriteRead( SLAVE_ADDR, &myTxData[0], NUM_BYTES, myRxData, NUM_BYTES ))
+        if(!FLEXCOM8_TWI_WriteRead( SLAVE_ADDR, &myTxData[0], NUM_BYTES, myRxData, NUM_BYTES ))
         {
 
         }
@@ -316,11 +316,11 @@ bool FLEXCOM6_TWI_Write(uint16_t address, uint8_t *pdata, size_t length);
    Remarks:
 */
 
-bool FLEXCOM6_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, uint8_t *rdata, size_t rlength);
+bool FLEXCOM8_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, uint8_t *rdata, size_t rlength);
 
 // *****************************************************************************
 /* Function:
-    FLEXCOM_TWI_ERROR FLEXCOM6_TWI_ErrorGet(void)
+    FLEXCOM_TWI_ERROR FLEXCOM8_TWI_ErrorGet(void)
 
    Summary:
     Returns the error during transfer.
@@ -329,7 +329,7 @@ bool FLEXCOM6_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, ui
     This function returns the error during transfer.
 
    Precondition:
-    FLEXCOM6_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
+    FLEXCOM8_TWI_Initialize must have been called for the associated FLEXCOM TWI instance.
 
    Parameters:
     None.
@@ -341,7 +341,7 @@ bool FLEXCOM6_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, ui
 
    Example:
     <code>
-    if(FLEXCOM_TWI_ERROR_NONE == FLEXCOM6_TWI_ErrorGet())
+    if(FLEXCOM_TWI_ERROR_NONE == FLEXCOM8_TWI_ErrorGet())
     {
 
     }
@@ -351,17 +351,17 @@ bool FLEXCOM6_TWI_WriteRead(uint16_t address, uint8_t *wdata, size_t wlength, ui
     None.
 */
 
-FLEXCOM_TWI_ERROR FLEXCOM6_TWI_ErrorGet(void);
+FLEXCOM_TWI_ERROR FLEXCOM8_TWI_ErrorGet(void);
 
 // *****************************************************************************
 /* Function:
-    bool FLEXCOM6_TWI_TransferSetup(FLEXCOM_TWI_TRANSFER_SETUP* setup, uint32_t srcClkFreq)
+    bool FLEXCOM8_TWI_TransferSetup(FLEXCOM_TWI_TRANSFER_SETUP* setup, uint32_t srcClkFreq)
 
    Summary:
     Dynamic setup of FLEXCOM TWI Peripheral.
 
    Precondition:
-    FLEXCOM6_Initialize must have been called for the associated TWI instance.
+    FLEXCOM8_Initialize must have been called for the associated TWI instance.
     The transfer status should not be busy.
 
    Parameters:
@@ -379,9 +379,9 @@ FLEXCOM_TWI_ERROR FLEXCOM6_TWI_ErrorGet(void);
 
     setup.clkSpeed = 400000;
 
-    if (FLEXCOM6_TWI_IsBusy() == false)
+    if (FLEXCOM8_TWI_IsBusy() == false)
     {
-        if (FLEXCOM6_TWI_TransferSetup( &setup, 0 ) == true)
+        if (FLEXCOM8_TWI_TransferSetup( &setup, 0 ) == true)
         {
 
         }
@@ -393,17 +393,17 @@ FLEXCOM_TWI_ERROR FLEXCOM6_TWI_ErrorGet(void);
     If configured to zero PLib takes the peripheral clock frequency from MHC.
 */
 
-bool FLEXCOM6_TWI_TransferSetup(FLEXCOM_TWI_TRANSFER_SETUP* setup, uint32_t srcClkFreq );
+bool FLEXCOM8_TWI_TransferSetup(FLEXCOM_TWI_TRANSFER_SETUP* setup, uint32_t srcClkFreq );
 
 // *****************************************************************************
 /* Function:
-    void FLEXCOM6_TWI_TransferAbort( void )
+    void FLEXCOM8_TWI_TransferAbort( void )
 
    Summary:
     Aborts the ongoing TWI transfer.
 
    Precondition:
-    FLEXCOM6_Initialize must have been called for the associated TWI instance.
+    FLEXCOM8_Initialize must have been called for the associated TWI instance.
 
    Parameters:
     None
@@ -414,14 +414,14 @@ bool FLEXCOM6_TWI_TransferSetup(FLEXCOM_TWI_TRANSFER_SETUP* setup, uint32_t srcC
    Example:
     <code>
 
-    FLEXCOM6_TWI_TransferAbort();
+    FLEXCOM8_TWI_TransferAbort();
 
     </code>
 
    Remarks:
     None
 */
-void FLEXCOM6_TWI_TransferAbort( void );
+void FLEXCOM8_TWI_TransferAbort( void );
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility
@@ -431,7 +431,7 @@ void FLEXCOM6_TWI_TransferAbort( void );
 #endif
 // DOM-IGNORE-END
 
-#endif //PLIB_FLEXCOM6_TWI_MASTER_H
+#endif //PLIB_FLEXCOM8_TWI_MASTER_H
 
 /*******************************************************************************
  End of File

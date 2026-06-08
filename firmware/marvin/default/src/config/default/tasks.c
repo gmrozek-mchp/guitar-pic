@@ -70,16 +70,6 @@ static void F_USB_DEVICE_Tasks(  void *pvParameters  )
     }
 }
 
-static void F_USB_HOST_Tasks(  void *pvParameters  )
-{
-    while(true)
-    {
-        /* USB Host layer tasks routine */ 
-        USB_HOST_Tasks(sysObj.usbHostObject0);
-        vTaskDelay(10U / portTICK_PERIOD_MS);
-    }
-}
-
 void _XLCDC_Tasks(  void *pvParameters  )
 {
     while(1)
@@ -128,18 +118,6 @@ void _LEGATO_Tasks(  void *pvParameters  )
     {
         Legato_Tasks();
         vTaskDelay(10 / portTICK_PERIOD_MS);
-    }
-}
-
-static void F_DRV_USB_HOST_Tasks(  void *pvParameters  )
-{
-    while(true)
-    {
-        /* USB EHCI Task Routine */
-        DRV_USB_EHCI_Tasks(sysObj.drvUSBEHCIObject);
-       /* USB OHCI Task Routine */
-       DRV_USB_OHCI_Tasks(sysObj.drvUSBOHCIObject);
-        vTaskDelay(10U / portTICK_PERIOD_MS);
     }
 }
 
@@ -204,15 +182,6 @@ void SYS_Tasks ( void )
         (TaskHandle_t*)NULL
     );
 
-    /* Create OS Thread for USB_HOST_Tasks. */
-    (void) xTaskCreate( F_USB_HOST_Tasks,
-        "USB_HOST_TASKS",
-        1024,
-        (void*)NULL,
-        5,
-        (TaskHandle_t*)NULL
-    );
-
     /* Create OS Thread for USB Driver Tasks. */
     (void) xTaskCreate( F_DRV_USB_UDPHS_Tasks,
         "DRV_USB_UDPHS_TASKS",
@@ -228,15 +197,6 @@ void SYS_Tasks ( void )
         1024,
         (void*)NULL,
         2,
-        (TaskHandle_t*)NULL
-    );
-
-    /* Create OS Thread for USB Driver Tasks. */
-    (void) xTaskCreate( F_DRV_USB_HOST_Tasks,
-        "DRV_USB_HOST_TASKS",
-        1024,
-        (void*)NULL,
-        5,
         (TaskHandle_t*)NULL
     );
 

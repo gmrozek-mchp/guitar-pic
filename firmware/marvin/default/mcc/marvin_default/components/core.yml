@@ -720,13 +720,7 @@ data:
     FLEXCOM6_CLOCK_ENABLE:
       attributes:
         id: FLEXCOM6_CLOCK_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: flexcom6
-            value: 'true'
-          type: Dynamic
-        type: Values
+        label: FLEXCOM6
       type: Boolean
     FLEXCOM6_CLOCK_FREQUENCY:
       attributes:
@@ -742,35 +736,17 @@ data:
     FLEXCOM6_INTERRUPT_ENABLE:
       attributes:
         id: FLEXCOM6_INTERRUPT_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: flexcom6
-            value: 'true'
-          type: Dynamic
-        type: Values
+        label: Enable 9 -- Flexcom 6
       type: Boolean
     FLEXCOM6_INTERRUPT_HANDLER:
       attributes:
         id: FLEXCOM6_INTERRUPT_HANDLER
-      children:
-      - children:
-        - attributes:
-            id: flexcom6
-            value: FLEXCOM6_InterruptHandler
-          type: Dynamic
-        type: Values
+        label: Handler
       type: String
     FLEXCOM6_INTERRUPT_HANDLER_LOCK:
       attributes:
         id: FLEXCOM6_INTERRUPT_HANDLER_LOCK
-      children:
-      - children:
-        - attributes:
-            id: flexcom6
-            value: 'true'
-          type: Dynamic
-        type: Values
+        label: FLEXCOM6_INTERRUPT_HANDLER_LOCK
       type: Boolean
     XDMAC_HIGHEST_CHANNEL:
       attributes:
@@ -1296,35 +1272,17 @@ data:
     UHPHS_INTERRUPT_ENABLE:
       attributes:
         id: UHPHS_INTERRUPT_ENABLE
-      children:
-      - children:
-        - attributes:
-            id: drv_usbhs_v1
-            value: 'true'
-          type: Dynamic
-        type: Values
+        label: Enable 22 -- USB Host High Speed
       type: Boolean
     UHPHS_INTERRUPT_HANDLER_LOCK:
       attributes:
         id: UHPHS_INTERRUPT_HANDLER_LOCK
-      children:
-      - children:
-        - attributes:
-            id: drv_usbhs_v1
-            value: 'true'
-          type: Dynamic
-        type: Values
+        label: UHPHS_INTERRUPT_HANDLER_LOCK
       type: Boolean
     UHPHS_INTERRUPT_HANDLER:
       attributes:
         id: UHPHS_INTERRUPT_HANDLER
-      children:
-      - children:
-        - attributes:
-            id: drv_usbhs_v1
-            value: UHPHS_Handler
-          type: Dynamic
-        type: Values
+        label: Handler
       type: String
     PIN_35_FUNCTION_TYPE:
       attributes:
@@ -4551,6 +4509,66 @@ data:
           type: User
         type: Values
       type: String
+    FLEXCOM8_CLOCK_ENABLE:
+      attributes:
+        id: FLEXCOM8_CLOCK_ENABLE
+        label: FLEXCOM8
+      children:
+      - children:
+        - attributes:
+            id: flexcom8
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM8_CLOCK_FREQUENCY:
+      attributes:
+        id: FLEXCOM8_CLOCK_FREQUENCY
+        label: FLEXCOM8_CLOCK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    FLEXCOM8_INTERRUPT_ENABLE:
+      attributes:
+        id: FLEXCOM8_INTERRUPT_ENABLE
+        label: Enable 11 -- Flexcom 8
+      children:
+      - children:
+        - attributes:
+            id: flexcom8
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM8_INTERRUPT_HANDLER:
+      attributes:
+        id: FLEXCOM8_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: flexcom8
+            value: FLEXCOM8_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    FLEXCOM8_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: FLEXCOM8_INTERRUPT_HANDLER_LOCK
+        label: FLEXCOM8_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: flexcom8
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
   userData:
     children:
     - attributes:

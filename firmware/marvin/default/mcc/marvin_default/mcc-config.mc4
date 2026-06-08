@@ -13,8 +13,7 @@ modules:
 - drv_i2c
 - drv_i2c_0
 - drv_usb_udphs
-- drv_usbhs_v1
-- flexcom6
+- flexcom8
 - gfx_bridge_lvdsc_plib
 - gfx_display_comp_nvdi_10_1in
 - gfx_legato
@@ -30,8 +29,6 @@ modules:
 - usb_device
 - usb_device_cdc
 - usb_device_cdc_0
-- usb_host
-- usb_host_cdc
 - vision_csi
 - vision_csi2dc
 - vision_isc
@@ -43,13 +40,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: dff1e2048886123f7516f1da45350172b466f308e9a4ade7f5d463ec0a9526a8
 - file: ../src/config/default/configuration.h
-  hash: b86fa0f00d19978985f14280a4f13ac04a5de3a2be8f8f2e31f24d2940cfe507
+  hash: 5da88402f3249c491442898a1204f058ab70778395071ffbc815743f2a93e3dd
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 3a4bef517c8df4e74660131321bbac836a384b9f69263a5513a0f6583ec70c7c
+  hash: bb7537fcd5ce98e6aae66c55d6582bf33c8200be5c77ace82bae2d92d319aff7
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -72,8 +69,6 @@ generatedFileHashHistoryMap:
   hash: 375f0ff61553b5486cbdc9447e45998c6aa003d3a3745cfc833ebf8de74c2ce9
 - file: ../src/config/default/driver/usb/drv_usb.h
   hash: ee59efb38b1cf87e1c4bb6e833a9c9be0c106005daa6c1ccd90fca9fb5c17b44
-- file: ../src/config/default/driver/usb/drv_usb_external_dependencies.h
-  hash: 347035feb1b3460c279e58f4210d0e22e5d1505ec60a69f78375ac81db5e95e8
 - file: ../src/config/default/driver/usb/udphs/drv_usb_udphs.h
   hash: 5531eb875bee36619e0ecca260fbf004d12de51a864cb34143cb2426cd30aaa3
 - file: ../src/config/default/driver/usb/udphs/src/drv_usb_udphs.c
@@ -84,20 +79,6 @@ generatedFileHashHistoryMap:
   hash: d27f8d052b3b89ab81953d6ab2191d207dc6bfd3533b42a9b4080f721c5f3a91
 - file: ../src/config/default/driver/usb/udphs/src/drv_usb_udphs_variant_mapping.h
   hash: b0404bd97932bfd81356027e714ec5dbc2b57633d0124ecd6c9c743827d7504f
-- file: ../src/config/default/driver/usb/uhp/drv_usb_ehci.h
-  hash: cd4ef1fc76c54ecb70c71d9f90678e080754f3996a7ea305aea5304279df9860
-- file: ../src/config/default/driver/usb/uhp/drv_usb_ohci.h
-  hash: a1ab00eb37e4cd23682e4a8fe540503579f28ba54d01463f3822c0b4e6d47c67
-- file: ../src/config/default/driver/usb/uhp/src/drv_usb_ehci.c
-  hash: e91ffd129a384202e1b32f6f5c3800dd72358f1b2f2a695a32cfdfce4700f412
-- file: ../src/config/default/driver/usb/uhp/src/drv_usb_ehci_local.h
-  hash: e007dc811526e0a273537fbca4528622effb014209f9a9bad6ebd666f88ac936
-- file: ../src/config/default/driver/usb/uhp/src/drv_usb_ohci.c
-  hash: 5fb5b609f395e43e530addcbcec0ed1a6abddf6d38e1003d6a73b78e9e741052
-- file: ../src/config/default/driver/usb/uhp/src/drv_usb_ohci_local.h
-  hash: e670cac6044d0e41a477f12aa474e27110963fc5c808c438eaba3c5459ae6efa
-- file: ../src/config/default/driver/usb/uhp/src/drv_usb_uhp_ohci_registers.h
-  hash: c94373b073204b4ab88a4535b03e0c0599378719732a7fd1fbcb58baae077c98
 - file: ../src/config/default/fault_handlers.c
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
 - file: ../src/config/default/freertos_hooks.c
@@ -619,11 +600,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 84b6cdd40d18c06be148460c6ced68e2313da8011f2dc174acaf8ed5f73e7c14
+  hash: 5f243d7a9f645543305f55654e68e56e679ac70a6ffcef4ee6a0a1f70d22b8ca
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
-  hash: e8d03c20936a0a7ca4ae69b8748c2593770ce4927ff11b75002e7d381c59ecec
+  hash: c35c26b69a82ae6cb6ea2daabe531a5be79ebc50aacb0859daa6ec44f63f245d
 - file: ../src/config/default/osal/osal.h
   hash: 1cfe3b61d9693b2369922041eef33fe16b3c1ccd9c85d4ded808b805f90a869c
 - file: ../src/config/default/osal/osal_definitions.h
@@ -633,11 +614,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/osal/osal_freertos.h
   hash: f9d8c97ce37bbb7516242ec37c4b0db387090cfed54580af683bc0ce126094e0
 - file: ../src/config/default/peripheral/aic/plib_aic.c
-  hash: 88a7bde80c014f3972f3e3623e286106c001433e83a4adc57333169c149f350c
+  hash: cf49716c8edf8bced61eba37c289b3e342237a7564185855e39f6961493f372a
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: b3f27abebdf5da39e8ed4522d00ebe083b7761bd4a08d5b6873507f92d47abb1
+  hash: b8260b43d986254b565ece0b9f787054dde4d5ec2170550d3eeab224d644d07c
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -646,10 +627,10 @@ generatedFileHashHistoryMap:
   hash: 60f552a7fc1710e738e9e4721e8ead0ba2349ccb983b5cfacccfaa98fcc47447
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu_common.h
   hash: 3a5532ba83c46095ed55db646a9be166772429df5eac103b28c31a562c9cf1a2
-- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.c
-  hash: 3d118f4f1bc81c52f72feb1446acfc9d4d1fa1fddeb8b0908629393224f55fd7
-- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom6_twi_master.h
-  hash: ec172c9f29f28a6cd23db61ccc5f0039b2f257f1c74a10be2c06bb5b75949e94
+- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom8_twi_master.c
+  hash: 0f2a30b070b4cbb10de233d248c870e4b3c91b12e90c6475d314fb2b141bfead
+- file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h
+  hash: 35245134dc1519103ec0f7b96f480ff3172fdf7510382f4cb1f4bc8c7aa7e925
 - file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom_twi_master_common.h
   hash: b167387d3ed43ed5aec18b601bf7d5da73592c102a83e21d56351bb98c67807a
 - file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.c
@@ -731,7 +712,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: ed92c20c32b18041de101009c1981392fbe648195d75ad79ed9dbd70a12915cb
+  hash: 9c47a2e20b5971fed1063c90bcfa8d3c8f432d14965b754c814ae5356e3e8c34
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/usb/src/usb_device.c
@@ -750,18 +731,6 @@ generatedFileHashHistoryMap:
   hash: 8946c320acdb2ca965664fdf6830d839c8488cb0144d4430d9531fd4408d8df3
 - file: ../src/config/default/usb/src/usb_external_dependencies.h
   hash: b12fd8f239e37735d34cbd777cd98b448b9ad8bc4fde516bf6ca8a5c1120163f
-- file: ../src/config/default/usb/src/usb_host.c
-  hash: f66397aa89f8b43c22792d73e709aec033271b8e9c2ff3aedd10b07a7b44d70c
-- file: ../src/config/default/usb/src/usb_host_cdc.c
-  hash: d6e7f71d25270280bf7615f09c112f28abbeabefa8ee5974a94adbda6953636b
-- file: ../src/config/default/usb/src/usb_host_cdc_acm.c
-  hash: 23d4f181a2e7b7da7ae1e1e297264c3bbfc150eca17887b8a258f6dc631a0f08
-- file: ../src/config/default/usb/src/usb_host_cdc_local.h
-  hash: c32a0e3c4776c052163ae4a274e888f6b6b8161102cda37eba28b48045fd198c
-- file: ../src/config/default/usb/src/usb_host_hub_mapping.h
-  hash: 5febd19aa53a3acb9cd3d6f7e5e3ab254c52d45b9db1e12547778f1b0febc8af
-- file: ../src/config/default/usb/src/usb_host_local.h
-  hash: aa9e60691421c11748a9659e71b4bce4b24f2aeb9cecd52f850b8868356584b5
 - file: ../src/config/default/usb/usb_cdc.h
   hash: 7156ab509a99e1532639ce0826dd8cde6c77581bbe07951e71ec17428deca6c3
 - file: ../src/config/default/usb/usb_chapter_9.h
@@ -772,24 +741,16 @@ generatedFileHashHistoryMap:
   hash: 44c976f44c00f873133cd722cdd9565a87f5db68fa7d867ca9d1f717949aa81e
 - file: ../src/config/default/usb/usb_device_cdc.h
   hash: cd7f2dee131b1ef8d3cd4bc65094c9e06668ecc6329af8bc26f3cc5844c5ce0b
-- file: ../src/config/default/usb/usb_ehci.h
-  hash: 4ca8020fb40107ddfb6daa29564a698346508ada7827a8c1e4beb7e986c18bee
 - file: ../src/config/default/usb/usb_host.h
   hash: 9e71096993b82346d36f826b35ff46d1cecadbfda0fee4ae47125da2764391e4
-- file: ../src/config/default/usb/usb_host_cdc.h
-  hash: 95e2a7c55b054e0461f41e0e55390f641c98c97f54072b2531f96cce27f87190
 - file: ../src/config/default/usb/usb_host_client_driver.h
   hash: 274e72a8e34ccc3012d2bb4a100cec9d54ffd296091b35c0f7ec45b528cb34ac
 - file: ../src/config/default/usb/usb_host_hub_interface.h
   hash: bcd95afaa026ab8559047e85ac157597452ab0ceee4e96612e5273ec324f1ef9
 - file: ../src/config/default/usb/usb_hub.h
   hash: 66a9362619640002d6c8fe6335e044dd7c9cd4fe834d1b2487aa172a08af644b
-- file: ../src/config/default/usb/usb_ohci.h
-  hash: 6e333a4861c360fa58927cf7b2f43f5c565fabbc2d22eda0ea01b899ff413f48
 - file: ../src/config/default/usb_device_init_data.c
   hash: 0c579dce6e86e67a53208cf420748e7b20acfd489b41174de71559b916b1837e
-- file: ../src/config/default/usb_host_init_data.c
-  hash: b0485187db650e2be8090b28912f11e5471b2ef074b421a6fab929981ad838d0
 - file: ../src/config/default/user.h
   hash: 451e0878e9fcf6cf9fab046c1452ea662757988346c7f39e6bc98478ca25f995
 - file: ../src/config/default/vision/drivers/csi/drv_csi.c
