@@ -41,13 +41,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: dff1e2048886123f7516f1da45350172b466f308e9a4ade7f5d463ec0a9526a8
 - file: ../src/config/default/configuration.h
-  hash: 5da88402f3249c491442898a1204f058ab70778395071ffbc815743f2a93e3dd
+  hash: a4506b94d329b8daee052a3ec9f99c6769f4846767eec2aa4d4ba58f59a5c1da
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: f91c6a7b4c92244e8a86c12df521f51a9945fe669f167a28e65704d495937dbe
+  hash: 6d5298745f8dc99a2f8d3459a5d3be64e53f7521bcbe4335e8a6389f9654eeac
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -601,7 +601,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: abc248424ae1c10d1afc1330479ce8a3ccfbc3ae813915866f82b0ae372c3517
+  hash: 1fbcada9e95bc5d30985693d6ad2a932c000dd3ddf41f2f353d0209f583e79f6
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -635,9 +635,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/flexcom/twi/master/plib_flexcom_twi_master_common.h
   hash: b167387d3ed43ed5aec18b601bf7d5da73592c102a83e21d56351bb98c67807a
 - file: ../src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.c
-  hash: 1c4b0b0b16e6156b96667c17cf616161424c4d284dec7b5c4558d8e8e64404fd
+  hash: bec8069c49c0c50b246645408927071f67d25d58730444d4212d11b4c37e591a
 - file: ../src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.h
-  hash: 9b6fc85eb33cc56876eed23bb7c6f2d0534ea228eb45078cd9e891361677a228
+  hash: c8adb2359675632d75efaf5197e9b00a34275adfd8ec73e3c2c5a8b18e7ad76e
 - file: ../src/config/default/peripheral/flexcom/usart/plib_flexcom_usart_local.h
   hash: 44c68d2efb80f2837e7bbcb39073972a6672c61ea2daf8f63e8c7e7da6e1208c
 - file: ../src/config/default/peripheral/gfx2d/plib_gfx2d.c

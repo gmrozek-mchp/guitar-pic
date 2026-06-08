@@ -49,13 +49,13 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include "peripheral/pit/plib_pit.h"
 #include "peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h"
+#include "peripheral/pit/plib_pit.h"
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_device.h"
 #include "peripheral/tc/plib_tc0.h"
-#include "system/time/sys_time.h"
 #include "driver/i2c/drv_i2c.h"
+#include "system/time/sys_time.h"
 #include "peripheral/flexcom/usart/plib_flexcom2_usart.h"
 #include "usb/usb_device_cdc.h"
 #include "usb/usb_cdc.h"
@@ -75,8 +75,8 @@
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
 #include "system/input/sys_input.h"
-#include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
 #include "peripheral/dbgu/plib_dbgu.h"
+#include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"

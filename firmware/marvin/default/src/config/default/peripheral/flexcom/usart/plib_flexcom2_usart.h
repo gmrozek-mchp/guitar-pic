@@ -73,27 +73,37 @@ void FLEXCOM2_USART_Initialize( void );
 
 FLEXCOM_USART_ERROR FLEXCOM2_USART_ErrorGet( void );
 
-bool FLEXCOM2_USART_SerialSetup( FLEXCOM_USART_SERIAL_SETUP *setup, uint32_t srcClkFreq );
+bool FLEXCOM2_USART_SerialSetup( FLEXCOM_USART_SERIAL_SETUP* setup, uint32_t srcClkFreq );
 
-bool FLEXCOM2_USART_Write( void *buffer, const size_t size );
+size_t FLEXCOM2_USART_Write(uint8_t* pWrBuffer, const size_t size );
 
-bool FLEXCOM2_USART_Read( void *buffer, const size_t size );
+size_t FLEXCOM2_USART_Read(uint8_t* pRdBuffer, const size_t size);
 
-bool FLEXCOM2_USART_WriteIsBusy( void );
+size_t FLEXCOM2_USART_WriteFreeBufferCountGet(void);
 
-bool FLEXCOM2_USART_ReadIsBusy( void );
+size_t FLEXCOM2_USART_WriteBufferSizeGet(void);
 
-size_t FLEXCOM2_USART_WriteCountGet( void );
+bool FLEXCOM2_USART_WriteNotificationEnable(bool isEnabled, bool isPersistent);
 
-size_t FLEXCOM2_USART_ReadCountGet( void );
+void FLEXCOM2_USART_WriteThresholdSet(uint32_t nBytesThreshold);
 
-bool FLEXCOM2_USART_ReadAbort(void);
+size_t FLEXCOM2_USART_ReadFreeBufferCountGet(void);
 
-void FLEXCOM2_USART_WriteCallbackRegister( FLEXCOM_USART_CALLBACK callback, uintptr_t context );
+size_t FLEXCOM2_USART_ReadBufferSizeGet(void);
 
-void FLEXCOM2_USART_ReadCallbackRegister( FLEXCOM_USART_CALLBACK callback, uintptr_t context );
+bool FLEXCOM2_USART_ReadNotificationEnable(bool isEnabled, bool isPersistent);
 
-bool FLEXCOM2_USART_TransmitComplete( void );
+void FLEXCOM2_USART_ReadThresholdSet(uint32_t nBytesThreshold);
+
+size_t FLEXCOM2_USART_WriteCountGet(void);
+
+size_t FLEXCOM2_USART_ReadCountGet(void);
+
+void FLEXCOM2_USART_WriteCallbackRegister( FLEXCOM_USART_RING_BUFFER_CALLBACK callback, uintptr_t context);
+
+void FLEXCOM2_USART_ReadCallbackRegister( FLEXCOM_USART_RING_BUFFER_CALLBACK callback, uintptr_t context);
+
+bool FLEXCOM2_USART_TransmitComplete(void);
 
 
 // DOM-IGNORE-BEGIN
