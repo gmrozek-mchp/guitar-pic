@@ -19,6 +19,15 @@ train = [
 dev = [
     "pytest>=8.0",
 ]
+# Model visualisation: torchinfo (summary table + mult-adds), torchview (graph;
+# also needs the graphviz binary — `brew install graphviz`), matplotlib (RF-cone
+# plot). torchinfo/torchview need torch, so install alongside the train group:
+#   uv sync --group train --group viz
+viz = [
+    "torchinfo>=1.8",
+    "torchview>=0.2.6",
+    "matplotlib>=3.8",
+]
 
 [build-system]
 requires = ["hatchling"]

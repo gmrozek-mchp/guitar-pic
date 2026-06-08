@@ -93,6 +93,18 @@ Difficulty target was **hard** first (all 5 frets, slower scroll). **Open next-s
 
 ## Session log
 
+### 2026-06-05 — model visualisation tooling (`edge-ai viz`)
+
+- Added a `viz` dependency group (`torchinfo`, `torchview`, `matplotlib`) and `edge_ai/viz.py` with three helpers, wired to a new `edge-ai viz` subcommand. Reads arch from a checkpoint (`--model`) or from `--channels/--kernel/--dilations/--window` flags (deploy defaults: 16ch, kernel 5, `(1,4,16)`, window=RF).
+  - **torchinfo summary** — per-layer shapes + params + mult-adds. Deploy model = 3,110 params, 0.26 M mult-adds *per window*; on-device streaming computes only the last timestep, so device MACs are lower (model.md §5).
+  - **torchview graph** (`--graph OUT.svg`) — needs the graphviz `dot` binary; present in the env (graphviz 15.0.0), renders fine.
+  - **RF-cone plot** (`--rf-cone OUT.png`, matplotlib, no torch needed) — the high-value one: shows the dilated kernel taps fanning from `output[t]` back through conv3 (d=16) → conv2 (d=4) → conv1 (d=1) into the contiguous 85-sample input span, titled with RF = 85 samp ≈ 354 ms. Directly visualises the RF-vs-lag design story in model.md §4.
+- `viz.py` keeps heavy imports inside each function so the stdlib surface (`data`/`lag`/`metrics`) is untouched; `receptive_field()` is pure-Python and the RF cone runs without torch.
+- Evaluated and skipped wrapping external tools: Netron (needs an ONNX export we don't produce — the quant path emits a C header), PlotNeuralNet/NN-SVG (manual LaTeX/web). Pointed at them in README/`viz.py` docstring instead. Rejected draw_convnet (the user's find) — 2D-convnet-oriented, unmaintained, poor fit for a 1D dilated causal net.
+- All three outputs verified end-to-end (summary, SVG graph, RF-cone PNG) on the 16ch/w85 deploy checkpoint. No model/firmware change.
+- **Embedded two figures in `model.md`** (generated from `model-hard-16ch-w85.pt`, committed under `docs/img/`): the torchview layer graph in §3 (alongside the ASCII diagram, shows the growing left-pad + last-timestep pluck) and the RF cone in §4 (visualises the RF=85 sum — taps fanning back to a contiguous 85-sample input span). Regenerate with `edge-ai viz --model <ckpt> --rf-cone docs/img/receptive-field-cone.png --graph docs/img/strumnet-graph.png`. Used plain markdown `![](…)` image syntax (the viewer strips raw HTML `<img>`).
+- **Added a dilation primer to §4** alongside the cone: definition (kernel taps spaced `d` apart, `d-1` skipped between), why the holes are harmless (lower layers summarise them), and a 1→5→21→85 dot-count reading of the cone with the label-vs-spacing subtlety. Complements the §3 "why these layers" rationale.
+
 ### 2026-06-04 — docs synced to implementation (model.md focus)
 
 - Swept all `docs/` against the actual code + firmware to remove drift accumulated across the RF-85, int8-quantise, 16ch-deploy, and streaming-inference milestones. No code changed.
