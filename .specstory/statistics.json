@@ -153,6 +153,24 @@
       "provider": "claude-code",
       "last_updated": "2026-06-05T11:59:59Z"
     },
+    "53ec07ac-1bc5-4055-af28-36a2d4aee76c": {
+      "user_message_count": 4,
+      "agent_message_count": 161,
+      "start_timestamp": "2026-06-08T17:10:13.334Z",
+      "end_timestamp": "2026-06-08T18:01:28.777Z",
+      "markdown_size_bytes": 316361,
+      "provider": "claude-code",
+      "last_updated": "2026-06-08T18:01:28Z"
+    },
+    "5dfc2844-d57c-451b-bd1b-abd254b624ea": {
+      "user_message_count": 55,
+      "agent_message_count": 997,
+      "start_timestamp": "2026-06-08T18:50:54.263Z",
+      "end_timestamp": "2026-06-09T03:00:40.032Z",
+      "markdown_size_bytes": 1268615,
+      "provider": "claude-code",
+      "last_updated": "2026-06-09T03:00:40Z"
+    },
     "61cae6f3-4077-4e1a-ac91-194e8ddc800d": {
       "user_message_count": 14,
       "agent_message_count": 119,
