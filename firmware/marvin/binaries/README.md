@@ -4,16 +4,34 @@ at91bootstrap is marvin's first-stage boot: RomBOOT loads it, it brings up the
 266 MHz clocks + the in-package DDR3L (Winbond `W632GU6NB12I`), then either hands
 off to the application or — for the JTAG dev loop — stops and waits.
 
-| File | Purpose | Provenance |
-|------|---------|------------|
-| `sam9x7-boot-none-4.0.13.elf` | **JTAG load-to-RAM** bootstrap (init-and-stop). Used by `../openocd/load-ram.sh`. | Built from source (recipe below) |
-| `boot.bin` | SD / QSPI first-stage bootstrap (used for microSD boot and `qspi_flash.bat`) | Vendor-supplied, *unverified* |
-| `at91bootstrap.bin` | NAND first-stage bootstrap (used by `nand_flash.bat`) | Vendor-supplied, *unverified* |
-| `nand_flash.bat`, `qspi_flash.bat` | SAM-BA flashing scripts (Linux/Windows host) | Vendor-supplied |
+All bootstraps here are built from at91bootstrap **v4.0.13** source (recipes
+below), so their provenance is known.
 
-> Only `sam9x7-boot-none-4.0.13.elf` is built from known source today. Rebuilding
-> the production media bootstraps (`boot.bin` / `at91bootstrap.bin`) from the same
-> source is the Phase 2 task — see the recipe below and the journal.
+| File | Medium / use | Built from defconfig |
+|------|--------------|----------------------|
+| `sam9x7-boot-none-4.0.13.elf` | **JTAG load-to-RAM** (init-and-stop). Used by `../openocd/load-ram.sh`. | `sam9x75_curiosity_pro_bkptnone` |
+| `sam9x7-nandflashboot-uboot-4.0.13.bin` | **NAND** boot (SAM-BA `writeboot`) | `sam9x75_curiosity_pronf_uboot` |
+| `sam9x7-dataflashboot-uboot-4.0.13.bin` | **QSPI** boot (SAM-BA `writeboot`) | `sam9x75_curiosity_prodf_qspi_uboot` |
+| `sam9x7-sdcardboot-harmony-4.0.13.bin` | **microSD** boot (copied to FAT as `boot.bin`) | `sam9x75_curiosity_prosd_uboot` + `IMAGE_NAME=harmony.bin` |
+| `nand_flash.bat`, `qspi_flash.bat` | SAM-BA flashing scripts (Linux/Windows host) | — |
+
+The media bootstraps all jump to **`0x23F00000`** (`CONFIG_JUMP_ADDR`) — exactly
+where marvin links and runs — so marvin (`out/harmony.bin`) is the second stage.
+
+## Boot order (SAM9X75 ROM)
+
+The ROM tries NVM in a fixed sequential fall-through (first valid image wins);
+order is customizable only via the OTP Boot Configuration Packet:
+
+> **SD/eMMC (SDMMC0) → SD/eMMC (SDMMC1) → QSPI → NAND (SMC) → SPI (FLEXCOM5)**
+
+So **SD outranks NAND, and QSPI sits between them.** Useful consequences:
+- NAND = resident firmware; **SD = override/recovery** (a valid card boots first,
+  no jumper change; remove it to fall back to NAND).
+- For NAND to boot, **QSPI must hold no valid image** (erase it or keep JP4/QSPI-CS
+  out) — otherwise QSPI boots before NAND.
+- For the JTAG dev loop we pull JP3 (NAND) + JP4 (QSPI) and use no card, so the
+  ROM falls all the way through to the SAM-BA monitor.
 
 ## Board ↔ defconfig
 
@@ -82,25 +100,48 @@ CONFIG_BOARD_QUIRK_SAM9X75_CURIOSITY=y
 CONFIG_LED_*    # red on PC14 (curiosity_pro)
 ```
 
-## Build a production bootstrap (Phase 2 — standalone boot)
+## Build the production (standalone-boot) bootstraps
 
-For a board that boots on its own (no JTAG), build the bootstrap for the target
-medium and flash marvin (`out/harmony.bin`) as the second stage. These configs
-are named `*_uboot_*` by convention but are **not** u-boot-specific — they just
-load the next-stage binary from flash into DRAM (`0x23f00000`, where marvin runs)
-and jump. No actual u-boot / Linux is involved.
+These configs are named `*_uboot_*` by convention but are **not** u-boot-specific
+— they load the next-stage binary from flash into DRAM (`0x23F00000`) and jump.
+No actual u-boot / Linux is involved; marvin (`harmony.bin`) is the second stage.
+
+- **NAND / QSPI** load the app from a **raw flash offset** (`CONFIG_IMG_ADDRESS`,
+  `0x40000`) — the filename is irrelevant on-device, so these keep their stock
+  `-uboot-` build-name suffix.
+- **SD** loads the app from **FAT by filename** (`CONFIG_IMAGE_NAME`). The stock
+  default is `u-boot.bin`; we override it to **`harmony.bin`** (the Harmony MPU
+  convention, and consistent with the NAND/QSPI host files). at91bootstrap then
+  auto-names the output `...-sdcardboot-harmony-...`.
 
 ```sh
-# NAND
-make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pronf_uboot_defconfig && make
-# QSPI
-make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prodf_qspi_uboot_defconfig && make
-# microSD
-make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prosd_uboot_defconfig && make
+cd ~/Projects/microchip/at91bootstrap
+export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
+
+# NAND  (raw offset; filename unused)
+make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pronf_uboot_defconfig     && make CROSS_COMPILE=arm-none-eabi-
+# QSPI  (raw offset; filename unused)
+make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prodf_qspi_uboot_defconfig && make CROSS_COMPILE=arm-none-eabi-
+# microSD — override the FAT second-stage filename to harmony.bin
+make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prosd_uboot_defconfig
+sed -i '' 's|^CONFIG_IMAGE_NAME=.*|CONFIG_IMAGE_NAME="harmony.bin"|' .config   # macOS sed
+make CROSS_COMPILE=arm-none-eabi-
+# artifacts: build/binaries/sam9x7-{nandflashboot,dataflashboot}-uboot-4.0.13.bin
+#            build/binaries/sam9x7-sdcardboot-harmony-4.0.13.bin
+# (mrproper wipes build/, so copy each .bin out before the next build.)
 ```
 
-Then flash with SAM-BA on a Linux/Windows host (macOS has no SAM-BA), substituting
-the freshly built bootstrap and marvin's `harmony.bin` — see `nand_flash.bat` /
-`qspi_flash.bat` (bootstrap via `writeboot`, app via `write harmony.bin:0x40000`).
-For microSD, `../openocd/make-sdcard.sh` writes `boot.bin` + `harmony.bin` to a
-FAT card on macOS.
+### Flashing
+
+- **NAND / QSPI** — SAM-BA on a **Linux/Windows** host (macOS has no SAM-BA). See
+  `nand_flash.bat` / `qspi_flash.bat`: bootstrap via `writeboot`, marvin via
+  `write harmony.bin:0x40000`. (SAM-BA's `nandflash` applet writes the PMECC/boot
+  header the ROM expects.)
+- **microSD** — `../openocd/make-sdcard.sh` on macOS. It writes the SD bootstrap as
+  `boot.bin` (what the ROM looks for) and marvin as **`harmony.bin`** (the SD
+  bootstrap's `CONFIG_IMAGE_NAME`).
+
+> macOS-native NAND/QSPI flashing over JTAG (no Linux/Windows) is open R&D — e.g.
+> OpenOCD's `at91sam9` NAND driver, or loading u-boot into RAM via `load-ram` and
+> flashing from its console. BOSSA is **not** applicable (it programs Cortex-M
+> on-chip flash over the SAM-BA protocol, not SAM9 external NVM, and not over JTAG).

@@ -143,9 +143,10 @@ arm-none-eabi-gdb firmware/marvin/out/marvin/default.elf \
 ## Bootable microSD (standalone, no JTAG) — `make-sdcard.sh`
 
 For a board that boots on its own (no debugger), `make-sdcard.sh` prepares a card
-on macOS: it FAT-formats the card and writes `boot.bin` (SD bootstrap) +
-`harmony.bin` (the app) to the root, which is the layout the SAM9X75 ROM SD-boot
-path expects.
+on macOS: it FAT-formats the card and writes the SD bootstrap
+(`../binaries/sam9x7-sdcardboot-harmony-4.0.13.bin`) as **`boot.bin`** (what the
+ROM looks for) and marvin (`../out/harmony.bin`) as **`harmony.bin`** (the
+bootstrap's `CONFIG_IMAGE_NAME`) — the layout the SAM9X75 ROM SD-boot path expects.
 
 ```sh
 diskutil list                  # find the card, e.g. /dev/disk4
@@ -154,9 +155,8 @@ diskutil list                  # find the card, e.g. /dev/disk4
 
 It refuses a fixed internal disk and requires you to retype the disk identifier
 before erasing. Then set the board boot jumpers for SD, insert the card, and
-power-cycle. (The committed `boot.bin`/`harmony.bin` pairing matches the SAM-BA
-`qspi_flash.bat` convention; the bootstrap binaries are not yet re-verified for
-this exact board — see the journal.)
+power-cycle. SD is the highest-priority boot source (see `../binaries/README.md`),
+so a valid card boots ahead of NAND/QSPI. Not yet exercised on a real card.
 
 ## Selecting a specific board
 
