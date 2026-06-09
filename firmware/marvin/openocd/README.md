@@ -154,9 +154,10 @@ diskutil list                  # find the card, e.g. /dev/disk4
 ```
 
 It refuses a fixed internal disk and requires you to retype the disk identifier
-before erasing. Then set the board boot jumpers for SD, insert the card, and
-power-cycle. SD is the highest-priority boot source (see `../binaries/README.md`),
-so a valid card boots ahead of NAND/QSPI. Not yet exercised on a real card.
+before erasing. Then insert the card and power-cycle. SD is the highest-priority
+boot source (see `../binaries/README.md`), so a valid card boots ahead of
+NAND/QSPI — no jumper change needed. **Validated:** boots marvin standalone from
+SD on this board (DBGU banner, no JTAG).
 
 ## Selecting a specific board
 
