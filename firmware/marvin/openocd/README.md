@@ -73,7 +73,8 @@ purpose-built **"init-and-stop" at91bootstrap**
 `sam9x75_curiosity_pro_bkptnone_defconfig` — `CONFIG_INIT_AND_STOP`) to bring up
 the 266 MHz clocks and initialize the in-package DDR3L, then loads marvin's ELF
 into DDR and jumps to it. (Reusing at91bootstrap avoids re-implementing the
-SAM9X75D2G DDR3L init by hand — see `load-ram.cfg` and the journal.)
+SAM9X75D2G DDR3L init by hand — see `load-ram.cfg` and the journal.) To rebuild
+the bootstrap from source, see [`../binaries/README.md`](../binaries/README.md).
 
 ```sh
 ./load-ram.sh                            # ../binaries/sam9x7-boot-none-4.0.13.elf + ../out/marvin/default.elf
