@@ -35,11 +35,19 @@ Baud is 500 000. Host checks: [`tools/ds_monitor.py`](../tools/ds_monitor.py) (f
 
 2. **No host→firmware framing.** Command stream is raw bitmask bytes with no start byte. A spurious byte (e.g. line glitch on RX) becomes a button command. Acceptable for now because the line is short and runs over the same EDBG-CDC pair as TX, but worth revisiting if we see ghost presses.
 
+3. **T1S link transport — direction, not yet built.** Plan to move the marvin link from the SERCOM1 UART to **10BASE-T1S single-pair Ethernet + dumb PoDL** via a LAN8651B1 MAC-PHY (system spec §6 + [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md)). Fretboard-side cost is an OA TC6 SPI driver + minimal L2 framing (~6–10 KB flash / ~1–2 KB SRAM, one free SERCOM in SPI mode + CS_N/IRQ_N/reset GPIO); the 17-byte data frame + 1-byte command formats ride unchanged inside the Ethernet payload, so `data_stream.c`/`cmd_receive.c` need no logic change — only the transport under them swaps. Open sub-items: PLCA-multidrop vs point-to-point (lean PLCA), custom ethertype + the two hardcoded MACs, and whether to keep the UART as a bring-up fallback (decides if SERCOM1's data path is reclaimed). PoDL is transparent to the MCU (zero firmware footprint). Decide before any code lands.
+
 > Resolved 2026-06-03 (see decision log): #3 "no sample timestamp" and #4 "no applied actuator state" — both fixed by growing the frame to 17 bytes with `sample_seq` + `applied_mask`.
 
 ---
 
 ## Session log
+
+### 2026-06-09 — T1S + PoDL link direction documented
+
+- Evaluated moving the marvin link from SERCOM1 UART to **10BASE-T1S + dumb PoDL** (LAN8651B1 MAC-PHY each end). Feasible on the PIC32CM PL10: no IP stack, just SPI + the OPEN Alliance TC6 chunk protocol + a 14-byte L2 header; the existing 17-byte/1-byte frame formats ride inside the Ethernet payload unchanged. Est. ~6–10 KB flash / ~1–2 KB SRAM, one free SERCOM (SPI) + CS_N/IRQ_N/reset. Motivation: PoDL (power+data on one pair), noise/cable tolerance, PLCA multidrop, and a Microchip T1S+PoDL system demonstration — *not* bandwidth (UART has ~12× headroom).
+- Documented system-level in [`../../../SPEC.md`](../../../SPEC.md) §5/§6/§7 and low-level in new [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). Added open-question #3 here; mirrored a note in the marvin journal (it gets its own bare-metal TC6 driver — no free netdev).
+- **No code changes.** Direction only; revisit open sub-items (PLCA vs p2p, ethertype/MACs, UART fallback) before implementation.
 
 ### 2026-06-03 — 17-byte frame: sample_seq + applied_mask for edge-ai sync
 

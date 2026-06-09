@@ -162,9 +162,16 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 - **`TP_STRUM_DELAY_MS` likely needs to vary by difficulty.** 220 ms tuned well on Expert (notes are dense, the delay lines up against fast-moving notes near the strike line). Easy/Medium/Hard place notes higher up the highway with longer travel time, so the same 220 ms may strike too early. Open: per-difficulty preset, runtime-tunable from the manual-control surface, or auto-tuned from observed note-velocity. Defer until the game-state controller (spec §4.8) lands and difficulty is known to marvin — until then, expert-tuned 220 ms is the working default.
 
+- **T1S link transport — direction, not yet built.** Plan to replace the FLEXCOM2 USART fretboard link with **10BASE-T1S single-pair Ethernet + dumb PoDL** (LAN8651B1 MAC-PHY each end). System spec §6 + [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). marvin runs **bare-metal**, so it gets *no free netdev* — it needs its own OA TC6 SPI driver. Plan: a single portable `oa_tc6` layer shared with fretboard (Cortex-A5 + Cortex-M0+). `FretboardLink_{Initialize,Send,IsConnected}` stays the public API; only the transport beneath it swaps (SPI + TC6 chunk protocol + a 14-byte L2 header wrapping the existing 17-byte/1-byte frames). marvin resources are not a concern. PoDL is dumb (fixed voltage, no SCCP) and transparent to the MCU. Decide topology (PLCA vs p2p), ethertype/MACs, and UART-fallback-during-bring-up before code lands.
+
 ---
 
 ## Session log
+
+### 2026-06-09 — T1S + PoDL link direction documented
+
+- Recorded a direction (not yet built) to move the fretboard link from FLEXCOM2 USART to **10BASE-T1S + dumb PoDL** (LAN8651B1 MAC-PHY each end). Since marvin is bare-metal it gets no free netdev — plan is a shared portable OA TC6 SPI driver also used on the fretboard PIC32CM. `FretboardLink_*` API and perf-log records stay put; only the transport under `fretboard_link.c` swaps (SPI + TC6 chunks + 14-byte L2 header over the existing frames). Motivation: PoDL (power+data on one pair), robustness, PLCA multidrop, Microchip T1S+PoDL system demo — not bandwidth.
+- System-level in [`../../../SPEC.md`](../../../SPEC.md) §5/§6/§7; engineering detail in new [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). Open item added above; mirrored in the fretboard journal. **No code changes.**
 
 ### 2026-06-08 — JTAG program-over-RAM bring-up (Phase 1, IN PROGRESS — blocked on DDR init)
 

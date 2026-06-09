@@ -88,6 +88,7 @@ guitar-pic/
 | 10.1″ 1280×800 LVDS panel + maxtouch | marvin operator UI surface | [marvin display path](firmware/marvin/docs/display_path.md) |
 | Sensor/actuator PCB (Sensor-LCD5) | fretboard board: 5 phototransistors + GPIO out | [`hardware/Sensor-LCD5/`](hardware/Sensor-LCD5/) |
 | PIC32CM6408PL10048 | fretboard MCU | [fretboard spec](firmware/fretboard/SPEC.md) |
+| LAN8651B1 (10BASE-T1S MAC-PHY) | *planned* fretboard ↔ marvin link over single-pair Ethernet + PoDL | [T1S/PoDL link](docs/t1s-podl-link.md) |
 | Actuator mechanism (TBD: voice coil / electromagnet / DIY solenoid) | physical fret + strum drive | [`hardware/actuators/`](hardware/actuators/) and [`hardware/3d-models/`](hardware/3d-models/) |
 | ElectronWarp | component → HDMI converter for Wii | external commercial part |
 
@@ -100,6 +101,7 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 - **Reference data persists on marvin's SD card.** Detector-state + sparse raw BGR888 keyframes (default 1 keyframe/sec) + raw ADC stream + emitted commands. Off-board detectors record their own data keyed by `frame_epoch` and align offline.
 - **Centralized timing on marvin, with a fretboard-takeover fallback.** marvin runs the chord-window FIFO and strum scheduler by default; an operator-mode toggle hands timing back to fretboard's standalone `fret_button.c` while marvin still records observations.
 - **Operating modes are independent toggles**, not a global state machine: `detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`. Named modes (idle / calibrate / dry-run / play / replay / record) are presets over them.
+- **Planned: fretboard ↔ marvin link moves to 10BASE-T1S + dumb PoDL.** Replace the FLEXCOM2/SERCOM UART pair with single-pair Ethernet via a LAN8651B1 MAC-PHY on each end. Motivation, in order: PoDL carries power *and* data on one pair to the guitar; better noise/cable tolerance; PLCA multidrop headroom; and demonstrating 10BASE-T1S + PoDL inside a larger Microchip system (SAM9X7 + LAN8651 + PIC32CM). Bandwidth is not a driver — the existing UART has ~12× headroom. PoDL is **dumb** (fixed voltage, no SCCP negotiation) and transparent to both MCUs. No IP stack — the host implements only SPI + the OPEN Alliance TC6 chunk protocol + minimal L2 framing, with the existing frame formats riding unchanged inside the Ethernet payload. Fits comfortably on the PIC32CM (est. ~6–10 KB flash / ~1–2 KB SRAM); marvin is bare-metal so it gets a shared portable `oa_tc6` driver, not a free netdev. Detail in [`docs/t1s-podl-link.md`](docs/t1s-podl-link.md).
 
 ## 7. Project-wide phasing
 
@@ -117,6 +119,7 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 | 🚧 | **M4** — recording-to-SD (detector-state + keyframes + ADC + commands) |
 | 🚧 | **M5** — operator UI v0; manual-control surface (8 buttons) done; full live-view + mode-toggle UI not started |
 | 🚧 | **M6**+ — calibration UI, replay, fretboard-takeover validation, game-state controller |
+| 🔭 | **T1S link** — re-architect fretboard ↔ marvin onto 10BASE-T1S + dumb PoDL (LAN8651B1 each end). Direction only; not started. [Detail](docs/t1s-podl-link.md) |
 
 Detail (definitions of done, demos) in [marvin spec §8](firmware/marvin/docs/spec.md).
 
