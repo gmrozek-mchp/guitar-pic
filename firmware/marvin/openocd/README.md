@@ -67,14 +67,16 @@ macOS is harmless — OpenOCD claims the interface anyway.
 
 ## Load marvin into RAM over JTAG (no SD card)
 
-`load-ram.sh` boots marvin entirely over JTAG — no microSD required. It reuses
-the validated **at91bootstrap** (`../binaries/at91bootstrap.elf`) to bring up the
-266 MHz clocks and initialize the in-package DDR3L, then loads marvin's ELF into
-DDR and jumps to it. (Reusing at91bootstrap avoids re-implementing the
+`load-ram.sh` boots marvin entirely over JTAG — no microSD required. It reuses a
+purpose-built **"init-and-stop" at91bootstrap**
+(`../binaries/sam9x7-boot-none-4.0.13.elf`, built from the
+`sam9x75_curiosity_pro_bkptnone_defconfig` — `CONFIG_INIT_AND_STOP`) to bring up
+the 266 MHz clocks and initialize the in-package DDR3L, then loads marvin's ELF
+into DDR and jumps to it. (Reusing at91bootstrap avoids re-implementing the
 SAM9X75D2G DDR3L init by hand — see `load-ram.cfg` and the journal.)
 
 ```sh
-./load-ram.sh                            # ../binaries/at91bootstrap.elf + ../out/marvin/default.elf
+./load-ram.sh                            # ../binaries/sam9x7-boot-none-4.0.13.elf + ../out/marvin/default.elf
 FTDI_SERIAL=W16-2026-413 ./load-ram.sh   # target a specific board
 ```
 
@@ -97,11 +99,13 @@ Mechanism (`marvin_load_ram`, also the by-hand recipe):
 `reset init` (resets the SoC from any state via the 500 ms nSRST pulse, then
 disables the watchdog + MMU/caches) → `adapter speed 0` (RTCK adaptive clocking —
 **required**; at fixed TCK, OpenOCD loses JTAG sync when at91bootstrap switches
-the master clock) → load at91bootstrap → break at the return of `hw_init()`
-(clocks + DDR up, watchdog disabled, MMU/caches off) → load marvin → resume at
-`0x23f00000`. An I-cache invalidate (`arm mcr 15 0 7 5 0 0`) follows each
-`load_image`. The reset re-initializes the MPDDRC, so at91bootstrap brings DDR3L
-up fresh each run — that is what makes the loop repeatable without a power-cycle.
+the master clock) → load the init-and-stop at91bootstrap → resume → brief wait →
+halt (clocks + DDR now up, MMU/caches off; the bootstrap just loops) → load
+marvin → resume at `0x23f00000`. An I-cache invalidate (`arm mcr 15 0 7 5 0 0`)
+follows each `load_image`. The reset re-initializes the MPDDRC, so the bootstrap
+brings DDR3L up fresh each run — that is what makes the loop repeatable without a
+power-cycle. (An `INIT_AND_STOP` bootstrap halts itself after DDR init, so no
+breakpoint or disassembly is needed.)
 
 **Headless note:** with no display/maXTouch panel connected, marvin's maXTouch
 driver init fails gracefully (driver → ERROR) and the rest of the system runs.

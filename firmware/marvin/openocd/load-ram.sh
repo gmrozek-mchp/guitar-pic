@@ -18,22 +18,21 @@
 #
 # Usage:   ./load-ram.sh
 # Env overrides:
-#   BOOTSTRAP_ELF  at91bootstrap ELF (default: ../binaries/at91bootstrap.elf)
-#   MARVIN_ELF     marvin ELF        (default: ../out/marvin/default.elf)
+#   BOOTSTRAP_ELF  at91bootstrap "init-and-stop" ELF
+#                  (default: ../binaries/sam9x7-boot-none-4.0.13.elf)
+#   MARVIN_ELF     marvin ELF (default: ../out/marvin/default.elf)
 #   FTDI_SERIAL    target a specific board by its FT4232H serial
 set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 
-BOOTSTRAP_ELF="${BOOTSTRAP_ELF:-$root/binaries/at91bootstrap.elf}"
+BOOTSTRAP_ELF="${BOOTSTRAP_ELF:-$root/binaries/sam9x7-boot-none-4.0.13.elf}"
 MARVIN_ELF="${MARVIN_ELF:-$root/out/marvin/default.elf}"
 FTDI_SERIAL="${FTDI_SERIAL:-}"
 
-# XC32 ships binutils (nm/objdump/readelf) that read these ARM ELFs.
+# XC32 ships binutils that read these ARM ELFs (just need the entry points).
 xc32bin="$(ls -d /Applications/microchip/xc32/*/bin 2>/dev/null | sort -V | tail -1 || true)"
-NM="${NM:-${xc32bin:+$xc32bin/}xc32-nm}"
-OBJDUMP="${OBJDUMP:-${xc32bin:+$xc32bin/}xc32-objdump}"
 READELF="${READELF:-${xc32bin:+$xc32bin/}xc32-readelf}"
 
 [ -f "$BOOTSTRAP_ELF" ] || { echo "missing bootstrap ELF: $BOOTSTRAP_ELF" >&2; exit 1; }
@@ -42,14 +41,7 @@ READELF="${READELF:-${xc32bin:+$xc32bin/}xc32-readelf}"
 boot_entry="$("$READELF" -h "$BOOTSTRAP_ELF" | awk '/Entry point/{print $NF}')"
 marvin_entry="$("$READELF" -h "$MARVIN_ELF" | awk '/Entry point/{print $NF}')"
 
-# hw_init() return address = the instruction after `bl <hw_init>` in main().
-# Stopping there means clocks + DDR are up but the MMU/banner/media-load haven't run.
-bootstrap_dis="$("$OBJDUMP" -d "$BOOTSTRAP_ELF")"
-bl_addr="$(awk '/<main>:/{m=1} m && /bl/ && /<hw_init>/{gsub(":","",$1); print $1; exit}' <<<"$bootstrap_dis")"
-[ -n "$bl_addr" ] || { echo "could not find 'bl hw_init' in main() of $BOOTSTRAP_ELF" >&2; exit 1; }
-hwinit_ret="$(printf '0x%x' $(( 0x$bl_addr + 4 )))"
-
-echo "bootstrap : $BOOTSTRAP_ELF (entry $boot_entry, hw_init returns to $hwinit_ret)"
+echo "bootstrap : $BOOTSTRAP_ELF (entry $boot_entry)"
 echo "marvin    : $MARVIN_ELF (entry $marvin_entry)"
 
 # Common args (never empty). A specific board serial, if given, must precede the
@@ -60,7 +52,7 @@ common=(-f "$here/sam9x75-chybrid.cfg" -f "$here/load-ram.cfg")
 # `marvin_load_ram` starts with `reset init`, which resets the SoC from ANY state
 # (incl. a running marvin) via the nSRST pin and disables the watchdog — see
 # sam9x75-chybrid.cfg. That makes the load repeatable with no physical power-cycle:
-# bring DDR up fresh via at91bootstrap each run, then load + run marvin.
+# bring DDR up fresh via the init-and-stop at91bootstrap each run, then load + run.
 exec openocd "${common[@]}" -c "init" \
-        -c "marvin_load_ram $BOOTSTRAP_ELF $boot_entry $hwinit_ret $MARVIN_ELF $marvin_entry" \
+        -c "marvin_load_ram $BOOTSTRAP_ELF $boot_entry $MARVIN_ELF $marvin_entry" \
         -c "shutdown"
