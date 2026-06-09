@@ -297,6 +297,12 @@ enum t100_type {
 #define MXT_FW_RESET_TIME       3000	/* msec */
 #define MXT_FW_CHG_TIMEOUT      300     /* msec */
 
+/* Bounded info-block read retries. An absent/unresponsive touch controller
+ * (e.g. the display panel is not connected) must not spin forever: each retry
+ * allocates from the FreeRTOS heap (heap_1, which never frees), so an infinite
+ * loop leaks until the heap is exhausted and the whole system hangs. */
+#define MXT_INIT_MAX_ATTEMPTS   10
+
 /* Command to unlock bootloader */
 #define MXT_UNLOCK_CMD_MSB	0xaa
 #define MXT_UNLOCK_CMD_LSB	0xdc
@@ -704,10 +710,20 @@ void DRV_MAXTOUCH_Tasks ( SYS_MODULE_OBJ object )
             break;
         }
         case DEVICE_STATE_MXT_INITIALIZE: /* Request information block */
-        {            
-            mxt_initialize(pDrvInstance);                         
-            
-            pDrvInstance->status = SYS_STATUS_READY;  
+        {
+            if (mxt_initialize(pDrvInstance) != 0)
+            {
+                /* Touch controller absent/unresponsive (e.g. display panel not
+                 * connected). Park in ERROR rather than READY: the READY poll
+                 * path would talk to a dead device, and re-initializing would
+                 * leak (heap_1 never frees). This lets the rest of the system
+                 * run without touch instead of hanging. */
+                pDrvInstance->status = SYS_STATUS_ERROR;
+                pDrvObject->deviceState = DEVICE_STATE_ERROR;
+                break;
+            }
+
+            pDrvInstance->status = SYS_STATUS_READY;
             pDrvObject->deviceState = DEVICE_STATE_READY;
             break;
         }
@@ -1056,9 +1072,11 @@ static int __mxt_read_reg(struct i2c_client *client,
 
 	buf[0] = reg & 0xff;
 	buf[1] = (reg >> 8) & 0xff;
-    
-    ret = DRV_I2C_WriteReadTransfer ( client->drvI2CHandle, client->addr, buf, 2, val, len);
-    ret = 0;
+
+    /* Propagate the I2C result instead of forcing success: a NAK from an
+     * absent/unresponsive controller must be reported so callers bail early
+     * rather than processing an uninitialized buffer (and allocating from it). */
+    ret = DRV_I2C_WriteReadTransfer ( client->drvI2CHandle, client->addr, buf, 2, val, len) ? 0 : -EIO;
 
 	return ret;
 }
@@ -2752,18 +2770,26 @@ static int mxt_initialize_input_device(struct mxt_data *data)
 static int mxt_initialize(struct mxt_data *data)
 {
 //	struct i2c_client *client = data->client;
-//	int recovery_attempts = 0;
-	int error;
+	int error = -EIO;
+	int attempts;
 
-	while (1) {
+	/* Bounded retry instead of the original while(1): if the controller is
+	 * absent/unresponsive this would otherwise loop forever, leaking heap on
+	 * every mxt_read_info_block() (heap_1 never frees) until the system hangs
+	 * in vApplicationMallocFailedHook. Give up after MXT_INIT_MAX_ATTEMPTS. */
+	for (attempts = 0; attempts < MXT_INIT_MAX_ATTEMPTS; attempts++) {
 		error = mxt_read_info_block(data);
 		if (!error)
 			break;
+		_mxt_DelayMS(20);
 	}
+
+	if (error)
+		return error;
 
     /* read current configuration */
     mxt_read_t100_config(data);
-    
+
     /* write non-persistent configuration */
     mxt_write_t100_config(data);
     

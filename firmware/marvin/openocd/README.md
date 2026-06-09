@@ -29,6 +29,8 @@ terminal while debugging.
 | File | Purpose |
 |------|---------|
 | `sam9x75-chybrid.cfg` | OpenOCD config: FTDI channel A + ARM926EJ-S target |
+| `load-ram.cfg` | OpenOCD proc that boots marvin into DDR via at91bootstrap |
+| `load-ram.sh` | Driver script for `load-ram.cfg` (resolves ELF paths + addresses) |
 
 ## Usage
 
@@ -58,6 +60,42 @@ example, `reset halt` resets the SoC and stops in boot ROM (`pc ≈ 0x44`).
 A `Warn : libusb_detach_kernel_driver() failed with LIBUSB_ERROR_ACCESS` line on
 macOS is harmless — OpenOCD claims the interface anyway.
 
+## Load marvin into RAM over JTAG (no SD card)
+
+`load-ram.sh` boots marvin entirely over JTAG — no microSD required. It reuses
+the validated **at91bootstrap** (`../binaries/at91bootstrap.elf`) to bring up the
+266 MHz clocks and initialize the in-package DDR3L, then loads marvin's ELF into
+DDR and jumps to it. (Reusing at91bootstrap avoids re-implementing the
+SAM9X75D2G DDR3L init by hand — see `load-ram.cfg` and the journal.)
+
+```sh
+./load-ram.sh                            # ../binaries/at91bootstrap.elf + ../out/marvin/default.elf
+FTDI_SERIAL=W16-2026-413 ./load-ram.sh   # target a specific board
+```
+
+**Prerequisites — the flow depends on these:**
+
+1. **Both memory CS jumpers OUT** (JP3 = NAND, JP4 = QSPI). With no boot media,
+   RomBOOT drops into the SAM-BA monitor: a clean state, DDR uninitialized.
+2. **Power-cycle before each run.** SAM9X75D2G DDR3L init only completes cleanly
+   on a *fresh* MPDDRC — it is not re-runnable on an already-initialized
+   controller (re-running corrupts the trained DDR). So: one load per power-cycle.
+3. The FT4232H is USB-bus-powered, so a power-cycle that drops USB re-enumerates
+   the adapter — restart any OpenOCD session afterward.
+
+Mechanism (also the by-hand recipe): `reset halt` → `adapter speed 0` (RTCK
+adaptive clocking — **required**; at fixed TCK, OpenOCD loses JTAG sync when
+at91bootstrap switches the master clock) → load at91bootstrap → break at the
+return of `hw_init()` (clocks + DDR up, watchdog disabled, MMU/caches still off)
+→ load marvin → resume at `0x23f00000`. An I-cache invalidate
+(`arm mcr 15 0 7 5 0 0`) follows each `load_image`.
+
+**Headless note:** with no display/maXTouch panel connected, marvin's maXTouch
+driver init fails gracefully (driver → ERROR) and the rest of the system runs.
+This relies on the bounded-retry fix in `drv_maxtouch.c` (journal re-apply patch
+#10) — without it, an absent panel hangs the system at the FreeRTOS malloc-fail
+hook.
+
 ## Selecting a specific board
 
 When several boards are connected at once, pick one by its FT4232H serial
@@ -79,9 +117,13 @@ Leave `FTDI_SERIAL` unset to use the first FT4232H found.
 
 ## Scope / limitations
 
-This config supports **attach, halt, resume, memory/register access, reset**
-(`reset` / `reset halt` / `reset init` via nSRST), and **adaptive clocking**
-(`adapter speed 0`, using RTCK). It does **not** yet initialise external DDR or
-define flash banks, so loading code to RAM and programming NAND/QSPI/SD over
-JTAG are not set up — use SAM-BA or MPLAB for production programming, or extend
-this config with a `reset-init` event handler that brings up the DDR controller.
+This supports **attach, halt, resume, memory/register access, reset**
+(`reset` / `reset halt` / `reset init` via nSRST), **adaptive clocking**
+(`adapter speed 0`, using RTCK), and **loading + running marvin from DDR over
+JTAG** (`load-ram.sh`, above — validated booting marvin headless).
+
+It does **not** program on-board flash: writing a bootable image to NAND/QSPI so
+the board boots standalone (no JTAG) is a separate task, best done with **SAM-BA**
+(see `../binaries/*.bat`, on a Linux/Windows host) or MPLAB. Current per-iteration
+limitation: each RAM load needs a power-cycle (fresh DDR); a no-reset reload that
+keeps clocks/DDR live (for faster dev iteration) is a planned improvement.
