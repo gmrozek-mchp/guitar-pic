@@ -28,9 +28,10 @@ terminal while debugging.
 
 | File | Purpose |
 |------|---------|
-| `sam9x75-chybrid.cfg` | OpenOCD config: FTDI channel A + ARM926EJ-S target |
-| `load-ram.cfg` | OpenOCD proc that boots marvin into DDR via at91bootstrap |
-| `load-ram.sh` | Driver script for `load-ram.cfg` (resolves ELF paths + addresses) |
+| `sam9x75-chybrid.cfg` | OpenOCD config: FTDI channel A + ARM926EJ-S target + reset/WDT |
+| `load-ram.cfg` | OpenOCD proc that loads marvin into DDR via at91bootstrap (`marvin_load_ram`) |
+| `load-ram.sh` | Load + run marvin over JTAG — the dev loop, repeatable with no power-cycle |
+| `make-sdcard.sh` | Prepare a bootable microSD on macOS (standalone boot, no JTAG) |
 
 ## Usage
 
@@ -54,8 +55,12 @@ Attach a debugger:
 arm-none-eabi-gdb -ex 'target remote :3333'
 ```
 
-`reset`, `reset halt`, and `reset init` work via the nRST line (AD5). For
-example, `reset halt` resets the SoC and stops in boot ROM (`pc ≈ 0x44`).
+`reset`, `reset halt`, and `reset init` reset the SoC over the nRST line (AD5) —
+including a *running* marvin — and `reset init` additionally disables the watchdog
+and MMU/caches. This relies on driving nSRST push-pull (`-data`/`-oe`) with a
+500 ms pulse and `srst_pulls_trst`; a too-short pulse or `-oe`-only definition
+does **not** actually reset the chip. (Config follows the Microchip class-material
+example for this board.)
 
 A `Warn : libusb_detach_kernel_driver() failed with LIBUSB_ERROR_ACCESS` line on
 macOS is harmless — OpenOCD claims the interface anyway.
@@ -73,28 +78,80 @@ SAM9X75D2G DDR3L init by hand — see `load-ram.cfg` and the journal.)
 FTDI_SERIAL=W16-2026-413 ./load-ram.sh   # target a specific board
 ```
 
-**Prerequisites — the flow depends on these:**
+It is **repeatable with no physical power-cycle** — edit, rebuild, re-run:
+
+```sh
+./load-ram.sh        # reset init → at91bootstrap (DDR) → load + run marvin
+# ... edit, rebuild marvin ...
+./load-ram.sh        # again, from the running marvin — no power-cycle
+```
+
+**Prerequisites:**
 
 1. **Both memory CS jumpers OUT** (JP3 = NAND, JP4 = QSPI). With no boot media,
-   RomBOOT drops into the SAM-BA monitor: a clean state, DDR uninitialized.
-2. **Power-cycle before each run.** SAM9X75D2G DDR3L init only completes cleanly
-   on a *fresh* MPDDRC — it is not re-runnable on an already-initialized
-   controller (re-running corrupts the trained DDR). So: one load per power-cycle.
-3. The FT4232H is USB-bus-powered, so a power-cycle that drops USB re-enumerates
-   the adapter — restart any OpenOCD session afterward.
+   RomBOOT drops into the SAM-BA monitor when no marvin is running.
+2. Nothing else may hold the FT4232H — kill any debug OpenOCD server first.
 
-Mechanism (also the by-hand recipe): `reset halt` → `adapter speed 0` (RTCK
-adaptive clocking — **required**; at fixed TCK, OpenOCD loses JTAG sync when
-at91bootstrap switches the master clock) → load at91bootstrap → break at the
-return of `hw_init()` (clocks + DDR up, watchdog disabled, MMU/caches still off)
-→ load marvin → resume at `0x23f00000`. An I-cache invalidate
-(`arm mcr 15 0 7 5 0 0`) follows each `load_image`.
+Mechanism (`marvin_load_ram`, also the by-hand recipe):
+
+`reset init` (resets the SoC from any state via the 500 ms nSRST pulse, then
+disables the watchdog + MMU/caches) → `adapter speed 0` (RTCK adaptive clocking —
+**required**; at fixed TCK, OpenOCD loses JTAG sync when at91bootstrap switches
+the master clock) → load at91bootstrap → break at the return of `hw_init()`
+(clocks + DDR up, watchdog disabled, MMU/caches off) → load marvin → resume at
+`0x23f00000`. An I-cache invalidate (`arm mcr 15 0 7 5 0 0`) follows each
+`load_image`. The reset re-initializes the MPDDRC, so at91bootstrap brings DDR3L
+up fresh each run — that is what makes the loop repeatable without a power-cycle.
 
 **Headless note:** with no display/maXTouch panel connected, marvin's maXTouch
 driver init fails gracefully (driver → ERROR) and the rest of the system runs.
 This relies on the bounded-retry fix in `drv_maxtouch.c` (journal re-apply patch
 #10) — without it, an absent panel hangs the system at the FreeRTOS malloc-fail
 hook.
+
+## Debugging in VS Code (or gdb CLI)
+
+`arm-none-eabi-gdb` (Arm GNU Toolchain) attaches to OpenOCD's gdb server on
+`:3333`. marvin is **loaded** by `load-ram.sh`; the debugger only **attaches** (it
+does not reflash), so the loop is: *load → attach → debug*.
+
+**VS Code** — `.vscode/launch.json` + `.vscode/tasks.json` (repo root) provide:
+
+- a background task `openocd: sam9x75 gdb server` that starts the server, and
+- two attach configs (pick whichever extension you have installed):
+  - **marvin: attach over JTAG (cppdbg)** — Microsoft C/C++ (`ms-vscode.cpptools`)
+  - **marvin: attach over JTAG (Native Debug)** — `webfreak.debug`
+
+Both auto-start the server (`preLaunchTask`), attach, load symbols from
+`out/marvin/default.elf`, and stop the server on exit (`postDebugTask`). Set a
+breakpoint, run the config, and step/inspect. (cortex-debug is Cortex-M-centric
+and is intentionally not used for this ARM926 target.)
+
+**gdb CLI** equivalent:
+
+```sh
+openocd -f sam9x75-chybrid.cfg &                       # gdb server on :3333
+arm-none-eabi-gdb firmware/marvin/out/marvin/default.elf \
+    -ex 'set architecture arm' -ex 'target remote :3333'
+```
+
+## Bootable microSD (standalone, no JTAG) — `make-sdcard.sh`
+
+For a board that boots on its own (no debugger), `make-sdcard.sh` prepares a card
+on macOS: it FAT-formats the card and writes `boot.bin` (SD bootstrap) +
+`harmony.bin` (the app) to the root, which is the layout the SAM9X75 ROM SD-boot
+path expects.
+
+```sh
+diskutil list                  # find the card, e.g. /dev/disk4
+./make-sdcard.sh /dev/disk4    # ERASES the card (asks you to confirm the id)
+```
+
+It refuses a fixed internal disk and requires you to retype the disk identifier
+before erasing. Then set the board boot jumpers for SD, insert the card, and
+power-cycle. (The committed `boot.bin`/`harmony.bin` pairing matches the SAM-BA
+`qspi_flash.bat` convention; the bootstrap binaries are not yet re-verified for
+this exact board — see the journal.)
 
 ## Selecting a specific board
 
@@ -111,19 +168,22 @@ Leave `FTDI_SERIAL` unset to use the first FT4232H found.
 
 | Signal | FT4232H pin | Notes |
 |--------|-------------|-------|
-| nSRST  | AD5 | open-drain system reset (`reset_config srst_only srst_open_drain`) |
+| nSRST  | AD5 | system reset, push-pull `-data 0x20 -oe 0x20`; 500 ms pulse; `srst_pulls_trst` |
 | RTCK   | AD7 | return clock; enables adaptive clocking via `adapter speed 0` |
-| nTRST  | — | not wired (AD4/AD6 are N/C); TAP reset uses TMS |
+| nTRST  | — | AD4 is N/C on this board; not defined (TAP re-validates via `srst_pulls_trst`) |
 
 ## Scope / limitations
 
 This supports **attach, halt, resume, memory/register access, reset**
-(`reset` / `reset halt` / `reset init` via nSRST), **adaptive clocking**
-(`adapter speed 0`, using RTCK), and **loading + running marvin from DDR over
-JTAG** (`load-ram.sh`, above — validated booting marvin headless).
+(`reset` / `reset halt` / `reset init` — resets a running marvin; `reset init`
+also disables the watchdog + MMU/caches), **adaptive clocking** (`adapter speed 0`,
+using RTCK), **loading + running marvin from DDR over JTAG, repeatable with no
+power-cycle** (`load-ram.sh` — validated booting marvin headless and reloading
+from a running marvin), **source-level debug** (gdb/VS Code on `:3333`), and a
+**macOS microSD prep** for standalone boot (`make-sdcard.sh`).
 
-It does **not** program on-board flash: writing a bootable image to NAND/QSPI so
-the board boots standalone (no JTAG) is a separate task, best done with **SAM-BA**
-(see `../binaries/*.bat`, on a Linux/Windows host) or MPLAB. Current per-iteration
-limitation: each RAM load needs a power-cycle (fresh DDR); a no-reset reload that
-keeps clocks/DDR live (for faster dev iteration) is a planned improvement.
+It does **not** program on-board NAND/QSPI flash from macOS: writing a bootable
+image to NAND/QSPI so the board boots standalone is a separate task, best done
+with **SAM-BA** (see `../binaries/*.bat`, on a Linux/Windows host) or MPLAB. A
+macOS-native NAND path via OpenOCD's `at91sam9` driver is planned R&D (QSPI has no
+OpenOCD driver). See the journal for status.

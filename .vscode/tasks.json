@@ -1,0 +1,29 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "openocd: sam9x75 gdb server",
+      "type": "shell",
+      "command": "openocd",
+      "args": ["-f", "firmware/marvin/openocd/sam9x75-chybrid.cfg"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "isBackground": true,
+      "presentation": { "reveal": "always", "panel": "dedicated", "clear": true },
+      "problemMatcher": {
+        "pattern": { "regexp": "^(Error|Warn)\\s*:\\s*(.*)$", "severity": 1, "message": 2 },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".*Open On-Chip Debugger.*",
+          "endsPattern": ".*Listening on port 3333 for gdb connections.*"
+        }
+      }
+    },
+    {
+      "label": "openocd: stop",
+      "type": "shell",
+      "command": "pkill -f 'openocd -f firmware/marvin/openocd/sam9x75-chybrid.cfg' || true",
+      "presentation": { "reveal": "silent", "panel": "shared" },
+      "problemMatcher": []
+    }
+  ]
+}
