@@ -91,8 +91,11 @@ It is **repeatable with no physical power-cycle** — edit, rebuild, re-run:
 
 **Prerequisites:**
 
-1. **Both memory CS jumpers OUT** (JP3 = NAND, JP4 = QSPI). With no boot media,
-   RomBOOT drops into the SAM-BA monitor when no marvin is running.
+1. **No bootable medium present:** both memory CS jumpers OUT (JP3 = NAND,
+   JP4 = QSPI) **and remove any bootable microSD.** A present medium boots before
+   `reset init`'s early-halt can catch the core (SD is highest boot priority), and
+   the load then fails on the dirty state. With nothing bootable, RomBOOT sits in
+   the SAM-BA monitor.
 2. Nothing else may hold the FT4232H — kill any debug OpenOCD server first.
 
 Mechanism (`marvin_load_ram`, also the by-hand recipe):

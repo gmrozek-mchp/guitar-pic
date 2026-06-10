@@ -10,8 +10,10 @@
 # at91bootstrap re-inits DDR3L fresh on every run — edit, rebuild, re-run.
 #
 # PREREQUISITES:
-#   * Both memory CS jumpers OUT (JP3 NAND, JP4 QSPI) -> board sits in the ROM
-#     SAM-BA monitor when no marvin is running (no boot media).
+#   * NO bootable medium present: both memory CS jumpers OUT (JP3 NAND, JP4 QSPI)
+#     AND remove any bootable microSD. A present medium boots before `reset init`'s
+#     early-halt can catch the core (SD is highest priority), and the load then
+#     fails on the dirty state. With no medium, RomBOOT sits in the SAM-BA monitor.
 #   * Kill any other process holding the FT4232H (e.g. a debug OpenOCD server) so
 #     this invocation can claim it.
 #   * Run outside the Claude command sandbox (it blocks USB).
