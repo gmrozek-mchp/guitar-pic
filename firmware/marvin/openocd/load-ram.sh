@@ -1,26 +1,16 @@
 #!/usr/bin/env bash
-# Load marvin into DDR over JTAG and run it, with no SD card.
-#
-# Resets the SoC (`reset init`), reuses at91bootstrap to initialize clocks + DDR
-# (see load-ram.cfg), then loads marvin's ELF into DDR and jumps to it.
-# macOS/OpenOCD only.
-#
-# This is the dev iteration loop: it is REPEATABLE with no physical power-cycle.
-# `reset init` resets the SoC from any state (incl. a running marvin), so
-# at91bootstrap re-inits DDR3L fresh on every run — edit, rebuild, re-run.
+# Load marvin into DDR over JTAG and run it, with no SD card. macOS/OpenOCD only.
+# The dev iteration loop: repeatable with no power-cycle (edit, rebuild, re-run).
+# See load-ram.cfg for the mechanism.
 #
 # PREREQUISITES:
-#   * NO bootable medium present: both memory CS jumpers OUT (JP3 NAND, JP4 QSPI)
-#     AND remove any bootable microSD. A present medium boots before `reset init`'s
-#     early-halt can catch the core (SD is highest priority), and the load then
-#     fails on the dirty state. With no medium, RomBOOT sits in the SAM-BA monitor.
-#   * Kill any other process holding the FT4232H (e.g. a debug OpenOCD server) so
-#     this invocation can claim it.
-#   * Run outside the Claude command sandbox (it blocks USB).
+#   * No bootable medium present: JP3/JP4 (NAND/QSPI CS) OUT and no bootable microSD
+#     (else RomBOOT boots it before reset init catches the core).
+#   * Nothing else holding the FT4232H (e.g. kill a running debug OpenOCD server).
 #
 # Usage:   ./load-ram.sh
 # Env overrides:
-#   BOOTSTRAP_ELF  at91bootstrap "init-and-stop" ELF
+#   BOOTSTRAP_ELF  at91bootstrap init-and-stop ELF
 #                  (default: ../binaries/sam9x7-boot-none-4.0.13.elf)
 #   MARVIN_ELF     marvin ELF (default: ../out/marvin/default.elf)
 #   FTDI_SERIAL    target a specific board by its FT4232H serial
@@ -51,10 +41,8 @@ echo "marvin    : $MARVIN_ELF (entry $marvin_entry)"
 common=(-f "$here/sam9x75-chybrid.cfg" -f "$here/load-ram.cfg")
 [ -n "$FTDI_SERIAL" ] && common=(-c "set FTDI_SERIAL $FTDI_SERIAL" "${common[@]}")
 
-# `marvin_load_ram` starts with `reset init`, which resets the SoC from ANY state
-# (incl. a running marvin) via the nSRST pin and disables the watchdog — see
-# sam9x75-chybrid.cfg. That makes the load repeatable with no physical power-cycle:
-# bring DDR up fresh via the init-and-stop at91bootstrap each run, then load + run.
+# marvin_load_ram (load-ram.cfg): reset init -> run bootstrap to completion -> load
+# + run marvin.
 exec openocd "${common[@]}" -c "init" \
         -c "marvin_load_ram $BOOTSTRAP_ELF $boot_entry $MARVIN_ELF $marvin_entry" \
         -c "shutdown"
