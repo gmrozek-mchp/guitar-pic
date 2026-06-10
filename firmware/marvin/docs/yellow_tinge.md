@@ -2,7 +2,9 @@
 
 Working document collecting every test we've run against the yellow-tinge / left-half-of-overlay artifact on the SAM9X75 + 10.1" NVDI 1280×800 LVDS panel. Goal of this doc: avoid re-treading any of the tested ground; record the empirical results; identify the root cause; document the resolution.
 
-**Status (2026-05-15): RESOLVED at 50 Hz.** Yellow is gone at **40, 45, 50, and 52 Hz**, present at 54 Hz, severe at 60 Hz. Threshold sits in the **razor-thin 52–54 Hz window** (427 → 444 MHz LVDS bit clock — only ~4% bit-rate gap separates clean from failing). Confirms the hypothesis: at 444 MHz the LVDS receiver was right at the edge of its eye-margin budget for this cable; modest EMI from overlay-layer DMA tipped it over. Backing off bit rate restores margin. **Production setting: 50 Hz** (~8% margin under the cliff, comfortable headroom without sacrificing visible refresh quality).
+**Status (2026-06-09): production refresh raised to 55 Hz on the SAM9X75 Curiosity Hybrid board.** The board port (Curiosity → Curiosity Hybrid, same 10.1″ panel + LVDS cable) widened the signal-integrity margin: the cliff moved up from the original board's 52–54 Hz window to ~57–58 Hz. 60 Hz now shows only *mild* overlay yellow (vs *severe* before), 57 Hz is clean at rest but still cable-handling-sensitive (right at the new edge), and **55 Hz is clean and handling-robust → new production setting** (~3.5% margin under the 57 Hz edge, +5 Hz over the original board's 50 Hz). Same root cause and overlay-only signature as before — only the transmit-side margin improved. Full Hybrid sweep in §9. The original-board investigation and root-cause analysis below (§1–§8) stand as the historical record.
+
+**Status (2026-05-15, original SAM9X75 Curiosity board): RESOLVED at 50 Hz.** Yellow is gone at **40, 45, 50, and 52 Hz**, present at 54 Hz, severe at 60 Hz. Threshold sits in the **razor-thin 52–54 Hz window** (427 → 444 MHz LVDS bit clock — only ~4% bit-rate gap separates clean from failing). Confirms the hypothesis: at 444 MHz the LVDS receiver was right at the edge of its eye-margin budget for this cable; modest EMI from overlay-layer DMA tipped it over. Backing off bit rate restores margin. **Production setting: 50 Hz** (~8% margin under the cliff, comfortable headroom without sacrificing visible refresh quality).
 
 ---
 
@@ -145,7 +147,7 @@ The 60 Hz observation confirms the SI cliff is one-directional: pushing further 
 
 Cable swap or hardware mitigations would push the ceiling up — but at 50 Hz with ~8% margin, we're comfortably below the cliff and haven't seen any new artifacts in extended testing. No further hardware work needed for this panel.
 
-### Production MCC values: 50 Hz
+### Production MCC values: 50 Hz (original Curiosity board — superseded on the Hybrid; see §9)
 
 Set in the **XLCDC Driver** MCC component (`le_gfx_driver_xlcdc.yml`):
 
@@ -193,7 +195,42 @@ This is the actual root cause:
 - DDR bandwidth needed by LCDC drops 33% (from `BASE + OVR1 read at 60 Hz` to `at 40 Hz`), freeing it for vision workloads.
 - 40 Hz is well above the 24 Hz cinema-rate baseline humans tolerate easily.
 
-## 9. References
+## 9. Board port re-test: SAM9X75 Curiosity Hybrid — ceiling raised, production → 55 Hz
+
+Re-ran the frame-rate sweep after porting marvin to the SAM9X75 **Curiosity Hybrid** board (2026-06-09), reusing the same 10.1″ panel and its LVDS cable. The board change swaps everything on the **transmit** side — PCB routing from the LVDSC pins to the panel connector, the connector itself, power/ground integrity — and removes the on-board USB host as an EMI aggressor. The receiver side (panel + cable) is unchanged.
+
+Result: **the SI margin widened and the cliff moved up ~5 Hz.**
+
+| Refresh | Mul / Frac (DivPMC=2) | LVDS clock | Result on Hybrid |
+|---|---|---|---|
+| 60 Hz | 41 / 318768 | 492.9 MHz | **mild** overlay yellow (was *severe* on the original board) |
+| 57 Hz | 39 / 93114 | 468.3 MHz | clean at rest; slight yellow inducible by handling the cable at the connector (right at the new edge) |
+| **55 Hz** ← chosen | **37 / 2738881** | **451.8 MHz** | **clean and handling-robust → production** |
+| 50 Hz | 34 / 964690 | 410.8 MHz | clean (original-board production) |
+
+Reading: the new cliff edge sits at ~57–58 Hz (vs the original board's 52–54 Hz). 57 Hz is the new "closest clean" — clean undisturbed but handling-sensitive, the same marginal-SI signature the original board showed at 52 Hz. Backing off to **55 Hz** gives ~3.5% margin under that edge and stays clean even under deliberate cable handling, so it's the production setting — a net +5 Hz over the original board's 50 Hz.
+
+The improvement is entirely transmit-side: same overlay-only artifact, same yellow-on-white signature, same cable-handling sensitivity — only the eye margin at a given bit rate improved. A better-rated panel cable (§7) would still be the lever to reach a robust 60 Hz; not pursued — 55 Hz is comfortable.
+
+### Production MCC values: 55 Hz
+
+Set in the **XLCDC Driver** MCC component (`le_gfx_driver_xlcdc.yml`):
+
+```
+LVDSClockMul       = 37
+LVDSClockFrac      = 2738881
+LVDSClockDivPMC    = 2
+XLCDCPixClockHint  = 64548000
+LVDSClockOutHint   = 451836000
+```
+
+Verify: `24 × (37 + 2738881/2²²) / 2 = 24 × 37.653 / 2 = 451.84 MHz` ✓
+- VCO `24 × 37.653 = 903.7 MHz` (above 600 MHz floor) ✓
+- LVDSPLL output `451.84 MHz`
+- Pixel clock `451.84 / 7 = 64.55 MHz`
+- Frame rate `64,548,000 / (1440 × 815) = 55.00 Hz` exactly
+
+## 10. References
 
 - Microchip's `mgsh_sam9x7/mgs_quickstart/firmware/src/config/curiosity_nvdi_10_1inch/` — validated config for this exact panel. Uses BASE-only display (no overlay) and runs clean at 444 MHz. Now we know why: BASE alone has lower EMI than BASE+overlay, so the cable SI margin holds even at the higher bit rate.
 - SAM9X7 Datasheet DS60001813 §44 (XLCDC) — layer config, blend factors, scaler use cases.

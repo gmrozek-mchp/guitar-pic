@@ -227,7 +227,7 @@ data:
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '58680000'
+            value: '64548000'
           type: Dynamic
         type: Values
       type: Integer
@@ -238,7 +238,7 @@ data:
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '410760000'
+            value: '451836000'
           type: Dynamic
         type: Values
       type: Integer
@@ -248,7 +248,7 @@ data:
       children:
       - children:
         - attributes:
-            value: '34'
+            value: '37'
           type: User
         type: Values
       type: Integer
@@ -258,7 +258,7 @@ data:
       children:
       - children:
         - attributes:
-            value: '964690'
+            value: '2738881'
           type: User
         type: Values
       type: Integer

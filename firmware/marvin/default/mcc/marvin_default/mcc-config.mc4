@@ -47,7 +47,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 6d5298745f8dc99a2f8d3459a5d3be64e53f7521bcbe4335e8a6389f9654eeac
+  hash: 6eba6e22b2b397c7fa9ab3d09f132d26630d9b17fc4db67d4d74a9eafb9da023
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -93,7 +93,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h
   hash: 637d343cc20356dfb08492f7a3e97479ad421b88ffec123181330eb895f50689
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
-  hash: 03dee3fbc28a66754bbced0ea2a790d1be756166384da9303e9e92b5680b1c15
+  hash: aed6d16f26cc8860987e6007784991f223f5f31a1e0204e58c5c6afef8ce39bb
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
   hash: cdd70b5efe9e854ce1530a32a65119c2af79f22f90e0e661d4127113df72c17a
 - file: ../src/config/default/gfx/driver/gfx_driver.c
