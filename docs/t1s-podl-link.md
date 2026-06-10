@@ -52,8 +52,10 @@ No TCP/IP, ARP, DHCP, or any IP stack. Three layers, none large:
    64-byte data payload + a 4-byte header on TX / 4-byte footer on RX), with
    credit-based flow control (TX credits and RX-chunks-available are reported in
    each footer), plus a separate control-transaction format for register
-   read/writes during init. Microchip publishes an open-source reference
-   (`oa_tc6` / the OPEN Alliance `tc6-lib`) small enough to run on an Arduino.
+   read/writes during init. Microchip publishes an open-source reference driver
+   ([`MicrochipTech/oa-tc6-lib`](https://github.com/MicrochipTech/oa-tc6-lib),
+   §References) small enough to run on an Arduino — the candidate base for both
+   ends here.
 3. **Minimal L2 framing** — the MAC-PHY only transmits *valid Ethernet frames*,
    so the host prepends a fixed 14-byte Ethernet header (dest MAC, src MAC,
    ethertype) to the payload. For this link the MACs are hardcoded and a custom
@@ -123,3 +125,15 @@ open to a second node sharing the same pair and power. Open until decided.
 - Whether to keep the UART link as a fallback during bring-up or cut over
   outright (affects whether SERCOM1's data path is reclaimed — §4).
 - Magnetics-free coupling component selection on the Sensor-LCD5 PCB.
+
+## References
+
+- **OA TC6 driver (candidate base, both ends):**
+  [`MicrochipTech/oa-tc6-lib`](https://github.com/MicrochipTech/oa-tc6-lib) —
+  Microchip's open-source OPEN Alliance TC6 (10BASE-T1x MAC-PHY Serial
+  Interface) library: SPI chunk protocol + control transactions, used as the
+  shared portable layer (§3, §5).
+- LAN8650/1 (LAN8651B1) datasheet — 10BASE-T1S MAC-PHY Ethernet Controller with
+  SPI, on [Microchip online docs](https://onlinedocs.microchip.com/) /
+  the LAN8651 product page.
+- OPEN Alliance *10BASE-T1x MAC-PHY Serial Interface* specification (TC6), v1.1.
