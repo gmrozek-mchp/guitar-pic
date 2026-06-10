@@ -171,6 +171,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-10 — Boot binaries rebuilt with clean version banner (4.0.13, no git-describe suffix)
+
+The bootstraps banner'd as `AT91Bootstrap 4.0.13-00001-gc2e3f87b` instead of a clean `4.0.13`. Root cause: the upstream `v4.0.13` tag is a **lightweight** tag, but `host-utilities/setlocalversion` gates the clean-version path on `git describe --exact-match`, which only sees **annotated** tags. HEAD (`c2e3f87b`) is exactly on `v4.0.13`, but `--exact-match` fell back to the nearest annotated tag (`v4.0.13-rc1`, 1 commit back) and appended the `-00001-g<hash>` suffix.
+
+- **Fix (local clone only):** re-created `v4.0.13` as an annotated tag on `c2e3f87b` in `~/Projects/microchip/at91bootstrap` (`git tag -d v4.0.13 && git tag -a v4.0.13 -m … c2e3f87b`). Now `git describe --exact-match` → `v4.0.13`, `SCMINFO` is empty. Not pushed (no origin write access); a `fetch --tags --force`/re-clone will restore the lightweight tag and the suffix returns — re-annotate if so.
+- **Rebuilt all four** boot binaries from the same source/defconfigs into `binaries/` — only change vs prior build is the embedded version string; same DDR/clock/`JUMP_ADDR`/source commit. Banners now read `AT91Bootstrap 4.0.13`. Filenames unchanged (`VERSION` was always `4.0.13`), so `load-ram.sh` / SAM-BA `.bat` scripts need no edits. SD `CONFIG_IMAGE_NAME=harmony.bin` override re-applied and verified.
+- **Validated:** `none` (JTAG load-to-RAM) variant confirmed working on hardware. NAND/QSPI/SD not yet re-flashed/re-tested (banner-only change, no functional risk expected).
+
 ### 2026-06-09 — Display refresh 50 → 55 Hz after Curiosity Hybrid port (yellow-tinge re-test)
 
 With marvin ported to the SAM9X75 Curiosity Hybrid (same 10.1″ panel + LVDS cable), re-ran the yellow-tinge frame-rate sweep to see whether the new board's transmit-side SI bought higher refresh than the original board's 50 Hz.
