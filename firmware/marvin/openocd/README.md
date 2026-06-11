@@ -32,6 +32,8 @@ terminal while debugging.
 | `load-ram.cfg` | OpenOCD proc that loads marvin into DDR via at91bootstrap (`marvin_load_ram`) |
 | `load-ram.sh` | Load + run marvin over JTAG — the dev loop, repeatable with no power-cycle |
 | `make-sdcard.sh` | Prepare a bootable microSD on macOS (standalone boot, no JTAG) |
+| `program-nand.{sh,cfg}` | Program marvin into on-board NAND from macOS (u-boot RAM-loaded over JTAG as a PMECC flasher) — see `program-nand.md` |
+| `erase-nand.{sh,cfg}` | Erase NAND over JTAG to make the board non-bootable — return to RAM dev without touching jumpers (e.g. board in an enclosure) |
 
 ## Usage
 
@@ -162,6 +164,37 @@ boot source (see `../binaries/README.md`), so a valid card boots ahead of
 NAND/QSPI — no jumper change needed. **Validated:** boots marvin standalone from
 SD on this board (DBGU banner, no JTAG).
 
+## Program / erase on-board NAND from macOS — `program-nand.sh` / `erase-nand.sh`
+
+`program-nand.sh` writes marvin into NAND so the board boots standalone (full
+runbook in [`program-nand.md`](program-nand.md)). `erase-nand.sh` is the inverse:
+it erases NAND over JTAG, which matters once marvin is resident.
+
+**Returning to RAM dev with no jumper access (e.g. enclosure).** `load-ram.sh`
+requires no valid boot medium so `reset init` can catch the core. With marvin in
+NAND and JP3 (NAND-CS) unreachable, the ROM boots NAND on every power-on and the
+RAM loop is unreliable. `erase-nand.sh` removes the boot image — the ROM then
+falls through to the SAM-BA monitor and `load-ram.sh` works again, no jumper
+change:
+
+```sh
+./erase-nand.sh          # erase boot+app region (0x0..0x100000)
+./erase-nand.sh chip     # full-chip erase
+./load-ram.sh            # back to the RAM dev loop
+```
+
+Both RAM-load u-boot over JTAG and drive its `atmel_nand` driver from the DBGU
+console; they need OpenOCD + `uv` (for `pyserial`) and must run outside the Claude
+command sandbox (libusb USB access).
+
+**Reflashing a board that already boots marvin from NAND** (e.g. in an enclosure):
+erase first — `./erase-nand.sh && ./program-nand.sh`. `program-nand.sh` stages
+firmware into low DDR, which a *running* marvin's capture DMA can corrupt, so it
+refuses if it catches the core booting from NAND. `erase-nand.sh` is the robust one
+(it recovers a booting/wedged board: `reset init`, then forces MMU/caches off so
+the load isn't under marvin's page tables); once NAND is erased the board is
+non-bootable and `program-nand.sh` runs its clean ROM-monitor path.
+
 ## Selecting a specific board
 
 When several boards are connected at once, pick one by its FT4232H serial
@@ -191,8 +224,10 @@ power-cycle** (`load-ram.sh` — validated booting marvin headless and reloading
 from a running marvin), **source-level debug** (gdb/VS Code on `:3333`), and a
 **macOS microSD prep** for standalone boot (`make-sdcard.sh`).
 
-It does **not** program on-board NAND/QSPI flash from macOS: writing a bootable
-image to NAND/QSPI so the board boots standalone is a separate task, best done
-with **SAM-BA** (see `../binaries/*.bat`, on a Linux/Windows host) or MPLAB. A
-macOS-native NAND path via OpenOCD's `at91sam9` driver is planned R&D (QSPI has no
-OpenOCD driver). See the journal for status.
+It **programs on-board NAND from macOS** via [`program-nand.sh`](program-nand.md)
+— u-boot is RAM-loaded over JTAG (same mechanism as `load-ram`) and acts as a
+PMECC-aware flasher; marvin then boots standalone from NAND. Validated on
+hardware (2026-06-11). This replaces the SAM-BA `../binaries/nand_flash.bat` flow
+on macOS. **QSPI** still needs SAM-BA (`../binaries/qspi_flash.bat`, Linux/Windows)
+or MPLAB — OpenOCD has no SAM9X7 QSPI driver and the u-boot QSPI-boot path isn't
+wired up here.

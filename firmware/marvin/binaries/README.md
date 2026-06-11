@@ -11,8 +11,11 @@ below), so their provenance is known.
 |------|--------------|----------------------|
 | `sam9x7-boot-none-4.0.13.elf` | **JTAG load-to-RAM** (init-and-stop). Used by `../openocd/load-ram.sh`. | `sam9x75_curiosity_pro_bkptnone` |
 | `sam9x7-nandflashboot-uboot-4.0.13.bin` | **NAND** boot (SAM-BA `writeboot`) | `sam9x75_curiosity_pronf_uboot` |
+| `sam9x7-nandflashboot-uboot-4.0.13-pmecchead.bin` | **NAND** boot via the macOS u-boot/JTAG path (`../openocd/program-nand.sh`) | as above + PMECC header prepended (`make-pmecchead.sh`) |
+| `sam9x75-uboot-nandflash-flasher-2025.07.bin` | **NAND flasher**, RAM-loaded over JTAG by `../openocd/program-nand.sh` (drives `nand erase`/`nand write`; not itself flashed to the board) | u-boot `sam9x75_curiosity_pro_nandflash` (recipe below) |
 | `sam9x7-dataflashboot-uboot-4.0.13.bin` | **QSPI** boot (SAM-BA `writeboot`) | `sam9x75_curiosity_prodf_qspi_uboot` |
 | `sam9x7-sdcardboot-harmony-4.0.13.bin` | **microSD** boot (copied to FAT as `boot.bin`) | `sam9x75_curiosity_prosd_uboot` + `IMAGE_NAME=harmony.bin` |
+| `make-pmecchead.sh` | Prepend the SAM9X7 ROM PMECC header to a NAND bootstrap (so a plain `nand write` is RomBOOT-bootable; SAM-BA's `writeboot` does this itself) | — |
 | `nand_flash.bat`, `qspi_flash.bat` | SAM-BA flashing scripts (Linux/Windows host) | — |
 
 The media bootstraps all jump to **`0x23F00000`** (`CONFIG_JUMP_ADDR`) — exactly
@@ -133,15 +136,38 @@ make CROSS_COMPILE=arm-none-eabi-
 
 ### Flashing
 
-- **NAND / QSPI** — SAM-BA on a **Linux/Windows** host (macOS has no SAM-BA). See
-  `nand_flash.bat` / `qspi_flash.bat`: bootstrap via `writeboot`, marvin via
-  `write harmony.bin:0x40000`. (SAM-BA's `nandflash` applet writes the PMECC/boot
-  header the ROM expects.)
+- **NAND (macOS, no SAM-BA)** — `../openocd/program-nand.sh` RAM-loads the u-boot
+  flasher over JTAG and `nand write`s the boot region + marvin. The boot region
+  uses the PMECC-headed bootstrap (`*-pmecchead.bin`); see
+  `../openocd/program-nand.md`. **Validated** booting marvin standalone from NAND.
+- **NAND / QSPI (Linux/Windows)** — SAM-BA. See `nand_flash.bat` / `qspi_flash.bat`:
+  bootstrap via `writeboot`, marvin via `write harmony.bin:0x40000`. (SAM-BA's
+  `nandflash` applet writes the PMECC/boot header the ROM expects — the same header
+  `make-pmecchead.sh` prepends for the macOS path.)
 - **microSD** — `../openocd/make-sdcard.sh` on macOS. It writes the SD bootstrap as
   `boot.bin` (what the ROM looks for) and marvin as **`harmony.bin`** (the SD
   bootstrap's `CONFIG_IMAGE_NAME`).
 
-> macOS-native NAND/QSPI flashing over JTAG (no Linux/Windows) is open R&D — e.g.
-> OpenOCD's `at91sam9` NAND driver, or loading u-boot into RAM via `load-ram` and
-> flashing from its console. BOSSA is **not** applicable (it programs Cortex-M
-> on-chip flash over the SAM-BA protocol, not SAM9 external NVM, and not over JTAG).
+> **QSPI over JTAG from macOS** is still open R&D — OpenOCD has no SAM9X7 QSPI
+> driver and the u-boot QSPI-boot flasher path isn't wired up here (u-boot's `sf`
+> could drive it; check whether QSPI boot needs an analogous header). BOSSA is
+> **not** applicable (it programs Cortex-M on-chip flash over the SAM-BA protocol,
+> not SAM9 external NVM, and not over JTAG).
+
+## Build the NAND flasher u-boot (`sam9x75-uboot-nandflash-flasher-*.bin`)
+
+This is **not** a boot stage — it's u-boot RAM-loaded over JTAG to drive NAND (see
+`../openocd/program-nand.md`). Source: `~/Projects/microchip/u-boot-mchp`
+(linux4microchip-2026.04, v2025.07 base). macOS needs Homebrew `gmake` (stock make
+3.81 can't parse u-boot's Makefile) and OpenSSL passed via the **environment**
+(command-line `HOST_EXTRACFLAGS` clobbers the bundled-dtc include path).
+
+```sh
+cd ~/Projects/microchip/u-boot-mchp
+export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
+export HOST_EXTRACFLAGS="-I/opt/homebrew/opt/openssl@3/include"
+export HOSTLDFLAGS="-L/opt/homebrew/opt/openssl@3/lib"
+gmake CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pro_nandflash_defconfig
+gmake CROSS_COMPILE=arm-none-eabi- -j8
+cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-2025.07.bin
+```
