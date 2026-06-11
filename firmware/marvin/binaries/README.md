@@ -157,16 +157,20 @@ make CROSS_COMPILE=arm-none-eabi-
 ## Build the NAND flasher u-boot (`sam9x75-uboot-nandflash-flasher-*.bin`)
 
 This is **not** a boot stage — it's u-boot RAM-loaded over JTAG to drive NAND (see
-`../openocd/program-nand.md`). Source: `~/Projects/microchip/u-boot-mchp`
-(linux4microchip-2026.04, v2025.07 base). macOS needs Homebrew `gmake` (stock make
-3.81 can't parse u-boot's Makefile) and OpenSSL passed via the **environment**
-(command-line `HOST_EXTRACFLAGS` clobbers the bundled-dtc include path).
+`../openocd/program-nand.md`). Source: the linux4microchip u-boot fork,
+<https://github.com/linux4microchip/u-boot-mchp> (branch `linux4microchip-2026.04`,
+v2025.07 base), built with `sam9x75_curiosity_pro_nandflash_defconfig`. Any
+`arm-none-eabi-` cross toolchain works. macOS specifics: use Homebrew `gmake`
+(stock make 3.81 can't parse u-boot's Makefile) and pass OpenSSL via the
+**environment** (command-line `HOST_EXTRACFLAGS` clobbers the bundled-dtc include
+path); adjust the OpenSSL prefix for your host.
 
 ```sh
-cd ~/Projects/microchip/u-boot-mchp
-export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
-export HOST_EXTRACFLAGS="-I/opt/homebrew/opt/openssl@3/include"
-export HOSTLDFLAGS="-L/opt/homebrew/opt/openssl@3/lib"
+git clone -b linux4microchip-2026.04 https://github.com/linux4microchip/u-boot-mchp.git
+cd u-boot-mchp
+# ensure an arm-none-eabi- cross-gcc is on PATH (e.g. the Arm GNU Toolchain)
+export HOST_EXTRACFLAGS="-I$(brew --prefix openssl@3)/include"   # macOS host-tool deps
+export HOSTLDFLAGS="-L$(brew --prefix openssl@3)/lib"
 gmake CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pro_nandflash_defconfig
 gmake CROSS_COMPILE=arm-none-eabi- -j8
 cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-2025.07.bin

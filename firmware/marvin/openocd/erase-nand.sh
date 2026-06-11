@@ -29,10 +29,10 @@ UBOOT_BIN="${UBOOT_BIN:-$root/binaries/sam9x75-uboot-nandflash-flasher-2025.07.b
 FTDI_SERIAL="${FTDI_SERIAL:-}"
 CONSOLE="${CONSOLE:-$(ls /dev/cu.usbserial-* 2>/dev/null | sort | sed -n '3p')}"
 
-case "${1:-region}" in
-    chip)   ERASE="nand erase.chip" ;;
-    region) ERASE="nand erase 0x0 0x100000" ;;
-    *)      echo "usage: $0 [region|chip]" >&2; exit 2 ;;
+SCOPE="${1:-region}"
+case "$SCOPE" in
+    region|chip) ;;
+    *) echo "usage: $0 [region|chip]" >&2; exit 2 ;;
 esac
 
 xc32bin="$(ls -d /Applications/microchip/xc32/*/bin 2>/dev/null | sort -V | tail -1 || true)"
@@ -48,7 +48,10 @@ boot_entry="$("$READELF" -h "$BOOTSTRAP_ELF" | awk '/Entry point/{print $NF}')"
 echo "bootstrap (DDR init) : $BOOTSTRAP_ELF (entry $boot_entry)"
 echo "u-boot (flasher)     : $UBOOT_BIN -> 0x23f00000"
 echo "console              : $CONSOLE"
-echo "erase                : $ERASE"
+echo "erase                : $SCOPE"
+
+# Pre-flight: confirm the DBGU console is free BEFORE touching the board.
+uv run --with pyserial python "$here/nand_console.py" "$CONSOLE" probe
 
 # 1) Bring u-boot up in DDR over JTAG (JTAG released afterwards).
 common=(-f "$here/sam9x75-chybrid.cfg" -f "$here/erase-nand.cfg")
@@ -57,54 +60,8 @@ openocd "${common[@]}" -c "init" \
     -c "load_uboot $BOOTSTRAP_ELF $boot_entry $UBOOT_BIN" \
     -c "shutdown"
 
-# 2) Drive the erase over the console (stop autoboot first, then verify erased).
-uv run --with pyserial python - "$CONSOLE" "$ERASE" <<'PY'
-import sys, time, serial
-port, erase = sys.argv[1], sys.argv[2]
-ser = serial.Serial(port, 115200, timeout=0.3)
-
-def wait_prompt(timeout=12):
-    # u-boot needs ~1-2 s to boot; tap Enter until we get a STABLE "U-Boot>"
-    # (so autoboot is fully stopped and command keystrokes aren't eaten by the
-    # "Hit any key to stop autoboot" prompt).
-    end = time.time() + timeout
-    while time.time() < end:
-        ser.write(b"\r\n"); time.sleep(0.4)
-        buf = ser.read(8192)
-        if buf.rstrip().endswith(b"U-Boot>"):
-            time.sleep(0.3)
-            if not ser.read(8192):            # quiet → prompt is settled
-                return True
-    return False
-
-def cmd(c, t=120):
-    ser.reset_input_buffer(); ser.write(c.encode() + b"\r\n")
-    end = time.time() + t; buf = b""
-    while time.time() < end:
-        d = ser.read(4096)
-        if d:
-            buf += d
-            if buf.rstrip().endswith(b"U-Boot>"): break
-    txt = buf.decode("utf-8", "replace")
-    print(f"\n=== $ {c} ===\n" + txt)
-    return txt
-
-if not wait_prompt():
-    print("\n>>> ERROR: never reached a stable U-Boot prompt."); ser.close(); sys.exit(1)
-
-out = cmd(erase)
-if "NAND erase" not in out:                      # raced the prompt — retry once
-    print(">>> erase did not execute; retrying after re-syncing prompt")
-    wait_prompt(); out = cmd(erase)
-
-cmd("nand read 0x24000000 0x0 0x1000")
-chk = cmd("md.l 0x24000000 4")                   # expect ffffffff x4 if erased
-ser.close()
-ok = "NAND erase" in out and "ffffffff ffffffff" in chk
-print("\n>>> boot region erased." if ok
-      else "\n>>> WARNING: erase not confirmed — check output above.")
-sys.exit(0 if ok else 1)
-PY
+# 2) Drive the erase + verify over the console.
+uv run --with pyserial python "$here/nand_console.py" "$CONSOLE" erase "$SCOPE"
 
 echo
 echo ">>> NAND erased. The ROM will now fall through to the SAM-BA monitor on boot,"

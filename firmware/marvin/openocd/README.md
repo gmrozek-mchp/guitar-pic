@@ -34,6 +34,7 @@ terminal while debugging.
 | `make-sdcard.sh` | Prepare a bootable microSD on macOS (standalone boot, no JTAG) |
 | `program-nand.{sh,cfg}` | Program marvin into on-board NAND from macOS (u-boot RAM-loaded over JTAG as a PMECC flasher) — see `program-nand.md` |
 | `erase-nand.{sh,cfg}` | Erase NAND over JTAG to make the board non-bootable — return to RAM dev without touching jumpers (e.g. board in an enclosure) |
+| `nand_console.py` | Shared u-boot-console driver (pre-flight port check, erase, program+verify) used by `program-nand.sh` / `erase-nand.sh` |
 
 ## Usage
 
@@ -183,9 +184,14 @@ change:
 ./load-ram.sh            # back to the RAM dev loop
 ```
 
-Both RAM-load u-boot over JTAG and drive its `atmel_nand` driver from the DBGU
-console; they need OpenOCD + `uv` (for `pyserial`) and must run outside the Claude
-command sandbox (libusb USB access).
+Both are one-shot and fully automated: they RAM-load u-boot over JTAG and drive its
+`atmel_nand` driver from the DBGU console (`nand_console.py`), erasing/writing and
+verifying with no manual console steps. Each **pre-flight checks the console port
+is free** and bails with a clear error if it's held elsewhere (screen/minicom)
+*before* touching the board. They need OpenOCD + `uv` (for `pyserial`) and must run
+outside the Claude command sandbox (libusb USB access). Override the DBGU node with
+`CONSOLE=/dev/cu.usbserial-...` (auto-detected as the 3rd `cu.usbserial-*` = channel
+C otherwise).
 
 **Reflashing a board that already boots marvin from NAND** (e.g. in an enclosure):
 erase first — `./erase-nand.sh && ./program-nand.sh`. `program-nand.sh` stages
