@@ -23,6 +23,10 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-12 | **`esp_hidd` is a dead end for Wii emulation; the only working ESP-IDF path is a custom SDP record (internal Bluedroid `SDP_*` API) + raw L2CAP HID on PSM 0x11/0x13 (`esp_bt_l2cap`), with the hardcoded SDP buffer raised.** Two independent walls: (1) the Wii rejects esp_hidd's record even with a small descriptor (wrong HID attribute values — subclass/reconnect-initiate/etc., which esp_hidd hardcodes and doesn't expose); (2) the real 217-byte descriptor can't even be registered — `SDP_MAX_PAD_LEN` (the per-record attribute pad) is **hardcoded 300** (`sdp_db.c:495`, `bluedroid_user_config.h`; no menuconfig), and the full Wiimote record is ~463 B → `SDP_AddAttribute fail … ID 518`. Confirmed feasible building blocks in IDF v6.0.1: `SDP_CreateRecord`/`SDP_AddAttribute`/`SDP_AddSequence` (private `stack/sdp_api.h`) and `esp_bt_l2cap_start_srv(psm)`. | Bluedroid is the only Classic-BT stack on ESP32, and its public APIs can't host an arbitrary SDP record (`esp_sdp` RAW is search-only). So the path requires *unsupported internals*: raise `SDP_MAX_PAD_LEN` via an injected `CONFIG_BT_SDP_PAD_LEN` compile define, build the exact Wiimote record with the internal SDP DB API, skip esp_hidd, and serve HID over raw L2CAP + hand-rolled HIDP. Heavy + fragile across IDF updates, but it's the real route. The exact 463-byte record + 217-byte descriptor are saved at [`wiimote-sdp.md`](wiimote-sdp.md). |
+| 2026-06-12 | **Q1 resolved: ESP-IDF `esp_hidd`'s auto-generated SDP record is NOT accepted by the Wii → pivot to raw L2CAP (listen on PSM 0x11 control / 0x13 data) + a hand-built SDP record matching a real Wiimote.** Verbose Bluedroid logs: the Wii opens an ACL link, connects to our SDP server (PSM 1), reads our records (we send 14/250/37-byte SDP responses), then disconnects the SDP channel and terminates the ACL (`rsn 0x13` = remote user terminated) **without ever opening the HID PSMs**. SSP was confirmed off this round (legacy pairing) and discovery works (limited-discoverable + COD `0x002504`), so SDP content is the only remaining blocker. Wii BD_ADDR observed: `00:17:ab:07:2c:21`. | The Wii validates the SDP record against a real Wiimote's; esp_hidd's generic HID record (right VID/PID, wrong attributes + HID descriptor) fails the check, so it never proceeds to HID. Matches why `rnconrad/WiimoteEmulator` replaces the host BT stack to serve the exact SDP. Open: whether ESP-IDF lets us serve a fully custom SDP record (esp_sdp API vs internal Bluedroid `SDP_*` API) and listen on the fixed HID PSMs via `esp_bt_l2cap`. |
+| 2026-06-12 | **Phase 1 first attempt uses ESP-IDF's unified `esp_hidd` BT-classic HID device wearing the Wiimote identity, not a hand-rolled raw-L2CAP/SDP stack.** `bt_hid_device.c`: `esp_hidd_dev_init(ESP_HID_TRANSPORT_BT)` with VID `0x057e`/PID `0x0306`/version `0x0100`/name `Nintendo RVL-CNT-01`, COD set to `0x002504` (peripheral/joystick), a minimal vendor-defined report map (just report IDs 0x30 in / 0x12 out), **SSP disabled** (`CONFIG_BT_SSP_ENABLED=n`) for legacy PIN pairing, and a GAP `PIN_REQ` handler that replies with the requesting host's BD_ADDR reversed. | The stack already implements HIDP + L2CAP (PSM 0x11/0x13) + auth, so this is the cheapest probe of Q1: if a real Wii connects + authenticates against the auto-generated SDP, we avoid hand-building raw SDP entirely. If it rejects it, fall back to raw L2CAP + the exact SDP record from `rnconrad/WiimoteEmulator` (cloned locally for byte-exact bytes; WebFetch can't reproduce the ~463-byte blob). |
+| 2026-06-12 | **Target the console-SYNC *bonding* flow, not the 1+2 temporary flow.** PIN handler returns the connecting host's (Wii's) BD_ADDR reversed (`param->pin_req.bda` byte-reversed). | Bonding (red SYNC button under the Wii's SD cover + controller in sync mode) is how a controller gets *persistently* registered, which is what a robot wants. The 1+2 flow is one-time/temporary and uses the controller's own address instead. Resolves Q2. |
 | 2026-06-12 | **Build fauxmote as a parallel, independent proof-of-concept subproject; the fretboard GPIO-press path stays authoritative.** New top-level firmware subproject `firmware/fauxmote/`. | Device-side Wiimote *emulation* to a real Wii is rare/novel (host-side use is common), so de-risk it in isolation before touching marvin/fretboard/edge-ai. Nothing in the existing actuation path changes until fauxmote is proven. |
 | 2026-06-12 | **Framework = ESP-IDF (v6.x; v6.0.1 installed), Bluedroid in Bluetooth-Classic-only mode (BLE disabled).** | Wiimote uses Bluetooth Classic HID; ESP-IDF exposes the BT-Classic HID-device API (`esp_hidd_api.h`), custom SDP records, BD_ADDR control, and raw L2CAP — all of which emulation needs. Arduino-ESP32's BT-Classic HID-device support is too thin for the custom SDP/descriptor the Wiimote requires. |
 | 2026-06-12 | **Board = Adafruit ESP32 Feather V2 (product 5400); its *original* ESP32 is the load-bearing choice.** | The original ESP32 has a Bluetooth Classic (BR/EDR) radio. ESP32-S3/C3 are BLE-only and cannot emulate a Wiimote. Confirmed the product 5400 is the Feather V2 (not a QT Py S3). |
@@ -32,15 +36,28 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Open questions
 
-- **Q1 — Does ESP-IDF's `esp_hidd` BT-Classic HID device let us publish the exact SDP record the Wii expects** (name `Nintendo RVL-CNT-01`, VID `0x057e`, PID `0x0306`, Wiimote HID descriptor, matching Class-of-Device)? If its default SDP is too rigid, fall back to raw L2CAP on PSM 0x11/0x13 with a hand-built SDP record. Resolve in Phase 1.
-- **Q2 — Which pairing flow to target first?** The 1+2 temporary-pair flow uses the Wiimote's *own* BD_ADDR (reversed) as the PIN, which fauxmote knows and can answer in the GAP PIN-request callback. The sync-button permanent flow uses the *host (Wii)* address. Start with 1+2.
-- **Q3 — Exact Class-of-Device value** the Wii matches a Wiimote on (lift from a real unit / wiibrew). Phase 1.
+- **Q1 — Does ESP-IDF's `esp_hidd` BT-Classic HID device let the Wii connect + authenticate against its auto-generated SDP?** Being tested now (see decision log). If the Wii rejects it, fall back to raw L2CAP on PSM 0x11/0x13 with the exact `rnconrad/WiimoteEmulator` SDP record.
 - **Q4 — Which Wiimote data report carries the guitar extension** (e.g. `0x34` = core buttons + 19 extension bytes vs `0x3d` = 21 extension bytes) and what the game expects. Phase 3.
 - **Q5 — marvin↔fauxmote link** (UART bitmask mirror of the fretboard protocol vs USB CDC vs other). Deferred; revisit before Phase 4 integration.
 
 ---
 
 ## Session log
+
+### 2026-06-12 — Phase 1 debugging: discovery solved, SDP rejected
+
+- esp_hidd HID-device first attempt — Wii initially saw nothing. Two fixes got it
+  to connect: (a) the Wii's SYNC scan uses a *limited* inquiry → switched to
+  `ESP_BT_LIMITED_DISCOVERABLE`; (b) `esp_hidd_dev_init` overrides the Class of
+  Device → now set `0x002504` in the HIDD START handler (after init).
+- **sdkconfig.defaults gotcha:** edits to `sdkconfig.defaults` do NOT apply once
+  `sdkconfig` exists. `CONFIG_BT_SSP_ENABLED=n` + 8 MB flash silently didn't take
+  effect until `idf.py set-target esp32` regenerated `sdkconfig`. Always regenerate
+  (or menuconfig) after editing defaults.
+- With legacy pairing active + verbose Bluedroid logs: Wii connects ACL → SDP
+  (PSM 1) → reads our records → disconnects → ACL term `rsn 0x13`, never opening the
+  HID PSMs. → Q1 resolved (see decision log). Pivoting to raw L2CAP + exact Wiimote
+  SDP. Added a temporary verbose-BT-log block to `sdkconfig.defaults` (trim later).
 
 ### 2026-06-12 — Phase 0 verified on hardware
 

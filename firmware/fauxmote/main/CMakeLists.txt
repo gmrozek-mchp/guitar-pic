@@ -1,2 +1,3 @@
-idf_component_register(SRCS "main.c"
-                       INCLUDE_DIRS ".")
+idf_component_register(SRCS "main.c" "bt_hid_device.c"
+                       INCLUDE_DIRS "."
+                       REQUIRES bt esp_hid nvs_flash)
