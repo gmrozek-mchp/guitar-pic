@@ -56,9 +56,15 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 ## 5. Software
 
 - **Framework:** ESP-IDF (v6.x; developed against v6.0.1), Bluedroid stack in **Bluetooth-Classic-only** mode
-  (BLE disabled). Bluedroid's BT-Classic HID-device API (`esp_hidd_api.h`) is the
-  starting point; raw L2CAP on PSM 0x11/0x13 with a hand-built SDP record is the
-  fallback if the stack's default SDP is too rigid for the Wii.
+  (BLE disabled).
+- **BT architecture (settled in Phase 1):** `esp_hidd` is *not* usable — the Wii
+  rejects its SDP record and its hardcoded HID attributes/descriptor limits don't
+  fit a Wiimote. Instead fauxmote serves a **byte-exact Wiimote SDP record** built
+  via Bluedroid's internal `SDP_*` database API (`wiimote_sdp.c`; needs
+  `CONFIG_BT_SDP_PAD_LEN`/`ATTR_LEN` raised) and handles HID over **raw L2CAP**
+  (`esp_bt_l2cap`) on PSM 0x11 (control) / 0x13 (interrupt). Legacy PIN pairing
+  (SSP off; PIN = host BD_ADDR reversed). Detail + the record bytes in
+  [`docs/wiimote-sdp.md`](docs/wiimote-sdp.md) and the journal.
 - **Allocation:** application code follows the project's **static-allocation**
   preference (no `malloc` in our code). Bluedroid's internal allocation is
   framework-owned and out of scope.
@@ -67,9 +73,9 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 
 | Phase | Goal | Done when |
 |---|---|---|
-| **0** | Toolchain + radio bring-up | Builds + flashes to the Feather V2; the board is discoverable by name in a PC/phone Bluetooth scan. |
-| **1** | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID data channel on PSM 0x13 without immediately dropping. |
-| **2** | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. |
+| **0** ✅ | Toolchain + radio bring-up | Builds + flashes to the Feather V2; the board is discoverable by name in a PC/phone Bluetooth scan. |
+| **1** ✅ | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID channels (PSM 0x11 control + 0x13 interrupt) without immediately dropping. *Done via custom SDP + raw L2CAP (§5).* |
+| **2** | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
 | **3** | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. |
 | **4** | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the future marvin link. |
 

@@ -14,5 +14,7 @@ idf.py set-target esp32        # original ESP32 (Feather V2) — has Bluetooth C
 idf.py build flash monitor     # build, flash over USB-C, open the serial log
 ```
 
-Phase 0 brings the Bluetooth-Classic radio up and advertises the board as
-`Nintendo RVL-CNT-01`. Verify it appears by name in a PC/phone Bluetooth scan.
+The board comes up as `Nintendo RVL-CNT-01` and, on a Wii red-SYNC press, pairs and
+opens both HID channels (custom SDP record + raw L2CAP; see [`SPEC.md`](SPEC.md) §5
+and the journal). Responding to the Wii's reports so it stays an assigned, live
+Wiimote is Phase 2.

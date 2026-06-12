@@ -6,14 +6,32 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ## Current focus
 
-**Phase 1 — Bluetooth identity / pairing (highest risk).** Phase 0 is done: the
-Feather V2 boots clean on ESP-IDF v6.0.1, brings up the BR/EDR controller +
-Bluedroid, and is discoverable over Classic as `Nintendo RVL-CNT-01` (verified with
-`blueutil --inquiry` on macOS — saw the board's BD_ADDR `c0:cd:d6:37:fd:0a` with the
-name resolved). Next: bring up the Bluedroid BT-Classic HID device, publish the SDP
-record the Wii expects (name + VID `0x057e` / PID `0x0306` + Wiimote HID descriptor +
-Class-of-Device), and answer the GAP PIN request so a real Wii will pair. Pairing PIN
-for the 1+2 flow = this board's BD_ADDR reversed → raw bytes `0a fd 37 d6 cd c0`.
+**Phase 1 DONE — the Wii pairs with fauxmote and opens both HID channels.** Custom
+Wiimote SDP record (built via Bluedroid's internal `SDP_*` API in `wiimote_sdp.c`,
+with SDP buffers raised to 512/1024) + raw `esp_bt_l2cap` servers on PSM 0x11/0x13.
+On a red-SYNC press the Wii: accepts our SDP, completes legacy PIN pairing
+(`auth OK`), and opens both HID L2CAP channels (control CID 0x40 / interrupt CID 0x41,
+both `mtu 640`), then starts sending us data. Wii BD_ADDR `00:17:ab:07:2c:21`.
+
+**Phase 2 next — keep the connection alive + behave like a Wiimote.** We don't yet
+read the L2CAP fds. Read the control-channel fd (HIDP: input reports prefixed
+`0xa1`, output `0xa2`), handle the Wii's output reports (status request `0x15` →
+send status `0x20`; data-reporting-mode `0x12`; LED `0x11`; read/write register
+`0x16`/`0x17`), and send core-button input reports (`0x30`). Success = a stable,
+assigned Wiimote (player LED solid) in the Wii Home menu.
+
+Phase 2 also owns the **sleep/wake + keep-awake** behavior:
+- **Reconnect (device-initiated):** after the Wii drops us for idle (console still
+  on), *we* must re-open the link — the Wii won't. Building blocks are in place
+  (SDP `HIDReconnectInitiate=true`; we have the Wii BD_ADDR from pairing;
+  `esp_bt_l2cap_connect(psm, bda)`). Store the bonded Wii address and reconnect
+  PSM 0x11→0x13 on a trigger (a Marvin button), then resume reports.
+- **Keep-awake:** the Wii's idle-disconnect watches for *input* activity, so the
+  keep-alive must be an occasional **button input report**, not just any packet.
+  During gameplay this is free (Marvin streams strum/fret input continuously).
+- **Caveat (not a bug to fix):** a Wiimote cannot power a Wii on from full standby
+  (red light) — the console's BT radio is off then. "Wake" only means reconnecting
+  while the console is already running.
 
 Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
@@ -43,6 +61,25 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-06-12 — Phase 1 complete: Wii pairs + opens HID channels
+
+- Custom SDP path works. Replaced esp_hidd with: `wiimote_sdp.c` building the exact
+  Wiimote record via internal `SDP_CreateRecord`/`SDP_AddAttribute`/… (modeled on
+  Bluedroid's own `HID_DevAddRecord`, Wiimote-exact values), + `esp_bt_l2cap`
+  servers on PSM 0x11/0x13. Raised `CONFIG_BT_SDP_ATTR_LEN=512` /
+  `CONFIG_BT_SDP_PAD_LEN=1024` (defaults exist; depend only on `BT_CLASSIC_ENABLED`).
+- On red-SYNC: SDP accepted → legacy PIN pairing `auth OK` → both HID L2CAP
+  channels open (CID 0x40 control / 0x41 interrupt, mtu 640) → Wii starts sending us
+  HID data (`BTA_JvL2capRead`). Phase 1 success criterion met on hardware.
+- Build/integration lessons (durable):
+  - To call the internal SDP API, add bt internal include roots in CMake:
+    `<bt>/common/include`, `<bt>/host/bluedroid/{stack,common,osi}/include`,
+    `<bt>/host/bluedroid/api/include/api`. `bdroid_buildcfg.h` is behind
+    `#ifdef HAS_BDROID_BUILDCFG` (not defined externally) so it's skipped.
+  - `esp_bt_l2cap` data path is fd/VFS-based: must `esp_bt_l2cap_vfs_register()`
+    (after INIT_EVT) BEFORE `esp_bt_l2cap_start_srv`, else `l2cap_malloc_slot
+    unable to register fd` / NO_RESOURCE.
 
 ### 2026-06-12 — Phase 1 debugging: discovery solved, SDP rejected
 
