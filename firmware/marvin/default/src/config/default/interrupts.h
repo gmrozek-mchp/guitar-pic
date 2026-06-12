@@ -57,6 +57,7 @@
 // *****************************************************************************
 // *****************************************************************************
 void SYSC_SharedHandler (void);
+void FLEXCOM1_InterruptHandler (void);
 void FLEXCOM2_InterruptHandler (void);
 void FLEXCOM8_InterruptHandler (void);
 void TC0_InterruptHandler (void);

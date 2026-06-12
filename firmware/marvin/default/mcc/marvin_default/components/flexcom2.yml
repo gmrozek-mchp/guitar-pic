@@ -41,11 +41,6 @@ data:
             value: 'true'
           type: Boolean
         type: Attributes
-      - children:
-        - attributes:
-            value: '500000'
-          type: User
-        type: Values
       type: Integer
     BRG_VALUE:
       attributes:
@@ -55,7 +50,7 @@ data:
       - children:
         - attributes:
             id: flexcom2
-            value: '66'
+            value: '144'
           type: Dynamic
         type: Values
       type: Integer
@@ -709,7 +704,7 @@ data:
       - children:
         - attributes:
             id: flexcom2
-            value: '1'
+            value: '0'
           type: Dynamic
         type: Values
       type: Integer
@@ -1159,11 +1154,6 @@ data:
             value: 'true'
           type: Boolean
         type: Attributes
-      - children:
-        - attributes:
-            value: '512'
-          type: User
-        type: Values
       type: Integer
     USART_STOP_1_5_BIT_MASK:
       attributes:
@@ -1184,6 +1174,20 @@ data:
       attributes:
         id: USART_TX_RING_BUFFER_SIZE
         label: TX Ring Buffer Size
+      children:
+      - children:
+        - attributes:
+            id: visible
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            value: '512'
+          type: User
+        type: Values
       type: Integer
     USE_SPI_DMA:
       attributes:

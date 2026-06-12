@@ -4680,7 +4680,7 @@ data:
       children:
       - children:
         - attributes:
-            value: GUITAR_TX
+            value: CLI_TX
           type: User
         type: Values
       type: String
@@ -4691,7 +4691,7 @@ data:
       children:
       - children:
         - attributes:
-            value: GUITAR_RX
+            value: CLI_RX
           type: User
         type: Values
       type: String
@@ -4715,7 +4715,7 @@ data:
       - children:
         - attributes:
             id: flexcom1
-            value: 'false'
+            value: 'true'
           type: Dynamic
         type: Values
       type: Boolean
@@ -4739,7 +4739,7 @@ data:
       - children:
         - attributes:
             id: flexcom1
-            value: 'false'
+            value: 'true'
           type: Dynamic
         type: Values
       type: Boolean
@@ -4806,7 +4806,7 @@ data:
       children:
       - children:
         - attributes:
-            value: MONITOR_TX
+            value: GUITAR_TX
           type: User
         type: Values
       type: String
@@ -4817,7 +4817,7 @@ data:
       children:
       - children:
         - attributes:
-            value: MONITOR_RX
+            value: GUITAR_RX
           type: User
         type: Values
       type: String
