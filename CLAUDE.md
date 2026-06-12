@@ -25,6 +25,8 @@ Current journals:
   - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
 - `tools/edge-ai/docs/journal.md` — edge-ai (distill marvin's gameplay commands into a small ML model for the fretboard MCU)
   - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
+- `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; parallel proof-of-concept)
+  - Spec for fauxmote lives at `firmware/fauxmote/SPEC.md` — read it alongside the journal on any non-trivial fauxmote task.
 
 When working on a subproject that has a journal:
 

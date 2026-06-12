@@ -1,0 +1,11 @@
+{
+  "recommendations": [
+    "espressif.esp-idf-extension",
+    "ms-vscode.cpptools"
+  ],
+  // CMake Tools is intentionally not recommended — it fights the Espressif
+  // extension, which manages the CMake build itself.
+  "unwantedRecommendations": [
+    "ms-vscode.cmake-tools"
+  ]
+}

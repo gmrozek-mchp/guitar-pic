@@ -1,0 +1,8 @@
+build/
+sdkconfig
+sdkconfig.old
+
+# The Espressif extension rewrites machine-specific absolute paths
+# (idf.currentSetup, clangd.path, idf.port, …) into this file. Keep it local;
+# only .vscode/extensions.json is tracked.
+.vscode/settings.json

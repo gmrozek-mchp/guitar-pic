@@ -52,6 +52,7 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 | edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; Phase 1 data pipeline in progress. | [`tools/edge-ai/docs/journal.md`](tools/edge-ai/docs/journal.md) |
+| fauxmote | [`firmware/fauxmote/SPEC.md`](firmware/fauxmote/SPEC.md) — *parallel proof-of-concept:* ESP32 (Adafruit Feather V2) firmware that emulates a Wiimote + guitar extension over Bluetooth to a real Wii, an alternative to the fretboard's physical button-pressing. Not yet in the runtime path; fretboard stays authoritative. | [`firmware/fauxmote/docs/journal.md`](firmware/fauxmote/docs/journal.md) |
 
 marvin's spec also has deeper-dive documents for its capture and display paths ([`capture_pipeline.md`](firmware/marvin/docs/capture_pipeline.md), [`display_path.md`](firmware/marvin/docs/display_path.md)).
 
@@ -65,6 +66,7 @@ guitar-pic/
 ├── firmware/
 │   ├── marvin/                  # SAM9X75 host firmware
 │   ├── fretboard/               # PIC32CM6408 sensor/actuator MCU firmware
+│   ├── fauxmote/                # ESP32 Wiimote emulator (proof-of-concept)
 │   └── sam9x75_curiosity_emirror/   # Microchip reference project (template only)
 ├── tools/
 │   ├── fret-tuner/              # Python dev/calibration tool
