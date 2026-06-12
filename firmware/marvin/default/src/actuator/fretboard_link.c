@@ -28,7 +28,7 @@
 #define DS_END_BYTE             0xFCu
 
 /* RX notification threshold: wake the parse task once a full frame's worth of
- * bytes has landed in the FLEXCOM2 RX ring. The ring (sized in MCC) keeps
+ * bytes has landed in the FLEXCOM1 RX ring. The ring (sized in MCC) keeps
  * receiving continuously, so there is no per-read re-arm gap to lose bytes
  * across. */
 #define FBL_RX_THRESHOLD        DS_FRAME_LEN
@@ -42,8 +42,8 @@
  * stream is continuous at 240 Hz so a wake normally arrives every ~4 ms. */
 #define FBL_RX_WAIT_MS          100u
 
-/* Link runs at 500 000 baud, 8N1 — configured by the MCC FLEXCOM2 USART
- * component (FLEXCOM2_USART_Initialize). Must match the fretboard SERCOM1
+/* Link runs at 500 000 baud, 8N1 — configured by the MCC FLEXCOM1 USART
+ * component (FLEXCOM1_USART_Initialize). Must match the fretboard SERCOM1
  * setting or every byte arrives corrupt. */
 
 static QueueHandle_t s_cmd_queue;
@@ -56,7 +56,7 @@ static StaticTask_t  s_task_tcb;
 static StackType_t   s_rx_task_stack[FBL_RX_TASK_STACK_WORDS];
 static StaticTask_t  s_rx_task_tcb;
 
-/* Given from the FLEXCOM2 read callback (ISR) when the RX ring crosses the
+/* Given from the FLEXCOM1 read callback (ISR) when the RX ring crosses the
  * frame threshold; woken thread drains and parses. */
 static SemaphoreHandle_t s_rx_notify;
 static StaticSemaphore_t s_rx_notify_buf;
@@ -65,7 +65,7 @@ static StaticSemaphore_t s_rx_notify_buf;
  * the peripheral. Kept so producers and the heartbeat path can gate sends. */
 static volatile bool s_link_up;
 
-/* Asserted-mask snapshot: most recent byte accepted into the FLEXCOM2 TX ring.
+/* Asserted-mask snapshot: most recent byte accepted into the FLEXCOM1 TX ring.
  * Producer-side intent goes out on the same wire byte but may be overwritten
  * before it transmits if Send is called faster than the link services. The
  * PERF_REC_ACTUATOR record carries both. */
@@ -91,7 +91,7 @@ static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
         case FLEXCOM_USART_EVENT_READ_ERROR:
             /* Consume + clear the error status; the resync parser recovers
              * frame alignment on the next valid start/end pair. */
-            (void)FLEXCOM2_USART_ErrorGet();
+            (void)FLEXCOM1_USART_ErrorGet();
             (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
             break;
         default:
@@ -110,7 +110,7 @@ static bool send_one_byte(uint8_t mask)
     /* Ring-buffer Write copies the byte into the TX ring and returns the
      * count accepted; for a single byte this only fails if the TX ring is
      * full, which shouldn't happen at command rates. */
-    if (FLEXCOM2_USART_Write(&tx_byte, 1u) != 1u)
+    if (FLEXCOM1_USART_Write(&tx_byte, 1u) != 1u)
     {
         LOG_WARN("FBL: TX ring full, byte dropped\r\n");
         return false;
@@ -128,7 +128,7 @@ static void fretboard_link_task(void *param)
 {
     (void)param;
 
-    LOG_INFO("FBL: fretboard link started (FLEXCOM2)\r\n");
+    LOG_INFO("FBL: fretboard link started (FLEXCOM1)\r\n");
 
     uint8_t last_mask = 0u;
 
@@ -148,7 +148,7 @@ static void fretboard_link_task(void *param)
     }
 }
 
-/* Drain the FLEXCOM2 RX ring and emit one PERF_REC_FRETBOARD_RAW per parsed
+/* Drain the FLEXCOM1 RX ring and emit one PERF_REC_FRETBOARD_RAW per parsed
  * 17-byte frame. Resync logic mirrors tools/ds_monitor.py: a frame is valid
  * only when buf[0]==0x03 AND buf[16]==0xFC; otherwise drop the leading byte
  * and retry alignment. The FSM-free buffered approach is easier to reason
@@ -164,14 +164,14 @@ static void fretboard_rx_task(void *param)
 
     for (;;)
     {
-        if (FLEXCOM2_USART_ReadCountGet() == 0u)
+        if (FLEXCOM1_USART_ReadCountGet() == 0u)
         {
             (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FBL_RX_WAIT_MS));
             continue;
         }
 
         size_t want = DS_FRAME_LEN - filled;
-        size_t got  = FLEXCOM2_USART_Read(&frame[filled], want);
+        size_t got  = FLEXCOM1_USART_Read(&frame[filled], want);
         if (got == 0u) { continue; }
         filled += got;
         if (filled < DS_FRAME_LEN) { continue; }
@@ -227,12 +227,12 @@ void FretboardLink_Initialize(void)
     s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
     configASSERT(s_rx_notify != NULL);
 
-    /* Arm continuous RX: the ring fills from the FLEXCOM2 ISR; persistent
+    /* Arm continuous RX: the ring fills from the FLEXCOM1 ISR; persistent
      * threshold notification wakes fretboard_rx_task each time a frame's
      * worth of bytes is available. */
-    FLEXCOM2_USART_ReadCallbackRegister(rx_event_handler, 0u);
-    FLEXCOM2_USART_ReadThresholdSet(FBL_RX_THRESHOLD);
-    (void)FLEXCOM2_USART_ReadNotificationEnable(true, true);
+    FLEXCOM1_USART_ReadCallbackRegister(rx_event_handler, 0u);
+    FLEXCOM1_USART_ReadThresholdSet(FBL_RX_THRESHOLD);
+    (void)FLEXCOM1_USART_ReadNotificationEnable(true, true);
 
     s_link_up = true;
 

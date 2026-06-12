@@ -10,8 +10,14 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
-    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_rx.c"    
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_rx.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/console/console.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli/embedded_cli.c"
+)
+
+target_include_directories(marvin_default_default_XC32_compile PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli"
 )
 
 target_compile_definitions(marvin_default_default_XC32_compile PRIVATE

@@ -41,6 +41,7 @@
 #include "actuator/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
+#include "console/console.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -136,9 +137,9 @@ void APP_Initialize ( void )
     Detector_Enable(DETECTOR_CV_MARVIN_V1);
     Detector_SetActive(DETECTOR_CV_MARVIN_V1);
 
-    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM2
-     * USART writer and the RX parse task. The FLEXCOM2 peripheral is brought
-     * up by SYS_Initialize (FLEXCOM2_USART_Initialize), so this just arms the
+    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM1
+     * USART writer and the RX parse task. The FLEXCOM1 peripheral is brought
+     * up by SYS_Initialize (FLEXCOM1_USART_Initialize), so this just arms the
      * ring-buffer RX notification and starts the link tasks. */
     FretboardLink_Initialize();
 
@@ -153,6 +154,11 @@ void APP_Initialize ( void )
      * registers the event_Screen0_Button_Manual_* callbacks defined in
      * ui/manual_input.c, so no explicit bind step is needed here. */
     ManualControl_Initialize();
+
+    /* Interactive operator console on FLEXCOM2 (115200), separate from the
+     * DBGU log channel. Started after the actuator/detector modules so its
+     * commands can drive their setters. */
+    Console_Initialize();
 
     /* Drain task is launched last so every producer's queue handle is
      * already valid when the first records hit the sink. Marvin creates

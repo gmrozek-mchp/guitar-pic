@@ -172,9 +172,9 @@ The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees
 | **SAM9X75 Curiosity** | marvin host (CPU, DDR, peripherals, panel/touch ports) | — |
 | **Waveshare HDMI → CSI-2 adapter** (TC358743) | HDMI → MIPI CSI-2 bridge | I²C (FLEXCOM8 TWI, PB4/PB5, 400 kHz, addr `0x0F`) for control; 2-lane CSI-2 RX for data; PC15 PWD, PC19 RESET (currently unused — software reset over I²C). |
 | **Microchip 10.1″ 1280×800 LVDS panel + maxtouch** | Operator UI | LVDSC pair from XLCDC; I²C for maxtouch (existing Harmony driver). |
-| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | FLEXCOM2 USART (marvin PA13 TX / PA14 RX ↔ fretboard SERCOM1 PB01 RX / PB00 TX, 500 000 Bd 8N1, ring-buffer mode). |
+| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | FLEXCOM1 USART (marvin PA28 TX / PA29 RX ↔ fretboard SERCOM1 PB01 RX / PB00 TX, 500 000 Bd 8N1, ring-buffer mode). |
 | **Wii guitar controller** | Physical input target | Open-drain GPIO on fretboard, not directly on marvin. |
-| **(optional) dev PC** | Calibration / training-data ingest / replay viewer | SD card swap (primary) or USB CDC for live debug; no runtime dependency. |
+| **(optional) dev PC** | Calibration / training-data ingest / replay viewer + operator console | SD card swap (primary), USB CDC for perf-log, and the FLEXCOM2 serial console (115 200 8N1, via an FTDI channel) for interactive control (§4.9). No runtime dependency. |
 
 Pin assignments live in `firmware/marvin/default/src/config/default/pin_configurations.csv`. The capture pipeline doc ([`capture_pipeline.md`](capture_pipeline.md)) is authoritative for CSI / ISC register state; the display path doc ([`display_path.md`](display_path.md)) is authoritative for XLCDC overlay wiring.
 
@@ -185,17 +185,18 @@ Pin assignments live in `firmware/marvin/default/src/config/default/pin_configur
 | MIPI CSI-2 RX + ISC + CSI2DC | ✅ in use | 2 lanes, 972 Mbps/lane; BGR888 packed to DDR (CSI2DC RMS=1, 3 B/pixel). |
 | XLCDC + LVDSC | ✅ in use | HEO layer, RGB\_888\_PACKED, per-frame pointer swap, pillarbox/letterbox. |
 | FLEXCOM8 (I²C/TWI) | ✅ in use | TC358743 control + display MIPI I²C, shared bus on PB4/PB5 (`DRV_I2C_INDEX_0`). Was FLEXCOM6/PA24-PA25 on the original Curiosity board; moved during the Hybrid port. |
-| FLEXCOM4 (UART, DBGU/console) | ✅ in use | `printf` retarget; lightweight log shim. |
-| FLEXCOM2 (USART) | ✅ in use | Fretboard link — 500 000 Bd 8N1, ring-buffer mode, PA13 TX / PA14 RX (§4.3). |
+| DBGU (UART) | ✅ in use | `printf` retarget (`printf → xc32_monitor → DBGU`); lightweight log shim. Log/diagnostic chatter only — kept off the console channel. |
+| FLEXCOM1 (USART) | ✅ in use | Fretboard link — 500 000 Bd 8N1, ring-buffer mode (§4.3). |
+| FLEXCOM2 (USART) | ✅ in use | Operator command console — 115 200 Bd 8N1, ring-buffer mode (§4.9). |
 | FreeRTOS (Harmony OSAL) | ✅ in use | Scheduler running; video task split out (commit `6b85d5e`). |
 | TC0 (SYS_TIME) | ✅ in use | OSAL synchronous I²C requires it. |
 | GMAC (Ethernet) | ⚪ unused | Reserved for future live-stream ref-data export (not MVP). |
 | SDMMC | 🚧 to be enabled | MVP transport for reference-data recording (§4.6). |
-| USB host (EHCI + OHCI) | ⚪ removed | Was the fretboard link on the original Curiosity board; the Curiosity Hybrid has no host-capable port, so the link moved to FLEXCOM2 (§4.3). |
+| USB host (EHCI + OHCI) | ⚪ removed | Was the fretboard link on the original Curiosity board; the Curiosity Hybrid has no host-capable port, so the link moved to a direct UART (§4.3). |
 | USB device (UDPHS) | ✅ in use | Perf-log CDC ACM sink; marvin presents as USB device to dev PC, streams perf records at up to 2.77 MB/s. |
 | Maxtouch I²C | 🚧 to be enabled | Operator UI (§4.5). |
 | Watchdog | 🚧 not configured | System services (§4.7). |
-| Free FLEXCOMs | several available | FLEXCOM2 now drives the fretboard link (§4.3); others remain free. |
+| Free FLEXCOMs | several available | FLEXCOM1 = fretboard link (§4.3), FLEXCOM2 = console (§4.9), FLEXCOM8 = I²C; others remain free. |
 
 ---
 
@@ -271,10 +272,10 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 
 ### 4.3 Fretboard link ✅
 
-Direct **FLEXCOM2 USART** link between marvin and the fretboard MCU — a plain UART wire, no USB. marvin's `PA13` (FLEXCOM2_IO0, `GUITAR_TX`) and `PA14` (FLEXCOM2_IO1, `GUITAR_RX`) connect to the fretboard's SERCOM1 (`PB01` RX / `PB00` TX). Both ends run **500 000 baud, 8N1**. The FLEXCOM2 USART runs in Harmony ring-buffer mode so RX never drops bytes between reads.
+Direct **FLEXCOM1 USART** link between marvin and the fretboard MCU — a plain UART wire, no USB. marvin's `PA28` (FLEXCOM1_IO0, `GUITAR_TX`) and `PA29` (FLEXCOM1_IO1, `GUITAR_RX`) connect to the fretboard's SERCOM1 (`PB01` RX / `PB00` TX). Both ends run **500 000 baud, 8N1**. The FLEXCOM1 USART runs in Harmony ring-buffer mode so RX never drops bytes between reads. (Was FLEXCOM2 until the console moved onto FLEXCOM2 — see §4.9.)
 
-- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing. `fretboard_link_task` writes the latest mask via `FLEXCOM2_USART_Write`.
-- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 17-byte start/end-bracketed frame (`0x03 … 0xFC`, with `sample_seq` + `applied_mask`). The FLEXCOM2 RX ring fills continuously from its ISR; a persistent read-threshold notification wakes `fretboard_rx_task`, which drains the ring, resyncs on the frame markers, and republishes each valid frame as a `PERF_REC_FRETBOARD_RAW` perf-log record (default-disabled, host enables via `PERF_CMD_SET_TYPE_MASK`). This is the on-board capture path until the SD-card recorder lands; it's also the substrate for the future `adc_fretboard` detector (§4.2).
+- **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing. `fretboard_link_task` writes the latest mask via `FLEXCOM1_USART_Write`.
+- **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 17-byte start/end-bracketed frame (`0x03 … 0xFC`, with `sample_seq` + `applied_mask`). The FLEXCOM1 RX ring fills continuously from its ISR; a persistent read-threshold notification wakes `fretboard_rx_task`, which drains the ring, resyncs on the frame markers, and republishes each valid frame as a `PERF_REC_FRETBOARD_RAW` perf-log record (default-disabled, host enables via `PERF_CMD_SET_TYPE_MASK`). This is the on-board capture path until the SD-card recorder lands; it's also the substrate for the future `adc_fretboard` detector (§4.2).
 - **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
 
 ### 4.4 Timing pipeline 🚧
@@ -442,6 +443,15 @@ See §9 for tracking entries. In summary:
 
 - **Q10** — Recognizer algorithm: template matching vs simple OCR vs region/color heuristics vs a small CNN. Trade-off is robustness vs CPU cost vs metadata authoring effort.
 - **Q11** — Command-path arbitration between game-state controller and timing pipeline. Default is "they don't run at the same time" (gameplay vs menu), but the boundary needs to be explicit.
+
+### 4.9 Operator command console ✅
+
+An **interactive text console** over **FLEXCOM2 USART (115 200 8N1, ring-buffer mode)** — marvin's `PA13` (FLEXCOM2_IO0, `CLI_TX`) / `PA14` (FLEXCOM2_IO1, `CLI_RX`) — deliberately on a separate channel from the DBGU log/printf chatter — log output stays on DBGU, console I/O stays on FLEXCOM2, so neither pollutes the other.
+
+- **Why not Harmony `SYS_CONSOLE`/`SYS_COMMAND`:** those are MCC-config-coupled and live in regenerated files (this board already carries ~10 re-apply patches against clobbered generated code). The console is instead a small in-tree module (`console/console.{h,c}`) in the same shape as `fretboard_link`/`perf_log`: it owns the USART plib directly, is fully statically allocated, and is kept out of MCC via `user.cmake`.
+- **Library:** [embedded-cli](https://github.com/funbiscuit/embedded-cli) (vendored under `default/src/third_party/embedded-cli/`, MIT), used in static-allocation mode (a fixed `CLI_UINT` buffer → no `malloc`). Provides line editing, history, and tab-completion.
+- **Mechanics:** one FreeRTOS task drains the FLEXCOM2 RX ring (woken by a 1-byte read-threshold notification, like `fretboard_rx_task`), feeds bytes to embedded-cli, and runs the dispatcher. Output is written byte-by-byte into the TX ring.
+- **Commands (v0):** `status`, `detect <cv|adc> <on|off>`, `active <cv|adc>`, `timing <on|off>`, `manual <on|off>`, `fret <g|r|y|b|o> <0|1>`, `strum <down|up>` — dispatching into the existing `Detector_*`, `TimingPipeline_SetEnabled`, and `ManualControl_*` setters. The binding table is a plain static array; adding a command is one row. Maps onto the §6 operating-mode toggles. (`record`/`game_*` toggles and runtime timing-constant setters are deferred until those subsystems / setters exist.)
 
 ---
 
