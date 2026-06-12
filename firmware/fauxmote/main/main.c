@@ -2,6 +2,7 @@
 #include "esp_log.h"
 
 #include "bt_hid_device.h"
+#include "status_led.h"
 
 static const char *TAG = "fauxmote";
 
@@ -14,6 +15,7 @@ void app_main(void)
     }
     ESP_ERROR_CHECK(err);
 
+    StatusLed_Start();
     Fauxmote_BtStart();
     ESP_LOGI(TAG, "HID device started, identity = Nintendo RVL-CNT-01");
 }

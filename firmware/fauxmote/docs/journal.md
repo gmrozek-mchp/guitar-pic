@@ -13,12 +13,21 @@ On a red-SYNC press the Wii: accepts our SDP, completes legacy PIN pairing
 (`auth OK`), and opens both HID L2CAP channels (control CID 0x40 / interrupt CID 0x41,
 both `mtu 640`), then starts sending us data. Wii BD_ADDR `00:17:ab:07:2c:21`.
 
-**Phase 2 next — keep the connection alive + behave like a Wiimote.** We don't yet
-read the L2CAP fds. Read the control-channel fd (HIDP: input reports prefixed
-`0xa1`, output `0xa2`), handle the Wii's output reports (status request `0x15` →
-send status `0x20`; data-reporting-mode `0x12`; LED `0x11`; read/write register
-`0x16`/`0x17`), and send core-button input reports (`0x30`). Success = a stable,
-assigned Wiimote (player LED solid) in the Wii Home menu.
+**Phase 2 DONE — the Wii fully initializes fauxmote as an assigned Wiimote.**
+`wiimote.c` answers the Wii's output reports (`0x17` read→`0x21`, `0x15`→`0x20`
+status, `0x16` write→`0x22` ack, `0x11` LEDs, `0x12` reporting mode, `0x13`/`0x1a`
+IR-enable acks) and streams `0x30` core-button reports (~15 ms) for keep-alive.
+On hardware: clean full handshake, the Wii assigns a player slot (`0x11`), and the
+GPIO13 status LED (no real player LEDs on a Feather) goes **solid = assigned**
+(heartbeat=waiting, fast-blink=connected). IR is acked but not implemented (only
+needed for the pointer, not guitar gameplay).
+
+**Phase 3 next — guitar extension.** Report `0x34` (core + 19 extension bytes),
+extension ID `00 00 A4 20 01 03` at register `0x(4)a400fa`, init writes
+`0x55`→`0xf0` / `0x00`→`0xfb`, and the 6-byte guitar report (frets/strum/whammy).
+Needs register reads/writes (`0x17`/`0x16` register space) wired to an extension
+register bank, and the status `0x20` extension-connected bit set. Also still open:
+button input source (Phase 4) + device-initiated reconnect after idle.
 
 Phase 2 also owns the **sleep/wake + keep-awake** behavior:
 - **Reconnect (device-initiated):** after the Wii drops us for idle (console still
@@ -61,6 +70,21 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-06-12 — Phase 2b done: assigned Wiimote + status LED
+
+- `wiimote.c` report state machine (ported from rnconrad's `wm_reports`/handlers,
+  explicit bytes, no bitfields): EEPROM read (`0x21`, calibration at 0x16/0x20,
+  error for >0x16FF), status (`0x20`), ack (`0x22`), reporting-mode/LED/IR acks,
+  and a static sender task streaming `0x30` every 15 ms. Register reads currently
+  return an error (no extension yet → Phase 3).
+- Wired into the L2CAP reader (`Wiimote_HandleRx` per frame, `Wiimote_NotifyFdClosed`
+  on close). Added `status_led.c` driving GPIO13 (heartbeat/fast-blink/solid) since
+  the Feather has no player LEDs; reflects `Wiimote_IsConnected/IsAssigned`.
+- On hardware: full clean handshake (`0x17`×n, `0x11`, `0x15`, `0x12`, `0x13`/`0x1a`,
+  `0x16` IR-register writes), Wii assigns a slot, **LED solid = assigned**. Turned
+  off the verbose Bluedroid trace block in `sdkconfig.defaults` (needs `set-target`
+  to re-apply) — monitor is now readable.
 
 ### 2026-06-12 — Phase 2a: HID read path working
 

@@ -12,6 +12,7 @@
 
 #include "bt_hid_device.h"
 #include "wiimote_sdp.h"
+#include "wiimote.h"
 
 static const char *TAG = "fauxmote.bt";
 
@@ -86,9 +87,9 @@ static void hid_reader_task(void *arg)
     for (;;) {
         int n = read(l->fd, l->rx, sizeof(l->rx));
         if (n > 0) {
-            ESP_LOGI(TAG, "fd %d RX %d B: hidp 0x%02x report 0x%02x",
-                     l->fd, n, l->rx[0], n > 1 ? l->rx[1] : 0);
-            ESP_LOG_BUFFER_HEX(TAG, l->rx, n);
+            ESP_LOGI(TAG, "fd %d RX report 0x%02x (%d B)", l->fd,
+                     n > 1 ? l->rx[1] : 0, n);
+            Wiimote_HandleRx(l->fd, l->rx, n);
         } else if (n == 0) {
             /* esp_bt_l2cap read is non-blocking: 0 = no data yet, so poll. */
             vTaskDelay(pdMS_TO_TICKS(10));
@@ -97,6 +98,7 @@ static void hid_reader_task(void *arg)
             break;
         }
     }
+    Wiimote_NotifyFdClosed(l->fd);
     l->in_use = false;
     vTaskDelete(NULL);
 }
@@ -177,6 +179,8 @@ void Fauxmote_BtStart(void)
     if (!WiimoteSdp_Register()) {
         ESP_LOGE(TAG, "Wiimote SDP registration failed");
     }
+    Wiimote_Start();
+
     ESP_ERROR_CHECK(esp_bt_l2cap_register_callback(l2cap_cb));
     ESP_ERROR_CHECK(esp_bt_l2cap_init());
 
