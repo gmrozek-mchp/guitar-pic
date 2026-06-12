@@ -64,8 +64,8 @@ void PIO_Initialize ( void )
     ((pio_registers_t*)PIO_PORT_A)->PIO_ABCDSR[0]= 0x0U;
     ((pio_registers_t*)PIO_PORT_A)->PIO_ABCDSR[1]= 0xc0000U;
     /* PORTA PIO Disable and Peripheral Enable*/
-    ((pio_registers_t*)PIO_PORT_A)->PIO_PDR = 0xc0c603fU;
-    ((pio_registers_t*)PIO_PORT_A)->PIO_PER = ~0xc0c603fU;
+    ((pio_registers_t*)PIO_PORT_A)->PIO_PDR = 0x3c0c603fU;
+    ((pio_registers_t*)PIO_PORT_A)->PIO_PER = ~0x3c0c603fU;
     ((pio_registers_t*)PIO_PORT_A)->PIO_MDDR = 0xFFFFFFFFU;
     /* PORTA Pull Up Enable/Disable as per MHC selection */
     ((pio_registers_t*)PIO_PORT_A)->PIO_PUDR = 0xFFFFFFFFU;

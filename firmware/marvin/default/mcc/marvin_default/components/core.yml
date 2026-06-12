@@ -359,7 +359,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '202137663'
+            value: '1007444031'
           type: Dynamic
         type: Values
       type: Hex
@@ -4692,6 +4692,132 @@ data:
       - children:
         - attributes:
             value: GUITAR_RX
+          type: User
+        type: Values
+      type: String
+    FLEXCOM1_CLOCK_ENABLE:
+      attributes:
+        id: FLEXCOM1_CLOCK_ENABLE
+        label: FLEXCOM1
+      children:
+      - children:
+        - attributes:
+            id: flexcom1
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM1_INTERRUPT_ENABLE:
+      attributes:
+        id: FLEXCOM1_INTERRUPT_ENABLE
+        label: Enable 6 -- Flexcom 1
+      children:
+      - children:
+        - attributes:
+            id: flexcom1
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM1_INTERRUPT_HANDLER:
+      attributes:
+        id: FLEXCOM1_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: flexcom1
+            value: FLEXCOM1_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    FLEXCOM1_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: FLEXCOM1_INTERRUPT_HANDLER_LOCK
+        label: FLEXCOM1_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: flexcom1
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM1_CLOCK_FREQUENCY:
+      attributes:
+        id: FLEXCOM1_CLOCK_FREQUENCY
+        label: FLEXCOM1_CLOCK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    PIN_217_FUNCTION_TYPE:
+      attributes:
+        id: PIN_217_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM1_IO0
+          type: User
+        type: Values
+      type: String
+    PIN_217_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_217_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_145_FUNCTION_TYPE:
+      attributes:
+        id: PIN_145_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM1_IO1
+          type: User
+        type: Values
+      type: String
+    PIN_145_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_145_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: A
+          type: User
+        type: Values
+      type: String
+    PIN_217_FUNCTION_NAME:
+      attributes:
+        id: PIN_217_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: MONITOR_TX
+          type: User
+        type: Values
+      type: String
+    PIN_145_FUNCTION_NAME:
+      attributes:
+        id: PIN_145_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: MONITOR_RX
           type: User
         type: Values
       type: String

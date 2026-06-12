@@ -61,7 +61,7 @@ J17,PA4,SDMMC0_DAT2,SDMMC0_DAT2,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 K15,PD12,NAND_D6,EBI_NANDDAT6,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 K16,PB10,,Available,In,,,,,,,,
 K17,PA2,SDMMC0_CK,SDMMC0_CK,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
-L5,PA29,,Available,In,,,,,,,,
+L5,PA29,MONITOR_RX,FLEXCOM1_IO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 L13,PA5,SDMMC0_DAT3,SDMMC0_DAT3,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 L14,PA11,,Available,In,,,,,,,,
 L15,PB1,BUTTON_2,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low
@@ -93,7 +93,7 @@ R16,PA21,BUTTON_1,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low
 R17,PA18,CLASSD_L0,CLASSD_L0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T1,PA27,DBGU_TX,DBGU_DTXD,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T3,PA30,,Available,In,,,,,,,,
-T4,PA28,,Available,In,,,,,,,,
+T4,PA28,MONITOR_TX,FLEXCOM1_IO0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T5,PA14,GUITAR_RX,FLEXCOM2_IO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T7,PA7,LED_3,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 T8,PB11,,Available,In,,,,,,,,

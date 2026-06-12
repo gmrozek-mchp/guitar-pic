@@ -1,11 +1,11 @@
 configVersion: 1.0.0
-componentName: flexcom2
+componentName: flexcom1
 coreVersion: 5.9.0
 device: SAM9X75D2G
 library: []
 dependency:
 - dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
-  name: flexcom2
+  name: flexcom1
   type: module
   version: ''
 - dependencyPackage: ''
@@ -21,9 +21,9 @@ data:
     children:
     - children:
       - attributes:
-          id: flexcom2
-          x: '16'
-          y: '645'
+          id: flexcom1
+          x: '15'
+          y: '570'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
@@ -43,7 +43,7 @@ data:
         type: Attributes
       - children:
         - attributes:
-            value: '500000'
+            value: '6000000'
           type: User
         type: Values
       type: Integer
@@ -54,8 +54,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: '66'
+            id: flexcom1
+            value: '2'
           type: Dynamic
         type: Values
       type: Integer
@@ -64,9 +64,9 @@ data:
         id: EXTERNAL_CLOCK_FREQ
         label: External Clock Source
       type: Integer
-    FLEXCOM2_COMMON_HEADER:
+    FLEXCOM1_COMMON_HEADER:
       attributes:
-        id: FLEXCOM2_COMMON_HEADER
+        id: FLEXCOM1_COMMON_HEADER
       children:
       - children:
         - attributes:
@@ -101,9 +101,9 @@ data:
           type: String
         type: Attributes
       type: File
-    FLEXCOM2_HEADER:
+    FLEXCOM1_HEADER:
       attributes:
-        id: FLEXCOM2_HEADER
+        id: FLEXCOM1_HEADER
       children:
       - children:
         - attributes:
@@ -122,7 +122,7 @@ data:
             id: name
           children:
           - type: Value
-            value: plib_flexcom2_usart.h
+            value: plib_flexcom1_usart.h
           type: String
         - attributes:
             id: project
@@ -134,7 +134,7 @@ data:
             id: source
           children:
           - type: Value
-            value: ../peripheral/flexcom_11268/templates/plib_flexcom_usart_ring_buffer.h.ftl
+            value: ../peripheral/flexcom_11268/templates/plib_flexcom_usart.h.ftl
           type: String
         - attributes:
             id: type
@@ -144,9 +144,9 @@ data:
           type: String
         type: Attributes
       type: File
-    FLEXCOM2_SOURCE:
+    FLEXCOM1_SOURCE:
       attributes:
-        id: FLEXCOM2_SOURCE
+        id: FLEXCOM1_SOURCE
       children:
       - children:
         - attributes:
@@ -165,7 +165,7 @@ data:
             id: name
           children:
           - type: Value
-            value: plib_flexcom2_usart.c
+            value: plib_flexcom1_usart.c
           type: String
         - attributes:
             id: project
@@ -177,7 +177,7 @@ data:
             id: source
           children:
           - type: Value
-            value: ../peripheral/flexcom_11268/templates/plib_flexcom_usart_ring_buffer.c.ftl
+            value: ../peripheral/flexcom_11268/templates/plib_flexcom_usart.c.ftl
           type: String
         type: Attributes
       type: File
@@ -274,7 +274,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '255'
           type: Dynamic
         type: Values
@@ -326,7 +326,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '255'
           type: Dynamic
         type: Values
@@ -378,7 +378,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '255'
           type: Dynamic
         type: Values
@@ -430,7 +430,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '255'
           type: Dynamic
         type: Values
@@ -537,7 +537,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '266666666'
           type: Dynamic
         type: Values
@@ -611,7 +611,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '266666666'
           type: Dynamic
         type: Values
@@ -628,7 +628,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '165'
           type: Dynamic
         type: Values
@@ -640,7 +640,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '1'
           type: Dynamic
         type: Values
@@ -652,7 +652,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '165'
           type: Dynamic
         type: Values
@@ -679,7 +679,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: 'false'
           type: Dynamic
         type: Values
@@ -696,8 +696,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: 'true'
+            id: flexcom1
+            value: 'false'
           type: Dynamic
         type: Values
       type: Boolean
@@ -708,8 +708,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: '1'
+            id: flexcom1
+            value: '0'
           type: Dynamic
         type: Values
       type: Integer
@@ -738,7 +738,7 @@ data:
         type: Attributes
       - children:
         - attributes:
-            value: '4'
+            value: '0'
           type: User
         type: Values
       type: KeyValueSet
@@ -754,8 +754,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: 'true'
+            id: flexcom1
+            value: 'false'
           type: Dynamic
         type: Values
       type: Boolean
@@ -763,15 +763,6 @@ data:
       attributes:
         id: FLEXCOM_USART_RX_FIFO_THRESHOLD
         label: RX FIFO Threshold
-      children:
-      - children:
-        - attributes:
-            id: visible
-          children:
-          - type: Value
-            value: 'true'
-          type: Boolean
-        type: Attributes
       type: Integer
     FLEXCOM_USART_RX_FIFO_THRESHOLD_2:
       attributes:
@@ -787,15 +778,6 @@ data:
       attributes:
         id: FLEXCOM_USART_TX_FIFO_THRESHOLD
         label: TX FIFO Threshold
-      children:
-      - children:
-        - attributes:
-            id: visible
-          children:
-          - type: Value
-            value: 'true'
-          type: Boolean
-        type: Attributes
       type: Integer
     FLEX_USART_CLOCK_FREQ:
       attributes:
@@ -804,15 +786,7 @@ data:
       children:
       - children:
         - attributes:
-            id: visible
-          children:
-          - type: Value
-            value: 'true'
-          type: Boolean
-        type: Attributes
-      - children:
-        - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '266666666'
           type: Dynamic
         type: Values
@@ -824,7 +798,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: '371'
           type: Dynamic
         type: Values
@@ -841,7 +815,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: 'false'
           type: Dynamic
         type: Values
@@ -863,8 +837,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: '5'
+            id: flexcom1
+            value: '6'
           type: Dynamic
         type: Values
       type: Integer
@@ -890,8 +864,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: '&(FLEXCOM2_REGS->FLEX_US_RHR)'
+            id: flexcom1
+            value: '&(FLEXCOM1_REGS->FLEX_US_RHR)'
           type: Dynamic
         type: Values
       type: String
@@ -977,8 +951,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
-            value: '&(FLEXCOM2_REGS->FLEX_US_THR)'
+            id: flexcom1
+            value: '&(FLEXCOM1_REGS->FLEX_US_THR)'
           type: Dynamic
         type: Values
       type: String
@@ -989,7 +963,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: 'true'
           type: Dynamic
         type: Values
@@ -1026,7 +1000,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: DRV_USART_DATA_8_BIT
           type: Dynamic
         type: Values
@@ -1150,20 +1124,6 @@ data:
       attributes:
         id: USART_RX_RING_BUFFER_SIZE
         label: RX Ring Buffer Size
-      children:
-      - children:
-        - attributes:
-            id: visible
-          children:
-          - type: Value
-            value: 'true'
-          type: Boolean
-        type: Attributes
-      - children:
-        - attributes:
-            value: '512'
-          type: User
-        type: Values
       type: Integer
     USART_STOP_1_5_BIT_MASK:
       attributes:
@@ -1197,7 +1157,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: 'false'
           type: Dynamic
         type: Values
@@ -1209,7 +1169,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom2
+            id: flexcom1
             value: 'false'
           type: Dynamic
         type: Values
