@@ -62,6 +62,18 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Session log
 
+### 2026-06-12 — Phase 2a: HID read path working
+
+- Added per-channel reader tasks (static `xTaskCreateStatic`) that `read()` the
+  L2CAP fds from `ESP_BT_L2CAP_OPEN_EVT`. Gotcha: `esp_bt_l2cap`'s VFS `read()` is
+  **non-blocking** — empty rx queue returns `0` (not EOF), peer-close returns `-1`
+  (errno `EPIPE`). So poll on `0`, exit only on `<0` (first cut wrongly treated `0`
+  as EOF and the reader exited instantly). No `select` support on this VFS.
+- First output report from the Wii (data channel, PSM 0x13): `a2 17 00 00 17 70 00
+  01` = report `0x17` Read Memory, EEPROM offset `0x001770`, size 1. The Wii then
+  **blocks waiting for our `0x21` (Read Data) reply** — confirms the report
+  responder is the gate to a live/assigned controller. → Phase 2b.
+
 ### 2026-06-12 — Phase 1 complete: Wii pairs + opens HID channels
 
 - Custom SDP path works. Replaced esp_hidd with: `wiimote_sdp.c` building the exact

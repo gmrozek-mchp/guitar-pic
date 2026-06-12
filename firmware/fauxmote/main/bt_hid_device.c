@@ -1,3 +1,8 @@
+#include <errno.h>
+#include <unistd.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "esp_log.h"
 #include "esp_bt.h"
 #include "esp_bt_main.h"
@@ -59,6 +64,57 @@ static void gap_cb(esp_bt_gap_cb_event_t event, esp_bt_gap_cb_param_t *param)
     }
 }
 
+#define HID_LINK_MAX  2
+#define HID_RX_LEN    64
+#define HID_RX_STACK  3072
+
+typedef struct {
+    bool         in_use;
+    int          fd;
+    StaticTask_t tcb;
+    StackType_t  stack[HID_RX_STACK];
+    uint8_t      rx[HID_RX_LEN];
+} hid_link_t;
+
+static hid_link_t s_links[HID_LINK_MAX];
+
+/* Read + log every HIDP frame the Wii sends on an open HID channel, so we can see
+ * its handshake (output reports 0x11/0x12/0x15, …) before crafting responses. */
+static void hid_reader_task(void *arg)
+{
+    hid_link_t *l = (hid_link_t *)arg;
+    for (;;) {
+        int n = read(l->fd, l->rx, sizeof(l->rx));
+        if (n > 0) {
+            ESP_LOGI(TAG, "fd %d RX %d B: hidp 0x%02x report 0x%02x",
+                     l->fd, n, l->rx[0], n > 1 ? l->rx[1] : 0);
+            ESP_LOG_BUFFER_HEX(TAG, l->rx, n);
+        } else if (n == 0) {
+            /* esp_bt_l2cap read is non-blocking: 0 = no data yet, so poll. */
+            vTaskDelay(pdMS_TO_TICKS(10));
+        } else {
+            ESP_LOGW(TAG, "fd %d closed (errno %d); reader exit", l->fd, errno);
+            break;
+        }
+    }
+    l->in_use = false;
+    vTaskDelete(NULL);
+}
+
+static void hid_link_start(int fd)
+{
+    for (int i = 0; i < HID_LINK_MAX; i++) {
+        if (!s_links[i].in_use) {
+            s_links[i].in_use = true;
+            s_links[i].fd = fd;
+            xTaskCreateStatic(hid_reader_task, "hid_rx", HID_RX_STACK,
+                              &s_links[i], 5, s_links[i].stack, &s_links[i].tcb);
+            return;
+        }
+    }
+    ESP_LOGE(TAG, "no free HID link slot for fd %d", fd);
+}
+
 static void l2cap_cb(esp_bt_l2cap_cb_event_t event, esp_bt_l2cap_cb_param_t *param)
 {
     switch (event) {
@@ -83,6 +139,7 @@ static void l2cap_cb(esp_bt_l2cap_cb_event_t event, esp_bt_l2cap_cb_param_t *par
         ESP_LOGI(TAG, "  status=%d handle=%u fd=%d mtu=%d",
                  param->open.status, (unsigned)param->open.handle,
                  param->open.fd, (int)param->open.tx_mtu);
+        hid_link_start(param->open.fd);
         break;
     case ESP_BT_L2CAP_CLOSE_EVT:
         ESP_LOGW(TAG, "L2CAP CLOSE handle=%u async=%d",
