@@ -22,25 +22,40 @@ GPIO13 status LED (no real player LEDs on a Feather) goes **solid = assigned**
 (heartbeat=waiting, fast-blink=connected). IR is acked but not implemented (only
 needed for the pointer, not guitar gameplay).
 
-**Phase 3 next — guitar extension.** Report `0x34` (core + 19 extension bytes),
-extension ID `00 00 A4 20 01 03` at register `0x(4)a400fa`, init writes
-`0x55`→`0xf0` / `0x00`→`0xfb`, and the 6-byte guitar report (frets/strum/whammy).
-Needs register reads/writes (`0x17`/`0x16` register space) wired to an extension
-register bank, and the status `0x20` extension-connected bit set. Also still open:
-button input source (Phase 4) + device-initiated reconnect after idle.
+**Core-Wiimote + test-CLI workstream (before guitar).**
 
-Phase 2 also owns the **sleep/wake + keep-awake** behavior:
-- **Reconnect (device-initiated):** after the Wii drops us for idle (console still
-  on), *we* must re-open the link — the Wii won't. Building blocks are in place
-  (SDP `HIDReconnectInitiate=true`; we have the Wii BD_ADDR from pairing;
-  `esp_bt_l2cap_connect(psm, bda)`). Store the bonded Wii address and reconnect
-  PSM 0x11→0x13 on a trigger (a Marvin button), then resume reports.
-- **Keep-awake:** the Wii's idle-disconnect watches for *input* activity, so the
-  keep-alive must be an occasional **button input report**, not just any packet.
-  During gameplay this is free (Marvin streams strum/fret input continuously).
-- **Caveat (not a bug to fix):** a Wiimote cannot power a Wii on from full standby
-  (red light) — the console's BT radio is off then. "Wake" only means reconnecting
-  while the console is already running.
+- **Step A DONE — manual test CLI + connection management.** `esp_console` REPL
+  (`console_cli.c`): `pair`/`stop`/`reconnect`/`unlink`/`status`/`btn`/`tap` — all
+  thin pass-throughs over the module API (logic lives in `wiimote.c`/`bt_hid_device.c`,
+  so Marvin can drive the same API later). Boots idle; `pair` arms the HID listeners
+  for that sync window and `stop` tears them down; servers are **armed per pairing
+  window**, not at boot or auto-re-armed (re-arming leaked L2CAP slots, since
+  `reconnect` uses client connects). Honors the Wii's requested reporting mode
+  (`0x12` → builds that report ID; buttons populated, accel/IR/ext zeroed). Disconnect
+  fully resets state (`Wiimote_NotifyDisconnected`) and readers exit by L2CAP handle
+  (robust to fd reuse). Bond persists in NVS (recalled at boot via
+  `esp_bt_gap_get_bond_device_list`); `unlink` removes it. Status LED on GPIO13:
+  blip/~3 s = idle, fast blink = pairing/connecting, N flashes = assigned player N.
+- **Step B next — IR pointer.** The Wii menu requests reporting mode **`0x33`**
+  (buttons + accel + 12-byte *extended* IR). Keep a pointer `(x,y)` **state variable
+  in `wiimote.c`** (so every IR-bearing mode — 0x33/0x36/0x37/0x3e/0x3f — can use it),
+  set via a CLI `point` command; synthesize the two sensor-bar IR dots into the
+  mode's IR field + report a level accelerometer, so the Home-screen cursor moves.
+
+**Phase 3 (after pointer) — guitar extension.** Report `0x34` (core + 19 ext bytes),
+extension ID `00 00 A4 20 01 03` at register `0x(4)a400fa`, init writes
+`0x55`→`0xf0` / `0x00`→`0xfb`, the 6-byte guitar report, register reads/writes wired
+to an extension bank, and the status `0x20` extension-connected bit.
+
+**Known limitations / still open:**
+- **Device-initiated `reconnect`** connects in Basic L2CAP mode (`l2c_fcr_adj_our_req
+  _options ... BASIC mode`) while the Wii's HID wants ERTM — so it may connect but
+  misbehave. Reliable reconnection is `pair`+SYNC. Fixing reconnect to use ERTM
+  matters for Marvin's auto-reconnect/keep-awake, not for core function.
+- **Keep-awake:** the Wii idle-disconnects on lack of *input*; streaming reports +
+  occasional button activity keeps it alive (free during gameplay).
+- **Caveat:** a Wiimote cannot power a Wii on from standby (BT radio off); "wake" only
+  means reconnecting while the console is already running.
 
 Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
@@ -70,6 +85,26 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-06-12 — Step A: test CLI + connection management
+
+- Added `esp_console` REPL (`console_cli.c`) — thin commands over the module API.
+  Boot-idle; `pair` arms HID listeners + discoverable, `stop` tears down. Honors the
+  Wii's reporting mode. Bond recall at boot + `unlink`. New LED scheme (idle blip /
+  fast blink / N-flash player slot). `tap` logic moved into `Wiimote_TapButton`
+  (non-blocking, sender auto-releases).
+- Bugs found + fixed on hardware during cycle testing:
+  - Disconnect left `connected=1` → `Wiimote_NotifyDisconnected` now clears
+    `s_data_fd` immediately (not just on reader exit).
+  - Reader tasks leaked their link slot when a re-armed server recycled their fd →
+    readers now exit by **L2CAP handle** signalled from the CLOSE event, not by
+    `read()` return.
+  - **L2CAP slot exhaustion after ~4-5 reconnect cycles**: auto-re-arming servers on
+    every disconnect leaked server slots (reconnect uses *client* connects, so the
+    re-armed servers were never consumed). Fix: arm servers only per `pair` window,
+    tear down on `stop`; no auto-re-arm.
+- Open: device-initiated `reconnect` uses Basic L2CAP mode vs the Wii's ERTM (may
+  misbehave) — reliable path is `pair`+SYNC.
 
 ### 2026-06-12 — Phase 2b done: assigned Wiimote + status LED
 
