@@ -41,28 +41,52 @@ needed for the pointer, not guitar gameplay).
   synthesizes two sensor-bar dots into mode `0x33`'s 12-byte extended-IR field + a
   level accel. **Verified on hardware** — navigated the Wii menu and launched GH3 with
   it. Calibration constants (`IR_X/Y_CENTER/HALF`, from on-hardware edge measurement)
-  map pointer 0..1 to the full screen, (0,0)=top-left. Basic-IR modes 0x36/0x37 still
-  stubbed (reuse the same pointer state when needed).
+  map pointer 0..1 to the full screen, (0,0)=top-left. Basic-IR modes `0x36`/`0x37`
+  are now filled too (`build_ir_basic` + shared `ir_dots`); the byte packing is
+  verified against Dolphin's `IRBasic` struct and the Linux `hid-wiimote` decoder.
+  Pointer tracks correctly on the main Wii screen and its Home overlay (basic `0x37`),
+  so one calibration covers both modes (see the GH3-pointer note under Phase 3).
 
-**Phase 3 (next) — guitar extension.** Plan + protocol (verified, wiibrew):
-- **Detection:** set the extension-connected bit in the `0x20` status; serve an
-  extension register bank (`0x17`/`0x16` *register space*, addr `0xa4xxxx`, use low
-  byte) with ID `00 00 A4 20 01 03` at `0xfa`. Init writes the host may send:
-  `0x55`→`0xf0` then `0x00`→`0xfb` (GHWT/3rd-party: disables encryption).
-- **Report:** stream mode `0x34` (core buttons + 19 ext bytes); first 6 ext bytes =
-  the guitar report. Bit layout (buttons **active-low**, rest = 1; rest bytes 4,5 =
-  `0xFF`; stick center `0x20`):
-  - byte0 bits5-0 = stick X; byte1 bits5-0 = stick Y
-  - byte2 bits4-0 = touch bar; byte3 bits4-0 = whammy
-  - byte4: bit6 BD(strum down), bit4 B−, bit2 B+ (others 1)
-  - byte5: bit7 BO, bit6 BR, bit5 BB, bit4 BG, bit3 BY, bit2 pedal, bit0 BU(strum up)
-  - CLI setters (fret/strum/whammy), `Wiimote_SetButton`-style, for Marvin later.
-- **ENCRYPTION (the GH3 wrinkle):** GH3's Les Paul uses the *old* init (writes `0`
-  to `0xa40040`) → **expects encrypted extension data**. So detection works
-  unencrypted, but note data must be encrypted with the standard Wii extension
-  cipher (key from the host's `0x40`-`0x4F` writes; algorithm in
-  `rnconrad/WiimoteEmulator` `wm_crypto.c`). Without it GH3 detects the guitar but
-  reads garbage. Implement the cipher (port wm_crypto) as part of this phase.
+**Phase 3 DONE — guitar extension plays GH3 (detection + frets + strum + whammy).**
+On hardware: GH3 detects the guitar and frets/strum/whammy register in-game.
+
+- **Module split.** The guitar lives in its own `guitar.c` behind a small interface
+  (`wiimote_ext.h`: `wiimote_extension_t` = register bank + `build_report`/`set_button`/
+  `reset`; `Wiimote_RegisterExtension`). `wiimote.c` is now extension-agnostic (serves
+  the registered bank for `0xa4xxxx` reg I/O, calls `build_report` for the ext field,
+  delegates unknown button names to `set_button`). Buttons drive by name through
+  `Wiimote_SetButton`/`TapButton` (green/red/yellow/blue/orange/strumup/strumdown/
+  gplus/gminus/pedal); CLI `btn`/`tap`/`whammy`/`ext` are thin pass-throughs. Adding a
+  nunchuk/classic later is just another self-registering `*.c`.
+- **Report bit layout** (buttons **active-low**, rest = 1; verified against wiibrew +
+  Linux `hid-wiimote`): byte0/1 = stick X/Y (bits5-0); **byte0/1 bits7-6 = 1 to
+  identify a GH3 Les Paul** (0 = GHWT — with them clear GH3 treats us as GHWT and
+  ignores the strum bar, which cost real debugging time); byte2 touchbar; byte3
+  whammy; byte4 bit6 BD / bit4 B− / bit2 B+; byte5 bit7 BO / bit6 BR / bit5 BB /
+  bit4 BG / bit3 BY / bit2 pedal / bit0 BU. GH3 streams mode **`0x37`** (not `0x34`);
+  the ext field is filled for every ext-bearing mode (`0x32/34/35/36/37/3d`).
+- **ENCRYPTION is required and now implemented** (`ext_crypto.c/.h`). GH3's actual
+  handshake (from a register trace), *not* the old `0→0x40` init the plan guessed:
+  `0x55`→`0xf0` (disable) → read ID at `0xfa` in the clear (decide GH3 vs GHWT) →
+  `0xAA`→`0xf0` (re-enable) → 16-byte key to `0x40`-`0x4f`. Everything the game then
+  reads (streamed ext bytes + the `0x20` calibration) is decrypted with that key, so
+  plaintext reads as garbage. The base Wiimote captures the key, derives the ft/sb
+  tables, and encrypts outgoing ext data (streamed bytes at reg offset `0x08`; reg
+  reads at `addr & 7`); the guitar module stays plaintext. Cipher = the marcan Wii
+  extension cipher; **rnconrad's `wm_crypto.c` tables are corrupted** (sbox[3]@0x60,
+  [4]@0xd8, [6]@0x88/0xec — `0xD0`/`0xF0` & `0xD2`/`0xE2` flips, not valid
+  permutations), so the tables were taken from **Dolphin's 1st-party** set and the
+  algorithm verified term-for-term against Dolphin; round-trip validated against GH3's
+  real key (idx 0 matched, encrypt→decrypt identity). Earlier "green/red work without
+  encryption" was a decryption fluke.
+- **Guitar-mode pointer (informational, not pursued).** Basic-IR pointer is correct on
+  the main Wii screen + its Home overlay. *Inside GH3*, the Home-overlay cursor scales
+  wrong — X over-sensitive, Y under, **opposite per axis** — which is GH3 applying its
+  own pointer transform, not our IR (packing is verified identical to extended). Moot
+  in practice: **with the Wiimote seated in the guitar the IR camera is physically
+  blocked**, so guitar-mode Home nav uses the **analog stick (SX/SY)** instead. Kept a
+  single IR calibration. Deferred idea: drive `SX/SY` (guitar module already owns them,
+  fixed at center `0x20`) for guitar-mode Home navigation if Marvin ever needs it.
 
 **Link stability (done):** idle disconnects are fixed — Bluedroid's JV idle→sniff
 delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DELAY_MS`
@@ -98,6 +122,10 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-13 | **Extension encryption is mandatory for GH3 and implemented in the base Wiimote (`ext_crypto.c`); the guitar module stays plaintext.** GH3's real key handshake (register trace): `0x55`→`0xf0` (disable) → read ID `0xfa` in clear → `0xAA`→`0xf0` (enable) → 16-byte key to `0x40`-`0x4f`. The base captures the key, derives ft/sb, and encrypts outgoing ext data (streamed bytes @ offset `0x08`; reg reads @ `addr & 7`). | Everything GH3 reads from the extension is decrypted with that key, so plaintext is garbage (the "green/red worked unencrypted" observation was a decryption coincidence). Encryption is a generic Wiimote feature (nunchuk/classic encrypt too), so it belongs in the base, not the guitar. Corrects the plan's guess that GH3 used the old `0→0x40` init. |
+| 2026-06-13 | **Cipher tables come from Dolphin's 1st-party set, not `rnconrad/WiimoteEmulator`'s `wm_crypto.c`.** rnconrad's S-boxes are corrupted (sbox[3]@0x60, [4]@0xd8, [6]@0x88/0xec are `0xD0`/`0xF0` & `0xD2`/`0xE2` transcription flips → not valid permutations). Used Dolphin's `keygen_sbox_1st_party` + `sboxes_1st_party[8]`; verified the key-schedule/encrypt algorithm term-for-term against Dolphin and round-tripped GH3's real key (idx 0, encrypt→decrypt identity). | Wrong table bytes silently corrupt the keystream → undebuggable "notes are garbage." Dolphin is GPL and validated against real games; the marcan tables are reverse-engineered hardware constants (facts), reproduced with our own code. |
+| 2026-06-13 | **Guitar is a self-registering extension module behind `wiimote_ext.h`; `wiimote.c` is extension-agnostic.** `wiimote_extension_t` = register bank + `build_report`/`set_button`/`reset`; `Wiimote_RegisterExtension`. Buttons drive by name via `Wiimote_SetButton`/`TapButton`. | Plans for other extensions (nunchuk/classic) as drop-in `*.c` files, keeps the base generic, and keeps the CLI as thin pass-throughs over the same API Marvin will use. |
+| 2026-06-13 | **Byte0/1 bits 7-6 must be set (GH3 Les Paul ident); single IR calibration kept.** Clear ident bits make GH3 treat us as a GHWT guitar and ignore the strum bar. Basic-IR pointer is correct on the main Wii screen with the same calibration as extended; the GH3-internal Home-overlay mis-scaling is GH3's own transform and is moot (IR is physically blocked when the Wiimote is in the guitar — guitar-mode Home nav uses the analog stick). | Found by hardware testing. No second/basic-mode calibration: the format packing is provably identical to extended (Dolphin + Linux), so the only real difference (GH3) isn't ours to fix and doesn't matter on real hardware. |
 | 2026-06-12 | **`esp_hidd` is a dead end for Wii emulation; the only working ESP-IDF path is a custom SDP record (internal Bluedroid `SDP_*` API) + raw L2CAP HID on PSM 0x11/0x13 (`esp_bt_l2cap`), with the hardcoded SDP buffer raised.** Two independent walls: (1) the Wii rejects esp_hidd's record even with a small descriptor (wrong HID attribute values — subclass/reconnect-initiate/etc., which esp_hidd hardcodes and doesn't expose); (2) the real 217-byte descriptor can't even be registered — `SDP_MAX_PAD_LEN` (the per-record attribute pad) is **hardcoded 300** (`sdp_db.c:495`, `bluedroid_user_config.h`; no menuconfig), and the full Wiimote record is ~463 B → `SDP_AddAttribute fail … ID 518`. Confirmed feasible building blocks in IDF v6.0.1: `SDP_CreateRecord`/`SDP_AddAttribute`/`SDP_AddSequence` (private `stack/sdp_api.h`) and `esp_bt_l2cap_start_srv(psm)`. | Bluedroid is the only Classic-BT stack on ESP32, and its public APIs can't host an arbitrary SDP record (`esp_sdp` RAW is search-only). So the path requires *unsupported internals*: raise `SDP_MAX_PAD_LEN` via an injected `CONFIG_BT_SDP_PAD_LEN` compile define, build the exact Wiimote record with the internal SDP DB API, skip esp_hidd, and serve HID over raw L2CAP + hand-rolled HIDP. Heavy + fragile across IDF updates, but it's the real route. The exact 463-byte record + 217-byte descriptor are saved at [`wiimote-sdp.md`](wiimote-sdp.md). |
 | 2026-06-12 | **Q1 resolved: ESP-IDF `esp_hidd`'s auto-generated SDP record is NOT accepted by the Wii → pivot to raw L2CAP (listen on PSM 0x11 control / 0x13 data) + a hand-built SDP record matching a real Wiimote.** Verbose Bluedroid logs: the Wii opens an ACL link, connects to our SDP server (PSM 1), reads our records (we send 14/250/37-byte SDP responses), then disconnects the SDP channel and terminates the ACL (`rsn 0x13` = remote user terminated) **without ever opening the HID PSMs**. SSP was confirmed off this round (legacy pairing) and discovery works (limited-discoverable + COD `0x002504`), so SDP content is the only remaining blocker. Wii BD_ADDR observed: `00:17:ab:07:2c:21`. | The Wii validates the SDP record against a real Wiimote's; esp_hidd's generic HID record (right VID/PID, wrong attributes + HID descriptor) fails the check, so it never proceeds to HID. Matches why `rnconrad/WiimoteEmulator` replaces the host BT stack to serve the exact SDP. Open: whether ESP-IDF lets us serve a fully custom SDP record (esp_sdp API vs internal Bluedroid `SDP_*` API) and listen on the fixed HID PSMs via `esp_bt_l2cap`. |
 | 2026-06-12 | **Phase 1 first attempt uses ESP-IDF's unified `esp_hidd` BT-classic HID device wearing the Wiimote identity, not a hand-rolled raw-L2CAP/SDP stack.** `bt_hid_device.c`: `esp_hidd_dev_init(ESP_HID_TRANSPORT_BT)` with VID `0x057e`/PID `0x0306`/version `0x0100`/name `Nintendo RVL-CNT-01`, COD set to `0x002504` (peripheral/joystick), a minimal vendor-defined report map (just report IDs 0x30 in / 0x12 out), **SSP disabled** (`CONFIG_BT_SSP_ENABLED=n`) for legacy PIN pairing, and a GAP `PIN_REQ` handler that replies with the requesting host's BD_ADDR reversed. | The stack already implements HIDP + L2CAP (PSM 0x11/0x13) + auth, so this is the cheapest probe of Q1: if a real Wii connects + authenticates against the auto-generated SDP, we avoid hand-building raw SDP entirely. If it rejects it, fall back to raw L2CAP + the exact SDP record from `rnconrad/WiimoteEmulator` (cloned locally for byte-exact bytes; WebFetch can't reproduce the ~463-byte blob). |
@@ -112,12 +140,36 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ## Open questions
 
 - **Q1 — Does ESP-IDF's `esp_hidd` BT-Classic HID device let the Wii connect + authenticate against its auto-generated SDP?** Being tested now (see decision log). If the Wii rejects it, fall back to raw L2CAP on PSM 0x11/0x13 with the exact `rnconrad/WiimoteEmulator` SDP record.
-- **Q4 — Which Wiimote data report carries the guitar extension** (e.g. `0x34` = core buttons + 19 extension bytes vs `0x3d` = 21 extension bytes) and what the game expects. Phase 3.
 - **Q5 — marvin↔fauxmote link** (UART bitmask mirror of the fretboard protocol vs USB CDC vs other). Deferred; revisit before Phase 4 integration.
+
+(Q4 resolved 2026-06-13: GH3 streams mode `0x37`; the guitar report is the first 6 ext bytes and must be **encrypted** — see decision log.)
 
 ---
 
 ## Session log
+
+### 2026-06-13 — Phase 3 done: GH3 guitar plays (module + encryption + basic IR)
+
+- **Guitar module split.** New `wiimote_ext.h` (`wiimote_extension_t` interface +
+  `Wiimote_RegisterExtension`) and `guitar.c`; `wiimote.c` made extension-agnostic.
+  CLI `btn`/`tap`/`whammy` unchanged (thin pass-throughs).
+- **Detection + report.** ID `00 00 A4 20 01 03` at `0xfa`; GH3 streams mode `0x37`.
+  Fixed strum being ignored — root cause was **byte0/1 bits7-6 cleared** (we looked
+  like a GHWT guitar to GH3). Bit layout re-verified against wiibrew *and* the Linux
+  `hid-wiimote` guitar parser (strum bits were correct all along).
+- **Encryption (`ext_crypto.c`).** Captured GH3's real key handshake via a temporary
+  register trace (`0x55`→`0xf0` → read ID → `0xAA`→`0xf0` → 16-byte key). Implemented
+  the marcan cipher in the base Wiimote (encrypt streamed ext bytes + reg reads; guitar
+  stays plaintext). Found rnconrad's `wm_crypto.c` S-boxes corrupted → used Dolphin's
+  1st-party tables; verified the algorithm against Dolphin and round-tripped GH3's
+  actual key. On hardware: **frets, strum, and whammy register in GH3.**
+- **Basic IR.** Filled `0x36`/`0x37` (`build_ir_basic`, packing cross-checked vs
+  Dolphin `IRBasic` + Linux decode). Pointer correct on the main Wii screen + Home
+  overlay. GH3's in-game Home overlay mis-scales the cursor (GH3's own transform) but
+  it's moot — IR is blocked when the Wiimote is in the guitar (analog-stick nav there).
+- **Console cleanup.** Removed the temporary `WR`/`RD` register-trace logs; demoted the
+  per-report RX log to `ESP_LOGD` (it was garbling the `esp_console` line editor).
+- Not committed yet (pending review).
 
 ### 2026-06-13 — Link stability (sniff + auto-reconnect); GH3 handoff open
 

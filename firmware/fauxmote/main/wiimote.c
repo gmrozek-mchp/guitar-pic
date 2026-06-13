@@ -6,6 +6,8 @@
 #include "esp_log.h"
 
 #include "wiimote.h"
+#include "wiimote_ext.h"
+#include "ext_crypto.h"
 
 static const char *TAG = "fauxmote.wm";
 
@@ -37,6 +39,15 @@ static float   s_point_x, s_point_y; /* IR pointer position, 0..1 (0,0 = top-lef
 static bool    s_point_active;       /* false = no IR dots reported */
 static uint8_t s_eeprom[EEPROM_SIZE];
 
+static const wiimote_extension_t *s_ext;   /* registered extension, or NULL */
+static bool    s_ext_connected;            /* report the extension as attached */
+
+static ext_crypto_t s_crypt;               /* extension cipher tables (when on) */
+static bool    s_crypt_on;                 /* host enabled extension encryption */
+static bool    s_crypt_armed;              /* host wrote 0xAA→0xf0; awaiting key */
+
+#define EXT_DATA_OFFSET  0x08              /* register addr the streamed ext bytes map to */
+
 static StaticTask_t s_sender_tcb;
 static StackType_t  s_sender_stack[SENDER_STACK];
 
@@ -46,35 +57,19 @@ static const uint8_t k_accel_cal[10] = {
     0x85, 0x85, 0x85, 0x00, 0xA0, 0xA0, 0xA0, 0x00, 0x40, 0x04,
 };
 
-typedef struct { const char *name; uint8_t byte; uint8_t mask; } wm_button_t;
-
-/* Core button names → (byte index, bit mask) in the 2-byte button field. */
-static const wm_button_t k_buttons[] = {
+/* Core button names → (byte index, bit mask) in the 2-byte core button field. */
+static const struct { const char *name; uint8_t byte; uint8_t mask; } k_buttons[] = {
     { "left",  0, 0x01 }, { "right", 0, 0x02 }, { "down", 0, 0x04 }, { "up", 0, 0x08 },
     { "plus",  0, 0x10 },
     { "two",   1, 0x01 }, { "one",   1, 0x02 }, { "b",    1, 0x04 }, { "a",  1, 0x08 },
     { "minus", 1, 0x10 }, { "home",  1, 0x80 },
 };
 
-/* Momentary taps: Wiimote_TapButton presses now and schedules a release that the
- * sender task applies, so callers (CLI, Marvin) don't block. */
+/* Momentary taps: Wiimote_TapButton presses now and schedules a release (by name,
+ * so it works for core and extension buttons alike) that the sender task applies. */
 #define TAP_SLOTS  4
 #define TAP_MS     120
-static struct { uint8_t byte; uint8_t mask; TickType_t release_at; bool active; } s_taps[TAP_SLOTS];
-
-static const wm_button_t *find_button(const char *name)
-{
-    for (size_t i = 0; i < sizeof(k_buttons) / sizeof(k_buttons[0]); i++) {
-        if (strcmp(name, k_buttons[i].name) == 0) return &k_buttons[i];
-    }
-    return NULL;
-}
-
-static void apply_button(const wm_button_t *b, bool pressed)
-{
-    uint8_t *p = (b->byte == 0) ? &s_btn0 : &s_btn1;
-    if (pressed) *p |= b->mask; else *p &= ~b->mask;
-}
+static struct { char name[16]; TickType_t release_at; bool active; } s_taps[TAP_SLOTS];
 
 static void wm_send(int fd, uint8_t report_id, const uint8_t *payload, int paylen)
 {
@@ -92,7 +87,7 @@ static void send_status(int fd)
     uint8_t p[6] = {0};
     p[0] = s_btn0;
     p[1] = s_btn1;
-    p[2] = (uint8_t)(s_leds << 4);   /* flags: LEDs in 4..7; no extension/speaker/IR */
+    p[2] = (uint8_t)((s_leds << 4) | ((s_ext && s_ext_connected) ? 0x02 : 0x00));  /* LEDs 4..7, ext bit 1 */
     p[5] = 0xC0;                     /* battery level (near full) */
     wm_send(fd, 0x20, p, sizeof(p));
 }
@@ -135,6 +130,59 @@ static void read_eeprom(int fd, uint32_t offset, uint16_t size)
     }
 }
 
+/* Register reads/writes. Only the extension space (0xa4xxxx) is backed (by the
+ * registered extension's bank); other spaces (IR 0xb0, speaker 0xa2) read as zeros
+ * and writes are accepted but ignored. */
+static void read_register(int fd, uint32_t offset, uint16_t size)
+{
+    bool ext = (s_ext && ((offset >> 16) & 0xFE) == 0xA4);
+    uint32_t addr = offset;
+    uint16_t left = size;
+    while (left > 0) {
+        uint8_t idx = (uint8_t)(addr & 0xFF);
+        uint8_t chunk = left > 16 ? 16 : (uint8_t)left;
+        if ((int)idx + chunk > 256) chunk = (uint8_t)(256 - idx);
+        if (ext) {
+            uint8_t buf[16];
+            memcpy(buf, &s_ext->regs[idx], chunk);
+            if (s_crypt_on) {
+                ExtCrypto_Encrypt(&s_crypt, buf, idx, chunk);  /* data is read encrypted */
+            }
+            send_read_data(fd, chunk - 1, 0x00, (uint16_t)addr, buf);
+        } else {
+            send_read_data(fd, chunk - 1, 0x00, (uint16_t)addr, NULL);
+        }
+        addr += chunk;
+        left -= chunk;
+        if (idx + chunk >= 256) break;
+    }
+}
+
+static void write_register(uint32_t offset, uint8_t size, const uint8_t *data)
+{
+    if (!s_ext || ((offset >> 16) & 0xFE) != 0xA4) {
+        return;   /* only the extension register space is backed */
+    }
+    uint8_t idx = (uint8_t)(offset & 0xFF);
+    for (int i = 0; i < size && (idx + i) < 256; i++) {
+        s_ext->regs[idx + i] = data[i];
+    }
+
+    /* Extension encryption handshake. The host writes 0x55→0xf0 to disable, or
+     * 0xAA→0xf0 then a 16-byte key to 0x40-0x4f to enable. */
+    if (idx == 0xf0 && size >= 1) {
+        if (data[0] == 0x55) {
+            s_crypt_on = s_crypt_armed = false;
+        } else if (data[0] == 0xAA) {
+            s_crypt_armed = true;
+        }
+    }
+    if (s_crypt_armed && idx >= 0x40 && idx <= 0x4F) {
+        ExtCrypto_GenTables(&s_crypt, &s_ext->regs[0x40]);  /* last key chunk completes it */
+        s_crypt_on = true;
+    }
+}
+
 void Wiimote_HandleRx(int fd, const uint8_t *data, int len)
 {
     if (len < 2 || data[0] != HIDP_OUTPUT) {
@@ -171,14 +219,19 @@ void Wiimote_HandleRx(int fd, const uint8_t *data, int len)
         send_status(fd);
         break;
     case 0x16:                      /* write memory/registers */
+        if (plen >= 5) {
+            uint32_t offset = ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+            uint8_t wsize = p[4];
+            if (p[0] & 0x04) write_register(offset, wsize, &p[5]);
+        }
         send_ack(fd, report, 0x00);
         break;
     case 0x17:                      /* read memory/registers */
         if (plen >= 6) {
             uint32_t offset = ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
             uint16_t size = (uint16_t)((p[4] << 8) | p[5]);
-            if (p[0] & 0x04) {      /* register space — no extension yet, report error */
-                send_read_data(fd, 0x0F, 0x08, (uint16_t)offset, NULL);
+            if (p[0] & 0x04) {
+                read_register(fd, offset, size);
             } else {
                 read_eeprom(fd, offset, size);
             }
@@ -210,33 +263,74 @@ static void put_ir_object(uint8_t *o, int x, int y, int size)
     o[2] = (uint8_t)((((y >> 8) & 0x03) << 6) | (((x >> 8) & 0x03) << 4) | (size & 0x0F));
 }
 
-/* Extended IR (12 bytes = 4 objects). Synthesize the two sensor-bar dots from the
- * pointer state (camera is 1024x768, mirrored vs the screen); other two not visible.
- * If the axis comes out inverted on hardware, flip the (1.0f - …) terms. */
+/* Synthesize the two sensor-bar dots from the pointer state (camera is 1024x768,
+ * mirrored vs the screen). Returns false (dots left untouched) when the pointer is
+ * inactive. If an axis comes out inverted on hardware, flip the (… - …) terms. */
+static bool ir_dots(int *x0, int *y0, int *x1, int *y1)
+{
+    if (!s_point_active) {
+        return false;
+    }
+    int midx = IR_X_CENTER + (int)((0.5f - s_point_x) * (2 * IR_X_HALF));
+    int midy = IR_Y_CENTER + (int)((s_point_y - 0.5f) * (2 * IR_Y_HALF));
+    const int sep = 128;                     /* half sensor-bar separation, camera px */
+    if (midy < 0) midy = 0;
+    if (midy > 767) midy = 767;
+    *x0 = (midx - sep < 0) ? 0 : midx - sep;
+    *x1 = (midx + sep > 1023) ? 1023 : midx + sep;
+    *y0 = *y1 = midy;
+    return true;
+}
+
+/* Extended IR (12 bytes = 4 objects): two pointer dots, two not visible. */
 static void build_ir_extended(uint8_t *dst)
 {
     int x0 = -1, y0 = 0, x1 = -1, y1 = 0;
-    if (s_point_active) {
-        int midx = IR_X_CENTER + (int)((0.5f - s_point_x) * (2 * IR_X_HALF));
-        int midy = IR_Y_CENTER + (int)((s_point_y - 0.5f) * (2 * IR_Y_HALF));
-        const int sep = 128;                 /* half sensor-bar separation, camera px */
-        x0 = midx - sep;
-        x1 = midx + sep;
-        if (x0 < 0) x0 = 0;
-        if (x1 > 1023) x1 = 1023;
-        if (midy < 0) midy = 0;
-        if (midy > 767) midy = 767;
-        y0 = y1 = midy;
-    }
+    ir_dots(&x0, &y0, &x1, &y1);
     put_ir_object(&dst[0], x0, y0, 4);
     put_ir_object(&dst[3], x1, y1, 4);
     put_ir_object(&dst[6], -1, 0, 0);
     put_ir_object(&dst[9], -1, 0, 0);
 }
 
-/* Build the input report the Wii's current mode expects: buttons in the first two
- * bytes (except 0x3d), level accelerometer where present, extended IR from the
- * pointer state. Returns the payload length, or 0 for an unknown mode. */
+/* Basic IR packs two objects into 5 bytes (X/Y high bits share byte 2). x<0 = not
+ * visible (max coord). */
+static void put_ir_basic_pair(uint8_t *o, int xa, int ya, int xb, int yb)
+{
+    if (xa < 0) { xa = ya = 0x3FF; }
+    if (xb < 0) { xb = yb = 0x3FF; }
+    o[0] = (uint8_t)(xa & 0xFF);
+    o[1] = (uint8_t)(ya & 0xFF);
+    o[2] = (uint8_t)((((ya >> 8) & 3) << 6) | (((xa >> 8) & 3) << 4)
+                   | (((yb >> 8) & 3) << 2) | ((xb >> 8) & 3));
+    o[3] = (uint8_t)(xb & 0xFF);
+    o[4] = (uint8_t)(yb & 0xFF);
+}
+
+/* Basic IR (10 bytes = 4 objects, packed in pairs): same two dots as extended. */
+static void build_ir_basic(uint8_t *dst)
+{
+    int x0 = -1, y0 = 0, x1 = -1, y1 = 0;
+    ir_dots(&x0, &y0, &x1, &y1);
+    put_ir_basic_pair(&dst[0], x0, y0, x1, y1);
+    put_ir_basic_pair(&dst[5], -1, 0, -1, 0);
+}
+
+/* Fill the registered extension's bytes at dst, if an extension is attached. */
+static void build_extension(uint8_t *dst)
+{
+    if (s_ext && s_ext_connected && s_ext->build_report) {
+        s_ext->build_report(dst);
+        if (s_crypt_on) {
+            ExtCrypto_Encrypt(&s_crypt, dst, EXT_DATA_OFFSET, s_ext->report_len);
+        }
+    }
+}
+
+/* Build the input report the Wii's current mode expects: core buttons in the first
+ * two bytes (except 0x3d), level accelerometer where present, extended IR from the
+ * pointer state, and the extension's bytes in the extension field. Returns the
+ * payload length, or 0 for an unknown mode. */
 static int build_report(uint8_t mode, uint8_t *p)
 {
     memset(p, 0, 21);
@@ -247,41 +341,59 @@ static int build_report(uint8_t mode, uint8_t *p)
     switch (mode) {
     case 0x30: return 2;
     case 0x31: set_accel_level(&p[2]); return 5;
-    case 0x32: return 10;
+    case 0x32: build_extension(&p[2]); return 10;
     case 0x33: set_accel_level(&p[2]); build_ir_extended(&p[5]); return 17;
-    case 0x34: return 21;
-    case 0x35: set_accel_level(&p[2]); return 21;
-    case 0x36: return 21;                            /* 10-byte basic IR: not filled yet */
-    case 0x37: set_accel_level(&p[2]); return 21;    /* 10-byte basic IR: not filled yet */
-    case 0x3d: case 0x3e: case 0x3f: return 21;
+    case 0x34: build_extension(&p[2]); return 21;
+    case 0x35: set_accel_level(&p[2]); build_extension(&p[5]); return 21;
+    case 0x36: build_ir_basic(&p[2]); build_extension(&p[12]); return 21;   /* btn + 10 IR + 9 ext */
+    case 0x37: set_accel_level(&p[2]); build_ir_basic(&p[5]); build_extension(&p[15]); return 21;  /* + 10 IR + 6 ext */
+    case 0x3d: build_extension(&p[0]); return 21;
+    case 0x3e: case 0x3f: return 21;
     default:   return 0;
     }
 }
 
+void Wiimote_RegisterExtension(const wiimote_extension_t *ext)
+{
+    s_ext = ext;
+    s_ext_connected = (ext != NULL);
+}
+
 bool Wiimote_SetButton(const char *name, bool pressed)
 {
-    const wm_button_t *b = find_button(name);
-    if (!b) return false;
-    apply_button(b, pressed);
-    return true;
+    for (size_t i = 0; i < sizeof(k_buttons) / sizeof(k_buttons[0]); i++) {
+        if (strcmp(name, k_buttons[i].name) == 0) {
+            uint8_t *b = (k_buttons[i].byte == 0) ? &s_btn0 : &s_btn1;
+            if (pressed) *b |= k_buttons[i].mask; else *b &= (uint8_t)~k_buttons[i].mask;
+            return true;
+        }
+    }
+    if (s_ext && s_ext->set_button) {
+        return s_ext->set_button(name, pressed);
+    }
+    return false;
 }
 
 bool Wiimote_TapButton(const char *name)
 {
-    const wm_button_t *b = find_button(name);
-    if (!b) return false;
-    apply_button(b, true);
-
+    if (!Wiimote_SetButton(name, true)) {
+        return false;
+    }
     int slot = -1;
     for (int i = 0; i < TAP_SLOTS; i++) {
         if (!s_taps[i].active) { slot = i; break; }
     }
     if (slot < 0) slot = 0;     /* all busy: reuse the first */
-    s_taps[slot].byte = b->byte;
-    s_taps[slot].mask = b->mask;
+    strncpy(s_taps[slot].name, name, sizeof(s_taps[slot].name) - 1);
+    s_taps[slot].name[sizeof(s_taps[slot].name) - 1] = '\0';
     s_taps[slot].release_at = xTaskGetTickCount() + pdMS_TO_TICKS(TAP_MS);
     s_taps[slot].active = true;
     return true;
+}
+
+void Wiimote_SetExtension(bool connected)
+{
+    s_ext_connected = connected;
 }
 
 void Wiimote_NotifyDisconnected(void)
@@ -290,8 +402,12 @@ void Wiimote_NotifyDisconnected(void)
     s_streaming = false;
     s_leds = 0;
     s_btn0 = s_btn1 = 0;
+    s_crypt_on = s_crypt_armed = false;   /* host re-inits encryption on reconnect */
     for (int i = 0; i < TAP_SLOTS; i++) {
         s_taps[i].active = false;
+    }
+    if (s_ext && s_ext->reset) {
+        s_ext->reset();
     }
 }
 
@@ -332,8 +448,7 @@ static void sender_task(void *arg)
         TickType_t now = xTaskGetTickCount();
         for (int i = 0; i < TAP_SLOTS; i++) {
             if (s_taps[i].active && (int32_t)(now - s_taps[i].release_at) >= 0) {
-                uint8_t *b = (s_taps[i].byte == 0) ? &s_btn0 : &s_btn1;
-                *b &= ~s_taps[i].mask;
+                Wiimote_SetButton(s_taps[i].name, false);
                 s_taps[i].active = false;
             }
         }

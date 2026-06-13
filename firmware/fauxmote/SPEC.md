@@ -35,11 +35,16 @@ in marvin/fretboard/edge-ai changes as part of this subproject.
 - **Pairing PIN (legacy):** the PIN is a BD_ADDR in **reverse byte order** (raw 6
   bytes). The 1+2 temporary-pair flow uses the *Wiimote's own* address — which
   fauxmote knows — so fauxmote can answer the GAP PIN request itself.
-- **Guitar extension:** identity bytes `00 00 A4 20 01 03` at register
-  `0x(4)a400fa`; init = write `0x55`→`0xf0`, `0x00`→`0xfb` (disables encryption).
-  6-byte report layout (frets G/R/Y/B/O, strum up/down, whammy in byte 3 bits 3-0,
-  touch bar, analog stick, +/− buttons), carried inside a Wiimote data report that
-  includes extension bytes (e.g. report `0x34`).
+- **Guitar extension:** identity bytes `00 00 A4 20 01 03` at register offset `0xfa`
+  of the `0xa4` extension space. The 6-byte report (frets G/R/Y/B/O, strum up/down,
+  whammy in byte 3, touch bar, analog stick, +/− buttons; **byte 0/1 bits 7-6 = 1**
+  to identify a GH3 Les Paul) rides inside any extension-bearing data report — GH3
+  streams mode `0x37`.
+- **Guitar extension encryption (required for GH3):** GH3 writes `0x55`→`0xf0` and
+  reads the ID in the clear (to tell GH3 vs GHWT), then `0xAA`→`0xf0` plus a 16-byte
+  key to `0x40`-`0x4f`. After that the streamed report bytes *and* the `0x20`
+  calibration must be encrypted with the standard Wii extension cipher; plaintext
+  reads as garbage in-game.
 
 References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 [`Guitar Hero (Wii) Guitars`](https://wiibrew.org/wiki/Wiimote/Extension_Controllers/Guitar_Hero_(Wii)_Guitars).
@@ -65,6 +70,12 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
   (`esp_bt_l2cap`) on PSM 0x11 (control) / 0x13 (interrupt). Legacy PIN pairing
   (SSP off; PIN = host BD_ADDR reversed). Detail + the record bytes in
   [`docs/wiimote-sdp.md`](docs/wiimote-sdp.md) and the journal.
+- **Extension architecture:** extensions register with the base Wiimote through a
+  small interface (`wiimote_ext.h`: register bank + report/button/reset hooks); the
+  guitar lives in `guitar.c`, leaving `wiimote.c` extension-agnostic. The Wii
+  extension cipher (`ext_crypto.c`) lives in the base — it captures the host's key
+  handshake and encrypts outgoing extension data (streamed bytes + register reads),
+  which Guitar Hero 3 requires.
 - **Allocation:** application code follows the project's **static-allocation**
   preference (no `malloc` in our code). Bluedroid's internal allocation is
   framework-owned and out of scope.
@@ -75,8 +86,8 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 |---|---|---|
 | **0** ✅ | Toolchain + radio bring-up | Builds + flashes to the Feather V2; the board is discoverable by name in a PC/phone Bluetooth scan. |
 | **1** ✅ | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID channels (PSM 0x11 control + 0x13 interrupt) without immediately dropping. *Done via custom SDP + raw L2CAP (§5).* |
-| **2** | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
-| **3** | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. |
+| **2** ✅ | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
+| **3** ✅ | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Done: GH3 detects the guitar and frets/strum/whammy register in-game, through the extension cipher (§3).* |
 | **4** | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the future marvin link. |
 
 ## 7. Out of scope

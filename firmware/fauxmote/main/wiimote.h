@@ -25,3 +25,7 @@ bool Wiimote_TapButton(const char *name);
  * reporting mode. ClearPointer reports no IR dots (cursor off-screen). */
 void Wiimote_SetPointer(float x, float y);
 void Wiimote_ClearPointer(void);
+
+/* Extension: a registered extension (e.g. the guitar) also handles its button names
+ * via Wiimote_SetButton/TapButton. SetExtension reports it attached/detached. */
+void Wiimote_SetExtension(bool connected);

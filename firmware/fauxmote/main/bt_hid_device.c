@@ -106,7 +106,7 @@ static void hid_reader_task(void *arg)
         int n = read(l->fd, l->rx, sizeof(l->rx));
         if (l->stop) break;
         if (n > 0) {
-            ESP_LOGI(TAG, "fd %d RX report 0x%02x (%d B)", l->fd,
+            ESP_LOGD(TAG, "fd %d RX report 0x%02x (%d B)", l->fd,
                      n > 1 ? l->rx[1] : 0, n);
             Wiimote_HandleRx(l->fd, l->rx, n);
         } else if (n < 0) {
