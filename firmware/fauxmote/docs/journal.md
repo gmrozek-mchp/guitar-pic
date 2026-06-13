@@ -36,11 +36,13 @@ needed for the pointer, not guitar gameplay).
   (robust to fd reuse). Bond persists in NVS (recalled at boot via
   `esp_bt_gap_get_bond_device_list`); `unlink` removes it. Status LED on GPIO13:
   blip/~3 s = idle, fast blink = pairing/connecting, N flashes = assigned player N.
-- **Step B next — IR pointer.** The Wii menu requests reporting mode **`0x33`**
-  (buttons + accel + 12-byte *extended* IR). Keep a pointer `(x,y)` **state variable
-  in `wiimote.c`** (so every IR-bearing mode — 0x33/0x36/0x37/0x3e/0x3f — can use it),
-  set via a CLI `point` command; synthesize the two sensor-bar IR dots into the
-  mode's IR field + report a level accelerometer, so the Home-screen cursor moves.
+- **Step B DONE — IR pointer.** Pointer `(x,y)` is a state variable in `wiimote.c`
+  (`Wiimote_SetPointer`/`ClearPointer`), CLI `point x y` / `point off`. `build_ir_extended`
+  synthesizes two sensor-bar dots into mode `0x33`'s 12-byte extended-IR field + a
+  level accel. **Verified on hardware** — navigated the Wii menu and launched GH3 with
+  it. Calibration constants (`IR_X/Y_CENTER/HALF`, from on-hardware edge measurement)
+  map pointer 0..1 to the full screen, (0,0)=top-left. Basic-IR modes 0x36/0x37 still
+  stubbed (reuse the same pointer state when needed).
 
 **Phase 3 (after pointer) — guitar extension.** Report `0x34` (core + 19 ext bytes),
 extension ID `00 00 A4 20 01 03` at register `0x(4)a400fa`, init writes

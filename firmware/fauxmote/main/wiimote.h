@@ -20,3 +20,8 @@ bool Wiimote_SetButton(const char *name, bool pressed);
 
 /* Press a button now and auto-release it shortly after (non-blocking). */
 bool Wiimote_TapButton(const char *name);
+
+/* IR pointer position, 0..1 with (0,0) = top-left. Used by every IR-bearing
+ * reporting mode. ClearPointer reports no IR dots (cursor off-screen). */
+void Wiimote_SetPointer(float x, float y);
+void Wiimote_ClearPointer(void);

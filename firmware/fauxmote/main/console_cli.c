@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -83,6 +84,24 @@ static int cmd_tap(int argc, char **argv)
     return 0;
 }
 
+static int cmd_point(int argc, char **argv)
+{
+    if (argc >= 2 && strcmp(argv[1], "off") == 0) {
+        Wiimote_ClearPointer();
+        printf("pointer off\n");
+        return 0;
+    }
+    if (argc < 3) {
+        printf("usage: point <x 0..1> <y 0..1> | point off  (0,0 = top-left)\n");
+        return 1;
+    }
+    float x = atof(argv[1]);
+    float y = atof(argv[2]);
+    Wiimote_SetPointer(x, y);
+    printf("pointer x=%d%% y=%d%%\n", (int)(x * 100), (int)(y * 100));
+    return 0;
+}
+
 static int cmd_unlink(int argc, char **argv)
 {
     (void)argc; (void)argv;
@@ -112,6 +131,7 @@ void Cli_Start(void)
     register_cmd("status", "show BT / connection state", cmd_status);
     register_cmd("btn", "btn <name> <0|1> — hold/release a button", cmd_btn);
     register_cmd("tap", "tap <name> — brief press+release", cmd_tap);
+    register_cmd("point", "point <x 0..1> <y 0..1> | point off — IR cursor", cmd_point);
     esp_console_register_help_command();
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));

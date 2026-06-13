@@ -15,6 +15,13 @@ static const char *TAG = "fauxmote.wm";
 #define SENDER_STACK      3072
 #define ACCEL_NEUTRAL     0x85      /* zero-g raw value (matches the EEPROM calibration) */
 
+/* IR pointer calibration in camera coords (1024x768), from on-hardware edge
+ * measurement. Pointer (0,0) = top-left, (1,1) = bottom-right maps to screen edges. */
+#define IR_X_CENTER  512
+#define IR_X_HALF    296
+#define IR_Y_CENTER  487
+#define IR_Y_HALF    165
+
 /* HID transaction prefixes (HIDP): host->device output, device->host input. */
 #define HIDP_OUTPUT  0xA2
 #define HIDP_INPUT   0xA1
@@ -26,6 +33,8 @@ static bool    s_streaming;          /* true once the Wii has set a reporting mo
 static uint8_t s_report_mode = 0x30; /* report ID the Wii told us to send (default core buttons) */
 static bool    s_reporting_continuous;
 static uint8_t s_btn0, s_btn1;       /* core button state (0 = nothing pressed) */
+static float   s_point_x, s_point_y; /* IR pointer position, 0..1 (0,0 = top-left) */
+static bool    s_point_active;       /* false = no IR dots reported */
 static uint8_t s_eeprom[EEPROM_SIZE];
 
 static StaticTask_t s_sender_tcb;
@@ -181,9 +190,53 @@ void Wiimote_HandleRx(int fd, const uint8_t *data, int len)
     }
 }
 
+static void set_accel_level(uint8_t *a)
+{
+    a[0] = ACCEL_NEUTRAL;   /* X = 0 g */
+    a[1] = ACCEL_NEUTRAL;   /* Y = 0 g */
+    a[2] = 0xA0;            /* Z = +1 g (held level, no roll) */
+}
+
+/* One extended-IR object: X/Y are 10-bit camera coords (1024x768), or x<0 = "not
+ * visible". 3rd byte packs Y[9:8], X[9:8], size. */
+static void put_ir_object(uint8_t *o, int x, int y, int size)
+{
+    if (x < 0) {
+        o[0] = o[1] = o[2] = 0xFF;
+        return;
+    }
+    o[0] = (uint8_t)(x & 0xFF);
+    o[1] = (uint8_t)(y & 0xFF);
+    o[2] = (uint8_t)((((y >> 8) & 0x03) << 6) | (((x >> 8) & 0x03) << 4) | (size & 0x0F));
+}
+
+/* Extended IR (12 bytes = 4 objects). Synthesize the two sensor-bar dots from the
+ * pointer state (camera is 1024x768, mirrored vs the screen); other two not visible.
+ * If the axis comes out inverted on hardware, flip the (1.0f - …) terms. */
+static void build_ir_extended(uint8_t *dst)
+{
+    int x0 = -1, y0 = 0, x1 = -1, y1 = 0;
+    if (s_point_active) {
+        int midx = IR_X_CENTER + (int)((0.5f - s_point_x) * (2 * IR_X_HALF));
+        int midy = IR_Y_CENTER + (int)((s_point_y - 0.5f) * (2 * IR_Y_HALF));
+        const int sep = 128;                 /* half sensor-bar separation, camera px */
+        x0 = midx - sep;
+        x1 = midx + sep;
+        if (x0 < 0) x0 = 0;
+        if (x1 > 1023) x1 = 1023;
+        if (midy < 0) midy = 0;
+        if (midy > 767) midy = 767;
+        y0 = y1 = midy;
+    }
+    put_ir_object(&dst[0], x0, y0, 4);
+    put_ir_object(&dst[3], x1, y1, 4);
+    put_ir_object(&dst[6], -1, 0, 0);
+    put_ir_object(&dst[9], -1, 0, 0);
+}
+
 /* Build the input report the Wii's current mode expects: buttons in the first two
- * bytes (except 0x3d), neutral accelerometer where present, IR/extension zeroed
- * (filled in later phases). Returns the payload length, or 0 for an unknown mode. */
+ * bytes (except 0x3d), level accelerometer where present, extended IR from the
+ * pointer state. Returns the payload length, or 0 for an unknown mode. */
 static int build_report(uint8_t mode, uint8_t *p)
 {
     memset(p, 0, 21);
@@ -193,13 +246,13 @@ static int build_report(uint8_t mode, uint8_t *p)
     }
     switch (mode) {
     case 0x30: return 2;
-    case 0x31: p[2] = p[3] = p[4] = ACCEL_NEUTRAL; return 5;
+    case 0x31: set_accel_level(&p[2]); return 5;
     case 0x32: return 10;
-    case 0x33: p[2] = p[3] = p[4] = ACCEL_NEUTRAL; return 17;
+    case 0x33: set_accel_level(&p[2]); build_ir_extended(&p[5]); return 17;
     case 0x34: return 21;
-    case 0x35: p[2] = p[3] = p[4] = ACCEL_NEUTRAL; return 21;
-    case 0x36: return 21;
-    case 0x37: p[2] = p[3] = p[4] = ACCEL_NEUTRAL; return 21;
+    case 0x35: set_accel_level(&p[2]); return 21;
+    case 0x36: return 21;                            /* 10-byte basic IR: not filled yet */
+    case 0x37: set_accel_level(&p[2]); return 21;    /* 10-byte basic IR: not filled yet */
     case 0x3d: case 0x3e: case 0x3f: return 21;
     default:   return 0;
     }
@@ -252,6 +305,20 @@ int Wiimote_PlayerSlot(void)
         if (s_leds & (1 << i)) return i + 1;
     }
     return 0;
+}
+
+void Wiimote_SetPointer(float x, float y)
+{
+    if (x < 0.0f) x = 0.0f; else if (x > 1.0f) x = 1.0f;
+    if (y < 0.0f) y = 0.0f; else if (y > 1.0f) y = 1.0f;
+    s_point_x = x;
+    s_point_y = y;
+    s_point_active = true;
+}
+
+void Wiimote_ClearPointer(void)
+{
+    s_point_active = false;
 }
 
 static void sender_task(void *arg)
