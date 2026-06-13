@@ -44,10 +44,25 @@ needed for the pointer, not guitar gameplay).
   map pointer 0..1 to the full screen, (0,0)=top-left. Basic-IR modes 0x36/0x37 still
   stubbed (reuse the same pointer state when needed).
 
-**Phase 3 (after pointer) — guitar extension.** Report `0x34` (core + 19 ext bytes),
-extension ID `00 00 A4 20 01 03` at register `0x(4)a400fa`, init writes
-`0x55`→`0xf0` / `0x00`→`0xfb`, the 6-byte guitar report, register reads/writes wired
-to an extension bank, and the status `0x20` extension-connected bit.
+**Phase 3 (next) — guitar extension.** Plan + protocol (verified, wiibrew):
+- **Detection:** set the extension-connected bit in the `0x20` status; serve an
+  extension register bank (`0x17`/`0x16` *register space*, addr `0xa4xxxx`, use low
+  byte) with ID `00 00 A4 20 01 03` at `0xfa`. Init writes the host may send:
+  `0x55`→`0xf0` then `0x00`→`0xfb` (GHWT/3rd-party: disables encryption).
+- **Report:** stream mode `0x34` (core buttons + 19 ext bytes); first 6 ext bytes =
+  the guitar report. Bit layout (buttons **active-low**, rest = 1; rest bytes 4,5 =
+  `0xFF`; stick center `0x20`):
+  - byte0 bits5-0 = stick X; byte1 bits5-0 = stick Y
+  - byte2 bits4-0 = touch bar; byte3 bits4-0 = whammy
+  - byte4: bit6 BD(strum down), bit4 B−, bit2 B+ (others 1)
+  - byte5: bit7 BO, bit6 BR, bit5 BB, bit4 BG, bit3 BY, bit2 pedal, bit0 BU(strum up)
+  - CLI setters (fret/strum/whammy), `Wiimote_SetButton`-style, for Marvin later.
+- **ENCRYPTION (the GH3 wrinkle):** GH3's Les Paul uses the *old* init (writes `0`
+  to `0xa40040`) → **expects encrypted extension data**. So detection works
+  unencrypted, but note data must be encrypted with the standard Wii extension
+  cipher (key from the host's `0x40`-`0x4F` writes; algorithm in
+  `rnconrad/WiimoteEmulator` `wm_crypto.c`). Without it GH3 detects the guitar but
+  reads garbage. Implement the cipher (port wm_crypto) as part of this phase.
 
 **Link stability (done):** idle disconnects are fixed — Bluedroid's JV idle→sniff
 delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DELAY_MS`
