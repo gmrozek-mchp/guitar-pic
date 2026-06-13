@@ -49,11 +49,27 @@ extension ID `00 00 A4 20 01 03` at register `0x(4)a400fa`, init writes
 `0x55`→`0xf0` / `0x00`→`0xfb`, the 6-byte guitar report, register reads/writes wired
 to an extension bank, and the status `0x20` extension-connected bit.
 
-**Known limitations / still open:**
-- **Device-initiated `reconnect`** connects in Basic L2CAP mode (`l2c_fcr_adj_our_req
-  _options ... BASIC mode`) while the Wii's HID wants ERTM — so it may connect but
-  misbehave. Reliable reconnection is `pair`+SYNC. Fixing reconnect to use ERTM
-  matters for Marvin's auto-reconnect/keep-awake, not for core function.
+**Link stability (done):** idle disconnects are fixed — Bluedroid's JV idle→sniff
+delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DELAY_MS`
+in the top-level CMake (`#ifndef`'d `#define`; the timeout field is UINT16 + a 197 ms
+offset, so stay < ~65338). With sniff effectively off the link stays active (Wii keeps
+polling), so no supervision timeouts and no BTA PM-slot leak (the leak that previously
+forced a power-cycle). A persistent **auto-reconnect** task re-initiates the link on
+any unexpected drop (3 s × 8 then every 8 s), suppressed by `stop`/`unlink`.
+
+**OPEN — GH3 game-launch handoff (needs a BT sniffer):** when a game disc boots, the
+Wii goes HID-silent toward fauxmote for many seconds, then drops the link (`rsn 0x08`).
+Auto-reconnect re-establishes it, but the session isn't reliably usable in-game.
+A real Wiimote rides the handoff with a quick ~2 s LED off/on. fauxmote's own logs
+don't show *why* the Wii goes silent on us vs a real Wiimote — there's no command we
+visibly mishandle (zero RX reports during the gap). Diagnosing needs a Bluetooth
+sniffer to diff a real Wiimote vs fauxmote through the GH3 launch. **Workaround for
+now: restart fauxmote after the game has started** (a fresh boot reconnects cleanly).
+The recurring `mode 3 … BASIC mode` reconnect warning is likely a red herring (real
+Wiimotes use Basic-mode L2CAP for HID). Revisit after the guitar extension — GH3 may
+engage the controller differently once it sees a guitar.
+
+**Other notes:**
 - **Keep-awake:** the Wii idle-disconnects on lack of *input*; streaming reports +
   occasional button activity keeps it alive (free during gameplay).
 - **Caveat:** a Wiimote cannot power a Wii on from standby (BT radio off); "wake" only
@@ -87,6 +103,21 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-06-13 — Link stability (sniff + auto-reconnect); GH3 handoff open
+
+- Idle disconnects root-caused to Bluedroid sniff: link idled → sniff → supervision
+  timeout (`rsn 0x08`), and abnormal closes leaked BTA PM-profile slots (pool of 5 →
+  reconnect fails → power-cycle). No clean public/repo override (PM spec is `const`),
+  but the idle→sniff delay is a `#ifndef`'d `#define` → overrode it to 65 s via a
+  global `-D` in the top-level CMake (`idf_build_set_property` before `project()`).
+  Link now stays active; no timeouts, no PM leak.
+- Added a persistent auto-reconnect task (device-initiated, retries with backoff,
+  suppressed on `stop`/`unlink`) so unexpected drops self-heal like a real Wiimote.
+- GH3 game-launch handoff still drops us and isn't reliably usable after reconnect;
+  the Wii goes HID-silent then drops, and fauxmote's logs don't reveal why (no
+  mishandled command). Documented as OPEN (needs a BT sniffer). Workaround: restart
+  fauxmote after the game starts. Moving on to the guitar extension.
 
 ### 2026-06-12 — Step A: test CLI + connection management
 
