@@ -20,18 +20,10 @@ static const char *TAG = "fauxmote.bt";
 #define PSM_HID_CONTROL  0x0011
 #define PSM_HID_INTERRUPT 0x0013
 
-#define AUTO_RECONNECT_MAX 8     /* fast (3 s) retries before easing to a slower cadence */
-#define AUTO_RECONNECT_STACK 3072
-
 static uint8_t s_wii_bda[6];     /* last bonded Wii address (from auth) */
 static bool    s_have_wii;
 static bool    s_discoverable;
-static bool    s_reconnecting;   /* a device-initiated reconnect is in progress */
-static volatile bool s_want_reconnect;   /* link dropped unexpectedly — try to reconnect */
-static bool    s_suppress_reconnect;     /* a user stop/unlink: don't auto-reconnect on the close */
-static int     s_reconnect_tries;
-static StaticTask_t s_recon_tcb;
-static StackType_t  s_recon_stack[AUTO_RECONNECT_STACK];
+static bool    s_reconnecting;   /* a device-initiated (manual) reconnect is in progress */
 
 static void log_bda(const char *what, const uint8_t *bda)
 {
@@ -192,44 +184,13 @@ static void l2cap_cb(esp_bt_l2cap_cb_event_t event, esp_bt_l2cap_cb_param_t *par
         /* Signal this channel's reader to exit (by handle, robust to fd reuse). */
         hid_link_stop(param->close.handle);
         /* Stop streaming + reset controller state immediately so the sender
-         * doesn't write into the dying channel and the LED returns to idle. */
+         * doesn't write into the dying channel and the LED returns to idle.
+         * Recovery is via the `reconnect` command — no automatic reconnect. */
         Wiimote_NotifyDisconnected();
-        /* Arm auto-reconnect unless this was a user-requested stop/unlink. */
-        if (s_have_wii && !s_suppress_reconnect) {
-            s_want_reconnect = true;
-        }
-        s_suppress_reconnect = false;
         break;
     default:
         ESP_LOGD(TAG, "l2cap event %d", event);
         break;
-    }
-}
-
-/* Heal an unexpected link drop (e.g. the Wii's brief disconnect when a game boots)
- * by re-initiating the connection, like a real Wiimote. Bounded retries; cleared
- * once the Wii is talking to us again, or on a user stop/unlink. */
-static void reconnect_task(void *arg)
-{
-    (void)arg;
-    for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(1000));
-        if (Wiimote_IsConnected()) {
-            s_want_reconnect = false;
-            s_reconnect_tries = 0;
-            continue;
-        }
-        if (!s_want_reconnect || !s_have_wii) {
-            continue;
-        }
-        /* Keep trying like a real Wiimote — a game disc can take a while to boot and
-         * re-accept the controller. Back off after a few quick tries so we don't
-         * hammer the link while the Wii is still reinitializing. */
-        s_reconnect_tries++;
-        ESP_LOGI(TAG, "auto-reconnect attempt %d", s_reconnect_tries);
-        Fauxmote_Reconnect();
-        int wait_ms = (s_reconnect_tries < AUTO_RECONNECT_MAX) ? 3000 : 8000;
-        vTaskDelay(pdMS_TO_TICKS(wait_ms));
     }
 }
 
@@ -263,9 +224,6 @@ void Fauxmote_BtStart(void)
 
     ESP_ERROR_CHECK(esp_bt_l2cap_register_callback(l2cap_cb));
     ESP_ERROR_CHECK(esp_bt_l2cap_init());
-
-    xTaskCreateStatic(reconnect_task, "reconnect", AUTO_RECONNECT_STACK, NULL, 4,
-                      s_recon_stack, &s_recon_tcb);
 
     /* The stack persists the bond (link key) in NVS and reloads it at boot — recall
      * the bonded Wii's address so `reconnect` works after a power cycle. */
@@ -302,8 +260,6 @@ void Fauxmote_StopPairing(void)
     esp_bt_gap_set_scan_mode(ESP_BT_NON_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);
     esp_bt_l2cap_stop_all_srv();  /* tear down any armed (unconsumed) HID listeners */
     s_discoverable = false;
-    s_want_reconnect = false;     /* deliberate idle — don't auto-reconnect */
-    s_suppress_reconnect = true;
     ESP_LOGI(TAG, "pairing mode OFF (idle)");
 }
 
@@ -327,8 +283,6 @@ void Fauxmote_Unlink(void)
     log_bda("unlink: removing bond", s_wii_bda);
     esp_bt_gap_remove_bond_device(s_wii_bda);   /* erases the link key from NVS */
     s_have_wii = false;
-    s_want_reconnect = false;
-    s_suppress_reconnect = true;
     memset(s_wii_bda, 0, sizeof(s_wii_bda));
 }
 

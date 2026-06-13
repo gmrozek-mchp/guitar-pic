@@ -93,12 +93,14 @@ delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DE
 in the top-level CMake (`#ifndef`'d `#define`; the timeout field is UINT16 + a 197 ms
 offset, so stay < ~65338). With sniff effectively off the link stays active (Wii keeps
 polling), so no supervision timeouts and no BTA PM-slot leak (the leak that previously
-forced a power-cycle). A persistent **auto-reconnect** task re-initiates the link on
-any unexpected drop (3 s × 8 then every 8 s), suppressed by `stop`/`unlink`.
+forced a power-cycle). **Auto-reconnect was removed** (2026-06-13): it didn't survive
+the GH3 launch and is the wrong tool for keep-awake. Recovery from an unexpected drop
+is now the explicit `reconnect` command; keep-awake is better served by occasional
+input/state changes (which Marvin's command stream provides during use).
 
 **OPEN — GH3 game-launch handoff (needs a BT sniffer):** when a game disc boots, the
 Wii goes HID-silent toward fauxmote for many seconds, then drops the link (`rsn 0x08`).
-Auto-reconnect re-establishes it, but the session isn't reliably usable in-game.
+A manual `reconnect` re-establishes the link, but the session isn't reliably usable in-game.
 A real Wiimote rides the handoff with a quick ~2 s LED off/on. fauxmote's own logs
 don't show *why* the Wii goes silent on us vs a real Wiimote — there's no command we
 visibly mishandle (zero RX reports during the gap). Diagnosing needs a Bluetooth
@@ -122,6 +124,7 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-13 | **Removed the persistent auto-reconnect task; recovery is the manual `reconnect` command only.** Drops just reset state (`Wiimote_NotifyDisconnected`); no automatic re-initiation. | Auto-reconnect neither survived the GH3 game-launch handoff nor served as a keep-awake mechanism (reconnecting ≠ staying awake). Keeping the Wii awake is better done with occasional input/state changes, which Marvin's command stream provides during use. Removing it also drops the slot-leak/backoff complexity. The sniff-delay override (idle→sniff = 65 s) stays — that genuinely prevents idle supervision-timeout drops. |
 | 2026-06-13 | **Extension encryption is mandatory for GH3 and implemented in the base Wiimote (`ext_crypto.c`); the guitar module stays plaintext.** GH3's real key handshake (register trace): `0x55`→`0xf0` (disable) → read ID `0xfa` in clear → `0xAA`→`0xf0` (enable) → 16-byte key to `0x40`-`0x4f`. The base captures the key, derives ft/sb, and encrypts outgoing ext data (streamed bytes @ offset `0x08`; reg reads @ `addr & 7`). | Everything GH3 reads from the extension is decrypted with that key, so plaintext is garbage (the "green/red worked unencrypted" observation was a decryption coincidence). Encryption is a generic Wiimote feature (nunchuk/classic encrypt too), so it belongs in the base, not the guitar. Corrects the plan's guess that GH3 used the old `0→0x40` init. |
 | 2026-06-13 | **Cipher tables come from Dolphin's 1st-party set, not `rnconrad/WiimoteEmulator`'s `wm_crypto.c`.** rnconrad's S-boxes are corrupted (sbox[3]@0x60, [4]@0xd8, [6]@0x88/0xec are `0xD0`/`0xF0` & `0xD2`/`0xE2` transcription flips → not valid permutations). Used Dolphin's `keygen_sbox_1st_party` + `sboxes_1st_party[8]`; verified the key-schedule/encrypt algorithm term-for-term against Dolphin and round-tripped GH3's real key (idx 0, encrypt→decrypt identity). | Wrong table bytes silently corrupt the keystream → undebuggable "notes are garbage." Dolphin is GPL and validated against real games; the marcan tables are reverse-engineered hardware constants (facts), reproduced with our own code. |
 | 2026-06-13 | **Guitar is a self-registering extension module behind `wiimote_ext.h`; `wiimote.c` is extension-agnostic.** `wiimote_extension_t` = register bank + `build_report`/`set_button`/`reset`; `Wiimote_RegisterExtension`. Buttons drive by name via `Wiimote_SetButton`/`TapButton`. | Plans for other extensions (nunchuk/classic) as drop-in `*.c` files, keeps the base generic, and keeps the CLI as thin pass-throughs over the same API Marvin will use. |
