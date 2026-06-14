@@ -3,13 +3,12 @@
 The device answers a snapshot command with a top-to-bottom run of full-width
 `STRIP` records (kind SNAPSHOT), all sharing one `frame_epoch`; the final band
 sets `STRIP_FLAG_LAST`. This module groups bands by `frame_epoch`, pastes them
-onto a canvas, and writes the result as raw `.bgr` + a sidecar `.json` (no
-deps) plus a `.png` when Pillow is importable.
+onto a canvas, and writes the result as a lossless `.png` (frame_epoch in a
+tEXt chunk).
 """
 
 from __future__ import annotations
 
-import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -94,44 +93,28 @@ class SnapshotAssembler:
 
 
 def save_snapshot(snap: CompletedSnapshot, out: str | Path) -> list[Path]:
-    """Write `out`.bgr + `out`.json, and `out`.png when Pillow is available.
+    """Write the snapshot as a lossless PNG and return its path.
 
-    `out` may carry a .bgr/.png/.json suffix (stripped) or be a bare stem.
-    Returns the paths written.
+    `out` may carry a .png suffix (or a stale .bgr/.json, stripped) or be a bare
+    stem; the result is always `<stem>.png`. PNG is lossless for the packed RGB
+    pixels, so no separate raw buffer is needed; `frame_epoch` rides along in a
+    tEXt chunk rather than a sidecar JSON.
     """
     base = Path(out)
     if base.suffix.lower() in (".bgr", ".png", ".json"):
         base = base.with_suffix("")
     base.parent.mkdir(parents=True, exist_ok=True)
 
-    written: list[Path] = []
-
-    bgr_path = base.with_suffix(".bgr")
-    bgr_path.write_bytes(snap.bgr)
-    written.append(bgr_path)
-
-    json_path = base.with_suffix(".json")
-    json_path.write_text(
-        json.dumps(
-            {
-                "width": snap.width,
-                "height": snap.height,
-                "frame_epoch": snap.frame_epoch,
-                "format": "BGR888",
-            },
-            indent=2,
-        )
-    )
-    written.append(json_path)
-
     try:
-        from PIL import Image
-    except ImportError:
-        return written
+        from PIL import Image, PngImagePlugin
+    except ImportError as e:  # pragma: no cover - Pillow is a base dependency
+        raise SnapshotError("Pillow is required to save snapshots as PNG") from e
 
     # Pillow's "raw" decoder maps BGR → RGB without a manual per-pixel swap.
     img = Image.frombytes("RGB", (snap.width, snap.height), snap.bgr, "raw", "BGR")
+    meta = PngImagePlugin.PngInfo()
+    meta.add_text("frame_epoch", str(snap.frame_epoch))
+
     png_path = base.with_suffix(".png")
-    img.save(png_path)
-    written.append(png_path)
-    return written
+    img.save(png_path, pnginfo=meta)
+    return [png_path]

@@ -8,6 +8,7 @@ push a type-mask command to a running device respectively.
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 import time
 from pathlib import Path
@@ -23,11 +24,13 @@ from .exporters.sensiml_csv import ExportError
 from .decode import decode_record
 from .framing import frame_encode, iter_frames
 from .records import (
+    PERF_OVERLAY_STRIP,
     RECORD_TYPE_BY_NAME,
     TYPE_MASK_ALL,
     TYPE_MASK_MIN,
     Strip,
     encode_set_mask_payload,
+    encode_set_overlay_payload,
     encode_snapshot_payload,
 )
 from .snapshot import SnapshotAssembler, save_snapshot
@@ -145,6 +148,15 @@ def cmd_set_mask(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_set_overlay(args: argparse.Namespace) -> int:
+    """Toggle the per-fret target rings on the SENSING strip."""
+    flags = PERF_OVERLAY_STRIP if args.on else 0
+    with SerialSource(args.port) as ser:
+        ser.send_command(frame_encode(encode_set_overlay_payload(flags)))
+    print(f"set-overlay: strip rings {'on' if args.on else 'off'}", file=sys.stderr)
+    return 0
+
+
 def _idle_chunks(ser: SerialSource, idle_timeout_s: float):
     """Yield serial chunks until `idle_timeout_s` elapses with no new bytes.
 
@@ -159,13 +171,38 @@ def _idle_chunks(ser: SerialSource, idle_timeout_s: float):
             yield chunk
 
 
-def cmd_snapshot(args: argparse.Namespace) -> int:
-    """Trigger a full-frame snapshot and save it for offline analysis.
+def _resolve_snapshot_out(out: str | None) -> Path:
+    """Resolve the `--out` argument to a concrete .png path.
 
-    Sends PERF_CMD_SNAPSHOT, reassembles the returned SNAPSHOT band strips
-    into one frame, and writes <out>.bgr + <out>.json (+ <out>.png if Pillow
-    is installed).
+    A value ending in `.png` is taken literally. Anything else (including the
+    default when `--out` is omitted) is treated as a directory, and the next
+    free `snapshot-NNNN.png` in it is chosen so rapid captures never clobber.
     """
+    p = Path(out) if out else Path("snapshots")
+    if p.suffix.lower() == ".png":
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+
+    p.mkdir(parents=True, exist_ok=True)
+    nums = [
+        int(m.group(1))
+        for f in p.glob("snapshot-*.png")
+        if (m := re.fullmatch(r"snapshot-(\d+)", f.stem))
+    ]
+    nxt = (max(nums) + 1) if nums else 1
+    return p / f"snapshot-{nxt:04d}.png"
+
+
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    """Trigger a full-frame snapshot and save it as a lossless PNG.
+
+    Sends PERF_CMD_SNAPSHOT, reassembles the returned SNAPSHOT band strips into
+    one frame, and writes a PNG. With `--out` omitted (or pointed at a
+    directory) the filename auto-increments as `snapshot-NNNN.png` for quick
+    repeated captures.
+    """
+    out_path = _resolve_snapshot_out(args.out)
+
     assembler = SnapshotAssembler()
     with SerialSource(args.port) as ser:
         ser.send_command(frame_encode(encode_snapshot_payload()))
@@ -187,7 +224,7 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
         )
         return 1
 
-    written = save_snapshot(snap, args.out)
+    written = save_snapshot(snap, out_path)
     print(
         f"snapshot: {snap.width}×{snap.height} (frame_epoch {snap.frame_epoch}) → "
         + ", ".join(str(p) for p in written),
@@ -331,6 +368,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_set_mask.add_argument("--types", required=True, help=_types_help())
     p_set_mask.set_defaults(func=cmd_set_mask)
 
+    p_set_overlay = sub.add_parser(
+        "set-overlay",
+        help="Toggle the per-fret target rings on the SENSING strip.",
+    )
+    p_set_overlay.add_argument("--port", required=True)
+    grp = p_set_overlay.add_mutually_exclusive_group(required=True)
+    grp.add_argument("--on", dest="on", action="store_true", help="Enable strip rings.")
+    grp.add_argument("--off", dest="on", action="store_false", help="Disable strip rings.")
+    p_set_overlay.set_defaults(func=cmd_set_overlay)
+
     p_snapshot = sub.add_parser(
         "snapshot",
         help="Capture one full video frame from a running device and save it.",
@@ -338,8 +385,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_snapshot.add_argument("--port", required=True)
     p_snapshot.add_argument(
         "--out",
-        required=True,
-        help="Output path stem; writes <out>.bgr + <out>.json (+ <out>.png if Pillow).",
+        default=None,
+        help="Output PNG path, or a directory for auto-incrementing "
+             "snapshot-NNNN.png (default: ./snapshots/).",
     )
     p_snapshot.add_argument(
         "--timeout",

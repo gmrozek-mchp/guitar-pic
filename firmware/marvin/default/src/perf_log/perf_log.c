@@ -121,6 +121,11 @@ static inline bool type_enabled(uint8_t type)
     return (s_enabled_mask & (1u << type)) != 0u;
 }
 
+/* Overlay sinks for the per-fret target rings (PERF_OVERLAY_* bits). Read
+ * lock-free by the CV producer; set by PERF_CMD_SET_OVERLAY. Default: rings on
+ * the viewer strips, capture buffer untouched. */
+static volatile uint32_t s_overlay_flags = PERF_OVERLAY_STRIP;
+
 /* ─── Header fill ────────────────────────────────────────────────────────── */
 
 static inline void hdr_fill(perf_hdr_t *h, uint8_t type, uint8_t flags,
@@ -620,30 +625,26 @@ void PerfLog_EmitTaskRuntime(perf_task_id_t id,
     send_state(&slot);
 }
 
-/* Strip producer: claim a free slot from the pool, row-copy a w×h BGR888
- * region out of the strided source frame directly into the slot, then
- * enqueue just the slot index. No struct memcpy in the queue critical
- * section — only a 1-byte index transfer.
- *
- * Total pixel bytes (w*h*3) must fit the slot's bgr[] capacity
- * (PERF_STRIP_MAX_BYTES); per-axis shape is unconstrained beyond that.
- * Drop-on-pool-empty; counter incremented under critical section. */
-void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
-                                perf_strip_kind_t kind,
-                                const uint8_t *frame, uint32_t frame_stride,
-                                uint16_t x, uint16_t y,
-                                uint16_t w, uint16_t h)
+/* Claim a free strip pool slot and fill its header. Returns the slot pointer
+ * (writing its index to *out_idx) or NULL when STRIP is masked off, the args
+ * are invalid, or the pool is empty (drop counted). The caller fills r->bgr
+ * then calls strip_slot_commit. No struct memcpy in the queue critical
+ * section — only a 1-byte index transfer. */
+static perf_rec_strip_t *strip_slot_claim(uint32_t frame_epoch, perf_strip_kind_t kind,
+                                          uint16_t x, uint16_t y,
+                                          uint16_t w, uint16_t h,
+                                          uint8_t *out_idx)
 {
-    if (s_strip_q == NULL || s_strip_free_q == NULL || frame == NULL) { return; }
-    if (!type_enabled(PERF_REC_STRIP)) { return; }
-    if (w == 0u || h == 0u) { return; }
-    if ((uint32_t)w * (uint32_t)h * PERF_STRIP_BPP > PERF_STRIP_MAX_BYTES) { return; }
+    if (s_strip_q == NULL || s_strip_free_q == NULL) { return NULL; }
+    if (!type_enabled(PERF_REC_STRIP)) { return NULL; }
+    if (w == 0u || h == 0u) { return NULL; }
+    if ((uint32_t)w * (uint32_t)h * PERF_STRIP_BPP > PERF_STRIP_MAX_BYTES) { return NULL; }
 
     uint8_t slot_idx;
     if (xQueueReceive(s_strip_free_q, &slot_idx, 0) != pdTRUE)
     {
         counter_add_task(&s_drop_strip, 1u);
-        return;
+        return NULL;
     }
 
     perf_rec_strip_t *r = &s_strip_pool[slot_idx];
@@ -654,6 +655,37 @@ void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
     r->w    = w;
     r->h    = h;
     r->kind = (uint8_t)kind;
+    *out_idx = slot_idx;
+    return r;
+}
+
+static void strip_slot_commit(uint8_t slot_idx)
+{
+    if (xQueueSend(s_strip_q, &slot_idx, 0) != pdTRUE)
+    {
+        /* In-flight queue full (pool sized depth+2 makes this rare; only
+         * possible if the drain task is blocked while strip_q is at depth
+         * and the producer also holds a slot). Return slot to free pool. */
+        (void)xQueueSend(s_strip_free_q, &slot_idx, 0);
+        counter_add_task(&s_drop_strip, 1u);
+    }
+}
+
+/* Strip producer: claim a free slot, row-copy a w×h BGR888 region out of the
+ * strided source frame directly into the slot, then enqueue the slot index.
+ * Total pixel bytes (w*h*3) must fit the slot's bgr[] (PERF_STRIP_MAX_BYTES);
+ * per-axis shape is unconstrained beyond that. Drop-on-pool-empty. */
+void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
+                                perf_strip_kind_t kind,
+                                const uint8_t *frame, uint32_t frame_stride,
+                                uint16_t x, uint16_t y,
+                                uint16_t w, uint16_t h)
+{
+    if (frame == NULL) { return; }
+
+    uint8_t slot_idx;
+    perf_rec_strip_t *r = strip_slot_claim(frame_epoch, kind, x, y, w, h, &slot_idx);
+    if (r == NULL) { return; }
 
     const uint32_t row_bytes = (uint32_t)w * PERF_STRIP_BPP;
     const uint8_t *src = frame + (uint32_t)y * frame_stride + (uint32_t)x * PERF_STRIP_BPP;
@@ -665,14 +697,23 @@ void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
         dst += row_bytes;
     }
 
-    if (xQueueSend(s_strip_q, &slot_idx, 0) != pdTRUE)
-    {
-        /* In-flight queue full (pool sized depth+2 makes this rare; only
-         * possible if the drain task is blocked while strip_q is at depth
-         * and the producer also holds a slot). Return slot to free pool. */
-        (void)xQueueSend(s_strip_free_q, &slot_idx, 0);
-        counter_add_task(&s_drop_strip, 1u);
-    }
+    strip_slot_commit(slot_idx);
+}
+
+void PerfLog_EmitStripPacked(uint32_t frame_epoch,
+                             perf_strip_kind_t kind,
+                             uint16_t x, uint16_t y,
+                             uint16_t w, uint16_t h,
+                             const uint8_t *pixels)
+{
+    if (pixels == NULL) { return; }
+
+    uint8_t slot_idx;
+    perf_rec_strip_t *r = strip_slot_claim(frame_epoch, kind, x, y, w, h, &slot_idx);
+    if (r == NULL) { return; }
+
+    memcpy(r->bgr, pixels, (uint32_t)w * (uint32_t)h * PERF_STRIP_BPP);
+    strip_slot_commit(slot_idx);
 }
 
 /* ─── Emit (ISR context) ─────────────────────────────────────────────────── */
@@ -720,4 +761,17 @@ void PerfLog_SetEnabledMask(uint32_t mask)
 uint32_t PerfLog_GetEnabledMask(void)
 {
     return s_enabled_mask;
+}
+
+/* ─── Overlay sinks ──────────────────────────────────────────────────────── */
+
+void PerfLog_SetOverlayFlags(uint32_t flags)
+{
+    s_overlay_flags = flags;
+    LOG_INFO("PerfLog: overlay=0x%08lx\r\n", (unsigned long)flags);
+}
+
+uint32_t PerfLog_GetOverlayFlags(void)
+{
+    return s_overlay_flags;
 }

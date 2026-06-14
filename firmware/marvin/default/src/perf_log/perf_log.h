@@ -94,6 +94,18 @@ void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
                                 uint16_t x, uint16_t y,
                                 uint16_t w, uint16_t h);
 
+/* Emit a strip whose pixels are already tightly packed (w*h*PERF_STRIP_BPP,
+ * row-major, no inter-row stride). Lets a producer composite a strip — e.g.
+ * paint the calibration rings onto the copy — before handing it over, without
+ * touching the source capture frame. (x, y) are the strip's origin in the
+ * source frame, for host-side placement. Same drop-on-pool-empty + STRIP mask
+ * gating as PerfLog_EmitStripFromFrame. */
+void PerfLog_EmitStripPacked(uint32_t frame_epoch,
+                             perf_strip_kind_t kind,
+                             uint16_t x, uint16_t y,
+                             uint16_t w, uint16_t h,
+                             const uint8_t *pixels);
+
 /* Request a one-shot full-frame snapshot. Sets a flag the drain task picks
  * up; the drain task copies the current video frame to a staging buffer and
  * streams it back as a top-to-bottom run of full-width SNAPSHOT strips (last
@@ -133,5 +145,14 @@ void PerfLog_NoteSinkDrop(uint32_t bytes_dropped);
  * time (32-bit aligned single-load is atomic on Cortex-A). */
 void     PerfLog_SetEnabledMask(uint32_t mask);
 uint32_t PerfLog_GetEnabledMask(void);
+
+/* ─── Overlay sinks (host-controlled) ─────────────────────────────────────────
+ *
+ * PERF_OVERLAY_* bits select where the per-fret target rings are drawn. Set
+ * via PERF_CMD_SET_OVERLAY; the CV producer reads the flags lock-free at strip-
+ * emit time. Default at boot is PERF_OVERLAY_STRIP (rings on the viewer strips,
+ * capture buffer untouched). */
+void     PerfLog_SetOverlayFlags(uint32_t flags);
+uint32_t PerfLog_GetOverlayFlags(void);
 
 #endif /* PERF_LOG_H */

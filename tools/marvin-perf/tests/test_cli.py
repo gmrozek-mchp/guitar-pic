@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pytest
 
-from marvin_perf.cli import parse_types_arg
+from marvin_perf.cli import _resolve_snapshot_out, parse_types_arg
 from marvin_perf.records import RecordType
 
 
@@ -40,3 +41,34 @@ def test_types_min_combines_with_more() -> None:
 def test_types_unknown_raises() -> None:
     with pytest.raises(argparse.ArgumentTypeError):
         parse_types_arg("BOGUS")
+
+
+# ─── Snapshot --out resolution ───────────────────────────────────────────────
+
+
+def test_snapshot_out_explicit_png_used_verbatim(tmp_path: Path) -> None:
+    out = tmp_path / "sub" / "screen.png"
+    assert _resolve_snapshot_out(str(out)) == out
+    assert out.parent.is_dir()  # parent created
+
+
+def test_snapshot_out_directory_auto_increments(tmp_path: Path) -> None:
+    d = tmp_path / "shots"
+    first = _resolve_snapshot_out(str(d))
+    assert first == d / "snapshot-0001.png"
+    first.write_bytes(b"")  # simulate a saved capture
+    second = _resolve_snapshot_out(str(d))
+    assert second == d / "snapshot-0002.png"
+
+
+def test_snapshot_out_default_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    assert _resolve_snapshot_out(None) == Path("snapshots") / "snapshot-0001.png"
+
+
+def test_snapshot_out_increment_skips_gaps(tmp_path: Path) -> None:
+    d = tmp_path / "shots"
+    d.mkdir()
+    (d / "snapshot-0007.png").write_bytes(b"")
+    (d / "snapshot-0003.png").write_bytes(b"")
+    assert _resolve_snapshot_out(str(d)) == d / "snapshot-0008.png"  # max + 1

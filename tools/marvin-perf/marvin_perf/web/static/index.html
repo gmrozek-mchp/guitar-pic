@@ -22,6 +22,7 @@
     <button id="live-port-refresh" title="Rescan ports">⟳</button>
     <button id="live-start">Start</button>
     <button id="live-stop" disabled>Stop</button>
+    <button id="overlay-toggle" class="toggle-btn active" disabled title="Target rings on the SENSING strip (snapshot & panel stay clean)">◎ Overlay</button>
     <span class="kv"><span class="k">mask</span> <span id="live-mask" class="v">—</span></span>
   </div>
   <div class="tb-group hidden" id="record-controls">
@@ -29,6 +30,10 @@
     <button id="record-start" disabled>● Record</button>
     <button id="record-stop" disabled>Stop</button>
     <span id="record-pill" class="rec-pill rec-idle">idle</span>
+  </div>
+  <div class="tb-group hidden" id="snapshot-controls">
+    <input id="snapshot-out" type="text" placeholder="snapshots/web-…" spellcheck="false">
+    <button id="snapshot-btn" disabled>📷 Snapshot</button>
   </div>
   <div class="tb-group transport">
     <button id="step-prev" title="Prev event (←)">⏮</button>
@@ -98,6 +103,20 @@
     <div id="timeline-chart"></div>
   </section>
 </main>
+
+<div id="snapshot-modal" class="snap-modal hidden">
+  <div class="snap-card">
+    <div class="snap-head">
+      <span id="snap-title">Snapshot</span>
+      <button id="snap-close" title="Close (Esc)">✕</button>
+    </div>
+    <div class="snap-body"><img id="snap-img" alt="captured frame"></div>
+    <div class="snap-foot">
+      <span id="snap-meta" class="meta"></span>
+      <a id="snap-download" download>Download PNG</a>
+    </div>
+  </div>
+</div>
 
 <script src="/static/app.js"></script>
 </body>

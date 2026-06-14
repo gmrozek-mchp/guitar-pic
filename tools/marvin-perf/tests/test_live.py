@@ -16,14 +16,23 @@ from marvin_perf.framing import FrameStats, frame_encode, iter_frames
 from marvin_perf.records import (
     HDR_SIZE,
     PERF_CMD_HDR_MAGIC,
+    PERF_CMD_SET_OVERLAY,
     PERF_CMD_SET_TYPE_MASK,
+    PERF_CMD_SNAPSHOT,
     PERF_LOG_HDR_MAGIC,
+    PERF_OVERLAY_STRIP,
     EXPECTED_SCHEMA_VERSION,
+    STRIP_FLAG_LAST,
     RecordType,
     Session,
+    StripKind,
     encode_set_mask_payload,
+    encode_set_overlay_payload,
+    encode_snapshot_payload,
 )
 from marvin_perf.web.live import _LiveSession
+
+from .conftest import build_strip_payload
 
 
 class _FakeSerial:
@@ -299,6 +308,170 @@ def test_double_record_start_raises(tmp_path: Path) -> None:
             sess.record_start(tmp_path / "rec_b")
     finally:
         sess.stop()
+
+
+# ─── Snapshot ──────────────────────────────────────────────────────────────
+
+
+def _snapshot_band(epoch: int, y: int, h: int, *, fill: int, last: bool = False) -> bytes:
+    return frame_encode(
+        build_strip_payload(
+            frame_epoch=epoch,
+            kind=int(StripKind.SNAPSHOT),
+            x=0, y=y, w=4, h=h,
+            flags=STRIP_FLAG_LAST if last else 0,
+            fill=fill,
+        )
+    )
+
+
+def test_snapshot_assembles_saves_and_does_not_leak(tmp_path: Path) -> None:
+    seen: list[str] = []
+    sess = _LiveSession()
+    sess.configure(
+        record_to_dict=lambda rec, *, include_bgr=False: (seen.append(type(rec).__name__), {})[1]
+    )
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    ser = captured["ser"]
+    try:
+        stem = str(tmp_path / "shot")
+        sess.request_snapshot(stem)
+
+        # The SNAPSHOT command rode the live link.
+        assert ser.sent[-1] == frame_encode(encode_snapshot_payload())
+        assert ser.sent[-1][6:-2][2] == PERF_CMD_SNAPSHOT
+
+        ser.feed(_snapshot_band(42, 0, 3, fill=0x11))
+        ser.feed(_snapshot_band(42, 3, 2, fill=0x22, last=True))
+
+        _wait_for(lambda: sess.last_snapshot() is not None, timeout=2.0)
+        snap = sess.last_snapshot()
+        assert snap is not None
+        assert (snap.width, snap.height, snap.frame_epoch) == (4, 5, 42)
+
+        # Saved to disk as a single lossless PNG (no raw/sidecar files).
+        assert (tmp_path / "shot.png").exists()
+        assert not (tmp_path / "shot.bgr").exists()
+        assert not (tmp_path / "shot.json").exists()
+
+        # Pending state cleared; bands never entered the normal record stream.
+        assert sess._snap is None
+        assert "Strip" not in seen
+    finally:
+        sess.stop()
+
+
+def test_snapshot_without_out_stem_caches_but_writes_nothing(tmp_path: Path) -> None:
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    ser = captured["ser"]
+    try:
+        sess.request_snapshot(None)
+        ser.feed(_snapshot_band(7, 0, 2, fill=0x33, last=True))
+        _wait_for(lambda: sess.last_snapshot() is not None, timeout=2.0)
+        assert list(tmp_path.iterdir()) == []  # nothing written
+    finally:
+        sess.stop()
+
+
+def test_snapshot_in_progress_conflict() -> None:
+    sess = _make_session()
+
+    def factory(port: str) -> _FakeSerial:
+        return _FakeSerial(port)
+
+    sess.start("/dev/null", ser_factory=factory)
+    try:
+        sess.request_snapshot(None)  # latched, no bands fed yet
+        with pytest.raises(RuntimeError):
+            sess.request_snapshot(None)
+    finally:
+        sess.stop()
+
+
+def test_snapshot_when_inactive_raises() -> None:
+    sess = _make_session()
+    with pytest.raises(RuntimeError):
+        sess.request_snapshot(None)
+
+
+def test_snapshot_times_out(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("marvin_perf.web.live._SNAPSHOT_TIMEOUT_S", 0.05)
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    ser = captured["ser"]
+    try:
+        sess.request_snapshot(None)
+        time.sleep(0.1)  # let the deadline pass
+        # Tick the reader loop with an unrelated frame so the timeout check runs.
+        ser.feed(frame_encode(_encode_session_payload(ts=1)))
+        _wait_for(lambda: sess._snap is None, timeout=2.0)
+    finally:
+        sess.stop()
+
+
+# ─── Overlay ─────────────────────────────────────────────────────────────────
+
+
+def test_set_overlay_round_trips_to_serial_send() -> None:
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    ser = captured["ser"]
+    try:
+        sess.set_overlay(True)
+        assert ser.sent[-1] == frame_encode(encode_set_overlay_payload(PERF_OVERLAY_STRIP))
+        assert ser.sent[-1][6:-2][2] == PERF_CMD_SET_OVERLAY
+        assert sess.status()["overlay"] is True
+
+        sess.set_overlay(False)
+        assert ser.sent[-1] == frame_encode(encode_set_overlay_payload(0))
+        assert sess.status()["overlay"] is False
+    finally:
+        sess.stop()
+
+
+def test_set_overlay_when_inactive_raises() -> None:
+    sess = _make_session()
+    with pytest.raises(RuntimeError):
+        sess.set_overlay(True)
+
+
+def test_encode_set_overlay_payload_layout() -> None:
+    payload = encode_set_overlay_payload(PERF_OVERLAY_STRIP)
+    assert len(payload) == 8  # hdr(magic,cmd,reserved,pad-in-struct) + u32 flags
+    magic = payload[0] | (payload[1] << 8)
+    assert magic == PERF_CMD_HDR_MAGIC
+    assert payload[2] == PERF_CMD_SET_OVERLAY
+    flags = int.from_bytes(payload[4:8], "little")
+    assert flags == PERF_OVERLAY_STRIP
 
 
 def test_stop_session_auto_finalizes_recording(tmp_path: Path) -> None:

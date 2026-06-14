@@ -93,6 +93,15 @@ static void dispatch_payload(void)
             PerfLog_RequestSnapshot();
             break;
 
+        case PERF_CMD_SET_OVERLAY:
+            if (s_len == sizeof(perf_cmd_set_overlay_t))
+            {
+                perf_cmd_set_overlay_t cmd;
+                memcpy(&cmd, s_payload, sizeof(cmd));
+                PerfLog_SetOverlayFlags(cmd.flags);
+            }
+            break;
+
         default:
             break;
     }

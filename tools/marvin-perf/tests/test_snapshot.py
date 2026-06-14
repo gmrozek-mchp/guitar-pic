@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 
 import pytest
@@ -70,20 +69,34 @@ def test_width_mismatch_raises() -> None:
         asm.add(_band(1, 1, w=8, fill=0x22, last=True))
 
 
-def test_save_writes_bgr_json_and_png(tmp_path: Path) -> None:
+def test_save_writes_png_only_with_epoch(tmp_path: Path) -> None:
     snap = CompletedSnapshot(width=4, height=2, frame_epoch=7, bgr=bytes(4 * 2 * 3))
-    written = save_snapshot(snap, tmp_path / "shot.png")  # suffix should be stripped
-    names = {p.name for p in written}
-    assert {"shot.bgr", "shot.json"} <= names
+    written = save_snapshot(snap, tmp_path / "shot")  # bare stem → .png
+    assert written == [tmp_path / "shot.png"]
 
-    meta = json.loads((tmp_path / "shot.json").read_text())
-    assert meta == {"width": 4, "height": 2, "frame_epoch": 7, "format": "BGR888"}
-    assert (tmp_path / "shot.bgr").read_bytes() == snap.bgr
+    # No raw/sidecar files — PNG is the sole, lossless artifact.
+    assert not (tmp_path / "shot.bgr").exists()
+    assert not (tmp_path / "shot.json").exists()
 
-    # Pillow is in the viewer dep group; when present, a PNG of the right size lands.
-    pytest.importorskip("PIL")
     from PIL import Image
 
-    assert "shot.png" in names
     with Image.open(tmp_path / "shot.png") as img:
         assert img.size == (4, 2)
+        assert img.text.get("frame_epoch") == "7"  # epoch rides in a tEXt chunk
+
+
+def test_save_png_is_lossless(tmp_path: Path) -> None:
+    # A distinguishable BGR pattern must survive the round-trip exactly.
+    bgr = bytes(range(4 * 2 * 3))
+    snap = CompletedSnapshot(width=4, height=2, frame_epoch=1, bgr=bgr)
+    save_snapshot(snap, tmp_path / "lossless.png")
+
+    from PIL import Image
+
+    with Image.open(tmp_path / "lossless.png") as img:
+        rgb = img.convert("RGB").tobytes()
+    # Source is BGR; PNG holds RGB — rebuild the expected RGB and compare.
+    expected = bytes(
+        b for i in range(0, len(bgr), 3) for b in (bgr[i + 2], bgr[i + 1], bgr[i])
+    )
+    assert rgb == expected

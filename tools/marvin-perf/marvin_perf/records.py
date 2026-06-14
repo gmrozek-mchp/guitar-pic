@@ -21,6 +21,13 @@ PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
 
 PERF_CMD_SET_TYPE_MASK = 0x01
 PERF_CMD_SNAPSHOT = 0x02
+PERF_CMD_SET_OVERLAY = 0x03
+
+# Overlay sinks for the per-fret target rings (PERF_CMD_SET_OVERLAY flags).
+# STRIP draws rings onto the viewer's SENSING strip copy; PANEL is reserved for
+# a future LVDS demo overlay (no-op on the device today).
+PERF_OVERLAY_STRIP = 0x01
+PERF_OVERLAY_PANEL = 0x02
 
 SOF_BYTES = bytes((0x55, 0x4D, 0x52, 0x56))  # "UMRV"
 
@@ -404,3 +411,13 @@ _CMD_HDR_FMT = struct.Struct("<HBB")  # magic, cmd_id, reserved
 def encode_snapshot_payload() -> bytes:
     """Pack a SNAPSHOT command payload (header-only; no SOF/LEN/FCS framing)."""
     return _CMD_HDR_FMT.pack(PERF_CMD_HDR_MAGIC, PERF_CMD_SNAPSHOT, 0)
+
+
+_CMD_SET_OVERLAY_FMT = struct.Struct("<HBBI")  # magic, cmd_id, reserved, flags
+
+
+def encode_set_overlay_payload(flags: int) -> bytes:
+    """Pack a SET_OVERLAY command payload (no SOF/LEN/FCS framing)."""
+    return _CMD_SET_OVERLAY_FMT.pack(
+        PERF_CMD_HDR_MAGIC, PERF_CMD_SET_OVERLAY, 0, flags & 0xFFFFFFFF
+    )

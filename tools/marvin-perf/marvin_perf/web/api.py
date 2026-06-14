@@ -163,6 +163,14 @@ class RecordStartRequest(BaseModel):
     out_dir: str
 
 
+class SnapshotRequest(BaseModel):
+    out: str | None = None
+
+
+class OverlayRequest(BaseModel):
+    enabled: bool
+
+
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -565,6 +573,40 @@ def live_record_stop() -> dict[str, Any]:
     if result is None:
         return {"recording": None}
     return result
+
+
+@router.post("/live/snapshot")
+def live_snapshot(req: SnapshotRequest) -> dict[str, Any]:
+    try:
+        return _LIVE.request_snapshot(req.out)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+
+
+@router.get("/live/snapshot.png")
+def live_snapshot_png() -> Response:
+    """Render the most recently captured full-frame snapshot as a PNG."""
+    snap = _LIVE.last_snapshot()
+    if snap is None:
+        raise HTTPException(404, "no snapshot captured yet")
+    try:
+        png = render_strip_png(snap.bgr, w=snap.width, h=snap.height)
+    except StripRenderError as e:
+        raise HTTPException(500, str(e))
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.post("/live/overlay")
+def live_overlay(req: OverlayRequest) -> dict[str, Any]:
+    try:
+        enabled = _LIVE.set_overlay(req.enabled)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return {"overlay": enabled}
 
 
 @router.websocket("/live/ws")

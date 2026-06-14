@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,10 +34,21 @@ from ..capture import (
 from ..decode import decode_record
 from ..framing import FrameStats, frame_encode, iter_frames
 from ..records import (
+    PERF_OVERLAY_STRIP,
     RECORD_TYPE_BY_NAME,
     DetectorConfig,
     Session,
+    Strip,
+    StripKind,
     encode_set_mask_payload,
+    encode_set_overlay_payload,
+    encode_snapshot_payload,
+)
+from ..snapshot import (
+    CompletedSnapshot,
+    SnapshotAssembler,
+    SnapshotError,
+    save_snapshot,
 )
 
 # Record types whose latest framed bytes get prepended to a new recording's
@@ -54,10 +66,19 @@ from ..transport import SerialSource
 _QUEUE_MAX = 512
 
 
+# A snapshot's band burst takes ~0.4-1 s on the wire; this margin also covers
+# the device re-locking HDMI before the first band. If no complete frame lands
+# in this window the request is abandoned and the UI told it timed out.
+_SNAPSHOT_TIMEOUT_S = 8.0
+
+
 @dataclass
 class _State:
     port: str | None = None
     mask: int = 0xFFFFFFFF
+    # Mirrors the device's boot default (PERF_OVERLAY_STRIP on). Tracked so a
+    # late-attaching WS client can render the toggle in the right state.
+    overlay_enabled: bool = True
     started_at: str | None = None
     framing_stats: FrameStats = field(default_factory=FrameStats)
     last_session_dict: dict[str, Any] | None = None
@@ -80,6 +101,14 @@ class _Recording:
     n_frames: int = 0
 
 
+@dataclass
+class _SnapPending:
+    assembler: SnapshotAssembler
+    out_stem: str | None
+    deadline: float  # time.monotonic() value
+    started_at: str
+
+
 class _LiveSession:
     """Process-singleton; mutex guards all field writes."""
 
@@ -93,6 +122,8 @@ class _LiveSession:
         self._loop: asyncio.AbstractEventLoop | None = None
         self._ws: WebSocket | None = None
         self._rec: _Recording | None = None
+        self._snap: _SnapPending | None = None
+        self._last_snapshot: CompletedSnapshot | None = None
         # Late-bound to avoid a cycle: api.py passes this on import.
         self._record_to_dict = None  # type: ignore[var-annotated]
 
@@ -184,6 +215,22 @@ class _LiveSession:
             mask |= 1 << RECORD_TYPE_BY_NAME[token]
         return self.set_mask_from_int(mask)
 
+    def set_overlay(self, enabled: bool) -> bool:
+        """Enable/disable the per-fret target rings on the SENSING strip.
+
+        Only touches the viewer strip copy on the device — snapshots and the
+        LVDS panel are unaffected.
+        """
+        with self._lock:
+            ser = self._ser
+            if ser is None:
+                raise RuntimeError("live session not active")
+            self._state.overlay_enabled = enabled
+        flags = PERF_OVERLAY_STRIP if enabled else 0
+        ser.send_command(frame_encode(encode_set_overlay_payload(flags)))
+        self._post("overlay", {"enabled": enabled, "source": "client"})
+        return enabled
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             active = self.is_active()
@@ -191,6 +238,7 @@ class _LiveSession:
                 "active": active,
                 "port": self._state.port if active else None,
                 "mask": f"0x{self._state.mask:08x}" if active else None,
+                "overlay": self._state.overlay_enabled if active else None,
                 "recording": self._recording_dict_locked(),
                 "started_at": self._state.started_at if active else None,
                 "framing": {
@@ -306,6 +354,83 @@ class _LiveSession:
         self._post("recording", {"state": "stopped", **result})
         return result
 
+    # ─── snapshot ───────────────────────────────────────────────────────
+
+    def request_snapshot(self, out_stem: str | None) -> dict[str, Any]:
+        """Send PERF_CMD_SNAPSHOT; the reader thread assembles the reply.
+
+        The session owns the only serial handle, so the snapshot rides the
+        live link rather than a second port. Returned bands are reassembled
+        in ``_feed_snapshot`` and announced over the WS on completion.
+        """
+        with self._lock:
+            ser = self._ser
+            if ser is None or not self.is_active():
+                raise RuntimeError("live session not active")
+            if self._snap is not None:
+                raise RuntimeError("snapshot already in progress")
+            self._snap = _SnapPending(
+                assembler=SnapshotAssembler(),
+                out_stem=out_stem or None,
+                deadline=time.monotonic() + _SNAPSHOT_TIMEOUT_S,
+                started_at=datetime.now(timezone.utc).isoformat(),
+            )
+        ser.send_command(frame_encode(encode_snapshot_payload()))
+        self._post("snapshot", {"state": "requested"})
+        return {"state": "requested"}
+
+    def last_snapshot(self) -> CompletedSnapshot | None:
+        with self._lock:
+            return self._last_snapshot
+
+    def _feed_snapshot(self, strip: Strip) -> None:
+        """Reader-thread tap: drive the pending SnapshotAssembler with a
+        SNAPSHOT band. On the LAST band, save to disk (if a stem was given),
+        cache the frame for the PNG endpoint, and announce over the WS."""
+        with self._lock:
+            snap = self._snap
+        if snap is None:
+            return
+        try:
+            completed = snap.assembler.add(strip)
+        except SnapshotError as e:
+            with self._lock:
+                if self._snap is snap:
+                    self._snap = None
+            self._post("snapshot", {"state": "error", "msg": str(e)})
+            return
+        if completed is None:
+            return
+
+        with self._lock:
+            self._snap = None
+            self._last_snapshot = completed
+        paths: list[str] = []
+        save_error: str | None = None
+        if snap.out_stem:
+            try:
+                paths = [str(p) for p in save_snapshot(completed, snap.out_stem)]
+            except Exception as e:
+                save_error = str(e)
+        payload: dict[str, Any] = {
+            "state": "saved",
+            "width": completed.width,
+            "height": completed.height,
+            "frame_epoch": completed.frame_epoch,
+            "paths": paths,
+        }
+        if save_error is not None:
+            payload["save_error"] = save_error
+        self._post("snapshot", payload)
+
+    def _check_snapshot_timeout(self) -> None:
+        with self._lock:
+            snap = self._snap
+            if snap is None or time.monotonic() < snap.deadline:
+                return
+            self._snap = None
+        self._post("snapshot", {"state": "timeout"})
+
     # ─── WS attachment ──────────────────────────────────────────────────
 
     async def attach_ws(self, ws: WebSocket) -> None:
@@ -328,6 +453,7 @@ class _LiveSession:
                     "started_at": self._state.started_at,
                     "port": self._state.port,
                     "mask": f"0x{self._state.mask:08x}",
+                    "overlay": self._state.overlay_enabled,
                     "recording": self._recording_dict_locked(),
                 },
             }
@@ -350,6 +476,10 @@ class _LiveSession:
                     await ws.send_json({"type": "framing_stats", **payload})
                 elif msg_type == "recording":
                     await ws.send_json({"type": "recording", **payload})
+                elif msg_type == "snapshot":
+                    await ws.send_json({"type": "snapshot", **payload})
+                elif msg_type == "overlay":
+                    await ws.send_json({"type": "overlay", **payload})
         except WebSocketDisconnect:
             pass
         finally:
@@ -368,10 +498,16 @@ class _LiveSession:
             for frame in iter_frames(ser, stats):
                 if self._stop_event.is_set():
                     break
+                self._check_snapshot_timeout()
                 self._mirror_to_recording(frame.framed)
                 try:
                     rec = decode_record(frame.payload)
                 except Exception:
+                    continue
+                if isinstance(rec, Strip) and rec.kind == int(StripKind.SNAPSHOT):
+                    # Snapshot bands feed the assembler and never enter the
+                    # normal record stream / strip slots.
+                    self._feed_snapshot(rec)
                     continue
                 if self._record_to_dict is None:
                     continue

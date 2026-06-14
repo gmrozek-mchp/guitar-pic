@@ -387,7 +387,16 @@ typedef enum
 {
     PERF_CMD_SET_TYPE_MASK = 0x01u,
     PERF_CMD_SNAPSHOT      = 0x02u,
+    PERF_CMD_SET_OVERLAY   = 0x03u,
 } perf_cmd_t;
+
+/* Overlay sinks for the per-fret target rings, gated independently via
+ * PERF_CMD_SET_OVERLAY. STRIP draws the rings onto the SENSING strip copy
+ * that ships to the host viewer (never the capture buffer, so snapshots and
+ * the LVDS panel stay clean). PANEL is reserved for a future LVDS demo
+ * overlay and is a no-op today. */
+#define PERF_OVERLAY_STRIP   0x01u
+#define PERF_OVERLAY_PANEL   0x02u
 
 typedef struct __attribute__((packed))
 {
@@ -410,5 +419,13 @@ typedef struct __attribute__((packed))
  * SNAPSHOT), all sharing one frame_epoch, the last flagged LAST. Header-only;
  * "current frame, full resolution" needs no parameters. Not gated by the
  * STRIP type mask — the command itself is the request. */
+
+/* PERF_CMD_SET_OVERLAY — set the active overlay sinks (PERF_OVERLAY_* bits).
+ * Bits not set disable that sink. */
+typedef struct __attribute__((packed))
+{
+    perf_cmd_hdr_t hdr;
+    uint32_t       flags;
+} perf_cmd_set_overlay_t;
 
 #endif /* PERF_LOG_RECORDS_H */

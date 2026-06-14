@@ -33,6 +33,18 @@
 
 #define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
 
+/* Strip regions published to the host viewer each frame (native capture-frame
+ * coords). SENSING spans the sensor row (the rings land here); STRIKE spans the
+ * strum trigger zone below the sensors (no rings there). */
+#define CV_SENSING_X           265u
+#define CV_SENSING_Y           300u
+#define CV_SENSING_W           185u
+#define CV_SENSING_H           32u
+#define CV_STRIKE_X            212u
+#define CV_STRIKE_Y            395u
+#define CV_STRIKE_W            290u
+#define CV_STRIKE_H            32u
+
 /* Sensor coordinates in native capture-frame space, anchored to 720×480
  * (Wii 480p60 — primary production source). (hx,hy) = brightness sensor,
  * (ex,ey) = color-filtered edge sensor; both above the strike line.
@@ -75,6 +87,12 @@ static uint32_t s_press_count[FRET_COUNT];
 
 static StaticQueue_t s_frame_queue_buf;
 static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+
+/* Tightly-packed scratch for the SENSING strip: the region is row-copied here,
+ * the rings are painted on the copy, then it's shipped via PerfLog_EmitStripPacked
+ * — the source capture frame is never written, so snapshots and the LVDS panel
+ * stay clean. */
+static uint8_t s_sensing_scratch[CV_SENSING_W * CV_SENSING_H * CV_BYTES_PER_PIXEL];
 
 static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
@@ -221,11 +239,11 @@ static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
 
 /* ─── Calibration overlay ──────────────────────────────────────────────── */
 
-/* Paints a per-fret ring at each sample point on the just-sampled frame so
- * the user can visually verify alignment with on-screen note targets. The
- * ring radius is outside the 5×5 sample patch — overdrawing here would
- * not affect *this* frame's reads (detect_frame already ran) but a future
- * re-sample on the same ring slot must still see clean source pixels. */
+/* Paints a per-fret ring at each sample point onto a target buffer (the SENSING
+ * strip copy), translated by the buffer's origin in frame space, so the user
+ * can visually verify alignment with on-screen note targets in the host viewer.
+ * The source capture frame is never touched. The ring radius is outside the 5×5
+ * sample patch; the detector has already sampled by the time this runs. */
 #define CV_OVERLAY_RING_R    4u
 
 static const uint8_t s_overlay_hold_bgr[3] = { 255u, 255u, 255u };  /* white */
@@ -294,27 +312,33 @@ static void draw_filled_disk(uint8_t *frame, int fw, int fh,
  * once. Constant flicker = noise pushing thresholds. */
 #define CV_OVERLAY_DOT_R     1u
 
-static void draw_overlay(uint8_t *frame, uint16_t fw, uint16_t fh)
+/* Draw the per-fret rings/dots into `buf` (bw×bh, tightly packed), with sensor
+ * coords translated by the buffer's frame-space origin (ox, oy). Pixels falling
+ * outside the buffer are clipped by put_pixel_bgr. */
+static void draw_overlay(uint8_t *buf, uint16_t bw, uint16_t bh,
+                         uint16_t ox, uint16_t oy)
 {
-    int w = (int)fw, h = (int)fh;
+    int w = (int)bw, h = (int)bh;
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
         sensor_xy_t s = s_sensor_coords[i];
         const uint8_t *e = s_overlay_edge_bgr[i];
+        int hx = (int)s.hx - (int)ox, hy = (int)s.hy - (int)oy;
+        int ex = (int)s.ex - (int)ox, ey = (int)s.ey - (int)oy;
 
-        draw_ring(frame, w, h, s.hx, s.hy, (int)CV_OVERLAY_RING_R,
+        draw_ring(buf, w, h, hx, hy, (int)CV_OVERLAY_RING_R,
                   s_overlay_hold_bgr[0], s_overlay_hold_bgr[1], s_overlay_hold_bgr[2]);
-        draw_ring(frame, w, h, s.ex, s.ey, (int)CV_OVERLAY_RING_R,
+        draw_ring(buf, w, h, ex, ey, (int)CV_OVERLAY_RING_R,
                   e[0], e[1], e[2]);
 
         if (s_pressed[i])
         {
-            draw_filled_disk(frame, w, h, s.hx, s.hy, (int)CV_OVERLAY_DOT_R,
+            draw_filled_disk(buf, w, h, hx, hy, (int)CV_OVERLAY_DOT_R,
                              s_overlay_hold_bgr[0], s_overlay_hold_bgr[1], s_overlay_hold_bgr[2]);
         }
         if (s_edge_active[i])
         {
-            draw_filled_disk(frame, w, h, s.ex, s.ey, (int)CV_OVERLAY_DOT_R,
+            draw_filled_disk(buf, w, h, ex, ey, (int)CV_OVERLAY_DOT_R,
                              e[0], e[1], e[2]);
         }
     }
@@ -392,18 +416,41 @@ static void cv_marvin_v1_task(void *param)
          * directly from the setter path. */
         if ((frame.frame_count % 60u) == 0u) { publish_detector_config(); }
 
-        /* Sensing strip centers on the sensor row (y=311); strike strip is
-         * below the sensors at the strum trigger zone. Both pre-overlay so
-         * the host viewer sees the same pixels the detector consumed. */
         const uint32_t fstride = (uint32_t)frame.width * CV_BYTES_PER_PIXEL;
-        PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_SENSING,
-                                   (const uint8_t *)frame.buffer, fstride,
-                                   265u, 300, 185u, 32u);
+
+        /* STRIKE: the strum trigger zone, copied straight from the frame (no
+         * sensors there → no rings). */
         PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_STRIKE,
                                    (const uint8_t *)frame.buffer, fstride,
-                                   212u, 395u, 290u, 32u);
+                                   CV_STRIKE_X, CV_STRIKE_Y, CV_STRIKE_W, CV_STRIKE_H);
 
-        draw_overlay((uint8_t *)frame.buffer, frame.width, frame.height);
+        /* SENSING: copy the sensor row into scratch and (when the overlay sink
+         * is on) paint the target rings onto the copy before shipping it. The
+         * source frame is never written, so snapshots and the LVDS panel stay
+         * clean. Gate the copy on the STRIP mask so it costs nothing when the
+         * host isn't consuming strips. */
+        if ((PerfLog_GetEnabledMask() & (1u << PERF_REC_STRIP)) != 0u)
+        {
+            const uint8_t *src = (const uint8_t *)frame.buffer
+                               + (uint32_t)CV_SENSING_Y * fstride
+                               + (uint32_t)CV_SENSING_X * CV_BYTES_PER_PIXEL;
+            const uint32_t row_bytes = (uint32_t)CV_SENSING_W * CV_BYTES_PER_PIXEL;
+            uint8_t *dst = s_sensing_scratch;
+            for (uint16_t row = 0u; row < CV_SENSING_H; row++)
+            {
+                memcpy(dst, src, row_bytes);
+                src += fstride;
+                dst += row_bytes;
+            }
+            if ((PerfLog_GetOverlayFlags() & PERF_OVERLAY_STRIP) != 0u)
+            {
+                draw_overlay(s_sensing_scratch, CV_SENSING_W, CV_SENSING_H,
+                             CV_SENSING_X, CV_SENSING_Y);
+            }
+            PerfLog_EmitStripPacked(frame.frame_count, PERF_STRIP_SENSING,
+                                    CV_SENSING_X, CV_SENSING_Y,
+                                    CV_SENSING_W, CV_SENSING_H, s_sensing_scratch);
+        }
 
         // /* ~2 Hz signal dump for threshold tuning. hold/edge values shown
         //  * vs the 50 threshold, with P/E flags reflecting current state. */

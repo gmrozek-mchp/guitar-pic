@@ -174,6 +174,36 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-14 — Snapshot save = PNG-only + auto-incrementing filenames (CLI)
+
+Snapshot save was `.bgr` + `.json` (+ `.png`). PNG is lossless for the packed RGB, so the raw `.bgr` is redundant and the `.json` only carried `frame_epoch` — now tucked into a PNG `tEXt` chunk. Dropped both. `save_snapshot` is PNG-only across CLI + GUI; `pillow` promoted from the `viewer` group to a base dependency (snapshot is a base feature).
+
+CLI `marvin-perf snapshot` now supports rapid "jump through screens" capture: `--out` is optional and, when omitted or pointed at a directory, the filename auto-increments as `snapshot-NNNN.png` (scans the dir, max+1) under `./snapshots/` by default. An explicit `--out foo.png` is used verbatim. GUI still uses its timestamped stem (one PNG per click) — auto-increment there is a later nicety if wanted. Tests: PNG-only + lossless round-trip + tEXt epoch (`test_snapshot.py`), `_resolve_snapshot_out` cases (`test_cli.py`), live save asserts `.png`. Suite **145 passed**.
+
+### 2026-06-14 — Target-ring overlay moved off the capture buffer (clean snapshot + clean panel)
+
+Snapshots were picking up the per-fret calibration rings and occasionally showed tearing. Root cause: `draw_overlay()` burned the rings **into the shared ISC capture buffer** — the same buffer HEO displays and the snapshot copies — and the SENSING/STRIKE strips were emitted *pre-overlay*, so the rings landed on the panel + snapshot but **not** the strips (the inverse of what's wanted). Reworked so rings are drawn **only onto the SENSING strip copy** that ships to the viewer; the capture frame is never written.
+
+- **Firmware:**
+  - `cv_marvin_v1.c`: dropped the `draw_overlay((uint8_t*)frame.buffer, …)` call. SENSING now row-copies into a static `s_sensing_scratch`, paints the rings there (when the overlay sink is on), and ships via the new `PerfLog_EmitStripPacked`. STRIKE stays a clean `EmitStripFromFrame` (no sensors there). Strip rects promoted to named consts. `draw_overlay` now takes `(buf, bw, bh, ox, oy)` and translates sensor coords by the strip origin. SENSING copy gated on the STRIP mask so it's free when the host isn't consuming strips.
+  - `perf_log.{c,h}`: factored the strip slot-claim/header/enqueue into `strip_slot_claim`/`strip_slot_commit`; added `PerfLog_EmitStripPacked` (prepacked, single memcpy). Added `s_overlay_flags` (boots `PERF_OVERLAY_STRIP`) + `PerfLog_Set/GetOverlayFlags`.
+  - `perf_log_records.h` / `perf_log_rx.c`: new host→device `PERF_CMD_SET_OVERLAY` (0x03) + `perf_cmd_set_overlay_t` + `PERF_OVERLAY_STRIP`/`PERF_OVERLAY_PANEL` flag bits. **No schema bump** (commands don't touch the record format). PANEL bit reserved for a future LVDS demo overlay (no-op today).
+- **Host (`tools/marvin-perf`):** `encode_set_overlay_payload`; `live.set_overlay()`; `POST /api/live/overlay`; overlay state in `status()`/`hello` + a WS `overlay` event; `marvin-perf set-overlay --port … --on/--off`. Snapshot needs **no** per-capture toggling now — the capture buffer is always clean.
+- **GUI:** "◎ Overlay" toggle in the live toolbar (active = rings on the SENSING strip), reflecting device state.
+- **Tests:** 3 new `test_live.py` cases (set_overlay round-trip + status, inactive-raises, payload layout). Suite **140 passed**.
+- **Decisions this session:** kept capture at **4 buffers** — 5 overflows the 16 MiB `.region_nocache` by ~1.1 MB once the 3.9 MB XLCDC framebuffer is counted (descriptor ring supports up to 10; memory is the limit). Snapshot tearing-retry deferred (captured screens are mostly static). LVDS panel kept clean for now; re-adding a demo overlay later is the `PERF_OVERLAY_PANEL` path.
+- **Not yet done:** firmware not built (MPLAB/XC32) or hardware-tested.
+
+### 2026-06-14 — marvin-perf viewer: Snapshot button (GUI for the snapshot command)
+
+Follow-up to the snapshot-capture entry below: the capture only existed as the headless `marvin-perf snapshot` CLI, which opens its **own** serial port. The `serve` web viewer runs a persistent single-tenant live session whose reader thread **owns** the port, so the GUI couldn't open a second connection. Hooked snapshot assembly into the existing live reader thread instead.
+
+- **Backend (`web/live.py`):** `request_snapshot(out_stem)` latches a fresh `SnapshotAssembler` + monotonic deadline (`_SNAPSHOT_TIMEOUT_S = 8 s`) and sends `PERF_CMD_SNAPSHOT` over the session's already-open port. The reader loop intercepts `STRIP` records of kind `SNAPSHOT`, feeds the assembler, and (on the LAST band) saves to disk via the existing `save_snapshot`, caches the frame, and pushes a `snapshot` WS event. Snapshot bands never enter the normal record stream / strip slots. Timeout checked at the top of each reader iteration.
+- **Backend (`web/api.py`):** `POST /api/live/snapshot {out}` (409 if no live session / already in progress) and `GET /api/live/snapshot.png` (renders the cached frame via the existing `render_strip_png`).
+- **Frontend:** new `#snapshot-controls` toolbar group (out-path input + 📷 button, live-only) and a preview overlay (`#snapshot-modal`) with the rendered PNG, dims/epoch/saved-paths, a download link, and Esc/backdrop close. WS `snapshot` event drives banner → preview.
+- **Tests:** 5 new `test_live.py` cases (assemble+save+no-leak, no-stem caches-but-writes-nothing, in-progress conflict, inactive raises, timeout) using the existing `_FakeSerial`/`ser_factory` harness. Full suite: **137 passed**.
+- **Not yet done:** untested against hardware (needs marvin flashed with the schema-5 firmware, still unbuilt).
+
 ### 2026-06-14 — Full-frame snapshot capture (perf-log command) — on-ramp to the M9 gameplay engine
 
 Starting the gameplay engine (spec §4.8): watch the video for which screen we're on, current selections, score, etc. GH3 screens/fonts/layouts are fixed, so the plan is a simple GH3-specific detection library, not general CV. First we need to study real screens offline — and marvin had no way to get a full frame off the device. Built on-demand full-frame snapshot capture (see decision-log entry for full rationale).

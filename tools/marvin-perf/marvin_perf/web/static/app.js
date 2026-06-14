@@ -91,6 +91,7 @@ const state = {
   pendingRedrawHandle: null,
   pendingMaskHandle: null,
   liveMask: MASK_ALL,
+  overlayEnabled: true,   // SENSING-strip target rings (device boots on)
   recording: null,        // null | { capture_dir, started_at }
 };
 
@@ -840,6 +841,7 @@ function setMode(mode) {
   $("#offline-controls").classList.toggle("hidden", mode !== "offline");
   $("#live-controls").classList.toggle("hidden", mode !== "live");
   $("#record-controls").classList.toggle("hidden", mode !== "live");
+  $("#snapshot-controls").classList.toggle("hidden", mode !== "live");
   $("#types-panel").classList.toggle("hidden", mode !== "live");
   $("#badge-live").classList.toggle("hidden", mode !== "live");
   setLiveTransportEnabled(mode !== "live");
@@ -948,8 +950,11 @@ async function liveStart() {
   $("#live-stop").disabled = false;
   $("#live-port").disabled = true;
   $("#record-start").disabled = false;
+  $("#snapshot-btn").disabled = false;
+  $("#overlay-toggle").disabled = false;
   setBadge("badge-live", "yellow", "live …");
   suggestRecordOutDir();
+  suggestSnapshotOut();
   // Push the initial mask before WS attach so the server's `hello` reflects
   // what the user actually wants (otherwise hello reports 0xffffffff and
   // clobbers the user's STRIP-off default).
@@ -972,6 +977,8 @@ async function liveStop() {
   $("#live-port").disabled = false;
   $("#record-start").disabled = true;
   $("#record-stop").disabled = true;
+  $("#snapshot-btn").disabled = true;
+  $("#overlay-toggle").disabled = true;
   setRecordingPill(null);
   setBadge("badge-live", null, "live ●");
   state.fsm = "idle";
@@ -1034,6 +1041,10 @@ function handleWSMessage(msg) {
       applyMaskToCheckboxes(state.liveMask);
       // Re-attach mid-recording: reflect the server's view in the UI.
       applyRecordingState(msg.session.recording || null);
+      if (typeof msg.session.overlay === "boolean") setOverlayButton(msg.session.overlay);
+      $("#snapshot-btn").disabled = state.fsm !== "live";
+      $("#overlay-toggle").disabled = state.fsm !== "live";
+      suggestSnapshotOut();
       break;
     case "session_replay":
     case "record":
@@ -1061,10 +1072,110 @@ function handleWSMessage(msg) {
         setBanner(`Recorded ${n} frames → ${dir}`);
       }
       break;
+    case "snapshot":
+      handleSnapshotEvent(msg);
+      break;
+    case "overlay":
+      setOverlayButton(!!msg.enabled);
+      break;
     case "error":
       setBanner(`device error: ${msg.code}: ${msg.msg}`, "error");
       break;
   }
+}
+
+function handleSnapshotEvent(msg) {
+  if (msg.state === "requested") {
+    setBanner("Snapshot requested — waiting for frame…");
+    return;
+  }
+  // Any terminal state re-enables the button (when still live).
+  $("#snapshot-btn").disabled = state.fsm !== "live";
+  if (msg.state === "timeout") {
+    setBanner(
+      "Snapshot timed out — no complete frame. HDMI locked and firmware schema current?",
+      "error",
+    );
+    return;
+  }
+  if (msg.state === "error") {
+    setBanner(`snapshot error: ${msg.msg}`, "error");
+    return;
+  }
+  showSnapshotPreview(msg);  // state === "saved"
+}
+
+function showSnapshotPreview(msg) {
+  // Cache-buster: the PNG endpoint always serves the latest snapshot, so the
+  // URL is otherwise stable across captures.
+  const url = `/api/live/snapshot.png?ts=${msg.frame_epoch}-${Date.now()}`;
+  $("#snap-img").src = url;
+  const dl = $("#snap-download");
+  dl.href = url;
+  dl.download = `snapshot-${msg.frame_epoch}.png`;
+  const saved = msg.paths && msg.paths.length ? ` · saved → ${msg.paths.join(", ")}` : " · not saved";
+  $("#snap-meta").textContent = `${msg.width}×${msg.height} · epoch ${msg.frame_epoch}${saved}`;
+  $("#snapshot-modal").classList.remove("hidden");
+  if (msg.save_error) {
+    setBanner(`snapshot saved-to-disk failed: ${msg.save_error}`, "error");
+  } else if (msg.paths && msg.paths.length) {
+    setBanner(`Snapshot ${msg.width}×${msg.height} saved → ${shortDir(msg.paths[0])}`);
+  } else {
+    setBanner(`Snapshot ${msg.width}×${msg.height} captured.`);
+  }
+}
+
+async function requestSnapshot() {
+  const out = $("#snapshot-out").value.trim();
+  $("#snapshot-btn").disabled = true;
+  setBanner("Snapshot requested — waiting for frame…");
+  try {
+    await api("/api/live/snapshot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ out: out || null }),
+    });
+    // Terminal UI flip happens on the WS `snapshot` event.
+  } catch (e) {
+    setBanner(`snapshot failed: ${e.message}`, "error");
+    $("#snapshot-btn").disabled = state.fsm !== "live";
+  }
+}
+
+function setOverlayButton(enabled) {
+  state.overlayEnabled = enabled;
+  const btn = $("#overlay-toggle");
+  if (btn) btn.classList.toggle("active", enabled);
+}
+
+async function toggleOverlay() {
+  const next = !state.overlayEnabled;
+  $("#overlay-toggle").disabled = true;
+  try {
+    const body = await api("/api/live/overlay", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled: next }),
+    });
+    setOverlayButton(!!body.overlay);  // WS 'overlay' echo also lands
+  } catch (e) {
+    setBanner(`overlay toggle failed: ${e.message}`, "error");
+  } finally {
+    $("#overlay-toggle").disabled = state.fsm !== "live";
+  }
+}
+
+function suggestSnapshotOut() {
+  const inp = $("#snapshot-out");
+  if (!inp || inp.value.trim()) return;
+  const d = new Date();
+  const stamp = d.getFullYear().toString() +
+    String(d.getMonth() + 1).padStart(2, "0") +
+    String(d.getDate()).padStart(2, "0") + "-" +
+    String(d.getHours()).padStart(2, "0") +
+    String(d.getMinutes()).padStart(2, "0") +
+    String(d.getSeconds()).padStart(2, "0");
+  inp.value = `snapshots/web-${stamp}`;
 }
 
 // ── Live: record append + sliding window ────────────────────────────────────
@@ -1337,6 +1448,12 @@ function setupControls() {
   $("#live-stop").addEventListener("click", liveStop);
   $("#record-start").addEventListener("click", recordStart);
   $("#record-stop").addEventListener("click", recordStop);
+  $("#snapshot-btn").addEventListener("click", requestSnapshot);
+  $("#overlay-toggle").addEventListener("click", toggleOverlay);
+  $("#snap-close").addEventListener("click", () => $("#snapshot-modal").classList.add("hidden"));
+  $("#snapshot-modal").addEventListener("click", (e) => {
+    if (e.target === $("#snapshot-modal")) $("#snapshot-modal").classList.add("hidden");
+  });
   $("#types-all").addEventListener("click", () => applyMaskPreset(MASK_ALL));
   $("#types-min").addEventListener("click", () => applyMaskPreset(MASK_MIN));
 
@@ -1350,6 +1467,10 @@ function setupControls() {
   document.addEventListener("keydown", (e) => {
     const tag = (e.target && e.target.tagName) || "";
     if (tag === "INPUT" || tag === "SELECT" || tag === "TEXTAREA") return;
+    if (e.key === "Escape" && !$("#snapshot-modal").classList.contains("hidden")) {
+      $("#snapshot-modal").classList.add("hidden");
+      return;
+    }
     if (state.mode === "live") return;  // transport is offline-only
     switch (e.key) {
       case " ":          e.preventDefault(); togglePlay(); break;
@@ -1385,12 +1506,16 @@ async function probeLiveSession() {
       $("#live-start").disabled = true;
       $("#live-stop").disabled = false;
       $("#record-start").disabled = !!s.recording;
+      $("#snapshot-btn").disabled = false;
+      $("#overlay-toggle").disabled = false;
+      if (typeof s.overlay === "boolean") setOverlayButton(s.overlay);
       state.fsm = "live";
       state.liveMask = parseInt(s.mask, 16) >>> 0;
       $("#live-mask").textContent = s.mask;
       applyMaskToCheckboxes(state.liveMask);
       applyRecordingState(s.recording || null);
       suggestRecordOutDir();
+      suggestSnapshotOut();
       openWS();
     }
   } catch {
