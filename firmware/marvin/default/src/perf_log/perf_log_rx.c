@@ -86,6 +86,13 @@ static void dispatch_payload(void)
             }
             break;
 
+        case PERF_CMD_SNAPSHOT:
+            /* Header-only. Just latch the request; the drain task does the
+             * staging copy + banded emit (heavy work stays out of this
+             * USB-callback context). */
+            PerfLog_RequestSnapshot();
+            break;
+
         default:
             break;
     }

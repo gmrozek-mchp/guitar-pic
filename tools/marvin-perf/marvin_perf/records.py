@@ -14,12 +14,13 @@ from enum import IntEnum
 from typing import ClassVar
 
 
-EXPECTED_SCHEMA_VERSION = 4
+EXPECTED_SCHEMA_VERSION = 5
 
 PERF_LOG_HDR_MAGIC = 0x4D56  # 'M','V' little-endian
 PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
 
 PERF_CMD_SET_TYPE_MASK = 0x01
+PERF_CMD_SNAPSHOT = 0x02
 
 SOF_BYTES = bytes((0x55, 0x4D, 0x52, 0x56))  # "UMRV"
 
@@ -55,6 +56,12 @@ class RecordType(IntEnum):
 class StripKind(IntEnum):
     SENSING = 0
     STRIKE = 1
+    SNAPSHOT = 2
+
+
+# Strip flags byte (Strip.flags). SNAPSHOT bands set LAST on the final
+# (bottom) band so a reassembler knows the frame is complete.
+STRIP_FLAG_LAST = 0x01
 
 
 class TaskState(IntEnum):
@@ -223,13 +230,14 @@ class TaskHighwater:
     _BODY: ClassVar[struct.Struct] = struct.Struct("<B3sI")
 
 
-# Strip — variable length: HDR + 12 B body (x, y, w, h, kind, reserved[3]) +
-# w*h*3 BGR888 bytes. Today's producers crop 240×32 → 23040 B pixel payload,
-# 23068 B total record. Decoder validates len(bgr) == w*h*3 against the on-
-# wire dimensions, not against a compile-time constant — future kinds may
-# use other rectangles within STRIP_MAX_BYTES.
+# Strip — variable length: HDR + 12 B body (x, y, w, h, kind, flags,
+# reserved[2]) + w*h*3 BGR888 bytes. SENSING/STRIKE producers crop 240×32
+# → 23040 B pixel payload; SNAPSHOT bands run up to ~65 KB. The decoder
+# validates len(bgr) == w*h*3 against the on-wire dimensions, not against a
+# compile-time constant — future kinds may use other rectangles within
+# STRIP_MAX_BYTES.
 
-_STRIP_BODY = struct.Struct("<HHHHB3s")
+_STRIP_BODY = struct.Struct("<HHHHBB2s")
 STRIP_HDR_BYTES = HDR_SIZE + _STRIP_BODY.size  # 28
 
 
@@ -241,6 +249,7 @@ class Strip:
     w: int
     h: int
     kind: int  # StripKind value, kept as int for forward-compat
+    flags: int  # PERF_STRIP_FLAG_* bitfield
     bgr: bytes
 
     @property
@@ -249,6 +258,10 @@ class Strip:
             return StripKind(self.kind).name.lower()
         except ValueError:
             return f"kind_{self.kind}"
+
+    @property
+    def is_last(self) -> bool:
+        return bool(self.flags & STRIP_FLAG_LAST)
 
 
 @dataclass(frozen=True)
@@ -362,7 +375,7 @@ class UnknownRecord:
 
 
 # Largest record bytes — used by framing.py to bound LEN sanity check.
-MAX_RECORD_BYTES = STRIP_HDR_BYTES + STRIP_MAX_BYTES  # 23068
+MAX_RECORD_BYTES = STRIP_HDR_BYTES + STRIP_MAX_BYTES  # 65028
 
 
 # ─── Host→device commands ────────────────────────────────────────────────────
@@ -383,3 +396,11 @@ def encode_set_mask_payload(mask: int) -> bytes:
     return _CMD_SET_MASK_FMT.pack(
         PERF_CMD_HDR_MAGIC, PERF_CMD_SET_TYPE_MASK, 0, mask & 0xFFFFFFFF
     )
+
+
+_CMD_HDR_FMT = struct.Struct("<HBB")  # magic, cmd_id, reserved
+
+
+def encode_snapshot_payload() -> bytes:
+    """Pack a SNAPSHOT command payload (header-only; no SOF/LEN/FCS framing)."""
+    return _CMD_HDR_FMT.pack(PERF_CMD_HDR_MAGIC, PERF_CMD_SNAPSHOT, 0)

@@ -12,6 +12,7 @@
 
 #include "definitions.h"
 #include "log.h"
+#include "video/video.h"
 
 /* ─── Configuration ──────────────────────────────────────────────────────── */
 
@@ -87,6 +88,15 @@ static volatile uint32_t s_drop_strip;
 static volatile uint32_t s_drop_sink;
 
 static volatile bool s_running;
+
+/* One-shot full-frame snapshot. The RX path latches s_snapshot_req; the drain
+ * task copies the current frame into s_snapshot_staging (one coherent copy out
+ * of the rotating nocache ring) and pages it out as full-width SNAPSHOT bands.
+ * Staging is sized to the max capture (1280×720×3); the scratch strip record is
+ * static because it's ~65 KB — far too large for the 2 KB drain stack. */
+static volatile bool    s_snapshot_req;
+static uint8_t          s_snapshot_staging[1280u * 720u * PERF_STRIP_BPP];
+static perf_rec_strip_t s_snapshot_scratch;
 
 /* Boot with only the cheap diagnostic types enabled: DROP (1 Hz),
  * TASK_HIGHWATER (~6/s), TASK_RUNTIME (~6/s). The host viewer enables
@@ -296,6 +306,50 @@ static void register_post_scheduler_tasks(void)
     }
 }
 
+/* Stream the current video frame back as full-width SNAPSHOT bands. Runs in
+ * the drain task: writes each band directly to the sink (bypassing the small
+ * strip pool, which can't hold 16-45 bands), naturally paced by the wire. This
+ * briefly monopolizes the drain (~0.4 s @480p, ~1 s @720p) — fine for an
+ * on-demand debug capture. */
+static void emit_snapshot(void)
+{
+    Video_FrameInfo vi;
+    Video_GetFrameInfo(&vi);
+    if (vi.buffer == NULL || vi.width == 0u || vi.height == 0u) { return; }
+    if (vi.bytes_per_pixel != PERF_STRIP_BPP) { return; }
+
+    const uint16_t w      = vi.width;
+    const uint16_t h      = vi.height;
+    const uint32_t stride = (uint32_t)w * PERF_STRIP_BPP;
+    const uint32_t frame_bytes = stride * (uint32_t)h;
+    if (frame_bytes > sizeof(s_snapshot_staging)) { return; }
+
+    memcpy(s_snapshot_staging, vi.buffer, frame_bytes);
+
+    uint32_t band_rows = PERF_STRIP_MAX_BYTES / stride;
+    if (band_rows == 0u) { return; }              /* frame too wide for a strip */
+    if (band_rows > h)   { band_rows = h; }
+
+    for (uint16_t y = 0u; y < h; )
+    {
+        uint16_t bh = (uint16_t)(((uint32_t)(h - y) < band_rows) ? (h - y) : band_rows);
+
+        perf_rec_strip_t *r = &s_snapshot_scratch;
+        memset(r, 0, PERF_STRIP_HDR_BYTES);
+        hdr_fill(&r->hdr, PERF_REC_STRIP, 0u, vi.frame_count);
+        r->x     = 0u;
+        r->y     = y;
+        r->w     = w;
+        r->h     = bh;
+        r->kind  = (uint8_t)PERF_STRIP_SNAPSHOT;
+        r->flags = ((uint32_t)y + bh >= h) ? PERF_STRIP_FLAG_LAST : 0u;
+        memcpy(r->bgr, &s_snapshot_staging[(uint32_t)y * stride], (uint32_t)bh * stride);
+
+        PerfLogSinkCdc_WriteFramed(r, strip_record_size(r));
+        y = (uint16_t)(y + bh);
+    }
+}
+
 static void perf_log_drain_task(void *param)
 {
     (void)param;
@@ -315,6 +369,12 @@ static void perf_log_drain_task(void *param)
             emit_session_record();
         }
         prev_connected = now_connected;
+
+        if (s_snapshot_req)
+        {
+            s_snapshot_req = false;
+            emit_snapshot();
+        }
 
         perf_rec_state_slot_t srec;
         if (xQueueReceive(s_state_q, &srec,
@@ -640,6 +700,13 @@ void PerfLog_EmitStampFromISR(perf_stage_t stage,
 void PerfLog_NoteSinkDrop(uint32_t bytes_dropped)
 {
     counter_add_task(&s_drop_sink, bytes_dropped);
+}
+
+/* ─── Snapshot request ───────────────────────────────────────────────────── */
+
+void PerfLog_RequestSnapshot(void)
+{
+    s_snapshot_req = true;
 }
 
 /* ─── Record-type filter ─────────────────────────────────────────────────── */

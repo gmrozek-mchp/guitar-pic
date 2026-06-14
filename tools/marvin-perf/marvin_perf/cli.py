@@ -20,13 +20,17 @@ from .capture import (
 )
 from .exporters import export_sensiml_csv
 from .exporters.sensiml_csv import ExportError
-from .framing import frame_encode
+from .decode import decode_record
+from .framing import frame_encode, iter_frames
 from .records import (
     RECORD_TYPE_BY_NAME,
     TYPE_MASK_ALL,
     TYPE_MASK_MIN,
+    Strip,
     encode_set_mask_payload,
+    encode_snapshot_payload,
 )
+from .snapshot import SnapshotAssembler, save_snapshot
 from .transport import SerialSource
 
 
@@ -138,6 +142,57 @@ def cmd_set_mask(args: argparse.Namespace) -> int:
         return 2
     with SerialSource(args.port) as ser:
         _send_mask(ser, mask)
+    return 0
+
+
+def _idle_chunks(ser: SerialSource, idle_timeout_s: float):
+    """Yield serial chunks until `idle_timeout_s` elapses with no new bytes.
+
+    Lets `iter_frames` terminate once the snapshot burst stops (or stalls),
+    instead of blocking forever on the infinite SerialSource iterator.
+    """
+    deadline = time.monotonic() + idle_timeout_s
+    while time.monotonic() < deadline:
+        chunk = ser.read_chunk()
+        if chunk:
+            deadline = time.monotonic() + idle_timeout_s
+            yield chunk
+
+
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    """Trigger a full-frame snapshot and save it for offline analysis.
+
+    Sends PERF_CMD_SNAPSHOT, reassembles the returned SNAPSHOT band strips
+    into one frame, and writes <out>.bgr + <out>.json (+ <out>.png if Pillow
+    is installed).
+    """
+    assembler = SnapshotAssembler()
+    with SerialSource(args.port) as ser:
+        ser.send_command(frame_encode(encode_snapshot_payload()))
+        print("[snapshot] requested; waiting for bands…", file=sys.stderr, flush=True)
+        snap = None
+        for fb in iter_frames(_idle_chunks(ser, args.timeout)):
+            rec = decode_record(fb.payload)
+            if not isinstance(rec, Strip):
+                continue
+            snap = assembler.add(rec)
+            if snap is not None:
+                break
+
+    if snap is None:
+        print(
+            f"snapshot: no complete frame within {args.timeout:.1f}s idle timeout. "
+            "Is marvin connected, HDMI locked, and the firmware schema current?",
+            file=sys.stderr,
+        )
+        return 1
+
+    written = save_snapshot(snap, args.out)
+    print(
+        f"snapshot: {snap.width}×{snap.height} (frame_epoch {snap.frame_epoch}) → "
+        + ", ".join(str(p) for p in written),
+        file=sys.stderr,
+    )
     return 0
 
 
@@ -275,6 +330,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_set_mask.add_argument("--port", required=True)
     p_set_mask.add_argument("--types", required=True, help=_types_help())
     p_set_mask.set_defaults(func=cmd_set_mask)
+
+    p_snapshot = sub.add_parser(
+        "snapshot",
+        help="Capture one full video frame from a running device and save it.",
+    )
+    p_snapshot.add_argument("--port", required=True)
+    p_snapshot.add_argument(
+        "--out",
+        required=True,
+        help="Output path stem; writes <out>.bgr + <out>.json (+ <out>.png if Pillow).",
+    )
+    p_snapshot.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Idle timeout in seconds — give up if no bands arrive for this long "
+             "(default: 5).",
+    )
+    p_snapshot.set_defaults(func=cmd_snapshot)
 
     p_export_ml = sub.add_parser(
         "export-ml",

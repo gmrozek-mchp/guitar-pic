@@ -386,6 +386,10 @@ When a future Edge-AI detection unit is brought online, it can:
 
 The spec does not constrain how off-board detectors store their data — only the sync contract (`frame_epoch` timeline) is canonical.
 
+#### 4.6.8 On-demand full-frame snapshot (USB CDC) ✅
+
+Independent of the SD recording path above (M4, not started), marvin can export a single full-resolution frame on demand over the existing perf-log USB CDC link. The host sends `PERF_CMD_SNAPSHOT`; the perf-drain task copies the current frame once into a staging buffer and streams it back as a top-to-bottom run of full-width `PERF_STRIP_SNAPSHOT` band records (each ≤ `PERF_STRIP_MAX_BYTES`), all sharing one `frame_epoch`, the last flagged `PERF_STRIP_FLAG_LAST`. Bands are written straight to the sink (bypassing the small strip pool) and paced by the wire; emit is not gated by the STRIP type mask. `marvin-perf snapshot` reassembles and saves the frame (`.bgr` + sidecar `.json`, plus `.png` via Pillow). This is the offline-study on-ramp for the game-state work (§4.8) — no in-runtime role.
+
 ### 4.7 System services 🚧
 
 Cross-cutting services not owned by any one subsystem:
@@ -408,6 +412,8 @@ Two related capabilities, both grounded in CV on the captured video stream:
 2. **Game controller.** Expose high-level verbs ("start a single-player playthrough of song X on Hard", "go to the main menu", "select Practice mode"). Translate each verb into a sequence of fret/strum commands using the recognized current state and a known menu graph, monitor the screen for the expected state transitions, retry or back out on mismatch.
 
 This is *not* the gameplay note-detection path (§4.2). cv_marvin_v1 plays notes during gameplay; the game-state module decides *what to play* at the session level (which song, which difficulty, which mode) and gets us there from any starting screen.
+
+Recognition is being bootstrapped offline: the on-demand snapshot path (§4.6.8) collects a corpus of real GH3 screens, the detection algorithms (screen classification, then number/letter/score region readers) are prototyped host-side in Python against that corpus, and only the proven, simple GH3-specific logic is then ported into the firmware `gameplay_engine` module. Per Q10, the approach favors fixed-region/color/glyph matching over general CV — GH3's screens, fonts, and layouts are static.
 
 #### 4.8.2 Module shape
 

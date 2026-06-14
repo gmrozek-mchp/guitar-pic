@@ -205,7 +205,7 @@ def test_strip_unknown_kind_renders_as_kind_n() -> None:
 def test_strip_dimension_mismatch_raises() -> None:
     # Build a strip with header claiming 4×2 but supply only 4 pixel bytes.
     from marvin_perf.records import _STRIP_BODY
-    body = _STRIP_BODY.pack(0, 0, 4, 2, 0, b"\x00\x00\x00")
+    body = _STRIP_BODY.pack(0, 0, 4, 2, 0, 0, b"\x00\x00")
     bgr = b"\x00" * 4  # truncated
     payload = build_header(RecordType.STRIP) + body + bgr
     with pytest.raises(DecodeError):

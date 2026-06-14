@@ -13,7 +13,7 @@
  * are framed on the wire by the drain task (SOF magic + length + CRC);
  * the structs below are the framed payload only. */
 
-#define PERF_LOG_SCHEMA_VERSION   4u
+#define PERF_LOG_SCHEMA_VERSION   5u
 
 #define PERF_LOG_HDR_MAGIC        0x4D56u   /* 'M','V' little-endian */
 
@@ -205,8 +205,10 @@ typedef struct __attribute__((packed))
 /* PERF_REC_STRIP — variable-size BGR888 region of interest, kind-tagged.
  * Today's producers emit SENSING (row through the sensor patches) and
  * STRIKE (row through the strum trigger zone), each 240×32 once per ISC
- * frame. Future kinds (SCORE, MINIMAP, etc.) plug into the same record
- * type — adding one is an enum entry plus a producer; no schema bump.
+ * frame; SNAPSHOT carries a full frame as a top-to-bottom sequence of
+ * full-width bands sharing one frame_epoch (last band flags LAST).
+ * Future kinds (SCORE, MINIMAP, etc.) plug into the same record type —
+ * adding one is an enum entry plus a producer; no schema bump.
  *
  * Wire payload size is HDR + 12 B body + w*h*PERF_STRIP_BPP bytes,
  * tightly packed. The queue slot is sized to PERF_STRIP_MAX_BYTES; the
@@ -214,9 +216,15 @@ typedef struct __attribute__((packed))
  * what's used. */
 typedef enum
 {
-    PERF_STRIP_SENSING = 0,
-    PERF_STRIP_STRIKE  = 1,
+    PERF_STRIP_SENSING  = 0,
+    PERF_STRIP_STRIKE   = 1,
+    PERF_STRIP_SNAPSHOT = 2,
 } perf_strip_kind_t;
+
+/* Strip flags byte (perf_rec_strip_t.flags). SNAPSHOT producers set LAST on
+ * the final (bottom) band so the host knows the frame is complete without a
+ * separate end marker. Zero for SENSING/STRIKE. */
+#define PERF_STRIP_FLAG_LAST  0x01u
 
 #define PERF_STRIP_BPP        3u
 
@@ -254,7 +262,8 @@ typedef struct __attribute__((packed))
     uint16_t   x, y;          /* top-left in source frame */
     uint16_t   w, h;          /* per-record dimensions */
     uint8_t    kind;          /* perf_strip_kind_t */
-    uint8_t    reserved[3];
+    uint8_t    flags;         /* PERF_STRIP_FLAG_* */
+    uint8_t    reserved[2];
     uint8_t    bgr[PERF_STRIP_MAX_BYTES];   /* sized to max in queue slot */
 } perf_rec_strip_t;
 
@@ -377,6 +386,7 @@ typedef struct __attribute__((packed))
 typedef enum
 {
     PERF_CMD_SET_TYPE_MASK = 0x01u,
+    PERF_CMD_SNAPSHOT      = 0x02u,
 } perf_cmd_t;
 
 typedef struct __attribute__((packed))
@@ -394,5 +404,11 @@ typedef struct __attribute__((packed))
     perf_cmd_hdr_t hdr;
     uint32_t       enabled_mask;
 } perf_cmd_set_mask_t;
+
+/* PERF_CMD_SNAPSHOT — capture the current full video frame and stream it back
+ * as a top-to-bottom sequence of full-width PERF_REC_STRIP records (kind
+ * SNAPSHOT), all sharing one frame_epoch, the last flagged LAST. Header-only;
+ * "current frame, full resolution" needs no parameters. Not gated by the
+ * STRIP type mask — the command itself is the request. */
 
 #endif /* PERF_LOG_RECORDS_H */

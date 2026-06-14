@@ -208,7 +208,7 @@ def _decode_strip(hdr: Header, payload: bytes) -> Strip:
         raise DecodeError(
             f"Strip: payload {len(payload)} < header {STRIP_HDR_BYTES}"
         )
-    x, y, w, h, kind, _reserved = _STRIP_BODY.unpack_from(payload, HDR_SIZE)
+    x, y, w, h, kind, flags, _reserved = _STRIP_BODY.unpack_from(payload, HDR_SIZE)
     expected_pixels = w * h * STRIP_BPP
     if expected_pixels > STRIP_MAX_BYTES:
         raise DecodeError(
@@ -221,7 +221,7 @@ def _decode_strip(hdr: Header, payload: bytes) -> Strip:
             f"({w}×{h}×{STRIP_BPP})"
         )
     bgr = bytes(payload[STRIP_HDR_BYTES:expected_total])
-    return Strip(hdr=hdr, x=x, y=y, w=w, h=h, kind=kind, bgr=bgr)
+    return Strip(hdr=hdr, x=x, y=y, w=w, h=h, kind=kind, flags=flags, bgr=bgr)
 
 
 _DISPATCH = {

@@ -196,9 +196,10 @@ def build_strip_payload(
     y: int = 295,
     w: int = 4,
     h: int = 2,
+    flags: int = 0,
     fill: int = 0x55,
 ) -> bytes:
-    body = _STRIP_BODY.pack(x, y, w, h, kind, b"\x00\x00\x00")
+    body = _STRIP_BODY.pack(x, y, w, h, kind, flags, b"\x00\x00")
     bgr = bytes((fill,) * (w * h * STRIP_BPP))
     return build_header(RecordType.STRIP, frame_epoch=frame_epoch) + body + bgr
 

@@ -110,7 +110,9 @@ def test_summary_reports_record_counts_and_drops(
     resp = client.get(f"/api/capture/{cid}/summary")
     assert resp.status_code == 200
     s = resp.json()
-    assert s["schema_ok"] is True
+    # Fixture session is schema v3 (chosen distinct from EXPECTED_SCHEMA_VERSION
+    # to exercise passthrough), so a current host flags it as a mismatch.
+    assert s["schema_ok"] is False
     assert s["timer_freq_hz"] == 1_000_000
     assert s["record_type_counts"]["Stamp"] == 3
     assert s["record_type_counts"]["TaskHighwater"] == 2

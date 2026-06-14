@@ -100,6 +100,18 @@ class SerialSource(AbstractContextManager["SerialSource"]):
             raise RuntimeError("SerialSource must be used as a context manager")
         return self._ser.write(framed)  # type: ignore[attr-defined,no-any-return]
 
+    def read_chunk(self) -> bytes:
+        """One read of whatever has arrived; possibly empty on timeout.
+
+        Lets a caller drive the framer with its own deadline/idle logic
+        (e.g. `snapshot`) instead of the infinite `__iter__` loop.
+        """
+        if self._ser is None:
+            raise RuntimeError("SerialSource must be used as a context manager")
+        ser = self._ser
+        n = max(1, getattr(ser, "in_waiting", 0))  # type: ignore[arg-type]
+        return ser.read(min(n, self.chunk_bytes))  # type: ignore[attr-defined,no-any-return]
+
     def __iter__(self) -> Iterator[bytes]:
         if self._ser is None:
             raise RuntimeError("SerialSource must be used as a context manager")

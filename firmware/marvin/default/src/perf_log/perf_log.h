@@ -94,6 +94,13 @@ void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
                                 uint16_t x, uint16_t y,
                                 uint16_t w, uint16_t h);
 
+/* Request a one-shot full-frame snapshot. Sets a flag the drain task picks
+ * up; the drain task copies the current video frame to a staging buffer and
+ * streams it back as a top-to-bottom run of full-width SNAPSHOT strips (last
+ * band flagged LAST). Ignored if a snapshot is already in flight. Safe to
+ * call from any context (e.g. the CDC RX callback). */
+void PerfLog_RequestSnapshot(void);
+
 void PerfLog_EmitTaskHighwater(perf_task_id_t id, uint32_t words);
 void PerfLog_EmitTaskRuntime(perf_task_id_t id,
                              perf_task_state_t state,
