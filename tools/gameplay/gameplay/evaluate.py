@@ -31,8 +31,9 @@ from .classifier import (
 from .corpus import Sample, load_corpus
 from .fingerprint import CANONICAL_H, CANONICAL_W, BPP, FingerprintConfig, fingerprint
 from .highlight import build_selection_calibration, read_selection
-from .metadata import MENU_LAYOUTS, selected_item_from_filename
+from .metadata import MENU_LAYOUTS, selected_item_from_filename, song_from_filename
 from .screens import UNKNOWN
+from .songselect import build_song_catalog, read_setlist, read_song
 
 # Uncached-DDR read model for the SAM9X75 port (see plan's hardware-cost section).
 _DDR_BW_MB_S = (50.0, 150.0)  # dense sequential, single-beat, no cache-line burst
@@ -336,6 +337,70 @@ def selection_eval(
     )
 
 
+# ─── song_select reader (fixed-slot bitmap match) ──────────────────────────────
+
+
+@dataclass
+class SongEvalResult:
+    n_total: int
+    n_song_ok: int  # song + setlist correct via match-all (the primary path)
+    n_setlist_ok: int  # independent setlist read from page bg colour
+    n_setlist_slop_ok: int  # ...under the analog-slop envelope
+    margin_min: float  # worst nearest-wrong-song margin (clean)
+    slop_ok: int
+    slop_total: int
+    failures: list[tuple[str, str, str]]  # (filename, true song_id, pred setlist:song_id)
+
+    @property
+    def song_acc(self) -> float:
+        return self.n_song_ok / self.n_total if self.n_total else 0.0
+
+    @property
+    def setlist_acc(self) -> float:
+        return self.n_setlist_ok / self.n_total if self.n_total else 0.0
+
+    @property
+    def setlist_slop_acc(self) -> float:
+        return self.n_setlist_slop_ok / self.slop_total if self.slop_total else 0.0
+
+    @property
+    def slop_acc(self) -> float:
+        return self.slop_ok / self.slop_total if self.slop_total else 0.0
+
+
+def song_eval(samples: list[Sample], seed: int = 1234) -> SongEvalResult:
+    catalog = build_song_catalog(samples)
+    rng = np.random.default_rng(seed)
+    n = song_ok = setlist_ok = setlist_slop_ok = 0
+    slop_ok = slop_total = 0
+    margins: list[float] = []
+    failures: list[tuple[str, str, str]] = []
+    for s in samples:
+        parsed = song_from_filename(s.path.name)
+        if parsed is None:
+            continue
+        setlist, _index, song_id = parsed
+        n += 1
+        setlist_ok += read_setlist(s.image, catalog) == setlist
+        r = read_song(s.image, catalog)  # match-all: yields song + setlist
+        margins.append(r.margin)
+        if r.song_id == song_id and r.setlist == setlist:
+            song_ok += 1
+        else:
+            failures.append((s.path.name, song_id, f"{r.setlist}:{r.song_id}"))
+        for _cat, _name, pimg in perturb.envelope(s.image, rng):
+            slop_total += 1
+            rp = read_song(pimg, catalog)
+            slop_ok += rp.song_id == song_id and rp.setlist == setlist
+            setlist_slop_ok += read_setlist(pimg, catalog) == setlist
+    return SongEvalResult(
+        n_total=n, n_song_ok=song_ok, n_setlist_ok=setlist_ok,
+        n_setlist_slop_ok=setlist_slop_ok,
+        margin_min=min(margins) if margins else 0.0,
+        slop_ok=slop_ok, slop_total=slop_total, failures=failures,
+    )
+
+
 # ─── Orchestration / reporting ─────────────────────────────────────────────────
 
 
@@ -421,6 +486,21 @@ def run_report(
         lines.append("  clean-frame failures (file: true -> pred):")
         for fname, true_item, pred in sel.failures:
             lines.append(f"    {fname}: {true_item} -> {pred}")
+    lines.append("")
+
+    # song_select reader (slice 3): fixed-slot bitmap match against the 64 templates.
+    song = song_eval(samples)
+    lines.append(
+        f"song_select reader: {song.n_song_ok}/{song.n_total} songs correct "
+        f"({song.song_acc:.1%}); under analog-slop: {song.slop_acc:.1%}"
+    )
+    lines.append(
+        f"  setlist read (bg colour): {song.n_setlist_ok}/{song.n_total} "
+        f"({song.setlist_acc:.1%}); under slop: {song.setlist_slop_acc:.1%}; "
+        f"worst nearest-song margin: {song.margin_min:.1f}"
+    )
+    for fname, true_song, pred in song.failures:
+        lines.append(f"    {fname}: {true_song} -> {pred}")
     lines.append("")
 
     if sweep:

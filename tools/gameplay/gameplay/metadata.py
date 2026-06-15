@@ -103,3 +103,46 @@ def selected_item_from_filename(filename: str) -> str | None:
     if "__" not in stem:
         return None
     return stem.split("__", 1)[1]
+
+
+# ─── song_select (fixed-slot) ──────────────────────────────────────────────────
+#
+# The selected song sits in a fixed highlight slot while the list scrolls under
+# it, with one exception per setlist: the *first* song (Slow Ride on main,
+# Avalancha on bonus) sits one row lower, because the list can't scroll up past
+# the top. So 38/39 main + 24/25 bonus use SONG_SLOT_ROI; each setlist's song 0
+# uses SONG_FIRST_ROI. Both ROIs cover the title + artist/year line, which is
+# what we match (bitmap, not OCR) against the per-song templates.
+#
+# ROIs in canonical 720x480 space; converged against the corpus via inter-song
+# match margin (see docs/journal.md).
+SONG_SLOT_ROI = (55, 145, 385, 192)
+SONG_FIRST_ROI = (55, 178, 385, 225)
+
+# Which setlist is active is read from the *page background colour*, not the tabs:
+# the "setlist"/"bonus" tabs are only on screen when the first song is selected
+# (they scroll off for song 2+), but the page colour is always visible — the main
+# setlist's parchment is yellow, the bonus page is whiter. A large background ROI
+# (median is robust to the song text over it); warmth = R - B separates them
+# (offset-invariant, gain-preserving, so it survives the analog slop).
+SETLIST_BG_ROI = (60, 60, 330, 300)
+
+
+def song_from_filename(filename: str) -> tuple[str, int, str] | None:
+    """Parse a song_select corpus filename into (setlist, index, song_id).
+
+    `song_select__04_rock_and_roll_all_nite.png` -> ("main", 4, "rock_and_roll_all_nite")
+    `song_select__bonus_07_generation_rock.png`  -> ("bonus", 7, "generation_rock")
+    Returns None for non-song_select filenames.
+    """
+    sel = selected_item_from_filename(filename)
+    if sel is None:
+        return None
+    setlist = "main"
+    if sel.startswith("bonus_"):
+        setlist = "bonus"
+        sel = sel[len("bonus_") :]
+    head, _, song_id = sel.partition("_")
+    if not head.isdigit() or not song_id:
+        return None
+    return setlist, int(head), song_id

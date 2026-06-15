@@ -15,6 +15,16 @@ Orienting docs (read alongside this journal):
 
 ## Current focus
 
+**Slice 3 — song_select reader (done, host-only).** Identify the selected song by matching
+the highlight-slot bitmap against the 64 per-song templates (closed-set, not OCR).
+- **64/64 songs correct clean, ~99.1% under analog-slop.** Match is against **all 64**
+  templates, so the setlist (main/bonus) falls out of the winning song — no dependence on
+  the tab read. A small read-time offset search makes the fine slot grid tolerant of the
+  positional slop (without it, translate robustness was ~70%).
+- The per-setlist first song (Slow Ride / Avalancha) uses a lower ROI; all others the fixed slot.
+- Setlist (main/bonus) read from the **page background colour** (yellow vs white) — 100% clean
+  and 100% under slop; the song match also yields the setlist, so the two agree.
+
 **Slice 2 — static-list highlight reader (done, host-only).** Within an already-classified
 static-list screen, read which menu item is selected. Per-screen menu metadata (ordered
 items + menu-band geometry) + a per-cell "deviation from unselected baseline" reader.
@@ -46,8 +56,9 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 2. ✅ **Static-list highlight reader** — read which menu row is selected on the 8
    fixed-count static-list screens. (Deferred within slice 2: `song_select` fixed-slot
    reader, `section_select` variable list.)
-3. ⬜ **`song_select` reader** — fixed-slot: nearest-bitmap match the highlight slot against
-   the 64 known per-song title templates (closed-set matching, **not** char-level OCR).
+3. ✅ **`song_select` reader** — fixed-slot bitmap match of the highlight slot against the 64
+   per-song templates + offset search; setlist falls out of the match and is also read
+   independently from the page background colour. (Deferred: reading the scrolling neighbour list.)
 4. ⬜ **Number/score region readers** — score, multiplier, etc. This is where char/digit
    glyph recognition (open-ended values, no template) actually belongs.
 5. ⬜ **Navigator** — plan + execute button sequences along the menu graph, closed-loop on
@@ -61,6 +72,8 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-15 | **Setlist (main/bonus) is read from the page background colour — warmth = R−B over a large background ROI (median, robust to overlaid text) — not from the setlist tabs.** | 100% clean and 100% under slop. The "setlist"/"bonus" tabs are only on screen when the first song is selected — they scroll off for song 2+ (Greg), so a tab ROI is empty for 63/64 frames (that earlier approach was ~75%). The page itself is always visible and differs by setlist: main = yellow parchment, bonus = whiter. R−B is offset-invariant and gain-preserving, so it survives the analog slop. (Song ID already yields the setlist via match-all; this is an independent, now-reliable confirmation.) |
+| 2026-06-15 | **song_select reader = low-res grayscale grid over the highlight-slot ROI, matched against all 64 per-song templates with a small read-time offset search; setlist derived from the winning song, not the tab.** Grid 32×6, offsets dx∈{-6,-3,0,3,6}/dy∈{-3,0,3}. | 64/64 clean, ~99.1% slop. Matching all 64 (vs filtering by a setlist read first) means main/bonus separation is automatic and removes any dependence on reading the setlist first. The slot grid must be fine to separate ~40 short titles by ink pattern, but a fine grid over a tight ROI is shift-sensitive (translate robustness ~70%); a small offset search re-aligns per frame and recovers it to ~100% (overall slop 90.5%→99.1%) at modest cost (the ROI is small). Per-frame luma normalization handles gain/offset. The per-setlist first song (Slow Ride/Avalancha) sits one row lower (list can't scroll up past it), so its template is built from a second, lower ROI; both ROIs are fingerprinted at read time and each template scores against the one it came from. |
 | 2026-06-15 | **"Reading" menu items / song titles = closed-set bitmap matching, NOT char-level OCR; char/digit OCR is reserved for open-ended values (scores).** | We have a reference snapshot per menu item and per song, so the selected item/song is recognized by matching its fixed region against the known templates (the same fingerprint idea as the screen classifier). Per-character decoding is only needed where there's no template — i.e. scores/multipliers/note counts — which is a later, separate slice. Keeps slice 2 free of OCR. |
 | 2026-06-15 | **Static-list highlight reader = per-screen menu geometry (band + ordered items + axis) + per-cell "deviation from unselected baseline" with per-frame colour normalization; argmax over cells.** Scope = the 8 fixed-count static lists; `section_select` (variable list) and `song_select` (fixed-slot) deferred. | GH3 marks selection by *changing* a row (colour shift / highlight bar), not always by making it brightest — a luma/white argmax collided on most screens (flat scores). Comparing each cell to its own learned unselected appearance ("what changed") handles every highlight style and baselines out background art (main_menu / practice_end sit over collage). Baseline uses only *unselected* exemplars per cell so it's non-degenerate at K=2 (a median-over-all collapses to the midpoint and can't separate two items — that bug showed as exactly 1/2 on the three two-item screens). Per-frame normalization (subtract mean cell colour, scale by spread) cancels the analog gain/offset slop, lifting slop robustness ~90%→~99%. Result: 100% clean / 99.4% slop on 33 labelled frames. Baselines are learned from the corpus (a `SelectionCalibration`, parallel to the classifier's centroids); the firmware port bakes them. Band geometry was placed by auto-locating each selection's highlight from the labelled frames, not by eyeballing. |
 | 2026-06-15 | **`items` are stored in on-screen order (top→bottom / left→right). Confirmed by visual inspection + the validated reader that all three 2-item screens match the `gh3_navigation.md` index order: `quit_confirm` = cancel(top)/quit(bottom), `part_select` = lead(top)/rhythm(bottom), `training_menu` = tutorials(left)/practice(right).** | An earlier crude white-min-channel *residual* diagnostic (used only to locate rows) was fooled by the light highlight bar and reported inverted rows for the 2-item screens, which raised a false flag. The actual reader (per-cell deviation from unselected baseline) reads each frame's true selection (2/2 per screen) — and since the highlighted cell is the one that deviates, a correct read proves `items` order = physical order. Full-res frames confirm cancel/lead/tutorials are the top/left items, matching the nav-doc indices. No discrepancy; nothing for M10 to reconcile here. |
@@ -95,8 +108,7 @@ subsampled path costs <1% CPU at 5–10 Hz.
   "is the top item highlighted?" check may be all that's needed; revisit when M10 lands.
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
   bonus tab differs visually); the centroid spans both and classifies fine today. The
-  fixed-slot song reader (slice plan #3) will also need to know which setlist is active —
-  a within-screen readout (which tab is lit), not a separate class.
+  song reader distinguishes the active setlist by page background colour (resolved, 100%).
 - **Gameplay background variance.** The corpus has only the training-mode `in_song`
   background. Other modes (career/quickplay) use different backgrounds; the gameplay
   classifier may need a discriminative fixed region (the invariant 5-colour note-target row)
@@ -111,6 +123,19 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-06-15 — slice 3 built (song_select reader)
+Added `songselect.py` (slot bitmap match + setlist readout) and song-catalog metadata
+(`SONG_SLOT_ROI`/`SONG_FIRST_ROI`/`SETLIST_BG_ROI`, `song_from_filename`), extended
+`evaluate.py` with a song pass and `cli.py` classify to print the song. Learned en route:
+the selected song's Y is fixed except the per-setlist first song (Greg), so a two-ROI scheme;
+luma/white argmax is irrelevant here (it's a title bitmap match); matching all 64 templates
+removes the dependence on reading the setlist first (setlist falls out of the match); and the
+fine slot grid needed a small offset search to survive positional slop (translate 70%→100%,
+total slop 90.5%→99.1%). Result 64/64 clean / 99.1% slop. First read the setlist from the
+top tabs (~75%) before Greg noted they scroll off-screen for song 2+ and the page background
+colour differs (main yellow / bonus white) — switched to a bg-warmth (R−B) read: 100% clean
+/ 100% slop. 28 tests green. Host-only.
 
 ### 2026-06-15 — slice 2 built (static-list highlight reader)
 Added `metadata.py` (per-screen menu geometry + ordered items, the seed of the §4.8.3

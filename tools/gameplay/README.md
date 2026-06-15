@@ -5,11 +5,12 @@ M9/M10). Algorithms are proven here against the real-screen corpus, then the pro
 simple logic ports to a firmware `gameplay_engine` module. See
 [`docs/journal.md`](docs/journal.md) and `firmware/marvin/docs/gh3_navigation.md`.
 
-Two capabilities so far:
+Three capabilities so far:
 - **Screen classifier** — which GH3 screen is this (`main_menu`, `song_select`, `in_song`,
   …) or `UNKNOWN`.
 - **Static-list selection reader** — within a recognized static-list screen, which menu
   item is highlighted.
+- **song_select reader** — which song is in the highlight slot (and which setlist).
 
 ## Screen classifier
 
@@ -40,9 +41,19 @@ the corpus) — GH3 marks selection by *changing* a row (colour/bar), not by mak
 brightest, so "what changed" is the robust signal. Cell colours are normalized per frame to
 cancel gain/offset slop. Result: 100% clean / ~99.4% slop on the 33 labelled frames.
 
+## song_select reader
+
+The selected song sits in a fixed highlight slot (except each setlist's first song, which
+sits one row lower). We identify it by matching the slot's low-res grayscale bitmap against
+the 64 per-song templates — across **both** setlists, so main/bonus falls out of the match.
+A small read-time offset search re-aligns the slot, which makes the fine grid tolerant of
+positional slop. Result: 64/64 clean, ~99.1% under slop. The active setlist is also read
+independently from the page background colour (main = yellow, bonus = white; warmth R−B):
+100% clean and under slop.
+
 Char-level OCR is deliberately out of scope: menu items and song titles are a closed set we
 already have reference bitmaps for (match, don't decode); digit OCR comes only with score
-reading. `song_select` (fixed-slot) and `section_select` (variable list) are deferred.
+reading. `section_select` (variable list) and reading the scrolling neighbour list are deferred.
 
 ## Usage
 

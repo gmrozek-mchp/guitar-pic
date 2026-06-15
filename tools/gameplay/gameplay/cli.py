@@ -16,6 +16,7 @@ from .fingerprint import FingerprintConfig
 from .highlight import _cell_bounds, build_selection_calibration, read_selection
 from .metadata import MENU_LAYOUTS, selected_item_from_filename
 from .screens import screen_id_for_filename
+from .songselect import build_song_catalog, read_song
 
 
 def _config_from_args(args: argparse.Namespace) -> FingerprintConfig:
@@ -46,6 +47,13 @@ def cmd_classify(args: argparse.Namespace) -> int:
         calibration = build_selection_calibration(samples)
         sel = read_selection(image, layout, calibration)
         print(f"  selection: [{sel.index}] {sel.item}\t(margin={sel.margin:.2f})")
+    elif result.screen_id == "song_select":
+        catalog = build_song_catalog(samples)
+        song = read_song(image, catalog)
+        print(
+            f"  song: [{song.setlist} #{song.index}] {song.song_id}\t"
+            f"(dist={song.dist:.0f} margin={song.margin:.1f})"
+        )
     return 0
 
 
