@@ -13,6 +13,9 @@ from . import evaluate
 from .classifier import build_templates, classify_image
 from .corpus import load_bgr, load_corpus
 from .fingerprint import FingerprintConfig
+from .highlight import _cell_bounds, build_selection_calibration, read_selection
+from .metadata import MENU_LAYOUTS, selected_item_from_filename
+from .screens import screen_id_for_filename
 
 
 def _config_from_args(args: argparse.Namespace) -> FingerprintConfig:
@@ -38,6 +41,31 @@ def cmd_classify(args: argparse.Namespace) -> int:
         f"{result.screen_id}\t(best={result.best_id} dist={result.best_dist} "
         f"margin={result.margin}; thresholds t_abs={t_abs} t_margin={t_margin})"
     )
+    layout = MENU_LAYOUTS.get(result.screen_id)
+    if layout is not None:
+        calibration = build_selection_calibration(samples)
+        sel = read_selection(image, layout, calibration)
+        print(f"  selection: [{sel.index}] {sel.item}\t(margin={sel.margin:.2f})")
+    return 0
+
+
+def cmd_rows(args: argparse.Namespace) -> int:
+    """Debug the static-list reader: per-cell scores for one screen image."""
+    image = load_bgr(args.image)
+    screen_id = args.screen or screen_id_for_filename(args.image)
+    layout = MENU_LAYOUTS.get(screen_id)
+    if layout is None:
+        print(f"rows: {screen_id!r} is not a modelled static-list screen", file=sys.stderr)
+        return 2
+    sel = read_selection(image, layout, build_selection_calibration(load_corpus()))
+    truth = selected_item_from_filename(args.image)
+    print(f"{screen_id}  axis={layout.axis} band={layout.band}")
+    for i, (item, (x0, y0, x1, y1)) in enumerate(zip(layout.items, _cell_bounds(layout))):
+        mark = " <== selected" if i == sel.index else ""
+        star = " (TRUE)" if truth == item else ""
+        print(f"  [{i}] {item:<16} dev={sel.scores[i]:>5.2f}  cell=({x0},{y0},{x1},{y1}){mark}{star}")
+    if truth is not None:
+        print(f"predicted={sel.item}  true={truth}  {'OK' if sel.item == truth else 'WRONG'}")
     return 0
 
 
@@ -77,6 +105,11 @@ def build_parser() -> argparse.ArgumentParser:
     add_fp_args(p_eval)
     p_eval.add_argument("--no-sweep", action="store_true", help="skip the parameter sweep")
     p_eval.set_defaults(func=cmd_eval)
+
+    p_rows = sub.add_parser("rows", help="Debug the static-list selection reader on one image.")
+    p_rows.add_argument("image", help="path to a PNG/BGR frame")
+    p_rows.add_argument("--screen", help="screen id (default: inferred from filename)")
+    p_rows.set_defaults(func=cmd_rows)
 
     return p
 

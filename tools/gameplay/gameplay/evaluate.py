@@ -30,6 +30,8 @@ from .classifier import (
 )
 from .corpus import Sample, load_corpus
 from .fingerprint import CANONICAL_H, CANONICAL_W, BPP, FingerprintConfig, fingerprint
+from .highlight import build_selection_calibration, read_selection
+from .metadata import MENU_LAYOUTS, selected_item_from_filename
 from .screens import UNKNOWN
 
 # Uncached-DDR read model for the SAM9X75 port (see plan's hardware-cost section).
@@ -275,6 +277,65 @@ def hw_time_estimate_ms(config: FingerprintConfig) -> tuple[float, float]:
     return (fast, slow)
 
 
+# ─── Static-list highlight (selection) reader ──────────────────────────────────
+
+
+@dataclass
+class SelectionEvalResult:
+    per_screen: dict[str, tuple[int, int]]  # screen_id -> (correct, total)
+    failures: list[tuple[str, str, str]]  # (filename, true_item, pred_item)
+    n_total: int
+    n_correct: int
+
+    @property
+    def accuracy(self) -> float:
+        return self.n_correct / self.n_total if self.n_total else 0.0
+
+
+def _labelled_selection_samples(samples: list[Sample]):
+    """Yield (sample, layout, true_item) for samples whose filename encodes a
+    selection on a modelled static-list screen."""
+    for s in samples:
+        layout = MENU_LAYOUTS.get(s.screen_id)
+        if layout is None:
+            continue
+        true_item = selected_item_from_filename(s.path.name)
+        if true_item is None or true_item not in layout.items:
+            continue
+        yield s, layout, true_item
+
+
+def selection_eval(
+    samples: list[Sample], perturb_envelope: bool = False, seed: int = 1234
+) -> SelectionEvalResult:
+    calibration = build_selection_calibration(samples)
+    per: dict[str, list[int]] = defaultdict(lambda: [0, 0])
+    failures: list[tuple[str, str, str]] = []
+    rng = np.random.default_rng(seed)
+    for s, layout, true_item in _labelled_selection_samples(samples):
+        variants = [(s.path.name, s.image)]
+        if perturb_envelope:
+            variants = [
+                (f"{s.path.name}[{name}]", pimg)
+                for _cat, name, pimg in perturb.envelope(s.image, rng)
+            ]
+        for fname, img in variants:
+            pred = read_selection(img, layout, calibration).item
+            per[s.screen_id][1] += 1
+            if pred == true_item:
+                per[s.screen_id][0] += 1
+            else:
+                failures.append((fname, true_item, pred))
+    n_total = sum(t for _c, t in per.values())
+    n_correct = sum(c for c, _t in per.values())
+    return SelectionEvalResult(
+        per_screen={k: (v[0], v[1]) for k, v in per.items()},
+        failures=failures,
+        n_total=n_total,
+        n_correct=n_correct,
+    )
+
+
 # ─── Orchestration / reporting ─────────────────────────────────────────────────
 
 
@@ -344,6 +405,22 @@ def run_report(
     for cat in sorted(rob.per_category):
         c, n = rob.per_category[cat]
         lines.append(f"  {cat:<12} {c}/{n}")
+    lines.append("")
+
+    # Static-list highlight reader (slice 2).
+    sel = selection_eval(samples)
+    sel_slop = selection_eval(samples, perturb_envelope=True)
+    lines.append(
+        f"selection reader (static lists): {sel.n_correct}/{sel.n_total} correct "
+        f"({sel.accuracy:.1%}); under analog-slop: {sel_slop.accuracy:.1%}"
+    )
+    for sid in sorted(sel.per_screen):
+        c, n = sel.per_screen[sid]
+        lines.append(f"  {sid:<20} {c}/{n}")
+    if sel.failures:
+        lines.append("  clean-frame failures (file: true -> pred):")
+        for fname, true_item, pred in sel.failures:
+            lines.append(f"    {fname}: {true_item} -> {pred}")
     lines.append("")
 
     if sweep:

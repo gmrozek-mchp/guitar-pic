@@ -15,6 +15,16 @@ Orienting docs (read alongside this journal):
 
 ## Current focus
 
+**Slice 2 — static-list highlight reader (done, host-only).** Within an already-classified
+static-list screen, read which menu item is selected. Per-screen menu metadata (ordered
+items + menu-band geometry) + a per-cell "deviation from unselected baseline" reader.
+Proven against the corpus; not yet ported to firmware.
+
+Result on the 8 fixed-count static-list screens (33 labelled frames):
+- **100% clean selection accuracy** (every labelled frame read correctly).
+- **~99.4% robustness** across the analog-slop envelope.
+- Trivially cheap (per-cell mean colour over a handful of cells + a distance).
+
 **Slice 1 — screen classifier (done, host-only).** Recognize which GH3 screen a captured
 frame shows, or report `UNKNOWN`. Coarse fixed-region colour fingerprint + nearest-centroid
 + UNKNOWN reject. Proven against the corpus; not yet ported to firmware.
@@ -32,14 +42,18 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 ## Plan (phases)
 
-1. ✅ **Screen classifier** (this slice) — fingerprint + nearest-centroid + UNKNOWN, eval harness.
-2. ⬜ **Highlight / selection reader** — within a recognized screen, read which item is
-   selected (static-list row vs fixed-slot occupant; see `gh3_navigation.md` highlight paradigms).
-3. ⬜ **Number/score region readers** — score, multiplier, etc. (OCR/glyph on fixed regions).
-4. ⬜ **Navigator** — plan + execute button sequences along the menu graph, closed-loop on
-   the observer (M10). Likely a new slice or its own concern.
-5. ⬜ **Firmware port** — emit the recognizer metadata (regions, per-class centroids,
-   thresholds) and reimplement the classifier in integer C as `gameplay_engine`.
+1. ✅ **Screen classifier** — fingerprint + nearest-centroid + UNKNOWN, eval harness.
+2. ✅ **Static-list highlight reader** — read which menu row is selected on the 8
+   fixed-count static-list screens. (Deferred within slice 2: `song_select` fixed-slot
+   reader, `section_select` variable list.)
+3. ⬜ **`song_select` reader** — fixed-slot: nearest-bitmap match the highlight slot against
+   the 64 known per-song title templates (closed-set matching, **not** char-level OCR).
+4. ⬜ **Number/score region readers** — score, multiplier, etc. This is where char/digit
+   glyph recognition (open-ended values, no template) actually belongs.
+5. ⬜ **Navigator** — plan + execute button sequences along the menu graph, closed-loop on
+   the observer (M10).
+6. ⬜ **Firmware port** — emit the recognizer metadata (fingerprint centroids/thresholds,
+   menu geometry, per-cell baselines) and reimplement in integer C as `gameplay_engine`.
 
 ---
 
@@ -47,6 +61,9 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-15 | **"Reading" menu items / song titles = closed-set bitmap matching, NOT char-level OCR; char/digit OCR is reserved for open-ended values (scores).** | We have a reference snapshot per menu item and per song, so the selected item/song is recognized by matching its fixed region against the known templates (the same fingerprint idea as the screen classifier). Per-character decoding is only needed where there's no template — i.e. scores/multipliers/note counts — which is a later, separate slice. Keeps slice 2 free of OCR. |
+| 2026-06-15 | **Static-list highlight reader = per-screen menu geometry (band + ordered items + axis) + per-cell "deviation from unselected baseline" with per-frame colour normalization; argmax over cells.** Scope = the 8 fixed-count static lists; `section_select` (variable list) and `song_select` (fixed-slot) deferred. | GH3 marks selection by *changing* a row (colour shift / highlight bar), not always by making it brightest — a luma/white argmax collided on most screens (flat scores). Comparing each cell to its own learned unselected appearance ("what changed") handles every highlight style and baselines out background art (main_menu / practice_end sit over collage). Baseline uses only *unselected* exemplars per cell so it's non-degenerate at K=2 (a median-over-all collapses to the midpoint and can't separate two items — that bug showed as exactly 1/2 on the three two-item screens). Per-frame normalization (subtract mean cell colour, scale by spread) cancels the analog gain/offset slop, lifting slop robustness ~90%→~99%. Result: 100% clean / 99.4% slop on 33 labelled frames. Baselines are learned from the corpus (a `SelectionCalibration`, parallel to the classifier's centroids); the firmware port bakes them. Band geometry was placed by auto-locating each selection's highlight from the labelled frames, not by eyeballing. |
+| 2026-06-15 | **`items` are stored in on-screen order (top→bottom / left→right). Confirmed by visual inspection + the validated reader that all three 2-item screens match the `gh3_navigation.md` index order: `quit_confirm` = cancel(top)/quit(bottom), `part_select` = lead(top)/rhythm(bottom), `training_menu` = tutorials(left)/practice(right).** | An earlier crude white-min-channel *residual* diagnostic (used only to locate rows) was fooled by the light highlight bar and reported inverted rows for the 2-item screens, which raised a false flag. The actual reader (per-cell deviation from unselected baseline) reads each frame's true selection (2/2 per screen) — and since the highlighted cell is the one that deviates, a correct read proves `items` order = physical order. Full-res frames confirm cancel/lead/tutorials are the top/left items, matching the nav-doc indices. No discrepancy; nothing for M10 to reconcile here. |
 | 2026-06-15 | **Prototype lives in its own `tools/gameplay/` subproject (own uv env + this journal); slice 1 is host-only (no firmware export yet).** | The observer+navigator are a distinct workstream that will grow (highlight reader, navigator, firmware module), so a dedicated subproject with its own journal (CLAUDE.md rule 4) is cleaner than folding into `marvin-perf` (a perf-log decoder). Host-only keeps the first slice focused on proving the algorithm; the firmware-consumable template export is deferred to the actual M9 port. |
 | 2026-06-15 | **Screen classifier = coarse fixed-region mean-BGR fingerprint + nearest-centroid (per-class) + two-gate UNKNOWN reject (`d_best ≤ t_abs` AND `margin ≥ t_margin`).** Default config 12×8 grid, 5×5 samples/region, per-frame normalization on. | Matches Q10 (fixed-region/colour, not general CV) and the static nature of GH3 screens. Coarse region averaging buys positional-slop tolerance; the design is integer-L1 over uint8 vectors so the firmware port is mechanical. Default chosen empirically from the eval sweep — see normalization decision. |
 | 2026-06-15 | **Per-frame normalization is on by default; it is required for value-slop robustness.** | The Wii feed is analog component → HDMI, so it carries gain/offset value slop. With raw means, brightening a frame moves its fingerprint far from its centroid in absolute L1 → false UNKNOWN; robustness to gain/offset was 65/202 and 22/202. Standardizing each frame's fingerprint to a fixed mean/std cancels affine gain/offset and lifted slop-robustness to ~99.8% (offset 155→202/202) at negligible cost (normalization is over the ~288-element vector, microseconds). |
@@ -73,10 +90,13 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Open questions
 
+- **section_select reading.** Variable, song-dependent item list — doesn't fit the
+  fixed-row-index model. The navigator only ever wants the top "FULL SONG", so a
+  "is the top item highlighted?" check may be all that's needed; revisit when M10 lands.
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
-  bonus tab differs visually); the centroid spans both and classifies fine today. If the
-  highlight reader needs to know which setlist is active, that's a within-screen readout,
-  not a separate class — revisit in slice 2.
+  bonus tab differs visually); the centroid spans both and classifies fine today. The
+  fixed-slot song reader (slice plan #3) will also need to know which setlist is active —
+  a within-screen readout (which tab is lit), not a separate class.
 - **Gameplay background variance.** The corpus has only the training-mode `in_song`
   background. Other modes (career/quickplay) use different backgrounds; the gameplay
   classifier may need a discriminative fixed region (the invariant 5-colour note-target row)
@@ -91,6 +111,20 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-06-15 — slice 2 built (static-list highlight reader)
+Added `metadata.py` (per-screen menu geometry + ordered items, the seed of the §4.8.3
+tables), `highlight.py` (per-cell unselected-baseline reader with per-frame colour
+normalization + a `SelectionCalibration` learned from the corpus), extended `evaluate.py`
+with a selection-reader pass (clean + slop) and `cli.py` with `rows` (debug) plus a
+selection line on `classify`. Authored band geometry by auto-locating each selection's
+highlight from the labelled frames rather than eyeballing. Iterated the scoring: luma/white
+argmax collided on most screens (GH3 highlights by colour/bar, not brightness); per-cell
+deviation-from-baseline got 100% on ≥3-sample screens but flipped a coin on the three
+2-sample screens (median baseline degenerate at K=2); switching the baseline to
+*unselected-only* exemplars + per-frame normalization landed 100% clean / 99.4% slop on all
+8 screens. Dropped the obsolete per-screen `score` field. 23 tests green. Clarified the
+title-matching-vs-OCR split (see decision log). Host-only.
 
 ### 2026-06-15 — slice 1 built
 Stood up the `tools/gameplay/` subproject and built the screen classifier end-to-end:
