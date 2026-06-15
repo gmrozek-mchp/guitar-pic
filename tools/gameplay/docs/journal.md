@@ -103,9 +103,15 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Open questions
 
-- **section_select reading.** Variable, song-dependent item list — doesn't fit the
-  fixed-row-index model. The navigator only ever wants the top "FULL SONG", so a
-  "is the top item highlighted?" check may be all that's needed; revisit when M10 lands.
+- **section_select reading — deferred to the navigator (M10), by design.** Variable,
+  song-dependent list, so no fixed-row-index reader. The screen is recognized now (constant
+  chrome) and FULL SONG is always the top row, but the corpus has only the FULL-SONG-selected
+  frame — no "other section selected" negative — so a standalone FULL-SONG-vs-other detector
+  can't be built/validated yet (would need ~2 captures: a non-top section selected, on 2
+  different songs). Decided approach instead: the navigator strums **UP until the highlight
+  stops moving** (frame-difference saturation detection — *not* a blind fixed strum count),
+  then confirms against the FULL SONG top-slot template. Needs no new data; revisit a
+  standalone detector only if the saturation approach proves insufficient at M10.
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
   bonus tab differs visually); the centroid spans both and classifies fine today. The
   song reader distinguishes the active setlist by page background colour (resolved, 100%).
