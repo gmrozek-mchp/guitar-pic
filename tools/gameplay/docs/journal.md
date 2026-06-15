@@ -15,6 +15,18 @@ Orienting docs (read alongside this journal):
 
 ## Current focus
 
+**Slice 4 — navigator (M10, done, host-only).** Plan high-level verbs and execute them
+closed-loop along the menu graph. `practice_run(song, difficulty, part)` and a generic
+`goto`/recover, driven through an `Observer`/`Actuator` seam, tested against a simulated GH3
+menu (`simgame`). Control is observation-driven: each iteration runs whichever plan step
+matches the observed screen — one rule that yields normal progress, the `part_select` skip,
+and RED recovery. Selections strum the signed delta from the *observed* cursor (sticky-safe);
+FULL SONG/FULL SPEED strum up until the selection stops moving (no blind count).
+- Reaches `in_song` against the sim across normal / part-absent / sticky-default / misfire
+  scenarios. A `CorpusObserver` integration runs the whole practice run on the **real
+  observer** (slices 1–3) reading actual corpus frames — 0 fallbacks in the default config.
+- Ports to firmware by swapping `SimObserver`/`SimActuator` for the CV observer + fretboard link.
+
 **Slice 3 — song_select reader (done, host-only).** Identify the selected song by matching
 the highlight-slot bitmap against the 64 per-song templates (closed-set, not OCR).
 - **64/64 songs correct clean, ~99.1% under analog-slop.** Match is against **all 64**
@@ -61,10 +73,12 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
    independently from the page background colour. (Deferred: reading the scrolling neighbour list.)
 4. ⬜ **Number/score region readers** — score, multiplier, etc. This is where char/digit
    glyph recognition (open-ended values, no template) actually belongs.
-5. ⬜ **Navigator** — plan + execute button sequences along the menu graph, closed-loop on
-   the observer (M10).
+5. ✅ **Navigator (M10)** — graph + planner (`practice_run` + `goto`) + closed-loop
+   `NavController` over an Observer/Actuator seam, proven against a simulated menu and the
+   real observer. (Deferred: non-practice modes; real fret/strum/`+` bit mapping is the port.)
 6. ⬜ **Firmware port** — emit the recognizer metadata (fingerprint centroids/thresholds,
-   menu geometry, per-cell baselines) and reimplement in integer C as `gameplay_engine`.
+   menu geometry, per-cell baselines, menu graph) and reimplement in integer C as
+   `gameplay_engine`; map `MenuInput` to fret/strum/`+` bits over the fretboard link.
 
 ---
 
@@ -72,6 +86,8 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-15 | **Navigator is observation-driven: each loop iteration runs whichever plan step's `expected_from` matches the currently observed screen (not a fixed program counter).** Verbs: `practice_run` + generic `goto`. Selections strum the signed delta from the observed cursor; FULL SONG/FULL SPEED strum up until the selection stops moving. | One rule gives the three behaviours the nav doc needs: normal progress (next screen matches the next step), the `part_select` skip (an absent part means the observed `difficulty_select` matches a later step and the part step is simply never run), and recovery (an off-plan screen matches no step → press RED to back up until a known screen reappears, then resume). Delta-from-observed-selection is sticky-default-safe; saturate-until-stable avoids a blind strum count (and is the agreed `section_select` mechanism). Closed-loop verification is implicit: a mis-fire just means the next observation matches no expected step → recover. |
+| 2026-06-15 | **Offline navigator is proven against a simulated GH3 menu (`simgame`) behind an `Observer`/`Actuator` seam; the real observer is exercised via a `CorpusObserver`.** | No console/actuator offline, so the sim is the test oracle (with configurable part-absent / sticky / misfire to actually exercise the control logic). The seam is the firmware boundary — swap in the CV observer + fretboard link to port. The `CorpusObserver` runs the whole practice run on real corpus frames through the slice-1–3 vision stack (0 fallbacks in the default config), proving the observer's outputs are exactly what the controller consumes. |
 | 2026-06-15 | **Setlist (main/bonus) is read from the page background colour — warmth = R−B over a large background ROI (median, robust to overlaid text) — not from the setlist tabs.** | 100% clean and 100% under slop. The "setlist"/"bonus" tabs are only on screen when the first song is selected — they scroll off for song 2+ (Greg), so a tab ROI is empty for 63/64 frames (that earlier approach was ~75%). The page itself is always visible and differs by setlist: main = yellow parchment, bonus = whiter. R−B is offset-invariant and gain-preserving, so it survives the analog slop. (Song ID already yields the setlist via match-all; this is an independent, now-reliable confirmation.) |
 | 2026-06-15 | **song_select reader = low-res grayscale grid over the highlight-slot ROI, matched against all 64 per-song templates with a small read-time offset search; setlist derived from the winning song, not the tab.** Grid 32×6, offsets dx∈{-6,-3,0,3,6}/dy∈{-3,0,3}. | 64/64 clean, ~99.1% slop. Matching all 64 (vs filtering by a setlist read first) means main/bonus separation is automatic and removes any dependence on reading the setlist first. The slot grid must be fine to separate ~40 short titles by ink pattern, but a fine grid over a tight ROI is shift-sensitive (translate robustness ~70%); a small offset search re-aligns per frame and recovers it to ~100% (overall slop 90.5%→99.1%) at modest cost (the ROI is small). Per-frame luma normalization handles gain/offset. The per-setlist first song (Slow Ride/Avalancha) sits one row lower (list can't scroll up past it), so its template is built from a second, lower ROI; both ROIs are fingerprinted at read time and each template scores against the one it came from. |
 | 2026-06-15 | **"Reading" menu items / song titles = closed-set bitmap matching, NOT char-level OCR; char/digit OCR is reserved for open-ended values (scores).** | We have a reference snapshot per menu item and per song, so the selected item/song is recognized by matching its fixed region against the known templates (the same fingerprint idea as the screen classifier). Per-character decoding is only needed where there's no template — i.e. scores/multipliers/note counts — which is a later, separate slice. Keeps slice 2 free of OCR. |
@@ -129,6 +145,17 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-06-15 — slice 4 built (navigator, M10)
+Added `navgraph.py` (menu graph as data: `MenuInput`, forward/parent edges, BFS `shortest_path`),
+`simgame.py` (the `SimGame` oracle + `SimObserver`/`SimActuator`, with part-absent / sticky /
+misfire hooks), and `navigator.py` (`Observer`/`Actuator` protocols, `plan_practice_run` +
+`plan_goto`, `NavController` closed-loop). The whole controller collapsed to one rule —
+"observe, run the step matching this screen" — which handles progress, the part_select skip,
+and RED recovery uniformly. Selections use observed-delta (sticky-safe) and saturate-until-stable
+(no blind count). Added a `navigate` CLI (plan + sim trace) and a `CorpusObserver` integration
+that drives the full run on real frames through the slice-1–3 observer (0 fallbacks). 43 tests
+green. Host-only; the Observer/Actuator seam is the firmware port boundary.
 
 ### 2026-06-15 — slice 3 built (song_select reader)
 Added `songselect.py` (slot bitmap match + setlist readout) and song-catalog metadata

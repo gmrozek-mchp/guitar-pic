@@ -5,12 +5,15 @@ M9/M10). Algorithms are proven here against the real-screen corpus, then the pro
 simple logic ports to a firmware `gameplay_engine` module. See
 [`docs/journal.md`](docs/journal.md) and `firmware/marvin/docs/gh3_navigation.md`.
 
-Three capabilities so far:
+So far:
 - **Screen classifier** — which GH3 screen is this (`main_menu`, `song_select`, `in_song`,
   …) or `UNKNOWN`.
 - **Static-list selection reader** — within a recognized static-list screen, which menu
   item is highlighted.
 - **song_select reader** — which song is in the highlight slot (and which setlist).
+- **Navigator (M10)** — plan a high-level verb (practice-run a song on a difficulty) and
+  execute it closed-loop along the menu graph, verified against a simulated menu and the real
+  observer.
 
 ## Screen classifier
 
@@ -55,6 +58,17 @@ Char-level OCR is deliberately out of scope: menu items and song titles are a cl
 already have reference bitmaps for (match, don't decode); digit OCR comes only with score
 reading. `section_select` (variable list) and reading the scrolling neighbour list are deferred.
 
+## Navigator (M10)
+
+`navgraph.py` encodes the menu graph (`firmware/marvin/docs/gh3_navigation.md`) as data;
+`navigator.py` plans a verb (`plan_practice_run`, `plan_goto`) and runs it closed-loop through
+an `Observer`/`Actuator` seam. The controller is observation-driven — each step runs against
+the screen actually observed — which yields normal progress, the `part_select` skip, and RED
+recovery from one rule. Offline it's driven by `simgame.py` (the test oracle); on the device
+the same seam takes the CV observer + fretboard link. Selections strum the signed delta from
+the observed cursor (sticky-safe); FULL SONG/FULL SPEED strum up until the selection stops
+moving (no blind count).
+
 ## Usage
 
 ```sh
@@ -62,8 +76,9 @@ uv sync --group dev
 
 uv run gameplay eval                 # classifier + selection reader: accuracy, robustness, thresholds, HW time
 uv run gameplay eval --no-sweep      # skip the parameter sweep
-uv run gameplay classify path/to/frame.png   # screen id (+ selection, if a static list)
+uv run gameplay classify path/to/frame.png   # screen id (+ selection / song)
 uv run gameplay rows path/to/frame.png       # debug per-cell selection scores
+uv run gameplay navigate --song 19 --difficulty hard   # plan + run a practice run vs the sim
 
 uv run pytest
 ```

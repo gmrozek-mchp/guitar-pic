@@ -16,6 +16,8 @@ from .fingerprint import FingerprintConfig
 from .highlight import _cell_bounds, build_selection_calibration, read_selection
 from .metadata import MENU_LAYOUTS, selected_item_from_filename
 from .screens import screen_id_for_filename
+from .navigator import NavController, plan_practice_run
+from .simgame import SimActuator, SimConfig, SimGame, SimObserver
 from .songselect import build_song_catalog, read_song
 
 
@@ -83,6 +85,24 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_navigate(args: argparse.Namespace) -> int:
+    """Plan a practice run and execute it closed-loop against the simulated menu."""
+    plan = plan_practice_run(args.song, args.difficulty, part=args.part)
+    print(f"plan: practice-run song #{args.song}, {args.difficulty}, {args.part}")
+    for i, step in enumerate(plan.steps):
+        print(f"  {i}. [{step.expected_from}] {step.desc} -> {step.expected_to}")
+
+    cfg = SimConfig(part_present=not args.skip_part, sticky=({"difficulty_select": 2} if args.sticky else {}))
+    game = SimGame("main_menu", cfg)
+    controller = NavController(SimObserver(game), SimActuator(game))
+    end = controller.run(plan)
+    print("\nsim trace:")
+    for line in controller.trace:
+        print(f"  {line}")
+    print(f"\nend: {end.screen}  chosen={game.state.chosen}")
+    return 0 if end.screen == plan.goal else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="gameplay",
@@ -118,6 +138,14 @@ def build_parser() -> argparse.ArgumentParser:
     p_rows.add_argument("image", help="path to a PNG/BGR frame")
     p_rows.add_argument("--screen", help="screen id (default: inferred from filename)")
     p_rows.set_defaults(func=cmd_rows)
+
+    p_nav = sub.add_parser("navigate", help="Plan + run a practice run against the simulated menu.")
+    p_nav.add_argument("--song", type=int, default=0, help="song index (default 0)")
+    p_nav.add_argument("--difficulty", default="hard", help="easy|medium|hard|expert (default hard)")
+    p_nav.add_argument("--part", default="lead", help="lead|rhythm (default lead)")
+    p_nav.add_argument("--skip-part", action="store_true", help="simulate a song with no part_select")
+    p_nav.add_argument("--sticky", action="store_true", help="simulate a sticky (non-zero) difficulty default")
+    p_nav.set_defaults(func=cmd_navigate)
 
     return p
 
