@@ -1,0 +1,24 @@
+[project]
+name = "gameplay"
+version = "0.1.0"
+description = "Offline prototype for marvin's GH3 game-state engine (screen classifier first)."
+requires-python = ">=3.12"
+dependencies = [
+    "pillow>=10.0",   # load the gh3_screens PNG corpus
+    "numpy>=1.26",    # fingerprint / eval vector math
+]
+
+[project.scripts]
+gameplay = "gameplay.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["gameplay"]

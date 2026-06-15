@@ -27,6 +27,8 @@ Current journals:
   - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
 - `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; parallel proof-of-concept)
   - Spec for fauxmote lives at `firmware/fauxmote/SPEC.md` — read it alongside the journal on any non-trivial fauxmote task.
+- `tools/gameplay/docs/journal.md` — gameplay (offline host-side prototype for marvin's GH3 game-state observer/controller; algorithms proven against the screen corpus, then ported to a firmware `gameplay_engine`)
+  - Orienting docs: marvin `spec.md` §4.8 and `firmware/marvin/docs/gh3_navigation.md` — read them alongside the journal on any non-trivial gameplay task.
 
 When working on a subproject that has a journal:
 
