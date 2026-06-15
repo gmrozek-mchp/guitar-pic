@@ -15,6 +15,28 @@ Orienting docs (read alongside this journal):
 
 ## Current focus
 
+**Porting to marvin firmware (`gameplay_engine`, spec §4.8) — started.** The offline
+prototype is complete (slices 1–4); now freezing the proven algorithms into firmware. Phased
+because the firmware is built/flashed by Greg in MPLAB (I write + syntax-review C only), and
+because M9 (observer) and M10 (controller) are separate milestones:
+
+- **Phase 0 — metadata exporter (done, host-side).** `gameplay export-c` emits the proven
+  recognizer data as a single generated C header (`gameplay_metadata.h`): classifier config +
+  per-class `uint8` centroids + thresholds + screen-id table; static-list menu geometry +
+  per-cell baselines; song config/ROIs + 64 per-song templates + catalog + setlist warmth
+  threshold. Plain PODs + flat arrays; floats only for the normalized baselines/song vectors
+  (soft-float on the ARM926, tiny vectors). Generated output compiles clean under
+  `cc -std=c11 -Wall -Wextra`; the header lands in the firmware tree at Phase 1.
+- **Phase 1 — screen-classifier observer (M9 v0)** — `game/gameplay_engine.{c,h}` + `game_task`
+  subscribing to the video frame queue (like `cv_marvin_v1`), integer fingerprint → classify
+  against baked centroids → emit on a new `xGameStateQueue` (like `detector.c`'s bus). No MCC
+  regen (pure compute on the existing frame queue). Next up.
+- **Phase 2 — selection + song readers** folded into the observer.
+- **Phase 3 — navigator/controller (M10)** — port `navgraph` + `NavController`; wire as the
+  third `FretboardLink` producer behind the `actuator_mode` arbiter (marvin journal 2026-05-21
+  anticipated this). `MenuInput`→bitmask: GREEN=bit0, RED=bit1, strums=bits5/6; `PLUS`/pause
+  needs the `+/-` protocol extension the nav doc flagged (off the practice-run path).
+
 **Slice 4 — navigator (M10, done, host-only).** Plan high-level verbs and execute them
 closed-loop along the menu graph. `practice_run(song, difficulty, part)` and a generic
 `goto`/recover, driven through an `Observer`/`Actuator` seam, tested against a simulated GH3
@@ -76,9 +98,8 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 5. ✅ **Navigator (M10)** — graph + planner (`practice_run` + `goto`) + closed-loop
    `NavController` over an Observer/Actuator seam, proven against a simulated menu and the
    real observer. (Deferred: non-practice modes; real fret/strum/`+` bit mapping is the port.)
-6. ⬜ **Firmware port** — emit the recognizer metadata (fingerprint centroids/thresholds,
-   menu geometry, per-cell baselines, menu graph) and reimplement in integer C as
-   `gameplay_engine`; map `MenuInput` to fret/strum/`+` bits over the fretboard link.
+6. 🚧 **Firmware port** — `gameplay_engine` on marvin (spec §4.8). Phase 0 (metadata exporter)
+   ✅; Phases 1–3 (observer / readers / controller) ⬜. See Current focus for the phase plan.
 
 ---
 
@@ -86,6 +107,7 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-15 | **Port to marvin firmware is phased (Phase 0 exporter → 1 observer → 2 readers → 3 controller); numerics stay soft-float for v0; metadata ships as a generated C header (`gameplay export-c`).** No MCC regen needed. | The firmware is built/flashed by Greg in MPLAB (I write + syntax-review C), so phases land "code-complete, pending build"; M9 (observer) and M10 (controller) are already separate milestones, so the phase split mirrors them. Soft-float chosen over fixed-point for v0: the only float work is per-frame normalization over small vectors (~hundreds of values), microseconds even soft-float on the ARM926 — re-validating a fixed-point reimplementation isn't worth it until profiling says so. A generated header (not hand-ported constants) keeps the firmware data in lockstep with the proven prototype and re-emittable when the corpus/params change; plain PODs + flat arrays avoid coupling to firmware struct layout. `game_task` is pure compute on the existing video frame queue + `FretboardLink_Send`, so no new peripheral / no re-apply-patch churn. |
 | 2026-06-15 | **Navigator is observation-driven: each loop iteration runs whichever plan step's `expected_from` matches the currently observed screen (not a fixed program counter).** Verbs: `practice_run` + generic `goto`. Selections strum the signed delta from the observed cursor; FULL SONG/FULL SPEED strum up until the selection stops moving. | One rule gives the three behaviours the nav doc needs: normal progress (next screen matches the next step), the `part_select` skip (an absent part means the observed `difficulty_select` matches a later step and the part step is simply never run), and recovery (an off-plan screen matches no step → press RED to back up until a known screen reappears, then resume). Delta-from-observed-selection is sticky-default-safe; saturate-until-stable avoids a blind strum count (and is the agreed `section_select` mechanism). Closed-loop verification is implicit: a mis-fire just means the next observation matches no expected step → recover. |
 | 2026-06-15 | **Offline navigator is proven against a simulated GH3 menu (`simgame`) behind an `Observer`/`Actuator` seam; the real observer is exercised via a `CorpusObserver`.** | No console/actuator offline, so the sim is the test oracle (with configurable part-absent / sticky / misfire to actually exercise the control logic). The seam is the firmware boundary — swap in the CV observer + fretboard link to port. The `CorpusObserver` runs the whole practice run on real corpus frames through the slice-1–3 vision stack (0 fallbacks in the default config), proving the observer's outputs are exactly what the controller consumes. |
 | 2026-06-15 | **Setlist (main/bonus) is read from the page background colour — warmth = R−B over a large background ROI (median, robust to overlaid text) — not from the setlist tabs.** | 100% clean and 100% under slop. The "setlist"/"bonus" tabs are only on screen when the first song is selected — they scroll off for song 2+ (Greg), so a tab ROI is empty for 63/64 frames (that earlier approach was ~75%). The page itself is always visible and differs by setlist: main = yellow parchment, bonus = whiter. R−B is offset-invariant and gain-preserving, so it survives the analog slop. (Song ID already yields the setlist via match-all; this is an independent, now-reliable confirmation.) |
@@ -145,6 +167,16 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-06-15 — marvin port Phase 0: metadata exporter
+Started the firmware port (decided phasing + soft-float; see decision log). Built
+`export_c.py` + a `gameplay export-c [--out]` command that renders all proven recognizer
+metadata into one C header: classifier config/centroids/thresholds/screen-ids, static-list
+menu geometry + per-cell baselines, and song config/ROIs/64 templates/catalog/warmth
+threshold. ~150 KB header; generated output compiles clean under `cc -std=c11 -Wall -Wextra`
+(a pytest case writes the header + a stub TU and invokes `cc`). 48 tests green. The header
+will be generated into `firmware/marvin/default/src/game/` when Phase 1 (the consumer) lands —
+not committed yet (nothing includes it). Firmware C is unwritten; built by Greg in MPLAB.
 
 ### 2026-06-15 — slice 4 built (navigator, M10)
 Added `navgraph.py` (menu graph as data: `MenuInput`, forward/parent edges, BFS `shortest_path`),

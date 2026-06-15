@@ -85,6 +85,21 @@ def cmd_eval(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_c(args: argparse.Namespace) -> int:
+    """Write the recognizer metadata as a C header for the firmware port."""
+    from .export_c import build_metadata_header
+
+    header = build_metadata_header()
+    if args.out:
+        from pathlib import Path
+
+        Path(args.out).write_text(header)
+        print(f"wrote {args.out} ({len(header)} bytes)", file=sys.stderr)
+    else:
+        sys.stdout.write(header)
+    return 0
+
+
 def cmd_navigate(args: argparse.Namespace) -> int:
     """Plan a practice run and execute it closed-loop against the simulated menu."""
     plan = plan_practice_run(args.song, args.difficulty, part=args.part)
@@ -138,6 +153,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_rows.add_argument("image", help="path to a PNG/BGR frame")
     p_rows.add_argument("--screen", help="screen id (default: inferred from filename)")
     p_rows.set_defaults(func=cmd_rows)
+
+    p_export = sub.add_parser("export-c", help="Emit recognizer metadata as a C header for the firmware.")
+    p_export.add_argument("--out", help="output .h path (default: stdout)")
+    p_export.set_defaults(func=cmd_export_c)
 
     p_nav = sub.add_parser("navigate", help="Plan + run a practice run against the simulated menu.")
     p_nav.add_argument("--song", type=int, default=0, help="song index (default 0)")

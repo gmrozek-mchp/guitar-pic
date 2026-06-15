@@ -79,9 +79,19 @@ uv run gameplay eval --no-sweep      # skip the parameter sweep
 uv run gameplay classify path/to/frame.png   # screen id (+ selection / song)
 uv run gameplay rows path/to/frame.png       # debug per-cell selection scores
 uv run gameplay navigate --song 19 --difficulty hard   # plan + run a practice run vs the sim
+uv run gameplay export-c --out gameplay_metadata.h     # freeze recognizer metadata to a C header
 
 uv run pytest
 ```
+
+## Firmware port (marvin `gameplay_engine`, spec §4.8)
+
+The proven algorithms are being ported to marvin firmware in phases (see `docs/journal.md`).
+Phase 0 (done) is `gameplay export-c`: it emits all recognizer data — classifier
+centroids/thresholds, static-list menu geometry + baselines, song templates/ROIs — as a single
+generated C header (`gameplay_metadata.h`, plain PODs + flat arrays) that the firmware compiles
+in. Floats are only the per-frame-normalized baselines/song vectors (soft-float on the ARM926).
+The generated header is verified to compile under `cc -std=c11 -Wall -Wextra`.
 
 The corpus is read from `firmware/marvin/docs/gh3_screens/` (override with
 `$GAMEPLAY_CORPUS_DIR`). Labels come from each filename's prefix.
