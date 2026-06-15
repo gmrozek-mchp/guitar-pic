@@ -41,6 +41,7 @@
 #include "actuator/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
+#include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "perf_log/perf_log.h"
 
@@ -154,6 +155,14 @@ void APP_Initialize ( void )
      * registers the event_Screen0_Button_Manual_* callbacks defined in
      * ui/manual_input.c, so no explicit bind step is needed here. */
     ManualControl_Initialize();
+
+    /* Game-state observer (spec §4.8, M9): a video-frame consumer that
+     * classifies the current GH3 screen and publishes game_state_t events on
+     * xGameStateQueue. Like cv_marvin_v1 it subscribes to the video frame queue
+     * from inside its task, so it follows Video_Initialize. Enable observation
+     * explicitly (default off, per the §6 game_observe_enable toggle). */
+    GameplayEngine_Initialize();
+    GameplayEngine_SetObserveEnabled(true);
 
     /* Interactive operator console on FLEXCOM2 (115200), separate from the
      * DBGU log channel. Started after the actuator/detector modules so its

@@ -27,15 +27,30 @@ because M9 (observer) and M10 (controller) are separate milestones:
   threshold. Plain PODs + flat arrays; floats only for the normalized baselines/song vectors
   (soft-float on the ARM926, tiny vectors). Generated output compiles clean under
   `cc -std=c11 -Wall -Wextra`; the header lands in the firmware tree at Phase 1.
-- **Phase 1 — screen-classifier observer (M9 v0)** — `game/gameplay_engine.{c,h}` + `game_task`
-  subscribing to the video frame queue (like `cv_marvin_v1`), integer fingerprint → classify
-  against baked centroids → emit on a new `xGameStateQueue` (like `detector.c`'s bus). No MCC
-  regen (pure compute on the existing frame queue). Next up.
-- **Phase 2 — selection + song readers** folded into the observer.
+- **Phase 1 — screen-classifier observer (M9 v0) — done (firmware code-complete, pending Greg's
+  MPLAB build).** New marvin `game/` module: `gameplay_metadata.h` (generated), `gameplay_classify.{h,c}`
+  (pure FreeRTOS-free classify math), `gameplay_engine.{h,c}` (`game_task` subscribing to the video
+  frame queue, classify → publish `game_state_t` on `xGameStateQueue` on screen change). Wired into
+  `app.c` + `user.cmake`; no MCC regen. The pure unit compiles under `cc -Wall -Wextra`, and
+  `test_firmware_classify.py` proves the C decision matches the Python `classify_image` on real
+  corpus frames. Soft-float normalization as decided. See marvin journal 2026-06-15 for detail.
+- **Phase 2 — selection + song readers — done (firmware code-complete, builds in MPLAB per
+  Greg; no hardware test yet).** `game/gameplay_select.{h,c}` (pure): static-list highlight
+  (`gp_read_selection`) + `song_select` (`gp_read_song`, offset search). `gameplay_engine.c`
+  reads the selection each (rate-limited ~5 Hz, with a one-shot force trigger for post-actuation
+closed-loop reads) frame and logs on screen-*or*-selection change
+  (`GAME: <screen> / <item>` etc.); `game_state_t` gained a `selection` field. Host cross-check
+  extended to both readers (match the prototype on real frames). Song match densely re-reads its
+  ROI across the offset search — rate limit bounds the cost; subsample later if needed.
 - **Phase 3 — navigator/controller (M10)** — port `navgraph` + `NavController`; wire as the
   third `FretboardLink` producer behind the `actuator_mode` arbiter (marvin journal 2026-05-21
   anticipated this). `MenuInput`→bitmask: GREEN=bit0, RED=bit1, strums=bits5/6; `PLUS`/pause
   needs the `+/-` protocol extension the nav doc flagged (off the practice-run path).
+  **Post-actuation settle:** after sending inputs the controller must let the screen transition
+  before observing — GH3 menus animate (cursor slide, fades, `loading`), so a delay + a
+  poll-until-expected (with timeout) is required, not a single immediate `RequestObservation`.
+  The observer exposes background 5 Hz + a force trigger; the settle/poll policy is the
+  controller's. (Mirrors the prototype `NavController`'s re-observe-until-match loop.)
 
 **Slice 4 — navigator (M10, done, host-only).** Plan high-level verbs and execute them
 closed-loop along the menu graph. `practice_run(song, difficulty, part)` and a generic
@@ -167,6 +182,24 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-06-15 — marvin port Phase 2: selection + song readers
+Greg confirmed Phase 1 builds in MPLAB and asked for a log on screen/selection change. Ported
+the readers into firmware as `game/gameplay_select.{h,c}` (pure: static-list highlight + song
+offset-search match), wired into `gameplay_engine.c` (rate-limited ~10 Hz, logs on screen-or-
+selection change, `game_state_t.selection` added). Extended `test_firmware_classify.py` to
+cross-check both readers against the prototype on real frames (3/3 firmware tests pass; 51
+total). Detail in the marvin journal (2026-06-15).
+
+### 2026-06-15 — marvin port Phase 1: M9 screen-classifier observer
+Ported the classifier into marvin firmware as a new `game/` module — `gameplay_classify.{h,c}`
+(pure math, host-compilable) + `gameplay_engine.{h,c}` (`game_task` frame consumer →
+`xGameStateQueue`), fed by the generated `gameplay_metadata.h`; wired into `app.c` + `user.cmake`,
+no MCC regen. Factored the classify math FreeRTOS-free so it cross-validates on a host: a new
+`test_firmware_classify.py` compiles `gameplay_classify.c` with `cc` and confirms its screen
+decision matches the prototype's `classify_image` on real corpus frames — the port is proven
+numerically before MPLAB. 49 tests green here. Firmware build is Greg's. Full detail in the
+marvin journal (2026-06-15).
 
 ### 2026-06-15 — marvin port Phase 0: metadata exporter
 Started the firmware port (decided phasing + soft-float; see decision log). Built
