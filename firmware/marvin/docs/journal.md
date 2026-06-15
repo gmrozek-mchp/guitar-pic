@@ -174,6 +174,15 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-15 — GH3 navigation map (M9/M10 on-ramp): [`gh3_navigation.md`](gh3_navigation.md)
+
+Captured the GH3 (Wii) menu structure for the §4.8 game-state work, from a corpus of on-demand snapshots. New doc [`gh3_navigation.md`](gh3_navigation.md) + committed screen corpus in [`gh3_screens/`](gh3_screens/) (101 renamed PNGs + README index; raw captures stay in the gitignored `tools/marvin-perf/snapshots/`).
+
+- **Training/practice path fully mapped, closed-loop:** `main_menu → training_menu → song_select → part_select → difficulty_select → section_select → speed_select → loading → in_song`, plus the in-song `pause_menu`, `quit_confirm`, and post-song `practice_end_menu` — all looping back into known nodes. Full main + bonus song catalog with artist metadata.
+- **Key modeling decisions** (in the doc): two highlight paradigms (static-list = read which row is lit; fixed-slot = read the highlight slot); navigation is strum-up/down + GREEN (confirm) / RED (back); the controller must be **closed-loop** (verify each screen before/after input, RED-to-recover on mismatch) — never a blind macro; for "always want the top item" steps (FULL SONG, FULL SPEED) strum up to saturate at the top.
+- **Open**: per-song `part_select` variants (lead/rhythm vs lead/bass, sometimes absent), list wrap-around behavior, QUICKPLAY/CAREER modes (expected to reuse `song_select`/`difficulty_select`), and extending the actuator command path to carry non-fret/strum buttons (`+`/`−`) — fauxmote already emulates the full controller.
+- **Scope call:** training mode is enough to be useful and may be all we need. Next: implementation (M9 observer / M10 controller) — sequencing TBD (open-loop actuation on the deterministic path vs. minimal screen classifier first). Vision/observer keying deliberately deferred; this doc is structure + metadata only.
+
 ### 2026-06-14 — Snapshot save = PNG-only + auto-incrementing filenames (CLI)
 
 Snapshot save was `.bgr` + `.json` (+ `.png`). PNG is lossless for the packed RGB, so the raw `.bgr` is redundant and the `.json` only carried `frame_epoch` — now tucked into a PNG `tEXt` chunk. Dropped both. `save_snapshot` is PNG-only across CLI + GUI; `pillow` promoted from the `viewer` group to a base dependency (snapshot is a base feature).
