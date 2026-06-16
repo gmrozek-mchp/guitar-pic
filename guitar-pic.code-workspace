@@ -14,6 +14,10 @@
 		{
 			"name": "fauxmote",
 			"path": "firmware/fauxmote"
+		},
+		{
+			"name": "guitar",
+			"path": "firmware/guitar"
 		}
 	],
 	"settings": {
