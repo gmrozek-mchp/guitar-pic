@@ -173,7 +173,7 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
   it's moot — IR is blocked when the Wiimote is in the guitar (analog-stick nav there).
 - **Console cleanup.** Removed the temporary `WR`/`RD` register-trace logs; demoted the
   per-report RX log to `ESP_LOGD` (it was garbling the `esp_console` line editor).
-- Not committed yet (pending review).
+- Committed as `939eb5c`.
 
 ### 2026-06-13 — Link stability (sniff + auto-reconnect); GH3 handoff open
 
