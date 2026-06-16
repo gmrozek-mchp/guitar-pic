@@ -37,18 +37,33 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
                   (calibration / detector tuning / replay)
 ```
 
+The diagram shows today's single-board UART path. The architecture is moving to a
+**multi-node T1S bus** (§6, [T1S/PoDL link](docs/t1s-podl-link.md)) where sensing and
+actuation are separate node *classes* — see "Node classes" below.
+
 **Per-tier role summary:**
 
-- **marvin** — SAM9X75 Curiosity host. Owns HDMI capture, the *reference* CV note detector, ingest of fretboard ADC samples, the chord/strum timing pipeline, command emission to fretboard, the on-device LVDS+touch operator UI, and reference-data recording to SD. The runtime brain.
-- **fretboard** — PIC32CM6408PL10048 MCU on a sensor/actuator board. Streams 5-channel phototransistor ADC up to marvin and converts incoming bitmask commands into open-drain GPIO presses on a Wii guitar controller. Has a standalone fallback mode where it runs its own chord FIFO without marvin in the loop.
+- **marvin** — SAM9X75 Curiosity host. Owns HDMI capture, the *reference* CV note detector, ingest of detector-node samples, the chord/strum timing pipeline, command emission to the active guitar node, the on-device LVDS+touch operator UI, and reference-data recording to SD. Selects the active detector and the active guitar among whatever is on the bus. The runtime brain.
+- **fretboard** — PIC32CM6408PL10048 MCU. A **detector node**: streams 5-channel phototransistor ADC (on-screen note brightness at the strike line) up to marvin. *Today it also actuates* the Wii guitar (open-drain GPIO) and has a standalone fallback mode; that **actuator role is transitioning to the new `guitar` subproject** — fretboard's destiny is detector-only. It keeps actuating until the guitar node is proven.
+- **guitar** — PIC32CM PL10 MCU. A **guitar (actuator) node**: receives marvin's button bitmask and drives a Wii guitar controller via open-drain GPIO. New subproject; the actuation half of today's fretboard firmware, on its own node. Multiple guitar variants may coexist on the bus.
 - **fret-tuner** — Off-band Python tool (FastAPI + browser UI, Linux/macOS PC). Used at the bench for sensor calibration, detector-algorithm tuning, and replay analysis of recordings produced by marvin. Not in the runtime path.
+
+**Node classes (T1S bus direction).** marvin is the PLCA coordinator (id 0); followers are typed, and marvin selects the active one of each class:
+
+| Class | Role | Node(s) | T1S id / MAC | marvin selection |
+|---|---|---|---|---|
+| Detector | observe game state → stream to marvin | `fretboard` (photo-ADC); future variants | 1 / `02:…:01` | active detector (`Detector_SetActive`) |
+| Guitar (actuator) | receive bitmask → drive a Wii guitar | `guitar` (new); future variants | 2 / `02:…:02` | active guitar (planned) |
+
+Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); guitar nodes are command TX targets. Both classes scale by adding a node-table row. marvin's own `cv_marvin_v1` is a detector too (internal, not a bus node).
 
 ## 3. Subproject specs (where detail lives)
 
 | Subproject | Spec | Journal |
 |---|---|---|
 | marvin | [`firmware/marvin/docs/spec.md`](firmware/marvin/docs/spec.md) | [`firmware/marvin/docs/journal.md`](firmware/marvin/docs/journal.md) |
-| fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) | [`firmware/fretboard/docs/journal.md`](firmware/fretboard/docs/journal.md) |
+| fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) — phototransistor **detector** node (re-scoping from sensor/actuator; actuator role moving to `guitar`). | [`firmware/fretboard/docs/journal.md`](firmware/fretboard/docs/journal.md) |
+| guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower). New; firmware not yet built. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 | edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; Phase 1 data pipeline in progress. | [`tools/edge-ai/docs/journal.md`](tools/edge-ai/docs/journal.md) |
@@ -66,7 +81,8 @@ guitar-pic/
 ├── CLAUDE.md                    # workflow rules for Claude Code sessions
 ├── firmware/
 │   ├── marvin/                  # SAM9X75 host firmware
-│   ├── fretboard/               # PIC32CM6408 sensor/actuator MCU firmware
+│   ├── fretboard/               # PIC32CM6408 phototransistor detector node (re-scoping)
+│   ├── guitar/                  # PIC32CM PL10 Wii-guitar actuator node (new)
 │   ├── fauxmote/                # ESP32 Wiimote emulator (proof-of-concept)
 │   └── sam9x75_curiosity_emirror/   # Microchip reference project (template only)
 ├── tools/
@@ -91,8 +107,9 @@ guitar-pic/
 | Waveshare HDMI→CSI-2 adapter (TC358743) | HDMI bridge into marvin | [marvin spec §3](firmware/marvin/docs/spec.md), [capture pipeline](firmware/marvin/docs/capture_pipeline.md) |
 | 10.1″ 1280×800 LVDS panel + maxtouch | marvin operator UI surface | [marvin display path](firmware/marvin/docs/display_path.md) |
 | Sensor/actuator PCB (Sensor-LCD5) | fretboard board: 5 phototransistors + GPIO out | [`hardware/Sensor-LCD5/`](hardware/Sensor-LCD5/) |
-| PIC32CM6408PL10048 | fretboard MCU | [fretboard spec](firmware/fretboard/SPEC.md) |
-| LAN8651B1 (10BASE-T1S MAC-PHY) | *planned* fretboard ↔ marvin link over single-pair Ethernet + PoDL | [T1S/PoDL link](docs/t1s-podl-link.md) |
+| PIC32CM6408PL10048 | fretboard detector MCU | [fretboard spec](firmware/fretboard/SPEC.md) |
+| PIC32CM PL10 | guitar (actuator) node MCU | [guitar spec](firmware/guitar/SPEC.md) |
+| LAN8651B1 (10BASE-T1S MAC-PHY) | T1S bus link, one per node (marvin coordinator + each follower) over single-pair Ethernet + PoDL | [T1S/PoDL link](docs/t1s-podl-link.md) |
 | Actuator mechanism (TBD: voice coil / electromagnet / DIY solenoid) | physical fret + strum drive | [`hardware/actuators/`](hardware/actuators/) and [`hardware/3d-models/`](hardware/3d-models/) |
 | ElectronWarp | component → HDMI converter for Wii | external commercial part |
 
@@ -105,6 +122,7 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 - **Reference data persists on marvin's SD card.** Detector-state + sparse raw BGR888 keyframes (default 1 keyframe/sec) + raw ADC stream + emitted commands. Off-board detectors record their own data keyed by `frame_epoch` and align offline.
 - **Centralized timing on marvin, with a fretboard-takeover fallback.** marvin runs the chord-window FIFO and strum scheduler by default; an operator-mode toggle hands timing back to fretboard's standalone `fret_button.c` while marvin still records observations.
 - **Operating modes are independent toggles**, not a global state machine: `detect_enable`, `marvin_timing_enable`, `actuate_enable`, `record_enable`. Named modes (idle / calibrate / dry-run / play / replay / record) are presets over them.
+- **Sensing and actuation are separate node classes on the T1S bus.** Detector nodes (e.g. `fretboard`) stream observations; guitar nodes (e.g. `guitar`) actuate. marvin selects the active detector (`Detector_SetActive`) and the active guitar (planned) independently, so multiple guitar/detector variants can share one PLCA bus and power pair. Today's fretboard fuses both roles on one MCU over UART; the split lands incrementally — fretboard keeps actuating until the `guitar` node is proven, then marvin flips its command target. Addressing/node-table detail in [`docs/t1s-podl-link.md`](docs/t1s-podl-link.md) §7.1.
 - **Planned: fretboard ↔ marvin link moves to 10BASE-T1S + dumb PoDL.** Replace the FLEXCOM2/SERCOM UART pair with single-pair Ethernet via a LAN8651B1 MAC-PHY on each end. Motivation, in order: PoDL carries power *and* data on one pair to the guitar; better noise/cable tolerance; PLCA multidrop headroom; and demonstrating 10BASE-T1S + PoDL inside a larger Microchip system (SAM9X7 + LAN8651 + PIC32CM). Bandwidth is not a driver — the existing UART has ~12× headroom. PoDL is **dumb** (fixed voltage, no SCCP negotiation) and transparent to both MCUs. No IP stack — the host implements only SPI + the OPEN Alliance TC6 chunk protocol + minimal L2 framing, with the existing frame formats riding unchanged inside the Ethernet payload. Fits comfortably on the PIC32CM (est. ~6–10 KB flash / ~1–2 KB SRAM); marvin is bare-metal so it gets a shared portable `oa_tc6` driver, not a free netdev. Detail in [`docs/t1s-podl-link.md`](docs/t1s-podl-link.md).
 
 ## 7. Project-wide phasing
@@ -136,7 +154,7 @@ To anchor against the original architecture (preserved in `docs/archive/`):
 - **Not PC-hosted.** marvin is the runtime brain; no host PC is required for play.
 - **Not USB-capture / Elgato.** Video is captured directly off HDMI via a TC358743 → MIPI CSI-2 path into the SAM9X75's ISC.
 - **Not PS2.** The supported console is the Nintendo Wii (with an ElectronWarp component → HDMI converter).
-- **Not a single-MCU actuator.** Sensing and timing live on marvin; fretboard is a sensor/actuator MCU, not a solo controller (with the explicit exception of the standalone-fallback mode).
+- **Not a single-MCU sense+actuate node.** Sensing and timing live on marvin; sensing (detector nodes) and actuation (guitar nodes) are separating onto distinct nodes on the T1S bus, not one solo controller (with the explicit exception of fretboard's standalone-fallback mode during the transition).
 - **Not OpenCV / Python at runtime.** CV runs natively on the SAM9X75 (Cortex-A5). Python (`fret-tuner`) is a bench tool only.
 
 ## 9. License & acknowledgments

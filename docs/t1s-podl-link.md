@@ -151,10 +151,16 @@ table entry, not a transport rewrite.
 
 ### 7.1 Addressing (static — no discovery, keeps the M0+ node dumb)
 
-| Node | PLCA ID | MAC (locally administered) | Notes |
-|---|---|---|---|
-| marvin | 0 (coordinator) | `02:00:00:00:00:00` | beacons the PLCA cycle |
-| node *k* | *k* | `02:00:00:00:00:0k` | e.g. fretboard = ID 1 |
+Followers are typed by **node class** (top-level [`SPEC.md`](../SPEC.md) §2): **detector**
+nodes are RX sources (each maps to a marvin `detector_id`); **guitar** (actuator) nodes are
+command TX targets. marvin selects the active node of each class.
+
+| Node | Class | PLCA ID | MAC (locally administered) | Notes |
+|---|---|---|---|---|
+| marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
+| fretboard | detector | 1 | `02:00:00:00:00:01` | photo-ADC stream → `detector_id` 1 |
+| guitar | guitar (actuator) | 2 | `02:00:00:00:00:02` | receives the 1-byte command bitmask |
+| node *k* | (either) | *k* | `02:00:00:00:00:0k` | future detector/guitar variants |
 
 - One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
   registration needed for a private bus) carries the existing payloads verbatim.

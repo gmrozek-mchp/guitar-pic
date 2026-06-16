@@ -1,5 +1,12 @@
 # Fretboard Firmware Specification
 
+> **Re-scoping (2026-06-16):** fretboard is becoming a phototransistor **detector** node on the
+> T1S bus — its Wii-guitar **actuator** role (`cmd_receive.c` → open-drain GPIO) is moving to the
+> new [`guitar`](../guitar/SPEC.md) subproject. This is a **direction, not yet executed**: the
+> firmware below still does both roles, and keeps actuating until the guitar node is proven
+> end-to-end. The detector/actuator node-class model lives in the top-level
+> [`SPEC.md`](../../SPEC.md) §2. (Edge-ai `MODEL_DRIVEN` is unaffected for now.)
+
 ## Overview
 
 Firmware for PIC32CM6408PL10048 (Cortex-M0+, 24 MHz) that acts as an

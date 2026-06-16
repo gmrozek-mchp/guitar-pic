@@ -21,8 +21,10 @@ Current journals:
 
 - `firmware/marvin/docs/journal.md` — marvin firmware (SAM9X75 vision-based guitar-playing robot)
   - System-level spec for marvin lives at `firmware/marvin/docs/spec.md` — **read it first** alongside the journal on any non-trivial marvin task. The spec is the durable description of what marvin is (purpose, subsystems, interfaces, milestones); the journal is the running diary.
-- `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM I/O bridge: ADC stream out + button-bitmask in)
+- `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM phototransistor **detector** node: ADC stream out; re-scoping from sensor/actuator — the actuator role is moving to the `guitar` subproject, but fretboard still actuates until that node is proven)
   - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
+- `firmware/guitar/docs/journal.md` — guitar firmware (PIC32CM PL10 Wii-guitar **actuator** node: receives marvin's button bitmask over T1S → open-drain GPIO; T1S PLCA follower id 2. New subproject, skeleton + design only — firmware not yet built)
+  - Spec for guitar lives at `firmware/guitar/SPEC.md` — read it alongside the journal on any non-trivial guitar task.
 - `tools/edge-ai/docs/journal.md` — edge-ai (distill marvin's gameplay commands into a small ML model for the fretboard MCU)
   - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
 - `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; parallel proof-of-concept)
