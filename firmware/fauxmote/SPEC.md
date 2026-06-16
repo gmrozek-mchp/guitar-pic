@@ -87,7 +87,7 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 | **0** ✅ | Toolchain + radio bring-up | Builds + flashes to the Feather V2; the board is discoverable by name in a PC/phone Bluetooth scan. |
 | **1** ✅ | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID channels (PSM 0x11 control + 0x13 interrupt) without immediately dropping. *Done via custom SDP + raw L2CAP (§5).* |
 | **2** ✅ | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
-| **3** ✅ | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Done: GH3 detects the guitar and frets/strum/whammy register in-game, through the extension cipher (§3).* |
+| **3** 🚧 | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Functionally done on hardware (GH3 detects the guitar; frets/strum/whammy register in-game through the extension cipher — §3), but not yet committed to the repo (pending review).* |
 | **4** | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the future marvin link. |
 
 ## 7. Out of scope

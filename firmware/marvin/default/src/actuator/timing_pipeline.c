@@ -62,8 +62,6 @@ static uint32_t s_strum_release_at_ms;
 static bool     s_strum_direction;        /* toggles down/up each strum */
 
 static uint8_t  s_prev_pressed_mask;
-static uint16_t s_prev_press_count[FRET_COUNT];
-static bool     s_press_count_seen;
 static uint32_t s_release_at_ms[FRET_COUNT];
 static uint8_t  s_release_pending_mask;
 
@@ -156,11 +154,8 @@ static void publish_mask(uint8_t mask)
 }
 
 /* Edge derivation:
- *   - presses_mask: rising edge (press_count change preferred; pressed-edge
- *     fallback if the detector doesn't expose press_count for that fret)
- *   - releases_mask: falling edge of pressed
- * confidence is unused by the pipeline but is the natural future home for
- * a quality gate; left untouched here. */
+ *   - presses_mask: rising edge of pressed
+ *   - releases_mask: falling edge of pressed */
 static void derive_edges(const detector_state_t *state,
                          uint8_t *presses_mask, uint8_t *releases_mask,
                          uint8_t *pressed_mask)
@@ -169,27 +164,15 @@ static void derive_edges(const detector_state_t *state,
     uint8_t rm = 0u;
     uint8_t cm = 0u;
 
-    bool first = !s_press_count_seen;
-
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
         bool pressed = state->fret[i].pressed != 0u;
         if (pressed) { cm |= s_fret_bit[i]; }
 
         bool was_pressed = (s_prev_pressed_mask & s_fret_bit[i]) != 0u;
-        uint16_t pc = state->fret[i].confidence;  /* placeholder slot */
-        (void)pc;
-
-        /* press_count is private to the detector; for now we infer rising
-         * edge from pressed transitions only. If a detector later exposes
-         * a press_count via a side channel, plug it in here. */
         if (pressed && !was_pressed) { pm |= s_fret_bit[i]; }
         if (!pressed && was_pressed) { rm |= s_fret_bit[i]; }
-
-        s_prev_press_count[i] = state->fret[i].confidence;
     }
-
-    if (first) { s_press_count_seen = true; }
 
     s_prev_pressed_mask = cm;
     *presses_mask  = pm;

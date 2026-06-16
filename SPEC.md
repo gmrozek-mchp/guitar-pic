@@ -48,10 +48,11 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
 | Subproject | Spec | Journal |
 |---|---|---|
 | marvin | [`firmware/marvin/docs/spec.md`](firmware/marvin/docs/spec.md) | [`firmware/marvin/docs/journal.md`](firmware/marvin/docs/journal.md) |
-| fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) | — |
+| fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) | [`firmware/fretboard/docs/journal.md`](firmware/fretboard/docs/journal.md) |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 | edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; Phase 1 data pipeline in progress. | [`tools/edge-ai/docs/journal.md`](tools/edge-ai/docs/journal.md) |
+| gameplay | marvin spec [§4.8](firmware/marvin/docs/spec.md) + [`firmware/marvin/docs/gh3_navigation.md`](firmware/marvin/docs/gh3_navigation.md) — GH3 game-state observer/controller offline prototype; algorithms proven against the screen corpus, then ported to the marvin firmware `gameplay_engine`. | [`tools/gameplay/docs/journal.md`](tools/gameplay/docs/journal.md) |
 | fauxmote | [`firmware/fauxmote/SPEC.md`](firmware/fauxmote/SPEC.md) — *parallel proof-of-concept:* ESP32 (Adafruit Feather V2) firmware that emulates a Wiimote + guitar extension over Bluetooth to a real Wii, an alternative to the fretboard's physical button-pressing. Not yet in the runtime path; fretboard stays authoritative. | [`firmware/fauxmote/docs/journal.md`](firmware/fauxmote/docs/journal.md) |
 
 marvin's spec also has deeper-dive documents for its capture and display paths ([`capture_pipeline.md`](firmware/marvin/docs/capture_pipeline.md), [`display_path.md`](firmware/marvin/docs/display_path.md)).
@@ -70,6 +71,7 @@ guitar-pic/
 │   └── sam9x75_curiosity_emirror/   # Microchip reference project (template only)
 ├── tools/
 │   ├── fret-tuner/              # Python dev/calibration tool
+│   ├── gameplay/                # GH3 game-state observer/controller offline prototype
 │   └── marvin-perf/             # marvin perf-log decoder + web viewer
 ├── hardware/
 │   ├── actuators/               # voice coil / electromagnet / DIY solenoid design + test protocols
@@ -120,7 +122,9 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 | ✅ | **M3** — end-to-end play (timing pipeline + fretboard actuation; Expert and Easy tested) |
 | 🚧 | **M4** — recording-to-SD (detector-state + keyframes + ADC + commands) |
 | 🚧 | **M5** — operator UI v0; manual-control surface (8 buttons) done; full live-view + mode-toggle UI not started |
-| 🚧 | **M6**+ — calibration UI, replay, fretboard-takeover validation, game-state controller |
+| 🚧 | **M6**+ — calibration UI, replay, fretboard-takeover validation |
+| 🚧 | **M9** — game-state observer: Phases 1+2 (screen classifier + section-select/song readers) ported to firmware `gameplay_engine`, MPLAB build confirmed, pending hardware test; Phase 3 (number/score readers) not started |
+| 🚧 | **M10** — game-state controller: navigator/closed-loop algorithm complete in `tools/gameplay` prototype; firmware port not started |
 | 🔭 | **T1S link** — re-architect fretboard ↔ marvin onto 10BASE-T1S + dumb PoDL (LAN8651B1 each end). Direction only; not started. [Detail](docs/t1s-podl-link.md) |
 
 Detail (definitions of done, demos) in [marvin spec §8](firmware/marvin/docs/spec.md).

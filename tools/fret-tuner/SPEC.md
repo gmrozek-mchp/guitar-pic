@@ -61,7 +61,7 @@ FastAPI backend (Python)
   └── server.py          (WebSocket + HTTP video transport, subsystem wiring)
         ↕
 Microcontrollers (PIC32CM)
-  ├── Data board   →  fret_scan + data_stream     (12-byte ADC frames over UART)
+  ├── Data board   →  fret_scan + data_stream     (17-byte ADC frames over UART)
   └── Actuator board → cmd_receive                (1-byte bitmask → GPIO assert/release)
                        The data board and actuator board may be the same physical
                        device sharing one UART, or two different devices.
@@ -97,7 +97,7 @@ firmware/fretboard/
 
 ### UART Binary Frame (micro → PC)
 
-The fretboard firmware streams 12-byte packed frames at **240 Hz** over SERCOM1 USART at **500000 baud** (8N1):
+The fretboard firmware streams 17-byte packed frames at **240 Hz** over SERCOM1 USART at **500000 baud** (8N1):
 
 ```
 Offset  Size   Field
@@ -108,7 +108,9 @@ Offset  Size   Field
 5       2      Yellow  (uint16 LE)
 7       2      Blue    (uint16 LE)
 9       2      Orange  (uint16 LE)
-11      1      End byte (0xFC)
+11      4      sample_seq (uint32 LE) — monotonic counter, one per tick; gaps indicate dropped frames
+15      1      applied_mask — actuator bitmask driven during this scan (edge-ai training sync)
+16      1      End byte (0xFC)
 ```
 
 ### Command Byte (PC → micro)
@@ -426,7 +428,7 @@ python fret-tuner.py --csv capture.csv --fast
 
 ## Dependencies
 
-Uses the repo-level `.venv` (Python 3.12). Required packages:
+Managed with `uv` (inline script metadata in `ds_monitor.py`; `pyproject.toml` for the main tool). Required packages:
 
 - `pyserial >= 3.5`
 - `numpy >= 1.24`

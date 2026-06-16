@@ -47,7 +47,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 | Operator UI (Legato) | 🚧 Manual-control surface (8 buttons, Legato Composer) done; full calibration/log UI not started. §4.5, open Q5. |
 | Reference-data recording & export (SD) | 🚧 SD recording not started. Perf-log USB CDC export (separate dev-tooling path) complete at 2.77 MB/s. §4.6, open Q1/Q2. |
 | System services (config, time, watchdog) | 🚧 Partial: logging, FreeRTOS analytics, static task priorities done; config persistence and watchdog not started. §4.7. |
-| Game-state awareness & high-level game control | 🚧 not started. §4.8, open Q10/Q11. |
+| Game-state awareness & high-level game control | 🚧 M9 Phases 1+2 firmware-complete (screen classifier + section-select/song readers; MPLAB build confirmed, pending hardware test). M9 Phase 3 (number/score readers) and M10 (controller/navigator) not yet started in firmware. §4.8. |
 
 ---
 
@@ -194,7 +194,7 @@ Pin assignments live in `firmware/marvin/default/src/config/default/pin_configur
 | SDMMC | 🚧 to be enabled | MVP transport for reference-data recording (§4.6). |
 | USB host (EHCI + OHCI) | ⚪ removed | Was the fretboard link on the original Curiosity board; the Curiosity Hybrid has no host-capable port, so the link moved to a direct UART (§4.3). |
 | USB device (UDPHS) | ✅ in use | Perf-log CDC ACM sink; marvin presents as USB device to dev PC, streams perf records at up to 2.77 MB/s. |
-| Maxtouch I²C | 🚧 to be enabled | Operator UI (§4.5). |
+| Maxtouch I²C | 🚧 driver patched | Bounded-init / headless-fallback fix implemented (MCC re-apply patch #10); operator UI surface (§4.5) not yet wired up. |
 | Watchdog | 🚧 not configured | System services (§4.7). |
 | Free FLEXCOMs | several available | FLEXCOM1 = fretboard link (§4.3), FLEXCOM2 = console (§4.9), FLEXCOM8 = I²C; others remain free. |
 
@@ -336,7 +336,7 @@ recordings/
 
 - **`state.bin`** — append-only, fixed-size `detector_state_t` records (§4.2.3). At 60 Hz × 2 detectors × ~28 B = ~3.4 KB/s. Trivial.
 - **`commands.bin`** — fret/strum bitmask + direction + emit timestamp + frame_epoch, ~16 B per emit. Sparse.
-- **`adc_raw.bin`** — fretboard 12-byte frames at 240 Hz with `frame_epoch` annotation = ~2.9 KB/s. Modest. Until the SD recorder lands, the same data is available live as `PERF_REC_FRETBOARD_RAW` records (28 B framed) in any marvin-perf capture (default-disabled; enable with `set-mask`).
+- **`adc_raw.bin`** — fretboard 17-byte frames at 240 Hz with `frame_epoch` annotation = ~4.1 KB/s. Modest. Until the SD recorder lands, the same data is available live as `PERF_REC_FRETBOARD_RAW` records (28 B framed) in any marvin-perf capture (default-disabled; enable with `set-mask`).
 - **Keyframes** — raw BGR888 packed dump every N captured frames. At 720×480 × 3 B = 1.04 MB/keyframe. Default cadence: **1 keyframe per second** (60-frame stride) → 1.04 MB/s sustained. Configurable (every 30 / 60 / 120 / 600 frames). At 1 fps a 5-minute session is ~312 MB — comfortable on any modern SD card.
 - No software JPEG / video encode. SAM9X75 has no hardware JPEG; CPU encode at 60 fps is infeasible. Keyframes stay raw; offline tools can transcode if desired.
 
@@ -413,7 +413,9 @@ Two related capabilities, both grounded in CV on the captured video stream:
 
 This is *not* the gameplay note-detection path (§4.2). cv_marvin_v1 plays notes during gameplay; the game-state module decides *what to play* at the session level (which song, which difficulty, which mode) and gets us there from any starting screen.
 
-Recognition is being bootstrapped offline: the on-demand snapshot path (§4.6.8) collects a corpus of real GH3 screens, the detection algorithms (screen classification, then number/letter/score region readers) are prototyped host-side in Python against that corpus, and only the proven, simple GH3-specific logic is then ported into the firmware `gameplay_engine` module. Per Q10, the approach favors fixed-region/color/glyph matching over general CV — GH3's screens, fonts, and layouts are static.
+Recognition is bootstrapped offline: the on-demand snapshot path (§4.6.8) collects a corpus of real GH3 screens, detection algorithms are prototyped host-side in Python (`tools/gameplay/`) against that corpus, and only the proven GH3-specific logic is ported into the firmware `gameplay_engine` module. Per Q10, the approach favors fixed-region/color/glyph matching over general CV — GH3's screens, fonts, and layouts are static.
+
+**M9 progress:** Phase 1 (screen-context classifier: main_menu / song_select / gameplay / pause / score) and Phase 2 (section-select and song-name readers) are prototyped and ported to firmware (`gameplay_engine.c`); the MPLAB build is confirmed. Phase 3 (number/score readers) is not yet started. The firmware module is pending hardware validation.
 
 #### 4.8.2 Module shape
 
@@ -500,8 +502,8 @@ Proposed order; each is a buildable demo:
 6. **M6 — Calibration UI** (§4.5). Per-fret ROI placement + threshold tuning on the device.
 7. **M7 — Replay** (§6). Load a recording from SD, replay through the timing pipeline.
 8. **M8 — Standalone-fretboard fallback** (§4.4). Marvin-disabled-pipeline mode validated.
-9. **M9 — Game-state observer v0** (§4.8). Recognize main_menu / song_select / gameplay / pause / score states; surface as `xGameStateQueue` events. No control yet.
-10. **M10 — Game-state control v0** (§4.8). High-level verbs ("start single-player song X") drive menu navigation through the same fretboard link.
+9. **M9 — Game-state observer v0** (§4.8). 🚧 Phases 1+2 ported to firmware and MPLAB build confirmed (screen classifier + section-select/song readers); pending hardware test. Phase 3 (number/score readers) not yet started. Full milestone done when all contexts recognized and surfaced as `xGameStateQueue` events.
+10. **M10 — Game-state control v0** (§4.8). Navigator/closed-loop algorithm complete in `tools/gameplay` prototype; firmware port not started. Done when high-level verbs ("start single-player song X") drive menu navigation through the same fretboard link.
 
 Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 

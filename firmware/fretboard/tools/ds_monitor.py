@@ -6,10 +6,11 @@
 """
 Fretboard data-stream monitor.
 
-Reads the 12-byte frame emitted by data_stream.c:
-    start (0x03) | green | red | yellow | blue | orange | end (0xFC)
-where each colour is a little-endian uint16. Reports actual frame rate
-and the latest values; flags framing errors.
+Reads the 17-byte frame emitted by data_stream.c:
+    start (0x03) | green | red | yellow | blue | orange (5×uint16 LE)
+    | sample_seq (uint32 LE) | applied_mask (uint8) | end (0xFC)
+Reports actual frame rate, latest ADC values, sample_seq, and applied_mask;
+flags framing errors and seq gaps.
 
 Usage:
     ./ds_monitor.py <port> [--baud 500000] [--expect-hz 240]
@@ -24,15 +25,17 @@ import serial  # pyserial
 
 START = 0x03
 END = 0xFC
-FRAME_FMT = "<BHHHHHB"
+# start(1) + 5×uint16(10) + uint32 sample_seq(4) + uint8 applied_mask(1) + end(1) = 17
+FRAME_FMT = "<BHHHHHIBB"
 FRAME_LEN = struct.calcsize(FRAME_FMT)
-assert FRAME_LEN == 12
+assert FRAME_LEN == 17
 
 CHANNELS = ("green", "red", "yellow", "blue", "orange")
 
 
 def find_frame(buf: bytearray) -> tuple[tuple[int, ...] | None, int]:
     """Return (values, dropped_bytes). values is None if no full frame yet.
+       values = (green, red, yellow, blue, orange, sample_seq, applied_mask).
        Skips bytes until a valid start+end pair is found; dropped_bytes
        counts misaligned bytes discarded during the search."""
     dropped = 0
@@ -43,7 +46,8 @@ def find_frame(buf: bytearray) -> tuple[tuple[int, ...] | None, int]:
             continue
         unpacked = struct.unpack(FRAME_FMT, bytes(buf[:FRAME_LEN]))
         del buf[:FRAME_LEN]
-        return unpacked[1:6], dropped
+        # unpacked: (start, g, r, y, b, o, sample_seq, applied_mask, end)
+        return unpacked[1:8], dropped
     return None, dropped
 
 
@@ -63,7 +67,9 @@ def main() -> int:
     frames = 0
     bytes_in = 0
     sync_drops = 0
+    seq_gaps = 0
     last_values: tuple[int, ...] | None = None
+    last_seq: int | None = None
     t_start = time.monotonic()
     t_report = t_start
 
@@ -80,22 +86,30 @@ def main() -> int:
                         break
                     frames += 1
                     last_values = values
+                    seq = values[5]
+                    if last_seq is not None and seq != (last_seq + 1) & 0xFFFFFFFF:
+                        seq_gaps += 1
+                    last_seq = seq
 
             now = time.monotonic()
             if now - t_report >= args.report_every:
                 dt = now - t_report
                 hz = frames / dt
                 t_report = now
-                vals = (
-                    " ".join(f"{c[0].upper()}{v:>4}" for c, v in zip(CHANNELS, last_values))
-                    if last_values else "(no frames)"
-                )
+                if last_values:
+                    adcs = " ".join(f"{c[0].upper()}{v:>4}"
+                                    for c, v in zip(CHANNELS, last_values[:5]))
+                    vals = (f"{adcs}  seq={last_values[5]}  "
+                            f"mask=0x{last_values[6]:02x}")
+                else:
+                    vals = "(no frames)"
                 drift = (hz - args.expect_hz) / args.expect_hz * 100 if args.expect_hz else 0
                 print(f"{hz:6.1f} Hz ({drift:+5.1f}%)  bytes/s={bytes_in/dt:7.0f}  "
-                      f"drops={sync_drops:3d}  buf={len(buf):3d}  {vals}")
+                      f"drops={sync_drops:3d}  gaps={seq_gaps:3d}  buf={len(buf):3d}  {vals}")
                 frames = 0
                 bytes_in = 0
                 sync_drops = 0
+                seq_gaps = 0
     except KeyboardInterrupt:
         elapsed = time.monotonic() - t_start
         print(f"\nStopped after {elapsed:.1f}s.")

@@ -142,8 +142,9 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Open questions
 
-- **Q1 — Does ESP-IDF's `esp_hidd` BT-Classic HID device let the Wii connect + authenticate against its auto-generated SDP?** Being tested now (see decision log). If the Wii rejects it, fall back to raw L2CAP on PSM 0x11/0x13 with the exact `rnconrad/WiimoteEmulator` SDP record.
 - **Q5 — marvin↔fauxmote link** (UART bitmask mirror of the fretboard protocol vs USB CDC vs other). Deferred; revisit before Phase 4 integration.
+
+(Q1 resolved 2026-06-12: ESP-IDF `esp_hidd`'s auto-generated SDP record is NOT accepted by the Wii → pivoted to raw L2CAP + hand-built SDP record — see decision log.)
 
 (Q4 resolved 2026-06-13: GH3 streams mode `0x37`; the guitar report is the first 6 ext bytes and must be **encrypted** — see decision log.)
 
