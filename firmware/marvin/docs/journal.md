@@ -175,6 +175,17 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-16 — T1S Phase 1/2: marvin MAC-PHY bring-up code (adapt oa-tc6-lib)
+
+- Prereqs cleared and committed (`9438ac2`): FLEXCOM4 SPI (Mode 0, CSAAT, IRQ-driven) + `T1S_IRQ_N` (PB25, falling-edge → PIOB in AIC) + `T1S_RST` (PB3); `oa-tc6-lib` v3.1.5 submodule at `third_party/oa-tc6-lib` (`7e0e312`).
+- Reviewed the real `libtc6` API (`tc6.h`, `tc6-regs.h`, and the `noIP-SAM-E54` `tc6-stub.c`/`tc6-noip.c` reference). **Key find: `TC6Regs_Init()` does the LAN8651 register config *and* PLCA setup in one call, and `TC6Regs_GetChipRevision()` is the sanity gate — so Phases 1 and 2 collapse into a single bring-up step** with the library approach.
+- Wrote the marvin glue in new `default/src/net/t1s/` (kept out of the MCC `config/` tree):
+  - `tc6-conf.h` — marvin's build config for the vendored driver (one instance, default chunk/queue sizes).
+  - `t1s_link.{c,h}` — `T1SLink_Initialize()` creates a FreeRTOS service task; the task does the `T1S_RST` pulse, `FLEXCOM4_SPI_TransferSetup` (15 MHz, Mode 0), `TC6_Init` + `TC6Regs_Init` (PLCA coordinator, node id 0 / count 8, MAC `02:00:00:00:00:00`, promiscuous during bring-up), then services to init-done and logs chip revision. SPI completion ISR → `TC6_SpiBufferDone` + semaphore; `T1S_IRQ_N` falling-edge → semaphore; `OnNeedService` → flag. RX callbacks log only (L2 demux is Phase 3).
+  - Mandatory integrator callbacks implemented here; `TC6_CB_OnExtendedStatus` deliberately *not* (tc6-regs.c provides it). Examples are not compiled (no duplicate-symbol clash).
+- Build: `user.cmake` gains `t1s_link.c` + `libtc6/src/tc6.c` + `tc6-regs.c` and include dirs (`net/t1s`, `libtc6/inc`, `libtc6/src`). `app.c` calls `T1SLink_Initialize()` alongside `FretboardLink_Initialize()` — T1S runs in parallel with the UART link during bring-up (no transport arbitration yet; that's Phase 4).
+- **Status: gate PASSED on hardware.** Builds clean in MPLAB; on the wired LAN8651 EVB the link reports `T1S: LAN8651 up — chipRev=2, MAC=02:00:00:00:00:00, PLCA coord id=0/8` followed by the `Reset_Complete` event. Confirms SPI Mode 0 + CS framing, the OA TC6 control path, the IRQ-driven service loop, MAC-PHY register config, and PLCA coordinator bring-up — all end-to-end. Next: Phase 3 (L2 framing + node table) then Phase 4 (wire under the FretboardLink API behind the transport flag).
+
 ### 2026-06-16 — T1S inter-node link: scope locked, marvin-side planned, held on prereqs
 
 - Started the T1S workstream. Reframed the link from a 2-node fretboard↔marvin swap (as [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) had it) to a **multi-node** bus — several guitars + phototransistor detector nodes on one PLCA pair. Locked four forks (see decision log): **design addressing for N now / build one link**, **adapt `oa-tc6-lib`** (not from-scratch), **keep FLEXCOM1 UART in parallel** behind a `MARVIN_FRETBOARD_TRANSPORT` build flag, and the link develops against a **LAN8651 EVB/Click wired to the SAM9X75 Curiosity now**.
