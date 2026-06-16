@@ -142,13 +142,20 @@ void SYS_Initialize ( void* data )
     /* MISRA C-2023 Rule 2.2 deviated in this file.  Deviation record ID -  H3_MISRAC_2023_R_2_2_DR_1 */
 
   
+    PORT_Initialize();
 
     CLOCK_Initialize();
 
 
 
 
+    SERCOM1_USART_Initialize();
+
     EVSYS_Initialize();
+
+    SERCOM0_SPI_Initialize();
+
+    EIC_Initialize();
 
 
     NVIC_Initialize();

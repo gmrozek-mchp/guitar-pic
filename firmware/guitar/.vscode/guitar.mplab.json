@@ -68,7 +68,10 @@
                 "config.mcc/src/config/default/peripheral/clock/plib_clock.c",
                 "config.mcc/src/config/default/peripheral/nvic/plib_nvic.c",
                 "config.mcc/src/config/default/startup_xc32.c",
-                "config.mcc/src/config/default/libc_syscalls.c"
+                "config.mcc/src/config/default/libc_syscalls.c",
+                "config.mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c",
+                "config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c",
+                "config.mcc/src/config/default/peripheral/eic/plib_eic.c"
             ]
         }
     ]
