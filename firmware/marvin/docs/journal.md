@@ -175,6 +175,15 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-16 — T1S Phase 3: L2 framing + static node table (marvin)
+
+- Added L2 framing and the node directory to `net/t1s/t1s_link.c`. Ethertype fixed at **`0x88B5`** (local/experimental range — no registration needed; updated the T1S doc, dropped it from open items). 14-byte Ethernet header built/parsed; payloads ride inside verbatim.
+- **Node table**: static `s_nodes[]` mapping PLCA id / MAC → `detector_id`. One entry today — node 1 (`02:00:00:00:00:01`) → `DETECTOR_ADC_FRETBOARD`. `node_mac()` derives a follower MAC; `node_for_mac()` demuxes an incoming src MAC to a node. Adding a node is a one-row edit (design-for-N).
+- **TX**: `send_to_node()` frames a payload (dst = node MAC, src = coordinator MAC, ethertype) into a static buffer and calls `TC6_SendRawEthernetPacket`; `tx_done_cb` frees the buffer (one in-flight at a time via `s_tx_busy`).
+- **RX**: `OnRxEthernetPacket` validates length + ethertype, demuxes by src MAC → node, and exposes the payload (Phase 4 routes it to the detector bus). Unknown/foreign frames dropped (promiscuous RX is on during bring-up).
+- **Verification aid**: since a single node can't round-trip, the service loop sends a 1 Hz 1-byte heartbeat to node 1 and logs every 5th (`T1S: heartbeat #N tx=1`) to confirm the TX path cycles on the bus. The heartbeat is replaced by the real command byte in Phase 4.
+- **Status: confirmed on hardware.** Builds clean; link still comes up as PLCA coordinator and the `heartbeat #N tx=1` logs advance — the framing + TX path cycles on the bus. Full RX-demux validation waits on a second node (fretboard or test peer). Next: Phase 4 (wire under the FretboardLink API behind the transport flag; RX payload → detector bus / PERF_REC_FRETBOARD_RAW, 1-byte command TX).
+
 ### 2026-06-16 — T1S Phase 1/2: marvin MAC-PHY bring-up code (adapt oa-tc6-lib)
 
 - Prereqs cleared and committed (`9438ac2`): FLEXCOM4 SPI (Mode 0, CSAAT, IRQ-driven) + `T1S_IRQ_N` (PB25, falling-edge → PIOB in AIC) + `T1S_RST` (PB3); `oa-tc6-lib` v3.1.5 submodule at `third_party/oa-tc6-lib` (`7e0e312`).

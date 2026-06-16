@@ -10,6 +10,7 @@
 
 #include "definitions.h"   /* FLEXCOM4_SPI_*, PIO_*, T1S_* pin macros */
 #include "log.h"
+#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
 
 #include "tc6.h"
 #include "tc6-regs.h"
@@ -25,8 +26,68 @@
 #define T1S_TASK_STACK_WORDS (1024u)
 #define T1S_TASK_PRIORITY    (5u)
 
+/* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
+ * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
+#define T1S_ETHERTYPE        (0x88B5u)   /* local/experimental range */
+#define T1S_ETH_HDR_LEN      (14u)
+#define T1S_MAC_LEN          (6u)
+#define T1S_HEARTBEAT_MS     (1000u)
+
 /* Locally administered coordinator MAC (02:00:00:00:00:00). */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+
+/* Static node directory: maps a follower's PLCA id / MAC to the detector-state
+ * bus id it feeds. No discovery — adding a node is a table entry. The single
+ * fretboard is node 1 -> DETECTOR_ADC_FRETBOARD, matching today's bus slot. */
+typedef enum
+{
+    T1S_NODE_FRETBOARD,
+    T1S_NODE_PHOTODETECTOR,
+} t1s_node_type_t;
+
+typedef struct
+{
+    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+    uint8_t         detector_id;  /* detector_state_t.detector_id */
+    t1s_node_type_t type;
+} t1s_node_t;
+
+static const t1s_node_t s_nodes[] = {
+    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },
+};
+
+/* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
+static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+{
+    out[0] = 0x02u;
+    out[1] = 0x00u;
+    out[2] = 0x00u;
+    out[3] = 0x00u;
+    out[4] = 0x00u;
+    out[5] = node_id;
+}
+
+/* Look up a node by its source MAC (NULL if unknown). */
+static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
+{
+    if ((mac[0] != 0x02u) || (mac[1] | mac[2] | mac[3] | mac[4])) {
+        return NULL;
+    }
+    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+        if (s_nodes[i].node_id == mac[5]) {
+            return &s_nodes[i];
+        }
+    }
+    return NULL;
+}
+
+/* TX frame staging: TC6_SendRawEthernetPacket keeps a pointer to the buffer
+ * until its TX callback fires, so the buffer must stay valid meanwhile. One
+ * in-flight frame at a time (guarded by s_tx_busy) suffices for the link's
+ * rates. */
+static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
+static volatile bool s_tx_busy;
+static uint32_t      s_hb_count;
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -62,6 +123,44 @@ static void irq_cb(PIO_PIN pin, uintptr_t context)
     s_need_service = true;
     (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
     portYIELD_FROM_ISR(hpw);
+}
+
+/* TX completion: the staged frame buffer is free for reuse. */
+static void tx_done_cb(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+                       void *pTag, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)pTx;
+    (void)len;
+    (void)pTag;
+    (void)pGlobalTag;
+    s_tx_busy = false;
+}
+
+/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) and queue it.
+ * Returns false if a TX is already in flight or the driver rejected it. */
+static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t payload_len)
+{
+    if (s_tx_busy || !s_link_up) {
+        return false;
+    }
+    if (payload_len > (sizeof(s_tx_frame) - T1S_ETH_HDR_LEN)) {
+        return false;
+    }
+    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+    memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
+    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE >> 8);
+    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE & 0xFFu);
+    memcpy(&s_tx_frame[T1S_ETH_HDR_LEN], payload, payload_len);
+
+    s_tx_busy = true;
+    bool ok = TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+                                        (uint16_t)(T1S_ETH_HDR_LEN + payload_len),
+                                        0u, tx_done_cb, NULL);
+    if (!ok) {
+        s_tx_busy = false;
+    }
+    return ok;
 }
 
 /* Run the protocol stack until it has no immediately pending work. IRQ_N is
@@ -135,6 +234,7 @@ static void t1s_task(void *param)
         LOG_WARN("T1S: MAC-PHY not responding (check EVB/wiring); still servicing\r\n");
     }
 
+    TickType_t last_hb = xTaskGetTickCount();
     for (;;) {
         (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
         service_pump();
@@ -143,6 +243,18 @@ static void t1s_task(void *param)
             TC6_EnableData(s_tc6, true);
             LOG_INFO("T1S: LAN8651 up (late) — chipRev=%u\r\n",
                      (unsigned)TC6Regs_GetChipRevision(s_tc6));
+        }
+
+        /* Periodic 1-byte heartbeat to the fretboard node — exercises the TX
+         * framing path on the bus. Phase 4 carries the real command byte. */
+        if (s_link_up &&
+            ((xTaskGetTickCount() - last_hb) >= pdMS_TO_TICKS(T1S_HEARTBEAT_MS))) {
+            last_hb = xTaskGetTickCount();
+            uint8_t hb = 0u;
+            bool tx = send_to_node(s_nodes[0].node_id, &hb, 1u);
+            if (++s_hb_count % 5u == 0u) {
+                LOG_INFO("T1S: heartbeat #%u tx=%d\r\n", (unsigned)s_hb_count, (int)tx);
+            }
         }
     }
 }
@@ -198,14 +310,33 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     (void)pInst;
     (void)rxTimestamp;
     (void)pGlobalTag;
-    /* Phase 1: log only. L2 demux + fretboard data path land in later phases. */
-    if (success && (len >= 14u)) {
-        LOG_DEBUG("T1S: rx %u B, src=%02X:%02X:%02X:%02X:%02X:%02X type=%04X\r\n",
-                  (unsigned)len,
-                  s_rx_buf[6], s_rx_buf[7], s_rx_buf[8],
-                  s_rx_buf[9], s_rx_buf[10], s_rx_buf[11],
-                  (unsigned)((s_rx_buf[12] << 8) | s_rx_buf[13]));
+
+    if (!success || (len < T1S_ETH_HDR_LEN)) {
+        return;
     }
+
+    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+    if (ethertype != T1S_ETHERTYPE) {
+        return;  /* not ours (promiscuous RX during bring-up) */
+    }
+
+    const uint8_t *src = &s_rx_buf[6];
+    const t1s_node_t *node = node_for_mac(src);
+    if (node == NULL) {
+        LOG_DEBUG("T1S: rx from unknown node %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+                  src[0], src[1], src[2], src[3], src[4], src[5]);
+        return;
+    }
+
+    const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
+    uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
+    (void)payload;
+
+    /* Phase 3: demux only. Phase 4 routes the payload (e.g. the 17-byte
+     * fretboard frame) to the detector-state bus / PERF_REC_FRETBOARD_RAW. */
+    LOG_DEBUG("T1S: rx node=%u det=%u %u B\r\n",
+              (unsigned)node->node_id, (unsigned)node->detector_id,
+              (unsigned)payload_len);
 }
 
 void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)

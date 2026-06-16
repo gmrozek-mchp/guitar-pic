@@ -156,8 +156,8 @@ table entry, not a transport rewrite.
 | marvin | 0 (coordinator) | `02:00:00:00:00:00` | beacons the PLCA cycle |
 | node *k* | *k* | `02:00:00:00:00:0k` | e.g. fretboard = ID 1 |
 
-- One **custom ethertype** (~`0x88B5`, in the experimental range; final value TBC)
-  carries the existing payloads verbatim.
+- One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
+  registration needed for a private bus) carries the existing payloads verbatim.
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
@@ -186,7 +186,6 @@ Still open (non-blocking; settle during bring-up unless noted):
 - **Prereq (blocking):** a free FLEXCOM regenerated in SPI-master mode in MCC with
   the EVB pinout — no SPI PLib exists yet.
 - **Prereq (blocking):** `oa-tc6-lib` added on disk as a subproject.
-- Final custom ethertype value and the per-node MAC values (§7.1).
 - PoDL supply voltage and the PD-side regulator topology (BOM, not firmware).
 - Magnetics-free coupling component selection on the Sensor-LCD5 PCB.
 
