@@ -94,7 +94,7 @@ The marvin-side reference for all of this is [`firmware/marvin/default/src/net/t
 
 | Status | Item |
 |---|---|
-| 🔭 | **G0** — guitar MCC project (SPI + `IRQ_N`/`RST` + 7 button GPIOs) generated |
+| ✅ | **G0** — guitar MCC project generated: SERCOM0 SPI (Mode 0), EIC EXTINT15 (falling) on `IRQ_N`, `CS`/`RST` GPIO, 7 button GPIOs, SERCOM1 debug UART |
 | 🔭 | **G1** — T1S follower bring-up: chipRev + PLCA follower status |
 | 🔭 | **G2** — command RX → Wii GPIO actuation (single button on demand) |
 | 🔭 | **G3** — end-to-end: marvin (`MARVIN_FRETBOARD_TRANSPORT=1`) drives the guitar node; play with fretboard (detector) + guitar (actuator) both on the bus |
