@@ -31,7 +31,6 @@
 #define T1S_ETHERTYPE        (0x88B5u)   /* local/experimental range */
 #define T1S_ETH_HDR_LEN      (14u)
 #define T1S_MAC_LEN          (6u)
-#define T1S_HEARTBEAT_MS     (1000u)
 
 /* Locally administered coordinator MAC (02:00:00:00:00:00). */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
@@ -67,6 +66,17 @@ static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
     out[5] = node_id;
 }
 
+/* Look up a node by type (NULL if none of that type is configured). */
+static const t1s_node_t *node_for_type(t1s_node_type_t type)
+{
+    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+        if (s_nodes[i].type == type) {
+            return &s_nodes[i];
+        }
+    }
+    return NULL;
+}
+
 /* Look up a node by its source MAC (NULL if unknown). */
 static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
 {
@@ -87,7 +97,12 @@ static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
  * rates. */
 static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
 static volatile bool s_tx_busy;
-static uint32_t      s_hb_count;
+
+/* Latest-wins outbound command to the fretboard, flushed by the service task. */
+static volatile uint8_t s_cmd;
+static volatile bool    s_cmd_dirty;
+
+static T1SLink_FrameHandler s_frame_handler;
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -234,7 +249,6 @@ static void t1s_task(void *param)
         LOG_WARN("T1S: MAC-PHY not responding (check EVB/wiring); still servicing\r\n");
     }
 
-    TickType_t last_hb = xTaskGetTickCount();
     for (;;) {
         (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
         service_pump();
@@ -245,15 +259,16 @@ static void t1s_task(void *param)
                      (unsigned)TC6Regs_GetChipRevision(s_tc6));
         }
 
-        /* Periodic 1-byte heartbeat to the fretboard node — exercises the TX
-         * framing path on the bus. Phase 4 carries the real command byte. */
-        if (s_link_up &&
-            ((xTaskGetTickCount() - last_hb) >= pdMS_TO_TICKS(T1S_HEARTBEAT_MS))) {
-            last_hb = xTaskGetTickCount();
-            uint8_t hb = 0u;
-            bool tx = send_to_node(s_nodes[0].node_id, &hb, 1u);
-            if (++s_hb_count % 5u == 0u) {
-                LOG_INFO("T1S: heartbeat #%u tx=%d\r\n", (unsigned)s_hb_count, (int)tx);
+        /* Flush the latest pending command to the fretboard node. All TC6
+         * access stays in this task; producers only stash via the API. */
+        if (s_link_up && s_cmd_dirty && !s_tx_busy) {
+            const t1s_node_t *fb = node_for_type(T1S_NODE_FRETBOARD);
+            if (fb != NULL) {
+                /* Clear before reading so a concurrent update re-arms dirty
+                 * rather than being dropped (latest-wins). */
+                s_cmd_dirty = false;
+                uint8_t mask = s_cmd;
+                (void)send_to_node(fb->node_id, &mask, 1u);
             }
         }
     }
@@ -271,6 +286,22 @@ void T1SLink_Initialize(void)
 bool T1SLink_IsConnected(void)
 {
     return s_link_up;
+}
+
+bool T1SLink_SendToFretboard(uint8_t mask)
+{
+    if (!s_link_up) {
+        return false;
+    }
+    s_cmd = mask;
+    s_cmd_dirty = true;
+    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    return true;
+}
+
+void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler)
+{
+    s_frame_handler = handler;
 }
 
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
@@ -330,13 +361,10 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
 
     const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
     uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
-    (void)payload;
 
-    /* Phase 3: demux only. Phase 4 routes the payload (e.g. the 17-byte
-     * fretboard frame) to the detector-state bus / PERF_REC_FRETBOARD_RAW. */
-    LOG_DEBUG("T1S: rx node=%u det=%u %u B\r\n",
-              (unsigned)node->node_id, (unsigned)node->detector_id,
-              (unsigned)payload_len);
+    if (s_frame_handler != NULL) {
+        s_frame_handler(node->detector_id, payload, payload_len);
+    }
 }
 
 void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)

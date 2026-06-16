@@ -44,7 +44,6 @@
 #include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "perf_log/perf_log.h"
-#include "net/t1s/t1s_link.h"
 
 // *****************************************************************************
 // *****************************************************************************
@@ -141,13 +140,6 @@ void APP_Initialize ( void )
      * up by SYS_Initialize (FLEXCOM1_USART_Initialize), so this just arms the
      * ring-buffer RX notification and starts the link tasks. */
     FretboardLink_Initialize();
-
-    /* 10BASE-T1S inter-node link (LAN8651 MAC-PHY on FLEXCOM4 SPI). Brings the
-     * MAC-PHY up as PLCA coordinator and services the OA TC6 protocol in its
-     * own task; runs alongside the FLEXCOM1 UART link during bring-up. The L2
-     * framing / fretboard data path lands in a later phase. FLEXCOM4_SPI is
-     * brought up by SYS_Initialize, so this only starts the service task. */
-    T1SLink_Initialize();
 
     /* timing_pipeline runs the chord-window + strum scheduler against the
      * active detector and pushes the resulting 7-bit mask through

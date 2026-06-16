@@ -175,6 +175,15 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-16 — T1S Phase 4: wire under the FretboardLink API (transport flag)
+
+- T1S now sits behind the existing `FretboardLink_{Initialize,Send,IsConnected}` API, selected by a compile flag `MARVIN_FRETBOARD_TRANSPORT` (`FRETBOARD_TRANSPORT_UART` default / `_T1S`) in `fretboard_link.h`. `app.c` is unchanged (the explicit `T1SLink_Initialize()` call was removed — `fretboard_link` owns transport bring-up). Producers (`timing_pipeline`, `manual_control`) and all perf-log records are identical above the transport.
+- **TX**: factored `send_one_byte()` per transport. UART path unchanged. T1S path calls `T1SLink_SendToFretboard(mask)` and keeps the same `PERF_STAGE_FBL_SEND` / `ACTUATOR` stamping. To keep TC6 single-threaded, `T1SLink_SendToFretboard` only stashes a latest-wins command + wakes the service task; the **t1s service task** flushes it via `send_to_node(fretboard)`. This retired the Phase 3 bring-up heartbeat.
+- **RX**: factored `emit_fretboard_frame()` (validated 17-byte frame → `PERF_REC_FRETBOARD_RAW`), shared by both paths. UART path = ring drain + `0x03..0xFC` resync → emit. T1S path = `t1s_frame_handler` registered via `T1SLink_SetFrameHandler`; the MAC-PHY/TC6 already deframes, so it only checks markers → emit. Runs in the t1s service task (perf-log producers are task-safe).
+- **Node mapping**: `T1SLink` resolves the fretboard node by type (`node_for_type`) for both TX target and RX `detector_id`, so the API stays node-agnostic.
+- **The t1s branch now builds T1S by default** (`MARVIN_FRETBOARD_TRANSPORT=1` set in `user.cmake`) — the branch is all-in on T1S; UART is one commented line away for fallback. (Until the fretboard T1S side lands, a marvin built this way drives the T1S link, not the real UART fretboard.)
+- **Status: both builds confirmed on hardware.** UART build is a clean regression; the `MARVIN_FRETBOARD_TRANSPORT=1` build runs with the T1S link up as PLCA coordinator (`chipRev=2`, `Reset_Complete`) under the `FretboardLink` API — command TX flows to node 1 (no receiver yet; the real fretboard is still on UART). End-to-end T1S data validation waits on the fretboard PIC32CM T1S side (next subproject).
+
 ### 2026-06-16 — T1S Phase 3: L2 framing + static node table (marvin)
 
 - Added L2 framing and the node directory to `net/t1s/t1s_link.c`. Ethertype fixed at **`0x88B5`** (local/experimental range — no registration needed; updated the T1S doc, dropped it from open items). 14-byte Ethernet header built/parsed; payloads ride inside verbatim.

@@ -31,4 +31,8 @@ target_include_directories(marvin_default_default_XC32_compile PRIVATE
 
 target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
     CAMERA_ENABLE_DEBUG=0
+    # Fretboard link transport: default is FLEXCOM1 UART. Uncomment to route
+    # the fretboard command/data over the 10BASE-T1S link (LAN8651) instead —
+    # flip this once the fretboard PIC32CM T1S side is up.
+    MARVIN_FRETBOARD_TRANSPORT=1
 )
