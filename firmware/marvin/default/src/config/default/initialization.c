@@ -336,6 +336,8 @@ void SYS_Initialize ( void* data )
 
     FLEXCOM2_USART_Initialize();
 
+    FLEXCOM4_SPI_Initialize();
+
     FLEXCOM8_TWI_Initialize();
 
     XLCDC_Initialize();

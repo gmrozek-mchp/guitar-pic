@@ -49,10 +49,11 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include "peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h"
 #include "peripheral/pit/plib_pit.h"
+#include "peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h"
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_device.h"
+#include "peripheral/flexcom/spi/master/plib_flexcom4_spi_master.h"
 #include "peripheral/tc/plib_tc0.h"
 #include "peripheral/flexcom/usart/plib_flexcom1_usart.h"
 #include "driver/i2c/drv_i2c.h"

@@ -185,6 +185,17 @@
 #define LED_7_Get()               ((PIOC_REGS->PIO_PDSR >> 29U) & 0x1U)
 #define LED_7_PIN                  PIO_PIN_PC29
 
+/*** Macros for T1S_IRQ_N pin ***/
+#define T1S_IRQ_N_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<25U))
+#define T1S_IRQ_N_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<25U))
+#define T1S_IRQ_N_Toggle()            (PIOB_REGS->PIO_ODSR ^= ((uint32_t)1U<<25U))
+#define T1S_IRQ_N_OutputEnable()      (PIOB_REGS->PIO_OER = ((uint32_t)1U<<25U))
+#define T1S_IRQ_N_InputEnable()       (PIOB_REGS->PIO_ODR = ((uint32_t)1U<<25U))
+#define T1S_IRQ_N_Get()               ((PIOB_REGS->PIO_PDSR >> 25U) & 0x1U)
+#define T1S_IRQ_N_PIN                  PIO_PIN_PB25
+#define T1S_IRQ_N_InterruptEnable()   (PIOB_REGS->PIO_IER = (1<<25))
+#define T1S_IRQ_N_InterruptDisable()  (PIOB_REGS->PIO_IDR = (1<<25))
+
 /*** Macros for QSPI_IO1 pin ***/
 #define QSPI_IO1_Get()               ((PIOB_REGS->PIO_PDSR >> 22U) & 0x1U)
 #define QSPI_IO1_PIN                  PIO_PIN_PB22
@@ -300,6 +311,10 @@
 #define SDMMC0_DAT3_Get()               ((PIOA_REGS->PIO_PDSR >> 5U) & 0x1U)
 #define SDMMC0_DAT3_PIN                  PIO_PIN_PA5
 
+/*** Macros for T1S_SCK pin ***/
+#define T1S_SCK_Get()               ((PIOA_REGS->PIO_PDSR >> 11U) & 0x1U)
+#define T1S_SCK_PIN                  PIO_PIN_PA11
+
 /*** Macros for BUTTON_2 pin ***/
 #define BUTTON_2_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<1U))
 #define BUTTON_2_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<1U))
@@ -317,6 +332,10 @@
 #define BUTTON_3_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<6U))
 #define BUTTON_3_Get()               ((PIOA_REGS->PIO_PDSR >> 6U) & 0x1U)
 #define BUTTON_3_PIN                  PIO_PIN_PA6
+
+/*** Macros for T1S_MOSI pin ***/
+#define T1S_MOSI_Get()               ((PIOA_REGS->PIO_PDSR >> 10U) & 0x1U)
+#define T1S_MOSI_PIN                  PIO_PIN_PA10
 
 /*** Macros for DBGU_RX pin ***/
 #define DBGU_RX_Get()               ((PIOA_REGS->PIO_PDSR >> 26U) & 0x1U)
@@ -370,6 +389,19 @@
 /*** Macros for SDMMC0_DAT1 pin ***/
 #define SDMMC0_DAT1_Get()               ((PIOA_REGS->PIO_PDSR >> 3U) & 0x1U)
 #define SDMMC0_DAT1_PIN                  PIO_PIN_PA3
+
+/*** Macros for T1S_nCS pin ***/
+#define T1S_nCS_Get()               ((PIOA_REGS->PIO_PDSR >> 12U) & 0x1U)
+#define T1S_nCS_PIN                  PIO_PIN_PA12
+
+/*** Macros for T1S_RST pin ***/
+#define T1S_RST_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<3U))
+#define T1S_RST_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<3U))
+#define T1S_RST_Toggle()            (PIOB_REGS->PIO_ODSR ^= ((uint32_t)1U<<3U))
+#define T1S_RST_OutputEnable()      (PIOB_REGS->PIO_OER = ((uint32_t)1U<<3U))
+#define T1S_RST_InputEnable()       (PIOB_REGS->PIO_ODR = ((uint32_t)1U<<3U))
+#define T1S_RST_Get()               ((PIOB_REGS->PIO_PDSR >> 3U) & 0x1U)
+#define T1S_RST_PIN                  PIO_PIN_PB3
 
 /*** Macros for NAND_D3 pin ***/
 #define NAND_D3_Get()               ((PIOD_REGS->PIO_PDSR >> 9U) & 0x1U)
@@ -430,6 +462,10 @@
 /*** Macros for SDMMC0_CMD pin ***/
 #define SDMMC0_CMD_Get()               ((PIOA_REGS->PIO_PDSR >> 1U) & 0x1U)
 #define SDMMC0_CMD_PIN                  PIO_PIN_PA1
+
+/*** Macros for T1S_MISO pin ***/
+#define T1S_MISO_Get()               ((PIOA_REGS->PIO_PDSR >> 9U) & 0x1U)
+#define T1S_MISO_PIN                  PIO_PIN_PA9
 
 /*** Macros for BSP_MAXTOUCH_CHG pin ***/
 #define BSP_MAXTOUCH_CHG_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<20U))
@@ -617,6 +653,7 @@ typedef uint32_t PIO_PORT;
 
 typedef uint32_t PIO_PIN;
 
+typedef  void (*PIO_PIN_CALLBACK) ( PIO_PIN pin, uintptr_t context);
 
 void PIO_Initialize(void);
 
@@ -641,6 +678,29 @@ void PIO_PortToggle(PIO_PORT port, uint32_t mask);
 void PIO_PortInputEnable(PIO_PORT port, uint32_t mask);
 
 void PIO_PortOutputEnable(PIO_PORT port, uint32_t mask);
+
+void PIO_PortInterruptEnable(PIO_PORT port, uint32_t mask);
+
+void PIO_PortInterruptDisable(PIO_PORT port, uint32_t mask);
+
+// *****************************************************************************
+// *****************************************************************************
+// Section: Local Data types and Prototypes
+// *****************************************************************************
+// *****************************************************************************
+
+typedef struct {
+
+    /* target pin */
+    PIO_PIN                 pin;
+
+    /* Callback for event on target pin*/
+    PIO_PIN_CALLBACK        callback;
+
+    /* Callback Context */
+    uintptr_t               context;
+
+} PIO_PIN_CALLBACK_OBJ;
 
 // *****************************************************************************
 // *****************************************************************************
@@ -688,6 +748,21 @@ static inline void PIO_PinOutputEnable(PIO_PIN pin)
     PIO_PortOutputEnable((PIO_PORT)(PIOA_BASE_ADDRESS + (0x200U * (pin>>5U))), 0x1UL << (pin & 0x1FU));
 }
 
+static inline void PIO_PinInterruptEnable(PIO_PIN pin)
+{
+    PIO_PortInterruptEnable((PIO_PORT)(PIOA_BASE_ADDRESS + (0x200U * (pin>>5U))), 0x1UL << (pin & 0x1FU));
+}
+
+static inline void PIO_PinInterruptDisable(PIO_PIN pin)
+{
+    PIO_PortInterruptDisable((PIO_PORT)(PIOA_BASE_ADDRESS + (0x200U * (pin>>5U))), 0x1UL << (pin & 0x1FU));
+}
+
+bool PIO_PinInterruptCallbackRegister(
+    PIO_PIN pin,
+    const PIO_PIN_CALLBACK callback,
+    uintptr_t context
+);
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility

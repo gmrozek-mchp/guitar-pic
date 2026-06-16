@@ -23,7 +23,7 @@ data:
       - attributes:
           id: flexcom4
           x: '218'
-          y: '639'
+          y: '644'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
@@ -456,6 +456,15 @@ data:
       attributes:
         id: FLEXCOM_SPI_EN_NPCS0
         label: Enable NPCS0/ Use GPIO?
+      children:
+      - children:
+        - attributes:
+            id: visible
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
       type: Boolean
     FLEXCOM_SPI_EN_NPCS1:
       attributes:

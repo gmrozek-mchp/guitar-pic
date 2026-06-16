@@ -1,22 +1,28 @@
 /*******************************************************************************
- System Interrupts File
+  FLEXCOM4 SPI PLIB
 
   Company:
     Microchip Technology Inc.
 
   File Name:
-    interrupt.h
+    plib_flexcom4_spi_master.h
 
   Summary:
-    Interrupt vectors mapping
+   FLEXCOM4 SPI Master PLIB Header File.
 
-  Description:
-    This file contains declarations of device vectors used by Harmony 3
- *******************************************************************************/
+  Description
+    This file defines the interface to the FLEXCOM SPI peripheral library.
+    This library provides access to and control of the associated
+    peripheral instance.
+
+  Remarks:
+    None.
+
+*******************************************************************************/
 
 // DOM-IGNORE-BEGIN
 /*******************************************************************************
-* Copyright (C) 2025 Microchip Technology Inc. and its subsidiaries.
+* Copyright (C) 2018 Microchip Technology Inc. and its subsidiaries.
 *
 * Subject to your compliance with these terms, you may use Microchip software
 * and any derivatives exclusively with Microchip products. It is your
@@ -36,42 +42,52 @@
 * FULLEST EXTENT ALLOWED BY LAW, MICROCHIP'S TOTAL LIABILITY ON ALL CLAIMS IN
 * ANY WAY RELATED TO THIS SOFTWARE WILL NOT EXCEED THE AMOUNT OF FEES, IF ANY,
 * THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
- *******************************************************************************/
+*******************************************************************************/
 // DOM-IGNORE-END
 
-#ifndef INTERRUPTS_H
-#define INTERRUPTS_H
+#ifndef PLIB_FLEXCOM4_SPI_MASTER_H // Guards against multiple inclusion
+#define PLIB_FLEXCOM4_SPI_MASTER_H
 
 // *****************************************************************************
 // *****************************************************************************
 // Section: Included Files
 // *****************************************************************************
 // *****************************************************************************
-#include <stdint.h>
+/* This section lists the other files that are included in this file.
+*/
 
+#include "device.h"
+#include "plib_flexcom_spi_master_common.h"
 
+// DOM-IGNORE-BEGIN
+#ifdef __cplusplus // Provide C++ Compatibility
 
-// *****************************************************************************
-// *****************************************************************************
-// Section: Handler Routines
-// *****************************************************************************
-// *****************************************************************************
-void SYSC_SharedHandler (void);
-void PIOB_InterruptHandler (void);
-void FLEXCOM1_InterruptHandler (void);
-void FLEXCOM2_InterruptHandler (void);
-void FLEXCOM8_InterruptHandler (void);
-void FLEXCOM4_InterruptHandler (void);
-void TC0_InterruptHandler (void);
-void XDMAC_InterruptHandler (void);
-void DRV_USB_UDPHS_Handler (void);
-void ISC_Handler (void);
-void CSI2DC_Handler (void);
+extern "C" {
 
-void PIT_InterruptHandler (void);
+#endif
 
-/* Interrupt Handler for spurious interrupts */
-void SPURIOUS_INTERRUPT_Handler (void);
+// DOM-IGNORE-END
 
+/****************************** FLEXCOM4 SPI Interface *********************************/
 
-#endif // INTERRUPTS_H
+void FLEXCOM4_SPI_Initialize( void );
+bool FLEXCOM4_SPI_WriteRead( void * pTransmitData, size_t txSize, void * pReceiveData, size_t rxSize );
+bool FLEXCOM4_SPI_Write( void * pTransmitData, size_t txSize );
+bool FLEXCOM4_SPI_Read( void * pReceiveData, size_t rxSize );
+bool FLEXCOM4_SPI_TransferSetup( FLEXCOM_SPI_TRANSFER_SETUP * setup, uint32_t spiSourceClock );
+bool FLEXCOM4_SPI_IsTransmitterBusy(void);
+bool FLEXCOM4_SPI_IsBusy( void );
+void FLEXCOM4_SPI_CallbackRegister( FLEXCOM_SPI_CALLBACK callback, uintptr_t context );
+
+/* Provide C++ Compatibility */
+#ifdef __cplusplus
+
+    }
+
+#endif
+
+#endif // PLIB_FLEXCOM4_SPI_MASTER_H
+
+/*******************************************************************************
+ End of File
+*/
