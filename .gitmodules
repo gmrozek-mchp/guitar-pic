@@ -1,0 +1,3 @@
+[submodule "third_party/oa-tc6-lib"]
+	path = third_party/oa-tc6-lib
+	url = https://github.com/MicrochipTech/oa-tc6-lib.git
