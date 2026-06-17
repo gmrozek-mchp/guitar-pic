@@ -16,7 +16,7 @@
  * windowed model's moving zero-pad boundary would not match (see runtime.md /
  * edge-ai journal). Output is 0 until the receptive field has filled.
  *
- * Output bitmask matches CMD_BIT_* (bits 0..4 frets, bit 5 strum-down).
+ * Output bitmask: bits 0..4 frets (G/R/Y/B/O), bit 5 strum-down, bit 6 strum-up.
  */
 
 void model_infer_stream_init(void);

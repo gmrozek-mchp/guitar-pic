@@ -7,12 +7,10 @@
 
 void data_stream_init(void);
 
-/* Send one Data Visualizer Data Streamer frame with current fret results.
-   Returns true if the frame was queued, false if UART buffer was too full. */
-bool data_stream_send(void);
-
-/* MODEL_DRIVEN variant: appends the running model inference count (21-byte frame)
-   so the host can measure the actual inference rate vs the 240 Hz sample rate. */
-bool data_stream_send_model(uint32_t infer_count);
+/* Stage one 17-byte detector frame — the current ADC scan plus `applied_mask`
+   (the bitmask currently driven to the guitar) — for TX to the marvin coordinator
+   over T1S. Returns true if staged, false if the link is down. `sample_seq`
+   advances per call so the host detects frames dropped in transit. */
+bool data_stream_send(uint8_t applied_mask);
 
 #endif

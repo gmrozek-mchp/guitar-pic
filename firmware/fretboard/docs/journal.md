@@ -6,12 +6,31 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ## Current focus
 
-**Two build-time modes (`FRETBOARD_MODE` in `main.c`):**
+**T1S-only sense+actuate node (single behaviour — no build flags).** UART and the
+`FRETBOARD_LINK`/`FRETBOARD_MODE` flags are gone. Each 240 Hz TC0 tick the fretboard
+scans the five phototransistors; the on-device int8 model ([`model_infer.c`](../model_infer.c) /
+[`model_infer_stream.c`](../model_infer_stream.c), weights in [`model_weights.h`](../model_weights.h))
+infers the Wii-guitar bitmask from the ADC window (in the **main loop** — it overruns the tick in the
+ISR; see decision log + edge-ai `runtime.md` §3). Over T1S the node then:
 
-- **`MARVIN_DRIVEN`** (I/O bridge) — 240 Hz TC0 callback: scan five ADCs, emit a 17-byte frame on SERCOM1 TX, drain RX and apply the latest button bitmask. Frame carries `sample_seq` + the applied actuator bitmask (edge-ai training-data sync). Chord/strum logic off-board.
-- **`MODEL_DRIVEN`** (new, current default — standalone edge-ai inference) — the on-device int8 model ([`model_infer.c`](../model_infer.c), weights in [`model_weights.h`](../model_weights.h)) reads the ADC window and drives the buttons itself; marvin disconnected. **SW0 (PB03)** toggles model control, **LED0 (PB02)** shows enabled (boots disabled). The 240 Hz TC0 ISR only samples + applies the latest command + streams; `model_infer_run()` runs in the **main loop** (it overruns the tick if put in the ISR — see decision log + edge-ai `runtime.md` §3). Build at `-O2`/`-O3`.
+- **streams** the 17-byte data frame (ADC scan + the driven bitmask as `applied_mask`) to the marvin
+  coordinator (`0x88B5`, logging / edge-ai training), and
+- **commands** the guitar node (id 2) directly with the inferred 1-byte bitmask (`0x88B5`,
+  peer-to-peer) — edge-triggered + a 50 ms refresh so a dropped frame self-heals.
 
-Baud is 500 000. Host checks: [`tools/ds_monitor.py`](../tools/ds_monitor.py) (framing) and [`../../../tools/marvin-perf/fretboard_rate.py`](../../../tools/marvin-perf/fretboard_rate.py) (true tick rate from `sample_seq` + strums/s).
+Plus a 500 ms presence heartbeat (`0x88B6`, node_type 1 = detector). All TC6 TX/service is in the main
+loop ([`T1SDetector_Tasks`](../t1s_detector.c)); the ISR only scans + stages the data frame. It has **no
+local Wii-guitar outputs** (those pins are the LAN8651 SPI). PLCA follower id 1, MAC `02:00:00:00:00:01`.
+
+**SW0 (PB03)** arms actuation (a manual "active detector" gate until marvin coordinates active-detector/
+active-guitar selection); **LED0 (PB02)** shows armed; boots disarmed (sends 0 = released). **Coordination
+caveat:** while the fretboard is armed, marvin must NOT also drive the guitar (both target `02:..:02`;
+no arbitration yet — the guitar applies whoever transmitted last).
+
+**MCC done** (SERCOM0 SPI Mode 0 on PA04/05/07; T1S_CS PA15 / T1S_RST PA14 / T1S_IRQ_N PA13 EXTINT13
+falling; SysTick 1 ms; SERCOM1 ring-buffer TX 512). **Operator CLI** on SERCOM1 ([`cli.c`](../cli.c),
+vendored `third_party/embedded-cli/`): `t1s` (link + data/cmd tx counts), `adc`, `id`, `plca`. Remaining:
+build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware bring-up. Build at `-O2`/`-O3`.
 
 ---
 
@@ -19,6 +38,9 @@ Baud is 500 000. Host checks: [`tools/ds_monitor.py`](../tools/ds_monitor.py) (f
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-06-17 | **T1S-only sense+actuate node; the model drives the guitar over T1S.** Removed the UART path and the `FRETBOARD_LINK` + `FRETBOARD_MODE` build flags entirely — one behaviour. The on-device model is always on; its inferred bitmask is (a) streamed to marvin as the data frame's `applied_mask` and (b) sent **directly to the guitar node** over T1S (peer-to-peer, edge-triggered + 50 ms refresh). New `T1SDetector_SetCommand()` + a command TX path/buffer in `t1s_detector.c` (guitar MAC `02:..:02`); `data_stream_send(applied_mask)` takes the mask as a param; the 21-byte model frame is dropped (marvin parses the 17-byte layout). SW0 arms actuation (interim manual active gate); `TC6_TX_ETH_QSIZE` 2→4 (data + command + heartbeat concurrent). | Supersedes the 2026-06-16 "Stage 1 only / model stays UART-bench telemetry" call: per Greg, **inferring actuator commands from the phototransistor data is the entire purpose of this detector**, so it must drive the guitar — and with the outputs gone, that path is T1S. Collapsing to a single T1S behaviour (no UART/flags) matches "clean it all up for T1S." Direct peer-to-peer keeps latency low and the guitar dumb (applies the last `0x88B5` frame from anyone). **Caveat:** no active-source arbitration yet — while the fretboard is armed, marvin must not also command the guitar (both address `02:..:02`); marvin-side active-detector/active-guitar coordination is the follow-up. |
+| 2026-06-17 | **Actuator code removed — fretboard is detector-only.** The Wii-guitar button/strum GPIOs were removed from the MCC config; `cmd_receive.{c,h}` + the orphaned `fret_button.{c,h}` and `fret_detect.{c,h}` are deleted. `data_stream` no longer sources `applied_mask` from `cmd_receive` (plain frame = 0; the model frame takes the inferred mask as a parameter). `MODEL_DRIVEN` keeps running the on-device model but as **telemetry** — it streams its inferred bitmask and no longer drives GPIO; SW0 just gates whether the mask is streamed. Reverses the 2026-06-02 "keep the orphaned fallback modules" decision. | The actuator role is fully on the `guitar` node now, so the outputs (and the takeover-fallback `fret_button` path that drove them) have no hardware to drive — leaving the code would be dead and non-compiling (the `BUTTON_*` pin macros are gone from `plib_port.h`). Keeping the model as telemetry (rather than deleting it) preserves the edge-ai on-device validation path with no actuation; Stage 2 re-homes the inferred mask to a guitar node over T1S (direct peer-to-peer). |
+| 2026-06-17 | **Fretboard becomes a T1S detector node (id 1) — firmware written.** New build axis `FRETBOARD_LINK = {UART, T1S}` in `fretboard_config.h` (orthogonal to `FRETBOARD_MODE`). The `T1S` build adds `t1s_detector.{c,h}` (TX mirror of guitar's `t1s_follower.c`; shared `third_party/oa-tc6-lib` + a `tc6-conf.h`): follower id 1 / MAC `02:..:01`, streams the existing 17-byte frame to the coordinator (`0x88B5`) + a 500 ms presence heartbeat (`0x88B6`, type 1). `data_stream_send()` routes to `T1SDetector_SendFrame()` instead of SERCOM1; `main.c` services the link from the main loop. **Detector-only:** the `T1S` build compiles out `cmd_receive`/model/button-drive (`FRETBOARD_MODEL_ACTIVE` gate) so the button GPIOs are free for SPI/CS/IRQ/RST. **Command plane for Stage 2 = direct peer-to-peer:** the active detector will TX its command straight to a guitar node's MAC; marvin coordinates active-detector/active-guitar and logs, but is out of the gameplay command path. | Executes the 2026-06-16 detector re-scope onto the bus, now that the guitar node is proven (guitar G1+G2). marvin's RX side was already built (`fretboard_link.c` T1S frame handler + node-table id 1) — the only missing half was the fretboard transmitting, so this is purely additive on the fretboard. Build flag keeps the UART path as the live fallback (same parallel-coexistence as marvin's `MARVIN_FRETBOARD_TRANSPORT` and guitar's split). TX staged in the ISR + flushed in the main loop because TC6 must not run in the 240 Hz ISR (same reason model inference moved out, 2026-06-04); drop-on-busy shows as a `sample_seq` gap, matching the UART drop-on-full semantics. Detector-only frees the button pins for the LAN8651 SPI (guitar reused exactly those pins) and matches the node-class split — actuation lives on `guitar`. Direct peer-to-peer keeps latency low and the guitar dumb (applies the last `0x88B5` frame from anyone); marvin's coordination guarantees one command source at a time. |
 | 2026-06-16 | **Direction: fretboard re-scopes to a phototransistor *detector* node; the Wii-guitar *actuator* role moves to the new [`guitar`](../../guitar/SPEC.md) subproject.** Not yet executed — the firmware still does both roles (`fret_scan`/`data_stream` detector + `cmd_receive` actuator + `MODEL_DRIVEN` model) and **keeps actuating until the guitar node is proven**, then marvin flips its command target. No code change this pass. | Part of the T1S multi-node restructuring (top-level [`SPEC.md`](../../../SPEC.md) §2): sensing and actuation become separate node classes on one PLCA bus so multiple detector/guitar variants can coexist and marvin selects the active of each. Keeping fretboard working until guitar is validated holds the playing system up throughout (parallel-coexistence, like the UART/T1S build flag). Edge-ai `MODEL_DRIVEN` re-homing (detector infers → T1S → guitar) is deferred — model modes stay untouched for now. |
 | 2026-06-04 | **Added `MODEL_DRIVEN` mode: on-device int8 inference (`model_infer.c/.h` + generated `model_weights.h`), SW0/LED0 enable toggle, and inference run in the main loop — NOT the TC0 ISR.** Active model is a swappable `model_def_t` pointer (`model_infer_set_model`). Build at `-O2`/`-O3`. | Standalone bring-up of the edge-ai model (edge-ai journal 2026-06-04). **Inference must not run in the 240 Hz ISR**: measured on hardware, doing so dropped the callback rate to ~150–190 Hz (so the model's 250 ms window/lag went wrong) *and* starved the interrupt-driven SERCOM TX (recv ~22 fps, heavy drops). Moving `model_infer_run()` to the main loop and having the ISR only sample + apply a `volatile uint8_t` latest-command restored clean 240/240 Hz. The pointer-swap model_def lets per-difficulty weights be selected at runtime and keeps the door open for serial-loaded weights (RAM headroom confirmed; 8 KB SRAM). SW0 (PB03 active-low momentary, debounced) toggles control; LED0 (PB02) shows state; boots disabled (outputs released). `MARVIN_DRIVEN` stays the alternate build for the I/O-bridge path. |
 | 2026-06-03 | Data-stream frame grows 12→17 bytes: `0x03 \| g r y b o (5×u16 LE) \| sample_seq (u32 LE) \| applied_mask (u8) \| 0xFC`. `sample_seq` is a monotonic counter incremented once per tick in `data_stream_send` (before the TX-buffer check, so a dropped send shows as a gap); `applied_mask` comes from a new `cmd_receive_current_mask()` getter. Resolves open-questions #3 and #4. | Closes the edge-ai data-sync hole (edge-ai journal 2026-06-03). Pairing the actuator state with the ADC scan *in the same frame* makes label↔feature alignment atomic at the source, instead of marvin reconstructing it across its bursty USB RX and separate TX clocks — which Phase-2 training showed floored strum timing at ~20 ms. The seq counter lets the host reconstruct true 240 Hz ordering and detect dropped frames. Callback order is scan→send→receive, so `current_mask` at send time is exactly the state driven *during* this scan. Wire-format break: requires marvin's RX parser + `perf_rec_fretboard_raw_t` (schema v4) to update in lockstep. 17 B × 240 Hz = 4.08 KB/s, still ~12× under the 500 000-baud budget. |
@@ -36,13 +58,95 @@ Baud is 500 000. Host checks: [`tools/ds_monitor.py`](../tools/ds_monitor.py) (f
 
 2. **No host→firmware framing.** Command stream is raw bitmask bytes with no start byte. A spurious byte (e.g. line glitch on RX) becomes a button command. Acceptable for now because the line is short and runs over the same EDBG-CDC pair as TX, but worth revisiting if we see ghost presses.
 
-3. **T1S link transport — direction, not yet built.** Plan to move the marvin link from the SERCOM1 UART to **10BASE-T1S single-pair Ethernet + dumb PoDL** via a LAN8651B1 MAC-PHY (system spec §6 + [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md)). Fretboard-side cost is an OA TC6 SPI driver + minimal L2 framing (~6–10 KB flash / ~1–2 KB SRAM, one free SERCOM in SPI mode + CS_N/IRQ_N/reset GPIO); the 17-byte data frame + 1-byte command formats ride unchanged inside the Ethernet payload, so `data_stream.c`/`cmd_receive.c` need no logic change — only the transport under them swaps. Scope settled on the marvin side 2026-06-16 (marvin journal): a **multi-node PLCA bus** (marvin = coordinator ID 0; fretboard = ID 1, MAC `02:00:00:00:00:01`), adapt `oa-tc6-lib` as a **shared portable TC6 + L2 layer** (the M0+ side reuses what marvin builds), one custom ethertype (~`0x88B5`, TBC), and the UART kept in parallel behind a build flag. The PIC32CM-side work follows once marvin's link is proven; `data_stream.c`/`cmd_receive.c` still need no logic change. PoDL is transparent to the MCU (zero firmware footprint). Remaining open: final ethertype/MAC values, PoDL BOM.
+3. ~~**T1S link transport — direction, not yet built.**~~ **Resolved 2026-06-17 (see decision log):** the fretboard T1S detector firmware is written — `t1s_detector.{c,h}` (follower id 1, MAC `02:00:00:00:00:01`, ethertype `0x88B5` data + `0x88B6` heartbeat) behind the `FRETBOARD_LINK = T1S` build flag, reusing the shared `third_party/oa-tc6-lib`. The 17-byte frame rides the Ethernet payload unchanged (only the transport swaps, as planned). **Remaining (gated on Greg):** the MCC regen (a SERCOM in SPI-master mode + T1S_CS/T1S_RST/T1S_IRQ_N GPIOs + EIC on IRQ_N — mirror of guitar G0; the detector-only build frees the button pins) and on-hardware bring-up (target banner `LAN8651 up … PLCA follower id=1/8`). The T1S fileSet must add `t1s_detector.c`, `cli.c`, `third_party/embedded-cli/embedded_cli.c`, and `oa-tc6-lib` `tc6.c`/`tc6-regs.c`, plus the `libtc6/inc`+`src` and `third_party/embedded-cli` include dirs, and **exclude** `cmd_receive.c`/`fret_button.c` (button-pin refs that conflict with the SPI pins). PoDL is transparent to the MCU (zero firmware footprint); final PoDL BOM still open.
 
 > Resolved 2026-06-03 (see decision log): #3 "no sample timestamp" and #4 "no applied actuator state" — both fixed by growing the frame to 17 bytes with `sample_seq` + `applied_mask`.
 
 ---
 
 ## Session log
+
+### 2026-06-17 — Link UP on hardware (detector heartbeat seen on marvin)
+
+- The fretboard T1S node is **live on the bus**: `LAN8651 up … PLCA follower id=1/8`, and marvin's
+  `nodes` shows the detector (id 1) present via its `0x88B6` heartbeat. First end-to-end fretboard↔marvin
+  over T1S.
+- **Bring-up blocker + gotcha (cost ~an afternoon):** the firmware hung in the vendored
+  `TC6Regs_Init → DoInitialization` chip-rev wait (tc6-regs.c:338, no timeout) because **SERCOM0 SPI
+  transfers never completed** — `spi_done_cb` never fired. Root cause: **MCC did not enable the SERCOM0
+  APB clock** (`MCLK_APBCMASK` was `0x88c` = SERCOM1+TC0+ADC, missing bit 1 = SERCOM0; the guitar's
+  `0x806` has it). With no APB clock, every SERCOM0 register access is a silent no-op (no bus fault — which
+  is why the banner still printed), so the SPI never ran and its completion IRQ never asserted. SERCOM1
+  (debug UART) had its bit, so logging worked throughout — masking the cause. **MCC showed the SERCOM0
+  clock as enabled but wasn't emitting the mask bit; toggling/reasserting it in MCC fixed code generation.**
+  Diagnosed by decoding `MCLK_APBCMASK` against `mclk.h` and one-shot `DIAG:` checkpoints in
+  `spi_done_cb`/init (since removed). For the next node: if SPI bring-up hangs, **check the APB-clock mask
+  bit for that SERCOM first.**
+- Also surfaced/untangled the MCC tree move `fretboard-mcc/` → `config.mcc/` ("standard layout" cleanup).
+
+### 2026-06-17 — T1S-only; model drives the guitar over T1S
+
+- Greg's MCC config landed (reviewed: SERCOM0 SPI Mode 0, EIC EXTINT13, SysTick 1 ms) and was committed
+  (`ac9109b`, "MCC regen for T1S … drop button outputs").
+- Per Greg: the detector's purpose is to infer actuator commands and drive the guitar — so collapsed the
+  firmware to a **single T1S behaviour** (removed UART + `FRETBOARD_LINK` + `FRETBOARD_MODE`). The model is
+  always on; its inferred bitmask streams to marvin (`applied_mask` in the 17-byte frame) **and** goes
+  straight to the guitar node over T1S.
+  - `t1s_detector.c`: added the command-to-guitar TX path — `T1SDetector_SetCommand()` (main loop, edge-
+    triggered) + `flush_command()` with a 50 ms refresh, guitar MAC `02:..:02`, its own staging buffer +
+    busy flag + `cmd_tx_done`. `TC6_TX_ETH_QSIZE` 2→4 (data + command + heartbeat). Banner now "t1s
+    detector + actuator". CLI `t1s` shows data-tx + cmd-tx counts + last cmd.
+  - `data_stream.{c,h}`: `data_stream_send(applied_mask)` (param); dropped the 21-byte model frame and all
+    `FRETBOARD_LINK` branching — always the 17-byte T1S frame.
+  - `main.c`: single path — ISR scans + stages the data frame with the gated command; main loop runs
+    inference → `s_latest_cmd`, forwards `s_current_cmd` via `SetCommand`, services TC6 + CLI. SW0 arms
+    actuation (LED0 shows armed; boots disarmed → sends 0).
+  - `cli.c` / `fretboard_config.h` / `model_infer*.h`: removed the build-flag guards + stale `CMD_BIT_*` /
+    `MODEL_DRIVEN` comment references. Grep clean of `FRETBOARD_LINK`/`FRETBOARD_MODE`/`cmd_receive`.
+- **Coordination caveat recorded:** no active-source arbitration yet — while the fretboard is armed, marvin
+  must not also command the guitar. marvin-side active-detector/active-guitar selection is the follow-up.
+- **Not built/flashed** — remaining: build-wiring (add `t1s_detector.c`, `cli.c`, `embedded_cli.c`,
+  `tc6.c`/`tc6-regs.c` + include dirs to the fileSet) then on-hardware bring-up. Watch: data (240 Hz) +
+  command (edge + 20 Hz refresh) + heartbeat all share the PLCA TX — confirm the data rate holds ≈240 Hz.
+
+### 2026-06-17 — MCC for T1S done + actuator code removed (detector-only)
+
+- **MCC regen reviewed — complete & correct.** SERCOM0 SPI master Mode 0 (`CPOL_IDLE_LOW | CPHA_LEADING_EDGE | DORD_MSB`, DOPO0/DIPO3) on PA04 MOSI / PA05 SCK / PA07 MISO; `T1S_CS`=PA15, `T1S_RST`=PA14 (GPIO, idle high); `T1S_IRQ_N`=PA13 / EIC EXTINT13, SENSE13=FALL, INTENSET bit13; EIC+SERCOM0 in NVIC; SysTick added (1 ms tick, `GetTickCounter()`=ms); SERCOM1 USART kept in ring-buffer mode (TX 512 / RX 128). Pins/macros/PLib names all match `t1s_detector.c` + `cli.c`. (SysTick was missing on the first regen pass — added.)
+- **Removed the actuator entirely** (outputs gone from hardware): deleted `cmd_receive.{c,h}`, `fret_button.{c,h}`, `fret_detect.{c,h}`. Cleaned references — `data_stream.c` drops the `cmd_receive`/`fret_detect` includes (plain `applied_mask`=0; `data_stream_send_model()` now takes the inferred mask as a param); `main.c` drops `cmd_receive_*`; the model path streams its mask as telemetry instead of driving GPIO. Grep confirms no remaining `cmd_receive`/`fret_button`/`fret_detect`/`BUTTON_`/`STRUM_` references. The deleted files were already out of the MPLAB fileSet.
+- **Remaining build-wiring** (T1S build): add `t1s_detector.c`, `cli.c`, `third_party/embedded-cli/embedded_cli.c`, `oa-tc6-lib` `tc6.c`/`tc6-regs.c` + the `libtc6/inc`+`src` and `embedded-cli` include dirs to the fileSet; define `FRETBOARD_LINK=FRETBOARD_LINK_T1S`. Then on-hardware bring-up.
+
+### 2026-06-17 — Fretboard T1S detector firmware (Stage 1)
+
+- Wrote the detector-node firmware behind a new `FRETBOARD_LINK = {UART, T1S}` build axis
+  (`fretboard_config.h`), orthogonal to `FRETBOARD_MODE`:
+  - `t1s_detector.{c,h}` — TX mirror of guitar's `t1s_follower.c`. Follower id 1 / MAC `02:..:01`,
+    coordinator-MAC dst, ethertype `0x88B5` for the 17-byte data frame + `0x88B6` heartbeat (type 1 =
+    detector). Bare-metal: SysTick clock, RST pulse, `SERCOM0_SPI_CallbackRegister`, GPIO CS held across the
+    chunk, EIC IRQ_N, non-blocking `TC6Regs_Init(nodeId=1, follower, non-promiscuous)`, serviced from the
+    main loop. `T1SDetector_SendFrame()` stages a frame in the ISR (latest-wins); `T1SDetector_Tasks()`
+    flushes it + the 500 ms heartbeat from the main loop, one TX in flight (`s_tx_busy`). `tc6-conf.h`
+    copied from guitar (PL10 sizing).
+  - `data_stream.c` — `data_stream_send()`/`_send_model()` build the same frame, then hand it to
+    `T1SDetector_SendFrame()` under `FRETBOARD_LINK == T1S` instead of `SERCOM1_USART_Write()`. `applied_mask`
+    is constant 0 in this build (detector doesn't actuate; `cmd_receive.c` excluded).
+  - `main.c` — `FRETBOARD_MODEL_ACTIVE` gate makes the model path mutually exclusive with the T1S build
+    (button/SW0/LED0 GPIOs are repurposed for the LAN8651). T1S build: `T1SDetector_Initialize()` after
+    `data_stream_init()`, `T1SDetector_Tasks()` in the main loop, ISR scans + streams only.
+- marvin side needed **no changes** — `fretboard_link.c`'s T1S frame handler already parses the 17-byte
+  frame from node id 1 (`detector_id == DETECTOR_ADC_FRETBOARD`) and emits `PERF_REC_FRETBOARD_RAW`; the
+  node table + heartbeat-presence demux already have id 1. The `t1s` branch builds T1S by default.
+- Decisions locked: command plane for Stage 2 = **direct peer-to-peer** (active detector → guitar MAC, marvin
+  coordinates + logs); this iteration is **Stage 1 only** (detector streams; marvin drives the guitar).
+- **Operator CLI on SERCOM1** (`cli.{c,h}` + vendored `third_party/embedded-cli/`, mirror of the guitar node).
+  In the T1S build SERCOM1 is free (data moved to the bus), so it becomes an interactive console:
+  `t1s` (link/sync/chipRev/PLCA/credits/tx/err), `adc` (latest 5-channel scan), `id` / `plca` (async MAC-PHY
+  reg reads, enqueue-only per the guitar 2026-06-17 fix). Bare-metal: `CLI_Tasks()` drains the SERCOM1 RX ring
+  each main-loop pass. Added `T1SDetector_GetState/NodeId/NodeCount/ReadId/ReadPlca` accessors. CLI compiled
+  only under `FRETBOARD_LINK == T1S` (SERCOM1 is the data stream in the UART build). **MCC note:** keep
+  SERCOM1 in ring-buffer mode with a TX ring ≥ 512 B so a `t1s` dump (~8 lines) isn't truncated.
+- **Not built/flashed** — gated on the MCC regen (SERCOM SPI + T1S_CS/RST/IRQ_N, mirror of guitar G0) and the
+  LAN8651 wiring. Bring-up watch: confirm marvin's `FRETBOARD_RAW` rate holds ≈240 Hz over the bus (the
+  240 Hz TX is the new stressor vs guitar's 500 ms heartbeat) and the `nodes` command shows id 1 present.
 
 ### 2026-06-09 — T1S + PoDL link direction documented
 

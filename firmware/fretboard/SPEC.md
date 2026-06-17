@@ -1,31 +1,32 @@
 # Fretboard Firmware Specification
 
-> **Re-scoping (2026-06-16):** fretboard is becoming a phototransistor **detector** node on the
-> T1S bus — its Wii-guitar **actuator** role (`cmd_receive.c` → open-drain GPIO) has moved to the
-> new [`guitar`](../guitar/SPEC.md) subproject, which is now **proven end-to-end** (marvin drives
-> it over T1S). The fretboard firmware below is **unchanged** — it still does both roles and still
-> talks UART — and keeps actuating until it is itself moved onto a T1S detector node (id 1). The
-> detector/actuator node-class model lives in the top-level
-> [`SPEC.md`](../../SPEC.md) §2. (Edge-ai `MODEL_DRIVEN` is unaffected for now.)
+> **Re-scoped to a T1S sense+actuate node (2026-06-17):** the fretboard is a 10BASE-T1S
+> PLCA follower (id 1) that infers actuator commands from the phototransistor data and drives the
+> [`guitar`](../guitar/SPEC.md) node over T1S, while also streaming its data to marvin. The old UART
+> link, the standalone Wii-guitar GPIO outputs (`cmd_receive.c`), and the `FRETBOARD_LINK`/`FRETBOARD_MODE`
+> build flags are gone — one behaviour. Node-class model: top-level [`SPEC.md`](../../SPEC.md) §2; link
+> detail: [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
 ## Overview
 
-Firmware for PIC32CM6408PL10048 (Cortex-M0+, 24 MHz) that acts as an
-**I/O bridge** between a Guitar Hero controller and an off-board host.
-Five phototransistors above the TV strike line are sampled and streamed
-out continuously; the host runs detection / chord / strum logic and
-sends back a single-byte bitmask that drives the controller's button
-GPIOs directly.
+Firmware for PIC32CM6408PL10048 (Cortex-M0+, 24 MHz). The fretboard is a 10BASE-T1S
+node that both **senses** and **drives**. Each 240 Hz tick it samples five
+phototransistors above the TV strike line; an on-device int8 neural net
+(`model_infer.c`, weights in the generated `model_weights.h`) infers the Wii-guitar
+button bitmask from the ADC window. Over T1S it then:
 
-In its `MARVIN_DRIVEN` mode the firmware contains **no game logic** — it only
-scans ADCs, emits frames, and applies received bitmasks. A second build-time
-mode, **`MODEL_DRIVEN`** (`FRETBOARD_MODE` in `main.c`, the current default),
-makes the board standalone: an on-device int8 neural net (`model_infer.c`,
-weights in the generated `model_weights.h`) maps the ADC window to the button
-bitmask itself, no host required. SW0 toggles it; LED0 shows the state.
-Inference runs in the main loop; the 240 Hz TC0 ISR only samples and applies.
-See [`docs/journal.md`](docs/journal.md) and edge-ai
-[`runtime.md`](../../tools/edge-ai/docs/runtime.md).
+- **streams** the 17-byte data frame (ADC scan + the driven bitmask) to the marvin
+  coordinator — logging / edge-ai training; and
+- **commands** the [`guitar`](../guitar/SPEC.md) node (id 2) directly with the
+  inferred bitmask — peer-to-peer actuation; marvin coordinates/logs but is out of
+  the command path.
+
+Inference runs in the main loop (it overruns the 240 Hz tick in the ISR); the ISR
+only scans + stages the data frame. SW0 arms actuation, LED0 shows armed (boots
+disarmed → commands 0/released). It has **no local Wii-guitar outputs** — those pins
+are the LAN8651 SPI. See [`docs/journal.md`](docs/journal.md), edge-ai
+[`runtime.md`](../../tools/edge-ai/docs/runtime.md), and
+[`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
 ## Hardware
 
@@ -56,54 +57,39 @@ presence.
 | Blue | AIN27 | PA27 |
 | Orange | AIN26 | PA26 |
 
-#### Button Outputs (Open-Drain GPIO)
+There are no button/strum outputs — those GPIOs are the LAN8651 SPI/CS/IRQ/RST
+pins now. See [`t1s_detector.c`](t1s_detector.c).
 
-Each button output is normally tri-stated (input mode). To "press" a
-button the pin is driven low (clear + output-enable). To "release" it
-the pin returns to input mode, which floats the line and lets the
-guitar controller's own pull-up restore the idle state.
+#### SERCOM0 SPI — LAN8651 (T1S)
 
-| Function | Pin | Cmd bit |
-|----------|-----|---------|
-| Green fret | PA06 | 0 |
-| Red fret | PA05 | 1 |
-| Yellow fret | PA07 | 2 |
-| Blue fret | PA04 | 3 |
-| Orange fret | PA01 | 4 |
-| Strum down | PA03 | 5 |
-| Strum up | PA00 | 6 |
+Mode 0 (CPOL=0/CPHA=0, MSB, 8-bit): MOSI=PA04, SCK=PA05, MISO=PA07; `T1S_CS`=PA15
+(GPIO, held low across each TC6 chunk), `T1S_RST`=PA14, `T1S_IRQ_N`=PA13 (EIC
+EXTINT13, falling).
 
-#### UART (SERCOM1)
+#### SERCOM1 — operator console
 
-| Function | Pin |
-|----------|-----|
-| TX (data stream out) | PB00 |
-| RX (command in) | PB01 |
-
-Baud: **500 000**, 8N1.
+Hosts the embedded-cli console + diagnostic log. TX PB00 / RX PB01, **500 000** 8N1,
+ring-buffer mode (TX ring ≥ 512 B).
 
 ## Software Architecture
 
 ### Processing Loop
 
-`TC0` is configured to fire a periodic callback at **240 Hz**
-(≈4.17 ms period). Each tick runs three stages in sequence from the
-timer ISR:
+`TC0` fires a periodic callback at **240 Hz** (≈4.17 ms). The ISR scans and stages
+the data frame with the currently-driven command; the heavy work (inference, TC6
+service, TX flush) runs in the `main()` service loop:
 
 ```
-TC0 callback (240 Hz)
-    |
-    v
-fret_scan_all()          Blocking ADC read of all 5 channels
-    |
-    v
-data_stream_send()       17-byte frame over SERCOM1 TX
-    |
-    v
-cmd_receive_update()     Drains SERCOM1 RX, applies latest bitmask
+TC0 ISR (240 Hz)                     main() service loop
+  fret_scan_all()                      model_infer_* -> s_latest_cmd
+  push sample to model queue           T1SDetector_SetCommand(cmd) -> guitar (T1S)
+  cmd = armed ? s_latest_cmd : 0       T1SDetector_Tasks()  (service + flush data + HB)
+  data_stream_send(cmd)  (stage)       CLI_Tasks()
 ```
 
-`main()` is just init + idle loop; all work happens in the TC0 ISR.
+The ISR stays short (the model overruns the tick if run there — see the journal /
+edge-ai `runtime.md` §3). `data_stream_send()` stages the frame; `T1SDetector_Tasks()`
+flushes it (and the guitar command, and the heartbeat) from the main loop.
 
 ### Module Descriptions
 
@@ -122,7 +108,8 @@ FRET_GREEN = 0, FRET_RED = 1, FRET_YELLOW = 2, FRET_BLUE = 3, FRET_ORANGE = 4
 
 #### data_stream ([data_stream.c](data_stream.c) / [data_stream.h](data_stream.h))
 
-Emits one 17-byte little-endian frame per tick over SERCOM1 TX:
+Builds one 17-byte little-endian frame per tick and stages it for TX to the marvin
+coordinator over T1S (via `T1SDetector_SendFrame`):
 
 | Offset | Size | Field |
 |-------:|-----:|-------|
@@ -133,57 +120,50 @@ Emits one 17-byte little-endian frame per tick over SERCOM1 TX:
 | 7 | 2 | blue |
 | 9 | 2 | orange |
 | 11 | 4 | sample_seq (uint32) — monotonic, one per tick |
-| 15 | 1 | applied_mask — actuator bitmask driven this scan |
+| 15 | 1 | applied_mask — the bitmask driven to the guitar this scan |
 | 16 | 1 | end = `0xFC` (`~start`) |
 
-`sample_seq` lets the host reconstruct true sample order and detect frames
-dropped in transit (it advances per tick even when a send is skipped).
-`applied_mask` is the bitmask `cmd_receive` currently drives, captured in the
-same tick as the scan so sensor and actuator state are paired at the source
-(used by edge-ai training-data export). The frame is dropped silently if the
-TX free-buffer count is below the frame size. At 240 Hz this is 4 080 B/s —
-well within the 50 000 B/s budget at 500 000 baud.
+`sample_seq` lets the host reconstruct true sample order and detect dropped frames
+(it advances per tick even when a send is skipped). `applied_mask` is the command
+the node drove to the guitar this scan, paired atomically with the ADC scan for
+edge-ai training-data export. The marvin RX side keys on this 17-byte layout.
 
-#### cmd_receive ([cmd_receive.c](cmd_receive.c) / [cmd_receive.h](cmd_receive.h))
+### T1S node ([t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h))
 
-Drains the SERCOM1 RX buffer each tick. The **last byte received** in
-the tick is interpreted as a button bitmask and applied directly:
+PLCA follower **id 1**, MAC `02:00:00:00:00:01`, on the marvin-coordinated
+(`02:..:00`) bus via a LAN8651 MAC-PHY over SERCOM0 SPI. Reuses the shared
+`third_party/oa-tc6-lib` (OPEN Alliance TC6) + a local `tc6-conf.h`. All TC6 access
+is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR.
 
-| Bit | Output |
-|----:|--------|
-| 0 | Green fret |
-| 1 | Red fret |
-| 2 | Yellow fret |
-| 3 | Blue fret |
-| 4 | Orange fret |
-| 5 | Strum down |
-| 6 | Strum up |
+- **Data → coordinator:** the 17-byte frame rides the Ethernet payload under
+  ethertype `0x88B5`, dst = coordinator MAC. The ISR stages it
+  (`T1SDetector_SendFrame()`, latest-wins); the main loop flushes it, one TX in
+  flight. A frame dropped while busy shows as a `sample_seq` gap.
+- **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
+  1-byte bitmask to the **guitar node** (id 2, MAC `02:..:02`, ethertype `0x88B5`).
+  Sent edge-triggered + re-sent every 50 ms so a dropped command self-heals; the
+  guitar applies latest-wins. Peer-to-peer — marvin is not in the command path.
+- **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
+  marvin's `nodes` command shows the node present.
+- **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
+  `third_party/embedded-cli/`): `t1s` (link / sync / chipRev / PLCA / data+command tx
+  counts), `adc` (latest scan), `id` / `plca` (MAC-PHY register diagnostics).
+  Bare-metal — `CLI_Tasks()` drains the RX ring each main-loop pass.
 
-Bit set → drive low (assert). Bit clear → tri-state (release).
+**Coordination caveat:** there is no active-source arbitration yet — while the
+fretboard is armed (SW0) it drives the guitar, and marvin must not also command the
+guitar (both target `02:..:02`). marvin-side active-detector/active-guitar selection
+is the follow-up. Link rationale, addressing, and the PoDL plan are in
+[`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
-Note: only the most recent byte each tick is honoured. The host is
-expected to send commands at a rate ≤ the loop rate; older bytes in
-the same tick are coalesced away.
+## Observability
 
-## Tools
-
-### Host-side data-stream monitor
-
-[`tools/ds_monitor.py`](tools/ds_monitor.py) opens the serial port,
-resyncs on `0x03 … 0xFC` framing, and reports actual frame rate, byte
-rate, framing-error count, and current ADC values once per second.
-
-The script declares its dependencies inline (PEP 723) and is run via
-[`uv`](https://docs.astral.sh/uv/) — no manual venv or `pip install`
-needed:
-
-```
-./tools/ds_monitor.py /dev/tty.usbmodem<...>
-# or, equivalently:
-uv run tools/ds_monitor.py /dev/tty.usbmodem<...>
-```
-
-Defaults: `--baud 500000 --expect-hz 240`.
+The data stream lands on **marvin** now (over T1S), so health is read there: the
+`PERF_REC_FRETBOARD_RAW` rate via [`tools/marvin-perf`](../../tools/marvin-perf/) and
+node presence via marvin's `nodes` console command. On the node itself, the SERCOM1
+CLI (`t1s`, `adc`) shows link state, data/command TX counts, and the live scan.
+([`tools/ds_monitor.py`](tools/ds_monitor.py) was the UART-era serial monitor — no
+longer applicable now that the stream is on the bus.)
 
 ## Build System
 
@@ -196,11 +176,12 @@ MPLAB Extensions for VS Code. Project config is in
 
 | File | Purpose |
 |------|---------|
-| [main.c](main.c) | Init + TC0 callback wiring |
+| [main.c](main.c) | Init + TC0 scan/stage ISR + service loop (infer, drive guitar) |
 | [fret_scan.c](fret_scan.c) / [.h](fret_scan.h) | ADC channel scanning |
-| [data_stream.c](data_stream.c) / [.h](data_stream.h) | UART output frame |
-| [cmd_receive.c](cmd_receive.c) / [.h](cmd_receive.h) | UART input bitmask |
-| [tools/ds_monitor.py](tools/ds_monitor.py) | Host-side frame-rate / content check |
-| `fret_detect.c` / `.h` | **Orphaned** (see [docs/journal.md](docs/journal.md)) |
-| `fret_button.c` / `.h` | **Orphaned** (see [docs/journal.md](docs/journal.md)) |
+| [data_stream.c](data_stream.c) / [.h](data_stream.h) | 17-byte data frame builder (→ T1S) |
+| [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→guitar, heartbeat |
+| [cli.c](cli.c) / [.h](cli.h) | Operator CLI on SERCOM1 (t1s/adc/id/plca) |
+| [model_infer.c](model_infer.c) / [model_infer_stream.c](model_infer_stream.c) | On-device int8 model (ADC window → bitmask) |
+| [tc6-conf.h](tc6-conf.h) | OA TC6 driver build config |
+| `third_party/embedded-cli/` | Vendored embedded-cli (CLI engine, static-alloc) |
 | `fretboard-mcc/` | MCC Harmony peripheral libraries (generated) |

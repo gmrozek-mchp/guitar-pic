@@ -6,13 +6,14 @@
 /*
  * On-device int8 inference: 5-channel ADC window -> command bitmask.
  *
- * Replaces the marvin-driven command stream when the fretboard runs standalone
- * (MODEL_DRIVEN mode). Integer-only (no FPU); weights and quant params live in
- * the generated model_weights.h as one or more `model_def_t`. Bit-exact with
- * the host reference edge_ai.quantize.int8_sim — see tools/edge-ai/docs/journal.md.
+ * Drives the fretboard's actuation: the inferred bitmask is sent to the guitar
+ * node over T1S (see t1s_detector.c). Integer-only (no FPU); weights and quant
+ * params live in the generated model_weights.h as one or more `model_def_t`.
+ * Bit-exact with the host reference edge_ai.quantize.int8_sim — see
+ * tools/edge-ai/docs/journal.md.
  *
- * Output bitmask matches CMD_BIT_* (bits 0..4 frets, bit 5 strum-down, bit 6
- * left 0).
+ * Output bitmask: bits 0..4 frets (G/R/Y/B/O), bit 5 strum-down, bit 6 strum-up
+ * (the layout the guitar node applies).
  *
  * Multiple models (e.g. one per difficulty) can be linked at once and selected
  * at runtime with model_infer_set_model(); they must share the architecture

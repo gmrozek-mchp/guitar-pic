@@ -11,11 +11,24 @@ Status: **built and working between marvin (PLCA coordinator, node 0) and the
 (ethertype `0x88B5`) carries the existing 1-byte command bitmask; a presence
 heartbeat (`0x88B6`, §7.2) plus link / `nodes` diagnostics run on both ends.
 
-The [`fretboard`](../firmware/fretboard/SPEC.md) detector has **not** moved to T1S
-yet — it stays on SERCOM1 UART; marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}`
-build flag (§8). **PoDL is design-direction only** (not built) — the link is
-separately powered during bring-up. Addressing in §7.1; the scope widened from a
-2-node UART swap to this multi-node PLCA bus on 2026-06-16.
+The [`fretboard`](../firmware/fretboard/SPEC.md) firmware to join as node 1 is
+**written** (2026-06-17, `t1s_detector.{c,h}`), **T1S-only** (the old UART path +
+build flags removed). It is a **sense+actuate** node: it streams its 17-byte data
+frame to the coordinator (`0x88B5`, logging) **and** sends its on-device model's
+inferred 1-byte command **directly to the guitar node** (`0x88B5`, dst `02:..:02`) —
+peer-to-peer actuation — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
+SPI + CS/RST/IRQ_N, mirror of guitar G0); remaining is the build-wiring + on-hardware
+bring-up. marvin's RX side is already in place (node-table id 1 + `fretboard_link.c`
+T1S frame handler); marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag
+(§8). **PoDL is design-direction only** (not built) — the link is separately powered
+during bring-up. Addressing in §7.1; the scope widened from a 2-node UART swap to
+this multi-node PLCA bus on 2026-06-16.
+
+> **Command-plane note:** with the fretboard driving the guitar directly, two nodes
+> can address the guitar (marvin and the fretboard). There is no active-source
+> arbitration yet — the guitar applies whoever transmitted last, so only one should
+> be armed at a time. marvin-side active-detector/active-guitar selection is the
+> follow-up (it currently picks `node_for_type(GUITAR)`).
 
 ---
 
@@ -85,8 +98,10 @@ No TCP/IP, ARP, DHCP, or any IP stack. Three layers, none large:
    so the host prepends a fixed 14-byte Ethernet header (dest MAC, src MAC,
    ethertype) to the payload. For this link the MACs are hardcoded and a custom
    ethertype carries the existing frame formats verbatim:
-   - fretboard → marvin: the 17-byte data-stream frame (see fretboard SPEC).
-   - marvin → fretboard: the 1-byte button bitmask.
+   - detector (fretboard, id 1) → marvin: the 17-byte data-stream frame (see fretboard SPEC).
+   - command source → guitar (id 2): the 1-byte button bitmask — sent by marvin
+     (timing pipeline) and/or directly by the active detector (fretboard's model,
+     peer-to-peer).
 
    17 B + 14 B header = 31 B → a single chunk. The 1-byte command likewise. The
    existing UART framing (`0x03 … 0xFC`, `sample_seq`, etc.) can ride unchanged
@@ -161,8 +176,8 @@ command TX targets. marvin selects the active node of each class.
 | Node | Class | PLCA ID | MAC (locally administered) | Notes |
 |---|---|---|---|---|
 | marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
-| fretboard | detector | 1 | `02:00:00:00:00:01` | photo-ADC stream → `detector_id` 1 |
-| guitar | guitar (actuator) | 2 | `02:00:00:00:00:02` | receives the 1-byte command bitmask |
+| fretboard | detector | 1 | `02:00:00:00:00:01` | photo-ADC stream → `detector_id` 1; also commands the guitar (id 2) directly |
+| guitar | guitar (actuator) | 2 | `02:00:00:00:00:02` | receives the 1-byte command bitmask (from marvin or a detector) |
 | node *k* | (either) | *k* | `02:00:00:00:00:0k` | future detector/guitar variants |
 
 - One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
@@ -206,11 +221,18 @@ the `oa-tc6-lib` submodule) are resolved.
 
 Open / future:
 
-- **Fretboard → T1S detector node (id 1).** marvin's RX/detector path + node-table
-  slot are already in place; the fretboard's ADC stream rides in unchanged and it
-  appears as a present node.
-- **Active-detector / active-guitar selector** once a second node of either class
-  shares the bus (single guitar today → target is `node_for_type(GUITAR)`).
+- **Fretboard node (id 1) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
+  T1S-only). Sense+actuate: streams the 17-byte data frame to marvin (RX/detector path
+  + node-table slot already in place) **and** sends its model's inferred command
+  directly to the guitar (id 2). MCC config done. **Remaining:** build-wiring + on-
+  hardware bring-up (banner `LAN8651 up … PLCA follower id=1/8`; confirm the
+  `FRETBOARD_RAW` rate holds ≈240 Hz — data + command + heartbeat now share the node's
+  PLCA TX).
+- **Active-source arbitration.** Both marvin and the fretboard can address the guitar
+  (`02:..:02`); the guitar applies whoever transmitted last. Need marvin-side
+  active-detector/active-guitar selection so exactly one source drives at a time
+  (today: single guitar → `node_for_type(GUITAR)`; the fretboard's SW0 is an interim
+  manual arm).
 - **PoDL** supply voltage + PD-side regulator topology (BOM, not firmware) — not
   built; the link is separately powered for now.
 - Magnetics-free coupling component selection on the Sensor-LCD5 PCB.
