@@ -35,24 +35,28 @@
 /* Locally administered coordinator MAC (02:00:00:00:00:00). */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
 
-/* Static node directory: maps a follower's PLCA id / MAC to the detector-state
- * bus id it feeds. No discovery — adding a node is a table entry. The single
- * fretboard is node 1 -> DETECTOR_ADC_FRETBOARD, matching today's bus slot. */
+/* Static node directory. No discovery — adding a node is a table entry.
+ * Detector nodes feed a detector-state bus id (RX source); guitar (actuator)
+ * nodes are command TX targets (detector_id unused, set to 0xFF). */
+#define T1S_NO_DETECTOR     (0xFFu)
+
 typedef enum
 {
-    T1S_NODE_FRETBOARD,
-    T1S_NODE_PHOTODETECTOR,
+    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
+    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
 } t1s_node_type_t;
 
 typedef struct
 {
     uint8_t         node_id;      /* PLCA id, also the MAC low byte */
-    uint8_t         detector_id;  /* detector_state_t.detector_id */
+    uint8_t         detector_id;  /* detector_state_t.detector_id (T1S_NO_DETECTOR for actuators) */
     t1s_node_type_t type;
 } t1s_node_t;
 
 static const t1s_node_t s_nodes[] = {
-    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },
+    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+    { 2u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
 };
 
 /* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
@@ -259,16 +263,18 @@ static void t1s_task(void *param)
                      (unsigned)TC6Regs_GetChipRevision(s_tc6));
         }
 
-        /* Flush the latest pending command to the fretboard node. All TC6
-         * access stays in this task; producers only stash via the API. */
+        /* Flush the latest pending command to the active guitar (actuator)
+         * node. All TC6 access stays in this task; producers only stash via
+         * the API. (Single guitar today; an active-guitar selector goes here
+         * when multiple guitar nodes share the bus.) */
         if (s_link_up && s_cmd_dirty && !s_tx_busy) {
-            const t1s_node_t *fb = node_for_type(T1S_NODE_FRETBOARD);
-            if (fb != NULL) {
+            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+            if (guitar != NULL) {
                 /* Clear before reading so a concurrent update re-arms dirty
                  * rather than being dropped (latest-wins). */
                 s_cmd_dirty = false;
                 uint8_t mask = s_cmd;
-                (void)send_to_node(fb->node_id, &mask, 1u);
+                (void)send_to_node(guitar->node_id, &mask, 1u);
             }
         }
     }
@@ -288,7 +294,7 @@ bool T1SLink_IsConnected(void)
     return s_link_up;
 }
 
-bool T1SLink_SendToFretboard(uint8_t mask)
+bool T1SLink_SendToGuitar(uint8_t mask)
 {
     if (!s_link_up) {
         return false;

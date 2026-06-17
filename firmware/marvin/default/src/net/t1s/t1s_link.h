@@ -25,10 +25,11 @@ void T1SLink_Initialize(void);
 /* True once the MAC-PHY has been configured and data path enabled. */
 bool T1SLink_IsConnected(void);
 
-/* Latest-wins 1-byte command to the fretboard node. Safe to call from any
- * task; the value is flushed onto the bus by the T1S service task (TC6 access
- * is single-threaded). Returns false if the link is not up. */
-bool T1SLink_SendToFretboard(uint8_t mask);
+/* Latest-wins 1-byte button command to the active guitar (actuator) node.
+ * Safe to call from any task; the value is flushed onto the bus by the T1S
+ * service task (TC6 access is single-threaded). Returns false if the link is
+ * not up. */
+bool T1SLink_SendToGuitar(uint8_t mask);
 
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.
  * Called from the T1S service task. `detector_id` is the node's bus id. */

@@ -101,7 +101,7 @@ static void t1s_frame_handler(uint8_t detector_id, const uint8_t *payload, uint1
 static bool send_one_byte(uint8_t mask)
 {
     uint8_t tx_byte = (uint8_t)(mask & 0x7F);
-    if (!T1SLink_SendToFretboard(tx_byte))
+    if (!T1SLink_SendToGuitar(tx_byte))
     {
         return false;
     }
@@ -265,7 +265,7 @@ void FretboardLink_Initialize(void)
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
     /* T1S transport owns the MAC-PHY/service task; RX frames arrive via the
-     * registered handler, TX commands flow through T1SLink_SendToFretboard. */
+     * registered handler, TX commands flow through T1SLink_SendToGuitar. */
     T1SLink_Initialize();
     T1SLink_SetFrameHandler(t1s_frame_handler);
 #else
