@@ -11,3 +11,4 @@ cmake/**/.generated/*
 cmake/**/CMake*
 out/
 *.bak*
+*.mplab-local.json

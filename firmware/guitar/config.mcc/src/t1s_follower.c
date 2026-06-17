@@ -1,0 +1,282 @@
+#include "t1s_follower.h"
+
+#include <stdint.h>
+#include <stdbool.h>
+#include <string.h>
+#include <stdio.h>
+
+#include "definitions.h"   /* SERCOM0_SPI_*, SERCOM1_USART_*, EIC_*, PORT macros, CMSIS */
+
+#include "tc6.h"
+#include "tc6-regs.h"
+
+/* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
+#define T1S_NODE_ID         (2u)
+#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+#define T1S_INSTANCE        (0u)
+
+#define T1S_ETHERTYPE       (0x88B5u)
+#define T1S_ETH_HDR_LEN     (14u)
+#define T1S_CMD_BIT_MASK    (0x7Fu)  /* 5 frets + 2 strum */
+
+/* Coordinator-assigned MAC for this node: 02:00:00:00:00:02. */
+static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+
+static TC6_t            *s_tc6;
+static volatile bool     s_need_service;
+static volatile bool     s_link_up;
+static volatile bool     s_spi_busy;
+
+/* Command frames are ~60 B after min-frame padding; this only needs the header
+ * plus the first payload byte, but size for a padded frame. */
+static uint8_t           s_rx_buf[64];
+
+/* The 1 ms time base is the MCC SYSTICK plib: SYS_Initialize runs
+ * SYSTICK_TimerInitialize; this module starts it and reads
+ * SYSTICK_GetTickCounter() (milliseconds) / SYSTICK_DelayMs(). */
+
+static void log_str(const char *s)
+{
+    (void)SERCOM1_USART_Write((uint8_t *)s, strlen(s));
+}
+
+/*>>>>>>>>>>>>>>>>>>>>>>>>>>  Wii-guitar actuation  >>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+
+/* Software open-drain: assert = drive low (Clear + OutputEnable), release =
+ * tri-state (InputEnable, controller pull-up restores idle). */
+#define BTN_APPLY(mask, bit, NAME)                          \
+    do {                                                    \
+        if ((mask) & (1u << (bit))) {                       \
+            NAME##_Clear();                                 \
+            NAME##_OutputEnable();                          \
+        } else {                                            \
+            NAME##_InputEnable();                           \
+        }                                                   \
+    } while (0)
+
+static void buttons_release_all(void)
+{
+    FRET_GREEN_InputEnable();
+    FRET_RED_InputEnable();
+    FRET_YELLOW_InputEnable();
+    FRET_BLUE_InputEnable();
+    FRET_ORANGE_InputEnable();
+    STRUM_DOWN_InputEnable();
+    STRUM_UP_InputEnable();
+}
+
+static void buttons_apply_mask(uint8_t mask)
+{
+    BTN_APPLY(mask, 0u, FRET_GREEN);
+    BTN_APPLY(mask, 1u, FRET_RED);
+    BTN_APPLY(mask, 2u, FRET_YELLOW);
+    BTN_APPLY(mask, 3u, FRET_BLUE);
+    BTN_APPLY(mask, 4u, FRET_ORANGE);
+    BTN_APPLY(mask, 5u, STRUM_DOWN);
+    BTN_APPLY(mask, 6u, STRUM_UP);
+}
+
+/*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  SPI + IRQ  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+
+/* SERCOM0 SPI completion ISR: the chunk transfer is done — deassert the GPIO
+ * chip-select, hand the buffer back to the driver, and flag for servicing. */
+static void spi_done_cb(uintptr_t context)
+{
+    (void)context;
+    T1S_CS_Set();            /* CS high — end of transaction */
+    s_spi_busy = false;
+    s_need_service = true;
+    TC6_SpiBufferDone(T1S_INSTANCE, true);
+}
+
+/* T1S_IRQ_N falling-edge (EIC EXTINT15): the MAC-PHY needs servicing. */
+static void irq_cb(uintptr_t context)
+{
+    (void)context;
+    s_need_service = true;
+}
+
+/* Run the protocol stack until it has no immediately pending work. IRQ_N is
+ * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
+static void service_pump(void)
+{
+    do {
+        s_need_service = false;
+        bool no_int = (T1S_IRQ_N_Get() != 0u);
+        (void)TC6_Service(s_tc6, no_int);
+    } while (s_need_service);
+    TC6Regs_CheckTimers();
+}
+
+/*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  Public API  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+
+void T1SFollower_Initialize(void)
+{
+    SYSTICK_TimerStart();    /* MCC inits the timer; the app enables it */
+
+    buttons_release_all();   /* pins boot Out/Low (asserted) — release first */
+
+    /* Hardware reset pulse (T1S_RST active-low, idle high). */
+    T1S_CS_Set();
+    T1S_RST_Clear();
+    SYSTICK_DelayMs(10u);
+    T1S_RST_Set();
+    SYSTICK_DelayMs(10u);
+
+    SERCOM0_SPI_CallbackRegister(spi_done_cb, 0u);  /* Mode 0 set by MCC init */
+
+    s_tc6 = TC6_Init(NULL);
+    if (s_tc6 == NULL) {
+        log_str("guitar: TC6_Init failed\r\n");
+        return;
+    }
+
+    EIC_CallbackRegister(EIC_PIN_15, irq_cb, 0u);   /* EXTINT15 enabled in EIC_Initialize */
+
+    /* Configure the LAN8651 + PLCA as follower id 2. Not promiscuous — the
+     * MAC-PHY filters to this node's MAC + broadcast. */
+    while (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+                         0u, 0u, false, false, false)) {
+        log_str("guitar: TC6Regs_Init busy, retry\r\n");
+        SYSTICK_DelayMs(50u);
+    }
+
+    uint32_t deadline = SYSTICK_GetTickCounter() + 3000u;
+    while (!TC6Regs_GetInitDone(s_tc6) &&
+           ((int32_t)(deadline - SYSTICK_GetTickCounter()) > 0)) {
+        service_pump();
+    }
+
+    if (TC6Regs_GetInitDone(s_tc6)) {
+        s_link_up = true;
+        TC6_EnableData(s_tc6, true);
+        char buf[80];
+        (void)snprintf(buf, sizeof(buf),
+                       "guitar: LAN8651 up - chipRev=%u, MAC=02:00:00:00:00:%02X, "
+                       "PLCA follower id=%u/%u\r\n",
+                       (unsigned)TC6Regs_GetChipRevision(s_tc6),
+                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+                       (unsigned)T1S_NODE_COUNT);
+        log_str(buf);
+    } else {
+        log_str("guitar: MAC-PHY not responding (check EVB/wiring); still servicing\r\n");
+    }
+}
+
+void T1SFollower_Tasks(void)
+{
+    if (s_tc6 == NULL) {
+        return;
+    }
+    service_pump();
+    if (!s_link_up && TC6Regs_GetInitDone(s_tc6)) {
+        s_link_up = true;
+        TC6_EnableData(s_tc6, true);
+        log_str("guitar: LAN8651 up (late)\r\n");
+    }
+}
+
+bool T1SFollower_IsConnected(void)
+{
+    return s_link_up;
+}
+
+/*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
+
+bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
+                             uint16_t len, void *pGlobalTag)
+{
+    (void)tc6instance;
+    (void)pGlobalTag;
+    if (s_spi_busy) {
+        return false;
+    }
+    s_spi_busy = true;
+    T1S_CS_Clear();          /* CS low — start of transaction (held across the chunk) */
+    if (!SERCOM0_SPI_WriteRead(pTx, len, pRx, len)) {
+        T1S_CS_Set();
+        s_spi_busy = false;
+        return false;
+    }
+    return true;
+}
+
+void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)pGlobalTag;
+    s_need_service = true;
+}
+
+void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
+                              uint16_t len, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)pGlobalTag;
+    if (((uint32_t)offset + len) <= sizeof(s_rx_buf)) {
+        memcpy(&s_rx_buf[offset], pRx, len);
+    }
+}
+
+void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+                               uint64_t *rxTimestamp, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)rxTimestamp;
+    (void)pGlobalTag;
+
+    if (!success || (len < (T1S_ETH_HDR_LEN + 1u))) {
+        return;
+    }
+    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+    if (ethertype != T1S_ETHERTYPE) {
+        return;
+    }
+    /* Command byte is the first payload octet; trailing min-frame padding is
+     * ignored. Apply directly (latest-wins). */
+    buttons_apply_mask((uint8_t)(s_rx_buf[T1S_ETH_HDR_LEN] & T1S_CMD_BIT_MASK));
+}
+
+void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+{
+    (void)pGlobalTag;
+    log_str("guitar: t1s error: ");
+    log_str(TC6_GetErrorStr(err));
+    log_str("\r\n");
+    switch (err) {
+        case TC6Error_NoHardware:
+        case TC6Error_BadChecksum:
+        case TC6Error_UnexpectedCtrl:
+        case TC6Error_BadTxData:
+        case TC6Error_SyncLost:
+        case TC6Error_SpiError:
+            TC6Regs_Reinit(pInst);
+            break;
+        default:
+            break;
+    }
+}
+
+/*>>>>>>>>>>>>>>>>>>>>  TC6Regs callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>>>>*/
+
+uint32_t TC6Regs_CB_GetTicksMs(void)
+{
+    return SYSTICK_GetTickCounter();
+}
+
+void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
+{
+    (void)pTag;
+    log_str("guitar: t1s event: ");
+    log_str(TC6Regs_GetEventStr(event));
+    log_str("\r\n");
+    switch (event) {
+        case TC6Regs_Event_Loss_of_Framing_Error:
+        case TC6Regs_Event_RX_Non_Recoverable_Error:
+        case TC6Regs_Event_TX_Non_Recoverable_Error:
+            TC6Regs_Reinit(pInst);
+            break;
+        default:
+            break;
+    }
+}

@@ -12,13 +12,13 @@ actuator node**: a PIC32CM PL10 T1S PLCA *follower* (node id 2) that receives ma
 bitmask and drives a Wii guitar controller via open-drain GPIO — the actuation half of today's
 [fretboard](../../fretboard/SPEC.md) firmware, on its own node.
 
-**G0 done** (MCC project generated + hardware reviewed; commit `285248a`). Next (G1/G2): the T1S-follower
-glue — the bare-metal mirror of marvin's coordinator glue in
-[`firmware/marvin/default/src/net/t1s/t1s_link.c`](../../marvin/default/src/net/t1s/t1s_link.c),
-reusing [`third_party/oa-tc6-lib`](../../../third_party/oa-tc6-lib) and the shared L2 framing: reset pulse,
-SERCOM0 SPI (CS driven across each transfer), `IRQ_N`→service via the EIC callback, `TC6_Init` +
-`TC6Regs_Init(nodeId=2, follower)`, RX command → the 7 button GPIOs (port of fretboard `cmd_receive`),
-SysTick at 1 ms, serviced from `main()`.
+**G1/G2 firmware written** (bare-metal follower in `config.mcc/src/t1s_follower.{c,h}` + `tc6-conf.h`,
+wired via `user.cmake` + `main.c`) — see the session log. **Builds, programs, and logs on the SERCOM1
+debug UART** — but the **T1S board (LAN8651) is not connected yet**, so the link can't come up: the
+firmware runs to the 3 s init timeout and logs the `MAC-PHY not responding` branch (expected, no board).
+Next: connect the LAN8651 and bring up the link (G1 chipRev/PLCA-follower → G2 command RX drives the Wii
+button), then add the CLI (`status`/`btn`/`tap`). The marvin-side active-guitar selection + command-target
+flip (G3) follows once the node is proven.
 
 ---
 
@@ -40,6 +40,17 @@ SysTick at 1 ms, serviced from `main()`.
 ---
 
 ## Session log
+
+### 2026-06-16 — G1/G2: T1S follower firmware written (bare-metal)
+
+- Wrote the follower glue in `config.mcc/src/` (alongside `main.c`, matching the other projects' MCC layout; added to the build via `user.cmake`, not the MCC fileSet):
+  - `t1s_follower.{c,h}` — `T1SFollower_Initialize()` + `T1SFollower_Tasks()`. Bare-metal mirror of marvin's `t1s_link.c`: SysTick 1 ms clock, `T1S_RST` pulse, `SERCOM0_SPI_CallbackRegister`, `TC6_Init` + `TC6Regs_Init(nodeId=2, follower, promiscuous=false)`, service to init-done, then serviced from `main()`. SPI completion + `T1S_IRQ_N` (EIC EXTINT15 callback) set a `s_need_service` flag; `service_pump` runs `TC6_Service` until idle.
+  - **GPIO chip-select**: `OnSpiTransaction` drives `T1S_CS` low before `SERCOM0_SPI_WriteRead` and the completion ISR raises it — CS held across the whole chunk (the lib batches all chunks into one transfer call).
+  - **RX → actuation**: `OnRxEthernetPacket` validates ethertype `0x88B5` and applies payload byte 0 as the button bitmask — software open-drain on the 7 GPIOs (assert = `Clear`+`OutputEnable`, release = `InputEnable`), bit order Green..Orange/StrumDown/StrumUp. Buttons released at init (they boot `Out/Low`).
+  - `tc6-conf.h` — tuned for the PL10: `TC6_CHUNKS_XACT=4` + 64 B rx buffer (this node only moves a ~60 B command frame), keeping SRAM well within 8 KB.
+  - Logging via the SERCOM1 debug UART (`log_str` → `SERCOM1_USART_Write`); no status LED (the LEDs became buttons).
+- Build wiring: `cmake/guitar/default/user.cmake` adds `t1s_follower.c` + `libtc6/src/tc6.c` + `tc6-regs.c` and the include dirs; `main.c` calls `T1SFollower_Initialize()` + `_Tasks()`.
+- **Status: builds, programs, and runs on the PL10** — the SERCOM1 debug UART produces output. Without the T1S board connected, the firmware hits the 3 s init timeout and logs `MAC-PHY not responding` (expected). Remaining gate (needs the LAN8651 wired): `guitar: LAN8651 up - chipRev=… PLCA follower id=2/8` (G1); then marvin (built `MARVIN_FRETBOARD_TRANSPORT=1`) sends a command and the addressed Wii button asserts (G2). CLI (`status`/`btn`/`tap`) is the agreed next follow-up. If RX shows nothing once wired, try `promiscuous=true` as a debug step.
 
 ### 2026-06-16 — G0: guitar MCC project generated + hardware review
 

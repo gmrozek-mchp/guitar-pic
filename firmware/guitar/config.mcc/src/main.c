@@ -26,6 +26,7 @@
 #include <stdbool.h>                    // Defines true
 #include <stdlib.h>                     // Defines EXIT_FAILURE
 #include "definitions.h"                // SYS function prototypes
+#include "t1s_follower.h"               // 10BASE-T1S follower (LAN8651 over SERCOM0 SPI)
 
 
 // *****************************************************************************
@@ -39,10 +40,16 @@ int main ( void )
     /* Initialize all modules */
     SYS_Initialize ( NULL );
 
+    T1SFollower_Initialize ( );
+
     while ( true )
     {
         /* Maintain state machines of all polled MPLAB Harmony modules. */
         SYS_Tasks ( );
+
+        /* Service the T1S link: receive marvin's command frames and drive
+         * the Wii-guitar GPIOs. */
+        T1SFollower_Tasks ( );
     }
 
     /* Execution should not come here during normal operation */

@@ -6,6 +6,7 @@
             "id": "conf1",
             "device": "PIC32CM6408PL10048",
             "imagePath": "./out/guitar/default.elf",
+            "tool": "PKOB nano",
             "packs": [
                 {
                     "name": "PIC32CM-PL_DFP",
