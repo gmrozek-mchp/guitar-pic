@@ -298,10 +298,16 @@ static void on_id_read(TC6_t *pInst, bool success, uint32_t addr, uint32_t value
     (void)pTag;
     (void)pGlobalTag;
     char buf[88];
-    (void)snprintf(buf, sizeof(buf),
-                   "guitar: reg 0x%08lX = 0x%08lX (ok=%d, oui=0x%03lX model=0x%02lX)\r\n",
-                   (unsigned long)addr, (unsigned long)value, (int)success,
-                   (unsigned long)(value >> 10), (unsigned long)((value >> 4) & 0x3FFu));
+    if (addr == 0x00000001u) {
+        /* PHY id register — oui/model are meaningful here (lib wants 0x1F0/0x1B). */
+        (void)snprintf(buf, sizeof(buf),
+                       "guitar: reg 0x%08lX = 0x%08lX (ok=%d, oui=0x%03lX model=0x%02lX)\r\n",
+                       (unsigned long)addr, (unsigned long)value, (int)success,
+                       (unsigned long)(value >> 10), (unsigned long)((value >> 4) & 0x3FFu));
+    } else {
+        (void)snprintf(buf, sizeof(buf), "guitar: reg 0x%08lX = 0x%08lX (ok=%d)\r\n",
+                       (unsigned long)addr, (unsigned long)value, (int)success);
+    }
     log_str(buf);
 }
 
@@ -315,17 +321,11 @@ void T1SFollower_ReadId(void)
         log_str("guitar: t1s not initialized\r\n");
         return;
     }
+    /* Just enqueue; the main service loop completes the reads and on_id_read
+     * logs each result a moment later. Don't hammer TC6_Service here — doing so
+     * while the link is live can trip a transient Loss_of_Framing. */
     for (uint8_t i = 0u; i < 3u; i++) {
-        uint32_t tries = 0u;
-        /* Enqueue the read, servicing to drain a full control queue. */
-        while (!TC6_ReadRegister(s_tc6, addrs[i], false, on_id_read, NULL) &&
-               (++tries < 2000u)) {
-            service_pump();
-        }
-        /* Service until the result returns and on_id_read logs it. */
-        for (uint32_t t = 0u; t < 5000u; t++) {
-            service_pump();
-        }
+        (void)TC6_ReadRegister(s_tc6, addrs[i], false, on_id_read, NULL);
     }
 }
 
@@ -367,14 +367,8 @@ void T1SFollower_ReadPlca(void)
         log_str("guitar: t1s not initialized\r\n");
         return;
     }
-    uint32_t tries = 0u;
-    while (!TC6_ReadRegister(s_tc6, 0x0004CA03u, true, on_plca_read, NULL) &&
-           (++tries < 2000u)) {
-        service_pump();
-    }
-    for (uint32_t t = 0u; t < 5000u; t++) {
-        service_pump();
-    }
+    /* Enqueue only; the main service loop completes it (see T1SFollower_ReadId). */
+    (void)TC6_ReadRegister(s_tc6, 0x0004CA03u, true, on_plca_read, NULL);
 }
 
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/

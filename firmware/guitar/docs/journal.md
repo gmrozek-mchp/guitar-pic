@@ -48,6 +48,10 @@ command-target flip (G3) follows once the node is proven.
 
 ## Session log
 
+### 2026-06-17 — `id`/`plca` over-servicing tripped Loss_of_Framing
+
+- Running `id` on a *live* link emitted a `Loss_of_Framing_Error` between reads (reads themselves fine — reg 0x01 = `0x0007C1B4`). Cause: `T1SFollower_ReadId`/`ReadPlca` still used the tight `service_pump` loops (2000 + 5000 per reg) added for the dead-link bring-up case; hammering `TC6_Service` while the link is up trips a transient RX framing error (which then self-recovers via `OnEvent` reinit). Fix: the commands now just **enqueue** the reads and let the normal main-loop servicing complete them + log async. Also only decode oui/model for reg `0x01` (meaningless for `0x00`/`0x000A0094`).
+
 ### 2026-06-17 — Presence heartbeat (ethertype 0x88B6)
 
 - The guitar now TXes a periodic (500 ms) heartbeat to the coordinator (`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin can show real per-node presence (PLCA has no discovery). Payload: `ver, node_type(2=guitar), node_id, flags(bit0=synced), seq_u32`. First TX path on the follower — `send_heartbeat()` builds the frame + `TC6_SendRawEthernetPacket` (one in-flight, `s_hb_busy`-guarded), driven from `T1SFollower_Tasks`. Format documented in T1S doc §7.2; marvin stamps last-seen and reports via its `nodes` command.
