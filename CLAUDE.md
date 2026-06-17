@@ -43,6 +43,10 @@ When working on a subproject that has a journal:
 3. **Prefer updating the journal over restating plans in chat.** If I'd otherwise write a multi-paragraph plan in chat, it belongs in the journal — the chat is ephemeral, the journal isn't.
 4. **If a new subproject needs a journal, create one** using the same structure as `firmware/marvin/docs/journal.md`, and add it to the list above in this file.
 
+## Do not use `.specstory/` history as context
+
+The `.specstory/` directory holds raw transcripts of past chat sessions. Do **not** read or treat those files as authoritative context — they are ephemeral records, not source of truth, and may contradict the current code or journals. When you need prior state, use the journals, specs, code, and git history instead.
+
 ## Code comments describe current code only
 
 Comments in source files explain **what the code currently does and why**, when that's non-obvious. They are not a development diary.
