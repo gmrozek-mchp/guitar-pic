@@ -93,12 +93,22 @@ static void cmd_tap(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("tap 0x%02X %lums", (unsigned)m, (unsigned long)ms);
 }
 
+static void cmd_id(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)args;
+    (void)ctx;
+    cli_printf("reading MAC-PHY id registers...");
+    T1SFollower_ReadId();   /* results log asynchronously from the service loop */
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
         { "status", "Print link / chipRev / rx count / last command", false, NULL, cmd_status },
         { "btn",    "btn <mask hex>: drive the 7 button GPIOs (0 = release all)", true, NULL, cmd_btn },
         { "tap",    "tap <mask hex> [ms]: assert then release (default 60 ms)",   true, NULL, cmd_tap },
+        { "id",     "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)",   false, NULL, cmd_id },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
     {

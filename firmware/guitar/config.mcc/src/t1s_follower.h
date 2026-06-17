@@ -35,4 +35,7 @@ uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
 void T1SFollower_ApplyButtons(uint8_t mask);
 void T1SFollower_ReleaseButtons(void);
 
+/* Diagnostic: raw-read the MAC-PHY ID registers and log the values (async). */
+void T1SFollower_ReadId(void);
+
 #endif /* T1S_FOLLOWER_H */

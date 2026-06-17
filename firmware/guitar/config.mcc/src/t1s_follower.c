@@ -108,22 +108,24 @@ static void spi_done_cb(uintptr_t context)
     TC6_SpiBufferDone(T1S_INSTANCE, true);
 }
 
-/* T1S_IRQ_N falling-edge (EIC EXTINT15): the MAC-PHY needs servicing. */
+/* T1S_IRQ_N falling-edge (EIC EXTINT13): the MAC-PHY needs servicing. */
 static void irq_cb(uintptr_t context)
 {
     (void)context;
     s_need_service = true;
 }
 
-/* Run the protocol stack until it has no immediately pending work. IRQ_N is
- * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
+/* One service pass: drive the protocol stack once and check its timers. The
+ * caller (main loop, or the bounded loops in init/ReadId) invokes this
+ * repeatedly. Do NOT loop here on s_need_service — with hardware that never
+ * syncs the lib re-requests service every pass, which would spin forever.
+ * IRQ_N is active-low; TC6_Service treats a false interruptLevel as
+ * "interrupt active". */
 static void service_pump(void)
 {
-    do {
-        s_need_service = false;
-        bool no_int = (T1S_IRQ_N_Get() != 0u);
-        (void)TC6_Service(s_tc6, no_int);
-    } while (s_need_service);
+    s_need_service = false;
+    bool no_int = (T1S_IRQ_N_Get() != 0u);
+    (void)TC6_Service(s_tc6, no_int);
     TC6Regs_CheckTimers();
 }
 
@@ -152,7 +154,7 @@ void T1SFollower_Initialize(void)
         return;
     }
 
-    EIC_CallbackRegister(EIC_PIN_15, irq_cb, 0u);   /* EXTINT15 enabled in EIC_Initialize */
+    EIC_CallbackRegister(EIC_PIN_13, irq_cb, 0u);   /* EXTINT13 enabled in EIC_Initialize */
 
     /* Configure the LAN8651 + PLCA as follower id 2. Not promiscuous — the
      * MAC-PHY filters to this node's MAC + broadcast. Non-blocking: the
@@ -217,6 +219,46 @@ void T1SFollower_ApplyButtons(uint8_t mask)
 void T1SFollower_ReleaseButtons(void)
 {
     buttons_release_all();
+}
+
+/* Diagnostic: log the raw value of a control register (async — the result
+ * prints from the service loop a moment later). */
+static void on_id_read(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
+                       void *pTag, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)pTag;
+    (void)pGlobalTag;
+    char buf[88];
+    (void)snprintf(buf, sizeof(buf),
+                   "guitar: reg 0x%08lX = 0x%08lX (ok=%d, oui=0x%03lX model=0x%02lX)\r\n",
+                   (unsigned long)addr, (unsigned long)value, (int)success,
+                   (unsigned long)(value >> 10), (unsigned long)((value >> 4) & 0x3FFu));
+    log_str(buf);
+}
+
+void T1SFollower_ReadId(void)
+{
+    /* 0x00 = OA IDVER, 0x01 = PHY id (lib expects oui 0x1F0 / model 0x1B),
+     * 0x000A0094 = chip rev. */
+    static const uint32_t addrs[3] = { 0x00000000u, 0x00000001u, 0x000A0094u };
+
+    if (s_tc6 == NULL) {
+        log_str("guitar: t1s not initialized\r\n");
+        return;
+    }
+    for (uint8_t i = 0u; i < 3u; i++) {
+        uint32_t tries = 0u;
+        /* Enqueue the read, servicing to drain a full control queue. */
+        while (!TC6_ReadRegister(s_tc6, addrs[i], false, on_id_read, NULL) &&
+               (++tries < 2000u)) {
+            service_pump();
+        }
+        /* Service until the result returns and on_id_read logs it. */
+        for (uint32_t t = 0u; t < 5000u; t++) {
+            service_pump();
+        }
+    }
 }
 
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/

@@ -6,11 +6,17 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ## Current focus
 
-**Skeleton + design only — no firmware written yet.** guitar is a new subproject created when the
-marvin↔node T1S link split sensing from actuation into separate node classes. It is the **Wii-guitar
-actuator node**: a PIC32CM PL10 T1S PLCA *follower* (node id 2) that receives marvin's 1-byte button
-bitmask and drives a Wii guitar controller via open-drain GPIO — the actuation half of today's
-[fretboard](../../fretboard/SPEC.md) firmware, on its own node.
+**G1 done — the follower is up on hardware.** guitar is the **Wii-guitar actuator node**: a PIC32CM PL10
+T1S PLCA *follower* (node id 2, MAC `02:00:00:00:00:02`) that receives marvin's 1-byte button bitmask and
+drives a Wii guitar controller via open-drain GPIO — the actuation half of today's
+[fretboard](../../fretboard/SPEC.md) firmware, on its own node. Firmware (`config.mcc/src/t1s_follower.c`
++ `cli.c`, reusing `third_party/oa-tc6-lib`) brings the LAN8651 up: on the bench it reports
+`LAN8651 up - chipRev=2, MAC=02:00:00:00:00:02, PLCA follower id=2/8`. An embedded-cli console on the
+SERCOM1 debug UART (`status`/`btn`/`tap`/`id`) drives the GPIOs and reads diagnostics.
+
+**Next:** G2 — marvin (built `MARVIN_FRETBOARD_TRANSPORT=1`, bus wired) sends a command and the addressed
+Wii button asserts. Then G3 (marvin side): active-guitar selection + flip marvin's command target from the
+fretboard node to the guitar node.
 
 **G1/G2 firmware written** (bare-metal follower in `config.mcc/src/t1s_follower.{c,h}` + `tc6-conf.h`,
 wired via `user.cmake` + `main.c`) — see the session log. **Builds, programs, and logs on the SERCOM1
@@ -41,6 +47,15 @@ command-target flip (G3) follows once the node is proven.
 ---
 
 ## Session log
+
+### 2026-06-17 — G1 bring-up: LAN8651 connected, `Unsupported_Hardware`
+
+- First power-up with the board: boot banner + responsive CLI ✓, but `TC6Regs_Init rejected` and repeating `t1s event: Unsupported_Hardware`. The lib's `OnReadId1` reads control reg `0x01` and requires OUI `0x1F0` / model `0x1B` (and `0x000A0094` chip-rev nonzero); the readback doesn't match.
+- Ruled out: **async-SPI mismatch** (TC6Regs_Init pumps `TC6_Service` while waiting, so our ISR-completed transfers work — tc6-regs.c:325-340); **SPI clock too fast** (SERCOM0 BAUD=11 ≈ **1 MHz**, conservative). So a wrong reg readback points to **wiring / reset / CS / MISO**, not timing.
+- Added an **`id` CLI command** (`T1SFollower_ReadId`) to raw-read the ID regs. The on-demand reads got flushed by the lib's re-identification churn, so a **temporary diag hook** (`T1SReg_DiagId`, called from the vendored `tc6-regs.c` `OnReadId1`/`OnReadId2` — marked `TEMP diag`, to be reverted) surfaces the lib's own readback.
+- **Readback: reg `0x01` = `0xFFFFFFFF`** (and `0x000A0094` = `0xFFFFFFFF`). All-ones ⇒ the host MISO sits idle-high and **the LAN8651 isn't driving data back** — a **physical-layer** issue, not firmware (our SPI master completes transactions fine). Suspects: chip power, RST not releasing, or a missing wire (MISO/CS/SCK/MOSI/GND). Next: check 3V3 + RST=high + wiring; scope CS/SCK/MOSI/MISO. The boot `ID reg` line is the live indicator — it'll read `0x0007C1Bx` (oui 0x1F0/model 0x1B) once the chip responds.
+- **Firmware bring-up bugs fixed along the way (keepers):** `service_pump` reduced to a single `TC6_Service` pass (the old `while(s_need_service)` drain spun forever on non-syncing hardware); init made non-blocking; error/event logging rate-limited (`diag_log`). A stray pre-init `TC6_Reset` + read froze the MCU (faulted in `TC6_Reset` on the freshly-init'd driver) — removed.
+- **Root cause: CS and IRQ_N wires were swapped.** Reassigned in MCC (commit `a951110`): `T1S_IRQ_N` → PA13 (EIC_EXTINT13, falling), `T1S_CS` → PA15; firmware EIC callback → `EIC_PIN_13`. After the fix: reg `0x01 = 0x0007C1B4` (oui 0x1F0 / model 0x1B / rev 4), chipRev `2`, and `LAN8651 up … PLCA follower id=2/8` — **G1 PASSED.** Temp lib diag hook reverted (submodule pristine); the `id` CLI command + `on_id_read` kept as a permanent diagnostic.
 
 ### 2026-06-16 — CLI added (status / btn / tap) on the debug UART
 
