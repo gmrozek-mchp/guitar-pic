@@ -2,6 +2,7 @@
 #define T1S_FOLLOWER_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 /* 10BASE-T1S follower for the guitar node (LAN8651 MAC-PHY on SERCOM0 SPI).
  *
@@ -22,5 +23,16 @@ void T1SFollower_Tasks(void);
 
 /* True once the MAC-PHY is configured and the data path is enabled. */
 bool T1SFollower_IsConnected(void);
+
+/* Status accessors (for the CLI / diagnostics). */
+uint8_t  T1SFollower_ChipRev(void);   /* 0 if the link never came up */
+uint8_t  T1SFollower_LastCmd(void);   /* most recent applied button bitmask */
+uint32_t T1SFollower_RxCount(void);   /* count of accepted command frames */
+uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
+
+/* Drive the Wii-guitar GPIOs directly (manual test, e.g. the CLI's btn/tap).
+ * Note: a subsequent T1S command will overwrite this. */
+void T1SFollower_ApplyButtons(uint8_t mask);
+void T1SFollower_ReleaseButtons(void);
 
 #endif /* T1S_FOLLOWER_H */

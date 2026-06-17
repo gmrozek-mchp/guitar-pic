@@ -27,6 +27,12 @@ static volatile bool     s_need_service;
 static volatile bool     s_link_up;
 static volatile bool     s_spi_busy;
 
+/* Diagnostics (read by the CLI). */
+static volatile uint8_t  s_last_cmd;
+static volatile uint32_t s_rx_count;
+static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
+static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
+
 /* Command frames are ~60 B after min-frame padding; this only needs the header
  * plus the first payload byte, but size for a padded frame. */
 static uint8_t           s_rx_buf[64];
@@ -38,6 +44,19 @@ static uint8_t           s_rx_buf[64];
 static void log_str(const char *s)
 {
     (void)SERCOM1_USART_Write((uint8_t *)s, strlen(s));
+}
+
+/* Rate-limited diagnostic line (<= ~1/sec) so a disconnected/erroring link
+ * can't flood the console — TC6_Service raises an error every pass when no
+ * MAC-PHY answers. Errors/events share the window. */
+static void diag_log(const char *prefix, const char *msg)
+{
+    uint32_t now = SYSTICK_GetTickCounter();
+    if ((now - s_last_diag_ms) < 1000u) { return; }
+    s_last_diag_ms = now;
+    log_str(prefix);
+    log_str(msg);
+    log_str("\r\n");
 }
 
 /*>>>>>>>>>>>>>>>>>>>>>>>>>>  Wii-guitar actuation  >>>>>>>>>>>>>>>>>>>>>>>>>>>*/
@@ -114,6 +133,8 @@ void T1SFollower_Initialize(void)
 {
     SYSTICK_TimerStart();    /* MCC inits the timer; the app enables it */
 
+    log_str("guitar: boot - t1s follower + cli\r\n");  /* one-time banner */
+
     buttons_release_all();   /* pins boot Out/Low (asserted) — release first */
 
     /* Hardware reset pulse (T1S_RST active-low, idle high). */
@@ -134,32 +155,12 @@ void T1SFollower_Initialize(void)
     EIC_CallbackRegister(EIC_PIN_15, irq_cb, 0u);   /* EXTINT15 enabled in EIC_Initialize */
 
     /* Configure the LAN8651 + PLCA as follower id 2. Not promiscuous — the
-     * MAC-PHY filters to this node's MAC + broadcast. */
-    while (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
-                         0u, 0u, false, false, false)) {
-        log_str("guitar: TC6Regs_Init busy, retry\r\n");
-        SYSTICK_DelayMs(50u);
-    }
-
-    uint32_t deadline = SYSTICK_GetTickCounter() + 3000u;
-    while (!TC6Regs_GetInitDone(s_tc6) &&
-           ((int32_t)(deadline - SYSTICK_GetTickCounter()) > 0)) {
-        service_pump();
-    }
-
-    if (TC6Regs_GetInitDone(s_tc6)) {
-        s_link_up = true;
-        TC6_EnableData(s_tc6, true);
-        char buf[80];
-        (void)snprintf(buf, sizeof(buf),
-                       "guitar: LAN8651 up - chipRev=%u, MAC=02:00:00:00:00:%02X, "
-                       "PLCA follower id=%u/%u\r\n",
-                       (unsigned)TC6Regs_GetChipRevision(s_tc6),
-                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
-                       (unsigned)T1S_NODE_COUNT);
-        log_str(buf);
-    } else {
-        log_str("guitar: MAC-PHY not responding (check EVB/wiring); still servicing\r\n");
+     * MAC-PHY filters to this node's MAC + broadcast. Non-blocking: the
+     * register sequence finishes in the background via T1SFollower_Tasks, so
+     * the CLI is never gated behind the link coming up. */
+    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+                      0u, 0u, false, false, false)) {
+        log_str("guitar: TC6Regs_Init rejected\r\n");
     }
 }
 
@@ -172,13 +173,50 @@ void T1SFollower_Tasks(void)
     if (!s_link_up && TC6Regs_GetInitDone(s_tc6)) {
         s_link_up = true;
         TC6_EnableData(s_tc6, true);
-        log_str("guitar: LAN8651 up (late)\r\n");
+        char buf[80];
+        (void)snprintf(buf, sizeof(buf),
+                       "guitar: LAN8651 up - chipRev=%u, MAC=02:00:00:00:00:%02X, "
+                       "PLCA follower id=%u/%u\r\n",
+                       (unsigned)TC6Regs_GetChipRevision(s_tc6),
+                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+                       (unsigned)T1S_NODE_COUNT);
+        log_str(buf);
     }
 }
 
 bool T1SFollower_IsConnected(void)
 {
     return s_link_up;
+}
+
+uint8_t T1SFollower_ChipRev(void)
+{
+    return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u;
+}
+
+uint8_t T1SFollower_LastCmd(void)
+{
+    return s_last_cmd;
+}
+
+uint32_t T1SFollower_RxCount(void)
+{
+    return s_rx_count;
+}
+
+uint32_t T1SFollower_ErrCount(void)
+{
+    return s_err_count;
+}
+
+void T1SFollower_ApplyButtons(uint8_t mask)
+{
+    buttons_apply_mask((uint8_t)(mask & T1S_CMD_BIT_MASK));
+}
+
+void T1SFollower_ReleaseButtons(void)
+{
+    buttons_release_all();
 }
 
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
@@ -234,15 +272,17 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     }
     /* Command byte is the first payload octet; trailing min-frame padding is
      * ignored. Apply directly (latest-wins). */
-    buttons_apply_mask((uint8_t)(s_rx_buf[T1S_ETH_HDR_LEN] & T1S_CMD_BIT_MASK));
+    uint8_t mask = (uint8_t)(s_rx_buf[T1S_ETH_HDR_LEN] & T1S_CMD_BIT_MASK);
+    s_last_cmd = mask;
+    s_rx_count++;
+    buttons_apply_mask(mask);
 }
 
 void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
 {
     (void)pGlobalTag;
-    log_str("guitar: t1s error: ");
-    log_str(TC6_GetErrorStr(err));
-    log_str("\r\n");
+    s_err_count++;
+    diag_log("guitar: t1s error: ", TC6_GetErrorStr(err));
     switch (err) {
         case TC6Error_NoHardware:
         case TC6Error_BadChecksum:
@@ -267,9 +307,7 @@ uint32_t TC6Regs_CB_GetTicksMs(void)
 void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
 {
     (void)pTag;
-    log_str("guitar: t1s event: ");
-    log_str(TC6Regs_GetEventStr(event));
-    log_str("\r\n");
+    diag_log("guitar: t1s event: ", TC6Regs_GetEventStr(event));
     switch (event) {
         case TC6Regs_Event_Loss_of_Framing_Error:
         case TC6Regs_Event_RX_Non_Recoverable_Error:

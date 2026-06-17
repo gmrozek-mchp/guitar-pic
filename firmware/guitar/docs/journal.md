@@ -16,9 +16,10 @@ bitmask and drives a Wii guitar controller via open-drain GPIO — the actuation
 wired via `user.cmake` + `main.c`) — see the session log. **Builds, programs, and logs on the SERCOM1
 debug UART** — but the **T1S board (LAN8651) is not connected yet**, so the link can't come up: the
 firmware runs to the 3 s init timeout and logs the `MAC-PHY not responding` branch (expected, no board).
-Next: connect the LAN8651 and bring up the link (G1 chipRev/PLCA-follower → G2 command RX drives the Wii
-button), then add the CLI (`status`/`btn`/`tap`). The marvin-side active-guitar selection + command-target
-flip (G3) follows once the node is proven.
+The **CLI** (`status`/`btn`/`tap` on the debug UART) is now written too — its `btn`/`tap` can exercise the
+Wii-guitar wiring locally **without** the T1S board. Next: connect the LAN8651 and bring up the link (G1
+chipRev/PLCA-follower → G2 command RX drives the Wii button). The marvin-side active-guitar selection +
+command-target flip (G3) follows once the node is proven.
 
 ---
 
@@ -40,6 +41,18 @@ flip (G3) follows once the node is proven.
 ---
 
 ## Session log
+
+### 2026-06-16 — CLI added (status / btn / tap) on the debug UART
+
+- Added an operator CLI using the **vendored embedded-cli** (copied into `config.mcc/src/third_party/embedded-cli/`, matching marvin's per-project vendoring; static-allocation mode, ~1 KB `CLI_UINT` buffer). New `cli.{c,h}`; `main.c` calls `CLI_Initialize()` + `CLI_Tasks()`.
+- **Bare-metal integration** (mirrors marvin's `console.c` but no FreeRTOS): `CLI_Tasks()` drains the SERCOM1 RX ring each main-loop pass and feeds `embeddedCliReceiveChar`/`embeddedCliProcess`; `writeChar` queues to the SERCOM1 TX ring with a bounded `SYSTICK_DelayMs(1)` retry.
+- Commands: **`status`** (link up?, chipRev, rx-cmd count, last applied mask), **`btn <mask hex>`** and **`tap <mask hex> [ms]`** drive the 7 button GPIOs directly — so the Wii-guitar wiring can be exercised *before* the T1S link is up.
+- Exposed accessors from the follower (`T1SFollower_ChipRev/LastCmd/RxCount` + `ApplyButtons/ReleaseButtons`); the RX handler now tracks `s_last_cmd` / `s_rx_count`. Build wiring (`user.cmake`) gains `cli.c` + `embedded_cli.c` + the embedded-cli include dir.
+- **Built + ran; fixed two no-board bugs (console unusable).** Symptom: a stream of `t1s error:` lines and no CLI activity with no LAN8651 attached. Two causes:
+  1. **Flood:** `TC6_Service` raises an error every service pass when nothing answers, and the first cut logged *every* one via `log_str`. Fix: `OnError`/`OnEvent` log through a **rate-limited `diag_log` (≤ ~1/sec)** (mirrors the reference `tc6-noip.c` `PrintRateLimited` the bare-metal port had dropped); errors counted (`T1SFollower_ErrCount`, shown in `status`).
+  2. **CLI gated behind init:** `T1SFollower_Initialize()` *blocked* up to 3 s waiting for init-done, so `CLI_Initialize()` (called after it in `main`) was delayed and, combined with the flood, the prompt was lost. Fix: **init is now non-blocking** — it kicks off `TC6Regs_Init` and returns; `T1SFollower_Tasks()` detects init-done and brings the data path up in the background. CLI is responsive from boot regardless of link state. Added a one-time **boot banner** (`guitar: boot - t1s follower + cli`) to confirm the running binary.
+- Confirmed SysTick is correctly wired (`interrupts.c` vector → `plib_systick` handler, `SYSTICK_FREQ=24 MHz`, LOAD=24000 → true 1 ms), so `GetTickCounter()` is milliseconds and the rate-limit is effective. A 10 Hz flood ⇒ a pre-fix binary was running (rebuild/reflash).
+- Manual `btn`/`tap` actuation is testable now without the board; T1S link bring-up (G1/G2) still needs the LAN8651.
 
 ### 2026-06-16 — G1/G2: T1S follower firmware written (bare-metal)
 
