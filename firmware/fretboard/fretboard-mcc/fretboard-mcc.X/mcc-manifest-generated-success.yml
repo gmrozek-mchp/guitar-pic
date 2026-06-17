@@ -2,15 +2,15 @@
 
 manifest_file_version: 1.0.0
 project: fretboard-mcc_default
-creation_date: 2026-06-02T13:25:22.551-05:00[America/Chicago]
+creation_date: 2026-06-17T14:34:11.770-07:00[America/Phoenix]
 operating_system: Mac OS X
 mcc_mode: VSCodePlugin
 mcc_mode_version: Unknown
 device_name: PIC32CM6408PL10048
 compiler: N/A
-mcc_version: 5.6.4
-mcc_core_version: 5.8.4
-content_manager_version: 6.0.4
+mcc_version: 5.7.0
+mcc_core_version: 5.9.0
+content_manager_version: 7.0.0
 is_mcc_offline: false
 is_using_prerelease_versions: false
 mcc_content_registries: https://registry.npmjs.org/

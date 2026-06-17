@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: sercom1
-coreVersion: 5.8.4
+coreVersion: 5.9.0
 device: PIC32CM6408PL10048
 library: []
 dependency:
@@ -79,11 +79,12 @@ data:
     USART_BAUD_VALUE:
       attributes:
         id: USART_BAUD_VALUE
+        label: Baud Rate Value
       children:
       - children:
         - attributes:
             id: sercom1
-            value: '3'
+            value: '13'
           type: Dynamic
         type: Values
       type: Integer
@@ -143,6 +144,7 @@ data:
     USART_SAMPLE_COUNT:
       attributes:
         id: USART_SAMPLE_COUNT
+        label: No Of Samples
       children:
       - children:
         - attributes:
@@ -154,6 +156,7 @@ data:
     USART_SAMPLE_RATE:
       attributes:
         id: USART_SAMPLE_RATE
+        label: Sample Rate
       children:
       - children:
         - attributes:
@@ -179,23 +182,19 @@ data:
     USART_7816_BAUD_VALUE:
       attributes:
         id: USART_7816_BAUD_VALUE
+        label: ISO7816 Baud Rate Value
       children:
       - children:
         - attributes:
             id: sercom1
-            value: '2'
+            value: '14'
           type: Dynamic
         type: Values
       type: Integer
     USART_BAUD_RATE:
       attributes:
         id: USART_BAUD_RATE
-      children:
-      - children:
-        - attributes:
-            value: '500000'
-          type: User
-        type: Values
+        label: Baud Rate in Hz
       type: Integer
     SERCOM_USART_BAUD_NAME:
       attributes:
@@ -208,4 +207,23 @@ data:
           type: Dynamic
         type: Values
       type: String
+    USART_TX_RING_BUFFER_SIZE:
+      attributes:
+        id: USART_TX_RING_BUFFER_SIZE
+        label: TX Ring Buffer Size
+      children:
+      - children:
+        - attributes:
+            id: visible
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            value: '512'
+          type: User
+        type: Values
+      type: Integer
   userData: {}
