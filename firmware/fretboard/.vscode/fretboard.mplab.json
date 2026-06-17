@@ -11,7 +11,7 @@
                 {
                     "name": "PIC32CM-PL_DFP",
                     "vendor": "Microchip",
-                    "version": "1.2.329"
+                    "version": "1.4.418"
                 },
                 {
                     "name": "CMSIS",
@@ -30,9 +30,31 @@
             "provider": "microchip.toolchains:xc32@5.10",
             "properties": {
                 "compiler.extra-include-directories": [
-                    "fretboard-mcc/src/config/default"
+                    ".",
+                    "../../third_party/oa-tc6-lib/libtc6/inc",
+                    "../../third_party/oa-tc6-lib/libtc6/src",
+                    "config.mcc/src",
+                    "config.mcc/src/config/default",
+                    "config.mcc/src/packs/CMSIS",
+                    "config.mcc/src/packs/CMSIS/CMSIS/Core/Include",
+                    "config.mcc/src/packs/PIC32CM6408PL10048_DFP",
+                    "third_party/embedded-cli"
                 ],
-                "compiler.optimization-level": "-O3"
+                "compiler.optimization-level": "-O1",
+                "linker.heap-size": "512",
+                "compiler++.extra-include-directories": [
+                    "config.mcc/src",
+                    "config.mcc/src/config/default",
+                    "config.mcc/src/packs/CMSIS",
+                    "config.mcc/src/packs/CMSIS/CMSIS/Core/Include",
+                    "config.mcc/src/packs/PIC32CM6408PL10048_DFP"
+                ],
+                "linker.no-device-startup-code": "true",
+                "compiler.isolate-each-function": "true",
+                "compiler.place-data-into-section": "true",
+                "linker.remove-unused-sections": "true",
+                "compiler++.isolate-each-function": "true",
+                "compiler++.optimization-level": "-O1"
             }
         }
     ],
@@ -41,6 +63,8 @@
             "name": "default",
             "files": [
                 "main.c",
+                "cli.c",
+                "cli.h",
                 "fret_scan.c",
                 "fret_scan.h",
                 "data_stream.c",
@@ -50,44 +74,30 @@
                 "model_infer_stream.c",
                 "model_infer_stream.h",
                 "model_weights.h",
-                "fretboard-mcc/src/config/default/definitions.h",
-                "fretboard-mcc/src/config/default/device_cache.h",
-                "fretboard-mcc/src/config/default/device_vectors.h",
-                "fretboard-mcc/src/config/default/device.h",
-                "fretboard-mcc/src/config/default/exceptions.c",
-                "fretboard-mcc/src/config/default/initialization.c",
-                "fretboard-mcc/src/config/default/interrupts.c",
-                "fretboard-mcc/src/config/default/interrupts.h",
-                "fretboard-mcc/src/config/default/libc_syscalls.c",
-                "fretboard-mcc/src/config/default/PIC32CM6408PL10048.ld",
-                "fretboard-mcc/src/config/default/startup_xc32.c",
-                "fretboard-mcc/src/config/default/toolchain_specifics.h",
-                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.h",
-                "fretboard-mcc/src/config/default/peripheral/adc/plib_adc_common.h",
-                "fretboard-mcc/src/config/default/peripheral/adc/plib_adc0.c",
-                "fretboard-mcc/src/config/default/peripheral/adc/plib_adc0.h",
-                "fretboard-mcc/src/config/default/peripheral/clock/plib_clock.c",
-                "fretboard-mcc/src/config/default/peripheral/clock/plib_clock.h",
-                "fretboard-mcc/src/config/default/peripheral/eic/plib_eic.c",
-                "fretboard-mcc/src/config/default/peripheral/eic/plib_eic.h",
-                "fretboard-mcc/src/config/default/peripheral/evsys/plib_evsys.c",
-                "fretboard-mcc/src/config/default/peripheral/evsys/plib_evsys.h",
-                "fretboard-mcc/src/config/default/peripheral/nvic/plib_nvic.c",
-                "fretboard-mcc/src/config/default/peripheral/nvic/plib_nvic.h",
-                "fretboard-mcc/src/config/default/peripheral/port/plib_port.c",
-                "fretboard-mcc/src/config/default/peripheral/port/plib_port.h",
-                "fretboard-mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom_spi_master_common.h",
-                "fretboard-mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.h",
-                "fretboard-mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c",
-                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom_usart_common.h",
-                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.h",
-                "fretboard-mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c",
-                "fretboard-mcc/src/config/default/peripheral/systick/plib_systick.c",
-                "fretboard-mcc/src/config/default/peripheral/systick/plib_systick.h",
-                "fretboard-mcc/src/config/default/peripheral/tc/plib_tc_common.h",
-                "fretboard-mcc/src/config/default/peripheral/tc/plib_tc0.h",
-                "fretboard-mcc/src/config/default/peripheral/tc/plib_tc0.c",
-                "fretboard-mcc/src/config/default/stdio/xc32_monitor.c"
+                "t1s_detector.c",
+                "t1s_detector.h",
+                "tc6-conf.h",
+                "third_party/embedded-cli/embedded_cli.h",
+                "third_party/embedded-cli/embedded_cli.c",
+                "../../third_party/oa-tc6-lib/libtc6/src/tc6.c",
+                "../../third_party/oa-tc6-lib/libtc6/src/tc6-regs.c",
+                "config.mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c",
+                "config.mcc/src/config/default/peripheral/evsys/plib_evsys.c",
+                "config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c",
+                "config.mcc/src/config/default/peripheral/adc/plib_adc0.c",
+                "config.mcc/src/config/default/initialization.c",
+                "config.mcc/src/config/default/interrupts.c",
+                "config.mcc/src/config/default/exceptions.c",
+                "config.mcc/src/config/default/PIC32CM6408PL10048.ld",
+                "config.mcc/src/config/default/stdio/xc32_monitor.c",
+                "config.mcc/src/config/default/peripheral/port/plib_port.c",
+                "config.mcc/src/config/default/peripheral/clock/plib_clock.c",
+                "config.mcc/src/config/default/peripheral/nvic/plib_nvic.c",
+                "config.mcc/src/config/default/peripheral/systick/plib_systick.c",
+                "config.mcc/src/config/default/startup_xc32.c",
+                "config.mcc/src/config/default/libc_syscalls.c",
+                "config.mcc/src/config/default/peripheral/eic/plib_eic.c",
+                "config.mcc/src/config/default/peripheral/tc/plib_tc0.c"
             ]
         }
     ]
