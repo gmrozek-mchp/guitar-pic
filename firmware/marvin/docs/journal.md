@@ -176,6 +176,11 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-17 — T1S: target guitar node + `t1s` console diagnostics
+
+- Re-pointed the T1S actuator command at the guitar node (id 2) now that it's proven on the bus — see today's decision-log entry. Verified G2 end-to-end (marvin's command drives the guitar's Wii button over T1S).
+- Added a `t1s` console command + `net/t1s` accessors (`T1SLink_GetState` sync/credits, `ChipRev`, `NodeId/Count`, `TxCount/RxCount`) for link visibility, mirroring the guitar's `status`. Next: a lightweight heartbeat (ethertype `0x88B6`) from followers so a `nodes` command can show real per-node presence (PLCA has no discovery).
+
 ### 2026-06-16 — T1S Phase 4: wire under the FretboardLink API (transport flag)
 
 - T1S now sits behind the existing `FretboardLink_{Initialize,Send,IsConnected}` API, selected by a compile flag `MARVIN_FRETBOARD_TRANSPORT` (`FRETBOARD_TRANSPORT_UART` default / `_T1S`) in `fretboard_link.h`. `app.c` is unchanged (the explicit `T1SLink_Initialize()` call was removed — `fretboard_link` owns transport bring-up). Producers (`timing_pipeline`, `manual_control`) and all perf-log records are identical above the transport.

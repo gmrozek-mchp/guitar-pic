@@ -20,6 +20,7 @@
 #include "detector/detector.h"
 #include "video/video.h"
 #include "game/fret.h"
+#include "net/t1s/t1s_link.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
@@ -117,6 +118,24 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("video:      %ux%u frame=%lu",
                    (unsigned)vi.width, (unsigned)vi.height,
                    (unsigned long)vi.frame_count);
+}
+
+static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)args; (void)ctx;
+
+    bool synced = false;
+    uint8_t txc = 0u, rxc = 0u;
+    T1SLink_GetState(&synced, &txc, &rxc);
+
+    console_printf("link:    %s", T1SLink_IsConnected() ? "up" : "down");
+    console_printf("synced:  %s", synced ? "yes" : "no");
+    console_printf("chipRev: %u", (unsigned)T1SLink_ChipRev());
+    console_printf("plca:    coordinator id=%u/%u",
+                   (unsigned)T1SLink_NodeId(), (unsigned)T1SLink_NodeCount());
+    console_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
+    console_printf("tx cmds: %lu", (unsigned long)T1SLink_TxCount());
+    console_printf("rx frms: %lu", (unsigned long)T1SLink_RxCount());
 }
 
 static void cmd_detect(EmbeddedCli *cli, char *args, void *ctx)
@@ -219,6 +238,7 @@ static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
         { "status", "Print link / detector / mode / video state", false, NULL, cmd_status },
+        { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

@@ -261,6 +261,54 @@ void T1SFollower_ReadId(void)
     }
 }
 
+void T1SFollower_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
+{
+    uint8_t tx = 0u, rx = 0u;
+    bool    sy = false;
+    if (s_tc6 != NULL) {
+        TC6_GetState(s_tc6, &tx, &rx, &sy);
+    }
+    if (synced   != NULL) { *synced   = sy; }
+    if (txCredit != NULL) { *txCredit = tx; }
+    if (rxCredit != NULL) { *rxCredit = rx; }
+}
+
+uint8_t T1SFollower_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+uint8_t T1SFollower_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
+
+/* Async read of the PLCA status register (bit 15 = plca_status). Result logs
+ * from the service loop a moment later. */
+static void on_plca_read(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
+                         void *pTag, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)addr;
+    (void)pTag;
+    (void)pGlobalTag;
+    char buf[72];
+    (void)snprintf(buf, sizeof(buf),
+                   "guitar: PLCA status = 0x%08lX (plca_status=%d)\r\n",
+                   (unsigned long)value,
+                   (int)(success && ((value & (1uL << 15)) != 0u)));
+    log_str(buf);
+}
+
+void T1SFollower_ReadPlca(void)
+{
+    if (s_tc6 == NULL) {
+        log_str("guitar: t1s not initialized\r\n");
+        return;
+    }
+    uint32_t tries = 0u;
+    while (!TC6_ReadRegister(s_tc6, 0x0004CA03u, true, on_plca_read, NULL) &&
+           (++tries < 2000u)) {
+        service_pump();
+    }
+    for (uint32_t t = 0u; t < 5000u; t++) {
+        service_pump();
+    }
+}
+
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
 
 bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,

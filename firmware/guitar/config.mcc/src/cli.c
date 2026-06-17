@@ -51,8 +51,15 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     (void)cli;
     (void)args;
     (void)ctx;
+    bool synced = false;
+    uint8_t txc = 0u, rxc = 0u;
+    T1SFollower_GetState(&synced, &txc, &rxc);
     cli_printf("link:    %s", T1SFollower_IsConnected() ? "up" : "down");
+    cli_printf("synced:  %s", synced ? "yes" : "no");
     cli_printf("chipRev: %u", (unsigned)T1SFollower_ChipRev());
+    cli_printf("plca:    follower id=%u/%u", (unsigned)T1SFollower_NodeId(),
+               (unsigned)T1SFollower_NodeCount());
+    cli_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
     cli_printf("rx cmds: %lu", (unsigned long)T1SFollower_RxCount());
     cli_printf("last:    0x%02X", (unsigned)T1SFollower_LastCmd());
     cli_printf("errors:  %lu", (unsigned long)T1SFollower_ErrCount());
@@ -102,13 +109,23 @@ static void cmd_id(EmbeddedCli *cli, char *args, void *ctx)
     T1SFollower_ReadId();   /* results log asynchronously from the service loop */
 }
 
+static void cmd_plca(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)args;
+    (void)ctx;
+    cli_printf("reading PLCA status...");
+    T1SFollower_ReadPlca();   /* result logs asynchronously from the service loop */
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
-        { "status", "Print link / chipRev / rx count / last command", false, NULL, cmd_status },
+        { "status", "Print link / sync / chipRev / PLCA / counters", false, NULL, cmd_status },
         { "btn",    "btn <mask hex>: drive the 7 button GPIOs (0 = release all)", true, NULL, cmd_btn },
         { "tap",    "tap <mask hex> [ms]: assert then release (default 60 ms)",   true, NULL, cmd_tap },
         { "id",     "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)",   false, NULL, cmd_id },
+        { "plca",   "Read + log the PLCA status register",                        false, NULL, cmd_plca },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
     {

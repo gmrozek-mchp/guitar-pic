@@ -102,11 +102,15 @@ static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
 static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
 static volatile bool s_tx_busy;
 
-/* Latest-wins outbound command to the fretboard, flushed by the service task. */
+/* Latest-wins outbound command to the guitar, flushed by the service task. */
 static volatile uint8_t s_cmd;
 static volatile bool    s_cmd_dirty;
 
 static T1SLink_FrameHandler s_frame_handler;
+
+/* Traffic counters (read by the console t1s/nodes commands). */
+static volatile uint32_t s_tx_count;   /* command frames sent */
+static volatile uint32_t s_rx_count;   /* frames received from a known node */
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -274,7 +278,9 @@ static void t1s_task(void *param)
                  * rather than being dropped (latest-wins). */
                 s_cmd_dirty = false;
                 uint8_t mask = s_cmd;
-                (void)send_to_node(guitar->node_id, &mask, 1u);
+                if (send_to_node(guitar->node_id, &mask, 1u)) {
+                    s_tx_count++;
+                }
             }
         }
     }
@@ -293,6 +299,24 @@ bool T1SLink_IsConnected(void)
 {
     return s_link_up;
 }
+
+void T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
+{
+    uint8_t tx = 0u, rx = 0u;
+    bool    sy = false;
+    if (s_tc6 != NULL) {
+        TC6_GetState(s_tc6, &tx, &rx, &sy);
+    }
+    if (synced   != NULL) { *synced   = sy; }
+    if (txCredit != NULL) { *txCredit = tx; }
+    if (rxCredit != NULL) { *rxCredit = rx; }
+}
+
+uint8_t  T1SLink_ChipRev(void)   { return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u; }
+uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
+uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
+uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
 
 bool T1SLink_SendToGuitar(uint8_t mask)
 {
@@ -368,6 +392,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
     uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
 
+    s_rx_count++;
     if (s_frame_handler != NULL) {
         s_frame_handler(node->detector_id, payload, payload_len);
     }

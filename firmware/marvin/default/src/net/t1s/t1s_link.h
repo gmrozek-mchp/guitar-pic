@@ -25,6 +25,14 @@ void T1SLink_Initialize(void);
 /* True once the MAC-PHY has been configured and data path enabled. */
 bool T1SLink_IsConnected(void);
 
+/* TC6 link state (sync flag + TX/RX credits) and diagnostics, for the console. */
+void     T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit);
+uint8_t  T1SLink_ChipRev(void);
+uint8_t  T1SLink_NodeId(void);    /* PLCA coordinator id (0) */
+uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
+uint32_t T1SLink_TxCount(void);   /* command frames sent */
+uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
+
 /* Latest-wins 1-byte button command to the active guitar (actuator) node.
  * Safe to call from any task; the value is flushed onto the bus by the T1S
  * service task (TC6 access is single-threaded). Returns false if the link is

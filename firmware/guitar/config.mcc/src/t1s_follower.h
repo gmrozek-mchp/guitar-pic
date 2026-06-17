@@ -38,4 +38,14 @@ void T1SFollower_ReleaseButtons(void);
 /* Diagnostic: raw-read the MAC-PHY ID registers and log the values (async). */
 void T1SFollower_ReadId(void);
 
+/* TC6 link state: protocol sync flag + TX/RX credit counters. NULL args skipped. */
+void T1SFollower_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit);
+
+/* Configured PLCA identity. */
+uint8_t T1SFollower_NodeId(void);
+uint8_t T1SFollower_NodeCount(void);
+
+/* Diagnostic: read + log the PLCA status register (async). */
+void T1SFollower_ReadPlca(void);
+
 #endif /* T1S_FOLLOWER_H */

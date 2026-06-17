@@ -48,6 +48,11 @@ command-target flip (G3) follows once the node is proven.
 
 ## Session log
 
+### 2026-06-17 — T1S diagnostics in the CLI
+
+- After G2 (marvin drives the guitar over T1S) added link visibility to the CLI: `status` now also shows `synced` (from `TC6_GetState`), TX/RX credits, and the PLCA `id/count`; new `plca` command async-reads the PLCA status register (bit 15 = `plca_status`). New accessors `T1SFollower_GetState`/`NodeId`/`NodeCount`/`ReadPlca`. Mirrors a marvin-side `t1s` console command.
+- Next: a lightweight **heartbeat** (ethertype `0x88B6`) so marvin can show real per-node presence (`nodes` command) — PLCA itself has no node discovery.
+
 ### 2026-06-17 — G1 bring-up: LAN8651 connected, `Unsupported_Hardware`
 
 - First power-up with the board: boot banner + responsive CLI ✓, but `TC6Regs_Init rejected` and repeating `t1s event: Unsupported_Hardware`. The lib's `OnReadId1` reads control reg `0x01` and requires OUI `0x1F0` / model `0x1B` (and `0x000A0094` chip-rev nonzero); the readback doesn't match.
