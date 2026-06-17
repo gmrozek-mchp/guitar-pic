@@ -12,7 +12,7 @@ drives a Wii guitar controller via open-drain GPIO — the actuation half of tod
 [fretboard](../../fretboard/SPEC.md) firmware, on its own node. Firmware (`config.mcc/src/t1s_follower.c`
 + `cli.c`, reusing `third_party/oa-tc6-lib`) brings the LAN8651 up: on the bench it reports
 `LAN8651 up - chipRev=2, MAC=02:00:00:00:00:02, PLCA follower id=2/8`. An embedded-cli console on the
-SERCOM1 debug UART (`status`/`btn`/`tap`/`id`) drives the GPIOs and reads diagnostics.
+SERCOM1 debug UART (`t1s`/`btn`/`tap`/`id`/`plca`) drives the GPIOs and reads diagnostics.
 
 **Next:** G2 — marvin (built `MARVIN_FRETBOARD_TRANSPORT=1`, bus wired) sends a command and the addressed
 Wii button asserts. Then G3 (marvin side): active-guitar selection + flip marvin's command target from the

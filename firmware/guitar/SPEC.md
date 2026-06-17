@@ -80,8 +80,8 @@ The marvin-side reference for all of this is [`firmware/marvin/default/src/net/t
 3. **TX path:** none required initially. Optional `applied_mask` telemetry back to marvin (for
    edge-ai zero-skew labels) is **deferred** with the edge-ai re-homing effort.
 4. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.
-5. **CLI** (debug aid, on the SERCOM1 UART via embedded-cli, static allocation): `status` (link /
-   chipRev / rx count / last command), `btn <mask>` and `tap <mask> [ms]` drive the button GPIOs
+5. **CLI** (debug aid, on the SERCOM1 UART via embedded-cli, static allocation): `t1s` (link /
+   sync / chipRev / PLCA / counters), `btn <mask>` and `tap <mask> [ms]` drive the button GPIOs
    directly — so the Wii-guitar wiring can be exercised before the T1S link is up.
 
 ## 5. What this is *not*
@@ -100,5 +100,5 @@ The marvin-side reference for all of this is [`firmware/marvin/default/src/net/t
 | ✅ | **G0** — guitar MCC project generated: SERCOM0 SPI (Mode 0), EIC EXTINT15 (falling) on `IRQ_N`, `CS`/`RST` GPIO, 7 button GPIOs, SERCOM1 debug UART |
 | ✅ | **G1** — T1S follower bring-up: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` on hardware (after fixing a CS/IRQ_N wiring swap) |
 | 🚧 | **G2** — command RX → Wii GPIO actuation (firmware written; pending build/hardware) |
-| 🚧 | **CLI** — `status`/`btn`/`tap` on the debug UART (embedded-cli); written, pending build. Lets the Wii-guitar wiring be tested locally before the link works. |
+| ✅ | **CLI** — `t1s`/`btn`/`tap`/`id`/`plca` on the debug UART (embedded-cli). Drives the Wii-guitar GPIOs locally and reports T1S link/sync/PLCA status. |
 | 🔭 | **G3** — end-to-end: marvin (`MARVIN_FRETBOARD_TRANSPORT=1`) drives the guitar node; play with fretboard (detector) + guitar (actuator) both on the bus |

@@ -46,7 +46,7 @@ static void cli_printf(const char *fmt, ...)
 
 /* ---- commands ----------------------------------------------------------- */
 
-static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
+static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
     (void)args;
@@ -121,7 +121,7 @@ static void cmd_plca(EmbeddedCli *cli, char *args, void *ctx)
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
-        { "status", "Print link / sync / chipRev / PLCA / counters", false, NULL, cmd_status },
+        { "t1s",    "Print link / sync / chipRev / PLCA / counters", false, NULL, cmd_t1s },
         { "btn",    "btn <mask hex>: drive the 7 button GPIOs (0 = release all)", true, NULL, cmd_btn },
         { "tap",    "tap <mask hex> [ms]: assert then release (default 60 ms)",   true, NULL, cmd_tap },
         { "id",     "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)",   false, NULL, cmd_id },

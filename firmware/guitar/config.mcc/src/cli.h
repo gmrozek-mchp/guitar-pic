@@ -3,8 +3,8 @@
 
 /* Operator CLI on the SERCOM1 debug UART (embedded-cli, static allocation).
  * Bare-metal: CLI_Tasks() polls the RX ring each main-loop pass — no task.
- * Commands: status, btn <mask>, tap <mask> [ms] (manual Wii-guitar actuation,
- * useful for verifying the controller wiring before the T1S link is up).
+ * Commands: t1s (link/sync/PLCA status), btn <mask> / tap <mask> [ms] (manual
+ * Wii-guitar actuation, for verifying wiring before the link is up), id, plca.
  *
  * Call CLI_Initialize() after SYS_Initialize (SERCOM1 brought up by MCC), then
  * CLI_Tasks() repeatedly from the main loop. */
