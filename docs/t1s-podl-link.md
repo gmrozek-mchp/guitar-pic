@@ -172,6 +172,20 @@ command TX targets. marvin selects the active node of each class.
   inside the Ethernet payload unchanged; marvin demuxes incoming frames by src MAC
   and addresses outgoing ones to a specific node.
 
+### 7.2 Presence heartbeat
+
+PLCA has **no node discovery**, so the coordinator can't enumerate who's on the
+bus. A lightweight application heartbeat fills that gap: each follower
+periodically (≈500 ms) sends a small frame to the coordinator
+(`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin routes it
+apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
+on receipt and reports it via the `nodes` console command (present = a heartbeat
+within ~2 s).
+
+Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar), `node_id(1)`,
+`flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives the node from the
+src MAC; the payload is informational (seq enables drop detection).
+
 ## 8. Transport coexistence
 
 The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved (with

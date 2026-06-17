@@ -176,6 +176,10 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-17 — T1S presence heartbeat + `nodes` command
+
+- Followers send a periodic heartbeat (ethertype `0x88B6`, T1S doc §7.2); marvin's `OnRxEthernetPacket` now routes by ethertype — `0x88B5` → data/frame handler, `0x88B6` → stamp per-node `last_seen` in a runtime table (`s_node_rt`, parallel to `s_nodes`) + capture the seq. New `nodes` console command lists each configured node (id/type) with heartbeat presence (`present` within ~2 s) + last-seen age. Gives real "connected nodes" despite PLCA having no discovery.
+
 ### 2026-06-17 — T1S: target guitar node + `t1s` console diagnostics
 
 - Re-pointed the T1S actuator command at the guitar node (id 2) now that it's proven on the bus — see today's decision-log entry. Verified G2 end-to-end (marvin's command drives the guitar's Wii button over T1S).

@@ -138,6 +138,25 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("rx frms: %lu", (unsigned long)T1SLink_RxCount());
 }
 
+static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)args; (void)ctx;
+
+    uint8_t n = T1SLink_NodeTableCount();
+    console_printf("id  type      present  last-hb");
+    for (uint8_t i = 0u; i < n; i++)
+    {
+        T1SLink_NodeInfo ni;
+        if (T1SLink_GetNodeInfo(i, &ni))
+        {
+            console_printf("%-3u %-9s %-7s  %lums",
+                           (unsigned)ni.node_id, ni.type,
+                           ni.present ? "yes" : "no",
+                           (unsigned long)ni.age_ms);
+        }
+    }
+}
+
 static void cmd_detect(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -239,6 +258,7 @@ static void register_commands(void)
     static const CliCommandBinding bindings[] = {
         { "status", "Print link / detector / mode / video state", false, NULL, cmd_status },
         { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
+        { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

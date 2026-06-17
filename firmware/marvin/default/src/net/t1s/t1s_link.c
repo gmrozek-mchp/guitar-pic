@@ -28,9 +28,12 @@
 
 /* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
  * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
-#define T1S_ETHERTYPE        (0x88B5u)   /* local/experimental range */
+#define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
+#define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
 #define T1S_ETH_HDR_LEN      (14u)
 #define T1S_MAC_LEN          (6u)
+#define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
+#define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
 
 /* Locally administered coordinator MAC (02:00:00:00:00:00). */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
@@ -58,6 +61,25 @@ static const t1s_node_t s_nodes[] = {
     { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
     { 2u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
 };
+
+#define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
+
+/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+static struct {
+    uint32_t last_seen_tick;
+    uint32_t last_seq;
+    bool     seen;
+} s_node_rt[T1S_NODE_TABLE_LEN];
+
+static const char *node_type_name(t1s_node_type_t t)
+{
+    switch (t) {
+        case T1S_NODE_FRETBOARD:     return "detector";
+        case T1S_NODE_PHOTODETECTOR: return "detector";
+        case T1S_NODE_GUITAR:        return "guitar";
+        default:                     return "?";
+    }
+}
 
 /* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
 static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
@@ -318,6 +340,26 @@ uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
 uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
 uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
 
+uint8_t T1SLink_NodeTableCount(void) { return (uint8_t)T1S_NODE_TABLE_LEN; }
+
+bool T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out)
+{
+    if ((idx >= T1S_NODE_TABLE_LEN) || (out == NULL)) {
+        return false;
+    }
+    out->node_id = s_nodes[idx].node_id;
+    out->type    = node_type_name(s_nodes[idx].type);
+    if (s_node_rt[idx].seen) {
+        uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
+        out->age_ms  = (uint32_t)(age * portTICK_PERIOD_MS);
+        out->present = (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+    } else {
+        out->age_ms  = 0u;
+        out->present = false;
+    }
+    return true;
+}
+
 bool T1SLink_SendToGuitar(uint8_t mask)
 {
     if (!s_link_up) {
@@ -377,7 +419,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     }
 
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
-    if (ethertype != T1S_ETHERTYPE) {
+    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)) {
         return;  /* not ours (promiscuous RX during bring-up) */
     }
 
@@ -388,9 +430,23 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
                   src[0], src[1], src[2], src[3], src[4], src[5]);
         return;
     }
+    uint8_t idx = (uint8_t)(node - s_nodes);
 
     const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
     uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
+
+    if (ethertype == T1S_ETHERTYPE_HB) {
+        /* Presence heartbeat: stamp last-seen; capture the seq if present. */
+        s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+        s_node_rt[idx].seen = true;
+        if (payload_len >= T1S_HB_LEN) {
+            s_node_rt[idx].last_seq = (uint32_t)payload[4]
+                                    | ((uint32_t)payload[5] << 8)
+                                    | ((uint32_t)payload[6] << 16)
+                                    | ((uint32_t)payload[7] << 24);
+        }
+        return;
+    }
 
     s_rx_count++;
     if (s_frame_handler != NULL) {

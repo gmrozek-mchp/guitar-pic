@@ -48,6 +48,10 @@ command-target flip (G3) follows once the node is proven.
 
 ## Session log
 
+### 2026-06-17 — Presence heartbeat (ethertype 0x88B6)
+
+- The guitar now TXes a periodic (500 ms) heartbeat to the coordinator (`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin can show real per-node presence (PLCA has no discovery). Payload: `ver, node_type(2=guitar), node_id, flags(bit0=synced), seq_u32`. First TX path on the follower — `send_heartbeat()` builds the frame + `TC6_SendRawEthernetPacket` (one in-flight, `s_hb_busy`-guarded), driven from `T1SFollower_Tasks`. Format documented in T1S doc §7.2; marvin stamps last-seen and reports via its `nodes` command.
+
 ### 2026-06-17 — T1S diagnostics in the CLI
 
 - After G2 (marvin drives the guitar over T1S) added link visibility to the CLI: `status` now also shows `synced` (from `TC6_GetState`), TX/RX credits, and the PLCA `id/count`; new `plca` command async-reads the PLCA status register (bit 15 = `plca_status`). New accessors `T1SFollower_GetState`/`NodeId`/`NodeCount`/`ReadPlca`. Mirrors a marvin-side `t1s` console command.

@@ -15,12 +15,23 @@
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
 #define T1S_INSTANCE        (0u)
 
-#define T1S_ETHERTYPE       (0x88B5u)
+#define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
+#define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
 #define T1S_ETH_HDR_LEN     (14u)
 #define T1S_CMD_BIT_MASK    (0x7Fu)  /* 5 frets + 2 strum */
 
+/* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
+ * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
+#define T1S_HB_INTERVAL_MS  (500u)
+#define T1S_HB_VERSION      (1u)
+#define T1S_HB_TYPE_GUITAR  (2u)     /* 1 = detector, 2 = guitar (shared codes) */
+#define T1S_HB_LEN          (8u)
+
 /* Coordinator-assigned MAC for this node: 02:00:00:00:00:02. */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+
+/* Coordinator (marvin) MAC: 02:00:00:00:00:00 — heartbeat destination. */
+static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -36,6 +47,12 @@ static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
 /* Command frames are ~60 B after min-frame padding; this only needs the header
  * plus the first payload byte, but size for a padded frame. */
 static uint8_t           s_rx_buf[64];
+
+/* Heartbeat TX staging (buffer must stay valid until the TX callback fires). */
+static uint8_t           s_hb_frame[T1S_ETH_HDR_LEN + T1S_HB_LEN];
+static volatile bool     s_hb_busy;
+static uint32_t          s_hb_seq;
+static uint32_t          s_hb_last_ms;
 
 /* The 1 ms time base is the MCC SYSTICK plib: SYS_Initialize runs
  * SYSTICK_TimerInitialize; this module starts it and reads
@@ -129,6 +146,48 @@ static void service_pump(void)
     TC6Regs_CheckTimers();
 }
 
+/* Heartbeat TX completion: free the staging buffer. */
+static void hb_tx_done(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+                       void *pTag, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)pTx;
+    (void)len;
+    (void)pTag;
+    (void)pGlobalTag;
+    s_hb_busy = false;
+}
+
+/* Announce presence to the coordinator (ethertype 0x88B6). */
+static void send_heartbeat(void)
+{
+    if (s_hb_busy || !s_link_up) {
+        return;
+    }
+    bool synced = false;
+    TC6_GetState(s_tc6, NULL, NULL, &synced);
+
+    memcpy(&s_hb_frame[0], s_coord_mac, 6u);   /* dst = coordinator */
+    memcpy(&s_hb_frame[6], s_mac, 6u);         /* src = this node   */
+    s_hb_frame[12] = (uint8_t)(T1S_ETHERTYPE_HB >> 8);
+    s_hb_frame[13] = (uint8_t)(T1S_ETHERTYPE_HB & 0xFFu);
+    s_hb_frame[14] = T1S_HB_VERSION;
+    s_hb_frame[15] = T1S_HB_TYPE_GUITAR;
+    s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
+    s_hb_frame[17] = synced ? 0x01u : 0x00u;   /* flags: bit0 = synced */
+    s_hb_seq++;
+    s_hb_frame[18] = (uint8_t)(s_hb_seq);
+    s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
+    s_hb_frame[20] = (uint8_t)(s_hb_seq >> 16);
+    s_hb_frame[21] = (uint8_t)(s_hb_seq >> 24);
+
+    s_hb_busy = true;
+    if (!TC6_SendRawEthernetPacket(s_tc6, s_hb_frame, T1S_ETH_HDR_LEN + T1S_HB_LEN,
+                                   0u, hb_tx_done, NULL)) {
+        s_hb_busy = false;
+    }
+}
+
 /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  Public API  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
 
 void T1SFollower_Initialize(void)
@@ -183,6 +242,15 @@ void T1SFollower_Tasks(void)
                        (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
                        (unsigned)T1S_NODE_COUNT);
         log_str(buf);
+    }
+
+    /* Periodic presence heartbeat to the coordinator. */
+    if (s_link_up) {
+        uint32_t now = SYSTICK_GetTickCounter();
+        if ((now - s_hb_last_ms) >= T1S_HB_INTERVAL_MS) {
+            s_hb_last_ms = now;
+            send_heartbeat();
+        }
     }
 }
 

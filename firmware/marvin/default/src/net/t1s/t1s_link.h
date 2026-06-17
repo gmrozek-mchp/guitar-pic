@@ -33,6 +33,17 @@ uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
 uint32_t T1SLink_TxCount(void);   /* command frames sent */
 uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
 
+/* Per-node presence (from follower heartbeats, ethertype 0x88B6). */
+typedef struct {
+    uint8_t     node_id;
+    const char *type;     /* "detector" / "guitar" / ... */
+    bool        present;  /* a heartbeat was seen within the presence window */
+    uint32_t    age_ms;   /* since the last heartbeat (0 if never seen) */
+} T1SLink_NodeInfo;
+
+uint8_t T1SLink_NodeTableCount(void);
+bool    T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out);
+
 /* Latest-wins 1-byte button command to the active guitar (actuator) node.
  * Safe to call from any task; the value is flushed onto the bus by the T1S
  * service task (TC6 access is single-threaded). Returns false if the link is
