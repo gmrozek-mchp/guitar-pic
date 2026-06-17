@@ -3,8 +3,10 @@
 > What guitar *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: skeleton + design.** No firmware written yet. This document captures the
-> intended design; the actuation/T1S code is the next step (see [`docs/journal.md`](docs/journal.md)).
+> **Status: working on hardware.** The T1S PLCA follower is up (chipRev read, link
+> synced), receives marvin's command over T1S and actuates the Wii GPIOs, sends a
+> presence heartbeat, and exposes a debug-UART CLI. Remaining work is the full
+> multi-node system (G3) — see §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -97,8 +99,9 @@ The marvin-side reference for all of this is [`firmware/marvin/default/src/net/t
 
 | Status | Item |
 |---|---|
-| ✅ | **G0** — guitar MCC project generated: SERCOM0 SPI (Mode 0), EIC EXTINT15 (falling) on `IRQ_N`, `CS`/`RST` GPIO, 7 button GPIOs, SERCOM1 debug UART |
-| ✅ | **G1** — T1S follower bring-up: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` on hardware (after fixing a CS/IRQ_N wiring swap) |
-| 🚧 | **G2** — command RX → Wii GPIO actuation (firmware written; pending build/hardware) |
+| ✅ | **G0** — guitar MCC project: SERCOM0 SPI (Mode 0), EIC EXTINT13 (falling) on `IRQ_N`=PA13, `CS`=PA15 / `RST`=PA14 GPIO, 7 button GPIOs, SERCOM1 debug UART (CS/IRQ_N reassigned to match wiring) |
+| ✅ | **G1** — T1S follower bring-up on hardware: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` |
+| ✅ | **G2** — end-to-end: marvin's command over T1S → the addressed Wii GPIO asserts |
 | ✅ | **CLI** — `t1s`/`btn`/`tap`/`id`/`plca` on the debug UART (embedded-cli). Drives the Wii-guitar GPIOs locally and reports T1S link/sync/PLCA status. |
-| 🔭 | **G3** — end-to-end: marvin (`MARVIN_FRETBOARD_TRANSPORT=1`) drives the guitar node; play with fretboard (detector) + guitar (actuator) both on the bus |
+| ✅ | **Heartbeat** — periodic presence frame (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows this node present |
+| 🔭 | **G3** — full system: `fretboard` (detector) + `guitar` (actuator) both on the bus with marvin selecting the active of each (marvin already targets the guitar; needs the fretboard moved to T1S) |

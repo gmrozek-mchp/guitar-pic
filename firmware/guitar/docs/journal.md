@@ -6,26 +6,21 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ## Current focus
 
-**G1 done — the follower is up on hardware.** guitar is the **Wii-guitar actuator node**: a PIC32CM PL10
-T1S PLCA *follower* (node id 2, MAC `02:00:00:00:00:02`) that receives marvin's 1-byte button bitmask and
-drives a Wii guitar controller via open-drain GPIO — the actuation half of today's
-[fretboard](../../fretboard/SPEC.md) firmware, on its own node. Firmware (`config.mcc/src/t1s_follower.c`
-+ `cli.c`, reusing `third_party/oa-tc6-lib`) brings the LAN8651 up: on the bench it reports
-`LAN8651 up - chipRev=2, MAC=02:00:00:00:00:02, PLCA follower id=2/8`. An embedded-cli console on the
-SERCOM1 debug UART (`t1s`/`btn`/`tap`/`id`/`plca`) drives the GPIOs and reads diagnostics.
+**G1 + G2 done — the node is proven end-to-end on hardware.** guitar is the **Wii-guitar actuator node**:
+a PIC32CM PL10 T1S PLCA *follower* (node id 2, MAC `02:00:00:00:00:02`) that receives marvin's 1-byte
+button bitmask over ethertype `0x88B5` and drives a Wii guitar controller via open-drain GPIO — the
+actuation half of today's [fretboard](../../fretboard/SPEC.md) firmware, on its own node. Firmware
+(`config.mcc/src/t1s_follower.{c,h}` + `cli.{c,h}`, reusing `third_party/oa-tc6-lib`, wired via
+`user.cmake` + `main.c`) brings the LAN8651 up — bench reports `LAN8651 up - chipRev=2,
+MAC=02:00:00:00:00:02, PLCA follower id=2/8` — and **marvin's command over T1S drives the addressed Wii
+button**. The node sends a 500 ms presence heartbeat (ethertype `0x88B6`) so marvin's `nodes` shows it
+present, and an embedded-cli console on the SERCOM1 debug UART (`t1s`/`btn`/`tap`/`id`/`plca`) drives the
+GPIOs and reads link/sync/PLCA diagnostics.
 
-**Next:** G2 — marvin (built `MARVIN_FRETBOARD_TRANSPORT=1`, bus wired) sends a command and the addressed
-Wii button asserts. Then G3 (marvin side): active-guitar selection + flip marvin's command target from the
-fretboard node to the guitar node.
-
-**G1/G2 firmware written** (bare-metal follower in `config.mcc/src/t1s_follower.{c,h}` + `tc6-conf.h`,
-wired via `user.cmake` + `main.c`) — see the session log. **Builds, programs, and logs on the SERCOM1
-debug UART** — but the **T1S board (LAN8651) is not connected yet**, so the link can't come up: the
-firmware runs to the 3 s init timeout and logs the `MAC-PHY not responding` branch (expected, no board).
-The **CLI** (`status`/`btn`/`tap` on the debug UART) is now written too — its `btn`/`tap` can exercise the
-Wii-guitar wiring locally **without** the T1S board. Next: connect the LAN8651 and bring up the link (G1
-chipRev/PLCA-follower → G2 command RX drives the Wii button). The marvin-side active-guitar selection +
-command-target flip (G3) follows once the node is proven.
+**Next (G3, full system):** `fretboard` (detector) + `guitar` (actuator) both on the bus with marvin
+selecting the active of each — marvin already targets the guitar node for actuation; the remaining work is
+moving the fretboard onto a T1S detector node and the active-detector/active-guitar selector. Tracked on
+the marvin side.
 
 ---
 

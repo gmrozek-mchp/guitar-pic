@@ -1,18 +1,21 @@
-# fretboard ↔ marvin link — 10BASE-T1S + PoDL
+# T1S inter-node link — 10BASE-T1S + PoDL
 
-Low-level design for moving the fretboard ↔ marvin link from a FLEXCOM2/SERCOM
-UART pair to **10BASE-T1S single-pair Ethernet with "dumb" Power-over-Data-Lines
-(PoDL)**. System-level summary and rationale live in [`../SPEC.md`](../SPEC.md)
-§6; this document holds the engineering detail.
+Engineering detail for the marvin↔node link over **10BASE-T1S single-pair Ethernet**
+(with planned "dumb" Power-over-Data-Lines). System-level summary and rationale live
+in [`../SPEC.md`](../SPEC.md) §2/§6; this document holds the detail.
 
-Status: **scoped, not yet built — marvin-side coding held on two prerequisites.**
-The link today is FLEXCOM1 UART (marvin) / SERCOM1 UART (fretboard). Nothing here
-is flashed. As of 2026-06-16 the scope widened from a 2-node swap to a **multi-node
-PLCA bus** (several guitars + phototransistor detector nodes on one pair) and the
-key forks are settled — see §7.1 (addressing), §9 (decisions/open items) and the
-marvin journal 2026-06-16 entry. Coding waits on: (1) a free FLEXCOM regenerated in
-**SPI-master mode in MCC** (no SPI PLib exists yet — only USART/TWI), and (2)
-`oa-tc6-lib` added on disk as a subproject.
+Status: **built and working between marvin (PLCA coordinator, node 0) and the
+[`guitar`](../firmware/guitar/SPEC.md) actuator node (follower, node 2)** as of
+2026-06-17. A LAN8651 MAC-PHY at each end over SPI + the OPEN Alliance TC6 driver
+([`third_party/oa-tc6-lib`](../third_party/oa-tc6-lib)); a custom L2 header
+(ethertype `0x88B5`) carries the existing 1-byte command bitmask; a presence
+heartbeat (`0x88B6`, §7.2) plus link / `nodes` diagnostics run on both ends.
+
+The [`fretboard`](../firmware/fretboard/SPEC.md) detector has **not** moved to T1S
+yet — it stays on SERCOM1 UART; marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}`
+build flag (§8). **PoDL is design-direction only** (not built) — the link is
+separately powered during bring-up. Addressing in §7.1; the scope widened from a
+2-node UART swap to this multi-node PLCA bus on 2026-06-16.
 
 ---
 
@@ -188,25 +191,28 @@ src MAC; the payload is informational (seq enables drop detection).
 
 ## 8. Transport coexistence
 
-The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved (with
-`Send` gaining a node target). UART and T1S transports live behind a
-`MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build flag**, default UART: the working
-FLEXCOM1 UART link stays intact during T1S bring-up and is cut over (and its data
-path reclaimed) only once T1S is proven.
+The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved; the
+actuator command now targets the guitar node (`T1SLink_SendToGuitar`). UART and
+T1S transports live behind a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build flag**.
+The `t1s` branch builds **T1S by default**; UART stays one (commented) line away in
+`user.cmake` as a fallback during the fretboard's own transition.
 
 ## 9. Decisions & open items
 
-Settled 2026-06-16 (see marvin journal): multi-node design-for-N / build-one-link;
-PLCA coordinator on marvin (§7); adapt `oa-tc6-lib` (§5); UART kept in parallel
-behind a build flag (§8); develop against a LAN8651 EVB/Click on the SAM9X75
-Curiosity.
+**Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower
+(id 2) over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on
+both ends. The earlier prerequisites (a FLEXCOM/SERCOM in SPI-master mode via MCC;
+the `oa-tc6-lib` submodule) are resolved.
 
-Still open (non-blocking; settle during bring-up unless noted):
+Open / future:
 
-- **Prereq (blocking):** a free FLEXCOM regenerated in SPI-master mode in MCC with
-  the EVB pinout — no SPI PLib exists yet.
-- **Prereq (blocking):** `oa-tc6-lib` added on disk as a subproject.
-- PoDL supply voltage and the PD-side regulator topology (BOM, not firmware).
+- **Fretboard → T1S detector node (id 1).** marvin's RX/detector path + node-table
+  slot are already in place; the fretboard's ADC stream rides in unchanged and it
+  appears as a present node.
+- **Active-detector / active-guitar selector** once a second node of either class
+  shares the bus (single guitar today → target is `node_for_type(GUITAR)`).
+- **PoDL** supply voltage + PD-side regulator topology (BOM, not firmware) — not
+  built; the link is separately powered for now.
 - Magnetics-free coupling component selection on the Sensor-LCD5 PCB.
 
 ## References

@@ -1,10 +1,11 @@
 # Fretboard Firmware Specification
 
 > **Re-scoping (2026-06-16):** fretboard is becoming a phototransistor **detector** node on the
-> T1S bus — its Wii-guitar **actuator** role (`cmd_receive.c` → open-drain GPIO) is moving to the
-> new [`guitar`](../guitar/SPEC.md) subproject. This is a **direction, not yet executed**: the
-> firmware below still does both roles, and keeps actuating until the guitar node is proven
-> end-to-end. The detector/actuator node-class model lives in the top-level
+> T1S bus — its Wii-guitar **actuator** role (`cmd_receive.c` → open-drain GPIO) has moved to the
+> new [`guitar`](../guitar/SPEC.md) subproject, which is now **proven end-to-end** (marvin drives
+> it over T1S). The fretboard firmware below is **unchanged** — it still does both roles and still
+> talks UART — and keeps actuating until it is itself moved onto a T1S detector node (id 1). The
+> detector/actuator node-class model lives in the top-level
 > [`SPEC.md`](../../SPEC.md) §2. (Edge-ai `MODEL_DRIVEN` is unaffected for now.)
 
 ## Overview
