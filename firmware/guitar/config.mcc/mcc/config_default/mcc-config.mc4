@@ -16,7 +16,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/PIC32CM6408PL10048.ld
   hash: 1be83a2de4596f61ef9a0a0cda41503b2d2f00e87036363eaff5607db25fadb4
 - file: ../src/config/default/definitions.h
-  hash: 952cbc218f8bab2ad008630620fc2e05e60c35a58d6eaf575b18598731fc91bf
+  hash: e176dd53dedf1f6a400ca6e3f157398fe546ef815645168397fd466e20cb25cf
 - file: ../src/config/default/device.h
   hash: cbe5a5f60fcaf3cb182092323aa3c71cf2414fed36e66337f5827197fd2e2325
 - file: ../src/config/default/device_cache.h
@@ -26,11 +26,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/exceptions.c
   hash: d1567a190561858cc1cb7e796cf1a29720e52b9799bbd88b087993d8539e137f
 - file: ../src/config/default/initialization.c
-  hash: 7961f5ff6e65588833b2069b7e6657e56c649971b7cc676ce0486508ef470f3d
+  hash: 4b664d857260c01f352aca7e7bf78b0a0c851f2d53841e9f24c38e0e051c6399
 - file: ../src/config/default/interrupts.c
-  hash: 474ec96c42f5385b5b571943210c85f0bd0cc1e741afd529017f4cf5117baaf6
+  hash: c737e5fa3d79bbf431e009861a6d78afa0f7040b3aa13347b531855bb7f42a87
 - file: ../src/config/default/interrupts.h
-  hash: bc93328071035b9f1ef48aacb452e2efda958ee731f7d8800ebe8ce2beb577b8
+  hash: b814b4a014cd6d28f12cf45f6e900233bec9f013c7ef0b96e77cee974cdaefc4
 - file: ../src/config/default/libc_syscalls.c
   hash: c9afc1b1257829415a1a6746ce3744f0a768b339d59fff2ab3ca1fab58b2a916
 - file: ../src/config/default/peripheral/clock/plib_clock.c
@@ -65,6 +65,10 @@ generatedFileHashHistoryMap:
   hash: f139e664f91fb7ed962f61e210a4fd17059e895a06a64a243d2fd979ac59b674
 - file: ../src/config/default/peripheral/sercom/usart/plib_sercom_usart_common.h
   hash: 8ce7e93172c9cde3c5940869cb66ab1646c706a4ea1605209085ea58382e8b1e
+- file: ../src/config/default/peripheral/systick/plib_systick.c
+  hash: 455a8e051a8426b77b8313ba19eb11967ecff43eddb05607962a25eeba66c2f6
+- file: ../src/config/default/peripheral/systick/plib_systick.h
+  hash: a504ea50ca4b8e056e3016362039038bbe10dffb71a89bd78c9a72d6e28e4c15
 - file: ../src/config/default/pin_configurations.csv
   hash: 45b22df7db7416a94f5f2406556183e9ab9790ec8595af9ad84f40536cac39d2
 - file: ../src/config/default/startup_xc32.c
