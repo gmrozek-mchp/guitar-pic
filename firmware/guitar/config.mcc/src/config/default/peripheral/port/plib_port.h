@@ -135,14 +135,9 @@
 #define SW2_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 12U)) & 0x01U)
 #define SW2_PIN                  PORT_PIN_PA12
 
-/*** Macros for T1S_CS pin ***/
-#define T1S_CS_Set()               (PORT_REGS->GROUP[0].PORT_OUTSET = ((uint32_t)1U << 13U))
-#define T1S_CS_Clear()             (PORT_REGS->GROUP[0].PORT_OUTCLR = ((uint32_t)1U << 13U))
-#define T1S_CS_Toggle()            (PORT_REGS->GROUP[0].PORT_OUTTGL = ((uint32_t)1U << 13U))
-#define T1S_CS_OutputEnable()      (PORT_REGS->GROUP[0].PORT_DIRSET = ((uint32_t)1U << 13U))
-#define T1S_CS_InputEnable()       (PORT_REGS->GROUP[0].PORT_DIRCLR = ((uint32_t)1U << 13U))
-#define T1S_CS_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 13U)) & 0x01U)
-#define T1S_CS_PIN                  PORT_PIN_PA13
+/*** Macros for T1S_IRQ_N pin ***/
+#define T1S_IRQ_N_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 13U)) & 0x01U)
+#define T1S_IRQ_N_PIN                  PORT_PIN_PA13
 
 /*** Macros for T1S_RST pin ***/
 #define T1S_RST_Set()               (PORT_REGS->GROUP[0].PORT_OUTSET = ((uint32_t)1U << 14U))
@@ -153,9 +148,14 @@
 #define T1S_RST_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 14U)) & 0x01U)
 #define T1S_RST_PIN                  PORT_PIN_PA14
 
-/*** Macros for T1S_IRQ_N pin ***/
-#define T1S_IRQ_N_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 15U)) & 0x01U)
-#define T1S_IRQ_N_PIN                  PORT_PIN_PA15
+/*** Macros for T1S_CS pin ***/
+#define T1S_CS_Set()               (PORT_REGS->GROUP[0].PORT_OUTSET = ((uint32_t)1U << 15U))
+#define T1S_CS_Clear()             (PORT_REGS->GROUP[0].PORT_OUTCLR = ((uint32_t)1U << 15U))
+#define T1S_CS_Toggle()            (PORT_REGS->GROUP[0].PORT_OUTTGL = ((uint32_t)1U << 15U))
+#define T1S_CS_OutputEnable()      (PORT_REGS->GROUP[0].PORT_DIRSET = ((uint32_t)1U << 15U))
+#define T1S_CS_InputEnable()       (PORT_REGS->GROUP[0].PORT_DIRCLR = ((uint32_t)1U << 15U))
+#define T1S_CS_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 15U)) & 0x01U)
+#define T1S_CS_PIN                  PORT_PIN_PA15
 
 /*** Macros for STRUM_DOWN pin ***/
 #define STRUM_DOWN_Set()               (PORT_REGS->GROUP[0].PORT_OUTSET = ((uint32_t)1U << 18U))

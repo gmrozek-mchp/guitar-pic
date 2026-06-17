@@ -13,9 +13,9 @@ Pin Number,Pin ID,Custom Name,Function,Mode, Direction,Latch,Pull Up,Pull Down,S
 12,PA10,,Available,,,,,,DISABLED
 13,PA11,SW3,GPIO,Digital,In,n/a,No,No,DISABLED
 16,PA12,SW2,GPIO,Digital,In,n/a,No,No,DISABLED
-17,PA13,T1S_CS,GPIO,Digital,Out,High,,,DISABLED
+17,PA13,T1S_IRQ_N,EIC_EXTINT13,Digital,In/Out,Low,,,DISABLED
 18,PA14,T1S_RST,GPIO,Digital,Out,High,,,DISABLED
-19,PA15,T1S_IRQ_N,EIC_EXTINT15,Digital,In/Out,High,,,DISABLED
+19,PA15,T1S_CS,GPIO,Digital,Out,High,,,DISABLED
 20,PA16,,Available,,,,,,DISABLED
 21,PA17,,Available,,,,,,DISABLED
 22,PA18,STRUM_DOWN,GPIO,Digital,Out,Low,,,DISABLED

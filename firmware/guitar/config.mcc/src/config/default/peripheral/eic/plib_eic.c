@@ -97,16 +97,16 @@ void EIC_Initialize (void)
                               EIC_CONFIG1_SENSE10_NONE  |
                               EIC_CONFIG1_SENSE11_NONE  |
                               EIC_CONFIG1_SENSE12_NONE  |
-                              EIC_CONFIG1_SENSE13_NONE  |
+                              EIC_CONFIG1_SENSE13_FALL  |
                               EIC_CONFIG1_SENSE14_NONE  |
-                              EIC_CONFIG1_SENSE15_FALL ;
+                              EIC_CONFIG1_SENSE15_NONE ;
 
 
 
 
 
     /* External Interrupt enable*/
-    EIC_REGS->EIC_INTENSET = 0x8000;
+    EIC_REGS->EIC_INTENSET = 0x2000;
 
     /* Callbacks for enabled interrupts */
     eicCallbackObject[0].eicPinNo = EIC_PIN_MAX;
@@ -122,9 +122,9 @@ void EIC_Initialize (void)
     eicCallbackObject[10].eicPinNo = EIC_PIN_MAX;
     eicCallbackObject[11].eicPinNo = EIC_PIN_MAX;
     eicCallbackObject[12].eicPinNo = EIC_PIN_MAX;
-    eicCallbackObject[13].eicPinNo = EIC_PIN_MAX;
+    eicCallbackObject[13].eicPinNo = EIC_PIN_13;
     eicCallbackObject[14].eicPinNo = EIC_PIN_MAX;
-    eicCallbackObject[15].eicPinNo = EIC_PIN_15;
+    eicCallbackObject[15].eicPinNo = EIC_PIN_MAX;
     /* Enable the EIC */
     EIC_REGS->EIC_CTRLA |= EIC_CTRLA_ENABLE_Msk;
 

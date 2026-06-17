@@ -97,8 +97,8 @@
 */
 
 
-    /* External Interrupt Controller Pin 15 */
-#define    EIC_PIN_15   (15U)
+    /* External Interrupt Controller Pin 13 */
+#define    EIC_PIN_13   (13U)
 
 #define    EIC_PIN_MAX  (16U)
 

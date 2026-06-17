@@ -597,7 +597,7 @@ data:
       children:
       - children:
         - attributes:
-            value: T1S_CS
+            value: T1S_IRQ_N
           type: User
         type: Values
       type: String
@@ -608,7 +608,7 @@ data:
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: EIC_EXTINT13
           type: User
         type: Values
       type: String
@@ -619,7 +619,7 @@ data:
       children:
       - children:
         - attributes:
-            value: ''
+            value: 'True'
           type: User
         type: Values
       type: String
@@ -630,7 +630,7 @@ data:
       children:
       - children:
         - attributes:
-            value: High
+            value: ''
           type: User
         type: Values
       type: String
@@ -652,7 +652,7 @@ data:
       children:
       - children:
         - attributes:
-            value: GPIO
+            value: A
           type: User
         type: Values
       type: String
@@ -751,7 +751,7 @@ data:
       children:
       - children:
         - attributes:
-            value: T1S_IRQ_N
+            value: T1S_CS
           type: User
         type: Values
       type: String
@@ -762,7 +762,7 @@ data:
       children:
       - children:
         - attributes:
-            value: EIC_EXTINT15
+            value: GPIO
           type: User
         type: Values
       type: String
@@ -773,7 +773,7 @@ data:
       children:
       - children:
         - attributes:
-            value: 'True'
+            value: ''
           type: User
         type: Values
       type: String
@@ -806,7 +806,7 @@ data:
       children:
       - children:
         - attributes:
-            value: A
+            value: GPIO
           type: User
         type: Values
       type: String
@@ -1468,7 +1468,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0xe000'
+            value: '0xc000'
           type: Dynamic
         type: Values
       type: String
@@ -1672,7 +1672,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x0'
+            value: '0x3'
           type: Dynamic
         type: Values
       type: String
@@ -1696,7 +1696,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x3'
+            value: '0x0'
           type: Dynamic
         type: Values
       type: String
