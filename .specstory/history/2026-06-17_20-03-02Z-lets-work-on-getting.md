@@ -12439,3 +12439,687 @@ The afternoon's root cause is recorded in the fretboard journal as a reusable go
 - **Active-source arbitration on marvin:** both marvin and the fretboard can address the guitar (`02:..:02`) with no arbitration yet — only one should drive at a time. The marvin-side active-detector/active-guitar selector is the logical next piece.
 
 Nice work getting it onto the wire. Want to tackle the end-to-end actuation verification or the marvin arbitration next?
+
+---
+
+_**User (2026-06-18 03:16:14Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+just to confirm, the T1S network is operating in PLCA mode?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-18 03:17:26Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:17:34Z)**_
+
+Let me confirm from the actual register-init calls rather than memory — checking the TC6Regs_Init signature and all three nodes' calls.
+
+_**Agent (claude-opus-4-8 2026-06-18 03:17:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== TC6Regs_Init prototype (param order) ==="
+grep -nA14 "bool TC6Regs_Init" third_party/oa-tc6-lib/libtc6/inc/tc6-regs.h | head -20
+echo ; echo "=== marvin (coordinator) call ==="
+grep -nE "TC6Regs_Init\(|T1S_PLCA_ENABLE|T1S_NODE_ID|T1S_NODE_COUNT" firmware/marvin/default/src/net/t1s/t1s_link.c | head
+echo ; echo "=== fretboard (follower id1) call ==="
+grep -nA2 "TC6Regs_Init(s_tc6" firmware/fretboard/t1s_detector.c
+echo ; echo "=== guitar (follower id2) call ==="
+grep -nA2 "TC6Regs_Init(s_tc6" firmware/guitar/config.mcc/src/t1s_follower.c
+```
+
+```text
+=== TC6Regs_Init prototype (param order) ===
+98:bool TC6Regs_Init(TC6_t *pInst, void *pTag, const uint8_t mac[6], bool enablePlca, uint8_t nodeId, uint8_t nodeCount, uint8_t burstCount, uint8_t burstTimer, bool promiscuous, bool txCutThrough, bool rxCutThrough);
+99-
+100-/** \brief Checks internal timers and trigger corresponding actions
+101- *  \note Must be called cyclic (slow delay is fine (< 1 second))
+102- */
+103-void TC6Regs_CheckTimers(void);
+104-
+105-/** \brief Checks if the initial register settings are deployed yet.
+106- *  \param pInst - The pointer returned by TC6_Init.
+107- *  \return true, if the initialization is done. false, initialization is still ongoing.
+108- */
+109-bool TC6Regs_GetInitDone(TC6_t *pInst);
+110-
+111-/** \brief Reinitializes the LAN865x with its default register settings and the stored values given by TC6Regs_Init()
+112- *  \note Call this function after a serious error.
+
+=== marvin (coordinator) call ===
+20:#define T1S_NODE_ID         (0u)
+21:#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length; headroom for nodes 1..7 */
+22:#define T1S_PLCA_ENABLE     (true)
+39:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+256:    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+257:                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
+277:                 (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
+338:uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+339:uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
+
+=== fretboard (follower id1) call ===
+270:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+271-                      0u, 0u, false, false, false)) {
+272-        log_str("fretboard: TC6Regs_Init rejected\r\n");
+
+=== guitar (follower id2) call ===
+222:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+223-                      0u, 0u, false, false, false)) {
+224-        log_str("guitar: TC6Regs_Init rejected\r\n");
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:17:57Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:18:04Z)**_
+
+Yes — confirmed PLCA, all three nodes. The `TC6Regs_Init` signature is:
+
+```
+TC6Regs_Init(pInst, pTag, mac, enablePlca, nodeId, nodeCount, burstCount, burstTimer, promiscuous, txCutThrough, rxCutThrough)
+```
+
+and the 4th arg (`enablePlca`) is `true` on every node:
+
+| Node | enablePlca | nodeId | nodeCount | Role |
+|---|---|---|---|---|
+| **marvin** (`t1s_link.c:256`) | `true` (`T1S_PLCA_ENABLE`) | **0** | 8 | PLCA **coordinator** (sends the beacon) |
+| **fretboard** (`t1s_detector.c:270`) | `true` | 1 | 8 | follower |
+| **guitar** (`t1s_follower.c:222`) | `true` | 2 | 8 | follower |
+
+So it's PLCA multidrop with marvin as the coordinator (id 0) beaconing an 8-slot cycle, and the followers transmitting in their assigned slots — **not** plain CSMA/CD. The `nodeCount = 8` (PLCA cycle length) matches across all three, which is required.
+
+Runtime evidence backs the config:
+- the boot banners read `PLCA follower id=1/8` (fretboard) and `id=2/8` (guitar);
+- the `plca` CLI command reads the MAC-PHY **PLCA STATUS** register (bit 15 = `plca_status`), and `t1s` reports the `synced` flag from `TC6_GetState` — both meaningful only in PLCA mode;
+- the detector heartbeat is arriving at marvin, which means the follower is getting transmit opportunities in the PLCA cycle.
+
+One detail for later scaling: `burstCount`/`burstTimer` are `0` (no PLCA bursting — one frame per node per cycle). If the fretboard's 240 Hz data + command + heartbeat ever saturate its single slot per cycle, bursting (or a larger `maxBurstCount`) is the knob — but at these frame sizes there's plenty of headroom, so it's not a concern now.
+
+---
+
+_**User (2026-06-18 03:20:15Z)**_
+
+based on our t1s network setup, what worst case latency we should expect in actuator command from fretboard (detector) to guitar (actuator).
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-18 03:22:52Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:23:07Z)**_
+
+Good question to pin down before relying on it for timing. Based on the actual config — **SERCOM0 SPI at ~1 MHz both ends** (BAUD=11 → 24 MHz/(2·12)), **240 Hz tick**, **PLCA nodeCount=8 with 3 active nodes**, **command is edge-triggered** (sent on change, not waiting for the 50 ms refresh) — here's the budget for *fretboard model decides a new chord → guitar GPIO actually driven*:
+
+| Stage | Worst case | Note |
+|---|---|---|
+| Command-ready quantization | **~4.2 ms** | The ISR gates the model output into `s_current_cmd` once per 240 Hz tick, and the main loop sends that. Pure firmware. |
+| Fretboard flush → SPI TX to MAC-PHY | ~0.5–1.1 ms | 1 TC6 chunk = 68 B @ 1 MHz ≈ **0.55 ms**; +0.55 ms if a 240 Hz data frame is ahead of it in the TX queue (no PLCA bursting, `burstCount=0`). |
+| PLCA media access | ~0.2–0.5 ms | Wait for the fretboard's transmit opportunity (8-slot cycle, 3 used + 5 empty TOs ≈ ~0.2 ms/cycle); +1 cycle if the command queues behind the data frame. |
+| Wire (10 Mbps) | ~0.06 ms | 60-byte min frame. Negligible. |
+| Guitar IRQ → SPI RX → apply | ~0.6 ms | 1 chunk read @ 1 MHz ≈ 0.55 ms; GPIO assert is instant. |
+| **End-to-end** | **~6–7 ms worst case** | **~2–3 ms typical** |
+
+## The headline
+- **PLCA itself is *not* the bottleneck** — media access is sub-millisecond for this 3-node/8-slot bus. The wire is 10 Mbps with tiny frames.
+- The two dominant terms are both off-wire: the **240 Hz tick quantization (~4.2 ms)** and the **1 MHz host↔MAC-PHY SPI (~0.55 ms per chunk, each end)**.
+
+## Knobs, biggest-first
+1. **Send the command straight from the main loop** instead of routing it through the ISR-gated `s_current_cmd`. That removes most of the ~4.2 ms tick term — the command would go as soon as inference produces it. (Keep the data frame's `applied_mask` consistent by stamping it from the same value.)
+2. **Raise the SPI clock.** 1 MHz was the conservative bring-up value; the SERCOM master tops out at GCLK/2 ≈ 12 MHz, and the LAN8651 is fine to 25 MHz. Going to ~12 MHz cuts each chunk from ~0.55 ms to ~45 µs — removes ~1 ms and also drops the steady-state SPI load (240 Hz data TX alone is ~13% of a 1 MHz link).
+3. PLCA is already cheap; shrinking `nodeCount` to the real count would trim the cycle slightly but isn't worth it.
+
+With both #1 and #2, worst case drops to roughly **~1–2 ms**, dominated by the two SPI chunk transfers + one PLCA cycle.
+
+Two caveats: this is an analytical estimate (the PLCA TO-timer value is the OPEN-Alliance default; I didn't read it off the part), and it's **transport only** — it excludes the model's own receptive-field lag (sensor → inferred command), which is a separate, larger term in the edge-ai design. Easiest way to validate: toggle a scope GPIO at the fretboard when `SetCommand` fires and at the guitar in `buttons_apply_mask`, and measure the gap directly.
+
+Want me to do change #1 (main-loop command send) — it's small, removes the largest term, and tightens the data-frame/command consistency at the same time?
+
+---
+
+_**User (2026-06-18 03:31:34Z)**_
+
+I think we should maybe leave 1 alone on this specific application? If the model was trained based on this periodic 4.2mS actuation tick?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-18 03:32:53Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:33:06Z)**_
+
+Agreed — leave #1 alone. Your instinct is sound, and it's the more important consideration than the millisecond saving.
+
+The reasoning holds: the model produces one bitmask per 240 Hz sample, and the firmware actuates it on the regular tick grid. If the model was characterized/tuned with that inference→tick→actuate pipeline, then the ~4.2 ms cadence isn't an *error* to remove — it's part of the system the model's timing was fit against. The photo-dip→strum delay is baked into the distillation labels, so the model learned to emit its command at a sample index that lands correctly *given* this output cadence. Switching to immediate main-loop send would (a) shift every actuation earlier by up to a tick and (b) replace the deterministic 240 Hz grid with main-loop jitter (timing now depends on when inference finishes + queue state). For a model trained on 240 Hz-sampled data, **consistent, grid-aligned latency beats lower-but-variable latency.** So keep the tick.
+
+One nuance worth flagging, because it cuts the other way and you may not have fully clocked it: **the T1S move itself already changed the timing vs. how the standalone model ran.** In the old `MODEL_DRIVEN` mode the inferred mask drove *local* GPIO with ~0 transport delay. Now it drives the guitar *over T1S*, adding ~1.5–2 ms of transport on top of the tick. So the deployed actuation is now slightly **later** than whatever the standalone model was validated against — and that transport delta, not the tick, is the real new variable.
+
+Implications:
+- Keep #1 as-is (preserve the tick cadence the model expects).
+- That actually makes **#2 (faster SPI) the model-friendly knob** if anything: raising the SPI clock shrinks the *newly-added* transport delay, nudging end-to-end timing back toward the zero-transport standalone the model was tuned under. It changes the model's world *less*, not more.
+- Either way, since the T1S path adds delay the standalone didn't have, it's worth **re-validating gameplay timing on the actual T1S rig** (scope the fretboard `SetCommand`→guitar apply gap, and check hit rate on a known chart). If it drifts, the fix is either faster SPI or a small constant timing offset in training labels — not changing the tick.
+
+Want me to record this as a decision in the fretboard/edge-ai journal? Something like: *"Command path keeps the 240 Hz tick cadence deliberately — model timing was characterized against it; the T1S transport delay (~1.5–2 ms) is the new delta vs. the old local-GPIO standalone, to be addressed via SPI clock / label offset, not by decoupling the command from the tick."* That keeps the rationale from getting lost next time someone eyes that ~4 ms.
+
+---
+
+_**User (2026-06-18 03:35:27Z)**_
+
+yes record this knowledge. I will probably up SPI to 12MHz on both guitar and fretboard.
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-18 03:35:53Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:35:54Z)**_
+
+Recording it. This is a real design decision plus the SPI plan — I'll put the primary entry in the fretboard journal and cross-link the edge-ai, guitar, and T1S-link docs.
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:06Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:12Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:13Z)**_
+
+Now a cross-reference in the edge-ai journal (the model's home — timing fidelity is an edge-ai concern):
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:14Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== edge-ai journal: top + structure ==="
+sed -n '1,40p' tools/edge-ai/docs/journal.md
+```
+
+```text
+=== edge-ai journal: top + structure ===
+# edge-ai — Working Journal
+
+Running log of planning, decisions, open questions, and work-in-progress for the edge-ai distillation effort. Newest entries at the top. For *what edge-ai is* (purpose, the distillation shape, phased rollout), read [`SPEC.md`](SPEC.md) and the doc map there — this journal does not duplicate it.
+
+---
+
+## Current focus
+
+**Phase 3 done — the model plays hard mode standalone on the fretboard MCU. Read this first to resume cold.**
+
+End-to-end works: a 16-channel int8 StrumNet, distilled from marvin's hard-mode play across 5 songs, runs standalone on the PIC32CM (no marvin), reads its own photosensors, and drives the controller — playing hard reasonably well on the bench. Deploy model: `--channels 16 --no-holdout --strum-weight 5`, quantised at strum thresh 0.80. Inference in the main loop (not the ISR), 240 Hz sampling, SW0/LED enable toggle.
+
+Difficulty target was **hard** first (all 5 frets, slower scroll). **Open next-steps under discussion** (2026-06-04): residual-lag lead-comp, per-difficulty models, and a **2-sensor-per-fret hardware** revision (see open questions). Known caveats: slight overstrum remains (threshold-tunable); play quality not yet scored against a baseline (rollout Phase 5).
+
+### Done & committed
+- **Data-sync, schema v4** (`3a6ea3d`): fretboard frame carries `sample_seq` + `applied_mask`; sensor↔label paired atomically on-device (killed the cross-stream skew). `actuator-fb` / `detector-fb` exporter modes; edge-ai loader windows within contiguous `fb_seq` runs. Host + firmware reflashed and working on the bench.
+- **Standardisation** (`e328b05`) fixed underfitting (raw /4095 starved gradients).
+- **Legato fret ceiling fixed end-to-end (2026-06-04).** line-263 released-style commands (`687bb37`) reflashed + confirmed clean play on hardware; old corpus deleted, 5-song hard corpus re-captured (`actuator-fb`). **Overfit A/B verdict — labels are clean AND RF was the limiter:** RF85 `(1,4,16)` overfits slowride-hard to **frets 0.97–0.99 / strum recall 0.97 / p95 16.7 ms** (50k MACs, under budget), vs RF21 `(1,4)` capped at **~0.86** (loss plateau 0.31, can't see back to the photo cue). The old legato data capped at 0.94 even at 1.3M MACs — that ceiling is gone. `(1,4,16)` made the default; `--dilations` flag added.
+- **Strum tooling** (`02d1bb2`): monostable one-shot + pulse-shape stats + `--strum-thresh`. Onset timing solved (p95 ~17 ms), pulses clean (glitches→0). Recall/precision is a knob (bias to recall).
+- **Model documented** (`0cecc68`): [`model.md`](model.md). Key finding: **receptive field = 21 samples < the ~48-sample photo→strum lag** — masked so far (window-widening did nothing; detfb frets sat at the cue), *will bite* `actuator-fb`. Deploy MACs are tiny (last-timestep only), so we're not budget-bound.
+- **Held-out generalisation passes (2026-06-04).** RF85 default, train on 4 (hitme/rockroll/story/talkdirty), hold out slowride-hard, knobs `--strum-thresh 0.55 --strum-weight 8 --strum-hold 8 --strum-refractory 4`. Final: frets **G .957 / R .890 / Y .963 / B .965 / O .990**, strum **recall .965 / precision .793 (mono) / p95 20.8 / p50 4.2 ms**, mono glitches+too_short → 0. Strum recall generalises to ~the overfit ceiling (.965 vs .97). **Red is the one laggard (.890)** — not a corpus-coverage gap (slowride red density 26 % is mid-pack); flagged as open follow-up. Old pre-fix baseline for contrast: held-out frets 80–94 %, strum recall ~30 %.
+- **Phase 3 int8 quantiser + standalone fretboard inference built (2026-06-04, not yet on hardware).** `edge_ai/quantize.py` + `edge-ai quantize` CLI: per-tensor symmetric int8 weights, int32 accumulators, int64 fixed-point requant; standardisation folded into an integer input affine; output thresholding folded into an integer compare on the head accumulator (no sigmoid on device). **PTQ is essentially lossless** — on slowride-hard, frets within ±0.001 of float, strum recall .967→.971, p95/p50 unchanged; **no QAT needed.** Firmware: `model_infer.c/.h` (60×5 ring, last-timestep-only conv ~5k MACs to fit the 4.17 ms tick, streaming strum monostable), `cmd_receive_apply_mask()` exposed, `main.c` build-time `FRETBOARD_MODE` (default `MODEL_DRIVEN`) gating the TC0 callback, telemetry reuses `applied_mask`. **Bit-exact host↔device verified:** `tests/test_bitexact.py` compiles `model_infer.c` and matches `int8_sim`; and the real rf85 model matches over all 59 534 slowride rows (0 mismatches).
+- **Runtime weight-swap (per-difficulty) supported.** Per-model int8 params are bundled in a `model_def_t`; the emitter writes one named `model_<name>` (prefixed symbols, `--name`), arch dims are shared `#define`s with a `_Static_assert` (mismatched-arch model = build error), and `MODEL_DEFAULT` = first included. `model_infer_set_model(&model_<name>)` swaps at runtime (recomputes the need-set, keeps the ring so no re-warm). Multiple models link via an aggregator `model_weights.h` that `#include`s the per-difficulty headers. Smoke-tested: `model_hard` + `model_expert` coexist, init→hard, swap→expert, bit-exact preserved. Selection signal in standalone mode (button/serial/scroll-speed sensor) is still open (see open questions).
+
+### NEXT — do in order
+1. ✓ **Reflash marvin** with line-263 (`687bb37`) — done 2026-06-04, plays hard cleanly.
+2. ✓ **Re-capture corpus** — 5 hard songs (hitme/rockroll/slowride/story/talkdirty), exported `--labels=actuator-fb`. Press counts dozens–hundreds per fret (clean per-note structure); strum 7–13 % / 397–928 events.
+3. ✓ **Overfit A/B the receptive field** — `(1,4,16)` [RF 85] wins decisively over `(1,4)` [RF 21]; made the default. `--dilations` CLI flag added (`edge_ai/cli.py`). Strum knobs used: `--strum-thresh 0.55 --strum-weight 8 --strum-hold 8 --strum-refractory 4`.
+4. ✓ **Held-out generalisation** — passes (see Done above). Held out slowride; strum recall .965, frets ≥.96 except red .890.
+5. ✓ **Phase 3 quantisation + standalone deploy — running on hardware (2026-06-04).** int8 PTQ + runtime-swap + SW0/LED toggle; inference decoupled from the ISR (240/240 Hz). Plays slowride-hard roughly with the rf85 placeholder weights. See the on-hardware session entry below.
+6. **NEXT — close the play-quality gap.** (a) Train the **full-corpus** deploy model (replace the overfit rf85 placeholder) — likely the biggest single win, esp. for overstrum/strum generalisation; needs a "train on all songs, no holdout" path (not yet added). (b) **Overstrum** is the current limiter — tune strum threshold/refractory (header-only via `edge-ai quantize`, no retrain; deployed at 0.70/6). (c) If still timing-late after the full-corpus model, reconnect marvin, capture, measure the residual lag vs the detector, and **lead-compensate** (`--label-lead k`, not yet built). Red (.890) still a known caveat.
+
+### Deferred / shelved
+- **Lazy fretboard actuator + `commanded_mask`** (schema v5, frame 17→18 B) — for Expert (avoid release/repress thrash); label then comes from the commanded byte, not the lazy-held state. See decision-log + open questions.
+- Fret-line scroll-speed sensor (6th channel) for multi-difficulty.
+- Pending tiny code TODOs: ~~add `--dilations` flag~~ (done); ~~fix `(1,4)`→`(1,4,16)` default~~ (done); `count_macs` could also print deploy cost (last-timestep-only) vs the per-window figure it prints now.
+
+> Phase 1 (data pipeline) complete; primary path is PyTorch (MPLAB ML is a later demo track).
+
+---
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:23Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:23Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -nE "^## (Decision|Decisions|Open questions|Session)" tools/edge-ai/docs/journal.md | head
+```
+
+```text
+42:## Decision log
+61:## Open questions
+94:## Session log
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+sed -n '42,48p' tools/edge-ai/docs/journal.md
+```
+
+```text
+## Decision log
+
+| Date | Decision | Rationale |
+|------|----------|-----------|
+| 2026-06-04 | **Deploy model = 16 channels (not the 8ch training default), trained on the full 5-song corpus (`--no-holdout`), `--strum-weight 5`, 50 epochs; quantised at strum thresh 0.80 / refractory 8.** | 8ch is capacity-limited on the sparse strum class (proven: 8ch overfit strum recall ~.86 vs 64ch ~.99; on hardware the 8ch full-corpus model overstrummed and no threshold fixed it — 0.85 missed real strums *and* still overstrummed, i.e. the precision/recall curve itself was the wall). 16ch lifts the curve (mono .856/.969 → .942/.981) so a threshold lands both. Affordable because inference now runs in the main loop, not the ISR — ~12.5k MACs / ~2–3 ms, 240 Hz sampling unaffected, RAM ~4 KB of 8 KB. `--strum-weight 5` (< the ~8–10 auto) trims the recall bias at the source. Threshold stays a header-only knob (0.80↔0.85 the live range). |
+| 2026-06-04 | **Corpus + firmware timing pinned at `TP_STRUM_DELAY_MS=300` / `TP_STRUM_PULSE_MS=40` (marvin `8e5d18`, tuned for hard).** The 5-song hard corpus was captured at these values; the model is only valid for the timing it was distilled from — do **not** mix captures from other timing regimes (e.g. the old 220/25) into one corpus. If timing changes again, re-capture the whole corpus. | The deployed model *is* the timing function (photo→fret+strum), so the strum onset it learns is set by `TP_STRUM_DELAY_MS` and the pulse width by `TP_STRUM_PULSE_MS`. Mixing regimes would teach two different photo→strum lags for identical inputs — the same ill-posed averaging as mixing difficulties. No model/architecture change needed for the 220→300/25→40 bump: the RF85 overfit A/B was *itself* run on this 300/40 corpus and fit it (frets 0.99, strum recall 0.97, p95 16.7 ms), which empirically proves RF85 covers this timing's lag; the monostable also normalises the output pulse to `--strum-hold`, so the wider 40 ms label pulse doesn't force a knob change. |
+| 2026-06-04 | **Default model RF widened to `(1,4,16)` (RF 85) from `(1,4)` (RF 21).** Added a `--dilations` CLI flag; saved in the checkpoint and read back at eval (fallback `(1,4)` for pre-flag checkpoints). | Overfit A/B on clean line-263 `actuator-fb` data (slowride-hard, train==eval): RF21 caps at frets ~0.86 / loss plateau 0.31 — it can't see back to the photo cue ~48 samples before the strike line, so it can't hold the fret. RF85 (50k MACs, under the ~100k budget) recovers to frets 0.97–0.99 / strum recall 0.97 / p95 16.7 ms. Exactly the masked-by-detfb limitation model.md predicted would bite `actuator-fb`. Frets are the headline; widening RF costs ~19k MACs and is well affordable. |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:35Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:44Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:49Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:36:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./tools/edge-ai/docs/journal.md`
+
+```text
+42	## Decision log
+43	
+44	| Date | Decision | Rationale |
+45	|------|----------|-----------|
+46	| 2026-06-04 | **Deploy model = 16 channels (not the 8ch training default), trained on the full 5-song corpus (`--no-holdout`), `--strum-weight 5`, 50 epochs; quantised at strum thresh 0.80 / refractory 8.** | 8ch is capacity-limited on the sparse strum class (proven: 8ch overfit strum recall ~.86 vs 64ch ~.99; on hardware the 8ch full-corpus model overstrummed and no threshold fixed it — 0.85 missed real strums *and* still overstrummed, i.e. the precision/recall curve itself was the wall). 16ch lifts the curve (mono .856/.969 → .942/.981) so a threshold lands both. Affordable because inference now runs in the main loop, not the ISR — ~12.5k MACs / ~2–3 ms, 240 Hz sampling unaffected, RAM ~4 KB of 8 KB. `--strum-weight 5` (< the ~8–10 auto) trims the recall bias at the source. Threshold stays a header-only knob (0.80↔0.85 the live range). |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:37:02Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/edge-ai/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:37:14Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:37:15Z)**_
+
+Now the T1S link doc — the natural home for the SPI-clock + latency engineering detail. Let me find the SPI-clock note:
+
+_**Agent (claude-opus-4-8 2026-06-18 03:37:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -nE "SPI clock|GCLK/2|12 MHz|15 MHz|1 MHz|BAUD|latency|Bandwidth" docs/t1s-podl-link.md
+```
+
+```text
+46:  just an incidental benefit. Bandwidth is *not* a motivation — the existing
+123:SPI clock: SERCOM SPI master maxes at GCLK/2 ≈ **12 MHz** on the 24 MHz part
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:37:20Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+118	| SRAM | ~1–2 KB | A couple of chunk buffers + one TX/RX frame buffer. |
+119	| SERCOM | 1 (SPI master) | A free SERCOM alongside SERCOM1 (still UART for now). |
+120	| GPIO | 2–3 | `CS_N`, `IRQ_N` (ext-int), reset. |
+121	| CPU | negligible | One chunk per 240 Hz tick, interrupt-driven off `IRQ_N`; the TC0 ISR stays lean. |
+122	
+123	SPI clock: SERCOM SPI master maxes at GCLK/2 ≈ **12 MHz** on the 24 MHz part
+124	(not the chip's 25 MHz ceiling) — irrelevant for this data rate.
+125	
+126	Everything fits comfortably inside 64 KB / 8 KB.
+127	
+128	## 5. marvin side
+129	
+130	marvin runs **FreeRTOS + Harmony (no Linux)**, so it does *not* get a free
+131	netdev — it needs its own TC6 driver. The TC6 service runs as a task woken by
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:37:34Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:00Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:10Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:10Z)**_
+
+Finally, a short note in the guitar journal (the SPI bump is a both-ends change):
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:11Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/docs/journal.md`
+
+```text
+44	## Session log
+45	
+46	### 2026-06-17 — `id`/`plca` over-servicing tripped Loss_of_Framing
+47	
+48	- Running `id` on a *live* link emitted a `Loss_of_Framing_Error` between reads (reads themselves fine — reg 0x01 = `0x0007C1B4`). Cause: `T1SFollower_ReadId`/`ReadPlca` still used the tight `service_pump` loops (2000 + 5000 per reg) added for the dead-link bring-up case; hammering `TC6_Service` while the link is up trips a transient RX framing error (which then self-recovers via `OnEvent` reinit). Fix: the commands now just **enqueue** the reads and let the normal main-loop servicing complete them + log async. Also only decode oui/model for reg `0x01` (meaningless for `0x00`/`0x000A0094`).
+49
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:38Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:38:44Z)**_
+
+Recorded across four docs:
+
+- **fretboard journal** — decision-log entry: keep the command on the 240 Hz tick (model is timing-fit to that grid), and manage the *new* T1S transport delay via SPI speed / label lead-comp, not by decoupling the command. Includes the ~6–7 ms worst-case budget.
+- **edge-ai journal** — decision-log entry mirroring it from the model's side: deployment timing must stay consistent with what the model was characterized under (parallels the existing 300/40 training-timing pin); the T1S move is the real timing change to re-validate.
+- **docs/t1s-podl-link.md** — corrected the SPI-clock note (it's latency-relevant, not "irrelevant") and added a **§4.1 Command latency** table breaking down all the stages, with the 1 MHz→12 MHz effect called out.
+- **guitar journal** — session entry: fretboard now commands the guitar directly over the bus, the planned 12 MHz SPI bump (both ends), and the active-source caveat.
+
+For the SPI bump when you do it: it's the SERCOM0 SPI baud in MCC — **`BAUD=0` gives GCLK/2 ≈ 12 MHz** (currently `BAUD=11` ≈ 1 MHz), on both projects. Watch items I noted in the guitar journal: CS-across-chunk timing and any `Loss_of_Framing`/SPI errors at the higher rate (the 1 MHz was deliberately conservative for the jumper-wire bring-up).
+
+These are doc-only changes — nothing staged/committed. Want me to commit them (e.g. `docs: record T1S command-latency budget + tick-cadence decision`), or fold them into your next commit after the SPI bump?
+
+---
+
+_**User (2026-06-18 03:58:20Z)**_
+
+please commit documentation changes, already staged
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-18 03:58:29Z)**_
+
+The user says the doc changes are already staged. Let me verify what's staged before committing to make sure it's only the documentation changes.
+
+_**Agent (claude-opus-4-8 2026-06-18 03:58:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== STAGED ===" ; git -c color.ui=never diff --cached --stat
+echo ; echo "=== NOT staged / untracked (for awareness) ===" ; git -c color.ui=never status --short | grep -vE "^[MARD] "
+```
+
+```text
+=== STAGED ===
+ docs/t1s-podl-link.md              | 25 ++++++++++++++++++++++++-
+ firmware/fretboard/docs/journal.md |  1 +
+ firmware/guitar/docs/journal.md    |  6 ++++++
+ tools/edge-ai/docs/journal.md      |  1 +
+ 4 files changed, 32 insertions(+), 1 deletion(-)
+
+=== NOT staged / untracked (for awareness) ===
+ M .specstory/history/2026-06-17_20-03-02Z-lets-work-on-getting.md
+ M .specstory/statistics.json
+ M firmware/fretboard/config.mcc/mcc/config_default/components/sercom0.yml
+ M firmware/fretboard/config.mcc/mcc/config_default/mcc-config.mc4
+ M firmware/fretboard/config.mcc/mcc/mcc-manifest-autosave.yml
+ M firmware/fretboard/config.mcc/mcc/mcc-manifest-generated-success.yml
+ M firmware/fretboard/config.mcc/src/config/default/definitions.h
+ M firmware/fretboard/config.mcc/src/config/default/harmony-manifest-success.yml
+ M firmware/fretboard/config.mcc/src/config/default/initialization.c
+ M firmware/fretboard/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c
+ M firmware/guitar/config.mcc/mcc/config_default/components/sercom0.yml
+ M firmware/guitar/config.mcc/mcc/config_default/mcc-config.mc4
+ M firmware/guitar/config.mcc/mcc/mcc-manifest-autosave.yml
+ M firmware/guitar/config.mcc/mcc/mcc-manifest-generated-success.yml
+ M firmware/guitar/config.mcc/src/config/default/harmony-manifest-success.yml
+ M firmware/guitar/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c
+?? firmware/marvin/docs/sam9x75-chybrid/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:58:46Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:58:46Z)**_
+
+Staged set is exactly the four documentation files (the MCC SPI-bump changes you're working on are correctly left unstaged). Committing just those:
+
+_**Agent (claude-opus-4-8 2026-06-18 03:58:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -F - <<'EOF'
+docs: T1S command-latency budget + keep-the-tick-cadence decision
+
+Record the fretboard→guitar actuator-command latency analysis and the
+decision to keep the command on the fretboard's 240 Hz tick cadence
+(the model is timing-fit to that grid) rather than decoupling it for
+lower latency. The new variable is the T1S transport delay vs. the old
+local-GPIO standalone; manage it via host SPI clock (1 MHz -> 12 MHz
+planned, both ends) and/or label lead-comp, and re-validate gameplay
+on the T1S rig.
+
+- docs/t1s-podl-link.md: §4.1 stage-by-stage latency table (~6-7 ms
+  worst case); SPI-clock note corrected (latency-relevant, not "irrelevant").
+- fretboard + edge-ai journals: decision-log entries (deployment timing
+  must match what the model was characterized under).
+- guitar journal: fretboard now commands the guitar directly; planned
+  12 MHz SPI bump + active-source caveat.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "=== result ===" ; git -c color.ui=never log --oneline -1
+```
+
+```text
+[main 1ccdd00] docs: T1S command-latency budget + keep-the-tick-cadence decision
+ 4 files changed, 32 insertions(+), 1 deletion(-)
+=== result ===
+1ccdd00 docs: T1S command-latency budget + keep-the-tick-cadence decision
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:59:08Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:59:09Z)**_
+
+Committed as `1ccdd00` — but I want to flag something: this landed on **`main`**, whereas the earlier firmware/MCC commits this session were on the `t1s` branch. Let me check the branch state so we're not surprised:
+
+_**Agent (claude-opus-4-8 2026-06-18 03:59:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== current branch ===" ; git rev-parse --abbrev-ref HEAD
+echo ; echo "=== recent history (graph, all branches) ===" ; git -c color.ui=never log --oneline --graph --decorate -8
+echo ; echo "=== main vs origin/main ===" ; git -c color.ui=never status -sb | head -1
+```
+
+```text
+=== current branch ===
+main
+
+=== recent history (graph, all branches) ===
+* 1ccdd00 (HEAD -> main) docs: T1S command-latency budget + keep-the-tick-cadence decision
+* a204858 (origin/t1s, origin/main, origin/HEAD, t1s) specstory
+* f423558 fretboard: T1S-only sense+actuate node — live on the bus
+* 6707f35 Clean up MCC configuration to a more standard layout as MCC wasn't properly updating the project configuration
+* ac9109b fretboard: MCC regen for T1S — SERCOM0 SPI + EIC + SysTick, drop button outputs
+* da83fb9 specstory
+* 8ac9667 docs: sync specs/journals to working marvin↔guitar T1S link
+* f3c6d1d guitar: id/plca enqueue-only — stop tripping Loss_of_Framing on a live link
+
+=== main vs origin/main ===
+## main...origin/main [ahead 1]
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 03:59:31Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 03:59:35Z)**_
+
+Checked — it's fine, not a problem. The branches have converged: `t1s`, `main`, `origin/t1s`, and `origin/main` were all sitting at `a204858`, so the `t1s` feature work (incl. `f423558` "live on the bus") is already on `main`. My doc commit `1ccdd00` sits cleanly on top.
+
+State now:
+- **`main` is 1 commit ahead of `origin/main`** (the doc commit), **not pushed**.
+- No divergence between `main` and `t1s` — same linear history.
+- Committed exactly the 4 staged doc files; your unstaged MCC SPI-bump changes (sercom0.yml + plib_sercom0_spi_master.c on both projects — the 12 MHz work) are untouched.
+
+So nothing to undo. If you'd like it on the remote, `git push`. And whenever you finish the SPI bump, that'll be a separate commit (e.g. `fretboard+guitar: SPI 1→12 MHz (BAUD 11→0)`) — want me to handle that once you've regenerated and verified, or are you driving the git side from here?
+
+---
+
+_**User (2026-06-18 04:01:27Z)**_
+
+I forgot to change back to t1s branch, but it's ok as you say. I cleaned up and brought t1s and main back in sync now on t1s branch. MCC changes complete and staged. please commit.
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-18 04:01:36Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 04:01:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== branch ===" ; git rev-parse --abbrev-ref HEAD
+echo ; echo "=== STAGED ===" ; git -c color.ui=never diff --cached --stat
+echo ; echo "=== SPI BAUD values now (confirm 12 MHz = BAUD 0) ===" 
+grep -nE "SPIM_BAUD_VALUE" firmware/fretboard/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c firmware/guitar/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c
+echo ; echo "=== NOT staged / untracked ===" ; git -c color.ui=never status --short | grep -vE "^[MARD] "
+```
+
+```text
+=== branch ===
+t1s
+
+=== STAGED ===
+ .../config.mcc/mcc/config_default/components/sercom0.yml | 16 +++++++++++++++-
+ .../config.mcc/mcc/config_default/mcc-config.mc4         |  6 +++---
+ .../fretboard/config.mcc/mcc/mcc-manifest-autosave.yml   |  2 +-
+ .../config.mcc/mcc/mcc-manifest-generated-success.yml    |  2 +-
+ .../config.mcc/src/config/default/definitions.h          |  2 +-
+ .../src/config/default/harmony-manifest-success.yml      |  2 +-
+ .../config.mcc/src/config/default/initialization.c       |  4 ++--
+ .../sercom/spi_master/plib_sercom0_spi_master.c          |  4 ++--
+ .../config.mcc/mcc/config_default/components/sercom0.yml | 16 +++++++++++++++-
+ .../guitar/config.mcc/mcc/config_default/mcc-config.mc4  |  2 +-
+ firmware/guitar/config.mcc/mcc/mcc-manifest-autosave.yml |  2 +-
+ .../config.mcc/mcc/mcc-manifest-generated-success.yml    |  2 +-
+ .../src/config/default/harmony-manifest-success.yml      |  2 +-
+ .../sercom/spi_master/plib_sercom0_spi_master.c          |  4 ++--
+ 14 files changed, 47 insertions(+), 19 deletions(-)
+
+=== SPI BAUD values now (confirm 12 MHz = BAUD 0) ===
+firmware/fretboard/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c:62:#define SERCOM0_SPIM_BAUD_VALUE         (0UL)
+firmware/fretboard/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c:108:    SERCOM0_REGS->SPI.SERCOM_BAUD = (uint8_t)SERCOM_SPI_BAUD_BAUD(SERCOM0_SPIM_BAUD_VALUE);
+firmware/guitar/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c:62:#define SERCOM0_SPIM_BAUD_VALUE         (0UL)
+firmware/guitar/config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c:108:    SERCOM0_REGS->SPI.SERCOM_BAUD = (uint8_t)SERCOM_SPI_BAUD_BAUD(SERCOM0_SPIM_BAUD_VALUE);
+
+=== NOT staged / untracked ===
+ M .specstory/history/2026-06-17_20-03-02Z-lets-work-on-getting.md
+ M .specstory/statistics.json
+?? firmware/marvin/docs/sam9x75-chybrid/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 04:01:51Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-18 04:01:53Z)**_
+
+On `t1s`, staged set is exactly the MCC regen for the SPI bump on both projects, and `SERCOM0_SPIM_BAUD_VALUE = 0` on both (= GCLK/2 ≈ 12 MHz). Committing:
+
+_**Agent (claude-opus-4-8 2026-06-18 04:01:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -F - <<'EOF'
+fretboard+guitar: LAN8651 SPI 1 MHz -> 12 MHz (SERCOM0 BAUD 11 -> 0)
+
+Raise the host<->MAC-PHY SPI clock on both T1S nodes from the conservative
+~1 MHz bring-up rate to GCLK/2 (~12 MHz). Cuts each TC6 chunk transfer from
+~0.55 ms to ~45 us, removing ~1 ms from the fretboard->guitar command latency
+(see docs/t1s-podl-link.md §4.1). MCC-regen change (SERCOM0 baud value +
+component/manifest churn) on both config.mcc trees.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+echo "=== result ===" ; git -c color.ui=never log --oneline -1 ; git -c color.ui=never status -sb | head -1
+```
+
+```text
+[t1s e28ccd6] fretboard+guitar: LAN8651 SPI 1 MHz -> 12 MHz (SERCOM0 BAUD 11 -> 0)
+ 14 files changed, 47 insertions(+), 19 deletions(-)
+=== result ===
+e28ccd6 fretboard+guitar: LAN8651 SPI 1 MHz -> 12 MHz (SERCOM0 BAUD 11 -> 0)
+## t1s...origin/t1s [ahead 2]
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-18 04:02:09Z)**_
+
+Committed as `e28ccd6` on `t1s`. The SPI bump (BAUD 11→0 ≈ 12 MHz) is in for both nodes.
+
+`t1s` is now **2 ahead of `origin/t1s`** (the docs commit `1ccdd00` + this SPI commit `e28ccd6`), not pushed.
+
+Quick heads-up for when you flash this: 12 MHz is a 12× jump from the bring-up rate, so on first boot confirm the link still comes up clean — `LAN8651 up … id=1/8`, heartbeat present on marvin, and no `Loss_of_Framing`/SPI errors in the CLI (`t1s` error count). If the jumper wiring is marginal at 12 MHz you'd see it as intermittent link/`spi_done` issues; the fallback is an intermediate BAUD (e.g. `BAUD=1` ≈ 6 MHz). The CS-held-across-chunk logic is unchanged, so that part should be fine.
+
+Want me to push `t1s`, or are you keeping it local until you've verified the 12 MHz link on hardware?
