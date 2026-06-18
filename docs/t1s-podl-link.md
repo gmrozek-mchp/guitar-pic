@@ -121,9 +121,32 @@ Estimates; static allocation only (no malloc), per project rule.
 | CPU | negligible | One chunk per 240 Hz tick, interrupt-driven off `IRQ_N`; the TC0 ISR stays lean. |
 
 SPI clock: SERCOM SPI master maxes at GCLK/2 ≈ **12 MHz** on the 24 MHz part
-(not the chip's 25 MHz ceiling) — irrelevant for this data rate.
+(`BAUD=0`; not the chip's 25 MHz ceiling). Irrelevant for *throughput* (the wire
+is 10 Mbps) but it **dominates command latency** — see §4.1. Both nodes brought up
+at `BAUD=11` ≈ 1 MHz (conservative); planned bump to 12 MHz.
 
 Everything fits comfortably inside 64 KB / 8 KB.
+
+### 4.1 Command latency (fretboard → guitar)
+
+End-to-end for the fretboard's inferred command to drive the guitar GPIO, by stage
+(worst case):
+
+| Stage | Worst case | Notes |
+|---|---|---|
+| Command-ready quantization | ~4.2 ms | model output gated to the fretboard's 240 Hz tick — kept deliberately (the model is timing-fit to this grid; see fretboard journal 2026-06-17). |
+| Fretboard SPI TX to MAC-PHY | ~0.5–1.1 ms | 1 TC6 chunk = 68 B; **0.55 ms @ 1 MHz**, ~45 µs @ 12 MHz. +1 chunk if a data frame is queued ahead. |
+| PLCA media access | ~0.2–0.5 ms | wait for the node's transmit opportunity (8-slot cycle, 3 active); +1 cycle if behind the data frame. **Not** the bottleneck. |
+| Wire (10 Mbps) | ~0.06 ms | 60-byte min frame. |
+| Guitar SPI RX + apply | ~0.6 ms | 1 chunk read; **0.55 ms @ 1 MHz**, ~45 µs @ 12 MHz. GPIO assert instant. |
+| **Total** | **~6–7 ms** (≈2–3 ms typical) | |
+
+The two off-wire terms dominate: the 240 Hz tick (firmware, intentionally kept) and
+the **1 MHz host SPI** (~0.55 ms/chunk each end). Raising both nodes' SPI to 12 MHz
+removes ~1 ms; PLCA media access is already sub-ms. The command is edge-triggered
+(sent on change, not waiting for the 50 ms refresh), so a new note isn't delayed by
+the refresh. Analytical estimate — validate by scoping fretboard `SetCommand` →
+guitar GPIO apply.
 
 ## 5. marvin side
 

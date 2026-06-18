@@ -43,6 +43,12 @@ the marvin side.
 
 ## Session log
 
+### 2026-06-17 — fretboard live on the bus; planned SPI bump to 12 MHz (both ends)
+
+- The `fretboard` detector+actuator node is up on T1S (id 1) and **commands the guitar directly** over the bus (peer-to-peer, ethertype `0x88B5`) — the guitar applies it like any `0x88B5` frame (no source filtering). End-to-end command-latency budget ≈ 6–7 ms worst case, dominated by the 240 Hz tick + the **1 MHz host SPI** (`docs/t1s-podl-link.md` §4.1).
+- **Planned:** raise SERCOM0 SPI from `BAUD=11` (≈1 MHz) to `BAUD=0` (GCLK/2 ≈ **12 MHz**) on **both** guitar and fretboard — removes ~1 ms of command latency (each chunk ~0.55 ms → ~45 µs). Watch on the bump: CS-held-across-chunk timing and SPI/`Loss_of_Framing` errors at the higher rate (jumper-wire signal integrity); 1 MHz was the conservative bring-up value.
+- **Caveat (active-source):** marvin can also command the guitar (`02:..:02`); with the fretboard now driving it too, only one source should be armed at a time until marvin's active-detector/active-guitar selector lands.
+
 ### 2026-06-17 — `id`/`plca` over-servicing tripped Loss_of_Framing
 
 - Running `id` on a *live* link emitted a `Loss_of_Framing_Error` between reads (reads themselves fine — reg 0x01 = `0x0007C1B4`). Cause: `T1SFollower_ReadId`/`ReadPlca` still used the tight `service_pump` loops (2000 + 5000 per reg) added for the dead-link bring-up case; hammering `TC6_Service` while the link is up trips a transient RX framing error (which then self-recovers via `OnEvent` reinit). Fix: the commands now just **enqueue** the reads and let the normal main-loop servicing complete them + log async. Also only decode oui/model for reg `0x01` (meaningless for `0x00`/`0x000A0094`).
