@@ -58,8 +58,8 @@
 /* SERCOM0 clk freq value for the baud calculation */
 #define SERCOM0_Frequency      (24000000UL)
 
-/* SERCOM0 SPI baud value for 1000000 Hz baud rate */
-#define SERCOM0_SPIM_BAUD_VALUE         (11UL)
+/* SERCOM0 SPI baud value for 12000000 Hz baud rate */
+#define SERCOM0_SPIM_BAUD_VALUE         (0UL)
 
 /*Global object to save SPI Exchange related data  */
 static volatile SPI_OBJECT sercom0SPIObj;
