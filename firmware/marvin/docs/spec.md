@@ -31,7 +31,7 @@ In short: marvin is the runtime brain *and* the reference-detector data source f
 
 ### 1.3 North-star one-paragraph summary
 
-A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGR888 packed, 3 B/pixel). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over a FLEXCOM2 UART link, schedules chord/strum commands through a low-latency timing pipeline, sends commands back to the fretboard, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
+A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC358743 → MIPI CSI-2 → ISC path into DDR (BGR888 packed, 3 B/pixel). It runs reference-quality CV note detection on those frames, fuses with ADC-based detection ingested from a fretboard MCU over a FLEXCOM1 UART link (or T1S multi-node bus), schedules chord/strum commands through a low-latency timing pipeline, sends commands to the guitar actuator node, drives an operator UI on a 10.1″ LVDS panel, and exports a compressed reference-data stream so that lighter-weight detectors (today: fretboard's phototransistors; future: an Edge AI MCU) can be trained against marvin's ground truth.
 
 ### 1.4 What's done, what's next
 
@@ -42,7 +42,7 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 | FreeRTOS scheduler, video task, OSAL I²C | ✅ landed. |
 | Lightweight log shim, FreeRTOS analytics, task priorities | ✅ done. |
 | CV detection pipeline | 🚧 M1 complete: `cv_marvin_v1` running on captured frames, `detector_state_t` bus active. No actuation path through detector yet. §4.2. |
-| Fretboard link (FLEXCOM2 USART) | ✅ working; gameplay tested over the original USB CDC host link. Link rewired to a direct FLEXCOM2 UART for the Curiosity Hybrid board (no host-capable USB port); pending on-hardware re-validation. §4.3. |
+| Fretboard link (FLEXCOM1 USART or T1S) | ✅ working; UART @ 500 kbaud validated on Curiosity Hybrid. T1S multi-node option validated 2026-06-17 (marvin PLCA coordinator, fretboard node 1, guitar node 2). Build flag selects transport: `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}`. §4.3. |
 | Timing pipeline (chord FIFO, strum) | ✅ working; end-to-end gameplay tested on Expert and Easy. §4.4. |
 | Operator UI (Legato) | 🚧 Manual-control surface (8 buttons, Legato Composer) done; full calibration/log UI not started. §4.5, open Q5. |
 | Reference-data recording & export (SD) | 🚧 SD recording not started. Perf-log USB CDC export (separate dev-tooling path) complete at 2.77 MB/s. §4.6, open Q1/Q2. |
@@ -92,13 +92,13 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
    │      reference-data export                   │ │           │   │
    │       (Ethernet / SD / USB CDC — §4.6)       │ │           │   │
    └──────────────┬────────────────────────────┬──┴─┘           │   │
-                  │ FLEXCOM2 UART              │ FLEXCOM2 UART  │   │
+                  │ FLEXCOM1 UART              │ FLEXCOM1 UART  │   │
                   │ (frets/strum cmds)         │ (ADC stream)   │   │
                   ▼                            │                │   │
    ┌────────────────────────────────────┐      │                │   │
    │      fretboard (PIC32CM6408)       │──────┘                │   │
    │   ADC scan ──► UART stream         │                       │   │
-   │   cmd RX ──► open-drain GPIO       │                       │   │
+   │   cmd RX ──► guitar node via T1S   │                       │   │
    │   (frets PA01–07, strums PA00/03)  │                       │   │
    └─────────────────┬──────────────────┘                       │   │
                      │ open-drain GPIO                          │   │
@@ -172,7 +172,7 @@ The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees
 | **SAM9X75 Curiosity** | marvin host (CPU, DDR, peripherals, panel/touch ports) | — |
 | **Waveshare HDMI → CSI-2 adapter** (TC358743) | HDMI → MIPI CSI-2 bridge | I²C (FLEXCOM8 TWI, PB4/PB5, 400 kHz, addr `0x0F`) for control; 2-lane CSI-2 RX for data; PC15 PWD, PC19 RESET (currently unused — software reset over I²C). |
 | **Microchip 10.1″ 1280×800 LVDS panel + maxtouch** | Operator UI | LVDSC pair from XLCDC; I²C for maxtouch (existing Harmony driver). |
-| **fretboard board** (PIC32CM6408PL10048) | Sensor + actuator MCU | FLEXCOM1 USART (marvin PA28 TX / PA29 RX ↔ fretboard SERCOM1 PB01 RX / PB00 TX, 500 000 Bd 8N1, ring-buffer mode). |
+| **fretboard board** (PIC32CM6408PL10048) | Detector MCU; streams to marvin & commands guitar over T1S | FLEXCOM1 USART (marvin PA28 `GUITAR_TX` / PA29 `GUITAR_RX` ↔ fretboard SERCOM1 PB00 TX / PB01 RX, 500 000 Bd 8N1, ring-buffer mode) or T1S (node id=1). |
 | **Wii guitar controller** | Physical input target | Open-drain GPIO on fretboard, not directly on marvin. |
 | **(optional) dev PC** | Calibration / training-data ingest / replay viewer + operator console | SD card swap (primary), USB CDC for perf-log, and the FLEXCOM2 serial console (115 200 8N1, via an FTDI channel) for interactive control (§4.9). No runtime dependency. |
 
