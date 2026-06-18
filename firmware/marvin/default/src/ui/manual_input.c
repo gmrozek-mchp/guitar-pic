@@ -93,11 +93,15 @@ void event_Screen0_Button_Manual_StrumUp_OnReleased(leButtonWidget* btn)
     ManualControl_SetStrum(false, false);
 }
 
-/* Toggleable button — Composer fires OnReleased after the visual toggle
- * state has flipped. Both ManualControl and the widget default to off,
- * so a simple flip stays in sync. */
+/* Toggleable button */
+void event_Screen0_Button_Manual_Enable_OnPressed(leButtonWidget* btn)
+{
+    (void)btn;
+    ManualControl_SetEnabled(true);
+}
+
 void event_Screen0_Button_Manual_Enable_OnReleased(leButtonWidget* btn)
 {
     (void)btn;
-    ManualControl_SetEnabled(!ManualControl_IsEnabled());
+    ManualControl_SetEnabled(false);
 }

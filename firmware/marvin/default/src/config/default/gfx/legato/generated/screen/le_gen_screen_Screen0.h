@@ -40,6 +40,7 @@ void event_Screen0_Button_Manual_StrumDown_OnPressed(leButtonWidget* btn);
 void event_Screen0_Button_Manual_StrumDown_OnReleased(leButtonWidget* btn);
 void event_Screen0_Button_Manual_StrumUp_OnPressed(leButtonWidget* btn);
 void event_Screen0_Button_Manual_StrumUp_OnReleased(leButtonWidget* btn);
+void event_Screen0_Button_Manual_Enable_OnPressed(leButtonWidget* btn);
 void event_Screen0_Button_Manual_Enable_OnReleased(leButtonWidget* btn);
 
 // screen lifecycle functions
