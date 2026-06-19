@@ -25,7 +25,7 @@
         {
             "name": "default-XC32",
             "type": "toolchain",
-            "provider": "microchip.toolchains:xc32@4.60",
+            "provider": "microchip.toolchains:xc32@5.10",
             "properties": {
                 "compiler.isolate-each-function": true,
                 "compiler.optimization-level": "-O1",
@@ -53,7 +53,8 @@
                     "default/src/packs/SAM9X75D2G_DFP",
                     "default/src/third_party/rtos/FreeRTOS/Source/include",
                     "default/src/third_party/rtos/FreeRTOS/Source/portable/XC32/SAM/ARM926"
-                ]
+                ],
+                "compiler++.exclude-floating-point": true
             }
         }
     ],
