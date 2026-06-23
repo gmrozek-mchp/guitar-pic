@@ -2276,8 +2276,6 @@ leResult screenShow_Marvin(void)
     leAddRootWidget(root1, 1);
     leSetLayerColorMode(1, LE_COLOR_MODE_RGB_565);
 
-    Marvin_OnShow(); // raise event
-
     showing = LE_TRUE;
 
     return LE_SUCCESS;

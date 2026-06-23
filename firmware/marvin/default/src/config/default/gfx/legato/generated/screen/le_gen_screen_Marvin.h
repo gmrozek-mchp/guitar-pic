@@ -301,9 +301,6 @@ void screenUpdate_Marvin(void); // called when Legato is updating
 
 leWidget* screenGetRoot_Marvin(uint32_t lyrIdx); // gets a root widget for this screen
 
-// Screen Events:
-void Marvin_OnShow(void); // called when this screen is shown
-
 //DOM-IGNORE-BEGIN
 #ifdef __cplusplus
 }

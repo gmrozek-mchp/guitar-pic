@@ -41,8 +41,6 @@ leResult screenShow_Screen0(void)
     leAddRootWidget(root0, 0);
     leSetLayerColorMode(0, LE_COLOR_MODE_RGB_565);
 
-    Screen0_OnShow(); // raise event
-
     showing = LE_TRUE;
 
     return LE_SUCCESS;
