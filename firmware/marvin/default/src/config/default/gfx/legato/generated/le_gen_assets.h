@@ -63,42 +63,6 @@ extern const lePalette leGlobalPalette;
  *****************************************************************************/
 /*********************************
  * Legato Image Asset
- * Name:   mchpLogo_small
- * Size:   120x28 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage mchpLogo_small;
-
-/*********************************
- * Legato Image Asset
- * Name:   MHGS_logo_smaller
- * Size:   180x169 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage MHGS_logo_smaller;
-
-/*********************************
- * Legato Image Asset
- * Name:   QuickstartDown_WQVGA
- * Size:   160x74 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage QuickstartDown_WQVGA;
-
-/*********************************
- * Legato Image Asset
- * Name:   QuickstartUp_WQVGA
- * Size:   160x74 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage QuickstartUp_WQVGA;
-
-/*********************************
- * Legato Image Asset
  * Name:   Marvin
  * Size:   1280x800 pixels
  * Type:   RGB Data
@@ -106,51 +70,543 @@ extern leImage QuickstartUp_WQVGA;
  ***********************************/
 extern leImage Marvin;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_4
+ * Size:   16x16 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_4;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_5
+ * Size:   16x16 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_5;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_8
+ * Size:   14x14 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_8;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_9
+ * Size:   14x14 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_9;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_10
+ * Size:   14x14 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_10;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_0
+ * Size:   16x16 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_0;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_1
+ * Size:   16x16 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_1;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_2
+ * Size:   20x20 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_2;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_3
+ * Size:   16x16 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_3;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_6
+ * Size:   20x20 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_6;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_7
+ * Size:   20x20 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_7;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_12
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_12;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_13
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_13;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_14
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_14;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_15
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_15;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_16
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_16;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   figmaImg_Icon_11
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage figmaImg_Icon_11;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   WII_CTRL_LED_DISABLED
+ * Size:   8x8 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage WII_CTRL_LED_DISABLED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   WII_CTRL_LED_ENABLED
+ * Size:   8x8 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage WII_CTRL_LED_ENABLED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   STAND_BY
+ * Size:   718x478 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage STAND_BY;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   VIDEO_LED_NO_SIGNAL
+ * Size:   8x8 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage VIDEO_LED_NO_SIGNAL;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LED_SYSTEM_ACTIVE
+ * Size:   12x12 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage LED_SYSTEM_ACTIVE;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LED_SYSTEM_INACTIVE
+ * Size:   12x12 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage LED_SYSTEM_INACTIVE;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LOGO_MICROCHIP
+ * Size:   361x84 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage LOGO_MICROCHIP;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/
 /*********************************
  * Legato Font Asset
- * Name:         NotoSans_Regular
+ * Name:         NotoSans_Regular_28
  * Height:       21
  * Baseline:     22
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  3
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoSans_Regular_28;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         figmaFont_Menlo_20
+ * Height:       21
+ * Baseline:     15
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  7
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont figmaFont_Menlo_20;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         figmaFont_Menlo_12
+ * Height:       21
+ * Baseline:     10
+ * Style:        Antialias
+ * Glyph Count:  96
+ * Range Count:  15
+ * Glyph Ranges: 0x20-0x7E
+                 0xB0
+***********************************/
+extern leRasterFont figmaFont_Menlo_12;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         figmaFont_Menlo_14
+ * Height:       21
+ * Baseline:     12
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  11
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont figmaFont_Menlo_14;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         figmaFont_Menlo_24
+ * Height:       21
+ * Baseline:     18
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  4
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont figmaFont_Menlo_24;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         figmaFont_Menlo_18
+ * Height:       21
+ * Baseline:     14
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  9
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont figmaFont_Menlo_18;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         figmaFont_Menlo_16
+ * Height:       21
+ * Baseline:     13
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  1
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont figmaFont_Menlo_16;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoSans_Regular_12
+ * Height:       21
+ * Baseline:     10
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  15
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoSans_Regular_12;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoSans_Regular_14
+ * Height:       21
+ * Baseline:     12
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  5
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoSans_Regular_14;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoSans_Regular_16
+ * Height:       21
+ * Baseline:     13
  * Style:        Antialias
  * Glyph Count:  95
  * Range Count:  13
  * Glyph Ranges: 0x20-0x7E
 ***********************************/
-extern leRasterFont NotoSans_Regular;
+extern leRasterFont NotoSans_Regular_16;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoSans_Regular_18
+ * Height:       21
+ * Baseline:     14
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  1
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoSans_Regular_18;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoSans_Regular_20
+ * Height:       21
+ * Baseline:     15
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  9
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoSans_Regular_20;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoSans_Regular_24
+ * Height:       21
+ * Baseline:     18
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  1
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoSans_Regular_24;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         NotoMono_Regular
+ * Height:       37
+ * Baseline:     9
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  1
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont NotoMono_Regular;
 
 /*****************************************************************************
  * Legato String Table
  * Encoding        ASCII
  * Language Count: 1
- * String Count:   7
+ * String Count:   62
  *****************************************************************************/
 
 // language IDs
 #define language_Default    0
 
 // string IDs
-#define stringID_Easy    0
-#define stringID_ENABLED    1
-#define stringID_Fast    2
-#define stringID_STRUM_UP    3
-#define stringID_STRUM_DOWN    4
-#define stringID_DISABLED    5
-#define stringID_Smart    6
+#define stringID_figmaStr_ACCURACY    0
+#define stringID_figmaStr_READY    1
+#define stringID_figmaStr_46_3_C    2
+#define stringID_figmaStr_12_4V    3
+#define stringID_NAV_BUTTON_System_Info    4
+#define stringID_figmaStr_COMBO    5
+#define stringID_figmaStr_3h_24m    6
+#define stringID_figmaStr_29_9_    7
+#define stringID_figmaStr_Connected    8
+#define stringID_NAV_BUTTON_Activity_Logs    9
+#define stringID_figmaStr_UPTIME    10
+#define stringID_GUITAR_PLUS    11
+#define stringID_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER    12
+#define stringID_figmaStr_MANUAL_CONTROLS    13
+#define stringID_figmaStr_135_416    14
+#define stringID_GUITAR_STRUM_UP    15
+#define stringID_GUITAR_MINUS    16
+#define stringID_figmaStr_94_5_    17
+#define stringID_figmaStr_NOTE_TRACKING    18
+#define stringID_figmaStr_73    19
+#define stringID_NAV_BUTTON_Settings    20
+#define stringID_figmaStr_Marvin_v2_1_4    21
+#define stringID_figmaStr_Best__89    22
+#define stringID_figmaStr_Robot_Controller_v2_1_4    23
+#define stringID_NAV_BUTTON_Dashboard    24
+#define stringID_figmaStr_LATENCY    25
+#define stringID_figmaStr_PERFORMANCE    26
+#define stringID_figmaStr_START    27
+#define stringID_figmaStr_Calibration    28
+#define stringID_figmaStr_CONFIGURATION    29
+#define stringID_figmaStr_62_3_    30
+#define stringID_figmaStr_EMERGENCY_STOP    31
+#define stringID_figmaStr_MISS    32
+#define stringID_figmaStr_CALIBRATE    33
+#define stringID_figmaStr_ROBOT_CONTROL    34
+#define stringID_figmaStr_SENSITIVITY    35
+#define stringID_figmaStr_OPERATIONAL    36
+#define stringID_figmaStr_Motor_Status    37
+#define stringID_GUITAR_DISABLED    38
+#define stringID_figmaStr_Servo_Power    39
+#define stringID_figmaStr_CPU    40
+#define stringID_figmaStr_DEBUG_MODE    41
+#define stringID_figmaStr_TEMP    42
+#define stringID_figmaStr_AUTO_RECOVERY    43
+#define stringID_figmaStr_AUTO_CALIBRATE    44
+#define stringID_figmaStr_75_    45
+#define stringID_figmaStr_1247    46
+#define stringID_NAV_BUTTON_Performance    47
+#define stringID_NAV_BUTTON_Diagnostics    48
+#define stringID_GUITAR_STRUM_DOWN    49
+#define stringID_figmaStr_NO_SIGNAL    50
+#define stringID_figmaStr_SYSTEM_STATUS    51
+#define stringID_figmaStr_MEMORY    52
+#define stringID_figmaStr_45ms    53
+#define stringID_figmaStr_HIT    54
+#define stringID_figmaStr_142x    55
+#define stringID_figmaStr_RESPONSE_DELAY    56
+#define stringID_figmaStr_SCORE    57
+#define stringID_figmaStr_12ms    58
+#define stringID_figmaStr_NAVIGATION    59
+#define stringID_figmaStr_1247_1320    60
+#define stringID_figmaStr_STATUS    61
 
 extern const leStringTable stringTable;
 
 
 // string list
-extern leTableString string_Easy;
-extern leTableString string_ENABLED;
-extern leTableString string_Fast;
-extern leTableString string_STRUM_UP;
-extern leTableString string_STRUM_DOWN;
-extern leTableString string_DISABLED;
-extern leTableString string_Smart;
+extern leTableString string_figmaStr_ACCURACY;
+extern leTableString string_figmaStr_READY;
+extern leTableString string_figmaStr_46_3_C;
+extern leTableString string_figmaStr_12_4V;
+extern leTableString string_NAV_BUTTON_System_Info;
+extern leTableString string_figmaStr_COMBO;
+extern leTableString string_figmaStr_3h_24m;
+extern leTableString string_figmaStr_29_9_;
+extern leTableString string_figmaStr_Connected;
+extern leTableString string_NAV_BUTTON_Activity_Logs;
+extern leTableString string_figmaStr_UPTIME;
+extern leTableString string_GUITAR_PLUS;
+extern leTableString string_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER;
+extern leTableString string_figmaStr_MANUAL_CONTROLS;
+extern leTableString string_figmaStr_135_416;
+extern leTableString string_GUITAR_STRUM_UP;
+extern leTableString string_GUITAR_MINUS;
+extern leTableString string_figmaStr_94_5_;
+extern leTableString string_figmaStr_NOTE_TRACKING;
+extern leTableString string_figmaStr_73;
+extern leTableString string_NAV_BUTTON_Settings;
+extern leTableString string_figmaStr_Marvin_v2_1_4;
+extern leTableString string_figmaStr_Best__89;
+extern leTableString string_figmaStr_Robot_Controller_v2_1_4;
+extern leTableString string_NAV_BUTTON_Dashboard;
+extern leTableString string_figmaStr_LATENCY;
+extern leTableString string_figmaStr_PERFORMANCE;
+extern leTableString string_figmaStr_START;
+extern leTableString string_figmaStr_Calibration;
+extern leTableString string_figmaStr_CONFIGURATION;
+extern leTableString string_figmaStr_62_3_;
+extern leTableString string_figmaStr_EMERGENCY_STOP;
+extern leTableString string_figmaStr_MISS;
+extern leTableString string_figmaStr_CALIBRATE;
+extern leTableString string_figmaStr_ROBOT_CONTROL;
+extern leTableString string_figmaStr_SENSITIVITY;
+extern leTableString string_figmaStr_OPERATIONAL;
+extern leTableString string_figmaStr_Motor_Status;
+extern leTableString string_GUITAR_DISABLED;
+extern leTableString string_figmaStr_Servo_Power;
+extern leTableString string_figmaStr_CPU;
+extern leTableString string_figmaStr_DEBUG_MODE;
+extern leTableString string_figmaStr_TEMP;
+extern leTableString string_figmaStr_AUTO_RECOVERY;
+extern leTableString string_figmaStr_AUTO_CALIBRATE;
+extern leTableString string_figmaStr_75_;
+extern leTableString string_figmaStr_1247;
+extern leTableString string_NAV_BUTTON_Performance;
+extern leTableString string_NAV_BUTTON_Diagnostics;
+extern leTableString string_GUITAR_STRUM_DOWN;
+extern leTableString string_figmaStr_NO_SIGNAL;
+extern leTableString string_figmaStr_SYSTEM_STATUS;
+extern leTableString string_figmaStr_MEMORY;
+extern leTableString string_figmaStr_45ms;
+extern leTableString string_figmaStr_HIT;
+extern leTableString string_figmaStr_142x;
+extern leTableString string_figmaStr_RESPONSE_DELAY;
+extern leTableString string_figmaStr_SCORE;
+extern leTableString string_figmaStr_12ms;
+extern leTableString string_figmaStr_NAVIGATION;
+extern leTableString string_figmaStr_1247_1320;
+extern leTableString string_figmaStr_STATUS;
 
 void initializeStrings(void);
 //DOM-IGNORE-BEGIN

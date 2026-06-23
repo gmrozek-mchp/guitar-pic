@@ -107,10 +107,10 @@ extern "C" {
 #define LE_GROUPBOX_WIDGET_ENABLED         0
 #define LE_IMAGE_WIDGET_ENABLED            1
 #define LE_IMAGEROTATE_WIDGET_ENABLED      0
-#define LE_IMAGESCALE_WIDGET_ENABLED       0
+#define LE_IMAGESCALE_WIDGET_ENABLED       1
 #define LE_IMAGESEQUENCE_WIDGET_ENABLED    0
 #define LE_KEYPAD_WIDGET_ENABLED           0
-#define LE_LABEL_WIDGET_ENABLED            0
+#define LE_LABEL_WIDGET_ENABLED            1
 #define LE_LINE_WIDGET_ENABLED             0
 #define LE_LINEGRAPH_WIDGET_ENABLED        0
 #define LE_LIST_WIDGET_ENABLED             0
@@ -153,7 +153,7 @@ extern "C" {
 // renderer configuration
 //#define LE_VSYNC_STALL
 
-#define LE_LAYER_COUNT                     1
+#define LE_LAYER_COUNT                     2
 
 #define LE_WIDGET_MAX_EVENT_FILTERS        2
 

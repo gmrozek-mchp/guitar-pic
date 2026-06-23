@@ -10,11 +10,12 @@ void legato_initializeScreenState(void)
     initializeStrings();
 
     screenInit_Screen0();
+    screenInit_Marvin();
 
     currentScreen = -1;
     changingToScreen = -1;
 
-    legato_showScreen(screenID_Screen0);
+    legato_showScreen(screenID_Marvin);
 }
 
 uint32_t legato_getCurrentScreen(void)
@@ -29,6 +30,12 @@ static void legato_hideCurrentScreen(void)
         case screenID_Screen0:
         {
             screenHide_Screen0();
+            currentScreen = 0;
+            break;
+        }
+        case screenID_Marvin:
+        {
+            screenHide_Marvin();
             currentScreen = 0;
             break;
         }
@@ -61,6 +68,11 @@ void legato_updateScreenState(void)
                 screenShow_Screen0();
                 break;
             }
+            case screenID_Marvin:
+            {
+                screenShow_Marvin();
+                break;
+            }
         }
 
         currentScreen = changingToScreen;
@@ -72,6 +84,11 @@ void legato_updateScreenState(void)
         case screenID_Screen0:
         {
             screenUpdate_Screen0();
+            break;
+        }
+        case screenID_Marvin:
+        {
+            screenUpdate_Marvin();
             break;
         }
     }

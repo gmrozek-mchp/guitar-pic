@@ -608,7 +608,8 @@
                 "default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom8_twi_master.c",
                 "default/src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.c",
                 "default/src/config/default/peripheral/flexcom/usart/plib_flexcom1_usart.c",
-                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom4_spi_master.c"
+                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom4_spi_master.c",
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c"
             ]
         }
     ]
