@@ -1,0 +1,73 @@
+configVersion: 1.0.0
+componentName: vision_csi
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: vision_csi
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: vision
+  type: package
+  version: v3.2.2
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments:
+    children:
+    - children:
+      - attributes:
+          id: vision_driver_csi
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: vision_csi2dc
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: vision_driver_csi
+            type: String
+          type: Attributes
+        type: DirectCapability
+      type: Attachments
+    type: vision_csi
+  elementPosition:
+    attributes:
+      id: Group2
+    children:
+    - children:
+      - attributes:
+          id: vision_csi
+          x: '482'
+          y: '478'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    CSIDataFormatType:
+      attributes:
+        id: CSIDataFormatType
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: KeyValueSet
+    CSIPlibDataFormatType:
+      attributes:
+        id: CSIPlibDataFormatType
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: KeyValueSet
+  userData: {}

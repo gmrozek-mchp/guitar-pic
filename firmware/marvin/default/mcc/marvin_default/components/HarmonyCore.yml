@@ -1117,4 +1117,37 @@ data:
           type: Dynamic
         type: Values
       type: Combo
+    ENABLE_SYS_MEDIA:
+      attributes:
+        id: ENABLE_SYS_MEDIA
+        label: Generate Harmony System Media Files
+      children:
+      - children:
+        - attributes:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            id: HarmonyCore
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    SYSTEM_MEDIA:
+      attributes:
+        id: SYSTEM_MEDIA
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
   userData: {}

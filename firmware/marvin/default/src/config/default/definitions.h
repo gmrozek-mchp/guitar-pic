@@ -49,16 +49,16 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <stdio.h>
-#include "peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h"
 #include "peripheral/pit/plib_pit.h"
+#include "peripheral/flexcom/twi/master/plib_flexcom8_twi_master.h"
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_device.h"
 #include "peripheral/flexcom/spi/master/plib_flexcom4_spi_master.h"
 #include "peripheral/tc/plib_tc0.h"
 #include "peripheral/flexcom/usart/plib_flexcom1_usart.h"
 #include "peripheral/flexcom/usart/plib_flexcom2_usart.h"
-#include "driver/i2c/drv_i2c.h"
 #include "system/time/sys_time.h"
+#include "driver/i2c/drv_i2c.h"
 #include "usb/usb_device_cdc.h"
 #include "usb/usb_cdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
@@ -70,6 +70,7 @@
 #include "osal/osal.h"
 #include "system/debug/sys_debug.h"
 #include "driver/usb/udphs/drv_usb_udphs.h"
+#include "driver/sdmmc/drv_sdmmc.h"
 #include "gfx/legato/generated/le_gen_harmony.h"
 #include "peripheral/mmu/plib_mmu.h"
 #include "peripheral/clk/plib_clk.h"
@@ -77,8 +78,15 @@
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
 #include "system/input/sys_input.h"
-#include "peripheral/dbgu/plib_dbgu.h"
+#include "system/fs/sys_fs.h"
+#include "system/fs/sys_fs_media_manager.h"
+#include "system/fs/sys_fs_fat_interface.h"
+#include "system/fs/fat_fs/file_system/ff.h"
+#include "system/fs/fat_fs/file_system/ffconf.h"
+#include "system/fs/fat_fs/hardware_access/diskio.h"
+#include "peripheral/sdmmc/plib_sdmmc0.h"
 #include "gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h"
+#include "peripheral/dbgu/plib_dbgu.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
@@ -221,6 +229,9 @@ typedef struct
     SYS_MODULE_OBJ  drvMAXTOUCH;
 
     SYS_MODULE_OBJ  drvUSBUDPHSObject;
+
+    SYS_MODULE_OBJ  drvSDMMC0;
+
 
 
 } SYSTEM_OBJECTS;

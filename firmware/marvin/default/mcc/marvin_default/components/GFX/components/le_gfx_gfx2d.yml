@@ -1,0 +1,82 @@
+configVersion: 1.0.0
+componentName: le_gfx_gfx2d
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: le_gfx_gfx2d
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: gfx
+  type: package
+  version: v3.17.0
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments:
+    children:
+    - children:
+      - attributes:
+          id: GFX2D
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: plib_gfx2d
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: GFX2D
+            type: String
+          type: Attributes
+        type: DirectDependency
+      - attributes:
+          id: LE GPU Driver
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: gfx_legato
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: gpu_driver
+            type: String
+          type: Attributes
+        type: DirectCapability
+      type: Attachments
+    type: le_gfx_gfx2d
+  elementPosition:
+    attributes:
+      id: Group1
+    children:
+    - children:
+      - attributes:
+          id: le_gfx_gfx2d
+          x: '444'
+          y: '267'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    DRV_GFX2D_MODE:
+      attributes:
+        id: DRV_GFX2D_MODE
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_gfx2d
+            value: Synchronous
+          type: Dynamic
+        type: Values
+      type: Combo
+  userData: {}

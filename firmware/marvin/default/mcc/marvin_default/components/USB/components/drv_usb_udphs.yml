@@ -1,0 +1,41 @@
+configVersion: 1.0.0
+componentName: drv_usb_udphs
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: drv_usb_udphs
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: usb
+  type: package
+  version: v3.16.0
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments: {}
+  elementPosition:
+    attributes:
+      id: Group3
+    children:
+    - children:
+      - attributes:
+          id: drv_usb_udphs
+          x: '16'
+          y: '726'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    USB_DRIVER_RTOS_TASK_PRIORITY:
+      attributes:
+        id: USB_DRIVER_RTOS_TASK_PRIORITY
+      children:
+      - children:
+        - attributes:
+            value: '3'
+          type: User
+        type: Values
+      type: Integer
+  userData: {}

@@ -131,6 +131,26 @@ void _SYS_INPUT_Tasks(  void *pvParameters  )
 }
 
 
+static void lSYS_FS_Tasks(  void *pvParameters  )
+{
+    while(true)
+    {
+        SYS_FS_Tasks();
+        vTaskDelay(10U / portTICK_PERIOD_MS);
+    }
+}
+
+
+static void lDRV_SDMMC0_Tasks(  void *pvParameters  )
+{
+    while(true)
+    {
+        DRV_SDMMC_Tasks(sysObj.drvSDMMC0);
+        vTaskDelay(DRV_SDMMC_RTOS_DELAY_IDX0 / portTICK_PERIOD_MS);
+    }
+}
+
+
 
 
 // *****************************************************************************
@@ -150,6 +170,25 @@ void SYS_Tasks ( void )
 {
     /* Maintain system services */
     
+    (void) xTaskCreate( lSYS_FS_Tasks,
+        "SYS_FS_TASKS",
+        SYS_FS_STACK_SIZE,
+        (void*)NULL,
+        SYS_FS_PRIORITY ,
+        (TaskHandle_t*)NULL
+    );
+
+    (void) xTaskCreate( lDRV_SDMMC0_Tasks,
+        "DRV_SDMMC0_Tasks",
+        DRV_SDMMC_STACK_SIZE_IDX0,
+        (void*)NULL,
+        DRV_SDMMC_PRIORITY_IDX0 ,
+        (TaskHandle_t*)NULL
+    );
+
+
+
+
 
     /* Maintain Device Drivers */
     

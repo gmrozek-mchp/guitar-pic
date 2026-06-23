@@ -1,0 +1,65 @@
+configVersion: 1.0.0
+componentName: sys_input
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: sys_input
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: gfx
+  type: package
+  version: v3.17.0
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments: {}
+  elementPosition:
+    attributes:
+      id: Group1
+    children:
+    - children:
+      - attributes:
+          id: sys_input
+          x: '410'
+          y: '503'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    INPUT_SYS_RTOS_TASK_C:
+      attributes:
+        id: INPUT_SYS_RTOS_TASK_C
+      children:
+      - children:
+        - attributes:
+            id: enabled
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: File
+    RTOSEnabled:
+      attributes:
+        id: RTOSEnabled
+      children:
+      - children:
+        - attributes:
+            id: sys_input
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    RTOSTaskPriority:
+      attributes:
+        id: RTOSTaskPriority
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
+  userData: {}

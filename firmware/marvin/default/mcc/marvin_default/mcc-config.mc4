@@ -3,38 +3,50 @@ coreVersion: 5.9.0
 spaHostVersion: 1.3.0
 device: SAM9X75D2G
 deviceLibrary: {}
-groupModules: []
+groupModules:
+- group: Group0
+  modules:
+  - drv_sdmmc
+  - sdmmc0
+  - sys_fs
+- group: Group1
+  modules:
+  - drv_i2c
+  - flexcom8
+  - gfx_bridge_lvdsc_plib
+  - gfx_display_comp_nvdi_10_1in
+  - gfx_legato
+  - gfx_maxtouch_controller
+  - le_gfx_driver_xlcdc
+  - le_gfx_gfx2d
+  - plib_gfx2d
+  - sys_input
+- group: Group2
+  modules:
+  - vision_csi
+  - vision_csi2dc
+  - vision_isc
+- group: Group3
+  modules:
+  - drv_usb_udphs
+  - usb_device
+  - usb_device_cdc
 modules:
 - FreeRTOS
 - HarmonyCore
 - core
 - dbgu
 - dfp
-- drv_i2c
 - drv_i2c_0
-- drv_usb_udphs
+- drv_sdmmc_0
 - flexcom1
 - flexcom2
 - flexcom4
-- flexcom8
-- gfx_bridge_lvdsc_plib
-- gfx_display_comp_nvdi_10_1in
-- gfx_legato
-- gfx_maxtouch_controller
-- le_gfx_driver_xlcdc
-- le_gfx_gfx2d
 - pit
-- plib_gfx2d
 - stdio
-- sys_input
 - sys_time
 - tc0
-- usb_device
-- usb_device_cdc
 - usb_device_cdc_0
-- vision_csi
-- vision_csi2dc
-- vision_isc
 generatedFileHashHistoryMap:
 - file: ../src/app.c
   hash: 632c78c323cb9f8c6359f20337440c08f8461eb4b0304552b6a3cfd5c4052620
@@ -43,13 +55,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: dff1e2048886123f7516f1da45350172b466f308e9a4ade7f5d463ec0a9526a8
 - file: ../src/config/default/configuration.h
-  hash: a4506b94d329b8daee052a3ec9f99c6769f4846767eec2aa4d4ba58f59a5c1da
+  hash: cffea3300d9347d0597439048e03297290ca207d798e3b28808123f8e6b44d09
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: ea68ddbb8440bee6856affaa0a0b770beba25d374cdf714c3604319ac7facefa
+  hash: 127fa3b874480d4f8931efc0ab66c98c285b4d8b16224a9b54a5795a72299b81
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -70,6 +82,18 @@ generatedFileHashHistoryMap:
   hash: ba0152be04e0827a925667465f8449b763404752451803587d6faaae745381f8
 - file: ../src/config/default/driver/input/drv_maxtouch.h
   hash: 375f0ff61553b5486cbdc9447e45998c6aa003d3a3745cfc833ebf8de74c2ce9
+- file: ../src/config/default/driver/sdmmc/drv_sdmmc.h
+  hash: c5d691b9e451cbaa787f6e17e8a2314e55de8ed624407a06191705cd8a3a51c6
+- file: ../src/config/default/driver/sdmmc/drv_sdmmc_definitions.h
+  hash: 114372fe83a7aabc017360e961ea6aa0cb3006e819af7947393d097fc00f364d
+- file: ../src/config/default/driver/sdmmc/src/drv_sdmmc.c
+  hash: 8570ca294c5d469123dca55ddee1de8bf3ede0d9cc6c5734f5c301774bb0a71b
+- file: ../src/config/default/driver/sdmmc/src/drv_sdmmc_file_system.c
+  hash: d9c88c0eafb1466a34d55f1aa9c303603fd840ea826fdd68d22efd5a11051e1a
+- file: ../src/config/default/driver/sdmmc/src/drv_sdmmc_file_system.h
+  hash: 3f80d1ef387e9ea48674dd721d301fe0e273ab00870b800ba28a1af40c8cdebd
+- file: ../src/config/default/driver/sdmmc/src/drv_sdmmc_local.h
+  hash: 156dc65671de4e26117a0465893116fcc5adfa89ca7ed22f0b4fb9e999a98400
 - file: ../src/config/default/driver/usb/drv_usb.h
   hash: ee59efb38b1cf87e1c4bb6e833a9c9be0c106005daa6c1ccd90fca9fb5c17b44
 - file: ../src/config/default/driver/usb/udphs/drv_usb_udphs.h
@@ -191,11 +215,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/font/legato_rasterfont_stream.c
   hash: 211449061e65ea18d22f4971dfa6375dc4f0a9f74dee474465b6c9b4c3b98996
 - file: ../src/config/default/gfx/legato/generated/font/le_gen_fonts.c
-  hash: 46f1500d35be7d335c1ed6942aa3d570d7ac7446047fec34c2f3873349eda675
+  hash: 46e2dd318d7314811a4e9ddce5432892446fe9b7f6dba1e6bba0b530076be3a9
 - file: ../src/config/default/gfx/legato/generated/image/le_gen_images.c
-  hash: 208aa04593d093180d63b2ba9846c54391770e0b4a677cb3b36b7dfb5be58264
+  hash: 4fbf4465b7abfbc752f487fe24a48cbbdcfd669377cb382a409e2ebbd0579c43
 - file: ../src/config/default/gfx/legato/generated/le_gen_assets.h
-  hash: 17e6b6d4f5e4ba98a0b13b7777f31a9f3a93208935d366051e40452e36e25c8d
+  hash: eb9af6f35583a4f4eb65984bd5bc6c7b62d5cb5377cba728ad3abcf15f704b7d
 - file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
   hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c
@@ -203,19 +227,23 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.h
   hash: a913b0cf5f6029be4a46db040144b14d9949f2e52d9b00576e2373403d530213
 - file: ../src/config/default/gfx/legato/generated/le_gen_init.c
-  hash: 1a6ee17186d2dda9d37198c719ba7e115cd3298124022fb9005093983ad7d46f
+  hash: 196e4b5d18f3b08e73a3e2daf4a0456582fb1fad803bee782efb7d699ccd9e98
 - file: ../src/config/default/gfx/legato/generated/le_gen_init.h
-  hash: ff64245a1cfefc55213a1ff89de4029ef6f3763069eeb726f329cd26c0452bdb
+  hash: 38ceb85c8c0d438a4b194a4f4f0e4281316e22cf0de09e927c53ba33d6f41432
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.c
-  hash: 328bc0fb9a837782405486c4e449de1a630129f7b61c0762a9875fa3db829d68
+  hash: 5cf21127f9d180f2cd2a290bb599254a74cddeb238ae07cf15a2bd84727b92f5
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
-  hash: 327628a3111500443de6a283fd50932729a389d44a39f798e5c3520d69669235
+  hash: 16026575950b00be8dcfee15ef703c006147c99119ddf78277f23ecbaa31ca3a
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
-  hash: e53edcf195b76d177e33da04ed52311e6ffe7a9e718ef93aee573cc488a1879c
+  hash: 6116cb0d4de2813079cfeece953597fa2b2f3fc15eddea4f8ecceb83a14c628e
+- file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
+  hash: 875f2973ef97062cbc5a8656a942f4d5e50dfdd5181054ae6f78d01e62a23087
+- file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
+  hash: 311abd40fa2c412cecd99cf9dcc5bdd5187a57dbc29bac35e55158000b5110d0
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c
-  hash: cea5c892fed303697ad75d3084aceb121c443894ff951f74e3081855a5e3a73f
+  hash: ce78e7ab5e084c93b8bbe90f8d0957069b7700f26f3c4748e336ec82539dd2ba
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h
-  hash: eafa67606caad971c082e7b716fdbb9545b77583c2792c6a63346c05922266e6
+  hash: e973b167243031b279e6b2283412c15aefdab3cada1e7de2941998107557d83f
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c
@@ -289,7 +317,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/legato.h
   hash: b4ce875200132b2bf0aa6b5a3271b8bc363107741378e3079cbaa14037fbf807
 - file: ../src/config/default/gfx/legato/legato_config.h
-  hash: f4572bd12dc1e2943a458bd8149736e5b42db0610bd3927b50225a0c2040fb7b
+  hash: 340043943dfbf949e6cff45a66387ca18b17b88b68473ab8a2ecba61c9d26683
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.c
   hash: 197174ddbc7c7ef5c966bee36da8114e64dec8ce734d374c0b31401f800e21bf
 - file: ../src/config/default/gfx/legato/memory/legato_fixedheap.h
@@ -603,11 +631,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: b44909c2575a3c117a388998aaacbbafd30e158130e5d03d72cb105df071bcd5
+  hash: 999fa0aa19eb2547117bef798423d5c9cff3e03a7f73b719d33e726cc718862d
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
-  hash: 0f320e7507adee9186bf2bccdce214c184f73259207357c81114fbb4260b2332
+  hash: f9938bf32a0f11e743f7759e9ce72797d823c8eddc1a5ee3e422baad37cc0a29
 - file: ../src/config/default/osal/osal.h
   hash: 1cfe3b61d9693b2369922041eef33fe16b3c1ccd9c85d4ded808b805f90a869c
 - file: ../src/config/default/osal/osal_definitions.h
@@ -617,11 +645,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/osal/osal_freertos.h
   hash: f9d8c97ce37bbb7516242ec37c4b0db387090cfed54580af683bc0ce126094e0
 - file: ../src/config/default/peripheral/aic/plib_aic.c
-  hash: 509eec74a6e0c09be41f719091bbb6cca9e32ae311159b123811df2f47f64cb5
+  hash: fac455449fa7f512c81412f536863026e7bdefdf65cffb286ca652934bedfeed
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: f5d7ce287e38135f7841864d1abddba58da19aca56e1d14f76cf5568cd36f144
+  hash: ecac495da245fcf2efb518a3c54daa8258a213a514e6a94db991db6feae912db
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -670,6 +698,12 @@ generatedFileHashHistoryMap:
   hash: 8a0cc770abe2faed88127bb7e1a489749d3c9f971094fc9addf001a7a7ded5fa
 - file: ../src/config/default/peripheral/pit/plib_pit.h
   hash: 05552497ada087ffbfbcf7190aa4ac216399c208c72f8014c207c01c074dafa0
+- file: ../src/config/default/peripheral/sdmmc/plib_sdmmc0.c
+  hash: 32a3a9a1b3574d00423dafaea5a575a8882a831b1fc9d9b4c5f880c64b5b776d
+- file: ../src/config/default/peripheral/sdmmc/plib_sdmmc0.h
+  hash: 3e4c5d26242522a5fbbc57fdc2650158fec09f032ba8a1c1f2a816ef67f65edb
+- file: ../src/config/default/peripheral/sdmmc/plib_sdmmc_common.h
+  hash: e2b015721e166dc96c96772961f57dbe6df1f26e4b85801609d1344df1f1816e
 - file: ../src/config/default/peripheral/tc/plib_tc0.c
   hash: e1ac548e92a3347891aac4b309ed496d2162ded50619f871069d6e3175496fb8
 - file: ../src/config/default/peripheral/tc/plib_tc0.h
@@ -694,6 +728,34 @@ generatedFileHashHistoryMap:
   hash: b4b3a4e7434759c9bbcd3c6a0ab97558eb2a007f083a4eb76dbedcb2e2c3d86b
 - file: ../src/config/default/system/debug/sys_debug.h
   hash: 4162d9e1fab93b8b33f6c8a24726f5dc287ea05c31e3ab984c3c920c725d0882
+- file: ../src/config/default/system/fs/fat_fs/file_system/ff.c
+  hash: 09f73618c1ac3bd9736650439be337fbfe49018a1db7205126fcbfde1e384a0f
+- file: ../src/config/default/system/fs/fat_fs/file_system/ff.h
+  hash: 6848cdc1e0e629ac4c44c28358ed40ac71651f502b941a1a9ef4468aad652091
+- file: ../src/config/default/system/fs/fat_fs/file_system/ffconf.h
+  hash: eb42d88a772858dbd895386063ff6fa76df37a06bf8ee6da1bf3a43a8d9584e4
+- file: ../src/config/default/system/fs/fat_fs/file_system/ffunicode.c
+  hash: 3f1632c1f1e64b0b683b0d7e51341b9870728f398604869dd8211f1819509a8e
+- file: ../src/config/default/system/fs/fat_fs/hardware_access/diskio.c
+  hash: 6d15dd1dac3895d4d29d454ea90c45d4d8d9870de85d06c2795f4221a51d956d
+- file: ../src/config/default/system/fs/fat_fs/hardware_access/diskio.h
+  hash: eabe00adfe80de32df0b75244c230f3a04dbc27cb29b1d418cef549e3e7a9ec2
+- file: ../src/config/default/system/fs/src/sys_fs.c
+  hash: 90a3f0af67a65ea0d814e69b335465675b650adb90f97f10df23ffb849416619
+- file: ../src/config/default/system/fs/src/sys_fs_fat_interface.c
+  hash: 3f9af79a4b9c76ae7216556056916b802642e0dc28755f394ff4da4f55615805
+- file: ../src/config/default/system/fs/src/sys_fs_local.h
+  hash: ef6b5ddf2d37deece42f4f38d4c80cff0c5b4c67b150bfa11a78b78aec79baff
+- file: ../src/config/default/system/fs/src/sys_fs_media_manager.c
+  hash: 76755a5ca2af7b45bbfdaaddb86dd272e1911231c5981133fa05099be39d082e
+- file: ../src/config/default/system/fs/src/sys_fs_media_manager_local.h
+  hash: 5d471f0372ec41b3ef362ad533beede076e4e959274e57221ed229b996d7231e
+- file: ../src/config/default/system/fs/sys_fs.h
+  hash: aeaf49359ef924aba8d05e5c67c769485f95bb0e3449f5f8c58efae23d6fcfb2
+- file: ../src/config/default/system/fs/sys_fs_fat_interface.h
+  hash: 2e708c6174fae87333e2aa89c00d21e8b2830644ee890e46199b17121bfdd250
+- file: ../src/config/default/system/fs/sys_fs_media_manager.h
+  hash: 7c250f6e613e3f1ee71f3b50b4a3962fa143e10e8d9903e3e340f4104bba7d17
 - file: ../src/config/default/system/input/sys_input.c
   hash: d5a3d89423e634cb9b5e02a003a31e225d7c41cafb5a3d18b05a8e1843af5250
 - file: ../src/config/default/system/input/sys_input.h
@@ -720,6 +782,8 @@ generatedFileHashHistoryMap:
   hash: 2b75f8e370e5cb2c54f70da7351ee149f0d5a7673e700f39b373099716b31b55
 - file: ../src/config/default/system/system_common.h
   hash: c9f34bd226f8efab12f5766e77f8355996cd0430b50e0f6ee30258664c494984
+- file: ../src/config/default/system/system_media.h
+  hash: e61ba67015cfba6a7425d077cd2c633ba9989218bbe585078efe2face729401f
 - file: ../src/config/default/system/system_module.h
   hash: 7bfe351ce506b843c61e5be013b6e3bf2a6253d73f5db189dbaf0c4f494cb75a
 - file: ../src/config/default/system/time/src/sys_time.c
@@ -731,7 +795,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 9c47a2e20b5971fed1063c90bcfa8d3c8f432d14965b754c814ae5356e3e8c34
+  hash: 3f62357b0b91b3c1cbff440ed9a6d330c3083a378f2b89ba986359f919fc4045
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/usb/src/usb_device.c

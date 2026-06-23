@@ -1,0 +1,46 @@
+configVersion: 1.0.0
+componentName: Group1
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyGroupModule
+  name: Group1
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: FreeRTOS-Kernel
+  type: package
+  version: V11.3.0
+- dependencyPackage: ''
+  name: core
+  type: package
+  version: v3.16.3
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments: {}
+  elementPosition:
+    attributes:
+      id: __ROOTVIEW
+    children:
+    - children:
+      - attributes:
+          id: Group1
+          x: '587'
+          y: '154'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    GroupName:
+      attributes:
+        id: GroupName
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: GFX
+          type: User
+        type: Values
+      type: String
+  userData: {}

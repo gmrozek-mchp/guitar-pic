@@ -1884,6 +1884,7 @@ data:
     SDMMC0_CLOCK_FREQUENCY:
       attributes:
         id: SDMMC0_CLOCK_FREQUENCY
+        label: SDMMC0_CLOCK_FREQUENCY
       children:
       - children:
         - attributes:
@@ -1895,33 +1896,36 @@ data:
     SDMMC0_BASECLK_FREQUENCY:
       attributes:
         id: SDMMC0_BASECLK_FREQUENCY
+        label: SDMMC0_BASECLK_FREQUENCY
       children:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '66666666'
           type: Dynamic
         type: Values
       type: Integer
     SDMMC0_MULTCLK_FREQUENCY:
       attributes:
         id: SDMMC0_MULTCLK_FREQUENCY
+        label: SDMMC0_MULTCLK_FREQUENCY
       children:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '133333333'
           type: Dynamic
         type: Values
       type: Integer
     SDMMC0_GCLK_FREQUENCY:
       attributes:
         id: SDMMC0_GCLK_FREQUENCY
+        label: SDMMC0_GCLK_FREQUENCY
       children:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '133333333'
           type: Dynamic
         type: Values
       type: Integer
@@ -5236,6 +5240,87 @@ data:
           type: User
         type: Values
       type: String
+    SDMMC0_CLOCK_ENABLE:
+      attributes:
+        id: SDMMC0_CLOCK_ENABLE
+        label: SDMMC0
+      children:
+      - children:
+        - attributes:
+            id: sdmmc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    SDMMC0_INTERRUPT_ENABLE:
+      attributes:
+        id: SDMMC0_INTERRUPT_ENABLE
+        label: Enable 12 -- Secure Data Memory Card Controller 0
+      children:
+      - children:
+        - attributes:
+            id: sdmmc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    SDMMC0_INTERRUPT_HANDLER:
+      attributes:
+        id: SDMMC0_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: sdmmc0
+            value: SDMMC0_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    SDMMC0_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: SDMMC0_INTERRUPT_HANDLER_LOCK
+        label: SDMMC0_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: sdmmc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    CLK_SDMMC0_GCLKEN:
+      attributes:
+        id: CLK_SDMMC0_GCLKEN
+        label: Enable
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    CLK_SDMMC0_GCLKCSS:
+      attributes:
+        id: CLK_SDMMC0_GCLKCSS
+        label: GCLKCSS
+      children:
+      - children:
+        - attributes:
+            value: '6'
+          type: User
+        type: Values
+      type: KeyValueSet
+    CLK_SDMMC0_GCLKDIV:
+      attributes:
+        id: CLK_SDMMC0_GCLKDIV
+        label: GCLKDIV
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
   userData:
     children:
     - attributes:

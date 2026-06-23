@@ -1,0 +1,256 @@
+configVersion: 1.0.0
+componentName: drv_sdmmc_0
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: drv_sdmmc_0
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: core
+  type: package
+  version: v3.16.3
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments:
+    children:
+    - children:
+      - attributes:
+          id: drv_sdmmc_SDHC_dependency
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: sdmmc0
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: SDMMC0_SDHC
+            type: String
+          type: Attributes
+        type: DirectDependency
+      type: Attachments
+    type: drv_sdmmc_0
+  elementPosition: {}
+  symbols:
+    DRV_SDMMC_BUFFER_OBJECT_NUMBER:
+      attributes:
+        id: DRV_SDMMC_BUFFER_OBJECT_NUMBER
+        label: Transfer Queue Size
+      type: Integer
+    DRV_SDMMC_BUS_SPEED:
+      attributes:
+        id: DRV_SDMMC_BUS_SPEED
+        label: Bus Speed
+      type: Combo
+    DRV_SDMMC_CARD_DETECTION_METHOD:
+      attributes:
+        id: DRV_SDMMC_CARD_DETECTION_METHOD
+        label: Selected Card Detection Method
+      children:
+      - children:
+        - attributes:
+            id: drv_sdmmc_0
+            value: Use Polling
+          type: Dynamic
+        type: Values
+      type: String
+    DRV_SDMMC_CARD_DETECTION_METHODS_LIST1:
+      attributes:
+        id: DRV_SDMMC_CARD_DETECTION_METHODS_LIST1
+        label: Card Detection Method
+      type: Combo
+    DRV_SDMMC_CARD_DETECTION_METHODS_LIST2:
+      attributes:
+        id: DRV_SDMMC_CARD_DETECTION_METHODS_LIST2
+        label: Card Detection Method
+      type: Combo
+    DRV_SDMMC_CLIENTS_NUMBER:
+      attributes:
+        id: DRV_SDMMC_CLIENTS_NUMBER
+        label: Number of Clients
+      type: Integer
+    DRV_SDMMC_FS_ENABLE:
+      attributes:
+        id: DRV_SDMMC_FS_ENABLE
+        label: File system for SDMMC Driver Enabled
+      children:
+      - children:
+        - attributes:
+            id: drv_sdmmc_0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    DRV_SDMMC_PLIB:
+      attributes:
+        id: DRV_SDMMC_PLIB
+        label: PLIB Used
+      children:
+      - children:
+        - attributes:
+            id: drv_sdmmc_0
+            value: SDMMC0
+          type: Dynamic
+        type: Values
+      type: String
+    DRV_SDMMC_PLIB_SDCD_ENABLE:
+      attributes:
+        id: DRV_SDMMC_PLIB_SDCD_ENABLE
+        label: Enable PLIB SDCD?
+      children:
+      - children:
+        - attributes:
+            id: drv_sdmmc_0
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    DRV_SDMMC_PLIB_SDWP_ENABLE:
+      attributes:
+        id: DRV_SDMMC_PLIB_SDWP_ENABLE
+        label: Enable PLIB SDWP?
+      children:
+      - children:
+        - attributes:
+            id: drv_sdmmc_0
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    DRV_SDMMC_POLLING_INTERVAL:
+      attributes:
+        id: DRV_SDMMC_POLLING_INTERVAL
+        label: Polling Interval (ms)
+      type: Integer
+    DRV_SDMMC_PROTOCOL_SUPPORT:
+      attributes:
+        id: DRV_SDMMC_PROTOCOL_SUPPORT
+        label: Protocol
+      children:
+      - children:
+        - attributes:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'false'
+          type: Boolean
+        type: Attributes
+      type: Combo
+    DRV_SDMMC_RTOS:
+      attributes:
+        id: DRV_SDMMC_RTOS
+        label: Run Library Tasks As
+      type: Combo
+    DRV_SDMMC_RTOS_DELAY:
+      attributes:
+        id: DRV_SDMMC_RTOS_DELAY
+        label: Task Delay
+      type: Integer
+    DRV_SDMMC_RTOS_STACK_SIZE:
+      attributes:
+        id: DRV_SDMMC_RTOS_STACK_SIZE
+        label: Stack Size (in bytes)
+      type: Integer
+    DRV_SDMMC_RTOS_TASK_MSG_QTY:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_MSG_QTY
+        label: Maximum Message Queue Size
+      type: Integer
+    DRV_SDMMC_RTOS_TASK_OPT_NONE:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_OPT_NONE
+        label: Task Specific Options
+      type: Boolean
+    DRV_SDMMC_RTOS_TASK_OPT_NO_TLS:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_OPT_NO_TLS
+        label: TLS (Thread Local Storage) support needed for the task
+      type: Boolean
+    DRV_SDMMC_RTOS_TASK_OPT_SAVE_FP:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_OPT_SAVE_FP
+        label: Floating-point registers needs to be saved
+      type: Boolean
+    DRV_SDMMC_RTOS_TASK_OPT_STK_CHK:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_OPT_STK_CHK
+        label: Stack checking is allowed for the task
+      type: Boolean
+    DRV_SDMMC_RTOS_TASK_OPT_STK_CLR:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_OPT_STK_CLR
+        label: Stack needs to be cleared
+      type: Boolean
+    DRV_SDMMC_RTOS_TASK_PRIORITY:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_PRIORITY
+        label: Task Priority
+      type: Integer
+    DRV_SDMMC_RTOS_TASK_TIME_QUANTA:
+      attributes:
+        id: DRV_SDMMC_RTOS_TASK_TIME_QUANTA
+        label: Task Time Quanta
+      type: Integer
+    DRV_SDMMC_RTOS_USE_DELAY:
+      attributes:
+        id: DRV_SDMMC_RTOS_USE_DELAY
+        label: Use Task Delay?
+      type: Boolean
+    DRV_SDMMC_SLEEP_WHEN_IDLE:
+      attributes:
+        id: DRV_SDMMC_SLEEP_WHEN_IDLE
+        label: Sleep when idle?
+      type: Boolean
+    DRV_SDMMC_TRANSFER_BUS_WIDTH:
+      attributes:
+        id: DRV_SDMMC_TRANSFER_BUS_WIDTH
+        label: DRV_SDMMC_TRANSFER_BUS_WIDTH
+      children:
+      - children:
+        - attributes:
+            id: drv_sdmmc_0
+            value: 4-bit
+          type: Dynamic
+        type: Values
+      type: Combo
+    DRV_SDMMC_TRANSFER_BUS_WIDTH_4BIT:
+      attributes:
+        id: DRV_SDMMC_TRANSFER_BUS_WIDTH_4BIT
+        label: Data Transfer Bus Width
+      type: Combo
+    DRV_SDMMC_TRANSFER_BUS_WIDTH_8BIT:
+      attributes:
+        id: DRV_SDMMC_TRANSFER_BUS_WIDTH_8BIT
+        label: Data Transfer Bus Width
+      children:
+      - children:
+        - attributes:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: Combo
+    DRV_SDMMC_WP_CHECK_ENABLE:
+      attributes:
+        id: DRV_SDMMC_WP_CHECK_ENABLE
+        label: Enable Write Protection Check?
+      children:
+      - children:
+        - attributes:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'false'
+          type: Boolean
+        type: Attributes
+      type: Boolean
+  userData: {}

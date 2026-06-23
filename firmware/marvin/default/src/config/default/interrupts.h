@@ -61,6 +61,7 @@ void PIOB_InterruptHandler (void);
 void FLEXCOM1_InterruptHandler (void);
 void FLEXCOM2_InterruptHandler (void);
 void FLEXCOM8_InterruptHandler (void);
+void SDMMC0_InterruptHandler (void);
 void FLEXCOM4_InterruptHandler (void);
 void TC0_InterruptHandler (void);
 void XDMAC_InterruptHandler (void);
