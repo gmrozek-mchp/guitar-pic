@@ -21,6 +21,7 @@
 #include "video/video.h"
 #include "game/fret.h"
 #include "net/t1s/t1s_link.h"
+#include "storage/storage.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
@@ -100,6 +101,18 @@ static int parse_fret(const char *s)
     }
 }
 
+static uint32_t parse_u32(const char *s, uint32_t dflt)
+{
+    if (s == NULL || s[0] == '\0') { return dflt; }
+    uint32_t v = 0u;
+    for (const char *p = s; *p != '\0'; p++)
+    {
+        if (*p < '0' || *p > '9') { return dflt; }
+        v = (v * 10u) + (uint32_t)(*p - '0');
+    }
+    return v;
+}
+
 /* ---- command handlers --------------------------------------------------- */
 
 static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
@@ -154,6 +167,46 @@ static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
                            ni.present ? "yes" : "no",
                            (unsigned long)ni.age_ms);
         }
+    }
+}
+
+static void sd_out(void *ctx, const char *line)
+{
+    (void)ctx;
+    embeddedCliPrint(s_cli, line);
+}
+
+static void cmd_sd(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+    if (sub == NULL)
+    {
+        console_printf("usage: sd <info|ls|bench|mount|unmount> [arg]");
+    }
+    else if (strcmp(sub, "info") == 0)
+    {
+        Storage_DiagInfo(sd_out, NULL);
+    }
+    else if (strcmp(sub, "ls") == 0)
+    {
+        Storage_DiagList(sd_out, NULL, embeddedCliGetToken(args, 2));
+    }
+    else if (strcmp(sub, "bench") == 0)
+    {
+        Storage_DiagBench(sd_out, NULL, parse_u32(embeddedCliGetToken(args, 2), 4u));
+    }
+    else if (strcmp(sub, "mount") == 0)
+    {
+        console_printf("%s", Storage_Mount() ? "mounted" : "mount failed");
+    }
+    else if (strcmp(sub, "unmount") == 0)
+    {
+        console_printf("%s", Storage_Unmount() ? "unmounted" : "unmount failed");
+    }
+    else
+    {
+        console_printf("usage: sd <info|ls|bench|mount|unmount> [arg]");
     }
 }
 
@@ -259,6 +312,7 @@ static void register_commands(void)
         { "status", "Print link / detector / mode / video state", false, NULL, cmd_status },
         { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
         { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
+        { "sd",     "sd <info|ls|bench|mount|unmount> [arg]: SD-card bring-up", true, NULL, cmd_sd },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

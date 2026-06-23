@@ -43,6 +43,7 @@
 #include "actuator/manual_control.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
+#include "storage/storage.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -160,6 +161,11 @@ void APP_Initialize ( void )
      * explicitly (default off, per the §6 game_observe_enable toggle). */
     GameplayEngine_Initialize();
     GameplayEngine_SetObserveEnabled(true);
+
+    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC
+     * driver hasn't analyzed the card pre-scheduler). The card is mounted on
+     * demand by the `sd` console command; see storage/storage.h. */
+    Storage_Initialize();
 
     /* Interactive operator console on FLEXCOM2 (115200), separate from the
      * DBGU log channel. Started after the actuator/detector modules so its
