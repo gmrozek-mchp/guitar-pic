@@ -27,6 +27,13 @@ because M9 (observer) and M10 (controller) are separate milestones:
   threshold. Plain PODs + flat arrays; floats only for the normalized baselines/song vectors
   (soft-float on the ARM926, tiny vectors). Generated output compiles clean under
   `cc -std=c11 -Wall -Wextra`; the header lands in the firmware tree at Phase 1.
+  - **SD-card data split (marvin journal 2026-06-22, spec §4.8.3):** this generated header stays the
+    compile-time source of truth for the algorithm-coupled recognizer data — it does **not** move to
+    SD. Two host-side follow-ups for when the SD catalog/artwork loaders are built: (1) emit a
+    `metadata_version` `#define` here whose value is reused in `/marvin/games/<game>/songs.json` so the
+    UI can detect a stale catalog after a template-set regen; (2) a small tool that produces
+    target-sized JPEG/PNG album art named `<setlist>-<NN>.{jpg,png}` (the recognizer's `(setlist,index)`
+    key) from source covers. Both deferred until that firmware work starts (post-M4).
 - **Phase 1 — screen-classifier observer (M9 v0) — done (firmware code-complete, pending Greg's
   MPLAB build).** New marvin `game/` module: `gameplay_metadata.h` (generated), `gameplay_classify.{h,c}`
   (pure FreeRTOS-free classify math), `gameplay_engine.{h,c}` (`game_task` subscribing to the video

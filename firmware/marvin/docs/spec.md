@@ -298,6 +298,7 @@ Centralized on marvin by default. Owns:
 - Calibration / tuning (per-fret ROI placement, threshold values, timing constants).
 - Mode + run controls (idle, calibrate, dry-run, play, replay, record).
 - Logs / history / stats (recent commands, miss/hit counts, dropped frames).
+- Song picker with album artwork and per-player results (§4.8.6, §4.8.7) — artwork is decoded via Legato's already-enabled JPEG/PNG decoders.
 
 **UI framework — open Q5.** Legato is already pulled in for capture init and could absorb the operator UI directly (heavy but in-tree). Alternative: a lightweight custom widget layer over GFX2D / direct framebuffer composition. Decision deferred until we attempt the first non-trivial screen (calibration overlay).
 
@@ -316,6 +317,23 @@ Live off-device streaming for side-by-side comparison is *not* on the MVP critic
 Recordings are persisted to an SD card via SDMMC + a simple filesystem (FAT32 via Harmony's FILE_SYSTEM service). The card is removed and read on a workstation; no live network path is required for MVP.
 
 Bandwidth ceiling: SDMMC sustained write ≥ 5 MB/s on Class-10 cards is reliably achievable. The recording format below is sized to land well below that.
+
+The card is also the runtime store for everything that changes independently of the firmware image — config, the song catalog, album artwork, and per-player results — alongside recordings. Canonical layout (single reference for all subsystems):
+
+```
+/marvin/
+├── config.json                 // §4.7 config persistence
+├── games/
+│   └── gh3-wii/
+│       ├── songs.json          // song catalog labels (§4.8.3)
+│       └── art/<setlist>-<NN>.{jpg,png}   // album artwork, named by recognizer key (§4.8.7)
+├── players/
+│   └── results.jsonl           // append-only per-player performance records (§4.8.6)
+└── recordings/
+    └── <session>/              // §4.6.3
+```
+
+Recognizer/menu-graph data is **not** on the card — it stays compile-time in flash (§4.8.3), so recognition has no card-absent or stale-data failure mode.
 
 #### 4.6.3 Format — detector-state + sparse keyframes
 
@@ -396,7 +414,7 @@ Cross-cutting services not owned by any one subsystem:
 
 - **Logging** ✅ severity-filtered printf shim (commit `a79042f`).
 - **Time** ✅ TC0 / SYS_TIME for OSAL.
-- **Config persistence** 🚧 calibration values, mode toggles, last-used recording stride. Storage TBD (a config file on SD vs internal flash).
+- **Config persistence** 🚧 calibration values, mode toggles, last-used recording stride. Stored as `/marvin/config.json` on the SD card (§4.6.2 layout) — resolves Q9. Loaded at startup after the FAT mount (M4); absent/unparseable file → compiled-in defaults.
 - **Watchdog** 🚧 not yet enabled.
 - **OTA** ⚪ out of scope for now.
 
@@ -433,7 +451,22 @@ The recognizer and the navigator both depend on per-game data:
 - **Menu graph.** Nodes = recognized game states; edges = button sequences that move between them (e.g., "main_menu → song_select" = `[STRUM_DOWN, STRUM_DOWN, GREEN]`). Used by the navigator to plan a verb.
 - **Song catalog.** Per-supported-game list of songs with the menu coordinates needed to select each one (which difficulty submenu, ordinal position in the list, etc.). Possibly augmented with metadata (BPM, length, expected difficulty score) for UI display and for reference-data labeling.
 
-Storage: compile-time tables for the per-game graph + a JSON or similar on the SD card for songlists and any user-editable bits. Exact split deferred until first concrete game is added.
+**Storage split (decided).** The line is drawn by *what the data is coupled to*, not by convenience:
+
+- **Compile-time, in flash:** recognizer templates/signatures (centroids, menu baselines, song bitmap templates, thresholds) **and** the menu graph. These are *algorithm-coupled* — a template is only valid paired with the exact grid geometry, sampling, and normalization compiled into the C recognizer, and is re-learned in lockstep when the algorithm changes. They are generated from the host corpus by `tools/gameplay/gameplay/export_c.py` into `gameplay_metadata.h` and consumed through pointers by `gameplay_classify.c` / `gameplay_select.c`. **Recognition never reads the SD card** — so a missing or stale card can never cause a silent misclassification.
+- **On the SD card (`/marvin/games/<game>/songs.json`):** the song catalog *labels* — the human-meaningful, user-editable metadata that changes independently of the firmware. Keyed by the stable `(setlist, index)` identifier the recognizer already emits (`gp_song_t`):
+
+```json
+{
+  "game": "gh3-wii",
+  "metadata_version": "<stamp matching the firmware build>",
+  "songs": [
+    { "setlist": "main", "index": 4, "title": "...", "artist": "...", "bpm": 120, "length_s": 210 }
+  ]
+}
+```
+
+The catalog is *labels only* — recognition does not depend on it; a missing/stale catalog degrades to "Unknown song", never a functional break. `export_c.py` also emits a `metadata_version` `#define` into `gameplay_metadata.h`; the same value goes in `songs.json` so the UI can warn if the catalog predates a template-set regeneration. Because the catalog is keyed by `(setlist, index)`, a mismatch degrades gracefully rather than misclassifying.
 
 Scope today: target is **one game** — Guitar Hero (Wii) — to validate the design. Adding a second game is a metadata addition (new template set + new menu graph + new song catalog), not a structural change.
 
@@ -451,6 +484,37 @@ See §9 for tracking entries. In summary:
 
 - **Q10** — Recognizer algorithm: template matching vs simple OCR vs region/color heuristics vs a small CNN. Trade-off is robustness vs CPU cost vs metadata authoring effort.
 - **Q11** — Command-path arbitration between game-state controller and timing pipeline. Default is "they don't run at the same time" (gameplay vs menu), but the boundary needs to be explicit.
+
+#### 4.8.6 Performance results & player profiles 🚧
+
+Per-player gameplay results, stored on the SD card as `/marvin/players/results.jsonl` — newline-delimited JSON, append-only (crash-tolerant; trivially parsed on a workstation). One record per completed run, keyed to a song by the same `(setlist, index)` the recognizer emits:
+
+```json
+{ "player": "greg", "game": "gh3-wii", "setlist": "main", "index": 4,
+  "difficulty": "hard", "part": "lead", "score": 123456, "accuracy_pct": 92.4,
+  "notes_hit": 480, "notes_total": 520, "session": 7, "frame_epoch": 901234,
+  "timestamp": "2026-06-22T14:03:00Z" }
+```
+
+Dependencies and open points:
+
+- **Score/accuracy capture depends on the number/score readers — M9 Phase 3**, not yet started. Until those land, only the song identity + difficulty/part are recordable.
+- **Wall-clock `timestamp` is optional and gated on the RTC.** The SAM9X75 has an internal RTC (32.768 kHz crystal + VDDBU backup rail are present on the Curiosity Hybrid board), but it is currently disabled in `initialization.c` with no plib generated. Enabling wall-clock time costs an MCC regen plus confirming a coin-cell/supercap is populated on VDDBU (otherwise the clock resets on every power-off and must be set at boot from the host/UI). Until/unless that's done, every record carries `session` (a monotonic boot-session counter) + `frame_epoch` (§4.6.4) for ordering, and `timestamp` is emitted only when the RTC is enabled and set. Tracked as Q12.
+- **Player identity** is a simple operator-entered string for now; richer profiles are out of scope. Also Q12.
+
+#### 4.8.7 Album artwork 🚧
+
+Per-song cover art for the operator UI, stored on the SD card as standard **JPEG or PNG** (so the files are viewable on any workstation) under `/marvin/games/<game>/art/`. Named by the same stable recognizer key as the catalog, so firmware derives the path directly — no `songs.json` lookup, no dependency on the catalog being present:
+
+```
+art/<setlist>-<NN>.{jpg,png}     // e.g. art/main-04.jpg, art/bonus-12.png  (NN = zero-padded index)
+```
+
+**Pre-cache at startup, not per-use.** After the FAT mount (M4), the firmware walks `art/` and decodes every image **once** into a static, pre-allocated cache of fixed-size slots in DDR; runtime artwork access is then an O(1) pointer into RAM — no card I/O, no decode, and no allocation at use time (consistent with the static-allocation rule). A missing/oversized/corrupt file leaves its slot empty → UI placeholder.
+
+- **Decoder — Legato's own runtime decoders; no new library.** JPEG (built-in) and PNG (lodepng) are already enabled in this project (`legato_config.h`: `LE_ENABLE_JPEG_DECODER=1`, `LE_ENABLE_PNG_DECODER=1`). Because `LE_STREAMING_ENABLED=0`, the flow is: read the whole compressed file into a RAM buffer → point a `leImage` (`LE_IMAGE_FORMAT_JPEG` / `_PNG`) at it → decode into the cache slot via the Legato image API. Source images authored at the target WxH decode 1:1 (no scaling).
+- **Cache pixel format & size.** A decoded Legato raster; **RGBA8888** is the natural full-color choice, **RGB_565** (already used by the project's other assets) halves the RAM cost if alpha isn't needed. Cache = `N_songs × W × H × bytes/px`; for ~70 songs at RGBA8888 that's ≈ 4.5 MB (128×128) / 11 MB (200×200) / 18 MB (256×256), all comfortable in the SAM9X75D2G's DDR (framebuffers use only a few MB). On-card JPEGs total ≈ 1.5–3 MB.
+- **Exact target dimensions + cache pixel format** are settled when the Legato artwork UI slot is designed. Tracked as Q13.
 
 ### 4.9 Operator command console ✅
 
@@ -497,7 +561,7 @@ Proposed order; each is a buildable demo:
 1. **M1 — Reference detector v0** (§4.2). One CV detector running on captured frames, publishing `detector_state_t` to the bus. No actuation. Proves the bus and the detection task structure.
 2. **M2 — Fretboard link** (§4.3). UART up; ADC stream ingested; `adc_fretboard` detector publishing onto the bus alongside `cv_marvin_v1`.
 3. **M3 — Timing pipeline + actuation** (§4.4). Chord FIFO + strum scheduling; commands sent over UART; fretboard actuates. End-to-end play possible.
-4. **M4 — Recording to SD** (§4.6). SDMMC + FAT mount; record task writes state/commands/ADC/keyframes during a session.
+4. **M4 — Recording to SD** (§4.6). SDMMC + FAT mount; record task writes state/commands/ADC/keyframes during a session. The same FAT mount is the storage substrate for config (§4.7), the song catalog (§4.8.3), album artwork (§4.8.7), and per-player results (§4.8.6) — those loaders/writers build on it (results also need M9 Phase 3).
 5. **M5 — Operator UI v0** (§4.5). Live view with overlays; mode toggles. UI framework decided here.
 6. **M6 — Calibration UI** (§4.5). Per-fret ROI placement + threshold tuning on the device.
 7. **M7 — Replay** (§6). Load a recording from SD, replay through the timing pipeline.
@@ -519,7 +583,9 @@ Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 | Q6 | Operating-mode model — independent toggles. | Settled (§6). |
 | Q7 | Fret-tuner's long-term fate — survives as off-band dev/calibration tool. | Settled; not in runtime path. |
 | Q8 | Initial CV algorithm choice for `cv_marvin_v1`. | Open. Decide at M1. |
-| Q9 | Config persistence location (SD file vs internal flash). | Open. Decide at M4 alongside SDMMC bring-up. |
+| Q9 | Config persistence location (SD file vs internal flash). | Resolved: `/marvin/config.json` on SD (§4.7, §4.6.2 layout). |
 | Q10 | Game-state recognizer algorithm — template matching vs OCR vs color/region heuristics vs small CNN. | Open. Decide at M9; revisit if first algorithm misclassifies on real game UI. |
 | Q11 | Command-path arbitration between game-state controller and timing pipeline (§4.4 vs §4.8). Default working assumption: mutually exclusive (controller runs only outside `gameplay` state); may need richer arbitration if a game has gameplay-screen menus or pause overlays we want to drive. | Open. Decide at M10. |
+| Q12 | Performance-result timestamps & player identity (§4.8.6) — whether to enable the SAM9X75 RTC for wall-clock time (MCC regen + VDDBU backup) or stay with `session` + `frame_epoch` ordering; player-id scheme. | Open. Decide when results writer is built (post-M4 + M9 Phase 3). |
+| Q13 | Album-artwork target dimensions + cache pixel format (RGBA8888 vs RGB_565) (§4.8.7). | Open. Decide with the Legato artwork UI slot. |
 
