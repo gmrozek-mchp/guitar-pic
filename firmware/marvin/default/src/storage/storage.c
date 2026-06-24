@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -119,6 +120,38 @@ bool Storage_Unmount(void)
 
 bool Storage_IsMounted(void)      { return s_mounted; }
 const char *Storage_MountPoint(void) { return STG_MOUNT; }
+
+/* FatFs time hook. Overrides the __WEAK stub in the generated diskio.c (which
+ * returns a fixed 2013 date) so file timestamps come from the RTC, in UTC.
+ * FatFs calls this on every create/modify (FF_FS_NORTC=0). The DOS format
+ * stores year-1980 and seconds/2; FatFs rejects years before 1980, so an
+ * unset/implausible RTC falls back to the 1980 epoch. */
+DWORD get_fattime(void)
+{
+    struct tm now;
+    memset(&now, 0, sizeof(now));
+    RTC_TimeGet(&now);
+
+    SYS_FS_TIME t;
+    t.packedTime = 0u;
+
+    int year = now.tm_year + 1900;
+    if (year < 1980)
+    {
+        t.discreteTime.year  = 0u;   /* 1980 */
+        t.discreteTime.month = 1u;
+        t.discreteTime.day   = 1u;
+        return t.packedTime;
+    }
+
+    t.discreteTime.year   = (unsigned)(year - 1980);
+    t.discreteTime.month  = (unsigned)(now.tm_mon + 1);
+    t.discreteTime.day    = (unsigned)now.tm_mday;
+    t.discreteTime.hour   = (unsigned)now.tm_hour;
+    t.discreteTime.minute = (unsigned)now.tm_min;
+    t.discreteTime.second = (unsigned)(now.tm_sec / 2);   /* DOS stores sec/2 */
+    return t.packedTime;
+}
 
 /* ---- diagnostics -------------------------------------------------------- */
 

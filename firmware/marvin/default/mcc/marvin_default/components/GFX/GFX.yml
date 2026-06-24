@@ -16,6 +16,22 @@ dependency:
   name: core
   type: package
   version: v3.16.3
+- dependencyPackage: ''
+  name: csp
+  type: package
+  version: v3.25.2
+- dependencyPackage: ''
+  name: gfx
+  type: package
+  version: v3.17.0
+- dependencyPackage: ''
+  name: usb
+  type: package
+  version: v3.16.0
+- dependencyPackage: ''
+  name: vision
+  type: package
+  version: v3.2.2
 customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
 data:
   attachments: {}

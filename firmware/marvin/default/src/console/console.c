@@ -5,6 +5,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -113,6 +114,35 @@ static uint32_t parse_u32(const char *s, uint32_t dflt)
     return v;
 }
 
+/* Pull up to n non-negative integers out of s, separated by any run of
+ * non-digit characters (so "2026-06-23" and "14:03:00" both parse). Returns
+ * the count parsed. */
+static int parse_ints(const char *s, int *out, int n)
+{
+    int got = 0;
+    if (s == NULL) { return 0; }
+    while (got < n && *s != '\0')
+    {
+        while (*s != '\0' && (*s < '0' || *s > '9')) { s++; }
+        if (*s < '0' || *s > '9') { break; }
+        int v = 0;
+        while (*s >= '0' && *s <= '9') { v = (v * 10) + (*s - '0'); s++; }
+        out[got++] = v;
+    }
+    return got;
+}
+
+/* Day of week (0 = Sunday) for a Gregorian date, matching struct tm's tm_wday.
+ * Sakamoto's method; m is 1-12. */
+static int day_of_week(int y, int m, int d)
+{
+    static const int t[] = { 0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4 };
+    if (m < 3) { y -= 1; }
+    return (y + y / 4 - y / 100 + y / 400 + t[m - 1] + d) % 7;
+}
+
+static const char *const k_wday[7] = { "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat" };
+
 /* ---- command handlers --------------------------------------------------- */
 
 static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
@@ -168,6 +198,65 @@ static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
                            (unsigned long)ni.age_ms);
         }
     }
+}
+
+static void cmd_time(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub == NULL)
+    {
+        struct tm now;
+        memset(&now, 0, sizeof(now));
+        RTC_TimeGet(&now);
+        int wd = (now.tm_wday >= 0 && now.tm_wday <= 6) ? now.tm_wday : 0;
+        console_printf("%04d-%02d-%02dT%02d:%02d:%02dZ (%s)",
+                       now.tm_year + 1900, now.tm_mon + 1, now.tm_mday,
+                       now.tm_hour, now.tm_min, now.tm_sec, k_wday[wd]);
+        return;
+    }
+
+    if (strcmp(sub, "set") == 0)
+    {
+        int ymd[3], hms[3];
+        if (parse_ints(embeddedCliGetToken(args, 2), ymd, 3) != 3 ||
+            parse_ints(embeddedCliGetToken(args, 3), hms, 3) != 3)
+        {
+            console_printf("usage: time set YYYY-MM-DD HH:MM:SS  (UTC)");
+            return;
+        }
+        int Y = ymd[0], Mo = ymd[1], D = ymd[2];
+        int h = hms[0], mi = hms[1], s = hms[2];
+        if (Y < 1970 || Y > 2099 || Mo < 1 || Mo > 12 || D < 1 || D > 31 ||
+            h > 23 || mi > 59 || s > 59)
+        {
+            console_printf("out of range (expect UTC YYYY-MM-DD HH:MM:SS)");
+            return;
+        }
+
+        struct tm t;
+        memset(&t, 0, sizeof(t));
+        t.tm_year = Y - 1900;
+        t.tm_mon  = Mo - 1;
+        t.tm_mday = D;
+        t.tm_hour = h;
+        t.tm_min  = mi;
+        t.tm_sec  = s;
+        t.tm_wday = day_of_week(Y, Mo, D);
+
+        if (RTC_TimeSet(&t))
+        {
+            console_printf("set %04d-%02d-%02dT%02d:%02d:%02dZ", Y, Mo, D, h, mi, s);
+        }
+        else
+        {
+            console_printf("RTC set failed");
+        }
+        return;
+    }
+
+    console_printf("usage: time [set YYYY-MM-DD HH:MM:SS]");
 }
 
 static void sd_out(void *ctx, const char *line)
@@ -313,6 +402,7 @@ static void register_commands(void)
         { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
         { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
         { "sd",     "sd <info|ls|bench|mount|unmount> [arg]: SD-card bring-up", true, NULL, cmd_sd },
+        { "time",   "time [set YYYY-MM-DD HH:MM:SS]: read/set the RTC (UTC)",   true, NULL, cmd_time },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

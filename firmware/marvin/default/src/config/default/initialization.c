@@ -340,13 +340,6 @@ static void SYSC_Disable( void )
                                     SYSCWP_SYSC_WPMR_WPITEN_Msk);
 
 
-    /* ----------------------------   RTC  -------------------------------*/
-    //Disable interrupts
-    RTC_REGS->RTC_IDR = RTC_IDR_Msk;
-
-    //Clear interrupt status
-    RTC_REGS->RTC_SCCR = RTC_SCCR_Msk;
-
     /* ----------------------------   RTT  -------------------------------*/
     //Disable Timer and interrupt
     uint32_t rtt_mr = RTT_REGS->RTT_MR;
@@ -435,6 +428,7 @@ void SYS_Initialize ( void* data )
     /* Disable WDT   */
     WDT_REGS->WDT_MR = WDT_MR_WDDIS_Msk;
 
+    RTC_Initialize();
 
     TC0_CH0_TimerInitialize();
 

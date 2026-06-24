@@ -43,6 +43,7 @@ modules:
 - flexcom2
 - flexcom4
 - pit
+- rtc
 - stdio
 - sys_time
 - tc0
@@ -55,13 +56,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: dff1e2048886123f7516f1da45350172b466f308e9a4ade7f5d463ec0a9526a8
 - file: ../src/config/default/configuration.h
-  hash: cffea3300d9347d0597439048e03297290ca207d798e3b28808123f8e6b44d09
+  hash: 689a9e125b301e24ac43638ee5a5831af96a4608e8ccb1d536a578be674b219b
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 6726b057f4693885faf7e71c8cfe44e210a9ae72e9af402661357fdf82e47276
 - file: ../src/config/default/definitions.h
-  hash: 127fa3b874480d4f8931efc0ab66c98c285b4d8b16224a9b54a5795a72299b81
+  hash: 2e1be2672228b034f6d92a13882263ea05669b72589bf446ac5aafee5a9532c2
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -631,7 +632,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 999fa0aa19eb2547117bef798423d5c9cff3e03a7f73b719d33e726cc718862d
+  hash: 385a05352c6ffd810e95414e93dedba80d2e2e90e3e703a81060d1a09106911f
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -698,6 +699,12 @@ generatedFileHashHistoryMap:
   hash: 8a0cc770abe2faed88127bb7e1a489749d3c9f971094fc9addf001a7a7ded5fa
 - file: ../src/config/default/peripheral/pit/plib_pit.h
   hash: 05552497ada087ffbfbcf7190aa4ac216399c208c72f8014c207c01c074dafa0
+- file: ../src/config/default/peripheral/rtc/plib_rtc.c
+  hash: 537ac6521b4b88683e06047cab2224e54df7abc6c5a918b68d64f1b41734eb17
+- file: ../src/config/default/peripheral/rtc/plib_rtc.h
+  hash: e7579d970e0293a888d6808b3352856eca93b5a345c8a9960863e8d99f6fcc34
+- file: ../src/config/default/peripheral/rtc/plib_rtc_common.h
+  hash: 4f61f10ae3f65617093fb501bc051ddf7a53e145a5e487eda69862eb85dbc739
 - file: ../src/config/default/peripheral/sdmmc/plib_sdmmc0.c
   hash: 32a3a9a1b3574d00423dafaea5a575a8882a831b1fc9d9b4c5f880c64b5b776d
 - file: ../src/config/default/peripheral/sdmmc/plib_sdmmc0.h
