@@ -328,7 +328,7 @@ The card is also the runtime store for everything that changes independently of 
 │       ├── songs.json          // song catalog labels (§4.8.3)
 │       └── art/<setlist>-<NN>.{jpg,png}   // album artwork, named by recognizer key (§4.8.7)
 ├── players/
-│   └── results.jsonl           // append-only per-player performance records (§4.8.6)
+│   └── results.csv             // append-only per-player performance records (§4.8.6)
 └── recordings/
     └── <session>/              // §4.6.3
 ```
@@ -487,20 +487,45 @@ See §9 for tracking entries. In summary:
 
 #### 4.8.6 Performance results & player profiles 🚧
 
-Per-player gameplay results, stored on the SD card as `/marvin/players/results.jsonl` — newline-delimited JSON, append-only (crash-tolerant; trivially parsed on a workstation). One record per completed run, keyed to a song by the same `(setlist, index)` the recognizer emits:
+Per-player gameplay results, stored on the SD card as `/marvin/players/results.csv` — a flat,
+append-only CSV (one row per completed run, with a header row). Keyed to a song by the same
+`(setlist, index)` the recognizer emits:
 
-```json
-{ "player": "greg", "game": "gh3-wii", "setlist": "main", "index": 4,
-  "difficulty": "hard", "part": "lead", "score": 123456, "accuracy_pct": 92.4,
-  "notes_hit": 480, "notes_total": 520, "session": 7, "frame_epoch": 901234,
-  "timestamp": "2026-06-22T14:03:00Z" }
 ```
+player,game,setlist,index,song,difficulty,part,score,accuracy_pct,notes_hit,notes_total,timestamp
+greg,gh3-wii,main,4,"Slow Ride",hard,lead,123456,92.4,480,520,2026-06-23T23:14:00Z
+```
+
+**Why CSV (not JSON/YAML or a DB).** Results have two consumers — Marvin reads `results.csv` to show
+high scores on-device, and the card is taken to a PC for deeper analysis. CSV is the only format that
+serves both well: on-device it parses with comma-splitting + `atol` into static buffers (no malloc,
+no JSON tokenizer, stream one line at a time — fits `FF_FS_MAX_FILES=1` and the static-allocation
+rule); on a PC it's a one-liner in pandas/Excel/awk. JSONL is nicer for nested/evolving schemas but
+costs an on-device tokenizer for no benefit here (results are flat and tabular); YAML has no good
+zero-alloc embedded parser; a DB (SQLite) needs malloc + a FatFs VFS shim — overkill for an
+append-only log. Schema evolution: append columns at the end (the on-device reader touches only the
+columns it needs; pandas keys by header). The `song` title is duplicated alongside `(setlist,index)`
+so the CSV is self-contained for analysis without joining the catalog.
+
+Scope boundary: `results.csv` is the **flat per-run summary** only. Deep per-note / per-section
+telemetry belongs in the recording subsystem (§4.6 `state.bin`), keeping this file trivially
+parseable on-device.
+
+On-device high scores: scan the file, filter by `(setlist, index[, difficulty])`, keep a fixed
+top-N array in static memory. A full scan per display is fine at expected scale (hundreds–thousands
+of rows ≈ tens–hundreds of KB); if it ever grows large, cap the log or maintain a small separate
+high-score cache.
 
 Dependencies and open points:
 
-- **Score/accuracy capture depends on the number/score readers — M9 Phase 3**, not yet started. Until those land, only the song identity + difficulty/part are recordable.
-- **Wall-clock `timestamp` is optional and gated on the RTC.** The SAM9X75 has an internal RTC (32.768 kHz crystal + VDDBU backup rail are present on the Curiosity Hybrid board), but it is currently disabled in `initialization.c` with no plib generated. Enabling wall-clock time costs an MCC regen plus confirming a coin-cell/supercap is populated on VDDBU (otherwise the clock resets on every power-off and must be set at boot from the host/UI). Until/unless that's done, every record carries `session` (a monotonic boot-session counter) + `frame_epoch` (§4.6.4) for ordering, and `timestamp` is emitted only when the RTC is enabled and set. Tracked as Q12.
-- **Player identity** is a simple operator-entered string for now; richer profiles are out of scope. Also Q12.
+- **Score/accuracy capture depends on the number/score readers — M9 Phase 3**, not yet started. Until
+  those land, only the song identity + difficulty/part are recordable. The CSV writer + on-device
+  top-N reader + a `scores` console command can be built and validated now against synthetic rows,
+  since they sit entirely on the proven SD/FatFs/RTC layer (§4.6.2, §4.8.7-adjacent).
+- **`timestamp` is UTC from the RTC** (§4.7), confirmed persistent across power cycles. FAT has no
+  timezone field, so file mtimes are also written in UTC by convention.
+- **Player identity** is a simple operator-entered string for now (e.g. a `player` console command
+  setting the current name); richer profiles are out of scope. Tracked as Q12.
 
 #### 4.8.7 Album artwork 🚧
 
@@ -586,6 +611,6 @@ Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 | Q9 | Config persistence location (SD file vs internal flash). | Resolved: `/marvin/config.json` on SD (§4.7, §4.6.2 layout). |
 | Q10 | Game-state recognizer algorithm — template matching vs OCR vs color/region heuristics vs small CNN. | Open. Decide at M9; revisit if first algorithm misclassifies on real game UI. |
 | Q11 | Command-path arbitration between game-state controller and timing pipeline (§4.4 vs §4.8). Default working assumption: mutually exclusive (controller runs only outside `gameplay` state); may need richer arbitration if a game has gameplay-screen menus or pause overlays we want to drive. | Open. Decide at M10. |
-| Q12 | Performance-result timestamps & player identity (§4.8.6) — whether to enable the SAM9X75 RTC for wall-clock time (MCC regen + VDDBU backup) or stay with `session` + `frame_epoch` ordering; player-id scheme. | Open. Decide when results writer is built (post-M4 + M9 Phase 3). |
+| Q12 | Performance-result player identity (§4.8.6) — the player-id scheme (operator-entered string vs. selectable profiles). | Partly resolved: timestamps are UTC from the RTC (persistent across power cycles); results format is CSV. Player-id scheme still open; decide when the gameplay write path is wired (M9 Phase 3). |
 | Q13 | Album-artwork target dimensions + cache pixel format (RGBA8888 vs RGB_565) (§4.8.7). | Open. Decide with the Legato artwork UI slot. |
 
