@@ -45,6 +45,7 @@
 #include "console/console.h"
 #include "storage/storage.h"
 #include "results/results.h"
+#include "game/catalog.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -172,6 +173,12 @@ void APP_Initialize ( void )
      * lazy (mounts on demand) from Results_Append / the player/scores/results
      * console commands. */
     Results_Initialize();
+
+    /* Song catalog (labels keyed by the recognizer's (setlist,index)). State
+     * only here; the CSV is lazy-loaded from the card on first lookup / the
+     * `catalog` console command. A missing catalog degrades to "Unknown song"
+     * and never affects recognition. See game/catalog.h. */
+    Catalog_Initialize();
 
     /* Interactive operator console on FLEXCOM2 (115200), separate from the
      * DBGU log channel. Started after the actuator/detector modules so its

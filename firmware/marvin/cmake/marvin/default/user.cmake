@@ -18,6 +18,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/console/console.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/storage/storage.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/results/results.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/util/csv.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/catalog.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli/embedded_cli.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s/t1s_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src/tc6.c"

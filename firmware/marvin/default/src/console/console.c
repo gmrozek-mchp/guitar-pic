@@ -24,6 +24,7 @@
 #include "net/t1s/t1s_link.h"
 #include "storage/storage.h"
 #include "results/results.h"
+#include "game/catalog.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
@@ -336,6 +337,66 @@ static void cmd_results(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("%s", Results_Append(&rec) ? "added" : "append failed");
 }
 
+static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub == NULL)
+    {
+        console_printf("usage: catalog <reload|ls|<main|bonus> <index>>");
+        return;
+    }
+    if (strcmp(sub, "reload") == 0)
+    {
+        bool ok = Catalog_Reload();
+        console_printf("%s; %d song(s) cached", ok ? "reloaded" : "no catalog",
+                       Catalog_Count());
+        return;
+    }
+    if (strcmp(sub, "ls") == 0)
+    {
+        int n = Catalog_Count();
+        if (n == 0) { console_printf("catalog empty (try: catalog reload)"); return; }
+        for (int i = 0; i < n; i++)
+        {
+            const catalog_entry_t *e = Catalog_At(i);
+            console_printf("%-5s %2u  %-32s %s",
+                           (e->setlist == GP_SETLIST_BONUS) ? "bonus" : "main",
+                           (unsigned)e->index, e->title, e->artist);
+        }
+        return;
+    }
+
+    /* catalog <main|bonus> <index> */
+    const char *idx = embeddedCliGetToken(args, 2);
+    int sl = (strcmp(sub, "main") == 0) ? GP_SETLIST_MAIN
+           : (strcmp(sub, "bonus") == 0) ? GP_SETLIST_BONUS : -1;
+    if (sl < 0 || idx == NULL)
+    {
+        console_printf("usage: catalog <reload|ls|<main|bonus> <index>>");
+        return;
+    }
+
+    catalog_entry_t e;
+    if (!Catalog_Lookup((uint8_t)sl, (uint8_t)parse_u32(idx, 0u), &e))
+    {
+        console_printf("Unknown song");
+        return;
+    }
+    console_printf("%s — %s", e.title, e.artist);
+    if (e.album[0] != '\0' && e.year != 0) { console_printf("  album: %s (%u)", e.album, (unsigned)e.year); }
+    else if (e.album[0] != '\0')           { console_printf("  album: %s", e.album); }
+    else if (e.year != 0)                  { console_printf("  year: %u", (unsigned)e.year); }
+    if (e.genre[0] != '\0')      { console_printf("  genre: %s", e.genre); }
+    if (e.difficulty[0] != '\0') { console_printf("  difficulty: %s", e.difficulty); }
+    if (e.bpm != 0 || e.length_s != 0)
+    {
+        console_printf("  bpm %u, %u:%02u", (unsigned)e.bpm,
+                       (unsigned)(e.length_s / 60u), (unsigned)(e.length_s % 60u));
+    }
+}
+
 static void sd_out(void *ctx, const char *line)
 {
     (void)ctx;
@@ -483,6 +544,7 @@ static void register_commands(void)
         { "player", "player [name]: show/set the current player",              true, NULL, cmd_player },
         { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
         { "results","results add <set> <idx> <diff> <part> <score>: test row", true, NULL, cmd_results },
+        { "catalog","catalog <reload|ls|<main|bonus> <index>>: song labels",    true, NULL, cmd_catalog },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

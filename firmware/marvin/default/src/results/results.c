@@ -9,6 +9,7 @@
 #include "log.h"
 
 #include "storage/storage.h"
+#include "util/csv.h"
 
 #define RES_REL_DIR   "players"
 #define RES_REL_FILE  "players/results.csv"
@@ -36,62 +37,6 @@ static void iso8601_utc(char *buf, size_t n)
     (void)snprintf(buf, n, "%04d-%02d-%02dT%02d:%02d:%02dZ",
                    t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
                    t.tm_hour, t.tm_min, t.tm_sec);
-}
-
-/* Write s into out as a quoted CSV field ("..."), doubling any embedded quote.
- * Always quoted, so embedded commas are safe. Truncates to fit. */
-static void csv_quote(const char *s, char *out, size_t n)
-{
-    size_t j = 0;
-    if (n == 0) { return; }
-    if (s == NULL) { s = ""; }
-
-    if (j < n - 1) { out[j++] = '"'; }
-    for (size_t i = 0; s[i] != '\0' && j < n - 2; i++)
-    {
-        if (s[i] == '"' && j < n - 3) { out[j++] = '"'; }   /* escape by doubling */
-        out[j++] = s[i];
-    }
-    if (j < n - 1) { out[j++] = '"'; }
-    out[j] = '\0';
-}
-
-/* Split a CSV line in place into fields[], honoring double-quoted fields
- * (commas inside quotes, "" -> "). Returns the field count. */
-static int csv_split(char *line, char *fields[], int maxf)
-{
-    int nf = 0;
-    char *p = line;
-
-    while (nf < maxf)
-    {
-        if (*p == '"')
-        {
-            p++;
-            char *w = p;            /* unescape in place */
-            fields[nf++] = w;
-            while (*p != '\0')
-            {
-                if (*p == '"')
-                {
-                    if (p[1] == '"') { *w++ = '"'; p += 2; }
-                    else { p++; break; }   /* closing quote */
-                }
-                else { *w++ = *p++; }
-            }
-            *w = '\0';
-            while (*p != '\0' && *p != ',' && *p != '\n' && *p != '\r') { p++; }
-        }
-        else
-        {
-            fields[nf++] = p;
-            while (*p != '\0' && *p != ',' && *p != '\n' && *p != '\r') { p++; }
-        }
-
-        if (*p == ',') { *p = '\0'; p++; }
-        else { *p = '\0'; break; }
-    }
-    return nf;
 }
 
 /* ---- player ------------------------------------------------------------- */

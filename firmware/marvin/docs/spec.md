@@ -325,8 +325,10 @@ The card is also the runtime store for everything that changes independently of 
 ├── config.json                 // §4.7 config persistence
 ├── games/
 │   └── gh3-wii/
-│       ├── songs.json          // song catalog labels (§4.8.3)
-│       └── art/<setlist>-<NN>.{jpg,png}   // album artwork, named by recognizer key (§4.8.7)
+│       ├── songs.csv           // song catalog labels (§4.8.3)
+│       └── art/
+│           ├── small/<setlist>-<NN>.{jpg,png}   // album artwork, named by recognizer key (§4.8.7)
+│           └── large/<setlist>-<NN>.{jpg,png}   // one size tier per fixed-size DDR cache
 ├── players/
 │   └── results.csv             // append-only per-player performance records (§4.8.6)
 └── recordings/
@@ -454,19 +456,20 @@ The recognizer and the navigator both depend on per-game data:
 **Storage split (decided).** The line is drawn by *what the data is coupled to*, not by convenience:
 
 - **Compile-time, in flash:** recognizer templates/signatures (centroids, menu baselines, song bitmap templates, thresholds) **and** the menu graph. These are *algorithm-coupled* — a template is only valid paired with the exact grid geometry, sampling, and normalization compiled into the C recognizer, and is re-learned in lockstep when the algorithm changes. They are generated from the host corpus by `tools/gameplay/gameplay/export_c.py` into `gameplay_metadata.h` and consumed through pointers by `gameplay_classify.c` / `gameplay_select.c`. **Recognition never reads the SD card** — so a missing or stale card can never cause a silent misclassification.
-- **On the SD card (`/marvin/games/<game>/songs.json`):** the song catalog *labels* — the human-meaningful, user-editable metadata that changes independently of the firmware. Keyed by the stable `(setlist, index)` identifier the recognizer already emits (`gp_song_t`):
+- **On the SD card (`/marvin/games/<game>/songs.csv`):** the song catalog *labels* — the human-meaningful, user-editable metadata that changes independently of the firmware. A flat CSV (header + one row per song), keyed by the stable `(setlist, index)` identifier the recognizer already emits (`gp_song_t`):
 
-```json
-{
-  "game": "gh3-wii",
-  "metadata_version": "<stamp matching the firmware build>",
-  "songs": [
-    { "setlist": "main", "index": 4, "title": "...", "artist": "...", "bpm": 120, "length_s": 210 }
-  ]
-}
+```
+setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty
+main,4,"Rock and Roll All Nite","Kiss","Alive!",120,210,1975,"Hard Rock",
 ```
 
-The catalog is *labels only* — recognition does not depend on it; a missing/stale catalog degrades to "Unknown song", never a functional break. `export_c.py` also emits a `metadata_version` `#define` into `gameplay_metadata.h`; the same value goes in `songs.json` so the UI can warn if the catalog predates a template-set regeneration. Because the catalog is keyed by `(setlist, index)`, a mismatch degrades gracefully rather than misclassifying.
+`setlist` is the string `main`/`bonus` (the same key the art filenames use); `title`/`artist`/`album`/`genre`/`difficulty` are CSV-quoted (may contain commas; any may be empty); `bpm`/`length_s`/`year` are integers, `0` when unknown. Rows may be sparse or out of order — only `(setlist, index)` is the key. `title`/`artist`/`album` come from the `SONGS` table in `tools/fetch_gh3_cover_art.py`, whose `--catalog` mode also fills `year`/`genre` from MusicBrainz; `bpm`/`length_s`/`difficulty` are reserved-but-blank (GH3 surfaces no per-song difficulty — the only authentic signal is the career tier, deferred).
+
+**Why CSV (not JSON).** Same rationale that put `results.csv` (§4.8.6) on flat CSV: on-device it parses with comma-splitting + `atol` into static buffers (no malloc, no JSON tokenizer, one line at a time — fits `FF_FS_MAX_FILES=1` and the static-allocation rule), and it opens directly in pandas/Excel for editing. The on-device reader (`game/catalog.c`) lazy-loads it once into a fixed `[GP_N_SONGS]` cache (shares the `util/csv.h` splitter with `results.c`) and serves `(setlist, index) → labels` lookups from RAM with the file closed.
+
+The catalog is *labels only* — recognition does not depend on it; a missing/stale catalog degrades to "Unknown song", never a functional break, and a `(setlist, index)` mismatch degrades gracefully rather than misclassifying.
+
+> **Stale-catalog warning — deferred.** The intent is for `export_c.py` to emit a `metadata_version` `#define` into `gameplay_metadata.h` and carry the same stamp in the catalog so the UI can warn when the catalog predates a template-set regeneration. `export_c.py` does **not** emit that define yet, so the loader ships without the version check; it still degrades safely on every miss. Wire the stamp + warning once `export_c.py` produces it.
 
 Scope today: target is **one game** — Guitar Hero (Wii) — to validate the design. Adding a second game is a metadata addition (new template set + new menu graph + new song catalog), not a structural change.
 
@@ -532,14 +535,16 @@ Dependencies and open points:
 Per-song cover art for the operator UI, stored on the SD card as standard **JPEG or PNG** (so the files are viewable on any workstation) under `/marvin/games/<game>/art/`. Named by the same stable recognizer key as the catalog, so firmware derives the path directly — no `songs.json` lookup, no dependency on the catalog being present:
 
 ```
-art/<setlist>-<NN>.{jpg,png}     // e.g. art/main-04.jpg, art/bonus-12.png  (NN = zero-padded index)
+art/<size>/<setlist>-<NN>.{jpg,png}     // <size> ∈ {small, large}; e.g. art/small/main-04.jpg, art/large/bonus-12.png  (NN = zero-padded index)
 ```
 
-**Pre-cache at startup, not per-use.** After the FAT mount (M4), the firmware walks `art/` and decodes every image **once** into a static, pre-allocated cache of fixed-size slots in DDR; runtime artwork access is then an O(1) pointer into RAM — no card I/O, no decode, and no allocation at use time (consistent with the static-allocation rule). A missing/oversized/corrupt file leaves its slot empty → UI placeholder.
+**Size tiers = size-tier subdirectories.** Two (or more) artwork sizes live in sibling subdirs (`art/small/`, `art/large/`), each mapping 1:1 to one fixed-size DDR pre-decode cache — the firmware walks one subdir per tier and all images in it share a slot dimension, so adding a third tier is just another subdir. The filename within a tier is the recognizer key (`<setlist>-<NN>`), identical across tiers.
+
+**Pre-cache at startup, not per-use.** After the FAT mount (M4), the firmware walks each size subdir and decodes every image **once** into that tier's static, pre-allocated cache of fixed-size slots in DDR; runtime artwork access is then an O(1) pointer into RAM — no card I/O, no decode, and no allocation at use time (consistent with the static-allocation rule). A missing/oversized/corrupt file leaves its slot empty → UI placeholder.
 
 - **Decoder — Legato's own runtime decoders; no new library.** JPEG (built-in) and PNG (lodepng) are already enabled in this project (`legato_config.h`: `LE_ENABLE_JPEG_DECODER=1`, `LE_ENABLE_PNG_DECODER=1`). Because `LE_STREAMING_ENABLED=0`, the flow is: read the whole compressed file into a RAM buffer → point a `leImage` (`LE_IMAGE_FORMAT_JPEG` / `_PNG`) at it → decode into the cache slot via the Legato image API. Source images authored at the target WxH decode 1:1 (no scaling).
 - **Cache pixel format & size.** A decoded Legato raster; **RGBA8888** is the natural full-color choice, **RGB_565** (already used by the project's other assets) halves the RAM cost if alpha isn't needed. Cache = `N_songs × W × H × bytes/px`; for ~70 songs at RGBA8888 that's ≈ 4.5 MB (128×128) / 11 MB (200×200) / 18 MB (256×256), all comfortable in the SAM9X75D2G's DDR (framebuffers use only a few MB). On-card JPEGs total ≈ 1.5–3 MB.
-- **Exact target dimensions + cache pixel format** are settled when the Legato artwork UI slot is designed. Tracked as Q13.
+- **Exact per-tier dimensions (the px behind `small`/`large`) + cache pixel format** are settled when the Legato artwork UI slot is designed. Tracked as Q13.
 
 ### 4.9 Operator command console ✅
 
