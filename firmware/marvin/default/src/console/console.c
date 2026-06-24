@@ -23,6 +23,7 @@
 #include "game/fret.h"
 #include "net/t1s/t1s_link.h"
 #include "storage/storage.h"
+#include "results/results.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
@@ -259,6 +260,82 @@ static void cmd_time(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("usage: time [set YYYY-MM-DD HH:MM:SS]");
 }
 
+static void cmd_player(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *name = embeddedCliGetToken(args, 1);
+    if (name == NULL)
+    {
+        console_printf("player: %s", Results_GetPlayer());
+        return;
+    }
+    Results_SetPlayer(name);
+    console_printf("player = %s", Results_GetPlayer());
+}
+
+static void cmd_scores(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *setlist = embeddedCliGetToken(args, 1);
+    const char *idx     = embeddedCliGetToken(args, 2);
+    const char *diff    = embeddedCliGetToken(args, 3);   /* optional */
+    if (setlist == NULL || idx == NULL)
+    {
+        console_printf("usage: scores <main|bonus> <index> [difficulty]");
+        return;
+    }
+
+    uint8_t index = (uint8_t)parse_u32(idx, 0u);
+    results_score_t top[5];
+    int n = Results_TopN(setlist, index, diff, top, 5);
+    if (n == 0)
+    {
+        console_printf("no scores for %s #%u%s%s", setlist, (unsigned)index,
+                       (diff != NULL) ? " " : "", (diff != NULL) ? diff : "");
+        return;
+    }
+    for (int i = 0; i < n; i++)
+    {
+        console_printf("%d. %9lu  %-12s %s", i + 1,
+                       (unsigned long)top[i].score, top[i].player, top[i].timestamp);
+    }
+}
+
+static void cmd_results(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    /* Synthetic-row injection for testing the CSV write/read path before the
+     * gameplay engine populates real records. */
+    const char *sub = embeddedCliGetToken(args, 1);
+    if (sub == NULL || strcmp(sub, "add") != 0)
+    {
+        console_printf("usage: results add <main|bonus> <index> <difficulty> <part> <score>");
+        return;
+    }
+    const char *setlist = embeddedCliGetToken(args, 2);
+    const char *idx     = embeddedCliGetToken(args, 3);
+    const char *diff    = embeddedCliGetToken(args, 4);
+    const char *part    = embeddedCliGetToken(args, 5);
+    const char *score   = embeddedCliGetToken(args, 6);
+    if (setlist == NULL || idx == NULL || diff == NULL || part == NULL || score == NULL)
+    {
+        console_printf("usage: results add <main|bonus> <index> <difficulty> <part> <score>");
+        return;
+    }
+
+    results_record_t rec;
+    memset(&rec, 0, sizeof(rec));
+    rec.game       = "gh3-wii";
+    rec.setlist    = setlist;
+    rec.index      = (uint8_t)parse_u32(idx, 0u);
+    rec.song       = "Test, Song";   /* comma exercises the CSV quoting path */
+    rec.difficulty = diff;
+    rec.part       = part;
+    rec.score      = parse_u32(score, 0u);
+
+    console_printf("%s", Results_Append(&rec) ? "added" : "append failed");
+}
+
 static void sd_out(void *ctx, const char *line)
 {
     (void)ctx;
@@ -403,6 +480,9 @@ static void register_commands(void)
         { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
         { "sd",     "sd <info|ls|bench|mount|unmount> [arg]: SD-card bring-up", true, NULL, cmd_sd },
         { "time",   "time [set YYYY-MM-DD HH:MM:SS]: read/set the RTC (UTC)",   true, NULL, cmd_time },
+        { "player", "player [name]: show/set the current player",              true, NULL, cmd_player },
+        { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
+        { "results","results add <set> <idx> <diff> <part> <score>: test row", true, NULL, cmd_results },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },
@@ -470,7 +550,7 @@ void Console_Initialize(void)
     cfg->rxBufferSize      = 64u;
     cfg->cmdBufferSize     = 64u;
     cfg->historyBufferSize = 128u;
-    cfg->maxBindingCount   = 16u;
+    cfg->maxBindingCount   = 24u;
     cfg->enableAutoComplete = true;
     cfg->cliBuffer         = s_cli_buf;
     cfg->cliBufferSize     = sizeof(s_cli_buf);

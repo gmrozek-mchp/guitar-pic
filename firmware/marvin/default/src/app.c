@@ -44,6 +44,7 @@
 #include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "storage/storage.h"
+#include "results/results.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -166,6 +167,11 @@ void APP_Initialize ( void )
      * driver hasn't analyzed the card pre-scheduler). The card is mounted on
      * demand by the `sd` console command; see storage/storage.h. */
     Storage_Initialize();
+
+    /* Per-player results log (CSV on the card). State only here; file I/O is
+     * lazy (mounts on demand) from Results_Append / the player/scores/results
+     * console commands. */
+    Results_Initialize();
 
     /* Interactive operator console on FLEXCOM2 (115200), separate from the
      * DBGU log channel. Started after the actuator/detector modules so its

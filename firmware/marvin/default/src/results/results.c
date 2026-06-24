@@ -1,0 +1,246 @@
+#include "results.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include "definitions.h"
+#include "log.h"
+
+#include "storage/storage.h"
+
+#define RES_REL_DIR   "players"
+#define RES_REL_FILE  "players/results.csv"
+
+#define RES_HEADER \
+    "player,game,setlist,index,song,difficulty,part,score,accuracy_pct,notes_hit,notes_total,timestamp"
+
+#define RES_LINE_MAX  256
+#define RES_FIELDS    12
+
+static char s_player[24] = "p1";
+
+/* ---- helpers ------------------------------------------------------------ */
+
+static void build_path(char *buf, size_t n, const char *rel)
+{
+    (void)snprintf(buf, n, "%s/%s", Storage_MountPoint(), rel);
+}
+
+static void iso8601_utc(char *buf, size_t n)
+{
+    struct tm t;
+    memset(&t, 0, sizeof(t));
+    RTC_TimeGet(&t);
+    (void)snprintf(buf, n, "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                   t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                   t.tm_hour, t.tm_min, t.tm_sec);
+}
+
+/* Write s into out as a quoted CSV field ("..."), doubling any embedded quote.
+ * Always quoted, so embedded commas are safe. Truncates to fit. */
+static void csv_quote(const char *s, char *out, size_t n)
+{
+    size_t j = 0;
+    if (n == 0) { return; }
+    if (s == NULL) { s = ""; }
+
+    if (j < n - 1) { out[j++] = '"'; }
+    for (size_t i = 0; s[i] != '\0' && j < n - 2; i++)
+    {
+        if (s[i] == '"' && j < n - 3) { out[j++] = '"'; }   /* escape by doubling */
+        out[j++] = s[i];
+    }
+    if (j < n - 1) { out[j++] = '"'; }
+    out[j] = '\0';
+}
+
+/* Split a CSV line in place into fields[], honoring double-quoted fields
+ * (commas inside quotes, "" -> "). Returns the field count. */
+static int csv_split(char *line, char *fields[], int maxf)
+{
+    int nf = 0;
+    char *p = line;
+
+    while (nf < maxf)
+    {
+        if (*p == '"')
+        {
+            p++;
+            char *w = p;            /* unescape in place */
+            fields[nf++] = w;
+            while (*p != '\0')
+            {
+                if (*p == '"')
+                {
+                    if (p[1] == '"') { *w++ = '"'; p += 2; }
+                    else { p++; break; }   /* closing quote */
+                }
+                else { *w++ = *p++; }
+            }
+            *w = '\0';
+            while (*p != '\0' && *p != ',' && *p != '\n' && *p != '\r') { p++; }
+        }
+        else
+        {
+            fields[nf++] = p;
+            while (*p != '\0' && *p != ',' && *p != '\n' && *p != '\r') { p++; }
+        }
+
+        if (*p == ',') { *p = '\0'; p++; }
+        else { *p = '\0'; break; }
+    }
+    return nf;
+}
+
+/* ---- player ------------------------------------------------------------- */
+
+void Results_Initialize(void)
+{
+    /* Default player is the static initializer; nothing else to set up. */
+}
+
+void Results_SetPlayer(const char *name)
+{
+    if (name == NULL || name[0] == '\0') { return; }
+
+    size_t j = 0;
+    for (size_t i = 0; name[i] != '\0' && j < sizeof(s_player) - 1; i++)
+    {
+        char c = name[i];
+        if (c == ',' || c == '"' || c == '\n' || c == '\r') { continue; }
+        s_player[j++] = c;
+    }
+    s_player[j] = '\0';
+}
+
+const char *Results_GetPlayer(void) { return s_player; }
+
+/* ---- append ------------------------------------------------------------- */
+
+bool Results_Append(const results_record_t *rec)
+{
+    if (rec == NULL) { return false; }
+    if (!Storage_Mount()) { return false; }
+
+    char dir[64];
+    build_path(dir, sizeof(dir), RES_REL_DIR);
+    (void)SYS_FS_DirectoryMake(dir);   /* harmless if it already exists */
+
+    char path[80];
+    build_path(path, sizeof(path), RES_REL_FILE);
+
+    bool need_header = true;
+    SYS_FS_FSTAT st;
+    if (SYS_FS_FileStat(path, &st) == SYS_FS_RES_SUCCESS && st.fsize > 0u)
+    {
+        need_header = false;
+    }
+
+    SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_APPEND);
+    if (h == SYS_FS_HANDLE_INVALID)
+    {
+        LOG_WARN("RES: open append failed (fs err %d)\r\n", (int)SYS_FS_Error());
+        return false;
+    }
+
+    char line[RES_LINE_MAX];
+    int len;
+
+    if (need_header)
+    {
+        len = snprintf(line, sizeof(line), "%s\n", RES_HEADER);
+        if (len > 0 && (size_t)len < sizeof(line))
+        {
+            (void)SYS_FS_FileWrite(h, line, (size_t)len);
+        }
+    }
+
+    char ts[24];
+    iso8601_utc(ts, sizeof(ts));
+
+    char song_q[96];
+    csv_quote(rec->song, song_q, sizeof(song_q));
+
+    len = snprintf(line, sizeof(line),
+                   "%s,%s,%s,%u,%s,%s,%s,%lu,%u.%u,%u,%u,%s\n",
+                   s_player,
+                   (rec->game != NULL) ? rec->game : "",
+                   (rec->setlist != NULL) ? rec->setlist : "",
+                   (unsigned)rec->index,
+                   song_q,
+                   (rec->difficulty != NULL) ? rec->difficulty : "",
+                   (rec->part != NULL) ? rec->part : "",
+                   (unsigned long)rec->score,
+                   (unsigned)(rec->accuracy_x10 / 10u), (unsigned)(rec->accuracy_x10 % 10u),
+                   (unsigned)rec->notes_hit,
+                   (unsigned)rec->notes_total,
+                   ts);
+
+    bool ok = false;
+    if (len > 0 && (size_t)len < sizeof(line))
+    {
+        ok = (SYS_FS_FileWrite(h, line, (size_t)len) == (size_t)len);
+    }
+    (void)SYS_FS_FileClose(h);
+    return ok;
+}
+
+/* ---- top-N read --------------------------------------------------------- */
+
+int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
+                 results_score_t *out, int max)
+{
+    if (out == NULL || max <= 0 || setlist == NULL) { return 0; }
+    if (!Storage_Mount()) { return 0; }
+
+    char path[80];
+    build_path(path, sizeof(path), RES_REL_FILE);
+
+    SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_READ);
+    if (h == SYS_FS_HANDLE_INVALID) { return 0; }
+
+    int  count = 0;
+    bool first = true;
+    char line[RES_LINE_MAX];
+
+    while (!SYS_FS_FileEOF(h))
+    {
+        if (SYS_FS_FileStringGet(h, line, sizeof(line)) != SYS_FS_RES_SUCCESS) { break; }
+        if (first) { first = false; continue; }     /* header row */
+        if (line[0] == '\0' || line[0] == '\n' || line[0] == '\r') { continue; }
+
+        char *f[RES_FIELDS];
+        if (csv_split(line, f, RES_FIELDS) < RES_FIELDS) { continue; }
+
+        if (strcmp(f[2], setlist) != 0) { continue; }
+        if ((unsigned)atoi(f[3]) != (unsigned)index) { continue; }
+        if (difficulty != NULL && difficulty[0] != '\0' &&
+            strcmp(f[5], difficulty) != 0) { continue; }
+
+        uint32_t score = (uint32_t)strtoul(f[7], NULL, 10);
+
+        /* Insert into the bounded, score-descending top list. */
+        int pos = count;
+        for (int i = 0; i < count; i++)
+        {
+            if (score > out[i].score) { pos = i; break; }
+        }
+        if (pos >= max) { continue; }
+
+        int last = (count < max) ? count : (max - 1);
+        for (int i = last; i > pos; i--) { out[i] = out[i - 1]; }
+
+        strncpy(out[pos].player, f[0], sizeof(out[pos].player) - 1);
+        out[pos].player[sizeof(out[pos].player) - 1] = '\0';
+        strncpy(out[pos].timestamp, f[11], sizeof(out[pos].timestamp) - 1);
+        out[pos].timestamp[sizeof(out[pos].timestamp) - 1] = '\0';
+        out[pos].score = score;
+
+        if (count < max) { count++; }
+    }
+
+    (void)SYS_FS_FileClose(h);
+    return count;
+}
