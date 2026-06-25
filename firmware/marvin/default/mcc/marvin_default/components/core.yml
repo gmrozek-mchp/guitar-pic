@@ -5416,6 +5416,30 @@ data:
           type: User
         type: Values
       type: Integer
+    XLCDC_INTERRUPT_ENABLE:
+      attributes:
+        id: XLCDC_INTERRUPT_ENABLE
+        label: Enable 25 -- LCD Controller
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    XLCDC_INTERRUPT_HANDLER:
+      attributes:
+        id: XLCDC_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: XLCDC_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
   userData:
     children:
     - attributes:

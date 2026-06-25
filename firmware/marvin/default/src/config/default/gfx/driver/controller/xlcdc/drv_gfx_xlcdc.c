@@ -66,7 +66,7 @@
 /* Driver Settings */
 #define XLCDC_HOR_RES           1280
 #define XLCDC_VER_RES           800
-#define XLCDC_TOT_LAYERS        2
+#define XLCDC_TOT_LAYERS        4
 #define XLCDC_BUF_PER_LAYER     1
 
 /* Local Data */
@@ -81,6 +81,8 @@ typedef enum
 static const char layerOrder[XLCDC_TOT_LAYERS] = {
     XLCDC_LAYER_BASE,
     XLCDC_LAYER_HEO,
+    XLCDC_LAYER_OVR1,
+    XLCDC_LAYER_OVR2,
 };
 
 const char *DRIVER_NAME = "XLCDC";
@@ -117,36 +119,148 @@ static uint32_t activeLayer = 0;
 static gfxRect srcRect, destRect;
 static LAYER_ATTRIBUTES drvLayer[XLCDC_TOT_LAYERS];
 
-/* Layer Frame Buffers */
-FB_BPP_TYPE FB_CACHE_NC frame_buffer [XLCDC_TOT_LAYERS * XLCDC_BUF_PER_LAYER][XLCDC_HOR_RES * XLCDC_VER_RES];
-
-/* Local Functions */
-/* Convert XLCDC Color Mode to GFX Color Mode */
-static gfxColorMode DRV_XLCDC_ColorModeGFXFromXLCDC(XLCDC_RGB_COLOR_MODE mode)
+/* Convert GFX Color Mode to XLCDC Color Mode */
+static XLCDC_RGB_COLOR_MODE DRV_XLCDC_ColorModeXLCDCFromGFX(gfxColorMode mode)
 {
     switch(mode)
     {
-        case XLCDC_RGB_COLOR_MODE_CLUT:
-            return GFX_COLOR_MODE_GS_8;
-        case XLCDC_RGB_COLOR_MODE_RGB_565:
-            return GFX_COLOR_MODE_RGB_565;
-        case XLCDC_RGB_COLOR_MODE_RGB_888:
-            return GFX_COLOR_MODE_RGB_888;
-        case XLCDC_RGB_COLOR_MODE_ARGB_8888:
-            return GFX_COLOR_MODE_ARGB_8888;
-        case XLCDC_RGB_COLOR_MODE_RGBA_8888:
-            return GFX_COLOR_MODE_RGBA_8888;
+        case GFX_COLOR_MODE_GS_8:
+            return XLCDC_RGB_COLOR_MODE_CLUT;
+        case GFX_COLOR_MODE_RGB_565:
+            return XLCDC_RGB_COLOR_MODE_RGB_565;
+        case GFX_COLOR_MODE_RGB_888:
+            return XLCDC_RGB_COLOR_MODE_RGB_888;
+        case GFX_COLOR_MODE_ARGB_8888:
+            return XLCDC_RGB_COLOR_MODE_ARGB_8888;
+        case GFX_COLOR_MODE_RGBA_8888:
+            return XLCDC_RGB_COLOR_MODE_RGBA_8888;
         default:
-            return GFX_COLOR_MODE_RGBA_8888;
+            return XLCDC_RGB_COLOR_MODE_RGBA_8888;
     }
 }
 
-/* Frame Buffer specific fill */
-static void DRV_XLCDC_ColorSet (void * fb)
+/* Process the Layer IOCTL Subset */
+static gfxDriverIOCTLResponse DRV_XLCDC_LayerConfig(gfxDriverIOCTLRequest request,
+                                                  gfxIOCTLArg_LayerArg *arg)
 {
-    register FB_BPP_TYPE *ptr = (FB_PTR_TYPE)fb;
-    register uint32_t size = XLCDC_HOR_RES * XLCDC_VER_RES;
-    while(size-- > 0) *ptr++ = 0x0;
+    gfxIOCTLArg_LayerValue *layerVal;
+    gfxIOCTLArg_LayerPosition *layerPos;
+    gfxIOCTLArg_LayerSize *layerSize;
+
+    if (arg->id >= XLCDC_TOT_LAYERS)
+    {
+        return GFX_IOCTL_ERROR_UNKNOWN;
+
+    }
+
+    if (request == GFX_IOCTL_SET_LAYER_LOCK)
+    {
+        drvLayer[arg->id].updateLock = LAYER_LOCK_LOCKED;
+
+        return GFX_IOCTL_OK;
+    }
+
+    if (drvLayer[arg->id].updateLock != LAYER_LOCK_LOCKED)
+    {
+        return GFX_IOCTL_ERROR_UNKNOWN;
+    }
+
+    if (request == GFX_IOCTL_SET_LAYER_UNLOCK)
+    {
+        XLCDC_SetLayerAddress(layerOrder[arg->id], (uint32_t)drvLayer[arg->id].baseaddr[0], false);
+        XLCDC_SetLayerOpts(layerOrder[arg->id], drvLayer[arg->id].alpha, true, false);
+        XLCDC_SetLayerWindowXYPos(layerOrder[arg->id], drvLayer[arg->id].startx, drvLayer[arg->id].starty, false);
+        XLCDC_SetLayerWindowXYSize(layerOrder[arg->id], drvLayer[arg->id].sizex, drvLayer[arg->id].sizey, false);
+        XLCDC_SetLayerXStride(layerOrder[arg->id], FB_TYPE_SZ * (drvLayer[arg->id].resx - drvLayer[arg->id].sizex), false);
+        XLCDC_SetLayerEnable(layerOrder[arg->id], drvLayer[arg->id].enabled, true);
+
+        drvLayer[arg->id].updateLock = LAYER_LOCK_UNLOCKED;
+
+        return GFX_IOCTL_OK;
+    }
+
+    switch (request)
+    {
+        case GFX_IOCTL_SET_LAYER_ALPHA:
+        {
+            layerVal = (gfxIOCTLArg_LayerValue *)arg;
+
+            drvLayer[arg->id].alpha = layerVal->value.v_uint;
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_SET_LAYER_SIZE:
+        {
+            layerSize = (gfxIOCTLArg_LayerSize *)arg;
+
+            drvLayer[arg->id].resx = layerSize->width;
+            drvLayer[arg->id].resy = layerSize->height;
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_SET_LAYER_POSITION:
+        {
+            layerPos = (gfxIOCTLArg_LayerPosition *)arg;
+
+            drvLayer[arg->id].startx = layerPos->x;
+            drvLayer[arg->id].starty = layerPos->y;
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_SET_LAYER_WINDOW_SIZE:
+        {
+            layerSize = (gfxIOCTLArg_LayerSize *)arg;
+
+            drvLayer[arg->id].sizex = layerSize->width;
+            drvLayer[arg->id].sizey = layerSize->height;
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_SET_LAYER_BASE_ADDRESS:
+        {
+            layerVal = (gfxIOCTLArg_LayerValue *)arg;
+
+            drvLayer[arg->id].baseaddr[0] = layerVal->value.v_pointer;
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_SET_LAYER_COLOR_MODE:
+        {
+            layerVal = (gfxIOCTLArg_LayerValue *)arg;
+
+            drvLayer[arg->id].pixelformat = DRV_XLCDC_ColorModeXLCDCFromGFX(layerVal->value.v_colormode);
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_GET_LAYER_ENABLED:
+        {
+            layerVal = (gfxIOCTLArg_LayerValue *)arg;
+
+            layerVal->value.v_bool = drvLayer[arg->id].enabled;
+
+            return GFX_IOCTL_OK;
+        }
+
+        case GFX_IOCTL_SET_LAYER_ENABLED:
+        {
+            layerVal = (gfxIOCTLArg_LayerValue *)arg;
+
+            drvLayer[arg->id].enabled = layerVal->value.v_bool;
+
+            return GFX_IOCTL_OK;
+        }
+
+        default:
+            break;
+    }
+
+    return GFX_IOCTL_UNSUPPORTED;
 }
 
 void DRV_XLCDC_Update(void)
@@ -180,22 +294,9 @@ gfxResult DRV_XLCDC_Initialize(void)
         drvLayer[layerCount].sizex = drvLayer[layerCount].resx;
         drvLayer[layerCount].sizey = drvLayer[layerCount].resy;
         drvLayer[layerCount].alpha = 255;
-        drvLayer[layerCount].enabled = true;
+        drvLayer[layerCount].enabled = false;
         drvLayer[layerCount].updateLock = LAYER_LOCK_UNLOCKED;
         drvLayer[layerCount].frontBufferIdx = 0;
-
-        for (uint32_t bufferCount = 0; bufferCount < XLCDC_BUF_PER_LAYER; ++bufferCount)
-        {
-            drvLayer[layerCount].baseaddr[bufferCount] = (FB_PTR_TYPE)frame_buffer[layerCount + bufferCount * XLCDC_TOT_LAYERS];
-
-            DRV_XLCDC_ColorSet(drvLayer[layerCount].baseaddr[bufferCount]);
-
-            gfxPixelBufferCreate(XLCDC_HOR_RES,
-                                 XLCDC_VER_RES,
-                                 DRV_XLCDC_ColorModeGFXFromXLCDC(drvLayer[layerCount].pixelformat),
-                                 drvLayer[layerCount].baseaddr[bufferCount],
-                                 &drvLayer[layerCount].pixelBuffer[bufferCount]);
-        }
 
         XLCDC_SetLayerEnable(layerOrder[layerCount], false, true);
         XLCDC_SetLayerAddress(layerOrder[layerCount], (uint32_t) drvLayer[layerCount].baseaddr[drvLayer[layerCount].frontBufferIdx], false);
@@ -358,12 +459,28 @@ gfxDriverIOCTLResponse DRV_XLCDC_IOCTL(gfxDriverIOCTLRequest request, void* arg)
         {
             val = (gfxIOCTLArg_Value *)arg;
             val->value.v_uint = 0;
+            unsigned int i;
+
+            for (i = 0; i < XLCDC_TOT_LAYERS; i++)
+            {
+                if (drvLayer[i].updateLock != LAYER_LOCK_UNLOCKED)
+                {
+                    val->value.v_uint = 1;
+
+                    break;
+                }
+            }
 
             return GFX_IOCTL_OK;
         }
 
         default:
         {
+            if (request >= GFX_IOCTL_LAYER_REQ_START &&
+                request <= GFX_IOCTL_LAYER_REQ_END)
+            {
+                return DRV_XLCDC_LayerConfig(request, (gfxIOCTLArg_LayerArg *)arg);
+            }
                 break;
         }
     }

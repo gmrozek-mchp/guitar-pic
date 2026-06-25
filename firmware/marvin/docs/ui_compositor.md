@@ -175,7 +175,16 @@ not the layer count).
   shows up hot.
 - **FX task.** The generated `GFX_CANVAS_Task` uses dynamic `xTaskCreate` (like the other MCC
   XLCDC/USB tasks on heap_1). Either convert to `xTaskCreateStatic` or accept it alongside
-  the existing MCC dynamic tasks; log the choice as an MCC re-apply patch.
+  the existing MCC dynamic tasks; log the choice as an MCC re-apply patch. The task is
+  **required even with FX off** — it drives the `GFXC_INIT → RUNNING` transition, and
+  `gfxcShowCanvas`/update return early until `RUNNING`.
+- **Task priority = 2 (UI band).** Set the gfx_canvas component's *Task Priority* field to **2**
+  so the task joins marvin's UI tier (`LEGATO`/`XLCDC`/`DRV_MAXTOUCH`/`SYS_INPUT`; see the
+  2026-05-21 priority re-tiering in [`journal.md`](journal.md)). The generated default of 1 is
+  wrong — band 1 is reserved for future housekeeping, and the canvas task is an active
+  UI-critical-path stage (it commits Legato's output to the layers). Set it in the component
+  yml, not `tasks.c`, so regen reproduces it with no re-apply patch. Stack 1024 / 10 ms delay
+  are fine (match the other UI tasks); FX is off so it mostly idles between updates.
 
 ## 8. MCC configuration & re-apply notes
 

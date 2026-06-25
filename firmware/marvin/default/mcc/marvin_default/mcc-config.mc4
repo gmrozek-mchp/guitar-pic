@@ -14,6 +14,7 @@ groupModules:
   - drv_i2c
   - flexcom8
   - gfx_bridge_lvdsc_plib
+  - gfx_canvas
   - gfx_display_comp_nvdi_10_1in
   - gfx_legato
   - gfx_maxtouch_controller
@@ -56,13 +57,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: dff1e2048886123f7516f1da45350172b466f308e9a4ade7f5d463ec0a9526a8
 - file: ../src/config/default/configuration.h
-  hash: cffea3300d9347d0597439048e03297290ca207d798e3b28808123f8e6b44d09
+  hash: 689a9e125b301e24ac43638ee5a5831af96a4608e8ccb1d536a578be674b219b
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 97f47af57df7b001d60815bb59f95e011690ba241216b51211f2288487bf6b93
 - file: ../src/config/default/definitions.h
-  hash: c1e11ddc8de1cc608bef8dd2491ebb70fbc01b9f7de6571c9b173b0cfb0bb01c
+  hash: ce26c80904aea817073838cf40b5701799c9b0e26fde5739ac5def70809c99cc
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -111,18 +112,30 @@ generatedFileHashHistoryMap:
   hash: 931e951cf7431d3d70d6ab81bcd265ff0ac8b3f473b73cd7a541f59d49786b7c
 - file: ../src/config/default/freertos_hooks.c
   hash: 48beeff10a0a7c0fefe4aa9800b859c58ede1af59903d7e295928c773481556a
+- file: ../src/config/default/gfx/canvas/gfx_canvas.c
+  hash: e14f69846b0c0f80c064174aa66b6117a790e4400e63a8be10dafe0a29c25489
+- file: ../src/config/default/gfx/canvas/gfx_canvas.h
+  hash: 9da067f88f522a25581bd09486504a9b820bd3b049b47bdafbe5b86fe3722a24
+- file: ../src/config/default/gfx/canvas/gfx_canvas_api.c
+  hash: 267d0ea74a1404d4700548ca1a074906428332e8ccc1c2ac2ddc668e2574d161
+- file: ../src/config/default/gfx/canvas/gfx_canvas_api.h
+  hash: 0e743daeb0a4a55191bebc5dc40ab3e9b1d9f1d82611ced09b45e5daa84bb89d
+- file: ../src/config/default/gfx/canvas/gfx_canvas_config.c
+  hash: e7f95b30cfb1241458695732190da5284824304586c944f950c1ef42ca219739
+- file: ../src/config/default/gfx/canvas/gfx_canvas_config.h
+  hash: ef14bd3361d5244d62979359127915f08f79ea251c6c0a9177221cdf3b903abe
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
   hash: 5c79f5307aee58daface87f8dbb4d80d8b2a473544d37b9bc78458d552a68b6f
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h
   hash: 5afe7e416d4f004399a4c80462caede10b18a35a238366604d193f765a2e34ec
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c
-  hash: f745c9d8b8a76155bd3cea509c3b1b583a1600f5e6d2cf251dbc96a56ba4855d
+  hash: 3915b5394afc12d71d4ef060212ffad935bc5f3edfa8f9fa464d21897b4a717c
 - file: ../src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.h
-  hash: 637d343cc20356dfb08492f7a3e97479ad421b88ffec123181330eb895f50689
+  hash: 1d616713036a7dd2fe8caba09d8703d66a5c75a4b7e7969ab47208a93213348a
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
-  hash: aed6d16f26cc8860987e6007784991f223f5f31a1e0204e58c5c6afef8ce39bb
+  hash: 3ec5b887b8e16dbc537b0b6e21ee27c86eb829076493e05a70d986adf3c3840b
 - file: ../src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
-  hash: cdd70b5efe9e854ce1530a32a65119c2af79f22f90e0e661d4127113df72c17a
+  hash: 8e6df6235cb71de59d893693c1859a134136355c1dcc81a6565567588d4ac5f0
 - file: ../src/config/default/gfx/driver/gfx_driver.c
   hash: 09c3af304672f8af0e2396e39d075b3666380044092f21647b30b1030d0f0655
 - file: ../src/config/default/gfx/driver/gfx_driver.h
@@ -632,7 +645,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 27ef0b05a8a78255947fc1d50828946ea0dfd69e5d2aaf34acf585314635e9fc
+  hash: 25f8876b13b6f0629fc4c9c6f53d7b801c3ec7049a818e2719daea69bd4f7545
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -802,7 +815,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 3f62357b0b91b3c1cbff440ed9a6d330c3083a378f2b89ba986359f919fc4045
+  hash: 2166b173923585f21359bd24ceccf8e4f111cfd83feece58b9d8ad59bfc21961
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/usb/src/usb_device.c

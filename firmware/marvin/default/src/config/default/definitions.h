@@ -60,6 +60,7 @@
 #include "system/time/sys_time.h"
 #include "peripheral/flexcom/usart/plib_flexcom2_usart.h"
 #include "driver/i2c/drv_i2c.h"
+#include "gfx/canvas/gfx_canvas_api.h"
 #include "usb/usb_device_cdc.h"
 #include "usb/usb_cdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"

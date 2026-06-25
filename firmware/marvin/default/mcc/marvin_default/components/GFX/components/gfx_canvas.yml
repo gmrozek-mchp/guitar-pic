@@ -1,0 +1,1182 @@
+configVersion: 1.0.0
+componentName: gfx_canvas
+coreVersion: 5.9.0
+device: SAM9X75D2G
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: gfx_canvas
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: gfx
+  type: package
+  version: v3.17.0
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments:
+    children:
+    - children:
+      - attributes:
+          id: gfx_canvas
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: gfx_legato
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: gfx_driver
+            type: String
+          type: Attributes
+        type: DirectCapability
+      - attributes:
+          id: gfx_display_driver
+        children:
+        - children:
+          - attributes:
+              id: targetComponentID
+            children:
+            - type: Value
+              value: le_gfx_driver_xlcdc
+            type: String
+          - attributes:
+              id: targetAttachmentID
+            children:
+            - type: Value
+              value: le_gfx_xlcdc_cap
+            type: String
+          type: Attributes
+        type: DirectDependency
+      type: Attachments
+    type: gfx_canvas
+  elementPosition:
+    attributes:
+      id: Group1
+    children:
+    - children:
+      - attributes:
+          id: gfx_canvas
+          x: '623'
+          y: '188'
+        type: ElementPosition
+      type: ElementPositions
+    type: ComponentGraph
+  symbols:
+    Canvas0Address:
+      attributes:
+        id: Canvas0Address
+        label: Address
+      type: Hex
+    Canvas0FrameBufferAlloc:
+      attributes:
+        id: Canvas0FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas0Height:
+      attributes:
+        id: Canvas0Height
+        label: Height
+      type: Integer
+    Canvas0Mode:
+      attributes:
+        id: Canvas0Mode
+        label: Color Mode
+      type: Combo
+    Canvas0Width:
+      attributes:
+        id: Canvas0Width
+        label: Width
+      type: Integer
+    Canvas10Address:
+      attributes:
+        id: Canvas10Address
+        label: Address
+      type: Hex
+    Canvas10FrameBufferAlloc:
+      attributes:
+        id: Canvas10FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas10Height:
+      attributes:
+        id: Canvas10Height
+        label: Height
+      type: Integer
+    Canvas10Mode:
+      attributes:
+        id: Canvas10Mode
+        label: Color Mode
+      type: Combo
+    Canvas10Width:
+      attributes:
+        id: Canvas10Width
+        label: Width
+      type: Integer
+    Canvas11Address:
+      attributes:
+        id: Canvas11Address
+        label: Address
+      type: Hex
+    Canvas11FrameBufferAlloc:
+      attributes:
+        id: Canvas11FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas11Height:
+      attributes:
+        id: Canvas11Height
+        label: Height
+      type: Integer
+    Canvas11Mode:
+      attributes:
+        id: Canvas11Mode
+        label: Color Mode
+      type: Combo
+    Canvas11Width:
+      attributes:
+        id: Canvas11Width
+        label: Width
+      type: Integer
+    Canvas12Address:
+      attributes:
+        id: Canvas12Address
+        label: Address
+      type: Hex
+    Canvas12FrameBufferAlloc:
+      attributes:
+        id: Canvas12FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas12Height:
+      attributes:
+        id: Canvas12Height
+        label: Height
+      type: Integer
+    Canvas12Mode:
+      attributes:
+        id: Canvas12Mode
+        label: Color Mode
+      type: Combo
+    Canvas12Width:
+      attributes:
+        id: Canvas12Width
+        label: Width
+      type: Integer
+    Canvas13Address:
+      attributes:
+        id: Canvas13Address
+        label: Address
+      type: Hex
+    Canvas13FrameBufferAlloc:
+      attributes:
+        id: Canvas13FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas13Height:
+      attributes:
+        id: Canvas13Height
+        label: Height
+      type: Integer
+    Canvas13Mode:
+      attributes:
+        id: Canvas13Mode
+        label: Color Mode
+      type: Combo
+    Canvas13Width:
+      attributes:
+        id: Canvas13Width
+        label: Width
+      type: Integer
+    Canvas14Address:
+      attributes:
+        id: Canvas14Address
+        label: Address
+      type: Hex
+    Canvas14FrameBufferAlloc:
+      attributes:
+        id: Canvas14FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas14Height:
+      attributes:
+        id: Canvas14Height
+        label: Height
+      type: Integer
+    Canvas14Mode:
+      attributes:
+        id: Canvas14Mode
+        label: Color Mode
+      type: Combo
+    Canvas14Width:
+      attributes:
+        id: Canvas14Width
+        label: Width
+      type: Integer
+    Canvas15Address:
+      attributes:
+        id: Canvas15Address
+        label: Address
+      type: Hex
+    Canvas15FrameBufferAlloc:
+      attributes:
+        id: Canvas15FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas15Height:
+      attributes:
+        id: Canvas15Height
+        label: Height
+      type: Integer
+    Canvas15Mode:
+      attributes:
+        id: Canvas15Mode
+        label: Color Mode
+      type: Combo
+    Canvas15Width:
+      attributes:
+        id: Canvas15Width
+        label: Width
+      type: Integer
+    Canvas16Address:
+      attributes:
+        id: Canvas16Address
+        label: Address
+      type: Hex
+    Canvas16FrameBufferAlloc:
+      attributes:
+        id: Canvas16FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas16Height:
+      attributes:
+        id: Canvas16Height
+        label: Height
+      type: Integer
+    Canvas16Mode:
+      attributes:
+        id: Canvas16Mode
+        label: Color Mode
+      type: Combo
+    Canvas16Width:
+      attributes:
+        id: Canvas16Width
+        label: Width
+      type: Integer
+    Canvas17Address:
+      attributes:
+        id: Canvas17Address
+        label: Address
+      type: Hex
+    Canvas17FrameBufferAlloc:
+      attributes:
+        id: Canvas17FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas17Height:
+      attributes:
+        id: Canvas17Height
+        label: Height
+      type: Integer
+    Canvas17Mode:
+      attributes:
+        id: Canvas17Mode
+        label: Color Mode
+      type: Combo
+    Canvas17Width:
+      attributes:
+        id: Canvas17Width
+        label: Width
+      type: Integer
+    Canvas18Address:
+      attributes:
+        id: Canvas18Address
+        label: Address
+      type: Hex
+    Canvas18FrameBufferAlloc:
+      attributes:
+        id: Canvas18FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas18Height:
+      attributes:
+        id: Canvas18Height
+        label: Height
+      type: Integer
+    Canvas18Mode:
+      attributes:
+        id: Canvas18Mode
+        label: Color Mode
+      type: Combo
+    Canvas18Width:
+      attributes:
+        id: Canvas18Width
+        label: Width
+      type: Integer
+    Canvas19Address:
+      attributes:
+        id: Canvas19Address
+        label: Address
+      type: Hex
+    Canvas19FrameBufferAlloc:
+      attributes:
+        id: Canvas19FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas19Height:
+      attributes:
+        id: Canvas19Height
+        label: Height
+      type: Integer
+    Canvas19Mode:
+      attributes:
+        id: Canvas19Mode
+        label: Color Mode
+      type: Combo
+    Canvas19Width:
+      attributes:
+        id: Canvas19Width
+        label: Width
+      type: Integer
+    Canvas1Address:
+      attributes:
+        id: Canvas1Address
+        label: Address
+      type: Hex
+    Canvas1FrameBufferAlloc:
+      attributes:
+        id: Canvas1FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas1Height:
+      attributes:
+        id: Canvas1Height
+        label: Height
+      type: Integer
+    Canvas1Mode:
+      attributes:
+        id: Canvas1Mode
+        label: Color Mode
+      type: Combo
+    Canvas1Width:
+      attributes:
+        id: Canvas1Width
+        label: Width
+      type: Integer
+    Canvas20Address:
+      attributes:
+        id: Canvas20Address
+        label: Address
+      type: Hex
+    Canvas20FrameBufferAlloc:
+      attributes:
+        id: Canvas20FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas20Height:
+      attributes:
+        id: Canvas20Height
+        label: Height
+      type: Integer
+    Canvas20Mode:
+      attributes:
+        id: Canvas20Mode
+        label: Color Mode
+      type: Combo
+    Canvas20Width:
+      attributes:
+        id: Canvas20Width
+        label: Width
+      type: Integer
+    Canvas21Address:
+      attributes:
+        id: Canvas21Address
+        label: Address
+      type: Hex
+    Canvas21FrameBufferAlloc:
+      attributes:
+        id: Canvas21FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas21Height:
+      attributes:
+        id: Canvas21Height
+        label: Height
+      type: Integer
+    Canvas21Mode:
+      attributes:
+        id: Canvas21Mode
+        label: Color Mode
+      type: Combo
+    Canvas21Width:
+      attributes:
+        id: Canvas21Width
+        label: Width
+      type: Integer
+    Canvas22Address:
+      attributes:
+        id: Canvas22Address
+        label: Address
+      type: Hex
+    Canvas22FrameBufferAlloc:
+      attributes:
+        id: Canvas22FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas22Height:
+      attributes:
+        id: Canvas22Height
+        label: Height
+      type: Integer
+    Canvas22Mode:
+      attributes:
+        id: Canvas22Mode
+        label: Color Mode
+      type: Combo
+    Canvas22Width:
+      attributes:
+        id: Canvas22Width
+        label: Width
+      type: Integer
+    Canvas23Address:
+      attributes:
+        id: Canvas23Address
+        label: Address
+      type: Hex
+    Canvas23FrameBufferAlloc:
+      attributes:
+        id: Canvas23FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas23Height:
+      attributes:
+        id: Canvas23Height
+        label: Height
+      type: Integer
+    Canvas23Mode:
+      attributes:
+        id: Canvas23Mode
+        label: Color Mode
+      type: Combo
+    Canvas23Width:
+      attributes:
+        id: Canvas23Width
+        label: Width
+      type: Integer
+    Canvas24Address:
+      attributes:
+        id: Canvas24Address
+        label: Address
+      type: Hex
+    Canvas24FrameBufferAlloc:
+      attributes:
+        id: Canvas24FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas24Height:
+      attributes:
+        id: Canvas24Height
+        label: Height
+      type: Integer
+    Canvas24Mode:
+      attributes:
+        id: Canvas24Mode
+        label: Color Mode
+      type: Combo
+    Canvas24Width:
+      attributes:
+        id: Canvas24Width
+        label: Width
+      type: Integer
+    Canvas25Address:
+      attributes:
+        id: Canvas25Address
+        label: Address
+      type: Hex
+    Canvas25FrameBufferAlloc:
+      attributes:
+        id: Canvas25FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas25Height:
+      attributes:
+        id: Canvas25Height
+        label: Height
+      type: Integer
+    Canvas25Mode:
+      attributes:
+        id: Canvas25Mode
+        label: Color Mode
+      type: Combo
+    Canvas25Width:
+      attributes:
+        id: Canvas25Width
+        label: Width
+      type: Integer
+    Canvas26Address:
+      attributes:
+        id: Canvas26Address
+        label: Address
+      type: Hex
+    Canvas26FrameBufferAlloc:
+      attributes:
+        id: Canvas26FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas26Height:
+      attributes:
+        id: Canvas26Height
+        label: Height
+      type: Integer
+    Canvas26Mode:
+      attributes:
+        id: Canvas26Mode
+        label: Color Mode
+      type: Combo
+    Canvas26Width:
+      attributes:
+        id: Canvas26Width
+        label: Width
+      type: Integer
+    Canvas27Address:
+      attributes:
+        id: Canvas27Address
+        label: Address
+      type: Hex
+    Canvas27FrameBufferAlloc:
+      attributes:
+        id: Canvas27FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas27Height:
+      attributes:
+        id: Canvas27Height
+        label: Height
+      type: Integer
+    Canvas27Mode:
+      attributes:
+        id: Canvas27Mode
+        label: Color Mode
+      type: Combo
+    Canvas27Width:
+      attributes:
+        id: Canvas27Width
+        label: Width
+      type: Integer
+    Canvas28Address:
+      attributes:
+        id: Canvas28Address
+        label: Address
+      type: Hex
+    Canvas28FrameBufferAlloc:
+      attributes:
+        id: Canvas28FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas28Height:
+      attributes:
+        id: Canvas28Height
+        label: Height
+      type: Integer
+    Canvas28Mode:
+      attributes:
+        id: Canvas28Mode
+        label: Color Mode
+      type: Combo
+    Canvas28Width:
+      attributes:
+        id: Canvas28Width
+        label: Width
+      type: Integer
+    Canvas29Address:
+      attributes:
+        id: Canvas29Address
+        label: Address
+      type: Hex
+    Canvas29FrameBufferAlloc:
+      attributes:
+        id: Canvas29FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas29Height:
+      attributes:
+        id: Canvas29Height
+        label: Height
+      type: Integer
+    Canvas29Mode:
+      attributes:
+        id: Canvas29Mode
+        label: Color Mode
+      type: Combo
+    Canvas29Width:
+      attributes:
+        id: Canvas29Width
+        label: Width
+      type: Integer
+    Canvas2Address:
+      attributes:
+        id: Canvas2Address
+        label: Address
+      type: Hex
+    Canvas2FrameBufferAlloc:
+      attributes:
+        id: Canvas2FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas2Height:
+      attributes:
+        id: Canvas2Height
+        label: Height
+      type: Integer
+    Canvas2Mode:
+      attributes:
+        id: Canvas2Mode
+        label: Color Mode
+      type: Combo
+    Canvas2Width:
+      attributes:
+        id: Canvas2Width
+        label: Width
+      type: Integer
+    Canvas30Address:
+      attributes:
+        id: Canvas30Address
+        label: Address
+      type: Hex
+    Canvas30FrameBufferAlloc:
+      attributes:
+        id: Canvas30FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas30Height:
+      attributes:
+        id: Canvas30Height
+        label: Height
+      type: Integer
+    Canvas30Mode:
+      attributes:
+        id: Canvas30Mode
+        label: Color Mode
+      type: Combo
+    Canvas30Width:
+      attributes:
+        id: Canvas30Width
+        label: Width
+      type: Integer
+    Canvas31Address:
+      attributes:
+        id: Canvas31Address
+        label: Address
+      type: Hex
+    Canvas31FrameBufferAlloc:
+      attributes:
+        id: Canvas31FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas31Height:
+      attributes:
+        id: Canvas31Height
+        label: Height
+      type: Integer
+    Canvas31Mode:
+      attributes:
+        id: Canvas31Mode
+        label: Color Mode
+      type: Combo
+    Canvas31Width:
+      attributes:
+        id: Canvas31Width
+        label: Width
+      type: Integer
+    Canvas32Address:
+      attributes:
+        id: Canvas32Address
+        label: Address
+      type: Hex
+    Canvas32FrameBufferAlloc:
+      attributes:
+        id: Canvas32FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas32Height:
+      attributes:
+        id: Canvas32Height
+        label: Height
+      type: Integer
+    Canvas32Mode:
+      attributes:
+        id: Canvas32Mode
+        label: Color Mode
+      type: Combo
+    Canvas32Width:
+      attributes:
+        id: Canvas32Width
+        label: Width
+      type: Integer
+    Canvas33Address:
+      attributes:
+        id: Canvas33Address
+        label: Address
+      type: Hex
+    Canvas33FrameBufferAlloc:
+      attributes:
+        id: Canvas33FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas33Height:
+      attributes:
+        id: Canvas33Height
+        label: Height
+      type: Integer
+    Canvas33Mode:
+      attributes:
+        id: Canvas33Mode
+        label: Color Mode
+      type: Combo
+    Canvas33Width:
+      attributes:
+        id: Canvas33Width
+        label: Width
+      type: Integer
+    Canvas34Address:
+      attributes:
+        id: Canvas34Address
+        label: Address
+      type: Hex
+    Canvas34FrameBufferAlloc:
+      attributes:
+        id: Canvas34FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas34Height:
+      attributes:
+        id: Canvas34Height
+        label: Height
+      type: Integer
+    Canvas34Mode:
+      attributes:
+        id: Canvas34Mode
+        label: Color Mode
+      type: Combo
+    Canvas34Width:
+      attributes:
+        id: Canvas34Width
+        label: Width
+      type: Integer
+    Canvas35Address:
+      attributes:
+        id: Canvas35Address
+        label: Address
+      type: Hex
+    Canvas35FrameBufferAlloc:
+      attributes:
+        id: Canvas35FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas35Height:
+      attributes:
+        id: Canvas35Height
+        label: Height
+      type: Integer
+    Canvas35Mode:
+      attributes:
+        id: Canvas35Mode
+        label: Color Mode
+      type: Combo
+    Canvas35Width:
+      attributes:
+        id: Canvas35Width
+        label: Width
+      type: Integer
+    Canvas36Address:
+      attributes:
+        id: Canvas36Address
+        label: Address
+      type: Hex
+    Canvas36FrameBufferAlloc:
+      attributes:
+        id: Canvas36FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas36Height:
+      attributes:
+        id: Canvas36Height
+        label: Height
+      type: Integer
+    Canvas36Mode:
+      attributes:
+        id: Canvas36Mode
+        label: Color Mode
+      type: Combo
+    Canvas36Width:
+      attributes:
+        id: Canvas36Width
+        label: Width
+      type: Integer
+    Canvas37Address:
+      attributes:
+        id: Canvas37Address
+        label: Address
+      type: Hex
+    Canvas37FrameBufferAlloc:
+      attributes:
+        id: Canvas37FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas37Height:
+      attributes:
+        id: Canvas37Height
+        label: Height
+      type: Integer
+    Canvas37Mode:
+      attributes:
+        id: Canvas37Mode
+        label: Color Mode
+      type: Combo
+    Canvas37Width:
+      attributes:
+        id: Canvas37Width
+        label: Width
+      type: Integer
+    Canvas38Address:
+      attributes:
+        id: Canvas38Address
+        label: Address
+      type: Hex
+    Canvas38FrameBufferAlloc:
+      attributes:
+        id: Canvas38FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas38Height:
+      attributes:
+        id: Canvas38Height
+        label: Height
+      type: Integer
+    Canvas38Mode:
+      attributes:
+        id: Canvas38Mode
+        label: Color Mode
+      type: Combo
+    Canvas38Width:
+      attributes:
+        id: Canvas38Width
+        label: Width
+      type: Integer
+    Canvas39Address:
+      attributes:
+        id: Canvas39Address
+        label: Address
+      type: Hex
+    Canvas39FrameBufferAlloc:
+      attributes:
+        id: Canvas39FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas39Height:
+      attributes:
+        id: Canvas39Height
+        label: Height
+      type: Integer
+    Canvas39Mode:
+      attributes:
+        id: Canvas39Mode
+        label: Color Mode
+      type: Combo
+    Canvas39Width:
+      attributes:
+        id: Canvas39Width
+        label: Width
+      type: Integer
+    Canvas3Address:
+      attributes:
+        id: Canvas3Address
+        label: Address
+      type: Hex
+    Canvas3FrameBufferAlloc:
+      attributes:
+        id: Canvas3FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas3Height:
+      attributes:
+        id: Canvas3Height
+        label: Height
+      type: Integer
+    Canvas3Mode:
+      attributes:
+        id: Canvas3Mode
+        label: Color Mode
+      type: Combo
+    Canvas3Width:
+      attributes:
+        id: Canvas3Width
+        label: Width
+      type: Integer
+    Canvas4Address:
+      attributes:
+        id: Canvas4Address
+        label: Address
+      type: Hex
+    Canvas4FrameBufferAlloc:
+      attributes:
+        id: Canvas4FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas4Height:
+      attributes:
+        id: Canvas4Height
+        label: Height
+      type: Integer
+    Canvas4Mode:
+      attributes:
+        id: Canvas4Mode
+        label: Color Mode
+      type: Combo
+    Canvas4Width:
+      attributes:
+        id: Canvas4Width
+        label: Width
+      type: Integer
+    Canvas5Address:
+      attributes:
+        id: Canvas5Address
+        label: Address
+      type: Hex
+    Canvas5FrameBufferAlloc:
+      attributes:
+        id: Canvas5FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas5Height:
+      attributes:
+        id: Canvas5Height
+        label: Height
+      type: Integer
+    Canvas5Mode:
+      attributes:
+        id: Canvas5Mode
+        label: Color Mode
+      type: Combo
+    Canvas5Width:
+      attributes:
+        id: Canvas5Width
+        label: Width
+      type: Integer
+    Canvas6Address:
+      attributes:
+        id: Canvas6Address
+        label: Address
+      type: Hex
+    Canvas6FrameBufferAlloc:
+      attributes:
+        id: Canvas6FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas6Height:
+      attributes:
+        id: Canvas6Height
+        label: Height
+      type: Integer
+    Canvas6Mode:
+      attributes:
+        id: Canvas6Mode
+        label: Color Mode
+      type: Combo
+    Canvas6Width:
+      attributes:
+        id: Canvas6Width
+        label: Width
+      type: Integer
+    Canvas7Address:
+      attributes:
+        id: Canvas7Address
+        label: Address
+      type: Hex
+    Canvas7FrameBufferAlloc:
+      attributes:
+        id: Canvas7FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas7Height:
+      attributes:
+        id: Canvas7Height
+        label: Height
+      type: Integer
+    Canvas7Mode:
+      attributes:
+        id: Canvas7Mode
+        label: Color Mode
+      type: Combo
+    Canvas7Width:
+      attributes:
+        id: Canvas7Width
+        label: Width
+      type: Integer
+    Canvas8Address:
+      attributes:
+        id: Canvas8Address
+        label: Address
+      type: Hex
+    Canvas8FrameBufferAlloc:
+      attributes:
+        id: Canvas8FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas8Height:
+      attributes:
+        id: Canvas8Height
+        label: Height
+      type: Integer
+    Canvas8Mode:
+      attributes:
+        id: Canvas8Mode
+        label: Color Mode
+      type: Combo
+    Canvas8Width:
+      attributes:
+        id: Canvas8Width
+        label: Width
+      type: Integer
+    Canvas9Address:
+      attributes:
+        id: Canvas9Address
+        label: Address
+      type: Hex
+    Canvas9FrameBufferAlloc:
+      attributes:
+        id: Canvas9FrameBufferAlloc
+        label: Frame Buffer Allocation
+      type: Combo
+    Canvas9Height:
+      attributes:
+        id: Canvas9Height
+        label: Height
+      type: Integer
+    Canvas9Mode:
+      attributes:
+        id: Canvas9Mode
+        label: Color Mode
+      type: Combo
+    Canvas9Width:
+      attributes:
+        id: Canvas9Width
+        label: Width
+      type: Integer
+    ColorMode:
+      attributes:
+        id: ColorMode
+        label: Default Color Mode
+      type: Combo
+    DisplayDriverName:
+      attributes:
+        id: DisplayDriverName
+        label: Display Driver
+      children:
+      - children:
+        - attributes:
+            id: gfx_canvas
+            value: xlcdcDisplayDriver
+          type: Dynamic
+        type: Values
+      type: String
+    DriverInitName:
+      attributes:
+        id: DriverInitName
+        label: DriverInitName
+      type: String
+    EffectsEnabled:
+      attributes:
+        id: EffectsEnabled
+        label: Effects Settings
+      children:
+      - children:
+        - attributes:
+            value: 'false'
+          type: User
+        type: Values
+      type: Boolean
+    EffectsInterval:
+      attributes:
+        id: EffectsInterval
+        label: Effects Interval (ms)
+      type: Integer
+    FadeEffectsEnabled:
+      attributes:
+        id: FadeEffectsEnabled
+        label: Enable Fade Effects
+      type: Boolean
+    GPUBlitEnabled:
+      attributes:
+        id: GPUBlitEnabled
+        label: Use GPU to blit scratch buffer
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    GraphicsProcessorDriverName:
+      attributes:
+        id: GraphicsProcessorDriverName
+        label: Graphics Processor Driver
+      type: String
+    MaXCanvasObjects:
+      attributes:
+        id: MaXCanvasObjects
+        label: Max Number of Parameters
+      type: Integer
+    MoveEffectsEnabled:
+      attributes:
+        id: MoveEffectsEnabled
+        label: Enable Move Effects
+      type: Boolean
+    NumCanvasObjects:
+      attributes:
+        id: NumCanvasObjects
+        label: Canvas Objects
+      children:
+      - children:
+        - attributes:
+            value: '8'
+          type: User
+        type: Values
+      type: Integer
+    WindowClippingEnabled:
+      attributes:
+        id: WindowClippingEnabled
+        label: Enable Window Clipping
+      type: Boolean
+    rtosEnableTaskDelay:
+      attributes:
+        id: rtosEnableTaskDelay
+        label: Use Task Delay?
+      type: Boolean
+    rtosTaskDelay:
+      attributes:
+        id: rtosTaskDelay
+        label: Task Delay
+      type: Integer
+    rtosTaskPriority:
+      attributes:
+        id: rtosTaskPriority
+        label: Task Priority
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: Integer
+    rtosTaskSize:
+      attributes:
+        id: rtosTaskSize
+        label: Stack Size
+      type: Integer
+  userData: {}

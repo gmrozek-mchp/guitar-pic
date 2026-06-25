@@ -25,13 +25,13 @@ data:
               id: targetComponentID
             children:
             - type: Value
-              value: le_gfx_driver_xlcdc
+              value: gfx_canvas
             type: String
           - attributes:
               id: targetAttachmentID
             children:
             - type: Value
-              value: le_gfx_xlcdc_cap
+              value: gfx_canvas
             type: String
           type: Attributes
         type: DirectDependency
@@ -62,8 +62,8 @@ data:
     - children:
       - attributes:
           id: gfx_legato
-          x: '646'
-          y: '193'
+          x: '816'
+          y: '188'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
@@ -82,11 +82,12 @@ data:
     driverInitName:
       attributes:
         id: driverInitName
+        label: driverInitName
       children:
       - children:
         - attributes:
             id: gfx_legato
-            value: xlcdcDisplayDriver
+            value: gfxcVirtualDisplayDriver
           type: Dynamic
         type: Values
       type: String

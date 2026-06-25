@@ -70,6 +70,15 @@ static void F_USB_DEVICE_Tasks(  void *pvParameters  )
     }
 }
 
+void _GFX_CANVAS_Task(  void *pvParameters  )
+{
+    while(1)
+    {
+        GFX_CANVAS_Task();
+        vTaskDelay(10 / portTICK_PERIOD_MS);
+    }
+}
+
 void _XLCDC_Tasks(  void *pvParameters  )
 {
     while(1)
@@ -191,7 +200,15 @@ void SYS_Tasks ( void )
 
 
     /* Maintain Device Drivers */
-    
+        xTaskCreate( _GFX_CANVAS_Task,
+        "GFX_CANVAS_Tasks",
+        1024,
+        (void*)NULL,
+        2,
+        (TaskHandle_t*)NULL
+    );
+
+
     xTaskCreate( _XLCDC_Tasks,
         "XLCDC_Tasks",
         1024,

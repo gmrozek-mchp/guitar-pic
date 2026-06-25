@@ -55,13 +55,13 @@ data:
               id: targetComponentID
             children:
             - type: Value
-              value: gfx_legato
+              value: gfx_canvas
             type: String
           - attributes:
               id: targetAttachmentID
             children:
             - type: Value
-              value: gfx_driver
+              value: gfx_display_driver
             type: String
           type: Attributes
         type: DirectCapability
@@ -275,21 +275,23 @@ data:
     TotalNumLayers:
       attributes:
         id: TotalNumLayers
+        label: Total Layers
       children:
       - children:
         - attributes:
             id: le_gfx_driver_xlcdc
-            value: '2'
+            value: '4'
           type: Dynamic
         type: Values
       type: Integer
     XLMEnableOVR2:
       attributes:
         id: XLMEnableOVR2
+        label: Overlay 2
       children:
       - children:
         - attributes:
-            value: 'false'
+            value: 'true'
           type: User
         type: Values
       type: Boolean
@@ -306,10 +308,11 @@ data:
     XLMEnableOVR1:
       attributes:
         id: XLMEnableOVR1
+        label: Overlay 1
       children:
       - children:
         - attributes:
-            value: 'false'
+            value: 'true'
           type: User
         type: Values
       type: Boolean
@@ -356,4 +359,73 @@ data:
           type: User
         type: Values
       type: Integer
+    InterruptEnable:
+      attributes:
+        id: InterruptEnable
+        label: Enable Interrupts
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    IntEnSof:
+      attributes:
+        id: IntEnSof
+        label: Start of Frame
+      children:
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    DoubleBuffering:
+      attributes:
+        id: DoubleBuffering
+        label: Double Buffering
+      children:
+      - children:
+        - attributes:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      type: Boolean
+    CanvasModeOnly:
+      attributes:
+        id: CanvasModeOnly
+        label: Canvas Mode
+      children:
+      - children:
+        - attributes:
+            id: readOnly
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            id: le_gfx_driver_xlcdc
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    XLMHEOVIDPRI:
+      attributes:
+        id: XLMHEOVIDPRI
+        label: Prioritize
+      children:
+      - children:
+        - attributes:
+            value: 'false'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}

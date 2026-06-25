@@ -623,7 +623,10 @@
                 "default/src/config/default/peripheral/sdmmc/plib_sdmmc0.c",
                 "default/src/config/default/driver/sdmmc/src/drv_sdmmc.c",
                 "default/src/config/default/driver/sdmmc/src/drv_sdmmc_file_system.c",
-                "default/src/config/default/peripheral/rtc/plib_rtc.c"
+                "default/src/config/default/peripheral/rtc/plib_rtc.c",
+                "default/src/config/default/gfx/canvas/gfx_canvas_config.c",
+                "default/src/config/default/gfx/canvas/gfx_canvas.c",
+                "default/src/config/default/gfx/canvas/gfx_canvas_api.c"
             ]
         }
     ]

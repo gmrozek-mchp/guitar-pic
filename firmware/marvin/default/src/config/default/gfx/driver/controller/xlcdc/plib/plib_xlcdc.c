@@ -449,7 +449,7 @@ void XLCDC_SetupHEOLayer(void)
                                 LCDC_HEOCFG12_REP(1) |
                                 LCDC_HEOCFG12_CRKEY(0) |
                                 LCDC_HEOCFG12_DSTKEY(0) |
-                                LCDC_HEOCFG12_VIDPRI(1) |  //OVR2>HEO>OVR1>BASE
+                                LCDC_HEOCFG12_VIDPRI(0) |  //OVR2>OVR1>HEO>BASE
                                 LCDC_HEOCFG12_SFACTC(4) |  //A0*As
                                 LCDC_HEOCFG12_SFACTA(1) |  //1*As
                                 LCDC_HEOCFG12_DFACTC(6) |  //1-(A0*As)
@@ -670,7 +670,7 @@ bool XLCDC_SetLayerOpts(XLCDC_LAYER layer, uint8_t alpha, bool enable_dma, bool 
                                         LCDC_HEOCFG12_REP(1) |
                                         LCDC_HEOCFG12_CRKEY(0) |
                                         LCDC_HEOCFG12_DSTKEY(0) |
-                                        LCDC_HEOCFG12_VIDPRI(1) |  //OVR2>HEO>OVR1>BASE
+                                        LCDC_HEOCFG12_VIDPRI(0) |  //OVR2>OVR1>HEO>BASE
                                 LCDC_HEOCFG12_SFACTC(4) |  //A0*As
                                         LCDC_HEOCFG12_SFACTA(1) |  //1*As
                                         LCDC_HEOCFG12_DFACTC(6) |  //1-(A0*As)
@@ -1157,6 +1157,8 @@ void XLCDC_Initialize(void)
     XLCDC_EnableClocks();
     XLCDC_SetupTimingEngine();
     XLCDC_SetupBaseLayer();
+    XLCDC_SetupOVR1Layer();
     XLCDC_SetupHEOLayer();
+    XLCDC_SetupOVR2Layer();
     XLCDC_Start();
 }
