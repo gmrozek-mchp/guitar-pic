@@ -5357,6 +5357,65 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    DDRAM_NO_CACHE_SIZE:
+      attributes:
+        id: DDRAM_NO_CACHE_SIZE
+        label: Coherent region size in DRAM
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0x02000000'
+          type: Dynamic
+        type: Values
+      type: String
+    DDRAM_NO_CACHE_END_ADDR:
+      attributes:
+        id: DDRAM_NO_CACHE_END_ADDR
+        label: DDRAM_NO_CACHE_END_ADDR
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0x21FFFFFF'
+          type: Dynamic
+        type: Values
+      type: String
+    DDRAM_CACHE_START_ADDR:
+      attributes:
+        id: DDRAM_CACHE_START_ADDR
+        label: DDRAM_CACHE_START_ADDR
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0x22000000'
+          type: Dynamic
+        type: Values
+      type: String
+    DDRAM_CACHE_SIZE:
+      attributes:
+        id: DDRAM_CACHE_SIZE
+        label: DDRAM_CACHE_SIZE
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0x0E000000'
+          type: Dynamic
+        type: Values
+      type: String
+    DRAM_COHERENT_REGION_SIZE:
+      attributes:
+        id: DRAM_COHERENT_REGION_SIZE
+        label: Size of non-cached region in DRAM (MB)
+      children:
+      - children:
+        - attributes:
+            value: '32'
+          type: User
+        type: Values
+      type: Integer
   userData:
     children:
     - attributes:

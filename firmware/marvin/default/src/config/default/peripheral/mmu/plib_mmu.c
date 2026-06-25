@@ -442,8 +442,8 @@ void MMU_Initialize(void)
                   | TTB_TYPE_SECT;
 
     /* 0x20000000: DDR Chip Select */
-    /* (16MB strongly ordered) */
-    for (addr = 0x200U; addr < 0x210U; addr++)
+    /* (32MB strongly ordered) */
+    for (addr = 0x200U; addr < 0x220U; addr++)
     {
             trns_tbl[addr] = TTB_SECT_ADDR(addr << 20)
                       | TTB_SECT_AP_FULL_ACCESS
@@ -454,7 +454,7 @@ void MMU_Initialize(void)
     }
 
     /* Remainder of the DRAM is configured as cacheable */
-    for (addr = 0x210U; addr < 0x300U; addr++)
+    for (addr = 0x220U; addr < 0x300U; addr++)
     {
             trns_tbl[addr] = TTB_SECT_ADDR(addr << 20)
                       | TTB_SECT_AP_FULL_ACCESS

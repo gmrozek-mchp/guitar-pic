@@ -21,9 +21,17 @@ dependency:
   type: package
   version: v3.25.2
 - dependencyPackage: ''
+  name: filex
+  type: package
+  version: v6.4.0_rel
+- dependencyPackage: ''
   name: gfx
   type: package
   version: v3.17.0
+- dependencyPackage: ''
+  name: littlefs
+  type: package
+  version: v2.9.3
 - dependencyPackage: ''
   name: usb
   type: package
