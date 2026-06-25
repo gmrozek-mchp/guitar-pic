@@ -12,6 +12,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/song_list.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/song_list_demo.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_rx.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
@@ -35,6 +37,13 @@ target_include_directories(marvin_default_default_XC32_compile PRIVATE
 
 target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
     CAMERA_ENABLE_DEBUG=0
+    # Place the Legato CPU-rendered scratch buffer in non-cached DDR (same section
+    # as the XLCDC framebuffer). Works around an MGS gen gap: with "Cacheable
+    # Frame Buffers" off, the framebuffer is non-cached but the Legato render
+    # buffer (LE_NO_CACHE_ATTR) is left empty/cacheable, so the 2D-engine blit
+    # reads stale CPU-cached pixels -> streaky bleed. The #ifndef guard in
+    # legato_renderer.c lets this -D win, surviving MGS regen.
+    "LE_NO_CACHE_ATTR=__attribute__((section(\".region_nocache\")))"
     # Fretboard link transport: default is FLEXCOM1 UART. Uncomment to route
     # the fretboard command/data over the 10BASE-T1S link (LAN8651) instead —
     # flip this once the fretboard PIC32CM T1S side is up.
