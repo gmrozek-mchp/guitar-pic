@@ -141,4 +141,15 @@ data:
           type: User
         type: Values
       type: Boolean
+    FREERTOS_TOTAL_HEAP_SIZE:
+      attributes:
+        id: FREERTOS_TOTAL_HEAP_SIZE
+        label: Total heap size
+      children:
+      - children:
+        - attributes:
+            value: '65536'
+          type: User
+        type: Values
+      type: Integer
   userData: {}
