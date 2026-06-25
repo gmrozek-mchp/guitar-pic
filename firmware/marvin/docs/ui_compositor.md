@@ -1,241 +1,178 @@
-# marvin — UI compositor (canvas surface pool)
+# marvin — UI architecture (canvas compositor + per-screen modules)
 
-Design for marvin's operator-UI presentation layer: **pre-render UI panels into RAM
-surfaces, then multiplex the scarce LCDC hardware layers across them** so a panel can
-be brought up (or slid in) instantly without re-rendering or disturbing what is behind
-it. Built on Microchip's **GFX Canvas** component as the surface/layer substrate, with
-Legato kept as the rendering engine (fonts, draw primitives, the `song_list` widget).
+How marvin's operator UI is structured: independently-authored panels (dashboard, nav,
+dialogs) each render into their own **canvas surface** in RAM, the compositor maps surfaces
+onto the scarce **LCDC hardware layers**, and — with the MGS screen state machine disabled —
+the application owns screen orchestration so multiple panels coexist **live and interactive
+at once** instead of one-screen-at-a-time switching.
 
-Read [`spec.md`](spec.md) §4.5 (operator UI) and §4.1 (video/display) first; this doc is
-the authoritative design for the compositor specifically. Status: **design — not yet
-built.** Decision recorded in [`journal.md`](journal.md) (2026-06-25).
+Read [`spec.md`](spec.md) §4.5 (operator UI) and §4.1 (video/display) first. Decisions in
+[`journal.md`](journal.md) (2026-06-25). **Status: canvas compositor built and working**
+(dashboard on BASE + slide-in nav on OVR1, single-active highlight). **Next: the `ui_manager`
++ per-screen-module refactor** described in §6–§7.
 
 ---
 
 ## 1. The core idea
 
-Today, content geometry is welded to hardware layers 1:1:1 — a Legato layer renders into
-exactly one framebuffer, which is exactly one LCDC layer. There are only **4 LCDC layers**
-on the SAM9X75 XLCDC (`BASE`, `OVR1`, `HEO`, `OVR2`), and one (`HEO`) is owned by the live
-camera. That is too few to give every UI panel a permanent layer.
+Content geometry was welded to hardware 1:1:1 — one Legato layer → one framebuffer → one LCDC
+layer. There are only **4 LCDC layers** (`BASE`, `OVR1`, `HEO`, `OVR2`); `HEO` is the live
+camera. The compositor breaks the welding:
 
-The compositor breaks the welding:
+- A **surface** is a RAM framebuffer (a GFX Canvas object) holding a panel's pixels.
+- A **layer** is a hardware compositor window. The LCDC blends them every scan with zero CPU.
+- Showing a panel = point a layer at its surface + enable (register writes, no re-render).
+  Hiding = disable/move the layer. Sliding = animate the layer's window position.
 
-- A **surface** is a chunk of RAM (a framebuffer) holding pre-rendered pixels. Surfaces are
-  cheap — we can keep many resident.
-- A **layer** is a scarce hardware compositor window. We have **two free** ones (`OVR1`,
-  `OVR2`) plus `BASE`.
-- Bringing a panel up = point a free layer at a surface and enable it (register writes, no
-  render). Hiding = disable the layer. Sliding = animate the layer's window position. The
-  surface's pixels persist, so none of this re-renders anything or touches the layers below.
+**GFX Canvas** is the substrate: `GFXC_GetPixelBuffer` redirects Legato's render target to a
+canvas object, and `gfxcSetLayer`/`ShowCanvas`/`SetWindowPosition` map/show/move that surface
+on an LCDC layer. (Why canvas and not a hand-rolled retarget or direct-layer-only: see the
+2026-06-25 journal entry — canvas is the only thing that gets Legato content *into* an
+arbitrary off-screen surface; direct layer control still does the show/move.)
 
-This is exactly what the **GFX Canvas** component provides, and it is the one capability the
-plain layer registers cannot give us: canvas redirects Legato's render target to an arbitrary
-off-screen buffer (a "canvas object"), independent of which hardware layer — if any — that
-buffer is currently shown on.
+## 2. The enabling change — MGS screen state machine OFF
 
-## 2. Why canvas (and why not the alternatives)
+Legato's stock "screen state machine" (`le_gen_init.c`) shows **one screen at a time** —
+`legato_showScreen` tears down the outgoing screen's widget tree. That is fatal to a compositor
+that wants several panels live simultaneously. So it is **disabled** ("Generate Screen State
+Machine" off; `le_gen_init.{c,h}` no longer generated — see the 2026-06-25 journal entry and
+the `compat/` stub that works around the resulting MGS include bug).
 
-How Legato renders today (confirmed in `legato_renderer.c` + `drv_gfx_xlcdc.c`): Legato
-paints damaged tiles into a **scratch buffer**, then `DRV_XLCDC_BlitBuffer` copies each tile
-into `drvLayer[activeLayer].pixelBuffer` — the framebuffer of whatever layer is currently
-*active* (`GFX_IOCTL_SET_ACTIVE_LAYER`). **The only knob deciding where Legato's pixels land
-is the active layer's `pixelBuffer.pixels` pointer.** There is no stock Legato API for
-"render this widget tree into that arbitrary buffer."
+Two confirmed facts make this work (verified in `legato_state.c` / `legato_renderer.c` /
+`legato_input.c`):
 
-- **GFX Canvas (chosen).** `GFXC_GetPixelBuffer()` hands Legato the *canvas object's* buffer
-  instead of a fixed layer framebuffer, and `gfxcSetBaseCanvasID` switches which canvas a
-  Legato layer renders into. That is precisely "many pre-rendered surfaces in RAM,
-  multiplexed onto few layers." It also brings layer binding (`gfxcSetLayer`), show/hide,
-  window position/size/alpha, and hardware-stepped fade/move effects — all generated.
-- **DIY pixel-buffer retarget (rejected).** We could mutate the active layer's
-  `pixelBuffer.pixels` ourselves before each render and park the buffer afterward. Viable
-  (~100–200 LOC) but it reimplements the bookkeeping canvas already does (per-surface size,
-  scratch tiling, layer binding) — and once surfaces are non-full-screen it grows. Not worth
-  maintaining a hand-rolled half of canvas.
-- **Direct layer control only (insufficient).** The XLCDC PLIB exposes everything needed to
-  *present and animate* a layer (`XLCDC_SetLayerAddress/WindowXYPos/WindowXYSize/Opts/Enable`,
-  each with a deferred-commit flag). This is the right tool for the **slide/show/hide**, and
-  the compositor uses it (or canvas's wrappers over it). What it cannot do is get Legato
-  widget content *into* an off-screen surface in the first place — that is the canvas half.
+1. **`_state.layerList` is global and `leUpdate` renders/updates *every* attached layer each
+   frame.** There is no "active screen" render gate. Attach roots to multiple layers → they all
+   render live.
+2. **Touch picks across all attached layers, top-to-bottom** (`leInput` iterates `layerList`
+   from the top). So an attached overlay is interactive wherever it sits; the layer below
+   receives touches elsewhere. *(This supersedes the earlier "parked surfaces aren't pickable /
+   reveal-then-promote" idea — that was a consequence of the state machine, which is now gone.)*
 
-So the split is: **canvas owns "render content into a surface and bind a surface to a
-layer"; direct layer control (via canvas's effect engine or our own stepper) owns "move it."**
+So the model is simply: **attach a panel's root to a layer → it is live and interactive;
+detach (or move off-screen) → it is gone.** No freeze, no promotion dance.
 
-## 3. Hardware layer budget
+## 3. MGS Screen = widget-tree factory
 
-| LCDC layer | Owner | Notes |
-|---|---|---|
-| `BASE`  | Compositor — persistent background / main dashboard | Always on; bottom of the stack. |
-| `OVR1`  | Compositor — swappable overlay A | **To be enabled** (`XLCDC_TOT_LAYERS` is 2 today = BASE+HEO). |
-| `OVR2`  | Compositor — swappable overlay B | **To be enabled.** |
-| `HEO`   | **Video capture** (`video.c`) — live camera | Re-pointed every frame in the ISC ISR; the scaler lives here. **Off-limits to the compositor.** |
+With the state machine off, the generated per-screen functions are ours to call directly
+(MGS even relabels them `// call to show this screen`). We treat each **MGS Screen as a
+widget-tree factory**, decoupled from display:
 
-So at any instant the stack is: `BASE` (background) + up to two overlay panels (`OVR1`/`OVR2`)
-+ the camera (`HEO`), composited in hardware. We can keep *many* surfaces pre-rendered in RAM
-and choose which two overlays are bound/visible at a time.
+- `screenInit_X()` — builds the widget tree (+ registers any MGS-wired events).
+- `screenShow_X()` — attaches its root(s) to layer(s) and raises the `X_OnShow` hook.
+- `leAddRootWidget(wgt, layer)` / `leRemoveRootWidget(wgt, layer)` — **re-host** a root onto
+  whatever Legato layer we want, independent of the index MGS authored it on.
+- `screenGetRoot_X(lyrIdx)` — fetch a root to re-host or toggle visibility.
 
-> Latent config item: the stock generated `Marvin` screen maps Legato layer 1 → `HEO`
-> (a 320×800 root). That conflicts with video owning `HEO`. Under this design the two Legato
-> layers must map to `BASE` + an `OVR`, never `HEO`. Reconcile during bring-up (§8).
+So each panel is authored in its own clean MGS Screen, then the compositor assembles the
+trees onto the layer set it manages. The screen's `OnShow` hook is that panel's
+**composition root** — where it runtime-registers its widget event callbacks (the DI pattern;
+see the 2026-06-25 journal entry on widget events being runtime-registerable while screen
+lifecycle events are direct calls).
 
-## 4. Architecture
+## 4. Hardware layer budget
+
+| Legato layer | LCDC | Content | Lifecycle |
+|---|---|---|---|
+| 0 | BASE | active full-screen view (dashboard, …) | swappable (replace) |
+| 1 | OVR1 | **nav drawer** | resident — attach once, persists across base-view swaps |
+| 2 | OVR2 | **modal dialog** (song/mode select), sized to the dialog | shown/hidden; background stays live |
+| — | HEO | camera | `video.c`, **outside Legato** |
+
+- **Nav on its own resident layer ⇒ "same nav over every view" for free** — it is independent
+  of layer 0, so swapping the base view leaves it untouched.
+- **Modal dialog on OVR2 sized to the dialog ⇒ uncovered dashboard telemetry keeps updating**
+  (layer 0 renders live behind it). The dialog is invoked only from the dashboard.
+- **Ceiling:** dashboard + nav + dialog + camera = **all 4 LCDC layers**. A 4th simultaneous UI
+  surface needs canvas multiplexing (`gfxcSetBaseCanvasID`) or giving up a layer.
+- **Config:** `LE_LAYER_COUNT` 2 → 3 (Legato 0/1/2 → BASE/OVR1/OVR2); `XLCDC_TOT_LAYERS` is
+  already 4. Needed when the dialog (layer 2) lands; nav (layer 1) already works.
+
+## 5. Live coexistence vs. replacement
+
+The compositor offers two verbs, chosen per interaction — you do **not** pick one global mode:
+
+- **Coexist (overlay-as-layer)** — the panel is its own layer over a still-live background.
+  Used for the **nav drawer** (dashboard keeps updating behind it) and the **modal dialog**
+  (telemetry keeps updating around it). No freeze.
+- **Replace (switch base view)** — a full-screen view replaces another on layer 0; the
+  outgoing one detaches (its surface can hold the last frame, or it is rebuilt on return).
+  Used when a view genuinely supersedes the dashboard and live background isn't needed.
+
+Because the compositor owns layer placement and attach/detach, moving an interaction between
+these is a compositor-level change, not a per-module rewrite — the reversibility we wanted.
+
+## 6. Module structure
 
 ```
-                 ┌──────────── marvin compositor (new module, ui/) ───────────┐
-                 │  surface registry  │  panel state machine  │  touch router  │
-                 └───────┬───────────────────────┬───────────────────┬────────┘
-                         │ render into surface    │ bind/show/slide   │ route touch
-                 ┌───────▼────────┐      ┌────────▼─────────┐   ┌─────▼───────┐
-   Legato  ──────►  GFX Canvas    │      │   GFX Canvas      │   │ Legato pick │
- (fonts,         │  gfxcGetPixel  │      │ gfxcSetLayer/Show │   │  (live only)│
-  song_list,     │  Buffer → surf │      │ /Position/Move    │   └─────────────┘
-  string render) └───────┬────────┘      └────────┬──────────┘
-                         │ canvas objects (static, non-cached RAM surfaces)
-                 ┌───────▼───────────────────────▼──────────┐
-                 │      XLCDC driver — per-layer IOCTLs      │   HEO: driven directly
-                 │   BASE / OVR1 / OVR2  (canvas-managed)    │   by video.c (camera)
-                 └──────────────────────────────────────────┘
+            ┌──────────────────────── ui_manager ─────────────────────────┐
+            │ string-table init · screen init/show · root re-host onto     │
+            │ layers · layer/canvas pool · visibility · verbs:             │
+            │   show_view(X) · push_overlay(nav|dialog) · hide_overlay(…)   │
+            └───────┬──────────────────────┬───────────────────────┬───────┘
+              ┌─────▼─────┐          ┌──────▼──────┐          ┌──────▼──────┐
+              │ui/dashboard│         │   ui/nav    │          │ui/song_select│
+              │ (BASE,lyr0)│         │ (OVR1,lyr1) │          │ (OVR2,lyr2)  │
+              └────────────┘         └─────────────┘          └──────────────┘
+   each: owns its widgets + interactions; composition root = its screen OnShow hook
 ```
 
-### 4.1 Surfaces
-A fixed pool of **canvas objects**, each given a **statically allocated, non-cached** buffer
-(`gfxcSetPixelBuffer(id, w, h, mode, &static_buf)`) sized to its panel — not necessarily
-full-screen. RGB565 to match the panel and halve memory; ARGB8888 only for a surface that
-needs per-pixel alpha over the camera (most fades use the layer's *global* alpha instead).
+- **`ui_manager`** (promoted from today's `compositor.c`) owns the *mechanism*: string-table
+  setup, calling `screenInit_/screenShow_`, re-hosting roots onto the right layer, the canvas
+  buffer pool, layer visibility, and the coexist/replace verbs. It is the "top-level module
+  that ties everything together."
+- **Per-screen/overlay modules** own only their panel's content + event wiring, registered
+  from their own `OnShow` composition root. They never call `legato_*`/canvas APIs directly —
+  they go through `ui_manager`, which is what keeps the layer mechanics swappable.
 
-### 4.2 The compositor module (marvin-owned, in `ui/`)
-A thin module over the canvas API, following the MCC-isolation idiom (own files added via
-`user.cmake`, no edits to the generated tree). It owns:
-- the **surface registry** — logical panel (song list, nav menu, dashboard, dialog) → canvas id;
-- a small **panel state machine** — `render → park → present(layer) → (interact) → hide`;
-- the **touch router** (§5).
+## 7. Build state & refactor plan
 
-### 4.3 Rendering content into a surface
-To (re)render a panel's widget tree into its surface, point Legato at that canvas group
-(`gfxcSetBaseCanvasID`) and drive one Legato render. The `song_list` widget and Legato's
-string/scheme renderers are reused verbatim. Rendering happens **only when the panel's
-content is dirty** (new model, scroll, selection) — not per display frame. The rendered
-pixels then sit parked in the surface indefinitely.
+**Built (committed):** GFX Canvas substrate; `LE_LAYER_COUNT`-2 dashboard(BASE)+nav(OVR1);
+flash-free slide-out reveal (parked render + off-screen park); single-active nav highlight via
+runtime-registered shared release sink; state machine off + app-owned `screenInit/Show`;
+`compat/le_gen_init.h` stub.
 
-### 4.4 Presenting / animating
-- **Instant reveal:** `gfxcSetLayer(id, OVRx)` + `gfxcShowCanvas(id)` (+ position/size). No render.
-- **Hide:** `gfxcHideCanvas(id)`.
-- **Slide:** `gfxcStartEffectMove(...)` (canvas's stepped tween) or our own vsync stepper over
-  `gfxcSetWindowPosition`. Off-edge slides need window clipping (`CONFIG_CANVAS_ENABLE_WINDOW_CLIPPING`,
-  on by default) so the layer window stays within display bounds.
-- **Fade:** layer global alpha ramp (`gfxcStartEffectFade`).
+**Next:**
+1. **Refactor `compositor.c` → `ui_manager` + `ui/dashboard` + `ui/nav`.** Pure restructure;
+   no behavior change. Establishes the verbs + the per-module boundary.
+2. **`LE_LAYER_COUNT` 2 → 3, map OVR2** (MGS/config).
+3. **Author song/mode-select as its own MGS Screen;** `ui_manager` hosts it on layer 2 as a
+   modal (sized to the dialog, dashboard live behind). First real exercise of "MGS Screen as
+   re-hosted factory" + the coexist verb.
+4. **Retire `Screen0` + `manual_input.c`** (legacy manual-control surface, no longer shown) or
+   fold manual control into the new structure.
+5. **Slide animation** for the nav (off-screen park already seeds it): a small stepper on a UI
+   tick, or re-enable canvas Move FX.
 
-## 5. Touch routing — the key constraint
+## 8. Static-allocation, cache & priority rules
 
-Legato delivers touch by hit-testing the **active screen's widget tree** (`legato_input.c`
-→ layer roots). A *parked* surface bound to `OVR1` shows pixels but is **not** in Legato's
-screen tree, so Legato will not route touches to it. This is the one thing the surface-pool
-model does not get for free, and it must be designed, not discovered.
+- **Static non-cached surfaces.** Each canvas surface is a file-scope static array in
+  `.region_nocache` (no malloc), passed via `gfxcSetPixelBuffer`. They are CPU-rendered then
+  read by the 2D engine / LCDC DMA, so non-cached is required (same policy as `FB_CACHE_NC`
+  and the Legato scratch — 2026-06-24 cache-coherency fix). RGB565 to match the panel.
+- **`GFX_CANVAS_Task`** is at UI-band priority 2 (set in the gfx_canvas yml), required even
+  with FX off (drives `INIT→RUNNING`). It's a dynamic MCC task on heap_1 like the others.
+- **Heap.** The canvas component pushed `heap_1` past 40 KB → silent boot hang via the
+  malloc-failed hook; heap is now 65536 and the fault hooks emit a DBGU marker (2026-06-25).
 
-**Rule:** a surface is interactive **only while it is the live render target of a Legato
-layer** positioned where it is shown. Parked snapshots are for fast presentation and
-transitions (reveal, slide, background), not interaction.
+## 9. Memory budget
 
-**Recommended model — reveal-then-promote:** bring a panel up instantly from its parked
-surface; when it must become interactive, **promote** it — make its canvas the active Legato
-layer's render target (`gfxcSetBaseCanvasID`), align the layer to its on-screen position, and
-render live. Promotion is cheap (register writes + one render). `song_list` already
-hit-tests internally, so the live path needs only Legato's event *delivery*, which promotion
-restores. (Alternative, deferred: a marvin-owned input dispatcher reading maxtouch and
-mapping coords → topmost visible surface → element, bypassing Legato's screen model
-entirely. More control, more code; revisit only if promotion proves awkward.)
+`.region_nocache` is 32 MB, shared with the ISC capture pool (~10.5 MB) + Legato scratch
+(0.5 MB). Full-screen RGB565 surface ≈ 2.0 MB; overlays sized to content are far less (nav
+~320×800 ≈ 0.5 MB; a modal dialog smaller still). ~19 MB free after BASE + capture + scratch,
+so **memory is not the binding constraint — the 3 UI layers are.**
 
-## 6. Memory budget
+## 10. Open items
 
-`.region_nocache` is **32 MB** and is *shared* with the ISC capture pool — account for both:
-
-| Consumer | Size (approx) |
-|---|---|
-| ISC capture pool (4 × 1280×720 × 3 B, BGR888) | ~10.5 MB |
-| Legato scratch (`LE_SCRATCH_BUFFER_SIZE_KB` 512) | 0.5 MB |
-| `BASE` surface (1280×800 × 2 B, RGB565) | ~2.0 MB |
-| Overlay surfaces (RGB565, sized to panel) | song list ~700×800 ≈ 1.1 MB; nav menu ~320×800 ≈ 0.5 MB; dialog/metadata each ≈ 0.5–2 MB |
-
-Full-screen RGB565 = **~2.0 MB**; most overlays are well under that. With ~21 MB free after
-the capture pool and scratch, memory is **not** the binding constraint — the **two free
-overlay layers** are. Size surfaces to their content, prefer RGB565, and set
-`CONFIG_CANVAS_NUM_OBJ` to the number of distinct surfaces we pre-cache (≥ the panel count,
-not the layer count).
-
-## 7. Static-allocation & cache rules
-
-- **Static buffers.** Canvas's default config allocates nothing (NULL buffers). Every canvas
-  surface gets a file-scope static array in `.region_nocache`, passed via `gfxcSetPixelBuffer`.
-  No malloc — consistent with the project rule. ([static-allocation rule](journal.md))
-- **Non-cached.** Surfaces are CPU-rendered then read by the LCDC DMA / 2D engine, so they
-  must be non-cached, same as the framebuffer (`FB_CACHE_NC`) and the Legato scratch (the
-  2026-06-24 cache-coherency fix). Note CPU writes to non-cached DDR are slow; rendering is
-  occasional (dirty-only), so this is acceptable — re-measure if a full-surface repaint
-  shows up hot.
-- **FX task.** The generated `GFX_CANVAS_Task` uses dynamic `xTaskCreate` (like the other MCC
-  XLCDC/USB tasks on heap_1). Either convert to `xTaskCreateStatic` or accept it alongside
-  the existing MCC dynamic tasks; log the choice as an MCC re-apply patch. The task is
-  **required even with FX off** — it drives the `GFXC_INIT → RUNNING` transition, and
-  `gfxcShowCanvas`/update return early until `RUNNING`.
-- **Task priority = 2 (UI band).** Set the gfx_canvas component's *Task Priority* field to **2**
-  so the task joins marvin's UI tier (`LEGATO`/`XLCDC`/`DRV_MAXTOUCH`/`SYS_INPUT`; see the
-  2026-05-21 priority re-tiering in [`journal.md`](journal.md)). The generated default of 1 is
-  wrong — band 1 is reserved for future housekeeping, and the canvas task is an active
-  UI-critical-path stage (it commits Legato's output to the layers). Set it in the component
-  yml, not `tasks.c`, so regen reproduces it with no re-apply patch. Stack 1024 / 10 ms delay
-  are fine (match the other UI tasks); FX is off so it mostly idles between updates.
-
-## 8. MCC configuration & re-apply notes
-
-The canvas component re-architects the display path (canvas becomes Legato's
-`gfxDriverInterface`; XLCDC's own struct → `xlcdcDisplayDriver`; the static `frame_buffer`
-array is removed; a per-layer IOCTL subset is added; `GFX_CANVAS_Initialize` + the FX task
-are wired in). Steps:
-
-1. **Enable `OVR1` + `OVR2`** in the XLCDC driver (`XLCDC_TOT_LAYERS` 2→4, `layerOrder`) so
-   the compositor has its two overlay layers. Keep `HEO` for video.
-2. **Add the GFX Canvas component**, set `CONFIG_CANVAS_NUM_OBJ` to our surface count, default
-   color mode RGB565, and give each object a static non-cached buffer (replace the generated
-   `gfxcSetPixelBuffer(..., NULL)` template with our buffers + real sizes).
-3. **Reconcile the Legato layer→hardware-layer mapping** so the two Legato layers map to
-   `BASE` + an `OVR`, never `HEO` (§3 latent item).
-4. **Verify `video.c`/HEO is undisturbed** by the canvas/XLCDC init reorder (canvas inits all
-   layers disabled; video sets up HEO at runtime — confirm ordering doesn't clobber it).
-5. Add the canvas/FX-task choices to the MCC re-apply patch list (cache/scratch `-D`, task
-   static conversion, layer-count, buffer wiring).
-
-## 9. Phased plan
-
-- **P0 — substrate.** Enable OVR1/OVR2; add the canvas component with static non-cached
-  surfaces; get a blank `BASE` + one OVR rendering through canvas (display still works).
-- **P1 — compositor module.** `ui/compositor.{h,c}`: surface registry + present/hide/bind over
-  the canvas API; a console command to bind/show/hide a test surface on OVR1. Reuse `song_list`.
-- **P2 — pre-render + instant reveal.** Render the song list into its surface once; bind to
-  OVR1 and reveal/hide instantly; confirm no re-render and BASE untouched.
-- **P3 — slide + nav menu.** Nav-menu surface on OVR2; slide in/out (canvas move effect or our
-  stepper); off-edge clipping verified.
-- **P4 — touch promotion.** Reveal-then-promote so the song list is interactive once shown;
-  scroll/select validated on hardware.
-- **P5 — panel set.** Generalize to the §4.5 surfaces (dashboard, metadata, dialog); finalize
-  the surface count + memory budget.
-
-## 10. Open questions
-
-- **Touch model:** is reveal-then-promote (§5) sufficient, or do we need a marvin-owned
-  maxtouch dispatcher? Decide at P4.
-- **`GFX_CANVAS_Task` static conversion** vs. accepting it as an MCC dynamic task.
-- **Surface count / sizes** (`CONFIG_CANVAS_NUM_OBJ`, per-panel dimensions) — lock at P5
-  against the real panel set and the shared `.region_nocache` budget.
-- **HEO ↔ canvas coexistence:** confirm canvas's layer init/IOCTL path never touches HEO and
-  the init reorder doesn't disturb video's runtime HEO setup.
-- **Per-pixel alpha:** which surfaces (if any) need ARGB8888 over the camera vs. layer global
-  alpha.
+- **Slide animation** mechanism (UI-tick stepper vs canvas Move FX).
+- **Base-view replacement** detail when a 2nd full-screen view arrives (rebuild vs parked
+  last-frame on return; how nav persistence interacts with `screenShow`/`Hide` of layer 0).
+- **`Screen0`/`manual_input` retirement.**
+- **Per-pixel alpha** — which (if any) overlay needs ARGB8888 over the camera vs. layer alpha.
 
 ## 11. Relationship to spec §4.5 / Q5
 
-This is the concrete answer to spec **Q5** (Legato vs. custom UI) for the *presentation*
-layer: **keep Legato as the renderer, add a thin marvin compositor over GFX Canvas for
-surface/layer management.** It does not change how individual screens are *authored* (MGS /
-custom widgets) — only how their rendered output is cached in RAM and composited onto the
-panel's hardware layers.
+This answers spec **Q5** (Legato vs. custom UI) for the *presentation* layer: **Legato is the
+renderer; a marvin `ui_manager` over GFX Canvas owns surface/layer composition and screen
+orchestration.** Per-screen *authoring* stays in MGS (one Screen per panel); the compositor
+assembles their trees onto hardware layers.
