@@ -41,7 +41,7 @@
 #include "actuator/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
-#include "ui/compositor.h"
+#include "ui/ui_manager.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "storage/storage.h"
@@ -108,11 +108,12 @@ void APP_Initialize ( void )
      * INFO; flip to DEBUG via log_set_level() to enable verbose. */
     log_init(LOG_LEVEL_INFO);
 
-    /* UI compositor: assign marvin-owned static framebuffers to the Legato
-     * canvases and advance the canvas state machine. Runs before the scheduler
-     * so the buffers exist (and canvas is RUNNING) before the first render.
-     * The Marvin screen's On-Show hook binds the canvases to LCDC layers. */
-    Compositor_Initialize();
+    /* UI manager: owns the canvas surface pool + LCDC layer mapping and screen
+     * startup (string table + screenInit/Show — the MGS screen state machine is
+     * disabled). Runs before the scheduler so surfaces exist and the canvas is
+     * RUNNING before the first render; the Marvin screen's On-Show hook binds the
+     * dashboard to BASE and hands the nav drawer to ui/nav. */
+    UiManager_Initialize();
 
     /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
      * the task runs once the scheduler picks it up. The video module owns

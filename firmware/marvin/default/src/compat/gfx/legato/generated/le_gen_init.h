@@ -16,7 +16,7 @@
  * It provides only the includes the old le_gen_init.h exposed to its consumers.
  * The screen state-machine API (legato_showScreen / legato_updateScreenState /
  * screenID_*) is intentionally omitted — screen orchestration is owned by the
- * application (see ui/compositor.c), which calls screenInit_/screenShow_ directly. */
+ * application (see ui/ui_manager.c), which calls screenInit_/screenShow_ directly. */
 
 #include "gfx/legato/legato.h"
 
