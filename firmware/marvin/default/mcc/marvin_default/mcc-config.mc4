@@ -55,15 +55,15 @@ generatedFileHashHistoryMap:
 - file: ../src/app.h
   hash: 8e35d8509552a4d1d6e6f123ad75694cf784a707f7dac592ed33b55121aa8e28
 - file: ../src/config/default/FreeRTOSConfig.h
-  hash: dff1e2048886123f7516f1da45350172b466f308e9a4ade7f5d463ec0a9526a8
+  hash: f036073a652c04741562fa12c5133e4276c1fec78f26d79d10f08a052bfd11b4
 - file: ../src/config/default/configuration.h
-  hash: 689a9e125b301e24ac43638ee5a5831af96a4608e8ccb1d536a578be674b219b
+  hash: cffea3300d9347d0597439048e03297290ca207d798e3b28808123f8e6b44d09
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 97f47af57df7b001d60815bb59f95e011690ba241216b51211f2288487bf6b93
 - file: ../src/config/default/definitions.h
-  hash: ce26c80904aea817073838cf40b5701799c9b0e26fde5739ac5def70809c99cc
+  hash: 92122ab00698d1d3cfcd6496b77af94a511ea4b79bd205a43315b869be994696
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -245,15 +245,15 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_init.h
   hash: 38ceb85c8c0d438a4b194a4f4f0e4281316e22cf0de09e927c53ba33d6f41432
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.c
-  hash: 5cf21127f9d180f2cd2a290bb599254a74cddeb238ae07cf15a2bd84727b92f5
+  hash: 3cee7046edfaa76eea0101a6737189d2ae6f3fa43f2e466db73241753ec275d6
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
-  hash: 16026575950b00be8dcfee15ef703c006147c99119ddf78277f23ecbaa31ca3a
+  hash: d41c1eb8b2e7291f7e1af522f8caed2b81d021f69f4ba66bfbcfe69bca23f4c4
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
   hash: 6116cb0d4de2813079cfeece953597fa2b2f3fc15eddea4f8ecceb83a14c628e
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
-  hash: 875f2973ef97062cbc5a8656a942f4d5e50dfdd5181054ae6f78d01e62a23087
+  hash: 11b860615fb4d2d0a26e5189131c8f63fde04064ab137ed746a4c675519736e7
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
-  hash: 311abd40fa2c412cecd99cf9dcc5bdd5187a57dbc29bac35e55158000b5110d0
+  hash: 62b8069bfeef88033caae59656bcc2e4b4b06f90591f077b373a51125c8a0996
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c
   hash: ce78e7ab5e084c93b8bbe90f8d0957069b7700f26f3c4748e336ec82539dd2ba
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h
@@ -645,7 +645,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 25f8876b13b6f0629fc4c9c6f53d7b801c3ec7049a818e2719daea69bd4f7545
+  hash: fbef7e491ba5eff45ca1d6badcfec0f4a5944f127e7ef7852c1d86b1e2b3d719
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h

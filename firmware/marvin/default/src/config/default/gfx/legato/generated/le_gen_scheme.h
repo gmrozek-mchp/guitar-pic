@@ -39,6 +39,7 @@ extern const leScheme panel_tomato;
 extern const leScheme panel_mediumorchid;
 extern const leScheme text_lightgray;
 extern const leScheme SCHEME_GUITAR_FRET_BLUE;
+extern const leScheme SCHEME_NAV_MENU_BUTTON;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility

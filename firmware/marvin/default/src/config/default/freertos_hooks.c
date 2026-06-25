@@ -36,13 +36,44 @@
 * THAT YOU HAVE PAID DIRECTLY TO MICROCHIP FOR THIS SOFTWARE.
  *******************************************************************************/
 // DOM-IGNORE-END
+#include <stdint.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
+#include "definitions.h"
 
 
 void vApplicationIdleHook( void );
 void vApplicationTickHook( void );
 void vAssertCalled( const char * pcFile, unsigned long ulLine );
+
+/* MARVIN re-apply patch: emit a marker straight to DBGU before the dead-spin in
+ * the fault hooks. Uses the polled DBGU plib directly — no FreeRTOS, no heap, no
+ * large stack frame — so it is safe in the contexts these hooks fire: heap
+ * exhausted, stack corrupt, interrupts off, or scheduler not yet running.
+ * Without this, a malloc/stack-overflow failure is a silent dead board. */
+static void hook_puts( const char *s )
+{
+   while( *s != '\0' )
+   {
+      DBGU_WriteByte( (uint8_t) *s++ );
+   }
+}
+
+static void hook_put_u32( uint32_t v )
+{
+   char buf[ 11 ];
+   unsigned int i = sizeof buf;
+
+   buf[ --i ] = '\0';
+   do
+   {
+      buf[ --i ] = (char) ( '0' + ( v % 10u ) );
+      v /= 10u;
+   } while( v != 0u );
+
+   hook_puts( &buf[ i ] );
+}
 
 /*
 *********************************************************************************************************
@@ -61,13 +92,16 @@ void vAssertCalled( const char * pcFile, unsigned long ulLine );
 */
 void vApplicationStackOverflowHook( TaskHandle_t xTask, char *pcTaskName )
 {
-   ( void ) pcTaskName;
    ( void ) xTask;
 
    /* Run time task stack overflow checking is performed if
    configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2.  This hook  function is
    called if a task stack overflow is detected.  Note the system/interrupt
    stack is not checked. */
+   hook_puts( "\r\n*** STACK OVERFLOW: " );
+   hook_puts( ( pcTaskName != NULL ) ? pcTaskName : "?" );
+   hook_puts( " ***\r\n" );
+
    taskDISABLE_INTERRUPTS();
    for( ;; )
    {
@@ -114,6 +148,10 @@ void vApplicationMallocFailedHook( void )
       FreeRTOSConfig.h, and the xPortGetFreeHeapSize() API function can be used
       to query the size of free heap space that remains (although it does not
       provide information on how the remaining heap might be fragmented). */
+
+   hook_puts( "\r\n*** MALLOC FAILED, free heap = " );
+   hook_put_u32( (uint32_t) xPortGetFreeHeapSize() );
+   hook_puts( " bytes ***\r\n" );
 
    taskDISABLE_INTERRUPTS();
    for( ;; )

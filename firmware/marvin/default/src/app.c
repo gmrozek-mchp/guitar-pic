@@ -41,6 +41,7 @@
 #include "actuator/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
+#include "ui/compositor.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "storage/storage.h"
@@ -106,6 +107,12 @@ void APP_Initialize ( void )
      * (including video task startup) can use LOG_*. Default level is
      * INFO; flip to DEBUG via log_set_level() to enable verbose. */
     log_init(LOG_LEVEL_INFO);
+
+    /* UI compositor: assign marvin-owned static framebuffers to the Legato
+     * canvases and advance the canvas state machine. Runs before the scheduler
+     * so the buffers exist (and canvas is RUNNING) before the first render.
+     * The Marvin screen's On-Show hook binds the canvases to LCDC layers. */
+    Compositor_Initialize();
 
     /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
      * the task runs once the scheduler picks it up. The video module owns
@@ -204,6 +211,12 @@ void APP_Initialize ( void )
 
 void APP_Tasks ( void )
 {
+    /* All tasks have been created by now, so this is the heap_1 startup floor
+     * (heap_1 never frees — free space only shrinks). Surfaces remaining
+     * headroom so a future allocation walking into the wall is visible rather
+     * than a silent malloc-failed spin. */
+    LOG_INFO("freertos heap: %u bytes free\r\n", (unsigned)xPortGetFreeHeapSize());
+
     /* APP is a one-shot launcher — task creation happened in APP_Initialize.
      * Self-delete here so the (1024-word) stack and TCB are released to the
      * idle task. The MCC-generated lAPP_Tasks loop will not iterate again

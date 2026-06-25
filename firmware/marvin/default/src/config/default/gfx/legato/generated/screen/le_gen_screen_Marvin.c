@@ -322,10 +322,13 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_SYSYEM_NAVIGATION = leButtonWidget_New();
     Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPosition(Marvin_BUTTON_SYSYEM_NAVIGATION, 0, 0);
     Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setSize(Marvin_BUTTON_SYSYEM_NAVIGATION, 46, 46);
+    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setScheme(Marvin_BUTTON_SYSYEM_NAVIGATION, &SCHEME_NAV_MENU_BUTTON);
     Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setBackgroundType(Marvin_BUTTON_SYSYEM_NAVIGATION, LE_WIDGET_BACKGROUND_NONE);
     Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setBorderType(Marvin_BUTTON_SYSYEM_NAVIGATION, LE_WIDGET_BORDER_NONE);
     Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPressedImage(Marvin_BUTTON_SYSYEM_NAVIGATION, (leImage*)&figmaImg_Icon);
     Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setReleasedImage(Marvin_BUTTON_SYSYEM_NAVIGATION, (leImage*)&figmaImg_Icon);
+    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPressedOffset(Marvin_BUTTON_SYSYEM_NAVIGATION, 0);
+    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPressedEventCallback(Marvin_BUTTON_SYSYEM_NAVIGATION, event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed);
     Marvin_PANEL_SYSTEM_LEFT->fn->addChild(Marvin_PANEL_SYSTEM_LEFT, (leWidget*)Marvin_BUTTON_SYSYEM_NAVIGATION);
 
     Marvin_PANEL_SYSTEM_TITLE = leWidget_New();
@@ -2138,6 +2141,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_DASHBOARD->fn->setReleasedImage(Marvin_BUTTON_NAV_DASHBOARD, (leImage*)&figmaImg_Icon_11);
     Marvin_BUTTON_NAV_DASHBOARD->fn->setImageMargin(Marvin_BUTTON_NAV_DASHBOARD, 16);
     Marvin_BUTTON_NAV_DASHBOARD->fn->setPressedOffset(Marvin_BUTTON_NAV_DASHBOARD, 0);
+    Marvin_BUTTON_NAV_DASHBOARD->fn->setReleasedEventCallback(Marvin_BUTTON_NAV_DASHBOARD, event_Marvin_BUTTON_NAV_DASHBOARD_OnReleased);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_DASHBOARD);
 
     Marvin_BUTTON_NAV_LOGS = leButtonWidget_New();
@@ -2275,6 +2279,8 @@ leResult screenShow_Marvin(void)
 
     leAddRootWidget(root1, 1);
     leSetLayerColorMode(1, LE_COLOR_MODE_RGB_565);
+
+    Marvin_OnShow(); // raise event
 
     showing = LE_TRUE;
 

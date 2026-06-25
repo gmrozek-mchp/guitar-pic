@@ -286,10 +286,12 @@ extern leLabelWidget* Marvin_label_Connected;
 
 // event handlers
 // !!THESE MUST BE IMPLEMENTED IN THE APPLICATION CODE!!
+void event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_UP_OnPressed(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_UP_OnReleased(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_DOWN_OnPressed(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_DOWN_OnReleased(leButtonWidget* btn);
+void event_Marvin_BUTTON_NAV_DASHBOARD_OnReleased(leButtonWidget* btn);
 
 // screen lifecycle functions
 // DO NOT CALL THESE DIRECTLY
@@ -300,6 +302,9 @@ void screenDestroy_Marvin(void); // called when Legato is destroyed
 void screenUpdate_Marvin(void); // called when Legato is updating
 
 leWidget* screenGetRoot_Marvin(uint32_t lyrIdx); // gets a root widget for this screen
+
+// Screen Events:
+void Marvin_OnShow(void); // called when this screen is shown
 
 //DOM-IGNORE-BEGIN
 #ifdef __cplusplus
