@@ -70,8 +70,14 @@ static void nav_buttons_init(void)
 
 static void nav_open(void)
 {
-    /* Buffer is already painted (panel stays visible), so just slot the layer
-     * on-screen and enable it — no repaint, no flash. */
+    /* Force a full repaint of the panel into the canvas before revealing it. The
+     * initial paint queued at startup (while the layer is parked off-screen and
+     * hidden) does not fully land in the buffer, so without this the drawer opens
+     * partially drawn until per-widget touch damage fills it in. Invalidating here
+     * — on the live, post-scheduler render path — paints the whole panel; if the
+     * buffer was already complete this is a harmless repaint of the same pixels. */
+    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
+
     gfxcSetWindowPosition(CANVAS_NAV, 0, 0);
     gfxcShowCanvas(CANVAS_NAV);
     gfxcCanvasUpdate(CANVAS_NAV);
