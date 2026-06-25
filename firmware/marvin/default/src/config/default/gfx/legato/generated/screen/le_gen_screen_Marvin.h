@@ -291,7 +291,6 @@ void event_Marvin_BUTTON_GUITAR_STRUM_UP_OnPressed(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_UP_OnReleased(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_DOWN_OnPressed(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_DOWN_OnReleased(leButtonWidget* btn);
-void event_Marvin_BUTTON_NAV_DASHBOARD_OnReleased(leButtonWidget* btn);
 
 // screen lifecycle functions
 // DO NOT CALL THESE DIRECTLY

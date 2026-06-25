@@ -18,7 +18,7 @@ extern const leScheme panel_limegreen;
 extern const leScheme SCHEME_PANEL;
 extern const leScheme text_darkgray;
 extern const leScheme SCHEME_GUITAR_FRET_GREEN;
-extern const leScheme SCHEME_NAV_BUTTON;
+extern const leScheme SCHEME_NAV_BUTTON_UNSELECTED;
 extern const leScheme panel_darkgoldenrod;
 extern const leScheme text_black;
 extern const leScheme text_limegreen;
@@ -40,6 +40,7 @@ extern const leScheme panel_mediumorchid;
 extern const leScheme text_lightgray;
 extern const leScheme SCHEME_GUITAR_FRET_BLUE;
 extern const leScheme SCHEME_NAV_MENU_BUTTON;
+extern const leScheme SCHEME_NAV_BUTTON_SELECTED;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility
