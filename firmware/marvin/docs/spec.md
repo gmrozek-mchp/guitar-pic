@@ -302,6 +302,8 @@ Centralized on marvin by default. Owns:
 
 **UI framework — open Q5.** Legato is already pulled in for capture init and could absorb the operator UI directly (heavy but in-tree). Alternative: a lightweight custom widget layer over GFX2D / direct framebuffer composition. Decision deferred until we attempt the first non-trivial screen (calibration overlay).
 
+**Presentation layer (decided 2026-06-25).** For the *presentation* half of Q5: keep **Legato as the renderer**, add a thin marvin **compositor over the GFX Canvas component** — pre-render panels into static non-cached RAM surfaces and multiplex the two free LCDC overlay layers (`OVR1`/`OVR2`) across them for instant reveal/slide without redrawing what's behind. Authoritative design in [`ui_compositor.md`](ui_compositor.md). This does not dictate per-screen *authoring* (MGS vs. custom widgets).
+
 ### 4.6 Reference-data recording & export 🚧
 
 #### 4.6.1 Goals (in priority order)
