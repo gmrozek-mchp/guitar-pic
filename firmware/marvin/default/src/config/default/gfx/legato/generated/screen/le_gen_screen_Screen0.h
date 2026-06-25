@@ -16,12 +16,11 @@ extern "C" {
 extern leImageWidget* Screen0_ImageWidget_0;
 
 // screen lifecycle functions
-// DO NOT CALL THESE DIRECTLY
-leResult screenInit_Screen0(void); // called when Legato is initialized
-leResult screenShow_Screen0(void); // called when screen is shown
-void screenHide_Screen0(void); // called when screen is hidden
-void screenDestroy_Screen0(void); // called when Legato is destroyed
-void screenUpdate_Screen0(void); // called when Legato is updating
+leResult screenInit_Screen0(void); // call to initialize this screen
+leResult screenShow_Screen0(void); // call to show this screen
+void screenHide_Screen0(void); // call to hide this screen
+void screenDestroy_Screen0(void); // call to destroy this screen
+void screenUpdate_Screen0(void); // call to update this screen
 
 leWidget* screenGetRoot_Screen0(uint32_t lyrIdx); // gets a root widget for this screen
 

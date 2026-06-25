@@ -237,13 +237,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
   hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c
-  hash: 36c31abc6bcd91d7c298d51d6b6e71eb8240659f35f5b6ddb74d5cc2c3a7b4c3
+  hash: 6c5ced3ac03d4744f643dc995290612675c6f9560321148dea68ea509026560d
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.h
   hash: a913b0cf5f6029be4a46db040144b14d9949f2e52d9b00576e2373403d530213
-- file: ../src/config/default/gfx/legato/generated/le_gen_init.c
-  hash: 196e4b5d18f3b08e73a3e2daf4a0456582fb1fad803bee782efb7d699ccd9e98
-- file: ../src/config/default/gfx/legato/generated/le_gen_init.h
-  hash: 38ceb85c8c0d438a4b194a4f4f0e4281316e22cf0de09e927c53ba33d6f41432
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.c
   hash: 7e5c127411d87d80be93c94440bea43d6dc914202bc471cee5adc38ba5899670
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
@@ -253,11 +249,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
   hash: c7598eaf5decc10bf565d9ccd746eae061f43a67dc53755872c0f139bfeb70de
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
-  hash: a65b5230a549a8b9bf35b2531927cadb83aab71a93c38d463ffb6e37259480ab
+  hash: b370dd55fe4bd3e9908bdc0b8d1e666f89ad76d1a0c1b74c3efed9ee86ca3528
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c
   hash: ce78e7ab5e084c93b8bbe90f8d0957069b7700f26f3c4748e336ec82539dd2ba
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h
-  hash: e973b167243031b279e6b2283412c15aefdab3cada1e7de2941998107557d83f
+  hash: 8c4e6598cdde9b3acc7974f10e0289ca144d6b830e289d0ea0ab600ea8ca1ec4
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c

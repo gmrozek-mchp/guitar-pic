@@ -30,6 +30,11 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
 )
 
 target_include_directories(marvin_default_default_XC32_compile PRIVATE
+    # Compat shim root: provides a stub gfx/legato/generated/le_gen_init.h so the
+    # MGS-emitted `#include le_gen_init.h` in le_gen_harmony.h still resolves after
+    # "Generate Screen State Machine" is disabled (MGS deletes the header but keeps
+    # the include). Resolves only when the generated copy is absent. See the stub.
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/compat"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/inc"

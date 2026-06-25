@@ -524,7 +524,6 @@
                 "default/src/config/default/gfx/legato/generated/le_gen_globalpalette.c",
                 "default/src/config/default/gfx/legato/generated/le_gen_harmony.c",
                 "default/src/config/default/gfx/legato/generated/le_gen_harmony.h",
-                "default/src/config/default/gfx/legato/generated/le_gen_init.c",
                 "default/src/config/default/gfx/legato/generated/le_gen_init.h",
                 "default/src/config/default/gfx/legato/generated/le_gen_scheme.c",
                 "default/src/config/default/gfx/legato/generated/le_gen_scheme.h",

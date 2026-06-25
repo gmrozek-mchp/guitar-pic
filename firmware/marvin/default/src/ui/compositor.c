@@ -5,6 +5,7 @@
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
+#include "gfx/legato/generated/le_gen_assets.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"
 
@@ -91,6 +92,16 @@ void Compositor_Initialize(void)
      * GFXC_BlitBuffer. With effects disabled the canvas task otherwise flips
      * this only on its first tick, which races Legato's first render. */
     GFX_CANVAS_Task();
+
+    /* The MGS screen state machine is disabled (no le_gen_init.c), so we own
+     * screen startup: install the string table, build the Marvin screen, and
+     * show it. screenShow_Marvin attaches the layer roots and raises
+     * Marvin_OnShow, which binds the canvases to their LCDC layers. Runs after
+     * Legato_Initialize (SYS_Initialize) and before the first leUpdate. */
+    leSetStringTable(&stringTable);
+    initializeStrings();
+    screenInit_Marvin();
+    screenShow_Marvin();
 }
 
 void Marvin_OnShow(void)

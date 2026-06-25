@@ -293,12 +293,11 @@ void event_Marvin_BUTTON_GUITAR_STRUM_DOWN_OnPressed(leButtonWidget* btn);
 void event_Marvin_BUTTON_GUITAR_STRUM_DOWN_OnReleased(leButtonWidget* btn);
 
 // screen lifecycle functions
-// DO NOT CALL THESE DIRECTLY
-leResult screenInit_Marvin(void); // called when Legato is initialized
-leResult screenShow_Marvin(void); // called when screen is shown
-void screenHide_Marvin(void); // called when screen is hidden
-void screenDestroy_Marvin(void); // called when Legato is destroyed
-void screenUpdate_Marvin(void); // called when Legato is updating
+leResult screenInit_Marvin(void); // call to initialize this screen
+leResult screenShow_Marvin(void); // call to show this screen
+void screenHide_Marvin(void); // call to hide this screen
+void screenDestroy_Marvin(void); // call to destroy this screen
+void screenUpdate_Marvin(void); // call to update this screen
 
 leWidget* screenGetRoot_Marvin(uint32_t lyrIdx); // gets a root widget for this screen
 
