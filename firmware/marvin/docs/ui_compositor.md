@@ -154,20 +154,21 @@ these is a compositor-level change, not a per-module rewrite — the reversibili
 
 ## 7. Build state & refactor plan
 
-**Built (committed):** GFX Canvas substrate; dashboard(BASE)+nav(OVR1); flash-free slide-out
-reveal (parked render + off-screen park) with full-repaint-on-open; single-active nav highlight
-via runtime-registered shared release sink; state machine off + app-owned `screenInit/Show`;
-`compat/le_gen_init.h` stub; `compositor.c` split into `ui_manager` + `ui/nav`; `LE_LAYER_COUNT`
-pinned to 3 via the never-shown `LayerBudget` screen (§4.2).
+**Built (committed):** GFX Canvas substrate; state machine off + app-owned `screenInit/Show`
+(`compat/le_gen_init.h` stub); `ui_manager` orchestrator + dashboard on BASE; `LE_LAYER_COUNT`=3
+pinned via the never-shown `LayerBudget` screen (§4.2). **Nav drawer is feature-complete:** its
+own `Navigation` MGS Screen re-hosted onto OVR1; slide in/out via canvas Move FX (Move FX
+re-enabled; `NAV_CLOSED_X` dodges the window-clip row-wrap; mid-slide reversal cancels the
+in-flight move); single-active highlight via a runtime-registered shared release sink (Dashboard
+closes, others switch); full-repaint-on-open; rounded buttons (set in code; not AA — §10).
 
 **Next:**
 1. **Author song/mode-select as its own MGS Screen;** assign `canvas[2]` a real buffer and have
    `ui_manager` host it on layer 2 (OVR2) as a modal (sized to the dialog, dashboard live behind).
-   First real exercise of "MGS Screen as re-hosted factory" + the coexist verb.
-2. **Retire `Screen0` + `manual_input.c`** (legacy manual-control surface, no longer shown) or
-   fold manual control into the new structure.
-3. **Slide animation** for the nav (off-screen park already seeds it): a small stepper on a UI
-   tick, or re-enable canvas Move FX.
+   First real exercise of the coexist verb with a *live* background; the re-host + slide
+   mechanics are proven on the nav.
+2. **`manual_input.c` fate** — `Screen0` is retired, but the strum handlers now serve the
+   Dashboard screen, so `manual_input.c` stays until manual control is reworked.
 
 ## 8. Static-allocation, cache & priority rules
 
@@ -189,10 +190,10 @@ so **memory is not the binding constraint — the 3 UI layers are.**
 
 ## 10. Open items
 
-- **Slide animation** mechanism (UI-tick stepper vs canvas Move FX).
 - **Base-view replacement** detail when a 2nd full-screen view arrives (rebuild vs parked
   last-frame on return; how nav persistence interacts with `screenShow`/`Hide` of layer 0).
-- **`Screen0`/`manual_input` retirement.**
+- **`manual_input.c` fate** — `Screen0` retired; the strum handlers now serve the Dashboard
+  screen, so it stays until manual control is reworked.
 - **Per-pixel alpha** — which (if any) overlay needs ARGB8888 over the camera vs. layer alpha.
 - **Rounded corners aren't anti-aliased.** The nav buttons use the widget `cornerRadius`
   (set in code — not exposed in MGS), but the classic skin's rounded-rect fill has hard,
