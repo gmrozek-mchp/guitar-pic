@@ -85,8 +85,35 @@ lifecycle events are direct calls).
   (layer 0 renders live behind it). The dialog is invoked only from the dashboard.
 - **Ceiling:** dashboard + nav + dialog + camera = **all 4 LCDC layers**. A 4th simultaneous UI
   surface needs canvas multiplexing (`gfxcSetBaseCanvasID`) or giving up a layer.
-- **Config:** `LE_LAYER_COUNT` 2 → 3 (Legato 0/1/2 → BASE/OVR1/OVR2); `XLCDC_TOT_LAYERS` is
-  already 4. Needed when the dialog (layer 2) lands; nav (layer 1) already works.
+
+### 4.1 Two layer counts — don't conflate them
+- **`LE_LAYER_COUNT`** (Legato, `legato_config.h`) = how many canvases / Legato layers the global
+  `layerList` manages = **3**. MGS derives it as the **max layer count across all screens** in the
+  design; there is no explicit knob.
+- **`XLCDC_TOT_LAYERS`** (XLCDC driver, "Total Layers" in `le_gfx_driver_xlcdc.yml`) = enumerated
+  hardware layers = **4** (`layerOrder` = {BASE 0, HEO 1, OVR1 2, OVR2 3}).
+
+They differ on purpose: Legato manages 3 canvases, each mapped onto **3 of the 4** hardware layers.
+
+### 4.2 Pinning `LE_LAYER_COUNT` = 3 (the LayerBudget screen)
+Each panel is authored as its own **1-layer** MGS screen, so nothing reaches 3 layers on its own —
+and there's no direct setting. A dedicated, **never-shown `LayerBudget` screen with 3 layers** pins
+the count (regen-safe; no `legato_config.h` patch). Keep it un-shown: its roots then never attach,
+so Legato layer 2 stays an empty internal root. **Caveat:** `LE_LAYER_COUNT` 3 lets Legato render
+into `canvas[2]`, whose buffer is still the generated `NULL` until the dialog assigns one — safe
+**only** while layer 2 has no attached root / no damage (i.e. LayerBudget is never shown and no panel
+re-hosts onto layer 2 yet).
+
+### 4.3 Why HEO is safe (and stays enabled)
+Layer targeting is **explicit, not positional**: Legato layer *i* → `canvas[i]` →
+`gfxcSetLayer(i, hwLayer)`, where `hwLayer` indexes `layerOrder`. We map canvases only to hw layers
+**0 / 2 / 3** (BASE / OVR1 / OVR2) and **never to 1 (HEO)**, so the canvas framework never issues an
+IOCTL to HEO regardless of enumeration order. The only GFX-side touch of HEO is
+`DRV_XLCDC_Initialize` disabling all enumerated layers once at init — before `video.c` configures it
+(post-scheduler), so video is the last writer. So **HEO stays enabled** and `video.c` keeps full
+runtime control via the XLCDC PLIB, including the `HEOCFG12` blender + `VIDPRI` z-order that
+`XLCDC_SetupHEOLayer` provides (`video.c` does not set those itself — which is exactly why disabling
+HEO in MCC would break compositing, and why we don't).
 
 ## 5. Live coexistence vs. replacement
 
@@ -127,21 +154,19 @@ these is a compositor-level change, not a per-module rewrite — the reversibili
 
 ## 7. Build state & refactor plan
 
-**Built (committed):** GFX Canvas substrate; `LE_LAYER_COUNT`-2 dashboard(BASE)+nav(OVR1);
-flash-free slide-out reveal (parked render + off-screen park); single-active nav highlight via
-runtime-registered shared release sink; state machine off + app-owned `screenInit/Show`;
-`compat/le_gen_init.h` stub.
+**Built (committed):** GFX Canvas substrate; dashboard(BASE)+nav(OVR1); flash-free slide-out
+reveal (parked render + off-screen park) with full-repaint-on-open; single-active nav highlight
+via runtime-registered shared release sink; state machine off + app-owned `screenInit/Show`;
+`compat/le_gen_init.h` stub; `compositor.c` split into `ui_manager` + `ui/nav`; `LE_LAYER_COUNT`
+pinned to 3 via the never-shown `LayerBudget` screen (§4.2).
 
 **Next:**
-1. **Refactor `compositor.c` → `ui_manager` + `ui/dashboard` + `ui/nav`.** Pure restructure;
-   no behavior change. Establishes the verbs + the per-module boundary.
-2. **`LE_LAYER_COUNT` 2 → 3, map OVR2** (MGS/config).
-3. **Author song/mode-select as its own MGS Screen;** `ui_manager` hosts it on layer 2 as a
-   modal (sized to the dialog, dashboard live behind). First real exercise of "MGS Screen as
-   re-hosted factory" + the coexist verb.
-4. **Retire `Screen0` + `manual_input.c`** (legacy manual-control surface, no longer shown) or
+1. **Author song/mode-select as its own MGS Screen;** assign `canvas[2]` a real buffer and have
+   `ui_manager` host it on layer 2 (OVR2) as a modal (sized to the dialog, dashboard live behind).
+   First real exercise of "MGS Screen as re-hosted factory" + the coexist verb.
+2. **Retire `Screen0` + `manual_input.c`** (legacy manual-control surface, no longer shown) or
    fold manual control into the new structure.
-5. **Slide animation** for the nav (off-screen park already seeds it): a small stepper on a UI
+3. **Slide animation** for the nav (off-screen park already seeds it): a small stepper on a UI
    tick, or re-enable canvas Move FX.
 
 ## 8. Static-allocation, cache & priority rules

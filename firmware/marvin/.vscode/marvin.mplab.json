@@ -625,7 +625,8 @@
                 "default/src/config/default/peripheral/rtc/plib_rtc.c",
                 "default/src/config/default/gfx/canvas/gfx_canvas_config.c",
                 "default/src/config/default/gfx/canvas/gfx_canvas.c",
-                "default/src/config/default/gfx/canvas/gfx_canvas_api.c"
+                "default/src/config/default/gfx/canvas/gfx_canvas_api.c",
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_LayerBudget.c"
             ]
         }
     ]

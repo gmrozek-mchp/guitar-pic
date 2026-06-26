@@ -22,8 +22,8 @@ data:
     - children:
       - attributes:
           id: drv_i2c
-          x: '212'
-          y: '378'
+          x: '215'
+          y: '388'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
