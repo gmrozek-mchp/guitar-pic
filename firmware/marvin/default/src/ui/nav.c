@@ -19,6 +19,23 @@
 #define NAV_W   320u
 #define NAV_H   800u
 
+/* gfxcStartEffectMove delta — slide feel (DEC = ease-out). Tune to taste. */
+#define NAV_SLIDE_DELTA  6u
+
+/* Off-screen-left X for the closed drawer / slide-out target.
+ *
+ * A canvas layer can't truly sit off-screen — the window-clip (gfx_canvas.c
+ * _gfxcCanvasUpdate) emulates a negative X by shifting the source pointer right
+ * and shrinking the window. But it first aligns X *down* to a multiple of
+ * CANVAS_WIN_X_ALIGN (`x &= ~0x3` for non-32bpp surfaces), and once |X| reaches
+ * the surface width the shifted pointer wraps to the next row, flashing the
+ * panel's left columns through. So the furthest the drawer can validly sit is
+ * the largest aligned X with |X| < NAV_W. We slide to there; nav_fx_done then
+ * disables the layer, clearing the residual edge sliver. Derived from NAV_W so
+ * it tracks the surface width, not a hard-coded pixel count. */
+#define CANVAS_WIN_X_ALIGN  4u   /* mirrors the clip's `x &= ~0x3` */
+#define NAV_CLOSED_X        (-(int)((NAV_W - 1u) & ~(CANVAS_WIN_X_ALIGN - 1u)))
+
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
 
 static uint16_t FB_NOCACHE s_fb_nav[NAV_W * NAV_H];
@@ -41,18 +58,32 @@ static leButtonWidget *nav_button(unsigned int i)
     }
 }
 
-/* Single released-event sink for every nav entry: highlight the tapped one
- * (single-active) by swapping schemes. The active screen-switch will hook here
- * once the per-screen canvas model lands; for now it only updates the highlight. */
-static void nav_on_release(leButtonWidget *btn)
+static void nav_close(void);   /* forward decl — nav_on_release may close the drawer */
+
+/* Single-active highlight: paint the active entry selected, the rest unselected. */
+static void nav_highlight(leButtonWidget *active)
 {
     unsigned int i;
 
     for (i = 0u; i < NAV_COUNT; i++)
     {
         leButtonWidget *b = nav_button(i);
-        b->fn->setScheme(b, (b == btn) ? &SCHEME_NAV_BUTTON_SELECTED
-                                       : &SCHEME_NAV_BUTTON_UNSELECTED);
+        b->fn->setScheme(b, (b == active) ? &SCHEME_NAV_BUTTON_SELECTED
+                                          : &SCHEME_NAV_BUTTON_UNSELECTED);
+    }
+}
+
+/* Released-event sink for every nav entry. Switch the highlight; Dashboard means
+ * "back to the main view" so it also closes the drawer, while the other entries
+ * just change the selection and stay open. The active screen-switch will hook
+ * here once the per-screen canvas model lands. */
+static void nav_on_release(leButtonWidget *btn)
+{
+    nav_highlight(btn);
+
+    if (btn == Navigation_BUTTON_NAV_DASHBOARD)
+    {
+        nav_close();
     }
 }
 
@@ -67,33 +98,60 @@ static void nav_buttons_init(void)
         nav_button(i)->fn->setReleasedEventCallback(nav_button(i), nav_on_release);
     }
 
-    /* Dashboard is the active entry at startup. */
-    nav_on_release(Navigation_BUTTON_NAV_DASHBOARD);
+    /* Dashboard is the active entry at startup — set the highlight only (calling
+     * the release sink here would close the not-yet-open drawer). */
+    nav_highlight(Navigation_BUTTON_NAV_DASHBOARD);
 }
 
 static void nav_open(void)
 {
-    /* Force a full repaint of the panel into the canvas before revealing it. The
-     * initial paint queued at startup (while the layer is parked off-screen and
-     * hidden) does not fully land in the buffer, so without this the drawer opens
-     * partially drawn until per-widget touch damage fills it in. Invalidating here
-     * — on the live, post-scheduler render path — paints the whole panel; if the
-     * buffer was already complete this is a harmless repaint of the same pixels. */
+    int x, y;
+
+    /* Force a full repaint of the panel into the canvas before revealing it — the
+     * paint queued at startup (parked off-screen) doesn't fully land in the
+     * buffer, so without this the drawer slides in partially drawn until touch
+     * damage fills it in. The repaint lands over the next frames as it slides. */
     Navigation_PANEL_NAVIGATION->fn->invalidate(Navigation_PANEL_NAVIGATION);
 
-    gfxcSetWindowPosition(NAV_LAYER, 0, 0);
+    /* Slide in from the current X to 0. Show first so the move is visible (the FX
+     * engine programs the layer enable from canvas.active). Reading the live
+     * position lets a re-open mid-close retarget smoothly instead of jumping. */
     gfxcShowCanvas(NAV_LAYER);
-    gfxcCanvasUpdate(NAV_LAYER);
+    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
+    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, 0, 0, NAV_SLIDE_DELTA);
     s_nav_open = true;
 }
 
 static void nav_close(void)
 {
-    /* Hide the layer and park it off-screen so it stops intercepting touches. */
-    gfxcHideCanvas(NAV_LAYER);
-    gfxcSetWindowPosition(NAV_LAYER, -(int)NAV_W, 0);
-    gfxcCanvasUpdate(NAV_LAYER);
+    int x, y;
+
+    /* Slide out to NAV_CLOSED_X (off-screen), then nav_fx_done disables the
+     * layer. NAV_CLOSED_X avoids the -NAV_W window-clip row-wrap (see its
+     * definition); the layer update busy-waits for the vsync latch, so the final
+     * frame is displayed before the hide lands — keeping it in-bounds makes that
+     * frame a harmless edge sliver instead of the panel's left columns. */
+    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
+    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, NAV_CLOSED_X, 0, NAV_SLIDE_DELTA);
     s_nav_open = false;
+}
+
+/* Move-effect completion callback. At the off-screen end of a close slide the
+ * window clip leaves a degenerate sliver of the drawer composited at screen
+ * left; disabling OVR1 outright once the slide finishes removes it cleanly. Only
+ * acts on a completed close — an open leaves the layer shown, and a re-open
+ * mid-close restarts the move (so this won't fire for the abandoned close). */
+static void nav_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
+                        GFXC_FX_STATUS status, void *parm)
+{
+    (void)canvasID;
+    (void)parm;
+
+    if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_nav_open)
+    {
+        gfxcHideCanvas(NAV_LAYER);
+        gfxcCanvasUpdate(NAV_LAYER);
+    }
 }
 
 void Nav_InitSurface(void)
@@ -119,8 +177,9 @@ void Navigation_OnShow(void)
     Navigation_PANEL_NAVIGATION->fn->setVisible(Navigation_PANEL_NAVIGATION, LE_TRUE);
 
     gfxcSetWindowSize(NAV_LAYER, NAV_W, NAV_H);
-    gfxcSetWindowPosition(NAV_LAYER, -(int)NAV_W, 0);
+    gfxcSetWindowPosition(NAV_LAYER, NAV_CLOSED_X, 0);
     gfxcSetLayer(NAV_LAYER, HW_OVR1);
+    gfxcSetEffectsCallback(NAV_LAYER, nav_fx_done, NULL);
     gfxcCanvasUpdate(NAV_LAYER);
 
     nav_buttons_init();

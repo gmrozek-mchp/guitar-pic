@@ -123,7 +123,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/canvas/gfx_canvas_config.c
   hash: e7f95b30cfb1241458695732190da5284824304586c944f950c1ef42ca219739
 - file: ../src/config/default/gfx/canvas/gfx_canvas_config.h
-  hash: ef14bd3361d5244d62979359127915f08f79ea251c6c0a9177221cdf3b903abe
+  hash: 5d38ff403d57e81fee0748e1127d16bfe1b35c4cd33eace7f2ae0e0e3396b9b9
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.c
   hash: 5c79f5307aee58daface87f8dbb4d80d8b2a473544d37b9bc78458d552a68b6f
 - file: ../src/config/default/gfx/driver/controller/xlcdc/bridge/lvdsc/plib_lvdsc.h
