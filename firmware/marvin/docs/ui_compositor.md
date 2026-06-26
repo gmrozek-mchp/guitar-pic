@@ -194,6 +194,10 @@ so **memory is not the binding constraint — the 3 UI layers are.**
   last-frame on return; how nav persistence interacts with `screenShow`/`Hide` of layer 0).
 - **`Screen0`/`manual_input` retirement.**
 - **Per-pixel alpha** — which (if any) overlay needs ARGB8888 over the camera vs. layer alpha.
+- **Rounded corners aren't anti-aliased.** The nav buttons use the widget `cornerRadius`
+  (set in code — not exposed in MGS), but the classic skin's rounded-rect fill has hard,
+  stepped edges (no AA). To smooth them: pre-AA'd button images / 9-patches, or a custom
+  skin/draw with edge anti-aliasing. Cosmetic; deferred.
 
 ## 11. Relationship to spec §4.5 / Q5
 

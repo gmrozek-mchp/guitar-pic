@@ -36,6 +36,10 @@
 #define CANVAS_WIN_X_ALIGN  4u   /* mirrors the clip's `x &= ~0x3` */
 #define NAV_CLOSED_X        (-(int)((NAV_W - 1u) & ~(CANVAS_WIN_X_ALIGN - 1u)))
 
+/* Rounded button corners. The widget cornerRadius is honored by the classic
+ * skin's background draw but isn't exposed in MGS, so we set it in code. */
+#define NAV_CORNER_RADIUS  12u
+
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
 
 static uint16_t FB_NOCACHE s_fb_nav[NAV_W * NAV_H];
@@ -92,10 +96,12 @@ static void nav_buttons_init(void)
     unsigned int i;
 
     /* Route every nav-entry release through nav_on_release (runtime-registered
-     * here — the Navigation screen wires no button events itself). */
+     * here — the Navigation screen wires no button events itself) and round the
+     * corners (not an MGS option). */
     for (i = 0u; i < NAV_COUNT; i++)
     {
         nav_button(i)->fn->setReleasedEventCallback(nav_button(i), nav_on_release);
+        nav_button(i)->fn->setCornerRadius(nav_button(i), NAV_CORNER_RADIUS);
     }
 
     /* Dashboard is the active entry at startup — set the highlight only (calling
