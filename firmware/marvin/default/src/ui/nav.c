@@ -3,6 +3,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "ui/button_aa.h"
+
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
@@ -102,6 +104,7 @@ static void nav_buttons_init(void)
     {
         nav_button(i)->fn->setReleasedEventCallback(nav_button(i), nav_on_release);
         nav_button(i)->fn->setCornerRadius(nav_button(i), NAV_CORNER_RADIUS);
+        ButtonAA_Enable(nav_button(i));
     }
 
     /* Dashboard is the active entry at startup — set the highlight only (calling

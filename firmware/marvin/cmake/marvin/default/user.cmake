@@ -16,6 +16,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/song_list_demo.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/ui_manager.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/nav.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/button_aa.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_rx.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
