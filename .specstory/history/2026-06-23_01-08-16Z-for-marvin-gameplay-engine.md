@@ -11018,3 +11018,4260 @@ Two pointers as you start the SD card work, both now documented:
 - The recognition data deliberately stays in flash, so the SD bring-up doesn't block or couple to the gameplay engine — the catalog/artwork/results loaders all build *on top of* the FAT mount once it's up.
 
 Good luck with the bring-up — the gate-1 checkpoint in the journal pattern is a control-transaction read of the card (CID/CSD) over SDMMC before FatFs.
+
+---
+
+_**User (2026-06-23 04:29:59Z)**_
+
+sdcard is added to mcc generated code. should we come up with a quick on board test? Or will test shake out of other work that we need to do anyway
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:31Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:33Z)**_
+
+Good milestone — the substrate's in place. My recommendation: **yes, write a small bring-up test now, and make it console commands rather than throwaway code.** Let me ground that in what MCC actually generated before I argue it.
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect generated sys_fs and sdmmc config
+
+`cd firmware/marvin && echo "=== sys_fs config ===" && sed -n '1,60p' default/mcc/marvin_default/components/sys_fs.yml 2>/dev/null; echo "=== sdmmc driver config ===" && sed -n '1,40p' default/mcc/marvin_default/components/drv_sdmmc.yml 2>/dev/null`
+
+```text
+Exit code 1
+=== sys_fs config ===
+=== sdmmc driver config ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check generated SYS_FS API and mount wiring
+
+`cd firmware/marvin && echo "=== SYS_FS API surface generated? ===" && ls default/src/config/default/system/fs/ 2>/dev/null; ls default/src/config/default/driver/sdmmc/ 2>/dev/null; echo "=== SYS_FS calls in init/app ===" && grep -rn "SYS_FS_Mount\|SYS_FS_MEDIA\|sysObj.drvSDMMC\|SYS_FS_FileOpen" default/src/config/default/*.c default/src/app.c 2>/dev/null | head -30`
+
+```text
+=== SYS_FS API surface generated? ===
+fat_fs
+src
+sys_fs.h
+sys_fs_fat_interface.h
+sys_fs_media_manager.h
+drv_sdmmc.h
+drv_sdmmc_definitions.h
+src
+=== SYS_FS calls in init/app ===
+default/src/config/default/tasks.c:148:        DRV_SDMMC_Tasks(sysObj.drvSDMMC0);
+default/src/config/default/initialization.c:235:const SYS_FS_MEDIA_MOUNT_DATA sysfsMountTable[SYS_FS_VOLUME_NUMBER] =
+default/src/config/default/initialization.c:474:   sysObj.drvSDMMC0 = DRV_SDMMC_Initialize(DRV_SDMMC_INDEX_0,(SYS_MODULE_INIT *)&drvSDMMC0InitData);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:53Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read mount table and FS config constants
+
+`cd firmware/marvin && echo "=== mount table ===" && sed -n '233,250p' default/src/config/default/initialization.c && echo "=== auto-mount + volume defs ===" && grep -rn "SYS_FS_AUTOMOUNT_ENABLE\|SYS_FS_VOLUME_NUMBER\|SYS_FS_MEDIA_TYPE_AUTO_MOUNT\|\"/dev/mmcblka1\"\|mmcblk\|SYS_FS_MAX\|FAT_FS\|SYS_FS_FAT" default/src/config/default/configuration.h | head -20`
+
+```text
+Exit code 1
+(eval):cd:1: no such file or directory: firmware/marvin
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:30:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read mount table and FS config constants
+
+`echo "=== mount table ===" && sed -n '233,250p' default/src/config/default/initialization.c && echo "=== FS config constants ===" && grep -rn "SYS_FS_AUTOMOUNT_ENABLE\|SYS_FS_VOLUME_NUMBER\|SYS_FS_MEDIA_TYPE_AUTO_MOUNT\|mmcblk\|SYS_FS_MAX_FILES\|SYS_FS_FAT " default/src/config/default/configuration.h | head -20`
+
+```text
+=== mount table ===
+
+
+const SYS_FS_MEDIA_MOUNT_DATA sysfsMountTable[SYS_FS_VOLUME_NUMBER] =
+{
+    {NULL}
+};
+
+static const SYS_FS_FUNCTIONS FatFsFunctions =
+{
+    .mount             = FATFS_mount,
+    .unmount           = FATFS_unmount,
+    .open              = FATFS_open,
+    .read_t              = FATFS_read,
+    .close             = FATFS_close,
+    .seek              = FATFS_lseek,
+    .fstat             = FATFS_stat,
+    .getlabel          = FATFS_getlabel,
+    .currWD            = FATFS_getcwd,
+=== FS config constants ===
+default/src/config/default/configuration.h:95:#define SYS_FS_VOLUME_NUMBER              (1U)
+default/src/config/default/configuration.h:97:#define SYS_FS_AUTOMOUNT_ENABLE           false
+default/src/config/default/configuration.h:98:#define SYS_FS_MAX_FILES                  (1U)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:31:32Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:31:44Z)**_
+
+Grounded now. Here's the state and my recommendation.
+
+**What MCC generated:** SYS_FS + FatFs + `DRV_SDMMC0` are all there, and `DRV_SDMMC_Tasks(sysObj.drvSDMMC0)` is being serviced in `tasks.c`. But three config facts matter:
+- `SYS_FS_AUTOMOUNT_ENABLE = false` and the mount table is `{NULL}` — **nothing mounts on its own.** The app has to call `SYS_FS_Mount("/dev/mmcblka1", "/mnt/marvin", FAT, …)` after the media manager finishes analyzing the card.
+- `SYS_FS_VOLUME_NUMBER = 1`, `SYS_FS_MAX_FILES = 1` — one volume, one file open at a time (fine for sequential catalog/art loads; bump later only if something needs concurrent opens).
+
+**Recommendation: write the test, don't wait for it to shake out — and make it console commands, not throwaway code.**
+
+Why not let it emerge from other work: because auto-mount is off and nothing's wired, the *first* real consumer (the M4 record task with DDR keyframe buffers, or the catalog loader with JSON parsing) would be debugging SDMMC init **+** mount **+** FatFs **+** its own new logic all at once. SDMMC bring-up failures are hardware/clock/pin/format/cache-coherence issues — exactly the kind you want isolated from application logic. A smoke test removes 3 of the 4 variables before you build anything on top.
+
+Why console commands specifically: it fits the existing idiom perfectly — the console module ([spec §4.9](firmware/marvin/docs/spec.md)) has a static binding table where "adding a command is one row," dispatching into existing setters. SD commands dispatch into `SYS_FS_*` the same way. It's nearly free, repeatable on-demand (card swaps, bad cards), doesn't slow boot, and stays as a permanent field diagnostic — just like `t1s` / `nodes`.
+
+The gate sequence it should cover (mirrors the bring-up checkpoints in the journal pattern):
+
+| cmd | proves | gate |
+|---|---|---|
+| `sd info` | mount + read CID/CSD/capacity | card inits at all — clock/pins/voltage OK |
+| `sd ls` | open root dir, list | FAT mount + the card's format are readable via SYS_FS |
+| `sd write` / `sd read` | write a file, read back, verify bytes | write path + DDR↔SD cache coherence |
+| `sd bench` | time a multi-MB write | **validates the ≥5 MB/s the recording format assumes (§4.6.2)** |
+
+That last one is the high-value catch: the entire recording format — keyframe stride, the 1.04 MB/s sustained budget — is sized against an *assumed* throughput ceiling. If a given card class can't hit it, that reshapes M4's defaults. Far better to learn that from a 10-line `sd bench` now than after the record task is built.
+
+Net: it doesn't *fully* shake out of other work (the first consumer would just absorb the bring-up pain less cleanly), and the throughput number won't shake out at all until you deliberately measure it.
+
+Want me to draft the `sd` console command module? It'd follow the `console.c` binding-table pattern, own no new transport (just calls `SYS_FS_*`), and need an explicit `SYS_FS_Mount` — I'd add a small `storage/` module for the mount + these diagnostics so it's not buried in the console file. I'll plan it before writing if you'd like.
+
+---
+
+_**User (2026-06-23 04:32:43Z)**_
+
+should we automount? Or better to be in control in app?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:28Z)**_
+
+Good question — and the answer isn't simply one or the other. Let me check one thing that decides it: whether card-detect is actually wired in the generated SDMMC config, since that's the linchpin for hotplug.
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check card-detect configuration in generated SDMMC
+
+`echo "=== card-detect / SDMMC config ===" && grep -rn "CARD_DETECT\|CardDetect\|cardDetect\|SDMMC0_CD\|DRV_SDMMC_CONFIG\|protectPin\|cdEnable\|SYS_FS_MEDIA_TYPE" default/src/config/default/configuration.h default/src/config/default/initialization.c 2>/dev/null | head -25`
+
+```text
+=== card-detect / SDMMC config ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Dump SDMMC init data structure
+
+`echo "=== SDMMC init data struct ===" && grep -rn "drvSDMMC0InitData\|DRV_SDMMC" default/src/config/default/initialization.c | head; echo "=== any CD/speed/bus fields ===" && sed -n '/drvSDMMC0InitData/,/};/p' default/src/config/default/initialization.c 2>/dev/null | head -40`
+
+```text
+=== SDMMC init data struct ===
+ugrep: warning: default/src/config/default/initialization.c: No such file or directory
+=== any CD/speed/bus fields ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Dump SDMMC init data structure
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && echo "=== SDMMC init data ===" && sed -n '/drvSDMMC0InitData =/,/};/p' default/src/config/default/initialization.c | head -45`
+
+```text
+=== SDMMC init data ===
+static const DRV_SDMMC_INIT drvSDMMC0InitData =
+{
+    .sdmmcPlib                      = &drvSDMMC0PlibAPI,
+    .bufferObjPool                  = (uintptr_t)&drvSDMMC0BufferObjPool[0],
+    .bufferObjPoolSize              = DRV_SDMMC_IDX0_QUEUE_SIZE,
+    .clientObjPool                  = (uintptr_t)&drvSDMMC0ClientObjPool[0],
+    .numClients                     = DRV_SDMMC_IDX0_CLIENTS_NUMBER,
+    .protocol                       = DRV_SDMMC_IDX0_PROTOCOL_SUPPORT,
+    .cardDetectionMethod            = DRV_SDMMC_IDX0_CARD_DETECTION_METHOD,
+    .cardDetectionPollingIntervalMs = 100,
+    .isWriteProtectCheckEnabled     = false,
+    .speedMode                      = DRV_SDMMC_IDX0_CONFIG_SPEED_MODE,
+    .busWidth                       = DRV_SDMMC_IDX0_CONFIG_BUS_WIDTH,
+	.sleepWhenIdle 					= false,
+    .isFsEnabled                    = true,
+};
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:49Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:33:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Resolve card-detection method and speed/bus macros
+
+`grep -rn "DRV_SDMMC_IDX0_CARD_DETECTION_METHOD\|DRV_SDMMC_IDX0_CONFIG_SPEED_MODE\|DRV_SDMMC_IDX0_CONFIG_BUS_WIDTH\|DRV_SDMMC_IDX0_PROTOCOL_SUPPORT" default/src/config/default/configuration.h`
+
+```text
+default/src/config/default/configuration.h:223:#define DRV_SDMMC_IDX0_PROTOCOL_SUPPORT                  DRV_SDMMC_PROTOCOL_SD
+default/src/config/default/configuration.h:224:#define DRV_SDMMC_IDX0_CONFIG_SPEED_MODE                 DRV_SDMMC_SPEED_MODE_DEFAULT
+default/src/config/default/configuration.h:225:#define DRV_SDMMC_IDX0_CONFIG_BUS_WIDTH                  DRV_SDMMC_BUS_WIDTH_4_BIT
+default/src/config/default/configuration.h:226:#define DRV_SDMMC_IDX0_CARD_DETECTION_METHOD             DRV_SDMMC_CD_METHOD_POLLING
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:34:20Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:34:32Z)**_
+
+Card detection is **polling-based and already enabled** (`DRV_SDMMC_CD_METHOD_POLLING`, 100 ms interval, `isFsEnabled = true`), so the driver knows when a card comes and goes regardless of which path you pick. That actually settles it cleanly.
+
+**The framing to drop first: automount vs. "app in control" aren't opposites.** Even with automount on, your app still reacts to `SYS_FS_EVENT_MOUNT` / `_UNMOUNT` via `SYS_FS_EventHandlerSet` — automount owns the *mechanism* (media-ready → `SYS_FS_Mount` → emit event), your app keeps the *policy* (what to load, when to record, how to degrade). Automount only removes the "poll `SYS_FS_Mount` until the card's analyzed" boilerplate; it doesn't take control away.
+
+So my recommendation is sequenced:
+
+**Now, for the smoke test — stay manual.** Your config is already `AUTOMOUNT=false` with an empty mount table, so a manual `SYS_FS_Mount("/dev/mmcblka1", "/mnt/marvin", SYS_FS_FAT, 0, NULL)` in a retry-until-ready loop (it returns failure until the polling driver finishes analyzing the card) needs **zero further MCC regen** — you just did one, no reason to spin another. You don't need hotplug to read CID, `ls`, write/read-back, and bench throughput. Fastest path to proving the hardware.
+
+**For the production path — enable automount, drive policy from the event handler.** The card is removable by design (the whole workflow is "pull it, read on a workstation"), and CD polling is already on, so automount gives you correct mount-on-insert / unmount-on-remove *for free* — the alternative is hand-rolling a debounced CD→mount/unmount/invalidate state machine and getting it subtly wrong. You stay in control where it matters:
+- `SYS_FS_EVENT_MOUNT` → load `config.json`, song catalog, pre-decode artwork, mark storage available (record task may arm).
+- `SYS_FS_EVENT_UNMOUNT` → invalidate the art cache + catalog, stop & flush any active recording, fall back to placeholders.
+
+App-only mount would only win for a *fixed* card you never remove — not this system.
+
+Two flags worth carrying forward:
+- **Enabling automount is another MCC regen** (the `sysfsMountTable[]` and `AUTOMOUNT_ENABLE` are generated), but it's a config toggle, not a hand-patch, so it stays regen-clean — unlike your re-apply patches.
+- **Speed mode is `DRV_SDMMC_SPEED_MODE_DEFAULT`, not High-Speed.** Your `sd bench` number will be capped by that. If it can't hit the ≥5 MB/s the recording format assumes (§4.6.2), bumping to high-speed mode (a regen) is the lever to pull *before* reshaping the keyframe stride.
+
+Net: manual mount for the bring-up test you're about to do; flip on automount + the event handler when you start wiring the real config/catalog/record consumers that actually care about the card being pulled. Want me to draft the `storage/` module that way — manual mount + the `sd` console diagnostics now, structured so the mount call swaps to an event handler later without touching the diagnostics?
+
+---
+
+_**User (2026-06-23 04:35:10Z)**_
+
+sounds good. go
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:17Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:21Z)**_
+
+Let me study the existing in-tree module patterns so the new module matches them exactly.
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:30Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Survey src tree, console dir, user.cmake
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && echo "=== src tree (non-generated) ===" && ls default/src && echo && echo "=== console dir ===" && ls default/src/console 2>/dev/null && echo && echo "=== user.cmake ===" && cat default/src/user.cmake 2>/dev/null || find default -name user.cmake`
+
+```text
+=== src tree (non-generated) ===
+actuator
+app.c
+app.h
+config
+console
+detector
+game
+log.c
+log.h
+main.c
+net
+packs
+perf_log
+third_party
+ui
+video
+
+=== console dir ===
+console.c
+console.h
+
+=== user.cmake ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate user.cmake and read log.h
+
+`echo "=== find user.cmake files ===" && find default -name "user.cmake" -not -path "*/packs/*" && echo && echo "=== log.h ===" && cat default/src/log.h`
+
+```text
+=== find user.cmake files ===
+
+=== log.h ===
+#ifndef MARVIN_LOG_H
+#define MARVIN_LOG_H
+
+#include <stdarg.h>
+
+/* Lightweight logging shim. Goes through libc printf → xc32_monitor →
+ * DBGU. Adds a runtime severity filter and FreeRTOS-aware locking.
+ *
+ * Pre-scheduler calls work too — the mutex is taken only when the
+ * scheduler is running, so log_printf is safe to call from
+ * APP_Initialize / SYS_Initialize.
+ *
+ * Do NOT call from an ISR — use a different mechanism for ISR-side
+ * diagnostics (queue to a task, or atomic counter polled by a task).
+ */
+
+typedef enum
+{
+    LOG_LEVEL_ERROR = 0,
+    LOG_LEVEL_WARN  = 1,
+    LOG_LEVEL_INFO  = 2,
+    LOG_LEVEL_DEBUG = 3,
+} log_level_t;
+
+/* Set up the FreeRTOS mutex. Safe to call before vTaskStartScheduler.
+ * Pass the initial filter level. */
+void log_init(log_level_t initial_level);
+
+void        log_set_level(log_level_t lvl);
+log_level_t log_get_level(void);
+
+void log_vprintf(log_level_t lvl, const char *fmt, va_list ap);
+void log_printf(log_level_t lvl, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+
+/* Convenience macros — match a typical embedded log API. */
+#define LOG_ERROR(...) log_printf(LOG_LEVEL_ERROR, __VA_ARGS__)
+#define LOG_WARN(...)  log_printf(LOG_LEVEL_WARN,  __VA_ARGS__)
+#define LOG_INFO(...)  log_printf(LOG_LEVEL_INFO,  __VA_ARGS__)
+#define LOG_DEBUG(...) log_printf(LOG_LEVEL_DEBUG, __VA_ARGS__)
+
+#endif
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:42Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find the cmake that adds in-tree sources
+
+`echo "=== cmake files referencing our modules ===" && grep -rln "fretboard_link\|console.c\|perf_log" --include=*.cmake --include=CMakeLists.txt default 2>/dev/null | grep -v packs && echo && echo "=== how sources get added (search for console.c in any build file) ===" && grep -rn "console" default --include=*.cmake --include=*.txt 2>/dev/null | grep -vi packs | head`
+
+```text
+Exit code 1
+=== cmake files referencing our modules ===
+(eval):1: no matches found: --include=*.cmake
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find cmake referencing in-tree modules
+
+`grep -rln "fretboard_link" default --include="*.cmake" 2>/dev/null | grep -v packs; echo "--- broader ---"; grep -rln "console\.c\|fretboard_link\.c\|net/t1s" default 2>/dev/null | grep -iE "cmake|\.txt" | grep -v packs | head`
+
+```text
+--- broader ---
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:35:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate cmake build files
+
+`find default -iname "*.cmake" -not -path "*/packs/*" 2>/dev/null | head -20; echo "=== CMakeLists ==="; find . -maxdepth 3 -iname "CMakeLists.txt" -not -path "*/packs/*" 2>/dev/null | head; echo "=== where is console referenced in build ==="; grep -rln "console" . --include="CMakeLists.txt" 2>/dev/null | head`
+
+```text
+=== CMakeLists ===
+=== where is console referenced in build ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:06Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:06Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect marvin project root and search cmake
+
+`echo "=== top-level files ===" && ls -a && echo "=== any cmake anywhere (non-pack) ===" && find . -iname "*.cmake" -not -path "*/packs/*" 2>/dev/null | head && find . -iname "CMakeLists.txt" -not -path "*/packs/*" 2>/dev/null | head`
+
+```text
+=== top-level files ===
+.
+..
+.DS_Store
+.gitignore
+.vscode
+README.md
+_build
+assets
+binaries
+cmake
+default
+docs
+ftdi
+openocd
+out
+sam9x75.cfg
+=== any cmake anywhere (non-pack) ===
+./cmake/marvin/default/user.cmake
+./cmake/marvin/default/.generated/toolchain.cmake
+./cmake/marvin/default/.generated/file.cmake
+./cmake/marvin/default/.generated/rule.cmake
+./cmake/marvin/default/.generated/overrides.cmake
+./cmake/marvin/default/.generated/main.cmake
+./cmake/marvin/default/.generated/exported.cmake
+./_build/marvin/default/cmake_install.cmake
+./_build/marvin/default/CMakeFiles/4.3.3/CMakeCXXCompiler.cmake
+./_build/marvin/default/CMakeFiles/4.3.3/CMakeCCompiler.cmake
+./cmake/marvin/default/CMakeLists.txt
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:11Z)**_
+
+Found the build structure. Let me read the user.cmake (where in-tree modules are registered), the console module (the pattern to mirror), and app.c init:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read user.cmake
+
+`echo "=== cmake/marvin/default/user.cmake ===" && cat cmake/marvin/default/user.cmake`
+
+```text
+=== cmake/marvin/default/user.cmake ===
+target_sources(marvin_default_default_XC32_compile PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/log.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/video.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/tc358743.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/video/isc_capture.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/detector.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/detector/cv_marvin_v1.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_engine.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_classify.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_select.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/timing_pipeline.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_rx.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/console/console.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli/embedded_cli.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s/t1s_link.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src/tc6.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src/tc6-regs.c"
+)
+
+target_include_directories(marvin_default_default_XC32_compile PRIVATE
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/inc"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src"
+)
+
+target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
+    CAMERA_ENABLE_DEBUG=0
+    # Fretboard link transport: default is FLEXCOM1 UART. Uncomment to route
+    # the fretboard command/data over the 10BASE-T1S link (LAN8651) instead —
+    # flip this once the fretboard PIC32CM T1S side is up.
+    MARVIN_FRETBOARD_TRANSPORT=1
+)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:17Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/console/console.h`
+
+```text
+1	#ifndef MARVIN_CONSOLE_H
+2	#define MARVIN_CONSOLE_H
+3	
+4	/* Interactive operator console — FLEXCOM2 USART (ring-buffer), 115200 8N1.
+5	 *
+6	 * A human-facing command line (embedded-cli) on a channel separate from the
+7	 * DBGU log/printf chatter: log output stays on DBGU, console I/O stays on
+8	 * FLEXCOM2. Commands set the operating-mode toggles (detect / timing / manual),
+9	 * select the active detector, drive manual fret/strum actuation, and print a
+10	 * status snapshot — see the binding table in console.c.
+11	 *
+12	 * One FreeRTOS task owns the link: it drains the FLEXCOM2 RX ring (woken by a
+13	 * read-threshold notification), feeds bytes to embedded-cli, and runs the line
+14	 * editor / dispatcher. All state is statically allocated; embedded-cli is given
+15	 * a fixed buffer so no malloc is exercised.
+16	 *
+17	 * Call after SYS_Initialize so the FLEXCOM2 peripheral is up, and after the
+18	 * actuator/detector modules so their setters are ready to be driven. */
+19	
+20	void Console_Initialize(void);
+21	
+22	#endif
+23
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:20Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/console/console.c`
+
+```text
+1	#include "console.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <stdarg.h>
+6	#include <stdio.h>
+7	#include <string.h>
+8	
+9	#include "FreeRTOS.h"
+10	#include "task.h"
+11	#include "semphr.h"
+12	
+13	#include "definitions.h"
+14	#include "log.h"
+15	#include "embedded_cli.h"
+16	
+17	#include "actuator/timing_pipeline.h"
+18	#include "actuator/manual_control.h"
+19	#include "actuator/fretboard_link.h"
+20	#include "detector/detector.h"
+21	#include "video/video.h"
+22	#include "game/fret.h"
+23	#include "net/t1s/t1s_link.h"
+24	
+25	#define CON_TASK_STACK_WORDS  1024u
+26	#define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
+27	
+28	#define CON_RX_THRESHOLD      1u      /* wake on any inbound byte */
+29	#define CON_RX_WAIT_MS        100u    /* bounded so a missed notify can't wedge */
+30	
+31	/* embedded-cli internal buffer (static-allocation mode → no malloc). Sized
+32	 * generously for the config below; the actual requirement is asserted at init,
+33	 * so bump this if the assert ever fires after a config change. */
+34	static CLI_UINT s_cli_buf[BYTES_TO_CLI_UINTS(1024)];
+35	
+36	static EmbeddedCli *s_cli;
+37	
+38	static StackType_t   s_task_stack[CON_TASK_STACK_WORDS];
+39	static StaticTask_t  s_task_tcb;
+40	
+41	/* Given from the FLEXCOM2 read callback (ISR) when the RX ring has a byte;
+42	 * woken task drains and feeds the line editor. */
+43	static SemaphoreHandle_t s_rx_notify;
+44	static StaticSemaphore_t s_rx_notify_buf;
+45	
+46	/* ---- output ------------------------------------------------------------- */
+47	
+48	static void console_write_char(EmbeddedCli *cli, char c)
+49	{
+50	    (void)cli;
+51	    /* TX ring drains at line rate regardless of any listener (the UART clocks
+52	     * bytes onto the wire), so a bounded retry only ever waits for ring space,
+53	     * never for a reader. Cap it so a pathological full-ring can't spin. */
+54	    for (uint32_t tries = 0u; tries < 1000u; tries++)
+55	    {
+56	        if (FLEXCOM2_USART_Write((uint8_t *)&c, 1u) == 1u) { return; }
+57	        vTaskDelay(pdMS_TO_TICKS(1));
+58	    }
+59	}
+60	
+61	static void console_printf(const char *fmt, ...)
+62	{
+63	    static char buf[160];
+64	    va_list ap;
+65	    va_start(ap, fmt);
+66	    (void)vsnprintf(buf, sizeof(buf), fmt, ap);
+67	    va_end(ap);
+68	    embeddedCliPrint(s_cli, buf);   /* appends newline */
+69	}
+70	
+71	/* ---- arg parsing helpers ------------------------------------------------ */
+72	
+73	static int parse_onoff(const char *s)
+74	{
+75	    if (s == NULL) { return -1; }
+76	    if (strcmp(s, "on") == 0 || strcmp(s, "1") == 0)  { return 1; }
+77	    if (strcmp(s, "off") == 0 || strcmp(s, "0") == 0) { return 0; }
+78	    return -1;
+79	}
+80	
+81	static int parse_detector(const char *s)
+82	{
+83	    if (s == NULL) { return -1; }
+84	    if (strcmp(s, "cv") == 0)  { return DETECTOR_CV_MARVIN_V1; }
+85	    if (strcmp(s, "adc") == 0) { return DETECTOR_ADC_FRETBOARD; }
+86	    return -1;
+87	}
+88	
+89	static int parse_fret(const char *s)
+90	{
+91	    if (s == NULL || s[0] == '\0' || s[1] != '\0') { return -1; }
+92	    switch (s[0])
+93	    {
+94	        case 'g': case 'G': return FRET_GREEN;
+95	        case 'r': case 'R': return FRET_RED;
+96	        case 'y': case 'Y': return FRET_YELLOW;
+97	        case 'b': case 'B': return FRET_BLUE;
+98	        case 'o': case 'O': return FRET_ORANGE;
+99	        default:            return -1;
+100	    }
+101	}
+102	
+103	/* ---- command handlers --------------------------------------------------- */
+104	
+105	static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
+106	{
+107	    (void)cli; (void)args; (void)ctx;
+108	
+109	    detector_id_t act = Detector_GetActive();
+110	    Video_FrameInfo vi;
+111	    Video_GetFrameInfo(&vi);
+112	
+113	    console_printf("link:       %s", FretboardLink_IsConnected() ? "up" : "down");
+114	    console_printf("active:     %s", (act == DETECTOR_CV_MARVIN_V1) ? "cv" : "adc");
+115	    console_printf("detect cv:  %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)  ? "on" : "off");
+116	    console_printf("detect adc: %s", Detector_IsEnabled(DETECTOR_ADC_FRETBOARD) ? "on" : "off");
+117	    console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
+118	    console_printf("video:      %ux%u frame=%lu",
+119	                   (unsigned)vi.width, (unsigned)vi.height,
+120	                   (unsigned long)vi.frame_count);
+121	}
+122	
+123	static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
+124	{
+125	    (void)cli; (void)args; (void)ctx;
+126	
+127	    bool synced = false;
+128	    uint8_t txc = 0u, rxc = 0u;
+129	    T1SLink_GetState(&synced, &txc, &rxc);
+130	
+131	    console_printf("link:    %s", T1SLink_IsConnected() ? "up" : "down");
+132	    console_printf("synced:  %s", synced ? "yes" : "no");
+133	    console_printf("chipRev: %u", (unsigned)T1SLink_ChipRev());
+134	    console_printf("plca:    coordinator id=%u/%u",
+135	                   (unsigned)T1SLink_NodeId(), (unsigned)T1SLink_NodeCount());
+136	    console_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
+137	    console_printf("tx cmds: %lu", (unsigned long)T1SLink_TxCount());
+138	    console_printf("rx frms: %lu", (unsigned long)T1SLink_RxCount());
+139	}
+140	
+141	static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
+142	{
+143	    (void)cli; (void)args; (void)ctx;
+144	
+145	    uint8_t n = T1SLink_NodeTableCount();
+146	    console_printf("id  type      present  last-hb");
+147	    for (uint8_t i = 0u; i < n; i++)
+148	    {
+149	        T1SLink_NodeInfo ni;
+150	        if (T1SLink_GetNodeInfo(i, &ni))
+151	        {
+152	            console_printf("%-3u %-9s %-7s  %lums",
+153	                           (unsigned)ni.node_id, ni.type,
+154	                           ni.present ? "yes" : "no",
+155	                           (unsigned long)ni.age_ms);
+156	        }
+157	    }
+158	}
+159	
+160	static void cmd_detect(EmbeddedCli *cli, char *args, void *ctx)
+161	{
+162	    (void)cli; (void)ctx;
+163	    int id  = parse_detector(embeddedCliGetToken(args, 1));
+164	    int val = parse_onoff(embeddedCliGetToken(args, 2));
+165	    if (id < 0 || val < 0)
+166	    {
+167	        console_printf("usage: detect <cv|adc> <on|off>");
+168	        return;
+169	    }
+170	    if (val) { Detector_Enable((detector_id_t)id); }
+171	    else     { Detector_Disable((detector_id_t)id); }
+172	    console_printf("detect %s = %s", (id == DETECTOR_CV_MARVIN_V1) ? "cv" : "adc",
+173	                   val ? "on" : "off");
+174	}
+175	
+176	static void cmd_active(EmbeddedCli *cli, char *args, void *ctx)
+177	{
+178	    (void)cli; (void)ctx;
+179	    int id = parse_detector(embeddedCliGetToken(args, 1));
+180	    if (id < 0)
+181	    {
+182	        console_printf("usage: active <cv|adc>");
+183	        return;
+184	    }
+185	    Detector_SetActive((detector_id_t)id);
+186	    console_printf("active = %s", (id == DETECTOR_CV_MARVIN_V1) ? "cv" : "adc");
+187	}
+188	
+189	static void cmd_timing(EmbeddedCli *cli, char *args, void *ctx)
+190	{
+191	    (void)cli; (void)ctx;
+192	    int val = parse_onoff(embeddedCliGetToken(args, 1));
+193	    if (val < 0)
+194	    {
+195	        console_printf("usage: timing <on|off>");
+196	        return;
+197	    }
+198	    TimingPipeline_SetEnabled(val != 0);
+199	    console_printf("timing = %s", val ? "on" : "off");
+200	}
+201	
+202	static void cmd_manual(EmbeddedCli *cli, char *args, void *ctx)
+203	{
+204	    (void)cli; (void)ctx;
+205	    int val = parse_onoff(embeddedCliGetToken(args, 1));
+206	    if (val < 0)
+207	    {
+208	        console_printf("usage: manual <on|off>");
+209	        return;
+210	    }
+211	    ManualControl_SetEnabled(val != 0);
+212	    console_printf("manual = %s", val ? "on" : "off");
+213	}
+214	
+215	static void cmd_fret(EmbeddedCli *cli, char *args, void *ctx)
+216	{
+217	    (void)cli; (void)ctx;
+218	    int fret = parse_fret(embeddedCliGetToken(args, 1));
+219	    int val  = parse_onoff(embeddedCliGetToken(args, 2));
+220	    if (fret < 0 || val < 0)
+221	    {
+222	        console_printf("usage: fret <g|r|y|b|o> <0|1>");
+223	        return;
+224	    }
+225	    if (!ManualControl_IsEnabled())
+226	    {
+227	        console_printf("note: manual mode off — run 'manual on' first");
+228	    }
+229	    ManualControl_SetFret((fret_t)fret, val != 0);
+230	    console_printf("fret %s = %d", embeddedCliGetToken(args, 1), val);
+231	}
+232	
+233	static void cmd_strum(EmbeddedCli *cli, char *args, void *ctx)
+234	{
+235	    (void)cli; (void)ctx;
+236	    const char *dir = embeddedCliGetToken(args, 1);
+237	    bool down;
+238	    if      (dir != NULL && strcmp(dir, "down") == 0) { down = true; }
+239	    else if (dir != NULL && strcmp(dir, "up") == 0)   { down = false; }
+240	    else
+241	    {
+242	        console_printf("usage: strum <down|up>");
+243	        return;
+244	    }
+245	    if (!ManualControl_IsEnabled())
+246	    {
+247	        console_printf("note: manual mode off — run 'manual on' first");
+248	    }
+249	    /* One-shot pulse: assert, brief hold, release. */
+250	    ManualControl_SetStrum(down, true);
+251	    vTaskDelay(pdMS_TO_TICKS(40));
+252	    ManualControl_SetStrum(down, false);
+253	    console_printf("strum %s", down ? "down" : "up");
+254	}
+255	
+256	static void register_commands(void)
+257	{
+258	    static const CliCommandBinding bindings[] = {
+259	        { "status", "Print link / detector / mode / video state", false, NULL, cmd_status },
+260	        { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
+261	        { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
+262	        { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
+263	        { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
+264	        { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },
+265	        { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
+266	        { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
+267	        { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
+268	    };
+269	    for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
+270	    {
+271	        (void)embeddedCliAddBinding(s_cli, bindings[i]);
+272	    }
+273	}
+274	
+275	/* ---- transport ---------------------------------------------------------- */
+276	
+277	static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
+278	{
+279	    (void)context;
+280	    BaseType_t hpw = pdFALSE;
+281	
+282	    switch (event)
+283	    {
+284	        case FLEXCOM_USART_EVENT_READ_THRESHOLD_REACHED:
+285	        case FLEXCOM_USART_EVENT_READ_BUFFER_FULL:
+286	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+287	            break;
+288	        case FLEXCOM_USART_EVENT_READ_ERROR:
+289	            (void)FLEXCOM2_USART_ErrorGet();
+290	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+291	            break;
+292	        default:
+293	            break;
+294	    }
+295	
+296	    portYIELD_FROM_ISR(hpw);
+297	}
+298	
+299	static void console_task(void *param)
+300	{
+301	    (void)param;
+302	
+303	    LOG_INFO("CON: console started (FLEXCOM2)\r\n");
+304	
+305	    for (;;)
+306	    {
+307	        if (FLEXCOM2_USART_ReadCountGet() == 0u)
+308	        {
+309	            (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(CON_RX_WAIT_MS));
+310	        }
+311	
+312	        uint8_t c;
+313	        while (FLEXCOM2_USART_Read(&c, 1u) == 1u)
+314	        {
+315	            embeddedCliReceiveChar(s_cli, (char)c);
+316	        }
+317	
+318	        embeddedCliProcess(s_cli);
+319	    }
+320	}
+321	
+322	void Console_Initialize(void)
+323	{
+324	    EmbeddedCliConfig *cfg = embeddedCliDefaultConfig();
+325	    cfg->invitation        = "marvin> ";
+326	    cfg->rxBufferSize      = 64u;
+327	    cfg->cmdBufferSize     = 64u;
+328	    cfg->historyBufferSize = 128u;
+329	    cfg->maxBindingCount   = 16u;
+330	    cfg->enableAutoComplete = true;
+331	    cfg->cliBuffer         = s_cli_buf;
+332	    cfg->cliBufferSize     = sizeof(s_cli_buf);
+333	
+334	    configASSERT(embeddedCliRequiredSize(cfg) <= sizeof(s_cli_buf));
+335	
+336	    s_cli = embeddedCliNew(cfg);
+337	    configASSERT(s_cli != NULL);
+338	    s_cli->writeChar = console_write_char;
+339	
+340	    register_commands();
+341	
+342	    s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
+343	    configASSERT(s_rx_notify != NULL);
+344	
+345	    /* Arm continuous RX: the ring fills from the FLEXCOM2 ISR; a persistent
+346	     * 1-byte threshold notification wakes console_task on each inbound byte. */
+347	    FLEXCOM2_USART_ReadCallbackRegister(rx_event_handler, 0u);
+348	    FLEXCOM2_USART_ReadThresholdSet(CON_RX_THRESHOLD);
+349	    (void)FLEXCOM2_USART_ReadNotificationEnable(true, true);
+350	
+351	    (void)xTaskCreateStatic(console_task,
+352	                            "Console",
+353	                            CON_TASK_STACK_WORDS,
+354	                            NULL,
+355	                            CON_TASK_PRIORITY,
+356	                            s_task_stack,
+357	                            &s_task_tcb);
+358	}
+359
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:38Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:39Z)**_
+
+The console pattern is clear. Now I need the exact SYS_FS API signatures so the diagnostics compile:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:36:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Grep SYS_FS function prototypes
+
+`F=default/src/config/default/system/fs/sys_fs.h && grep -nE "^[A-Za-z].*SYS_FS_(Mount|Unmount|FileOpen|FileRead|FileWrite|FileClose|FileStringGet|DirOpen|DirClose|DirRead|DirectoryMake|DriveLabelGet|DriveSectorGet|Error)\b" $F | head -60`
+
+```text
+988:SYS_FS_RESULT SYS_FS_Mount
+1037:SYS_FS_RESULT SYS_FS_Unmount
+1230:SYS_FS_HANDLE SYS_FS_FileOpen
+1280:SYS_FS_RESULT SYS_FS_FileClose
+1341:size_t SYS_FS_FileRead
+1786:SYS_FS_ERROR SYS_FS_Error
+1894:SYS_FS_HANDLE SYS_FS_DirOpen
+1947:SYS_FS_RESULT SYS_FS_DirClose
+2078:SYS_FS_RESULT SYS_FS_DirRead
+2303:SYS_FS_RESULT SYS_FS_FileStringGet
+2634:SYS_FS_RESULT SYS_FS_DriveLabelGet
+2693:size_t SYS_FS_FileWrite
+3102:SYS_FS_RESULT SYS_FS_DirectoryMake
+3729:SYS_FS_RESULT SYS_FS_DriveSectorGet
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:48:18Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read signatures for the SYS_FS calls we use
+
+```bash
+F=default/src/config/default/system/fs/sys_fs.h
+for ln in 988 1230 1341 2693 1894 2078 2634 3729 1786; do echo "===== @$ln ====="; sed -n "${ln},$((ln+18))p" $F; done
+```
+
+```text
+===== @988 =====
+SYS_FS_RESULT SYS_FS_Mount
+(
+    const char *devName,
+    const char *mountName,
+    SYS_FS_FILE_SYSTEM_TYPE filesystemtype,
+    unsigned long mountflags,
+    const void *data
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_RESULT SYS_FS_Unmount
+    (
+        const char *mountName
+    );
+
+    Summary:
+      Unmounts the disk/volume for the file system.
+
+===== @1230 =====
+SYS_FS_HANDLE SYS_FS_FileOpen
+(
+    const char* fname,
+    SYS_FS_FILE_OPEN_ATTRIBUTES attributes
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_RESULT SYS_FS_FileClose
+    (
+        SYS_FS_HANDLE handle
+    );
+
+    Summary:
+      Closes a file.
+
+    Description:
+      This function closes an opened file. Before closing the file it performs
+      a force sync to write any pending data to the file.
+===== @1341 =====
+size_t SYS_FS_FileRead
+(
+    SYS_FS_HANDLE handle,
+    void *buffer,
+    size_t nbyte
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_RESULT SYS_FS_FileStat
+    (
+        const char   *fname,
+        SYS_FS_FSTAT *buf
+    )
+
+    Summary:
+      Gets file status.
+
+    Description:
+===== @2693 =====
+size_t SYS_FS_FileWrite
+(
+    SYS_FS_HANDLE handle,
+    const void *buffer,
+    size_t nbyte
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_RESULT SYS_FS_FileTruncate
+    (
+        SYS_FS_HANDLE handle
+    );
+
+    Summary:
+      Truncates a file
+
+    Description:
+      This function truncates the file size to the current file read/write
+===== @1894 =====
+SYS_FS_HANDLE SYS_FS_DirOpen
+(
+    const char* path
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_RESULT SYS_FS_DirClose
+    (
+        SYS_FS_HANDLE handle
+    );
+
+    Summary:
+      Closes an opened directory.
+
+    Description:
+      This function closes a directory that was opened earlier opened with the
+      SYS_FS_DirOpen function.
+
+===== @2078 =====
+SYS_FS_RESULT SYS_FS_DirRead
+(
+    SYS_FS_HANDLE handle,
+    SYS_FS_FSTAT *stat
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_RESULT SYS_FS_DirRewind
+    (
+        SYS_FS_HANDLE handle
+    );
+
+    Summary:
+      Rewinds to the beginning of the directory.
+
+    Description:
+      This function rewinds the directory to the start. Once a search of
+      directory or directory read is completed, the rewind function is used to
+===== @2634 =====
+SYS_FS_RESULT SYS_FS_DriveLabelGet
+(
+    const char* drive,
+    char *buff,
+    uint32_t *sn
+);
+/* MISRAC 2012 deviation block end */
+
+//******************************************************************************
+/* Function:
+    size_t SYS_FS_FileWrite
+    (
+        SYS_FS_HANDLE handle,
+        const void *buf,
+        size_t nbyte
+    );
+
+    Summary:
+      Writes data to the file.
+===== @3729 =====
+SYS_FS_RESULT SYS_FS_DriveSectorGet
+(
+    const char * path,
+    uint32_t * totalSectors,
+    uint32_t * freeSectors
+);
+
+//DOM-IGNORE-BEGIN
+#ifdef __cplusplus
+}
+#endif
+//DOM-IGNORE-END
+
+#endif
+
+===== @1786 =====
+SYS_FS_ERROR SYS_FS_Error
+(
+    void
+);
+
+//******************************************************************************
+/* Function:
+    SYS_FS_ERROR SYS_FS_FileError
+    (
+        SYS_FS_HANDLE handle
+    );
+
+    Summary:
+      Returns the file specific error.
+
+    Description:
+      For file system functions which accepts valid handle, any error happening
+      in those functions could be retrieved with SYS_FS_FileError. This
+      function returns errors which are file specific.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:48:29Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:48:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read FSTAT, attributes, fs-type, result enums, device name
+
+```bash
+F=default/src/config/default/system/fs/sys_fs.h
+echo "=== device name / media ===" && grep -rn "mmcblk\|/dev/" $F | head
+echo "=== FSTAT struct ===" && sed -n '/typedef struct/,/} SYS_FS_FSTAT;/p' $F | grep -A30 "fname\|fsize\|SYS_FS_FSTAT" | head -40
+echo "=== open attributes enum ===" && grep -nE "SYS_FS_FILE_OPEN_(READ|WRITE|APPEND)\b" $F | head
+echo "=== fs type enum ===" && grep -nE "SYS_FS_FAT|SYS_FS_MPFS|FILE_SYSTEM_TYPE" $F | head
+echo "=== result enum ===" && grep -nE "SYS_FS_RES_SUCCESS|SYS_FS_RES_FAILURE|SYS_FS_HANDLE_INVALID" $F | head
+```
+
+```text
+=== device name / media ===
+default/src/config/default/system/fs/sys_fs.h:905:        SD card   - "mmcblk" "media number" "volume number"
+default/src/config/default/system/fs/sys_fs.h:918:      - mmcblka1
+default/src/config/default/system/fs/sys_fs.h:919:      - mmcblka2
+default/src/config/default/system/fs/sys_fs.h:920:      - mmcblka3 and
+default/src/config/default/system/fs/sys_fs.h:921:      - mmcblka4
+default/src/config/default/system/fs/sys_fs.h:927:      partition, the devname will be mmcblkb1.
+default/src/config/default/system/fs/sys_fs.h:941:                       "/dev/".
+default/src/config/default/system/fs/sys_fs.h:965:                if(SYS_FS_Mount("/dev/mmcblka1", "/mnt/myDrive", FAT, 0, NULL) != SYS_FS_RES_SUCCESS)
+default/src/config/default/system/fs/sys_fs.h:2396:                if(SYS_FS_Mount("/dev/mmcblka1", "/mnt/myDrive", FAT, 0, NULL) != SYS_FS_RES_SUCCESS)
+default/src/config/default/system/fs/sys_fs.h:2605:                if(SYS_FS_Mount("/dev/mmcblka1", "/mnt/myDrive", FAT, 0, NULL) != SYS_FS_RES_SUCCESS)
+=== FSTAT struct ===
+    uint32_t    fsize;
+    /* Last modified date */
+    uint16_t    fdate;
+    /* Last modified time */
+    uint16_t    ftime;
+    /* Attribute */
+    uint8_t     fattrib;
+    /* Alternate/Short file name (8.3 format) */
+    char        altname[13];
+    /* Primary/Long file name */
+    char        fname[SYS_FS_FILE_NAME_LEN + 1];
+
+    /* Retaining below members for portability.
+     * For FAT-FS lfname[0] will always be '\0'.
+     * Use fname instead
+    */
+    /* Pointer to the LFN buffer */
+    char       *lfname;
+    /* Size of LFN buffer */
+    uint32_t    lfsize;
+} SYS_FS_FSTAT;
+=== open attributes enum ===
+323:    SYS_FS_FILE_OPEN_READ    =  0,
+333:    SYS_FS_FILE_OPEN_WRITE,
+343:    SYS_FS_FILE_OPEN_APPEND,
+1199:                (SYS_FS_FILE_OPEN_READ));
+1215:        fileHandle = SYS_FS_FileOpen("FILE.txt", (SYS_FS_FILE_OPEN_READ));
+1266:                (SYS_FS_FILE_OPEN_READ));
+1324:        fileHandle = SYS_FS_FileOpen("/mnt/myDrive/FILE.txt", (SYS_FS_FILE_OPEN_READ));
+1474:                (SYS_FS_FILE_OPEN_READ));
+1533:                (SYS_FS_FILE_OPEN_READ));
+1589:                (SYS_FS_FILE_OPEN_READ));
+=== fs type enum ===
+133:} SYS_FS_FILE_SYSTEM_TYPE;
+607:    /* Native file system of type SYS_FS_FILE_SYSTEM_TYPE */
+608:    SYS_FS_FILE_SYSTEM_TYPE nativeFileSystemType;
+769:                 SYS_FS_MAX_FILE_SYSTEM_TYPE. If the application uses one file
+770:                 system (say only FAT FS), SYS_FS_MAX_FILE_SYSTEM_TYPE is
+772:                 systems (say FAT FS and MPFS2), SYS_FS_MAX_FILE_SYSTEM_TYPE is
+783:        #define SYS_FS_MAX_FILE_SYSTEM_TYPE            1
+800:        const SYS_FS_REGISTRATION_TABLE sysFSInit [ SYS_FS_MAX_FILE_SYSTEM_TYPE ] =
+868:        SYS_FS_FILE_SYSTEM_TYPE filesystemtype,
+947:      filesystemtype - Native file system of SYS_FS_FILE_SYSTEM_TYPE type.
+=== result enum ===
+100:#define SYS_FS_HANDLE_INVALID ((SYS_FS_HANDLE)(-1))
+215:    SYS_FS_RES_SUCCESS    =  0,
+217:    SYS_FS_RES_FAILURE    = -1
+388:    the return value is SYS_FS_RES_FAILURE, the application can know the
+776:      SYS_FS_RES_SUCCESS - SYS FS Layer was initialized successfully.
+777:      SYS_FS_RES_FAILURE - SYS FS Layer initialization failed. The reason for
+955:      SYS_FS_RES_SUCCESS - Mount was successful.
+956:      SYS_FS_RES_FAILURE - Mount was unsuccessful. The reason for the failure
+965:                if(SYS_FS_Mount("/dev/mmcblka1", "/mnt/myDrive", FAT, 0, NULL) != SYS_FS_RES_SUCCESS)
+1020:      SYS_FS_RES_SUCCESS - Unmount was successful.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:48:36Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:48:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read fs-type enum and app.c init sequence
+
+```bash
+F=default/src/config/default/system/fs/sys_fs.h
+echo "=== fs type enum values ===" && sed -n '120,135p' $F
+echo "=== app.c init order (where Console_Initialize lives) ===" && grep -n "Console_Initialize\|Storage_Initialize\|_Initialize\|APP_Initialize\|APP_Tasks" /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c | head -40
+```
+
+```text
+=== fs type enum values ===
+
+    /* FAT FS native File system */
+    FAT,
+
+    /* MPFS2 native File system */
+    MPFS2,
+
+    /*  LittleFS native File system */
+    LITTLEFS,
+
+    /*  FILEX native File system */
+    FILEX
+
+} SYS_FS_FILE_SYSTEM_TYPE;
+
+// *****************************************************************************
+=== app.c init order (where Console_Initialize lives) ===
+64:    This structure should be initialized by the APP_Initialize function.
+91:    void APP_Initialize ( void )
+97:void APP_Initialize ( void )
+111:    Video_Initialize();
+117:    PerfLog_Initialize();
+131:     * Video_Initialize since cv_marvin_v1 subscribes to the video frame
+134:    Detector_Initialize();
+140:     * up by SYS_Initialize (FLEXCOM1_USART_Initialize), so this just arms the
+142:    FretboardLink_Initialize();
+147:    TimingPipeline_Initialize();
+154:    ManualControl_Initialize();
+159:     * from inside its task, so it follows Video_Initialize. Enable observation
+161:    GameplayEngine_Initialize();
+167:    Console_Initialize();
+172:     * APP_Initialize returns); xTaskCreateStatic before vTaskStartScheduler
+180:    void APP_Tasks ( void )
+186:void APP_Tasks ( void )
+188:    /* APP is a one-shot launcher — task creation happened in APP_Initialize.
+190:     * idle task. The MCC-generated lAPP_Tasks loop will not iterate again
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:48:39Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+97	void APP_Initialize ( void )
+98	{
+99	    appData.state = APP_STATE_INIT;
+100	
+101	    /* Logging shim: thin wrapper over libc printf with severity filter
+102	     * and FreeRTOS-aware locking. Initialized first so subsequent code
+103	     * (including video task startup) can use LOG_*. Default level is
+104	     * INFO; flip to DEBUG via log_set_level() to enable verbose. */
+105	    log_init(LOG_LEVEL_INFO);
+106	
+107	    /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
+108	     * the task runs once the scheduler picks it up. The video module owns
+109	     * its capture-pipeline init (ISC, TC358743, backlight, HEO unbind),
+110	     * the capture/display state machine, and the bridge-status polling. */
+111	    Video_Initialize();
+112	
+113	    /* Per-frame performance log: producer-side queues + drain task.
+114	     * Init the queues here so any producer that posts before the
+115	     * scheduler starts will not crash; the drain task is launched
+116	     * separately by PerfLog_Start once the scheduler is up. */
+117	    PerfLog_Initialize();
+118	
+119	    /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
+120	     * panel — 1:1 with the bridge's typical 480p source, leaves a UI
+121	     * strip below. Set before DisplayShow; the video module has no
+122	     * default window of its own. */
+123	    Video_SetWindow(280u, 76u, 720u, 480u);
+124	
+125	    /* Default: arm the capture chain when source locks, and show video. */
+126	    Video_CaptureEnable();
+127	    Video_DisplayShow();
+128	
+129	    /* Reference detector (cv_marvin_v1) + detector-state bus. M1 stub
+130	     * publisher; real detection logic lands incrementally. Must follow
+131	     * Video_Initialize since cv_marvin_v1 subscribes to the video frame
+132	     * queue from inside its task. Detectors default disabled; explicitly
+133	     * enable + select the active one for the timing pipeline. */
+134	    Detector_Initialize();
+135	    Detector_Enable(DETECTOR_CV_MARVIN_V1);
+136	    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+137	
+138	    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM1
+139	     * USART writer and the RX parse task. The FLEXCOM1 peripheral is brought
+140	     * up by SYS_Initialize (FLEXCOM1_USART_Initialize), so this just arms the
+141	     * ring-buffer RX notification and starts the link tasks. */
+142	    FretboardLink_Initialize();
+143	
+144	    /* timing_pipeline runs the chord-window + strum scheduler against the
+145	     * active detector and pushes the resulting 7-bit mask through
+146	     * FretboardLink_Send. */
+147	    TimingPipeline_Initialize();
+148	
+149	    /* manual_control is a peer producer for direct UI-driven actuation
+150	     * (game-menu navigation, manual test). UI buttons are authored in
+151	     * Microchip Graphics Composer; the generated screenShow_Screen0
+152	     * registers the event_Screen0_Button_Manual_* callbacks defined in
+153	     * ui/manual_input.c, so no explicit bind step is needed here. */
+154	    ManualControl_Initialize();
+155	
+156	    /* Game-state observer (spec §4.8, M9): a video-frame consumer that
+157	     * classifies the current GH3 screen and publishes game_state_t events on
+158	     * xGameStateQueue. Like cv_marvin_v1 it subscribes to the video frame queue
+159	     * from inside its task, so it follows Video_Initialize. Enable observation
+160	     * explicitly (default off, per the §6 game_observe_enable toggle). */
+161	    GameplayEngine_Initialize();
+162	    GameplayEngine_SetObserveEnabled(true);
+163	
+164	    /* Interactive operator console on FLEXCOM2 (115200), separate from the
+165	     * DBGU log channel. Started after the actuator/detector modules so its
+166	     * commands can drive their setters. */
+167	    Console_Initialize();
+168	
+169	    /* Drain task is launched last so every producer's queue handle is
+170	     * already valid when the first records hit the sink. Marvin creates
+171	     * all tasks pre-scheduler (Harmony brings the scheduler up after
+172	     * APP_Initialize returns); xTaskCreateStatic before vTaskStartScheduler
+173	     * is the standard FreeRTOS pattern. */
+174	    PerfLog_Start();
+175	}
+176
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:50:41Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:50:44Z)**_
+
+I have the full pattern and SYS_FS API. Two last things to confirm — that `definitions.h` exposes SYS_FS, and the directory-attribute constant name:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:50:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm definitions.h FS include, dir-attr macro, tick rate
+
+```bash
+echo "=== definitions.h pulls sys_fs? ===" && grep -n "sys_fs\|system/fs" default/src/config/default/definitions.h
+echo "=== dir attribute constant ===" && grep -rn "SYS_FS_ATTR_DIR\|SYS_FS_ATTR_MASK\|#define SYS_FS_ATTR" default/src/config/default/system/fs/sys_fs.h | head
+echo "=== tick rate ===" && grep -rn "configTICK_RATE_HZ" default/src/config/default/FreeRTOSConfig.h
+```
+
+```text
+=== definitions.h pulls sys_fs? ===
+81:#include "system/fs/sys_fs.h"
+82:#include "system/fs/sys_fs_media_manager.h"
+83:#include "system/fs/sys_fs_fat_interface.h"
+84:#include "system/fs/fat_fs/file_system/ff.h"
+85:#include "system/fs/fat_fs/file_system/ffconf.h"
+86:#include "system/fs/fat_fs/hardware_access/diskio.h"
+=== dir attribute constant ===
+default/src/config/default/system/fs/sys_fs.h:163:    SYS_FS_ATTR_DIR     = 0x10,
+default/src/config/default/system/fs/sys_fs.h:167:    SYS_FS_ATTR_MASK    =  0x3F
+=== tick rate ===
+default/src/config/default/FreeRTOSConfig.h:63:/* configTICK_RATE_HZ sets frequency of the tick interrupt in Hz, normally
+default/src/config/default/FreeRTOSConfig.h:65:#define configTICK_RATE_HZ                      ( ( TickType_t ) 1000 )
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:50:49Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:50:49Z)**_
+
+All confirmed. Writing the module now.
+
+_**Agent (claude-opus-4-8 2026-06-23 04:50:53Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Write storage/storage.h (mount lifecycle + diag API seam)
+- [ ] 🌡️ Write storage/storage.c (manual mount + info/ls/bench diagnostics)
+- [ ] 🌡️ Wire sd command into console.c (handler + binding + out adapter)
+- [ ] 🌡️ Call Storage_Initialize in app.c
+- [ ] 🌡️ Add storage.c to user.cmake
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:51:08Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef MARVIN_STORAGE_H
+#define MARVIN_STORAGE_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* SD-card storage: owns the FAT mount lifecycle and the bring-up diagnostics.
+ *
+ * Mounting is manual for now — DRV_SDMMC uses polled card detection and SYS_FS
+ * automount is disabled, so the app issues SYS_FS_Mount itself. The mount
+ * trigger is isolated in Storage_Mount()/Storage_Unmount() so it can later be
+ * replaced by a SYS_FS mount/unmount event handler (for hotplug) without
+ * touching the diagnostics, which depend only on Storage_IsMounted() and the
+ * mount-point string.
+ *
+ * The mount path uses SYS_FS calls that block on SD I/O, so Storage_Mount and
+ * every Storage_Diag* must be called from a task (after the scheduler is up),
+ * not from APP_Initialize. */
+
+void Storage_Initialize(void);
+
+/* Mount the SD volume. Bounded internal retry — after insertion the polling
+ * driver needs a moment before SYS_FS reports the media ready. Idempotent:
+ * returns true immediately if already mounted. */
+bool        Storage_Mount(void);
+bool        Storage_Unmount(void);
+bool        Storage_IsMounted(void);
+const char *Storage_MountPoint(void);
+
+/* Output sink for the diagnostics: one already-formatted line, no newline.
+ * Lets storage emit to the operator console without depending on it. */
+typedef void (*storage_print_fn)(void *ctx, const char *line);
+
+/* Bring-up diagnostics (driven by the `sd` console command). Each mounts on
+ * demand if needed and reports through `out`. */
+void Storage_DiagInfo (storage_print_fn out, void *ctx);
+void Storage_DiagList (storage_print_fn out, void *ctx, const char *path);
+void Storage_DiagBench(storage_print_fn out, void *ctx, uint32_t mbytes);
+
+#endif
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.h (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:51:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "storage.h"
+
+#include <stdarg.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+
+#include "definitions.h"
+#include "log.h"
+
+#define STG_DEV          "/dev/mmcblka1"
+#define STG_MOUNT        "/mnt/marvin"
+#define STG_TESTFILE     STG_MOUNT "/sdtest.bin"
+
+#define STG_MOUNT_TRIES  50u
+#define STG_MOUNT_WAIT_MS 20u
+
+#define STG_CHUNK        (16u * 1024u)   /* I/O unit for the throughput test */
+#define STG_BENCH_MAX_MB 64u
+
+#define STG_SECTOR_BYTES 512u            /* SYS_FS sector size for capacity math */
+
+static bool s_mounted = false;
+
+/* Scratch for the bench write/read. Static so it stays off the caller's
+ * (console) task stack. */
+static uint8_t s_chunk[STG_CHUNK];
+
+/* ---- helpers ------------------------------------------------------------ */
+
+static void diag_printf(storage_print_fn out, void *ctx, const char *fmt, ...)
+{
+    char buf[128];
+    va_list ap;
+    va_start(ap, fmt);
+    (void)vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    out(ctx, buf);
+}
+
+/* Throughput in whole MB/s ×10 (one decimal), integer math. */
+static uint32_t mbps_x10(uint32_t bytes, uint32_t ms)
+{
+    if (ms == 0u) { return 0u; }
+    return (uint32_t)(((uint64_t)bytes * 1000u * 10u) / ((uint64_t)1024u * 1024u * ms));
+}
+
+/* Deterministic pattern as a function of absolute byte offset, so a read can
+ * verify without retaining what was written. */
+static void fill_chunk(uint8_t *b, uint32_t chunk_index)
+{
+    uint32_t base = chunk_index * STG_CHUNK;
+    for (uint32_t i = 0u; i < STG_CHUNK; i++)
+    {
+        uint32_t off = base + i;
+        b[i] = (uint8_t)(off ^ (off >> 8));
+    }
+}
+
+static bool verify_chunk(const uint8_t *b, uint32_t chunk_index)
+{
+    uint32_t base = chunk_index * STG_CHUNK;
+    for (uint32_t i = 0u; i < STG_CHUNK; i++)
+    {
+        uint32_t off = base + i;
+        if (b[i] != (uint8_t)(off ^ (off >> 8))) { return false; }
+    }
+    return true;
+}
+
+/* ---- mount lifecycle ---------------------------------------------------- */
+
+void Storage_Initialize(void)
+{
+    s_mounted = false;
+    /* No mount here: APP_Initialize runs before the scheduler, so the SDMMC
+     * task hasn't analyzed the card yet and SYS_FS calls would block/fail.
+     * Mounting happens from a task (the `sd` console command today; a SYS_FS
+     * event handler once hotplug is wired). */
+}
+
+bool Storage_Mount(void)
+{
+    if (s_mounted) { return true; }
+
+    for (uint32_t i = 0u; i < STG_MOUNT_TRIES; i++)
+    {
+        if (SYS_FS_Mount(STG_DEV, STG_MOUNT, FAT, 0u, NULL) == SYS_FS_RES_SUCCESS)
+        {
+            s_mounted = true;
+            LOG_INFO("STG: mounted %s at %s\r\n", STG_DEV, STG_MOUNT);
+            return true;
+        }
+        vTaskDelay(pdMS_TO_TICKS(STG_MOUNT_WAIT_MS));
+    }
+
+    LOG_WARN("STG: mount failed (fs err %d)\r\n", (int)SYS_FS_Error());
+    return false;
+}
+
+bool Storage_Unmount(void)
+{
+    if (!s_mounted) { return true; }
+
+    if (SYS_FS_Unmount(STG_MOUNT) == SYS_FS_RES_SUCCESS)
+    {
+        s_mounted = false;
+        LOG_INFO("STG: unmounted %s\r\n", STG_MOUNT);
+        return true;
+    }
+    return false;
+}
+
+bool Storage_IsMounted(void)      { return s_mounted; }
+const char *Storage_MountPoint(void) { return STG_MOUNT; }
+
+/* ---- diagnostics -------------------------------------------------------- */
+
+void Storage_DiagInfo(storage_print_fn out, void *ctx)
+{
+    if (!Storage_Mount())
+    {
+        diag_printf(out, ctx, "not mounted (no card?)");
+        return;
+    }
+
+    diag_printf(out, ctx, "mount:  %s", STG_MOUNT);
+
+    char     label[32] = { 0 };
+    uint32_t serial = 0u;
+    if (SYS_FS_DriveLabelGet(STG_MOUNT, label, &serial) == SYS_FS_RES_SUCCESS)
+    {
+        diag_printf(out, ctx, "label:  '%s'  serial %08lX",
+                    label, (unsigned long)serial);
+    }
+
+    uint32_t total = 0u, freeSec = 0u;
+    if (SYS_FS_DriveSectorGet(STG_MOUNT, &total, &freeSec) == SYS_FS_RES_SUCCESS)
+    {
+        uint32_t per_mb = (1024u * 1024u) / STG_SECTOR_BYTES;   /* sectors/MB */
+        diag_printf(out, ctx, "size:   %lu MB total, %lu MB free",
+                    (unsigned long)(total / per_mb),
+                    (unsigned long)(freeSec / per_mb));
+    }
+}
+
+void Storage_DiagList(storage_print_fn out, void *ctx, const char *path)
+{
+    if (!Storage_Mount())
+    {
+        diag_printf(out, ctx, "not mounted");
+        return;
+    }
+
+    const char *dir = (path != NULL && path[0] != '\0') ? path : STG_MOUNT;
+
+    SYS_FS_HANDLE h = SYS_FS_DirOpen(dir);
+    if (h == SYS_FS_HANDLE_INVALID)
+    {
+        diag_printf(out, ctx, "opendir '%s' failed (fs err %d)",
+                    dir, (int)SYS_FS_Error());
+        return;
+    }
+
+    SYS_FS_FSTAT st;
+    uint32_t n = 0u;
+    for (;;)
+    {
+        memset(&st, 0, sizeof(st));
+        st.lfname = NULL;   /* use the fname field (long name) */
+        st.lfsize = 0u;
+
+        if (SYS_FS_DirRead(h, &st) != SYS_FS_RES_SUCCESS) { break; }
+        if (st.fname[0] == '\0') { break; }   /* end of directory */
+
+        bool is_dir = (st.fattrib & SYS_FS_ATTR_DIR) != 0u;
+        diag_printf(out, ctx, "%c %10lu  %s",
+                    is_dir ? 'd' : '-', (unsigned long)st.fsize, st.fname);
+        n++;
+    }
+    (void)SYS_FS_DirClose(h);
+
+    diag_printf(out, ctx, "(%lu entries)", (unsigned long)n);
+}
+
+void Storage_DiagBench(storage_print_fn out, void *ctx, uint32_t mbytes)
+{
+    if (!Storage_Mount())
+    {
+        diag_printf(out, ctx, "not mounted");
+        return;
+    }
+
+    if (mbytes == 0u)               { mbytes = 4u; }
+    if (mbytes > STG_BENCH_MAX_MB)  { mbytes = STG_BENCH_MAX_MB; }
+
+    uint32_t chunks      = (mbytes * 1024u * 1024u) / STG_CHUNK;
+    uint32_t total_bytes = chunks * STG_CHUNK;
+
+    /* write */
+    SYS_FS_HANDLE h = SYS_FS_FileOpen(STG_TESTFILE, SYS_FS_FILE_OPEN_WRITE);
+    if (h == SYS_FS_HANDLE_INVALID)
+    {
+        diag_printf(out, ctx, "open(write) failed (fs err %d)", (int)SYS_FS_Error());
+        return;
+    }
+    TickType_t t0 = xTaskGetTickCount();
+    bool write_err = false;
+    for (uint32_t c = 0u; c < chunks; c++)
+    {
+        fill_chunk(s_chunk, c);
+        if (SYS_FS_FileWrite(h, s_chunk, STG_CHUNK) != STG_CHUNK)
+        {
+            write_err = true;
+            break;
+        }
+    }
+    (void)SYS_FS_FileClose(h);
+    uint32_t wms = (uint32_t)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS);
+    if (write_err)
+    {
+        diag_printf(out, ctx, "write failed (fs err %d)", (int)SYS_FS_Error());
+        return;
+    }
+    diag_printf(out, ctx, "write:  %lu KB in %lu ms = %lu.%lu MB/s",
+                (unsigned long)(total_bytes / 1024u), (unsigned long)wms,
+                (unsigned long)(mbps_x10(total_bytes, wms) / 10u),
+                (unsigned long)(mbps_x10(total_bytes, wms) % 10u));
+
+    /* read back + verify */
+    h = SYS_FS_FileOpen(STG_TESTFILE, SYS_FS_FILE_OPEN_READ);
+    if (h == SYS_FS_HANDLE_INVALID)
+    {
+        diag_printf(out, ctx, "open(read) failed (fs err %d)", (int)SYS_FS_Error());
+        return;
+    }
+    TickType_t r0 = xTaskGetTickCount();
+    bool read_err = false, mismatch = false;
+    for (uint32_t c = 0u; c < chunks; c++)
+    {
+        if (SYS_FS_FileRead(h, s_chunk, STG_CHUNK) != STG_CHUNK)
+        {
+            read_err = true;
+            break;
+        }
+        if (!verify_chunk(s_chunk, c))
+        {
+            mismatch = true;
+            break;
+        }
+    }
+    (void)SYS_FS_FileClose(h);
+    uint32_t rms = (uint32_t)((xTaskGetTickCount() - r0) * portTICK_PERIOD_MS);
+    if (read_err)
+    {
+        diag_printf(out, ctx, "read failed (fs err %d)", (int)SYS_FS_Error());
+        return;
+    }
+    diag_printf(out, ctx, "read:   %lu KB in %lu ms = %lu.%lu MB/s",
+                (unsigned long)(total_bytes / 1024u), (unsigned long)rms,
+                (unsigned long)(mbps_x10(total_bytes, rms) / 10u),
+                (unsigned long)(mbps_x10(total_bytes, rms) % 10u));
+    diag_printf(out, ctx, "verify: %s", mismatch ? "MISMATCH" : "ok");
+}
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.c (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:51:49Z)**_
+
+Now wire the `sd` command into console.c:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:51:53Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:51:57Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:02Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:05Z)**_
+
+Now add the `sd_out` adapter and `cmd_sd` handler (placing them after `cmd_nodes`, since they're related diagnostics):
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:12Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:19Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:22Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:23Z)**_
+
+Now app.c — add the include and the `Storage_Initialize()` call before the console:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:23Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check app.c includes
+
+`sed -n '1,60p' default/src/app.c | grep -n "#include"`
+
+```text
+30:#include <stdint.h>
+31:#include <stdio.h>
+33:#include "FreeRTOS.h"
+34:#include "task.h"
+36:#include "app.h"
+37:#include "definitions.h"
+38:#include "log.h"
+39:#include "video/video.h"
+40:#include "detector/detector.h"
+41:#include "actuator/timing_pipeline.h"
+42:#include "actuator/fretboard_link.h"
+43:#include "actuator/manual_control.h"
+44:#include "game/gameplay_engine.h"
+45:#include "console/console.h"
+46:#include "perf_log/perf_log.h"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:32Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:33Z)**_
+
+Those diagnostics are pre-existing style warnings on lines I didn't touch — not from my change. Now the `Storage_Initialize()` call:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:40Z)**_
+
+Finally, register `storage.c` in user.cmake:
+
+_**Agent (claude-opus-4-8 2026-06-23 04:52:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:53:19Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 04:53:20Z)**_
+
+All wired. Let me record the bring-up decision and the new module in the journal (per the project's journal-as-you-go rule), then summarize.
+
+_**Agent (claude-opus-4-8 2026-06-23 04:53:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:53:39Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Write storage/storage.h (mount lifecycle + diag API seam)
+- [X] 🌡️ Write storage/storage.c (manual mount + info/ls/bench diagnostics)
+- [X] 🌡️ Wire sd command into console.c (handler + binding + out adapter)
+- [X] 🌡️ Call Storage_Initialize in app.c
+- [X] 🌡️ Add storage.c to user.cmake
+- [X] 🌡️ Record bring-up decision in marvin journal
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 04:53:52Z)**_
+
+Done. Here's what landed (all in-tree, no MCC regen):
+
+**New module** [storage/storage.h](firmware/marvin/default/src/storage/storage.h) + [storage.c](firmware/marvin/default/src/storage/storage.c)
+- Owns the FAT mount lifecycle: `Storage_Mount` / `Unmount` / `IsMounted` / `MountPoint`, mounting `/dev/mmcblka1` → `/mnt/marvin` with a bounded retry (the polled SDMMC driver needs a moment after insertion before SYS_FS reports media ready).
+- Diagnostics: `Storage_DiagInfo` (label/serial/total+free MB), `Storage_DiagList` (dir listing), `Storage_DiagBench` (write → read-back → verify, integer MB/s).
+- The mount trigger is deliberately isolated so swapping to an automount **event handler** later won't touch the diagnostics — they depend only on `Storage_IsMounted()` + the mount point. Diagnostics emit through a `storage_print_fn` callback, so storage has no dependency on the console.
+
+**Console** [console.c](firmware/marvin/default/src/console/console.c) — one new binding row + `cmd_sd`:
+```
+sd info              # mount + label/serial/capacity   (gate: card inits, FAT readable)
+sd ls [path]         # directory listing               (gate: filesystem readable)
+sd bench [mb]        # write+verify+read, MB/s, dflt 4  (gate: write path + coherence + throughput)
+sd mount | unmount   # explicit lifecycle control
+```
+
+**Wiring** — `Storage_Initialize()` in [app.c](firmware/marvin/default/src/app.c) (state only, no pre-scheduler I/O), and `storage.c` added to [user.cmake](firmware/marvin/cmake/marvin/default/user.cmake).
+
+**Journal** — decision-log entry recording the manual-mount-now / automount-later choice and the throughput-gate rationale.
+
+Two things to flag:
+- **I have not built this** — XC32/MPLAB is your build path. I verified every SYS_FS signature against the generated `sys_fs.h`, but it needs your compile. Test recipe: console on FLEXCOM2 @ 115200, insert a FAT32 card, then `sd info` → `sd ls` → `sd bench`.
+- **Watch the `sd bench` number against ≥5 MB/s** (spec §4.6.2). Speed mode is `DEFAULT`, not High-Speed — if it falls short, bumping speed mode (a regen) is the lever, *not* reshaping the keyframe stride.
+
+Nothing committed — the docs commit earlier was the only one you approved; this module is staged in your working tree for you to build and review first.
+
+---
+
+_**User (2026-06-23 21:25:17Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.h in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+all seems to be working although I don't see that mount / unmount does anything? Here's output of bench marvin> sd bench
+write:  4096 KB in 9527 ms = 0.4 MB/s
+read:   4096 KB in 694 ms = 5.7 MB/s
+verify: ok
+
+_**User (2026-06-23 21:31:35Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-06-23 21:31:43Z)**_
+
+all seems to be working although I don't see that mount / unmount does anything? Here's output of bench marvin> sd bench
+write:  4096 KB in 9527 ms = 0.4 MB/s
+read:   4096 KB in 694 ms = 5.7 MB/s
+verify: ok
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 21:33:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:33:34Z)**_
+
+Two separate things here — let me address the cosmetic one, then dig into the real signal.
+
+**mount/unmount "doing nothing":** that's expected, not a bug. Every diagnostic calls `Storage_Mount()` first, and it's idempotent — so by the time you type `sd mount` the card is already mounted (lazily, by your first `sd info`/`sd bench`), and it just prints "mounted" and returns. `sd unmount` does flip the state, but the very next `sd bench` silently re-mounts. The lifecycle works; it's just invisible because the diagnostics auto-mount. I can make that visible if you want (e.g. have `info`/`ls`/`bench` *not* auto-mount, so an explicit `sd mount` is required first).
+
+**The real finding: write 0.4 MB/s vs read 5.7 MB/s.** That 14× asymmetry is exactly what `sd bench` exists to catch, and it's well under the ≥5 MB/s the recording format assumes (§4.6.2). Per-chunk that's ~37 ms to write 16 KB (32 sectors) vs ~2.7 ms to read it — which smells like writes degrading to **single-sector (512 B) transfers** rather than multi-block, or a cache-alignment bounce on the write path. Let me look at the actual FatFs/SDMMC write path before guessing.
+
+_**Agent (claude-opus-4-8 2026-06-23 21:33:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect ffconf flags and diskio write path
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== ffconf key flags ===" && grep -nE "FF_FS_TINY|FF_FS_EXFAT|FF_MAX_SS|FF_MIN_SS|FF_USE_FASTSEEK|FF_FS_READONLY|FF_USE_LFN|FF_FS_NORTC" default/src/config/default/system/fs/fat_fs/file_system/ffconf.h
+echo
+echo "=== diskio files ===" && ls default/src/config/default/system/fs/fat_fs/hardware_access/ 2>/dev/null
+echo
+echo "=== disk_write impl ===" && grep -rn "disk_write\|DRV_SDMMC_BlockWrite\|MEDIA_BLOCK\|SYS_FS_MEDIA_BLOCK_COMMAND_WRITE\|MediaWrite" default/src/config/default/system/fs/fat_fs/hardware_access/*.c 2>/dev/null | head
+```
+
+```text
+=== ffconf key flags ===
+11:#define FF_FS_READONLY	0
+36:#define FF_USE_FASTSEEK	0
+46:/  (0:Disable or 1:Enable) Also FF_FS_READONLY needs to be 0 to enable this option. */
+115:#define FF_USE_LFN		1
+117:/* The FF_USE_LFN switches the support for LFN (long file name).
+195:#define FF_MIN_SS		512
+196:#define FF_MAX_SS		512
+200:/  type of optical media. When FF_MAX_SS is larger than FF_MIN_SS, FatFs is configured
+207:/  To enable the 64-bit LBA, also exFAT needs to be enabled. (FF_FS_EXFAT == 1) */
+226:#define FF_FS_TINY		0
+228:/  At the tiny configuration, size of file object (FIL) is shrinked FF_MAX_SS bytes.
+233:#define FF_FS_EXFAT		0
+235:/  To enable exFAT, also LFN needs to be enabled. (FF_USE_LFN >= 1)
+239:#define FF_FS_NORTC		0
+243:/* The option FF_FS_NORTC switches timestamp feature. If the system does not have
+244:/  an RTC or valid timestamp is not needed, set FF_FS_NORTC = 1 to disable the
+247:/  To enable timestamp function (FF_FS_NORTC = 0), get_fattime() function need to be
+250:/  These options have no effect in read-only configuration (FF_FS_READONLY = 1). */
+270:/  and illegal operation to open objects. This option must be 0 when FF_FS_READONLY
+
+=== diskio files ===
+diskio.c
+diskio.h
+
+=== disk_write impl ===
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:21:    SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE commandHandle;
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:28:    SYS_FS_MEDIA_BLOCK_EVENT event,
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:29:    SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE commandHandle,
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:51:    if (gSysFsDiskData[pdrv].commandHandle == SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE_INVALID)
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:126:    gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE_INVALID;
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:219:DRESULT disk_write
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:260:            gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE_INVALID;
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:287:        gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE_INVALID;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:34:21Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:34:22Z)**_
+
+FatFs config looks fine (`FF_FS_TINY=0`, sector-aligned writes). Let me read the actual `disk_write` to see if the full sector count passes through as one multi-block transfer:
+
+_**Agent (claude-opus-4-8 2026-06-23 21:34:22Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c`
+
+```text
+219	DRESULT disk_write
+220	(
+221	    uint8_t pdrv,       /* Physical drive nmuber (0..) */
+222	    const uint8_t *buff,/* Data to be written */
+223	    uint32_t sector,    /* Sector address (LBA) */
+224	    uint32_t count       /* Number of sectors to write (1..128) */
+225	)
+226	{
+227	    DRESULT result = RES_ERROR;
+228	
+229	    uint32_t bytesToTransfer    = 0;
+230	    uint32_t currentXferLen     = 0;
+231	    uint32_t sectorXferCntr     = 0;
+232	
+233	    /* Use Aligned Buffer if input buffer is not aligned to cache line size */
+234	    if (((uint32_t)buff & CACHE_ALIGN_CHECK) != 0)
+235	    {
+236	        /* When aligned buffer is used the total number of sectors will be divided by the aligned
+237	         * buffer size and will be sent to drivers in iterations.
+238	         * As the total sectors are now divided into chunks it may effect the overall throughput.
+239	         * Increasing the length of the buffer will increase the throughput but consume more RAM memory.
+240	        */
+241	
+242	        bytesToTransfer = (count * SYS_FS_FAT_MAX_SS);
+243	
+244	        while (bytesToTransfer > 0)
+245	        {
+246	            /* Calculate the number of sectors to be transferred with current request */
+247	            if (bytesToTransfer > SYS_FS_FAT_ALIGNED_BUFFER_LEN)
+248	            {
+249	                sectorXferCntr  = (SYS_FS_FAT_ALIGNED_BUFFER_LEN / SYS_FS_FAT_MAX_SS);
+250	                currentXferLen  = SYS_FS_FAT_ALIGNED_BUFFER_LEN;
+251	            }
+252	            else
+253	            {
+254	                sectorXferCntr  = (bytesToTransfer / SYS_FS_FAT_MAX_SS);
+255	                currentXferLen  = bytesToTransfer;
+256	            }
+257	
+258	            gSysFsDiskData[pdrv].commandStatus = SYS_FS_MEDIA_COMMAND_IN_PROGRESS;
+259	
+260	            gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE_INVALID;
+261	
+262	            /* Copy the actual buffer data into aligned buffer */
+263	            memcpy(gSysFsDiskData[pdrv].alignedBuffer, buff, currentXferLen);
+264	
+265	            /* Submit the write request to media */
+266	            gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_MANAGER_SectorWrite(pdrv /* DISK Number */ ,
+267	                    sector /* Destination Sector*/,
+268	                    gSysFsDiskData[pdrv].alignedBuffer /* Source Buffer */,
+269	                    sectorXferCntr /* Number of Sectors */);
+270	
+271	            result = disk_checkCommandStatus(pdrv);
+272	
+273	            if (result != RES_OK)
+274	            {
+275	                break;
+276	            }
+277	
+278	            bytesToTransfer -= currentXferLen;
+279	            buff            += currentXferLen;
+280	            sector          += sectorXferCntr;
+281	        }
+282	    }
+283	    else
+284	    {
+285	        gSysFsDiskData[pdrv].commandStatus = SYS_FS_MEDIA_COMMAND_IN_PROGRESS;
+286	
+287	        gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_BLOCK_COMMAND_HANDLE_INVALID;
+288	
+289	        /* Submit the write request to media */
+290	        gSysFsDiskData[pdrv].commandHandle = SYS_FS_MEDIA_MANAGER_SectorWrite(pdrv /* DISK Number */ ,
+291	                sector /* Destination Sector*/,
+292	                (uint8_t *)buff /* Source Buffer */,
+293	                count /* Number of Sectors */);
+294	
+295	        result = disk_checkCommandStatus(pdrv);
+296	    }
+297	
+298	    return result;
+299	}
+300	#endif
+301	
+302	
+303	/*-----------------------------------------------------------------------*/
+304	/* Miscellaneous Functions                                               */
+305	/*-----------------------------------------------------------------------*/
+306	
+307	#if _USE_IOCTL
+308	DRESULT disk_ioctl (
+309	        uint8_t pdrv,       /* Physical drive nmuber (0..) */
+310	        uint8_t cmd,        /* Control code */
+311	        void *buff      /* Buffer to send/receive control data */
+312	        )
+313	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:35:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:36:01Z)**_
+
+The write path has the smoking gun: an **unaligned buffer falls back to a bounce-copy loop** (line 234), while an aligned buffer goes straight through as one multi-block transfer (line 290). My `s_chunk` is a plain `uint8_t[]` — alignment 1, almost certainly not cache-line aligned. Let me confirm the bounce chunk size and check whether reads take the same path:
+
+_**Agent (claude-opus-4-8 2026-06-23 21:36:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find bounce buffer length, cache-align mask, and disk_read path
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== alignment + bounce-buffer constants ===" && grep -rn "CACHE_ALIGN_CHECK\|SYS_FS_FAT_ALIGNED_BUFFER_LEN\|SYS_FS_FAT_MAX_SS\|alignedBuffer\[" default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c default/src/config/default/system/fs/*.h default/src/config/default/configuration.h 2>/dev/null | head -20
+echo
+echo "=== disk_read: same aligned/unaligned split? ===" && sed -n '150,219p' default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c
+```
+
+```text
+=== alignment + bounce-buffer constants ===
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:15:#define CACHE_ALIGN_CHECK  (CACHE_LINE_SIZE - 1)
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:19:    uint8_t alignedBuffer[SYS_FS_FAT_ALIGNED_BUFFER_LEN] __ALIGNED(CACHE_LINE_SIZE);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:154:    uint8_t (*sector_ptr)[SYS_FS_FAT_MAX_SS] = (uint8_t (*)[])buff;
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:157:    if (((uint32_t)buff & CACHE_ALIGN_CHECK) != 0)
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:174:                sector_aligned_index = SYS_FS_FAT_MAX_SS - ((uint32_t)buff & (SYS_FS_FAT_MAX_SS - 1));
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:181:                    memmove(&sector_ptr[1], &buff[sector_aligned_index], (count - 1)*SYS_FS_FAT_MAX_SS);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:184:                    memcpy(&sector_ptr[0], gSysFsDiskData[pdrv].alignedBuffer, SYS_FS_FAT_MAX_SS);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:197:                    memcpy(&sector_ptr[i], gSysFsDiskData[pdrv].alignedBuffer, SYS_FS_FAT_MAX_SS);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:234:    if (((uint32_t)buff & CACHE_ALIGN_CHECK) != 0)
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:242:        bytesToTransfer = (count * SYS_FS_FAT_MAX_SS);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:247:            if (bytesToTransfer > SYS_FS_FAT_ALIGNED_BUFFER_LEN)
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:249:                sectorXferCntr  = (SYS_FS_FAT_ALIGNED_BUFFER_LEN / SYS_FS_FAT_MAX_SS);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:250:                currentXferLen  = SYS_FS_FAT_ALIGNED_BUFFER_LEN;
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:254:                sectorXferCntr  = (bytesToTransfer / SYS_FS_FAT_MAX_SS);
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:328:        if (mediaBlockSize < SYS_FS_FAT_MAX_SS)
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:331:            numBlocksPerSector = (SYS_FS_FAT_MAX_SS / mediaBlockSize);
+default/src/config/default/configuration.h:113:#define SYS_FS_FAT_MAX_SS                 SYS_FS_MEDIA_MAX_BLOCK_SIZE
+default/src/config/default/configuration.h:114:#define SYS_FS_FAT_ALIGNED_BUFFER_LEN     512
+
+=== disk_read: same aligned/unaligned split? ===
+    DRESULT result = RES_ERROR;
+
+    uint32_t i = 0;
+    uint32_t sector_aligned_index = 0;
+    uint8_t (*sector_ptr)[SYS_FS_FAT_MAX_SS] = (uint8_t (*)[])buff;
+
+    /* Use Aligned Buffer if input buffer is not aligned to cache line size */
+    if (((uint32_t)buff & CACHE_ALIGN_CHECK) != 0)
+    {
+        /* For unaligned buffers, if count is > 2, then always read the first sector into the internal aligned buffer since the starting address of app buffer is unaligned.
+         * After this, find the first 512 byte aligned address in the app buffer and copy the remaining (count-1) sectors into the app buffer directly.
+         * After this, move the count-1 sectors in app buffer to the end (i.e. start of 1st sector) in app buffer.
+         * Finally, copy the first sector from internal aligned buffer to app buffer.
+         * For unaligned buffers, if count is < 2, then directly use the internal aligned buffer and then copy it to app buffer as there is no gain in following the above logic.
+        */
+        if (count > 2)
+        {
+            /* Read first sector from media into internal aligned buffer */
+            result = disk_read_aligned(pdrv, gSysFsDiskData[pdrv].alignedBuffer, sector, 1);
+
+            if (result == RES_OK)
+            {
+                /* Find the first sector aligned address in the application buffer and read (count - 1) sectors into the aligned application buffer directly */
+
+                sector_aligned_index = SYS_FS_FAT_MAX_SS - ((uint32_t)buff & (SYS_FS_FAT_MAX_SS - 1));
+
+                result = disk_read_aligned(pdrv, &buff[sector_aligned_index], (sector + 1), (count - 1));
+
+                if (result == RES_OK)
+                {
+                    /* Move (count - 1) sectors to the end (i.e. start of 1st sector) in the application buffer */
+                    memmove(&sector_ptr[1], &buff[sector_aligned_index], (count - 1)*SYS_FS_FAT_MAX_SS);
+
+                    /* Copy the first sector from the internal aligned buffer to the start of the application buffer */
+                    memcpy(&sector_ptr[0], gSysFsDiskData[pdrv].alignedBuffer, SYS_FS_FAT_MAX_SS);
+                }
+            }
+        }
+        else
+        {
+            for (i = 0; i < count; i++)
+            {
+                result = disk_read_aligned(pdrv, gSysFsDiskData[pdrv].alignedBuffer, (sector + i), 1);
+
+                if (result == RES_OK)
+                {
+                    /* Copy the read data from the internal aligned buffer to the start of the application buffer */
+                    memcpy(&sector_ptr[i], gSysFsDiskData[pdrv].alignedBuffer, SYS_FS_FAT_MAX_SS);
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+    }
+    else
+    {
+        result = disk_read_aligned(pdrv, buff, sector, count);
+    }
+
+    return result;
+}
+
+/*-----------------------------------------------------------------------*/
+/* Write Sector(s)                                                       */
+/*-----------------------------------------------------------------------*/
+
+#if _USE_WRITE
+DRESULT disk_write
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:38:06Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:38:09Z)**_
+
+That's the whole story. `SYS_FS_FAT_ALIGNED_BUFFER_LEN = 512`, and the two paths are asymmetric for an **unaligned** buffer:
+
+- **Write** (line 244): loops in 512-byte units → **single-sector writes**. 32 of them per 16 KB chunk ≈ your 37 ms.
+- **Read** (line 166): reads sector 0 into the bounce buffer, then the remaining 31 sectors **directly into the app buffer as one multi-block transfer** — stays fast even unaligned.
+
+Same buffer, opposite outcomes — exactly your 0.4 vs 5.7 MB/s. My `s_chunk` is a plain `uint8_t[]` (alignment 1), so it trips the unaligned write path. The fix is to cache-line-align it. Let me confirm the macro name, then patch:
+
+_**Agent (claude-opus-4-8 2026-06-23 21:38:11Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate CACHE_LINE_SIZE and __ALIGNED definitions
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -rn "#define CACHE_LINE_SIZE\|define __ALIGNED" default/src/config/default default/src/packs 2>/dev/null | grep -iv "packs/.*examples" | head
+```
+
+```text
+default/src/config/default/toolchain_specifics.h:92:#define __ALIGNED(x) __attribute__((aligned(x)))
+default/src/config/default/toolchain_specifics.h:107:#define CACHE_LINE_SIZE    (32u)
+default/src/config/default/gfx/legato/renderer/legato_renderer.c:137:#define __ALIGNED(val)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:38:50Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:38:51Z)**_
+
+Both `CACHE_LINE_SIZE` (32) and `__ALIGNED` live in `toolchain_specifics.h` (pulled in via `definitions.h`, which I already include). Patching `s_chunk`:
+
+_**Agent (claude-opus-4-8 2026-06-23 21:38:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:40:15Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:40:16Z)**_
+
+Now let me record this finding — it's a non-obvious, system-wide gotcha the recording and artwork paths will need:
+
+_**Agent (claude-opus-4-8 2026-06-23 21:40:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:42:01Z)**_
+
+Fix is in. Here's the diagnosis and what to do next.
+
+**Root cause of the 0.4 MB/s write** — found in the generated FatFs diskio, fully explains the read/write asymmetry on one shared buffer:
+- My `s_chunk` was a plain `uint8_t[]` (alignment 1), not cache-line aligned.
+- `disk_write` with an unaligned buffer bounces through a **512-byte** buffer in a loop → single-sector writes (32 per 16 KB ≈ your 37 ms/chunk).
+- `disk_read` with the *same* unaligned buffer still issues one multi-block transfer → stays fast (5.7 MB/s).
+
+The one-line fix: `static uint8_t s_chunk[STG_CHUNK] __ALIGNED(CACHE_LINE_SIZE);`. After you rebuild, `sd bench` write should jump to multi-MB/s. If it lands at/above ~5 MB/s, the §4.6.2 assumption holds and speed-mode-DEFAULT is fine; if it's still short, High-Speed mode (a regen) is the next lever — but reads prove the link isn't the limit.
+
+**System-wide takeaway** (now in the journal): *any* buffer handed to `SYS_FS_FileWrite` for throughput needs 32-byte alignment, or it silently runs at single-sector speed. That's a live constraint for the M4 keyframe DDR buffers and the config/catalog/results writers. The ISC capture buffers are already DMA-aligned; app-side staging buffers are the risk.
+
+**On mount/unmount** — working as designed, just invisible: the diagnostics auto-mount (and `Storage_Mount` is idempotent), so by the time you type `sd mount` it's already up, and `sd unmount` is silently undone by the next `sd bench` re-mounting. If you'd rather see the lifecycle explicitly, I can make `info`/`ls`/`bench` *not* auto-mount (require `sd mount` first) — cleaner discipline, and it'd make the commands visibly matter. Want that, or keep the convenience auto-mount?
+
+Nothing committed — the alignment fix and journal note are staged in your tree for you to rebuild and re-bench first.
+
+---
+
+_**User (2026-06-23 21:44:27Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+marvin> sd bench
+write:  4096 KB in 1347 ms = 2.9 MB/s
+read:   4096 KB in 591 ms = 6.7 MB/s
+verify: ok
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 21:46:26Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:46:27Z)**_
+
+The alignment fix landed: write **0.4 → 2.9 MB/s** (7×), read up to 6.7, verify still ok. Let me confirm the prediction in the journal, then put 2.9 in context.
+
+_**Agent (claude-opus-4-8 2026-06-23 21:46:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 21:46:46Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 21:46:57Z)**_
+
+That's the fix confirmed. Now — **2.9 MB/s is already enough**, and it's worth being clear about why so you don't chase a number you don't need:
+
+The "≥5 MB/s" in §4.6.2 was a *ceiling the format sits well under*, not the workload. The actual sustained recording load at default settings is the 1-keyframe/sec stride = **~1.05 MB/s** (state/commands/ADC are a few KB/s on top). So 2.9 MB/s gives you ~2.7× headroom over the real load. You'd only bump against it if you crank keyframe cadence to ~3-4 fps.
+
+The read/write gap (6.7 vs 2.9) is normal — SD program time makes writes inherently slower, plus a growing file interleaves FAT updates between data bursts. So 2.9 is likely close to this card's honest sequential write at DEFAULT speed.
+
+If you *do* want more headroom (future-proofing, or aggressive keyframe capture), the levers in increasing order of effort:
+
+1. **Bigger write chunks** (nearly free) — bump `STG_CHUNK` 16 KB → 64 KB. Tells you if you're overhead-bound or card-bound: if write rises, it was per-call overhead; if it stays ~2.9, you're clock/card-limited. Costs a bit more BSS. I can also expose it as `sd bench [mb] [kb]` so you can sweep it without rebuilding.
+2. **Card + format** (no firmware) — a genuine A1/A2 card, formatted with a large allocation unit (e.g. 32 KB cluster), cuts FAT-update thrash on growing files.
+3. **High-Speed mode** (MCC regen) — DEFAULT is 25 MHz; High-Speed ~doubles the bus clock and would likely lift both numbers. Only worth the regen if you're targeting high keyframe cadence.
+4. **Preallocate the record file** (`f_expand`-style) when the M4 recorder is built — eliminates cluster-boundary FAT writes mid-session. This one matters for the real recorder regardless.
+
+My recommendation: **call the bring-up done** — the gate is functionally passed for the documented recording profile. Don't regen for High-Speed yet. The one cheap thing I'd do is the chunk-size experiment (#1) just to *know* whether you're card-bound, since that informs whether #2/#3 are even worth it later.
+
+Want me to make `sd bench` take an optional chunk-size arg so you can sweep it, or leave the module as-is and move on?
+
+---
+
+_**User (2026-06-23 22:40:37Z)**_
+
+This is good. no need to pursue more speed at this time. please commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 22:40:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:41:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show my changed files vs others
+
+`git status --short | grep -iE "storage|console|app\.c|user\.cmake|journal\.md"`
+
+```text
+ M firmware/marvin/cmake/marvin/default/user.cmake
+ M firmware/marvin/default/src/app.c
+ M firmware/marvin/default/src/console/console.c
+ M firmware/marvin/docs/journal.md
+?? firmware/marvin/default/src/storage/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 22:41:45Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:41:46Z)**_
+
+Staging only my files (leaving your MCC/SDMMC generated changes untouched) and committing:
+
+_**Agent (claude-opus-4-8 2026-06-23 22:42:08Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage storage module + wiring + journal
+
+```bash
+git add firmware/marvin/default/src/storage/storage.h \
+        firmware/marvin/default/src/storage/storage.c \
+        firmware/marvin/default/src/console/console.c \
+        firmware/marvin/default/src/app.c \
+        firmware/marvin/cmake/marvin/default/user.cmake \
+        firmware/marvin/docs/journal.md && \
+echo "=== staged ===" && git diff --cached --stat
+```
+
+```text
+=== staged ===
+ firmware/marvin/cmake/marvin/default/user.cmake |   1 +
+ firmware/marvin/default/src/app.c               |   6 +
+ firmware/marvin/default/src/console/console.c   |  54 +++++
+ firmware/marvin/default/src/storage/storage.c   | 270 ++++++++++++++++++++++++
+ firmware/marvin/default/src/storage/storage.h   |  40 ++++
+ firmware/marvin/docs/journal.md                 |   2 +
+ 6 files changed, 373 insertions(+)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 22:43:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit storage module and diagnostics
+
+```bash
+git commit -m "$(cat <<'EOF'
+marvin: SD-card bring-up module + sd console diagnostics
+
+Add an in-tree storage module for FAT-mount lifecycle and SD bring-up,
+plus an `sd` console command, as the smoke test before building the M4
+recorder on top of SDMMC/FatFs.
+
+storage/storage.{h,c}:
+- Storage_Mount/Unmount/IsMounted/MountPoint: manual SYS_FS_Mount
+  (/dev/mmcblka1 -> /mnt/marvin) with bounded retry; the mount trigger is
+  isolated so it can later be swapped for a SYS_FS event handler (hotplug)
+  without touching the diagnostics.
+- Storage_DiagInfo/List/Bench: label/serial/capacity, dir listing, and a
+  write -> read-back -> verify throughput bench reported in MB/s.
+- Bench scratch is __ALIGNED(CACHE_LINE_SIZE): an unaligned write buffer
+  trips the FatFs diskio bounce path (single 512 B sector writes, ~10x
+  slower) while reads stay multi-block, so unaligned buffers are silently
+  write-slow. Confirmed on hardware: write 0.4 -> 2.9 MB/s after aligning,
+  read 6.7 MB/s. 2.9 MB/s clears the default recording load (~1.05 MB/s)
+  with headroom.
+
+console.c: `sd <info|ls|bench|mount|unmount> [arg]` binding + handler,
+dispatching into the storage diag API via a storage_print_fn adapter.
+app.c: Storage_Initialize (state only; no pre-scheduler I/O).
+user.cmake: add storage.c.
+
+Mounting is manual for now (DRV_SDMMC card detect = polling, SYS_FS
+automount off); automount + event handler is the production path once the
+catalog/artwork/record consumers that care about hotplug are built.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[sdcard 599d5cc] marvin: SD-card bring-up module + sd console diagnostics
+ 6 files changed, 373 insertions(+)
+ create mode 100644 firmware/marvin/default/src/storage/storage.c
+ create mode 100644 firmware/marvin/default/src/storage/storage.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 22:44:13Z)**_
+
+Committed `599d5cc` on `sdcard` — the storage module, `sd` console diagnostics, wiring, and the journal entries. Your in-progress MCC/SDMMC generated changes stayed out of the commit.
+
+SD bring-up gate is passed: card mounts, lists, and writes/reads with verify at a throughput (2.9 MB/s) that comfortably covers the default recording load. The natural next steps when you're ready are the M4 record task or the config/catalog loaders — both build on this mount, and the alignment lesson (32-byte-align any `SYS_FS_FileWrite` buffer) carries straight into them.
+
+---
+
+_**User (2026-06-23 22:49:54Z)**_
+
+adding RTC to MCC configuration so that we can timestamp files. I assume we want UTC mode (vs. Gregorian)?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 22:50:44Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:50:48Z)**_
+
+Good question, and it's worth grounding in the actual silicon + the MCC plib API before deciding, since the two modes give you genuinely different RTC register layouts and plib calls. Let me check the device header and Microchip docs.
+
+_**Agent (claude-opus-4-8 2026-06-23 22:50:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Grep RTC mode/UTC register bits from device pack
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== RTC mode/UTC bits in device pack ===" && grep -nE "UTC|CALENDAR|RTC_MR|GREGORIAN|RTC_TIMR|RTC_CALR" default/src/packs/SAM9X75D2G_DFP/component/rtc.h | head -40
+```
+
+```text
+=== RTC mode/UTC bits in device pack ===
+73:/* -------- RTC_MR : (RTC Offset: 0x04) (R/W 32) Mode Register -------- */
+74:#define RTC_MR_RESETVALUE                     _UINT32_(0x00)                                       /*  (RTC_MR) Mode Register  Reset Value */
+76:#define RTC_MR_HRMOD_Pos                      _UINT32_(0)                                          /* (RTC_MR) 12-/24-hour Mode Position */
+77:#define RTC_MR_HRMOD_Msk                      (_UINT32_(0x1) << RTC_MR_HRMOD_Pos)                  /* (RTC_MR) 12-/24-hour Mode Mask */
+78:#define RTC_MR_HRMOD(value)                   (RTC_MR_HRMOD_Msk & (_UINT32_(value) << RTC_MR_HRMOD_Pos)) /* Assignment of value for HRMOD in the RTC_MR register */
+79:#define   RTC_MR_HRMOD_24HOURS_Val            _UINT32_(0x0)                                        /* (RTC_MR) 24-hour mode is selected.  */
+80:#define   RTC_MR_HRMOD_AMPM_Val               _UINT32_(0x1)                                        /* (RTC_MR) 12-hour mode is selected.  */
+81:#define RTC_MR_HRMOD_24HOURS                  (RTC_MR_HRMOD_24HOURS_Val << RTC_MR_HRMOD_Pos)       /* (RTC_MR) 24-hour mode is selected. Position */
+82:#define RTC_MR_HRMOD_AMPM                     (RTC_MR_HRMOD_AMPM_Val << RTC_MR_HRMOD_Pos)          /* (RTC_MR) 12-hour mode is selected. Position */
+83:#define RTC_MR_UTC_Pos                        _UINT32_(2)                                          /* (RTC_MR) UTC Time Format Position */
+84:#define RTC_MR_UTC_Msk                        (_UINT32_(0x1) << RTC_MR_UTC_Pos)                    /* (RTC_MR) UTC Time Format Mask */
+85:#define RTC_MR_UTC(value)                     (RTC_MR_UTC_Msk & (_UINT32_(value) << RTC_MR_UTC_Pos)) /* Assignment of value for UTC in the RTC_MR register */
+86:#define   RTC_MR_UTC_DISABLED_Val             _UINT32_(0x0)                                        /* (RTC_MR) Gregorian calendar.  */
+87:#define   RTC_MR_UTC_ENABLED_Val              _UINT32_(0x1)                                        /* (RTC_MR) UTC format.  */
+88:#define RTC_MR_UTC_DISABLED                   (RTC_MR_UTC_DISABLED_Val << RTC_MR_UTC_Pos)          /* (RTC_MR) Gregorian calendar. Position */
+89:#define RTC_MR_UTC_ENABLED                    (RTC_MR_UTC_ENABLED_Val << RTC_MR_UTC_Pos)           /* (RTC_MR) UTC format. Position */
+90:#define RTC_MR_NEGPPM_Pos                     _UINT32_(4)                                          /* (RTC_MR) NEGative PPM Correction Position */
+91:#define RTC_MR_NEGPPM_Msk                     (_UINT32_(0x1) << RTC_MR_NEGPPM_Pos)                 /* (RTC_MR) NEGative PPM Correction Mask */
+92:#define RTC_MR_NEGPPM(value)                  (RTC_MR_NEGPPM_Msk & (_UINT32_(value) << RTC_MR_NEGPPM_Pos)) /* Assignment of value for NEGPPM in the RTC_MR register */
+93:#define   RTC_MR_NEGPPM_DISABLED_Val          _UINT32_(0x0)                                        /* (RTC_MR) Positive correction (the divider will be slightly higher than 32768).  */
+94:#define   RTC_MR_NEGPPM_ENABLED_Val           _UINT32_(0x1)                                        /* (RTC_MR) Negative correction (the divider will be slightly lower than 32768).  */
+95:#define RTC_MR_NEGPPM_DISABLED                (RTC_MR_NEGPPM_DISABLED_Val << RTC_MR_NEGPPM_Pos)    /* (RTC_MR) Positive correction (the divider will be slightly higher than 32768). Position */
+96:#define RTC_MR_NEGPPM_ENABLED                 (RTC_MR_NEGPPM_ENABLED_Val << RTC_MR_NEGPPM_Pos)     /* (RTC_MR) Negative correction (the divider will be slightly lower than 32768). Position */
+97:#define RTC_MR_CORRECTION_Pos                 _UINT32_(8)                                          /* (RTC_MR) Slow Clock Correction Position */
+98:#define RTC_MR_CORRECTION_Msk                 (_UINT32_(0x7F) << RTC_MR_CORRECTION_Pos)            /* (RTC_MR) Slow Clock Correction Mask */
+99:#define RTC_MR_CORRECTION(value)              (RTC_MR_CORRECTION_Msk & (_UINT32_(value) << RTC_MR_CORRECTION_Pos)) /* Assignment of value for CORRECTION in the RTC_MR register */
+100:#define   RTC_MR_CORRECTION_DISABLED_Val      _UINT32_(0x0)                                        /* (RTC_MR) No correction  */
+101:#define RTC_MR_CORRECTION_DISABLED            (RTC_MR_CORRECTION_DISABLED_Val << RTC_MR_CORRECTION_Pos) /* (RTC_MR) No correction Position */
+102:#define RTC_MR_HIGHPPM_Pos                    _UINT32_(15)                                         /* (RTC_MR) HIGH PPM Correction Position */
+103:#define RTC_MR_HIGHPPM_Msk                    (_UINT32_(0x1) << RTC_MR_HIGHPPM_Pos)                /* (RTC_MR) HIGH PPM Correction Mask */
+104:#define RTC_MR_HIGHPPM(value)                 (RTC_MR_HIGHPPM_Msk & (_UINT32_(value) << RTC_MR_HIGHPPM_Pos)) /* Assignment of value for HIGHPPM in the RTC_MR register */
+105:#define   RTC_MR_HIGHPPM_DISABLED_Val         _UINT32_(0x0)                                        /* (RTC_MR) Lower range ppm correction with accurate correction (below 30 ppm ocrrection).  */
+106:#define   RTC_MR_HIGHPPM_ENABLED_Val          _UINT32_(0x1)                                        /* (RTC_MR) Higher range ppm correction with accurate correction (higher than 30 ppm correction).  */
+107:#define RTC_MR_HIGHPPM_DISABLED               (RTC_MR_HIGHPPM_DISABLED_Val << RTC_MR_HIGHPPM_Pos)  /* (RTC_MR) Lower range ppm correction with accurate correction (below 30 ppm ocrrection). Position */
+108:#define RTC_MR_HIGHPPM_ENABLED                (RTC_MR_HIGHPPM_ENABLED_Val << RTC_MR_HIGHPPM_Pos)   /* (RTC_MR) Higher range ppm correction with accurate correction (higher than 30 ppm correction). Position */
+109:#define RTC_MR_OUT0_Pos                       _UINT32_(16)                                         /* (RTC_MR) All ADC Channel Trigger Event Source Selection Position */
+110:#define RTC_MR_OUT0_Msk                       (_UINT32_(0x7) << RTC_MR_OUT0_Pos)                   /* (RTC_MR) All ADC Channel Trigger Event Source Selection Mask */
+111:#define RTC_MR_OUT0(value)                    (RTC_MR_OUT0_Msk & (_UINT32_(value) << RTC_MR_OUT0_Pos)) /* Assignment of value for OUT0 in the RTC_MR register */
+112:#define   RTC_MR_OUT0_NO_WAVE_Val             _UINT32_(0x0)                                        /* (RTC_MR) No waveform, stuck at '0'  */
+113:#define   RTC_MR_OUT0_FREQ1HZ_Val             _UINT32_(0x1)                                        /* (RTC_MR) 1 Hz square wave  */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 22:50:53Z)**_
+
+<tool-use data-tool-type="unknown" data-tool-name="mcp__microchip__search_microchip_product_documents"><details>
+<summary>Tool use: **mcp__microchip__search_microchip_product_documents**</summary>
+
+```text
+Error: result (179,377 characters across 1 line) exceeds maximum allowed tokens. Output has been saved to /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/3ec34cce-b702-4b3c-a68d-8795ac6351bc/tool-results/mcp-microchip-search_microchip_product_documents-1782255053177.txt.
+Format: Plain text
+Use offset and limit parameters to read specific portions of the file, search within it for specific content, and jq to make structured queries.
+REQUIREMENTS FOR SUMMARIZATION/ANALYSIS/REVIEW:
+- You MUST read the content from the file at /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/3ec34cce-b702-4b3c-a68d-8795ac6351bc/tool-results/mcp-microchip-search_microchip_product_documents-1782255053177.txt in sequential chunks until 100% of the content has been read.
+- Note: this file's lines are too long for Read's offset/limit chunking. If a shell tool is available, slice by character range (e.g. python read()[A:B], dd, or cut -c) instead.
+- If you receive truncation warnings when reading the file, reduce the chunk size until you have read 100% of the content without truncation.
+- Before producing ANY summary or analysis, you MUST explicitly describe what portion of the content you have read. ***If you did not read the entire content, you MUST explicitly state this.***
+- If after a few attempts you cannot read the file (file not found, lines too long for Read's offset/limit, no shell access), STOP retrying. Summarize what you were able to read, explicitly state which portion you could not read and why, and proceed.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 22:52:49Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:53:15Z)**_
+
+The device header confirms both modes exist — `RTC_MR.UTC` bit: `0` = Gregorian calendar (BCD Y/M/D/H/M/S in TIMR/CALR), `1` = UTC format (a single 32-bit seconds counter). (I didn't need the giant doc dump; the register definition is definitive.)
+
+But I'd actually push back on the assumption — and the reason is a distinction worth nailing down:
+
+**"UTC mode" (the RTC_MR.UTC bit) is not the same as "keeping UTC time."** The bit only changes the *register format* — a raw 32-bit seconds counter vs. broken-down calendar fields. You can store UTC wall-clock time in *either* mode. So the question isn't "do I want UTC?" (you do, for timezone sanity) — it's "do I want a seconds-counter or calendar fields in the register?"
+
+For marvin's use case, I recommend **Gregorian mode, with the clock set to UTC**:
+
+1. **FatFs forces the choice toward broken-down fields.** We confirmed `FF_FS_NORTC = 0`, so FatFs *will* call `get_fattime()` and we must supply it — it wants packed local fields (year/month/day/hour/min/sec). Gregorian mode hands those straight over via one `RTC_TimeGet(struct tm*)`. UTC mode would require a `gmtime()`-style seconds→calendar conversion on *every* `get_fattime()` call. Less code, fewer surprises, in Gregorian.
+
+2. **Setting the clock to UTC gives you the actual benefit you want** — DST/timezone-proof, directly serializable as ISO-8601 with a `Z`. That matches the convention the spec *already* uses: `manifest.json` has `"session_started_utc": "...Z"` (§4.6.5). So file mtimes and JSON timestamps are all consistent UTC, with no conversion math.
+
+3. Set **HRMOD = 24-hour** (the `RTC_MR.HRMOD` bit) while you're in there — 12-hour/AM-PM only adds parsing pain.
+
+**When UTC mode (the counter) would win:** if you specifically wanted a compact, monotonic seconds value to store and diff in records. But marvin already has `frame_epoch` as the monotonic intra-session ordering token, so the counter's main advantage is largely redundant here — and you'd pay for it with conversion code on the FatFs path.
+
+Two things to verify/decide as you wire it up:
+- **Check the generated `plib_rtc.h` API** — Harmony's SAM9X7 RTC plib is typically `struct tm`-based (`RTC_TimeSet`/`RTC_TimeGet`), which assumes Gregorian. If so, that confirms the path; UTC-counter mode may not even be surfaced by the plib.
+- **Who sets the clock?** No GPS/NTP here, so it'll need an operator path — a console `date`/`time set` command (sets the RTC from a host-provided UTC value) fits the existing `sd`/`status` console idiom.
+
+Want me to wire up `get_fattime()` to read the RTC and add a console command to set the clock, once you've generated the plib? That's the integration that makes file timestamps actually populate — and it resolves the timestamp half of Q12 in the journal.
+
+---
+
+_**User (2026-06-23 22:55:08Z)**_
+
+#2 seems opposite argument? But it sounds like it should be gregorian?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 22:56:10Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:56:18Z)**_
+
+Right — and you've landed on the correct conclusion. The apparent contradiction is the exact conflation I was trying to flag, so let me make it crisp.
+
+There are **two independent choices**, not one:
+
+1. **Register format** (the `RTC_MR.UTC` bit): calendar fields (Gregorian) *or* a 32-bit seconds counter (UTC mode).
+2. **What time value you load into it**: UTC *or* local wall time.
+
+These are orthogonal — you can keep a **UTC time value in Gregorian (calendar) mode**. That's what I'm recommending.
+
+So mapping my two points to those axes:
+- **Point #1** (FatFs wants broken-down year/month/day fields) is an argument about **axis 1** → pick **Gregorian register format**.
+- **Point #2** (timezone/DST-proof, matches the spec's `...Z` convention) is an argument about **axis 2** → load a **UTC value**. It is *not* an argument for the UTC register-format bit — you get that benefit no matter which format the register uses.
+
+Point #2 only *looked* like it favored "UTC mode" because the bit is unfortunately named "UTC" when it really means "seconds-counter format."
+
+So: **Gregorian mode (RTC_MR.UTC = 0), 24-hour, clock set to UTC.** Calendar fields feed FatFs directly, and the values are UTC so your file mtimes and JSON timestamps are all timezone-proof and ISO-`Z` consistent. Best of both axes.
+
+---
+
+_**User (2026-06-23 22:57:37Z)**_
+
+can you generate console commands for time?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 22:58:31Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:58:32Z)**_
+
+Let me check the generated RTC plib API first so I use the correct signatures.
+
+_**Agent (claude-opus-4-8 2026-06-23 22:58:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find and read generated RTC plib API
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== plib_rtc files ===" && find default -path "*rtc*" -name "plib_rtc*" -not -path "*/packs/*" 2>/dev/null
+echo "=== RTC plib API ===" && f=$(find default -name "plib_rtc.h" -not -path "*/packs/*" 2>/dev/null | head -1); echo "file: $f"; [ -n "$f" ] && grep -nE "^[A-Za-z].*RTC_[A-Za-z]+\s*\(|struct tm|RTC_Time(Get|Set)|RTC_Initialize|RTC_CallbackRegister|bool|void" "$f" | head -40
+```
+
+```text
+=== plib_rtc files ===
+default/src/config/default/peripheral/rtc/plib_rtc.c
+default/src/config/default/peripheral/rtc/plib_rtc_common.h
+default/src/config/default/peripheral/rtc/plib_rtc.h
+=== RTC plib API ===
+file: default/src/config/default/peripheral/rtc/plib_rtc.h
+45:#include <stdbool.h>
+63:void RTC_Initialize( void );
+64:bool RTC_TimeSet( struct tm *sysTime );
+65:void RTC_TimeGet( struct tm *sysTime );
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 22:59:52Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 22:59:55Z)**_
+
+RTC is generated with the Gregorian `struct tm` API (`RTC_TimeSet`/`RTC_TimeGet`) — confirms our mode choice. Let me check the field conventions (tm_year/tm_mon base) and whether `RTC_Initialize` is already wired:
+
+_**Agent (claude-opus-4-8 2026-06-23 23:00:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check RTC init wiring and struct tm field conventions
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== RTC_Initialize wired? ===" && grep -rn "RTC_Initialize" default/src/config/default/initialization.c
+echo "=== TimeSet/TimeGet field mapping (tm_year/tm_mon base) ===" && sed -n '/void RTC_TimeGet/,/^}/p;/bool RTC_TimeSet/,/^}/p' default/src/config/default/peripheral/rtc/plib_rtc.c | grep -nE "tm_year|tm_mon|tm_mday|tm_hour|tm_min|tm_sec|tm_wday|1900|2000|\+ 1|- 1|CENT|conv" | head -40
+```
+
+```text
+=== RTC_Initialize wired? ===
+default/src/config/default/initialization.c:431:    RTC_Initialize();
+=== TimeSet/TimeGet field mapping (tm_year/tm_mon base) ===
+4:    sysTime->tm_year += 1900;
+5:    uint32_t data_cal = (decimaltobcd((uint32_t)sysTime->tm_mday ) << RTC_CALR_DATE_Pos)
+6:                        | (decimaltobcd(((uint32_t)sysTime->tm_wday + 1U )) << RTC_CALR_DAY_Pos)
+7:                        | (decimaltobcd(((uint32_t)sysTime->tm_mon + 1U )) << RTC_CALR_MONTH_Pos)
+8:                        | (decimaltobcd(((uint32_t)sysTime->tm_year - (((uint32_t)sysTime->tm_year/100U) * 100U ))) << RTC_CALR_YEAR_Pos)
+9:                        | (decimaltobcd(((uint32_t)sysTime->tm_year/100U) ) << RTC_CALR_CENT_Pos);
+11:    uint32_t data_time = (decimaltobcd((uint32_t)sysTime->tm_hour) << RTC_TIMR_HOUR_Pos )
+12:                        | (decimaltobcd((uint32_t)sysTime->tm_min) << RTC_TIMR_MIN_Pos)
+13:                        | (decimaltobcd((uint32_t)sysTime->tm_sec) << RTC_TIMR_SEC_Pos);
+65:    sysTime->tm_hour = (int32_t)temp;
+67:    sysTime->tm_sec = (int32_t)temp;
+69:    sysTime->tm_min = (int32_t)temp;
+71:    sysTime->tm_mday = (int32_t)temp;
+72:    temp = bcdtodecimal( (data_cal & RTC_CALR_DAY_Msk) >> RTC_CALR_DAY_Pos ) - 1U;
+73:    sysTime->tm_wday = (int32_t)temp;
+74:    temp = bcdtodecimal( (data_cal & RTC_CALR_MONTH_Msk) >> RTC_CALR_MONTH_Pos ) - 1U;
+75:    sysTime->tm_mon = (int32_t)temp;
+76:    temp = (( (100U * bcdtodecimal( data_cal & RTC_CALR_CENT_Msk ))
+78:                    ) - 1900U);
+79:    sysTime->tm_year = (int32_t)temp;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:02:49Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:02:52Z)**_
+
+Confirmed: `RTC_Initialize()` is already called in `SYS_Initialize` (initialization.c:431), and `RTC_TimeSet/Get` use **standard `struct tm` conventions** (`tm_year` = years since 1900, `tm_mon` = 0–11, `tm_wday` = 0–6 Sun-based). So no app-side init needed — I just add the console commands. Writing them now.
+
+_**Agent (claude-opus-4-8 2026-06-23 23:02:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:03:30Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:04:28Z)**_
+
+Now the `cmd_time` handler (placed after `cmd_nodes`, grouping it with the display commands):
+
+_**Agent (claude-opus-4-8 2026-06-23 23:04:53Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:05:57Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:07:37Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:07:37Z)**_
+
+Let me check whether a `get_fattime()` already exists in the FatFs tree, so my follow-up offer is accurate:
+
+_**Agent (claude-opus-4-8 2026-06-23 23:07:41Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find existing get_fattime definition
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -rn "get_fattime" default/src --include=*.c --include=*.h 2>/dev/null | grep -v "/packs/"
+```
+
+```text
+(eval):2: no matches found: --include=*.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:08:03Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find get_fattime definition (any file)
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -rn "get_fattime" default/src 2>/dev/null | grep -v "/packs/"
+```
+
+```text
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:344: * The get_fattime function is used to know the present time, which is used by
+default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c:352:__WEAK DWORD get_fattime(void)
+default/src/config/default/system/fs/fat_fs/file_system/ffconf.h:247:/  To enable timestamp function (FF_FS_NORTC = 0), get_fattime() function need to be
+default/src/config/default/system/fs/fat_fs/file_system/ff.c:276:#define GET_FATTIME()	get_fattime()
+default/src/config/default/system/fs/fat_fs/file_system/ff.h:364:DWORD get_fattime (void);	/* Get current time */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:09:37Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:09:45Z)**_
+
+Done — added a `time` console command to [console.c](firmware/marvin/default/src/console/console.c). It follows the existing binding-table idiom and calls the RTC plib directly (like `cmd_status`/`cmd_t1s` do).
+
+**Usage:**
+```
+marvin> time
+2026-06-23T14:03:00Z (Tue)
+
+marvin> time set 2026-06-23 14:03:00
+set 2026-06-23T14:03:00Z
+```
+- Read (`time`) prints ISO-8601 with the `Z` (UTC) suffix + weekday, matching the spec's `session_started_utc` convention.
+- Set (`time set <date> <time>`) parses two tokens, range-checks, computes the correct weekday (Sakamoto), fills `struct tm` (standard `tm_year-1900` / `tm_mon-1` conventions the plib expects), and calls `RTC_TimeSet`. The parser tolerates any non-digit separators, so `2026/06/23` or `14.03.00` also work.
+
+No app-side init needed — `RTC_Initialize()` is already in `SYS_Initialize`. Not built (XC32 is your path); the only external calls are `RTC_TimeGet`/`RTC_TimeSet`, declared via `definitions.h` which console.c already includes.
+
+**The piece that actually stamps files** — there's a `__WEAK DWORD get_fattime(void)` in the generated `diskio.c` (returns a fixed default). FatFs calls it on every file create/write (`FF_FS_NORTC=0`). To make file timestamps reflect the RTC, we define a **strong** `get_fattime()` that reads `RTC_TimeGet` and packs the DOS format (`year-1980 / month / day / hour / min / sec÷2`) — a `__WEAK` override needs no generated-file edits. That's what makes `sd ls` show real dates and gives the recorder/catalog files correct mtimes.
+
+Want me to add that `get_fattime()` override now (natural home: a tiny `clock.c`, or fold it into `storage.c`)? That closes the file-timestamping loop and resolves the timestamp half of Q12. Nothing committed yet — say the word and I'll commit the `time` command (and `get_fattime` if you want it in the same change).
+
+---
+
+_**User (2026-06-23 23:13:15Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+should I pass UTC time? what is current time?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 23:13:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:13:41Z)**_
+
+Yes — pass **UTC**. That's the whole point of the design: the RTC holds a UTC value, and `time` prints it with the `Z` suffix, so feeding it UTC keeps file mtimes and JSON timestamps timezone/DST-proof and consistent with the spec's `session_started_utc`.
+
+Let me grab the actual current UTC time from this machine:
+
+_**Agent (claude-opus-4-8 2026-06-23 23:13:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Get current UTC time
+
+`date -u "+%Y-%m-%d %H:%M:%S UTC  (weekday: %a)"`
+
+```text
+2026-06-23 23:13:42 UTC  (weekday: Tue)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:14:18Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:14:19Z)**_
+
+Current UTC is **2026-06-23 23:13:42 (Tue)**. So paste:
+
+```
+time set 2026-06-23 23:13:42
+```
+
+A couple of seconds of typing lag won't matter, but if you want it tight, set it a few seconds ahead and hit Enter when a clock rolls over — e.g. `time set 2026-06-23 23:14:00`. After setting, `time` should read back `...Z (Tue)` — the `Tue` confirms the date/weekday computed correctly.
+
+---
+
+_**User (2026-06-23 23:17:47Z)**_
+
+sdtest.bin is being written but with time Aug 9, 2013 3:06PM
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-23 23:18:45Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:18:46Z)**_
+
+That timestamp is the `__WEAK get_fattime()` default — FatFs isn't reading the RTC yet, exactly the loop I flagged. Let me confirm the stub, then override it.
+
+_**Agent (claude-opus-4-8 2026-06-23 23:18:47Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read the weak get_fattime stub
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+sed -n '344,375p' default/src/config/default/system/fs/fat_fs/hardware_access/diskio.c
+```
+
+```text
+ * The get_fattime function is used to know the present time, which is used by
+ * FAT FS code. The present time should ideally be updated by a Real time clock
+ * hardware module. Since this module is not integrated with Harmony FS framework,
+ * a fixed time is set as given by the implementation of the function below.
+
+ * This Function is implemented as WEAK so that it can be overriden with
+ * implementation to get time from RTC and populate the SYS_FS_TIME structure.
+ */
+__WEAK DWORD get_fattime(void)
+{
+    /* RTC should return time here */
+    /* For now, just a value */
+    SYS_FS_TIME time;
+    time.packedTime = 0;
+
+    // All FAT FS times are calculated based on 0 = 1980
+    time.discreteTime.year = (2013 - 1980); // year is 2013
+    time.discreteTime.month = 8;    // August
+    time.discreteTime.day = 9;     // 9th date
+    time.discreteTime.hour = 15;    // 3pm afternoon
+    time.discreteTime.minute = 06;  // 06 min
+    time.discreteTime.second = 00;  // 00 sec
+
+    return (time.packedTime);
+}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:20:13Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:20:15Z)**_
+
+Confirmed — the stub hardcodes `2013-08-09 15:06:00`. I'll define a strong `get_fattime()` that reads the RTC. Let me check the `SYS_FS_TIME` bitfield layout so I pack it exactly right (especially whether `second` is stored as sec/2):
+
+_**Agent (claude-opus-4-8 2026-06-23 23:20:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read SYS_FS_TIME bitfield definition
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+sed -n '/typedef union/,/SYS_FS_TIME;/p' default/src/config/default/system/fs/sys_fs.h | grep -A40 "discreteTime\|packedTime\|SYS_FS_TIME" | head -50
+```
+
+```text
+    } discreteTime;
+
+    struct
+    {
+        /* Time (hour, min, seconds) */
+        uint16_t    time;
+        /* Date (year, month, day) */
+        uint16_t    date;
+    } timeDate;
+
+    /* Combined time information in a 32-bit value */
+    uint32_t packedTime;
+} SYS_FS_TIME;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:20:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read discreteTime bitfields
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+sed -n '/typedef union/,/} discreteTime;/p' default/src/config/default/system/fs/sys_fs.h | grep -nE "uint|second|minute|hour|day|month|year|:" | head -30
+```
+
+```text
+6:        unsigned second:    5;
+8:        unsigned minute:    6;
+10:        unsigned hour:      5;
+11:        /* Day in month(1..31) */
+12:        unsigned day:       5;
+14:        unsigned month:     4;
+16:        unsigned year:      7;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:23:15Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:23:16Z)**_
+
+That's the DOS-time layout — note `second` is a 5-bit field, i.e. **seconds÷2** (FatFs convention). I'll define a strong `get_fattime()` that reads the RTC and packs it via `SYS_FS_TIME`, overriding the weak stub with no generated-file edits. Natural home is `storage.c` (the FS module).
+
+_**Agent (claude-opus-4-8 2026-06-23 23:23:20Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:24:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/storage/storage.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:25:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-23 23:25:10Z)**_
+
+Now the journal — this resolves the timestamping half of Q12:
+
+_**Agent (claude-opus-4-8 2026-06-23 23:25:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-23 23:27:00Z)**_
+
+Done. The wrong timestamp was FatFs falling back to the `__WEAK get_fattime()` stub (hardcoded `2013-08-09 15:06`). Fixed by defining a **strong** `get_fattime()` in [storage.c](firmware/marvin/default/src/storage/storage.c) that reads the RTC:
+
+- Reads `RTC_TimeGet`, packs into `SYS_FS_TIME` (year−1980, **sec÷2** per DOS format).
+- Years <1980 fall back to the 1980 epoch (FatFs rejects earlier, and protects against an unset RTC).
+- It's a `__WEAK` override, so it wins at link time with **no edit to the generated `diskio.c`**.
+
+After you rebuild and `time set` the clock, re-run `sd bench` (or any write) and `sdtest.bin` should show the current UTC date/time instead of 2013.
+
+**One caveat now in the journal:** unless a coin-cell/supercap is populated on VDDBU, the RTC resets on every power-off — so you'll need to `time set` it at boot each session (from the host). Persistent wall-clock across power cycles needs that backup hardware. That, plus player identity, are what's left open under Q12.
+
+Nothing committed. Want me to commit the `time` command + `get_fattime()` + journal together? Suggested message scope: "marvin: RTC time console command + FatFs timestamps from RTC."
+
+---
+
+_**User (2026-06-24 01:00:59Z)**_
+
+RTC is operational through power cycles and save to SD card write zulu time. How are file timestamps usually handled? Are they written in local time? Is there a flag that indicates offset? ?
+
+_**User (2026-06-24 01:02:24Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-06-24 01:02:28Z)**_
+
+RTC is operational through power cycles and save to SD card write zulu time. How are file timestamps usually handled? Are they written in local time? Is there a flag that indicates offset? ?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 01:05:26Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:05:41Z)**_
+
+Great that the backup rail works — persistent UTC is exactly what you want. Your question is really about FAT semantics, and there's a genuine mismatch worth understanding before you decide to leave it as-is.
+
+**How FAT timestamps are conventionally handled:**
+
+- **Classic FAT (FAT12/16/32) stores local time, timezone-naive.** The directory entry holds broken-down DOS fields (year-1980, month, day, hour, min, sec÷2) and **nothing else** — no timezone, no offset, no UTC marker. The universal convention is "these fields are the *local* wall-clock time of whatever wrote the file."
+- **There is no offset flag in FAT32.** (We're on FAT32 — `FF_FS_EXFAT=0`.) So the answer to "is there a flag that indicates offset?" is **no, not in FAT32.**
+- **exFAT is the exception** — it added a per-timestamp `UtcOffset` byte (signed 15-minute increments + a validity bit) for create/modify/access. So exFAT *can* record the offset. FatFs supports it only with exFAT enabled, which we don't have (and it's heavier + licensing baggage — not worth it here).
+
+**What this means for what you're doing now:** `get_fattime()` packs the RTC raw, and the RTC is UTC — so you're writing **UTC values into a field everyone assumes is local.** When you pull the card:
+- **Windows / macOS**: display FAT times as local, literally → your files will read as the UTC value, i.e. appear shifted from "real" local by your timezone offset.
+- **Linux `vfat`**: default treats them as local too, but has a mount option — `mount -o tz=UTC` makes it interpret the stored fields as UTC and convert to the viewer's local for display. That's the one switch that makes UTC-in-FAT show correctly.
+
+**My recommendation: keep writing UTC.** For a data-logging robot it's the right call because:
+- The **authoritative timestamps live inside the files** — `manifest.json` `session_started_utc`, `results.jsonl` — all UTC/Zulu. The FAT mtime is secondary, convenience metadata.
+- Keeping FAT in UTC too means **one clock everywhere**: file mtimes, manifests, and result records all agree, so they correlate cleanly. Mixing local-in-FAT with UTC-in-data breaks that agreement and reintroduces the DST/offset bugs you avoided by going UTC.
+- No timezone config, no DST table, no ambiguity.
+
+The cost is just that file-browser columns look shifted unless the viewer is told it's UTC. Document the convention ("cards are written with UTC timestamps; on Linux mount `-o tz=UTC`") and you're done.
+
+**If you do want the file-browser column to read local time**, the clean way is a configurable UTC→local offset applied **only inside `get_fattime()`** (data stays UTC). That keeps the data canonical but makes FAT times local. The catch: you'd need an offset setting and, to be correct year-round, DST handling — which is exactly the complexity UTC was chosen to avoid. I'd only do it if an operator genuinely works off the file-browser timestamps rather than the data inside.
+
+Want me to leave it UTC as-is (my recommendation), or add an optional `tz`/offset setting that shifts only the FAT timestamps?
+
+---
+
+_**User (2026-06-24 01:07:25Z)**_
+
+leave as is. please commit.
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 01:08:24Z)**_
+
+I'll commit the RTC time command + FatFs timestamp wiring + journal. Staging only my files:
+
+_**Agent (claude-opus-4-8 2026-06-24 01:11:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage RTC console + get_fattime + journal
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/marvin/default/src/console/console.c \
+        firmware/marvin/default/src/storage/storage.c \
+        firmware/marvin/docs/journal.md && \
+echo "=== staged ===" && git diff --cached --stat
+```
+
+```text
+=== staged ===
+ firmware/marvin/.vscode/marvin.mplab.json          |   3 +-
+ .../mcc/marvin_default/components/GFX/GFX.yml      |  16 +++
+ .../marvin_default/components/SD_Card/SD_Card.yml  |  16 +++
+ .../components/SD_Card/components/sys_fs.yml       |   8 ++
+ .../mcc/marvin_default/components/USB/USB.yml      |  16 +++
+ .../mcc/marvin_default/components/Video/Video.yml  |  16 +++
+ .../default/mcc/marvin_default/components/core.yml |  36 +++++
+ .../default/mcc/marvin_default/components/pit.yml  |   4 +-
+ .../default/mcc/marvin_default/components/rtc.yml  |  87 ++++++++++++
+ .../default/mcc/marvin_default/mcc-config.mc4      |  13 +-
+ .../marvin/default/mcc/mcc-manifest-autosave.yml   |   4 +-
+ .../default/mcc/mcc-manifest-generated-success.yml |   4 +-
+ .../default/src/config/default/configuration.h     |  10 +-
+ .../default/src/config/default/definitions.h       |   3 +-
+ .../config/default/harmony-manifest-success.yml    |   4 +-
+ .../default/src/config/default/initialization.c    |   8 +-
+ .../src/config/default/peripheral/rtc/plib_rtc.c   | 152 +++++++++++++++++++++
+ .../src/config/default/peripheral/rtc/plib_rtc.h   |  71 ++++++++++
+ .../default/peripheral/rtc/plib_rtc_common.h       |  95 +++++++++++++
+ firmware/marvin/default/src/console/console.c      |  90 ++++++++++++
+ firmware/marvin/default/src/storage/storage.c      |  33 +++++
+ firmware/marvin/docs/journal.md                    |   1 +
+ 22 files changed, 668 insertions(+), 22 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:14:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:14:03Z)**_
+
+Heads up — more than my three files are staged. The index already contains the MCC-generated RTC output **and** other regen churn (SD_Card components, plus GFX/USB/Video/core/pit `.yml` changes). Before I commit a 22-file mix, let me see whether that churn is RTC-related or unrelated regen noise:
+
+_**Agent (claude-opus-4-8 2026-06-24 01:14:05Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect whether GFX/core yml churn is RTC-related
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== GFX.yml (representative of the +16 pattern) ===" && git diff --cached firmware/marvin/default/mcc/marvin_default/components/GFX/GFX.yml
+echo "=== core.yml ===" && git diff --cached firmware/marvin/default/mcc/marvin_default/components/core.yml | head -50
+```
+
+```text
+=== GFX.yml (representative of the +16 pattern) ===
+diff --git a/firmware/marvin/default/mcc/marvin_default/components/GFX/GFX.yml b/firmware/marvin/default/mcc/marvin_default/components/GFX/GFX.yml
+index d8d303a..52c01f4 100644
+--- a/firmware/marvin/default/mcc/marvin_default/components/GFX/GFX.yml
++++ b/firmware/marvin/default/mcc/marvin_default/components/GFX/GFX.yml
+@@ -16,6 +16,22 @@ dependency:
+   name: core
+   type: package
+   version: v3.16.3
++- dependencyPackage: ''
++  name: csp
++  type: package
++  version: v3.25.2
++- dependencyPackage: ''
++  name: gfx
++  type: package
++  version: v3.17.0
++- dependencyPackage: ''
++  name: usb
++  type: package
++  version: v3.16.0
++- dependencyPackage: ''
++  name: vision
++  type: package
++  version: v3.2.2
+ customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+ data:
+   attachments: {}
+=== core.yml ===
+diff --git a/firmware/marvin/default/mcc/marvin_default/components/core.yml b/firmware/marvin/default/mcc/marvin_default/components/core.yml
+index 3ad2602..87b2518 100644
+--- a/firmware/marvin/default/mcc/marvin_default/components/core.yml
++++ b/firmware/marvin/default/mcc/marvin_default/components/core.yml
+@@ -5321,6 +5321,42 @@ data:
+           type: User
+         type: Values
+       type: Integer
++    RTC_INTERRUPT_ENABLE:
++      attributes:
++        id: RTC_INTERRUPT_ENABLE
++        label: Enable RTC
++      children:
++      - children:
++        - attributes:
++            id: rtc
++            value: 'false'
++          type: Dynamic
++        type: Values
++      type: Boolean
++    RTC_INTERRUPT_HANDLER:
++      attributes:
++        id: RTC_INTERRUPT_HANDLER
++        label: RTC Handler
++      children:
++      - children:
++        - attributes:
++            id: rtc
++            value: RTC_Handler
++          type: Dynamic
++        type: Values
++      type: String
++    RTC_INTERRUPT_HANDLER_LOCK:
++      attributes:
++        id: RTC_INTERRUPT_HANDLER_LOCK
++        label: RTC_INTERRUPT_HANDLER_LOCK
++      children:
++      - children:
++        - attributes:
++            id: rtc
++            value: 'false'
++          type: Dynamic
++        type: Values
++      type: Boolean
+   userData:
+     children:
+     - attributes:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:16:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:16:36Z)**_
+
+Good — that resolves the ambiguity. `core.yml` and the rest are genuinely the RTC enablement: `core.yml` adds the RTC interrupt handler, and the `GFX/USB/Video.yml` `+16` blocks are just MCC normalizing dependency-package lists during the same regen. So everything staged is one coherent body: your MCC RTC generation (plus the SD-card MCC config that accompanies the storage module) + my time/timestamp source. I'll commit it as the RTC feature, with a message that's honest about the generated content included.
+
+_**Agent (claude-opus-4-8 2026-06-24 01:16:46Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit RTC enablement + time command + timestamps
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -m "$(cat <<'EOF'
+marvin: enable RTC (UTC) + time console command + FatFs file timestamps
+
+Bring up the SAM9X75 internal RTC and wire it to file timestamps so SD
+writes carry real UTC time instead of the FatFs fixed-date stub.
+
+MCC-generated (RTC peripheral): plib_rtc.{c,h,common.h}, RTC_Initialize in
+SYS_Initialize, configuration.h/definitions.h, core.yml RTC interrupt
+handler, rtc.yml. Gregorian/struct-tm plib (RTC_MR.UTC=0); the clock value
+is kept in UTC. Also includes the accompanying SD-card MCC config
+(SD_Card/sys_fs components) and regen manifest churn from the same session.
+
+Source:
+- console.c: `time` / `time set YYYY-MM-DD HH:MM:SS` (prints ISO-8601 ...Z,
+  range-checked, weekday via Sakamoto, standard struct tm conventions).
+- storage.c: strong get_fattime() overriding the generated __WEAK stub, so
+  FatFs stamps files from the RTC (year-1980, sec/2 DOS packing; pre-1980
+  falls back to the epoch). FAT32 has no timezone field, so timestamps are
+  written in UTC by convention (mount -o tz=UTC on Linux to display).
+
+RTC confirmed persistent across power cycles (VDDBU backup populated),
+resolving the timestamp half of Q12. Player identity remains open.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)" && echo "=== done ===" && git log --oneline -1
+```
+
+```text
+[sdcard ca195f8] marvin: enable RTC (UTC) + time console command + FatFs file timestamps
+ 22 files changed, 668 insertions(+), 22 deletions(-)
+ create mode 100644 firmware/marvin/default/mcc/marvin_default/components/rtc.yml
+ create mode 100644 firmware/marvin/default/src/config/default/peripheral/rtc/plib_rtc.c
+ create mode 100644 firmware/marvin/default/src/config/default/peripheral/rtc/plib_rtc.h
+ create mode 100644 firmware/marvin/default/src/config/default/peripheral/rtc/plib_rtc_common.h
+=== done ===
+ca195f8 marvin: enable RTC (UTC) + time console command + FatFs file timestamps
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:18:22Z)**_
+
+Committed `ca195f8` on `sdcard` — 22 files: the MCC-generated RTC peripheral (`plib_rtc.*`, `core.yml`, `rtc.yml`, init/config), the accompanying SD-card MCC config, the regen manifest churn, plus the `time` console command and the `get_fattime()` override.
+
+Net state of the SD/RTC work:
+- Card mounts, lists, and benches at usable throughput (aligned writes).
+- RTC holds UTC, persists across power cycles, settable via `time set`.
+- FatFs now stamps files from the RTC in UTC — by FAT32 convention (no timezone field), which we agreed to leave as-is.
+
+Q12 is half-resolved (timestamps done); **player identity** is the remaining open item there whenever you get to the per-player results work.
+
+---
+
+_**User (2026-06-24 01:20:54Z)**_
+
+start thinking about saving play results. I think just flat file? (vs. light database). any value to file format like json or yaml or etc.? Or just csv? Or... I'd like to be able to display things like high scores on Marvin as well as take the sd card to pc for deeper analysis
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 01:23:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:23:55Z)**_
+
+Good thing to nail down now — and one new requirement changes my earlier call. When I wrote spec §4.8.6 I specced `results.jsonl`, but that was when the only consumer was "parse on a workstation." Now that **Marvin itself reads it to show high scores**, on-device parsing becomes a first-class constraint (static alloc, no malloc, `FF_FS_MAX_FILES=1`), and that tips the format choice.
+
+**Flat file: yes.** No database. SQLite (the only real "light DB") needs malloc + a VFS shim over FatFs — violates the static-allocation rule and is heavy for what's a small append-only log. Flat file is correct.
+
+**Format — weighing your two consumers (on-device read + PC analysis):**
+
+| | On-device parse (no malloc) | PC analysis | Append | Human-readable |
+|---|---|---|---|---|
+| **CSV** | trivial — split on `,`, `atol` | `pd.read_csv`, Excel, awk | easy | yes |
+| JSONL | needs a tokenizer (jsmn), per-key match | `pd.read_json(lines=True)`, jq | easy | yes |
+| YAML | painful — no good zero-alloc parser | fine | awkward | yes |
+| binary records | trivial (read struct) | needs a custom script | easy | no |
+
+**Recommendation: CSV** — single `/marvin/players/results.csv`, header row, one row appended per completed run. It's the only format that serves *both* consumers well: a few lines of comma-splitting + `atol` on-device (no library, no malloc, stream a line at a time into a fixed buffer), and a one-liner in pandas/Excel on the PC. JSONL is slightly nicer for evolving/nested schemas but costs you a tokenizer on-device for no real benefit here — results are flat and tabular, which is exactly CSV's wheelhouse. YAML is the worst on-device. Binary is great on-device but bad for "open it on a PC and poke around."
+
+Proposed schema (flat, keyed by the recognizer's `(setlist,index)`, timestamp from the RTC you just wired):
+```
+player,game,setlist,index,song,difficulty,part,score,accuracy_pct,notes_hit,notes_total,timestamp
+greg,gh3-wii,main,4,"Slow Ride",hard,lead,123456,92.4,480,520,2026-06-23T23:14:00Z
+```
+- Include the **song title** even though `(setlist,index)` is the real key — makes the CSV self-contained for PC analysis (no join needed). Quote it (commas in titles).
+- ISO-8601 UTC timestamp — sorts lexically, parses everywhere.
+- Schema evolution: add columns at the end; pandas keys by header, and the on-device reader only touches the columns it needs.
+
+**On-device high scores:** scan the file, filter by `(setlist,index[,difficulty])`, keep a fixed top-N array — all in static buffers. At hobby scale (hundreds–thousands of rows ≈ tens–hundreds of KB) a full scan per display is fine; if it ever grows large, maintain a small separate `highscores` cache or cap the log. Not a concern now.
+
+**One separation worth stating:** keep `results.csv` as the *flat summary* (one row per run). Anything deep — per-note, per-section breakdowns — belongs in the recording subsystem (§4.6 `state.bin`), not this file. That keeps results trivially parseable on-device.
+
+Net: this revises §4.8.6 from JSONL → CSV. Want me to update the spec (§4.6.2 layout + §4.8.6) and the journal with this decision, and/or sketch the `results` module (append-on-run + a `scores` console command that prints top-N) the same way we did `storage`?
+
+---
+
+_**User (2026-06-24 01:39:52Z)**_
+
+append spec. is there marvin code to work on yet? Or should we wait until gameplay is more resolved?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 01:42:08Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:42:09Z)**_
+
+Let me update the spec first, then give you my read on sequencing. Reading the current §4.8.6 and the layout block I need to revise:
+
+_**Agent (claude-opus-4-8 2026-06-24 01:42:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate results.jsonl references and read §4.8.6
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== §4.6.2 layout block ===" && grep -n "results.jsonl\|players/" docs/spec.md
+echo "=== §4.8.6 section ===" && awk '/#### 4.8.6/,/#### 4.8.7/' docs/spec.md
+```
+
+```text
+=== §4.6.2 layout block ===
+330:├── players/
+331:│   └── results.jsonl           // append-only per-player performance records (§4.8.6)
+490:Per-player gameplay results, stored on the SD card as `/marvin/players/results.jsonl` — newline-delimited JSON, append-only (crash-tolerant; trivially parsed on a workstation). One record per completed run, keyed to a song by the same `(setlist, index)` the recognizer emits:
+=== §4.8.6 section ===
+#### 4.8.6 Performance results & player profiles 🚧
+
+Per-player gameplay results, stored on the SD card as `/marvin/players/results.jsonl` — newline-delimited JSON, append-only (crash-tolerant; trivially parsed on a workstation). One record per completed run, keyed to a song by the same `(setlist, index)` the recognizer emits:
+
+```json
+{ "player": "greg", "game": "gh3-wii", "setlist": "main", "index": 4,
+  "difficulty": "hard", "part": "lead", "score": 123456, "accuracy_pct": 92.4,
+  "notes_hit": 480, "notes_total": 520, "session": 7, "frame_epoch": 901234,
+  "timestamp": "2026-06-22T14:03:00Z" }
+```
+
+Dependencies and open points:
+
+- **Score/accuracy capture depends on the number/score readers — M9 Phase 3**, not yet started. Until those land, only the song identity + difficulty/part are recordable.
+- **Wall-clock `timestamp` is optional and gated on the RTC.** The SAM9X75 has an internal RTC (32.768 kHz crystal + VDDBU backup rail are present on the Curiosity Hybrid board), but it is currently disabled in `initialization.c` with no plib generated. Enabling wall-clock time costs an MCC regen plus confirming a coin-cell/supercap is populated on VDDBU (otherwise the clock resets on every power-off and must be set at boot from the host/UI). Until/unless that's done, every record carries `session` (a monotonic boot-session counter) + `frame_epoch` (§4.6.4) for ordering, and `timestamp` is emitted only when the RTC is enabled and set. Tracked as Q12.
+- **Player identity** is a simple operator-entered string for now; richer profiles are out of scope. Also Q12.
+
+#### 4.8.7 Album artwork 🚧
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:43:16Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:43:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:46:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:49:11Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 01:49:12Z)**_
+
+Now updating Q12 in the open-questions table — the timestamp half is resolved (RTC persistent), leaving player identity:
+
+_**Agent (claude-opus-4-8 2026-06-24 01:49:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read current Q12 row
+
+`grep -n "^| Q12 " docs/spec.md`
+
+```text
+614:| Q12 | Performance-result timestamps & player identity (§4.8.6) — whether to enable the SAM9X75 RTC for wall-clock time (MCC regen + VDDBU backup) or stay with `session` + `frame_epoch` ordering; player-id scheme. | Open. Decide when results writer is built (post-M4 + M9 Phase 3). |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 01:54:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/spec.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+---
+
+_**User (2026-06-24 02:05:55Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-06-24 02:05:58Z)**_
+
+continue
+
+---
+
+_**Agent (<synthetic> 2026-06-24 02:20:04Z)**_
+
+Request timed out
+
+---
+
+_**User (2026-06-24 02:24:05Z)**_
+
+continue
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 02:28:06Z)**_
+
+Spec is updated (§4.6.2 layout, §4.8.6 → CSV with rationale, Q12 narrowed to player-identity). Now your sequencing question.
+
+**Yes — there's a clean slice to build now, and it's the same play we've been running:** build the substrate ahead of the consumer.
+
+The results feature splits cleanly into two halves with very different readiness:
+
+**Buildable now (independent of gameplay):** a `results` module that sits entirely on the proven SD/FatFs/RTC stack —
+- `Results_Append(record)` — open `results.csv` for append, write the header if the file is new, format one CSV row (RTC UTC timestamp, quoted song title).
+- `Results_PrintTopN(setlist, index, difficulty, n, out)` — streaming scan into a fixed line buffer, comma-split, keep a static top-N array.
+- console commands: `scores [song]` to display top-N, plus `results add ...` (or a test hook) to inject synthetic rows.
+- a `player <name>` command to set the current operator string (the Q12 default).
+
+None of that needs the gameplay engine. It lets you **validate the whole format decision with real data now** — write rows on-device, display high scores, pull the card, open in pandas/Excel — and de-risk the on-device CSV parse + PC round-trip before any gameplay data exists. Exactly like `sd bench` proving throughput before the recorder.
+
+**Should wait (blocked on gameplay):** the *call site* — the gameplay engine populating a real record at end-of-song. That needs **M9 Phase 3** (the number/score readers — not started) for `score`/`accuracy`/`notes_hit/total`, since song identity (Phase 2) is the only gameplay field available today. When Phase 3 lands, the engine just calls `Results_Append()` — the module's already proven.
+
+So my recommendation: **build the `results` module + console commands now** (with synthetic-row injection for testing), defer only the gameplay wiring. It turns the CSV decision from paper into something you can actually exercise, and means Phase 3 integration is a one-line call rather than a new subsystem.
+
+Want me to:
+- **(a)** build the `results` module + `scores`/`results add`/`player` console commands now (my recommendation), and/or
+- **(b)** first commit the spec changes I just made?
+
+I'd do (b) then (a). Say the word and I'll proceed.
+
+---
+
+_**User (2026-06-24 02:48:36Z)**_
+
+go
+
+---
+
+_**Agent (<synthetic> 2026-06-24 03:02:35Z)**_
+
+Request timed out
+
+---
+
+_**User (2026-06-24 03:03:31Z)**_
+
+go
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 03:14:18Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 03:14:18Z)**_
+
+Proceeding: commit the spec change, then build the `results` module + console commands.
+
+_**Agent (claude-opus-4-8 2026-06-24 03:14:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit spec results-format change
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/marvin/docs/spec.md && git commit -m "$(cat <<'EOF'
+docs: results storage = CSV (was JSONL); narrow Q12 to player identity
+
+On-device high-score display makes Marvin itself a consumer of the results
+file, so the format must parse with no malloc / no JSON tokenizer under
+FF_FS_MAX_FILES=1. CSV serves both consumers: comma-split + atol into static
+buffers on-device, and a one-liner in pandas/Excel on a PC. JSONL/YAML/DB
+rejected for the on-device read path.
+
+§4.6.2 layout: results.jsonl -> results.csv.
+§4.8.6: CSV schema + rationale, scan-for-top-N approach, flat-summary scope
+boundary (deep telemetry stays in §4.6 recordings), and that the writer +
+reader + `scores` command can be built/validated now on the SD/RTC layer.
+§9 Q12: timestamps resolved (UTC from persistent RTC); player-id still open.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)" && git log --oneline -1
+```
+
+```text
+[sdcard 3692724] docs: results storage = CSV (was JSONL); narrow Q12 to player identity
+ 1 file changed, 36 insertions(+), 11 deletions(-)
+3692724 docs: results storage = CSV (was JSONL); narrow Q12 to player identity
+```
+</details></tool-use>
+
+---
+
+_**User (2026-06-24 03:26:18Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-06-24 12:42:06Z)**_
+
+continue
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 13:04:41Z)**_
+
+Now the `results` module. Let me confirm the few SYS_FS calls I need for append + line-by-line scan:
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm FileStat/StringGet/APPEND signatures
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+F=default/src/config/default/system/fs/sys_fs.h
+for sym in SYS_FS_FileStat SYS_FS_FileStringGet SYS_FS_FILE_OPEN_APPEND SYS_FS_FileEOF; do
+  echo "=== $sym ==="; grep -nE "$sym" $F | head -3
+done
+echo "=== FSTAT fname/fsize already known; FILE_OPEN attrs ==="; sed -n '320,345p' $F | grep -nE "SYS_FS_FILE_OPEN_(READ|WRITE|APPEND)"
+```
+
+```text
+=== SYS_FS_FileStat ===
+656:    This structure holds the various status of a file. The SYS_FS_FileStat ()
+1350:    SYS_FS_RESULT SYS_FS_FileStat
+1408:        if(SYS_FS_FileStat("/mnt/myDrive/FILE.TXT", &fileStat) == SYS_FS_RES_SUCCESS)
+=== SYS_FS_FileStringGet ===
+2246:    SYS_FS_RESULT SYS_FS_FileStringGet
+2291:        res = SYS_FS_FileStringGet(fileHandle, buffer, 50);
+2303:SYS_FS_RESULT SYS_FS_FileStringGet
+=== SYS_FS_FILE_OPEN_APPEND ===
+343:    SYS_FS_FILE_OPEN_APPEND,
+375:    SYS_FS_FILE_OPEN_APPEND_PLUS
+=== SYS_FS_FileEOF ===
+1617:    bool SYS_FS_FileEOF
+1656:        eof = SYS_FS_FileEOF(fileHandle);
+1668:bool SYS_FS_FileEOF
+=== FSTAT fname/fsize already known; FILE_OPEN attrs ===
+4:    SYS_FS_FILE_OPEN_READ    =  0,
+14:    SYS_FS_FILE_OPEN_WRITE,
+24:    SYS_FS_FILE_OPEN_APPEND,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:06:39Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 13:06:42Z)**_
+
+All confirmed (`FileStat`, `FileStringGet`, `FILE_OPEN_APPEND`, `FileEOF`). One thing I'll reconcile: paths build from `Storage_MountPoint()` (`/mnt/marvin`) so results land at the card root like `sdtest.bin`, consistent with the existing storage module. Writing the module now.
+
+_**Agent (claude-opus-4-8 2026-06-24 13:06:43Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Write results/results.h (record + player + append + TopN API)
+- [ ] 🌡️ Write results/results.c (CSV append + header + RTC timestamp + quoted song + top-N scan)
+- [ ] 🌡️ Wire player/scores/results commands into console.c
+- [ ] 🌡️ Call Results_Initialize in app.c; add results.c to user.cmake
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:07:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```h
+#ifndef MARVIN_RESULTS_H
+#define MARVIN_RESULTS_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+/* Per-player gameplay results -> <card>/players/results.csv (spec §4.8.6).
+ *
+ * Flat, append-only CSV: one row per completed run, header row on first write.
+ * Marvin reads it back on-device for high scores; the card is also taken to a
+ * PC for analysis (pandas/Excel). CSV is the format that serves both — on-device
+ * it parses with comma-splitting + atol into static buffers (no malloc, no JSON
+ * tokenizer), which fits FF_FS_MAX_FILES=1 and the static-allocation rule.
+ *
+ * Builds entirely on the SD/FatFs/RTC layer (storage.c); no gameplay dependency,
+ * so the write + read + display path is testable now with synthetic rows. The
+ * gameplay engine wires in later by filling a record and calling Results_Append
+ * once the M9 Phase 3 score readers exist. */
+
+void Results_Initialize(void);
+
+/* Current player name (operator-entered; commas/quotes/newlines stripped to keep
+ * the CSV clean). Defaults to "p1". Used for the player column on append. */
+void        Results_SetPlayer(const char *name);
+const char *Results_GetPlayer(void);
+
+typedef struct
+{
+    const char *game;         /* e.g. "gh3-wii" */
+    const char *setlist;      /* "main" | "bonus" */
+    uint8_t     index;        /* song ordinal within its setlist */
+    const char *song;         /* human title; CSV-quoted on write (may contain ,) */
+    const char *difficulty;   /* "easy".."expert" */
+    const char *part;         /* "lead" | "bass" | ... */
+    uint32_t    score;
+    uint16_t    accuracy_x10; /* accuracy percent * 10 (924 => 92.4%) */
+    uint16_t    notes_hit;
+    uint16_t    notes_total;
+} results_record_t;
+
+/* Append one completed run as a CSV row: mounts on demand, writes the header if
+ * the file is new, stamps the timestamp as UTC from the RTC, and uses
+ * Results_GetPlayer() for the player column. Returns true on success. */
+bool Results_Append(const results_record_t *rec);
+
+/* One high-score line for display. */
+typedef struct
+{
+    char     player[24];
+    char     timestamp[24];
+    uint32_t score;
+} results_score_t;
+
+/* Fill out[0..max) with the highest scores for a song (filtered by difficulty
+ * when non-NULL/non-empty), highest first. Returns the count filled. */
+int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
+                 results_score_t *out, int max);
+
+#endif
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/results/results.h (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:07:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```c
+#include "results.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#include "definitions.h"
+#include "log.h"
+
+#include "storage/storage.h"
+
+#define RES_REL_DIR   "players"
+#define RES_REL_FILE  "players/results.csv"
+
+#define RES_HEADER \
+    "player,game,setlist,index,song,difficulty,part,score,accuracy_pct,notes_hit,notes_total,timestamp"
+
+#define RES_LINE_MAX  256
+#define RES_FIELDS    12
+
+static char s_player[24] = "p1";
+
+/* ---- helpers ------------------------------------------------------------ */
+
+static void build_path(char *buf, size_t n, const char *rel)
+{
+    (void)snprintf(buf, n, "%s/%s", Storage_MountPoint(), rel);
+}
+
+static void iso8601_utc(char *buf, size_t n)
+{
+    struct tm t;
+    memset(&t, 0, sizeof(t));
+    RTC_TimeGet(&t);
+    (void)snprintf(buf, n, "%04d-%02d-%02dT%02d:%02d:%02dZ",
+                   t.tm_year + 1900, t.tm_mon + 1, t.tm_mday,
+                   t.tm_hour, t.tm_min, t.tm_sec);
+}
+
+/* Write s into out as a quoted CSV field ("..."), doubling any embedded quote.
+ * Always quoted, so embedded commas are safe. Truncates to fit. */
+static void csv_quote(const char *s, char *out, size_t n)
+{
+    size_t j = 0;
+    if (n == 0) { return; }
+    if (s == NULL) { s = ""; }
+
+    if (j < n - 1) { out[j++] = '"'; }
+    for (size_t i = 0; s[i] != '\0' && j < n - 2; i++)
+    {
+        if (s[i] == '"' && j < n - 3) { out[j++] = '"'; }   /* escape by doubling */
+        out[j++] = s[i];
+    }
+    if (j < n - 1) { out[j++] = '"'; }
+    out[j] = '\0';
+}
+
+/* Split a CSV line in place into fields[], honoring double-quoted fields
+ * (commas inside quotes, "" -> "). Returns the field count. */
+static int csv_split(char *line, char *fields[], int maxf)
+{
+    int nf = 0;
+    char *p = line;
+
+    while (nf < maxf)
+    {
+        if (*p == '"')
+        {
+            p++;
+            char *w = p;            /* unescape in place */
+            fields[nf++] = w;
+            while (*p != '\0')
+            {
+                if (*p == '"')
+                {
+                    if (p[1] == '"') { *w++ = '"'; p += 2; }
+                    else { p++; break; }   /* closing quote */
+                }
+                else { *w++ = *p++; }
+            }
+            *w = '\0';
+            while (*p != '\0' && *p != ',' && *p != '\n' && *p != '\r') { p++; }
+        }
+        else
+        {
+            fields[nf++] = p;
+            while (*p != '\0' && *p != ',' && *p != '\n' && *p != '\r') { p++; }
+        }
+
+        if (*p == ',') { *p = '\0'; p++; }
+        else { *p = '\0'; break; }
+    }
+    return nf;
+}
+
+/* ---- player ------------------------------------------------------------- */
+
+void Results_Initialize(void)
+{
+    /* Default player is the static initializer; nothing else to set up. */
+}
+
+void Results_SetPlayer(const char *name)
+{
+    if (name == NULL || name[0] == '\0') { return; }
+
+    size_t j = 0;
+    for (size_t i = 0; name[i] != '\0' && j < sizeof(s_player) - 1; i++)
+    {
+        char c = name[i];
+        if (c == ',' || c == '"' || c == '\n' || c == '\r') { continue; }
+        s_player[j++] = c;
+    }
+    s_player[j] = '\0';
+}
+
+const char *Results_GetPlayer(void) { return s_player; }
+
+/* ---- append ------------------------------------------------------------- */
+
+bool Results_Append(const results_record_t *rec)
+{
+    if (rec == NULL) { return false; }
+    if (!Storage_Mount()) { return false; }
+
+    char dir[64];
+    build_path(dir, sizeof(dir), RES_REL_DIR);
+    (void)SYS_FS_DirectoryMake(dir);   /* harmless if it already exists */
+
+    char path[80];
+    build_path(path, sizeof(path), RES_REL_FILE);
+
+    bool need_header = true;
+    SYS_FS_FSTAT st;
+    if (SYS_FS_FileStat(path, &st) == SYS_FS_RES_SUCCESS && st.fsize > 0u)
+    {
+        need_header = false;
+    }
+
+    SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_APPEND);
+    if (h == SYS_FS_HANDLE_INVALID)
+    {
+        LOG_WARN("RES: open append failed (fs err %d)\r\n", (int)SYS_FS_Error());
+        return false;
+    }
+
+    char line[RES_LINE_MAX];
+    int len;
+
+    if (need_header)
+    {
+        len = snprintf(line, sizeof(line), "%s\n", RES_HEADER);
+        if (len > 0 && (size_t)len < sizeof(line))
+        {
+            (void)SYS_FS_FileWrite(h, line, (size_t)len);
+        }
+    }
+
+    char ts[24];
+    iso8601_utc(ts, sizeof(ts));
+
+    char song_q[96];
+    csv_quote(rec->song, song_q, sizeof(song_q));
+
+    len = snprintf(line, sizeof(line),
+                   "%s,%s,%s,%u,%s,%s,%s,%lu,%u.%u,%u,%u,%s\n",
+                   s_player,
+                   (rec->game != NULL) ? rec->game : "",
+                   (rec->setlist != NULL) ? rec->setlist : "",
+                   (unsigned)rec->index,
+                   song_q,
+                   (rec->difficulty != NULL) ? rec->difficulty : "",
+                   (rec->part != NULL) ? rec->part : "",
+                   (unsigned long)rec->score,
+                   (unsigned)(rec->accuracy_x10 / 10u), (unsigned)(rec->accuracy_x10 % 10u),
+                   (unsigned)rec->notes_hit,
+                   (unsigned)rec->notes_total,
+                   ts);
+
+    bool ok = false;
+    if (len > 0 && (size_t)len < sizeof(line))
+    {
+        ok = (SYS_FS_FileWrite(h, line, (size_t)len) == (size_t)len);
+    }
+    (void)SYS_FS_FileClose(h);
+    return ok;
+}
+
+/* ---- top-N read --------------------------------------------------------- */
+
+int Results_TopN(const char *setlist, uint8_t index, const char *difficulty,
+                 results_score_t *out, int max)
+{
+    if (out == NULL || max <= 0 || setlist == NULL) { return 0; }
+    if (!Storage_Mount()) { return 0; }
+
+    char path[80];
+    build_path(path, sizeof(path), RES_REL_FILE);
+
+    SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_READ);
+    if (h == SYS_FS_HANDLE_INVALID) { return 0; }
+
+    int  count = 0;
+    bool first = true;
+    char line[RES_LINE_MAX];
+
+    while (!SYS_FS_FileEOF(h))
+    {
+        if (SYS_FS_FileStringGet(h, line, sizeof(line)) != SYS_FS_RES_SUCCESS) { break; }
+        if (first) { first = false; continue; }     /* header row */
+        if (line[0] == '\0' || line[0] == '\n' || line[0] == '\r') { continue; }
+
+        char *f[RES_FIELDS];
+        if (csv_split(line, f, RES_FIELDS) < RES_FIELDS) { continue; }
+
+        if (strcmp(f[2], setlist) != 0) { continue; }
+        if ((unsigned)atoi(f[3]) != (unsigned)index) { continue; }
+        if (difficulty != NULL && difficulty[0] != '\0' &&
+            strcmp(f[5], difficulty) != 0) { continue; }
+
+        uint32_t score = (uint32_t)strtoul(f[7], NULL, 10);
+
+        /* Insert into the bounded, score-descending top list. */
+        int pos = count;
+        for (int i = 0; i < count; i++)
+        {
+            if (score > out[i].score) { pos = i; break; }
+        }
+        if (pos >= max) { continue; }
+
+        int last = (count < max) ? count : (max - 1);
+        for (int i = last; i > pos; i--) { out[i] = out[i - 1]; }
+
+        strncpy(out[pos].player, f[0], sizeof(out[pos].player) - 1);
+        out[pos].player[sizeof(out[pos].player) - 1] = '\0';
+        strncpy(out[pos].timestamp, f[11], sizeof(out[pos].timestamp) - 1);
+        out[pos].timestamp[sizeof(out[pos].timestamp) - 1] = '\0';
+        out[pos].score = score;
+
+        if (count < max) { count++; }
+    }
+
+    (void)SYS_FS_FileClose(h);
+    return count;
+}
+
+```
+
+```text
+File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/results/results.c (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:07:53Z)**_
+
+Now wire the console commands. Include + handlers + bindings, and bump `maxBindingCount` for headroom:
+
+_**Agent (claude-opus-4-8 2026-06-24 13:07:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:29Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:29Z)**_
+
+Now bump `maxBindingCount` for headroom (14 commands + built-in help now):
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:36Z)**_
+
+Now app.c init and user.cmake:
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:38Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:42Z)**_
+
+Those diagnostics are the same pre-existing warnings on untouched lines. Now the `Results_Initialize()` call and the cmake entry:
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:46Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:08:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:09:11Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 13:09:12Z)**_
+
+All wired. Let me record it in the journal and mark the work done:
+
+_**Agent (claude-opus-4-8 2026-06-24 13:09:15Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Write results/results.h (record + player + append + TopN API)
+- [X] 🌡️ Write results/results.c (CSV append + header + RTC timestamp + quoted song + top-N scan)
+- [X] 🌡️ Wire player/scores/results commands into console.c
+- [X] 🌡️ Call Results_Initialize in app.c; add results.c to user.cmake
+- [⚡] 🌡️ Add journal entry for results module
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:09:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:09:44Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Write results/results.h (record + player + append + TopN API)
+- [X] 🌡️ Write results/results.c (CSV append + header + RTC timestamp + quoted song + top-N scan)
+- [X] 🌡️ Wire player/scores/results commands into console.c
+- [X] 🌡️ Call Results_Initialize in app.c; add results.c to user.cmake
+- [X] 🌡️ Add journal entry for results module
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 13:09:57Z)**_
+
+The `results` module is built — the substrate for play results, provable now without gameplay.
+
+**New module** [results/results.h](firmware/marvin/default/src/results/results.h) + [results.c](firmware/marvin/default/src/results/results.c):
+- `Results_Append(record)` — mount on demand, write the header row if the file is new, stamp UTC from the RTC, CSV-quote the song title, append one row to `<card>/players/results.csv`.
+- `Results_TopN(setlist, index, difficulty, out, max)` — streaming line scan with a quote-aware `csv_split` and a bounded, score-descending insert, all in static buffers.
+- `Results_SetPlayer` / `GetPlayer` — operator string, default `p1` (the Q12 placeholder), commas/quotes stripped.
+
+**Console** ([console.c](firmware/marvin/default/src/console/console.c)) — three commands:
+```
+player [name]                                  # show/set current player
+scores <main|bonus> <index> [difficulty]       # top-5 for a song
+results add <set> <idx> <diff> <part> <score>  # inject a synthetic row (testing)
+```
+(bumped `maxBindingCount` to 24 for headroom). Wired `Results_Initialize()` in [app.c](firmware/marvin/default/src/app.c) and added `results.c` to [user.cmake](firmware/marvin/cmake/marvin/default/user.cmake).
+
+**Test recipe once built:** `player greg` → `results add main 4 hard lead 123456` (a few times, varying scores) → `scores main 4` shows the ranked top-5 → pull the card and open `players/results.csv` in pandas/Excel. The synthetic song is `"Test, Song"` specifically to exercise the CSV quoting/parse round-trip.
+
+Not built (XC32 is your path); only external calls are `SYS_FS_*`, `RTC_TimeGet`, and `Storage_*`. The gameplay engine wires in later as a one-line `Results_Append()` when M9 Phase 3 score readers land — that's the only remaining dependency, plus the player-id scheme (Q12).
+
+Want me to commit? Suggested scope/message: "marvin: results CSV module + player/scores/results console commands" — staging only my source files + the journal, leaving any MCC churn to you.
+
+---
+
+_**User (2026-06-24 15:20:03Z)**_
+
+appears to be working as expected. please commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 15:20:10Z)**_
+
+I'll commit only my source files + journal, leaving MCC churn to you.
+
+_**Agent (claude-opus-4-8 2026-06-24 15:20:21Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage results module + wiring + journal
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/marvin/default/src/results/results.h \
+        firmware/marvin/default/src/results/results.c \
+        firmware/marvin/default/src/console/console.c \
+        firmware/marvin/default/src/app.c \
+        firmware/marvin/cmake/marvin/default/user.cmake \
+        firmware/marvin/docs/journal.md && \
+echo "=== staged ===" && git diff --cached --stat
+```
+
+```text
+=== staged ===
+ firmware/marvin/cmake/marvin/default/user.cmake |   1 +
+ firmware/marvin/default/src/app.c               |   6 +
+ firmware/marvin/default/src/console/console.c   |  82 +++++++-
+ firmware/marvin/default/src/results/results.c   | 246 ++++++++++++++++++++++++
+ firmware/marvin/default/src/results/results.h   |  59 ++++++
+ firmware/marvin/docs/journal.md                 |   1 +
+ 6 files changed, 394 insertions(+), 1 deletion(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 15:20:30Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 15:20:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit results module and console commands
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -m "$(cat <<'EOF'
+marvin: per-player results CSV + player/scores/results console commands
+
+Add a results module on top of the SD/FatFs/RTC layer for storing and
+displaying gameplay results (spec §4.8.6), provable now with synthetic
+rows ahead of the gameplay write path.
+
+results/results.{h,c}:
+- Results_Append(record): mount on demand, write header if the file is
+  new, RTC UTC timestamp, CSV-quoted song title; appends one row to
+  <card>/players/results.csv (path built from Storage_MountPoint()).
+- Results_TopN(setlist,index,difficulty,...): streaming line scan with a
+  quote-aware csv_split and a bounded score-descending insert, all static
+  buffers (no malloc, fits FF_FS_MAX_FILES=1).
+- Results_Set/GetPlayer: operator string, default "p1".
+
+CSV chosen so on-device high-score display parses with comma-split + atol
+into static buffers, while the card still opens cleanly in pandas/Excel.
+
+console.c: player / scores <set> <idx> [diff] / results add ... (synthetic
+row injection for testing the write+read+display round-trip). Bumped
+maxBindingCount to 24.
+app.c: Results_Initialize. user.cmake: add results.c.
+
+Gameplay wires in later as a one-line Results_Append once the M9 Phase 3
+score readers exist.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[sdcard bd61bd4] marvin: per-player results CSV + player/scores/results console commands
+ 6 files changed, 394 insertions(+), 1 deletion(-)
+ create mode 100644 firmware/marvin/default/src/results/results.c
+ create mode 100644 firmware/marvin/default/src/results/results.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 15:20:52Z)**_
+
+Committed `bd61bd4` on `sdcard` — the results module, the three console commands, wiring, and the journal entry. Your storage.c (`get_fattime` + cache alignment) and any MCC changes stayed out of this commit.
+
+The SD-card data layer is now stood up end-to-end ahead of gameplay: **mount/diagnostics** (`sd`), **wall-clock** (`time`, RTC in UTC feeding FatFs timestamps), and **results** (`player`/`scores`/`results`, CSV at the card root). Each was provable on its own substrate, so when the M9 Phase 3 score readers land, the gameplay engine's only new code is a single `Results_Append()` call.
+
+Open threads still parked in the journal for when you get there:
+- **Player identity** (Q12) — currently the `p1` operator string; richer profiles deferred.
+- **Song catalog + album artwork loaders** (§4.8.3 / §4.8.7) — the other SD consumers, both gated on gameplay being more resolved.
+- **Automount + event handler** — the production hotplug path that replaces manual mount once these consumers care about card removal.
+
+---
+
+_**User (2026-06-24 15:22:02Z)**_
+
+Let's start work on song catalog. Should I start from fresh session / clean context?
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-24 15:22:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-24 15:23:06Z)**_
+
+Yes — start fresh. This is a clean new chunk, and the durable state that matters for the catalog already lives outside this conversation:
+- **Spec §4.8.3** has the catalog decision + the `songs.json` schema and the `(setlist,index)` keying.
+- **The committed code** carries the patterns the loader will mirror — `results.c` (CSV parse/quote, `csv_split`, mount-on-demand, console idiom), `storage.c` (`Storage_MountPoint`), and `gameplay_metadata.h` (`gp_song_t`, song templates already indexed by setlist/index).
+- The journals capture the decision log.
+
+Most of this session's context is SD/RTC/results plumbing that's now done and committed — not worth carrying forward.
+
+One thing to settle *before* writing code, and it's the reason I'll prime the journal: **catalog file format.** The spec currently says *JSON* (§4.8.3), but since then `results` went flat **CSV** specifically because on-device JSON parsing is the friction point (no tokenizer, `FF_FS_MAX_FILES=1`, static buffers). The catalog is inherently tabular (one row per song), so CSV fits cleanly *and* reuses the `csv_split`/`csv_quote` we just wrote. I'd lean `songs.csv` over JSON and update the spec's "JSON or similar" accordingly — but that's the first decision for the new session.
+
+Let me drop a short orientation note at the top of the journal so the fresh session picks up cold with zero re-derivation:
+
+_**Agent (claude-opus-4-8 2026-06-24 15:23:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-24 15:23:30Z)**_
+
+Done — the journal now has a "Next up: song catalog" orientation note at the top with the must-read files and the one open decision (format).
+
+You're clear to `/clear` and start fresh. To prime the new session, open with something like:
+
+> *Work on the marvin song catalog loader. Read the "Next up: song catalog" note at the top of firmware/marvin/docs/journal.md, spec §4.8.3, game/gameplay_metadata.h, and results/results.c first.*
+
+That points it straight at the orientation note, which carries everything forward.
+
+Two things I'd flag for that session to decide early:
+- **Format:** `songs.csv` (reuse `csv_split`/`csv_quote`, consistent with results) vs. the spec's JSON — my lean is CSV; reconcile the spec either way.
+- **Want me to commit this journal note now**, or fold it into the first catalog commit next session? It's a one-line orientation pointer — your call.
