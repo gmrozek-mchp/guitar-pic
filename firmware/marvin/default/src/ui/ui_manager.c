@@ -7,6 +7,7 @@
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_assets.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"
 
 /* Canvas id == Legato layer index (baseCanvasID is 0). XLCDC layer indices in
  * drvLayer/layerOrder order: BASE, HEO, OVR1, OVR2 — HEO is the live camera and
@@ -37,17 +38,22 @@ void UiManager_Initialize(void)
     GFX_CANVAS_Task();
 
     /* The MGS screen state machine is disabled (no le_gen_init.c), so we own
-     * screen startup: install the string table, build the Marvin screen, and
-     * show it. screenShow_Marvin attaches the layer roots and raises
-     * Marvin_OnShow. Runs after Legato_Initialize and before the first leUpdate. */
+     * screen startup: install the string table, build both screens, and show
+     * them. Each screenShow_ attaches its root and raises its OnShow hook
+     * (Marvin_OnShow binds the dashboard to BASE; Navigation_OnShow re-hosts the
+     * drawer onto its overlay layer). Both coexist live — there is no one-active-
+     * screen gate. Runs after Legato_Initialize and before the first leUpdate. */
     leSetStringTable(&stringTable);
     initializeStrings();
     screenInit_Marvin();
+    screenInit_Navigation();
     screenShow_Marvin();
+    screenShow_Navigation();
 }
 
 /* Marvin screen composition root (declared in le_gen_screen_Marvin.h). Binds the
- * dashboard to the BASE layer and hands its overlay to the nav module. */
+ * dashboard to the BASE layer. The nav drawer is its own screen (Navigation),
+ * hosted by ui/nav from its own OnShow hook. */
 void Marvin_OnShow(void)
 {
     gfxcSetWindowPosition(CANVAS_BASE, 0, 0);
@@ -55,6 +61,4 @@ void Marvin_OnShow(void)
     gfxcSetLayer(CANVAS_BASE, HW_BASE);
     gfxcShowCanvas(CANVAS_BASE);
     gfxcCanvasUpdate(CANVAS_BASE);
-
-    Nav_OnShow();
 }

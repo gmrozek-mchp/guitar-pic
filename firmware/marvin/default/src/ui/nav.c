@@ -6,11 +6,14 @@
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"      /* hamburger event decl */
+#include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"  /* nav widgets + OnShow */
 
-/* Nav drawer canvas id (== Legato layer index) and its LCDC overlay layer.
- * BASE, HEO, OVR1, OVR2 in drvLayer/layerOrder order; HEO is the live camera. */
-#define CANVAS_NAV   1u
+/* The nav drawer is authored as its own MGS Screen (Navigation) and hosted as a
+ * resident overlay on Legato layer 1 → canvas 1 → OVR1. Canvas id == Legato
+ * layer index (baseCanvasID 0); HW layer indices are BASE 0, HEO 1, OVR1 2,
+ * OVR2 3 (HEO is the live camera). */
+#define NAV_LAYER    1u   /* Legato layer / canvas id we host the drawer on */
 #define HW_OVR1      2u
 
 #define NAV_W   320u
@@ -29,12 +32,12 @@ static leButtonWidget *nav_button(unsigned int i)
 {
     switch (i)
     {
-        case 0:  return Marvin_BUTTON_NAV_DASHBOARD;
-        case 1:  return Marvin_BUTTON_NAV_LOGS;
-        case 2:  return Marvin_BUTTON_NAV_PERFORMANCE;
-        case 3:  return Marvin_BUTTON_NAV_SYSTEM_INFO;
-        case 4:  return Marvin_BUTTON_NAV_DIAGNOSTICS;
-        default: return Marvin_BUTTON_NAV_SETTINGS;
+        case 0:  return Navigation_BUTTON_NAV_DASHBOARD;
+        case 1:  return Navigation_BUTTON_NAV_LOGS;
+        case 2:  return Navigation_BUTTON_NAV_PERFORMANCE;
+        case 3:  return Navigation_BUTTON_NAV_SYSTEM_INFO;
+        case 4:  return Navigation_BUTTON_NAV_DIAGNOSTICS;
+        default: return Navigation_BUTTON_NAV_SETTINGS;
     }
 }
 
@@ -58,14 +61,14 @@ static void nav_buttons_init(void)
     unsigned int i;
 
     /* Route every nav-entry release through nav_on_release (runtime-registered
-     * here rather than six MGS event stubs). */
+     * here — the Navigation screen wires no button events itself). */
     for (i = 0u; i < NAV_COUNT; i++)
     {
         nav_button(i)->fn->setReleasedEventCallback(nav_button(i), nav_on_release);
     }
 
     /* Dashboard is the active entry at startup. */
-    nav_on_release(Marvin_BUTTON_NAV_DASHBOARD);
+    nav_on_release(Navigation_BUTTON_NAV_DASHBOARD);
 }
 
 static void nav_open(void)
@@ -76,61 +79,56 @@ static void nav_open(void)
      * partially drawn until per-widget touch damage fills it in. Invalidating here
      * — on the live, post-scheduler render path — paints the whole panel; if the
      * buffer was already complete this is a harmless repaint of the same pixels. */
-    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
+    Navigation_PANEL_NAVIGATION->fn->invalidate(Navigation_PANEL_NAVIGATION);
 
-    gfxcSetWindowPosition(CANVAS_NAV, 0, 0);
-    gfxcShowCanvas(CANVAS_NAV);
-    gfxcCanvasUpdate(CANVAS_NAV);
+    gfxcSetWindowPosition(NAV_LAYER, 0, 0);
+    gfxcShowCanvas(NAV_LAYER);
+    gfxcCanvasUpdate(NAV_LAYER);
     s_nav_open = true;
 }
 
 static void nav_close(void)
 {
     /* Hide the layer and park it off-screen so it stops intercepting touches. */
-    gfxcHideCanvas(CANVAS_NAV);
-    gfxcSetWindowPosition(CANVAS_NAV, -(int)NAV_W, 0);
-    gfxcCanvasUpdate(CANVAS_NAV);
+    gfxcHideCanvas(NAV_LAYER);
+    gfxcSetWindowPosition(NAV_LAYER, -(int)NAV_W, 0);
+    gfxcCanvasUpdate(NAV_LAYER);
     s_nav_open = false;
 }
 
 void Nav_InitSurface(void)
 {
-    gfxcSetPixelBuffer(CANVAS_NAV, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
+    gfxcSetPixelBuffer(NAV_LAYER, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
 }
 
-void Nav_OnShow(void)
+/* Navigation screen composition root (declared in le_gen_screen_Navigation.h),
+ * raised by screenShow_Navigation. The screen authors its content on its own
+ * layer 0; re-host that root onto NAV_LAYER so the drawer composites on OVR1
+ * while the dashboard keeps layer 0. Then keep the panel visible+enabled so
+ * Legato renders it into canvas NAV_LAYER continuously, bind to OVR1, and start
+ * closed (parked off-screen + hidden); Legato's pick rect follows the layer
+ * position (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav can't intercept
+ * dashboard touches. The off-screen X also seeds the slide-in animation. */
+void Navigation_OnShow(void)
 {
-    /* Keep the panel visible+enabled so Legato renders it into canvas 1
-     * continuously — reveal then shows an already-painted buffer with no
-     * first-frame flash. Bind to OVR1 and start closed: parked off-screen to the
-     * left and hidden. Open/close move the layer window; Legato's pick rect
-     * follows the layer position (LE_DRIVER_LAYER_MODE), so a closed (off-screen)
-     * nav can't intercept dashboard touches. The off-screen X also seeds the
-     * slide-in animation. */
-    Marvin_PANEL_NAVIGATION->fn->setEnabled(Marvin_PANEL_NAVIGATION, LE_TRUE);
-    Marvin_PANEL_NAVIGATION->fn->setVisible(Marvin_PANEL_NAVIGATION, LE_TRUE);
+    leWidget *root = screenGetRoot_Navigation(0);
+    leRemoveRootWidget(root, 0);
+    leAddRootWidget(root, NAV_LAYER);
 
-    gfxcSetWindowSize(CANVAS_NAV, NAV_W, NAV_H);
-    gfxcSetWindowPosition(CANVAS_NAV, -(int)NAV_W, 0);
-    gfxcSetLayer(CANVAS_NAV, HW_OVR1);
-    gfxcCanvasUpdate(CANVAS_NAV);
+    Navigation_PANEL_NAVIGATION->fn->setEnabled(Navigation_PANEL_NAVIGATION, LE_TRUE);
+    Navigation_PANEL_NAVIGATION->fn->setVisible(Navigation_PANEL_NAVIGATION, LE_TRUE);
+
+    gfxcSetWindowSize(NAV_LAYER, NAV_W, NAV_H);
+    gfxcSetWindowPosition(NAV_LAYER, -(int)NAV_W, 0);
+    gfxcSetLayer(NAV_LAYER, HW_OVR1);
+    gfxcCanvasUpdate(NAV_LAYER);
 
     nav_buttons_init();
 }
 
-/* Marvin screen button events (declared in le_gen_screen_Marvin.h). */
-
-/* Hamburger on the dashboard (BASE) toggles the nav drawer. */
+/* Hamburger on the dashboard (BASE, Marvin screen) toggles the nav drawer. */
 void event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
 {
     (void)btn;
     if (s_nav_open) { nav_close(); } else { nav_open(); }
-}
-
-/* Dashboard entry (in the nav, OVR1). MGS wires only this entry's release; the
- * other five are runtime-registered in nav_buttons_init. Route it through the
- * same shared sink so all entries behave identically (select + highlight). */
-void event_Marvin_BUTTON_NAV_DASHBOARD_OnReleased(leButtonWidget* btn)
-{
-    nav_on_release(btn);
 }

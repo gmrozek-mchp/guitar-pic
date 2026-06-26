@@ -5,15 +5,14 @@
 extern "C" {
 #endif
 
-/* Navigation drawer — a resident overlay on its own LCDC layer (OVR1). Owned by
- * ui/nav, orchestrated by ui_manager:
+/* Navigation drawer — authored as its own MGS Screen (Navigation), hosted as a
+ * resident overlay on Legato layer 1 / OVR1. Owned by ui/nav; ui_manager only
+ * has to assign the surface and show the screen:
  *   Nav_InitSurface — assign the nav canvas buffer; call before the canvas state
  *                     machine is RUNNING / before the first render.
- *   Nav_OnShow      — bind the layer + wire the nav buttons; call from the Marvin
- *                     screen OnShow hook.
- * Open/close is driven internally by the drawer's hamburger and entry events. */
+ * Everything else (re-host onto the overlay layer, panel setup, button wiring,
+ * open/close) happens in the Navigation screen's OnShow hook and entry events. */
 void Nav_InitSurface(void);
-void Nav_OnShow(void);
 
 #ifdef __cplusplus
 }
