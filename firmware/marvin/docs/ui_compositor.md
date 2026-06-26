@@ -195,10 +195,28 @@ so **memory is not the binding constraint — the 3 UI layers are.**
 - **`manual_input.c` fate** — `Screen0` retired; the strum handlers now serve the Dashboard
   screen, so it stays until manual control is reworked.
 - **Per-pixel alpha** — which (if any) overlay needs ARGB8888 over the camera vs. layer alpha.
-- **Rounded corners aren't anti-aliased.** The nav buttons use the widget `cornerRadius`
-  (set in code — not exposed in MGS), but the classic skin's rounded-rect fill has hard,
-  stepped edges (no AA). To smooth them: pre-AA'd button images / 9-patches, or a custom
-  skin/draw with edge anti-aliasing. Cosmetic; deferred.
+
+## 10a. Anti-aliased rounded button corners (done)
+
+The nav buttons use the widget `cornerRadius` (set in code — not exposed in MGS), but the
+classic skin's rounded-rect fill draws corners with `leRenderer_ArcFill` (hard, stepped
+edges). Smoothing is done **without touching Legato/MCC code** (`config/default/` is
+off-limits), via a per-instance vtable re-point in `src/ui/button_aa.c`:
+
+- `leWidget.fn` is a writable per-instance pointer to a `const` vtable. `ButtonAA_Enable`
+  makes one shared writable copy of the button vtable, overrides only `_paint`, and points
+  the button's `fn`/`widget.fn` at it. No `LE_DYNAMIC_VTABLES` (not an MCC knob; unguarded
+  `#define 0` in generated `legato_config.h`), no global RAM cost — scoped to re-pointed
+  buttons.
+- The wrapper runs the original paint (bg + label + border), then on `DONE` with the
+  supported radius overdraws the four corners: sample the backdrop from each corner's
+  extreme pixel (left untouched by the rounded fill), then blend a 1px transition band from
+  a precomputed coverage mask via `leColorLerp` + `leRenderer_PutPixel`. Fill is read from
+  the live scheme each paint, so highlight (selected/unselected) and pressed states track.
+- Runs **in-pass** (damage → repaint → AA in one paint), so no timing/flicker window.
+- Wired from `nav_buttons_init()`; currently nav-only. Extending app-wide is just calling
+  `ButtonAA_Enable` from other screens' button init. Single radius (`BUTTON_AA_RADIUS`);
+  other radii pass through unsmoothed.
 
 ## 11. Relationship to spec §4.5 / Q5
 

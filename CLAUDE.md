@@ -43,6 +43,12 @@ When working on a subproject that has a journal:
 3. **Prefer updating the journal over restating plans in chat.** If I'd otherwise write a multi-paragraph plan in chat, it belongs in the journal — the chat is ephemeral, the journal isn't.
 4. **If a new subproject needs a journal, create one** using the same structure as `firmware/marvin/docs/journal.md`, and add it to the list above in this file.
 
+## Do not modify MCC-generated or Legato library code
+
+Files under `firmware/*/default/src/config/default/` are owned by MPLAB Code Configurator (MCC) or the Legato GFX library. Do **not** edit them — MCC regeneration can overwrite changes silently, and modified vendor files are invisible as customizations.
+
+If a task requires changing behavior in this tree, stop and ask how to proceed. Typical alternatives: add a new file in the project's own source tree that wraps or extends the vendor behavior, use a Legato extension point (e.g. `leDrawSurfaceWidget`, a custom skin registered via the vtable), or adjust the MCC configuration and regenerate rather than hand-editing the output.
+
 ## Do not use `.specstory/` history as context
 
 The `.specstory/` directory holds raw transcripts of past chat sessions. Do **not** read or treat those files as authoritative context — they are ephemeral records, not source of truth, and may contradict the current code or journals. When you need prior state, use the journals, specs, code, and git history instead.
