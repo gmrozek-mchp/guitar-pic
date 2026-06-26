@@ -31,16 +31,6 @@ leResult screenInit_Navigation(void)
     if(initialized == LE_TRUE)
         return LE_FAILURE;
 
-    initialized = LE_TRUE;
-
-    return LE_SUCCESS;
-}
-
-leResult screenShow_Navigation(void)
-{
-    if(showing == LE_TRUE)
-        return LE_FAILURE;
-
     // layer 0
     root0 = leWidget_New();
     root0->fn->setSize(root0, 320, 800);
@@ -238,6 +228,16 @@ leResult screenShow_Navigation(void)
     leAddRootWidget(root0, 0);
     leSetLayerColorMode(0, LE_COLOR_MODE_RGB_565);
 
+    initialized = LE_TRUE;
+
+    return LE_SUCCESS;
+}
+
+leResult screenShow_Navigation(void)
+{
+    if(showing == LE_TRUE)
+        return LE_FAILURE;
+
     Navigation_OnShow(); // raise event
 
     showing = LE_TRUE;
@@ -252,6 +252,13 @@ void screenUpdate_Navigation(void)
 
 void screenHide_Navigation(void)
 {
+    showing = LE_FALSE;
+}
+
+void screenDestroy_Navigation(void)
+{
+    if(initialized == LE_FALSE)
+        return;
 
     leRemoveRootWidget(root0, 0);
     leWidget_Delete(root0);
@@ -276,15 +283,6 @@ void screenHide_Navigation(void)
     Navigation_panel_Container_200 = NULL;
     Navigation_label_STATUS = NULL;
     Navigation_label_Connected = NULL;
-
-
-    showing = LE_FALSE;
-}
-
-void screenDestroy_Navigation(void)
-{
-    if(initialized == LE_FALSE)
-        return;
 
     initialized = LE_FALSE;
 }

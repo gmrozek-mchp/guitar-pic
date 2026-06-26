@@ -263,16 +263,6 @@ leResult screenInit_Dashboard(void)
     if(initialized == LE_TRUE)
         return LE_FAILURE;
 
-    initialized = LE_TRUE;
-
-    return LE_SUCCESS;
-}
-
-leResult screenShow_Dashboard(void)
-{
-    if(showing == LE_TRUE)
-        return LE_FAILURE;
-
     // layer 0
     root0 = leWidget_New();
     root0->fn->setSize(root0, LE_DEFAULT_SCREEN_WIDTH, LE_DEFAULT_SCREEN_HEIGHT);
@@ -2055,6 +2045,16 @@ leResult screenShow_Dashboard(void)
     leAddRootWidget(root0, 0);
     leSetLayerColorMode(0, LE_COLOR_MODE_RGB_565);
 
+    initialized = LE_TRUE;
+
+    return LE_SUCCESS;
+}
+
+leResult screenShow_Dashboard(void)
+{
+    if(showing == LE_TRUE)
+        return LE_FAILURE;
+
     Dashboard_OnShow(); // raise event
 
     showing = LE_TRUE;
@@ -2069,6 +2069,13 @@ void screenUpdate_Dashboard(void)
 
 void screenHide_Dashboard(void)
 {
+    showing = LE_FALSE;
+}
+
+void screenDestroy_Dashboard(void)
+{
+    if(initialized == LE_FALSE)
+        return;
 
     leRemoveRootWidget(root0, 0);
     leWidget_Delete(root0);
@@ -2325,15 +2332,6 @@ void screenHide_Dashboard(void)
     Dashboard_panel_Switch_1 = NULL;
     Dashboard_label_AUTO_RECOVERY = NULL;
     Dashboard_panel_Text_26 = NULL;
-
-
-    showing = LE_FALSE;
-}
-
-void screenDestroy_Dashboard(void)
-{
-    if(initialized == LE_FALSE)
-        return;
 
     initialized = LE_FALSE;
 }

@@ -42,6 +42,7 @@
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "ui/ui_manager.h"
+#include "ui/loader.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "storage/storage.h"
@@ -127,15 +128,9 @@ void APP_Initialize ( void )
      * separately by PerfLog_Start once the scheduler is up. */
     PerfLog_Initialize();
 
-    /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
-     * panel — 1:1 with the bridge's typical 480p source, leaves a UI
-     * strip below. Set before DisplayShow; the video module has no
-     * default window of its own. */
-    Video_SetWindow(280u, 76u, 720u, 480u);
-
-    /* Default: arm the capture chain when source locks, and show video. */
-    Video_CaptureEnable();
-    Video_DisplayShow();
+    /* Video go-live (window + capture + display) is deferred to the boot loader
+     * so the camera comes up only after the splash → dashboard handoff — the
+     * splash owns the panel during startup. See Loader_Start below. */
 
     /* Reference detector (cv_marvin_v1) + detector-state bus. M1 stub
      * publisher; real detection logic lands incrementally. Must follow
@@ -192,6 +187,13 @@ void APP_Initialize ( void )
      * DBGU log channel. Started after the actuator/detector modules so its
      * commands can drive their setters. */
     Console_Initialize();
+
+    /* Boot loader task: mounts the SD card, paints the splash image, lights the
+     * backlight, runs asset pre-load, then swaps BASE splash → dashboard and
+     * brings the camera up. Created here (pre-scheduler); runs once the
+     * scheduler is up (it needs blocking SD/FatFs I/O). Self-deletes after the
+     * handoff. Follows Storage/Video/UiManager init, which it depends on. */
+    Loader_Start();
 
     /* Drain task is launched last so every producer's queue handle is
      * already valid when the first records hit the sink. Marvin creates

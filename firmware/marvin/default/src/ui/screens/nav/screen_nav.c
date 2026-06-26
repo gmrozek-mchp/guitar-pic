@@ -11,12 +11,11 @@
 #include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"   /* hamburger event decl */
 #include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"  /* nav widgets + OnShow */
 
-/* The nav drawer is authored as its own MGS Screen (Navigation) and hosted as a
- * resident overlay on Legato layer 1 → canvas 1 → OVR1. Canvas id == Legato
- * layer index (baseCanvasID 0); HW layer indices are BASE 0, HEO 1, OVR1 2,
- * OVR2 3 (HEO is the live camera). */
-#define NAV_LAYER    1u   /* Legato layer / canvas id we host the drawer on */
-#define HW_OVR1      2u
+/* The nav drawer is authored as its own MGS Screen (Navigation) and rendered
+ * into its own canvas (NAV_CANVAS), which we bind to the OVR1 hardware layer.
+ * (Canvas ids and hardware-layer indices are independent — see ui_manager.c.) */
+#define NAV_CANVAS   1u   /* canvas the drawer renders into */
+#define HW_OVR1      2u   /* OVR1 hardware-layer index (drvLayer/layerOrder) */
 
 #define NAV_W   320u
 #define NAV_H   800u
@@ -122,9 +121,9 @@ static void nav_slide_to(int target_x)
 {
     int x, y;
 
-    gfxcStopEffect(NAV_LAYER, GFXC_FX_MOVE);
-    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
-    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAV_SLIDE_DELTA);
+    gfxcStopEffect(NAV_CANVAS, GFXC_FX_MOVE);
+    gfxcGetWindowPosition(NAV_CANVAS, &x, &y);
+    gfxcStartEffectMove(NAV_CANVAS, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAV_SLIDE_DELTA);
 }
 
 static void nav_open(void)
@@ -136,7 +135,7 @@ static void nav_open(void)
      * Show first so the move is visible (the FX engine enables the layer from
      * canvas.active). */
     Navigation_PANEL_NAVIGATION->fn->invalidate(Navigation_PANEL_NAVIGATION);
-    gfxcShowCanvas(NAV_LAYER);
+    gfxcShowCanvas(NAV_CANVAS);
     nav_slide_to(0);
     s_nav_open = true;
 }
@@ -165,38 +164,38 @@ static void nav_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
 
     if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_nav_open)
     {
-        gfxcHideCanvas(NAV_LAYER);
-        gfxcCanvasUpdate(NAV_LAYER);
+        gfxcHideCanvas(NAV_CANVAS);
+        gfxcCanvasUpdate(NAV_CANVAS);
     }
 }
 
 void Nav_InitSurface(void)
 {
-    gfxcSetPixelBuffer(NAV_LAYER, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
+    gfxcSetPixelBuffer(NAV_CANVAS, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
 }
 
 /* Navigation screen composition root (declared in le_gen_screen_Navigation.h),
- * raised by screenShow_Navigation. The screen authors its content on its own
- * layer 0; re-host that root onto NAV_LAYER so the drawer composites on OVR1
- * while the dashboard keeps layer 0. Then keep the panel visible+enabled so
- * Legato renders it into canvas NAV_LAYER continuously, bind to OVR1, and start
- * closed (parked off-screen + hidden); Legato's pick rect follows the layer
- * position (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav can't intercept
- * dashboard touches. The off-screen X also seeds the slide-in animation. */
+ * raised by screenShow_Navigation. The MGS screen authors its content on canvas
+ * 0; move that root so it renders into NAV_CANVAS instead (the dashboard keeps
+ * canvas 0), then bind NAV_CANVAS to the OVR1 hardware layer. Keep the panel
+ * visible+enabled so Legato renders it into the canvas continuously, and start
+ * closed (parked off-screen + hidden); the touch pick rect follows the canvas
+ * window position (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav can't
+ * intercept dashboard touches. The off-screen X also seeds the slide-in. */
 void Navigation_OnShow(void)
 {
     leWidget *root = screenGetRoot_Navigation(0);
     leRemoveRootWidget(root, 0);
-    leAddRootWidget(root, NAV_LAYER);
+    leAddRootWidget(root, NAV_CANVAS);
 
     Navigation_PANEL_NAVIGATION->fn->setEnabled(Navigation_PANEL_NAVIGATION, LE_TRUE);
     Navigation_PANEL_NAVIGATION->fn->setVisible(Navigation_PANEL_NAVIGATION, LE_TRUE);
 
-    gfxcSetWindowSize(NAV_LAYER, NAV_W, NAV_H);
-    gfxcSetWindowPosition(NAV_LAYER, NAV_CLOSED_X, 0);
-    gfxcSetLayer(NAV_LAYER, HW_OVR1);
-    gfxcSetEffectsCallback(NAV_LAYER, nav_fx_done, NULL);
-    gfxcCanvasUpdate(NAV_LAYER);
+    gfxcSetWindowSize(NAV_CANVAS, NAV_W, NAV_H);
+    gfxcSetWindowPosition(NAV_CANVAS, NAV_CLOSED_X, 0);
+    gfxcSetLayer(NAV_CANVAS, HW_OVR1);
+    gfxcSetEffectsCallback(NAV_CANVAS, nav_fx_done, NULL);
+    gfxcCanvasUpdate(NAV_CANVAS);
 
     nav_buttons_init();
 }

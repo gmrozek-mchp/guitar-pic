@@ -570,7 +570,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '1074003968'
+            value: '1073741824'
           type: Dynamic
         type: Values
       type: Hex
@@ -635,7 +635,7 @@ data:
       children:
       - children:
         - attributes:
-            value: High
+            value: ''
           type: User
         type: Values
       type: String

@@ -626,7 +626,8 @@
                 "default/src/config/default/gfx/canvas/gfx_canvas_api.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_LayerBudget.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Navigation.c",
-                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Dashboard.c"
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Dashboard.c",
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Splash.c"
             ]
         }
     ]
