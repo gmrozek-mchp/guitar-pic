@@ -103,36 +103,43 @@ static void nav_buttons_init(void)
     nav_highlight(Navigation_BUTTON_NAV_DASHBOARD);
 }
 
-static void nav_open(void)
+/* Animate the drawer to target_x from wherever it currently sits. Cancel any
+ * in-flight slide first: gfxcStartEffectMove is a no-op while a move is running
+ * (it only starts from status IDLE), so without the stop a mid-slide reversal
+ * would be silently dropped — the original move would run to completion and fire
+ * nav_fx_done with a now-stale s_nav_open, hiding the drawer and wedging the
+ * toggle. Reading the live position makes the reversal retarget smoothly. */
+static void nav_slide_to(int target_x)
 {
     int x, y;
 
+    gfxcStopEffect(NAV_LAYER, GFXC_FX_MOVE);
+    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
+    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAV_SLIDE_DELTA);
+}
+
+static void nav_open(void)
+{
     /* Force a full repaint of the panel into the canvas before revealing it — the
      * paint queued at startup (parked off-screen) doesn't fully land in the
      * buffer, so without this the drawer slides in partially drawn until touch
-     * damage fills it in. The repaint lands over the next frames as it slides. */
+     * damage fills it in. The repaint lands over the next frames as it slides.
+     * Show first so the move is visible (the FX engine enables the layer from
+     * canvas.active). */
     Navigation_PANEL_NAVIGATION->fn->invalidate(Navigation_PANEL_NAVIGATION);
-
-    /* Slide in from the current X to 0. Show first so the move is visible (the FX
-     * engine programs the layer enable from canvas.active). Reading the live
-     * position lets a re-open mid-close retarget smoothly instead of jumping. */
     gfxcShowCanvas(NAV_LAYER);
-    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
-    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, 0, 0, NAV_SLIDE_DELTA);
+    nav_slide_to(0);
     s_nav_open = true;
 }
 
 static void nav_close(void)
 {
-    int x, y;
-
     /* Slide out to NAV_CLOSED_X (off-screen), then nav_fx_done disables the
      * layer. NAV_CLOSED_X avoids the -NAV_W window-clip row-wrap (see its
      * definition); the layer update busy-waits for the vsync latch, so the final
      * frame is displayed before the hide lands — keeping it in-bounds makes that
      * frame a harmless edge sliver instead of the panel's left columns. */
-    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
-    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, NAV_CLOSED_X, 0, NAV_SLIDE_DELTA);
+    nav_slide_to(NAV_CLOSED_X);
     s_nav_open = false;
 }
 
