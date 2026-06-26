@@ -111,7 +111,7 @@ void APP_Initialize ( void )
     /* UI manager: owns the canvas surface pool + LCDC layer mapping and screen
      * startup (string table + screenInit/Show — the MGS screen state machine is
      * disabled). Runs before the scheduler so surfaces exist and the canvas is
-     * RUNNING before the first render; the Marvin screen's On-Show hook binds the
+     * RUNNING before the first render; the Dashboard screen's On-Show hook binds the
      * dashboard to BASE and hands the nav drawer to ui/nav. */
     UiManager_Initialize();
 

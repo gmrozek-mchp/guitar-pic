@@ -6,7 +6,7 @@
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"      /* hamburger event decl */
+#include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"   /* hamburger event decl */
 #include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"  /* nav widgets + OnShow */
 
 /* The nav drawer is authored as its own MGS Screen (Navigation) and hosted as a
@@ -126,8 +126,8 @@ void Navigation_OnShow(void)
     nav_buttons_init();
 }
 
-/* Hamburger on the dashboard (BASE, Marvin screen) toggles the nav drawer. */
-void event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
+/* Hamburger on the Dashboard screen (BASE) toggles the nav drawer. */
+void event_Dashboard_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
 {
     (void)btn;
     if (s_nav_open) { nav_close(); } else { nav_open(); }

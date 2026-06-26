@@ -5,7 +5,7 @@
 #include <stdint.h>
 
 /* Temporary bring-up scaffolding for the SongList widget: builds one instance
- * with a catalog-backed provider and attaches it to the (already-shown) Marvin
+ * with a catalog-backed provider and attaches it to the (already-shown) Dashboard
  * screen so scroll/inertia/tap-select can be exercised on hardware before the
  * real SELECT SONG screen is authored in MGS. Driven by the `songlist` console
  * command. Remove once the song-select screen exists. */

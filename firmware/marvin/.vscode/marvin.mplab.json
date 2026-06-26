@@ -528,7 +528,6 @@
                 "default/src/config/default/gfx/legato/generated/le_gen_scheme.c",
                 "default/src/config/default/gfx/legato/generated/le_gen_scheme.h",
                 "default/src/config/default/gfx/legato/generated/le_gen_stringtable.c",
-                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Screen0.h",
                 "default/src/config/default/gfx/legato/legato_config.h",
                 "default/src/config/default/driver/input/drv_maxtouch.h",
@@ -612,7 +611,6 @@
                 "default/src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.c",
                 "default/src/config/default/peripheral/flexcom/usart/plib_flexcom1_usart.c",
                 "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom4_spi_master.c",
-                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c",
                 "default/src/config/default/system/fs/src/sys_fs.c",
                 "default/src/config/default/system/fs/src/sys_fs_media_manager.c",
                 "default/src/config/default/system/fs/src/sys_fs_fat_interface.c",
@@ -627,7 +625,8 @@
                 "default/src/config/default/gfx/canvas/gfx_canvas.c",
                 "default/src/config/default/gfx/canvas/gfx_canvas_api.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_LayerBudget.c",
-                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Navigation.c"
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Navigation.c",
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Dashboard.c"
             ]
         }
     ]

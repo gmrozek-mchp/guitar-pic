@@ -6,7 +6,7 @@
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_assets.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"
 
 /* Canvas id == Legato layer index (baseCanvasID is 0). XLCDC layer indices in
@@ -40,21 +40,21 @@ void UiManager_Initialize(void)
     /* The MGS screen state machine is disabled (no le_gen_init.c), so we own
      * screen startup: install the string table, build both screens, and show
      * them. Each screenShow_ attaches its root and raises its OnShow hook
-     * (Marvin_OnShow binds the dashboard to BASE; Navigation_OnShow re-hosts the
-     * drawer onto its overlay layer). Both coexist live — there is no one-active-
-     * screen gate. Runs after Legato_Initialize and before the first leUpdate. */
+     * (Dashboard_OnShow binds the dashboard to BASE; Navigation_OnShow re-hosts
+     * the drawer onto its overlay layer). Both coexist live — there is no
+     * one-active-screen gate. Runs after Legato_Initialize, before first leUpdate. */
     leSetStringTable(&stringTable);
     initializeStrings();
-    screenInit_Marvin();
+    screenInit_Dashboard();
     screenInit_Navigation();
-    screenShow_Marvin();
+    screenShow_Dashboard();
     screenShow_Navigation();
 }
 
-/* Marvin screen composition root (declared in le_gen_screen_Marvin.h). Binds the
- * dashboard to the BASE layer. The nav drawer is its own screen (Navigation),
- * hosted by ui/nav from its own OnShow hook. */
-void Marvin_OnShow(void)
+/* Dashboard screen composition root (declared in le_gen_screen_Dashboard.h).
+ * Binds the dashboard to the BASE layer. The nav drawer is its own screen
+ * (Navigation), hosted by ui/nav from its own OnShow hook. */
+void Dashboard_OnShow(void)
 {
     gfxcSetWindowPosition(CANVAS_BASE, 0, 0);
     gfxcSetWindowSize(CANVAS_BASE, BASE_W, BASE_H);

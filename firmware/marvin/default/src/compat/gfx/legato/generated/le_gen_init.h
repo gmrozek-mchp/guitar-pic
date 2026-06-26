@@ -13,17 +13,16 @@
  * the state machine is ever re-enabled, the generated copy in its own directory
  * wins.
  *
- * It provides only the includes the old le_gen_init.h exposed to its consumers.
- * The screen state-machine API (legato_showScreen / legato_updateScreenState /
- * screenID_*) is intentionally omitted — screen orchestration is owned by the
- * application (see ui/ui_manager.c), which calls screenInit_/screenShow_ directly. */
+ * It provides only what le_gen_harmony.c actually needs (the global palette via
+ * le_gen_scheme.h). Screen headers are intentionally NOT included here — nothing
+ * that includes le_gen_init.h references screen symbols, and leaving them out
+ * keeps this stub immune to screen add/rename/remove churn. Each UI module
+ * includes the specific screen header it uses and calls screenInit_/screenShow_
+ * directly (screen orchestration is owned by the app — see ui/ui_manager.c). */
 
 #include "gfx/legato/legato.h"
 
 #include "gfx/legato/generated/le_gen_scheme.h"
 #include "gfx/legato/generated/le_gen_assets.h"
-
-#include "gfx/legato/generated/screen/le_gen_screen_Screen0.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"
 
 #endif /* LEGATO_INIT_H */

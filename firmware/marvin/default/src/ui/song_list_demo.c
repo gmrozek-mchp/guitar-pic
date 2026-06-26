@@ -7,7 +7,7 @@
 #include "log.h"
 
 #include "gfx/legato/generated/le_gen_assets.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"
 
 static leWidget *s_list = NULL;
 
@@ -52,8 +52,8 @@ void SongList_DemoAttach(void)
     (void)Catalog_Reload();
     n = Catalog_Count();
 
-    root = screenGetRoot_Marvin(0);
-    if (root == NULL) { LOG_WARN("songlist: Marvin screen not shown\r\n"); return; }
+    root = screenGetRoot_Dashboard(0);
+    if (root == NULL) { LOG_WARN("songlist: Dashboard screen not shown\r\n"); return; }
 
     s_list = SongList_New();
     if (s_list == NULL) { LOG_WARN("songlist: widget alloc failed\r\n"); return; }
@@ -79,12 +79,12 @@ void SongList_DemoDetach(void)
         leWidget_Delete(s_list);   /* removes itself from its parent, then frees */
         s_list = NULL;
     }
-    Marvin_PANEL_BASE->fn->setVisible(Marvin_PANEL_BASE, LE_TRUE);
+    Dashboard_PANEL_BASE->fn->setVisible(Dashboard_PANEL_BASE, LE_TRUE);
 }
 
 void SongList_DemoSetDashboard(bool show)
 {
-    Marvin_PANEL_BASE->fn->setVisible(Marvin_PANEL_BASE, show ? LE_TRUE : LE_FALSE);
+    Dashboard_PANEL_BASE->fn->setVisible(Dashboard_PANEL_BASE, show ? LE_TRUE : LE_FALSE);
 }
 
 bool SongList_DemoToggleFill(void)
