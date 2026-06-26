@@ -114,6 +114,12 @@ void UiManager_Initialize(void)
  * OVR2 uncovers it instantly. Called by the loader once rendering is idle. */
 void UiManager_RevealDashboard(void)
 {
+    /* Detach the splash root, don't just hide its canvas: leInput picks across
+     * every attached root top-to-bottom, and the splash is the full-screen
+     * topmost overlay — left attached it swallows all touches (IGNOREPICK on the
+     * root doesn't necessarily cover its children). Removing it takes the whole
+     * tree out of the pick path; also frees the canvas/OVR2 for the modal dialog. */
+    leRemoveRootWidget(screenGetRoot_Splash(0), CANVAS_SPLASH);
     gfxcHideCanvas(CANVAS_SPLASH);
     gfxcCanvasUpdate(CANVAS_SPLASH);
 }

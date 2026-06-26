@@ -201,6 +201,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-26 — TODO (next): make SD mount + splash load top priority on boot
+
+Backlight gating confirmed working on hardware — the panel is now properly dark until the splash is painted (so PC18 / `AC69T88A_BACKLIGHT_EN` is active-high as assumed). **But the splash doesn't appear until ~5 s after power-on.** Breakdown: roughly **2–3 s is the SD card mount** (SDMMC card-detect/analysis isn't ready early in boot — the loader's retried `Storage_Mount`), and the rest is JPEG decode + render — so the JPEG decode is **not** the dominant cost (the full-screen-scratch change made it fine; no need to switch to a RAW asset). Boot in general is slow.
+
+**Next session (boot timing):** reorder / re-prioritize boot so **SD mount + splash load are the #1 priority** and the splash comes up as fast as possible — e.g. run the loader (and whatever SDMMC init it waits on) ahead of the rest of `APP_Initialize`/other tasks, and/or raise their priority during boot, then drop back. Possibly kick the SD mount earlier (or in parallel) so its ~2–3 s overlaps other init instead of serializing. Measure the actual breakdown (mount vs decode vs render) before tuning. Do **not** chase RAW-asset encoding — decode isn't the bottleneck.
+
+**Touch broken — all UI buttons dead — FIXED (confirmed on hardware).** *None* of the dashboard buttons responded (not just the nav hamburger), so it wasn't per-button wiring — the splash overlay was swallowing every press in Legato's input pick. `UiManager_RevealDashboard` was only *hiding* the splash canvas (`gfxcHideCanvas` on OVR2) while leaving its root attached, so `leInput` (picks across all attached roots, top-to-bottom) kept hitting the full-screen topmost splash (`IGNOREPICK` on the splash *root* doesn't cover its children `Splash_Panel_0`/the image widget). **Fix:** `UiManager_RevealDashboard` now `leRemoveRootWidget`s the splash root before hiding the canvas, taking the whole tree out of the pick path — also frees OVR2/its canvas for the future modal dialog. Confirmed: dashboard buttons + nav work again.
+
 ### 2026-06-26 — Splash bring-up #7: full-screen scratch, real backlight pin, terminology cleanup
 
 Wrap-up pass on the splash work.
