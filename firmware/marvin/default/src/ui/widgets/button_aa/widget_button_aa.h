@@ -1,5 +1,5 @@
-#ifndef UI_BUTTON_AA_H
-#define UI_BUTTON_AA_H
+#ifndef UI_WIDGET_BUTTON_AA_H
+#define UI_WIDGET_BUTTON_AA_H
 
 #include "gfx/legato/widget/button/legato_widget_button.h"
 
@@ -22,4 +22,4 @@ void ButtonAA_Enable(leButtonWidget* btn);
 }
 #endif
 
-#endif /* UI_BUTTON_AA_H */
+#endif /* UI_WIDGET_BUTTON_AA_H */

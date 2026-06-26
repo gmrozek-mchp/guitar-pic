@@ -138,7 +138,7 @@ these is a compositor-level change, not a per-module rewrite — the reversibili
             │   show_view(X) · push_overlay(nav|dialog) · hide_overlay(…)   │
             └───────┬──────────────────────┬───────────────────────┬───────┘
               ┌─────▼─────┐          ┌──────▼──────┐          ┌──────▼──────┐
-              │ui/dashboard│         │   ui/nav    │          │ui/song_select│
+              │  dashboard │         │ screens/nav │          │ song_select  │
               │ (BASE,lyr0)│         │ (OVR1,lyr1) │          │ (OVR2,lyr2)  │
               └────────────┘         └─────────────┘          └──────────────┘
    each: owns its widgets + interactions; composition root = its screen OnShow hook
@@ -151,6 +151,25 @@ these is a compositor-level change, not a per-module rewrite — the reversibili
 - **Per-screen/overlay modules** own only their panel's content + event wiring, registered
   from their own `OnShow` composition root. They never call `legato_*`/canvas APIs directly —
   they go through `ui_manager`, which is what keeps the layer mechanics swappable.
+
+### 6.1 Source layout (`default/src/ui/`)
+
+The UI tree is grouped by role; module files carry an explicit `screen_`/`widget_` prefix so
+a flat editor tab list reads unambiguously:
+
+```
+ui/
+  ui_manager.{c,h}                          orchestrator (mechanism; stays at root)
+  manual_input.c                            input shim for the future manual-input screen
+  screens/<name>/   screen_<name>.{c,h}     one folder per panel (+ panel-specific helpers)
+  widgets/<name>/   widget_<name>.{c,h}     reusable widgets, one folder each
+```
+
+Current contents: `screens/nav/screen_nav`, `widgets/song_list/widget_song_list`
+(+ `widget_song_list_demo` bring-up provider), `widgets/button_aa/widget_button_aa`. Headers are
+included from the `default/src` root, e.g. `#include "ui/screens/nav/screen_nav.h"`. New screens
+add a `screens/<name>/` folder; new widgets a `widgets/<name>/` folder — each wired into
+`user.cmake` (no MCC involvement).
 
 ## 7. Build state & refactor plan
 
@@ -201,7 +220,7 @@ so **memory is not the binding constraint — the 3 UI layers are.**
 The nav buttons use the widget `cornerRadius` (set in code — not exposed in MGS), but the
 classic skin's rounded-rect fill draws corners with `leRenderer_ArcFill` (hard, stepped
 edges). Smoothing is done **without touching Legato/MCC code** (`config/default/` is
-off-limits), via a per-instance vtable re-point in `src/ui/button_aa.c`:
+off-limits), via a per-instance vtable re-point in `src/ui/widgets/button_aa/widget_button_aa.c`:
 
 - `leWidget.fn` is a writable per-instance pointer to a `const` vtable. `ButtonAA_Enable`
   makes one shared writable copy of the button vtable, overrides only `_paint`, and points

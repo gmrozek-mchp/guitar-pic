@@ -1,5 +1,5 @@
-#ifndef MARVIN_UI_SONG_LIST_DEMO_H
-#define MARVIN_UI_SONG_LIST_DEMO_H
+#ifndef MARVIN_UI_WIDGET_SONG_LIST_DEMO_H
+#define MARVIN_UI_WIDGET_SONG_LIST_DEMO_H
 
 #include <stdbool.h>
 #include <stdint.h>

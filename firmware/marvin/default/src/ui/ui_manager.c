@@ -1,5 +1,5 @@
 #include "ui/ui_manager.h"
-#include "ui/nav.h"
+#include "ui/screens/nav/screen_nav.h"
 
 #include <stdint.h>
 

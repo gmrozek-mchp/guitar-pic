@@ -200,6 +200,16 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-26 — UI source reorg: `screens/` + `widgets/` split with explicit module prefixes
+
+Reorganized `default/src/ui/` by role ahead of building out more screens. Pure file move + rename — no logic changes. New layout (also in [`ui_compositor.md`](ui_compositor.md) §6.1):
+
+- `ui_manager.{c,h}` and `manual_input.c` stay at the `ui/` root (orchestrator; input shim kept for the future manual-input screen — the dashboard no longer uses it).
+- `screens/<name>/screen_<name>.{c,h}` — one folder per panel. Today: `screens/nav/screen_nav.{c,h}`.
+- `widgets/<name>/widget_<name>.{c,h}` — reusable widgets, one folder each. Today: `widgets/song_list/widget_song_list.{c,h}` (+ `widget_song_list_demo.{c,h}` bring-up provider), `widgets/button_aa/widget_button_aa.{c,h}`.
+
+`git mv` preserved history; updated all `#include "ui/…"` paths (include root is `default/src`, so they're now e.g. `ui/screens/nav/screen_nav.h`), include guards, the `user.cmake` source list, and `app.c`/`console.c` includers. C API symbol names (`Nav_*`, `SongList_*`, `ButtonAA_*`) left unchanged. Convention going forward: a new screen adds a `screens/<name>/` folder, a new widget a `widgets/<name>/` folder, each wired into `user.cmake`.
+
 ### 2026-06-25 — Canvas UI compositor + nav drawer, end to end
 
 Built the operator-UI presentation layer from the GFX Canvas component up to a complete, polished slide-out nav drawer. Arc of the session (decision log has the rationale for each; [`ui_compositor.md`](ui_compositor.md) is the authoritative design):

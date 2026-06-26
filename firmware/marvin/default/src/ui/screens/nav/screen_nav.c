@@ -1,9 +1,9 @@
-#include "ui/nav.h"
+#include "ui/screens/nav/screen_nav.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "ui/button_aa.h"
+#include "ui/widgets/button_aa/widget_button_aa.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"

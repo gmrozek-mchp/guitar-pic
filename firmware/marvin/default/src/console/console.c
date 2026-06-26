@@ -25,7 +25,7 @@
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/catalog.h"
-#include "ui/song_list_demo.h"
+#include "ui/widgets/song_list/widget_song_list_demo.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
