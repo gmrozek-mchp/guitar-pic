@@ -1,6 +1,5 @@
 #include "ui/ui_manager.h"
 #include "ui/screens/nav/screen_nav.h"
-#include "ui/screens/splash/screen_splash.h"
 
 #include <stdint.h>
 
@@ -10,7 +9,6 @@
 #include "gfx/legato/generated/le_gen_assets.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Splash.h"
 
 /* A canvas is a RAM surface Legato renders into; each screen has its own
  * (the CANVAS_* ids below — gfxcSetPixelBuffer assigns each one's buffer).
@@ -40,6 +38,10 @@
 #define BASE_W   1280u
 #define BASE_H    800u
 
+/* Splash fallback fill: opaque black. The splash canvas is RGBA_8888, which packs
+ * 0xRRGGBBAA, so a little-endian pixel word of 0x000000FF is R=G=B=0, A=0xFF. */
+#define SPLASH_FILL   0x000000FFu
+
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
 
 /* Per-screen surfaces, non-cached so the 2D engine and LCDC DMA read CPU-
@@ -65,61 +67,87 @@ void UiManager_Initialize(void)
     leSetStringTable(&stringTable);
     initializeStrings();
 
-    /* Build + host every screen now, each on its own canvas. All run before the
-     * scheduler, so there's no concurrency with the Legato render task — it
-     * paints them (over several frames) once the scheduler is up; the loader just
-     * waits for that to finish before lighting the panel. Screens are persistent,
-     * so they're built once and keep their pixels.
-     *
-     * Splash: its MGS screen authors the root on canvas 0, so move it to
-     * CANVAS_SPLASH, add the image widget, and bind that canvas to OVR2. OVR2 is
-     * the topmost overlay, full-screen, so it covers the dashboard until the
-     * loader unbinds it. */
-    screenInit_Splash();
-    leWidget *sp = screenGetRoot_Splash(0);
-    leRemoveRootWidget(sp, 0);
-    leAddRootWidget(sp, CANVAS_SPLASH);
-    leSetLayerColorMode(CANVAS_SPLASH, LE_COLOR_MODE_RGBA_8888);
-    Splash_AttachImage();
-
+    /* Splash: a raw full-screen RGBA8888 bitmap, NOT a Legato-rendered screen.
+     * The loader reads splash.raw off the SD straight into this canvas's buffer
+     * (s_fb_splash), which OVR2 scans out directly — so there's no widget, no
+     * render, and no blit for the splash (a full-screen software paint cost
+     * ~1.5 s). We only set the canvas up and bind it to OVR2 here; the MGS Splash
+     * screen is unused. Pre-fill opaque black as the fallback if the SD load fails. */
+    for (uint32_t i = 0u; i < (BASE_W * BASE_H); i++) { s_fb_splash[i] = SPLASH_FILL; }
     gfxcSetWindowPosition(CANVAS_SPLASH, 0, 0);
     gfxcSetWindowSize(CANVAS_SPLASH, BASE_W, BASE_H);
     gfxcSetLayer(CANVAS_SPLASH, HW_OVR2);
     gfxcShowCanvas(CANVAS_SPLASH);
     gfxcCanvasUpdate(CANVAS_SPLASH);
 
-    /* Commit the OVR2 hardware color mode to 32bpp. The GFX-XLCDC driver's
-     * canvas commit path (drv_gfx_xlcdc.c SET_LAYER_UNLOCK) never writes
-     * RGBMODE — it assumes every layer is the project framebuffer format
-     * (FB_COL_MODE = RGB565) and only stages our RGBA8888 request in
-     * drvLayer.pixelformat, then drops it. So OVR2 would read the 32bpp splash
-     * buffer as RGB565 → garbled. Set the mode directly; the driver never
-     * rewrites RGBMODE, so it sticks (same runtime XLCDC poke video.c uses for
-     * HEO). BASE/OVR1 stay RGB565 = the default, so they need no poke. */
+    /* Commit the OVR2 hardware color mode to 32bpp. The GFX-XLCDC driver's canvas
+     * commit path (drv_gfx_xlcdc.c SET_LAYER_UNLOCK) never writes RGBMODE — it
+     * assumes every layer is the project framebuffer format (RGB565) — so OVR2
+     * would read the 32bpp splash buffer as RGB565 → garbled. Set it directly; the
+     * driver never rewrites RGBMODE, so it sticks (same poke video.c uses for HEO). */
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
 
-    /* Dashboard keeps its authored canvas 0 (bound to BASE); Navigation_OnShow
-     * moves the nav onto canvas 1 (bound to OVR1). Built after the splash so
-     * canvas 0's render color mode ends up RGB565 (the splash's screenInit set
-     * canvas 0 to 8888 before we moved the splash off it). They paint behind the
-     * OVR2 splash. */
+    /* Build + host the dashboard + nav now, pre-scheduler (no render-task
+     * concurrency); they're persistent, built once. Dashboard keeps its authored
+     * canvas 0 (RGB565, bound to BASE); Navigation_OnShow re-hosts the nav onto
+     * canvas 1 (bound to OVR1). They paint behind the OVR2 splash. */
     screenInit_Dashboard();
     screenShow_Dashboard();    /* Dashboard_OnShow binds canvas 0 to BASE */
     screenInit_Navigation();
     screenShow_Navigation();   /* Navigation_OnShow re-hosts nav → OVR1 */
+
+    /* Detach the dashboard and nav roots so that when the scheduler starts the
+     * render task paints only the splash — the panel comes up as fast as the
+     * card + JPEG decode allow, not gated behind the 200+ widget dashboard. Both
+     * trees are fully built and their canvases bound (BASE / OVR1); the loader
+     * re-attaches them with UiManager_AttachMainScreens once the splash is lit,
+     * so they paint behind the opaque OVR2 splash while it's held. Detaching here
+     * is pre-scheduler, so there's no race with the render task. */
+    leRemoveRootWidget(screenGetRoot_Dashboard(0),  CANVAS_DASH);
+    leRemoveRootWidget(screenGetRoot_Navigation(0), CANVAS_NAV);
+}
+
+/* Bring the dashboard + nav into the render path, behind the splash. Called by
+ * the loader after the splash is painted and the backlight is on: the heavy
+ * dashboard paint then happens while the splash is held, off the
+ * splash-to-screen critical path. invalidate() forces a full first paint (the
+ * trees were detached before the scheduler, so they've never been drawn). The
+ * add-root mirrors UiManager_RevealDashboard's post-scheduler remove-root. */
+void UiManager_AttachMainScreens(void)
+{
+    leWidget *dash = screenGetRoot_Dashboard(0);
+    leAddRootWidget(dash, CANVAS_DASH);
+    dash->fn->invalidate(dash);
+
+    leWidget *nav = screenGetRoot_Navigation(0);
+    leAddRootWidget(nav, CANVAS_NAV);
+    nav->fn->invalidate(nav);
+}
+
+/* The splash canvas's pixel buffer (OVR2 scanout). The loader reads splash.raw
+ * straight into this — it's RGBA8888 in the layer's native byte order, so the
+ * read IS the load; no decode or blit. *bytes (if non-NULL) = its size. */
+void *UiManager_SplashFramebuffer(uint32_t *bytes)
+{
+    if (bytes != NULL) { *bytes = (uint32_t)sizeof(s_fb_splash); }
+    return s_fb_splash;
+}
+
+/* Re-latch the splash canvas after the loader writes new pixels into it, so OVR2
+ * scans the updated buffer. */
+void UiManager_CommitSplash(void)
+{
+    gfxcCanvasUpdate(CANVAS_SPLASH);
 }
 
 /* Reveal the (already painted, behind-the-splash) dashboard by dropping the
  * splash overlay. The dashboard canvas is already bound to BASE and full; hiding
- * OVR2 uncovers it instantly. Called by the loader once rendering is idle. */
+ * OVR2 uncovers it instantly. Called by the loader once the dashboard is painted.
+ * The splash has no Legato root (it's a raw framebuffer), so there's nothing in
+ * the input pick path to detach — just hide the canvas, freeing OVR2 for the
+ * future modal dialog. */
 void UiManager_RevealDashboard(void)
 {
-    /* Detach the splash root, don't just hide its canvas: leInput picks across
-     * every attached root top-to-bottom, and the splash is the full-screen
-     * topmost overlay — left attached it swallows all touches (IGNOREPICK on the
-     * root doesn't necessarily cover its children). Removing it takes the whole
-     * tree out of the pick path; also frees the canvas/OVR2 for the modal dialog. */
-    leRemoveRootWidget(screenGetRoot_Splash(0), CANVAS_SPLASH);
     gfxcHideCanvas(CANVAS_SPLASH);
     gfxcCanvasUpdate(CANVAS_SPLASH);
 }

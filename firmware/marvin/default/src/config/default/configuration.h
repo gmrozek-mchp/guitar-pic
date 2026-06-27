@@ -157,6 +157,11 @@ extern "C" {
 #define DRV_SDMMC_INSTANCES_NUMBER                       (1U)
 
 
+/*** CSI Driver Configuration ***/
+#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
+#define CSI_NUM_LANES				CSI_DATA_LANES_2
+
+
 /*** ISC Image Sensor Configuration ***/
 #define ISC_INPUT_FORMAT_TYPE			DRV_IMAGE_SENSOR_RGB
 #define ISC_INPUT_BIT_WIDTH				DRV_IMAGE_SENSOR_8_BIT
@@ -211,11 +216,6 @@ extern "C" {
 #define ISC_VSYNC_POLARITY_VAL		0
 
 
-/*** CSI Driver Configuration ***/
-#define CSI_DATA_FORMAT_TYPE		CSI2_DATA_FORMAT_RGB888
-#define CSI_NUM_LANES				CSI_DATA_LANES_2
-
-
 /*** SDMMC Driver Instance 0 Configuration ***/
 #define DRV_SDMMC_INDEX_0                                0
 #define DRV_SDMMC_IDX0_CLIENTS_NUMBER                    1
@@ -228,7 +228,7 @@ extern "C" {
 /* SDMMC Driver Instance 0 RTOS Configurations*/
 #define DRV_SDMMC_STACK_SIZE_IDX0                         1024
 #define DRV_SDMMC_PRIORITY_IDX0                           1
-#define DRV_SDMMC_RTOS_DELAY_IDX0                         10U
+#define DRV_SDMMC_RTOS_DELAY_IDX0                         1U
 
 
 

@@ -8,21 +8,20 @@
 #include "task.h"
 
 #include "definitions.h"
+#include "app.h"
 #include "log.h"
 #include "storage/storage.h"
 #include "video/video.h"
 #include "ui/ui_manager.h"
-#include "ui/screens/splash/screen_splash.h"
 #include "gfx/legato/renderer/legato_renderer.h"  /* leRenderer_IsIdle */
 
 #define LOADER_TASK_STACK_WORDS  1024u
 #define LOADER_TASK_PRIORITY     2u    /* UI band; blocks on SD I/O + the render wait */
 
-#define SPLASH_REL_PATH    "/ui/splash.jpg"
-#define SPLASH_JPEG_MAX    (1024u * 1024u)   /* cap; skip splash if file is larger */
+#define SPLASH_REL_PATH    "/ui/splash.raw"
 #define SPLASH_READ_CHUNK  (64u * 1024u)
 
-#define SPLASH_MIN_MS              1200u  /* hold the splash at least this long */
+#define SPLASH_MIN_MS              5000u  /* hold the splash at least this long */
 
 /* Render-completion wait. leRenderer_IsIdle() is just frameState == READY, which
  * is also true in the gaps *between* leUpdate calls — and LEGATO_Tasks only ticks
@@ -33,11 +32,6 @@
 #define RENDER_IDLE_STABLE_MS     120u   /* idle must persist this long (>> ~10 ms tick) */
 #define RENDER_IDLE_TIMEOUT_MS   8000u
 
-/* SD readiness: the SDMMC card-detect/analysis isn't done this early in boot, so
- * the first mount can fail (FR_NOT_READY). Retry the whole load a few times. */
-#define SD_LOAD_ATTEMPTS            5u
-#define SD_RETRY_MS               300u
-
 /* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
  * bridge's typical 480p source, leaving a UI strip below. */
 #define VIDEO_WIN_X   280u
@@ -45,20 +39,22 @@
 #define VIDEO_WIN_W   720u
 #define VIDEO_WIN_H   480u
 
-/* Compressed splash JPEG, read from SD. Static (off-stack); the leImage handed
- * to Legato points straight at it, so it must stay resident while the splash is
- * shown. Cache-line aligned for the FatFs multi-block read fast path. */
-static uint8_t s_jpeg[SPLASH_JPEG_MAX] __ALIGNED(CACHE_LINE_SIZE);
-
 static StackType_t  s_task_stack[LOADER_TASK_STACK_WORDS];
 static StaticTask_t s_task_tcb;
 
-/* Read the splash file into s_jpeg. Returns byte count, or 0 on any failure
- * (no card, missing file, too large, short read) — caller falls back to the
- * splash's solid fill. */
-static uint32_t load_splash_file(void)
+/* Read the raw splash file straight into the OVR2 canvas buffer `dst` (capacity
+ * `cap` bytes — the buffer OVR2 scans out). The file is raw RGBA8888 in the
+ * layer's byte order, so the read IS the load: no decode, no blit. Returns false
+ * on any failure (no card, missing file, wrong size, short read) — caller leaves
+ * the pre-filled solid splash in place. */
+static bool load_splash_into(uint8_t *dst, uint32_t cap)
 {
-    if (!Storage_Mount()) { return 0u; }
+    if (!Storage_Mount()) { return false; }
+
+    /* Time the file access (open + read + close) separately from the mount,
+     * which Storage_Mount already logs — so the boot log shows the mount-vs-read
+     * split of the "mount + read" window. */
+    TickType_t read_t0 = xTaskGetTickCount();
 
     char path[64];
     (void)snprintf(path, sizeof(path), "%s%s", Storage_MountPoint(), SPLASH_REL_PATH);
@@ -67,16 +63,17 @@ static uint32_t load_splash_file(void)
     if (h == SYS_FS_HANDLE_INVALID)
     {
         LOG_WARN("LOADER: no splash %s (fs err %d)\r\n", path, (int)SYS_FS_Error());
-        return 0u;
+        return false;
     }
 
+    /* Raw is fixed-size: anything else is the wrong dimensions/format and would
+     * render as garbage, so require an exact match to the canvas buffer. */
     int32_t sz = SYS_FS_FileSize(h);
-    if (sz <= 0 || (uint32_t)sz > SPLASH_JPEG_MAX)
+    if (sz != (int32_t)cap)
     {
-        LOG_WARN("LOADER: splash size %ld invalid (cap %u)\r\n",
-                 (long)sz, (unsigned)SPLASH_JPEG_MAX);
+        LOG_WARN("LOADER: splash size %ld != expected %u\r\n", (long)sz, (unsigned)cap);
         (void)SYS_FS_FileClose(h);
-        return 0u;
+        return false;
     }
 
     uint32_t total = 0u;
@@ -86,7 +83,7 @@ static uint32_t load_splash_file(void)
         size_t want = (size_t)((uint32_t)sz - total);
         if (want > SPLASH_READ_CHUNK) { want = SPLASH_READ_CHUNK; }
 
-        size_t got = SYS_FS_FileRead(h, &s_jpeg[total], want);
+        size_t got = SYS_FS_FileRead(h, &dst[total], want);
         if (got == 0u || got == (size_t)-1) { err = true; break; }
         total += (uint32_t)got;
     }
@@ -95,10 +92,11 @@ static uint32_t load_splash_file(void)
     if (err || total != (uint32_t)sz)
     {
         LOG_WARN("LOADER: splash read short %lu/%ld\r\n", (unsigned long)total, (long)sz);
-        return 0u;
+        return false;
     }
-    LOG_INFO("LOADER: splash %lu B loaded\r\n", (unsigned long)total);
-    return total;
+    uint32_t read_ms = (uint32_t)((xTaskGetTickCount() - read_t0) * portTICK_PERIOD_MS);
+    LOG_INFO("LOADER: splash %lu B read in %lu ms\r\n", (unsigned long)total, (unsigned long)read_ms);
+    return true;
 }
 
 /* Block until the Legato render task has fully painted all pending damage.
@@ -145,39 +143,56 @@ static void loader_task(void *param)
 {
     (void)param;
 
-    /* The splash, dashboard, and nav were built on their own canvases by
-     * UiManager_Initialize (pre-scheduler); the Legato render task is now
-     * painting them (backlight still off). Load the splash image, wait for the
-     * render to finish, then light the panel — the first lit frame is the
-     * fully-painted splash, with the dashboard finished behind it on BASE. No
-     * image (no card / too large) → the panel's solid fill is the fallback. */
-    uint32_t len = 0u;
-    for (uint32_t a = 0u; (a < SD_LOAD_ATTEMPTS) && (len == 0u); a++)
+    /* UiManager_Initialize set up the splash canvas (OVR2, pre-filled solid) and
+     * built the dashboard + nav pre-scheduler but left them detached. Sequence:
+     * read the raw splash straight into the OVR2 buffer, light the panel, then
+     * attach the dashboard + nav so they paint behind the splash while it's held,
+     * then reveal. */
+
+    /* Mount the card and read the raw splash directly into the OVR2 canvas buffer
+     * — no decode, no blit, the read is the load. Storage_Mount polls until the
+     * SDMMC driver finishes card analysis (and logs how long), so this is one
+     * bounded attempt. On failure the pre-filled solid splash stays. */
+    uint32_t cap = 0u;
+    uint8_t *fb  = (uint8_t *)UiManager_SplashFramebuffer(&cap);
+    if (load_splash_into(fb, cap))
     {
-        if (a > 0u) { vTaskDelay(pdMS_TO_TICKS(SD_RETRY_MS)); }
-        len = load_splash_file();
+        UiManager_CommitSplash();
     }
-    if (!((len > 0u) && Splash_SetImageJpeg(s_jpeg, len)))
+    else
     {
         LOG_WARN("LOADER: solid-fill splash (no image)\r\n");
     }
 
-    wait_render_idle();
+    /* The splash is a raw framebuffer OVR2 scans out directly — no render to wait
+     * on. Light the panel immediately. */
     UiManager_EnableBacklight();
     TickType_t shown_at = xTaskGetTickCount();
 
-    /* --- Asset pre-load goes here (album art → DDR cache, etc.). The 32bpp
-     * splash buffer (ui_manager) is free to reuse as decode scratch once the
-     * splash leaves the screen. None yet. --- */
+    /* Splash is up. Now pull the dashboard + nav into the render path; they paint
+     * behind the opaque splash while it's held, off the splash-to-screen path. */
+    UiManager_AttachMainScreens();
 
-    /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
+    /* --- Asset pre-load goes here (album art → DDR cache, etc.). None yet. --- */
+
+    /* Wait for the dashboard to finish painting (bounded) so the reveal never
+     * shows a partial frame, then hold the splash at least SPLASH_MIN_MS so a
+     * fast paint doesn't flash it away. */
+    wait_render_idle();
     TickType_t elapsed   = xTaskGetTickCount() - shown_at;
     TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
     if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
 
-    /* Drop the splash → the dashboard (painted behind it) is revealed, complete.
-     * Then bring the camera up. */
+    /* Drop the splash → the dashboard (painted behind it) is revealed, complete. */
     UiManager_RevealDashboard();
+
+    /* Splash handoff done — bring up the deferred subsystems (video, detector,
+     * actuator links, gameplay, console, perf drain). Held off until now so
+     * their higher-priority tasks didn't preempt the SD mount + splash render. */
+    App_StartServices();
+
+    /* Camera go-live: these just set intent flags the (now-running) video task
+     * reconciles, so the order relative to Video_Initialize above is benign. */
     Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
     Video_CaptureEnable();
     Video_DisplayShow();

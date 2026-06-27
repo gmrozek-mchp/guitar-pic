@@ -57,13 +57,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: f036073a652c04741562fa12c5133e4276c1fec78f26d79d10f08a052bfd11b4
 - file: ../src/config/default/configuration.h
-  hash: 689a9e125b301e24ac43638ee5a5831af96a4608e8ccb1d536a578be674b219b
+  hash: 3551875e9d19f347cd5c31d49d191b54aab01c0909d5cf0894cfbe6a6e4c7655
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 97f47af57df7b001d60815bb59f95e011690ba241216b51211f2288487bf6b93
 - file: ../src/config/default/definitions.h
-  hash: ef8554c7ff9ba9237ffef713927bafc26e6ec725019bc36548e09e1ebe07b1cf
+  hash: a1eb19d9a46678bf1ff92baf4cd93d289c193ecfeb1e26b36a5b077730ac315a
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -258,10 +258,6 @@ generatedFileHashHistoryMap:
   hash: ff2657ce6bf041244aa9ebc1338ce38f44c4d4930ae61fbd89c7e47b17bb7921
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Navigation.h
   hash: 1b7556a1233b2077aeee3d08c68ded8c1a212e7fb70e0f5578398f4a96e162de
-- file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Splash.c
-  hash: 31849ab278be67ccd0199548e131310ea772b5fbab6c4a189ba59d6a4b213dc0
-- file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Splash.h
-  hash: 5a55f2d41e7d9ea2d8fdc16d2b3c04f57c479934355c6d07a7d8fe5f968dd45d
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c
@@ -649,7 +645,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: fbef7e491ba5eff45ca1d6badcfec0f4a5944f127e7ef7852c1d86b1e2b3d719
+  hash: 9554f5f6e752b4075f05a56a52556441a845f97c0f42090db763b107a1a190e0
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -819,7 +815,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/system/time/sys_time_definitions.h
   hash: 46537746b1d12ece6b682c9be1c8f3f219663c638c21a51a973762b7b393afe6
 - file: ../src/config/default/tasks.c
-  hash: 2166b173923585f21359bd24ceccf8e4f111cfd83feece58b9d8ad59bfc21961
+  hash: 38a7a6429577116172e9da105954b11414cbd725a84b98bab2f321a9a943a766
 - file: ../src/config/default/toolchain_specifics.h
   hash: 61b9d7e2427b11029b90cfefa844e187899beffb4b351ccbfab471fd44dbbf2d
 - file: ../src/config/default/usb/src/usb_device.c

@@ -15,8 +15,12 @@
 #define STG_MOUNT        "/mnt/marvin"
 #define STG_TESTFILE     STG_MOUNT "/sdtest.bin"
 
-#define STG_MOUNT_TRIES  50u
-#define STG_MOUNT_WAIT_MS 20u
+/* Poll the mount at a fine granularity so we proceed the instant the SDMMC
+ * driver finishes card analysis, rather than in coarse quanta. ~3 s overall
+ * bound (300 × 10 ms) covers card power-up; on success we log the elapsed time,
+ * which is the true card-ready latency from first mount attempt. */
+#define STG_MOUNT_TRIES  300u
+#define STG_MOUNT_WAIT_MS 10u
 
 #define STG_CHUNK        (16u * 1024u)   /* I/O unit for the throughput test */
 #define STG_BENCH_MAX_MB 64u
@@ -90,12 +94,15 @@ bool Storage_Mount(void)
 {
     if (s_mounted) { return true; }
 
+    TickType_t t0 = xTaskGetTickCount();
     for (uint32_t i = 0u; i < STG_MOUNT_TRIES; i++)
     {
         if (SYS_FS_Mount(STG_DEV, STG_MOUNT, FAT, 0u, NULL) == SYS_FS_RES_SUCCESS)
         {
             s_mounted = true;
-            LOG_INFO("STG: mounted %s at %s\r\n", STG_DEV, STG_MOUNT);
+            uint32_t ms = (uint32_t)((xTaskGetTickCount() - t0) * portTICK_PERIOD_MS);
+            LOG_INFO("STG: mounted %s at %s (%lu ms)\r\n",
+                     STG_DEV, STG_MOUNT, (unsigned long)ms);
             return true;
         }
         vTaskDelay(pdMS_TO_TICKS(STG_MOUNT_WAIT_MS));

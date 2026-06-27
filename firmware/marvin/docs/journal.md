@@ -201,6 +201,97 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-27 — Boot-timing arc DONE: splash visible ~785 ms (was ~4.2–5 s)
+
+Confirmed on hardware: image shows correctly via direct OVR2 scanout, `mount + read` **785 ms** (mount 330 + read 446 of 4 MB), and that's the whole splash cost — no separate paint window. Splash-visible ~5 s → **~0.8 s**.
+
+The arc (line-208 TODO closed):
+1. **Splash-first reveal** — light the panel when the splash is ready, not after the dashboard paints (it paints behind, during the hold).
+2. **Tight SD mount poll** — removed the 50×20 ms + 5×300 ms retry padding; mount logs true latency.
+3. **Lever A — deferred our tasks** (`App_StartServices`, post-reveal). VideoTask (prio 4) was preempting the prio-1 SD tasks during card init: mount 848 → 456 ms.
+4. **SDMMC + SYS_FS RTOS delay 10 → 1 ms** (MCC): mount 456 → ~380 ms. SD is now at its ACMD41 floor; priority boost proved a no-op and was reverted.
+5. **RAW splash → direct framebuffer** — the ~1.77 s software JPEG decode (then a 1.46 s nocache double-blit via Legato) replaced by reading `splash.raw` straight into the OVR2 scanout buffer. Splash paint cost → ~0.
+
+Cleanup: removed the `util/boot_profile.{c,h}` per-task CPU profiler + its marks (diagnostic scaffolding, job done) once the arc closed. Kept the two cheap one-liners that are useful telemetry if boot ever regresses: `STG: mounted (… ms)` (storage.c) and `LOADER: splash … read in … ms` (loader.c). Re-adding the profiler is documented in this section's entries if needed.
+
+Follow-ups (optional): retire the now-unused MGS Splash screen (nothing references it; repoint default screen → Dashboard, keep CONFIG_CANVAS_NUM_OBJ ≥ 3 / OVR2). The dashboard still does its ~1.3 s Legato paint behind the splash during the hold — fine (hidden), revisit only if the hold feels long.
+
+### 2026-06-27 — Splash = direct framebuffer (OVR2 scans the SD read), no Legato (confirmed on hardware)
+
+The leImage RAW path displayed correctly (RGBA8888 + DIRECT_BLIT) but `splash painted` came back **1462 ms** — `_directBlit` row-memcpys the source into Legato's render buffer and the canvas commit copies *that* into `s_fb_splash`: two 4 MB passes through nocache. Greg's insight: the loaded raw *is* a framebuffer — point OVR2 at it and skip Legato entirely.
+
+Confirmed in gfx_canvas.c: `_gfxcCanvasUpdate` programs the OVR2 layer **base address = `canvas.pixelBuffer.pixels`** (a register latch, not a blit). So `s_fb_splash` is literally what OVR2 scans out. **Rearchitected the splash to a direct framebuffer:**
+- **ui_manager:** splash is no longer a Legato screen — just set up CANVAS_SPLASH (OVR2, RGBA8888, shown), pre-fill opaque black (fallback), and the XLCDC RGBMODE poke. New `UiManager_SplashFramebuffer(&bytes)` exposes `s_fb_splash`; `UiManager_CommitSplash()` re-latches OVR2. `RevealDashboard` just hides the canvas (no splash root to detach → the old touch-swallow problem can't recur).
+- **loader:** reads `splash.raw` **straight into `s_fb_splash`** (the OVR2 scanout buffer) — the read is the load. No staging buffer, no decode, no blit, no render-idle wait for the splash. Backlight on right after the read.
+- **Removed** `ui/screens/splash/screen_splash.{c,h}` (image-widget wrapper, now unused) + its user.cmake entry. Generated `le_gen_screen_Splash.*` left untouched (unused). Asset unchanged: `data/ui/splash.raw` 4 MB RGBA8888 `[A,B,G,R]`.
+
+Expected: splash paint cost → ~0 (just the ~450 ms SD read of 4 MB inside `mount + read`); splash-visible ≈ mount 380 + read 450 ≈ **~0.8 s** (from ~4.2 s at start). **Pending hardware:** confirm the image still shows correctly (now via direct scanout) and the `mount + read` window (~830 ms) is the whole splash cost.
+
+### 2026-06-27 — RAW splash works fast; RGB888 rendered blank → RGBA8888 + direct-blit (superseded same day)
+
+With SD at its floor, the ~1.77 s software JPEG decode was the dominant remaining cost. Switched the splash JPEG → raw so Legato skips the decode. **Decode is gone — confirmed on hardware: `splash painted` 1767 → 261 ms.** But the first cut (RGB888) rendered **blank**.
+
+**Root cause of blank:** the raw decoder's `INTERNAL + RAW` branch (legato_imagedecoder_raw.c:298) hands the buffer straight to `leGPU_BlitBuffer` *before* any software stage. A GPU **is** registered (`leInitialize(&gfxDriverInterface, &gfxGPUInterface)` in le_gen_harmony.c), and the SAM9X75 2D GPU can't blit a 24bpp RGB888 source into the 32bpp RGBA8888 target → nothing drawn. The JPEG path worked precisely because `format != RAW` skips that branch and uses the software convert stages.
+
+**Fix:** match the source to the canvas/OVR2 mode (RGBA8888) and set `LE_IMAGE_DIRECT_BLIT` → the raw decoder memcpys the pixels straight to the render buffer (no GPU, no conversion). Byte order from legato_color.c: RGBA_8888 packs `0xRRGGBBAA` (R mask `0xFF000000`), so little-endian memory is **[A,B,G,R]** per pixel.
+
+- **Asset:** `data/ui/splash.raw` regenerated to **4,096,000 B** (1280×800×4), opaque (A=0xFF), bytes `[A,B,G,R]`, via `uv run --with pillow` → `Image.merge("RGBA",(a,b,g,r)).tobytes()` from `splash.jpg` (kept as master). Regenerate the same way on art change. Copy to card `/ui/splash.raw`.
+- **screen_splash:** `Splash_SetImageRaw`, `format = LE_IMAGE_FORMAT_RAW`, `buffer.mode = RGBA_8888`, image flags `= LE_IMAGE_DIRECT_BLIT`.
+- **loader:** `s_raw[4 MB]` in `.region_nocache` (DMA-in + blit-out coherent, no penalty); exact-size check.
+
+Hardware result so far: mount 340 ms, read (3 MB) 337 ms, `mount + read` 686 ms, `splash painted` **261 ms** (was 1767). **Pending hardware:** confirm RGBA8888 build shows the image with correct colors; read is now ~4 MB (~450 ms). Splash-visible target ~0.8–0.9 s (was ~4.2 s at start). RAW kept on SD (changeable), per Greg.
+
+### 2026-06-27 — SD floor reached (~420 ms); priority boost was a no-op, reverted
+
+Lever A landed on hardware: deferring our tasks dropped `mount + read` 848 → **456 ms** (~390 ms was VideoTask prio-4 preemption, confirming the inversion). Residual window still showed LoaderTask ~10.1% / LEGATO ~10.7% (both prio 2, above SD's prio 1), so we tested a temporary boost: bump `DRV_SDMMC0_Tasks` + `SYS_FS_TASKS` to prio 6 over `load_splash_file`, restore to 1 after.
+
+**Result: no change.** So the SD tasks were *not* CPU-starved — the window is the card's intrinsic ACMD41 power-up plus the drivers' own per-step self-pacing, which priority can't touch. **Reverted the boost** (removed `sd_set_task_priority` + the defines + the two calls) to keep the boot path honest. Confirms prio 1 is fine for SD.
+
+**Mount vs read split** (added `read in N ms` to `load_splash_file`): mount **411 ms**, read **38 ms** (337 KB → ~8.7 MB/s, near the card's sequential bandwidth) — so the window is ~90% mount, and the read isn't worth touching. Then Greg dropped the **`SYS_FS` task delay 10 → 1 ms** (MCC) and mount fell 411 → **381 ms** (SYS_FS pacing was ~30 ms of it). 
+
+**SD is now at its floor (~420 ms mount+read, mostly card ACMD41 power-up).** Remaining SD levers are diminishing: shave sub-1 ms driver pacing (generated edits) or *hide* the mount entirely by moving the splash into the firmware image (decode would overlap the mount). Splash-visible is now ~mount 381 + read 38 + decode ~1767 ≈ **2.2 s** (from ~4.2 s at the start).
+
+**The dominant cost is now the ~1.77 s splash JPEG decode** — worth ~10× more than anything left on the SD side. RAW asset is the lever; decision still open (on-SD skips decode; in-image also hides the mount). Greg keeping splash on SD for changeability unless unhappy with where we land.
+
+### 2026-06-27 — Hardware results + Lever A (defer our tasks past splash) + SD pacing finding
+
+Ran the splash-first + tight-poll build on hardware, then chased the SD floor.
+
+**Splash-first worked, and overturned the decode assumption.** New windows: `mount + read` 1318 ms, `splash painted` **1767 ms @ 88% LEGATO**, `dashboard painted` 1311 ms. The `splash painted` window is the JPEG decode + full-screen blit of the **splash alone** (only it attached) — so the ~1.77 s is the **splash decode**, NOT the dashboard (dashboard is *cheaper* at 1.3 s). The journal's earlier "decode isn't the bottleneck, skip RAW" call is **wrong** — the software JPEG decode of the 1280×800 splash is the single biggest item on the splash critical path. Splash now appears ~3.0 s (card 1.27 s + decode 1.77 s), down from ~4.2 s.
+
+**SD floor is mostly software, not the card.** `STG: mounted (1272 ms)` with the tight 10 ms poll → the card wasn't mountable for ~1.27 s even when we poll instantly, so it's not retry quantization. Then **dropped `DRV_SDMMC_RTOS_DELAY_IDX0` 10 ms → 1 ms in MCC: mount fell to 848 ms** (~470 ms was pure driver per-step pacing). Conceptually the SD bring-up *should* be quick: the bus commands are µs, the FS mount is a few sectors; the only legitimately card-dependent slow part is the ACMD41 internal power-up (spec allows ≤1 s, usually tens–hundreds of ms). The rest was our software: 10 ms pacing (now 1 ms) + task preemption (next).
+
+**Priority inversion found (Greg's hypothesis, confirmed by the priority table).** Aggregate CPU% hides *when* tasks run, but the priorities are decisive: **our VideoTask = 4** (highest in the system), PerfDrain = 3, Detector/Game = 4, Timing/Fret/T1S = 5 — all **above** `DRV_SDMMC0`/`SYS_FS` = **1**. Under strict-priority FreeRTOS, whenever any of those is runnable the prio-1 SD tasks are *fully starved*. VideoTask's 27% in the mount window is its capture-pipeline init burst (TC358743 I²C, ISC) front-loaded against exactly the card-init phase.
+
+**Lever A done — defer all our tasks past splash.** Split `APP_Initialize`: it now creates only what the splash needs (UiManager, PerfLog queues, Storage/Results/Catalog state, the loader). New `App_StartServices()` (app.c/app.h) holds Video + Detector + FretboardLink (which also starts T1S) + TimingPipeline + ManualControl + GameplayEngine + Console + PerfLog drain; the loader calls it after `RevealDashboard`, so none of those higher-priority tasks preempt the SD mount + splash render. Video go-live (`SetWindow/CaptureEnable/DisplayShow`) is just intent flags the video task reconciles, so it stays in the loader after `App_StartServices`. **Pending hardware:** re-measure `mount + read` — if it drops from 848 ms, the Video-preemption theory is confirmed; the residual is the card's real ACMD41 floor.
+
+**RAW splash: deferred, not ruled out.** Greg prefers keeping the splash on SD (easy to change) over baking RAW into the image; revisit RAW (on-SD to skip decode, or in-image to also hide the mount) only if the SD path doesn't land somewhere he's happy with. The 1.77 s decode is the lever it would attack.
+
+### 2026-06-27 — Splash-first reveal + tight SD mount poll (code-complete, pending hardware)
+
+Ran the profiler (results below) and acted on them. The verdict killed the priority-shaping idea and reframed the fix.
+
+**Profiler read (`mount + read` 2453 ms / `decode + render` 1756 ms):**
+- SD is **not** CPU-bound or starved: `DRV_SDMMC0_Task` + `SYS_FS_TASKS` at **0.0%** CPU. Priority-boosting them is pointless — confirmed by measurement. (Kills the original "raise SD priority in boot" plan.)
+- `mount + read` window: LEGATO 45.3%, IDLE 35.7%, VideoTask 14.6%, SD ~0%. The `STG: mount failed (err 3)` → `mounted` shows the **first** `Storage_Mount` burned its full 50×20 ms = 1 s failing (card not ready), then a 300 ms loader sleep, then success — i.e. ~1–1.3 s of the window was retry padding waiting on card-ready, with LEGATO/Video opportunistically painting in the gaps.
+- `decode + render` window: LEGATO **88.8%**, IDLE 6.8% — CPU-bound. Most of this is **finishing the 200+ widget dashboard** (only ~40% painted by end of window 1), not the splash image. And backlight-on sat *after* this window, so the dashboard paint was gating when the splash appeared.
+
+**Root insight:** the splash was waiting on the whole frame — splash image **and** the dashboard tail — because `wait_render_idle` uses the global `leRenderer_IsIdle()`. The dashboard was effectively fully painted *before* the splash was even shown.
+
+**Change 1 — splash-first reveal (decouple backlight from dashboard paint).** `UiManager_Initialize` still builds all three screens pre-scheduler (no construction race) but now **detaches** the dashboard + nav roots (`leRemoveRootWidget`, pre-scheduler) so only the splash paints at scheduler start. New `UiManager_AttachMainScreens()` re-attaches them (`leAddRootWidget` + `invalidate`) — mirrors the post-scheduler `leRemoveRootWidget` that `RevealDashboard` already does, so it's established practice, not a new hazard. Loader sequence now: load JPEG → `wait_render_idle` (splash alone → fast) → **backlight on** → `AttachMainScreens` (dashboard/nav paint behind the opaque OVR2 splash) → `wait_render_idle` (bounded, so reveal never shows a partial frame) → min-hold → reveal. Trade-off: gives up the ~1.1 s of dashboard-paint that used to overlap the card-wait, so the full dashboard paint now lands in the hold — fine, since the splash should be up longer anyway (Greg's call). `SPLASH_MIN_MS` 1200 → 1500. New marks: `loader start` → `mount + read` → `splash painted` → `dashboard painted`.
+
+**Change 2 — tight SD mount poll (Lever B, part 1 + measurement).** Collapsed the double-retry (loader 5×300 ms wrapper removed; `Storage_Mount` 50×20 ms → **300×10 ms**) so we proceed the instant the card is ready instead of in coarse quanta, and `Storage_Mount` now logs **elapsed-at-mount** — the true card-ready latency from first attempt. Open question Greg raised: a seated card shouldn't need ~2 s; the next boot's `STG: mounted ... (N ms)` line tells us whether the ~1 s first-attempt failure was the card genuinely powering up, the driver's 10 ms-per-step pacing through CMD0/CMD8/ACMD41/CMD2/CMD3, or just our old quantization. Card-detect is POLLING method (skips the 250 ms SDCD debounce); the real delay is media init dominated by the ACMD41 power-up loop (2 s timeout, paced by `DRV_SDMMC_RTOS_DELAY_IDX0 = 10 ms`). If N is large, next lever is lowering that 10 ms in MCC.
+
+**Still pending:** on-hardware run for the new `BOOTPROF`/`STG` numbers. **Lever A** (defer VideoTask/PerfDrain/detector/gameplay/manual task spawns out of `APP_Initialize` to post-reveal) not yet done — it frees CPU so the dashboard paints faster during the hold; do it next if the dashboard wait is long.
+
+### 2026-06-27 — Boot-timing instrumentation: per-task CPU profiler over the splash window
+
+Before tuning boot, measure where the mount window goes: inherent waiting vs. CPU contention. Established the boot order precisely — `main` → `SYS_Initialize` (single-threaded PLIB/driver init, incl. SDMMC/SYS_FS register; `APP_Initialize` runs *last, pre-scheduler*) → `SYS_Tasks` (creates **all** task threads + the APP launcher, then `vTaskStartScheduler`, never returns). Consequences for the tuning plan:
+- Can't `vTaskPrioritySet` the Harmony tasks from `APP_Initialize` — they don't exist yet. The valid post-scheduler hook for priority shaping is the loader task.
+- Taking over `main.c` / removing APP from MCC is only an *ownership* cleanup, not a timing lever: `SYS_Tasks` bundles create-all-then-start-scheduler into one non-returning call, so it can't stage scheduler bring-up without re-implementing task orchestration (the generated-architecture surgery we're avoiding). The real levers — deferring our own `_Initialize` task spawns to post-splash, and runtime priority shaping from the loader — are all in code we own.
+
+Added `util/boot_profile.{c,h}`: `BootProfile_Mark(label)` snapshots every task's cumulative run-time counter (`uxTaskGetSystemState`; run-time stats + trace facility already on, 64-bit TC0 counter) and from the 2nd call logs the window's per-task CPU % + wall-clock ms. Decisive read = **idle %**: high → inherent waiting (card power-up, SDMMC 10 ms/step RTOS pacing, `Storage_Mount` 50×20 ms + loader 5×300 ms retry sleeps); low with USB/LEGATO/XLCDC/maxtouch eating it → real contention. Wired three marks in `loader.c`: `loader start` → `mount + read` → `decode + render`. Zero-alloc (static `TaskStatus_t[24]`), generated-code-free. **Pending on-hardware run** to get the split, then tune.
+
 ### 2026-06-26 — TODO (next): make SD mount + splash load top priority on boot
 
 Backlight gating confirmed working on hardware — the panel is now properly dark until the splash is painted (so PC18 / `AC69T88A_BACKLIGHT_EN` is active-high as assumed). **But the splash doesn't appear until ~5 s after power-on.** Breakdown: roughly **2–3 s is the SD card mount** (SDMMC card-detect/analysis isn't ready early in boot — the loader's retried `Storage_Mount`), and the rest is JPEG decode + render — so the JPEG decode is **not** the dominant cost (the full-screen-scratch change made it fine; no need to switch to a RAW asset). Boot in general is slow.

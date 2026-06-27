@@ -15,7 +15,6 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/loader.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/nav/screen_nav.c"
-    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/splash/screen_splash.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/song_list/widget_song_list.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/song_list/widget_song_list_demo.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/button_aa/widget_button_aa.c"
