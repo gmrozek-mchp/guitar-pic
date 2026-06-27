@@ -21,6 +21,7 @@ groupModules:
   - le_gfx_driver_xlcdc
   - le_gfx_gfx2d
   - plib_gfx2d
+  - pwm
   - sys_input
 - group: Group2
   modules:
@@ -63,7 +64,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/ddram.ld
   hash: 97f47af57df7b001d60815bb59f95e011690ba241216b51211f2288487bf6b93
 - file: ../src/config/default/definitions.h
-  hash: a1eb19d9a46678bf1ff92baf4cd93d289c193ecfeb1e26b36a5b077730ac315a
+  hash: 25a7c4b77432debbd6f06210d884681a07d1f82a7aa3943d7bdd706483cca91f
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -645,7 +646,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: 9554f5f6e752b4075f05a56a52556441a845f97c0f42090db763b107a1a190e0
+  hash: b7f61165be46553649df44de394014e16553f2ffa7452de2de93e5709e0db559
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -663,7 +664,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: ecac495da245fcf2efb518a3c54daa8258a213a514e6a94db991db6feae912db
+  hash: 8327292f33a9237036a5e0e5b335a4bcb69a7e5f4091e7d50cf995af12d58bbd
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -705,13 +706,19 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/mmu/plib_mmu.h
   hash: 7fb6e6b8ad6a80b7fc04c0264b7cdf49e6d6b887e4f3c5aa394eda88e32e0116
 - file: ../src/config/default/peripheral/pio/plib_pio.c
-  hash: 9489bb890f5b583709914339d00c2a51572a752f968f507ac689118f58ff6a63
+  hash: 7e663d96fe9b40a5f65eb76670c0ac159d2aea2b904622b75ba11da97ab72375
 - file: ../src/config/default/peripheral/pio/plib_pio.h
-  hash: 631850c5b8c53a022f764caf9698ecffc4260550e35547d54c4152516ad9a49d
+  hash: d88cb15edab92af670f81e312f671ab27973cc2f7bd50e1fac05875506432949
 - file: ../src/config/default/peripheral/pit/plib_pit.c
   hash: 8a0cc770abe2faed88127bb7e1a489749d3c9f971094fc9addf001a7a7ded5fa
 - file: ../src/config/default/peripheral/pit/plib_pit.h
   hash: 05552497ada087ffbfbcf7190aa4ac216399c208c72f8014c207c01c074dafa0
+- file: ../src/config/default/peripheral/pwm/plib_pwm.c
+  hash: f76889b9f9d904cd0030acf180589a2772476438152e53f1e423469188da23ff
+- file: ../src/config/default/peripheral/pwm/plib_pwm.h
+  hash: 4dafa90dbb5e7ab275d2e4a69d9041e1f6cf56e4aef852853e2b7632980fd632
+- file: ../src/config/default/peripheral/pwm/plib_pwm_common.h
+  hash: 0e7f67493c51238d9855de7a0db399cf2a21c15b2c9bce46924f78b7f3915156
 - file: ../src/config/default/peripheral/rtc/plib_rtc.c
   hash: 537ac6521b4b88683e06047cab2224e54df7abc6c5a918b68d64f1b41734eb17
 - file: ../src/config/default/peripheral/rtc/plib_rtc.h
@@ -737,7 +744,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
   hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
-  hash: 004f8463493baf10f48fa3db10eefecce21829c55a18d9aa68b18119c3bef49f
+  hash: e494c030be42f76b876978cfd0acffa635055ef6918de5c8c470da3432b8f700
 - file: ../src/config/default/stdio/xc32_monitor.c
   hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/sys_tasks.h

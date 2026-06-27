@@ -8,7 +8,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "definitions.h"   /* XLCDC_*, AC69T88A_BACKLIGHT_EN_Set */
+#include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
 #include "log.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -109,13 +109,37 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
     XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
 }
 
+#define BACKLIGHT_DEFAULT_PCT  50u   /* boot brightness */
+
+static uint32_t s_backlight_pct;
+
+/* Set the backlight brightness (0–100%, clamped). The backlight is PWM-dimmed on
+ * PC18 (PWM channel 0, configured by MCC). Duty is a fraction of the channel
+ * period, read at runtime so this tracks whatever period MCC sets; 50% is
+ * period/2, correct regardless of the channel's polarity. PWM_ChannelDutySet
+ * writes CDTY directly while the channel is stopped and the update register once
+ * running, so this is valid both before the channel starts and at runtime. */
+void UiManager_SetBacklight(uint32_t pct)
+{
+    if (pct > 100u) { pct = 100u; }
+    s_backlight_pct = pct;
+    uint32_t period = PWM_ChannelPeriodGet(PWM_CHANNEL_0);
+    PWM_ChannelDutySet(PWM_CHANNEL_0, (period * pct) / 100u);
+}
+
+uint32_t UiManager_GetBacklight(void)
+{
+    return s_backlight_pct;
+}
+
+/* Light the backlight at the default brightness. The PWM channel is stopped (no
+ * output) until started here, so the panel stays dark until the splash is up —
+ * no pre-splash frame. PWM_Initialize ran at startup; this sets the duty (while
+ * stopped, so the channel starts straight at the target) and starts it. */
 static void enable_backlight(void)
 {
-    /* The backlight is a plain GPIO (AC69T88A_BACKLIGHT_EN / PC18), NOT the LCDC
-     * PWM that XLCDC_EnableBacklight() drives (that output isn't wired to this
-     * board's backlight). The pin starts low at boot, so the panel stays dark
-     * until here — no pre-splash frame. Active-high (the _Set name == enable). */
-    AC69T88A_BACKLIGHT_EN_Set();
+    UiManager_SetBacklight(BACKLIGHT_DEFAULT_PCT);
+    PWM_ChannelsStart(PWM_CHANNEL_0_MASK);
 }
 
 /* ── Legato render serialization ──────────────────────────────────────────────

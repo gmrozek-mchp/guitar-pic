@@ -204,14 +204,9 @@
 #define NAND_D4_Get()               ((PIOD_REGS->PIO_PDSR >> 10U) & 0x1U)
 #define NAND_D4_PIN                  PIO_PIN_PD10
 
-/*** Macros for AC69T88A_BACKLIGHT_EN pin ***/
-#define AC69T88A_BACKLIGHT_EN_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<18U))
-#define AC69T88A_BACKLIGHT_EN_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<18U))
-#define AC69T88A_BACKLIGHT_EN_Toggle()            (PIOC_REGS->PIO_ODSR ^= ((uint32_t)1U<<18U))
-#define AC69T88A_BACKLIGHT_EN_OutputEnable()      (PIOC_REGS->PIO_OER = ((uint32_t)1U<<18U))
-#define AC69T88A_BACKLIGHT_EN_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<18U))
-#define AC69T88A_BACKLIGHT_EN_Get()               ((PIOC_REGS->PIO_PDSR >> 18U) & 0x1U)
-#define AC69T88A_BACKLIGHT_EN_PIN                  PIO_PIN_PC18
+/*** Macros for LCD_BACKLIGHT_PWM pin ***/
+#define LCD_BACKLIGHT_PWM_Get()               ((PIOC_REGS->PIO_PDSR >> 18U) & 0x1U)
+#define LCD_BACKLIGHT_PWM_PIN                  PIO_PIN_PC18
 
 /*** Macros for LED_4 pin ***/
 #define LED_4_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<15U))

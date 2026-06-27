@@ -25,6 +25,7 @@
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/catalog.h"
+#include "ui/ui_manager.h"
 #include "ui/widgets/song_list/widget_song_list_demo.h"
 
 #define CON_TASK_STACK_WORDS  1024u
@@ -585,6 +586,26 @@ static void cmd_strum(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("strum %s", down ? "down" : "up");
 }
 
+static void cmd_backlight(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    if (tok == NULL)
+    {
+        console_printf("backlight = %u%%  (usage: backlight <0-100>)",
+                       (unsigned)UiManager_GetBacklight());
+        return;
+    }
+    uint32_t pct = parse_u32(tok, 101u);   /* 101 = invalid (out of 0-100 range) */
+    if (pct > 100u)
+    {
+        console_printf("usage: backlight <0-100>");
+        return;
+    }
+    UiManager_SetBacklight(pct);
+    console_printf("backlight = %u%%", (unsigned)UiManager_GetBacklight());
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -604,6 +625,7 @@ static void register_commands(void)
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
+        { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
     {

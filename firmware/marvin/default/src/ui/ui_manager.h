@@ -43,6 +43,13 @@ void UiManager_Initialize(void);
  * Set before UiManager_Initialize. */
 void UiManager_SetSplashShownCallback(void (*cb)(void));
 
+/* Set the LCD backlight brightness, 0–100% (clamped). PWM-dimmed on PC18; valid
+ * once the PWM channel is up (after the splash is shown at boot). */
+void UiManager_SetBacklight(uint32_t pct);
+
+/* Current backlight brightness, 0–100%. */
+uint32_t UiManager_GetBacklight(void);
+
 #ifdef __cplusplus
 }
 #endif

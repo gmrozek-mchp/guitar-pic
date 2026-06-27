@@ -440,6 +440,8 @@ void SYS_Initialize ( void* data )
 
     FLEXCOM8_TWI_Initialize();
 
+    PWM_Initialize();
+
     XLCDC_Initialize();
 
 	SDMMC0_Initialize();

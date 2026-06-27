@@ -79,6 +79,7 @@
 #include "peripheral/pio/plib_pio.h"
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
+#include "peripheral/pwm/plib_pwm.h"
 #include "system/input/sys_input.h"
 #include "system/fs/sys_fs.h"
 #include "system/fs/sys_fs_media_manager.h"

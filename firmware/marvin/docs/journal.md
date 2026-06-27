@@ -201,6 +201,12 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-27 — Backlight: GPIO → PWM dimming on PC18 (50% default)
+
+MCC reconfigured PC18 from a plain GPIO (`AC69T88A_BACKLIGHT_EN`) to a **PWM output** (PWM channel 0: MCK/1024, left-aligned, CPRD=256). The old `AC69T88A_BACKLIGHT_EN_Set()` macro is gone, so `ui_manager`'s `enable_backlight()` was updated to drive the PWM instead. New `set_backlight(pct)` helper: reads the channel period at runtime and sets duty = period·pct/100 via `PWM_ChannelDutySet` (writes CDTY while stopped, the update reg once running — valid both at boot and at runtime); `enable_backlight()` sets the default then `PWM_ChannelsStart`. Default **50%** (`BACKLIGHT_DEFAULT_PCT`); 50% = period/2 is polarity-independent. Duty is set before the channel starts, so it comes up straight at 50% with no transient. `PWM_Initialize()` already runs at initialization.c:443; the channel is stopped (no output) until `enable_backlight`, preserving "dark until splash". Confirmed working on hardware (50% at boot).
+
+`set_backlight` promoted to public **`UiManager_SetBacklight(pct)`** + `UiManager_GetBacklight()` (tracks current %); console command **`backlight <0-100>`** (`cmd_backlight` in console.c) sets/reports brightness at runtime. Exact brightness curve / pre-splash idle level still to eyeball.
+
 ### 2026-06-27 — UI boot rewrite: splash module + ui_manager orchestrator, loader retired (confirmed on hardware)
 
 Cleaned up the tangled `ui_manager` + `loader` (boot path had UI sequencing, layer assignment, SD I/O, and the service handoff smeared across both files and the pre-/post-scheduler boundary). Plan: `.claude/plans/greedy-launching-shamir.md`.
