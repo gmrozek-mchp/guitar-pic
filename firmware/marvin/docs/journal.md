@@ -201,6 +201,13 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-27 — Boot bootstraps rebuilt: blue LED channel repurposed to PC18, output low
+
+Rebuilt all four at91bootstrap binaries in `binaries/` (JTAG bkptnone ELF, NAND, QSPI, SD) so the otherwise-unused **blue LED channel drives PC18 low at boot** (`CONFIG_LED_B_PIN=18`, `CONFIG_LED_B_VALUE=0`). at91bootstrap's only LED action is the one-shot `at91_leds_init()`; red (PC14) and green (PC21) unchanged. NAND `*-pmecchead.bin` regenerated.
+
+- Override applied at build time (sed `.config`), so the at91bootstrap clone stays vanilla; recipes + rationale in [`binaries/README.md`](../binaries/README.md) ("Marvin customization").
+- **Gotcha:** `CONFIG_LED_B_PIN` reaches the code through the generated `autoconf.h`, which a plain `make` does *not* refresh after a `.config` hand-edit — must run `make oldconfig` after the sed (unlike `CONFIG_IMAGE_NAME`, read straight from `.config` as a `-D`). Verified in the ELF: blue call is `pio_set_gpio_output(82, 0)` (0x52 = PIOC·32+18, low).
+
 ### 2026-06-27 — Boot-timing arc DONE: splash visible ~785 ms (was ~4.2–5 s)
 
 Confirmed on hardware: image shows correctly via direct OVR2 scanout, `mount + read` **785 ms** (mount 330 + read 446 of 4 MB), and that's the whole splash cost — no separate paint window. Splash-visible ~5 s → **~0.8 s**.
