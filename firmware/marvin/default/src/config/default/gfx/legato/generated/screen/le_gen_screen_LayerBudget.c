@@ -14,16 +14,6 @@ leResult screenInit_LayerBudget(void)
     if(initialized == LE_TRUE)
         return LE_FAILURE;
 
-    initialized = LE_TRUE;
-
-    return LE_SUCCESS;
-}
-
-leResult screenShow_LayerBudget(void)
-{
-    if(showing == LE_TRUE)
-        return LE_FAILURE;
-
     // layer 0
     root0 = leWidget_New();
     root0->fn->setSize(root0, LE_DEFAULT_SCREEN_WIDTH, LE_DEFAULT_SCREEN_HEIGHT);
@@ -57,6 +47,16 @@ leResult screenShow_LayerBudget(void)
     leAddRootWidget(root2, 2);
     leSetLayerColorMode(2, LE_COLOR_MODE_RGB_565);
 
+    initialized = LE_TRUE;
+
+    return LE_SUCCESS;
+}
+
+leResult screenShow_LayerBudget(void)
+{
+    if(showing == LE_TRUE)
+        return LE_FAILURE;
+
     showing = LE_TRUE;
 
     return LE_SUCCESS;
@@ -71,6 +71,13 @@ void screenUpdate_LayerBudget(void)
 
 void screenHide_LayerBudget(void)
 {
+    showing = LE_FALSE;
+}
+
+void screenDestroy_LayerBudget(void)
+{
+    if(initialized == LE_FALSE)
+        return;
 
     leRemoveRootWidget(root0, 0);
     leWidget_Delete(root0);
@@ -83,15 +90,6 @@ void screenHide_LayerBudget(void)
     leRemoveRootWidget(root2, 2);
     leWidget_Delete(root2);
     root2 = NULL;
-
-
-    showing = LE_FALSE;
-}
-
-void screenDestroy_LayerBudget(void)
-{
-    if(initialized == LE_FALSE)
-        return;
 
     initialized = LE_FALSE;
 }

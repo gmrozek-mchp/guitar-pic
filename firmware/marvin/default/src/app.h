@@ -167,6 +167,25 @@ void APP_Initialize ( void );
 
 void APP_Tasks( void );
 
+
+/*******************************************************************************
+  Function:
+    void App_StartServices ( void )
+
+  Summary:
+    Brings up the runtime subsystems that aren't needed to paint the splash.
+
+  Description:
+    APP_Initialize creates only what the boot splash needs (UI manager, storage
+    state, the loader task). The video capture pipeline, detector, actuator
+    links, gameplay observer, console, and perf-log drain all spawn tasks at
+    priorities above the SDMMC/filesystem tasks, so starting them during boot
+    starves the card mount and the splash render. The loader calls this once the
+    dashboard is revealed, so those subsystems come online after the splash is up.
+*/
+
+void App_StartServices( void );
+
 //DOM-IGNORE-BEGIN
 #ifdef __cplusplus
 }

@@ -36,7 +36,7 @@ D10,PB22,QSPI_IO1,QSPI_QIO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 D16,PD10,NAND_D4,EBI_NANDDAT4,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 D17,PB8,,Available,In,,,,,,,,
 E1,PC16,,Available,In,,,,,,,,
-E2,PC18,AC69T88A_BACKLIGHT_EN,GPIO,Out,High,No,Disabled,No,No,Disabled,No,Low
+E2,PC18,LCD_BACKLIGHT_PWM,PWM_PWM0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 E3,PC15,LED_4,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 E4,PC23,,Available,In,,,,,,,,
 E16,PD14,NAND_RDY,EBI_NANDRDY,n/a,n/a,No,Disabled,No,No,Disabled,No,Low

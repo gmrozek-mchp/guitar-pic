@@ -1,8 +1,8 @@
-#include "ui/song_list_demo.h"
+#include "ui/widgets/song_list/widget_song_list_demo.h"
 
 #include <stdio.h>
 
-#include "ui/song_list.h"
+#include "ui/widgets/song_list/widget_song_list.h"
 #include "game/catalog.h"
 #include "log.h"
 

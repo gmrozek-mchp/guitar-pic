@@ -1,9 +1,10 @@
-#include "ui/nav.h"
+#include "ui/screens/nav/screen_nav.h"
 
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "ui/button_aa.h"
+#include "ui/ui_manager.h"   /* CANVAS_NAV */
+#include "ui/widgets/button_aa/widget_button_aa.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -11,13 +12,10 @@
 #include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"   /* hamburger event decl */
 #include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"  /* nav widgets + OnShow */
 
-/* The nav drawer is authored as its own MGS Screen (Navigation) and hosted as a
- * resident overlay on Legato layer 1 → canvas 1 → OVR1. Canvas id == Legato
- * layer index (baseCanvasID 0); HW layer indices are BASE 0, HEO 1, OVR1 2,
- * OVR2 3 (HEO is the live camera). */
-#define NAV_LAYER    1u   /* Legato layer / canvas id we host the drawer on */
-#define HW_OVR1      2u
-
+/* The nav drawer is authored as its own MGS Screen (Navigation) and renders into
+ * its own canvas (CANVAS_NAV, defined in ui_manager.h). The nav is layer-agnostic
+ * — ui_manager (the compositor) decides which hardware layer this canvas is shown
+ * on; the drawer's slide works on the canvas window, independent of the layer. */
 #define NAV_W   320u
 #define NAV_H   800u
 
@@ -122,9 +120,9 @@ static void nav_slide_to(int target_x)
 {
     int x, y;
 
-    gfxcStopEffect(NAV_LAYER, GFXC_FX_MOVE);
-    gfxcGetWindowPosition(NAV_LAYER, &x, &y);
-    gfxcStartEffectMove(NAV_LAYER, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAV_SLIDE_DELTA);
+    gfxcStopEffect(CANVAS_NAV, GFXC_FX_MOVE);
+    gfxcGetWindowPosition(CANVAS_NAV, &x, &y);
+    gfxcStartEffectMove(CANVAS_NAV, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAV_SLIDE_DELTA);
 }
 
 static void nav_open(void)
@@ -136,7 +134,7 @@ static void nav_open(void)
      * Show first so the move is visible (the FX engine enables the layer from
      * canvas.active). */
     Navigation_PANEL_NAVIGATION->fn->invalidate(Navigation_PANEL_NAVIGATION);
-    gfxcShowCanvas(NAV_LAYER);
+    gfxcShowCanvas(CANVAS_NAV);
     nav_slide_to(0);
     s_nav_open = true;
 }
@@ -154,7 +152,7 @@ static void nav_close(void)
 
 /* Move-effect completion callback. At the off-screen end of a close slide the
  * window clip leaves a degenerate sliver of the drawer composited at screen
- * left; disabling OVR1 outright once the slide finishes removes it cleanly. Only
+ * left; hiding the canvas (disabling its layer) once the slide finishes removes it cleanly. Only
  * acts on a completed close — an open leaves the layer shown, and a re-open
  * mid-close restarts the move (so this won't fire for the abandoned close). */
 static void nav_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
@@ -165,38 +163,37 @@ static void nav_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
 
     if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_nav_open)
     {
-        gfxcHideCanvas(NAV_LAYER);
-        gfxcCanvasUpdate(NAV_LAYER);
+        gfxcHideCanvas(CANVAS_NAV);
+        gfxcCanvasUpdate(CANVAS_NAV);
     }
 }
 
 void Nav_InitSurface(void)
 {
-    gfxcSetPixelBuffer(NAV_LAYER, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
+    gfxcSetPixelBuffer(CANVAS_NAV, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
 }
 
-/* Navigation screen composition root (declared in le_gen_screen_Navigation.h),
- * raised by screenShow_Navigation. The screen authors its content on its own
- * layer 0; re-host that root onto NAV_LAYER so the drawer composites on OVR1
- * while the dashboard keeps layer 0. Then keep the panel visible+enabled so
- * Legato renders it into canvas NAV_LAYER continuously, bind to OVR1, and start
- * closed (parked off-screen + hidden); Legato's pick rect follows the layer
- * position (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav can't intercept
- * dashboard touches. The off-screen X also seeds the slide-in animation. */
+/* Host hook for the Navigation screen (declared in le_gen_screen_Navigation.h).
+ * The MGS screen authors its content on Legato layer 0; move the root so it
+ * renders into CANVAS_NAV instead (the dashboard keeps canvas 0), set the window
+ * (parked off-screen / closed) and content. Layer-agnostic — ui_manager binds
+ * CANVAS_NAV to a hardware layer; the canvas update there applies this window.
+ * Keep the panel visible+enabled so Legato renders it continuously, and start
+ * closed: the touch pick rect follows the canvas window position
+ * (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav can't intercept dashboard
+ * touches, and the off-screen X seeds the slide-in. */
 void Navigation_OnShow(void)
 {
     leWidget *root = screenGetRoot_Navigation(0);
     leRemoveRootWidget(root, 0);
-    leAddRootWidget(root, NAV_LAYER);
+    leAddRootWidget(root, CANVAS_NAV);
 
     Navigation_PANEL_NAVIGATION->fn->setEnabled(Navigation_PANEL_NAVIGATION, LE_TRUE);
     Navigation_PANEL_NAVIGATION->fn->setVisible(Navigation_PANEL_NAVIGATION, LE_TRUE);
 
-    gfxcSetWindowSize(NAV_LAYER, NAV_W, NAV_H);
-    gfxcSetWindowPosition(NAV_LAYER, NAV_CLOSED_X, 0);
-    gfxcSetLayer(NAV_LAYER, HW_OVR1);
-    gfxcSetEffectsCallback(NAV_LAYER, nav_fx_done, NULL);
-    gfxcCanvasUpdate(NAV_LAYER);
+    gfxcSetWindowSize(CANVAS_NAV, NAV_W, NAV_H);
+    gfxcSetWindowPosition(CANVAS_NAV, NAV_CLOSED_X, 0);
+    gfxcSetEffectsCallback(CANVAS_NAV, nav_fx_done, NULL);
 
     nav_buttons_init();
 }

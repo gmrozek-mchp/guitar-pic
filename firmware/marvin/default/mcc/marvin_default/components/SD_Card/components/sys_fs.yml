@@ -544,6 +544,12 @@ data:
       attributes:
         id: SYS_FS_RTOS_DELAY
         label: Task Delay
+      children:
+      - children:
+        - attributes:
+            value: '1'
+          type: User
+        type: Values
       type: Integer
     SYS_FS_RTOS_STACK_SIZE:
       attributes:

@@ -145,7 +145,7 @@ static void lSYS_FS_Tasks(  void *pvParameters  )
     while(true)
     {
         SYS_FS_Tasks();
-        vTaskDelay(10U / portTICK_PERIOD_MS);
+        vTaskDelay(1U / portTICK_PERIOD_MS);
     }
 }
 

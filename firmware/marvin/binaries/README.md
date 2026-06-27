@@ -43,6 +43,34 @@ The **SAM9X75 Curiosity Hybrid (cHybrid)** maps to the at91bootstrap
 PIOC 14 — `curiosity_pro` uses PC14, plain `curiosity` uses PC19; DDR is identical
 across both). All variants here use the in-package `W632GU6NB12I` DDR3L.
 
+## Marvin customization: blue LED channel → PC18, output low
+
+at91bootstrap's only LED action is a one-shot `at91_leds_init()` in `hw_init()`
+(`driver/led.c`): it drives up to three Kconfig-defined pins (R/G/B) to fixed
+levels and never touches them again. The blue channel carries no status meaning,
+so we **repurpose it to hold PC18 low at boot** — a generic "init this pin output
+low" with no source edits. (`pio_set_gpio_output(pin, 0)` = output enable, pull-up
+off, drive low.) Stock blue is PC20; our binaries move it to **PC18, value 0**,
+leaving red (PC14) and green (PC21) as-is.
+
+This is applied at build time so the at91bootstrap clone stays vanilla. After
+`make <defconfig>` and **before** the final `make`, run:
+
+```sh
+sed -i '' 's|^CONFIG_LED_B_PIN=.*|CONFIG_LED_B_PIN=18|' .config      # macOS sed
+sed -i '' 's|^CONFIG_LED_B_VALUE=.*|CONFIG_LED_B_VALUE=0|' .config
+make CROSS_COMPILE=arm-none-eabi- oldconfig </dev/null               # see note
+```
+
+> **The `oldconfig` step is mandatory.** `CONFIG_LED_B_PIN` reaches the code via
+> the generated C header `config/at91bootstrap-config/autoconf.h`, and a plain
+> `make` does **not** regenerate that header after a hand-edit of `.config` — only
+> a kconfig target (`oldconfig`) does. Skip it and the build silently keeps PC20.
+> (Contrast `CONFIG_IMAGE_NAME` below, which the Makefile reads from `.config`
+> directly as a `-D` flag, so it needs no `oldconfig`.) Verify with:
+> `arm-none-eabi-objdump -d <elf> | grep -A8 at91_leds_init` — the blue call
+> should load `r0, #82` (0x52 = PIOC·32+18) with `r1, #0`.
+
 ## Prerequisites
 
 - **at91bootstrap source** (this was built from `v4.0.13`):
@@ -70,6 +98,10 @@ export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
 
 make mrproper
 make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pro_bkptnone_defconfig
+# blue LED channel -> PC18, output low (see "Marvin customization" above)
+sed -i '' 's|^CONFIG_LED_B_PIN=.*|CONFIG_LED_B_PIN=18|' .config
+sed -i '' 's|^CONFIG_LED_B_VALUE=.*|CONFIG_LED_B_VALUE=0|' .config
+make CROSS_COMPILE=arm-none-eabi- oldconfig </dev/null
 make CROSS_COMPILE=arm-none-eabi-
 ```
 
@@ -100,7 +132,8 @@ CONFIG_SAM9X7=y
 CONFIG_DDR_SET_BY_DEVICE=y
 CONFIG_DDR_W632GU6NB12I=y
 CONFIG_BOARD_QUIRK_SAM9X75_CURIOSITY=y
-CONFIG_LED_*    # red on PC14 (curiosity_pro)
+CONFIG_LED_*    # red PC14, green PC21, blue PC20 (curiosity_pro);
+                # we override blue -> PC18 value 0 at build time (see above)
 ```
 
 ## Build the production (standalone-boot) bootstraps
@@ -121,14 +154,24 @@ No actual u-boot / Linux is involved; marvin (`harmony.bin`) is the second stage
 cd ~/Projects/microchip/at91bootstrap
 export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
 
+# Each build inserts the blue-LED -> PC18 override (see "Marvin customization"
+# above) between `make <defconfig>` and the final `make`:
+led_pc18() {   # run from the at91bootstrap dir, after `make <defconfig>`
+  sed -i '' 's|^CONFIG_LED_B_PIN=.*|CONFIG_LED_B_PIN=18|' .config
+  sed -i '' 's|^CONFIG_LED_B_VALUE=.*|CONFIG_LED_B_VALUE=0|' .config
+  make CROSS_COMPILE=arm-none-eabi- oldconfig </dev/null
+}
+
 # NAND  (raw offset; filename unused)
-make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pronf_uboot_defconfig     && make CROSS_COMPILE=arm-none-eabi-
+make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pronf_uboot_defconfig
+led_pc18 && make CROSS_COMPILE=arm-none-eabi-
 # QSPI  (raw offset; filename unused)
-make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prodf_qspi_uboot_defconfig && make CROSS_COMPILE=arm-none-eabi-
+make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prodf_qspi_uboot_defconfig
+led_pc18 && make CROSS_COMPILE=arm-none-eabi-
 # microSD — override the FAT second-stage filename to harmony.bin
 make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prosd_uboot_defconfig
 sed -i '' 's|^CONFIG_IMAGE_NAME=.*|CONFIG_IMAGE_NAME="harmony.bin"|' .config   # macOS sed
-make CROSS_COMPILE=arm-none-eabi-
+led_pc18 && make CROSS_COMPILE=arm-none-eabi-
 # artifacts: build/binaries/sam9x7-{nandflashboot,dataflashboot}-uboot-4.0.13.bin
 #            build/binaries/sam9x7-sdcardboot-harmony-4.0.13.bin
 # (mrproper wipes build/, so copy each .bin out before the next build.)

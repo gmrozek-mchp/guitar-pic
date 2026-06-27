@@ -167,7 +167,7 @@ static const DRV_SDMMC_INIT drvSDMMC0InitData =
     .numClients                     = DRV_SDMMC_IDX0_CLIENTS_NUMBER,
     .protocol                       = DRV_SDMMC_IDX0_PROTOCOL_SUPPORT,
     .cardDetectionMethod            = DRV_SDMMC_IDX0_CARD_DETECTION_METHOD,
-    .cardDetectionPollingIntervalMs = 100,
+    .cardDetectionPollingIntervalMs = 10,
     .isWriteProtectCheckEnabled     = false,
     .speedMode                      = DRV_SDMMC_IDX0_CONFIG_SPEED_MODE,
     .busWidth                       = DRV_SDMMC_IDX0_CONFIG_BUS_WIDTH,
@@ -439,6 +439,8 @@ void SYS_Initialize ( void* data )
     FLEXCOM4_SPI_Initialize();
 
     FLEXCOM8_TWI_Initialize();
+
+    PWM_Initialize();
 
     XLCDC_Initialize();
 

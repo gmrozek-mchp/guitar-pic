@@ -84,6 +84,26 @@ APP_DATA appData;
 // *****************************************************************************
 // *****************************************************************************
 
+/* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
+ * bridge's typical 480p source, leaving a UI strip below. */
+#define VIDEO_WIN_X   280u
+#define VIDEO_WIN_Y    76u
+#define VIDEO_WIN_W   720u
+#define VIDEO_WIN_H   480u
+
+/* Fired by the UI boot task the instant the splash is on screen (registered via
+ * UiManager_SetSplashShownCallback). Brings up everything else — runtime services
+ * and the camera — in parallel with the behind-the-splash screen painting, so the
+ * system is warm by the time the dashboard is revealed. The video go-live calls
+ * just set intent flags the (now-running) video task reconciles. */
+static void app_on_splash_shown(void)
+{
+    App_StartServices();
+    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+    Video_CaptureEnable();
+    Video_DisplayShow();
+}
+
 // *****************************************************************************
 // *****************************************************************************
 // Section: Application Initialization and State Machine Functions
@@ -108,73 +128,21 @@ void APP_Initialize ( void )
      * INFO; flip to DEBUG via log_set_level() to enable verbose. */
     log_init(LOG_LEVEL_INFO);
 
-    /* UI manager: owns the canvas surface pool + LCDC layer mapping and screen
-     * startup (string table + screenInit/Show — the MGS screen state machine is
-     * disabled). Runs before the scheduler so surfaces exist and the canvas is
-     * RUNNING before the first render; the Dashboard screen's On-Show hook binds the
-     * dashboard to BASE and hands the nav drawer to ui/nav. */
+    /* UI manager: the UI orchestrator + compositor. Assigns the per-screen canvas
+     * surfaces (pre-scheduler) and creates the boot task that runs the bring-up
+     * sequence (splash → screens → reveal) once the scheduler is up. The callback
+     * is registered first so the boot task can fire it the moment the splash is on
+     * screen — that's our cue to start everything else (see app_on_splash_shown). */
+    UiManager_SetSplashShownCallback(app_on_splash_shown);
     UiManager_Initialize();
 
-    /* Spawn the video task. xTaskCreate is safe before vTaskStartScheduler;
-     * the task runs once the scheduler picks it up. The video module owns
-     * its capture-pipeline init (ISC, TC358743, backlight, HEO unbind),
-     * the capture/display state machine, and the bridge-status polling. */
-    Video_Initialize();
-
-    /* Per-frame performance log: producer-side queues + drain task.
-     * Init the queues here so any producer that posts before the
-     * scheduler starts will not crash; the drain task is launched
-     * separately by PerfLog_Start once the scheduler is up. */
+    /* Per-frame performance log: producer-side queues only. Init here so any
+     * producer that posts has a valid queue; the drain task spawns later in
+     * App_StartServices (it sits above the SD tasks in priority). */
     PerfLog_Initialize();
 
-    /* App-side video layout: 720×480 video at (280, 76) on the 1280×800
-     * panel — 1:1 with the bridge's typical 480p source, leaves a UI
-     * strip below. Set before DisplayShow; the video module has no
-     * default window of its own. */
-    Video_SetWindow(280u, 76u, 720u, 480u);
-
-    /* Default: arm the capture chain when source locks, and show video. */
-    Video_CaptureEnable();
-    Video_DisplayShow();
-
-    /* Reference detector (cv_marvin_v1) + detector-state bus. M1 stub
-     * publisher; real detection logic lands incrementally. Must follow
-     * Video_Initialize since cv_marvin_v1 subscribes to the video frame
-     * queue from inside its task. Detectors default disabled; explicitly
-     * enable + select the active one for the timing pipeline. */
-    Detector_Initialize();
-    Detector_Enable(DETECTOR_CV_MARVIN_V1);
-    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
-
-    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM1
-     * USART writer and the RX parse task. The FLEXCOM1 peripheral is brought
-     * up by SYS_Initialize (FLEXCOM1_USART_Initialize), so this just arms the
-     * ring-buffer RX notification and starts the link tasks. */
-    FretboardLink_Initialize();
-
-    /* timing_pipeline runs the chord-window + strum scheduler against the
-     * active detector and pushes the resulting 7-bit mask through
-     * FretboardLink_Send. */
-    TimingPipeline_Initialize();
-
-    /* manual_control is a peer producer for direct UI-driven actuation
-     * (game-menu navigation, manual test). UI buttons are authored in
-     * Microchip Graphics Composer; the generated screenShow_Screen0
-     * registers the event_Screen0_Button_Manual_* callbacks defined in
-     * ui/manual_input.c, so no explicit bind step is needed here. */
-    ManualControl_Initialize();
-
-    /* Game-state observer (spec §4.8, M9): a video-frame consumer that
-     * classifies the current GH3 screen and publishes game_state_t events on
-     * xGameStateQueue. Like cv_marvin_v1 it subscribes to the video frame queue
-     * from inside its task, so it follows Video_Initialize. Enable observation
-     * explicitly (default off, per the §6 game_observe_enable toggle). */
-    GameplayEngine_Initialize();
-    GameplayEngine_SetObserveEnabled(true);
-
-    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC
-     * driver hasn't analyzed the card pre-scheduler). The card is mounted on
-     * demand by the `sd` console command; see storage/storage.h. */
+    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC driver
+     * hasn't analyzed the card pre-scheduler). The splash module mounts it. */
     Storage_Initialize();
 
     /* Per-player results log (CSV on the card). State only here; file I/O is
@@ -188,16 +156,62 @@ void APP_Initialize ( void )
      * and never affects recognition. See game/catalog.h. */
     Catalog_Initialize();
 
-    /* Interactive operator console on FLEXCOM2 (115200), separate from the
-     * DBGU log channel. Started after the actuator/detector modules so its
-     * commands can drive their setters. */
+    /* The video pipeline, detector, actuator links, gameplay observer, console,
+     * and perf-log drain are NOT started here — they spawn tasks at priorities
+     * above the SDMMC/filesystem tasks, so starting them during boot would starve
+     * the card mount and splash load. App_StartServices brings them up, fired from
+     * app_on_splash_shown the instant the splash is displayed. */
+}
+
+
+/* Bring up the runtime subsystems deferred out of APP_Initialize. Called by the
+ * loader once the splash is up and the dashboard revealed, so none of these
+ * higher-priority tasks preempt the SDMMC/filesystem tasks during the card mount
+ * + splash render. Order honors the dependencies: Video first (it owns the frame
+ * queue the detector + gameplay observer subscribe to from their tasks). */
+void App_StartServices(void)
+{
+    /* Video capture pipeline (ISC, TC358743, HEO unbind) + capture/display
+     * state machine + bridge-status polling. Spawns VideoTask. */
+    Video_Initialize();
+
+    /* Reference detector (cv_marvin_v1) + detector-state bus. Must follow
+     * Video_Initialize since cv_marvin_v1 subscribes to the video frame queue
+     * from inside its task. Detectors default disabled; enable + select the
+     * active one for the timing pipeline. */
+    Detector_Initialize();
+    Detector_Enable(DETECTOR_CV_MARVIN_V1);
+    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+
+    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM1 USART
+     * writer and the RX parse task (and brings up the T1S link). */
+    FretboardLink_Initialize();
+
+    /* timing_pipeline runs the chord-window + strum scheduler against the
+     * active detector and pushes the resulting 7-bit mask through
+     * FretboardLink_Send. */
+    TimingPipeline_Initialize();
+
+    /* manual_control is a peer producer for direct UI-driven actuation. UI
+     * buttons are authored in Microchip Graphics Composer; the generated
+     * screenShow registers the callbacks defined in ui/manual_input.c, so no
+     * explicit bind step is needed here. */
+    ManualControl_Initialize();
+
+    /* Game-state observer (spec §4.8, M9): a video-frame consumer that
+     * classifies the current GH3 screen and publishes game_state_t events. Like
+     * cv_marvin_v1 it subscribes to the video frame queue from its task, so it
+     * follows Video_Initialize. Enable observation explicitly (default off). */
+    GameplayEngine_Initialize();
+    GameplayEngine_SetObserveEnabled(true);
+
+    /* Interactive operator console on FLEXCOM2 (115200), separate from the DBGU
+     * log channel. Started after the actuator/detector modules so its commands
+     * can drive their setters. */
     Console_Initialize();
 
-    /* Drain task is launched last so every producer's queue handle is
-     * already valid when the first records hit the sink. Marvin creates
-     * all tasks pre-scheduler (Harmony brings the scheduler up after
-     * APP_Initialize returns); xTaskCreateStatic before vTaskStartScheduler
-     * is the standard FreeRTOS pattern. */
+    /* Per-frame perf-log drain task, launched last so every producer's queue
+     * handle is already valid when the first records hit the sink. */
     PerfLog_Start();
 }
 
@@ -212,10 +226,11 @@ void APP_Initialize ( void )
 
 void APP_Tasks ( void )
 {
-    /* All tasks have been created by now, so this is the heap_1 startup floor
-     * (heap_1 never frees — free space only shrinks). Surfaces remaining
-     * headroom so a future allocation walking into the wall is visible rather
-     * than a silent malloc-failed spin. */
+    /* Heap_1 free space at the end of APP_Initialize (heap_1 never frees — free
+     * space only shrinks). The runtime subsystems spawn later via
+     * App_StartServices, so this is the pre-services floor, not the final one.
+     * Surfaces remaining headroom so an allocation walking into the wall is
+     * visible rather than a silent malloc-failed spin. */
     LOG_INFO("freertos heap: %u bytes free\r\n", (unsigned)xPortGetFreeHeapSize());
 
     /* APP is a one-shot launcher — task creation happened in APP_Initialize.

@@ -128,6 +128,20 @@ data:
       attributes:
         id: DRV_SDMMC_POLLING_INTERVAL
         label: Polling Interval (ms)
+      children:
+      - children:
+        - attributes:
+            id: visible
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            value: '10'
+          type: User
+        type: Values
       type: Integer
     DRV_SDMMC_PROTOCOL_SUPPORT:
       attributes:
@@ -152,6 +166,12 @@ data:
       attributes:
         id: DRV_SDMMC_RTOS_DELAY
         label: Task Delay
+      children:
+      - children:
+        - attributes:
+            value: '1'
+          type: User
+        type: Values
       type: Integer
     DRV_SDMMC_RTOS_STACK_SIZE:
       attributes:
