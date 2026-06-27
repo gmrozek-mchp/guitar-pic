@@ -201,12 +201,36 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-27 — UI boot rewrite: splash module + ui_manager orchestrator, loader retired (confirmed on hardware)
+
+Cleaned up the tangled `ui_manager` + `loader` (boot path had UI sequencing, layer assignment, SD I/O, and the service handoff smeared across both files and the pre-/post-scheduler boundary). Plan: `.claude/plans/greedy-launching-shamir.md`.
+
+**New module `screens/splash/splash.{c,h}` — self-contained, Legato-independent.** Owns its RGBA8888 framebuffer + canvas surface; `Splash_Load()` reads `/ui/splash.raw` straight into it (or fills opaque-black fallback), plus `Splash_InitSurface()` / `Splash_CanvasId()`. No layer choice, no Legato, no backlight — just "load my pixels."
+
+**`ui_manager` rewritten as orchestrator + compositor.** Owns the canvas-id + HW-layer constants (single source of truth in `ui_manager.h`), a screen registry (`{init, get_root, host, canvas}` rows — Dashboard, Nav; add a screen = one row), the boot task, layer assignment, and the backlight. Public API shrank to `UiManager_Initialize()` (pre-scheduler: assign surfaces + create boot task) and `UiManager_SetSplashShownCallback()`. Boot task: **Phase 1** `Splash_Load` → bind splash canvas to OVR1 + backlight (Legato-independent, fast) → fire splash-shown callback; **Phase 2** (guarded) `init_screens()` (each `screenInit_*` builds into Legato layer 0, then detached so the next can) → host dashboard + nav → bind dashboard to BASE → paint behind splash → after `SPLASH_MIN_MS` hide splash and give the nav OVR1.
+
+**Layer assignment is now ui_manager policy, never screen-owned.** `bind_canvas(canvas, hw, mode, show)` is the one place a canvas meets a layer; it pokes the layer's RGBMODE to match the canvas (the XLCDC driver never writes it), so the old "restore OVR1→RGB565 for nav" special case is gone. Splash holds OVR1 during boot; nav is bound to OVR1 only at reveal (after the splash vacates it — never shared live). `screen_nav.c`: dropped the hardcoded `gfxcSetLayer(NAV_CANVAS, HW_OVR1)` and local `HW_OVR1`/`NAV_CANVAS` (now `CANVAS_NAV` from `ui_manager.h`); `Navigation_OnShow` is the layer-agnostic host hook. (Memory `marvin-canvas-layer-binding` strengthened — Greg corrected this repeatedly.)
+
+**Services start at splash-shown, in parallel with screen painting.** `app.c` registers `app_on_splash_shown` (→ `App_StartServices()` + camera go-live; `VIDEO_WIN_*` moved here from loader), fired by the boot task the instant the splash is up, so everything's warm at reveal. `Loader_Start` dropped from `APP_Initialize`; `loader.{c,h}` deleted (− user.cmake), `splash.c` added.
+
+**Concurrency:** Phase 2 runs post-scheduler, so the root-list mutations (`leAddRootWidget`/`leRemoveRootWidget` — no Legato locking) are wrapped in `scene_edit_begin/end` which suspend `LEGATO_Tasks` + `SYS_INPUT_Tasks` (handles by name; NULL → unguarded + warn). Safe because at guard time no app roots are attached (splash is pure scanout), so Legato is idle (`Legato_Initialize` ran pre-scheduler at initialization.c:492, independent of the task). `GFX_CANVAS_Tasks` left running.
+
+**Confirmed on hardware:** splash comes up as before, dashboard reveals correctly, nav works — the rewrite is behavior-preserving. Boot-task stack is 2048 words (screens used to build on the SYS_Initialize stack); no overflow observed.
+
 ### 2026-06-27 — Boot bootstraps rebuilt: blue LED channel repurposed to PC18, output low
 
 Rebuilt all four at91bootstrap binaries in `binaries/` (JTAG bkptnone ELF, NAND, QSPI, SD) so the otherwise-unused **blue LED channel drives PC18 low at boot** (`CONFIG_LED_B_PIN=18`, `CONFIG_LED_B_VALUE=0`). at91bootstrap's only LED action is the one-shot `at91_leds_init()`; red (PC14) and green (PC21) unchanged. NAND `*-pmecchead.bin` regenerated.
 
 - Override applied at build time (sed `.config`), so the at91bootstrap clone stays vanilla; recipes + rationale in [`binaries/README.md`](../binaries/README.md) ("Marvin customization").
 - **Gotcha:** `CONFIG_LED_B_PIN` reaches the code through the generated `autoconf.h`, which a plain `make` does *not* refresh after a `.config` hand-edit — must run `make oldconfig` after the sed (unlike `CONFIG_IMAGE_NAME`, read straight from `.config` as a `-D`). Verified in the ELF: blue call is `pio_set_gpio_output(82, 0)` (0x52 = PIOC·32+18, low).
+
+### 2026-06-27 — Splash moved OVR2 → OVR1 (free OVR2 for a loading bar)
+
+Moved the splash framebuffer from OVR2 to OVR1 so the topmost overlay (OVR2) is free to draw an overlay over the splash later (e.g. a loading/progress bar). Reminder recorded: canvases don't own HW layers — bind at display time (see memory `marvin-canvas-layer-binding`).
+
+- Splash and nav now both use **OVR1**, but never shown together (splash during boot → hidden at reveal; nav only opens post-reveal). The splash's OVR1 bind is sequenced **after** `screenShow_Navigation` so it's the binding OVR1 holds at boot; the nav reclaims OVR1 when first opened.
+- Color-mode handling: splash pokes OVR1 → RGBA8888 (the XLCDC driver never writes RGBMODE itself); `UiManager_RevealDashboard` pokes OVR1 back → RGB565 for the (RGB565) nav after hiding the splash.
+- `HW_OVR2` kept as a reserved define (topmost) for the future overlay. No functional change to boot timing.
 
 ### 2026-06-27 — Boot-timing arc DONE: splash visible ~785 ms (was ~4.2–5 s)
 

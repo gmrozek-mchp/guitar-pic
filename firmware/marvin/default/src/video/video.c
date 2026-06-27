@@ -307,8 +307,8 @@ static void video_task(void *param)
     /* One-time init in task context (scheduler running, so synchronous I²C
      * and SYS_TIME work). Brings up capture pipeline, TC358743 bridge, and
      * parks the panel in UI-only mode. The backlight is NOT enabled here — the
-     * boot loader enables it (UiManager_EnableBacklight) once the splash is on
-     * screen, so the panel never shows a pre-splash/garbage frame. */
+     * UI boot task lights it once the splash is on screen, so the panel never
+     * shows a pre-splash/garbage frame. */
     ISC_Capture_Initialize();
     ISC_Capture_SetFrameCallback(on_frame_done, 0);
     TC358743_Initialize();

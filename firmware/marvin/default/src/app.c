@@ -42,7 +42,6 @@
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "ui/ui_manager.h"
-#include "ui/loader.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
 #include "storage/storage.h"
@@ -85,6 +84,26 @@ APP_DATA appData;
 // *****************************************************************************
 // *****************************************************************************
 
+/* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
+ * bridge's typical 480p source, leaving a UI strip below. */
+#define VIDEO_WIN_X   280u
+#define VIDEO_WIN_Y    76u
+#define VIDEO_WIN_W   720u
+#define VIDEO_WIN_H   480u
+
+/* Fired by the UI boot task the instant the splash is on screen (registered via
+ * UiManager_SetSplashShownCallback). Brings up everything else — runtime services
+ * and the camera — in parallel with the behind-the-splash screen painting, so the
+ * system is warm by the time the dashboard is revealed. The video go-live calls
+ * just set intent flags the (now-running) video task reconciles. */
+static void app_on_splash_shown(void)
+{
+    App_StartServices();
+    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+    Video_CaptureEnable();
+    Video_DisplayShow();
+}
+
 // *****************************************************************************
 // *****************************************************************************
 // Section: Application Initialization and State Machine Functions
@@ -109,11 +128,12 @@ void APP_Initialize ( void )
      * INFO; flip to DEBUG via log_set_level() to enable verbose. */
     log_init(LOG_LEVEL_INFO);
 
-    /* UI manager: owns the canvas surface pool + LCDC layer mapping and screen
-     * startup (string table + screenInit/Show — the MGS screen state machine is
-     * disabled). Runs before the scheduler so surfaces exist and the canvas is
-     * RUNNING before the first render; the Dashboard screen's On-Show hook binds the
-     * dashboard to BASE and hands the nav drawer to ui/nav. */
+    /* UI manager: the UI orchestrator + compositor. Assigns the per-screen canvas
+     * surfaces (pre-scheduler) and creates the boot task that runs the bring-up
+     * sequence (splash → screens → reveal) once the scheduler is up. The callback
+     * is registered first so the boot task can fire it the moment the splash is on
+     * screen — that's our cue to start everything else (see app_on_splash_shown). */
+    UiManager_SetSplashShownCallback(app_on_splash_shown);
     UiManager_Initialize();
 
     /* Per-frame performance log: producer-side queues only. Init here so any
@@ -121,8 +141,8 @@ void APP_Initialize ( void )
      * App_StartServices (it sits above the SD tasks in priority). */
     PerfLog_Initialize();
 
-    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC
-     * driver hasn't analyzed the card pre-scheduler). The loader mounts it. */
+    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC driver
+     * hasn't analyzed the card pre-scheduler). The splash module mounts it. */
     Storage_Initialize();
 
     /* Per-player results log (CSV on the card). State only here; file I/O is
@@ -136,18 +156,11 @@ void APP_Initialize ( void )
      * and never affects recognition. See game/catalog.h. */
     Catalog_Initialize();
 
-    /* Boot loader task: mounts the SD card, paints the splash image, lights the
-     * backlight, then reveals the dashboard and calls App_StartServices to bring
-     * up the rest of the system. Created here (pre-scheduler); runs once the
-     * scheduler is up (it needs blocking SD/FatFs I/O). Self-deletes after the
-     * handoff. Follows Storage/UiManager init, which it depends on.
-     *
-     * The video pipeline, detector, actuator links, gameplay observer, console,
-     * and perf-log drain are NOT started here: they spawn tasks at priorities
-     * above the SDMMC/filesystem tasks, so starting them during boot starves the
-     * card mount and the splash render. The loader starts them post-splash via
-     * App_StartServices. */
-    Loader_Start();
+    /* The video pipeline, detector, actuator links, gameplay observer, console,
+     * and perf-log drain are NOT started here — they spawn tasks at priorities
+     * above the SDMMC/filesystem tasks, so starting them during boot would starve
+     * the card mount and splash load. App_StartServices brings them up, fired from
+     * app_on_splash_shown the instant the splash is displayed. */
 }
 
 
