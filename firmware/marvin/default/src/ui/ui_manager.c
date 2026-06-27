@@ -114,17 +114,19 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
 static uint32_t s_backlight_pct;
 
 /* Set the backlight brightness (0–100%, clamped). The backlight is PWM-dimmed on
- * PC18 (PWM channel 0, configured by MCC). Duty is a fraction of the channel
- * period, read at runtime so this tracks whatever period MCC sets; 50% is
- * period/2, correct regardless of the channel's polarity. PWM_ChannelDutySet
- * writes CDTY directly while the channel is stopped and the update register once
- * running, so this is valid both before the channel starts and at runtime. */
+ * PC18 (PWM channel 0, configured by MCC), period read at runtime so this tracks
+ * whatever MCC sets. The channel is CPOL_LOW — it idles low (dark) when stopped,
+ * so the panel stays off until the splash — which means CDTY is the LOW-level
+ * time and brightness is the high fraction: CDTY = period·(100−pct)/100, so
+ * pct=100 → CDTY 0 → full bright, pct=0 → CDTY period → off. PWM_ChannelDutySet
+ * writes CDTY directly while stopped and the update register once running, so
+ * this is valid both before the channel starts and at runtime. */
 void UiManager_SetBacklight(uint32_t pct)
 {
     if (pct > 100u) { pct = 100u; }
     s_backlight_pct = pct;
     uint32_t period = PWM_ChannelPeriodGet(PWM_CHANNEL_0);
-    PWM_ChannelDutySet(PWM_CHANNEL_0, (period * pct) / 100u);
+    PWM_ChannelDutySet(PWM_CHANNEL_0, (period * (100u - pct)) / 100u);
 }
 
 uint32_t UiManager_GetBacklight(void)
