@@ -757,7 +757,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '1'
+            value: '2'
           type: Dynamic
         type: Values
       type: Integer
@@ -899,10 +899,11 @@ data:
     XDMAC_CC0_CSIZE:
       attributes:
         id: XDMAC_CC0_CSIZE
+        label: Data Transfers Per DMA Request
       children:
       - children:
         - attributes:
-            value: '4'
+            value: '0'
           type: User
         type: Values
       type: KeyValueSet
@@ -5545,6 +5546,12 @@ data:
       attributes:
         id: XDMAC_CH1_ENABLE
         label: Use XDMAC Channel 1
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
       type: Boolean
     XDMAC_CC1_SWREQ:
       attributes:
@@ -5568,6 +5575,9 @@ data:
             id: core
             value: '0'
           type: Dynamic
+        - attributes:
+            value: '2'
+          type: User
         type: Values
       type: KeyValueSet
     XDMAC_CC1_SAM:
@@ -5592,6 +5602,9 @@ data:
             id: core
             value: '0'
           type: Dynamic
+        - attributes:
+            value: '0'
+          type: User
         type: Values
       type: KeyValueSet
     XDMAC_CC1_DIF:
@@ -5628,6 +5641,9 @@ data:
             id: core
             value: '0'
           type: Dynamic
+        - attributes:
+            value: '3'
+          type: User
         type: Values
       type: KeyValueSet
     XDMAC_CC1_PERID_VAL:

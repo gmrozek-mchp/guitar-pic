@@ -17,11 +17,11 @@
 #define BENCH_CHUNK       (64u * 1024u)         /* per-read granularity */
 #define BENCH_MAX_MB      8u                    /* device is 8 MiB */
 
-/* XDMAC channel for the mem2mem bench. Channel 0 is the ISC histogram DMA, so
- * we drive channel 1's registers directly (the PLIB only manages ch0). The
- * MMU's strongly-ordered attribute on the QSPI window does not apply to XDMAC
- * (a separate bus master, no MMU), so it can issue real AHB bursts. */
-#define QSPI_DMA_CH       1u
+/* XDMAC mem2mem channel for QSPI reads. MCC owns it: XDMAC_CHANNEL_1 is
+ * configured (mem2mem, word width, 16-beat bursts) and PLIB-tracked alongside
+ * ch0 (the ISC histogram DMA). XDMAC bypasses the MMU, so the QSPI window's
+ * strongly-ordered attribute doesn't apply — it issues real AHB bursts. */
+#define QSPI_DMA_CH       XDMAC_CHANNEL_1
 #define DMA_STALL_GUARD   100000000u
 
 /* Cacheable DDR destination (default .bss → 0x22000000+, cacheable-WB) so the
@@ -179,37 +179,26 @@ static inline uint32_t pat_word(uint32_t addr)
     return (addr * 2654435761u) ^ 0xA5A5A5A5u;   /* Knuth multiplicative hash */
 }
 
-/* Configure XDMAC channel 1 for mem2mem, word width, 16-beat bursts. */
-static void dma_cc_init(void)
-{
-    XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CC =
-          XDMAC_CC_TYPE_MEM_TRAN | XDMAC_CC_MBSIZE_SIXTEEN
-        | XDMAC_CC_SAM_INCREMENTED_AM | XDMAC_CC_DAM_INCREMENTED_AM
-        | XDMAC_CC_SIF_AHB_IF1 | XDMAC_CC_DIF_AHB_IF1 | XDMAC_CC_DWIDTH_WORD;
-    XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CNDC = 0u;
-    XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CBC  = 0u;
-}
-
-/* One mem2mem block: QSPIMEM+src_off -> dst, len bytes (word multiple).
- * Returns false on stall. Caller owns cache maintenance + frame termination. */
+/* One mem2mem block: QSPIMEM+src_off -> dst, len bytes (word multiple), via the
+ * MCC-configured channel. Word width → UBLEN counts words, so pass len/4.
+ * Returns false on stall (bounded). Caller owns cache maintenance and SMM frame
+ * termination. */
 static bool dma_read_block(uint32_t src_off, void *dst, uint32_t len)
 {
-    (void)XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CIS;
-    XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CSA  = (uint32_t)QSPIMEM_ADDR + src_off;
-    XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CDA  = (uint32_t)dst;
-    XDMAC_REGS->XDMAC_CHID[QSPI_DMA_CH].XDMAC_CUBC = XDMAC_CUBC_UBLEN(len / 4u);
-    __DMB();
-    XDMAC_REGS->XDMAC_GE = (XDMAC_GE_EN0_Msk << QSPI_DMA_CH);
-
+    if (!XDMAC_ChannelTransfer(QSPI_DMA_CH,
+                               (const void *)((uint32_t)QSPIMEM_ADDR + src_off),
+                               dst, len / 4u))
+    {
+        return false;
+    }
     uint32_t guard = 0u;
-    while (((XDMAC_REGS->XDMAC_GS & (XDMAC_GS_ST0_Msk << QSPI_DMA_CH)) != 0u) &&
-           (guard < DMA_STALL_GUARD))
+    while (XDMAC_ChannelIsBusy(QSPI_DMA_CH) && (guard < DMA_STALL_GUARD))
     {
         guard++;
     }
     if (guard >= DMA_STALL_GUARD)
     {
-        XDMAC_REGS->XDMAC_GD = (XDMAC_GD_DI0_Msk << QSPI_DMA_CH);
+        XDMAC_ChannelDisable(QSPI_DMA_CH);
         return false;
     }
     return true;
@@ -278,7 +267,6 @@ void QspiSmoke_Bench(uint32_t mb)
     /* --- path C: XDMAC mem2mem burst from the XIP region (channel 1, driven
      *     directly — ch0 is the ISC histogram DMA). XDMAC bypasses the MMU, so
      *     it issues real AHB bursts the QSPI SMM slave can stream. --- */
-    dma_cc_init();
     bool dma_err = false;
     uint64_t t4 = SYS_TIME_Counter64Get();
     for (uint32_t c = 0u; (c < chunks) && !dma_err; c++)
@@ -355,7 +343,6 @@ bool QspiSmoke_Verify(uint32_t kb, uint32_t passes)
     uint32_t mism_drv = 0u, mism_dma = 0u;
     bool dma_ok = true;
     uint32_t *rp = (uint32_t *)(void *)s_bench_dst;
-    dma_cc_init();
 
     for (uint32_t p = 0u; p < passes; p++)
     {

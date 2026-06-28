@@ -754,9 +754,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/tc/plib_tc_common.h
   hash: aa07077b6355fa1dc9e938cb4def1c725bffddf452ffc55e4f982f83d3988a9e
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac.c
-  hash: 0ca05b288990ff91faa7b07d1dfe16f9d6a5df07447c96b81062fb8760963f3c
+  hash: 2f1190c2173922c5c0764b087e2f73b1fc3f80c7e4756b0d105f967048a7dda8
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac.h
-  hash: 3860c41bf2e5b74a7dd2cd2642b1afce660d201d4297b0bc9523b0c3cc8606fa
+  hash: f9f011ac7d1d06f33165fd0711520eaff51dc2010f2b1a3faeb5b75cf4a53944
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
   hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
