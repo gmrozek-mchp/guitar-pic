@@ -10,6 +10,7 @@
 
 #include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
 #include "log.h"
+#include "flash/settings.h"   /* persisted backlight % */
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_assets.h"
@@ -109,8 +110,6 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
     XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
 }
 
-#define BACKLIGHT_DEFAULT_PCT  50u   /* boot brightness */
-
 static uint32_t s_backlight_pct;
 
 /* Set the backlight brightness (0–100%, clamped). The backlight is PWM-dimmed on
@@ -134,13 +133,15 @@ uint32_t UiManager_GetBacklight(void)
     return s_backlight_pct;
 }
 
-/* Light the backlight at the default brightness. The PWM channel is stopped (no
- * output) until started here, so the panel stays dark until the splash is up —
- * no pre-splash frame. PWM_Initialize ran at startup; this sets the duty (while
- * stopped, so the channel starts straight at the target) and starts it. */
+/* Light the backlight at the persisted brightness (Settings_Get loads the QSPI
+ * ring on first use, or the compiled default if no record). The PWM channel is
+ * stopped (no output) until started here, so the panel stays dark until the
+ * splash is up — no pre-splash frame. PWM_Initialize ran at startup; this sets
+ * the duty (while stopped, so the channel starts straight at the target) and
+ * starts it. */
 static void enable_backlight(void)
 {
-    UiManager_SetBacklight(BACKLIGHT_DEFAULT_PCT);
+    UiManager_SetBacklight(Settings_Get()->backlight_pct);
     PWM_ChannelsStart(PWM_CHANNEL_0_MASK);
 }
 

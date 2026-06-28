@@ -604,8 +604,10 @@ static void cmd_backlight(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("usage: backlight <0-100>");
         return;
     }
-    UiManager_SetBacklight(pct);
-    console_printf("backlight = %u%%", (unsigned)UiManager_GetBacklight());
+    UiManager_SetBacklight(pct);                       /* apply live */
+    bool saved = Settings_SetBacklight((uint8_t)pct);  /* persist across reboot */
+    console_printf("backlight = %u%% (%s)", (unsigned)UiManager_GetBacklight(),
+                   saved ? "saved" : "save FAIL");
 }
 
 static void cmd_qspi(EmbeddedCli *cli, char *args, void *ctx)
@@ -662,21 +664,7 @@ static void cmd_settings(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("settings stress: %s (see log)", Settings_Stress(n) ? "PASS" : "FAIL");
         return;
     }
-    if (strcmp(sub, "backlight") == 0)
-    {
-        const char *tok = embeddedCliGetToken(args, 2);
-        uint32_t pct = (tok != NULL) ? parse_u32(tok, 101u) : 101u;
-        if (pct > 100u)
-        {
-            console_printf("usage: settings backlight <0-100>");
-            return;
-        }
-        UiManager_SetBacklight(pct);                       /* apply live */
-        bool ok = Settings_SetBacklight((uint8_t)pct);     /* persist */
-        console_printf("settings backlight = %u%% (%s)", (unsigned)pct, ok ? "saved" : "save FAIL");
-        return;
-    }
-    console_printf("usage: settings [dump|save|wipe|backlight <pct>]");
+    console_printf("usage: settings [dump|save|wipe|stress [n]]  (set backlight via `backlight <pct>`)");
 }
 
 static void register_commands(void)
@@ -700,7 +688,7 @@ static void register_commands(void)
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
         { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
-        { "settings","settings [dump|save|wipe|stress [n]|backlight <pct>]: persistent settings (QSPI)", true, NULL, cmd_settings },
+        { "settings","settings [dump|save|wipe|stress [n]]: persistent settings (QSPI)", true, NULL, cmd_settings },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
     {

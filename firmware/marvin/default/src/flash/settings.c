@@ -9,7 +9,7 @@
 #include "log.h"
 
 #define SETTINGS_VERSION         1u
-#define SETTINGS_DEFAULT_BL      50u    /* match ui_manager BACKLIGHT_DEFAULT_PCT */
+#define SETTINGS_DEFAULT_BL      50u    /* default boot brightness % (no record yet) */
 
 #define SETTINGS_MAGIC           0x4D565354u   /* 'M''V''S''T' */
 
