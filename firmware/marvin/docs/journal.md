@@ -207,6 +207,10 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-28 — QSPI settings store (EEPROM-emulation ring-log) built + stress-validated
+
+`flash/settings.{c,h}` implements the persistent operator/UI settings store over the `QSPI_SETTINGS_*` region (16 KiB / 4 sectors → 64 page-slots). Each record is a 256-byte page slot `{magic, seq, settings_t, crc32}` (CRC over magic..data). Boot scans all 64 slots and picks the highest-`seq` CRC-valid record (else compiled defaults); `Settings_Save()` appends to the next slot and erases a sector only when crossing into it — always ahead of the live record, so it's **power-fail safe** (a torn write fails CRC → previous record wins) and **wear-rotated** (~1 erase per 16 saves, alternating sectors). Bitwise CRC-32, static scratch buffers, bounded synchronous polling (safe pre-scheduler). Payload `settings_t` = `{version, backlight_pct, reserved0}`, extensible via `version`. `settings` console command: `dump`/`save`/`wipe`/`stress [n]`/`backlight <pct>` (applies live + persists). **`settings stress` PASS at 200 and 1000 saves** — wipes, saves N (recomputable values), then reloads from flash and verifies the highest-`seq` record matches the last write; confirms ring wrap + sector erase never clobber the live record. Note: `qspi` smoke/`verify` write the same region (CRC-fallback-to-defaults makes that non-fatal). **Next:** wire `Settings_Load()` at boot + apply `backlight_pct` in `ui_manager` (replacing the hardcoded `BACKLIGHT_DEFAULT_PCT`), and make the `backlight` console command persist.
+
 ### 2026-06-28 — QSPI read throughput: clock fix + XDMAC mem2mem (18.2 MB/s, integrity-verified)
 
 Extended `flash/qspi_smoke.c` with `qspi bench [MB]` (times three read paths) and `qspi verify [KB] [passes]` (erase/write a position-dependent pattern at the top of flash, read back N passes via driver **and** XDMAC, count per-path mismatches). Findings:

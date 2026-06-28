@@ -28,6 +28,7 @@
 #include "ui/ui_manager.h"
 #include "ui/widgets/song_list/widget_song_list_demo.h"
 #include "flash/qspi_smoke.h"
+#include "flash/settings.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
@@ -628,6 +629,56 @@ static void cmd_qspi(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("qspi smoke test: %s", ok ? "PASS" : "FAIL");
 }
 
+static void cmd_settings(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+    if (sub == NULL)
+    {
+        const settings_t *s = Settings_Get();
+        console_printf("settings: v%u backlight=%u%%  (usage: settings [dump|save|wipe|backlight <pct>])",
+                       (unsigned)s->version, (unsigned)s->backlight_pct);
+        return;
+    }
+    if (strcmp(sub, "dump") == 0)
+    {
+        Settings_Dump();
+        console_printf("settings dump: see log");
+        return;
+    }
+    if (strcmp(sub, "save") == 0)
+    {
+        console_printf("settings save: %s", Settings_Save() ? "ok" : "FAIL");
+        return;
+    }
+    if (strcmp(sub, "wipe") == 0)
+    {
+        console_printf("settings wipe: %s", Settings_Wipe() ? "ok" : "FAIL");
+        return;
+    }
+    if (strcmp(sub, "stress") == 0)
+    {
+        uint32_t n = parse_u32(embeddedCliGetToken(args, 2), 200u);
+        console_printf("settings stress: %s (see log)", Settings_Stress(n) ? "PASS" : "FAIL");
+        return;
+    }
+    if (strcmp(sub, "backlight") == 0)
+    {
+        const char *tok = embeddedCliGetToken(args, 2);
+        uint32_t pct = (tok != NULL) ? parse_u32(tok, 101u) : 101u;
+        if (pct > 100u)
+        {
+            console_printf("usage: settings backlight <0-100>");
+            return;
+        }
+        UiManager_SetBacklight(pct);                       /* apply live */
+        bool ok = Settings_SetBacklight((uint8_t)pct);     /* persist */
+        console_printf("settings backlight = %u%% (%s)", (unsigned)pct, ok ? "saved" : "save FAIL");
+        return;
+    }
+    console_printf("usage: settings [dump|save|wipe|backlight <pct>]");
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -649,6 +700,7 @@ static void register_commands(void)
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
         { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
+        { "settings","settings [dump|save|wipe|stress [n]|backlight <pct>]: persistent settings (QSPI)", true, NULL, cmd_settings },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
     {

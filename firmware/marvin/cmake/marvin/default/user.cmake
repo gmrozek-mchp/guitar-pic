@@ -24,6 +24,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/console/console.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/storage/storage.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/flash/qspi_smoke.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/flash/settings.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/results/results.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/util/csv.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/catalog.c"
