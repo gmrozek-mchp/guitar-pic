@@ -27,6 +27,7 @@
 #include "game/catalog.h"
 #include "ui/ui_manager.h"
 #include "ui/widgets/song_list/widget_song_list_demo.h"
+#include "flash/qspi_smoke.h"
 
 #define CON_TASK_STACK_WORDS  1024u
 #define CON_TASK_PRIORITY     2u      /* low / UI band — human-interactive */
@@ -606,6 +607,27 @@ static void cmd_backlight(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("backlight = %u%%", (unsigned)UiManager_GetBacklight());
 }
 
+static void cmd_qspi(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+    if ((sub != NULL) && (strcmp(sub, "bench") == 0))
+    {
+        QspiSmoke_Bench(parse_u32(embeddedCliGetToken(args, 2), 4u));
+        console_printf("qspi bench: done (see log)");
+        return;
+    }
+    if ((sub != NULL) && (strcmp(sub, "verify") == 0))
+    {
+        bool vok = QspiSmoke_Verify(parse_u32(embeddedCliGetToken(args, 2), 256u),
+                                    parse_u32(embeddedCliGetToken(args, 3), 4u));
+        console_printf("qspi verify: %s (see log)", vok ? "PASS" : "FAIL");
+        return;
+    }
+    bool ok = QspiSmoke_Run();
+    console_printf("qspi smoke test: %s", ok ? "PASS" : "FAIL");
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -626,6 +648,7 @@ static void register_commands(void)
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
+        { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
     {

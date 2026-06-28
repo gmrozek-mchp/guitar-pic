@@ -41,10 +41,12 @@ modules:
 - dfp
 - drv_i2c_0
 - drv_sdmmc_0
+- drv_sst26
 - flexcom1
 - flexcom2
 - flexcom4
 - pit
+- qspi
 - rtc
 - stdio
 - sys_time
@@ -58,13 +60,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: f036073a652c04741562fa12c5133e4276c1fec78f26d79d10f08a052bfd11b4
 - file: ../src/config/default/configuration.h
-  hash: 3551875e9d19f347cd5c31d49d191b54aab01c0909d5cf0894cfbe6a6e4c7655
+  hash: 8fb176bf9a97726e2406690eb1016714521ef4e7dd5564fe49d41727d0fcec90
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 97f47af57df7b001d60815bb59f95e011690ba241216b51211f2288487bf6b93
 - file: ../src/config/default/definitions.h
-  hash: 25a7c4b77432debbd6f06210d884681a07d1f82a7aa3943d7bdd706483cca91f
+  hash: 772c018f64e27ddcb1d6c827fd378aa5d3a403f4fe7bf4f26aa4d3c41e527743
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -97,6 +99,14 @@ generatedFileHashHistoryMap:
   hash: 3f80d1ef387e9ea48674dd721d301fe0e273ab00870b800ba28a1af40c8cdebd
 - file: ../src/config/default/driver/sdmmc/src/drv_sdmmc_local.h
   hash: 156dc65671de4e26117a0465893116fcc5adfa89ca7ed22f0b4fb9e999a98400
+- file: ../src/config/default/driver/sst26/drv_sst26.h
+  hash: e5acea0bd2d610cb17466789725c616d1697896c087f5eafbd81f7fcffc95291
+- file: ../src/config/default/driver/sst26/drv_sst26_definitions.h
+  hash: be06a586412580b2557330ffaf5a8a32fc61c8fa3f0dd8f13ff31dd41f58013a
+- file: ../src/config/default/driver/sst26/src/drv_sst26.c
+  hash: aefd503283b84acd30c003d4ef62e082f4e39086cf8de8af3304e019c56d0eb7
+- file: ../src/config/default/driver/sst26/src/drv_sst26_local.h
+  hash: 0cf979afa692f6d4aea9f747b4df8857865aabfd8ff16b6ff097bd4ef437ea82
 - file: ../src/config/default/driver/usb/drv_usb.h
   hash: ee59efb38b1cf87e1c4bb6e833a9c9be0c106005daa6c1ccd90fca9fb5c17b44
 - file: ../src/config/default/driver/usb/udphs/drv_usb_udphs.h
@@ -646,7 +656,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: b7f61165be46553649df44de394014e16553f2ffa7452de2de93e5709e0db559
+  hash: ca11db26c7146c602ea6ee6bbe2c5ec46f2f393454ee0fc7f4b9fbecb548ad98
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
@@ -664,7 +674,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/aic/plib_aic.h
   hash: 150e39620b72b62d7b11a7338040d2c28c888d8714bbaa7462063932076b9081
 - file: ../src/config/default/peripheral/clk/plib_clk.c
-  hash: 8327292f33a9237036a5e0e5b335a4bcb69a7e5f4091e7d50cf995af12d58bbd
+  hash: 453b79477cfe59f571140c31350629f7422b7f5e94d56b5068184eaa5aa2c672
 - file: ../src/config/default/peripheral/clk/plib_clk.h
   hash: fa05a2f3d572277bd1edc5fe1c4dd69784b2972ed1ba5327ea2b832da8ba3fd3
 - file: ../src/config/default/peripheral/dbgu/plib_dbgu.c
@@ -719,6 +729,12 @@ generatedFileHashHistoryMap:
   hash: 4dafa90dbb5e7ab275d2e4a69d9041e1f6cf56e4aef852853e2b7632980fd632
 - file: ../src/config/default/peripheral/pwm/plib_pwm_common.h
   hash: 0e7f67493c51238d9855de7a0db399cf2a21c15b2c9bce46924f78b7f3915156
+- file: ../src/config/default/peripheral/qspi/plib_qspi.c
+  hash: f8ceddd91e1b1afcb2a396a0063d1f8ddb82c2ec39840a482814a9106f8976a3
+- file: ../src/config/default/peripheral/qspi/plib_qspi.h
+  hash: 04dcf4871aed03d6b645d2265e0f8f2172a2f209343c267cfd023fb59ad4bb58
+- file: ../src/config/default/peripheral/qspi/plib_qspi_common.h
+  hash: 0c7011bdbecb153217878a8652d43fd2450501e3139b024a256cc14ad1295a93
 - file: ../src/config/default/peripheral/rtc/plib_rtc.c
   hash: 537ac6521b4b88683e06047cab2224e54df7abc6c5a918b68d64f1b41734eb17
 - file: ../src/config/default/peripheral/rtc/plib_rtc.h

@@ -54,13 +54,13 @@
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_device.h"
 #include "peripheral/flexcom/spi/master/plib_flexcom4_spi_master.h"
-#include "peripheral/rtc/plib_rtc.h"
 #include "peripheral/tc/plib_tc0.h"
+#include "peripheral/rtc/plib_rtc.h"
 #include "peripheral/flexcom/usart/plib_flexcom1_usart.h"
 #include "peripheral/flexcom/usart/plib_flexcom2_usart.h"
 #include "system/time/sys_time.h"
-#include "gfx/canvas/gfx_canvas_api.h"
 #include "driver/i2c/drv_i2c.h"
+#include "gfx/canvas/gfx_canvas_api.h"
 #include "usb/usb_device_cdc.h"
 #include "usb/usb_cdc.h"
 #include "gfx/driver/controller/xlcdc/plib/plib_xlcdc.h"
@@ -79,7 +79,9 @@
 #include "peripheral/pio/plib_pio.h"
 #include "peripheral/aic/plib_aic.h"
 #include "peripheral/xdmac/plib_xdmac.h"
+#include "driver/sst26/drv_sst26.h"
 #include "peripheral/pwm/plib_pwm.h"
+#include "peripheral/qspi/plib_qspi.h"
 #include "system/input/sys_input.h"
 #include "system/fs/sys_fs.h"
 #include "system/fs/sys_fs_media_manager.h"
@@ -233,6 +235,7 @@ typedef struct
 
     SYS_MODULE_OBJ  drvUSBUDPHSObject;
 
+    SYS_MODULE_OBJ  drvSST26;
     SYS_MODULE_OBJ  drvSDMMC0;
 
 

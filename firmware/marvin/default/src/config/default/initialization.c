@@ -128,6 +128,22 @@ const DRV_MAXTOUCH_INIT drvMAXTOUCHInitData =
 
 // </editor-fold>
 
+// <editor-fold defaultstate="collapsed" desc="DRV_SST26 Initialization Data">
+
+static const DRV_SST26_PLIB_INTERFACE drvSST26PlibAPI = {
+    .CommandWrite   = QSPI_CommandWrite,
+    .RegisterRead   = QSPI_RegisterRead,
+    .RegisterWrite  = QSPI_RegisterWrite,
+    .MemoryRead     = QSPI_MemoryRead,
+    .MemoryWrite    = QSPI_MemoryWrite
+};
+
+static const DRV_SST26_INIT drvSST26InitData =
+{
+    .sst26Plib      = &drvSST26PlibAPI,
+};
+// </editor-fold>
+
 // <editor-fold defaultstate="collapsed" desc="DRV_SDMMC Instance 0 Initialization Data">
 
 /* SDMMC Client Objects Pool */
@@ -444,7 +460,9 @@ void SYS_Initialize ( void* data )
 
     XLCDC_Initialize();
 
-	SDMMC0_Initialize();
+    QSPI_Initialize();
+
+    SDMMC0_Initialize();
 
     DBGU_Initialize();
 
@@ -468,6 +486,8 @@ void SYS_Initialize ( void* data )
 
 
     sysObj.drvMAXTOUCH = DRV_MAXTOUCH_Initialize(0, (SYS_MODULE_INIT *)&drvMAXTOUCHInitData);
+
+    sysObj.drvSST26 = DRV_SST26_Initialize((SYS_MODULE_INDEX)DRV_SST26_INDEX, (SYS_MODULE_INIT *)&drvSST26InitData);
 
    sysObj.drvSDMMC0 = DRV_SDMMC_Initialize(DRV_SDMMC_INDEX_0,(SYS_MODULE_INIT *)&drvSDMMC0InitData);
 

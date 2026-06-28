@@ -22,8 +22,8 @@ data:
     - children:
       - attributes:
           id: drv_sdmmc
-          x: '295'
-          y: '17'
+          x: '294'
+          y: '12'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph

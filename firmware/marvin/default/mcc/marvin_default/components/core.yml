@@ -752,6 +752,7 @@ data:
     XDMAC_HIGHEST_CHANNEL:
       attributes:
         id: XDMAC_HIGHEST_CHANNEL
+        label: DMA (XDMAC) Highest Active Channel
       children:
       - children:
         - attributes:
@@ -763,6 +764,7 @@ data:
     XDMAC_INTERRUPT_ENABLE:
       attributes:
         id: XDMAC_INTERRUPT_ENABLE
+        label: Enable 20 -- Extended DMA Controller
       children:
       - children:
         - attributes:
@@ -774,6 +776,7 @@ data:
     XDMAC_INTERRUPT_HANDLER_LOCK:
       attributes:
         id: XDMAC_INTERRUPT_HANDLER_LOCK
+        label: XDMAC_INTERRUPT_HANDLER_LOCK
       children:
       - children:
         - attributes:
@@ -785,6 +788,7 @@ data:
     XDMAC_INTERRUPT_HANDLER:
       attributes:
         id: XDMAC_INTERRUPT_HANDLER
+        label: Handler
       children:
       - children:
         - attributes:
@@ -796,6 +800,7 @@ data:
     DMA_ENABLE:
       attributes:
         id: DMA_ENABLE
+        label: Use DMA Service?
       children:
       - children:
         - attributes:
@@ -807,6 +812,7 @@ data:
     XDMAC_CLOCK_ENABLE:
       attributes:
         id: XDMAC_CLOCK_ENABLE
+        label: XDMAC
       children:
       - children:
         - attributes:
@@ -1587,22 +1593,24 @@ data:
     QSPI_CLOCK_FREQUENCY:
       attributes:
         id: QSPI_CLOCK_FREQUENCY
+        label: QSPI_CLOCK_FREQUENCY
       children:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '200000000'
           type: Dynamic
         type: Values
       type: Integer
     QSPI_GCLK_FREQUENCY:
       attributes:
         id: QSPI_GCLK_FREQUENCY
+        label: QSPI_GCLK_FREQUENCY
       children:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '200000000'
           type: Dynamic
         type: Values
       type: Integer
@@ -5452,6 +5460,229 @@ data:
           type: Dynamic
         type: Values
       type: Boolean
+    QSPI_CLOCK_ENABLE:
+      attributes:
+        id: QSPI_CLOCK_ENABLE
+        label: QSPI
+      children:
+      - children:
+        - attributes:
+            id: qspi
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    QSPI_INTERRUPT_ENABLE:
+      attributes:
+        id: QSPI_INTERRUPT_ENABLE
+        label: Enable 35 -- Quad I/O SPI Controller
+      children:
+      - children:
+        - attributes:
+            id: qspi
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    QSPI_INTERRUPT_HANDLER:
+      attributes:
+        id: QSPI_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: qspi
+            value: QSPI_Handler
+          type: Dynamic
+        type: Values
+      type: String
+    QSPI_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: QSPI_INTERRUPT_HANDLER_LOCK
+        label: QSPI_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: qspi
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    CLK_QSPI_GCLKEN:
+      attributes:
+        id: CLK_QSPI_GCLKEN
+        label: Enable
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    CLK_QSPI_GCLKCSS:
+      attributes:
+        id: CLK_QSPI_GCLKCSS
+        label: GCLKCSS
+      children:
+      - children:
+        - attributes:
+            value: '6'
+          type: User
+        type: Values
+      type: KeyValueSet
+    CLK_QSPI_GCLKDIV:
+      attributes:
+        id: CLK_QSPI_GCLKDIV
+        label: GCLKDIV
+      children:
+      - children:
+        - attributes:
+            value: '1'
+          type: User
+        type: Values
+      type: Integer
+    XDMAC_CH1_ENABLE:
+      attributes:
+        id: XDMAC_CH1_ENABLE
+        label: Use XDMAC Channel 1
+      type: Boolean
+    XDMAC_CC1_SWREQ:
+      attributes:
+        id: XDMAC_CC1_SWREQ
+        label: DMA Request Type
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_DWIDTH:
+      attributes:
+        id: XDMAC_CC1_DWIDTH
+        label: Data Width
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_SAM:
+      attributes:
+        id: XDMAC_CC1_SAM
+        label: Source Addressing Mode
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '1'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_CSIZE:
+      attributes:
+        id: XDMAC_CC1_CSIZE
+        label: Data Transfers Per DMA Request
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_DIF:
+      attributes:
+        id: XDMAC_CC1_DIF
+        label: DMA Interface Bus To Write Destination Data
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '1'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_DAM:
+      attributes:
+        id: XDMAC_CC1_DAM
+        label: Destination Addressing Mode
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '1'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_MBSIZE:
+      attributes:
+        id: XDMAC_CC1_MBSIZE
+        label: Burst Size For Memory To Memory Transfer
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_PERID_VAL:
+      attributes:
+        id: XDMAC_CC1_PERID_VAL
+        label: PERID Value
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Integer
+    XDMAC_CC1_SIF:
+      attributes:
+        id: XDMAC_CC1_SIF
+        label: DMA Interface Bus To Read Source Data
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '1'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_TYPE:
+      attributes:
+        id: XDMAC_CC1_TYPE
+        label: DMA Transfer Type
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_DSYNC:
+      attributes:
+        id: XDMAC_CC1_DSYNC
+        label: DMA Transfer Direction
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: KeyValueSet
+    XDMAC_CC1_PERID:
+      attributes:
+        id: XDMAC_CC1_PERID
+        label: DMA Request
+      type: Combo
   userData:
     children:
     - attributes:

@@ -9,6 +9,10 @@ dependency:
   type: module
   version: ''
 - dependencyPackage: ''
+  name: CMSIS_5
+  type: package
+  version: 5.9.0
+- dependencyPackage: ''
   name: FreeRTOS-Kernel
   type: package
   version: V11.3.0
