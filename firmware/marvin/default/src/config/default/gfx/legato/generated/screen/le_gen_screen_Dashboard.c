@@ -319,7 +319,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_LABEL_MARVIN = leLabelWidget_New();
     Dashboard_LABEL_MARVIN->fn->setPosition(Dashboard_LABEL_MARVIN, 0, 28);
     Dashboard_LABEL_MARVIN->fn->setSize(Dashboard_LABEL_MARVIN, 1018, 16);
-    Dashboard_LABEL_MARVIN->fn->setScheme(Dashboard_LABEL_MARVIN, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_LABEL_MARVIN->fn->setScheme(Dashboard_LABEL_MARVIN, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_LABEL_MARVIN->fn->setBackgroundType(Dashboard_LABEL_MARVIN, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_LABEL_MARVIN->fn->setVAlignment(Dashboard_LABEL_MARVIN, LE_VALIGN_TOP);
     Dashboard_LABEL_MARVIN->fn->setMargins(Dashboard_LABEL_MARVIN, 0, 0, 0, 0);
@@ -786,7 +786,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_label__1247_1320 = leLabelWidget_New();
     Dashboard_label__1247_1320->fn->setPosition(Dashboard_label__1247_1320, 0, 0);
     Dashboard_label__1247_1320->fn->setSize(Dashboard_label__1247_1320, 66, 16);
-    Dashboard_label__1247_1320->fn->setScheme(Dashboard_label__1247_1320, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_label__1247_1320->fn->setScheme(Dashboard_label__1247_1320, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_label__1247_1320->fn->setBackgroundType(Dashboard_label__1247_1320, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_label__1247_1320->fn->setVAlignment(Dashboard_label__1247_1320, LE_VALIGN_TOP);
     Dashboard_label__1247_1320->fn->setMargins(Dashboard_label__1247_1320, 0, 0, 0, 0);
@@ -896,7 +896,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_label_Best__89 = leLabelWidget_New();
     Dashboard_label_Best__89->fn->setPosition(Dashboard_label_Best__89, 0, 0);
     Dashboard_label_Best__89->fn->setSize(Dashboard_label_Best__89, 58, 16);
-    Dashboard_label_Best__89->fn->setScheme(Dashboard_label_Best__89, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_label_Best__89->fn->setScheme(Dashboard_label_Best__89, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_label_Best__89->fn->setBackgroundType(Dashboard_label_Best__89, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_label_Best__89->fn->setVAlignment(Dashboard_label_Best__89, LE_VALIGN_TOP);
     Dashboard_label_Best__89->fn->setMargins(Dashboard_label_Best__89, 0, 0, 0, 0);
@@ -930,7 +930,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_label_HIT = leLabelWidget_New();
     Dashboard_label_HIT->fn->setPosition(Dashboard_label_HIT, 0, 0);
     Dashboard_label_HIT->fn->setSize(Dashboard_label_HIT, 22, 16);
-    Dashboard_label_HIT->fn->setScheme(Dashboard_label_HIT, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_label_HIT->fn->setScheme(Dashboard_label_HIT, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_label_HIT->fn->setBackgroundType(Dashboard_label_HIT, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_label_HIT->fn->setVAlignment(Dashboard_label_HIT, LE_VALIGN_TOP);
     Dashboard_label_HIT->fn->setMargins(Dashboard_label_HIT, 0, 0, 0, 0);
@@ -968,7 +968,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_label_MISS = leLabelWidget_New();
     Dashboard_label_MISS->fn->setPosition(Dashboard_label_MISS, 0, 0);
     Dashboard_label_MISS->fn->setSize(Dashboard_label_MISS, 29, 16);
-    Dashboard_label_MISS->fn->setScheme(Dashboard_label_MISS, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_label_MISS->fn->setScheme(Dashboard_label_MISS, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_label_MISS->fn->setBackgroundType(Dashboard_label_MISS, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_label_MISS->fn->setVAlignment(Dashboard_label_MISS, LE_VALIGN_TOP);
     Dashboard_label_MISS->fn->setMargins(Dashboard_label_MISS, 0, 0, 0, 0);
@@ -1469,7 +1469,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_label_UPTIME = leLabelWidget_New();
     Dashboard_label_UPTIME->fn->setPosition(Dashboard_label_UPTIME, 0, 2);
     Dashboard_label_UPTIME->fn->setSize(Dashboard_label_UPTIME, 44, 16);
-    Dashboard_label_UPTIME->fn->setScheme(Dashboard_label_UPTIME, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_label_UPTIME->fn->setScheme(Dashboard_label_UPTIME, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_label_UPTIME->fn->setBackgroundType(Dashboard_label_UPTIME, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_label_UPTIME->fn->setVAlignment(Dashboard_label_UPTIME, LE_VALIGN_TOP);
     Dashboard_label_UPTIME->fn->setMargins(Dashboard_label_UPTIME, 0, 0, 0, 0);
@@ -1507,7 +1507,7 @@ leResult screenInit_Dashboard(void)
     Dashboard_label_LATENCY = leLabelWidget_New();
     Dashboard_label_LATENCY->fn->setPosition(Dashboard_label_LATENCY, 0, 2);
     Dashboard_label_LATENCY->fn->setSize(Dashboard_label_LATENCY, 51, 16);
-    Dashboard_label_LATENCY->fn->setScheme(Dashboard_label_LATENCY, &SCHEME_TEXT_DIM_GRAY);
+    Dashboard_label_LATENCY->fn->setScheme(Dashboard_label_LATENCY, &SCHEME_TEXT_GRAY_E4E4E7);
     Dashboard_label_LATENCY->fn->setBackgroundType(Dashboard_label_LATENCY, LE_WIDGET_BACKGROUND_NONE);
     Dashboard_label_LATENCY->fn->setVAlignment(Dashboard_label_LATENCY, LE_VALIGN_TOP);
     Dashboard_label_LATENCY->fn->setMargins(Dashboard_label_LATENCY, 0, 0, 0, 0);

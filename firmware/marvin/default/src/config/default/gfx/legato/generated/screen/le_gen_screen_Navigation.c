@@ -69,7 +69,7 @@ leResult screenInit_Navigation(void)
     Navigation_LABEL_NAV_SUB_HEADING = leLabelWidget_New();
     Navigation_LABEL_NAV_SUB_HEADING->fn->setPosition(Navigation_LABEL_NAV_SUB_HEADING, 24, 56);
     Navigation_LABEL_NAV_SUB_HEADING->fn->setSize(Navigation_LABEL_NAV_SUB_HEADING, 294, 16);
-    Navigation_LABEL_NAV_SUB_HEADING->fn->setScheme(Navigation_LABEL_NAV_SUB_HEADING, &SCHEME_TEXT_DIM_GRAY);
+    Navigation_LABEL_NAV_SUB_HEADING->fn->setScheme(Navigation_LABEL_NAV_SUB_HEADING, &SCHEME_TEXT_GRAY_E4E4E7);
     Navigation_LABEL_NAV_SUB_HEADING->fn->setBackgroundType(Navigation_LABEL_NAV_SUB_HEADING, LE_WIDGET_BACKGROUND_NONE);
     Navigation_LABEL_NAV_SUB_HEADING->fn->setVAlignment(Navigation_LABEL_NAV_SUB_HEADING, LE_VALIGN_TOP);
     Navigation_LABEL_NAV_SUB_HEADING->fn->setMargins(Navigation_LABEL_NAV_SUB_HEADING, 0, 0, 0, 0);
@@ -202,7 +202,7 @@ leResult screenInit_Navigation(void)
     Navigation_label_STATUS = leLabelWidget_New();
     Navigation_label_STATUS->fn->setPosition(Navigation_label_STATUS, 0, 0);
     Navigation_label_STATUS->fn->setSize(Navigation_label_STATUS, 44, 16);
-    Navigation_label_STATUS->fn->setScheme(Navigation_label_STATUS, &SCHEME_TEXT_DIM_GRAY);
+    Navigation_label_STATUS->fn->setScheme(Navigation_label_STATUS, &SCHEME_TEXT_GRAY_E4E4E7);
     Navigation_label_STATUS->fn->setBackgroundType(Navigation_label_STATUS, LE_WIDGET_BACKGROUND_NONE);
     Navigation_label_STATUS->fn->setVAlignment(Navigation_label_STATUS, LE_VALIGN_TOP);
     Navigation_label_STATUS->fn->setMargins(Navigation_label_STATUS, 0, 0, 0, 0);

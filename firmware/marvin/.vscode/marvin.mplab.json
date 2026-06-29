@@ -629,7 +629,8 @@
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Dashboard.c",
                 "default/src/config/default/peripheral/pwm/plib_pwm.c",
                 "default/src/config/default/driver/sst26/src/drv_sst26.c",
-                "default/src/config/default/peripheral/qspi/plib_qspi.c"
+                "default/src/config/default/peripheral/qspi/plib_qspi.c",
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_SongSelect.c"
             ]
         }
     ]
