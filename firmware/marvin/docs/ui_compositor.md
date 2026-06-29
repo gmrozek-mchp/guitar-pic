@@ -7,9 +7,55 @@ the application owns screen orchestration so multiple panels coexist **live and 
 at once** instead of one-screen-at-a-time switching.
 
 Read [`spec.md`](spec.md) §4.5 (operator UI) and §4.1 (video/display) first. Decisions in
-[`journal.md`](journal.md) (2026-06-25). **Status: canvas compositor built and working**
-(dashboard on BASE + slide-in nav on OVR1, single-active highlight). **Next: the `ui_manager`
-+ per-screen-module refactor** described in §6–§7.
+[`journal.md`](journal.md) (2026-06-25, 2026-06-29). **Status: migrated to the MGS layer-screen
+model and confirmed on hardware** — one master `Marvin` screen with dashboard (BASE), nav
+(OVR1), and song-select dialog (OVR2) as layer-screens; the model and the canonical mental
+picture are in §0.
+
+---
+
+## 0. The mental model (read this first) — three concepts, not two
+
+These are distinct and must not be collapsed (this has been a recurring source of confusion):
+
+1. **Legato layer ("layer-screen")** — a logical screen / dialog / overlay. Bounded by
+   `LE_LAYER_COUNT` = the number of layer-screens.
+2. **GFX canvas** — the RAM framebuffer backing a layer-screen. **Coupled 1:1 to its Legato
+   layer:** the renderer writes Legato layer *i* into `canvas[baseCanvasID + i]` (base 0 →
+   layer *i* ↔ `canvas[i]`), and `leAddRootWidget(root, layerIdx)` rejects
+   `layerIdx >= LE_LAYER_COUNT`. So a canvas id is **not** free of its Legato layer.
+3. **XLCDC hardware layer** (`BASE`/`OVR1`/`OVR2`; `HEO` = camera) — where a canvas is
+   composited for scanout. Bound at **display time, at runtime, and reassignable** via
+   `gfxcSetLayer(canvasID, hwLayer)` (`ui_manager.c` `bind_canvas`).
+
+**"canvas ≠ layer" is true only for the *hardware* layer (3), not for the *Legato* layer (2).**
+A panel never *owns* a HW layer — two canvases never shown together can share one; the same
+canvas can be on `OVR1` in one situation and `OVR2` in another. The 8-slot canvas pool
+(`CONFIG_CANVAS_NUM_OBJ = 8`) means up to 8 layer-screens may be **defined**
+(`LE_LAYER_COUNT` ≤ 8, canvases 0–7); the LCDC then composites **any 3** of them onto its 3
+usable HW layers at once — *define many, show a few.*
+
+### 0.1 Direction (decided 2026-06-29): adopt MGS's single-master-screen / layer-screen model
+
+Per Microchip's GFX-canvas layer-screen guide¹, MGS is meant to be **one master screen whose
+*layers* are the logical screens** ("layer-screens"), each auto-associated with its own canvas.
+marvin **adopted this model on 2026-06-29** (confirmed on hardware). It previously *emulated*
+it by hand — each panel a **separate 1-layer MGS Screen**, built on layer 0 then manually
+disconnected and re-hosted by `ui_manager`, with `LE_LAYER_COUNT` pinned at 3 by a never-shown
+`LayerBudget` screen. Now there is **one master screen named `Marvin`, one layer per panel**:
+layer 0 dashboard (BASE), layer 1 nav (OVR1), layer 2 song-select dialog (OVR2). MGS derives
+`LE_LAYER_COUNT` and associates each layer-screen with `canvas[i]`, so the `LayerBudget` hack
+and the disconnect/re-host dance are gone — `ui_manager` calls `screenInit_Marvin()` +
+`screenShow_Marvin()` once (the latter builds the tree and attaches each root to its Legato
+layer), then per-panel `*_Setup()` wiring, and binds canvases to HW layers at display time.
+**The splash stays separate and manual** (pre-Legato RGBA8888 scanout) on canvas slot 7,
+*outside* the layer-screen range (0..2).
+
+> **§1–§7 below were written for the previous per-screen-Factory + manual-re-host design** and
+> are kept for history; where they conflict with §0, §0 wins. `screenInit_X` is now a one-time
+> flag only — the widget tree is constructed in **`screenShow_X`** (a gotcha worth remembering).
+
+¹ developerhelp.microchip.com → MGS Harmony guide → how-to → gfx-canvas → layer-screen.
 
 ---
 
@@ -165,11 +211,14 @@ ui/
   widgets/<name>/   widget_<name>.{c,h}     reusable widgets, one folder each
 ```
 
-Current contents: `screens/nav/screen_nav`, `widgets/song_list/widget_song_list`
-(+ `widget_song_list_demo` bring-up provider), `widgets/button_aa/widget_button_aa`. Headers are
-included from the `default/src` root, e.g. `#include "ui/screens/nav/screen_nav.h"`. New screens
-add a `screens/<name>/` folder; new widgets a `widgets/<name>/` folder — each wired into
-`user.cmake` (no MCC involvement).
+Current contents: `screens/nav/screen_nav`, `screens/song_select/screen_song_select`,
+`screens/splash/splash`, `widgets/song_list/widget_song_list`, `widgets/button_aa/widget_button_aa`.
+Each panel module exposes `*_InitSurface()` (assign its canvas buffer, pre-scheduler) and
+`*_Setup()` (wire content/events on the widgets `screenShow_Marvin` already built); `ui_manager`
+calls these — the modules never bind HW layers themselves. Headers are included from the
+`default/src` root, e.g. `#include "ui/screens/nav/screen_nav.h"`. New panels add a
+`screens/<name>/` folder; new widgets a `widgets/<name>/` folder — each wired into `user.cmake`
+(no MCC involvement).
 
 ## 7. Build state & refactor plan
 

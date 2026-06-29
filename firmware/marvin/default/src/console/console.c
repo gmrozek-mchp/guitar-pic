@@ -26,7 +26,6 @@
 #include "results/results.h"
 #include "game/catalog.h"
 #include "ui/ui_manager.h"
-#include "ui/widgets/song_list/widget_song_list_demo.h"
 #include "flash/qspi_smoke.h"
 #include "flash/settings.h"
 
@@ -401,57 +400,6 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
     }
 }
 
-static void cmd_songlist(EmbeddedCli *cli, char *args, void *ctx)
-{
-    (void)cli; (void)ctx;
-    /* Bring-up: attach the SongList widget (catalog-backed) to the live screen. */
-    const char *sub = embeddedCliGetToken(args, 1);
-    if (sub != NULL && strcmp(sub, "stats") == 0)
-    {
-        uint32_t dc = 0; int sel = -1;
-        if (SongList_DemoStats(&dc, &sel))
-        {
-            console_printf("songlist: drawCount=%lu selected=%d", (unsigned long)dc, sel);
-        }
-        else
-        {
-            console_printf("songlist: not attached (run `songlist` first)");
-        }
-    }
-    else if (sub != NULL && strcmp(sub, "off") == 0)
-    {
-        SongList_DemoDetach();
-        console_printf("songlist: removed, dashboard restored");
-    }
-    else if (sub != NULL && strcmp(sub, "hide") == 0)
-    {
-        SongList_DemoSetDashboard(false);
-        console_printf("songlist: dashboard hidden");
-    }
-    else if (sub != NULL && strcmp(sub, "show") == 0)
-    {
-        SongList_DemoSetDashboard(true);
-        console_printf("songlist: dashboard shown");
-    }
-    else if (sub != NULL && strcmp(sub, "solid") == 0)
-    {
-        bool on = SongList_DemoToggleFill();
-        console_printf("songlist: solid-fill %s", on ? "ON (magenta)" : "off");
-    }
-    else if (sub != NULL && strcmp(sub, "tree") == 0)
-    {
-        int cnt = 0; int idx = SongList_DemoZOrder(&cnt);
-        if (idx < 0) { console_printf("songlist: not attached"); }
-        else { console_printf("songlist: z-index %d of %d (topmost=%s)",
-                              idx, cnt, (idx == cnt - 1) ? "yes" : "NO"); }
-    }
-    else
-    {
-        SongList_DemoAttach();
-        console_printf("songlist: attach requested");
-    }
-}
-
 static void sd_out(void *ctx, const char *line)
 {
     (void)ctx;
@@ -679,7 +627,6 @@ static void register_commands(void)
         { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
         { "results","results add <set> <idx> <diff> <part> <score>: test row", true, NULL, cmd_results },
         { "catalog","catalog <reload|ls|<main|bonus> <index>>: song labels",    true, NULL, cmd_catalog },
-        { "songlist","songlist [off|hide|show|solid|tree|stats]: song-list widget bring-up", true, NULL, cmd_songlist },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

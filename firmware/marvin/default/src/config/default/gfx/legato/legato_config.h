@@ -143,12 +143,12 @@ extern "C" {
 // fixed heap configuration
 #define LE_FIXEDHEAP_ENABLE                1
 #define LE_FIXEDHEAP_DEBUG                 0
-#define LE_FIXEDHEAP_SIZE_16               300
-#define LE_FIXEDHEAP_SIZE_32               96
-#define LE_FIXEDHEAP_SIZE_64               96
-#define LE_FIXEDHEAP_SIZE_128              32
-#define LE_FIXEDHEAP_SIZE_196              48
-#define LE_FIXEDHEAP_SIZE_256              24
+#define LE_FIXEDHEAP_SIZE_16               512
+#define LE_FIXEDHEAP_SIZE_32               256
+#define LE_FIXEDHEAP_SIZE_64               256
+#define LE_FIXEDHEAP_SIZE_128              64
+#define LE_FIXEDHEAP_SIZE_196              128
+#define LE_FIXEDHEAP_SIZE_256              64
 
 // renderer configuration
 //#define LE_VSYNC_STALL

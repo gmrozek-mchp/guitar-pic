@@ -9,12 +9,11 @@
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
-#include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"   /* hamburger event decl */
-#include "gfx/legato/generated/screen/le_gen_screen_Navigation.h"  /* nav widgets + OnShow */
+#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* nav widgets + hamburger event */
 
-/* The nav drawer is authored as its own MGS Screen (Navigation) and renders into
- * its own canvas (CANVAS_NAV, defined in ui_manager.h). The nav is layer-agnostic
- * — ui_manager (the compositor) decides which hardware layer this canvas is shown
+/* The nav drawer is layer 1 of the Marvin master screen, rendered into its own
+ * canvas (CANVAS_NAV, defined in ui_manager.h). The nav is layer-agnostic —
+ * ui_manager (the compositor) decides which hardware layer this canvas is shown
  * on; the drawer's slide works on the canvas window, independent of the layer. */
 #define NAV_W   320u
 #define NAV_H   800u
@@ -53,12 +52,12 @@ static leButtonWidget *nav_button(unsigned int i)
 {
     switch (i)
     {
-        case 0:  return Navigation_BUTTON_NAV_DASHBOARD;
-        case 1:  return Navigation_BUTTON_NAV_LOGS;
-        case 2:  return Navigation_BUTTON_NAV_PERFORMANCE;
-        case 3:  return Navigation_BUTTON_NAV_SYSTEM_INFO;
-        case 4:  return Navigation_BUTTON_NAV_DIAGNOSTICS;
-        default: return Navigation_BUTTON_NAV_SETTINGS;
+        case 0:  return Marvin_BUTTON_NAV_DASHBOARD_0;
+        case 1:  return Marvin_BUTTON_NAV_LOGS_0;
+        case 2:  return Marvin_BUTTON_NAV_PERFORMANCE_0;
+        case 3:  return Marvin_BUTTON_NAV_SYSTEM_INFO_0;
+        case 4:  return Marvin_BUTTON_NAV_DIAGNOSTICS_0;
+        default: return Marvin_BUTTON_NAV_SETTINGS_0;
     }
 }
 
@@ -85,7 +84,7 @@ static void nav_on_release(leButtonWidget *btn)
 {
     nav_highlight(btn);
 
-    if (btn == Navigation_BUTTON_NAV_DASHBOARD)
+    if (btn == Marvin_BUTTON_NAV_DASHBOARD_0)
     {
         nav_close();
     }
@@ -107,7 +106,7 @@ static void nav_buttons_init(void)
 
     /* Dashboard is the active entry at startup — set the highlight only (calling
      * the release sink here would close the not-yet-open drawer). */
-    nav_highlight(Navigation_BUTTON_NAV_DASHBOARD);
+    nav_highlight(Marvin_BUTTON_NAV_DASHBOARD_0);
 }
 
 /* Animate the drawer to target_x from wherever it currently sits. Cancel any
@@ -133,7 +132,7 @@ static void nav_open(void)
      * damage fills it in. The repaint lands over the next frames as it slides.
      * Show first so the move is visible (the FX engine enables the layer from
      * canvas.active). */
-    Navigation_PANEL_NAVIGATION->fn->invalidate(Navigation_PANEL_NAVIGATION);
+    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
     gfxcShowCanvas(CANVAS_NAV);
     nav_slide_to(0);
     s_nav_open = true;
@@ -173,23 +172,17 @@ void Nav_InitSurface(void)
     gfxcSetPixelBuffer(CANVAS_NAV, NAV_W, NAV_H, GFX_COLOR_MODE_RGB_565, s_fb_nav);
 }
 
-/* Host hook for the Navigation screen (declared in le_gen_screen_Navigation.h).
- * The MGS screen authors its content on Legato layer 0; move the root so it
- * renders into CANVAS_NAV instead (the dashboard keeps canvas 0), set the window
- * (parked off-screen / closed) and content. Layer-agnostic — ui_manager binds
- * CANVAS_NAV to a hardware layer; the canvas update there applies this window.
- * Keep the panel visible+enabled so Legato renders it continuously, and start
- * closed: the touch pick rect follows the canvas window position
- * (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav can't intercept dashboard
- * touches, and the off-screen X seeds the slide-in. */
-void Navigation_OnShow(void)
+/* Per-panel setup for the nav drawer (Marvin layer-screen 1, CANVAS_NAV). MGS has
+ * already built the panel onto Legato layer 1; here we set the canvas window
+ * (parked off-screen / closed), the move-FX callback, and wire the buttons. The
+ * canvas is bound to a hardware layer by ui_manager. Keep the panel visible+enabled
+ * so Legato renders it continuously, and start closed: the touch pick rect follows
+ * the canvas window position (LE_DRIVER_LAYER_MODE), so a closed (off-screen) nav
+ * can't intercept dashboard touches, and the off-screen X seeds the slide-in. */
+void Nav_Setup(void)
 {
-    leWidget *root = screenGetRoot_Navigation(0);
-    leRemoveRootWidget(root, 0);
-    leAddRootWidget(root, CANVAS_NAV);
-
-    Navigation_PANEL_NAVIGATION->fn->setEnabled(Navigation_PANEL_NAVIGATION, LE_TRUE);
-    Navigation_PANEL_NAVIGATION->fn->setVisible(Navigation_PANEL_NAVIGATION, LE_TRUE);
+    Marvin_PANEL_NAVIGATION->fn->setEnabled(Marvin_PANEL_NAVIGATION, LE_TRUE);
+    Marvin_PANEL_NAVIGATION->fn->setVisible(Marvin_PANEL_NAVIGATION, LE_TRUE);
 
     gfxcSetWindowSize(CANVAS_NAV, NAV_W, NAV_H);
     gfxcSetWindowPosition(CANVAS_NAV, NAV_CLOSED_X, 0);
@@ -198,8 +191,8 @@ void Navigation_OnShow(void)
     nav_buttons_init();
 }
 
-/* Hamburger on the Dashboard screen (BASE) toggles the nav drawer. */
-void event_Dashboard_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
+/* Hamburger on the dashboard (BASE) toggles the nav drawer. */
+void event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
 {
     (void)btn;
     if (s_nav_open) { nav_close(); } else { nav_open(); }

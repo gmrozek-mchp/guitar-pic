@@ -5,16 +5,16 @@
 extern "C" {
 #endif
 
-/* Navigation drawer — authored as its own MGS Screen (Navigation), rendered into
- * its own canvas and bound to the OVR1 hardware layer as a resident overlay.
- * Owned by ui/screens/nav; ui_manager only has to assign the surface and show
- * the screen:
+/* Navigation drawer — layer 1 of the Marvin master screen, rendered into its own
+ * canvas (CANVAS_NAV) and bound to a hardware layer by ui_manager. Owned by
+ * ui/screens/nav:
  *   Nav_InitSurface — assign the nav canvas buffer; call before the canvas state
  *                     machine is RUNNING / before the first render.
- * Everything else (moving the root onto the nav canvas, binding it to OVR1,
- * panel setup, button wiring, open/close) happens in the Navigation screen's
- * OnShow hook and entry events. */
+ *   Nav_Setup       — canvas window (closed/off-screen) + move-FX callback +
+ *                     button wiring; call once after screenInit_Marvin.
+ * Open/close (slide FX) and entry events live in screen_nav.c. */
 void Nav_InitSurface(void);
+void Nav_Setup(void);
 
 #ifdef __cplusplus
 }
