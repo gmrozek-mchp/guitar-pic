@@ -32,3 +32,22 @@ from `songs.csv` — the two are independent.
 > **The checked-in `songs.csv` is a placeholder seed** generated from the
 > recognizer's song slugs (titles auto-humanized; `artist`/`bpm`/`length_s`
 > blank). Replace the values with real metadata before relying on the display.
+
+## Boot splash (`ui/splash.raw`)
+
+The boot splash is **not** read from the SD card — it lives in QSPI NOR and is
+provisioned over JTAG. `ui/splash.jpg` is the editable source; `ui/splash.raw` is
+the pre-decoded framebuffer the firmware actually loads.
+
+Regenerate the raw from the source with [`ui/make-splash.sh`](ui/make-splash.sh):
+
+```
+ui/make-splash.sh [input] [output]   # defaults: ui/splash.jpg -> ui/splash.raw
+```
+
+It produces headerless raw RGBA8888, 1280×800, in the XLCDC layer's native byte
+order (pixel word `0xRRGGBBAA`, memory bytes `[A,B,G,R]`) — exactly 4,096,000
+bytes, the only size `splash.c` accepts. Uses `uv` + Pillow (no ImageMagick/ffmpeg).
+
+Then flash it: `../../openocd/program-qspi.sh splash` (writes `ui/splash.raw` to
+QSPI `0x000000`).
