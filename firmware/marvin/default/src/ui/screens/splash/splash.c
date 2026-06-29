@@ -3,13 +3,12 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include "definitions.h"            /* DRV_SST26_* */
+#include "definitions.h"            /* DRV_SST26_*, XLCDC_* */
 #include "log.h"
 #include "flash/qspi_layout.h"      /* QSPI_SPLASH_OFFSET */
-#include "gfx/canvas/gfx_canvas_api.h"
-#include "ui/ui_manager.h"          /* CANVAS_SPLASH, BASE_W, BASE_H */
+#include "ui/ui_manager.h"          /* BASE_W, BASE_H */
 
-/* Fallback fill: opaque black. The canvas is RGBA_8888 (packs 0xRRGGBBAA), so a
+/* Fallback fill: opaque black. The layer is RGBA_8888 (packs 0xRRGGBBAA), so a
  * little-endian pixel word of 0x000000FF is R=G=B=0, A=0xFF. */
 #define SPLASH_FILL        0x000000FFu
 
@@ -19,14 +18,25 @@
 static uint32_t s_fb[BASE_W * BASE_H]
     __attribute__((section(".region_nocache"), aligned(32)));
 
-void Splash_InitSurface(void)
+void Splash_Show(XLCDC_LAYER layer)
 {
-    gfxcSetPixelBuffer(CANVAS_SPLASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGBA_8888, s_fb);
+    /* Drive the overlay layer directly — no GFX canvas. Set every attribute
+     * deferred (update=false) then enable with update=true so they latch together
+     * at the next vsync. Mirrors the XLCDC GFX driver's own layer-commit sequence
+     * (drv_gfx_xlcdc.c): opaque (alpha 255), DMA enabled, full-screen, zero stride
+     * (the buffer width equals the window width). */
+    XLCDC_SetLayerRGBColorMode(layer, XLCDC_RGB_COLOR_MODE_RGBA_8888, false);
+    XLCDC_SetLayerAddress(layer, (uint32_t)(uintptr_t)s_fb, false);
+    XLCDC_SetLayerOpts(layer, 255u, true, false);
+    XLCDC_SetLayerWindowXYPos(layer, 0u, 0u, false);
+    XLCDC_SetLayerWindowXYSize(layer, BASE_W, BASE_H, false);
+    XLCDC_SetLayerXStride(layer, 0u, false);
+    XLCDC_SetLayerEnable(layer, true, true);
 }
 
-uint32_t Splash_CanvasId(void)
+void Splash_Hide(XLCDC_LAYER layer)
 {
-    return CANVAS_SPLASH;
+    XLCDC_SetLayerEnable(layer, false, true);
 }
 
 static void fill_fallback(void)

@@ -208,6 +208,24 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — Splash decoupled from GFX_CANVAS: drives its XLCDC layer directly (confirmed on hardware)
+
+Follow-up to the Marvin migration. The splash had been parked on **canvas slot 7** (outside the
+layer-screen range) just so it could ride the GFX_CANVAS show/hide path — a magic number for a
+thing that isn't a canvas. It now owns its static framebuffer and **drives its XLCDC hardware
+layer directly via the PLIB**, the same way `video.c` drives the camera on HEO, so it's no longer
+in the canvas pool at all (pool is now exactly the three layer-screens 0/1/2). `splash.c`
+`Splash_Show(XLCDC_LAYER)` mirrors the XLCDC GFX driver's own commit sequence
+(`drv_gfx_xlcdc.c`): `SetLayerRGBColorMode` → `SetLayerAddress` → `SetLayerOpts(255, dma=true)` →
+window pos/size → `SetLayerXStride(0)` → `SetLayerEnable(true, update=true)` — the final
+`update=true` latches all the deferred attributes at vsync (handles the SIP latch we fought during
+splash bring-up). `Splash_Hide` just disables the layer; the hand-off to the nav is clean because
+`bind_canvas(CANVAS_NAV, OVR1)` reprograms OVR1 from scratch. `ui_manager` deleted `CANVAS_SPLASH`
+and now calls `Splash_Show(xlcdc_layer(SPLASH_HW_LAYER))` / `Splash_Hide(...)`; it still owns the
+layer choice. The **`enable_dma=true` in `SetLayerOpts` is load-bearing** — without it the layer
+never fetches from DRAM (found by reading the driver's own commit path). Boots and reveals
+identically on hardware.
+
 ### 2026-06-29 — UI migrated to the Marvin single-master-screen / layer-screen model (confirmed on hardware)
 
 Regenerated the MGS design as **one master Legato screen `Marvin`** with three layers — L0 dashboard (full-screen), L1 nav (320×800), L2 song-select (1100×660) — each built by MGS directly onto its own Legato layer/canvas. Deleted the four standalone screens (Dashboard/Navigation/SongSelect/LayerBudget); `LE_LAYER_COUNT`=3 is now **derived** from the layer count (the `LayerBudget` pin hack is gone). Widget names are now `Marvin_*` (MGS dedup suffixes `_0` on nav, `_0_0` on song-select); generated event hooks renamed (`event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed`, `event_Marvin_BUTTON_GUITAR_STRUM_*`). Non-persistent, no OnShow — only `screenInit_Marvin`/`screenGetRoot_Marvin` + event handlers are generated.

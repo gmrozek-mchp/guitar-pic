@@ -11,15 +11,13 @@ extern "C" {
  *
  * The three Marvin layer-screens render into canvas[i] for Legato layer i (the
  * renderer maps Legato layer i → canvas[baseCanvasID + i], base 0), so these
- * canvas ids are pinned equal to their layer index — NOT free. The splash is not
- * a layer-screen (pre-Legato RGBA8888 scanout), so it takes a slot OUTSIDE the
- * layer-screen range (top of the 8-slot pool). A canvas is bound to a *hardware*
- * layer at display time by the compositor — that binding is independent and
- * runtime (see HW_* + bind_canvas). */
+ * canvas ids are pinned equal to their layer index — NOT free. A canvas is bound
+ * to a *hardware* layer at display time by the compositor — that binding is
+ * independent and runtime (see HW_* + bind_canvas). The boot splash is NOT a
+ * canvas: it drives its hardware layer directly (see splash.h). */
 #define CANVAS_DASH     0u   /* Marvin layer 0 — dashboard (base view)       */
 #define CANVAS_NAV      1u   /* Marvin layer 1 — nav drawer                  */
 #define CANVAS_SONGSEL  2u   /* Marvin layer 2 — song/mode-select dialog     */
-#define CANVAS_SPLASH   7u   /* boot splash — off the layer-screen range 0..2 */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware

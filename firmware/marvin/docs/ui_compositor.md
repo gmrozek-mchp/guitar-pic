@@ -48,8 +48,10 @@ layer 0 dashboard (BASE), layer 1 nav (OVR1), layer 2 song-select dialog (OVR2).
 and the disconnect/re-host dance are gone — `ui_manager` calls `screenInit_Marvin()` +
 `screenShow_Marvin()` once (the latter builds the tree and attaches each root to its Legato
 layer), then per-panel `*_Setup()` wiring, and binds canvases to HW layers at display time.
-**The splash stays separate and manual** (pre-Legato RGBA8888 scanout) on canvas slot 7,
-*outside* the layer-screen range (0..2).
+**The splash is separate and fully manual** (pre-Legato RGBA8888 scanout): it is *not* a
+canvas at all — it owns a static framebuffer and drives its XLCDC hardware layer directly via
+the PLIB (`splash.c` `Splash_Show`/`Splash_Hide`, mirroring `video.c`'s HEO setup), so the
+canvas pool is exactly the three layer-screens (0/1/2).
 
 > **§1–§7 below were written for the previous per-screen-Factory + manual-re-host design** and
 > are kept for history; where they conflict with §0, §0 wins. `screenInit_X` is now a one-time
