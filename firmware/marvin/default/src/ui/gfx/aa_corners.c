@@ -63,3 +63,49 @@ void AaCorners_Render(const leRect *rect, uint32_t radius, uint32_t borderWidth,
     blend_corner(rect->x,                       rect->y + rect->height - r,     radius, borderWidth, fill, border, mode, LE_FALSE, LE_TRUE);
     blend_corner(rect->x + rect->width - r,     rect->y + rect->height - r,     radius, borderWidth, fill, border, mode, LE_TRUE,  LE_TRUE);
 }
+
+/* Eat one radius×radius corner back to `bg`. Same arc geometry as blend_corner,
+ * but the per-pixel "inner" colour is the pixel already there (the image), so the
+ * inside of the arc is preserved and only the outside wedge fades to bg. Pixels
+ * fully inside the arc are skipped entirely (left as the image drew them). */
+static void round_corner(int32_t ox, int32_t oy, uint32_t r, leColor bg,
+                         leColorMode mode, leBool flip_x, leBool flip_y)
+{
+    uint32_t px, py;
+
+    for (py = 0u; py < r; py++)
+    {
+        for (px = 0u; px < r; px++)
+        {
+            uint32_t mx = flip_x ? (r - 1u - px) : px;
+            uint32_t my = flip_y ? (r - 1u - py) : py;
+            float    dx = (float)r - (float)mx - 0.5f;
+            float    dy = (float)r - (float)my - 0.5f;
+            float    d  = sqrtf(dx * dx + dy * dy);
+
+            float co = (float)r + 0.5f - d;   /* coverage inside the outer arc */
+            if (co >= 1.0f) { continue; }     /* fully inside → keep the image  */
+            if (co < 0.0f)  { co = 0.0f; }
+
+            int32_t x = ox + (int32_t)px;
+            int32_t y = oy + (int32_t)py;
+            leColor img = leRenderer_GetPixel(x, y);
+            /* co→1 keeps the image, co→0 is full bg. */
+            leRenderer_PutPixel(x, y,
+                                leColorLerp(bg, img, (uint32_t)(co * 100.0f + 0.5f), mode));
+        }
+    }
+}
+
+void AaCorners_RenderRoundImage(const leRect *rect, uint32_t radius,
+                                leColor bg, leColorMode mode)
+{
+    int32_t r = (int32_t)radius;
+
+    if (radius == 0u) { return; }
+
+    round_corner(rect->x,                   rect->y,                    radius, bg, mode, LE_FALSE, LE_FALSE);
+    round_corner(rect->x + rect->width - r, rect->y,                    radius, bg, mode, LE_TRUE,  LE_FALSE);
+    round_corner(rect->x,                   rect->y + rect->height - r, radius, bg, mode, LE_FALSE, LE_TRUE);
+    round_corner(rect->x + rect->width - r, rect->y + rect->height - r, radius, bg, mode, LE_TRUE,  LE_TRUE);
+}

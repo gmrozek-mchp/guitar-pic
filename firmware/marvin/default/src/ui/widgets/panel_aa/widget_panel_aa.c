@@ -52,3 +52,43 @@ void PanelAA_Enable(leWidget* panel)
 
     panel->fn = &s_aa_vt;
 }
+
+/* Round-image variant: its own vtable copy + captured paint (the paint op differs
+ * from aa_paint). */
+static leWidgetVTable s_ri_vt;
+static void (*s_ri_orig_paint)(leWidget*);
+static leBool s_ri_ready = LE_FALSE;
+
+/* For a transparent overlay sitting directly over an image on the same layer:
+ * after the (empty) overlay paints, eat the four corners of the overlay's rect back
+ * to its BASE colour. The image drew into this rect first (earlier sibling), so the
+ * corner blend reads real image pixels; BASE must equal the solid backdrop the
+ * rounded corners should match (the dialog gray behind the layer). */
+static void round_image_paint(leWidget* wgt)
+{
+    s_ri_orig_paint(wgt);
+
+    if (wgt->status.drawState == LE_WIDGET_DRAW_STATE_DONE &&
+        wgt->style.cornerRadius > 0u)
+    {
+        leRect rect;
+
+        wgt->fn->rectToScreen(wgt, &rect);
+        AaCorners_RenderRoundImage(&rect, wgt->style.cornerRadius,
+                                   leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE),
+                                   leRenderer_CurrentColorMode());
+    }
+}
+
+void PanelAA_EnableRoundImage(leWidget* panel)
+{
+    if (!s_ri_ready)
+    {
+        s_ri_vt = *panel->fn;
+        s_ri_orig_paint = panel->fn->_paint;
+        s_ri_vt._paint = round_image_paint;
+        s_ri_ready = LE_TRUE;
+    }
+
+    panel->fn = &s_ri_vt;
+}

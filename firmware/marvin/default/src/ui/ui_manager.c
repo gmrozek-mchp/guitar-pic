@@ -2,6 +2,7 @@
 #include "ui/screens/dashboard/screen_dashboard.h"
 #include "ui/screens/navigation/screen_navigation.h"
 #include "ui/screens/song_select/screen_song_select.h"
+#include "ui/screens/album_art/screen_album_art.h"
 #include "ui/screens/splash/screen_splash.h"
 
 #include <stdbool.h>
@@ -13,6 +14,7 @@
 #include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
 #include "log.h"
 #include "flash/settings.h"   /* persisted backlight % */
+#include "game/art.h"         /* Art_LoadAll — cover-art preload during splash */
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_assets.h"
@@ -160,9 +162,17 @@ static void init_screens(void)
     (void)screenInit_Marvin();
     (void)screenShow_Marvin();
 
+    /* The album-art layer (3) must be RGBA8888: the 2D engine has no RGB888 support
+     * (gfx2dFormats[RGB_888] = -1), so a 24bpp canvas can't be GFX2D-blitted and
+     * renders garbage. MGS currently emits LE_COLOR_MODE_RGB_888 for this layer;
+     * override it here to match the RGBA8888 canvas surface + OVR2 scanout. (Set the
+     * layer-screen to RGBA8888 in MGS to make this override redundant.) */
+    leSetLayerColorMode(CANVAS_ALBUM_ART, LE_COLOR_MODE_RGBA_8888);
+
     ScreenDashboard_Setup();
     ScreenNavigation_Setup();
     ScreenSongSelect_Setup();
+    ScreenAlbumArt_Setup();
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -214,6 +224,13 @@ static void ui_boot_task(void *param)
      * in parallel with the screen painting below, so it's all warm at reveal. */
     if (s_splash_shown_cb != NULL) { s_splash_shown_cb(); }
 
+    /* Decode all album art into the RGB888 caches *before* building the screens,
+     * so the song-select panel's initial selection (ScreenSongSelect_Setup ->
+     * song_detail_show(0)) finds its cover already cached. Storage mounts here;
+     * Legato's image decoders are up from SYS_Initialize. All behind the splash;
+     * the ~1-3 s decode just extends the splash hold. See game/art.h. */
+    (void)Art_LoadAll();
+
     /* PHASE 2 — build the Marvin screen + per-panel setup behind the splash.
      * Scene-graph edits (screenInit_Marvin's leAddRootWidget calls) are guarded
      * against the render tasks; the canvas/layer binds after are GFX-canvas only
@@ -234,13 +251,15 @@ static void ui_boot_task(void *param)
     TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
     if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
 
-    /* REVEAL — cut over to the (painted) dashboard, give the navigation drawer OVR1
-     * (bound but closed/off-screen), and bring the song-select dialog up on OVR2
-     * over the live dashboard. (Initial bring-up: it shows at boot; open/close
-     * wiring and the in-dialog song list come next.) */
+    /* REVEAL — cut over to the (painted) dashboard, then bring the song-select
+     * dialog up on OVR1 (RGB565) with its full-color cover strip on OVR2 (RGB888,
+     * above OVR1). The nav drawer is NOT bound here — it grabs OVR1 in
+     * navigation_open() only while shown (it and the dialog share OVR1, mutually
+     * exclusive). (Initial bring-up: the dialog shows at boot; open/close wiring
+     * comes next.) */
     ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
-    bind_canvas(CANVAS_NAVIGATION, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, false);
-    bind_canvas(CANVAS_SONGSEL, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
+    bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
 
     vTaskDelete(NULL);
 }
@@ -256,6 +275,7 @@ void UiManager_Initialize(void)
     ScreenDashboard_InitSurface();
     ScreenNavigation_InitSurface();
     ScreenSongSelect_InitSurface();
+    ScreenAlbumArt_InitSurface();
     GFX_CANVAS_Task();
 
     leSetStringTable(&stringTable);

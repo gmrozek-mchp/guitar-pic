@@ -26,6 +26,17 @@ extern "C" {
 void AaCorners_Render(const leRect *rect, uint32_t radius, uint32_t borderWidth,
                       leColor fill, leColor border, leColorMode mode);
 
+/* Round the corners of content already drawn into `rect` (e.g. an album-art image)
+ * by AA-blending the corner wedges toward `bg`, a KNOWN solid backdrop colour.
+ * Unlike AaCorners_Render, the inside of the arc is left untouched — only pixels
+ * outside the arc are replaced (fully → bg) with a 1px anti-aliased band, so the
+ * image keeps every interior pixel and only its square corners are eaten back to
+ * `bg`. Use when the backdrop behind the rounded shape is a solid colour you can
+ * name (here the dialog's 0x18181B); a varying backdrop would have to be sampled
+ * per pixel instead. `mode` is leRenderer_CurrentColorMode(). */
+void AaCorners_RenderRoundImage(const leRect *rect, uint32_t radius,
+                                leColor bg, leColorMode mode);
+
 #ifdef __cplusplus
 }
 #endif

@@ -25,6 +25,7 @@
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/catalog.h"
+#include "game/art.h"
 #include "ui/ui_manager.h"
 #include "flash/qspi_smoke.h"
 #include "flash/settings.h"
@@ -400,6 +401,37 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
     }
 }
 
+static void cmd_art(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    /* No args (or "ls"): report the cache fill. */
+    if (sub == NULL || strcmp(sub, "ls") == 0)
+    {
+        console_printf("art: %s; %d small, %d large cached",
+                       Art_IsLoaded() ? "loaded" : "not loaded",
+                       Art_CountSmall(), Art_CountLarge());
+        return;
+    }
+
+    /* art <main|bonus> <index>: report whether each tier has this cover. */
+    const char *idx = embeddedCliGetToken(args, 2);
+    int sl = (strcmp(sub, "main") == 0) ? GP_SETLIST_MAIN
+           : (strcmp(sub, "bonus") == 0) ? GP_SETLIST_BONUS : -1;
+    if (sl < 0 || idx == NULL)
+    {
+        console_printf("usage: art [ls | <main|bonus> <index>]");
+        return;
+    }
+
+    uint8_t s = (uint8_t)sl, i = (uint8_t)parse_u32(idx, 0u);
+    console_printf("%s-%02u: small %s, large %s",
+                   (s == GP_SETLIST_BONUS) ? "bonus" : "main", (unsigned)i,
+                   (Art_Small(s, i) != NULL) ? "yes" : "no",
+                   (Art_Large(s, i) != NULL) ? "yes" : "no");
+}
+
 static void sd_out(void *ctx, const char *line)
 {
     (void)ctx;
@@ -627,6 +659,7 @@ static void register_commands(void)
         { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
         { "results","results add <set> <idx> <diff> <part> <score>: test row", true, NULL, cmd_results },
         { "catalog","catalog <reload|ls|<main|bonus> <index>>: song labels",    true, NULL, cmd_catalog },
+        { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },

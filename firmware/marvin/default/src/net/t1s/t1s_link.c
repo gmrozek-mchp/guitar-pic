@@ -255,7 +255,7 @@ static void t1s_task(void *param)
      * during bring-up so RX isn't filtered before the node table exists. */
     while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
                          T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
-        LOG_WARN("T1S: TC6Regs_Init busy, retrying\r\n");
+//        LOG_WARN("T1S: TC6Regs_Init busy, retrying\r\n");
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 
@@ -483,7 +483,7 @@ uint32_t TC6Regs_CB_GetTicksMs(void)
 void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
 {
     (void)pTag;
-    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
+//    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
     switch (event) {
         case TC6Regs_Event_Loss_of_Framing_Error:
         case TC6Regs_Event_RX_Non_Recoverable_Error:

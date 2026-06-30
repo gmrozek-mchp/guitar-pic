@@ -133,6 +133,10 @@ static void navigation_open(void)
      * Show first so the move is visible (the FX engine enables the layer from
      * canvas.active). */
     Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
+    /* Grab OVR1 only while shown (it and the song-select dialog share OVR1, so the
+     * drawer is unbound when closed). gfxcSetLayer needs the canvas hidden — it is,
+     * until gfxcShowCanvas below. Caller ensures the dialog isn't holding OVR1. */
+    gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1);
     gfxcShowCanvas(CANVAS_NAVIGATION);
     navigation_slide_to(0);
     s_navigation_open = true;

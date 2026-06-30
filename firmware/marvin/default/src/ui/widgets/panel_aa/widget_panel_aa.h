@@ -18,6 +18,16 @@ extern "C" {
  * per-pixel alpha on the layer; see the journal). Call once after construction. */
 void PanelAA_Enable(leWidget* panel);
 
+/* Rounded corners for a transparent overlay panel drawn directly over an image on
+ * the SAME layer (e.g. the album-art overlay over the cover strip): after the empty
+ * overlay paints, the four corners of its rect are eaten back to the panel's BASE
+ * colour, anti-aliased against the image pixels underneath. Set the radius first,
+ * and set the scheme so BASE equals the solid backdrop the corners should match
+ * (the dialog gray). Avoids the per-pixel-alpha problem PanelAA_Enable can't: the
+ * corner is filled opaque with the known backdrop colour rather than made
+ * transparent. Call once after construction. */
+void PanelAA_EnableRoundImage(leWidget* panel);
+
 #ifdef __cplusplus
 }
 #endif

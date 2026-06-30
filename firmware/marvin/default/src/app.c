@@ -47,6 +47,7 @@
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/catalog.h"
+#include "game/art.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -155,6 +156,12 @@ void APP_Initialize ( void )
      * `catalog` console command. A missing catalog degrades to "Unknown song"
      * and never affects recognition. See game/catalog.h. */
     Catalog_Initialize();
+
+    /* Album-artwork cache (cover art keyed by (setlist,index)). State only here;
+     * the covers are decoded from the card into static RGB888 caches by
+     * Art_LoadAll(), called from the UI boot task during the splash. See
+     * game/art.h. */
+    Art_Initialize();
 
     /* The video pipeline, detector, actuator links, gameplay observer, console,
      * and perf-log drain are NOT started here — they spawn tasks at priorities

@@ -5,11 +5,9 @@ Tools for fetching and processing Guitar Hero III cover art for the marvin game 
 ## Structure
 
 - `fetch_gh3_cover_art.py` — Fetch cover art from MusicBrainz Cover Art Archive
-- `process_gh3_cover_art.py` — Resize covers to marvin-ready sizes (offline processing)
-- `data/` — Cover art data directory
-  - Original JPG files (fetched by `fetch_gh3_cover_art.py`)
-  - `508w/` — Song-select screen size (508px wide, aspect ratio preserved)
-  - `144x144/` — Now-playing section size (144×144 with pillarboxing if needed)
+- `process_gh3_cover_art.py` — Resize + install covers straight into the marvin art tree
+- `data/` — Original JPG files (fetched by `fetch_gh3_cover_art.py`, tracked in git as the
+  stable re-process inputs; the fuzzy MusicBrainz fetch isn't reproducible)
 
 ## Setup
 
@@ -35,35 +33,30 @@ uv run fetch_gh3_cover_art.py --contact your@email.com \
     --catalog ../../firmware/marvin/data/games/gh3-wii/songs.csv
 ```
 
-### Process Covers to Marvin Sizes
+### Process + install covers (one step)
 
-After fetching, generate the two sized versions for offline use on marvin:
+After fetching, generate both tiers straight into the marvin art tree:
 
 ```bash
 uv run process_gh3_cover_art.py
 ```
 
-This creates:
-- `data/508w/` — Song-select assets (scale-to-width, high quality)
-- `data/144x144/` — Now-playing assets (fit-to-square with black padding, high quality)
-
-All images are JPEG at quality 92 to balance size and fidelity.
-
-### Install to Marvin Data
-
-Once processed, install the covers to the marvin SD-card data tree:
-
-```bash
-uv run install_art.py
-```
-
-This copies covers to the firmware's expected locations with the standard naming:
+This writes (clearing any stale cover files first), keyed by the recognizer's
+`<setlist>-<NN>` and pulling each song's difficulty from `songs.csv`:
+- `../../firmware/marvin/data/games/gh3-wii/art/large/<setlist>-<NN>.png` (508×208)
 - `../../firmware/marvin/data/games/gh3-wii/art/small/<setlist>-<NN>.jpg` (144×144)
-- `../../firmware/marvin/data/games/gh3-wii/art/large/<setlist>-<NN>.jpg` (508px wide)
+
+Point `--out` elsewhere to stage into a different tree.
 
 ## Asset Format
 
-- **508px wide (`art/large/`)** — For the song-select detail screen. Covers are scaled to 508px wide with aspect ratio preserved. Heights vary (~500–520px for square album art).
-- **144×144 (`art/small/`)** — For the now-playing info panel. Covers are scaled to fit within 144×144 with black pillarboxing/letterboxing if needed to maintain aspect ratio.
+- **large (`art/large/<setlist>-<NN>.png`)** — 508×208 song-select detail strip: the
+  cover scaled to 508 wide, center-cropped to the middle 208 px band, with a top/bottom
+  **difficulty-colored fade** baked in (main tiers `"1".."8"` → green→red, `"bonus"`/unknown
+  → gray, read from `songs.csv`). PNG so the gradient stays lossless. Fade depth/brightness
+  are the `FADE_PX` / `FADE_VALUE` tunables at the top of the script.
+- **small (`art/small/<setlist>-<NN>.jpg`)** — 144×144 now-playing thumbnail: scaled to fit
+  with black pillarbox/letterbox, no fade. JPEG quality 92.
 
-Both are offline-processed once; marvin loads pre-scaled assets without runtime scaling. Naming follows firmware convention: `<setlist>-<NN>.jpg` (e.g., `main-04.jpg`, `bonus-12.jpg`).
+Both are offline-processed once; marvin decodes them into static RGB888 caches at boot
+(`firmware/marvin/default/src/game/art.c`) and loads with no runtime scaling.

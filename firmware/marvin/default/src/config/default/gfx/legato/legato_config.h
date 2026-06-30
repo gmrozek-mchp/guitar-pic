@@ -135,7 +135,7 @@ extern "C" {
 
 // variable heap configuration
 #define LE_VARIABLEHEAP_DEBUGLEVEL         0
-#define LE_VARIABLEHEAP_SIZE               524288
+#define LE_VARIABLEHEAP_SIZE               2097152
 #define LE_VARIABLEHEAP_MINALLOCSIZE       32
 #define LE_VARIABLEHEAP_ALIGNMENT          4
 #define LE_VARIABLEHEAP_BESTFIT            1
@@ -153,7 +153,7 @@ extern "C" {
 // renderer configuration
 //#define LE_VSYNC_STALL
 
-#define LE_LAYER_COUNT                     3
+#define LE_LAYER_COUNT                     4
 
 #define LE_WIDGET_MAX_EVENT_FILTERS        2
 

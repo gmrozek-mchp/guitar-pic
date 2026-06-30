@@ -68,6 +68,14 @@ extern const leScheme SCHEME_BUTTON_HARD;
 extern const leScheme SCHEME_BUTTON_MODE;
 extern const leScheme SCHEME_BUTTON_MODE_SELECTED;
 extern const leScheme SCHEME_BUTTON_EASY;
+extern const leScheme SCHEME_TEXT_TIER_1;
+extern const leScheme SCHEME_TEXT_TIER_2;
+extern const leScheme SCHEME_TEXT_TIER_3;
+extern const leScheme SCHEME_TEXT_TIER_4;
+extern const leScheme SCHEME_TEXT_TIER_5;
+extern const leScheme SCHEME_TEXT_TIER_6;
+extern const leScheme SCHEME_TEXT_TIER_7;
+extern const leScheme SCHEME_TEXT_TIER_8;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility

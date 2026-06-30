@@ -4,9 +4,11 @@
 
 #include "ui/ui_manager.h"   /* CANVAS_SONGSEL, BASE_W, BASE_H */
 #include "ui/widgets/button_aa/widget_button_aa.h"
+#include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/song_list/widget_song_list.h"
 
 #include "game/catalog.h"
+#include "game/art.h"
 #include "log.h"
 #include "util/legato_utf8.h"
 
@@ -52,6 +54,9 @@ void ScreenSongSelect_InitSurface(void)
 #define MODE_RADIUS         4u
 #define SELECT_RADIUS       10u
 
+/* Corner radius (px) for the large album-art strip. */
+#define ALBUM_ART_RADIUS    14u
+
 static unsigned int s_difficulty = DIFFICULTY_DEFAULT;
 static unsigned int s_mode       = MODE_DEFAULT;
 
@@ -59,10 +64,10 @@ static leButtonWidget *difficulty_button(unsigned int i)
 {
     switch (i)
     {
-        case 0:  return Marvin_BUTTON_SONG_SELECT_EASY_0_0;
-        case 1:  return Marvin_BUTTON_SONG_SELECT_MEDIUM_0_0;
-        case 2:  return Marvin_BUTTON_SONG_SELECT_HARD_0_0;
-        default: return Marvin_BUTTON_SONG_SELECT_EXPERT_0_0;
+        case 0:  return Marvin_BUTTON_SONG_SELECT_EASY;
+        case 1:  return Marvin_BUTTON_SONG_SELECT_MEDIUM;
+        case 2:  return Marvin_BUTTON_SONG_SELECT_HARD;
+        default: return Marvin_BUTTON_SONG_SELECT_EXPERT;
     }
 }
 
@@ -81,9 +86,9 @@ static leButtonWidget *mode_button(unsigned int i)
 {
     switch (i)
     {
-        case 0:  return Marvin_BUTTON_SONG_SELECT_1P_ROBOT_0_0;
-        case 1:  return Marvin_BUTTON_SONG_SELECT_1P_HUMAN_0_0;
-        default: return Marvin_BUTTON_SONG_SELECT_2P_ROBOT_vs_HUMAN_0_0;
+        case 0:  return Marvin_BUTTON_SONG_SELECT_1P_ROBOT;
+        case 1:  return Marvin_BUTTON_SONG_SELECT_1P_HUMAN;
+        default: return Marvin_BUTTON_SONG_SELECT_2P_ROBOT_vs_HUMAN;
     }
 }
 
@@ -178,13 +183,13 @@ static leLabelWidget *detail_label(int i)
 {
     switch (i)
     {
-        case DET_LEVEL:  return Marvin_LABEL_SONG_SELECT_SONG_LEVEL_0_0;
-        case DET_TITLE:  return Marvin_LABEL_SONG_SELECT_SONG_TITLE_0_0;
-        case DET_ARTIST: return Marvin_LABEL_SONG_SELECT_SONG_ARTIST_0_0;
-        case DET_ALBUM:  return Marvin_LABEL_SONG_SELECT_SongAlbum_0_0;
-        case DET_YEAR:   return Marvin_LABEL_SONG_SELECT_SongYear_0_0;
-        case DET_GENRE:  return Marvin_LABEL_SONG_SELECT_SongGenre_0_0;
-        default:         return Marvin_LABEL_SONG_SELECT_SongDuration_0_0;
+        case DET_LEVEL:  return Marvin_LABEL_SONG_SELECT_SongTier;
+        case DET_TITLE:  return Marvin_LABEL_SONG_SELECT_SongTitle;
+        case DET_ARTIST: return Marvin_LABEL_SONG_SELECT_Artist;
+        case DET_ALBUM:  return Marvin_LABEL_SONG_SELECT_SongAlbum;
+        case DET_YEAR:   return Marvin_LABEL_SONG_SELECT_SongYear;
+        case DET_GENRE:  return Marvin_LABEL_SONG_SELECT_SongGenre;
+        default:         return Marvin_LABEL_SONG_SELECT_SongDuration;
     }
 }
 
@@ -199,7 +204,10 @@ static void song_detail_init(void)
         leString      *cur = lbl->fn->getString(lbl);
 
         leFixedString_Constructor(&s_detail_str[i], s_detail_buf[i], DETAIL_CAP);
-        if (cur != NULL) { fs->fn->setFont(fs, cur->fn->getFont(cur)); }
+        /* The tier label is DejaVuSansMonoBold 12pt (carries the U+2605 ★ glyph);
+         * the others inherit the font MGS assigned to their table string. */
+        if (i == DET_LEVEL) { fs->fn->setFont(fs, (leFont *)&DejaVuSansMonoBold_12); }
+        else if (cur != NULL) { fs->fn->setFont(fs, cur->fn->getFont(cur)); }
         lbl->fn->setString(lbl, fs);
     }
 }
@@ -212,20 +220,89 @@ static void set_detail(int i, const char *s)
     (void)lestring_set_utf8(fs, (s != NULL && s[0] != '\0') ? s : "-");
 }
 
+/* Point the dialog's album-art widget at the selected song's pre-decoded large
+ * strip, or blank it (NULL) when the song or its cover is absent. */
+static void song_art_show(const catalog_entry_t *e)
+{
+    const leImage *img = (e != NULL) ? Art_Large(e->setlist, e->index) : NULL;
+    Marvin_IMAGE_ALBUM_ART->fn->setImage(Marvin_IMAGE_ALBUM_ART, (leImage *)img);
+}
+
+/* ── tier label ───────────────────────────────────────────────────────────────
+ * SONG_LEVEL shows "★…★ TIER n" for main career tiers 1-8 (n black stars), or
+ * "BONUS" for the bonus setlist, colored by difficulty: an 8-tier palette
+ * (green(1)→red(8) with blue/purple accents), light gray for bonus. The per-tier
+ * text colors live in MGS schemes SCHEME_TEXT_TIER_1..SCHEME_TEXT_TIER_8 (text
+ * color = the tier color, matching the art fade); bonus reuses SCHEME_TEXT_GRAY_D4D4D8. */
+static const leScheme *tier_scheme(int tier)
+{
+    switch (tier)
+    {
+        case 1:  return &SCHEME_TEXT_TIER_1;
+        case 2:  return &SCHEME_TEXT_TIER_2;
+        case 3:  return &SCHEME_TEXT_TIER_3;
+        case 4:  return &SCHEME_TEXT_TIER_4;
+        case 5:  return &SCHEME_TEXT_TIER_5;
+        case 6:  return &SCHEME_TEXT_TIER_6;
+        case 7:  return &SCHEME_TEXT_TIER_7;
+        case 8:  return &SCHEME_TEXT_TIER_8;
+        default: return &SCHEME_TEXT_GRAY_D4D4D8;   /* bonus / unknown → light gray */
+    }
+}
+
+/* Catalog difficulty string ("1".."8" or "bonus") → career tier, or 0 (bonus). */
+static int difficulty_tier(const char *d)
+{
+    if (d != NULL && d[0] >= '1' && d[0] <= '8' && d[1] == '\0') { return d[0] - '0'; }
+    return 0;
+}
+
+/* UTF-8 tier text: `tier` black stars (U+2605) + " TIER n", or "BONUS" for 0. */
+static void make_tier_text(int tier, char *buf, size_t n)
+{
+    size_t p = 0;
+    if (tier == 0) { (void)snprintf(buf, n, "BONUS"); return; }
+    for (int i = 0; i < tier && p + 3u < n; i++)
+    {
+        buf[p++] = (char)0xE2; buf[p++] = (char)0x98; buf[p++] = (char)0x85;   /* U+2605 ★ */
+    }
+    (void)snprintf(buf + p, n - p, " TIER %d", tier);
+}
+
+/* Set SONG_LEVEL's text + color from the song's difficulty. */
+static void tier_label_show(const catalog_entry_t *e)
+{
+    leLabelWidget *lbl  = detail_label(DET_LEVEL);
+    int            tier = (e != NULL) ? difficulty_tier(e->difficulty) : 0;
+    char           txt[40];
+
+    if (e == NULL)
+    {
+        set_detail(DET_LEVEL, "-");
+        lbl->fn->setScheme(lbl, &SCHEME_TEXT_GRAY_D4D4D8);
+        return;
+    }
+    make_tier_text(tier, txt, sizeof txt);
+    set_detail(DET_LEVEL, txt);
+    lbl->fn->setScheme(lbl, tier_scheme(tier));
+}
+
 /* Mirror catalog entry `index` into the detail labels (all "-" if no such song). */
 static void song_detail_show(int index)
 {
     const catalog_entry_t *e = Catalog_At(index);
     char tmp[16];
 
+    song_art_show(e);
+    tier_label_show(e);   /* DET_LEVEL: tier text + difficulty color */
+
     if (e == NULL)
     {
         int i;
-        for (i = 0; i < DET_COUNT; i++) { set_detail(i, "-"); }
+        for (i = DET_TITLE; i < DET_COUNT; i++) { set_detail(i, "-"); }
         return;
     }
 
-    set_detail(DET_LEVEL,  e->difficulty);
     set_detail(DET_TITLE,  e->title);
     set_detail(DET_ARTIST, e->artist);
     set_detail(DET_ALBUM,  e->album);
@@ -312,7 +389,7 @@ static void song_list_init(void)
     SongList_SetModel(list, Catalog_Count(), song_row, NULL);
     SongList_SetSelectHandler(list, song_selected, NULL);
 
-    Marvin_PANEL_SONG_SELECT_LEFT_0_0->fn->addChild(Marvin_PANEL_SONG_SELECT_LEFT_0_0, list);
+    Marvin_PANEL_SONG_SELECT_LEFT->fn->addChild(Marvin_PANEL_SONG_SELECT_LEFT, list);
 
     SongList_SetSelected(list, 0);   /* default to the first song (no-op while empty) */
 }
@@ -327,7 +404,16 @@ void ScreenSongSelect_Setup(void)
     gfxcSetWindowPosition(CANVAS_SONGSEL, SONGSEL_X, SONGSEL_Y);
 
     radio_groups_init();
-    round_button(Marvin_BUTTON_SONG_SELECT_SELECT_0_0, SELECT_RADIUS);   /* AA corners; not a radio */
+    round_button(Marvin_BUTTON_SONG_SELECT_SELECT, SELECT_RADIUS);   /* AA corners; not a radio */
+
+    /* Round the album-art strip: the empty overlay panel over the cover eats its
+     * corners back to the dialog gray (0x18181B) it sits in front of. */
+    Marvin_PANEL_ALBUM_ART_OVERLAY->fn->setScheme(Marvin_PANEL_ALBUM_ART_OVERLAY,
+                                                  &SCHEME_PANEL_GRAY_18181B);
+    Marvin_PANEL_ALBUM_ART_OVERLAY->fn->setCornerRadius(Marvin_PANEL_ALBUM_ART_OVERLAY,
+                                                        ALBUM_ART_RADIUS);
+    PanelAA_EnableRoundImage(Marvin_PANEL_ALBUM_ART_OVERLAY);
+
     song_detail_init();
     song_list_init();
     song_detail_show(0);   /* mirror the default (first-song) selection */

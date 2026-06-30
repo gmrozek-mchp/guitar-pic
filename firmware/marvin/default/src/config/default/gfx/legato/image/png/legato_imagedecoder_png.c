@@ -51,30 +51,115 @@ static leBool _supportsImage(const leImage* img)
     return img->format == LE_IMAGE_FORMAT_PNG;
 }
 
+/* Decode `src` (a PNG leImage) into the file-scope `decodedImage` as a RAW leImage
+ * over freshly-malloc'd pixels, byte-swapped from lodepng's [R,G,B,A] output to
+ * Legato's channel order for src->buffer.mode. On success returns LE_SUCCESS and
+ * hands the malloc'd buffer back via *outData (caller must LE_FREE it under the
+ * LE_PNG_USE_SCRATCH==0 policy); on failure returns LE_FAILURE (nothing to free). */
+static leResult _pngDecodeToImage(const leImage* src, uint8_t** outData)
+{
+    uint8_t* encodedData = NULL;
+    uint8_t* decodedData = NULL;
+    uint32_t width = 0;
+    uint32_t height = 0;
+    uint32_t itr, clr;
+    uint8_t  rSwap, gSwap, bSwap, aSwap;
+    uint8_t* ptr;
+    int32_t  pngError;
+#if LE_STREAMING_ENABLED == 1
+    leStream stream;
+#endif
+
+    *outData = NULL;
+
+#if LE_STREAMING_ENABLED == 1
+    if(src->header.location != LE_STREAM_LOCATION_ID_INTERNAL)
+    {
+        encodedData = LE_MALLOC(src->header.size);
+        if(encodedData == NULL)
+            return LE_FAILURE;
+        leStream_Init(&stream, &src->header, 0, NULL, NULL);
+        if(leStream_Open(&stream) == LE_FAILURE)
+        {
+            LE_FREE(encodedData);
+            return LE_FAILURE;
+        }
+        stream.flags |= SF_BLOCKING;
+        if(leStream_Read(&stream, (size_t)src->header.address, src->header.size,
+                         encodedData, NULL) == LE_FAILURE)
+        {
+            LE_FREE(encodedData);
+            return LE_FAILURE;
+        }
+    }
+    else
+#endif
+    {
+        encodedData = src->header.address;
+    }
+
+    pngError = lodepng_decode_memory(&decodedData,
+                                     (unsigned int*)&width,
+                                     (unsigned int*)&height,
+                                     encodedData,
+                                     src->header.size,
+                                     src->buffer.mode == LE_COLOR_MODE_RGBA_8888 ? LCT_RGBA : LCT_RGB,
+                                     8);
+
+#if LE_STREAMING_ENABLED == 1
+    if(src->header.location != LE_STREAM_LOCATION_ID_INTERNAL)
+        LE_FREE(encodedData);
+#endif
+
+    if(pngError != 0 || decodedData == NULL)
+        return LE_FAILURE;
+
+    leImage_Create(&decodedImage,
+                   width,
+                   height,
+                   src->buffer.mode,
+                   decodedData,
+                   LE_STREAM_LOCATION_ID_INTERNAL);
+
+    /* lodepng emits [R,G,B,A] byte order; swap to Legato's channel order. */
+    if(decodedImage.buffer.mode == LE_COLOR_MODE_RGBA_8888)
+    {
+        for(itr = 0; itr < decodedImage.buffer.pixel_count; ++itr)
+        {
+            clr = ((uint32_t*) decodedImage.buffer.pixels)[itr];
+            rSwap = (clr >> 24) & 0xFF;
+            gSwap = (clr >> 16) & 0xFF;
+            bSwap = (clr >>  8) & 0xFF;
+            aSwap = (clr >>  0) & 0xFF;
+            ((uint32_t*) decodedImage.buffer.pixels)[itr] =
+                ((uint32_t)aSwap << 24) | ((uint32_t)bSwap << 16) |
+                ((uint32_t)gSwap <<  8) | ((uint32_t)rSwap <<  0);
+        }
+    }
+    else if(decodedImage.buffer.mode == LE_COLOR_MODE_RGB_888)
+    {
+        for(itr = 0; itr < decodedImage.buffer.pixel_count; ++itr)
+        {
+            ptr = &((uint8_t*)decodedImage.buffer.pixels)[itr * 3];
+            clr = 0;
+            memcpy(&clr, ptr, 3);
+            clr = leColorSwap(clr, decodedImage.buffer.mode);
+            memcpy(ptr, &clr, 3);
+        }
+    }
+
+    *outData = decodedData;
+    return LE_SUCCESS;
+}
+
 static leResult _draw(const leImage* img,
                       const leRect* srcRect,
                       int32_t x,
                       int32_t y,
                       uint32_t a)
 {
-    leRect imgRect, sourceClipRect;
-    uint32_t itr, clr;
-    uint8_t* ptr = NULL;
-    int32_t pngError;
-
-#if LE_STREAMING_ENABLED == 1
-    leStream stream;
-#endif
-
-    uint8_t* encodedData = NULL;
-    uint8_t* decodedData = NULL;
-    uint32_t width = 0;
-    uint32_t height = 0;
-
-    uint32_t rSwap = 0;
-    uint32_t gSwap = 0;
-    uint32_t bSwap = 0;
-    uint32_t aSwap = 0;
+    leRect   imgRect, sourceClipRect;
+    uint8_t* decodedData;
 
     imgRect.x = 0;
     imgRect.y = 0;
@@ -90,99 +175,11 @@ static leResult _draw(const leImage* img,
     if(sourceClipRect.width <= 0 || sourceClipRect.height <= 0)
         return LE_FAILURE;
 
-#if LE_STREAMING_ENABLED == 1
-    if(img->header.location != LE_STREAM_LOCATION_ID_INTERNAL)
-    {
-        encodedData = LE_MALLOC(img->header.size);
-
-        if(encodedData == NULL)
-            return LE_FAILURE;
-
-        leStream_Init(&stream,
-                      &img->header,
-                      0,
-                      NULL,
-                      NULL);
-
-        if(leStream_Open(&stream) == LE_FAILURE)
-            return LE_FAILURE;
-
-        stream.flags |= SF_BLOCKING;
-
-        if(leStream_Read(&stream,
-                         (size_t)img->header.address,
-                         img->header.size,
-                         encodedData,
-                         NULL) == LE_FAILURE)
-        {
-            return LE_FAILURE;
-        }
-    }
-    else
-    {
-#endif
-        encodedData = img->header.address;
-#if LE_STREAMING_ENABLED == 1
-    }
-#endif
-    pngError = lodepng_decode_memory(&decodedData,
-                                    (unsigned int*)&width,
-                                    (unsigned int*)&height,
-                                     encodedData,
-                                     img->header.size,
-                                     img->buffer.mode == LE_COLOR_MODE_RGBA_8888 ? LCT_RGBA : LCT_RGB,
-                                     8);
-
-    //LE_ASSERT(pngError == 0);
-
-    if(pngError != 0)
+    if(_pngDecodeToImage(img, &decodedData) != LE_SUCCESS)
         return LE_FAILURE;
 
-#if LE_STREAMING_ENABLED == 1
-    if(img->header.location != LE_STREAM_LOCATION_ID_INTERNAL)
-    {
-        LE_FREE(encodedData);
-    }
-#endif
-
-    leImage_Create(&decodedImage,
-                   width,
-                   height,
-                   img->buffer.mode,
-                   decodedData,
-                   LE_STREAM_LOCATION_ID_INTERNAL);
-
-    if(decodedImage.buffer.mode == LE_COLOR_MODE_RGBA_8888)
-    {
-        for(itr = 0; itr < decodedImage.buffer.pixel_count; ++itr)
-        {
-            clr = ((uint32_t*) decodedImage.buffer.pixels)[itr];
-            rSwap = (clr >> 24) & 0xFF;
-            gSwap = (clr >> 16) & 0xFF;
-            bSwap = (clr >> 8)  & 0xFF;
-            aSwap = (clr >> 0)  & 0xFF;
-            clr = (aSwap << 24) | (bSwap << 16) | (gSwap << 8) | (rSwap << 0);
-            ((uint32_t*) decodedImage.buffer.pixels)[itr] = clr;
-        }
-    }
-    else if(decodedImage.buffer.mode == LE_COLOR_MODE_RGB_888)
-    {
-        for(itr = 0; itr < decodedImage.buffer.pixel_count; ++itr)
-        {
-            ptr = &((uint8_t*)decodedImage.buffer.pixels)[itr * 3];
-
-            clr = 0;
-            memcpy(&clr, ptr, 3);
-            clr = leColorSwap(clr, decodedImage.buffer.mode);
-            memcpy(ptr, &clr, 3);
-        }
-    }
-
-    leImage_Draw(&decodedImage,
-                 srcRect,
-                 x,
-                 y,
-                 a);
+    /* draw the decoded image to the active frame buffer */
+    leImage_Draw(&decodedImage, srcRect, x, y, a);
 
 #if defined LE_PNG_USE_SCRATCH && LE_PNG_USE_SCRATCH == 0
     LE_FREE(decodedData);
@@ -199,18 +196,12 @@ static leResult _render(const leImage* src,
                         leBool ignoreAlpha,
                         leImage* dst)
 {
-    leRect imgRect, sourceClipRect;
-
-    uint8_t* encodedData = NULL;
-    uint8_t* decodedData = NULL;
-    uint32_t width = 0;
-    uint32_t height = 0;
-    (void)ignoreMask; // unused
-    (void)ignoreAlpha; // unused
-
-#if LE_STREAMING_ENABLED == 1
-    leStream stream;
-#endif
+    /* Decodes into the shared decodedImage, then copies it into the destination
+     * buffer (vs _draw(), which draws it to the active frame buffer). */
+    leRect   imgRect, sourceClipRect;
+    uint8_t* decodedData;
+    (void)ignoreMask;   // unused
+    (void)ignoreAlpha;  // unused
 
     imgRect.x = 0;
     imgRect.y = 0;
@@ -226,57 +217,12 @@ static leResult _render(const leImage* src,
     if(sourceClipRect.width <= 0 || sourceClipRect.height <= 0)
         return LE_FAILURE;
 
-#if LE_STREAMING_ENABLED == 1
-    if(src->header.location != LE_STREAM_LOCATION_ID_INTERNAL)
-    {
-        encodedData = LE_MALLOC(src->header.size);
+    if(_pngDecodeToImage(src, &decodedData) != LE_SUCCESS)
+        return LE_FAILURE;
 
-        if(encodedData == NULL)
-            return LE_FAILURE;
-
-        leStream_Init(&stream,
-                      &src->header,
-                      0,
-                      NULL,
-                      NULL);
-
-        if(leStream_Open(&stream) == LE_FAILURE)
-            return LE_FAILURE;
-
-        stream.flags |= SF_BLOCKING;
-
-        if(leStream_Read(&stream,
-                         (size_t)src->header.address,
-                         src->header.size,
-                         encodedData,
-                         NULL) == LE_FAILURE)
-        {
-            return LE_FAILURE;
-        }
-    }
-    else
-#else
-    {
-        encodedData = src->header.address;
-    }
-#endif
-
-    lodepng_decode_memory(&decodedData,
-                          (unsigned int*)&width,
-                          (unsigned int*)&height,
-                          encodedData,
-                          src->header.size,
-                          src->buffer.mode == LE_COLOR_MODE_RGBA_8888 ? LCT_RGBA : LCT_RGB,
-                          8);
-
-#if LE_STREAMING_ENABLED == 1
-    if(src->header.location != LE_STREAM_LOCATION_ID_INTERNAL)
-    {
-        LE_FREE(encodedData);
-    }
-#endif
-
-    lePixelBufferCopy(&dst->buffer, x, y, &src->buffer, srcRect);
+    /* copy the decoded image into the destination buffer (color-converted by
+     * lePixelBufferCopy if dst->buffer.mode differs from the decoded mode) */
+    lePixelBufferCopy(&dst->buffer, x, y, &decodedImage.buffer, srcRect);
 
 #if defined LE_PNG_USE_SCRATCH && LE_PNG_USE_SCRATCH == 0
     LE_FREE(decodedData);
