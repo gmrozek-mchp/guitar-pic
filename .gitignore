@@ -3,5 +3,7 @@
 # Vendor datasheets and reference PDFs — fetch from the source, don't commit
 docs/*.pdf
 
-# GH3 cover art working directory (generated, large files) — regenerate with tools/gh3-cover-art scripts
-tools/gh3-cover-art/data/
+# GH3 cover art working dir: track the original downloads (the stable, non-deterministic-
+# to-refetch inputs to process_gh3_cover_art.py), ignore the regenerable resized output.
+tools/gh3-cover-art/data/*
+!tools/gh3-cover-art/data/*.jpg
