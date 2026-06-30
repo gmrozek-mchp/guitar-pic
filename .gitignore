@@ -2,3 +2,6 @@
 
 # Vendor datasheets and reference PDFs — fetch from the source, don't commit
 docs/*.pdf
+
+# GH3 cover art working directory (generated, large files) — regenerate with tools/gh3-cover-art scripts
+tools/gh3-cover-art/data/

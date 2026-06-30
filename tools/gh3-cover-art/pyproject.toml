@@ -1,0 +1,8 @@
+[project]
+name = "gh3-cover-art"
+version = "1.0.0"
+description = "Fetch and process Guitar Hero III cover art for marvin game UI."
+requires-python = ">=3.8"
+dependencies = [
+    "pillow>=10.0.0",
+]

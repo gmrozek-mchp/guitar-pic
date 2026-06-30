@@ -15,11 +15,12 @@ can still be written (year=0, genre/difficulty blank) by passing --catalog with
 
 Usage:
     # IMPORTANT: set a real contact string -- MusicBrainz blocks generic agents.
-    python3 fetch_gh3_cover_art.py --contact you@example.com
-    python3 fetch_gh3_cover_art.py --contact you@example.com --out ./art --size 1200
+    cd tools/gh3-cover-art
+    uv run fetch_gh3_cover_art.py --contact you@example.com
+    uv run fetch_gh3_cover_art.py --contact you@example.com --out ./data --size 1200
     # also fill the catalog (year + genre) from MusicBrainz:
-    python3 fetch_gh3_cover_art.py --contact you@example.com \\
-        --catalog ../firmware/marvin/data/games/gh3-wii/songs.csv
+    uv run fetch_gh3_cover_art.py --contact you@example.com \\
+        --catalog ../../firmware/marvin/data/games/gh3-wii/songs.csv
 
 MusicBrainz asks for <=1 request/sec; this script self-throttles. Misses are
 logged to <out>/_misses.txt for manual handling (esp. the obscure bonus tracks).
@@ -230,7 +231,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--contact", required=True,
                     help="Your email or project URL (required by the MusicBrainz API)")
-    ap.add_argument("--out", default="gh3_cover_art", help="Output directory")
+    ap.add_argument("--out", default="./data", help="Output directory")
     ap.add_argument("--size", type=int, default=500, choices=[250, 500, 1200, 0],
                     help="Cover size in px; 0 = full resolution (default 500)")
     ap.add_argument("--force", action="store_true", help="Re-download even if file exists")
