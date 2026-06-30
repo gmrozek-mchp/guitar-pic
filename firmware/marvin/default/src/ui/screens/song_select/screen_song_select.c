@@ -394,6 +394,15 @@ static void song_list_init(void)
     SongList_SetSelected(list, 0);   /* default to the first song (no-op while empty) */
 }
 
+/* Dismiss the dialog. The X (close) and SELECT buttons both close it for now;
+ * SELECT will start gameplay once that lands. ui_manager hides the OVR1 dialog and
+ * OVR2 cover together and frees OVR1. */
+static void song_close_on_release(leButtonWidget *btn)
+{
+    (void)btn;
+    UiManager_CloseSongSelect();
+}
+
 void ScreenSongSelect_Setup(void)
 {
     /* Center the dialog. The root is already on Legato layer 2 (built by MGS); the
@@ -405,6 +414,13 @@ void ScreenSongSelect_Setup(void)
 
     radio_groups_init();
     round_button(Marvin_BUTTON_SONG_SELECT_SELECT, SELECT_RADIUS);   /* AA corners; not a radio */
+
+    /* Close the dialog from the X (upper-right) or SELECT (placeholder until SELECT
+     * starts gameplay). */
+    Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedEventCallback(Marvin_BUTTON_SONG_SELECT_CLOSE,
+                                                                  song_close_on_release);
+    Marvin_BUTTON_SONG_SELECT_SELECT->fn->setReleasedEventCallback(Marvin_BUTTON_SONG_SELECT_SELECT,
+                                                                   song_close_on_release);
 
     /* Round the album-art strip: the empty overlay panel over the cover eats its
      * corners back to the dialog gray (0x18181B) it sits in front of. */

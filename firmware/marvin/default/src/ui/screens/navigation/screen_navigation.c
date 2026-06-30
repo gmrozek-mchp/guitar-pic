@@ -139,6 +139,10 @@ static void navigation_open(void)
     gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1);
     gfxcShowCanvas(CANVAS_NAVIGATION);
     navigation_slide_to(0);
+    /* Modal: disable the dashboard beneath so nothing behind the drawer reacts. The
+     * drawer (on OVR1) covers the hamburger, so close is via the drawer's Dashboard
+     * entry, not the hamburger — disabling the dashboard loses no affordance. */
+    Marvin_PANEL_DASHBOARD->fn->setEnabled(Marvin_PANEL_DASHBOARD, LE_FALSE);
     s_navigation_open = true;
 }
 
@@ -150,6 +154,8 @@ static void navigation_close(void)
      * so the final frame is displayed before the hide lands — keeping it in-bounds
      * makes that frame a harmless edge sliver instead of the panel's left columns. */
     navigation_slide_to(NAVIGATION_CLOSED_X);
+    /* Re-enable the dashboard as the drawer leaves (modal end). */
+    Marvin_PANEL_DASHBOARD->fn->setEnabled(Marvin_PANEL_DASHBOARD, LE_TRUE);
     s_navigation_open = false;
 }
 

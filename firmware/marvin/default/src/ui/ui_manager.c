@@ -86,6 +86,48 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
     XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
 }
 
+/* ── song-select modal (OVR1 dialog + OVR2 cover strip) ───────────────────────
+ * The dialog and its full-color cover are a coupled pair shown/hidden together.
+ * Both canvases paint continuously into their surfaces; open binds them onto
+ * OVR1/OVR2 and shows them, close hides them (freeing OVR1 for the nav drawer).
+ * bind_canvas needs the canvas hidden for gfxcSetLayer — true while closed. */
+static bool s_songsel_open = false;
+
+/* Route input for the song-select modal via the layer-screens' background panels.
+ * Legato treats every layer-screen as stacked and pickable regardless of canvas
+ * visibility, so a hidden overlay still captures touches meant for the dashboard
+ * beneath it unless its background panel is disabled (the MGS layer-screen
+ * "background panel" pattern). PANEL_SONG_SELECT (layer 2) and
+ * PANEL_SONG_SELECT_ALBUM_ART (layer 3) are the first pickable widgets on their
+ * IGNOREPICK roots, i.e. the layers' background panels. `on` = dialog shown:
+ * enable the dialog panels and *disable the dashboard* (PANEL_DASHBOARD, layer 0) so
+ * it's a true modal — nothing behind the dialog (header tap, hamburger) reacts.
+ * Inverted while closed: dashboard live, overlays pass input through. */
+static void songsel_set_input(leBool on)
+{
+    Marvin_PANEL_DASHBOARD->fn->setEnabled(Marvin_PANEL_DASHBOARD, on ? LE_FALSE : LE_TRUE);
+    Marvin_PANEL_SONG_SELECT->fn->setEnabled(Marvin_PANEL_SONG_SELECT, on);
+    Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->setEnabled(Marvin_PANEL_SONG_SELECT_ALBUM_ART, on);
+}
+
+void UiManager_OpenSongSelect(void)
+{
+    if (s_songsel_open) { return; }
+    songsel_set_input(LE_TRUE);
+    bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
+    bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+    s_songsel_open = true;
+}
+
+void UiManager_CloseSongSelect(void)
+{
+    if (!s_songsel_open) { return; }
+    gfxcHideCanvas(CANVAS_SONGSEL);   gfxcCanvasUpdate(CANVAS_SONGSEL);
+    gfxcHideCanvas(CANVAS_ALBUM_ART); gfxcCanvasUpdate(CANVAS_ALBUM_ART);
+    songsel_set_input(LE_FALSE);
+    s_songsel_open = false;
+}
+
 static uint32_t s_backlight_pct;
 
 /* Set the backlight brightness (0–100%, clamped). The backlight is PWM-dimmed on
@@ -173,6 +215,11 @@ static void init_screens(void)
     ScreenNavigation_Setup();
     ScreenSongSelect_Setup();
     ScreenAlbumArt_Setup();
+
+    /* Song-select starts closed: disable its layer-screens' background panels so
+     * those (hidden) overlays don't capture touches meant for the dashboard.
+     * UiManager_OpenSongSelect re-enables them. */
+    songsel_set_input(LE_FALSE);
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -251,15 +298,13 @@ static void ui_boot_task(void *param)
     TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
     if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
 
-    /* REVEAL — cut over to the (painted) dashboard, then bring the song-select
-     * dialog up on OVR1 (RGB565) with its full-color cover strip on OVR2 (RGB888,
-     * above OVR1). The nav drawer is NOT bound here — it grabs OVR1 in
-     * navigation_open() only while shown (it and the dialog share OVR1, mutually
-     * exclusive). (Initial bring-up: the dialog shows at boot; open/close wiring
-     * comes next.) */
+    /* REVEAL — cut over to the (painted) dashboard. The song-select dialog starts
+     * closed: it and its OVR2 cover strip are painted into their canvases but not
+     * shown; UiManager_OpenSongSelect() binds + shows the pair on demand (header tap).
+     * Set OVR1's colour mode to RGB565 now so the first nav-open (nav shares OVR1 and
+     * doesn't poke RGBMODE itself) scans out correctly even before any dialog open. */
     ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
-    bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
-    bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+    XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
 
     vTaskDelete(NULL);
 }
