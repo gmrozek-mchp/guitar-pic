@@ -11,6 +11,7 @@
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
+#include "gfx/legato/string/legato_fixedstring.h"                /* runtime label text */
 #include "gfx/legato/generated/le_gen_scheme.h"
 #include "gfx/legato/generated/le_gen_assets.h"                  /* DejaVu fonts */
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* song-select widgets */
@@ -153,6 +154,92 @@ static void radio_groups_init(void)
     mode_repaint();
 }
 
+/* ── selected-song detail labels ──────────────────────────────────────────────
+ * The dialog's detail labels mirror the selected catalog entry. MGS gives each a
+ * static table string; we swap in a per-label leFixedString (static buffer, no
+ * heap) and rewrite it on selection. setString only references the string, so the
+ * fixed strings must persist (file-scope) — and Legato strings carry their own
+ * font, so each fixed string inherits the font from the table string it replaces. */
+enum { DET_LEVEL, DET_TITLE, DET_ARTIST, DET_ALBUM, DET_YEAR, DET_GENRE, DET_DURATION, DET_COUNT };
+
+#define DETAIL_CAP  64
+
+static leChar        s_detail_buf[DET_COUNT][DETAIL_CAP];
+static leFixedString s_detail_str[DET_COUNT];
+
+static leLabelWidget *detail_label(int i)
+{
+    switch (i)
+    {
+        case DET_LEVEL:  return Marvin_LABEL_SONG_SELECT_SONG_LEVEL_0_0;
+        case DET_TITLE:  return Marvin_LABEL_SONG_SELECT_SONG_TITLE_0_0;
+        case DET_ARTIST: return Marvin_LABEL_SONG_SELECT_SONG_ARTIST_0_0;
+        case DET_ALBUM:  return Marvin_LABEL_SONG_SELECT_SongAlbum_0_0;
+        case DET_YEAR:   return Marvin_LABEL_SONG_SELECT_SongYear_0_0;
+        case DET_GENRE:  return Marvin_LABEL_SONG_SELECT_SongGenre_0_0;
+        default:         return Marvin_LABEL_SONG_SELECT_SongDuration_0_0;
+    }
+}
+
+/* Point each detail label at its fixed string, inheriting the MGS-assigned font. */
+static void song_detail_init(void)
+{
+    int i;
+    for (i = 0; i < DET_COUNT; i++)
+    {
+        leLabelWidget *lbl = detail_label(i);
+        leString      *fs  = (leString *)&s_detail_str[i];
+        leString      *cur = lbl->fn->getString(lbl);
+
+        leFixedString_Constructor(&s_detail_str[i], s_detail_buf[i], DETAIL_CAP);
+        if (cur != NULL) { fs->fn->setFont(fs, cur->fn->getFont(cur)); }
+        lbl->fn->setString(lbl, fs);
+    }
+}
+
+/* Set a detail value; "-" for an empty/unknown field. The label repaints via the
+ * string's invalidate callback (installed by setString). */
+static void set_detail(int i, const char *s)
+{
+    leString *fs = (leString *)&s_detail_str[i];
+    (void)fs->fn->setFromCStr(fs, (s != NULL && s[0] != '\0') ? s : "-");
+}
+
+/* Mirror catalog entry `index` into the detail labels (all "-" if no such song). */
+static void song_detail_show(int index)
+{
+    const catalog_entry_t *e = Catalog_At(index);
+    char tmp[16];
+
+    if (e == NULL)
+    {
+        int i;
+        for (i = 0; i < DET_COUNT; i++) { set_detail(i, "-"); }
+        return;
+    }
+
+    set_detail(DET_LEVEL,  e->difficulty);
+    set_detail(DET_TITLE,  e->title);
+    set_detail(DET_ARTIST, e->artist);
+    set_detail(DET_ALBUM,  e->album);
+    set_detail(DET_GENRE,  e->genre);
+
+    if (e->year != 0u)
+    {
+        (void)snprintf(tmp, sizeof tmp, "%u", (unsigned)e->year);
+        set_detail(DET_YEAR, tmp);
+    }
+    else { set_detail(DET_YEAR, "-"); }
+
+    if (e->length_s != 0u)
+    {
+        (void)snprintf(tmp, sizeof tmp, "%u:%02u",
+                       (unsigned)(e->length_s / 60u), (unsigned)(e->length_s % 60u));
+        set_detail(DET_DURATION, tmp);
+    }
+    else { set_detail(DET_DURATION, "-"); }
+}
+
 /* ── catalog-backed song list ─────────────────────────────────────────────────
  * A SongList widget fills the dialog's LEFT panel below the 33px SETLIST header,
  * backed directly by the SD song catalog. */
@@ -191,6 +278,8 @@ static void song_selected(void *ctx, int index)
     (void)ctx;
     LOG_INFO("songsel: selected #%d  %s - %s\r\n", index,
              (e != NULL) ? e->title : "?", (e != NULL) ? e->artist : "?");
+
+    song_detail_show(index);
 }
 
 /* Build the song list into the LEFT panel. DejaVu Mono 12 — bold title over
@@ -232,7 +321,9 @@ void ScreenSongSelect_Setup(void)
 
     radio_groups_init();
     round_button(Marvin_BUTTON_SONG_SELECT_SELECT_0_0);   /* AA corners; not a radio */
+    song_detail_init();
     song_list_init();
+    song_detail_show(0);   /* mirror the default (first-song) selection */
 
     Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
 }

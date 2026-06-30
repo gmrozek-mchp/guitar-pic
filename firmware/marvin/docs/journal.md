@@ -208,6 +208,23 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — Song-select detail labels mirror the selected song (confirmed on hardware w/ SD)
+
+Wired the dialog's detail labels to the selected catalog entry: `SONG_LEVEL`←difficulty,
+`SONG_TITLE`←title, `SONG_ARTIST`←artist, `SongAlbum`←album, `SongYear`←year,
+`SongGenre`←genre, `SongDuration`←`m:ss`. Updated on the default (first-song) selection
+and on every list tap (the `SongList` select handler calls `song_detail_show(index)`).
+
+Legato runtime-text mechanics worth remembering: `leLabelWidget` `setString` only
+*references* the string (and installs invalidate callbacks on it), so each label gets a
+file-scope `leFixedString` over a static `leChar` buffer (no heap — honours the
+static-allocation rule). Legato strings carry their own font, so `song_detail_init`
+copies the font from each label's original MGS table string (`getString`→`getFont`) onto
+its fixed string before `setString`, so the dynamic text renders exactly as designed.
+`set_detail` rewrites via `setFromCStr`; the label repaints through the installed
+invalidate callback. Empty/unknown fields render "-" (em-dash avoided — label fonts may
+lack the glyph). Confirmed on hardware with an SD card; minor tweaks deferred.
+
 ### 2026-06-29 — Song list dropped into the song-select dialog (catalog-backed, transparent, empty-state)
 
 Wired the catalog-backed `SongList` widget into the song-select dialog's LEFT panel
