@@ -1,6 +1,7 @@
 #include "ui/screens/song_select/screen_song_select.h"
 
 #include "ui/ui_manager.h"   /* CANVAS_SONGSEL, BASE_W, BASE_H */
+#include "ui/widgets/button_aa/widget_button_aa.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -116,17 +117,29 @@ static void mode_on_release(leButtonWidget *btn)
     }
 }
 
+/* Round the corners and enable anti-aliased smoothing on a button (not an MGS
+ * option). ButtonAA only smooths at BUTTON_AA_RADIUS, so set that radius first. */
+static void round_button(leButtonWidget *b)
+{
+    b->fn->setCornerRadius(b, BUTTON_AA_RADIUS);
+    ButtonAA_Enable(b);
+}
+
 static void radio_groups_init(void)
 {
     unsigned int i;
 
     for (i = 0u; i < DIFFICULTY_COUNT; i++)
     {
-        difficulty_button(i)->fn->setReleasedEventCallback(difficulty_button(i), difficulty_on_release);
+        leButtonWidget *b = difficulty_button(i);
+        b->fn->setReleasedEventCallback(b, difficulty_on_release);
+        round_button(b);
     }
     for (i = 0u; i < MODE_COUNT; i++)
     {
-        mode_button(i)->fn->setReleasedEventCallback(mode_button(i), mode_on_release);
+        leButtonWidget *b = mode_button(i);
+        b->fn->setReleasedEventCallback(b, mode_on_release);
+        round_button(b);
     }
 
     difficulty_repaint();   /* apply the default selections */
@@ -143,6 +156,7 @@ void ScreenSongSelect_Setup(void)
     gfxcSetWindowPosition(CANVAS_SONGSEL, SONGSEL_X, SONGSEL_Y);
 
     radio_groups_init();
+    round_button(Marvin_BUTTON_SONG_SELECT_SELECT_0_0);   /* AA corners; not a radio */
 
     Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
 }

@@ -208,6 +208,33 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — AA rounded corners: border support + variable radius, renderer split out (confirmed on hardware)
+
+Applied anti-aliased rounded corners to the song-select buttons, which forced two
+improvements to the AA path. The difficulty + mode buttons are `LE_WIDGET_BORDER_LINE`
+(1px rounded line border in the scheme's `SHADOWDARK`); the old AA blended fill only,
+so the stepped border arc showed through. Reworked it:
+
+- **Split the corner renderer into a widget-agnostic helper** `ui/gfx/aa_corners.{c,h}`
+  — `AaCorners_Render(rect, radius, borderWidth, fill, border, mode)`. It repaints the
+  four corner boxes with an analytic per-pixel blend: backdrop → (optional border ring)
+  → fill, with 1px AA bands at the outer (radius) and inner (radius−border) arcs.
+  Borderless collapses to backdrop↔fill (the old behaviour). Reusable by a future
+  panel-AA wrapper (same shape: re-point the panel `_paint`, pull fill/border from its
+  scheme, call the renderer).
+- **Variable radius** — coverage is computed analytically from `cornerRadius`, so the
+  fixed radius-12 precomputed mask + the `cornerRadius == BUTTON_AA_RADIUS` constraint
+  are gone. `BUTTON_AA_RADIUS` (12) is now just a shared default. `widget_button_aa.c`
+  shrank to a thin button wrapper that extracts fill (BASE/BACKGROUND by state), border
+  (1px SHADOWDARK if LINE), and radius, then calls the shared renderer.
+- Cost is a non-issue: the AA only runs on a widget repaint = a state change (the screen
+  is otherwise pre-rendered/static), never per frame — so the analytic per-pixel blend
+  (a `sqrtf` per corner pixel, ~hundreds of px) is paid only on a tap.
+
+Song-select difficulty/mode/select buttons now AA via a small `round_button()` helper
+(`setCornerRadius(BUTTON_AA_RADIUS)` + `ButtonAA_Enable`); SELECT is borderless, the
+others LINE-bordered. Nav buttons (radius 12, no border) unchanged. Confirmed on hardware.
+
 ### 2026-06-29 — Song-select difficulty + mode radio groups (confirmed on hardware)
 
 Wired the song-select dialog's two button groups as single-select radios in

@@ -7,15 +7,17 @@
 extern "C" {
 #endif
 
-/* The single corner radius the AA path supports (one precomputed mask). Buttons
- * must use this radius for the smoothing to apply. */
+/* House default corner radius, shared so AA'd buttons look consistent. The AA path
+ * supports any radius (coverage is computed analytically — see ui/gfx/aa_corners),
+ * so this is just a convenient default, not a constraint. */
 #define BUTTON_AA_RADIUS  12u
 
 /* Anti-aliased rounded corners for a button. The classic skin draws rounded
- * corners with hard, stepped edges; calling this re-points the button's vtable
- * at a copy whose paint smooths the corner band after the normal draw. Only
- * affects buttons with cornerRadius == BUTTON_AA_RADIUS; set the radius first.
- * Safe to call once per button after it is constructed. */
+ * corners (and any LINE border) with hard, stepped edges; calling this re-points
+ * the button's vtable at a copy whose paint smooths the corner boxes after the
+ * normal draw — backdrop → border → fill, at whatever cornerRadius the button has.
+ * Set the radius (and border) first. Safe to call once per button after it is
+ * constructed. */
 void ButtonAA_Enable(leButtonWidget* btn);
 
 #ifdef __cplusplus
