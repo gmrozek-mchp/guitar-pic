@@ -46,6 +46,11 @@ void ScreenSongSelect_InitSurface(void)
 #define DIFFICULTY_DEFAULT  0u   /* Easy      */
 #define MODE_DEFAULT        0u   /* 1P robot  */
 
+/* Corner radii (px) for the dialog's AA'd buttons. */
+#define DIFFICULTY_RADIUS   4u
+#define MODE_RADIUS         4u
+#define SELECT_RADIUS       10u
+
 static unsigned int s_difficulty = DIFFICULTY_DEFAULT;
 static unsigned int s_mode       = MODE_DEFAULT;
 
@@ -126,10 +131,11 @@ static void mode_on_release(leButtonWidget *btn)
 }
 
 /* Round the corners and enable anti-aliased smoothing on a button (not an MGS
- * option). ButtonAA only smooths at BUTTON_AA_RADIUS, so set that radius first. */
-static void round_button(leButtonWidget *b)
+ * option). ButtonAA smooths at whatever cornerRadius the button has, so set the
+ * radius first. */
+static void round_button(leButtonWidget *b, uint32_t radius)
 {
-    b->fn->setCornerRadius(b, BUTTON_AA_RADIUS);
+    b->fn->setCornerRadius(b, radius);
     ButtonAA_Enable(b);
 }
 
@@ -141,13 +147,13 @@ static void radio_groups_init(void)
     {
         leButtonWidget *b = difficulty_button(i);
         b->fn->setReleasedEventCallback(b, difficulty_on_release);
-        round_button(b);
+        round_button(b, DIFFICULTY_RADIUS);
     }
     for (i = 0u; i < MODE_COUNT; i++)
     {
         leButtonWidget *b = mode_button(i);
         b->fn->setReleasedEventCallback(b, mode_on_release);
-        round_button(b);
+        round_button(b, MODE_RADIUS);
     }
 
     difficulty_repaint();   /* apply the default selections */
@@ -320,7 +326,7 @@ void ScreenSongSelect_Setup(void)
     gfxcSetWindowPosition(CANVAS_SONGSEL, SONGSEL_X, SONGSEL_Y);
 
     radio_groups_init();
-    round_button(Marvin_BUTTON_SONG_SELECT_SELECT_0_0);   /* AA corners; not a radio */
+    round_button(Marvin_BUTTON_SONG_SELECT_SELECT_0_0, SELECT_RADIUS);   /* AA corners; not a radio */
     song_detail_init();
     song_list_init();
     song_detail_show(0);   /* mirror the default (first-song) selection */

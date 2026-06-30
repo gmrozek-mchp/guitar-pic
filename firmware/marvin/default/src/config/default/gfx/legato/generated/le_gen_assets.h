@@ -656,7 +656,7 @@ extern leRasterFont DejaVuSansMonoBold_18;
  * Baseline:     14
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  9
+ * Range Count:  12
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -682,7 +682,7 @@ extern leRasterFont DejaVuSansMonoBold_24;
  * Baseline:     11
  * Style:        Antialias
  * Glyph Count:  192
- * Range Count:  15
+ * Range Count:  10
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
                  0x2605
