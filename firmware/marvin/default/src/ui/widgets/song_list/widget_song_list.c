@@ -49,6 +49,8 @@ typedef struct leSongListWidget
     const leFont *metaFont;
     const leFont *badgeFont;
 
+    const char   *emptyText;    /* centred placeholder when count == 0; NULL = built-in default */
+
     int   rowHeight;
     float scrollY;              /* px scrolled from the top */
     float velocity;             /* px/ms of scrollY, applied while not touching */
@@ -62,6 +64,7 @@ typedef struct leSongListWidget
     uint32_t lastMoveMs;        /* time of the last touch-move (drag velocity) */
     uint32_t lastTickMs;        /* time of the last inertia step */
 
+    bool     transparent;       /* skip the background fill; the parent shows through */
     bool     debugFill;         /* diagnostic: paint a bare solid rect, no rows */
 } leSongListWidget;
 
@@ -144,7 +147,24 @@ static void sl_paint(leWidget *wgt)
         return;
     }
 
-    leRenderer_RectFill(&area, conv(SL_BG), 255);
+    if (!w->transparent) { leRenderer_RectFill(&area, conv(SL_BG), 255); }
+
+    if (w->count <= 0)
+    {
+        /* Empty state — a centred placeholder over the background (e.g. no catalog
+         * loaded / no SD). */
+        const char   *msg = (w->emptyText != NULL) ? w->emptyText : "No songs";
+        const leFont *f   = (w->metaFont != NULL) ? w->metaFont : w->titleFont;
+
+        draw_str(w, msg, f,
+                 area.x + (int)area.width / 2,
+                 area.y + ((int)area.height - font_h(f)) / 2,
+                 LE_HALIGN_CENTER, conv(SL_ARTIST));
+
+        wgt->status.drawState = LE_WIDGET_DRAW_STATE_DONE;
+        wgt->drawFunc = NULL;
+        return;
+    }
 
     rowH = w->rowHeight;
     vh   = (int)area.height;
@@ -363,6 +383,7 @@ leWidget *SongList_New(void)
     w->rowFn     = NULL;  w->rowCtx = NULL;
     w->selFn     = NULL;  w->selCtx = NULL;
     w->titleFont = NULL;  w->metaFont = NULL;  w->badgeFont = NULL;
+    w->emptyText = NULL;
     w->rowHeight   = SL_DEFAULT_ROWH;
     w->scrollY     = 0.0f;
     w->velocity    = 0.0f;
@@ -374,6 +395,7 @@ leWidget *SongList_New(void)
     w->lastMoveMs  = 0;
     w->lastTickMs  = 0;
     w->debugFill   = false;
+    w->transparent = false;
 
     return &w->widget;
 }
@@ -390,6 +412,26 @@ void SongList_SetModel(leWidget *wgt, int count, songlist_row_fn rows, void *ctx
     w->scrollY = 0.0f;
     w->velocity = 0.0f;
     clamp_scroll(w);
+    wgt->fn->invalidate(wgt);
+}
+
+void SongList_SetEmptyText(leWidget *wgt, const char *text)
+{
+    leSongListWidget *w = (leSongListWidget *)wgt;
+    if (w == NULL) { return; }
+    w->emptyText = text;   /* not copied — pass a string literal or other stable pointer */
+    wgt->fn->invalidate(wgt);
+}
+
+void SongList_SetTransparent(leWidget *wgt, bool on)
+{
+    leSongListWidget *w = (leSongListWidget *)wgt;
+    if (w == NULL) { return; }
+    w->transparent = on;
+    /* Declare the real opacity so Legato repaints whatever is behind us (the parent
+     * panel) when we're transparent, or skips that work when we own the fill. */
+    w->widget.style.backgroundType = on ? LE_WIDGET_BACKGROUND_NONE
+                                        : LE_WIDGET_BACKGROUND_FILL;
     wgt->fn->invalidate(wgt);
 }
 

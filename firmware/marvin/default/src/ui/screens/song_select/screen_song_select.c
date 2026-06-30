@@ -1,11 +1,18 @@
 #include "ui/screens/song_select/screen_song_select.h"
 
+#include <stdio.h>
+
 #include "ui/ui_manager.h"   /* CANVAS_SONGSEL, BASE_W, BASE_H */
 #include "ui/widgets/button_aa/widget_button_aa.h"
+#include "ui/widgets/song_list/widget_song_list.h"
+
+#include "game/catalog.h"
+#include "log.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
+#include "gfx/legato/generated/le_gen_assets.h"                  /* DejaVu fonts */
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* song-select widgets */
 
 /* The song/mode-select dialog is layer 2 of the Marvin screen; MGS sizes that
@@ -146,6 +153,74 @@ static void radio_groups_init(void)
     mode_repaint();
 }
 
+/* ── catalog-backed song list ─────────────────────────────────────────────────
+ * A SongList widget fills the dialog's LEFT panel below the 33px SETLIST header,
+ * backed directly by the SD song catalog. */
+#define SONGLIST_HEADER_H  33   /* SETLIST header above the list */
+#define SONGLIST_ROW_H     44
+
+/* Row provider: map catalog entry `index` into the list's row cells. The duration
+ * is formatted into a static scratch buffer the widget reads immediately. */
+static bool song_row(void *ctx, int index, songlist_row_t *out)
+{
+    const catalog_entry_t *e = Catalog_At(index);
+    static char dur[8];
+
+    (void)ctx;
+    if (e == NULL) { return false; }
+
+    if (e->length_s != 0u)
+    {
+        (void)snprintf(dur, sizeof dur, "%u:%02u",
+                       (unsigned)(e->length_s / 60u), (unsigned)(e->length_s % 60u));
+    }
+    else { dur[0] = '\0'; }
+
+    out->title      = e->title;
+    out->artist     = e->artist;
+    out->right      = dur;
+    out->badge      = "";
+    out->badgeColor = 0;
+    return true;
+}
+
+static void song_selected(void *ctx, int index)
+{
+    const catalog_entry_t *e = Catalog_At(index);
+
+    (void)ctx;
+    LOG_INFO("songsel: selected #%d  %s - %s\r\n", index,
+             (e != NULL) ? e->title : "?", (e != NULL) ? e->artist : "?");
+}
+
+/* Build the song list into the LEFT panel. DejaVu Mono 12 — bold title over
+ * regular artist/duration. */
+static void song_list_init(void)
+{
+    leWidget *list = SongList_New();
+    if (list == NULL) { return; }
+
+    (void)Catalog_Reload();
+
+    list->fn->setPosition(list, 0, SONGLIST_HEADER_H);
+    list->fn->setSize(list, 320, 594 - SONGLIST_HEADER_H);
+    /* Transparent: the dialog's gray panel shows through behind the rows. Match its
+     * scheme so the glyph anti-alias blends against that real backdrop (0x18181B). */
+    list->fn->setScheme(list, &SCHEME_PANEL_GRAY_18181B);
+    SongList_SetTransparent(list, true);
+    SongList_SetFonts(list,
+                      (const leFont *)&DejaVuSansMonoBold_12,   /* title  — 12 bold    */
+                      (const leFont *)&DejaVuSansMono_12,       /* artist/duration — 12 */
+                      (const leFont *)&DejaVuSansMono_12);      /* badge (unused)      */
+    SongList_SetRowHeight(list, SONGLIST_ROW_H);
+    SongList_SetModel(list, Catalog_Count(), song_row, NULL);
+    SongList_SetSelectHandler(list, song_selected, NULL);
+
+    Marvin_PANEL_SONG_SELECT_LEFT_0_0->fn->addChild(Marvin_PANEL_SONG_SELECT_LEFT_0_0, list);
+
+    SongList_SetSelected(list, 0);   /* default to the first song (no-op while empty) */
+}
+
 void ScreenSongSelect_Setup(void)
 {
     /* Center the dialog. The root is already on Legato layer 2 (built by MGS); the
@@ -157,6 +232,7 @@ void ScreenSongSelect_Setup(void)
 
     radio_groups_init();
     round_button(Marvin_BUTTON_SONG_SELECT_SELECT_0_0);   /* AA corners; not a radio */
+    song_list_init();
 
     Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
 }

@@ -208,6 +208,30 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — Song list dropped into the song-select dialog (catalog-backed, transparent, empty-state)
+
+Wired the catalog-backed `SongList` widget into the song-select dialog's LEFT panel
+(`ScreenSongSelect`), below the 33px SETLIST header: DejaVu Mono 12 — bold title over
+regular artist/right-aligned duration — 44px rows, catalog row provider (`Catalog_At`),
+tap logs the selection, defaults to the first song (`SongList_SetSelected(list, 0)`,
+no-op while empty). Two `SongList` widget additions driven by this:
+
+- **Empty state** — when `count == 0` the widget draws a centred placeholder over its
+  background (default "No songs", settable via `SongList_SetEmptyText`). Previously an
+  empty model just left a black void.
+- **Transparency toggle** — `SongList_SetTransparent(w, on)`: skips the hardcoded
+  `SL_BG` fill and flips `backgroundType` to `NONE` so the parent panel shows through.
+  The dialog list uses it + sets the list's scheme to the dialog's
+  `SCHEME_PANEL_GRAY_18181B` so the glyph anti-alias blends against the real backdrop
+  (`0x18181B`). (Row/text colours are still hardcoded `SL_*`, not scheme-driven; the
+  scheme only feeds the glyph AA lookup — full scheme-ification is a separate option.)
+
+Catalog/SD timing: the count is latched at `SetModel` time; the dialog currently builds
+at boot before the SD mounts (and the dev board has no card), so the list shows the
+empty state. Not a real-flow problem — long-term the catalog is loaded before the dialog
+is opened; the model reload belongs in the (future) dialog-open path. Confirmed on
+hardware (empty state renders; transparency blends with the panel).
+
 ### 2026-06-29 — AA rounded-corner panel widget (`PanelAA_Enable`), applied to the dashboard robot-controls card (confirmed on hardware)
 
 Added `ui/widgets/panel_aa/widget_panel_aa.{c,h}` — `PanelAA_Enable(leWidget*)`, the

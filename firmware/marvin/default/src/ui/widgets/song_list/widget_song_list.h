@@ -42,6 +42,8 @@ typedef void (*songlist_select_fn)(void *ctx, int index);
 leWidget *SongList_New(void);
 
 void SongList_SetModel(leWidget *w, int count, songlist_row_fn rows, void *ctx);
+void SongList_SetEmptyText(leWidget *w, const char *text);   /* centred when count == 0; NULL = "No songs" */
+void SongList_SetTransparent(leWidget *w, bool on);          /* skip bg fill; parent shows through (default off) */
 void SongList_SetSelectHandler(leWidget *w, songlist_select_fn fn, void *ctx);
 void SongList_SetFonts(leWidget *w, const leFont *title, const leFont *meta, const leFont *badge);
 void SongList_SetRowHeight(leWidget *w, int px);
