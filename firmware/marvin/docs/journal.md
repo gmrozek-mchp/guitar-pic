@@ -208,6 +208,19 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — Song-select difficulty + mode radio groups (confirmed on hardware)
+
+Wired the song-select dialog's two button groups as single-select radios in
+`screen_song_select.c` (same released-event + scheme-swap pattern as the nav's
+single-active highlight). DIFFICULTY (Easy/Medium/Hard/Expert): shared unselected
+scheme `SCHEME_BUTTON_DIFFICULTY`, **per-button** selected scheme
+(`SCHEME_BUTTON_EASY/MEDIUM/HARD/EXPERT`). MODE (1P robot / 1P human / 2P robot-vs-human):
+shared unselected `SCHEME_BUTTON_MODE`, shared selected `SCHEME_BUTTON_MODE_SELECTED`.
+Selection persists in `s_difficulty`/`s_mode` (defaults Easy / 1P robot, applied at
+`ScreenSongSelect_Setup`); getters to be exposed when the SELECT action is wired.
+Re-picking the active entry is a no-op (no deselect). AA/rounded corners on these
+buttons deferred.
+
 ### 2026-06-29 — UI screen module-layout + naming cleanup (behavior-preserving)
 
 Made the screen modules uniform now that there are four of them. (1) Dashboard got its own
