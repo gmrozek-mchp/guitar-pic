@@ -30,6 +30,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/flash/settings.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/results/results.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/util/csv.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/util/legato_utf8.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/catalog.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli/embedded_cli.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s/t1s_link.c"

@@ -704,7 +704,7 @@ extern leRasterFont DejaVuSansMonoBold_16;
 
 /*****************************************************************************
  * Legato String Table
- * Encoding        ASCII
+ * Encoding        UTF8
  * Language Count: 1
  * String Count:   103
  *****************************************************************************/

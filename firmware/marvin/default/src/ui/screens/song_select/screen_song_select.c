@@ -8,6 +8,7 @@
 
 #include "game/catalog.h"
 #include "log.h"
+#include "util/legato_utf8.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -208,7 +209,7 @@ static void song_detail_init(void)
 static void set_detail(int i, const char *s)
 {
     leString *fs = (leString *)&s_detail_str[i];
-    (void)fs->fn->setFromCStr(fs, (s != NULL && s[0] != '\0') ? s : "-");
+    (void)lestring_set_utf8(fs, (s != NULL && s[0] != '\0') ? s : "-");
 }
 
 /* Mirror catalog entry `index` into the detail labels (all "-" if no such song). */

@@ -2,7 +2,7 @@
 
 /*****************************************************************************
  * Legato String Table
- * Encoding        ASCII
+ * Encoding        UTF8
  * Language Count: 1
  * String Count:   103
  *****************************************************************************/
@@ -169,7 +169,7 @@ const leStringTable stringTable =
     },
     (void*)stringTable_data, // string table data
     fontList, // font lookup table
-    LE_STRING_ENCODING_ASCII // encoding standard
+    LE_STRING_ENCODING_UTF8 // encoding standard
 };
 
 

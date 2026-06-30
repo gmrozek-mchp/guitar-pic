@@ -6,6 +6,8 @@
 #include "gfx/legato/widget/legato_widget.h"
 #include "gfx/legato/string/legato_string_renderer.h"
 
+#include "util/legato_utf8.h"
+
 #include "FreeRTOS.h"
 #include "task.h"   /* xTaskGetTickCount — real elapsed time for inertia */
 
@@ -105,22 +107,31 @@ static void clamp_scroll(leSongListWidget *w)
 static void draw_str(const leSongListWidget *w, const char *s, const leFont *font,
                      int x, int y, leHAlignment align, leColor color)
 {
-    leCStringRenderRequest req;
+    leChar buf[96];
+    leUStringRenderRequest req;
+    uint32_t len;
+
     if (s == NULL || s[0] == '\0' || font == NULL) { return; }
 
-    req.str   = s;
-    req.font  = font;
-    req.x     = x;
-    req.y     = y;
-    req.align = align;
-    req.color = color;
-    req.alpha = 255;
+    /* Decode UTF-8 to code points; the C-string renderer would draw each byte
+     * of a multibyte sequence as its own glyph. */
+    len = utf8_to_lechar(s, buf, sizeof(buf) / sizeof(buf[0]));
+    if (len == 0) { return; }
+
+    req.str    = buf;
+    req.length = len;
+    req.font   = font;
+    req.x      = x;
+    req.y      = y;
+    req.align  = align;
+    req.color  = color;
+    req.alpha  = 255;
     req.lookupTable = (w->widget.scheme != NULL)
         ? leUtils_GetSchemeLookupTable(w->widget.scheme, color,
               leScheme_GetRenderColor(w->widget.scheme, LE_SCHM_BASE))
         : NULL;
 
-    leStringRenderer_DrawCString(&req);
+    leStringRenderer_DrawUString(&req);
 }
 
 /* ---- paint -------------------------------------------------------------- */

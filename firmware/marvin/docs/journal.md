@@ -208,6 +208,12 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-30 — UTF-8 for dynamic strings (song-select + song-list)
+
+Non-ASCII chars in dynamically-set labels were rendering as two glyphs each. Root cause: Legato decodes UTF-8 only on the *string-table* path (`leDecodeCodePoint` keyed off the table's `encodingMode`, which we switched to UTF-8 in MGS). Fixed/dynamic strings have no encoding mode — `setFromCStr` and the C-string renderer (`drawCString`) are byte-oriented: each UTF-8 byte becomes its own `leChar`/glyph. `leChar` is `uint16_t`, so strings are really UCS-2 code-point arrays.
+
+Fix: new shared helper `default/src/util/legato_utf8.{c,h}` — `utf8_to_lechar()` decodes a UTF-8 C string into a `leChar` buffer via `leDecodeCodePoint(LE_STRING_ENCODING_UTF8, …)`; `lestring_set_utf8()` wraps it + the base `setFromChar` vtable call (works for any fixed/dynamic string). Song-select detail labels now use `lestring_set_utf8` instead of `setFromCStr`. The song-list widget renders rows through the C-string renderer, which can't be made UTF-8-aware, so `draw_str` now decodes into a stack `leChar` buffer and renders via `leStringRenderer_DrawUString` (the leChar-buffer path; alignment logic is identical to the C-string path). BMP-only (code points >U+FFFF truncate) — fine for song metadata. Not yet confirmed on hardware.
+
 ### 2026-06-29 — Song-select detail labels mirror the selected song (confirmed on hardware w/ SD)
 
 Wired the dialog's detail labels to the selected catalog entry: `SONG_LEVEL`←difficulty,

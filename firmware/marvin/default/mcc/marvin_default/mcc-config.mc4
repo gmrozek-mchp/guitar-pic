@@ -244,7 +244,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/image/le_gen_images.c
   hash: ca865210b0c8ee1d4d20041a638b7ca8d82ee08d426268f407cd3b8c808edd30
 - file: ../src/config/default/gfx/legato/generated/le_gen_assets.h
-  hash: e0ecdc8d6f83b8424a97684976945eeb05f56f62eb558a7a4ae38829f28f47bf
+  hash: 8f1a02a904a41960f2a98b13805d4bab157442c87f8a025c13c2772b1dc1042f
 - file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
   hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c
@@ -256,9 +256,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
   hash: c04ce9ff74304687fce8bb202aa330ee1639f42be676ce682752aaff0f44e0aa
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
-  hash: 46a3af1f4506e4dd6ac22d0ed9f7100d2c02c38ace3db3f8b869f5aa71ba88ab
+  hash: 901ab7660be2daad62baf2d38f0e084a6e47a19df7b2ec95e7b312890198565f
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
-  hash: c8c8209cfacaa3a2880424807c9b47e288094f9e29b2eee3b9dc41772cd2e7cf
+  hash: 8937f8ba163bb401c52ab8a15d5551467e8713b8310fc8144091e752edba472a
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
   hash: 56c686228a3c02bf93671b35ab122493a5efddf0d535e99d81efcdeaf65f9e1b
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
