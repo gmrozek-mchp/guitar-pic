@@ -213,13 +213,22 @@ ui/
   widgets/<name>/   widget_<name>.{c,h}     reusable widgets, one folder each
 ```
 
-Current contents: `screens/nav/screen_nav`, `screens/song_select/screen_song_select`,
-`screens/splash/splash`, `widgets/song_list/widget_song_list`, `widgets/button_aa/widget_button_aa`.
-Each panel module exposes `*_InitSurface()` (assign its canvas buffer, pre-scheduler) and
-`*_Setup()` (wire content/events on the widgets `screenShow_Marvin` already built); `ui_manager`
-calls these — the modules never bind HW layers themselves. Headers are included from the
-`default/src` root, e.g. `#include "ui/screens/nav/screen_nav.h"`. New panels add a
-`screens/<name>/` folder; new widgets a `widgets/<name>/` folder — each wired into `user.cmake`
+Current contents: `screens/dashboard/screen_dashboard`, `screens/navigation/screen_navigation`,
+`screens/song_select/screen_song_select`, `screens/splash/screen_splash`,
+`widgets/song_list/widget_song_list`, `widgets/button_aa/widget_button_aa`.
+
+**Naming convention:** a screen module's file is `screens/<name>/screen_<name>.{c,h}` and its
+public functions are prefixed `Screen<Name>_` (PascalCase of the file basename) — e.g.
+`screen_song_select.c` → `ScreenSongSelect_Setup`. This matches the project's `Module_Method`
+style (`UiManager_*`, `ButtonAA_*`) and stays clear of the MGS-generated entry points
+(lowercase `screenInit_Marvin`, `event_Marvin_*`). Each panel module exposes
+`Screen<Name>_InitSurface()` (assign its canvas buffer, pre-scheduler) and `Screen<Name>_Setup()`
+(set its canvas window + wire content/events on the widgets `screenShow_Marvin` already built);
+`ui_manager` calls these — the modules never bind HW layers themselves. The splash is the one
+exception: it is not a canvas, so it exposes `ScreenSplash_Load`/`Show`/`Hide` instead. Headers
+are included from the `default/src` root, e.g. `#include "ui/screens/navigation/screen_navigation.h"`.
+New panels add a `screens/<name>/` folder; new widgets a `widgets/<name>/` folder — each wired
+into `user.cmake`
 (no MCC involvement).
 
 ## 7. Build state & refactor plan

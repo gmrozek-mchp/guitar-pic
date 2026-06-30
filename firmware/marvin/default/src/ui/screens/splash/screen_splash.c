@@ -1,4 +1,4 @@
-#include "ui/screens/splash/splash.h"
+#include "ui/screens/splash/screen_splash.h"
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -18,7 +18,7 @@
 static uint32_t s_fb[BASE_W * BASE_H]
     __attribute__((section(".region_nocache"), aligned(32)));
 
-void Splash_Show(XLCDC_LAYER layer)
+void ScreenSplash_Show(XLCDC_LAYER layer)
 {
     /* Drive the overlay layer directly — no GFX canvas. Set every attribute
      * deferred (update=false) then enable with update=true so they latch together
@@ -34,7 +34,7 @@ void Splash_Show(XLCDC_LAYER layer)
     XLCDC_SetLayerEnable(layer, true, true);
 }
 
-void Splash_Hide(XLCDC_LAYER layer)
+void ScreenSplash_Hide(XLCDC_LAYER layer)
 {
     XLCDC_SetLayerEnable(layer, false, true);
 }
@@ -44,7 +44,7 @@ static void fill_fallback(void)
     for (uint32_t i = 0u; i < (BASE_W * BASE_H); i++) { s_fb[i] = SPLASH_FILL; }
 }
 
-bool Splash_Load(void)
+bool ScreenSplash_Load(void)
 {
     /* Read the raw splash straight from QSPI NOR into the framebuffer the splash
      * layer scans out — no SD mount, no decode (the blob is provisioned via

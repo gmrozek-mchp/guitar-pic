@@ -15,9 +15,9 @@ extern "C" {
  * to a *hardware* layer at display time by the compositor — that binding is
  * independent and runtime (see HW_* + bind_canvas). The boot splash is NOT a
  * canvas: it drives its hardware layer directly (see splash.h). */
-#define CANVAS_DASH     0u   /* Marvin layer 0 — dashboard (base view)       */
-#define CANVAS_NAV      1u   /* Marvin layer 1 — nav drawer                  */
-#define CANVAS_SONGSEL  2u   /* Marvin layer 2 — song/mode-select dialog     */
+#define CANVAS_DASH        0u   /* Marvin layer 0 — dashboard (base view)    */
+#define CANVAS_NAVIGATION  1u   /* Marvin layer 1 — navigation drawer        */
+#define CANVAS_SONGSEL     2u   /* Marvin layer 2 — song/mode-select dialog  */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware

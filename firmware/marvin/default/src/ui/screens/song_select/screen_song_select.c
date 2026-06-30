@@ -19,12 +19,12 @@
 
 static uint16_t FB_NOCACHE s_fb_songsel[SONGSEL_W * SONGSEL_H];
 
-void SongSel_InitSurface(void)
+void ScreenSongSelect_InitSurface(void)
 {
     gfxcSetPixelBuffer(CANVAS_SONGSEL, SONGSEL_W, SONGSEL_H, GFX_COLOR_MODE_RGB_565, s_fb_songsel);
 }
 
-void SongSel_Setup(void)
+void ScreenSongSelect_Setup(void)
 {
     /* Center the dialog. The root is already on Legato layer 2 (built by MGS); the
      * canvas window positions that layer's pixels on the display. Force a full

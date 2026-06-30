@@ -1,7 +1,8 @@
 #include "ui/ui_manager.h"
-#include "ui/screens/nav/screen_nav.h"
+#include "ui/screens/dashboard/screen_dashboard.h"
+#include "ui/screens/navigation/screen_navigation.h"
 #include "ui/screens/song_select/screen_song_select.h"
-#include "ui/screens/splash/splash.h"
+#include "ui/screens/splash/screen_splash.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -29,12 +30,12 @@
  *
  * Boot is two phases, run by the boot task once the scheduler is up:
  *   1. Splash — the splash module loads a raw RGBA8888 image from QSPI into its
- *      own framebuffer and drives SPLASH_HW_LAYER directly (Splash_Show; no canvas,
+ *      own framebuffer and drives SPLASH_HW_LAYER directly (ScreenSplash_Show; no canvas,
  *      no Legato), and we light the backlight. The splash-shown callback then lets
  *      the app start everything else in parallel.
  *   2. Screens — the single Marvin master screen is built (screenInit_Marvin),
  *      which places each layer-screen onto its own Legato layer/canvas (dashboard
- *      0, nav 1, song-select 2); per-panel setup then wires events/content. The
+ *      0, navigation 1, song-select 2); per-panel setup then wires events/content. The
  *      active canvases are bound to display layers and paint behind the splash.
  *      After a minimum hold the splash is hidden, revealing the (warm) dashboard. */
 
@@ -51,12 +52,6 @@
 #define BOOT_TASK_STACK_WORDS  2048u
 #define BOOT_TASK_PRIORITY        2u   /* UI band; blocks on SD I/O + the render wait */
 
-#define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
-
-/* Dashboard surface, non-cached so the 2D engine and LCDC DMA read CPU-rendered
- * pixels coherently. RGB565 — steady-state UI needs no more. (The nav owns its
- * own surface via Nav_InitSurface; the splash owns its own framebuffer in splash.c.) */
-static uint16_t FB_NOCACHE s_fb_base[BASE_W * BASE_H];
 
 static void (*s_splash_shown_cb)(void);
 
@@ -155,8 +150,8 @@ static void scene_edit_end(void)
 
 /* Build the Marvin master screen and run per-panel setup. screenInit_Marvin builds
  * all layer-screens and places each on its own Legato layer/canvas (dashboard 0,
- * nav 1, song-select 2) — no re-hosting. The dashboard's canvas window covers the
- * panel; the nav and song-select modules set their own windows + wire events. */
+ * navigation 1, song-select 2) — no re-hosting. Each panel module's *_Setup() then sets
+ * its canvas window and wires its content/events. */
 static void init_screens(void)
 {
     /* screenInit_Marvin only flips the one-time "initialized" flag; the widget
@@ -165,11 +160,9 @@ static void init_screens(void)
     (void)screenInit_Marvin();
     (void)screenShow_Marvin();
 
-    gfxcSetWindowPosition(CANVAS_DASH, 0, 0);
-    gfxcSetWindowSize(CANVAS_DASH, BASE_W, BASE_H);
-
-    Nav_Setup();
-    SongSel_Setup();
+    ScreenDashboard_Setup();
+    ScreenNavigation_Setup();
+    ScreenSongSelect_Setup();
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -212,8 +205,8 @@ static void ui_boot_task(void *param)
     (void)param;
 
     /* PHASE 1 — splash, before any Legato work, as fast as the SD allows. */
-    (void)Splash_Load();   /* loads the image, or fills the fallback colour */
-    Splash_Show(xlcdc_layer(SPLASH_HW_LAYER));
+    (void)ScreenSplash_Load();   /* loads the image, or fills the fallback colour */
+    ScreenSplash_Show(xlcdc_layer(SPLASH_HW_LAYER));
     enable_backlight();
     TickType_t shown_at = xTaskGetTickCount();
 
@@ -241,12 +234,12 @@ static void ui_boot_task(void *param)
     TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
     if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
 
-    /* REVEAL — cut over to the (painted) dashboard, give the nav OVR1 (bound but
-     * closed/off-screen), and bring the song-select dialog up on OVR2 over the
-     * live dashboard. (Initial bring-up: it shows at boot; open/close wiring and
-     * the in-dialog song list come next.) */
-    Splash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
-    bind_canvas(CANVAS_NAV, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, false);
+    /* REVEAL — cut over to the (painted) dashboard, give the navigation drawer OVR1
+     * (bound but closed/off-screen), and bring the song-select dialog up on OVR2
+     * over the live dashboard. (Initial bring-up: it shows at boot; open/close
+     * wiring and the in-dialog song list come next.) */
+    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+    bind_canvas(CANVAS_NAVIGATION, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, false);
     bind_canvas(CANVAS_SONGSEL, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGB_565, true);
 
     vTaskDelete(NULL);
@@ -260,9 +253,9 @@ void UiManager_Initialize(void)
      * to RUNNING so a blit isn't dropped by the RUNNING gate, then set the Legato
      * string table the screens need. All pre-scheduler config — no screen built
      * or shown here; the boot task does the sequence. */
-    gfxcSetPixelBuffer(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb_base);
-    Nav_InitSurface();
-    SongSel_InitSurface();
+    ScreenDashboard_InitSurface();
+    ScreenNavigation_InitSurface();
+    ScreenSongSelect_InitSurface();
     GFX_CANVAS_Task();
 
     leSetStringTable(&stringTable);

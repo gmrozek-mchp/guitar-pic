@@ -8,13 +8,13 @@ extern "C" {
 /* Song/mode-select dialog — a Marvin layer-screen (renders into CANVAS_SONGSEL).
  * It owns its canvas surface; ui_manager binds that canvas to a hardware layer at
  * display time.
- *   SongSel_InitSurface — assign the canvas pixel buffer; call once pre-scheduler,
+ *   ScreenSongSelect_InitSurface — assign the canvas pixel buffer; call once pre-scheduler,
  *                         before the canvas state machine is RUNNING.
- *   SongSel_Setup       — position the canvas window (centered) and wire content +
+ *   ScreenSongSelect_Setup       — position the canvas window (centered) and wire content +
  *                         events on the widgets MGS already built; call once after
- *                         screenInit_Marvin. */
-void SongSel_InitSurface(void);
-void SongSel_Setup(void);
+ *                         screenShow_Marvin. */
+void ScreenSongSelect_InitSurface(void);
+void ScreenSongSelect_Setup(void);
 
 #ifdef __cplusplus
 }

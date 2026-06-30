@@ -208,6 +208,23 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — UI screen module-layout + naming cleanup (behavior-preserving)
+
+Made the screen modules uniform now that there are four of them. (1) Dashboard got its own
+module `screens/dashboard/screen_dashboard.{c,h}` — its framebuffer + window setup moved out of
+`ui_manager` (it had been the one panel special-cased inline). (2) `screens/nav/screen_nav` →
+`screens/navigation/screen_navigation` (file + folder + all our `nav_*`/`NAV_*`/`CANVAS_NAV`
+symbols → `navigation_*`/`NAVIGATION_*`/`CANVAS_NAVIGATION`; MGS-generated `Marvin_BUTTON_NAV_*_0`
+/ `SCHEME_NAV_BUTTON_*` / `event_Marvin_*` left alone). (3) `screens/splash/splash.{c,h}` →
+`screen_splash.{c,h}`. (4) Public functions renamed to a `Screen<Name>_` prefix (PascalCase of
+the file basename): `ScreenDashboard_*`, `ScreenNavigation_*`, `ScreenSongSelect_*`,
+`ScreenSplash_*` — replacing the inconsistent `Dash_`/`SongSel_`/`Navigation_`/`Splash_`. The
+convention is now documented in [`ui_compositor.md`](ui_compositor.md) §6.1: a screen lives in
+`screens/<name>/screen_<name>.{c,h}` and exposes `Screen<Name>_InitSurface()` + `Screen<Name>_Setup()`
+(splash, not being a canvas, exposes `Load`/`Show`/`Hide`). `ui_manager` calls them symmetrically;
+no panel is special-cased. `git mv` preserved history; `user.cmake` + includes updated. Builds
+clean (xc32 v5.10); pure rename/move, no behavior change.
+
 ### 2026-06-29 — Splash decoupled from GFX_CANVAS: drives its XLCDC layer directly (confirmed on hardware)
 
 Follow-up to the Marvin migration. The splash had been parked on **canvas slot 7** (outside the

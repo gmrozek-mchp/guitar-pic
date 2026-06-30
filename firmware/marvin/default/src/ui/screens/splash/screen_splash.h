@@ -23,13 +23,13 @@
  * loaded; on a flash error the buffer is filled with an opaque fallback colour and
  * false is returned — either way the framebuffer is displayable. Uses the SST26
  * driver; call from a task once the scheduler is running. */
-bool Splash_Load(void);
+bool ScreenSplash_Load(void);
 
 /* Program the given XLCDC layer to scan the splash framebuffer (full-screen,
  * opaque, RGBA8888) and enable it. */
-void Splash_Show(XLCDC_LAYER layer);
+void ScreenSplash_Show(XLCDC_LAYER layer);
 
 /* Disable the given XLCDC layer. */
-void Splash_Hide(XLCDC_LAYER layer);
+void ScreenSplash_Hide(XLCDC_LAYER layer);
 
 #endif /* UI_SCREEN_SPLASH_H */
