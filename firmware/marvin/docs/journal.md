@@ -208,6 +208,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-06-29 — AA rounded-corner panel widget (`PanelAA_Enable`), applied to the dashboard robot-controls card (confirmed on hardware)
+
+Added `ui/widgets/panel_aa/widget_panel_aa.{c,h}` — `PanelAA_Enable(leWidget*)`, the
+panel counterpart to `ButtonAA_Enable`, over the shared `ui/gfx/aa_corners` renderer.
+Same vtable-re-point trick on the base `leWidget` vtable; fill = panel `BASE`, 1px
+`SHADOWDARK` ring if `LINE` border, any radius. Backdrop is sampled from the panel's
+own corner, so this is for **rounded child panels on an opaque parent** (the common
+case); the top-level overlay/transparency case (song-select dialog over the dashboard)
+is explicitly out of scope (needs per-pixel alpha on the layer — deferred; bandwidth
+trade-offs discussed). First use: `ScreenDashboard_Setup` rounds `PANEL_ROBOT_CONTROLS`
+(256×259, `LINE` border, child of the opaque `BASE_LEFT`) at radius 4 — which also
+validates the variable-radius path (≠ the 12 default) and the border path on a panel.
+Builds clean; confirmed on hardware.
+
 ### 2026-06-29 — AA rounded corners: border support + variable radius, renderer split out (confirmed on hardware)
 
 Applied anti-aliased rounded corners to the song-select buttons, which forced two
