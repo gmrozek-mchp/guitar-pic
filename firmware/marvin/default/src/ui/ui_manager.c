@@ -321,11 +321,29 @@ static bool s_songsel_open = false;
  * enable the dialog panels and *disable the dashboard* (PANEL_DASHBOARD, layer 0) so
  * it's a true modal — nothing behind the dialog (header tap, hamburger) reacts.
  * Inverted while closed: dashboard live, overlays pass input through. */
+/* Gate a panel's whole subtree from picking without repainting it. leWidget's
+ * setEnabled toggles LE_WIDGET_ENABLED but also invalidates, which would repaint
+ * an unchanged surface and stall touch (Legato defers input while drawing). We
+ * only want the pick effect — leUtils_PickFromWidget descends only into ENABLED
+ * children, and the renderer never reads ENABLED — so toggle the flag directly.
+ * IGNOREPICK would not do: it stops the panel being the pick result but still lets
+ * its children be picked, so the subtree wouldn't be gated. */
+static void panel_set_pickable(leWidget *w, leBool on)
+{
+    if (on) { w->flags |=  LE_WIDGET_ENABLED; }
+    else    { w->flags &= ~LE_WIDGET_ENABLED; }
+}
+
 static void songsel_set_input(leBool on)
 {
-    Marvin_PANEL_DASHBOARD->fn->setEnabled(Marvin_PANEL_DASHBOARD, on ? LE_FALSE : LE_TRUE);
-    Marvin_PANEL_SONG_SELECT->fn->setEnabled(Marvin_PANEL_SONG_SELECT, on);
-    Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->setEnabled(Marvin_PANEL_SONG_SELECT_ALBUM_ART, on);
+    panel_set_pickable(Marvin_PANEL_DASHBOARD, on ? LE_FALSE : LE_TRUE);
+    panel_set_pickable(Marvin_PANEL_SONG_SELECT, on);
+    panel_set_pickable(Marvin_PANEL_SONG_SELECT_ALBUM_ART, on);
+}
+
+void UiManager_SetDashboardPickable(bool on)
+{
+    panel_set_pickable(Marvin_PANEL_DASHBOARD, on ? LE_TRUE : LE_FALSE);
 }
 
 void UiManager_OpenSongSelect(void)
@@ -456,6 +474,22 @@ static void init_screens(void)
     songsel_set_input(LE_FALSE);
 }
 
+/* Paint every layer-screen surface once, behind the splash. Legato renders into a
+ * canvas surface independent of whether that canvas is shown or bound to a hardware
+ * layer, so a full paint here leaves every surface complete — after which showing a
+ * screen is a pure layer bind with no repaint. Each panel is VISIBLE by now (its
+ * *_Setup set it) and its canvas window is full-surface sized, so one invalidate
+ * lands the whole surface; wait_render_idle then confirms it drained. Relied upon so
+ * the drawer/dialog need never invalidate on open — MGS builds the nav panel
+ * setVisible(FALSE), so its boot root-damage paints nothing until this runs. */
+static void paint_all_screens_once(void)
+{
+    Marvin_PANEL_DASHBOARD->fn->invalidate(Marvin_PANEL_DASHBOARD);
+    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
+    Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
+    Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->invalidate(Marvin_PANEL_SONG_SELECT_ALBUM_ART);
+}
+
 /* Block until the Legato render task has painted all pending damage. We don't
  * drive leUpdate — LEGATO_Tasks + GFX_CANVAS_Task render correctly when they run;
  * we just yield and poll the public idle flag, requiring it to hold continuously
@@ -532,6 +566,10 @@ static void ui_boot_task(void *param)
      * video is hidden, so this is the only HEO writer at boot. */
     heo_unbind();
 
+    /* Paint all screens once now, behind the splash, then wait for it to drain.
+     * Every surface is complete before it's ever shown; screens are event-driven
+     * from here — showing one is a pure layer bind, no repaint. */
+    paint_all_screens_once();
     wait_render_idle();
 
     /* Hold the splash a minimum time so a fast boot doesn't flash it away. */

@@ -1,6 +1,7 @@
 #ifndef UI_UI_MANAGER_H
 #define UI_UI_MANAGER_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -63,6 +64,12 @@ void UiManager_VideoHide(void);
  * requested state. The dialog starts closed at boot. */
 void UiManager_OpenSongSelect(void);
 void UiManager_CloseSongSelect(void);
+
+/* Gate the dashboard's touch pickability without repainting it. Called by the
+ * modal screens (nav drawer, song-select) to make the dashboard a true modal
+ * backdrop while one is open: false = dashboard ignores touches, true = live.
+ * Toggles pickability only — the dashboard surface is never re-drawn. */
+void UiManager_SetDashboardPickable(bool on);
 
 /* Set the LCD backlight brightness, 0–100% (clamped). PWM-dimmed on PC18; valid
  * once the PWM channel is up (after the splash is shown at boot). */

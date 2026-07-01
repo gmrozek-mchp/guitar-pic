@@ -406,9 +406,9 @@ static void song_close_on_release(leButtonWidget *btn)
 void ScreenSongSelect_Setup(void)
 {
     /* Center the dialog. The root is already on Legato layer 2 (built by MGS); the
-     * canvas window positions that layer's pixels on the display. Force a full
-     * repaint so the panel is complete in the buffer before the compositor shows
-     * the canvas. */
+     * canvas window positions that layer's pixels on the display. The surface is
+     * painted once at boot (ui_manager paint_all_screens_once), so no invalidate
+     * here — showing the dialog later is a pure layer bind. */
     gfxcSetWindowSize(CANVAS_SONGSEL, SONGSEL_W, SONGSEL_H);
     gfxcSetWindowPosition(CANVAS_SONGSEL, SONGSEL_X, SONGSEL_Y);
 
@@ -433,6 +433,4 @@ void ScreenSongSelect_Setup(void)
     song_detail_init();
     song_list_init();
     song_detail_show(0);   /* mirror the default (first-song) selection */
-
-    Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
 }

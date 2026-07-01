@@ -126,23 +126,18 @@ static void navigation_slide_to(int target_x)
 
 static void navigation_open(void)
 {
-    /* Force a full repaint of the panel into the canvas before revealing it — the
-     * paint queued at startup (parked off-screen) doesn't fully land in the
-     * buffer, so without this the drawer slides in partially drawn until touch
-     * damage fills it in. The repaint lands over the next frames as it slides.
-     * Show first so the move is visible (the FX engine enables the layer from
-     * canvas.active). */
-    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
-    /* Grab OVR1 only while shown (it and the song-select dialog share OVR1, so the
-     * drawer is unbound when closed). gfxcSetLayer needs the canvas hidden — it is,
-     * until gfxcShowCanvas below. Caller ensures the dialog isn't holding OVR1. */
+    /* The drawer's surface is painted once at boot and never changes on show/hide,
+     * so open is a pure layer bind + slide — no repaint. Grab OVR1 only while shown
+     * (it and the song-select dialog share OVR1, so the drawer is unbound when
+     * closed). gfxcSetLayer needs the canvas hidden — it is, until gfxcShowCanvas
+     * below. Caller ensures the dialog isn't holding OVR1. */
     gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1);
     gfxcShowCanvas(CANVAS_NAVIGATION);
     navigation_slide_to(0);
-    /* Modal: disable the dashboard beneath so nothing behind the drawer reacts. The
+    /* Modal: gate the dashboard beneath so nothing behind the drawer reacts. The
      * drawer (on OVR1) covers the hamburger, so close is via the drawer's Dashboard
-     * entry, not the hamburger — disabling the dashboard loses no affordance. */
-    Marvin_PANEL_DASHBOARD->fn->setEnabled(Marvin_PANEL_DASHBOARD, LE_FALSE);
+     * entry, not the hamburger — gating the dashboard loses no affordance. */
+    UiManager_SetDashboardPickable(false);
     s_navigation_open = true;
 }
 
@@ -154,16 +149,20 @@ static void navigation_close(void)
      * so the final frame is displayed before the hide lands — keeping it in-bounds
      * makes that frame a harmless edge sliver instead of the panel's left columns. */
     navigation_slide_to(NAVIGATION_CLOSED_X);
-    /* Re-enable the dashboard as the drawer leaves (modal end). */
-    Marvin_PANEL_DASHBOARD->fn->setEnabled(Marvin_PANEL_DASHBOARD, LE_TRUE);
     s_navigation_open = false;
+    /* Dashboard input is re-armed by navigation_fx_done once the slide completes,
+     * NOT here: the drawer still owns OVR1 mid-slide, so re-arming now would let a
+     * header tap open the song-select modal (which grabs OVR1) before fx_done hides
+     * the drawer's canvas — the hide would then turn OVR1 off under the dialog. */
 }
 
 /* Move-effect completion callback. At the off-screen end of a close slide the
  * window clip leaves a degenerate sliver of the drawer composited at screen
  * left; hiding the canvas (disabling its layer) once the slide finishes removes it cleanly. Only
  * acts on a completed close — an open leaves the layer shown, and a re-open
- * mid-close restarts the move (so this won't fire for the abandoned close). */
+ * mid-close restarts the move (so this won't fire for the abandoned close).
+ * Re-arming dashboard input happens here too, only after OVR1 is freed, so no
+ * mid-slide tap can open a modal onto the layer this hide is about to disable. */
 static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
                                GFXC_FX_STATUS status, void *parm)
 {
@@ -174,6 +173,7 @@ static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
     {
         gfxcHideCanvas(CANVAS_NAVIGATION);
         gfxcCanvasUpdate(CANVAS_NAVIGATION);
+        UiManager_SetDashboardPickable(true);
     }
 }
 
