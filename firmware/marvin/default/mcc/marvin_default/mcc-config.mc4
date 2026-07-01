@@ -258,9 +258,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
   hash: 7c930f3477188aa5f517793ff0129845e4c726a4ef088fa81c929e364f9b505e
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
-  hash: 648dd2cbbc22bed53d175284343ac3e05814598b1448741c91984cac1638d315
+  hash: fc94d9a29e4a8f32af139cb27477ae4bf1df5fb1594c8efa9d596c3bfa919fcc
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
-  hash: 23a6bc65bd450d221113ba7756794869fdc55628719dc54cc5d46b393254e41a
+  hash: 654f3426768eec70f2c0c8b1a4ae369899af27321b703f7024eeb8f411052370
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c

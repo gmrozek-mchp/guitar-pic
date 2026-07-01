@@ -55,6 +55,8 @@ void ScreenDashboard_Setup(void)
     round_card(Marvin_PANEL_DASHBOARD_NO_SIGNAL,            4u);
     round_card(Marvin_PANEL_DASHBOARD_NO_SIGNAL_LED,        4u);
 
+    round_card(Marvin_PANEL_DASHBOARD_SONG_ALBUM_ART_BORDER,   10u);
+
     round_button(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, 4);
     round_button(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START,       4);
 

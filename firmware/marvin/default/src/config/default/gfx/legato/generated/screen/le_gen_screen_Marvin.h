@@ -132,6 +132,7 @@ extern leWidget* Marvin_PANEL_DASHBOARD_SONG_INFO;
 extern leWidget* Marvin_PANEL_DASHBOARD_SONG_DIVIDER;
 extern leWidget* Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY;
 extern leImageWidget* Marvin_PANEL_DASHBOARD_SONG_AlbumArt;
+extern leWidget* Marvin_PANEL_DASHBOARD_SONG_ALBUM_ART_BORDER;
 extern leWidget* Marvin_PANEL_DASHBOARD_SONG_INFO_TEXT;
 extern leLabelWidget* Marvin_LABEL_DASHBOARD_SONG_Status;
 extern leLabelWidget* Marvin_LABEL_DASHBOARD_SONG_SongTitle;
