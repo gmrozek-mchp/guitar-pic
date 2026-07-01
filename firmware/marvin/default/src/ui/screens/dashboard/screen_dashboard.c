@@ -1,10 +1,10 @@
 #include "ui/screens/dashboard/screen_dashboard.h"
 
 #include "ui/ui_manager.h"   /* CANVAS_DASH, BASE_W, BASE_H, UiManager_OpenSongSelect */
+#include "ui/widgets/button_aa/widget_button_aa.h"
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
-#include "gfx/legato/widget/legato_widget.h"                     /* leWidget vtable + touch event */
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* dashboard widgets */
 
 /* Dashboard surface, non-cached so the 2D engine and LCDC DMA read CPU-rendered
@@ -18,35 +18,27 @@ void ScreenDashboard_InitSurface(void)
     gfxcSetPixelBuffer(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
 }
 
-/* Corner radius for the dashboard's rounded cards. */
-#define DASH_CARD_RADIUS  4u
-
-/* Tap the top header bar to open the song-select dialog. The header panels are
- * plain leWidgets with no touch behaviour of their own, so we re-point their
- * (shared) vtable at a copy whose touchDownEvent opens the dialog. A tap is
- * delivered to the topmost picked widget without bubbling, so the hamburger button
- * and title labels — picked first within the header — keep their own behaviour;
- * only taps on the bare header panels open the dialog. */
-static leWidgetVTable s_header_vt;
-static void (*s_header_touch)(leWidget *, leWidgetEvent_TouchDown *);
-static leBool s_header_vt_ready = LE_FALSE;
-
-static void header_touchDown(leWidget *wgt, leWidgetEvent_TouchDown *evt)
+/* The gameplay card's SELECT SONG button opens the song-select modal. */
+static void select_song_on_release(leButtonWidget *btn)
 {
-    if (s_header_touch != NULL) { s_header_touch(wgt, evt); }
+    (void)btn;
     UiManager_OpenSongSelect();
 }
 
-static void header_tap_opens(leWidget *w)
+/* Round the corners of a dashboard card and enable anti-aliased smoothing.
+ * Set the radius before enabling. */
+static void round_card(leWidget *panel, uint32_t radius)
 {
-    if (!s_header_vt_ready)
-    {
-        s_header_vt = *w->fn;
-        s_header_touch = w->fn->touchDownEvent;
-        s_header_vt.touchDownEvent = header_touchDown;
-        s_header_vt_ready = LE_TRUE;
-    }
-    w->fn = &s_header_vt;
+    panel->fn->setCornerRadius(panel, radius);
+    PanelAA_EnableRoundImage(panel);
+}
+
+/* Round the corners of a dashboard card and enable anti-aliased smoothing.
+ * Set the radius before enabling. */
+static void round_button(leButtonWidget *button, uint32_t radius)
+{
+    button->fn->setCornerRadius(button, radius);
+    ButtonAA_Enable(button);
 }
 
 void ScreenDashboard_Setup(void)
@@ -56,14 +48,22 @@ void ScreenDashboard_Setup(void)
     gfxcSetWindowPosition(CANVAS_DASH, 0, 0);
     gfxcSetWindowSize(CANVAS_DASH, BASE_W, BASE_H);
 
-    /* Rounded, anti-aliased corners on the robot-controls card — a child of the
-     * opaque BASE_LEFT panel, so the corner backdrop is solid. */
-    Marvin_PANEL_ROBOT_CONTROLS->fn->setCornerRadius(Marvin_PANEL_ROBOT_CONTROLS, DASH_CARD_RADIUS);
-    PanelAA_Enable(Marvin_PANEL_ROBOT_CONTROLS);
+    round_card(Marvin_PANEL_DASHBOARD_ROBOT,                4u);
+    round_card(Marvin_PANEL_DASHBOARD_TEST_PATTERN_BORDER,  6u);
+    round_card(Marvin_PANEL_DASHBOARD_SONG,                 4u);
+    round_card(Marvin_PANEL_DASHBOARD_HUMAN,                4u);
+    round_card(Marvin_PANEL_DASHBOARD_NO_SIGNAL,            4u);
+    round_card(Marvin_PANEL_DASHBOARD_NO_SIGNAL_LED,        4u);
 
-    /* Header-bar tap opens song-select (across the bare header panels). */
-    header_tap_opens(Marvin_PANEL_BASE_TOP);
-    header_tap_opens(Marvin_PANEL_SYSTEM_LEFT);
-    header_tap_opens(Marvin_PANEL_SYSTEM_TITLE);
-    header_tap_opens(Marvin_PANEL_SYSTEM_RIGHT);
+    round_button(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, 4);
+    round_button(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START,       4);
+
+    round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_GREEN,     4);
+    round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_RED,       4);
+    round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_YELLOW,    4);
+    round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_BLUE,      4);
+    round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_ORANGE,    4);
+
+    Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setReleasedEventCallback(
+        Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, select_song_on_release);
 }

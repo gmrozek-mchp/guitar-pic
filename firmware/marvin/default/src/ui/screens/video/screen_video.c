@@ -13,8 +13,8 @@
  * cannot pick, so the tap is caught on Marvin_PANEL_DASHBOARD — the full-screen
  * layer-0 panel every dashboard tap bubbles up to unless an interactive widget
  * accepts it first. Windowed: a tap inside the video rect enters fullscreen.
- * Fullscreen: BASE_TOP/BASE_BOTTOM picking is gated off (below) so every tap
- * resolves to the dashboard panel and exits. */
+ * Fullscreen: DASHBOARD_TOP/DASHBOARD_BOTTOM picking is gated off (below) so every
+ * tap resolves to the dashboard panel and exits. */
 
 static bool s_fullscreen;
 
@@ -92,8 +92,8 @@ static void (*s_dash_touch)(leWidget *, leWidgetEvent_TouchDown *);
 static leBool s_dash_vt_ready = LE_FALSE;
 
 /* Gate the dashboard's interactive widgets from picking without repainting them.
- * All interactive widgets live under BASE_TOP (header) and BASE_BOTTOM (control
- * columns + video + guitar); leUtils_PickFromWidget descends only into ENABLED
+ * All interactive widgets live under DASHBOARD_TOP (header) and DASHBOARD_BOTTOM
+ * (control columns + video); leUtils_PickFromWidget descends only into ENABLED
  * children, so clearing the flag on those two makes every tap resolve to the
  * dashboard panel. Toggle the flag directly (not setEnabled) so the surface isn't
  * invalidated — same pick-only gate as ui_manager's panel_set_pickable. */
@@ -101,13 +101,13 @@ static void set_dashboard_input(bool on)
 {
     if (on)
     {
-        Marvin_PANEL_BASE_TOP->flags    |= LE_WIDGET_ENABLED;
-        Marvin_PANEL_BASE_BOTTOM->flags |= LE_WIDGET_ENABLED;
+        Marvin_PANEL_DASHBOARD_TOP->flags    |= LE_WIDGET_ENABLED;
+        Marvin_PANEL_DASHBOARD_BOTTOM->flags |= LE_WIDGET_ENABLED;
     }
     else
     {
-        Marvin_PANEL_BASE_TOP->flags    &= ~LE_WIDGET_ENABLED;
-        Marvin_PANEL_BASE_BOTTOM->flags &= ~LE_WIDGET_ENABLED;
+        Marvin_PANEL_DASHBOARD_TOP->flags    &= ~LE_WIDGET_ENABLED;
+        Marvin_PANEL_DASHBOARD_BOTTOM->flags &= ~LE_WIDGET_ENABLED;
     }
 }
 

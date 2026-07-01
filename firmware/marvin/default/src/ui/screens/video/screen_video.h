@@ -9,7 +9,7 @@ extern "C" {
  * the compositor's default video placement; the fullscreen rect is the whole
  * panel (BASE_W x BASE_H). Tap the video to toggle between the two. */
 #define SCREEN_VIDEO_WIN_X   280u
-#define SCREEN_VIDEO_WIN_Y    76u
+#define SCREEN_VIDEO_WIN_Y    77u
 #define SCREEN_VIDEO_WIN_W   720u
 #define SCREEN_VIDEO_WIN_H   480u
 

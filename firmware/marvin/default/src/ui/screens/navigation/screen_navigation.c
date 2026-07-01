@@ -177,6 +177,13 @@ static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
     }
 }
 
+/* Hamburger on the dashboard header toggles the navigation drawer. */
+static void hamburger_on_press(leButtonWidget *btn)
+{
+    (void)btn;
+    if (s_navigation_open) { navigation_close(); } else { navigation_open(); }
+}
+
 void ScreenNavigation_InitSurface(void)
 {
     gfxcSetPixelBuffer(CANVAS_NAVIGATION, NAVIGATION_W, NAVIGATION_H, GFX_COLOR_MODE_RGB_565, s_fb_navigation);
@@ -200,11 +207,9 @@ void ScreenNavigation_Setup(void)
     gfxcSetEffectsCallback(CANVAS_NAVIGATION, navigation_fx_done, NULL);
 
     navigation_buttons_init();
-}
 
-/* Hamburger on the dashboard (BASE) toggles the navigation drawer. */
-void event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
-{
-    (void)btn;
-    if (s_navigation_open) { navigation_close(); } else { navigation_open(); }
+    /* The hamburger lives on the dashboard header (Marvin layer 0); wire its press
+     * to toggle the drawer. */
+    Marvin_BUTTON_NAV_HAMBURGER->fn->setPressedEventCallback(Marvin_BUTTON_NAV_HAMBURGER,
+                                                             hamburger_on_press);
 }
