@@ -4,6 +4,7 @@
 #include "ui/screens/song_select/screen_song_select.h"
 #include "ui/screens/album_art/screen_album_art.h"
 #include "ui/screens/splash/screen_splash.h"
+#include "ui/screens/video/screen_video.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -97,12 +98,6 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
  * contexts, so the UI task only sets volatile intent (UiManager_VideoShow/Hide) and
  * HEO/BASE stay single-writer. HEO is free for other uses whenever video is hidden. */
 
-/* Live video window on the panel (compositor layout policy; was app.c's VIDEO_WIN_*). */
-#define VIDEO_WIN_X   280u
-#define VIDEO_WIN_Y    76u
-#define VIDEO_WIN_W   720u
-#define VIDEO_WIN_H   480u
-
 /* Song-select modal geometry, for discarding BASE DMA behind the opaque dialog
  * while it's open. Mirrors screen_song_select.c's SONGSEL_* (both derive the
  * centered origin from BASE_W/BASE_H); keep the 1100x660 size in sync. */
@@ -127,7 +122,7 @@ static uint32_t scaler_factor(uint32_t src, uint32_t dst)
     return (uint32_t)(((uint64_t)src << 20) / dst);
 }
 
-/* Bind HEO to the capture buffer at the window, engaging the bilinear scaler only
+/* Bind HEO to the capture buffer at the window, engaging the bicubic scaler only
  * when dst != src. The matching BASE DMA-discard behind the opaque video is set by
  * base_discard_reconcile (single DISCEN owner). Seeds HEO with the latest frame
  * (0 until the first frame, which heo_frame_latch then fixes within a frame-time).
@@ -375,7 +370,7 @@ void UiManager_CloseSongSelect(void)
     /* Dashboard is back: drop the modal's BASE discard and bring the live video
      * back up (reconcile re-binds HEO once the source is locked). */
     s_dialog_discard = false;
-    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+    ScreenVideo_ShowWindowed();
 
     s_songsel_open = false;
 }
@@ -464,6 +459,7 @@ static void init_screens(void)
     leSetLayerColorMode(CANVAS_ALBUM_ART, LE_COLOR_MODE_RGBA_8888);
 
     ScreenDashboard_Setup();
+    ScreenVideo_Setup();
     ScreenNavigation_Setup();
     ScreenSongSelect_Setup();
     ScreenAlbumArt_Setup();
@@ -585,9 +581,9 @@ static void ui_boot_task(void *param)
     ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
     XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
 
-    /* Bring the live video up on HEO over the dashboard. Intent only — the video
-     * task binds HEO on its next reconcile once the source is locked. */
-    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+    /* Bring the live video up (windowed) on HEO over the dashboard. Intent only —
+     * the video task binds HEO on its next reconcile once the source is locked. */
+    ScreenVideo_ShowWindowed();
 
     /* Arm capture LAST — after the display is up and the boot-time task/SD/paint
      * contention has drained. The CSI-2 D-PHY RX is timing-sensitive at bring-up

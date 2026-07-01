@@ -213,9 +213,15 @@ ui/
   widgets/<name>/   widget_<name>.{c,h}     reusable widgets, one folder each
 ```
 
-Current contents: `screens/dashboard/screen_dashboard`, `screens/navigation/screen_navigation`,
-`screens/song_select/screen_song_select`, `screens/splash/screen_splash`,
-`widgets/song_list/widget_song_list`, `widgets/button_aa/widget_button_aa`.
+Current contents: `screens/dashboard/screen_dashboard`, `screens/video/screen_video`,
+`screens/navigation/screen_navigation`, `screens/song_select/screen_song_select`,
+`screens/splash/screen_splash`, `widgets/song_list/widget_song_list`,
+`widgets/button_aa/widget_button_aa`.
+
+`screen_video` is a screen module without its own canvas: the live video is on the
+HEO hardware layer (compositor-owned), so this module owns only the *interaction* —
+a tap handler on `Marvin_PANEL_DASHBOARD` that toggles the HEO window between the
+windowed rect and fullscreen via `UiManager_VideoShow`. See §14.
 
 **Naming convention:** a screen module's file is `screens/<name>/screen_<name>.{c,h}` and its
 public functions are prefixed `Screen<Name>_` (PascalCase of the file basename) — e.g.
@@ -388,6 +394,34 @@ surface, then reveal**:
     makes the RGB565 dashboard one pass.
 - **Open:** the splash stays attached to layer 2 after reveal (just hidden); the future modal dialog
   (also OVR2/layer 2) will need to detach it first.
+
+## 14. Tap-to-fullscreen live video (`screen_video`)
+
+Tap the live video to blow it up to fullscreen; tap again to shrink it back to the
+windowed rect. The video is on **HEO**, which Legato cannot pick, so the tap is
+caught on a Legato widget and the interaction is expressed purely as HEO geometry:
+
+- **Catch on `Marvin_PANEL_DASHBOARD`.** It's the full-screen (1280×800) pickable
+  layer-0 panel under the IGNOREPICK/IGNOREEVENTS `root0`. Legato **bubbles** a
+  touch up the parent chain until a widget calls `leWidgetEvent_Accept`
+  (`legato_input.c`), and plain panels (VIDEO_STREAM, BASE_*) never accept — so a
+  tap on the video region bubbles up to the dashboard panel. `screen_video`
+  re-points that panel's `touchDownEvent` (the shared-vtable-copy idiom from
+  `screen_dashboard.c`'s header tap).
+- **Windowed → fullscreen:** a tap whose (x,y) is inside the windowed video rect
+  calls `UiManager_VideoShow(0,0,BASE_W,BASE_H)`. The HEO bilinear/bicubic scaler
+  stretches the source to fill (stretch-to-fit; slight aspect change vs the window).
+  `base_discard_reconcile` follows the video rect, so BASE DMA is discarded across
+  the whole panel while fullscreen — a free bandwidth win.
+- **Fullscreen → windowed:** while fullscreen, `screen_video` gates picking off on
+  `Marvin_PANEL_BASE_TOP` + `Marvin_PANEL_BASE_BOTTOM` (the two subtrees holding
+  every interactive dashboard widget) by clearing `LE_WIDGET_ENABLED` — flag-only,
+  no repaint, same gate as `ui_manager`'s `panel_set_pickable`. So **every** tap
+  then resolves to the dashboard panel and exits fullscreen, restoring the windowed
+  rect and re-enabling input.
+- **Windowed state is re-established** by `ScreenVideo_ShowWindowed()`, which
+  `ui_manager` also calls at reveal and on song-select close, so the video always
+  returns to a known windowed state.
 
 ## 11. Relationship to spec §4.5 / Q5
 
