@@ -25074,3 +25074,7561 @@ Committed as `591f5da`.
 Left untouched (not staged, as you had them): `.specstory/` history/stats, `firmware/marvin/docs/sam9x75-chybrid/`, `hardware/t1s-sink/`, and the `__pycache__/` (now ignored).
 
 One heads-up: the staged set also included `firmware/marvin/default/src/net/t1s/t1s_link.c`, so it went into this commit too — flagging it since it's outside the album-art work, in case you meant to keep it separate.
+
+---
+
+_**User (2026-06-30 22:34:21Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/gh3-cover-art/.gitignore in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+now lets work on open close for the song select screen. for now, just connect the open to a touch on the dashboard. close by close x button upper right or select button
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-30 22:34:41Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:34:42Z)**_
+
+This is the deferred open/close follow-up — multi-file UI work with real design choices (layer binding on open/close, nav/OVR1 interaction, where the close affordance lives). Let me read the current screen/compositor wiring before proposing an approach.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:34:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read ui_manager.h and screen_navigation.c
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "########## ui_manager.h ##########"; cat default/src/ui/ui_manager.h
+echo; echo "########## screen_navigation.c ##########"; cat default/src/ui/screens/navigation/screen_navigation.c
+```
+
+```text
+########## ui_manager.h ##########
+#ifndef UI_UI_MANAGER_H
+#define UI_UI_MANAGER_H
+
+#include <stdint.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Canvas ids — the per-layer-screen render surfaces in the GFX_CANVAS pool.
+ *
+ * The three Marvin layer-screens render into canvas[i] for Legato layer i (the
+ * renderer maps Legato layer i → canvas[baseCanvasID + i], base 0), so these
+ * canvas ids are pinned equal to their layer index — NOT free. A canvas is bound
+ * to a *hardware* layer at display time by the compositor — that binding is
+ * independent and runtime (see HW_* + bind_canvas). The boot splash is NOT a
+ * canvas: it drives its hardware layer directly (see splash.h). */
+#define CANVAS_DASH        0u   /* Marvin layer 0 — dashboard (base view)    */
+#define CANVAS_NAVIGATION  1u   /* Marvin layer 1 — navigation drawer        */
+#define CANVAS_SONGSEL     2u   /* Marvin layer 2 — song/mode-select dialog  */
+#define CANVAS_ALBUM_ART   3u   /* Marvin layer 3 — song-select cover (RGB888) */
+
+/* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
+ * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
+ * layer at *display time* by the compositor (ui_manager) via gfxcSetLayer — a
+ * screen never owns a layer. The HW-layer budget limits how many canvases can be
+ * *visible at once*, not how many screens can be built. */
+#define HW_BASE   0u
+#define HW_OVR1   2u
+#define HW_OVR2   3u
+
+#define BASE_W   1280u
+#define BASE_H    800u
+
+/* Hardware layer the boot splash is shown on. OVR1 (above BASE so it covers the
+ * dashboard); OVR2 is left free for an overlay drawn over the splash, e.g. a
+ * loading bar. */
+#define SPLASH_HW_LAYER   HW_OVR1
+
+/* Bring up the UI. Call once from APP_Initialize, before the scheduler and after
+ * Legato_Initialize. Assigns the per-screen canvas surfaces and creates the boot
+ * task that runs the bring-up sequence (splash → screens → reveal) once the
+ * scheduler is up. Pure setup; no screen is built or shown here. */
+void UiManager_Initialize(void);
+
+/* Register a callback fired the instant the splash is on screen, from the boot
+ * task. The app uses it to start everything else (services + camera) in parallel
+ * with the behind-the-splash screen painting, so the system is warm at reveal.
+ * Set before UiManager_Initialize. */
+void UiManager_SetSplashShownCallback(void (*cb)(void));
+
+/* Set the LCD backlight brightness, 0–100% (clamped). PWM-dimmed on PC18; valid
+ * once the PWM channel is up (after the splash is shown at boot). */
+void UiManager_SetBacklight(uint32_t pct);
+
+/* Current backlight brightness, 0–100%. */
+uint32_t UiManager_GetBacklight(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* UI_UI_MANAGER_H */
+
+########## screen_navigation.c ##########
+#include "ui/screens/navigation/screen_navigation.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "ui/ui_manager.h"   /* CANVAS_NAVIGATION */
+#include "ui/widgets/button_aa/widget_button_aa.h"
+
+#include "gfx/canvas/gfx_canvas_api.h"
+#include "gfx/legato/legato.h"
+#include "gfx/legato/generated/le_gen_scheme.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* nav widgets + hamburger event */
+
+/* The navigation drawer is layer 1 of the Marvin master screen, rendered into its
+ * own canvas (CANVAS_NAVIGATION, defined in ui_manager.h). It is layer-agnostic —
+ * ui_manager (the compositor) decides which hardware layer this canvas is shown
+ * on; the drawer's slide works on the canvas window, independent of the layer. */
+#define NAVIGATION_W   320u
+#define NAVIGATION_H   800u
+
+/* gfxcStartEffectMove delta — slide feel (DEC = ease-out). Tune to taste. */
+#define NAVIGATION_SLIDE_DELTA  6u
+
+/* Off-screen-left X for the closed drawer / slide-out target.
+ *
+ * A canvas layer can't truly sit off-screen — the window-clip (gfx_canvas.c
+ * _gfxcCanvasUpdate) emulates a negative X by shifting the source pointer right
+ * and shrinking the window. But it first aligns X *down* to a multiple of
+ * CANVAS_WIN_X_ALIGN (`x &= ~0x3` for non-32bpp surfaces), and once |X| reaches
+ * the surface width the shifted pointer wraps to the next row, flashing the
+ * panel's left columns through. So the furthest the drawer can validly sit is
+ * the largest aligned X with |X| < NAVIGATION_W. We slide to there; navigation_fx_done
+ * then disables the layer, clearing the residual edge sliver. Derived from
+ * NAVIGATION_W so it tracks the surface width, not a hard-coded pixel count. */
+#define CANVAS_WIN_X_ALIGN  4u   /* mirrors the clip's `x &= ~0x3` */
+#define NAVIGATION_CLOSED_X (-(int)((NAVIGATION_W - 1u) & ~(CANVAS_WIN_X_ALIGN - 1u)))
+
+/* Rounded button corners. The widget cornerRadius is honored by the classic
+ * skin's background draw but isn't exposed in MGS, so we set it in code. */
+#define NAVIGATION_CORNER_RADIUS  12u
+
+#define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
+
+static uint16_t FB_NOCACHE s_fb_navigation[NAVIGATION_W * NAVIGATION_H];
+
+static bool s_navigation_open = false;
+
+/* Navigation entries, in panel order. The selected one is the active screen. */
+#define NAVIGATION_COUNT  6u
+
+static leButtonWidget *navigation_button(unsigned int i)
+{
+    switch (i)
+    {
+        case 0:  return Marvin_BUTTON_NAV_DASHBOARD_0;
+        case 1:  return Marvin_BUTTON_NAV_LOGS_0;
+        case 2:  return Marvin_BUTTON_NAV_PERFORMANCE_0;
+        case 3:  return Marvin_BUTTON_NAV_SYSTEM_INFO_0;
+        case 4:  return Marvin_BUTTON_NAV_DIAGNOSTICS_0;
+        default: return Marvin_BUTTON_NAV_SETTINGS_0;
+    }
+}
+
+static void navigation_close(void);   /* forward decl — navigation_on_release may close the drawer */
+
+/* Single-active highlight: paint the active entry selected, the rest unselected. */
+static void navigation_highlight(leButtonWidget *active)
+{
+    unsigned int i;
+
+    for (i = 0u; i < NAVIGATION_COUNT; i++)
+    {
+        leButtonWidget *b = navigation_button(i);
+        b->fn->setScheme(b, (b == active) ? &SCHEME_NAV_BUTTON_SELECTED
+                                          : &SCHEME_NAV_BUTTON_UNSELECTED);
+    }
+}
+
+/* Released-event sink for every navigation entry. Switch the highlight; Dashboard
+ * means "back to the main view" so it also closes the drawer, while the other
+ * entries just change the selection and stay open. The active screen-switch will
+ * hook here once the per-screen canvas model lands. */
+static void navigation_on_release(leButtonWidget *btn)
+{
+    navigation_highlight(btn);
+
+    if (btn == Marvin_BUTTON_NAV_DASHBOARD_0)
+    {
+        navigation_close();
+    }
+}
+
+static void navigation_buttons_init(void)
+{
+    unsigned int i;
+
+    /* Route every navigation-entry release through navigation_on_release
+     * (runtime-registered here — the screen wires no button events itself) and
+     * round the corners (not an MGS option). */
+    for (i = 0u; i < NAVIGATION_COUNT; i++)
+    {
+        navigation_button(i)->fn->setReleasedEventCallback(navigation_button(i), navigation_on_release);
+        navigation_button(i)->fn->setCornerRadius(navigation_button(i), NAVIGATION_CORNER_RADIUS);
+        ButtonAA_Enable(navigation_button(i));
+    }
+
+    /* Dashboard is the active entry at startup — set the highlight only (calling
+     * the release sink here would close the not-yet-open drawer). */
+    navigation_highlight(Marvin_BUTTON_NAV_DASHBOARD_0);
+}
+
+/* Animate the drawer to target_x from wherever it currently sits. Cancel any
+ * in-flight slide first: gfxcStartEffectMove is a no-op while a move is running
+ * (it only starts from status IDLE), so without the stop a mid-slide reversal
+ * would be silently dropped — the original move would run to completion and fire
+ * navigation_fx_done with a now-stale s_navigation_open, hiding the drawer and
+ * wedging the toggle. Reading the live position makes the reversal retarget smoothly. */
+static void navigation_slide_to(int target_x)
+{
+    int x, y;
+
+    gfxcStopEffect(CANVAS_NAVIGATION, GFXC_FX_MOVE);
+    gfxcGetWindowPosition(CANVAS_NAVIGATION, &x, &y);
+    gfxcStartEffectMove(CANVAS_NAVIGATION, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAVIGATION_SLIDE_DELTA);
+}
+
+static void navigation_open(void)
+{
+    /* Force a full repaint of the panel into the canvas before revealing it — the
+     * paint queued at startup (parked off-screen) doesn't fully land in the
+     * buffer, so without this the drawer slides in partially drawn until touch
+     * damage fills it in. The repaint lands over the next frames as it slides.
+     * Show first so the move is visible (the FX engine enables the layer from
+     * canvas.active). */
+    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
+    /* Grab OVR1 only while shown (it and the song-select dialog share OVR1, so the
+     * drawer is unbound when closed). gfxcSetLayer needs the canvas hidden — it is,
+     * until gfxcShowCanvas below. Caller ensures the dialog isn't holding OVR1. */
+    gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1);
+    gfxcShowCanvas(CANVAS_NAVIGATION);
+    navigation_slide_to(0);
+    s_navigation_open = true;
+}
+
+static void navigation_close(void)
+{
+    /* Slide out to NAVIGATION_CLOSED_X (off-screen), then navigation_fx_done
+     * disables the layer. NAVIGATION_CLOSED_X avoids the -NAVIGATION_W window-clip
+     * row-wrap (see its definition); the layer update busy-waits for the vsync latch,
+     * so the final frame is displayed before the hide lands — keeping it in-bounds
+     * makes that frame a harmless edge sliver instead of the panel's left columns. */
+    navigation_slide_to(NAVIGATION_CLOSED_X);
+    s_navigation_open = false;
+}
+
+/* Move-effect completion callback. At the off-screen end of a close slide the
+ * window clip leaves a degenerate sliver of the drawer composited at screen
+ * left; hiding the canvas (disabling its layer) once the slide finishes removes it cleanly. Only
+ * acts on a completed close — an open leaves the layer shown, and a re-open
+ * mid-close restarts the move (so this won't fire for the abandoned close). */
+static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
+                               GFXC_FX_STATUS status, void *parm)
+{
+    (void)canvasID;
+    (void)parm;
+
+    if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_navigation_open)
+    {
+        gfxcHideCanvas(CANVAS_NAVIGATION);
+        gfxcCanvasUpdate(CANVAS_NAVIGATION);
+    }
+}
+
+void ScreenNavigation_InitSurface(void)
+{
+    gfxcSetPixelBuffer(CANVAS_NAVIGATION, NAVIGATION_W, NAVIGATION_H, GFX_COLOR_MODE_RGB_565, s_fb_navigation);
+}
+
+/* Per-panel setup for the navigation drawer (Marvin layer-screen 1,
+ * CANVAS_NAVIGATION). MGS has already built the panel onto Legato layer 1; here we
+ * set the canvas window (parked off-screen / closed), the move-FX callback, and
+ * wire the buttons. The canvas is bound to a hardware layer by ui_manager. Keep the
+ * panel visible+enabled so Legato renders it continuously, and start closed: the
+ * touch pick rect follows the canvas window position (LE_DRIVER_LAYER_MODE), so a
+ * closed (off-screen) drawer can't intercept dashboard touches, and the off-screen
+ * X seeds the slide-in. */
+void ScreenNavigation_Setup(void)
+{
+    Marvin_PANEL_NAVIGATION->fn->setEnabled(Marvin_PANEL_NAVIGATION, LE_TRUE);
+    Marvin_PANEL_NAVIGATION->fn->setVisible(Marvin_PANEL_NAVIGATION, LE_TRUE);
+
+    gfxcSetWindowSize(CANVAS_NAVIGATION, NAVIGATION_W, NAVIGATION_H);
+    gfxcSetWindowPosition(CANVAS_NAVIGATION, NAVIGATION_CLOSED_X, 0);
+    gfxcSetEffectsCallback(CANVAS_NAVIGATION, navigation_fx_done, NULL);
+
+    navigation_buttons_init();
+}
+
+/* Hamburger on the dashboard (BASE) toggles the navigation drawer. */
+void event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed(leButtonWidget* btn)
+{
+    (void)btn;
+    if (s_navigation_open) { navigation_close(); } else { navigation_open(); }
+}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:34:51Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:34:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read ui_manager.c
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "########## ui_manager.c ##########"; cat default/src/ui/ui_manager.c
+```
+
+```text
+########## ui_manager.c ##########
+#include "ui/ui_manager.h"
+#include "ui/screens/dashboard/screen_dashboard.h"
+#include "ui/screens/navigation/screen_navigation.h"
+#include "ui/screens/song_select/screen_song_select.h"
+#include "ui/screens/album_art/screen_album_art.h"
+#include "ui/screens/splash/screen_splash.h"
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+
+#include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
+#include "log.h"
+#include "flash/settings.h"   /* persisted backlight % */
+#include "game/art.h"         /* Art_LoadAll — cover-art preload during splash */
+#include "gfx/canvas/gfx_canvas_api.h"
+#include "gfx/legato/legato.h"
+#include "gfx/legato/generated/le_gen_assets.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"      /* screenInit/GetRoot_Marvin */
+#include "gfx/legato/renderer/legato_renderer.h"                   /* leRenderer_IsIdle */
+
+/* ui_manager is the UI orchestrator + compositor.
+ *
+ * Canvas vs. hardware layer: a canvas (CANVAS_* in ui_manager.h) is a RAM
+ * surface a screen renders into; a hardware layer (HW_*) is what the LCDC scans
+ * out. They are independent — ui_manager binds a canvas onto whatever HW layer
+ * suits at the moment with gfxcSetLayer. A screen never owns a layer; the layer
+ * is chosen here, at display time. Note gfxcSetLayer only takes effect while the
+ * canvas is hidden, so layer binds always precede gfxcShowCanvas.
+ *
+ * Boot is two phases, run by the boot task once the scheduler is up:
+ *   1. Splash — the splash module loads a raw RGBA8888 image from QSPI into its
+ *      own framebuffer and drives SPLASH_HW_LAYER directly (ScreenSplash_Show; no canvas,
+ *      no Legato), and we light the backlight. The splash-shown callback then lets
+ *      the app start everything else in parallel.
+ *   2. Screens — the single Marvin master screen is built (screenInit_Marvin),
+ *      which places each layer-screen onto its own Legato layer/canvas (dashboard
+ *      0, navigation 1, song-select 2); per-panel setup then wires events/content. The
+ *      active canvases are bound to display layers and paint behind the splash.
+ *      After a minimum hold the splash is hidden, revealing the (warm) dashboard. */
+
+#define SPLASH_MIN_MS   5000u   /* hold the splash at least this long */
+
+/* Render-completion wait. leRenderer_IsIdle() is also true in the gaps between
+ * leUpdate calls (LEGATO_Tasks ticks ~10 ms), so a single idle sample can read
+ * "done" mid-paint. Require idle to hold continuously for a window several ticks
+ * long before trusting it; bounded overall so a stall can't hang boot. */
+#define RENDER_POLL_MS            5u
+#define RENDER_IDLE_STABLE_MS   120u
+#define RENDER_IDLE_TIMEOUT_MS 8000u
+
+#define BOOT_TASK_STACK_WORDS  2048u
+#define BOOT_TASK_PRIORITY        2u   /* UI band; blocks on SD I/O + the render wait */
+
+
+static void (*s_splash_shown_cb)(void);
+
+static StackType_t  s_boot_stack[BOOT_TASK_STACK_WORDS];
+static StaticTask_t s_boot_tcb;
+
+/* ── compositor primitives ───────────────────────────────────────────────── */
+
+/* GFX-canvas drvLayer index → XLCDC layer enum (the XLCDC poke namespace). */
+static XLCDC_LAYER xlcdc_layer(uint32_t hw)
+{
+    switch (hw)
+    {
+        case HW_BASE: return XLCDC_LAYER_BASE;
+        case HW_OVR2: return XLCDC_LAYER_OVR2;
+        case HW_OVR1:
+        default:      return XLCDC_LAYER_OVR1;
+    }
+}
+
+/* Bind a canvas to a hardware layer and optionally show it. The GFX-XLCDC driver
+ * never writes RGBMODE itself, so we poke the layer's colour mode to match the
+ * canvas placed on it — the layer always follows its current canvas. gfxcSetLayer
+ * requires the canvas hidden, which it is until shown. */
+static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode, bool show)
+{
+    gfxcSetLayer(canvas, hw);
+    if (show) { gfxcShowCanvas(canvas); }
+    gfxcCanvasUpdate(canvas);
+    XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
+}
+
+static uint32_t s_backlight_pct;
+
+/* Set the backlight brightness (0–100%, clamped). The backlight is PWM-dimmed on
+ * PC18 (PWM channel 0, configured by MCC), period read at runtime so this tracks
+ * whatever MCC sets. The channel is CPOL_LOW — it idles low (dark) when stopped,
+ * so the panel stays off until the splash — which means CDTY is the LOW-level
+ * time and brightness is the high fraction: CDTY = period·(100−pct)/100, so
+ * pct=100 → CDTY 0 → full bright, pct=0 → CDTY period → off. PWM_ChannelDutySet
+ * writes CDTY directly while stopped and the update register once running, so
+ * this is valid both before the channel starts and at runtime. */
+void UiManager_SetBacklight(uint32_t pct)
+{
+    if (pct > 100u) { pct = 100u; }
+    s_backlight_pct = pct;
+    uint32_t period = PWM_ChannelPeriodGet(PWM_CHANNEL_0);
+    PWM_ChannelDutySet(PWM_CHANNEL_0, (period * (100u - pct)) / 100u);
+}
+
+uint32_t UiManager_GetBacklight(void)
+{
+    return s_backlight_pct;
+}
+
+/* Light the backlight at the persisted brightness (Settings_Get loads the QSPI
+ * ring on first use, or the compiled default if no record). The PWM channel is
+ * stopped (no output) until started here, so the panel stays dark until the
+ * splash is up — no pre-splash frame. PWM_Initialize ran at startup; this sets
+ * the duty (while stopped, so the channel starts straight at the target) and
+ * starts it. */
+static void enable_backlight(void)
+{
+    UiManager_SetBacklight(Settings_Get()->backlight_pct);
+    PWM_ChannelsStart(PWM_CHANNEL_0_MASK);
+}
+
+/* ── Legato render serialization ──────────────────────────────────────────────
+ * leAddRootWidget/leRemoveRootWidget mutate Legato's per-layer root lists with no
+ * locking, and LEGATO_Tasks + SYS_INPUT_Tasks (both run from scheduler start)
+ * traverse those lists. The boot task edits the scene graph post-scheduler, so it
+ * suspends those two readers around the edits. Safe to suspend here: at guard
+ * time no app roots are attached (the splash is pure LCDC scanout), so the
+ * renderer is idle; resuming hands rendering back. GFX_CANVAS_Tasks is left
+ * running (it commits canvases; not a root-list reader). */
+static TaskHandle_t s_legato_task;
+static TaskHandle_t s_input_task;
+
+static void scene_edit_begin(void)
+{
+    s_legato_task = xTaskGetHandle("LEGATO_Tasks");
+    s_input_task  = xTaskGetHandle("SYS_INPUT_Tasks");
+    if (s_legato_task != NULL) { vTaskSuspend(s_legato_task); }
+    if (s_input_task  != NULL) { vTaskSuspend(s_input_task);  }
+    if (s_legato_task == NULL || s_input_task == NULL)
+    {
+        LOG_WARN("UI: render task handle not found; scene edit unguarded\r\n");
+    }
+}
+
+static void scene_edit_end(void)
+{
+    if (s_input_task  != NULL) { vTaskResume(s_input_task);  }
+    if (s_legato_task != NULL) { vTaskResume(s_legato_task); }
+}
+
+/* Build the Marvin master screen and run per-panel setup. screenInit_Marvin builds
+ * all layer-screens and places each on its own Legato layer/canvas (dashboard 0,
+ * navigation 1, song-select 2) — no re-hosting. Each panel module's *_Setup() then sets
+ * its canvas window and wires its content/events. */
+static void init_screens(void)
+{
+    /* screenInit_Marvin only flips the one-time "initialized" flag; the widget
+     * tree (all three layers) is constructed in screenShow_Marvin, which also
+     * attaches each layer's root to its Legato layer (leAddRootWidget rootN, N). */
+    (void)screenInit_Marvin();
+    (void)screenShow_Marvin();
+
+    /* The album-art layer (3) must be RGBA8888: the 2D engine has no RGB888 support
+     * (gfx2dFormats[RGB_888] = -1), so a 24bpp canvas can't be GFX2D-blitted and
+     * renders garbage. MGS currently emits LE_COLOR_MODE_RGB_888 for this layer;
+     * override it here to match the RGBA8888 canvas surface + OVR2 scanout. (Set the
+     * layer-screen to RGBA8888 in MGS to make this override redundant.) */
+    leSetLayerColorMode(CANVAS_ALBUM_ART, LE_COLOR_MODE_RGBA_8888);
+
+    ScreenDashboard_Setup();
+    ScreenNavigation_Setup();
+    ScreenSongSelect_Setup();
+    ScreenAlbumArt_Setup();
+}
+
+/* Block until the Legato render task has painted all pending damage. We don't
+ * drive leUpdate — LEGATO_Tasks + GFX_CANVAS_Task render correctly when they run;
+ * we just yield and poll the public idle flag, requiring it to hold continuously
+ * (a lone idle sample is an inter-frame gap, not a finished paint). Bounded. */
+static void wait_render_idle(void)
+{
+    TickType_t deadline   = xTaskGetTickCount() + pdMS_TO_TICKS(RENDER_IDLE_TIMEOUT_MS);
+    TickType_t idle_since = 0;
+    bool       idle_run   = false;
+
+    while (xTaskGetTickCount() < deadline)
+    {
+        if (leRenderer_IsIdle())
+        {
+            if (!idle_run)
+            {
+                idle_run   = true;
+                idle_since = xTaskGetTickCount();
+            }
+            else if ((xTaskGetTickCount() - idle_since) >= pdMS_TO_TICKS(RENDER_IDLE_STABLE_MS))
+            {
+                return;
+            }
+        }
+        else
+        {
+            idle_run = false;
+        }
+        vTaskDelay(pdMS_TO_TICKS(RENDER_POLL_MS));
+    }
+    LOG_WARN("UI: render-idle wait timed out\r\n");
+}
+
+/* ── boot sequence ───────────────────────────────────────────────────────── */
+
+static void ui_boot_task(void *param)
+{
+    (void)param;
+
+    /* PHASE 1 — splash, before any Legato work, as fast as the SD allows. */
+    (void)ScreenSplash_Load();   /* loads the image, or fills the fallback colour */
+    ScreenSplash_Show(xlcdc_layer(SPLASH_HW_LAYER));
+    enable_backlight();
+    TickType_t shown_at = xTaskGetTickCount();
+
+    /* Splash is up — let the app start everything else (services + camera) now,
+     * in parallel with the screen painting below, so it's all warm at reveal. */
+    if (s_splash_shown_cb != NULL) { s_splash_shown_cb(); }
+
+    /* Decode all album art into the RGB888 caches *before* building the screens,
+     * so the song-select panel's initial selection (ScreenSongSelect_Setup ->
+     * song_detail_show(0)) finds its cover already cached. Storage mounts here;
+     * Legato's image decoders are up from SYS_Initialize. All behind the splash;
+     * the ~1-3 s decode just extends the splash hold. See game/art.h. */
+    (void)Art_LoadAll();
+
+    /* PHASE 2 — build the Marvin screen + per-panel setup behind the splash.
+     * Scene-graph edits (screenInit_Marvin's leAddRootWidget calls) are guarded
+     * against the render tasks; the canvas/layer binds after are GFX-canvas only
+     * (no root-list mutation) so they need no guard. */
+    scene_edit_begin();
+    init_screens();
+    scene_edit_end();
+
+    /* Dashboard live on BASE (covered by the splash until reveal). Nav and
+     * song-select are built and painting into their own canvases but not bound to
+     * a layer yet — they take their layers at reveal, once the splash vacates. */
+    bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+
+    wait_render_idle();
+
+    /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
+    TickType_t elapsed   = xTaskGetTickCount() - shown_at;
+    TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
+    if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
+
+    /* REVEAL — cut over to the (painted) dashboard, then bring the song-select
+     * dialog up on OVR1 (RGB565) with its full-color cover strip on OVR2 (RGB888,
+     * above OVR1). The nav drawer is NOT bound here — it grabs OVR1 in
+     * navigation_open() only while shown (it and the dialog share OVR1, mutually
+     * exclusive). (Initial bring-up: the dialog shows at boot; open/close wiring
+     * comes next.) */
+    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+    bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
+    bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+
+    vTaskDelete(NULL);
+}
+
+/* ── public API ──────────────────────────────────────────────────────────── */
+
+void UiManager_Initialize(void)
+{
+    /* Assign the per-screen canvas surfaces, then drive the canvas state machine
+     * to RUNNING so a blit isn't dropped by the RUNNING gate, then set the Legato
+     * string table the screens need. All pre-scheduler config — no screen built
+     * or shown here; the boot task does the sequence. */
+    ScreenDashboard_InitSurface();
+    ScreenNavigation_InitSurface();
+    ScreenSongSelect_InitSurface();
+    ScreenAlbumArt_InitSurface();
+    GFX_CANVAS_Task();
+
+    leSetStringTable(&stringTable);
+    initializeStrings();
+
+    (void)xTaskCreateStatic(ui_boot_task, "UiBoot", BOOT_TASK_STACK_WORDS,
+                            NULL, BOOT_TASK_PRIORITY, s_boot_stack, &s_boot_tcb);
+}
+
+void UiManager_SetSplashShownCallback(void (*cb)(void))
+{
+    s_splash_shown_cb = cb;
+}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:35:11Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:35:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read song_select.h, album_art.{c,h}, find close/select widgets
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "########## screen_song_select.h ##########"; cat default/src/ui/screens/song_select/screen_song_select.h
+echo "########## screen_album_art.h ##########"; cat default/src/ui/screens/album_art/screen_album_art.h
+echo "########## screen_album_art.c ##########"; cat default/src/ui/screens/album_art/screen_album_art.c
+echo "########## song-select CLOSE/X / SELECT widgets in generated ##########"
+grep -niE "close|_X_|BUTTON_SONG_SELECT" default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
+```
+
+```text
+########## screen_song_select.h ##########
+#ifndef UI_SCREEN_SONG_SELECT_H
+#define UI_SCREEN_SONG_SELECT_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+/* Song/mode-select dialog — a Marvin layer-screen (renders into CANVAS_SONGSEL).
+ * It owns its canvas surface; ui_manager binds that canvas to a hardware layer at
+ * display time.
+ *   ScreenSongSelect_InitSurface — assign the canvas pixel buffer; call once pre-scheduler,
+ *                         before the canvas state machine is RUNNING.
+ *   ScreenSongSelect_Setup       — position the canvas window (centered) and wire content +
+ *                         events on the widgets MGS already built; call once after
+ *                         screenShow_Marvin. */
+void ScreenSongSelect_InitSurface(void);
+void ScreenSongSelect_Setup(void);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* UI_SCREEN_SONG_SELECT_H */
+########## screen_album_art.h ##########
+#ifndef UI_SCREEN_ALBUM_ART_H
+#define UI_SCREEN_ALBUM_ART_H
+
+/* Album-art layer-screen (Marvin layer 3 / CANVAS_ALBUM_ART): a 508x208 full-color
+ * RGB888 surface for the song-select cover strip, composited on OVR2 above the
+ * RGB565 song-select dialog (OVR1) so the cover + its baked difficulty fade keep
+ * 24-bit color without paying 24bpp bandwidth for the whole dialog. MGS owns the
+ * widgets on this layer (the image + the TIER/title/artist labels); this module
+ * owns only the canvas surface and its on-screen window. The cover image is set
+ * per selection from screen_song_select.c (Marvin_IMAGE_ALBUM_ART). */
+
+void ScreenAlbumArt_InitSurface(void);   /* pre-scheduler: assign the canvas buffer */
+void ScreenAlbumArt_Setup(void);          /* place the canvas window over the dialog art rect */
+
+#endif /* UI_SCREEN_ALBUM_ART_H */
+########## screen_album_art.c ##########
+#include "ui/screens/album_art/screen_album_art.h"
+
+#include "ui/ui_manager.h"   /* CANVAS_ALBUM_ART */
+#include "gfx/canvas/gfx_canvas_api.h"
+
+/* Layer 3 is RGBA8888 — the only full-color mode the 2D engine supports
+ * (gfx2dFormats[]: RGB_565 and RGBA_8888 only; RGB_888 is unsupported, so a 24bpp
+ * canvas can't be GFX2D-blitted and renders garbage). At 508x208 the 32bpp surface
+ * is ~0.42 MB, so the bandwidth cost is trivial; the dialog itself (OVR1) stays
+ * RGB565. The window sits over the dialog's art rect. */
+#define ART_W   508u
+#define ART_H   208u
+#define ART_X   433    /* absolute screen position of the art rect (over the OVR1 dialog) */
+#define ART_Y   160
+
+#define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
+
+/* Non-cached so the LCDC scans CPU-/2D-written pixels coherently (like the other
+ * canvas surfaces). RGBA8888: 4 B/px. */
+static uint32_t FB_NOCACHE s_fb_album_art[ART_W * ART_H];
+
+void ScreenAlbumArt_InitSurface(void)
+{
+    /* Clear to opaque black. The buffer is NOLOAD (uninitialized DDR = noise), and
+     * the album-art panel is BACKGROUND_NONE, so any area Legato doesn't paint would
+     * scan as garbage; a known fill makes "unpainted" read as black, not noise.
+     * RGBA8888 word is 0xRRGGBBAA, so opaque black = 0x000000FF. */
+    for (uint32_t i = 0u; i < (ART_W * ART_H); i++) { s_fb_album_art[i] = 0x000000FFu; }
+
+    gfxcSetPixelBuffer(CANVAS_ALBUM_ART, ART_W, ART_H, GFX_COLOR_MODE_RGBA_8888, s_fb_album_art);
+}
+
+void ScreenAlbumArt_Setup(void)
+{
+    gfxcSetWindowSize(CANVAS_ALBUM_ART, ART_W, ART_H);
+    gfxcSetWindowPosition(CANVAS_ALBUM_ART, ART_X, ART_Y);
+}
+########## song-select CLOSE/X / SELECT widgets in generated ##########
+290:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_CLOSE;
+307:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_SELECT;
+309:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_EASY;
+310:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_MEDIUM;
+311:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_HARD;
+312:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_EXPERT;
+314:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_1P_ROBOT;
+315:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_1P_HUMAN;
+316:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_2P_ROBOT_vs_HUMAN;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:36:39Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:36:40Z)**_
+
+There's already a `Marvin_BUTTON_SONG_SELECT_CLOSE` (the X) and `_SELECT` in MGS. Let me check how the dashboard is structured for wiring the open-touch, then I'll lay out a plan.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:36:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read dashboard screen and find dashboard panels/root
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "########## screen_dashboard.c ##########"; cat default/src/ui/screens/dashboard/screen_dashboard.c
+echo "########## dashboard root / panels in generated ##########"
+grep -niE "root0|PANEL_DASH|BASE_LEFT|Marvin_PANEL_ROBOT|leWidget_New|setTouch|PressedEvent" default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c | grep -iE "dash|root0|robot|base" | head -30
+```
+
+```text
+########## screen_dashboard.c ##########
+#include "ui/screens/dashboard/screen_dashboard.h"
+
+#include "ui/ui_manager.h"   /* CANVAS_DASH, BASE_W, BASE_H */
+#include "ui/widgets/panel_aa/widget_panel_aa.h"
+
+#include "gfx/canvas/gfx_canvas_api.h"
+#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* dashboard widgets */
+
+/* Dashboard surface, non-cached so the 2D engine and LCDC DMA read CPU-rendered
+ * pixels coherently; 32-byte aligned. RGB565 — steady-state UI needs no more. */
+#define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
+
+static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
+
+void ScreenDashboard_InitSurface(void)
+{
+    gfxcSetPixelBuffer(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+}
+
+/* Corner radius for the dashboard's rounded cards. */
+#define DASH_CARD_RADIUS  4u
+
+void ScreenDashboard_Setup(void)
+{
+    /* Full-screen at the origin. The root is on Legato layer 0 (built by MGS); the
+     * canvas window positions that layer's pixels on the display. */
+    gfxcSetWindowPosition(CANVAS_DASH, 0, 0);
+    gfxcSetWindowSize(CANVAS_DASH, BASE_W, BASE_H);
+
+    /* Rounded, anti-aliased corners on the robot-controls card — a child of the
+     * opaque BASE_LEFT panel, so the corner backdrop is solid. */
+    Marvin_PANEL_ROBOT_CONTROLS->fn->setCornerRadius(Marvin_PANEL_ROBOT_CONTROLS, DASH_CARD_RADIUS);
+    PanelAA_Enable(Marvin_PANEL_ROBOT_CONTROLS);
+}
+########## dashboard root / panels in generated ##########
+4:static leWidget* root0;
+9:leWidget* Marvin_PANEL_DASHBOARD;
+21:leWidget* Marvin_PANEL_BASE_LEFT;
+24:leWidget* Marvin_PANEL_ROBOT_CONTROLS;
+336:    root0 = leWidget_New();
+337:    root0->fn->setSize(root0, LE_DEFAULT_SCREEN_WIDTH, LE_DEFAULT_SCREEN_HEIGHT);
+338:    root0->fn->setBackgroundType(root0, LE_WIDGET_BACKGROUND_NONE);
+339:    root0->fn->setMargins(root0, 0, 0, 0, 0);
+340:    root0->flags |= LE_WIDGET_IGNOREEVENTS;
+341:    root0->flags |= LE_WIDGET_IGNOREPICK;
+343:    Marvin_PANEL_DASHBOARD = leWidget_New();
+344:    Marvin_PANEL_DASHBOARD->fn->setPosition(Marvin_PANEL_DASHBOARD, 0, 0);
+345:    Marvin_PANEL_DASHBOARD->fn->setSize(Marvin_PANEL_DASHBOARD, 1280, 800);
+346:    Marvin_PANEL_DASHBOARD->fn->setScheme(Marvin_PANEL_DASHBOARD, &SCHEME_BACKGROUND);
+347:    root0->fn->addChild(root0, (leWidget*)Marvin_PANEL_DASHBOARD);
+349:    Marvin_PANEL_BASE_TOP = leWidget_New();
+353:    Marvin_PANEL_DASHBOARD->fn->addChild(Marvin_PANEL_DASHBOARD, (leWidget*)Marvin_PANEL_BASE_TOP);
+426:    Marvin_PANEL_BASE_DIVIDER = leWidget_New();
+430:    Marvin_PANEL_DASHBOARD->fn->addChild(Marvin_PANEL_DASHBOARD, (leWidget*)Marvin_PANEL_BASE_DIVIDER);
+432:    Marvin_PANEL_BASE_BOTTOM = leWidget_New();
+436:    Marvin_PANEL_DASHBOARD->fn->addChild(Marvin_PANEL_DASHBOARD, (leWidget*)Marvin_PANEL_BASE_BOTTOM);
+438:    Marvin_PANEL_BASE_LEFT = leWidget_New();
+439:    Marvin_PANEL_BASE_LEFT->fn->setPosition(Marvin_PANEL_BASE_LEFT, 0, 12);
+440:    Marvin_PANEL_BASE_LEFT->fn->setSize(Marvin_PANEL_BASE_LEFT, 256, 716);
+441:    Marvin_PANEL_BASE_LEFT->fn->setBackgroundType(Marvin_PANEL_BASE_LEFT, LE_WIDGET_BACKGROUND_NONE);
+442:    Marvin_PANEL_BASE_BOTTOM->fn->addChild(Marvin_PANEL_BASE_BOTTOM, (leWidget*)Marvin_PANEL_BASE_LEFT);
+444:    Marvin_PANEL_ROBOT_CONTROLS = leWidget_New();
+445:    Marvin_PANEL_ROBOT_CONTROLS->fn->setPosition(Marvin_PANEL_ROBOT_CONTROLS, 0, 0);
+446:    Marvin_PANEL_ROBOT_CONTROLS->fn->setSize(Marvin_PANEL_ROBOT_CONTROLS, 256, 259);
+447:    Marvin_PANEL_ROBOT_CONTROLS->fn->setScheme(Marvin_PANEL_ROBOT_CONTROLS, &SCHEME_PANEL);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:38:03Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:38:08Z)**_
+
+Let me confirm the Legato touch API available on a plain panel (for the dashboard open-trigger) before planning:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:38:09Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check Legato plain-widget touch API
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== leWidget touch/event API ==="
+grep -rnE "TouchDownEvent|TouchUpEvent|setTouchDown|touchDownEvent" default/src/config/default/gfx/legato/widget/legato_widget.h | head
+echo "=== vtable touch entries ==="
+grep -nE "touchDownEvent|touchUpEvent|touchMovedEvent" default/src/config/default/gfx/legato/widget/legato_widget.h | head
+echo "=== any existing touchDown override / installEventFilter usage in our src ==="
+grep -rnE "touchDownEvent|installEventFilter|TouchDownEvent" default/src/ui | head
+```
+
+```text
+=== leWidget touch/event API ===
+default/src/config/default/gfx/legato/widget/legato_widget.h:363:    leInput_TouchDownEvent_t
+default/src/config/default/gfx/legato/widget/legato_widget.h:389:    leInput_TouchUpEvent
+default/src/config/default/gfx/legato/widget/legato_widget.h:547:    void               (*touchDownEvent)(THIS_TYPE* _this, leWidgetEvent_TouchDown* evt); \
+default/src/config/default/gfx/legato/widget/legato_widget.h:2834:void _leWidget_TouchDownEvent(leWidget*, leWidgetEvent_TouchDown*);
+default/src/config/default/gfx/legato/widget/legato_widget.h:2835:void _leWidget_TouchUpEvent(leWidget*, leWidgetEvent_TouchUp*);
+=== vtable touch entries ===
+547:    void               (*touchDownEvent)(THIS_TYPE* _this, leWidgetEvent_TouchDown* evt); \
+548:    void               (*touchUpEvent)(THIS_TYPE* _this, leWidgetEvent_TouchUp* evt); \
+=== any existing touchDown override / installEventFilter usage in our src ===
+default/src/ui/widgets/song_list/widget_song_list.c:373:    songListVTable.touchDownEvent = sl_touchDown;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:39:58Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:40:03Z)**_
+
+I have the full picture now. Key findings:
+- The X (`Marvin_BUTTON_SONG_SELECT_CLOSE`) and `_SELECT` buttons already exist in MGS — no MGS work needed for close.
+- Boot currently *shows* the dialog (OVR1) + cover (OVR2) at reveal; I'll switch that to dashboard-only and show them on open.
+- Overriding a plain widget's `touchDownEvent` via its vtable is already an established pattern here ([widget_song_list.c:373](firmware/marvin/default/src/config/default/../../ui/widgets/song_list/widget_song_list.c#L373)) — that's how I'd catch a dashboard tap.
+
+The one real design choice is *what* counts as "a touch on the dashboard," since Legato dispatches a touch only to the topmost picked widget (opaque cards/buttons would swallow it, not bubble). Let me confirm that before finalizing.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:40:03Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="EnterPlanMode"><details>
+<summary>Tool use: **EnterPlanMode**</summary>
+
+```text
+Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.
+
+In plan mode, you should:
+1. Thoroughly explore the codebase to understand existing patterns
+2. Identify similar features and architectural approaches
+3. Consider multiple approaches and their trade-offs
+4. Use AskUserQuestion if you need to clarify the approach
+5. Design a concrete implementation strategy
+6. When ready, use ExitPlanMode to present your plan for approval
+
+Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:40:44Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:40:46Z)**_
+
+The plan file is from the (now-committed) album-art work — different task, so I'll overwrite it. I've already explored the relevant code directly. One thing materially shapes the implementation: Legato dispatches a touch only to the topmost picked widget and doesn't bubble, and the dashboard is almost entirely covered by panels — so "tap anywhere" only works if I override `touchDownEvent` on the dashboard's container panels (real buttons still take precedence). Let me confirm how you want the open affordance to behave.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:41:07Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**What should trigger opening the song-select dialog from the dashboard?**
+
+Options:
+- **Most of the dashboard** - Override touchDownEvent on the main dashboard container panels (DASHBOARD/BASE_TOP/BASE_BOTTOM/BASE_LEFT/ROBOT_CONTROLS). A tap on any non-button area opens it; real buttons (hamburger, robot controls) keep working. Closest to 'a touch on the dashboard.'
+- **Robot-controls card** - Open only when the robot-controls card's background is tapped. One clear target, minimal code, but you must tap that specific card.
+- **Top header bar** - Open when the BASE_TOP header bar is tapped. Single target near the top of the screen.
+
+
+**Answer:** Top header bar
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:42:11Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:42:13Z)**_
+
+Top header bar it is. Let me verify `BASE_TOP`'s composition and pickability so the plan is accurate:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:42:13Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c`
+
+```text
+349	    Marvin_PANEL_BASE_TOP = leWidget_New();
+350	    Marvin_PANEL_BASE_TOP->fn->setPosition(Marvin_PANEL_BASE_TOP, 12, 12);
+351	    Marvin_PANEL_BASE_TOP->fn->setSize(Marvin_PANEL_BASE_TOP, 1256, 52);
+352	    Marvin_PANEL_BASE_TOP->fn->setBackgroundType(Marvin_PANEL_BASE_TOP, LE_WIDGET_BACKGROUND_NONE);
+353	    Marvin_PANEL_DASHBOARD->fn->addChild(Marvin_PANEL_DASHBOARD, (leWidget*)Marvin_PANEL_BASE_TOP);
+354	
+355	    Marvin_PANEL_SYSTEM_LEFT = leWidget_New();
+356	    Marvin_PANEL_SYSTEM_LEFT->fn->setPosition(Marvin_PANEL_SYSTEM_LEFT, 0, 0);
+357	    Marvin_PANEL_SYSTEM_LEFT->fn->setSize(Marvin_PANEL_SYSTEM_LEFT, 1070, 46);
+358	    Marvin_PANEL_SYSTEM_LEFT->fn->setBackgroundType(Marvin_PANEL_SYSTEM_LEFT, LE_WIDGET_BACKGROUND_NONE);
+359	    Marvin_PANEL_BASE_TOP->fn->addChild(Marvin_PANEL_BASE_TOP, (leWidget*)Marvin_PANEL_SYSTEM_LEFT);
+360	
+361	    Marvin_BUTTON_SYSYEM_NAVIGATION = leButtonWidget_New();
+362	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPosition(Marvin_BUTTON_SYSYEM_NAVIGATION, 0, 0);
+363	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setSize(Marvin_BUTTON_SYSYEM_NAVIGATION, 46, 46);
+364	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setScheme(Marvin_BUTTON_SYSYEM_NAVIGATION, &SCHEME_NAV_MENU_BUTTON);
+365	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setBackgroundType(Marvin_BUTTON_SYSYEM_NAVIGATION, LE_WIDGET_BACKGROUND_NONE);
+366	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setBorderType(Marvin_BUTTON_SYSYEM_NAVIGATION, LE_WIDGET_BORDER_NONE);
+367	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPressedImage(Marvin_BUTTON_SYSYEM_NAVIGATION, (leImage*)&figmaImg_Icon);
+368	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setReleasedImage(Marvin_BUTTON_SYSYEM_NAVIGATION, (leImage*)&figmaImg_Icon);
+369	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPressedOffset(Marvin_BUTTON_SYSYEM_NAVIGATION, 0);
+370	    Marvin_BUTTON_SYSYEM_NAVIGATION->fn->setPressedEventCallback(Marvin_BUTTON_SYSYEM_NAVIGATION, event_Marvin_BUTTON_SYSYEM_NAVIGATION_OnPressed);
+371	    Marvin_PANEL_SYSTEM_LEFT->fn->addChild(Marvin_PANEL_SYSTEM_LEFT, (leWidget*)Marvin_BUTTON_SYSYEM_NAVIGATION);
+372	
+373	    Marvin_PANEL_SYSTEM_TITLE = leWidget_New();
+374	    Marvin_PANEL_SYSTEM_TITLE->fn->setPosition(Marvin_PANEL_SYSTEM_TITLE, 52, 0);
+375	    Marvin_PANEL_SYSTEM_TITLE->fn->setSize(Marvin_PANEL_SYSTEM_TITLE, 1018, 46);
+376	    Marvin_PANEL_SYSTEM_TITLE->fn->setBackgroundType(Marvin_PANEL_SYSTEM_TITLE, LE_WIDGET_BACKGROUND_NONE);
+377	    Marvin_PANEL_SYSTEM_LEFT->fn->addChild(Marvin_PANEL_SYSTEM_LEFT, (leWidget*)Marvin_PANEL_SYSTEM_TITLE);
+378	
+379	    Marvin_LABEL_GUITAR_PIC = leLabelWidget_New();
+380	    Marvin_LABEL_GUITAR_PIC->fn->setPosition(Marvin_LABEL_GUITAR_PIC, 0, 0);
+381	    Marvin_LABEL_GUITAR_PIC->fn->setSize(Marvin_LABEL_GUITAR_PIC, 1018, 28);
+382	    Marvin_LABEL_GUITAR_PIC->fn->setScheme(Marvin_LABEL_GUITAR_PIC, &SCHEME_TEXT_WHITE);
+383	    Marvin_LABEL_GUITAR_PIC->fn->setBackgroundType(Marvin_LABEL_GUITAR_PIC, LE_WIDGET_BACKGROUND_NONE);
+384	    Marvin_LABEL_GUITAR_PIC->fn->setMargins(Marvin_LABEL_GUITAR_PIC, 0, 0, 0, 0);
+385	    Marvin_LABEL_GUITAR_PIC->fn->setString(Marvin_LABEL_GUITAR_PIC, (leString*)&string_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER);
+386	    Marvin_PANEL_SYSTEM_TITLE->fn->addChild(Marvin_PANEL_SYSTEM_TITLE, (leWidget*)Marvin_LABEL_GUITAR_PIC);
+387	
+388	    Marvin_LABEL_MARVIN = leLabelWidget_New();
+389	    Marvin_LABEL_MARVIN->fn->setPosition(Marvin_LABEL_MARVIN, 0, 28);
+390	    Marvin_LABEL_MARVIN->fn->setSize(Marvin_LABEL_MARVIN, 1018, 16);
+391	    Marvin_LABEL_MARVIN->fn->setScheme(Marvin_LABEL_MARVIN, &SCHEME_TEXT_GRAY_E4E4E7);
+392	    Marvin_LABEL_MARVIN->fn->setBackgroundType(Marvin_LABEL_MARVIN, LE_WIDGET_BACKGROUND_NONE);
+393	    Marvin_LABEL_MARVIN->fn->setVAlignment(Marvin_LABEL_MARVIN, LE_VALIGN_TOP);
+394	    Marvin_LABEL_MARVIN->fn->setMargins(Marvin_LABEL_MARVIN, 0, 0, 0, 0);
+395	    Marvin_LABEL_MARVIN->fn->setString(Marvin_LABEL_MARVIN, (leString*)&string_figmaStr_Marvin_v2_1_4);
+396	    Marvin_PANEL_SYSTEM_TITLE->fn->addChild(Marvin_PANEL_SYSTEM_TITLE, (leWidget*)Marvin_LABEL_MARVIN);
+397	
+398	    Marvin_PANEL_SYSTEM_RIGHT = leWidget_New();
+399	    Marvin_PANEL_SYSTEM_RIGHT->fn->setPosition(Marvin_PANEL_SYSTEM_RIGHT, 1082, 0);
+400	    Marvin_PANEL_SYSTEM_RIGHT->fn->setSize(Marvin_PANEL_SYSTEM_RIGHT, 174, 46);
+401	    Marvin_PANEL_SYSTEM_RIGHT->fn->setScheme(Marvin_PANEL_SYSTEM_RIGHT, &SCHEME_BACKGROUND);
+402	    Marvin_PANEL_SYSTEM_RIGHT->fn->setBackgroundType(Marvin_PANEL_SYSTEM_RIGHT, LE_WIDGET_BACKGROUND_NONE);
+403	    Marvin_PANEL_BASE_TOP->fn->addChild(Marvin_PANEL_BASE_TOP, (leWidget*)Marvin_PANEL_SYSTEM_RIGHT);
+404	
+405	    Marvin_BUTTON_SYSTEM_ACTIVE = leButtonWidget_New();
+406	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setPosition(Marvin_BUTTON_SYSTEM_ACTIVE, 0, 16);
+407	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setSize(Marvin_BUTTON_SYSTEM_ACTIVE, 12, 12);
+408	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setEnabled(Marvin_BUTTON_SYSTEM_ACTIVE, LE_FALSE);
+409	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setBackgroundType(Marvin_BUTTON_SYSTEM_ACTIVE, LE_WIDGET_BACKGROUND_NONE);
+410	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setBorderType(Marvin_BUTTON_SYSTEM_ACTIVE, LE_WIDGET_BORDER_NONE);
+411	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setPressedImage(Marvin_BUTTON_SYSTEM_ACTIVE, (leImage*)&LED_SYSTEM_ACTIVE);
+412	    Marvin_BUTTON_SYSTEM_ACTIVE->fn->setReleasedImage(Marvin_BUTTON_SYSTEM_ACTIVE, (leImage*)&LED_SYSTEM_INACTIVE);
+413	    Marvin_PANEL_SYSTEM_RIGHT->fn->addChild(Marvin_PANEL_SYSTEM_RIGHT, (leWidget*)Marvin_BUTTON_SYSTEM_ACTIVE);
+414	
+415	    Marvin_IMAGE_MICROCHIP = leImageScaleWidget_New();
+416	    Marvin_IMAGE_MICROCHIP->fn->setPosition(Marvin_IMAGE_MICROCHIP, 32, 5);
+417	    Marvin_IMAGE_MICROCHIP->fn->setSize(Marvin_IMAGE_MICROCHIP, 140, 34);
+418	    Marvin_IMAGE_MICROCHIP->fn->setBackgroundType(Marvin_IMAGE_MICROCHIP, LE_WIDGET_BACKGROUND_NONE);
+419	    Marvin_IMAGE_MICROCHIP->fn->setMargins(Marvin_IMAGE_MICROCHIP, 0, 0, 0, 0);
+420	    Marvin_IMAGE_MICROCHIP->fn->setImage(Marvin_IMAGE_MICROCHIP, (leImage*)&LOGO_MICROCHIP);
+421	    Marvin_IMAGE_MICROCHIP->fn->setPreserveAspectEnabled(Marvin_IMAGE_MICROCHIP, LE_TRUE);
+422	    Marvin_IMAGE_MICROCHIP->fn->setStretchEnabled(Marvin_IMAGE_MICROCHIP, LE_TRUE);
+423	    Marvin_IMAGE_MICROCHIP->fn->setFilter(Marvin_IMAGE_MICROCHIP, LE_IMAGEFILTER_BILINEAR);
+424	    Marvin_PANEL_SYSTEM_RIGHT->fn->addChild(Marvin_PANEL_SYSTEM_RIGHT, (leWidget*)Marvin_IMAGE_MICROCHIP);
+425	
+426	    Marvin_PANEL_BASE_DIVIDER = leWidget_New();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:42:35Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:42:39Z)**_
+
+Confirmed: `BASE_TOP` (12,12 · 1256×52, background NONE, pickable) holds the hamburger button and title/logo as descendants. Tapping the header's empty area picks `BASE_TOP`; tapping the hamburger picks the button (nav still works). I'll override `touchDownEvent` on `BASE_TOP` plus its plain sub-panels for full header coverage. Writing the plan:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:43:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Song-select dialog open/close wiring (marvin)
+
+## Context
+
+The song/mode-select dialog (CANVAS_SONGSEL on OVR1) and its full-color cover strip
+(CANVAS_ALBUM_ART on OVR2) are currently shown unconditionally at boot reveal — there
+is no way to dismiss them or return to the dashboard. This wires the dialog as a real
+modal: it starts **closed** (dashboard alone), **opens** on a tap of the dashboard's top
+header bar, and **closes** via the existing X button (upper-right) or the SELECT button.
+This is the deferred follow-up already noted in the marvin journal ("wire dialog
+open/close — hide OVR1 dialog + OVR2 art together; free OVR1 for nav").
+
+Scope for now: open trigger = header-bar tap; close = X or SELECT (SELECT just closes for
+now — starting gameplay comes later). Nav/OVR1 coexistence while the dialog is open is
+*out of scope* (documented as a follow-up).
+
+## Current behavior (verified)
+
+- `ui_manager.c` `ui_boot_task` reveal shows the pair: `bind_canvas(CANVAS_SONGSEL, HW_OVR1,
+  RGB_565, true)` + `bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, RGBA_8888, true)`. `bind_canvas`
+  (static helper) does `gfxcSetLayer` → optional `gfxcShowCanvas` → `gfxcCanvasUpdate` →
+  `XLCDC_SetLayerRGBColorMode`, and requires the canvas hidden before `gfxcSetLayer`.
+- Nav (`screen_navigation.c`) is the model for show/hide: `navigation_open()` grabs OVR1 via
+  `gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1)` + `gfxcShowCanvas`; close hides it. Nav and the
+  dialog share OVR1 (mutually exclusive). Nav does **not** poke RGBMODE — it relies on OVR1
+  already being RGB565 (today set by the dialog's boot show).
+- `Marvin_BUTTON_SONG_SELECT_CLOSE` (the X) and `Marvin_BUTTON_SONG_SELECT_SELECT` already
+  exist in MGS. `leButtonWidget` `setReleasedEventCallback` is the wiring used for the
+  difficulty/mode radios in `screen_song_select.c`.
+- Dashboard header `Marvin_PANEL_BASE_TOP` (plain `leWidget`, background NONE, pickable) holds
+  the hamburger button + title/logo as descendants. Overriding a plain widget's
+  `touchDownEvent` via a shared vtable copy is an established pattern
+  (`widget_song_list.c:373`, and the `_paint` override in `widget_panel_aa.c`).
+
+## Plan
+
+### 1. `ui_manager.{c,h}` — open/close compositor API; dialog closed at boot
+
+- Add `void UiManager_OpenSongSelect(void);` / `void UiManager_CloseSongSelect(void);` to the
+  header (the compositor owns layer binding + the XLCDC mode poke, so the pair lives here).
+- In `ui_manager.c`, file-scope `static bool s_songsel_open;`
+  - `UiManager_OpenSongSelect`: if already open, return; else
+    `bind_canvas(CANVAS_SONGSEL, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true)` and
+    `bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true)`; set flag.
+    (Canvases are hidden when closed, so `gfxcSetLayer` inside `bind_canvas` is valid.)
+  - `UiManager_CloseSongSelect`: if not open, return; else `gfxcHideCanvas` +
+    `gfxcCanvasUpdate` for both CANVAS_SONGSEL and CANVAS_ALBUM_ART; clear flag. OVR1/OVR2 go
+    dark → dashboard (BASE) shows; OVR1 freed for nav.
+- In `ui_boot_task` reveal: **remove** the two `bind_canvas(..., true)` show calls. Keep
+  `ScreenSplash_Hide`. Add a one-time `XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1,
+  XLCDC_RGB_COLOR_MODE_RGB_565, true)` so a first nav-open (before any song-select open) still
+  scans out correctly. Net: boot reveals the dashboard alone; the dialog/cover are painted
+  into their canvases (Setup already invalidates them) and shown on demand.
+
+### 2. `screen_song_select.c` — close handlers
+
+- Add `static void song_close_on_release(leButtonWidget *b) { (void)b; UiManager_CloseSongSelect(); }`
+  (`ui_manager.h` already included).
+- In `ScreenSongSelect_Setup`, after the existing button setup:
+  `Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedEventCallback(..., song_close_on_release);`
+  and the same for `Marvin_BUTTON_SONG_SELECT_SELECT`. (SELECT keeps its existing AA rounding;
+  it just also closes for now.)
+
+### 3. `screen_dashboard.c` — open on header-bar tap
+
+- Shared-vtable `touchDownEvent` override (mirror `widget_song_list.c` / `widget_panel_aa.c`):
+  one static `leWidgetVTable` copy + captured original `touchDownEvent`; the override calls the
+  original (if any) then `UiManager_OpenSongSelect()`.
+- A small `header_tap_opens(leWidget *w)` that points `w->fn` at the shared overridden vtable,
+  applied in `ScreenDashboard_Setup` to `Marvin_PANEL_BASE_TOP` and its plain-panel children
+  `Marvin_PANEL_SYSTEM_LEFT` / `_SYSTEM_TITLE` / `_SYSTEM_RIGHT` (all plain `leWidget`, one shared
+  vtable) for full header coverage. The hamburger button and labels keep their own handling
+  (picked first), so nav and the title text are unaffected.
+- Add includes for `ui/ui_manager.h` (present) and the Legato widget/event types
+  (`gfx/legato/legato.h`, already pulled via the generated screen header) for
+  `leWidgetEvent_TouchDown`.
+
+### 4. Docs (per CLAUDE.md)
+
+- `firmware/marvin/docs/journal.md`: session-log entry + decision — dialog is now a modal
+  (closed at boot; opens on header tap; closes on X/SELECT); SELECT close is a placeholder for
+  gameplay start; nav/OVR1 coexistence-while-open remains a follow-up. Move that follow-up note
+  forward rather than marking it fully done.
+
+## Out of scope / follow-ups (documented, not built)
+
+- Opening nav while the dialog is open (both target OVR1) is unhandled — the hamburger stays in
+  the uncovered header strip, so it can still be tapped; that path is a known follow-up.
+- SELECT should eventually start gameplay rather than just close.
+
+## Verification
+
+1. Build `marvin_default` (MPLAB/cmake) clean with the edits.
+2. Flash. Boot → **dashboard only**, no dialog/cover (regression from prior always-on dialog).
+3. Tap the top header bar (empty area) → dialog appears on OVR1 with its cover on OVR2.
+4. Tap the **X** (upper-right) → dialog + cover disappear, dashboard returns. Repeat with
+   **SELECT** → same.
+5. Re-open, change song selection → cover still swaps (rounded corners intact). Close again.
+6. With the dialog closed, tap the hamburger → nav drawer still opens/closes normally
+   (confirms OVR1 RGB565 mode survived and nav is unaffected).
+
+```
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:43:25Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `/Users/gregmrozek/.claude/plans/warm-gliding-allen.md`
+
+```text
+1	# Album-artwork preprocess + cache (marvin)
+2	
+3	## Context
+4	
+5	GH3 cover art lives on the SD card under `/marvin/games/gh3-wii/art/{small,large}/<setlist>-NN.jpg`
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:44:41Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Song-select dialog open/close wiring (marvin)
+
+## Context
+
+The song/mode-select dialog (CANVAS_SONGSEL on OVR1) and its full-color cover strip
+(CANVAS_ALBUM_ART on OVR2) are currently shown unconditionally at boot reveal — there
+is no way to dismiss them or return to the dashboard. This wires the dialog as a real
+modal: it starts **closed** (dashboard alone), **opens** on a tap of the dashboard's top
+header bar, and **closes** via the existing X button (upper-right) or the SELECT button.
+This is the deferred follow-up already noted in the marvin journal ("wire dialog
+open/close — hide OVR1 dialog + OVR2 art together; free OVR1 for nav").
+
+Scope for now: open trigger = header-bar tap; close = X or SELECT (SELECT just closes for
+now — starting gameplay comes later). Nav/OVR1 coexistence while the dialog is open is
+*out of scope* (documented as a follow-up).
+
+## Current behavior (verified)
+
+- `ui_manager.c` `ui_boot_task` reveal shows the pair: `bind_canvas(CANVAS_SONGSEL, HW_OVR1,
+  RGB_565, true)` + `bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, RGBA_8888, true)`. `bind_canvas`
+  (static helper) does `gfxcSetLayer` → optional `gfxcShowCanvas` → `gfxcCanvasUpdate` →
+  `XLCDC_SetLayerRGBColorMode`, and requires the canvas hidden before `gfxcSetLayer`.
+- Nav (`screen_navigation.c`) is the model for show/hide: `navigation_open()` grabs OVR1 via
+  `gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1)` + `gfxcShowCanvas`; close hides it. Nav and the
+  dialog share OVR1 (mutually exclusive). Nav does **not** poke RGBMODE — it relies on OVR1
+  already being RGB565 (today set by the dialog's boot show).
+- `Marvin_BUTTON_SONG_SELECT_CLOSE` (the X) and `Marvin_BUTTON_SONG_SELECT_SELECT` already
+  exist in MGS. `leButtonWidget` `setReleasedEventCallback` is the wiring used for the
+  difficulty/mode radios in `screen_song_select.c`.
+- Dashboard header `Marvin_PANEL_BASE_TOP` (plain `leWidget`, background NONE, pickable) holds
+  the hamburger button + title/logo as descendants. Overriding a plain widget's
+  `touchDownEvent` via a shared vtable copy is an established pattern
+  (`widget_song_list.c:373`, and the `_paint` override in `widget_panel_aa.c`).
+
+## Plan
+
+### 1. `ui_manager.{c,h}` — open/close compositor API; dialog closed at boot
+
+- Add `void UiManager_OpenSongSelect(void);` / `void UiManager_CloseSongSelect(void);` to the
+  header (the compositor owns layer binding + the XLCDC mode poke, so the pair lives here).
+- In `ui_manager.c`, file-scope `static bool s_songsel_open;`
+  - `UiManager_OpenSongSelect`: if already open, return; else
+    `bind_canvas(CANVAS_SONGSEL, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true)` and
+    `bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true)`; set flag.
+    (Canvases are hidden when closed, so `gfxcSetLayer` inside `bind_canvas` is valid.)
+  - `UiManager_CloseSongSelect`: if not open, return; else `gfxcHideCanvas` +
+    `gfxcCanvasUpdate` for both CANVAS_SONGSEL and CANVAS_ALBUM_ART; clear flag. OVR1/OVR2 go
+    dark → dashboard (BASE) shows; OVR1 freed for nav.
+- In `ui_boot_task` reveal: **remove** the two `bind_canvas(..., true)` show calls. Keep
+  `ScreenSplash_Hide`. Add a one-time `XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1,
+  XLCDC_RGB_COLOR_MODE_RGB_565, true)` so a first nav-open (before any song-select open) still
+  scans out correctly. Net: boot reveals the dashboard alone; the dialog/cover are painted
+  into their canvases (Setup already invalidates them) and shown on demand.
+
+### 2. `screen_song_select.c` — close handlers
+
+- Add `static void song_close_on_release(leButtonWidget *b) { (void)b; UiManager_CloseSongSelect(); }`
+  (`ui_manager.h` already included).
+- In `ScreenSongSelect_Setup`, after the existing button setup:
+  `Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedEventCallback(..., song_close_on_release);`
+  and the same for `Marvin_BUTTON_SONG_SELECT_SELECT`. (SELECT keeps its existing AA rounding;
+  it just also closes for now.)
+
+### 3. `screen_dashboard.c` — open on header-bar tap
+
+- Shared-vtable `touchDownEvent` override (mirror `widget_song_list.c` / `widget_panel_aa.c`):
+  one static `leWidgetVTable` copy + captured original `touchDownEvent`; the override calls the
+  original (if any) then `UiManager_OpenSongSelect()`.
+- A small `header_tap_opens(leWidget *w)` that points `w->fn` at the shared overridden vtable,
+  applied in `ScreenDashboard_Setup` to `Marvin_PANEL_BASE_TOP` and its plain-panel children
+  `Marvin_PANEL_SYSTEM_LEFT` / `_SYSTEM_TITLE` / `_SYSTEM_RIGHT` (all plain `leWidget`, one shared
+  vtable) for full header coverage. The hamburger button and labels keep their own handling
+  (picked first), so nav and the title text are unaffected.
+- Add includes for the Legato widget/event types (`leWidgetEvent_TouchDown`); `ui/ui_manager.h`
+  is already included.
+
+### 4. Docs (per CLAUDE.md)
+
+- `firmware/marvin/docs/journal.md`: session-log entry + decision — dialog is now a modal
+  (closed at boot; opens on header tap; closes on X/SELECT); SELECT close is a placeholder for
+  gameplay start; nav/OVR1 coexistence-while-open remains a follow-up.
+
+## Out of scope / follow-ups (documented, not built)
+
+- Opening nav while the dialog is open (both target OVR1) is unhandled — the hamburger stays in
+  the uncovered header strip, so it can still be tapped; that path is a known follow-up.
+- SELECT should eventually start gameplay rather than just close.
+
+## Verification
+
+1. Build `marvin_default` (MPLAB/cmake) clean with the edits.
+2. Flash. Boot → **dashboard only**, no dialog/cover (regression from prior always-on dialog).
+3. Tap the top header bar (empty area) → dialog appears on OVR1 with its cover on OVR2.
+4. Tap the **X** (upper-right) → dialog + cover disappear, dashboard returns. Repeat with
+   **SELECT** → same.
+5. Re-open, change song selection → cover still swaps (rounded corners intact). Close again.
+6. With the dialog closed, tap the hamburger → nav drawer still opens/closes normally
+   (confirms OVR1 RGB565 mode survived and nav is unaffected).
+
+```
+
+```text
+The file /Users/gregmrozek/.claude/plans/warm-gliding-allen.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:02Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="ExitPlanMode"><details>
+<summary>Tool use: **ExitPlanMode**</summary>
+
+```text
+User has approved your plan. You can now start coding. Start with updating your todo list if applicable
+
+Your plan has been saved to: /Users/gregmrozek/.claude/plans/warm-gliding-allen.md
+You can refer back to it if needed during implementation.
+
+## Approved Plan (edited by user):
+# Song-select dialog open/close wiring (marvin)
+
+## Context
+
+The song/mode-select dialog (CANVAS_SONGSEL on OVR1) and its full-color cover strip
+(CANVAS_ALBUM_ART on OVR2) are currently shown unconditionally at boot reveal — there
+is no way to dismiss them or return to the dashboard. This wires the dialog as a real
+modal: it starts **closed** (dashboard alone), **opens** on a tap of the dashboard's top
+header bar, and **closes** via the existing X button (upper-right) or the SELECT button.
+This is the deferred follow-up already noted in the marvin journal ("wire dialog
+open/close — hide OVR1 dialog + OVR2 art together; free OVR1 for nav").
+
+Scope for now: open trigger = header-bar tap; close = X or SELECT (SELECT just closes for
+now — starting gameplay comes later). Nav/OVR1 coexistence while the dialog is open is
+*out of scope* (documented as a follow-up).
+
+## Current behavior (verified)
+
+- `ui_manager.c` `ui_boot_task` reveal shows the pair: `bind_canvas(CANVAS_SONGSEL, HW_OVR1,
+  RGB_565, true)` + `bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, RGBA_8888, true)`. `bind_canvas`
+  (static helper) does `gfxcSetLayer` → optional `gfxcShowCanvas` → `gfxcCanvasUpdate` →
+  `XLCDC_SetLayerRGBColorMode`, and requires the canvas hidden before `gfxcSetLayer`.
+- Nav (`screen_navigation.c`) is the model for show/hide: `navigation_open()` grabs OVR1 via
+  `gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1)` + `gfxcShowCanvas`; close hides it. Nav and the
+  dialog share OVR1 (mutually exclusive). Nav does **not** poke RGBMODE — it relies on OVR1
+  already being RGB565 (today set by the dialog's boot show).
+- `Marvin_BUTTON_SONG_SELECT_CLOSE` (the X) and `Marvin_BUTTON_SONG_SELECT_SELECT` already
+  exist in MGS. `leButtonWidget` `setReleasedEventCallback` is the wiring used for the
+  difficulty/mode radios in `screen_song_select.c`.
+- Dashboard header `Marvin_PANEL_BASE_TOP` (plain `leWidget`, background NONE, pickable) holds
+  the hamburger button + title/logo as descendants. Overriding a plain widget's
+  `touchDownEvent` via a shared vtable copy is an established pattern
+  (`widget_song_list.c:373`, and the `_paint` override in `widget_panel_aa.c`).
+
+## Plan
+
+### 1. `ui_manager.{c,h}` — open/close compositor API; dialog closed at boot
+
+- Add `void UiManager_OpenSongSelect(void);` / `void UiManager_CloseSongSelect(void);` to the
+  header (the compositor owns layer binding + the XLCDC mode poke, so the pair lives here).
+- In `ui_manager.c`, file-scope `static bool s_songsel_open;`
+  - `UiManager_OpenSongSelect`: if already open, return; else
+    `bind_canvas(CANVAS_SONGSEL, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true)` and
+    `bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true)`; set flag.
+    (Canvases are hidden when closed, so `gfxcSetLayer` inside `bind_canvas` is valid.)
+  - `UiManager_CloseSongSelect`: if not open, return; else `gfxcHideCanvas` +
+    `gfxcCanvasUpdate` for both CANVAS_SONGSEL and CANVAS_ALBUM_ART; clear flag. OVR1/OVR2 go
+    dark → dashboard (BASE) shows; OVR1 freed for nav.
+- In `ui_boot_task` reveal: **remove** the two `bind_canvas(..., true)` show calls. Keep
+  `ScreenSplash_Hide`. Add a one-time `XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1,
+  XLCDC_RGB_COLOR_MODE_RGB_565, true)` so a first nav-open (before any song-select open) still
+  scans out correctly. Net: boot reveals the dashboard alone; the dialog/cover are painted
+  into their canvases (Setup already invalidates them) and shown on demand.
+
+### 2. `screen_song_select.c` — close handlers
+
+- Add `static void song_close_on_release(leButtonWidget *b) { (void)b; UiManager_CloseSongSelect(); }`
+  (`ui_manager.h` already included).
+- In `ScreenSongSelect_Setup`, after the existing button setup:
+  `Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedEventCallback(..., song_close_on_release);`
+  and the same for `Marvin_BUTTON_SONG_SELECT_SELECT`. (SELECT keeps its existing AA rounding;
+  it just also closes for now.)
+
+### 3. `screen_dashboard.c` — open on header-bar tap
+
+- Shared-vtable `touchDownEvent` override (mirror `widget_song_list.c` / `widget_panel_aa.c`):
+  one static `leWidgetVTable` copy + captured original `touchDownEvent`; the override calls the
+  original (if any) then `UiManager_OpenSongSelect()`.
+- A small `header_tap_opens(leWidget *w)` that points `w->fn` at the shared overridden vtable,
+  applied in `ScreenDashboard_Setup` to `Marvin_PANEL_BASE_TOP` and its plain-panel children
+  `Marvin_PANEL_SYSTEM_LEFT` / `_SYSTEM_TITLE` / `_SYSTEM_RIGHT` (all plain `leWidget`, one shared
+  vtable) for full header coverage. The hamburger button and labels keep their own handling
+  (picked first), so nav and the title text are unaffected.
+- Add includes for the Legato widget/event types (`leWidgetEvent_TouchDown`); `ui/ui_manager.h`
+  is already included.
+
+### 4. Docs (per CLAUDE.md)
+
+- `firmware/marvin/docs/journal.md`: session-log entry + decision — dialog is now a modal
+  (closed at boot; opens on header tap; closes on X/SELECT); SELECT close is a placeholder for
+  gameplay start; nav/OVR1 coexistence-while-open remains a follow-up.
+
+## Out of scope / follow-ups (documented, not built)
+
+- Opening nav while the dialog is open (both target OVR1) is unhandled — the hamburger stays in
+  the uncovered header strip, so it can still be tapped; that path is a known follow-up.
+- SELECT should eventually start gameplay rather than just close.
+
+## Verification
+
+1. Build `marvin_default` (MPLAB/cmake) clean with the edits.
+2. Flash. Boot → **dashboard only**, no dialog/cover (regression from prior always-on dialog).
+3. Tap the top header bar (empty area) → dialog appears on OVR1 with its cover on OVR2.
+4. Tap the **X** (upper-right) → dialog + cover disappear, dashboard returns. Repeat with
+   **SELECT** → same.
+5. Re-open, change song selection → cover still swaps (rounded corners intact). Close again.
+6. With the dialog closed, tap the hamburger → nav drawer still opens/closes normally
+   (confirms OVR1 RGB565 mode survived and nav is unaffected).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:13Z)**_
+
+Plan approved. Let me set up the todo list and implement.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:17Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ ui_manager: add UiManager_Open/CloseSongSelect; close dialog at boot reveal (dashboard only); keep OVR1 RGB565 mode for nav
+- [ ] 🌡️ screen_song_select: wire CLOSE (X) + SELECT release callbacks to UiManager_CloseSongSelect
+- [ ] 🌡️ screen_dashboard: override touchDownEvent on BASE_TOP + SYSTEM_* sub-panels to open song-select
+- [ ] 🌡️ journal: record dialog modal open/close decision + follow-ups
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:23Z)**_
+
+Starting with ui_manager. First the header:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:32Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:32Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.h`
+
+```text
+1	#ifndef UI_UI_MANAGER_H
+2	#define UI_UI_MANAGER_H
+3	
+4	#include <stdint.h>
+5	
+6	#ifdef __cplusplus
+7	extern "C" {
+8	#endif
+9	
+10	/* Canvas ids — the per-layer-screen render surfaces in the GFX_CANVAS pool.
+11	 *
+12	 * The three Marvin layer-screens render into canvas[i] for Legato layer i (the
+13	 * renderer maps Legato layer i → canvas[baseCanvasID + i], base 0), so these
+14	 * canvas ids are pinned equal to their layer index — NOT free. A canvas is bound
+15	 * to a *hardware* layer at display time by the compositor — that binding is
+16	 * independent and runtime (see HW_* + bind_canvas). The boot splash is NOT a
+17	 * canvas: it drives its hardware layer directly (see splash.h). */
+18	#define CANVAS_DASH        0u   /* Marvin layer 0 — dashboard (base view)    */
+19	#define CANVAS_NAVIGATION  1u   /* Marvin layer 1 — navigation drawer        */
+20	#define CANVAS_SONGSEL     2u   /* Marvin layer 2 — song/mode-select dialog  */
+21	#define CANVAS_ALBUM_ART   3u   /* Marvin layer 3 — song-select cover (RGB888) */
+22	
+23	/* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
+24	 * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
+25	 * layer at *display time* by the compositor (ui_manager) via gfxcSetLayer — a
+26	 * screen never owns a layer. The HW-layer budget limits how many canvases can be
+27	 * *visible at once*, not how many screens can be built. */
+28	#define HW_BASE   0u
+29	#define HW_OVR1   2u
+30	#define HW_OVR2   3u
+31	
+32	#define BASE_W   1280u
+33	#define BASE_H    800u
+34	
+35	/* Hardware layer the boot splash is shown on. OVR1 (above BASE so it covers the
+36	 * dashboard); OVR2 is left free for an overlay drawn over the splash, e.g. a
+37	 * loading bar. */
+38	#define SPLASH_HW_LAYER   HW_OVR1
+39	
+40	/* Bring up the UI. Call once from APP_Initialize, before the scheduler and after
+41	 * Legato_Initialize. Assigns the per-screen canvas surfaces and creates the boot
+42	 * task that runs the bring-up sequence (splash → screens → reveal) once the
+43	 * scheduler is up. Pure setup; no screen is built or shown here. */
+44	void UiManager_Initialize(void);
+45	
+46	/* Register a callback fired the instant the splash is on screen, from the boot
+47	 * task. The app uses it to start everything else (services + camera) in parallel
+48	 * with the behind-the-splash screen painting, so the system is warm at reveal.
+49	 * Set before UiManager_Initialize. */
+50	void UiManager_SetSplashShownCallback(void (*cb)(void));
+51	
+52	/* Set the LCD backlight brightness, 0–100% (clamped). PWM-dimmed on PC18; valid
+53	 * once the PWM channel is up (after the splash is shown at boot). */
+54	void UiManager_SetBacklight(uint32_t pct);
+55	
+56	/* Current backlight brightness, 0–100%. */
+57	uint32_t UiManager_GetBacklight(void);
+58	
+59	#ifdef __cplusplus
+60	}
+61	#endif
+62	
+63	#endif /* UI_UI_MANAGER_H */
+64
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:47Z)**_
+
+Now ui_manager.c — the reveal change. First read the file (was read via cat earlier):
+
+_**Agent (claude-opus-4-8 2026-06-30 22:45:48Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+236	     * against the render tasks; the canvas/layer binds after are GFX-canvas only
+237	     * (no root-list mutation) so they need no guard. */
+238	    scene_edit_begin();
+239	    init_screens();
+240	    scene_edit_end();
+241	
+242	    /* Dashboard live on BASE (covered by the splash until reveal). Nav and
+243	     * song-select are built and painting into their own canvases but not bound to
+244	     * a layer yet — they take their layers at reveal, once the splash vacates. */
+245	    bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+246	
+247	    wait_render_idle();
+248	
+249	    /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
+250	    TickType_t elapsed   = xTaskGetTickCount() - shown_at;
+251	    TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
+252	    if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
+253	
+254	    /* REVEAL — cut over to the (painted) dashboard, then bring the song-select
+255	     * dialog up on OVR1 (RGB565) with its full-color cover strip on OVR2 (RGB888,
+256	     * above OVR1). The nav drawer is NOT bound here — it grabs OVR1 in
+257	     * navigation_open() only while shown (it and the dialog share OVR1, mutually
+258	     * exclusive). (Initial bring-up: the dialog shows at boot; open/close wiring
+259	     * comes next.) */
+260	    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+261	    bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
+262	    bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+263	
+264	    vTaskDelete(NULL);
+265	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:02Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:07Z)**_
+
+Now add the open/close functions. Let me place them in the public API section near the backlight functions:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:07Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+95	 * time and brightness is the high fraction: CDTY = period·(100−pct)/100, so
+96	 * pct=100 → CDTY 0 → full bright, pct=0 → CDTY period → off. PWM_ChannelDutySet
+97	 * writes CDTY directly while stopped and the update register once running, so
+98	 * this is valid both before the channel starts and at runtime. */
+99	void UiManager_SetBacklight(uint32_t pct)
+100	{
+101	    if (pct > 100u) { pct = 100u; }
+102	    s_backlight_pct = pct;
+103	    uint32_t period = PWM_ChannelPeriodGet(PWM_CHANNEL_0);
+104	    PWM_ChannelDutySet(PWM_CHANNEL_0, (period * (100u - pct)) / 100u);
+105	}
+106	
+107	uint32_t UiManager_GetBacklight(void)
+108	{
+109	    return s_backlight_pct;
+110	}
+111	
+112	/* Light the backlight at the persisted brightness (Settings_Get loads the QSPI
+113	 * ring on first use, or the compiled default if no record). The PWM channel is
+114	 * stopped (no output) until started here, so the panel stays dark until the
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:14Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:15Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+62	
+63	/* ── compositor primitives ───────────────────────────────────────────────── */
+64	
+65	/* GFX-canvas drvLayer index → XLCDC layer enum (the XLCDC poke namespace). */
+66	static XLCDC_LAYER xlcdc_layer(uint32_t hw)
+67	{
+68	    switch (hw)
+69	    {
+70	        case HW_BASE: return XLCDC_LAYER_BASE;
+71	        case HW_OVR2: return XLCDC_LAYER_OVR2;
+72	        case HW_OVR1:
+73	        default:      return XLCDC_LAYER_OVR1;
+74	    }
+75	}
+76
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:20Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+76	
+77	/* Bind a canvas to a hardware layer and optionally show it. The GFX-XLCDC driver
+78	 * never writes RGBMODE itself, so we poke the layer's colour mode to match the
+79	 * canvas placed on it — the layer always follows its current canvas. gfxcSetLayer
+80	 * requires the canvas hidden, which it is until shown. */
+81	static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode, bool show)
+82	{
+83	    gfxcSetLayer(canvas, hw);
+84	    if (show) { gfxcShowCanvas(canvas); }
+85	    gfxcCanvasUpdate(canvas);
+86	    XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
+87	}
+88	
+89	static uint32_t s_backlight_pct;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:42Z)**_
+
+Now the song-select close handlers. Let me update the todo and edit:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:42Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ ui_manager: add UiManager_Open/CloseSongSelect; close dialog at boot reveal (dashboard only); keep OVR1 RGB565 mode for nav
+- [⚡] 🌡️ screen_song_select: wire CLOSE (X) + SELECT release callbacks to UiManager_CloseSongSelect
+- [ ] 🌡️ screen_dashboard: override touchDownEvent on BASE_TOP + SYSTEM_* sub-panels to open song-select
+- [ ] 🌡️ journal: record dialog modal open/close decision + follow-ups
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:51Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:46:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/song_select/screen_song_select.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:47:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/song_select/screen_song_select.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:47:12Z)**_
+
+Now the dashboard header-tap open. Update todo and edit:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:47:12Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ ui_manager: add UiManager_Open/CloseSongSelect; close dialog at boot reveal (dashboard only); keep OVR1 RGB565 mode for nav
+- [X] 🌡️ screen_song_select: wire CLOSE (X) + SELECT release callbacks to UiManager_CloseSongSelect
+- [⚡] 🌡️ screen_dashboard: override touchDownEvent on BASE_TOP + SYSTEM_* sub-panels to open song-select
+- [ ] 🌡️ journal: record dialog modal open/close decision + follow-ups
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:47:39Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:47:39Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/screens/dashboard/screen_dashboard.c`
+
+```text
+1	#include "ui/screens/dashboard/screen_dashboard.h"
+2	
+3	#include "ui/ui_manager.h"   /* CANVAS_DASH, BASE_W, BASE_H */
+4	#include "ui/widgets/panel_aa/widget_panel_aa.h"
+5	
+6	#include "gfx/canvas/gfx_canvas_api.h"
+7	#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* dashboard widgets */
+8	
+9	/* Dashboard surface, non-cached so the 2D engine and LCDC DMA read CPU-rendered
+10	 * pixels coherently; 32-byte aligned. RGB565 — steady-state UI needs no more. */
+11	#define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
+12	
+13	static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
+14	
+15	void ScreenDashboard_InitSurface(void)
+16	{
+17	    gfxcSetPixelBuffer(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+18	}
+19	
+20	/* Corner radius for the dashboard's rounded cards. */
+21	#define DASH_CARD_RADIUS  4u
+22	
+23	void ScreenDashboard_Setup(void)
+24	{
+25	    /* Full-screen at the origin. The root is on Legato layer 0 (built by MGS); the
+26	     * canvas window positions that layer's pixels on the display. */
+27	    gfxcSetWindowPosition(CANVAS_DASH, 0, 0);
+28	    gfxcSetWindowSize(CANVAS_DASH, BASE_W, BASE_H);
+29	
+30	    /* Rounded, anti-aliased corners on the robot-controls card — a child of the
+31	     * opaque BASE_LEFT panel, so the corner backdrop is solid. */
+32	    Marvin_PANEL_ROBOT_CONTROLS->fn->setCornerRadius(Marvin_PANEL_ROBOT_CONTROLS, DASH_CARD_RADIUS);
+33	    PanelAA_Enable(Marvin_PANEL_ROBOT_CONTROLS);
+34	}
+35
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:47:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/dashboard/screen_dashboard.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/dashboard/screen_dashboard.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:33Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm widget extern declarations + types
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -nE "Marvin_PANEL_BASE_TOP|Marvin_PANEL_SYSTEM_LEFT|Marvin_PANEL_SYSTEM_TITLE|Marvin_PANEL_SYSTEM_RIGHT|Marvin_BUTTON_SONG_SELECT_CLOSE|Marvin_BUTTON_SONG_SELECT_SELECT" default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
+```
+
+```text
+17:extern leWidget* Marvin_PANEL_BASE_TOP;
+20:extern leWidget* Marvin_PANEL_SYSTEM_LEFT;
+21:extern leWidget* Marvin_PANEL_SYSTEM_RIGHT;
+23:extern leWidget* Marvin_PANEL_SYSTEM_TITLE;
+290:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_CLOSE;
+307:extern leButtonWidget* Marvin_BUTTON_SONG_SELECT_SELECT;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:45Z)**_
+
+All declared as expected. Now the journal update:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:48Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ ui_manager: add UiManager_Open/CloseSongSelect; close dialog at boot reveal (dashboard only); keep OVR1 RGB565 mode for nav
+- [X] 🌡️ screen_song_select: wire CLOSE (X) + SELECT release callbacks to UiManager_CloseSongSelect
+- [X] 🌡️ screen_dashboard: override touchDownEvent on BASE_TOP + SYSTEM_* sub-panels to open song-select
+- [⚡] 🌡️ journal: record dialog modal open/close decision + follow-ups
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:56Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:48:56Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+1	# marvin — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	**UI architecture — nav drawer complete; song/mode-select dialog is the next UI step.** The canvas compositor + per-screen-module model is built and validated on hardware: `ui_manager` orchestrates screens (string table + `screenInit/Show`; the MGS screen state machine is disabled, worked around with the `compat/le_gen_init.h` stub), the dashboard is its own MGS Screen on BASE, and the nav drawer is its own MGS Screen (`Navigation`) re-hosted onto OVR1 — they coexist live (no active-screen gate; `leUpdate`/`leInput` cover all attached layers). `LE_LAYER_COUNT`=3 is pinned via the never-shown `LayerBudget` screen. **Nav drawer is feature-complete:** slides in/out via canvas Move FX (`NAV_CLOSED_X` dodges the window-clip row-wrap; mid-slide reversal cancels the in-flight move), single-active highlight (Dashboard closes, others switch), clean close, rounded buttons with anti-aliased corners (`ui/widgets/button_aa/widget_button_aa.c`, per-instance vtable re-point — see `ui_compositor.md` §10a). Authoritative design + the window-clip/alignment gotchas in [`ui_compositor.md`](ui_compositor.md); decisions 2026-06-25. **Next (decided 2026-06-29): migrate to MGS's single-master-screen / layer-screen model** — one master Legato screen named `Marvin` with one layer per panel (dashboard, nav, song-select, dialogs…), replacing the current "separate 1-layer MGS Screen per panel, manually re-hosted, `LE_LAYER_COUNT` pinned by the fake `LayerBudget` screen" approach. MGS then derives `LE_LAYER_COUNT` and auto-associates each layer-screen with its canvas, so the `LayerBudget` hack, the `compat/le_gen_init.h` stub, and the disconnect/re-host dance all go away; `ui_manager` shrinks to buffer assignment + `show_layer`/`hide_layer` verbs. **Splash stays separate/manual** (pre-Legato RGBA8888) on a canvas slot outside the layer-screen range. Authoritative model + direction now in [`ui_compositor.md`](ui_compositor.md) §0. SongSelect (MGS screen already generated, committed `1e16ac9`) becomes a Marvin layer-screen rather than a standalone Screen. The earlier "parked surfaces aren't pickable / reveal-then-promote" framing is **superseded** (a state-machine artifact).
+8	
+9	**Song-select operator UI — scrollable list widget built & validated on hardware.** Custom Legato widget `ui/song_list.{h,c}` (a hand-written `leWidget` subclass) renders the SELECT SONG setlist (tier badge + bold title + dim artist + right-aligned duration), driven by a decoupled row-provider callback (no catalog dependency); drag-scroll with time-based kinetic inertia, tap-to-select. Bring-up via the `songlist` console command + a catalog-backed demo provider (`ui/song_list_demo.{c,h}`) — scroll/select/opaque-fill confirmed on hardware. **Bringing it up surfaced and fixed a real Legato/GFX2D cache-coherency bug** (see decision log 2026-06-24): the CPU-rendered scratch buffer was cacheable, so the 2D-engine blit leaked stale pixels through opaque widgets — fixed by placing the scratch in non-cached DDR. **Next:** author the full SELECT SONG screen in MGS (album art + catalog-fed metadata panel + difficulty/mode/Select), and the **tier / career-setlist data model** (the `tier` badge needs the deferred catalog tier column). Two upstream Microchip Legato/gfx bugs to file (decision log).
+10	
+11	**Song catalog loader — built and committed; exercised on hardware via the `catalog`/`songlist` console commands.** New `game/catalog.{h,c}` maps the recognizer's `(setlist, index)` → human labels (title/artist/bpm/length) from `<card>/games/gh3-wii/songs.csv`, so the UI/high-score display shows names instead of `#4`. Flat **CSV** (decided over the spec's JSON for the same reasons `results` is CSV — no on-device tokenizer, `FF_FS_MAX_FILES=1`, static buffers, pandas/Excel-editable). The two CSV helpers were extracted out of `results.c` into a shared `util/csv.{h,c}` and the catalog reuses them. Lazy-loads once into a fixed `[GP_N_SONGS]` static cache (file closed after load), so lookups are O(n) in RAM and don't fight `results.csv` for the single FatFs handle. `catalog` console command (`reload` / `ls` / `<main|bonus> <index>`) validates the path against a checked-in seed catalog (`data/games/gh3-wii/songs.csv`). Columns: `setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty`. `title`/`artist`/`album` are real, sourced from the `SONGS` table in `tools/fetch_gh3_cover_art.py` (incl. proper UTF-8 — *Héroes del Silencio*, *Mauvais Garçon*); that script gained a `--catalog` mode that also fills `year`/`genre` from MusicBrainz on a networked run. `bpm`/`length_s`/`difficulty` are reserved-but-blank (GH3 surfaces no per-song difficulty; the authentic signal is the career tier, deferred). Catalog is labels only: a missing/stale card degrades to "Unknown song" and never touches recognition (compile-time in flash). **Deferred:** the stale-catalog version warning — `export_c.py` doesn't emit `GP_METADATA_VERSION` yet (open item below). **Next SD consumer:** album-artwork pre-cache (spec §4.8.7) — directory structure is now locked (`art/{small,large}/<setlist>-<NN>.{jpg,png}`, one size-tier subdir per DDR cache). **Built 2026-06-30** (`game/art.{c,h}`, decision log): all covers decoded once into static RGB888 DDR caches during the splash, `(setlist,index)`→`leImage*` lookup, song-select strip wired; large tier is a 508×208 strip with a difficulty-colored fade baked offline. Dashboard small-thumbnail consumer still pending (no MGS slot yet).
+12	
+13	**T1S inter-node link — built and working (marvin ↔ guitar).** marvin is the PLCA **coordinator** (node 0) on a 10BASE-T1S bus (LAN8651 over FLEXCOM4 SPI); hand-authored stack in `default/src/net/t1s/`. It sends the actuator command over T1S to the `guitar` follower node (id 2), which actuates the Wii GPIOs (guitar G1+G2 proven). Followers announce presence via a heartbeat (ethertype `0x88B6`); the `t1s` and `nodes` console commands report link/credits/per-node presence. Transport is behind `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` (T1S default on the `t1s` branch). The `fretboard` node (id 1) firmware is now **written, T1S-only** (fretboard journal 2026-06-17): it streams its 17-byte frame to marvin **and** drives the `guitar` node directly — its on-device model infers the bitmask and sends it peer-to-peer to `02:..:02`. marvin's RX side needed no changes — `fretboard_link.c`'s T1S frame handler already parses the frame from node id 1 (`DETECTOR_ADC_FRETBOARD`) and the node-table + heartbeat-presence demux already cover it. **Next (marvin side):** **active-source arbitration** — both marvin (timing pipeline) and the fretboard now address the guitar (`02:..:02`), so marvin needs active-detector/active-guitar selection to ensure exactly one source drives at a time (the fretboard's SW0 is an interim manual arm; until then, don't run marvin's timing pipeline to the guitar while the fretboard is armed). Then fretboard hardware bring-up. PoDL is design-direction only. Detail in [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); decision log entry 2026-06-17.
+14	
+15	**Board port: SAM9X75 Curiosity → Curiosity Hybrid (in progress).** USB Host is gone on the Hybrid; the fretboard link was rewired from USB CDC host to a direct FLEXCOM2 USART on 2026-06-08 (see decision log + session log). Code-complete and syntax-checked; pending a full MPLAB build and on-hardware bring-up. Display/MIPI I²C (incl. TC358743 control) also moved off FLEXCOM6/PA24-PA25 to FLEXCOM8 TWI/PB4-PB5 during the port — `spec.md` §3.1/§3.2 reconciled on 2026-06-08. Dated 2026-05-01/05-20 journal entries and `journal-archive.md` keep their FLEXCOM6 references as historical record (true on the original Curiosity board).
+16	
+17	**M1 — Reference detector v0.** First CV detector running on captured frames, publishing `detector_state_t` records onto the detector-state bus. No actuation yet. See [`spec.md`](spec.md) §4.2 for subsystem detail and §8 for the milestone progression.
+18	
+19	Scaffold is in place as of 2026-05-20: `detector/detector.{h,c}` owns the bus queue + a temporary drain task that logs records-per-second; `detector/cv_marvin_v1.{h,c}` subscribes to the video frame queue and publishes one `detector_state_t` per frame with `frame_epoch = Video_FrameInfo.frame_count` and all-zero fret state. Next: pick the v0 algorithm (Q8) and start populating `fret[]`.
+20	
+21	**Capture/display pipeline is done as of 2026-05-02:** source → TC358743 → CSI-2 @ 972 Mbps/lane → SAM9X75 → ISC DMA → DDR (BGRX32) → XLCDC OVR1 → LVDSC → 10.1″ 1280×800 LVDS panel.
+22	
+23	> **Deeper-dive references:**
+24	> - [`spec.md`](spec.md) — system-level spec (read first).
+25	> - [`capture_pipeline.md`](capture_pipeline.md) — HDMI → DDR capture stage (CSI2DC, ISC, register settings, datasheet citations).
+26	> - [`display_path.md`](display_path.md) — DDR → LCD display stage (XLCDC OVR1 wiring, pillarbox, cache coherence).
+27	
+28	> **Earlier entries** (capture/display bring-up, 2026-05-01 → 2026-05-15) are preserved in [`journal-archive.md`](journal-archive.md).
+29	
+30	---
+31	
+32	## Decision log
+33	
+34	| Date | Decision | Rationale |
+35	|------|----------|-----------|
+36	| 2026-06-30 | **UI fonts: DejaVu Sans Mono family only (licensing).** All new text uses `DejaVuSansMono_*` / `DejaVuSansMonoBold_*`; do not add other faces. The figma-imported Menlo / NotoSans faces still present in the generated font set are a known cleanup item to migrate to DejaVu over time. The song-select **tier label** uses **DejaVuSansMonoBold 12pt**, which already carries the `★` (U+2605) glyph (its subset is `0x20–0x7E`, `0xA0–0xFF`, `0x2605`), so the `★★★★★ TIER n` label needs no font change. Recorded in spec §4.5. | Licensing — DejaVu is the cleared family for this project. Keeping to one mono family also keeps the font asset set small and the look consistent. The star already being in the DejaVuSansMonoBold subset means the tier label gets the mock's stars for free. |  All covers decoded once into static RGB888 DDR caches during the splash; large tier = 508×208 strip with a difficulty-colored fade baked offline; song-select wired, dashboard pending.** Two fixed-size tiers in cached DDR (`.region_ram`): small 144×144 (3.8 MB) + large 508×208 (19.3 MB) + a shared 512 KB decode scratch ≈ **23 MB**. `Art_LoadAll()` (called from `ui_boot_task` after `init_screens()`, behind the splash) walks `art/{small,large}/` with `SYS_FS_DirOpen`/`DirRead`, reads each file into scratch, parses true dims from the JPEG SOF / PNG IHDR header, validates exact tier dims, and decodes into the slot via `leImage_Render` (the JPEG/PNG decoder's `render` writes RGB888 straight into the slot — no clip-rect/active-frame dependency). Each slot is wrapped as a RAW RGB888 `leImage`; lookup is `(setlist,index)` → `leImage*` or NULL. Missing/oversize/wrong-size/corrupt → empty slot → UI blank; never fails boot. Song-select sets the **MGS-provided** `Marvin_IMAGE_ALBUM_ART_0_0` widget per selection (the maroon overlay panel MGS built stays invisible — fade is baked). **Offline (`tools/gh3-cover-art/`):** `process_gh3_cover_art.py` reworked to center-crop the middle 508×208 band, look up each song's `difficulty` from `songs.csv`, and bake a fade colored by difficulty from an 8-tier palette — `"1".."8"` green→red with blue/purple accents (`TIER_COLORS`, shared with the TIER-label schemes), `"bonus"`/unknown = gray — saved as **PNG** (lossless gradient); small stays 144×144 JPEG. `install_art.py` installs large as `<setlist>-NN.png`. `art` console command reports cache fill. **Pending:** asset regen from `./data` originals; dashboard small-thumbnail slot (no MGS widget exists for it yet). | Spec §4.8.7 always called for pre-decode-once into a static DDR cache (runtime = O(1) pointer, no card I/O/decode/alloc — honors static-allocation). RGB888 chosen per Greg; the 508×208 display window (vs full 508×~508) shrinks the large cache from ~52 MB to ~19 MB, and offline crop+fade keeps the device module to "decode→store→display" with the cached array *being* the final image. Difficulty-colored fade baked offline (Greg's call) rather than a runtime overlay: difficulty is already in `songs.csv` and static per song, so baking keeps the device trivial; cost is a re-bake if a tier changes. PNG for large because the smooth baked gradient bands under JPEG; both decoders implement the offscreen `render` path. Caches in **cached** DDR (not the 32 MB `.region_nocache`): they're decoder source/staging Legato blits into the canvas, never LCDC-scanned directly, and the 224 MB cached region has ample room. Walk-the-dir (not catalog-driven) so a missing/stale catalog never affects art (spec §4.8.7). |
+37	| 2026-06-29 | **Migrate the operator UI to MGS's single-master-screen / layer-screen model: one master Legato screen `Marvin` whose *layers* are the panels (dashboard, nav, song-select, dialogs…), replacing the current "separate 1-layer MGS Screen per panel, manually re-hosted by `ui_manager`, `LE_LAYER_COUNT` pinned by a fake `LayerBudget` screen."** Per Microchip's GFX-canvas **layer-screen** guide, this is the framework's intended structure: MGS derives `LE_LAYER_COUNT` from the layer count and auto-associates each layer-screen with its own GFX canvas, so the `LayerBudget` pin, the `compat/le_gen_init.h` stub, and the `init_screens()` build-on-layer-0-then-disconnect + per-screen `*_OnShow` re-host dance all disappear. `ui_manager` shrinks to: assign each layer-screen's canvas buffer (content-sized, RGB565) + `show_layer(idx, hwLayer)` / `hide_layer(idx)` verbs (HW-layer binding stays a runtime `gfxcSetLayer` choice, never owned by a panel). Panel modules (`screen_nav.c`, `screen_song_select.c`, …) keep content + event wiring + interaction FX but drop all `leAddRootWidget`/canvas mechanics. **Splash stays separate/manual** (pre-Legato RGBA8888 scanout) on a canvas slot *outside* the layer-screen range 0..N-1 (e.g. top of the 8-slot pool). The three-concept model that drove this (Legato layer-screen ↔ canvas coupled 1:1; XLCDC HW layer independent/runtime) + the direction are now canonical in [`ui_compositor.md`](ui_compositor.md) §0. Open items before coding: final layer order/z-order + initial layer set; per-layer-screen canvas sizing/offset; MGS widget naming across layers (drives a rename sweep in the panel modules); confirm a hidden layer-screen's canvas suppresses touch picking. | The current approach hand-emulates layer-screens, which is what forced every recurring canvas-vs-layer confusion: with `LE_LAYER_COUNT`=3 only canvases 0/1/2 are real Legato render targets, so a 3rd live panel could not get its own slot without colliding with the splash's. Adopting the framework model makes "each panel owns its own canvas" literally true (define up to 8 layer-screens, composite any 3 onto the HW layers), aligns with the tooling instead of fighting it, deletes two standing hacks, and is purpose-built for marvin's need (multiple coexisting overlays with preserved widget state, no redraw on transition). Splash stays out of the master screen because it must paint before Legato/the master screen is built (fast-boot path). |  (`data/ui/make-splash.sh`), not by ad-hoc shell history; the raw byte order is `[A,B,G,R]` per pixel.** The XLCDC splash canvas is `GFX_COLOR_MODE_RGBA_8888` whose pixel word is `0xRRGGBBAA` (`splash.c` `SPLASH_FILL 0x000000FF` = opaque black confirms it), so little-endian memory bytes are `[A,B,G,R]` — **not** Pillow's default `R,G,B,A`. The script splits channels and `Image.merge("RGBA",(a,b,g,r))` to get that order, resizes to 1280×800, and asserts the 4,096,000-byte size `splash.c` requires. Uses `uv` + Pillow (no ImageMagick/ffmpeg — neither is installed on this host). Verified empirically against the committed `splash.raw`: first pixel matched to within JPEG-re-encode noise, while the naive `R,G,B,A` ordering was fully reversed. Regenerated `splash.raw` from the (newer) `splash.jpg`, which had drifted out of sync. Documented in `data/README.md`; flash with `openocd/program-qspi.sh splash`. | The conversion step previously lived only in someone's shell history — undocumented and reproducible only by guessing the byte order (easy to get reversed, since the framework name "RGBA_8888" reads like Pillow's `R,G,B,A` but the little-endian word layout inverts it). A checked-in script with the size assertion makes the splash pipeline self-serve and drift-proof, and pairs with the existing `program-qspi.sh splash` provisioning step. |
+38	| 2026-06-28 | **QSPI 8 MiB partition map locked — `flash/qspi_layout.h` is the single source of truth.** Splash blob `0x000000` (4 MiB) · UI assets `0x400000` (~3.98 MiB) · Settings ring `0x7FC000` (16 KiB / 4 sectors). All boundaries 4 KiB sector-aligned; contiguous, no gaps/overlaps. Splash at offset 0 (raw pre-decoded framebuffer; 4 MiB holds full-panel RGBA8888 = 3.91 MiB, or an RGB565 splash uses ~1.95 MiB — the reservation keeps both open, format decided when the loader is built). Read-mostly bulk grows upward; the small, frequently-erased settings ring sits at the very top as a stable anchor, **wear-isolated** from the bulk. Settings get 4 sectors (2× the 2-sector ping-pong minimum) for ring headroom. UI assets indexed by **compile-time offsets** for now (flashed with firmware); a manifest sector / littlefs can be carved from the front of the assets region later if assets must update independently. | One header (`qspi_layout.h`) means consumers and the `qspi` dev tools share offsets — no drift. Settings-at-top isolates erase wear and gives a fixed anchor independent of how the bulk grows. **Dev-tool caveat:** `qspi` smoke (last sector `0x7FF000`) and `qspi verify` (top-down) write into the settings region — destructive to it, but the ring-log's CRC-fallback-to-defaults makes that non-fatal (settings just reinitialize). Run heavy `qspi verify` before the settings store is populated, or accept a settings reset. | 
+39	| 2026-06-28 | **QSPI read throughput — the serial clock (GCLK = 2×QSCK) was the lever, not per-access overhead. At 200 MHz GCLK (MCC max → 100 MHz QSCK), XDMAC mem2mem reads hit 18.2 MB/s → ~225 ms for a 4 MB splash, ~3× faster than SD (~750 ms). Read integrity verified at volume. Splash → QSPI via XDMAC mem2mem is GO.** Bench (`qspi bench`, `flash/qspi_smoke.c`) at 50 MHz GCLK → 25 MHz QSCK showed ~5 MB/s and I wrongly concluded "overhead-bound, clock maxed." Greg caught the datasheet note **GCLK must = 2×QSCK** and raised GCLK 50→200 MHz; everything scaled ~linearly (DRV_SST26_Read 4.6→14.8, XDMAC mem2mem 4.9→18.2 MB/s; the raw libc `memcpy` path stays ~2.5 — it is just bad on this region, ignore it). Read path = **XDMAC channel 1 mem2mem from `QSPIMEM_ADDR` (0x60000000)** — ch0 is the ISC histogram DMA, and the PLIB only tracks ch0, so we program ch1's registers directly. Integrity confirmed by `qspi verify 1024 4`: 1 MiB × 4 passes via **both** the driver and XDMAC, **0 mismatches** at 100 MHz, with a position-dependent pattern (catches misaddressing, not just stuck bits). **Two dead ends ruled out:** (a) making the QSPI window **cacheable** in the MMU **hangs** — cache-linefill bursts aren't serviced by the SMM slave (back out; XDMAC bypasses the MMU so it's unaffected); (b) **continuous-read mode (CRM)** only trims the instruction byte on *non-sequential* access, so it does nothing for bulk sequential reads. SMM tops out ~36% of the 50 MB/s theoretical (re-frames per access); the only path to ~50 MB/s (~80 ms) is the QSPI's RX-triggered streaming read — deferred as a mini-project, not worth it over 225 ms. | The clock fix flipped the verdict: at 25 MHz QSCK QSPI-SMM (~5 MB/s, ~800 ms) was *worse* than SD's read; at 100 MHz QSCK (18.2 MB/s) it clearly wins. 100 MHz is within the SST26's 104 MHz rating and proved data-clean at volume, so no DLL/read-training needed at this rate. 200 MHz GCLK is an MCC clock-config change (lives in MCC config → survives regen). **Gotcha for any raw SMM read (memcpy/DMA, bypassing `DRV_SST26_Read`):** the read frame must be closed with `QSPI_CR.LASTXFER` + wait-CSRA or the next QSPI command hangs with CS still asserted — the driver does this internally; raw paths must call an equivalent (`qspi_end_smm_read()` in the bench). Splash framebuffer is in `.region_nocache` (strongly-ordered 0x20000000) but XDMAC writes bypass the MMU, so DMA→framebuffer is unaffected. | 
+40	| 2026-06-28 | **Config/operator settings (backlight %, mode toggles, calibration) persist to the onboard QSPI NOR (`SST26VF064BA`, 8 MB / 64 Mbit SQI) via flash EEPROM-emulation — a small wear-leveled ring-log, NOT a filesystem. No board EEPROM exists, so QSPI is the only non-volatile small-state store.** Reserve ≥2× 4 KB sectors as a ping-pong region: a save appends a `{seq, settings_t, CRC}` record to the next free slot in the active sector (page-program, *no erase*); when full, write the latest record into the pre-erased partner sector then erase the full one. Boot picks the highest-`seq` record with a valid CRC; a partial trailing record (power lost mid-write) fails CRC and falls back to the prior good record → **power-fail safe by construction**, no torn settings. This supersedes the spec §4.6.2/§4.7 plan to keep all config in `/marvin/config.json` on the SD card: operator/UI prefs must persist and load **even with no SD card inserted** (the SD is removable, QSPI is always present). Session/recording config that travels with the data can stay on SD. **Splash, when/if it moves to QSPI, is stored as a raw pre-decoded framebuffer blob at a fixed offset — also no filesystem.** | NOR semantics drive the design: bits only clear 1→0 on program; setting a bit back to 1 requires erasing the whole 4 KB sector, so "update a value" = erase+rewrite 4 KB. FAT makes that worse (every file write also rewrites FAT/dir sectors → write amplification) and FatFs is *not* power-loss-atomic → a mid-write power cut can corrupt the FAT itself, not just the value. The ring-log avoids both: erases are rare (~one per N saves, N = slots/sector) and alternate across sectors, giving effectively unlimited endurance for human-driven settings against the part's ~100k cycles/sector; atomicity is the seq+CRC scan. littlefs (Harmony File System can back it) is the fallback **only** if settings grow into many named, workstation-mountable keys — overkill for a handful of scalars. **Raw-only splash:** the seed `splash.jpg` carries ~2 s of on-target JPEG decode, which dwarfs any bringup savings, so a JPEG-on-QSPI splash would be *slower* than today's SD path — only a raw blob streamed straight to the framebuffer (no decode, no FS mount, no FTL — NOR has none) realizes QSPI's sub-ms bringup vs. SD's ~350 ms `ACMD41` power-up handshake. |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:08Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:08Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate session log + follow-ups line
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs
+grep -n "## Session log\|Follow-ups (open)" journal.md | head
+```
+
+```text
+214:## Session log
+238:**Follow-ups (open):** wire dialog open/close (close must hide both OVR1 dialog + OVR2 art and free OVR1 for nav); the dashboard small thumbnail can reuse this dedicated-layer trick (and `PanelAA_EnableRoundImage` for its corners); **delete patch #9 once the upstream Legato PNG `_render` fix ships**, and reconsider the 2 MB heap (patch #10) if PNG is ever swapped for JPEG. Dashboard thumbnail still deferred. All uncommitted.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:15Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+214	## Session log
+215	
+216	### 2026-06-30 — Album-artwork pre-cache (`game/art.{c,h}`) + offline difficulty-fade pipeline
+217	
+218	Built the cover-art cache that spec §4.8.7 called for; resolves Q13. New `game/art.{c,h}`: two fixed-size **RGBA8888** tiers in cached DDR (`.region_ram`) — small 144×144 (5.3 MB), large 508×208 (27 MB) — plus a 512 KB shared decode scratch (~33 MB total). (Originally RGB888 ~23 MB; switched to RGBA8888 so the cover source matches the RGBA8888 display layer and is 2D-engine-blittable — see the full-color entry below.) `Art_LoadAll()` runs in `ui_boot_task` **before** `init_screens()` (Legato decoders are up from SYS_Initialize; it mounts storage itself) so the cache is populated when `ScreenSongSelect_Setup` → `song_detail_show(0)` paints the initial selection's cover; the ~1–3 s of JPEG/PNG decode is hidden behind the splash. It walks `art/{small,large}/` via `SYS_FS_DirOpen`/`DirRead` in **two phases** — collect the `<setlist>-<NN>.<ext>` entries, **close the dir**, then open+decode each (FatFs here is `FF_FS_MAX_FILES=1`, so a dir handle and a file handle can't be open at once; holding the dir open made every `SYS_FS_FileOpen` return `FR_TOO_MANY_OPEN_FILES`=18 — the bug that made the first cut load 0/0 despite the files being present). Phase 2 reconstructs each path from the `(setlist,index,fmt)` key, which also sidesteps macOS `._` AppleDouble cruft on the card. It reads each file into scratch, reads true dims from the JPEG `SOF`/PNG `IHDR` header (the destination raster is sized from these), requires an exact tier-dimension match, then decodes into the slot with `leImage_Render` — the JPEG/PNG decoder `render` path writes RGB888 straight into the slot via `lePixelBufferSet`+`leColorConvert`, with no dependence on the screen clip rect or an active paint frame (verified by reading the decoder). Each slot is wrapped as a RAW RGB888 `leImage`; `Art_Large/Small(setlist,index)` is a linear scan → `leImage*` or NULL. Missing/oversize/wrong-size/corrupt → empty slot → UI blank, never a boot failure.
+219	
+220	Wiring: `user.cmake` (+`game/art.c`), `Art_Initialize()` in `app.c`, `Art_LoadAll()` in `ui_manager.c`, `art` console command (cache fill / per-key presence). Song-select (`screen_song_select.c`) sets the **MGS-provided** `Marvin_IMAGE_ALBUM_ART_0_0` (508×208 image widget already in the `Marvin` layout) on every selection via a `song_art_show()` folded into `song_detail_show()`; the maroon `PANEL_ALBUM_ART_OVERLAY` MGS built stays invisible (fade is baked offline).
+221	
+222	Offline (`tools/gh3-cover-art/`): `process_gh3_cover_art.py` reworked — large output is now a center-cropped 508×208 strip with a difficulty-colored top/bottom fade baked in, read per song from `songs.csv` (`"1".."8"` → an 8-tier palette green→red with blue/purple accents via `TIER_COLORS`, `"bonus"`/unknown → gray), saved as PNG (lossless gradient). Small stays 144×144 letterboxed JPEG. `install_art.py` installs large as `<setlist>-NN.png`. Fade tunables (`FADE_TOP_ALPHA`/`FADE_BOTTOM_DARK`/`FADE_GAMMA`) at the top of the script.
+223
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:21Z)**_
+
+Now I'll add a new session-log entry at the top of the session log and update the follow-ups line:
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:49:52Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ ui_manager: add UiManager_Open/CloseSongSelect; close dialog at boot reveal (dashboard only); keep OVR1 RGB565 mode for nav
+- [X] 🌡️ screen_song_select: wire CLOSE (X) + SELECT release callbacks to UiManager_CloseSongSelect
+- [X] 🌡️ screen_dashboard: override touchDownEvent on BASE_TOP + SYSTEM_* sub-panels to open song-select
+- [X] 🌡️ journal: record dialog modal open/close decision + follow-ups
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:50:16Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:50:23Z)**_
+
+All four pieces are in. Summary of the change:
+
+**`ui_manager.{c,h}`** — new `UiManager_OpenSongSelect()` / `UiManager_CloseSongSelect()`:
+- Open binds + shows the pair (SONGSEL→OVR1 RGB565, ALBUM_ART→OVR2 RGBA8888) via the existing `bind_canvas`; close `gfxcHideCanvas` both (frees OVR1 for nav). Guarded by `s_songsel_open` (idempotent).
+- Boot reveal no longer shows the dialog — it now reveals the dashboard alone and pokes OVR1→RGB565 once so a first nav-open still scans out correctly.
+
+**`screen_song_select.c`** — `song_close_on_release` wired to both `BUTTON_SONG_SELECT_CLOSE` (X) and `_SELECT` (placeholder until SELECT starts gameplay).
+
+**`screen_dashboard.c`** — `header_tap_opens()` re-points the shared vtable of `BASE_TOP` + `SYSTEM_LEFT/TITLE/RIGHT` so a `touchDownEvent` on the bare header opens the dialog; the hamburger and labels (picked first, no bubbling) keep their behavior.
+
+**`journal.md`** — session entry + updated follow-ups (nav/OVR1 coexistence and SELECT→gameplay remain open).
+
+I didn't run a build — marvin builds through your MPLAB/cmake toolchain, which isn't wired up in this sandbox. Please build + flash and run the verification:
+1. Boot → **dashboard only** (no dialog).
+2. Tap the top header bar → dialog + cover appear.
+3. Tap **X** or **SELECT** → both disappear, dashboard returns.
+4. Re-open, change song → cover still swaps; close again.
+5. With dialog closed, hamburger → nav still opens/closes.
+
+Nothing committed. Want me to hold for your hardware check before committing?
+
+---
+
+_**User (2026-06-30 22:54:07Z)**_
+
+mostly working but our song select dialog is blocking touch behind it.  see Using Background Panel Widgets section of https://developerhelp.microchip.com/xwiki/bin/view/software-tools/mgs/mgs-harmony-guide/how-to/gfx-canvas/layer-scr/ . all of our "screens" should have this panel.
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-30 22:54:44Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:54:45Z)**_
+
+Let me read that MGS guide section to get the exact mechanism before acting.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:54:53Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="WebFetch"><details>
+<summary>Tool use: **WebFetch**</summary>
+ `https://developerhelp.microchip.com/xwiki/bin/view/software-tools/mgs/mgs-harmony-guide/how-to/gfx-canvas/layer-scr/`
+
+```text
+# Background Panel Widgets in Layer-Screens
+
+## What It Is
+A background panel widget is a container element sized to match its layer-screen, serving as the parent for all other widgets within that layer-screen.
+
+## Why It's Needed
+The core issue is that the graphics library perceives all layer-screens as visible and stacked simultaneously, even though the GFX Canvas hides them from the display. This creates a problem: "the top layer-screen will get all the touch events even if it is not being displayed."
+
+## Touch Event Control
+The background panel manages event routing through the widget-enabled flag. When a layer-screen is hidden, its parent panel is disabled, which "disables all touch events on that parent-layer and lets touch events propagate to parent-layers below it." Conversely, enabling the panel allows its child widgets to receive input.
+
+## Configuration Method
+Implementation uses two macros for flag manipulation:
+
+```
+WIDGET_SET_ENABLE_FLAG(widget) — enables touch processing
+WIDGET_CLEAR_ENABLE_FLAG(widget) — disables touch processing
+```
+
+## Touch Input Routing Summary
+Only the currently visible layer-screen has its background panel enabled. This single enabled panel captures all touch events for that layer. Hidden layer-screens remain disabled, creating an event pass-through chain where input flows downward through disabled panels to reach active ones below.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:57:58Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:58:00Z)**_
+
+The doc is clear: Legato treats all layer-screens as stacked, so the top one eats touches even when its canvas is hidden — the fix is to **disable the layer-screen's background panel when hidden** (which lets touches fall through) and enable it when shown. Let me check the generated roots/panels for layers 2 and 3 to wire this correctly.
+
+_**Agent (claude-opus-4-8 2026-06-30 22:58:05Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect layer roots and song-select/album-art top panels
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== roots: size + IGNOREPICK/IGNOREEVENTS flags ==="
+grep -nE "root[0-3] = leWidget_New|root[0-3]->fn->setSize|root[0-3]->flags|leAddRootWidget" default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
+echo
+echo "=== PANEL_SONG_SELECT + ALBUM_ART container: New/size/setEnabled ==="
+grep -nE "Marvin_PANEL_SONG_SELECT = |Marvin_PANEL_SONG_SELECT->fn->setSize|Marvin_PANEL_SONG_SELECT_ALBUM_ART = |Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->setSize|root2->fn->addChild|root3->fn->addChild" default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
+```
+
+```text
+=== roots: size + IGNOREPICK/IGNOREEVENTS flags ===
+336:    root0 = leWidget_New();
+337:    root0->fn->setSize(root0, LE_DEFAULT_SCREEN_WIDTH, LE_DEFAULT_SCREEN_HEIGHT);
+340:    root0->flags |= LE_WIDGET_IGNOREEVENTS;
+341:    root0->flags |= LE_WIDGET_IGNOREPICK;
+2114:    leAddRootWidget(root0, 0);
+2118:    root1 = leWidget_New();
+2119:    root1->fn->setSize(root1, 320, 800);
+2122:    root1->flags |= LE_WIDGET_IGNOREEVENTS;
+2123:    root1->flags |= LE_WIDGET_IGNOREPICK;
+2311:    leAddRootWidget(root1, 1);
+2315:    root2 = leWidget_New();
+2316:    root2->fn->setSize(root2, 1100, 660);
+2319:    root2->flags |= LE_WIDGET_IGNOREEVENTS;
+2320:    root2->flags |= LE_WIDGET_IGNOREPICK;
+2609:    leAddRootWidget(root2, 2);
+2613:    root3 = leWidget_New();
+2614:    root3->fn->setSize(root3, 508, 208);
+2617:    root3->flags |= LE_WIDGET_IGNOREEVENTS;
+2618:    root3->flags |= LE_WIDGET_IGNOREPICK;
+2670:    leAddRootWidget(root3, 3);
+2680:    root0->fn->setSize(root0, root0->rect.width, root0->rect.height);
+2681:    root1->fn->setSize(root1, root1->rect.width, root1->rect.height);
+2682:    root2->fn->setSize(root2, root2->rect.width, root2->rect.height);
+2683:    root3->fn->setSize(root3, root3->rect.width, root3->rect.height);
+
+=== PANEL_SONG_SELECT + ALBUM_ART container: New/size/setEnabled ===
+2322:    Marvin_PANEL_SONG_SELECT = leWidget_New();
+2324:    Marvin_PANEL_SONG_SELECT->fn->setSize(Marvin_PANEL_SONG_SELECT, 1100, 660);
+2326:    root2->fn->addChild(root2, (leWidget*)Marvin_PANEL_SONG_SELECT);
+2620:    Marvin_PANEL_SONG_SELECT_ALBUM_ART = leWidget_New();
+2622:    Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->setSize(Marvin_PANEL_SONG_SELECT_ALBUM_ART, 508, 208);
+2624:    root3->fn->addChild(root3, (leWidget*)Marvin_PANEL_SONG_SELECT_ALBUM_ART);
+2973:    Marvin_PANEL_SONG_SELECT = NULL;
+3009:    Marvin_PANEL_SONG_SELECT_ALBUM_ART = NULL;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 22:59:47Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 22:59:49Z)**_
+
+All roots are `IGNOREPICK`, so the touch-capturing widget is the first pickable child — `PANEL_SONG_SELECT` (1100×660) on layer 2 and `PANEL_SONG_SELECT_ALBUM_ART` (508×208) on layer 3. When closed, those panels stay enabled and eat touches over the dashboard center. The fix is exactly the doc's pattern: disable the background panel when the layer is hidden, enable when shown. Let me wire it.
+
+_**Agent (claude-opus-4-8 2026-06-30 23:00:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:00:29Z)**_
+
+Now disable the panels initially in `init_screens` (they start closed):
+
+_**Agent (claude-opus-4-8 2026-06-30 23:00:30Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+228	    {
+229	        if (leRenderer_IsIdle())
+230	        {
+231	            if (!idle_run)
+232	            {
+233	                idle_run   = true;
+234	                idle_since = xTaskGetTickCount();
+235	            }
+236	            else if ((xTaskGetTickCount() - idle_since) >= pdMS_TO_TICKS(RENDER_IDLE_STABLE_MS))
+237	            {
+238	                return;
+239	            }
+240	        }
+241	        else
+242	        {
+243	            idle_run = false;
+244	        }
+245	        vTaskDelay(pdMS_TO_TICKS(RENDER_POLL_MS));
+246	    }
+247	    LOG_WARN("UI: render-idle wait timed out\r\n");
+248	}
+249
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:00:38Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+196	static void init_screens(void)
+197	{
+198	    /* screenInit_Marvin only flips the one-time "initialized" flag; the widget
+199	     * tree (all three layers) is constructed in screenShow_Marvin, which also
+200	     * attaches each layer's root to its Legato layer (leAddRootWidget rootN, N). */
+201	    (void)screenInit_Marvin();
+202	    (void)screenShow_Marvin();
+203	
+204	    /* The album-art layer (3) must be RGBA8888: the 2D engine has no RGB888 support
+205	     * (gfx2dFormats[RGB_888] = -1), so a 24bpp canvas can't be GFX2D-blitted and
+206	     * renders garbage. MGS currently emits LE_COLOR_MODE_RGB_888 for this layer;
+207	     * override it here to match the RGBA8888 canvas surface + OVR2 scanout. (Set the
+208	     * layer-screen to RGBA8888 in MGS to make this override redundant.) */
+209	    leSetLayerColorMode(CANVAS_ALBUM_ART, LE_COLOR_MODE_RGBA_8888);
+210	
+211	    ScreenDashboard_Setup();
+212	    ScreenNavigation_Setup();
+213	    ScreenSongSelect_Setup();
+214	    ScreenAlbumArt_Setup();
+215	}
+216	
+217	/* Block until the Legato render task has painted all pending damage. We don't
+218	 * drive leUpdate — LEGATO_Tasks + GFX_CANVAS_Task render correctly when they run;
+219	 * we just yield and poll the public idle flag, requiring it to hold continuously
+220	 * (a lone idle sample is an inter-frame gap, not a finished paint). Bounded. */
+221	static void wait_render_idle(void)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:00:48Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:01:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:01:25Z)**_
+
+Now update the journal session entry to record the touch pass-through fix:
+
+_**Agent (claude-opus-4-8 2026-06-30 23:01:40Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:01:56Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:02:08Z)**_
+
+Done. The root cause matches the doc exactly: every layer-screen is stacked and pickable regardless of canvas visibility, and since all our roots are `IGNOREPICK`, the capturing widget is each layer's **background panel** — `PANEL_SONG_SELECT` (1100×660) and `PANEL_SONG_SELECT_ALBUM_ART` (508×208). While enabled they swallowed dashboard touches in those rects (the header sits above the dialog, which is why open still worked → "mostly working").
+
+The fix, in `ui_manager.c`:
+- `songsel_set_input(on)` toggles `setEnabled` on both background panels.
+- **Open** enables them; **close** disables them; **boot** disables them (dialog starts closed). Disabled → the layer's pick falls through to the dashboard; child rendering is unaffected (Legato gates paint on VISIBLE, not ENABLED).
+
+On the "all screens should have this panel" point:
+- **Dashboard** (layer 0): bottom layer, stays enabled — correct as-is.
+- **Nav** (layer 1): already passes through a *different* way — its canvas window slides fully off-screen on close, so its pick rect leaves the screen. It needs no toggle today, but I noted in the journal that converting it to this same enable/disable pattern would be a clean consistency follow-up if you'd prefer one mechanism everywhere.
+- **Song-select / album-art** (layers 2/3): now use the background-panel disable pattern.
+
+No build run (MPLAB toolchain isn't wired into this sandbox). Please build + flash and confirm: with the dialog closed, dashboard taps/buttons under the former dialog area now work; open via header still works; X/SELECT close; and nav still opens/closes.
+
+Want me to also convert nav to the enable/disable pattern for consistency, or leave its off-screen approach? And nothing's committed yet — say the word and I'll commit the open/close + touch-passthrough work together.
+
+---
+
+_**User (2026-06-30 23:03:09Z)**_
+
+disable dashboard panel when song select is open as it is a modal dialog
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-30 23:03:34Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:03:35Z)**_
+
+Good call — for a true modal, the dashboard underneath should stop receiving touches too (otherwise the header/hamburger behind the dialog stay live). I'll fold the dashboard into the same toggle, inverted:
+
+_**Agent (claude-opus-4-8 2026-06-30 23:03:47Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:04:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:04:09Z)**_
+
+Now update the journal note to reflect the modal dashboard disable:
+
+_**Agent (claude-opus-4-8 2026-06-30 23:04:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:04:37Z)**_
+
+Done. `songsel_set_input(on)` now also disables `PANEL_DASHBOARD` (layer 0) inversely:
+
+- **Open** → dialog panels enabled, **dashboard disabled** → modal: header tap and hamburger behind the dialog are inert.
+- **Close** → dialog panels disabled, **dashboard re-enabled** → dashboard fully interactive again.
+- **Boot** (`songsel_set_input(LE_FALSE)`) → dashboard enabled, overlays pass through.
+
+This also closes the nav/OVR1 coexistence concern *from the open side* — while the dialog is open the hamburger can't be tapped, so nav can't be opened over the dialog. (The reverse — opening the dialog while nav is already open — is still the documented follow-up.)
+
+Build + flash to confirm: dialog closed → dashboard works everywhere; dialog open → taps behind it (including the header) do nothing; X/SELECT closes and the dashboard comes back live. Still uncommitted — want me to commit the open/close + modal touch handling now?
+
+---
+
+_**User (2026-06-30 23:05:42Z)**_
+
+dashboard should also be disabled when nav is open
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-30 23:06:20Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:06:23Z)**_
+
+For nav as a modal too — disable the dashboard while the drawer is open. The hamburger is covered by the open drawer anyway, and nav closes via its "Dashboard" entry, so this doesn't lose any close affordance.
+
+_**Agent (claude-opus-4-8 2026-06-30 23:06:26Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:06:33Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c`
+
+```text
+150	     * so the final frame is displayed before the hide lands — keeping it in-bounds
+151	     * makes that frame a harmless edge sliver instead of the panel's left columns. */
+152	    navigation_slide_to(NAVIGATION_CLOSED_X);
+153	    s_navigation_open = false;
+154	}
+155	
+156	/* Move-effect completion callback. At the off-screen end of a close slide the
+157	 * window clip leaves a degenerate sliver of the drawer composited at screen
+158	 * left; hiding the canvas (disabling its layer) once the slide finishes removes it cleanly. Only
+159	 * acts on a completed close — an open leaves the layer shown, and a re-open
+160	 * mid-close restarts the move (so this won't fire for the abandoned close). */
+161	static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
+162	                               GFXC_FX_STATUS status, void *parm)
+163	{
+164	    (void)canvasID;
+165	    (void)parm;
+166	
+167	    if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_navigation_open)
+168	    {
+169	        gfxcHideCanvas(CANVAS_NAVIGATION);
+170	        gfxcCanvasUpdate(CANVAS_NAVIGATION);
+171	    }
+172	}
+173	
+174	void ScreenNavigation_InitSurface(void)
+175	{
+176	    gfxcSetPixelBuffer(CANVAS_NAVIGATION, NAVIGATION_W, NAVIGATION_H, GFX_COLOR_MODE_RGB_565, s_fb_navigation);
+177	}
+178	
+179	/* Per-panel setup for the navigation drawer (Marvin layer-screen 1,
+180	 * CANVAS_NAVIGATION). MGS has already built the panel onto Legato layer 1; here we
+181	 * set the canvas window (parked off-screen / closed), the move-FX callback, and
+182	 * wire the buttons. The canvas is bound to a hardware layer by ui_manager. Keep the
+183	 * panel visible+enabled so Legato renders it continuously, and start closed: the
+184	 * touch pick rect follows the canvas window position (LE_DRIVER_LAYER_MODE), so a
+185	 * closed (off-screen) drawer can't intercept dashboard touches, and the off-screen
+186	 * X seeds the slide-in. */
+187	void ScreenNavigation_Setup(void)
+188	{
+189	    Marvin_PANEL_NAVIGATION->fn->setEnabled(Marvin_PANEL_NAVIGATION, LE_TRUE);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:06:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c`
+
+```text
+123	    gfxcGetWindowPosition(CANVAS_NAVIGATION, &x, &y);
+124	    gfxcStartEffectMove(CANVAS_NAVIGATION, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAVIGATION_SLIDE_DELTA);
+125	}
+126	
+127	static void navigation_open(void)
+128	{
+129	    /* Force a full repaint of the panel into the canvas before revealing it — the
+130	     * paint queued at startup (parked off-screen) doesn't fully land in the
+131	     * buffer, so without this the drawer slides in partially drawn until touch
+132	     * damage fills it in. The repaint lands over the next frames as it slides.
+133	     * Show first so the move is visible (the FX engine enables the layer from
+134	     * canvas.active). */
+135	    Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
+136	    /* Grab OVR1 only while shown (it and the song-select dialog share OVR1, so the
+137	     * drawer is unbound when closed). gfxcSetLayer needs the canvas hidden — it is,
+138	     * until gfxcShowCanvas below. Caller ensures the dialog isn't holding OVR1. */
+139	    gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1);
+140	    gfxcShowCanvas(CANVAS_NAVIGATION);
+141	    navigation_slide_to(0);
+142	    s_navigation_open = true;
+143	}
+144	
+145	static void navigation_close(void)
+146	{
+147	    /* Slide out to NAVIGATION_CLOSED_X (off-screen), then navigation_fx_done
+148	     * disables the layer. NAVIGATION_CLOSED_X avoids the -NAVIGATION_W window-clip
+149	     * row-wrap (see its definition); the layer update busy-waits for the vsync latch,
+150	     * so the final frame is displayed before the hide lands — keeping it in-bounds
+151	     * makes that frame a harmless edge sliver instead of the panel's left columns. */
+152	    navigation_slide_to(NAVIGATION_CLOSED_X);
+153	    s_navigation_open = false;
+154	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:06:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:07:01Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:07:18Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:07:19Z)**_
+
+Let me update the journal to note nav is now also modal:
+
+_**Agent (claude-opus-4-8 2026-06-30 23:07:22Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:07:32Z)**_
+
+Done. Both modals now disable the dashboard while open:
+
+- **Nav open** ([screen_navigation.c](firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c)) → `PANEL_DASHBOARD` disabled; **nav close** → re-enabled.
+- **Dialog open** ([ui_manager.c](firmware/marvin/default/src/ui/ui_manager.c) `songsel_set_input`) → dashboard disabled; **close** → re-enabled.
+
+Nice side effect: the two become mutually exclusive from the open side — with the dialog open the header (and hamburger) are inert so nav can't be opened over it, and with nav open the header is inert so the dialog can't be opened. Nav still closes via its "Dashboard" entry (the open drawer covers the hamburger regardless).
+
+Build + flash to confirm: dialog open → only X/SELECT respond; nav open → only drawer entries respond; both restore the dashboard on close.
+
+Still uncommitted — the open/close wiring, the modal touch handling, and these dashboard-disable changes are all staged in your working tree but not committed. Want me to commit them together now?
+
+---
+
+_**User (2026-06-30 23:50:47Z)**_
+
+all seems to be working as expected. please commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-30 23:50:58Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:50:58Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show working tree status before commit
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git status --short
+```
+
+```text
+ M .specstory/history/2026-06-30_14-33-31Z-added-album-art-to.md
+ M .specstory/statistics.json
+ M firmware/marvin/default/src/ui/screens/dashboard/screen_dashboard.c
+ M firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c
+ M firmware/marvin/default/src/ui/screens/song_select/screen_song_select.c
+ M firmware/marvin/default/src/ui/ui_manager.c
+ M firmware/marvin/default/src/ui/ui_manager.h
+ M firmware/marvin/docs/journal.md
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:51:15Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:51:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the dialog open/close + modal work
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/marvin/default/src/ui/ui_manager.c \
+        firmware/marvin/default/src/ui/ui_manager.h \
+        firmware/marvin/default/src/ui/screens/song_select/screen_song_select.c \
+        firmware/marvin/default/src/ui/screens/dashboard/screen_dashboard.c \
+        firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c \
+        firmware/marvin/docs/journal.md
+git commit -q -F - <<'MSG'
+marvin: song-select dialog as a modal — open on header tap, close on X/SELECT
+
+The song/mode-select dialog (OVR1) + cover strip (OVR2) no longer show at boot;
+the dashboard reveals alone and the dialog opens on demand.
+
+- ui_manager: UiManager_Open/CloseSongSelect bind+show / hide the OVR1 dialog and
+  OVR2 cover together; boot reveal drops the unconditional show and pokes OVR1
+  RGB565 so a first nav-open still scans out correctly.
+- Open trigger: a tap on the dashboard top header bar (touchDownEvent override on
+  PANEL_BASE_TOP + SYSTEM_* sub-panels; the hamburger/labels keep their own
+  handling). Close: BUTTON_SONG_SELECT_CLOSE (X) and _SELECT release callbacks
+  (SELECT is a placeholder until it starts gameplay).
+- Touch routing (MGS layer-screen background-panel pattern): Legato keeps every
+  layer-screen pickable regardless of canvas visibility, so a hidden overlay ate
+  dashboard touches. songsel_set_input() disables the dialog/cover background
+  panels while hidden (input falls through) and enables them while shown.
+- Modal: both the dialog and the nav drawer disable PANEL_DASHBOARD while open and
+  re-enable on close, so nothing behind reacts (and the two can't be opened over
+  each other from the front).
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+MSG
+echo "=== result ==="; git log --oneline -1
+```
+
+```text
+=== result ===
+ec47f82 marvin: song-select dialog as a modal — open on header tap, close on X/SELECT
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:51:27Z)**_
+
+Committed as `ec47f82`. The five source files (`ui_manager.{c,h}`, `screen_song_select.c`, `screen_dashboard.c`, `screen_navigation.c`) plus the journal are in. Left untouched as before: `.specstory/`, and the untracked `firmware/marvin/docs/sam9x75-chybrid/` and `hardware/t1s-sink/` dirs.
+
+That wraps the dialog open/close + modal work. Open follow-ups still tracked in the journal: SELECT should eventually start gameplay (currently just closes), and the dashboard small thumbnail (Phase 3) can reuse `PanelAA_EnableRoundImage` when it lands.
+
+---
+
+_**User (2026-06-30 23:57:12Z)**_
+
+couple more cleanup items we could do on song select. We can disable draw of the base layer behind the song select panel. Same think we do for behind the video stream. We can also disable the HEO video layer (don't disable hdmi-csi-framebuffer input, just LCD output) when song select is up as it's completely behind the song select panel. In fact, repurposing the HEO layer could be a way to dim the dashboard when song select is open (dim dashboard nice to have but not actually required)
+
+---
+
+_**Agent (claude-opus-4-8 2026-06-30 23:57:44Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:57:45Z)**_
+
+Interesting set of optimizations. Before proposing anything, let me understand the existing video/HEO layer management and the "disable BASE behind the video" pattern you mentioned.
+
+_**Agent (claude-opus-4-8 2026-06-30 23:57:47Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find HEO/video layer + base-disable handling
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== HEO / video layer references in our src (not config) ==="
+grep -rniE "HEO|video.*layer|layer.*video|XLCDC_LAYER|SetLayerEnable|LayerEnable|disable.*base|base.*disable" default/src --include=*.c --include=*.h | grep -viE "config/default" | head -40
+```
+
+```text
+=== HEO / video layer references in our src (not config) ===
+(eval):3: no matches found: --include=*.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:57:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Search HEO/video/layer refs outside MCC config
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== HEO / video / XLCDC layer refs in our src (excluding config/default) ==="
+grep -rniE "HEO|XLCDC_LAYER|LayerEnable|SetLayer|video" default/src --include='*.c' --include='*.h' | grep -v "config/default/" | head -50
+```
+
+```text
+=== HEO / video / XLCDC layer refs in our src (excluding config/default) ===
+default/src/app.h:180:    state, the loader task). The video capture pipeline, detector, actuator
+default/src/ui/ui_manager.h:23:/* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
+default/src/ui/ui_manager.h:24: * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
+default/src/ui/ui_manager.h:25: * layer at *display time* by the compositor (ui_manager) via gfxcSetLayer — a
+default/src/ui/ui_manager.c:29: * suits at the moment with gfxcSetLayer. A screen never owns a layer; the layer
+default/src/ui/ui_manager.c:30: * is chosen here, at display time. Note gfxcSetLayer only takes effect while the
+default/src/ui/ui_manager.c:66:static XLCDC_LAYER xlcdc_layer(uint32_t hw)
+default/src/ui/ui_manager.c:70:        case HW_BASE: return XLCDC_LAYER_BASE;
+default/src/ui/ui_manager.c:71:        case HW_OVR2: return XLCDC_LAYER_OVR2;
+default/src/ui/ui_manager.c:73:        default:      return XLCDC_LAYER_OVR1;
+default/src/ui/ui_manager.c:79: * canvas placed on it — the layer always follows its current canvas. gfxcSetLayer
+default/src/ui/ui_manager.c:83:    gfxcSetLayer(canvas, hw);
+default/src/ui/ui_manager.c:86:    XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
+default/src/ui/ui_manager.c:93: * bind_canvas needs the canvas hidden for gfxcSetLayer — true while closed. */
+default/src/ui/ui_manager.c:212:    leSetLayerColorMode(CANVAS_ALBUM_ART, LE_COLOR_MODE_RGBA_8888);
+default/src/ui/ui_manager.c:266:    ScreenSplash_Show(xlcdc_layer(SPLASH_HW_LAYER));
+default/src/ui/ui_manager.c:306:    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+default/src/ui/ui_manager.c:307:    XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
+default/src/app.c:39:#include "video/video.h"
+default/src/app.c:88:/* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
+default/src/app.c:90:#define VIDEO_WIN_X   280u
+default/src/app.c:91:#define VIDEO_WIN_Y    76u
+default/src/app.c:92:#define VIDEO_WIN_W   720u
+default/src/app.c:93:#define VIDEO_WIN_H   480u
+default/src/app.c:98: * system is warm by the time the dashboard is revealed. The video go-live calls
+default/src/app.c:99: * just set intent flags the (now-running) video task reconciles. */
+default/src/app.c:103:    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+default/src/app.c:104:    Video_CaptureEnable();
+default/src/app.c:105:    Video_DisplayShow();
+default/src/app.c:128:     * (including video task startup) can use LOG_*. Default level is
+default/src/app.c:166:    /* The video pipeline, detector, actuator links, gameplay observer, console,
+default/src/app.c:177: * + splash render. Order honors the dependencies: Video first (it owns the frame
+default/src/app.c:181:    /* Video capture pipeline (ISC, TC358743, HEO unbind) + capture/display
+default/src/app.c:182:     * state machine + bridge-status polling. Spawns VideoTask. */
+default/src/app.c:183:    Video_Initialize();
+default/src/app.c:186:     * Video_Initialize since cv_marvin_v1 subscribes to the video frame queue
+default/src/app.c:208:    /* Game-state observer (spec §4.8, M9): a video-frame consumer that
+default/src/app.c:210:     * cv_marvin_v1 it subscribes to the video frame queue from its task, so it
+default/src/app.c:211:     * follows Video_Initialize. Enable observation explicitly (default off). */
+default/src/ui/screens/splash/screen_splash.c:21:void ScreenSplash_Show(XLCDC_LAYER layer)
+default/src/ui/screens/splash/screen_splash.c:28:    XLCDC_SetLayerRGBColorMode(layer, XLCDC_RGB_COLOR_MODE_RGBA_8888, false);
+default/src/ui/screens/splash/screen_splash.c:29:    XLCDC_SetLayerAddress(layer, (uint32_t)(uintptr_t)s_fb, false);
+default/src/ui/screens/splash/screen_splash.c:30:    XLCDC_SetLayerOpts(layer, 255u, true, false);
+default/src/ui/screens/splash/screen_splash.c:31:    XLCDC_SetLayerWindowXYPos(layer, 0u, 0u, false);
+default/src/ui/screens/splash/screen_splash.c:32:    XLCDC_SetLayerWindowXYSize(layer, BASE_W, BASE_H, false);
+default/src/ui/screens/splash/screen_splash.c:33:    XLCDC_SetLayerXStride(layer, 0u, false);
+default/src/ui/screens/splash/screen_splash.c:34:    XLCDC_SetLayerEnable(layer, true, true);
+default/src/ui/screens/splash/screen_splash.c:37:void ScreenSplash_Hide(XLCDC_LAYER layer)
+default/src/ui/screens/splash/screen_splash.c:39:    XLCDC_SetLayerEnable(layer, false, true);
+default/src/ui/screens/splash/screen_splash.h:6:#include "definitions.h"   /* XLCDC_LAYER */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:58:05Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:58:05Z)**_
+
+Let me look at the video module — how HEO display is managed and the "disable BASE behind the video" optimization:
+
+_**Agent (claude-opus-4-8 2026-06-30 23:58:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect video module HEO/BASE handling
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "########## video.h ##########"; sed -n '1,80p' default/src/video/video.h 2>/dev/null
+echo "########## video.c: HEO / BASE / DisplayShow/Hide / SetLayerEnable / window ##########"
+grep -nE "HEO|BASE|DisplayShow|DisplayHide|SetLayerEnable|SetLayerWindow|disable|behind|base layer|DispBase|XLCDC_Set" default/src/video/video.c | head -60
+```
+
+```text
+########## video.h ##########
+#ifndef VIDEO_H
+#define VIDEO_H
+
+#include <stdbool.h>
+#include <stdint.h>
+
+#include "FreeRTOS.h"
+#include "queue.h"
+
+/* Video pipeline: HDMI source → TC358743 bridge → CSI-2 → CSI2DC → ISC →
+ * DDR → XLCDC HEO. The module owns its own FreeRTOS task; everything below
+ * (tc358743, isc_capture, HEO bind/unbind, capture/display state machine)
+ * runs inside that task except the frame-arrival notification which fires
+ * from the ISC IRQ via xQueueSendFromISR.
+ *
+ * Capture and display are independent. CaptureEnable arms the bridge +
+ * ISC chain when the source is locked; DisplayShow makes the HEO layer
+ * visible at the configured window. You can run capture without display
+ * (frames flow into DDR, BASE/UI fills the panel) or display without
+ * capture (HEO shows whatever is in the framebuffer — possibly stale).
+ *
+ * Defaults at Initialize: capture disabled, display hidden, window
+ * unset. Layout is app policy — DisplayShow is a no-op until the
+ * caller has set a window with Video_SetWindow. */
+
+void Video_Initialize(void);
+
+/* Capture chain control. ENABLE: arm ISC + bridge stream when source
+ * is locked, re-arm on every lost/regain cycle. DISABLE: stop ISC +
+ * stream and stay off regardless of lock state. */
+void Video_CaptureEnable(void);
+void Video_CaptureDisable(void);
+
+/* Display layer control. SHOW: HEO visible, BASE DISCEN cleared under
+ * the HEO rect (saves DDR read bandwidth). HIDE: HEO disabled, BASE
+ * owns full panel. Independent of capture state. */
+void Video_DisplayShow(void);
+void Video_DisplayHide(void);
+
+/* Destination rect on the 1280×800 panel. dst_w/dst_h matching the
+ * source frame size → 1:1, scaler bypassed. Otherwise HEO bilinear
+ * scaler engages and stretches to fill the rect. The rect must fit
+ * within the panel. Takes effect on the next display bind (next
+ * DisplayShow call, or when capture/lock state changes). */
+void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h);
+
+/* Frame metadata delivered to subscribers on every captured frame. */
+typedef struct
+{
+    void    *buffer;          /* pointer to most-recent complete frame in DDR */
+    uint32_t frame_count;     /* monotonic since last ISC start */
+    uint16_t width;
+    uint16_t height;
+    uint16_t bytes_per_pixel;
+} Video_FrameInfo;
+
+/* Subscribe a queue to frame-ready events. The video module sends a
+ * Video_FrameInfo from the ISC frame-done IRQ via xQueueSendFromISR
+ * each time a frame completes to DDR — fanned out to every subscribed
+ * queue. Create the queue with:
+ *   QueueHandle_t q = xQueueCreate(N, sizeof(Video_FrameInfo));
+ *
+ * Per-subscriber depth chooses the back-pressure policy. Depth 1 means
+ * "process most recent frame, drop the rest" — when a frame arrives and
+ * the queue is full, the IRQ's xQueueSendFromISR returns errQUEUE_FULL
+ * and the frame is dropped for that subscriber. Deeper queues preserve
+ * frames at the cost of memory and added latency. Each subscriber chooses
+ * independently.
+ *
+ * The Video_FrameInfo.buffer pointer reflects the buffer that *just*
+ * completed (one of the descriptor-ring slots). With NUM_BUFFERS > 2 a
+ * subscriber can hold the pointer for multiple frame-times before the
+ * ring laps it; with NUM_BUFFERS = 2 the buffer is overwritten on the
+ * second-next frame.
+ *
+ * Returns false if the subscriber table is full. Calling with a queue
+ * already in the table is a no-op success. Up to VIDEO_MAX_SUBSCRIBERS
+ * concurrent subscribers (currently 4). */
+bool Video_SubscribeFrames(QueueHandle_t q);
+
+########## video.c: HEO / BASE / DisplayShow/Hide / SetLayerEnable / window ##########
+35: * before Video_DisplayShow has any visible effect. Layout is app policy,
+61:/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+63:/* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+72:/* ─── HEO bind / unbind ────────────────────────────────────────────────── */
+74:/* Point HEO at the capture buffer at (x, y) sized dst_w × dst_h. If the
+75: * destination size matches the source size, the HEO scaler stays at its
+77: * engaged. BASE DISCEN is set to the destination rect so BASE skips DMA
+78: * for the area HEO covers (§44.6.4.7). */
+91:    /* Initial HEO address: the latest completed buffer if we have one,
+93:     * re-points HEO at every subsequent completed buffer, so this is
+99:    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+100:    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
+102:    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, initial_addr, false);
+103:    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+104:    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
+106:    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4) are the same
+107:     * for 1:1 and differ for scaling. Write them directly — XLCDC_Set-
+110:    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u)
+111:                             | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
+112:    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
+113:                             | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+121:        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
+122:                                  | LCDC_HEOCFG23_VXSCEN(1)
+123:                                  | LCDC_HEOCFG23_HXSYEN(1)
+124:                                  | LCDC_HEOCFG23_HXSCEN(1);
+127:        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1)
+128:                                  | LCDC_HEOCFG30_VXSYBICU(1)
+129:                                  | LCDC_HEOCFG30_VXSCCFG(1)
+130:                                  | LCDC_HEOCFG30_VXSCBICU(1);
+131:        XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1)
+132:                                  | LCDC_HEOCFG31_HXSYBICU(1)
+133:                                  | LCDC_HEOCFG31_HXSCCFG(1)
+134:                                  | LCDC_HEOCFG31_HXSCBICU(1);
+135:        XLCDC_REGS->LCDC_HEOCFG24 = LCDC_HEOCFG24_VXSYFACT(vf);
+136:        XLCDC_REGS->LCDC_HEOCFG25 = LCDC_HEOCFG25_VXSCFACT(vf);
+137:        XLCDC_REGS->LCDC_HEOCFG26 = LCDC_HEOCFG26_HXSYFACT(hf);
+138:        XLCDC_REGS->LCDC_HEOCFG27 = LCDC_HEOCFG27_HXSCFACT(hf);
+142:        /* Disable scaler — matches MCC's HEO-setup defaults. */
+143:        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(0)
+144:                                  | LCDC_HEOCFG23_VXSCEN(0)
+145:                                  | LCDC_HEOCFG23_HXSYEN(0)
+146:                                  | LCDC_HEOCFG23_HXSCEN(0);
+149:    /* §44.6.4.7 — discard BASE DMA in the destination rect. HEO with MCC's
+152:     * so BASE pixels in this rect are blended out. DISCEN tells the BASE
+154:    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x)
+155:                              | LCDC_BASECFG5_DISCYPOS(y);
+156:    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(dst_w - 1u)
+157:                              | LCDC_BASECFG6_DISCYSIZE(dst_h - 1u);
+158:    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+160:    /* HEO and BASE attribute updates triggered together. */
+161:    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+162:    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+164:    LOG_INFO("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
+171:/* Hide HEO and let BASE (Legato UI) fill the whole panel. */
+174:    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+175:    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+176:    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+193:    /* Re-point HEO at the buffer that was just completed so the panel sees
+195:     * binding, HEO would only see frames written to slot 0. The address
+196:     * latches at next vsync (XLCDC update=true); HEO and ISC run on
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-06-30 23:59:08Z)**_
+
+_**Agent (claude-opus-4-8 2026-06-30 23:59:13Z)**_
+
+The existing pattern is clear: video sets `BASECFG4/5/6` DISCEN to skip BASE DMA behind the HEO rect, and `Video_DisplayHide()` disables HEO output while leaving capture running. Both of your first two items map onto that. Let me see how `Video_DisplayShow/Hide` actually take effect (intent flags vs. direct pokes) and how display state is tracked — that determines how ui_manager coordinates with the video task.
+
+_**Agent (claude-opus-4-8 2026-06-30 23:59:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Trace video display intent + reconcile mechanism
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== DisplayShow/Hide + intent flags + reconcile in video.c ==="
+grep -nE "Video_DisplayShow|Video_DisplayHide|disp|intent|want_|reconcile|s_display|display_|heo_bind|heo_unbind|VideoTask|xQueue|notify" default/src/video/video.c | head -50
+```
+
+```text
+=== DisplayShow/Hide + intent flags + reconcile in video.c ===
+28:/* Public intent — set via the API, read by the task body. Single-writer
+32:static volatile bool s_display_shown;
+35: * before Video_DisplayShow has any visible effect. Layout is app policy,
+55:/* Capture-state flags. s_capture_armed is task-only; s_display_bound is
+59:static volatile bool s_display_bound;
+197:     * independent clocks so this is fine. Skip when display is hidden. */
+198:    if (s_display_bound)
+218:            (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+254:/* Bind/unbind display from current intent + most-recent source size +
+258:static void display_apply(void)
+263:    bool want = s_display_shown && source_valid && window_valid;
+265:    if (want && !s_display_bound)
+268:        s_display_bound = true;
+270:    else if (!want && s_display_bound)
+273:        s_display_bound = false;
+277:/* Each tick: align current chain state (capture armed / display bound) to
+278: * the user's intent flags, given the current source-lock state. */
+279:static void reconcile(void)
+283:    /* Capture: armed iff intent + lock. */
+284:    bool want_capture = s_capture_enabled && locked;
+285:    if (want_capture && !s_capture_armed)
+289:    else if (!want_capture && s_capture_armed)
+295:    /* Display: shown iff intent + we have a source size to work with. The
+298:    display_apply();
+320:        reconcile();
+333:                                       "VideoTask",
+345:void Video_DisplayShow(void)    { s_display_shown = true;    }
+346:void Video_DisplayHide(void)    { s_display_shown = false;   }
+352:    /* Force a re-bind on next reconcile if we're currently shown. */
+353:    s_display_bound = false;
+```
+</details></tool-use>
+
+---
+
+_**User (2026-06-30 23:59:50Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 00:01:13Z)**_
+
+just thinking we should probably take some of the video HEO layer control into ui_manager? Some future screens will not use the video and we will eventually overlay some graphics onto the video stream as well, so ui_manager should really be in control of when / how video stream is displayed.
+
+_**User (2026-07-01 00:01:48Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 00:03:37Z)**_
+
+in fact, would there be value in defining video as a "screen" in MGS? The video buffer is non-cached, I would think we could use as a canvas layer and legato draw overlay stuff into frame by frame vs. needing to overlay on a seperate layer
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 00:04:45Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:04:46Z)**_
+
+This is a good architecture question — let me ground one detail (capture format + buffering) before I answer, since it bears directly on the "draw into the video buffer" idea.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:05:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm capture format and buffer ring
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== HEO color mode + buffer ring ==="
+grep -nE "SetLayerRGBColorMode\(XLCDC_LAYER_HEO|NUM_BUFFERS|BGR|RGBX|XRGB|_888|framebuffer|region_nocache|bpp|bytes_per_pixel" default/src/video/video.c | head -20
+echo "=== capture buffer definition ==="
+grep -rnE "region_nocache|s_frame|capture_buf|NUM_BUFFERS|\[NUM_BUFFERS\]" default/src/video/*.c default/src/video/*.h 2>/dev/null | head -15
+```
+
+```text
+=== HEO color mode + buffer ring ===
+23:/* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match
+92:     * else fall back to the framebuffer base. The on_frame_done IRQ
+100:    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
+101:                               XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+151:     * for RGB_888_PACKED (no per-pixel alpha → As sourced from A0=255),
+209:        .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
+405:    info->bytes_per_pixel = VIDEO_BYTES_PER_PIXEL;
+=== capture buffer definition ===
+default/src/video/isc_capture.c:15:/* Sized to 720p60 (current TC358743 ceiling). Pool lives in .region_nocache
+default/src/video/isc_capture.c:24:#define ISC_CAP_NUM_BUFFERS  4u
+default/src/video/isc_capture.c:34:static __attribute__((__section__(".region_nocache")))
+default/src/video/isc_capture.c:36:       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+default/src/video/isc_capture.c:45:static volatile ISC_Capture_FrameCallback s_frame_cb;
+default/src/video/isc_capture.c:46:static volatile uintptr_t                 s_frame_ctx;
+default/src/video/isc_capture.c:63:    ISC_Capture_FrameCallback cb = s_frame_cb;
+default/src/video/isc_capture.c:64:    if (cb != NULL) { cb(g_frame_count, addr, s_frame_ctx); }
+default/src/video/isc_capture.c:69:    s_frame_ctx = ctx;
+default/src/video/isc_capture.c:70:    s_frame_cb  = cb;
+default/src/video/isc_capture.c:111:    iscObj->dmaDescSize           = (uint8_t)ISC_CAP_NUM_BUFFERS;
+default/src/video/video.h:71: * completed (one of the descriptor-ring slots). With NUM_BUFFERS > 2 a
+default/src/video/video.h:73: * ring laps it; with NUM_BUFFERS = 2 the buffer is overwritten on the
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:05:56Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:06:14Z)**_
+
+Good facts to anchor this: the capture buffer is **RGB_888_PACKED** (3 B/px), 4-slot ring in `.region_nocache`, HEO re-pointed at the latest completed slot every frame. That format detail is decisive for your second idea.
+
+## Idea 1 — ui_manager owns HEO display: yes, do this
+
+Clean split that matches the roles you already have:
+
+- **video.c stays the capture *producer*** — ISC→DDR ring, TC358743, frame fan-out to subscribers (detector, gameplay). This runs regardless of what's on the LCD.
+- **ui_manager owns *all four* HW layers including HEO display** — enable/disable, window, scaler, and the `BASE` DISCEN. HEO stops being the "off-limits" exception in [ui_manager.h:24](firmware/marvin/default/src/ui/ui_manager.h#L24) and becomes just another layer the compositor binds.
+
+Thin seam: video.c exposes "latest frame address + geometry + a frame-ready signal"; ui_manager decides whether/where HEO scans it out. This is exactly what "future screens don't show video" and "overlay graphics on video" need — the compositor gates it. It also makes the two cleanup items from before trivial and race-free: when the dialog opens, ui_manager (already the modal owner) just disables HEO output and sets BASE DISCEN to the dialog rect; on close it restores. No cross-task coordination with the video task's reconcile loop.
+
+## Idea 2 — video as an MGS canvas Legato draws into: I'd not do that
+
+The non-cached buffer removes the coherency objection, but three others remain, and one is fatal:
+
+1. **Format (fatal).** The capture is `RGB_888_PACKED`, and the 2D engine has *no* RGB888 support — `gfx2dFormats[RGB_888] = -1`, the same wall we just hit with album art. So Legato couldn't GFX2D-blit overlays into it at all; you'd be on a CPU per-pixel path, or paying a full RGBA8888 conversion of every frame (double bandwidth + a pass).
+2. **Per-frame recomposite.** Each captured frame overwrites the buffer with fresh video, so any overlay must be re-drawn *every* frame (30/60 fps). That fights Legato's damage-driven redraw model. A **separate OVR layer is composited by the XLCDC hardware blender every scanout for free** — that's literally why the LCDC has 4 layers.
+3. **Ring race.** 4 rotating slots with ISC DMA re-pointing HEO each frame; Legato writing "the" buffer would race the capture and tear.
+
+So: **overlays on the video belong on a normal Legato OVR canvas/layer-screen, hardware-blended over HEO** — the framework's intended path, zero per-frame CPU, and it sidesteps the format problem entirely (the overlay layer is RGBA8888/RGB565, the video stays RGB888 on HEO).
+
+One nuance worth keeping: you *can* still treat video as a first-class citizen in the compositor for **management** — z-order, show/hide, and the background-panel touch-routing we just built — without Legato drawing its pixels. But since a real Legato canvas expects to own/render its buffer, and HEO's buffer is the ISC ring in an unblittable format, it's cleaner to keep **HEO as a compositor-owned hardware layer in ui_manager** and reserve Legato canvases for the overlay(s) on top.
+
+## Suggested path
+
+1. Refactor HEO *display* control out of video.c into ui_manager (video.c → capture + latest-frame accessor). Fold in the dialog-open HEO-off + BASE-DISCEN cleanup as a natural consequence.
+2. When you want graphics on the video, add an OVR overlay canvas/layer-screen over HEO — no video-buffer drawing.
+
+Want me to plan the HEO-into-ui_manager refactor (with the video.c capture/display seam spelled out)? That's the enabling step for everything else here.
+
+---
+
+_**User (2026-07-01 00:08:09Z)**_
+
+yes bring heo display control into ui manager. agree no drawing direct to video buffer
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 00:08:47Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:08:48Z)**_
+
+Bringing HEO display control into ui_manager is a substantial refactor of the video pipeline, so let me read video.c fully to design the capture/display seam precisely, then I'll plan it.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:08:48Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.c`
+
+```text
+1	#include "video.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	
+6	#include "FreeRTOS.h"
+7	#include "task.h"
+8	#include "queue.h"
+9	
+10	#include "definitions.h"
+11	#include "log.h"
+12	#include "tc358743.h"
+13	#include "isc_capture.h"
+14	#include "perf_log/perf_log.h"
+15	
+16	#define LCD_PANEL_W  1280u
+17	#define LCD_PANEL_H  800u
+18	
+19	#define VIDEO_TASK_STACK_WORDS  1024u
+20	#define VIDEO_TASK_PRIORITY     4u
+21	#define VIDEO_POLL_MS           20u
+22	
+23	/* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match
+24	 * isc_capture's ISC_CAP_BPP. If that ever becomes runtime-configurable, push
+25	 * it into a getter. */
+26	#define VIDEO_BYTES_PER_PIXEL   3u
+27	
+28	/* Public intent — set via the API, read by the task body. Single-writer
+29	 * (each setter is called by one task), single-reader (video task), so
+30	 * plain volatile is sufficient on a 32-bit MCU. */
+31	static volatile bool s_capture_enabled;
+32	static volatile bool s_display_shown;
+33	
+34	/* Display window. Zero-initialized; the app must call Video_SetWindow
+35	 * before Video_DisplayShow has any visible effect. Layout is app policy,
+36	 * not module policy. */
+37	typedef struct { uint32_t x, y, w, h; } window_t;
+38	static volatile window_t s_window;
+39	
+40	/* Frame subscriber array. Sized for note detector + recording + a couple
+41	 * of independent vision tasks (menu reader, score reader, etc.). Slots are
+42	 * single-aligned-pointer reads/writes so the IRQ can scan without taking
+43	 * a lock; concurrent task-side writers are serialized by taskENTER_CRITICAL
+44	 * during slot assignment. Empty slots are NULL. */
+45	#define VIDEO_MAX_SUBSCRIBERS  4u
+46	static QueueHandle_t s_subscribers[VIDEO_MAX_SUBSCRIBERS];
+47	
+48	/* Most-recent capture buffer + dimensions. Updated by the ISC IRQ on every
+49	 * completed frame; read by Video_GetFrameInfo. Aligned 32-bit so naked
+50	 * reads/writes are atomic on Cortex-A5. */
+51	static volatile uint32_t s_latest_buffer;
+52	static volatile uint16_t s_src_w;
+53	static volatile uint16_t s_src_h;
+54	
+55	/* Capture-state flags. s_capture_armed is task-only; s_display_bound is
+56	 * read by the ISR and written by the task. Defined here (above the ISR)
+57	 * so on_frame_done can see the latter. */
+58	static bool s_capture_armed;
+59	static volatile bool s_display_bound;
+60	
+61	/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+62	
+63	/* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+64	 * 1.0 (= 0x100000) means 1:1, no scaling. Mirrors plib_xlcdc.c's
+65	 * static CALC_SCALING_FACT. */
+66	static uint32_t scaler_factor(uint32_t src, uint32_t dst)
+67	{
+68	    if (dst == 0u) { return 0x100000u; }
+69	    return (uint32_t)(((uint64_t)src << 20) / dst);
+70	}
+71	
+72	/* ─── HEO bind / unbind ────────────────────────────────────────────────── */
+73	
+74	/* Point HEO at the capture buffer at (x, y) sized dst_w × dst_h. If the
+75	 * destination size matches the source size, the HEO scaler stays at its
+76	 * 1.0 factor (effectively bypassed). Otherwise the bilinear scaler is
+77	 * engaged. BASE DISCEN is set to the destination rect so BASE skips DMA
+78	 * for the area HEO covers (§44.6.4.7). */
+79	static void lcd_bind(uint32_t src_w, uint32_t src_h,
+80	                     uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+81	{
+82	    if (x + dst_w > LCD_PANEL_W || y + dst_h > LCD_PANEL_H)
+83	    {
+84	        LOG_WARN("VIDEO: window %lux%lu @(%lu,%lu) exceeds panel %ux%u; skipping bind\r\n",
+85	                 (unsigned long)dst_w, (unsigned long)dst_h,
+86	                 (unsigned long)x, (unsigned long)y,
+87	                 LCD_PANEL_W, LCD_PANEL_H);
+88	        return;
+89	    }
+90	
+91	    /* Initial HEO address: the latest completed buffer if we have one,
+92	     * else fall back to the framebuffer base. The on_frame_done IRQ
+93	     * re-points HEO at every subsequent completed buffer, so this is
+94	     * the seed that holds for at most one frame-time before the first
+95	     * IRQ overwrites it. */
+96	    uint32_t initial_addr = s_latest_buffer;
+97	    if (initial_addr == 0u) { initial_addr = ISC_Capture_GetBufferAddress(); }
+98	
+99	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+100	    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO,
+101	                               XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+102	    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, initial_addr, false);
+103	    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+104	    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
+105	
+106	    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4) are the same
+107	     * for 1:1 and differ for scaling. Write them directly — XLCDC_Set-
+108	     * LayerWindowXYSize writes both registers to the same value, which is
+109	     * only correct for 1:1. */
+110	    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u)
+111	                             | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
+112	    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
+113	                             | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+114	
+115	    bool scaling = (dst_w != src_w) || (dst_h != src_h);
+116	    if (scaling)
+117	    {
+118	        uint32_t hf = scaler_factor(src_w, dst_w);
+119	        uint32_t vf = scaler_factor(src_h, dst_h);
+120	
+121	        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
+122	                                  | LCDC_HEOCFG23_VXSCEN(1)
+123	                                  | LCDC_HEOCFG23_HXSYEN(1)
+124	                                  | LCDC_HEOCFG23_HXSCEN(1);
+125	        /* Bicubic luminance + bicubic chrominance, both planes. Mirrors
+126	         * MCC's surface-set path — best image quality for video. */
+127	        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1)
+128	                                  | LCDC_HEOCFG30_VXSYBICU(1)
+129	                                  | LCDC_HEOCFG30_VXSCCFG(1)
+130	                                  | LCDC_HEOCFG30_VXSCBICU(1);
+131	        XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1)
+132	                                  | LCDC_HEOCFG31_HXSYBICU(1)
+133	                                  | LCDC_HEOCFG31_HXSCCFG(1)
+134	                                  | LCDC_HEOCFG31_HXSCBICU(1);
+135	        XLCDC_REGS->LCDC_HEOCFG24 = LCDC_HEOCFG24_VXSYFACT(vf);
+136	        XLCDC_REGS->LCDC_HEOCFG25 = LCDC_HEOCFG25_VXSCFACT(vf);
+137	        XLCDC_REGS->LCDC_HEOCFG26 = LCDC_HEOCFG26_HXSYFACT(hf);
+138	        XLCDC_REGS->LCDC_HEOCFG27 = LCDC_HEOCFG27_HXSCFACT(hf);
+139	    }
+140	    else
+141	    {
+142	        /* Disable scaler — matches MCC's HEO-setup defaults. */
+143	        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(0)
+144	                                  | LCDC_HEOCFG23_VXSCEN(0)
+145	                                  | LCDC_HEOCFG23_HXSYEN(0)
+146	                                  | LCDC_HEOCFG23_HXSCEN(0);
+147	    }
+148	
+149	    /* §44.6.4.7 — discard BASE DMA in the destination rect. HEO with MCC's
+150	     * default SFACTC=4 (A0×As) / DFACTC=6 (1−A0×As) reaches 100% opacity
+151	     * for RGB_888_PACKED (no per-pixel alpha → As sourced from A0=255),
+152	     * so BASE pixels in this rect are blended out. DISCEN tells the BASE
+153	     * channel to skip fetching them. */
+154	    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x)
+155	                              | LCDC_BASECFG5_DISCYPOS(y);
+156	    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(dst_w - 1u)
+157	                              | LCDC_BASECFG6_DISCYSIZE(dst_h - 1u);
+158	    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+159	
+160	    /* HEO and BASE attribute updates triggered together. */
+161	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+162	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+163	
+164	    LOG_INFO("VIDEO: HEO bound src %lux%lu → dst %lux%lu @(%lu,%lu) %s\r\n",
+165	             (unsigned long)src_w, (unsigned long)src_h,
+166	             (unsigned long)dst_w, (unsigned long)dst_h,
+167	             (unsigned long)x, (unsigned long)y,
+168	             scaling ? "scaled" : "1:1");
+169	}
+170	
+171	/* Hide HEO and let BASE (Legato UI) fill the whole panel. */
+172	static void lcd_unbind(void)
+173	{
+174	    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+175	    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+176	    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+177	}
+178	
+179	/* ─── Frame-done ISR (runs in IRQ context) ─────────────────────────────── */
+180	
+181	static void on_frame_done(uint32_t frame_count,
+182	                          uint32_t buffer_addr,
+183	                          uintptr_t ctx)
+184	{
+185	    (void)ctx;
+186	
+187	    BaseType_t higher_priority_task_woken = pdFALSE;
+188	    PerfLog_EmitStampFromISR(PERF_STAGE_ISC_IRQ, frame_count, 0u,
+189	                             &higher_priority_task_woken);
+190	
+191	    s_latest_buffer = buffer_addr;
+192	
+193	    /* Re-point HEO at the buffer that was just completed so the panel sees
+194	     * every captured frame. With the descriptor ring and a static base
+195	     * binding, HEO would only see frames written to slot 0. The address
+196	     * latches at next vsync (XLCDC update=true); HEO and ISC run on
+197	     * independent clocks so this is fine. Skip when display is hidden. */
+198	    if (s_display_bound)
+199	    {
+200	        XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, buffer_addr, true);
+201	    }
+202	
+203	    Video_FrameInfo info =
+204	    {
+205	        .buffer          = (void *)(uintptr_t)buffer_addr,
+206	        .frame_count     = frame_count,
+207	        .width           = s_src_w,
+208	        .height          = s_src_h,
+209	        .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
+210	    };
+211	
+212	    uint32_t subscriber_mask = 0u;
+213	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+214	    {
+215	        QueueHandle_t q = s_subscribers[i];
+216	        if (q != NULL)
+217	        {
+218	            (void)xQueueSendFromISR(q, &info, &higher_priority_task_woken);
+219	            subscriber_mask |= (1u << i);
+220	        }
+221	    }
+222	    PerfLog_EmitStampFromISR(PERF_STAGE_VIDEO_PUBLISH, frame_count,
+223	                             subscriber_mask, &higher_priority_task_woken);
+224	    portYIELD_FROM_ISR(higher_priority_task_woken);
+225	}
+226	
+227	/* ─── Capture state machine ────────────────────────────────────────────── */
+228	
+229	static bool capture_arm(void)
+230	{
+231	    uint16_t w = 0, h = 0;
+232	    if (!TC358743_GetDetectedFormat(&w, &h)) { return false; }
+233	
+234	    if (!ISC_Capture_Configure(w, h)) { return false; }
+235	    s_src_w = w;
+236	    s_src_h = h;
+237	    (void)TC358743_EnableStream(true);
+238	    if (!ISC_Capture_Start())
+239	    {
+240	        (void)TC358743_EnableStream(false);
+241	        return false;
+242	    }
+243	    LOG_INFO("VIDEO: capture ARMED %ux%u\r\n", w, h);
+244	    return true;
+245	}
+246	
+247	static void capture_disarm(void)
+248	{
+249	    ISC_Capture_Stop();
+250	    (void)TC358743_EnableStream(false);
+251	    LOG_INFO("VIDEO: capture IDLE\r\n");
+252	}
+253	
+254	/* Bind/unbind display from current intent + most-recent source size +
+255	 * caller-set window. A zero-sized window means the app hasn't set one
+256	 * yet — silently skip the bind in that case rather than emit a malformed
+257	 * HEO geometry; DisplayShow without a prior SetWindow is a no-op. */
+258	static void display_apply(void)
+259	{
+260	    window_t w = s_window;
+261	    bool window_valid = (w.w != 0u) && (w.h != 0u);
+262	    bool source_valid = (s_src_w != 0u) && (s_src_h != 0u);
+263	    bool want = s_display_shown && source_valid && window_valid;
+264	
+265	    if (want && !s_display_bound)
+266	    {
+267	        lcd_bind(s_src_w, s_src_h, w.x, w.y, w.w, w.h);
+268	        s_display_bound = true;
+269	    }
+270	    else if (!want && s_display_bound)
+271	    {
+272	        lcd_unbind();
+273	        s_display_bound = false;
+274	    }
+275	}
+276	
+277	/* Each tick: align current chain state (capture armed / display bound) to
+278	 * the user's intent flags, given the current source-lock state. */
+279	static void reconcile(void)
+280	{
+281	    bool locked = TC358743_IsLocked();
+282	
+283	    /* Capture: armed iff intent + lock. */
+284	    bool want_capture = s_capture_enabled && locked;
+285	    if (want_capture && !s_capture_armed)
+286	    {
+287	        if (capture_arm()) { s_capture_armed = true; }
+288	    }
+289	    else if (!want_capture && s_capture_armed)
+290	    {
+291	        capture_disarm();
+292	        s_capture_armed = false;
+293	    }
+294	
+295	    /* Display: shown iff intent + we have a source size to work with. The
+296	     * source size is captured at arm time and persists across capture
+297	     * teardown so the user can leave HEO bound on a stale frame. */
+298	    display_apply();
+299	}
+300	
+301	/* ─── Task body ────────────────────────────────────────────────────────── */
+302	
+303	static void video_task(void *param)
+304	{
+305	    (void)param;
+306	
+307	    /* One-time init in task context (scheduler running, so synchronous I²C
+308	     * and SYS_TIME work). Brings up capture pipeline, TC358743 bridge, and
+309	     * parks the panel in UI-only mode. The backlight is NOT enabled here — the
+310	     * UI boot task lights it once the splash is on screen, so the panel never
+311	     * shows a pre-splash/garbage frame. */
+312	    ISC_Capture_Initialize();
+313	    ISC_Capture_SetFrameCallback(on_frame_done, 0);
+314	    TC358743_Initialize();
+315	    lcd_unbind();
+316	
+317	    for (;;)
+318	    {
+319	        TC358743_Tasks();
+320	        reconcile();
+321	        vTaskDelay(pdMS_TO_TICKS(VIDEO_POLL_MS));
+322	    }
+323	}
+324	
+325	/* ─── Public API ───────────────────────────────────────────────────────── */
+326	
+327	static StackType_t  s_task_stack[VIDEO_TASK_STACK_WORDS];
+328	static StaticTask_t s_task_tcb;
+329	
+330	void Video_Initialize(void)
+331	{
+332	    TaskHandle_t h = xTaskCreateStatic(video_task,
+333	                                       "VideoTask",
+334	                                       VIDEO_TASK_STACK_WORDS,
+335	                                       NULL,
+336	                                       VIDEO_TASK_PRIORITY,
+337	                                       s_task_stack,
+338	                                       &s_task_tcb);
+339	    PerfLog_RegisterTaskForHighwater(PERF_TASK_VIDEO, h);
+340	}
+341	
+342	void Video_CaptureEnable(void)  { s_capture_enabled = true;  }
+343	void Video_CaptureDisable(void) { s_capture_enabled = false; }
+344	
+345	void Video_DisplayShow(void)    { s_display_shown = true;    }
+346	void Video_DisplayHide(void)    { s_display_shown = false;   }
+347	
+348	void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+349	{
+350	    window_t w = { x, y, dst_w, dst_h };
+351	    s_window = w;
+352	    /* Force a re-bind on next reconcile if we're currently shown. */
+353	    s_display_bound = false;
+354	}
+355	
+356	bool Video_SubscribeFrames(QueueHandle_t q)
+357	{
+358	    if (q == NULL) { return false; }
+359	
+360	    bool ok = false;
+361	    taskENTER_CRITICAL();
+362	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+363	    {
+364	        if (s_subscribers[i] == q) { ok = true; break; }     /* already in */
+365	        if (s_subscribers[i] == NULL)
+366	        {
+367	            s_subscribers[i] = q;
+368	            ok = true;
+369	            break;
+370	        }
+371	    }
+372	    taskEXIT_CRITICAL();
+373	
+374	    if (!ok) { LOG_ERROR("VIDEO: subscriber table full (max %u)\r\n",
+375	                         (unsigned)VIDEO_MAX_SUBSCRIBERS); }
+376	    return ok;
+377	}
+378	
+379	bool Video_UnsubscribeFrames(QueueHandle_t q)
+380	{
+381	    if (q == NULL) { return false; }
+382	
+383	    bool ok = false;
+384	    taskENTER_CRITICAL();
+385	    for (uint8_t i = 0u; i < VIDEO_MAX_SUBSCRIBERS; i++)
+386	    {
+387	        if (s_subscribers[i] == q)
+388	        {
+389	            s_subscribers[i] = NULL;
+390	            ok = true;
+391	            break;
+392	        }
+393	    }
+394	    taskEXIT_CRITICAL();
+395	    return ok;
+396	}
+397	
+398	void Video_GetFrameInfo(Video_FrameInfo *info)
+399	{
+400	    if (info == NULL) { return; }
+401	    info->buffer          = (void *)(uintptr_t)s_latest_buffer;
+402	    info->frame_count     = ISC_Capture_FrameCount();
+403	    info->width           = s_src_w;
+404	    info->height          = s_src_h;
+405	    info->bytes_per_pixel = VIDEO_BYTES_PER_PIXEL;
+406	}
+407
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:11:18Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:11:19Z)**_
+
+I've read the full video module. The key structural fact: the HEO **bind** (config/scaler/BASE-DISCEN) runs in the video *task*'s reconcile loop (coupled to capture lock + source size), while the per-frame HEO **address latch** runs in the ISC frame-done *IRQ*. That task/IRQ coupling shapes how cleanly HEO control can move. Let me plan this properly.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:11:19Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="EnterPlanMode"><details>
+<summary>Tool use: **EnterPlanMode**</summary>
+
+```text
+Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.
+
+In plan mode, you should:
+1. Thoroughly explore the codebase to understand existing patterns
+2. Identify similar features and architectural approaches
+3. Consider multiple approaches and their trade-offs
+4. Use AskUserQuestion if you need to clarify the approach
+5. Design a concrete implementation strategy
+6. When ready, use ExitPlanMode to present your plan for approval
+
+Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:11:29Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:11:30Z)**_
+
+I have enough understanding from reading the full video module. The one decision that materially changes scope and risk is *how far* to move HEO control, so let me get your call on that before finalizing the plan.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:17:53Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**How far should HEO control move into ui_manager? (video.c stays the capture producer — ISC ring, TC358743, subscribers — either way.)**
+
+Options:
+- **Policy in ui_manager, mechanism stays** - ui_manager becomes the sole decider of video show/hide/window (owns the layout constants, gates by screen/modal state, drives it at reveal instead of app.c). The HEO/BASE register bind stays in the video task's reconcile loop (it's coupled to capture lock + source size + the IRQ address-latch). Lowest risk to a working hardware path; achieves 'ui_manager controls when/how video displays' + the dialog cleanup. Register writes still physically live in video.c.
+- **Full: HEO registers in ui_manager** - Move all HEO/BASE-DISCEN register writes into ui_manager as compositor primitives; video.c is reduced to capture + two notification hooks (source-changed in task ctx → rebind; frame-done in IRQ → address latch). Cleanest single-owner-of-HEO model, best for future overlay-on-video work, but a bigger rewrite of a hardware-sensitive module (IRQ/task seam, source-size reconvergence) with more regression risk.
+
+
+**Answer:** full HEO registers in ui_manager. I'd like HEO layer to be available when not needed for video.
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:19:53Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:19:56Z)**_
+
+Got it — full HEO ownership in ui_manager, and keep HEO usable for non-video purposes. I have everything I need from reading the module; let me write the plan.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:20:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Move HEO (video display) layer control into ui_manager
+
+## Context
+
+Today `video.c` owns both **capture** (ISC ring, TC358743, frame fan-out) *and*
+**display** (HEO layer config, scaler, BASE DISCEN, per-frame address latch). But the
+compositor should decide when/where the video shows: future screens won't show video,
+we'll overlay graphics on it (a separate OVR layer — decided: no drawing into the video
+buffer), and the HEO layer should be usable for other purposes when video isn't up
+(e.g. a dim layer behind a modal). `ui_manager.h` already calls HEO "off-limits" — this
+removes that exception and makes HEO a first-class compositor-owned hardware layer.
+
+Goal: **ui_manager owns every HEO/BASE-DISCEN register write and the video-display
+policy; video.c becomes a pure capture producer** that notifies the compositor. This
+also cleanly enables the earlier cleanup (hide HEO + discard BASE behind the opaque
+song-select dialog).
+
+## Design — the capture/display seam
+
+`video.c` keeps capture and exposes two callbacks the compositor registers; **all HEO
+and BASE register writes move to ui_manager**, but execute in the **same contexts as
+today** (video task + ISC IRQ) so threading/timing is unchanged and no new locks are
+needed. The UI task never pokes HEO/BASE directly — it only sets volatile *intent*.
+
+- **Per-tick display reconcile (video task ctx).** `video.c`'s reconcile calls
+  `s_display_reconcile_cb(bool source_valid, uint16_t w, uint16_t h)` each tick.
+  ui_manager's callback (re)binds/unbinds/updates HEO per its own intent + the reported
+  source — this is where `heo_bind`/`heo_unbind` (moved out of video.c) run.
+- **Per-frame address latch (ISC IRQ ctx).** `on_frame_done` calls
+  `s_frame_latch_cb(uint32_t buffer_addr)` (replacing its direct
+  `XLCDC_SetLayerAddress(HEO,…)`). ui_manager's callback latches HEO to the freshest
+  ring slot when video is bound.
+
+Because both run in the existing single-threaded video-task/IRQ path, and the UI task
+only sets intent flags consumed by the reconcile, HEO/BASE registers keep a single
+writer. A dialog-open hiding HEO ≤1 tick (20 ms) late is invisible (the opaque OVR1
+dialog already covers the video).
+
+## Changes
+
+### `video.c` / `video.h` — reduce to capture producer
+- **Remove** all display state + register code: `lcd_bind`, `lcd_unbind`,
+  `display_apply`, `scaler_factor` (moves to ui_manager), `s_display_shown`,
+  `s_window`, `s_display_bound`, and the HEO poke in `on_frame_done`. Drop
+  `Video_DisplayShow/Hide` and `Video_SetWindow` from the public API.
+- **Keep** capture: ISC/TC358743, `capture_arm/disarm`, `s_capture_enabled`, the
+  reconcile's *capture* half, subscribers, `s_latest_buffer`, `s_src_w/h`,
+  `Video_GetFrameInfo`, `Video_Subscribe/UnsubscribeFrames`, `Video_CaptureEnable/Disable`.
+- **Add** registration + notify:
+  - `void Video_SetFrameLatchCallback(void (*cb)(uint32_t addr))` — called from the IRQ.
+  - `void Video_SetDisplayReconcileCallback(void (*cb)(bool valid, uint16_t w, uint16_t h))`
+    — called each reconcile tick with `(s_src_w!=0 && s_src_h!=0), s_src_w, s_src_h`.
+  - `on_frame_done`: keep `s_latest_buffer = addr`, subscriber fan-out; call the latch cb.
+  - `reconcile`: keep capture half; call the display-reconcile cb.
+
+### `ui_manager.c` / `ui_manager.h` — own HEO + video-display policy
+- Move in `heo_bind(src_w,src_h,x,y,dst_w,dst_h)` / `heo_unbind()` (ex-`lcd_bind/unbind`,
+  incl. HEO scaler, `HEOCFG3/4/23…`, and `BASECFG4/5/6` DISCEN) + `scaler_factor`.
+- State: `s_video_shown` (intent), `s_video_bound`, `s_video_win` (rect), `s_src_w/h`
+  (last reported), and a `s_video_rebind` flag (window changed).
+- Callbacks registered with video at init (before the video task runs):
+  - `heo_reconcile(valid,w,h)`: store src; if `s_video_shown && valid && win_valid` →
+    bind (or rebind on size/window change), set bound; if `!want` and bound → unbind.
+    (This is the ex-`display_apply`, now in ui_manager, source-driven.)
+  - `heo_frame_latch(addr)`: if `s_video_bound`, `XLCDC_SetLayerAddress(HEO, addr, true)`.
+- Public API: `void UiManager_VideoShow(uint32_t x,y,w,h)` (set window + intent, mark
+  rebind), `void UiManager_VideoHide(void)` (clear intent). Video-window layout constants
+  (currently `VIDEO_WIN_*` in `app.c`) move here — the compositor owns layout.
+- Boot: in `ui_boot_task` reveal, call `UiManager_VideoShow(...)` (replaces app.c's
+  display calls); binds once the source locks.
+
+### `app.c` — drop display calls
+- Keep `Video_CaptureEnable()` (capture is needed for the detector/gameplay regardless of
+  display). Remove `Video_SetWindow` + `Video_DisplayShow`; delete `VIDEO_WIN_*` (moved to
+  ui_manager).
+
+## Phase 2 — modal integration (the earlier cleanup, now trivial)
+With ui_manager owning HEO + BASE DISCEN, extend `songsel_set_input()` / the modal
+open-close (and nav) so that while a modal is open: **`UiManager_VideoHide()`** (HEO LCD
+output off — capture keeps running) and the **effective BASE DISCEN is the dialog rect**
+(skip BASE DMA behind the opaque 1100×660 dialog). The reconcile computes effective
+DISCEN from `{video shown → video rect | dialog open → dialog rect | else none}` so BASE
+stays single-writer. Close restores video (re-show → its DISCEN returns).
+
+## Deferred / out of scope (documented, not built)
+- **Dim-dashboard by repurposing HEO** while a modal is open (nice-to-have) — now
+  *possible* since ui_manager owns HEO when video isn't shown (point HEO at a small black
+  buffer, global-alpha ~50%, full-panel; it sits below OVR1 so the dialog stays bright).
+  Trades the bandwidth win of HEO-off for the dim; decide later.
+- **Overlay graphics on the video** → a separate OVR Legato canvas/layer-screen the XLCDC
+  blends over HEO (no drawing into the RGB888 capture buffer). Future.
+
+## Risks / notes
+- HEO/BASE register writes stay in the video task + ISC IRQ (unchanged threading); UI task
+  only sets volatile intent → no new races. Verify `heo_reconcile` handles the
+  source-locks-after-show ordering (bind deferred to first valid tick) and window/size
+  changes (rebind flag).
+- `heo_bind`'s `LOG_INFO` runs in the video task (as today), not the IRQ — fine.
+- Registration order: ui_manager registers the two callbacks before the video task starts
+  (UiManager_Initialize is pre-scheduler; Video_Initialize creates the task later).
+
+## Verification
+1. Build `marvin_default` clean.
+2. Flash. Boot → dashboard reveals with the **live video window unchanged** (same
+   position/size/scaling/latency as before the refactor) — Phase 1 is behavior-preserving.
+3. Source unplug/replug → video re-binds when lock returns (reconcile path intact).
+4. Detector/gameplay still receive frames with video hidden (capture independent of display).
+5. Phase 2: open the song-select dialog → HEO output turns off and dashboard DDR traffic
+   behind the dialog drops (DISCEN); close → video returns. Confirm no visual glitch (dialog
+   covers the video region regardless).
+
+```
+
+```text
+The file /Users/gregmrozek/.claude/plans/warm-gliding-allen.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:37:29Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="ExitPlanMode"><details>
+<summary>Tool use: **ExitPlanMode**</summary>
+
+```text
+User has approved your plan. You can now start coding. Start with updating your todo list if applicable
+
+Your plan has been saved to: /Users/gregmrozek/.claude/plans/warm-gliding-allen.md
+You can refer back to it if needed during implementation.
+
+## Approved Plan (edited by user):
+# Move HEO (video display) layer control into ui_manager
+
+## Context
+
+Today `video.c` owns both **capture** (ISC ring, TC358743, frame fan-out) *and*
+**display** (HEO layer config, scaler, BASE DISCEN, per-frame address latch). But the
+compositor should decide when/where the video shows: future screens won't show video,
+we'll overlay graphics on it (a separate OVR layer — decided: no drawing into the video
+buffer), and the HEO layer should be usable for other purposes when video isn't up
+(e.g. a dim layer behind a modal). `ui_manager.h` already calls HEO "off-limits" — this
+removes that exception and makes HEO a first-class compositor-owned hardware layer.
+
+Goal: **ui_manager owns every HEO/BASE-DISCEN register write and the video-display
+policy; video.c becomes a pure capture producer** that notifies the compositor. This
+also cleanly enables the earlier cleanup (hide HEO + discard BASE behind the opaque
+song-select dialog).
+
+## Design — the capture/display seam
+
+`video.c` keeps capture and exposes two callbacks the compositor registers; **all HEO
+and BASE register writes move to ui_manager**, but execute in the **same contexts as
+today** (video task + ISC IRQ) so threading/timing is unchanged and no new locks are
+needed. The UI task never pokes HEO/BASE directly — it only sets volatile *intent*.
+
+- **Per-tick display reconcile (video task ctx).** `video.c`'s reconcile calls
+  `s_display_reconcile_cb(bool source_valid, uint16_t w, uint16_t h)` each tick.
+  ui_manager's callback (re)binds/unbinds/updates HEO per its own intent + the reported
+  source — this is where `heo_bind`/`heo_unbind` (moved out of video.c) run.
+- **Per-frame address latch (ISC IRQ ctx).** `on_frame_done` calls
+  `s_frame_latch_cb(uint32_t buffer_addr)` (replacing its direct
+  `XLCDC_SetLayerAddress(HEO,…)`). ui_manager's callback latches HEO to the freshest
+  ring slot when video is bound.
+
+Because both run in the existing single-threaded video-task/IRQ path, and the UI task
+only sets intent flags consumed by the reconcile, HEO/BASE registers keep a single
+writer. A dialog-open hiding HEO ≤1 tick (20 ms) late is invisible (the opaque OVR1
+dialog already covers the video).
+
+## Changes
+
+### `video.c` / `video.h` — reduce to capture producer
+- **Remove** all display state + register code: `lcd_bind`, `lcd_unbind`,
+  `display_apply`, `scaler_factor` (moves to ui_manager), `s_display_shown`,
+  `s_window`, `s_display_bound`, and the HEO poke in `on_frame_done`. Drop
+  `Video_DisplayShow/Hide` and `Video_SetWindow` from the public API.
+- **Keep** capture: ISC/TC358743, `capture_arm/disarm`, `s_capture_enabled`, the
+  reconcile's *capture* half, subscribers, `s_latest_buffer`, `s_src_w/h`,
+  `Video_GetFrameInfo`, `Video_Subscribe/UnsubscribeFrames`, `Video_CaptureEnable/Disable`.
+- **Add** registration + notify:
+  - `void Video_SetFrameLatchCallback(void (*cb)(uint32_t addr))` — called from the IRQ.
+  - `void Video_SetDisplayReconcileCallback(void (*cb)(bool valid, uint16_t w, uint16_t h))`
+    — called each reconcile tick with `(s_src_w!=0 && s_src_h!=0), s_src_w, s_src_h`.
+  - `on_frame_done`: keep `s_latest_buffer = addr`, subscriber fan-out; call the latch cb.
+  - `reconcile`: keep capture half; call the display-reconcile cb.
+
+### `ui_manager.c` / `ui_manager.h` — own HEO + video-display policy
+- Move in `heo_bind(src_w,src_h,x,y,dst_w,dst_h)` / `heo_unbind()` (ex-`lcd_bind/unbind`,
+  incl. HEO scaler, `HEOCFG3/4/23…`, and `BASECFG4/5/6` DISCEN) + `scaler_factor`.
+- State: `s_video_shown` (intent), `s_video_bound`, `s_video_win` (rect), `s_src_w/h`
+  (last reported), and a `s_video_rebind` flag (window changed).
+- Callbacks registered with video at init (before the video task runs):
+  - `heo_reconcile(valid,w,h)`: store src; if `s_video_shown && valid && win_valid` →
+    bind (or rebind on size/window change), set bound; if `!want` and bound → unbind.
+    (This is the ex-`display_apply`, now in ui_manager, source-driven.)
+  - `heo_frame_latch(addr)`: if `s_video_bound`, `XLCDC_SetLayerAddress(HEO, addr, true)`.
+- Public API: `void UiManager_VideoShow(uint32_t x,y,w,h)` (set window + intent, mark
+  rebind), `void UiManager_VideoHide(void)` (clear intent). Video-window layout constants
+  (currently `VIDEO_WIN_*` in `app.c`) move here — the compositor owns layout.
+- Boot: in `ui_boot_task` reveal, call `UiManager_VideoShow(...)` (replaces app.c's
+  display calls); binds once the source locks.
+
+### `app.c` — drop display calls
+- Keep `Video_CaptureEnable()` (capture is needed for the detector/gameplay regardless of
+  display). Remove `Video_SetWindow` + `Video_DisplayShow`; delete `VIDEO_WIN_*` (moved to
+  ui_manager).
+
+## Phase 2 — modal integration (the earlier cleanup, now trivial)
+With ui_manager owning HEO + BASE DISCEN, extend `songsel_set_input()` / the modal
+open-close (and nav) so that while a modal is open: **`UiManager_VideoHide()`** (HEO LCD
+output off — capture keeps running) and the **effective BASE DISCEN is the dialog rect**
+(skip BASE DMA behind the opaque 1100×660 dialog). The reconcile computes effective
+DISCEN from `{video shown → video rect | dialog open → dialog rect | else none}` so BASE
+stays single-writer. Close restores video (re-show → its DISCEN returns).
+
+## Deferred / out of scope (documented, not built)
+- **Dim-dashboard by repurposing HEO** while a modal is open (nice-to-have) — now
+  *possible* since ui_manager owns HEO when video isn't shown (point HEO at a small black
+  buffer, global-alpha ~50%, full-panel; it sits below OVR1 so the dialog stays bright).
+  Trades the bandwidth win of HEO-off for the dim; decide later.
+- **Overlay graphics on the video** → a separate OVR Legato canvas/layer-screen the XLCDC
+  blends over HEO (no drawing into the RGB888 capture buffer). Future.
+
+## Risks / notes
+- HEO/BASE register writes stay in the video task + ISC IRQ (unchanged threading); UI task
+  only sets volatile intent → no new races. Verify `heo_reconcile` handles the
+  source-locks-after-show ordering (bind deferred to first valid tick) and window/size
+  changes (rebind flag).
+- `heo_bind`'s `LOG_INFO` runs in the video task (as today), not the IRQ — fine.
+- Registration order: ui_manager registers the two callbacks before the video task starts
+  (UiManager_Initialize is pre-scheduler; Video_Initialize creates the task later).
+
+## Verification
+1. Build `marvin_default` clean.
+2. Flash. Boot → dashboard reveals with the **live video window unchanged** (same
+   position/size/scaling/latency as before the refactor) — Phase 1 is behavior-preserving.
+3. Source unplug/replug → video re-binds when lock returns (reconcile path intact).
+4. Detector/gameplay still receive frames with video hidden (capture independent of display).
+5. Phase 2: open the song-select dialog → HEO output turns off and dashboard DDR traffic
+   behind the dialog drops (DISCEN); close → video returns. Confirm no visual glitch (dialog
+   covers the video region regardless).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:37:43Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ video.h/.c: reduce to capture producer — remove HEO/BASE/display state; add frame-latch + display-reconcile callback registration; call them from IRQ/reconcile
+- [ ] 🌡️ ui_manager: move in heo_bind/unbind + scaler; add video-display state, heo_reconcile/heo_frame_latch cbs, UiManager_VideoShow/Hide; own VIDEO_WIN_* constants; register cbs; show at reveal
+- [ ] 🌡️ app.c: drop Video_SetWindow/DisplayShow + VIDEO_WIN_*; keep Video_CaptureEnable
+- [ ] 🌡️ Phase 2: modal integration — hide HEO + effective BASE DISCEN (dialog rect) while song-select/nav open; restore on close
+- [ ] 🌡️ journal: record HEO-into-ui_manager refactor + capture/display seam
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:37:50Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:37:50Z)**_
+
+Starting with `video.h` — let me read the rest of the public API:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:37:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.h`
+
+```text
+80	
+81	/* Remove a queue from the subscriber list. Returns false if not found. */
+82	bool Video_UnsubscribeFrames(QueueHandle_t q);
+83	
+84	/* Synchronous read of the current frame state. Doesn't block. May
+85	 * report frame_count = 0 / buffer = NULL if capture has never armed. */
+86	void Video_GetFrameInfo(Video_FrameInfo *info);
+87	
+88	#endif
+89
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:01Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:01Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/video.h`
+
+```text
+10	/* Video pipeline: HDMI source → TC358743 bridge → CSI-2 → CSI2DC → ISC →
+11	 * DDR → XLCDC HEO. The module owns its own FreeRTOS task; everything below
+12	 * (tc358743, isc_capture, HEO bind/unbind, capture/display state machine)
+13	 * runs inside that task except the frame-arrival notification which fires
+14	 * from the ISC IRQ via xQueueSendFromISR.
+15	 *
+16	 * Capture and display are independent. CaptureEnable arms the bridge +
+17	 * ISC chain when the source is locked; DisplayShow makes the HEO layer
+18	 * visible at the configured window. You can run capture without display
+19	 * (frames flow into DDR, BASE/UI fills the panel) or display without
+20	 * capture (HEO shows whatever is in the framebuffer — possibly stale).
+21	 *
+22	 * Defaults at Initialize: capture disabled, display hidden, window
+23	 * unset. Layout is app policy — DisplayShow is a no-op until the
+24	 * caller has set a window with Video_SetWindow. */
+25	
+26	void Video_Initialize(void);
+27	
+28	/* Capture chain control. ENABLE: arm ISC + bridge stream when source
+29	 * is locked, re-arm on every lost/regain cycle. DISABLE: stop ISC +
+30	 * stream and stay off regardless of lock state. */
+31	void Video_CaptureEnable(void);
+32	void Video_CaptureDisable(void);
+33	
+34	/* Display layer control. SHOW: HEO visible, BASE DISCEN cleared under
+35	 * the HEO rect (saves DDR read bandwidth). HIDE: HEO disabled, BASE
+36	 * owns full panel. Independent of capture state. */
+37	void Video_DisplayShow(void);
+38	void Video_DisplayHide(void);
+39	
+40	/* Destination rect on the 1280×800 panel. dst_w/dst_h matching the
+41	 * source frame size → 1:1, scaler bypassed. Otherwise HEO bilinear
+42	 * scaler engages and stretches to fill the rect. The rect must fit
+43	 * within the panel. Takes effect on the next display bind (next
+44	 * DisplayShow call, or when capture/lock state changes). */
+45	void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h);
+46	
+47	/* Frame metadata delivered to subscribers on every captured frame. */
+48	typedef struct
+49	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:07Z)**_
+
+Now let me update the module doc + swap the display API for the callback-registration API:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:23Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:37Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:38Z)**_
+
+Now `video.c`. Remove display state and add the callback pointers:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:38:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:39:19Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:39:26Z)**_
+
+Now the frame-done IRQ — replace the HEO poke with the latch callback:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:39:30Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:39:36Z)**_
+
+Now the reconcile — remove `display_apply`, add the reconcile callback. And the task init (remove `lcd_unbind`):
+
+_**Agent (claude-opus-4-8 2026-07-01 00:39:46Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:39:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:11Z)**_
+
+Now the public API — swap the display functions for the callback setters:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:30Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:41Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:44Z)**_
+
+Let me verify no dangling references remain in video.c:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:40:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify video.c cleanup and find external display-API callers
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== leftover removed symbols in video.c (should be none) ==="
+grep -nE "s_display_shown|s_window|s_display_bound|lcd_bind|lcd_unbind|display_apply|scaler_factor|LCD_PANEL_|window_t|XLCDC_|LCDC_" default/src/video/video.c || echo "clean"
+echo "=== external callers of removed video display API (need updating) ==="
+grep -rnE "Video_DisplayShow|Video_DisplayHide|Video_SetWindow" default/src --include='*.c' --include='*.h' | grep -v "config/default/"
+```
+
+```text
+=== leftover removed symbols in video.c (should be none) ===
+clean
+=== external callers of removed video display API (need updating) ===
+default/src/app.c:103:    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+default/src/app.c:105:    Video_DisplayShow();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:41:31Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:41:31Z)**_
+
+video.c/.h are clean and only app.c calls the old API. Now the main part — ui_manager. Let me read its include block and public-API tail to place the new code:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:41:32Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+1	#include "ui/ui_manager.h"
+2	#include "ui/screens/dashboard/screen_dashboard.h"
+3	#include "ui/screens/navigation/screen_navigation.h"
+4	#include "ui/screens/song_select/screen_song_select.h"
+5	#include "ui/screens/album_art/screen_album_art.h"
+6	#include "ui/screens/splash/screen_splash.h"
+7	
+8	#include <stdbool.h>
+9	#include <stdint.h>
+10	
+11	#include "FreeRTOS.h"
+12	#include "task.h"
+13	
+14	#include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
+15	#include "log.h"
+16	#include "flash/settings.h"   /* persisted backlight % */
+17	#include "game/art.h"         /* Art_LoadAll — cover-art preload during splash */
+18	#include "gfx/canvas/gfx_canvas_api.h"
+19	#include "gfx/legato/legato.h"
+20	#include "gfx/legato/generated/le_gen_assets.h"
+21	#include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"      /* screenInit/GetRoot_Marvin */
+22	#include "gfx/legato/renderer/legato_renderer.h"                   /* leRenderer_IsIdle */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:41:41Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ video.h/.c: reduce to capture producer — remove HEO/BASE/display state; add frame-latch + display-reconcile callback registration; call them from IRQ/reconcile
+- [⚡] 🌡️ ui_manager: move in heo_bind/unbind + scaler; add video-display state, heo_reconcile/heo_frame_latch cbs, UiManager_VideoShow/Hide; own VIDEO_WIN_* constants; register cbs; show at reveal
+- [ ] 🌡️ app.c: drop Video_SetWindow/DisplayShow + VIDEO_WIN_*; keep Video_CaptureEnable
+- [ ] 🌡️ Phase 2: modal integration — hide HEO + effective BASE DISCEN (dialog rect) while song-select/nav open; restore on close
+- [ ] 🌡️ journal: record HEO-into-ui_manager refactor + capture/display seam
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:41:49Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:01Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:02Z)**_
+
+Now insert the HEO/video-display ownership block into ui_manager.c (after `bind_canvas`, before the song-select modal section):
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:38Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:47Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:47Z)**_
+
+Now the header declarations for the video API:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:56Z)**_
+
+Now register the callbacks in `UiManager_Initialize` and wire boot/reveal. Let me read those sections:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:43:57Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+380	{
+381	    TickType_t deadline   = xTaskGetTickCount() + pdMS_TO_TICKS(RENDER_IDLE_TIMEOUT_MS);
+382	    TickType_t idle_since = 0;
+383	    bool       idle_run   = false;
+384	
+385	    while (xTaskGetTickCount() < deadline)
+386	    {
+387	        if (leRenderer_IsIdle())
+388	        {
+389	            if (!idle_run)
+390	            {
+391	                idle_run   = true;
+392	                idle_since = xTaskGetTickCount();
+393	            }
+394	            else if ((xTaskGetTickCount() - idle_since) >= pdMS_TO_TICKS(RENDER_IDLE_STABLE_MS))
+395	            {
+396	                return;
+397	            }
+398	        }
+399	        else
+400	        {
+401	            idle_run = false;
+402	        }
+403	        vTaskDelay(pdMS_TO_TICKS(RENDER_POLL_MS));
+404	    }
+405	    LOG_WARN("UI: render-idle wait timed out\r\n");
+406	}
+407	
+408	/* ── boot sequence ───────────────────────────────────────────────────────── */
+409	
+410	static void ui_boot_task(void *param)
+411	{
+412	    (void)param;
+413	
+414	    /* PHASE 1 — splash, before any Legato work, as fast as the SD allows. */
+415	    (void)ScreenSplash_Load();   /* loads the image, or fills the fallback colour */
+416	    ScreenSplash_Show(xlcdc_layer(SPLASH_HW_LAYER));
+417	    enable_backlight();
+418	    TickType_t shown_at = xTaskGetTickCount();
+419	
+420	    /* Splash is up — let the app start everything else (services + camera) now,
+421	     * in parallel with the screen painting below, so it's all warm at reveal. */
+422	    if (s_splash_shown_cb != NULL) { s_splash_shown_cb(); }
+423	
+424	    /* Decode all album art into the RGB888 caches *before* building the screens,
+425	     * so the song-select panel's initial selection (ScreenSongSelect_Setup ->
+426	     * song_detail_show(0)) finds its cover already cached. Storage mounts here;
+427	     * Legato's image decoders are up from SYS_Initialize. All behind the splash;
+428	     * the ~1-3 s decode just extends the splash hold. See game/art.h. */
+429	    (void)Art_LoadAll();
+430	
+431	    /* PHASE 2 — build the Marvin screen + per-panel setup behind the splash.
+432	     * Scene-graph edits (screenInit_Marvin's leAddRootWidget calls) are guarded
+433	     * against the render tasks; the canvas/layer binds after are GFX-canvas only
+434	     * (no root-list mutation) so they need no guard. */
+435	    scene_edit_begin();
+436	    init_screens();
+437	    scene_edit_end();
+438	
+439	    /* Dashboard live on BASE (covered by the splash until reveal). Nav and
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:44:09Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+439	    /* Dashboard live on BASE (covered by the splash until reveal). Nav and
+440	     * song-select are built and painting into their own canvases but not bound to
+441	     * a layer yet — they take their layers at reveal, once the splash vacates. */
+442	    bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+443	
+444	    wait_render_idle();
+445	
+446	    /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
+447	    TickType_t elapsed   = xTaskGetTickCount() - shown_at;
+448	    TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
+449	    if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
+450	
+451	    /* REVEAL — cut over to the (painted) dashboard. The song-select dialog starts
+452	     * closed: it and its OVR2 cover strip are painted into their canvases but not
+453	     * shown; UiManager_OpenSongSelect() binds + shows the pair on demand (header tap).
+454	     * Set OVR1's colour mode to RGB565 now so the first nav-open (nav shares OVR1 and
+455	     * doesn't poke RGBMODE itself) scans out correctly even before any dialog open. */
+456	    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+457	    XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
+458	
+459	    vTaskDelete(NULL);
+460	}
+461	
+462	/* ── public API ──────────────────────────────────────────────────────────── */
+463	
+464	void UiManager_Initialize(void)
+465	{
+466	    /* Assign the per-screen canvas surfaces, then drive the canvas state machine
+467	     * to RUNNING so a blit isn't dropped by the RUNNING gate, then set the Legato
+468	     * string table the screens need. All pre-scheduler config — no screen built
+469	     * or shown here; the boot task does the sequence. */
+470	    ScreenDashboard_InitSurface();
+471	    ScreenNavigation_InitSurface();
+472	    ScreenSongSelect_InitSurface();
+473	    ScreenAlbumArt_InitSurface();
+474	    GFX_CANVAS_Task();
+475	
+476	    leSetStringTable(&stringTable);
+477	    initializeStrings();
+478	
+479	    (void)xTaskCreateStatic(ui_boot_task, "UiBoot", BOOT_TASK_STACK_WORDS,
+480	                            NULL, BOOT_TASK_PRIORITY, s_boot_stack, &s_boot_tcb);
+481	}
+482	
+483	void UiManager_SetSplashShownCallback(void (*cb)(void))
+484	{
+485	    s_splash_shown_cb = cb;
+486	}
+487
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:44:27Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:44:28Z)**_
+
+Register the callbacks, park HEO at boot, and show video at reveal:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:44:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:44:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:44:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:45:02Z)**_
+
+Now app.c — drop the display calls and `VIDEO_WIN_*`. Let me read the relevant section:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:45:02Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+86	// *****************************************************************************
+87	
+88	/* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
+89	 * bridge's typical 480p source, leaving a UI strip below. */
+90	#define VIDEO_WIN_X   280u
+91	#define VIDEO_WIN_Y    76u
+92	#define VIDEO_WIN_W   720u
+93	#define VIDEO_WIN_H   480u
+94	
+95	/* Fired by the UI boot task the instant the splash is on screen (registered via
+96	 * UiManager_SetSplashShownCallback). Brings up everything else — runtime services
+97	 * and the camera — in parallel with the behind-the-splash screen painting, so the
+98	 * system is warm by the time the dashboard is revealed. The video go-live calls
+99	 * just set intent flags the (now-running) video task reconciles. */
+100	static void app_on_splash_shown(void)
+101	{
+102	    App_StartServices();
+103	    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+104	    Video_CaptureEnable();
+105	    Video_DisplayShow();
+106	}
+107
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:45:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:45:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:45:27Z)**_
+
+Phase 1 complete. Let me verify no dangling references across the tree:
+
+_**Agent (claude-opus-4-8 2026-07-01 00:45:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify no dangling refs; new seam wired
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== removed video display API (should be none outside config) ==="
+grep -rnE "Video_DisplayShow|Video_DisplayHide|Video_SetWindow|VIDEO_WIN_" default/src --include='*.c' --include='*.h' | grep -v "config/default/" || echo "clean"
+echo "=== new seam symbols present ==="
+grep -rnE "Video_SetFrameLatchCallback|Video_SetDisplayReconcileCallback|UiManager_VideoShow|UiManager_VideoHide|heo_reconcile|heo_frame_latch" default/src --include='*.c' --include='*.h' | grep -v "config/default/"
+```
+
+```text
+=== removed video display API (should be none outside config) ===
+default/src/ui/ui_manager.c:100:/* Live video window on the panel (compositor layout policy; was app.c's VIDEO_WIN_*). */
+default/src/ui/ui_manager.c:101:#define VIDEO_WIN_X   280u
+default/src/ui/ui_manager.c:102:#define VIDEO_WIN_Y    76u
+default/src/ui/ui_manager.c:103:#define VIDEO_WIN_W   720u
+default/src/ui/ui_manager.c:104:#define VIDEO_WIN_H   480u
+default/src/ui/ui_manager.c:467:    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+=== new seam symbols present ===
+default/src/ui/ui_manager.c:93: *   heo_reconcile()   — video-task ctx, each tick: (re)bind/unbind HEO to match our
+default/src/ui/ui_manager.c:95: *   heo_frame_latch() — ISC IRQ ctx: re-point HEO at the freshest ring slot.
+default/src/ui/ui_manager.c:97: * contexts, so the UI task only sets volatile intent (UiManager_VideoShow/Hide) and
+default/src/ui/ui_manager.c:124: * frame, which heo_frame_latch then fixes within a frame-time). Video-task ctx. */
+default/src/ui/ui_manager.c:200:static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
+default/src/ui/ui_manager.c:221:static void heo_frame_latch(uint32_t buffer_addr)
+default/src/ui/ui_manager.c:226:void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+default/src/ui/ui_manager.c:234:void UiManager_VideoHide(void)
+default/src/ui/ui_manager.c:467:    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+default/src/ui/ui_manager.c:491:     * task then drives heo_reconcile each tick and the ISC IRQ drives heo_frame_latch. */
+default/src/ui/ui_manager.c:492:    Video_SetFrameLatchCallback(heo_frame_latch);
+default/src/ui/ui_manager.c:493:    Video_SetDisplayReconcileCallback(heo_reconcile);
+default/src/ui/ui_manager.h:57:void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+default/src/ui/ui_manager.h:58:void UiManager_VideoHide(void);
+default/src/video/video.h:40:void Video_SetFrameLatchCallback(void (*cb)(uint32_t buffer_addr));
+default/src/video/video.h:41:void Video_SetDisplayReconcileCallback(void (*cb)(bool source_valid,
+default/src/video/video.c:196:void Video_SetFrameLatchCallback(void (*cb)(uint32_t buffer_addr))
+default/src/video/video.c:201:void Video_SetDisplayReconcileCallback(void (*cb)(bool source_valid,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:46:24Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:46:25Z)**_
+
+Phase 1 is complete and behavior-preserving. Given this is a hardware-sensitive refactor, I'll pause Phase 2 (modal HEO-off + dialog DISCEN) until you've verified Phase 1 on hardware — that isolates any video regression to the refactor itself. Let me record Phase 1 in the journal.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:46:29Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ video.h/.c: reduce to capture producer — remove HEO/BASE/display state; add frame-latch + display-reconcile callback registration; call them from IRQ/reconcile
+- [X] 🌡️ ui_manager: move in heo_bind/unbind + scaler; add video-display state, heo_reconcile/heo_frame_latch cbs, UiManager_VideoShow/Hide; own VIDEO_WIN_* constants; register cbs; show at reveal
+- [X] 🌡️ app.c: drop Video_SetWindow/DisplayShow + VIDEO_WIN_*; keep Video_CaptureEnable
+- [⚡] 🌡️ journal: record HEO-into-ui_manager refactor + capture/display seam
+- [ ] 🌡️ Phase 2 (after hw verify): modal HEO-off + effective BASE DISCEN (dialog rect) while song-select open; restore on close
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:46:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 00:47:06Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:47:15Z)**_
+
+Phase 1 done and journaled. Summary of the refactor:
+
+**`video.c`/`.h` — now a pure capture producer.** Removed all HEO/BASE register code (`lcd_bind`/`lcd_unbind`/`display_apply`/`scaler_factor`), the display intent/window, and the IRQ HEO poke. Added two registration hooks:
+- `Video_SetFrameLatchCallback` — fired from the ISC IRQ with the freshest buffer.
+- `Video_SetDisplayReconcileCallback` — fired each video-task tick with `(source_valid, w, h)`.
+
+**`ui_manager.c`/`.h` — owns the HEO layer.** Moved in `heo_bind`/`heo_unbind`/`scaler_factor` + BASE DISCEN; added the two callbacks (`heo_reconcile` binds/unbinds in task ctx; `heo_frame_latch` latches the address in IRQ ctx), `UiManager_VideoShow/Hide` (UI task sets volatile intent only), and the video-window constants. Registers the callbacks in `UiManager_Initialize` (before the video task starts), parks HEO off after the dashboard binds at boot, and shows video at reveal.
+
+**`app.c`** — now only `Video_CaptureEnable()` in the splash-shown callback; display + `VIDEO_WIN_*` moved to the compositor.
+
+Key property: **all HEO/BASE writes still execute in the video task + ISC IRQ (unchanged timing/threading); the UI task only sets intent** — so no new locks and no cross-task register races. Phase 1 is behavior-preserving: the video window should look identical.
+
+I verified no dangling references and the seam is wired (no circular include — video calls function pointers). I did not build (MPLAB toolchain isn't in this sandbox).
+
+**Please build + flash and confirm Phase 1:**
+1. Video window unchanged (position/size/scaling/latency) on the dashboard.
+2. Source unplug/replug re-binds when lock returns.
+3. Detector/gameplay still get frames.
+
+Once you confirm, I'll do **Phase 2** (dialog-open → HEO output off + BASE DISCEN behind the dialog, reconcile-owned so BASE stays single-writer). Nothing committed. Want me to hold here for the hardware check, or also go ahead and wire Phase 2 now?
+
+---
+
+_**User (2026-07-01 00:55:29Z)**_
+
+something wrong with video dispalay. it shows clean - not garbled, but is "rolling" every couple seconds. Always fits in the appropriate window, but sometimes top half at bottom, bottom at top, etc. not sure I'm describing right, but seem to be pointing at wrong point in frame buffer
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 00:58:20Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 00:58:22Z)**_
+
+That symptom — clean image, correct window, but the frame's vertical start point drifts/wraps — points at the per-frame address latch pointing HEO at a buffer that's being written (or an off-by-one in the ring). Let me look at exactly what buffer address the ISC frame-done callback reports, since that's what feeds the latch.
+
+_**Agent (claude-opus-4-8 2026-07-01 00:58:23Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/video/isc_capture.c`
+
+```text
+1	#include "isc_capture.h"
+2	
+3	#include <stdbool.h>
+4	#include <stddef.h>
+5	#include <stdint.h>
+6	
+7	#include "definitions.h"
+8	#include "log.h"
+9	#include "system/int/sys_int.h"
+10	#include "vision/drivers/csi/drv_csi.h"
+11	#include "vision/drivers/csi2dc/drv_csi2dc.h"
+12	#include "vision/drivers/image_sensor/drv_image_sensor.h"
+13	#include "vision/drivers/isc/drv_isc.h"
+14	
+15	/* Sized to 720p60 (current TC358743 ceiling). Pool lives in .region_nocache
+16	 * (16 MB total); 4×1280×720×3 ≈ 11 MB fits with headroom. Bumping to 1080p
+17	 * would require either growing ram_nocache in ddram.ld or going back to
+18	 * cached + per-frame D-cache invalidate. */
+19	#define ISC_CAP_MAX_W        1280u
+20	#define ISC_CAP_MAX_H        720u
+21	#define ISC_CAP_BPP          3u    /* BYPASS+PACKED32+RMS=1+BPS=FORTY: dense BGR888 3 B/pixel */
+22	/* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
+23	 * before the producer laps. 4 → ~50 ms read window. */
+24	#define ISC_CAP_NUM_BUFFERS  4u
+25	/* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
+26	 * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
+27	 * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps
+28	 * (works in both Gen2 and Gen3 — bands coincide there). Changes with bitrate. */
+29	#define ISC_CAP_CSI_BITRATE  0x0Au
+30	
+31	/* Uncached so CPU readers (detectors, recorder) see ISC DMA writes without
+32	 * cache maintenance. Trade: every read is a DDR fetch — fine for sparse
+33	 * patch sampling, would matter for a full-frame scan. */
+34	static __attribute__((__section__(".region_nocache")))
+35	       __attribute__((__aligned__(32)))
+36	       uint8_t g_framebuffer[ISC_CAP_MAX_W * ISC_CAP_MAX_H * ISC_CAP_BPP * ISC_CAP_NUM_BUFFERS];
+37	
+38	static DRV_CSI_OBJ*    csiObj;
+39	static DRV_CSI2DC_OBJ* csi2dcObj;
+40	static DRV_ISC_OBJ*    iscObj;
+41	
+42	static volatile uint32_t g_frame_count;
+43	static bool              g_running;
+44	
+45	static volatile ISC_Capture_FrameCallback s_frame_cb;
+46	static volatile uintptr_t                 s_frame_ctx;
+47	
+48	static void isc_frame_done(uintptr_t ctx)
+49	{
+50	    /* The MCC ISC driver increments DrvISCObj.frameIndex before invoking
+51	     * this callback (drv_isc.c ISC_Handler), so frameIndex now points at
+52	     * the descriptor hardware is about to write. The just-completed
+53	     * buffer is the previous slot in the descriptor ring. */
+54	    DRV_ISC_OBJ *obj = (DRV_ISC_OBJ *)ctx;
+55	    uint32_t n = obj->dmaDescSize;
+56	    uint32_t completed = (obj->frameIndex == 0u)
+57	                       ? (n - 1u)
+58	                       : (obj->frameIndex - 1u);
+59	    uint32_t addr = (uint32_t)(uintptr_t)g_framebuffer
+60	                  + completed * obj->dma.size;
+61	
+62	    g_frame_count++;
+63	    ISC_Capture_FrameCallback cb = s_frame_cb;
+64	    if (cb != NULL) { cb(g_frame_count, addr, s_frame_ctx); }
+65	}
+66	
+67	void ISC_Capture_SetFrameCallback(ISC_Capture_FrameCallback cb, uintptr_t ctx)
+68	{
+69	    s_frame_ctx = ctx;
+70	    s_frame_cb  = cb;
+71	}
+72	
+73	void ISC_Capture_Initialize(void)
+74	{
+75	    iscObj    = DRV_ISC_Initialize();
+76	    csi2dcObj = DRV_CSI2DC_Initalize();
+77	    csiObj    = DRV_CSI_Initalize();
+78	
+79	    if (iscObj == NULL || csi2dcObj == NULL || csiObj == NULL)
+80	    {
+81	        LOG_ERROR("ISC_Capture: driver init returned NULL\r\n");
+82	        return;
+83	    }
+84	
+85	    /* BYPASS RLP + IMODE=PACKED32 + BPS=FORTY + CSI2DC RMS=1:
+86	     * CSI2DC byte-stream packs the MIPI RGB888 stream per CSI-2
+87	     * Recommended Memory Storage spec (Table 49.27): four BGR pixels
+88	     * across 12 bytes, dense 3 B/pixel BGR888 in memory. ISC PACKED32
+89	     * DMA writes 4 bytes per CSI2DC word (samples-per-row =
+90	     * (width × 3) / 4, COLMAX programmed accordingly). LCDC reads
+91	     * natively in RGB_888_PACKED mode (memory order B, G, R per pixel
+92	     * — Table 44.26). 25% less DDR bandwidth than the ARGB_8888 /
+93	     * BGRX32 path (capture write + display read both shrink) while
+94	     * preserving full RGB888 quality for vision consumers. */
+95	    iscObj->inputFormat           = ISC_INPUT_FORMAT_TYPE;  /* RGB */
+96	    iscObj->inputBits             = DRV_IMAGE_SENSOR_40_BIT; /* BPS=FORTY */
+97	    iscObj->rlpMode               = ISC_RLP_CFG_MODE_BYPASS;
+98	    iscObj->layout                = ISC_LAYOUT_PACKED8;
+99	    iscObj->bayerPattern          = ISC_BAYER_PATTERN_TYPE;
+100	    iscObj->enableMIPI            = ISC_ENABLE_MIPI_INTERFACE;
+101	    iscObj->enableVideoMode       = ISC_ENABLE_VIDEO_MODE;
+102	    iscObj->enableProgressiveMode = ISC_ENABLE_PROGRESSIVE_MODE;
+103	    iscObj->enableScaling         = ISC_ENABLE_SCALING;
+104	    iscObj->dpc.enableDPC         = ISC_ENABLE_DPC;
+105	    iscObj->dpc.enableGDC         = ISC_ENABLE_GDC;
+106	    iscObj->dpc.enableBLC         = ISC_ENABLE_BLC;
+107	    iscObj->cbc.enableCBC         = ISC_ENABLE_BRIGHTNESS_CONTRAST;
+108	    iscObj->whiteBalance.enableWB = ISC_ENABLE_WHITE_BALANCE;
+109	    iscObj->gamma.enableGamma     = ISC_ENABLE_GAMMA;
+110	    iscObj->enableHistogram       = ISC_ENABLE_HISTOGRAM;
+111	    iscObj->dmaDescSize           = (uint8_t)ISC_CAP_NUM_BUFFERS;
+112	    iscObj->dma.callback          = isc_frame_done;
+113	
+114	    /* DRV_CSI_Initalize hardcodes csiBitRate = 0x16; override here. */
+115	    csiObj->csiBitRate = ISC_CAP_CSI_BITRATE;
+116	
+117	    /* TC358743 uses continuous-clock mode (TXOPTIONCNTRL = CONTCLKMODE).
+118	     * CSI2DC must match: MIPIFRN = 0 (free-running). MCC default is gated
+119	     * (false -> MIPIFRN=1); mismatch leaves CSI2DC.GSR.ARSTIP stuck. */
+120	    csi2dcObj->enableMIPIFreeRun = true;
+121	
+122	    /* PA=0 (VPCFGR bit 14): leave video pipe output LSB-aligned. PA=1 is
+123	     * intended for 10/12-bit Bayer sensors being packed onto ISC's 12-bit
+124	     * internal data bus. */
+125	    csi2dcObj->videoPipeAlign = false;
+126	
+127	    LOG_INFO("ISC_Capture: initialized\r\n");
+128	}
+129	
+130	static void diag_dump_rx(const char *tag)
+131	{
+132	    /* Skip the dozen register reads when DEBUG level isn't selected. */
+133	    if ((int)log_get_level() < (int)LOG_LEVEL_DEBUG) { return; }
+134	
+135	    LOG_DEBUG("ISC_Capture diag (%s):\r\n", tag);
+136	    LOG_DEBUG("  CSI_PHY_RX=0x%08lX  STOPSTATE=0x%08lX\r\n",
+137	              (unsigned long)CSI_REGS->CSI_PHY_RX,
+138	              (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
+139	    LOG_DEBUG("  CSI_INT_ST_MAIN=0x%08lX\r\n",
+140	              (unsigned long)CSI_REGS->CSI_INT_ST_MAIN);
+141	    LOG_DEBUG("  CSI_INT_ST  PHY_FATAL=0x%08lX  PKT_FATAL=0x%08lX  FRAME_FATAL=0x%08lX\r\n",
+142	              (unsigned long)CSI_REGS->CSI_INT_ST_PHY_FATAL,
+143	              (unsigned long)CSI_REGS->CSI_INT_ST_PKT_FATAL,
+144	              (unsigned long)CSI_REGS->CSI_INT_ST_FRAME_FATAL);
+145	    LOG_DEBUG("  CSI_INT_ST  PHY=0x%08lX  PKT=0x%08lX\r\n",
+146	              (unsigned long)CSI_REGS->CSI_INT_ST_PHY,
+147	              (unsigned long)CSI_REGS->CSI_INT_ST_PKT);
+148	    LOG_DEBUG("  CSI2DC_GSR=0x%08lX  GISR=0x%08lX  VPISR=0x%08lX\r\n",
+149	              (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
+150	              (unsigned long)CSI2DC_REGS->CSI2DC_GISR,
+151	              (unsigned long)CSI2DC_REGS->CSI2DC_VPISR);
+152	    LOG_DEBUG("  CSI2DC_FNVC0R=0x%08lX  LNVC0R=0x%08lX\r\n",
+153	              (unsigned long)CSI2DC_REGS->CSI2DC_FNVC0R,
+154	              (unsigned long)CSI2DC_REGS->CSI2DC_LNVC0R);
+155	    LOG_DEBUG("  ISC_INTSR=0x%08lX  ISC_DCTRL=0x%08lX  ISC_DCFG=0x%08lX\r\n",
+156	              (unsigned long)ISC_Interrupt_Status(),
+157	              (unsigned long)ISC_REGS->ISC_DCTRL,
+158	              (unsigned long)ISC_REGS->ISC_DCFG);
+159	    LOG_DEBUG("  ISC_RLP_CFG=0x%08lX  ISC_PFE_CFG0=0x%08lX\r\n",
+160	              (unsigned long)ISC_REGS->ISC_RLP_CFG,
+161	              (unsigned long)ISC_REGS->ISC_PFE_CFG0);
+162	    LOG_DEBUG("  CSI2DC_VPCFGR=0x%08lX  CSI2DC_GCFGR=0x%08lX\r\n",
+163	              (unsigned long)CSI2DC_REGS->CSI2DC_VPCFGR,
+164	              (unsigned long)CSI2DC_REGS->CSI2DC_GCFGR);
+165	}
+166	
+167	bool ISC_Capture_Configure(uint32_t width, uint32_t height)
+168	{
+169	    if (g_running) { ISC_Capture_Stop(); }
+170	
+171	    if (width == 0u || height == 0u
+172	        || width > ISC_CAP_MAX_W || height > ISC_CAP_MAX_H)
+173	    {
+174	        LOG_ERROR("ISC_Capture: %lux%lu out of range\r\n",
+175	                  (unsigned long)width, (unsigned long)height);
+176	        return false;
+177	    }
+178	
+179	    uint32_t frame_size = width * height * ISC_CAP_BPP;
+180	
+181	    csiObj->csiFrameWidth  = width;
+182	    csiObj->csiFrameHeight = height;
+183	    csiObj->csiFps         = 60u;
+184	
+185	    /* imageWidth/Height stay in pixel units. With RMS=0 + PACKED32, the
+186	     * ISC per-row sample counter is also in pixel units (1 sample = 1
+187	     * 32-bit word = 1 pixel), so COLMAX = width - 1 programmed below. */
+188	    iscObj->imageWidth   = (uint16_t)width;
+189	    iscObj->imageHeight  = (uint16_t)height;
+190	    iscObj->outputWidth  = (uint16_t)width;
+191	    iscObj->outputHeight = (uint16_t)height;
+192	    iscObj->dma.address0 = (uint32_t)(uintptr_t)g_framebuffer;
+193	    iscObj->dma.size     = frame_size;
+194	
+195	    g_frame_count = 0u;
+196	
+197	    /* Configure order mirrors emirror's working CAMERA_Open:
+198	     * CSI2DC -> CSI -> ISC. RX side must be ready before source
+199	     * transmits, so the D-PHY catches the LP11->HS transition. */
+200	    if (!DRV_CSI2DC_Configure(csi2dcObj))
+201	    {
+202	        LOG_ERROR("ISC_Capture: DRV_CSI2DC_Configure failed\r\n");
+203	        return false;
+204	    }
+205	    if (!DRV_CSI_Configure(csiObj))
+206	    {
+207	        LOG_ERROR("ISC_Capture: DRV_CSI_Configure failed\r\n");
+208	        return false;
+209	    }
+210	    if (DRV_ISC_Configure(iscObj) != 0u)
+211	    {
+212	        LOG_ERROR("ISC_Capture: DRV_ISC_Configure failed\r\n");
+213	        return false;
+214	    }
+215	
+216	    /* Program PFE crop window to the configured image size. The MCC
+217	     * ISC driver defines ISC_PFE_Crop_Area() but never calls it — the
+218	     * PFE_CFG1/2 registers stay at reset value 0, which tells the PFE
+219	     * to expect a 1×1 pixel frame. Setting the crop values alone isn't
+220	     * enough: the Linux mchp-isc driver also sets COLEN+ROWEN in
+221	     * PFE_CFG0 to activate the crop window; without these bits the
+222	     * PFE doesn't properly detect line/frame boundaries and VD never
+223	     * fires. DRV_ISC_Configure does NOT touch these registers, so our
+224	     * writes here persist through to capture start.
+225	     *
+226	     * Note: emirror/libcamera does NOT call DRV_ISC_Configure_DMA
+227	     * separately; DRV_ISC_Configure calls it internally (line 381 of
+228	     * drv_isc.c). A second explicit call would reset DCFG back to the
+229	     * MCC BEATS8 default and clobber our overrides. Don't add one. */
+230	    /* RMS=1 byte-stream + IMODE=PACKED32: each ISC sample is one 32-bit
+231	     * CSI2DC word; the byte stream emits (width × 3) bytes per row =
+232	     * (width × 3 / 4) sample-words. COLMAX is samples-1 in this mode. */
+233	    uint32_t isc_samples_per_row = (width * ISC_CAP_BPP) / 4u;
+234	    ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
+235	                           | ISC_PFE_CFG1_COLMAX(isc_samples_per_row - 1u);
+236	    ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
+237	                           | ISC_PFE_CFG2_ROWMAX((uint32_t)height - 1u);
+238	    ISC_REGS->ISC_PFE_CFG0 |= ISC_PFE_CFG0_COLEN_1 | ISC_PFE_CFG0_ROWEN_1;
+239	
+240	    /* Override ISC DMA config:
+241	     *  - IMODE=PACKED32: each ISC sample = one 32-bit CSI2DC VP word; DMA
+242	     *    writes 4 bytes per sample to DDR. With RMS=1's byte-packed stream
+243	     *    that works out to (width × 3)/4 samples per row × 4 B/sample =
+244	     *    width × 3 bytes per row = dense 3 B/pixel BGR. PACKED8 would only
+245	     *    write 1 byte per sample, dropping 3/4 of the data per scanline.
+246	     *  - YMBSIZE/CMBSIZE=BEATS32: sama7g5's full AXI4 burst size per
+247	     *    Linux mchp-isc driver (MCC default BEATS8 is sama5d2-era). */
+248	    ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED32
+249	                       | ISC_DCFG_YMBSIZE_BEATS32
+250	                       | ISC_DCFG_CMBSIZE_BEATS32;
+251	
+252	    LOG_INFO("ISC_Capture: configured %lux%lu BGR888 packed (%lu bytes/frame)\r\n",
+253	             (unsigned long)width, (unsigned long)height,
+254	             (unsigned long)frame_size);
+255	    return true;
+256	}
+257	
+258	bool ISC_Capture_Start(void)
+259	{
+260	    if (!DRV_ISC_Start_Capture(iscObj))
+261	    {
+262	        LOG_ERROR("ISC_Capture: DRV_ISC_Start_Capture failed\r\n");
+263	        diag_dump_rx("post-fail");
+264	        return false;
+265	    }
+266	
+267	    SYS_INT_SourceEnable(ID_ISC);
+268	    g_running = true;
+269	    LOG_INFO("ISC_Capture: capture started\r\n");
+270	    return true;
+271	}
+272	
+273	void ISC_Capture_Stop(void)
+274	{
+275	    if (!g_running) { return; }
+276	    SYS_INT_SourceDisable(ID_ISC);
+277	    DRV_ISC_Stop_Capture();
+278	    g_running = false;
+279	    LOG_INFO("ISC_Capture: stopped\r\n");
+280	}
+281	
+282	uint32_t ISC_Capture_FrameCount(void)
+283	{
+284	    return g_frame_count;
+285	}
+286	
+287	bool ISC_Capture_IsRunning(void)
+288	{
+289	    return g_running;
+290	}
+291	
+292	uint32_t ISC_Capture_GetBufferAddress(void)
+293	{
+294	    return (uint32_t)(uintptr_t)g_framebuffer;
+295	}
+296	
+297
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:00:01Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:00:05Z)**_
+
+Found it. The per-frame HEO address latch isn't firing, so HEO is stuck on one ring slot while the ISC keeps writing all four — HEO ends up reading a buffer mid-write, which is exactly that clean-but-rolling tear.
+
+The cause: `s_video_bound` is read in the **ISC IRQ** (`heo_frame_latch`) but written in the **video task** (`heo_reconcile`), and I declared it a plain `static bool`. The original `s_display_bound` was `volatile` for precisely this IRQ/task sharing — I dropped the qualifier. Non-volatile lets the compiler make the flag stale across the task/IRQ boundary, so the latch is skipped (and/or the reconcile rebinds every tick). Fix:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:00:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:00:34Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:00:39Z)**_
+
+That's the one-line fix — `s_video_bound` now `volatile`, matching the original `s_display_bound`. With it, the ISC IRQ reliably sees "bound" and re-points HEO to the freshest completed slot every frame (latched at vsync), so HEO no longer sits on a slot the capture engine is actively overwriting.
+
+Why it presented exactly this way: `heo_bind` runs in the video *task*, so the layer got configured correctly (clean image, right window) — but the per-frame address latch lives in the *IRQ*, and with the flag stale there the address was never updated. HEO stuck on the seed slot + ISC cycling all 4 slots through it = a tear line that drifts at the capture/scanout beat → the "rolling, top/bottom swap every couple seconds."
+
+The set-once callback pointers in video.c (`s_frame_latch_cb` etc.) don't need `volatile` — they're written before the video task/IRQ ever run and never change. `s_video_bound` was the only runtime-mutated flag crossing the task→IRQ boundary.
+
+Rebuild + flash — the video should be rock-steady again (and otherwise identical to pre-refactor). If it's still rolling, tell me and I'll instrument the latch, but I'm confident this is it.
+
+---
+
+_**User (2026-07-01 01:02:48Z)**_
+
+no, this isn't it. it's not tearing. The we seem to be not always pointing at the top of a frame buffer. sometimes the draw starts with content halfway down the screen and then half way down the screen draws content from top of screen.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:07:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:07:28Z)**_
+
+That's a much more precise symptom — thank you. A **clean frame with a drifting vertical origin** (not a torn seam) means the HEO scanout base isn't advancing to the freshest completed ring slot: it's stuck/lagging and the panel ends up reading a slot the capture engine is walking through, so the frame's start point wraps. So it's still the per-frame address latch not doing its job — but making a task/IRQ-shared *flag* reliable is the wrong lever. Let me remove the flag from the IRQ path entirely so the latch is unconditional:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:07:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:07:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:08:22Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:08:25Z)**_
+
+Now the reasoning behind this change — and why the flag was the wrong thing to fix: the per-frame latch runs in the ISC IRQ and must re-point HEO to the freshest completed slot on **every** frame. Gating it on `s_video_bound` (written in the video task) made it depend on task/IRQ flag visibility; when the latch is skipped, HEO's scanout base stops advancing and the panel ends up reading a slot the capture engine is walking through → the clean-but-wrapped, drifting frame you described. Making the latch **unconditional** guarantees the base always advances, independent of any flag or task timing (writing the address while HEO is disabled is harmless). `s_video_bound` is now video-task-only, so it's back to a plain bool.
+
+Let me note the bring-up finding in the journal:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:08:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:08:43Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ video.h/.c: reduce to capture producer — remove HEO/BASE/display state; add frame-latch + display-reconcile callback registration; call them from IRQ/reconcile
+- [X] 🌡️ ui_manager: move in heo_bind/unbind + scaler; add video-display state, heo_reconcile/heo_frame_latch cbs, UiManager_VideoShow/Hide; own VIDEO_WIN_* constants; register cbs; show at reveal
+- [X] 🌡️ app.c: drop Video_SetWindow/DisplayShow + VIDEO_WIN_*; keep Video_CaptureEnable
+- [X] 🌡️ Bring-up: fix video rolling — unconditional HEO frame latch (scanout base always advances)
+- [X] 🌡️ journal: record HEO-into-ui_manager refactor + capture/display seam
+- [ ] 🌡️ Phase 2 (after hw verify): modal HEO-off + effective BASE DISCEN (dialog rect) while song-select open; restore on close
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:09:06Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:09:14Z)**_
+
+The change is in. Two things to confirm when you rebuild:
+
+1. **This is different from the volatile tweak.** The latch no longer reads any task/IRQ-shared flag at all — the ISC IRQ now writes HEO's scanout base to the just-completed ring slot every single frame, unconditionally. So if HEO wasn't advancing before (whatever the reason — flag visibility, or the reconcile skipping it), it will now.
+
+2. **If it *still* wraps after this**, then the address the IRQ is handing HEO is itself wrong (not slot-aligned / lagging), not a latch-firing problem — and that's `isc_frame_done`'s `completed`-slot math, which the refactor didn't touch. At that point I'd stop guessing and instrument: stash the last-latched address in a file-scope var and log its offset from `g_framebuffer` base (from the video task, not the IRQ) so we can see exactly which slot HEO is on versus where ISC is writing.
+
+So: please rebuild + flash. If the video is steady → it was the latch, done. If it still wraps → tell me and I'll add that address-offset logging so we get ground truth instead of theories.
+
+One question that would help me either way: **before this whole refactor (the committed `ec47f82` state), was the live video rock-steady?** I've been assuming yes — if it actually had any occasional roll before, that changes where I look.
+
+---
+
+_**User (2026-07-01 01:24:18Z)**_
+
+I'm not describing something right. "Rolling" screen is still the best description I have. and only updating every second or two
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:25:51Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:25:53Z)**_
+
+"Updating every second or two" is the missing piece — that's not a display-latch symptom, that's the **frame content itself refreshing at ~0.5–1 fps**. That means either the ISC is only completing a frame every 1–2 s, or HEO's base is only being re-pointed every 1–2 s. Those are very different causes, and I've been guessing. Let me add a temporary diagnostic so we get the actual numbers instead of theories.
+
+_**Agent (claude-opus-4-8 2026-07-01 01:26:01Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:26:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:26:28Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:26:36Z)**_
+
+Diagnostic added. It logs one line per second to the console/DBGU:
+
+```
+VIDEO diag: cap=<N> fps, HEO latches=<M>/s addr=0x........ bound=<0|1> shown=<0|1>
+```
+
+Rebuild + flash and paste a few of those lines. Here's how to read them — it'll tell us exactly where the problem is:
+
+- **`cap` (ISC frames completed per second)** — if this is ~50–60, capture is healthy; if it's **~1–2, the capture pipeline itself is only producing a frame every 1–2 s** (that would explain "updating every second or two" directly, and it'd be a capture problem, not a display one).
+- **`HEO latches/s`** — should track `cap` (the IRQ re-points HEO once per completed frame). If it's ~0 while `cap` is high, the latch isn't firing.
+- **`addr`** — the buffer HEO was last pointed at. Watch whether it **changes** line-to-line and whether it's a sane framebuffer address.
+- **`bound`/`shown`** — sanity on the display state.
+
+My strong suspects given "updates every 1–2 s":
+1. `cap` is low → capture is slow/stalling (I'll dig into the capture path — though the refactor didn't touch it, the numbers will confirm).
+2. `cap` high but `latches` low → latch still not running (unlikely now that it's unconditional, but we'll see).
+
+Once I see the numbers I can stop guessing and fix the actual cause. Paste the diag lines (and if you have it, whether the video was steady on the committed `ec47f82` build before this refactor).
+
+---
+
+_**User (2026-07-01 01:27:03Z)**_
+
+[{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "'s_diag_latch_count' undeclared (first use in this function)",
+	"source": "cmake",
+	"startLineNumber": 228,
+	"startColumn": 34,
+	"endLineNumber": 228,
+	"endColumn": 34
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c",
+	"owner": "MPLAB CMake",
+	"severity": 8,
+	"message": "'s_diag_last_latch' undeclared (first use in this function); did you mean 'diag_last_latches'?",
+	"source": "cmake",
+	"startLineNumber": 229,
+	"startColumn": 33,
+	"endLineNumber": 229,
+	"endColumn": 33
+},{
+	"resource": "/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c",
+	"owner": "MPLAB CMake",
+	"severity": 2,
+	"message": "each undeclared identifier is reported only once for each function it appears in",
+	"source": "cmake",
+	"startLineNumber": 228,
+	"startColumn": 34,
+	"endLineNumber": 228,
+	"endColumn": 34
+}]
+
+_**User (2026-07-01 01:27:10Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 01:27:24Z)**_
+
+you didn't change anything up to the capture frame buffer, did you?
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:27:39Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:27:42Z)**_
+
+Correct — **I changed nothing in the capture path.** `isc_capture.c` is untouched, and in `video.c` the capture half (capture_arm/disarm, ISC/CSI/TC358743 config, the frame ring, subscribers) is unchanged. Only the HEO *display* side moved out. So the ISC should be filling the framebuffer exactly as before; that's what the `cap` fps number will confirm.
+
+The build error is just ordering — I declared the diag vars below `heo_reconcile` but referenced them inside it. Let me move the declarations up with the other video state:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:27:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:27:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:28:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:28:05Z)**_
+
+Fixed — the diag vars now live with the other video state, above both `heo_reconcile` and `heo_frame_latch`, so both can see them. Rebuild should be clean.
+
+To your question: since capture is untouched, if the diag shows **`cap` ≈ 1–2 fps**, the interesting finding will be that the frame ring isn't advancing at capture rate despite the ISC being unchanged — which would point at something the refactor perturbed indirectly (e.g., timing/starvation), not the capture code itself. If `cap` ≈ 50–60 but the panel still updates every 1–2 s, it's purely on the HEO/display side. Either way the numbers decide it.
+
+Rebuild, flash, and paste a few `VIDEO diag:` lines.
+
+---
+
+_**User (2026-07-01 01:31:21Z)**_
+
+VIDEO diag: cap=61 fps, HEO latches=61/s addr=0x204FD2C0 bound=0 shown=0
+VIDEO diag: cap=61 fps, HEO latches=61/s addr=0x205FA4C0 bound=0 shown=0
+VIDEO diag: cap=61 fps, HEO latches=61/s addr=0x206F76C0 bound=0 shown=0
+VIDEO diag: cap=60 fps, HEO latches=60/s addr=0x206F76C0 bound=0 shown=0
+ART: large: 64 file(s) seen, 64 loaded
+ART: loaded 64 small, 64 large
+CAT: loaded 64 song(s)
+VIDEO diag: cap=23 fps, HEO latches=22/s addr=0x205FA4C0 bound=0 shown=0
+UI: HEO bound src 720x480 -> dst 720x480 @(280,76) 1:1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x205FA4C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x206F76C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x206F76C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x204000C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x204000C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x204000C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x204FD2C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x204FD2C0 bound=1 shown=1
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:33:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:33:06Z)**_
+
+That's the answer in the data: **capture runs at 61 fps until HEO binds (`bound=1`), then collapses to ~0–1 fps.** So enabling HEO scanout is starving/blocking the ISC. The most likely mechanism: the per-frame `XLCDC_SetLayerAddress(..., update=true)` running **in the ISC IRQ** busy-waits for the update to latch once the layer is *enabled* — blocking the IRQ ~a frame each time. Let me check the PLIB.
+
+_**Agent (claude-opus-4-8 2026-07-01 01:33:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect XLCDC_SetLayerAddress for a busy-wait on update
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=default/src/config/default/peripheral/xlcdc/plib_xlcdc.c
+echo "=== XLCDC_SetLayerAddress ==="; grep -n "XLCDC_SetLayerAddress" "$f"
+echo "--- body ---"
+awk '/XLCDC_SetLayerAddress\(/{f=1} f{print} f&&/^\}/{exit}' "$f" | head -60
+```
+
+```text
+=== XLCDC_SetLayerAddress ===
+ugrep: warning: default/src/config/default/peripheral/xlcdc/plib_xlcdc.c: No such file or directory
+--- body ---
+awk: can't open file default/src/config/default/peripheral/xlcdc/plib_xlcdc.c
+ source line number 1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:34:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate and print XLCDC_SetLayerAddress body
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=$(grep -rl "XLCDC_SetLayerAddress" default/src/config/default/ | grep '\.c$' | head -1)
+echo "file: $f"
+awk '/^[a-zA-Z].*XLCDC_SetLayerAddress\(/{f=1} f{print} f&&/^\}/{exit}' "$f"
+```
+
+```text
+file: default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:34:42Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find SetLayerAddress/Enable + update/busy-wait in xlcdc driver
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c
+grep -n "XLCDC_SetLayerAddress\|XLCDC_SetLayerEnable\|UPDATE\|while\|CFGREN\|update" "$f" | grep -iE "SetLayerAddress|SetLayerEnable|while|update|cfgren" | head -40
+```
+
+```text
+115:    volatile LAYER_LOCK_STATUS updateLock;
+158:        drvLayer[arg->id].updateLock = LAYER_LOCK_LOCKED;
+163:    if (drvLayer[arg->id].updateLock != LAYER_LOCK_LOCKED)
+170:        XLCDC_SetLayerAddress(layerOrder[arg->id], (uint32_t)drvLayer[arg->id].baseaddr[0], false);
+175:        XLCDC_SetLayerEnable(layerOrder[arg->id], drvLayer[arg->id].enabled, true);
+177:        drvLayer[arg->id].updateLock = LAYER_LOCK_UNLOCKED;
+298:        drvLayer[layerCount].updateLock = LAYER_LOCK_UNLOCKED;
+301:        XLCDC_SetLayerEnable(layerOrder[layerCount], false, true);
+302:        XLCDC_SetLayerAddress(layerOrder[layerCount], (uint32_t) drvLayer[layerCount].baseaddr[drvLayer[layerCount].frontBufferIdx], false);
+306:        XLCDC_SetLayerEnable(layerOrder[layerCount], drvLayer[layerCount].enabled, true);
+466:                if (drvLayer[i].updateLock != LAYER_LOCK_UNLOCKED)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:34:52Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:34:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find the XLCDC PLIB definition file
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== files defining XLCDC_SetLayerAddress / SetLayerEnable ==="
+grep -rln "void XLCDC_SetLayerAddress\|bool XLCDC_SetLayerAddress\|XLCDC_SetLayerAddress(XLCDC_LAYER" default/src/config/default/ | head
+echo "=== search any def of these functions ==="
+grep -rn "XLCDC_SetLayerAddress(XLCDC_LAYER layer" default/src/config/default/ | head
+grep -rln "LCDC_ATTRE\|_UPDATE\|GETUPDATE\|WHILE.*ATTR\|while.*ATTRE" default/src/config/default/ | grep -i xlcdc | head
+```
+
+```text
+=== files defining XLCDC_SetLayerAddress / SetLayerEnable ===
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
+=== search any def of these functions ===
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:939:bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update)
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h:559:    bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update)
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.h:582:bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:35:06Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c`
+
+```text
+939	bool XLCDC_SetLayerAddress(XLCDC_LAYER layer, uint32_t address, bool update)
+940	{
+941	    switch(layer)
+942	    {
+943	        case XLCDC_LAYER_BASE:
+944	        {
+945	            XLCDC_REGS->LCDC_BASEFBA = (uint32_t)address;
+946	
+947	            break;
+948	        }
+949	
+950	        case XLCDC_LAYER_OVR1:
+951	        {
+952	            XLCDC_REGS->LCDC_OVR1FBA = (uint32_t)address;
+953	
+954	            break;
+955	        }
+956	
+957	        case XLCDC_LAYER_OVR2:
+958	        {
+959	            XLCDC_REGS->LCDC_OVR2FBA = (uint32_t)address;
+960	
+961	            break;
+962	        }
+963	
+964	        case XLCDC_LAYER_HEO:
+965	        {
+966	            XLCDC_REGS->LCDC_HEO[0].LCDC_HEOYFBA = (uint32_t)address;
+967	
+968	            break;
+969	        }
+970	
+971	        default:
+972	            return 1;
+973	    }
+974	
+975	    if(update)
+976	        return XLCDC_UpdateLayerAttributes(layer);
+977	    else
+978	        return 0;
+979	}
+980	
+981	bool XLCDC_UpdateLayerAttributes(XLCDC_LAYER layer)
+982	{
+983	    while(XLCDC_REGS->LCDC_ATTRE);
+984	
+985	    switch(layer)
+986	    {
+987	        case XLCDC_LAYER_BASE:
+988	        {
+989	            /* Update Base Layer Attributes */
+990	            XLCDC_REGS->LCDC_ATTRE = LCDC_ATTRE_BASE_Msk;
+991	            WAIT_ATTRS_EQ(LCDC_ATTRS_SIP_Msk);
+992	
+993	            return 0;
+994	        }
+995	
+996	        case XLCDC_LAYER_OVR1:
+997	        {
+998	            /* Update OVR1 Layer Attributes */
+999	            XLCDC_REGS->LCDC_ATTRE = LCDC_ATTRE_OVR1_Msk;
+1000	            WAIT_ATTRS_EQ(LCDC_ATTRS_SIP_Msk);
+1001	
+1002	            return 0;
+1003	        }
+1004	
+1005	        case XLCDC_LAYER_OVR2:
+1006	        {
+1007	            /* Update OVR2 Layer Attributes */
+1008	            XLCDC_REGS->LCDC_ATTRE = LCDC_ATTRE_OVR2_Msk;
+1009	            WAIT_ATTRS_EQ(LCDC_ATTRS_SIP_Msk);
+1010	
+1011	            return 0;
+1012	        }
+1013
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:35:47Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:35:50Z)**_
+
+Found it. `XLCDC_SetLayerAddress(..., update=true)` calls `XLCDC_UpdateLayerAttributes`, which **busy-waits**: `while(XLCDC_REGS->LCDC_ATTRE);` then `WAIT_ATTRS_EQ(LCDC_ATTRS_SIP_Msk)`. When HEO is *disabled* that resolves instantly (why `bound=0` stayed at 61 fps); when HEO is *enabled and scanning*, the attribute sync only completes at a frame/vsync boundary — so this blocks the **ISC IRQ ~a full frame every frame**, starving capture down to ~1 fps. That's the whole bug.
+
+Let me see the HEO update path + the wait macro to write a non-blocking version:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:35:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c`
+
+```text
+1013	
+1014	        case XLCDC_LAYER_HEO:
+1015	        {
+1016	            /* Update HEO Layer Attributes */
+1017	            XLCDC_REGS->LCDC_ATTRE = LCDC_ATTRE_HEO_Msk;
+1018	            WAIT_ATTRS_EQ(LCDC_ATTRS_SIP_Msk);
+1019	
+1020	            return 0;
+1021	        }
+1022	
+1023	        default:
+1024	            break;
+1025	    }
+1026	    return 1;
+1027	}
+1028	
+1029	bool XLCDC_DisplayHEORGBSurface(XLCDC_HEO_RGB_SURFACE *surface)
+1030	{
+1031	    if (surface->windowSizeX == 0  || surface->windowSizeY == 0  ||
+1032	        surface->imageSizeX == 0  || surface->imageSizeY == 0    ||
+1033	        ((surface->windowStartX + surface->windowSizeX) > 1280) ||
+1034	        ((surface->windowStartY + surface->windowSizeY) > 800) ||
+1035	        surface->imageAddress == NULL)
+1036	    {
+1037	        return 1; // Invalid parameters
+1038	    }
+1039	
+1040	    if (surface->scaleToWindow)
+1041	    {
+1042	        float dx = 0, dy = 0;
+1043	
+1044	        dx = (float)surface->windowSizeX / (float)surface->imageSizeX;
+1045	        dy = (float)surface->windowSizeY / (float)surface->imageSizeY;
+1046	
+1047	        if (dx > 10 || dx < 0.1 || dy > 10 || dy < 0.1)
+1048	        {
+1049	            return 1; // Exceeds 10x scaling
+1050	        }
+1051	    }
+1052
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:36:20Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:36:24Z)**_
+
+That's the root cause, and it explains everything — including why `bound=0` stayed at 61 fps (disabled layer → the sync completes instantly) and why the original refactor "should have been identical" didn't matter: the blocking wait only bites once the layer is actively scanning.
+
+The fix: make the per-frame HEO base update **non-blocking** in the IRQ — write the frame-buffer address and *request* the attribute update, but don't spin waiting for the vsync sync. The hardware latches the new base at the next vsync on its own.
+
+_**Agent (claude-opus-4-8 2026-07-01 01:36:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:36:41Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:36:42Z)**_
+
+Let me correct the journal bring-up note to reflect the real root cause:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:36:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:37:07Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:37:12Z)**_
+
+Done. Rebuild + flash — the diag should now show **`cap` staying ~60 fps with `bound=1`**, and the video should be smooth and live (no wrap, updating at full rate).
+
+Note this blocking-wait was actually latent in the *original* in-`video.c` IRQ latch too (it also called `XLCDC_SetLayerAddress(..., true)` in `on_frame_done`) — so the refactor's diagnostics surfaced a pre-existing bug rather than purely introducing one. The non-blocking update is strictly better.
+
+I left the `VIDEO diag:` logging in so you can confirm the fix. Once you verify `cap` holds ~60 with the video steady, tell me and I'll strip the diagnostic (the two `s_diag_*` vars + the log block) before we commit.
+
+If `cap` still drops with `bound=1` after this, that would mean something else in the enabled-HEO path is stalling the ISC (e.g., DDR QoS/arbitration), and I'd look at the XLCDC/ISC bus priority next — but I expect the non-blocking latch to resolve it.
+
+---
+
+_**User (2026-07-01 01:40:17Z)**_
+
+still same VIDEO diag: cap=61 fps, HEO latches=61/s addr=0x205FA4C0 bound=0 shown=0
+VIDEO diag: cap=61 fps, HEO latches=61/s addr=0x206F76C0 bound=0 shown=0
+VIDEO diag: cap=61 fps, HEO latches=61/s addr=0x204000C0 bound=0 shown=0
+ART: large: 64 file(s) seen, 64 loaded
+ART: loaded 64 small, 64 large
+CAT: loaded 64 song(s)
+VIDEO diag: cap=49 fps, HEO latches=49/s addr=0x204FD2C0 bound=0 shown=0
+UI: HEO bound src 720x480 -> dst 720x480 @(280,76) 1:1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x204FD2C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x204FD2C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x205FA4C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x205FA4C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x206F76C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x206F76C0 bound=1 shown=1
+
+_**User (2026-07-01 01:40:19Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 01:40:25Z)**_
+
+clean build
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:43:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:43:45Z)**_
+
+Still collapsing — so it's **not** the busy-wait, and (since `latches` just tracks `cap`) the ISC frame-completion IRQ itself is only firing ~1×/s once HEO is enabled. Two distinct possibilities remain, and I've been unable to separate them by reasoning:
+
+1. The per-frame HEO update **from inside the ISC IRQ** (the `LCDC_ATTRE` poke) is interfering with the XLCDC — starving/preventing the ISC interrupt.
+2. Enabling HEO scanout starves the ISC DMA/IRQ at the bus/arbitration level, independent of the latch.
+
+Let me isolate them decisively — make the latch a **no-op** so nothing touches HEO from the IRQ. Video will freeze (HEO stuck on one buffer), but the `cap` number tells us which cause it is:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:43:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:43:58Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:44:04Z)**_
+
+Rebuild + flash this and report the `cap` value once `bound=1` (the video itself will be frozen — that's expected for this test):
+
+- **`cap` recovers to ~60** → the per-frame HEO register poke *from the ISC IRQ* is the culprit. Fix: move the address latch out of the ISC IRQ (do it in the XLCDC vblank handler or the video task), so the IRQ stays short and doesn't touch the LCDC while the display engine is mid-cycle.
+- **`cap` still ~1** → HEO scanout itself is starving the ISC at the bus level (DMA arbitration / QoS between the LCDC read and the ISC write). Fix is a QoS/priority change, unrelated to the latch.
+
+Also — this would really help me: on the **pre-refactor build (`ec47f82`)**, was the live video confirmed smooth at full frame rate? My `heo_bind` is register-for-register the old `lcd_bind`, and the old code also poked the HEO address from the ISC IRQ — so if this is cause #2 (or even #1), it was likely present before too and the diagnostics just exposed it. Knowing whether it was ever actually smooth tells me whether to hunt for a regression or treat this as a latent HW-arbitration issue to fix outright.
+
+---
+
+_**User (2026-07-01 01:47:22Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+still same after bind VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x206F76C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x204000C0 bound=1 shown=1
+VIDEO diag: cap=0 fps, HEO latches=0/s addr=0x204000C0 bound=1 shown=1
+VIDEO diag: cap=1 fps, HEO latches=1/s addr=0x204FD2C0 bound=1 shown=1
+
+_**User (2026-07-01 01:47:36Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 01:47:55Z)**_
+
+wait let me try build from before. going to stash. moment...
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:48:19Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:48:27Z)**_
+
+Good call — that's the definitive comparison I need.
+
+The isolation result is conclusive on one point: with the latch no-op'd (nothing touches HEO from the IRQ) it **still** collapses to ~1 fps once HEO is enabled. So it's **not** the per-frame poke or anything in the ISC IRQ path — **HEO scanout itself is starving the ISC** at the DMA/bus level (cause #2). The fix will be QoS/arbitration, not the latch.
+
+The stashed pre-refactor (`ec47f82`) test tells us which way to go:
+- **If it also collapses** → this is a latent HEO↔ISC DDR-arbitration issue, not something my refactor introduced (consistent with `heo_bind` being register-identical to the old `lcd_bind`). I'll fix it as a QoS/priority change and it'll benefit both.
+- **If it's smooth** → my refactor changed *something* despite the register parity — most likely the *timing/order* (old code enabled HEO during the splash, right as capture was arming; mine enables it at reveal after capture has been free-running at 61 fps for seconds). That'd point at a capture-FIFO/arbitration state that only wedges when HEO comes up against already-running capture.
+
+I'll hold — go ahead and test the stashed build. When you're back, tell me whether the video is full-rate there (and if you can, watch for the same collapse). I won't touch anything meanwhile.
+
+---
+
+_**User (2026-07-01 01:51:06Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+looks like we might have broken something a while back...
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 01:51:53Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:51:57Z)**_
+
+That's a big finding — it means my HEO refactor didn't cause this; the HEO-starves-ISC collapse is latent and predates it (consistent with `heo_bind` being register-identical to the old `lcd_bind`). Good — we're now hunting a real pre-existing bug, not a regression.
+
+My changes are stashed, so I'll stay read-only and help you find it. Let me look at the DDR/bus arbitration config and the recent history of the capture/display path.
+
+_**Agent (claude-opus-4-8 2026-07-01 01:52:05Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find DDR/bus QoS + arbitration config
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== QoS / arbitration / priority config (MATRIX, MPDDRC, XLCDC DMA, ISC) ==="
+grep -rniE "qos|priority|prior|arbitration|SCFG|MATRIX|DEFMSTR|SLOT_CYCLE|outstanding|latency" default/src/config/default/ 2>/dev/null | grep -viE "\.h:.*//|acquisition" | grep -iE "qos|matrix|scfg|defmstr|slot_cycle|outstanding|latency|priorit" | head -40
+```
+
+```text
+=== QoS / arbitration / priority config (MATRIX, MPDDRC, XLCDC DMA, ISC) ===
+default/src/config/default/configuration.h:108:#define SYS_FS_PRIORITY                   1
+default/src/config/default/configuration.h:230:#define DRV_SDMMC_PRIORITY_IDX0                           1
+default/src/config/default/driver/input/drv_maxtouch.c:331:	uint8_t matrix_xsize;
+default/src/config/default/driver/input/drv_maxtouch.c:332:	uint8_t matrix_ysize;
+default/src/config/default/driver/input/drv_maxtouch.c:1893:            (unsigned int *)&cfg_info.matrix_xsize, (unsigned int *)&cfg_info.matrix_ysize,
+default/src/config/default/driver/input/drv_maxtouch.c:2881://		col_width = info->matrix_ysize / MXT1386_COLUMNS;
+default/src/config/default/driver/input/drv_maxtouch.c:2885://		col_width = info->matrix_ysize;
+default/src/config/default/driver/input/drv_maxtouch.c:3029://					      info->matrix_ysize *
+default/src/config/default/osal/osal.h:110:    OSAL_CRIT_TYPE_LOW -        Low priority critical section, can be formed
+default/src/config/default/osal/osal.h:112:    OSAL_CRIT_TYPE_HIGH -       High priority critical section, will be formed
+default/src/config/default/osal/osal.h:275:     The highest priority task currently blocked on the semaphore will be released
+default/src/config/default/osal/osal.h:309:    The highest priority task currently blocked on the semaphore will be released
+default/src/config/default/tasks.c:186:        SYS_FS_PRIORITY ,
+default/src/config/default/tasks.c:194:        DRV_SDMMC_PRIORITY_IDX0 ,
+default/src/config/default/FreeRTOSConfig.h:73: * state tasks of equal priority on every tick interrupt.  Set
+default/src/config/default/FreeRTOSConfig.h:93:/* configMAX_PRIORITIES Sets the number of available task priorities.  Tasks can
+default/src/config/default/FreeRTOSConfig.h:94: * be assigned priorities of 0 to (configMAX_PRIORITIES - 1).  Zero is the lowest
+default/src/config/default/FreeRTOSConfig.h:95: * priority. */
+default/src/config/default/FreeRTOSConfig.h:96:#define configMAX_PRIORITIES                    ( 8UL )
+default/src/config/default/FreeRTOSConfig.h:125: * application task if there is an Idle priority (priority 0) application task that
+default/src/config/default/FreeRTOSConfig.h:208:/* configTIMER_TASK_PRIORITY sets the priority used by the timer task.  Only
+default/src/config/default/FreeRTOSConfig.h:210: * task, so its priority is set like any other task.  See
+default/src/config/default/FreeRTOSConfig.h:213:#define configTIMER_TASK_PRIORITY               0
+default/src/config/default/FreeRTOSConfig.h:296:/* Another name for configMAX_SYSCALL_INTERRUPT_PRIORITY - the name used depends
+default/src/config/default/FreeRTOSConfig.h:366:/* configMAX_CO_ROUTINE_PRIORITIES defines the number of priorities available
+default/src/config/default/FreeRTOSConfig.h:368: * priority. Defaults to 0 if left undefined. */
+default/src/config/default/FreeRTOSConfig.h:369:#define configMAX_CO_ROUTINE_PRIORITIES         2
+default/src/config/default/FreeRTOSConfig.h:392:#define INCLUDE_vTaskPrioritySet                1
+default/src/config/default/FreeRTOSConfig.h:393:#define INCLUDE_uxTaskPriorityGet               1
+default/src/config/default/osal/osal_freertos.c:105:    In FreeRTOS only interrupts below configMAX_SYSCALL_INTERRUPT_PRIORITY are
+default/src/config/default/osal/osal_freertos.c:114:      /* LOW priority critical sections just disable the scheduler */
+default/src/config/default/osal/osal_freertos.c:119:      /* HIGH priority critical sections disable interrupts */
+default/src/config/default/osal/osal_freertos.c:177:      /* LOW priority resumes scheduler */
+default/src/config/default/osal/osal_freertos.c:182:      /* HIGH priority renables interrupts */
+default/src/config/default/osal/osal_freertos.c:399:     priority task currently blocked on the semaphore will be released and
+default/src/config/default/osal/osal_freertos.c:443:     priority task currently blocked on the semaphore will be released and
+default/src/config/default/peripheral/gfx2d/plib_gfx2d.h:231:/* GFX2D QOS Cycles
+default/src/config/default/peripheral/gfx2d/plib_gfx2d.h:234:    Defines the QOS Cycles for REGQOSx
+default/src/config/default/peripheral/gfx2d/plib_gfx2d.h:237:    This defines valid REGQOSx values.
+default/src/config/default/peripheral/gfx2d/plib_gfx2d.h:244:    GFX2D_QOS_0_CYCLES = 0,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:52:31Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:52:37Z)**_
+
+The Harmony config has no obvious DDR/matrix QoS knob — on SAM9X75 the master arbitration/DDR QoS is largely set in at91bootstrap, and the LCDC read is inherently high-priority (it must never underflow). So HEO scanout winning the DDR against the ISC write is plausible at the hardware level. One firmware-side lever stands out, though — the ISC DMA burst size. Let me check its history:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:53:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Trace history of ISC DMA burst / capture format changes
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== history of isc_capture.c (capture format / DMA burst) ==="
+git log --oneline -- default/src/video/isc_capture.c | head -20
+echo
+echo "=== when did BEATS32 / PACKED32 / region_nocache land? ==="
+git log --oneline -S "BEATS32" -- default/src/video/isc_capture.c | head
+git log --oneline -S "region_nocache" -- default/src/video/isc_capture.c | head
+git log --oneline -S "ISC_CAP_NUM_BUFFERS" -- default/src/video/isc_capture.c | head
+```
+
+```text
+=== history of isc_capture.c (capture format / DMA burst) ===
+186872f detector: cv_marvin_v1 reference port from detect_video.py
+171749e video: deepen ISC ring from 2 to 4 buffers
+f689f7e video: per-frame buffer routing; multi-subscriber fan-out
+a79042f log: lightweight severity-filtered printf shim; convert callers
+e28c497 video: capture/display intent split, scaler, frame queue subscription
+6b85d5e Extract video pipeline into its own FreeRTOS task module
+
+=== when did BEATS32 / PACKED32 / region_nocache land? ===
+6b85d5e Extract video pipeline into its own FreeRTOS task module
+186872f detector: cv_marvin_v1 reference port from detect_video.py
+6b85d5e Extract video pipeline into its own FreeRTOS task module
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:54:14Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:54:20Z)**_
+
+Right — so the old build shows it too. That reframes this entirely: it's a latent HEO↔ISC coexistence bug from further back, and my refactor just gave it a spotlight (the `VIDEO diag` counters). Since you're on hardware and can bisect, let me hand you the search space and the sharp question.
+
+The video-module history (where HEO display config lives):
+
+```
+171749e video: deepen ISC ring from 2 to 4 buffers
+f689f7e video: per-frame buffer routing; multi-subscriber fan-out
+e28c497 video: capture/display intent split, scaler, frame queue subscription   ← prime suspect
+6b85d5e Extract video pipeline into its own FreeRTOS task module
+```
+
+The isolation test already ruled out the per-frame latch, so the cause is **how HEO is enabled/configured**, not the address updates. `e28c497` is where the manual `lcd_bind` register sequence (scaler + BASE DISCEN + `SetLayerEnable`) was introduced. The key question: **before that commit, how was HEO brought up?** If it went through MCC's `XLCDC_DisplayHEORGBSurface()` (which may set HEO DMA burst/prefetch/QoS fields that `lcd_bind` doesn't), then `lcd_bind` omitting one of those DMA-config fields is exactly the kind of thing that would let HEO's fetch starve the ISC.
+
+Let me check that difference directly — it's the highest-value thing I can do read-only:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:54:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Compare HEO DMA-config fields set by PLIB surface vs lcd_bind
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== HEO DMA/prefetch/burst fields lcd_bind does NOT set (HEOCFG0/1, DMA cfg) ==="
+grep -rnE "HEOCFG0|HEOCFG1|HEOCFG2|LCDC_HEOCFG0|HEO.*DMA|HEO.*BLEN|HEO.*prefetch|DisplayHEORGBSurface" default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c | head -30
+echo
+echo "=== how e28c497 set up HEO (display path) — grep the commit's video display ==="
+git show e28c497 -- default/src/video/video.c 2>/dev/null | grep -nE "^\+|HEO|DisplayHEO|SetLayerEnable|BLEN|BURST|HEOCFG" | grep -E "HEO|DisplayHEO|BLEN|BURST|HEOCFG|SetLayerEnable" | head -30
+```
+
+```text
+=== HEO DMA/prefetch/burst fields lcd_bind does NOT set (HEOCFG0/1, DMA cfg) ===
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:119:/* LCDC_HEOCFG12_SFACTC (Bug Fix) */
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:120:#undef LCDC_HEOCFG12_SFACTC_Pos
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:121:#undef LCDC_HEOCFG12_SFACTC_Msk
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:122:#undef LCDC_HEOCFG12_SFACTC
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:123:#define LCDC_HEOCFG12_SFACTC_Pos              _UINT32_(6)
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:124:#define LCDC_HEOCFG12_SFACTC_Msk              (_UINT32_(0x7) << LCDC_HEOCFG12_SFACTC_Pos)
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:125:#define LCDC_HEOCFG12_SFACTC(value)           (LCDC_HEOCFG12_SFACTC_Msk & (_UINT32_(value) << LCDC_HEOCFG12_SFACTC_Pos))
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:398:    XLCDC_REGS->LCDC_HEOCFG0 = LCDC_HEOCFG0_BLEN(4) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:399:                               LCDC_HEOCFG0_BLENCC(4);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:402:    XLCDC_REGS->LCDC_HEOCFG1 = LCDC_HEOCFG1_CLUTEN(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:403:                               LCDC_HEOCFG1_YCCEN(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:404:                               LCDC_HEOCFG1_GAM(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:405:                               LCDC_HEOCFG1_RGBMODE(3) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:406:                               LCDC_HEOCFG1_CLUTMODE(3) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:407:                               LCDC_HEOCFG1_YCCMODE(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:408:                               LCDC_HEOCFG1_YCC422ROT(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:409:                               LCDC_HEOCFG1_ILD(0);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:412:    XLCDC_REGS->LCDC_HEOCFG2 = LCDC_HEOCFG2_XPOS(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:413:                               LCDC_HEOCFG2_YPOS(0);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:438:    XLCDC_REGS->LCDC_HEOCFG10 = LCDC_HEOCFG10_RKEY(0x00) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:439:                                LCDC_HEOCFG10_GKEY(0x00) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:440:                                LCDC_HEOCFG10_BKEY(0x00);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:443:    XLCDC_REGS->LCDC_HEOCFG11 = LCDC_HEOCFG11_RMASK(0x00) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:444:                                LCDC_HEOCFG11_GMASK(0x00) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:445:                                LCDC_HEOCFG11_BMASK(0x00);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:448:    XLCDC_REGS->LCDC_HEOCFG12 = LCDC_HEOCFG12_DMA(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:449:                                LCDC_HEOCFG12_REP(1) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:450:                                LCDC_HEOCFG12_CRKEY(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:451:                                LCDC_HEOCFG12_DSTKEY(0) |
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:452:                                LCDC_HEOCFG12_VIDPRI(0) |  //OVR2>OVR1>HEO>BASE
+
+=== how e28c497 set up HEO (display path) — grep the commit's video display ===
+10:      Video_DisplayShow / Hide          — HEO-visible intent
+11:      Video_SetWindow(x,y,w,h)          — destination rect; HEO bicubic
+33:    HEO scaler: 12.20 fixed-point factor = (src/dst) << 20, mirrors
+35:    (HEOCFG30/31) for best image quality. Scaler stays disabled when
+91:+/* ─── HEO scaler helper ────────────────────────────────────────────────── */
+93:+/* HEO scaler factor is 12.20 fixed-point, factor = (src / dst) << 20.
+102:-/* Point LCDC HEO at the capture framebuffer at the caller-specified
+103:- * (xpos, ypos) within the 1280x800 panel. HEO (not BASE) because BASE has
+111:- * XLCDC_SetLayerWindowXYSize writes both HEOCFG3 (display size) and
+112:- * HEOCFG4 (source memory size) to the same value, giving 1:1 with the
+121:+/* ─── HEO bind / unbind ────────────────────────────────────────────────── */
+123:+/* Point HEO at the capture buffer at (x, y) sized dst_w × dst_h. If the
+124:+ * destination size matches the source size, the HEO scaler stays at its
+127:+ * for the area HEO covers (§44.6.4.7). */
+144:     XLCDC_SetLayerAddress(XLCDC_LAYER_HEO,
+146:     XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+147:-    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, xpos, ypos, false);
+148:-    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_HEO, src_w, src_h, false);
+150:-    /* §44.6.4.7 — discard BASE DMA in the HEO region. HEO with MCC's
+160:+    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
+162:+    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4) are the same
+166:+    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u)
+167:+                             | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
+168:+    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u)
+169:+                             | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+177:+        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1)
+178:+                                  | LCDC_HEOCFG23_VXSCEN(1)
+179:+                                  | LCDC_HEOCFG23_HXSYEN(1)
+180:+                                  | LCDC_HEOCFG23_HXSCEN(1);
+183:+        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:55:17Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:55:18Z)**_
+
+Important detail: `LCDC_HEOCFG0_BLEN(4)/BLENCC(4)` (the HEO DMA **burst length**) is set by the PLIB, not by `lcd_bind`. Let me confirm whether that runs at boot init (so it's constant) or only via the surface API `lcd_bind` bypasses:
+
+_**Agent (claude-opus-4-8 2026-07-01 01:55:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate HEOCFG0 init context + any matrix/DDR QoS
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c
+echo "=== function containing HEOCFG0 BLEN (line ~398) ==="
+awk 'NR>=340 && NR<=400 && /^[a-zA-Z].*\(/{print NR": "$0}' "$f" | tail -3
+echo "--- ISC DMA priority / SCFG / matrix in bootstrap or config ? ---"
+grep -rniE "SCFG|DEFMSTR|ARBT|MATRIX_|MPDDRC|AXIMX|BURST" default/src/config/default/peripheral 2>/dev/null | head
+echo "--- csiFps / capture rate knob ---"
+grep -rn "csiFps\|csiFrameWidth\|fps" default/src/video/isc_capture.c | head
+```
+
+```text
+=== function containing HEOCFG0 BLEN (line ~398) ===
+395: void XLCDC_SetupHEOLayer(void)
+--- ISC DMA priority / SCFG / matrix in bootstrap or config ? ---
+default/src/config/default/peripheral/sdmmc/plib_sdmmc0.c:603:    /* Configure maximum AHB burst size */
+--- csiFps / capture rate knob ---
+default/src/video/isc_capture.c:22:/* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
+default/src/video/isc_capture.c:181:    csiObj->csiFrameWidth  = width;
+default/src/video/isc_capture.c:183:    csiObj->csiFps         = 60u;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 01:56:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 01:56:12Z)**_
+
+Two useful eliminations from that:
+
+1. **HEO burst is constant** — `LCDC_HEOCFG0_BLEN(4)` is set in `XLCDC_SetupHEOLayer()` at boot init, not by `lcd_bind`/`heo_bind`. So both old and new display paths inherit the same HEO DMA burst. Rules out burst config as the "broke a while back" culprit.
+2. **There's no DDR/AXI-matrix QoS anywhere in the marvin Harmony config.** On SAM9X75 the master arbitration (LCDC vs ISC vs CPU priority into the MPDDRC) lives in **at91bootstrap**, not this repo. The LCDC is inherently a high-priority, must-not-underflow master; when it's enabled it can win the DDR against the ISC write.
+
+That second point matters for your bisect: **if the regression is a QoS/DDR/clock change, it's probably in at91bootstrap or the MCC clock config — git-bisecting the marvin repo won't find it.** And the timing fits — the Curiosity→Curiosity-Hybrid board port and the clock work ([[project_at91bootstrap_variant]], the GCLK bump) are exactly the kind of change that would alter DDR arbitration or bandwidth. I'd look at the at91bootstrap DDR/matrix config history before spending flashes bisecting marvin.
+
+A quick discriminating experiment to confirm it's bandwidth/arbitration (not a config-enable bug) — try either on any build:
+- **Shrink the HEO window** (e.g., `Video_SetWindow(280,76,360,240)` — half-size, ~¼ the HEO scanout bandwidth). If `cap` recovers, it's DDR bandwidth/arbitration.
+- Or **drop `csiFps` 60→30** in `isc_capture.c`. If `cap` climbs toward 30, same conclusion.
+
+If a *tiny* HEO window still collapses the ISC to ~1 fps, then it's not bandwidth — it's something the HEO *enable* does to the ISC path, and I'd look at the ISC error/overflow interrupt handling.
+
+Want me to read the at91bootstrap DDR/matrix QoS config and its git history (I have the path from memory — `~/Projects/microchip/at91bootstrap`)? That's where I'd put money on the root cause.
+
+---
+
+_**User (2026-07-01 02:17:28Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+found it. broke at d07631979720d40b517d784f698acc158bfa9887. video works fine in previous 0314c8fc948a7996d2e08356267b4d14384095bd
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 02:17:38Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:17:38Z)**_
+
+Excellent — a clean bisect. Let me look at exactly what that commit changed:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:17:41Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show the breaking commit stat + message
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== breaking commit ==="
+git show --stat d07631979720d40b517d784f698acc158bfa9887 | head -40
+```
+
+```text
+=== breaking commit ===
+commit d07631979720d40b517d784f698acc158bfa9887
+Author: Greg Mrozek <greg.mrozek@microchip.com>
+Date:   Sat Jun 27 09:31:13 2026 -0500
+
+    marvin: rewrite UI boot — splash module + ui_manager orchestrator, retire loader
+    
+    Untangle ui_manager + loader, which had grown to smear UI sequencing, layer
+    assignment, SD I/O, and the service handoff across both files and the pre-/
+    post-scheduler boundary. Behavior-preserving (confirmed on hardware).
+    
+    - New screens/splash/splash.{c,h}: a self-contained, Legato-independent splash
+      screen that owns its RGBA8888 framebuffer and loads /ui/splash.raw straight
+      into it (opaque-black fallback). No layer choice, no Legato, no backlight.
+    - ui_manager is now the UI orchestrator + compositor: owns the canvas-id /
+      HW-layer constants, a screen registry (add a screen = one row), the boot task,
+      and all layer assignment. bind_canvas() is the one place a canvas meets a
+      layer and pokes the layer's RGBMODE to match it. Boot is two phases run by the
+      boot task: (1) splash load + bind OVR1 + backlight, then fire a splash-shown
+      callback; (2) guarded build of the Legato screens (one at a time through layer
+      0, detaching each), bind dashboard to BASE, paint behind the splash, then
+      reveal after the hold and hand the nav OVR1.
+    - Screens never own a hardware layer: screen_nav drops the hardcoded
+      gfxcSetLayer(.., HW_OVR1) and local layer/canvas defines; Navigation_OnShow is
+      a layer-agnostic host hook using CANVAS_NAV from ui_manager.h.
+    - Services start at splash-shown (app_on_splash_shown → App_StartServices +
+      camera), in parallel with screen painting, so the system is warm at reveal.
+      Loader_Start dropped from APP_Initialize; loader.{c,h} deleted.
+    - Post-scheduler scene-graph edits are guarded by suspending LEGATO_Tasks +
+      SYS_INPUT_Tasks (safe: Legato is idle with no roots attached at that point).
+    
+    Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+
+ firmware/marvin/cmake/marvin/default/user.cmake    |   2 +-
+ firmware/marvin/default/src/app.c                  |  53 +--
+ firmware/marvin/default/src/ui/loader.c            | 207 ------------
+ firmware/marvin/default/src/ui/loader.h            |  22 --
+ .../marvin/default/src/ui/screens/nav/screen_nav.c |  54 ++--
+ .../marvin/default/src/ui/screens/splash/splash.c  |  94 ++++++
+ .../marvin/default/src/ui/screens/splash/splash.h  |  33 ++
+ firmware/marvin/default/src/ui/ui_manager.c        | 359 +++++++++++++--------
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:18:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:18:46Z)**_
+
+The bisect landed on `d0763197` — the "rewrite UI boot: splash module + ui_manager orchestrator, retire loader" commit, marked *behavior-preserving* but evidently not for HEO+capture. Notably it doesn't touch `video.c`/`isc_capture.c`/clocks — so it's a sequencing or layer/splash change. Let me diff exactly what it altered in the display/boot path:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:22:31Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Compare splash vs loader layer/video setup
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== splash.c (new file in the breaking commit) — layer setup ==="
+git show d07631979720d40b517d784f698acc158bfa9887:firmware/marvin/default/src/ui/screens/splash/splash.c 2>/dev/null | grep -nE "OVR|BASE|HEO|SetLayer|ColorMode|Enable|RGBA|Window|Stride|1280|800|region" | head -40
+echo
+echo "=== what did the OLD loader do for layers/video (0314c8fc)? ==="
+git show 0314c8fc948a7996d2e08356267b4d14384095bd:firmware/marvin/default/src/ui/loader.c 2>/dev/null | grep -nE "OVR|BASE|HEO|SetLayer|ColorMode|Enable|Video_|DisplayShow|Window|region|Backlight|backlight" | head -40
+```
+
+```text
+=== splash.c (new file in the breaking commit) — layer setup ===
+12:#include "ui/ui_manager.h"          /* CANVAS_SPLASH, BASE_W, BASE_H */
+17:/* Fallback fill: opaque black. The canvas is RGBA_8888 (packs 0xRRGGBBAA), so a
+25:static uint32_t s_fb[BASE_W * BASE_H]
+26:    __attribute__((section(".region_nocache"), aligned(32)));
+30:    gfxcSetPixelBuffer(CANVAS_SPLASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGBA_8888, s_fb);
+40:    for (uint32_t i = 0u; i < (BASE_W * BASE_H); i++) { s_fb[i] = SPLASH_FILL; }
+
+=== what did the OLD loader do for layers/video (0314c8fc)? ===
+45:/* Read the raw splash file straight into the OVR2 canvas buffer `dst` (capacity
+46: * `cap` bytes — the buffer OVR2 scans out). The file is raw RGBA8888 in the
+146:    /* UiManager_Initialize set up the splash canvas (OVR2, pre-filled solid) and
+148:     * read the raw splash straight into the OVR2 buffer, light the panel, then
+152:    /* Mount the card and read the raw splash directly into the OVR2 canvas buffer
+167:    /* The splash is a raw framebuffer OVR2 scans out directly — no render to wait
+169:    UiManager_EnableBacklight();
+195:     * reconciles, so the order relative to Video_Initialize above is benign. */
+196:    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+197:    Video_CaptureEnable();
+198:    Video_DisplayShow();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:23:04Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:23:08Z)**_
+
+Big clue: the splash **moved from OVR2 to OVR1** in that rewrite (old loader: "splash straight into the OVR2 canvas… OVR2 scans out directly"; new: `SPLASH_HW_LAYER = HW_OVR1`). But steady-state after reveal should be the same, so let me see the layer *enable* sequence the 359-line `ui_manager` rewrite introduced — that's where a stale-enabled layer or a changed BASE/OVR config would hide:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:23:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Dump layer-enable/config in the breaking ui_manager
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== NEW ui_manager (d0763197): every layer enable/RGBMODE/DISCEN ==="
+git show d07631979720d40b517d784f698acc158bfa9887:firmware/marvin/default/src/ui/ui_manager.c 2>/dev/null | grep -nE "SetLayerEnable|SetLayerRGBColorMode|RGBMODE|DISCEN|bind_canvas|BASECFG|HEO|OVR|SetLayerAddress|gfxcShow|gfxcHide" | head -50
+```
+
+```text
+=== NEW ui_manager (d0763197): every layer enable/RGBMODE/DISCEN ===
+27: * canvas is hidden, so layer binds always precede gfxcShowCanvas.
+94:        case HW_OVR2: return XLCDC_LAYER_OVR2;
+95:        case HW_OVR1:
+96:        default:      return XLCDC_LAYER_OVR1;
+101: * never writes RGBMODE itself, so we poke the layer's colour mode to match the
+104:static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode, bool show)
+107:    if (show) { gfxcShowCanvas(canvas); }
+109:    XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
+202:    bind_canvas(Splash_CanvasId(), SPLASH_HW_LAYER, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+221:     * shares OVR1 with the splash, so it takes OVR1 only after the splash vacates
+223:    bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+232:    /* REVEAL — cut over to the (painted) dashboard, then give the nav OVR1. */
+233:    gfxcHideCanvas(Splash_CanvasId());
+235:    bind_canvas(CANVAS_NAV, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, false);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:24:17Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:24:19Z)**_
+
+The reveal only does `gfxcHideCanvas(splash)` + binds nav to OVR1 (hidden) — steady-state is BASE+HEO, same as before, so it's not a stale layer. The 359-line `ui_manager` rewrite + the app.c reordering is where the real change is. Let me read the app.c diff (video bring-up ordering) and the splash's memory footprint:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:24:40Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show app.c changes in the breaking commit
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== app.c diff in the breaking commit (video/backlight/ordering) ==="
+git show d07631979720d40b517d784f698acc158bfa9887 -- firmware/marvin/default/src/app.c 2>/dev/null | sed -n '1,120p' | grep -E "^[-+@]" | grep -vE "^[-+]\s*\*|^[-+]\s*//" | head -60
+```
+
+```text
+=== app.c diff in the breaking commit (video/backlight/ordering) ===
+--- a/firmware/marvin/default/src/app.c
++++ b/firmware/marvin/default/src/app.c
+@@ -42,7 +42,6 @@
+-#include "ui/loader.h"
+@@ -85,6 +84,26 @@ APP_DATA appData;
++/* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
++#define VIDEO_WIN_X   280u
++#define VIDEO_WIN_Y    76u
++#define VIDEO_WIN_W   720u
++#define VIDEO_WIN_H   480u
++
++/* Fired by the UI boot task the instant the splash is on screen (registered via
++static void app_on_splash_shown(void)
++{
++    App_StartServices();
++    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
++    Video_CaptureEnable();
++    Video_DisplayShow();
++}
++
+@@ -109,11 +128,12 @@ void APP_Initialize ( void )
+-    /* UI manager: owns the canvas surface pool + LCDC layer mapping and screen
++    /* UI manager: the UI orchestrator + compositor. Assigns the per-screen canvas
++    UiManager_SetSplashShownCallback(app_on_splash_shown);
+@@ -121,8 +141,8 @@ void APP_Initialize ( void )
+-    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC
++    /* SD-card storage: sets up mount state only (no I/O here — the SDMMC driver
+@@ -136,18 +156,11 @@ void APP_Initialize ( void )
+-    /* Boot loader task: mounts the SD card, paints the splash image, lights the
+-    Loader_Start();
++    /* The video pipeline, detector, actuator links, gameplay observer, console,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:25:25Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:25:30Z)**_
+
+app.c is just the same three video calls moved into the splash-shown callback — steady-state identical. The difference is buried in the 359-line `ui_manager` rewrite. Let me diff the *old* ui_manager's layer/reveal handling against the new one to find the concrete change:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:25:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Dump OLD ui_manager layer config for comparison
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== OLD ui_manager (0314c8fc) — layer/RGBMODE/DISCEN/enable/reveal ==="
+git show 0314c8fc948a7996d2e08356267b4d14384095bd:firmware/marvin/default/src/ui/ui_manager.c 2>/dev/null | grep -nE "SetLayerEnable|SetLayerRGBColorMode|RGBMODE|DISCEN|BASECFG|HEO|OVR|SetLayer|gfxcShow|gfxcHide|SetPixelBuffer|COLOR_MODE|region|EnableBacklight" | head -50
+```
+
+```text
+=== OLD ui_manager (0314c8fc) — layer/RGBMODE/DISCEN/enable/reveal ===
+6:#include "definitions.h"   /* XLCDC_SetLayerRGBColorMode, AC69T88A_BACKLIGHT_EN_Set */
+14: * (the CANVAS_* ids below — gfxcSetPixelBuffer assigns each one's buffer).
+17: * with gfxcSetLayer(canvasId, hwLayer), so a canvas id is unrelated to a hw
+24: *   CANVAS_NAV       OVR1                     RGB565   (owned by ui/nav)
+25: *   CANVAS_SPLASH    OVR2 (topmost)           RGBA8888
+27: * The splash binds to the topmost overlay (OVR2) so it covers the dashboard
+33:/* LCDC hardware-layer indices (drvLayer/layerOrder): BASE 0, HEO 1, OVR1 2,
+34: * OVR2 3. HEO is the live camera (off-limits). */
+36:#define HW_OVR2   3u
+45:#define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
+59:    gfxcSetPixelBuffer(CANVAS_DASH,   BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565,   s_fb_base);
+60:    gfxcSetPixelBuffer(CANVAS_SPLASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGBA_8888, s_fb_splash);
+72:     * (s_fb_splash), which OVR2 scans out directly — so there's no widget, no
+74:     * ~1.5 s). We only set the canvas up and bind it to OVR2 here; the MGS Splash
+79:    gfxcSetLayer(CANVAS_SPLASH, HW_OVR2);
+80:    gfxcShowCanvas(CANVAS_SPLASH);
+83:    /* Commit the OVR2 hardware color mode to 32bpp. The GFX-XLCDC driver's canvas
+84:     * commit path (drv_gfx_xlcdc.c SET_LAYER_UNLOCK) never writes RGBMODE — it
+85:     * assumes every layer is the project framebuffer format (RGB565) — so OVR2
+87:     * driver never rewrites RGBMODE, so it sticks (same poke video.c uses for HEO). */
+88:    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+93:     * canvas 1 (bound to OVR1). They paint behind the OVR2 splash. */
+97:    screenShow_Navigation();   /* Navigation_OnShow re-hosts nav → OVR1 */
+102:     * trees are fully built and their canvases bound (BASE / OVR1); the loader
+104:     * so they paint behind the opaque OVR2 splash while it's held. Detaching here
+127:/* The splash canvas's pixel buffer (OVR2 scanout). The loader reads splash.raw
+136:/* Re-latch the splash canvas after the loader writes new pixels into it, so OVR2
+145: * OVR2 uncovers it instantly. Called by the loader once the dashboard is painted.
+147: * the input pick path to detach — just hide the canvas, freeing OVR2 for the
+151:    gfxcHideCanvas(CANVAS_SPLASH);
+156: * (AC69T88A_BACKLIGHT_EN / PC18), NOT the LCDC PWM that XLCDC_EnableBacklight()
+162:void UiManager_EnableBacklight(void)
+174:    gfxcSetLayer(CANVAS_DASH, HW_BASE);
+175:    gfxcShowCanvas(CANVAS_DASH);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:27:41Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:27:47Z)**_
+
+The bisected commit is **C-code only** — it doesn't touch `video.c`, `isc_capture.c`, clocks, DDR, or the matrix. And steady-state layering is identical (BASE + HEO). The visible deltas so far: **splash moved OVR2→OVR1**, backlight **GPIO→PWM**, and `bind_canvas` now pokes RGBMODE + `gfxcCanvasUpdate` per layer, plus **services now start in parallel with screen painting**. Let me read the actual code diff to pin the exact change rather than keep hypothesizing:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:30:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read the code-only ui_manager diff across the break
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== code-only diff of ui_manager.c across the break (non-comment +/- lines) ==="
+git diff 0314c8fc948a7996d2e08356267b4d14384095bd d07631979720d40b517d784f698acc158bfa9887 -- firmware/marvin/default/src/ui/ui_manager.c 2>/dev/null \
+ | grep -E "^[-+]" | grep -vE "^[-+]{3}" | grep -vE "^[-+]\s*(\*|/\*|//)" | grep -vE "^[-+]\s*$" | head -80
+```
+
+```text
+=== code-only diff of ui_manager.c across the break (non-comment +/- lines) ===
++#include "ui/screens/splash/splash.h"
++#include <stdbool.h>
+-#include "definitions.h"   /* XLCDC_SetLayerRGBColorMode, AC69T88A_BACKLIGHT_EN_Set */
++#include "FreeRTOS.h"
++#include "task.h"
++#include "definitions.h"   /* XLCDC_*, AC69T88A_BACKLIGHT_EN_Set */
++#include "log.h"
+-#include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"
++#include "gfx/legato/generated/screen/le_gen_screen_Dashboard.h"   /* screenInit/GetRoot/OnShow */
++#include "gfx/legato/renderer/legato_renderer.h"                   /* leRenderer_IsIdle */
+-#define CANVAS_DASH    0u
+-#define CANVAS_NAV     1u
+-#define CANVAS_SPLASH  2u
+-#define HW_BASE   0u
+-#define HW_OVR2   3u
++#define SPLASH_MIN_MS   5000u   /* hold the splash at least this long */
+-#define BASE_W   1280u
+-#define BASE_H    800u
++#define RENDER_POLL_MS            5u
++#define RENDER_IDLE_STABLE_MS   120u
++#define RENDER_IDLE_TIMEOUT_MS 8000u
+-#define SPLASH_FILL   0x000000FFu
++#define BOOT_TASK_STACK_WORDS  2048u
++#define BOOT_TASK_PRIORITY        2u   /* UI band; blocks on SD I/O + the render wait */
+-static uint32_t FB_NOCACHE s_fb_splash[BASE_W * BASE_H];
+-void UiManager_Initialize(void)
++static void (*s_splash_shown_cb)(void);
++static StackType_t  s_boot_stack[BOOT_TASK_STACK_WORDS];
++static StaticTask_t s_boot_tcb;
++typedef struct
+-    gfxcSetPixelBuffer(CANVAS_DASH,   BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565,   s_fb_base);
+-    gfxcSetPixelBuffer(CANVAS_SPLASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGBA_8888, s_fb_splash);
+-    Nav_InitSurface();
++    leResult  (*init)(void);
++    leWidget *(*get_root)(uint32_t);
++    void      (*host)(void);
++    uint32_t  canvas;
++} ui_screen_t;
+-    GFX_CANVAS_Task();
++typedef enum { UI_SCREEN_DASHBOARD = 0, UI_SCREEN_NAV, UI_SCREEN_COUNT } ui_screen_id;
+-    leSetStringTable(&stringTable);
+-    initializeStrings();
++static const ui_screen_t s_screens[UI_SCREEN_COUNT] =
++{
++    [UI_SCREEN_DASHBOARD] = { screenInit_Dashboard,  screenGetRoot_Dashboard,  Dashboard_OnShow,  CANVAS_DASH },
++    [UI_SCREEN_NAV]       = { screenInit_Navigation, screenGetRoot_Navigation, Navigation_OnShow, CANVAS_NAV  },
++};
+-    for (uint32_t i = 0u; i < (BASE_W * BASE_H); i++) { s_fb_splash[i] = SPLASH_FILL; }
+-    gfxcSetWindowPosition(CANVAS_SPLASH, 0, 0);
+-    gfxcSetWindowSize(CANVAS_SPLASH, BASE_W, BASE_H);
+-    gfxcSetLayer(CANVAS_SPLASH, HW_OVR2);
+-    gfxcShowCanvas(CANVAS_SPLASH);
+-    gfxcCanvasUpdate(CANVAS_SPLASH);
+-    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+-    screenInit_Dashboard();
+-    screenShow_Dashboard();    /* Dashboard_OnShow binds canvas 0 to BASE */
+-    screenInit_Navigation();
+-    screenShow_Navigation();   /* Navigation_OnShow re-hosts nav → OVR1 */
+-    leRemoveRootWidget(screenGetRoot_Dashboard(0),  CANVAS_DASH);
+-    leRemoveRootWidget(screenGetRoot_Navigation(0), CANVAS_NAV);
++static XLCDC_LAYER xlcdc_layer(uint32_t hw)
++{
++    switch (hw)
++    {
++        case HW_BASE: return XLCDC_LAYER_BASE;
++        case HW_OVR2: return XLCDC_LAYER_OVR2;
++        case HW_OVR1:
++        default:      return XLCDC_LAYER_OVR1;
++    }
+-void UiManager_AttachMainScreens(void)
++static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode, bool show)
+-    leWidget *dash = screenGetRoot_Dashboard(0);
+-    leAddRootWidget(dash, CANVAS_DASH);
+-    dash->fn->invalidate(dash);
++    gfxcSetLayer(canvas, hw);
++    if (show) { gfxcShowCanvas(canvas); }
++    gfxcCanvasUpdate(canvas);
++    XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
++}
+-    leWidget *nav = screenGetRoot_Navigation(0);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:31:16Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:31:24Z)**_
+
+I've confirmed the shape of it: `d0763197` is a **C-only boot rewrite** — no changes to `video.c`, `isc_capture.c`, clocks, DDR, or the AXI matrix, and the **steady-state layering is identical** (BASE + HEO; splash disabled at reveal either way). So this isn't a static register/config delta I can point to a single line on — it's a *runtime* difference from the restructure. The real changes that could plausibly reach the HEO↔ISC bus behavior:
+
+1. **Splash moved OVR2 → OVR1.**
+2. **The GFX-canvas compositor is now engaged for layer management** (`bind_canvas` → `gfxcSetLayer`/`gfxcShowCanvas`/`gfxcCanvasUpdate`). The old path built screens and detached them; the new one drives the canvas driver's per-vblank layer-commit machinery — whose `XLCDC_UpdateLayerAttributes` does a `while(LCDC_ATTRE)` busy-wait. If that vblank commit now runs every frame with HEO active, it can serialize against / starve the ISC IRQ.
+3. **Services + video now start in parallel with the screen-painting burst** (old loader was more sequential).
+
+Since it's not a bandwidth/clock change, I lean toward #2 (compositor now actively committing layers each vblank, colliding with HEO) over raw DDR arbitration.
+
+Two cheap hardware experiments to localize it — I can implement whichever you prefer:
+
+- **Splash → OVR2** (revert `SPLASH_HW_LAYER` to `HW_OVR2`) on the current build. If capture recovers, it's the OVR1/splash-layer path.
+- **Shrink the HEO window** (`720×480 → 360×240`). If `cap` recovers, it's DDR bandwidth/arbitration after all (would reopen the clock/at91bootstrap angle).
+
+Given you've got it bisected to one commit, the surgical next step is to diff the *runtime* behavior — want me to dig into the GFX-canvas vblank/`updateLock` handler in `drv_gfx_xlcdc.c` (my #2 suspect), or set up one of those two experiments? My changes are still stashed, so tell me which build you want them on.
+
+---
+
+_**User (2026-07-01 02:33:28Z)**_
+
+#2 sounds most likely. but splash back to ovr2 seems a trivial test worth trying.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 02:33:51Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:33:54Z)**_
+
+Good plan — do the trivial test while I dig into #2. Let me check the current tree state first (you've been checking out commits + stashing), then make the one-line splash→OVR2 change:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:33:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check git state and splash layer definition
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== branch/HEAD + stash ==="; git status --short --branch | head -5; git stash list | head
+echo "=== current SPLASH_HW_LAYER def ==="; grep -rn "SPLASH_HW_LAYER\|define HW_OVR" firmware/marvin/default/src/ui/ui_manager.h
+```
+
+```text
+=== branch/HEAD + stash ===
+## gui
+ M .specstory/history/2026-06-30_14-33-31Z-added-album-art-to.md
+ M .specstory/statistics.json
+ M firmware/marvin/default/src/app.c
+ M firmware/marvin/default/src/ui/ui_manager.c
+=== current SPLASH_HW_LAYER def ===
+firmware/marvin/default/src/ui/ui_manager.h:29:#define HW_OVR1   2u
+firmware/marvin/default/src/ui/ui_manager.h:30:#define HW_OVR2   3u
+firmware/marvin/default/src/ui/ui_manager.h:38:#define SPLASH_HW_LAYER   HW_OVR1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:34:45Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:34:45Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.h`
+
+```text
+33	#define BASE_H    800u
+34	
+35	/* Hardware layer the boot splash is shown on. OVR1 (above BASE so it covers the
+36	 * dashboard); OVR2 is left free for an overlay drawn over the splash, e.g. a
+37	 * loading bar. */
+38	#define SPLASH_HW_LAYER   HW_OVR1
+39	
+40	/* Bring up the UI. Call once from APP_Initialize, before the scheduler and after
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:34:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:35:06Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:35:08Z)**_
+
+Test toggle set (splash→OVR2, clearly marked). Now let me dig into #2 — the GFX-canvas driver's per-vblank layer commit, where the `XLCDC_UpdateLayerAttributes` busy-wait lives:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:35:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c`
+
+```text
+140	}
+141	
+142	/* Process the Layer IOCTL Subset */
+143	static gfxDriverIOCTLResponse DRV_XLCDC_LayerConfig(gfxDriverIOCTLRequest request,
+144	                                                  gfxIOCTLArg_LayerArg *arg)
+145	{
+146	    gfxIOCTLArg_LayerValue *layerVal;
+147	    gfxIOCTLArg_LayerPosition *layerPos;
+148	    gfxIOCTLArg_LayerSize *layerSize;
+149	
+150	    if (arg->id >= XLCDC_TOT_LAYERS)
+151	    {
+152	        return GFX_IOCTL_ERROR_UNKNOWN;
+153	
+154	    }
+155	
+156	    if (request == GFX_IOCTL_SET_LAYER_LOCK)
+157	    {
+158	        drvLayer[arg->id].updateLock = LAYER_LOCK_LOCKED;
+159	
+160	        return GFX_IOCTL_OK;
+161	    }
+162	
+163	    if (drvLayer[arg->id].updateLock != LAYER_LOCK_LOCKED)
+164	    {
+165	        return GFX_IOCTL_ERROR_UNKNOWN;
+166	    }
+167	
+168	    if (request == GFX_IOCTL_SET_LAYER_UNLOCK)
+169	    {
+170	        XLCDC_SetLayerAddress(layerOrder[arg->id], (uint32_t)drvLayer[arg->id].baseaddr[0], false);
+171	        XLCDC_SetLayerOpts(layerOrder[arg->id], drvLayer[arg->id].alpha, true, false);
+172	        XLCDC_SetLayerWindowXYPos(layerOrder[arg->id], drvLayer[arg->id].startx, drvLayer[arg->id].starty, false);
+173	        XLCDC_SetLayerWindowXYSize(layerOrder[arg->id], drvLayer[arg->id].sizex, drvLayer[arg->id].sizey, false);
+174	        XLCDC_SetLayerXStride(layerOrder[arg->id], FB_TYPE_SZ * (drvLayer[arg->id].resx - drvLayer[arg->id].sizex), false);
+175	        XLCDC_SetLayerEnable(layerOrder[arg->id], drvLayer[arg->id].enabled, true);
+176	
+177	        drvLayer[arg->id].updateLock = LAYER_LOCK_UNLOCKED;
+178	
+179	        return GFX_IOCTL_OK;
+180	    }
+181	
+182	    switch (request)
+183	    {
+184	        case GFX_IOCTL_SET_LAYER_ALPHA:
+185	        {
+186	            layerVal = (gfxIOCTLArg_LayerValue *)arg;
+187	
+188	            drvLayer[arg->id].alpha = layerVal->value.v_uint;
+189	
+190	            return GFX_IOCTL_OK;
+191	        }
+192	
+193	        case GFX_IOCTL_SET_LAYER_SIZE:
+194	        {
+195	            layerSize = (gfxIOCTLArg_LayerSize *)arg;
+196	
+197	            drvLayer[arg->id].resx = layerSize->width;
+198	            drvLayer[arg->id].resy = layerSize->height;
+199
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:35:30Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:35:31Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/drv_gfx_xlcdc.c`
+
+```text
+445	
+446	        case GFX_IOCTL_SET_PALETTE:
+447	        {
+448	            return GFX_IOCTL_UNSUPPORTED;
+449	        }
+450	
+451	        case GFX_IOCTL_SET_VBLANK_SYNC:
+452	        {
+453	            vblankSync = ((gfxIOCTLArg_Value *)arg)->value.v_bool;
+454	
+455	            return GFX_IOCTL_OK;
+456	        }
+457	
+458	        case GFX_IOCTL_GET_STATUS:
+459	        {
+460	            val = (gfxIOCTLArg_Value *)arg;
+461	            val->value.v_uint = 0;
+462	            unsigned int i;
+463	
+464	            for (i = 0; i < XLCDC_TOT_LAYERS; i++)
+465	            {
+466	                if (drvLayer[i].updateLock != LAYER_LOCK_UNLOCKED)
+467	                {
+468	                    val->value.v_uint = 1;
+469	
+470	                    break;
+471	                }
+472	            }
+473	
+474	            return GFX_IOCTL_OK;
+475	        }
+476	
+477	        default:
+478	        {
+479	            if (request >= GFX_IOCTL_LAYER_REQ_START &&
+480	                request <= GFX_IOCTL_LAYER_REQ_END)
+481	            {
+482	                return DRV_XLCDC_LayerConfig(request, (gfxIOCTLArg_LayerArg *)arg);
+483	            }
+484	                break;
+485	        }
+486	    }
+487	
+488	    return GFX_IOCTL_UNSUPPORTED;
+489	}
+490
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:35:50Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:36:01Z)**_
+
+Splash→OVR2 test is set — one line in [ui_manager.h:38](firmware/marvin/default/src/ui/ui_manager.h#L38), marked as a test (matches the pre-`d0763197` working layer). Build + flash and check whether `cap` holds ~60 with `bound=1`.
+
+On #2, here's the concrete mechanism I found so you know what we're testing against: the GFX-canvas driver commits a layer via `GFX_IOCTL_SET_LAYER_UNLOCK` → `XLCDC_SetLayerEnable(..., update=true)` → `XLCDC_UpdateLayerAttributes`, which **busy-waits** (`while(LCDC_ATTRE)` + `WAIT_ATTRS_EQ(SIP)`). That wait resolves at a vsync boundary while the display is scanning. It's per-*commit*, not per-vblank — so the damage depends on how often the canvas driver commits layers once the compositor is engaged. If the new boot path leaves a canvas committing every frame (or the dashboard/Legato repaints continuously), each commit stalls ~a frame at ISR/thread level, which lines up with the ISC starvation. The old loader path detached the screens and didn't drive that commit machinery the same way.
+
+So the two tests discriminate cleanly:
+- **splash→OVR2 recovers `cap`** → it's the OVR1/splash path specifically (simplest fix: keep splash off OVR1).
+- **splash→OVR2 doesn't help** → it's the compositor's per-commit `SetLayerEnable(update=true)` busy-wait interacting with HEO; the fix is to stop that commit from busy-waiting while the display is live (or to quiesce the continuous canvas commits).
+
+One heads-up: `git status` shows the working tree is mid-surgery (`M app.c`, `M ui_manager.c`, and now my `ui_manager.h` test line) — so make sure the build you flash is the one you intend. Tell me the `cap` result and I'll take it from there.
+
+---
+
+_**User (2026-07-01 02:36:17Z)**_
+
+same after ovr2 change.
+
+_**User (2026-07-01 02:37:34Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 02:50:09Z)**_
+
+continue
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 02:51:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:51:10Z)**_
+
+splash→OVR2 didn't help — so it's not the splash/OVR1 path. That points squarely at #2 (the compositor's runtime behavior), and rules out the trivial explanations. But note: both `0314c8fc` and `d0763197` use the GFX-canvas compositor, so the regression isn't the compositor *existing* — it's something `d0763197` changed about how often/when it commits layers (each commit does the `SetLayerEnable(update=true)` busy-wait).
+
+Let me nail down the mechanism and set up the definitive discriminator. First, where the per-frame commit runs and where the video window is set in the current tree:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:51:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find per-frame canvas commit driver + current video window setup
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== who calls GFX_CANVAS_Task (per-frame commit driver)? ==="
+grep -rn "GFX_CANVAS_Task" default/src --include='*.c' | grep -v "config/default/gfx/canvas/gfx_canvas.c:" | head
+echo "=== is GFX_CANVAS_Task in the scheduler task list / a loop? ==="
+grep -rn "GFX_CANVAS_Task\|SYS_Tasks\|GFX_CANVAS_Update\|gfxcCanvasUpdate" default/src/config/default/tasks.c default/src/main.c 2>/dev/null | head
+echo "=== current video window setup (Video_SetWindow / UiManager_VideoShow) ==="
+grep -rn "Video_SetWindow\|UiManager_VideoShow\|VIDEO_WIN_W\|720u" default/src/app.c default/src/ui/ui_manager.c 2>/dev/null | head
+```
+
+```text
+=== who calls GFX_CANVAS_Task (per-frame commit driver)? ===
+default/src/ui/ui_manager.c:364: * renderer is idle; resuming hands rendering back. GFX_CANVAS_Tasks is left
+default/src/ui/ui_manager.c:418: * drive leUpdate — LEGATO_Tasks + GFX_CANVAS_Task render correctly when they run;
+default/src/ui/ui_manager.c:526:    GFX_CANVAS_Task();
+default/src/config/default/tasks.c:73:void _GFX_CANVAS_Task(  void *pvParameters  )
+default/src/config/default/tasks.c:77:        GFX_CANVAS_Task();
+default/src/config/default/tasks.c:203:        xTaskCreate( _GFX_CANVAS_Task,
+default/src/config/default/tasks.c:204:        "GFX_CANVAS_Tasks",
+=== is GFX_CANVAS_Task in the scheduler task list / a loop? ===
+default/src/main.c:45:        SYS_Tasks ( );
+default/src/config/default/tasks.c:12:    It implements the "SYS_Tasks" function that calls the individual "Tasks"
+default/src/config/default/tasks.c:73:void _GFX_CANVAS_Task(  void *pvParameters  )
+default/src/config/default/tasks.c:77:        GFX_CANVAS_Task();
+default/src/config/default/tasks.c:173:    void SYS_Tasks ( void )
+default/src/config/default/tasks.c:178:void SYS_Tasks ( void )
+default/src/config/default/tasks.c:203:        xTaskCreate( _GFX_CANVAS_Task,
+default/src/config/default/tasks.c:204:        "GFX_CANVAS_Tasks",
+=== current video window setup (Video_SetWindow / UiManager_VideoShow) ===
+default/src/ui/ui_manager.c:97: * contexts, so the UI task only sets volatile intent (UiManager_VideoShow/Hide) and
+default/src/ui/ui_manager.c:103:#define VIDEO_WIN_W   720u
+default/src/ui/ui_manager.c:268:void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+default/src/ui/ui_manager.c:509:    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:52:27Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:52:30Z)**_
+
+Wait — that changes my thinking. `_GFX_CANVAS_Task` runs as its own FreeRTOS task (tasks.c:73), and the current build shows **my full refactor is in the tree** (`UiManager_VideoShow` etc. at ui_manager.c:268/509). Let me look at that canvas task loop — if it commits layers (each with the `SetLayerEnable` busy-wait) in a tight spin, that's a continuous CPU hog that would starve the ISC IRQ:
+
+_**Agent (claude-opus-4-8 2026-07-01 02:52:30Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/tasks.c`
+
+```text
+70	    }
+71	}
+72	
+73	void _GFX_CANVAS_Task(  void *pvParameters  )
+74	{
+75	    while(1)
+76	    {
+77	        GFX_CANVAS_Task();
+78	        vTaskDelay(10 / portTICK_PERIOD_MS);
+79	    }
+80	}
+81	
+82	void _XLCDC_Tasks(  void *pvParameters  )
+83	{
+84	    while(1)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:53:47Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:53:57Z)**_
+
+Let me consolidate, because I've now ruled out the easy explanations and want to stop guessing:
+
+**What we know:**
+- `0314c8fc` (works) and `d0763197` (broken) both reveal **the same two layers** (BASE + HEO), same bandwidth, same MCC peripherals, and the **same compositor** (`_GFX_CANVAS_Task` runs every 10 ms in both). The diff is C-only.
+- So it's **not** the splash layer (OVR2 test failed), **not** static layer config, and **not** raw scanout bandwidth (identical between the two). It's a *runtime* behavior the boot rewrite changed.
+
+**The decisive question I can't answer by inspection:** when HEO is enabled, is the ISC **DMA overflowing** (bandwidth/arbitration starvation — the ISC write can't get DDR in time) or is the ISC **interrupt being delayed** (CPU starvation — something like the `SetLayerEnable(update=true)` busy-wait or a spin holding the CPU)? Both show up as `cap≈1`, but the fix is completely different.
+
+The clean way to settle it is to read the **ISC status/error bits** (`ISC_INTSR` — overflow/error) while HEO is up:
+- **Overflow/error set** → DMA bandwidth/arbitration starvation → fix is DDR/matrix QoS (at91bootstrap) or reducing HEO/ISC bandwidth.
+- **No error, but the ISC IRQ has long gaps** → CPU starvation → fix is the busy-wait / a spinning task / interrupt priority.
+
+Two things would make this conclusive and fast, and I'd recommend both:
+1. **Test on a clean checkout of `d0763197`** (not the current mixed tree with my stashed/reverted refactor) so we're measuring the actual bug with no confounds.
+2. On that clean build, add a tiny probe: log `ISC_REGS->ISC_INTSR` (overflow bit) alongside the frame count once/sec.
+
+Want me to write that minimal ISC-error probe as a patch you can apply on a clean `d0763197`? That single number (overflow: yes/no) tells us which of the two root causes we're chasing and stops the guessing.
+
+---
+
+_**User (2026-07-01 02:58:49Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+do it
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 02:59:33Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:59:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect ISC IRQ handler + status register semantics
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=$(grep -rl "ISC_Handler\|ISC_Interrupt_Status" default/src/config/default/ | grep '\.c$' | head -1)
+echo "file: $f"
+echo "=== ISC_INTSR usage + clear-on-read? + overflow/error bits ==="
+grep -nE "ISC_INTSR|ISC_Interrupt_Status|INT_STATUS|OVR|overflow|ERROR|DDONE|_Handler|frameIndex" "$f" | head -30
+```
+
+```text
+file: default/src/config/default/vision/drivers/isc/plib_isc.c
+=== ISC_INTSR usage + clear-on-read? + overflow/error bits ===
+373:uint32_t ISC_Interrupt_Status(void) {
+374:    return ISC_REGS->ISC_INTSR;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 02:59:50Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 02:59:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find ISC handler frameIndex + overflow status bits
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=default/src/config/default/vision/drivers/isc/drv_isc.c
+echo "=== ISC_Handler + INTSR read + frameIndex + overflow ==="
+grep -nE "ISC_Handler|ISC_INTSR|Interrupt_Status|frameIndex|OVR|overflow|DDONE|VD|HD|_Msk" "$f" | head -30
+echo "=== ISC_INTSR clear-on-read? (datasheet bit macros: any OVR/ERROR in INTSR) ==="
+grep -rnE "ISC_INTSR_.*Msk" default/src/config/default/vision/drivers/isc/*.h default/src/packs 2>/dev/null | grep -iE "OVR|ERR|FIFO|DDONE|LDONE" | head
+```
+
+```text
+=== ISC_Handler + INTSR read + frameIndex + overflow ===
+37:void ISC_Handler(void) {
+38:    volatile const uint32_t status = ISC_Interrupt_Status();
+39:    if ((status & ISC_INTSR_HISDONE_Msk) == ISC_INTSR_HISDONE_Msk) {
+40:        ISC_Disable_Interrupt(ISC_INTSR_HISDONE_Msk);
+42:        ISC_Enable_Interrupt(ISC_INTSR_HISDONE_Msk);
+45:    if ((status & ISC_INTSR_DDONE_Msk) == ISC_INTSR_DDONE_Msk) {
+46:        ISC_Disable_Interrupt(ISC_INTEN_DDONE_Msk);
+47:        if (DrvISCObj.frameIndex == (DrvISCObj.dmaDescSize - 1))
+48:            DrvISCObj.frameIndex = 0;
+50:            DrvISCObj.frameIndex++;
+54:        ISC_Enable_Interrupt(ISC_INTEN_DDONE_Msk);
+56:    if ((status & ISC_INTSR_VD_Msk) == ISC_INTSR_VD_Msk) {
+75:        if ((ISC_Interrupt_Status() & ISC_INTSR_VD_Msk) == ISC_INTSR_VD(1)) {
+249:#ifdef ISC_PFE_CFG0_MIPI_Msk
+356:#ifdef ISC_CBHS_HUE_Msk
+385:    iscObj->frameIndex = 0;
+390:        ISC_Enable_Interrupt(ISC_INTEN_VD(1) | ISC_INTEN_DDONE(1) | ISC_INTEN_HISDONE(1));
+392:        ISC_Enable_Interrupt(ISC_INTEN_VD(1) | ISC_INTEN_DDONE(1));
+395:    ISC_Interrupt_Status();
+479:            if (DrvISCObj.awb.op_mode != (ISC_REGS->ISC_HIS_CFG & ISC_HIS_CFG_MODE_Msk))
+=== ISC_INTSR clear-on-read? (datasheet bit macros: any OVR/ERROR in INTSR) ===
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:549:#define ISC_INTSR_VD_Msk                      (_UINT32_(0x1) << ISC_INTSR_VD_Pos)                  /* (ISC_INTSR) Vertical Synchronization Detected Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:556:#define ISC_INTSR_HD_Msk                      (_UINT32_(0x1) << ISC_INTSR_HD_Pos)                  /* (ISC_INTSR) Horizontal Synchronization Detected Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:563:#define ISC_INTSR_SWRST_Msk                   (_UINT32_(0x1) << ISC_INTSR_SWRST_Pos)               /* (ISC_INTSR) Software Reset Completed Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:570:#define ISC_INTSR_DIS_Msk                     (_UINT32_(0x1) << ISC_INTSR_DIS_Pos)                 /* (ISC_INTSR) Disable Completed Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:577:#define ISC_INTSR_DDONE_Msk                   (_UINT32_(0x1) << ISC_INTSR_DDONE_Pos)               /* (ISC_INTSR) DMA Done Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:578:#define ISC_INTSR_DDONE(value)                (ISC_INTSR_DDONE_Msk & (_UINT32_(value) << ISC_INTSR_DDONE_Pos)) /* Assignment of value for DDONE in the ISC_INTSR register */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:584:#define ISC_INTSR_LDONE_Msk                   (_UINT32_(0x1) << ISC_INTSR_LDONE_Pos)               /* (ISC_INTSR) DMA  List Done Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:585:#define ISC_INTSR_LDONE(value)                (ISC_INTSR_LDONE_Msk & (_UINT32_(value) << ISC_INTSR_LDONE_Pos)) /* Assignment of value for LDONE in the ISC_INTSR register */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:591:#define ISC_INTSR_HISDONE_Msk                 (_UINT32_(0x1) << ISC_INTSR_HISDONE_Pos)             /* (ISC_INTSR) Histogram Completed Interrupt (cleared on read) Mask */
+default/src/packs/SAM9X75D2G_DFP/component/isc.h:598:#define ISC_INTSR_HISCLR_Msk                  (_UINT32_(0x1) << ISC_INTSR_HISCLR_Pos)              /* (ISC_INTSR) Histogram Clear Interrupt (cleared on read) Mask */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:03:08Z)**_
+
+The probe idea is dead on arrival — good thing I checked: **`ISC_INTSR` is cleared-on-read** (reading it from the task would steal the `DDONE` interrupt from `ISC_Handler` and break capture), and there's **no overflow/error bit** in it anyway. So an ISC-error probe can't work.
+
+But this reframes the whole thing decisively. `cap` is incremented in the ISC `DDONE` ISR (`ISC_Handler` → `isc_frame_done`). You already proved (the no-op-latch test) the ISR isn't blocking itself — yet it only fires ~1×/s once HEO is on. That's the signature of **the ISC interrupt being starved by a higher-priority interrupt that activates with HEO** (the DMA keeps filling the ring at 60 fps, but the completion ISR — and thus the HEO re-point — runs ~1×/s, which is exactly your clean-but-drifting frame). So: interrupt priority, not bandwidth. Let me check ISC vs LCDC priority:
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find ISC vs LCDC interrupt priorities
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== ISC vs LCDC/XLCDC interrupt priority (GIC/AIC config) ==="
+grep -rniE "ID_ISC|ID_LCDC|ID_XLCDC|ISC_IRQn|LCDC_IRQn|SetPriority|InterruptPriority|_PRIOR|GIC_|AIC_" default/src/config/default/ 2>/dev/null | grep -iE "ISC|LCDC|XLCDC|prior" | grep -viE "maxtouch|sdmmc|flexcom|classb" | head -30
+```
+
+```text
+=== ISC vs LCDC/XLCDC interrupt priority (GIC/AIC config) ===
+default/src/config/default/configuration.h:108:#define SYS_FS_PRIORITY                   1
+default/src/config/default/FreeRTOSConfig.h:93:/* configMAX_PRIORITIES Sets the number of available task priorities.  Tasks can
+default/src/config/default/FreeRTOSConfig.h:94: * be assigned priorities of 0 to (configMAX_PRIORITIES - 1).  Zero is the lowest
+default/src/config/default/FreeRTOSConfig.h:96:#define configMAX_PRIORITIES                    ( 8UL )
+default/src/config/default/FreeRTOSConfig.h:208:/* configTIMER_TASK_PRIORITY sets the priority used by the timer task.  Only
+default/src/config/default/FreeRTOSConfig.h:213:#define configTIMER_TASK_PRIORITY               0
+default/src/config/default/FreeRTOSConfig.h:296:/* Another name for configMAX_SYSCALL_INTERRUPT_PRIORITY - the name used depends
+default/src/config/default/FreeRTOSConfig.h:366:/* configMAX_CO_ROUTINE_PRIORITIES defines the number of priorities available
+default/src/config/default/FreeRTOSConfig.h:369:#define configMAX_CO_ROUTINE_PRIORITIES         2
+default/src/config/default/tasks.c:186:        SYS_FS_PRIORITY ,
+default/src/config/default/osal/osal_freertos.c:105:    In FreeRTOS only interrupts below configMAX_SYSCALL_INTERRUPT_PRIORITY are
+default/src/config/default/vision/drivers/isc/drv_isc.c:228:    SYS_INT_SourceDisable(ID_ISC);
+default/src/config/default/system/int/src/sys_int.c:204:    aicPtr->AIC_ISCR = AIC_ISCR_Msk;
+default/src/config/default/peripheral/aic/plib_aic.c:79:    { 43U, ISC_Handler,                AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+default/src/config/default/peripheral/aic/plib_aic.c:123:        AIC_REGS->AIC_SMR = (AIC_REGS->AIC_SMR & ~AIC_SMR_PRIOR_Msk) | AIC_SMR_PRIOR(irqData[ii].priority);
+default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c:162:                        PMC_PCR_PID(ID_XLCDC) |
+default/src/config/default/peripheral/clk/plib_clk.c:133:        { ID_ISC, 1, 0, 0, 0},
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:03:19Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:03:21Z)**_
+
+`ISC_Handler` (peripheral ID 43) is at AIC priority **`0x0`** — the **lowest**. If the XLCDC (or anything that fires continuously with HEO active) sits at a higher AIC priority, it will starve the ISC IRQ. Let me see the full priority table:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:03:21Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/peripheral/aic/plib_aic.c`
+
+```text
+60	/* data for irq register initialization */
+61	static struct
+62	{
+63	    uint32_t        peripheralId;
+64	    pfn_handler_t   handler;
+65	    uint32_t        srcType;
+66	    uint32_t        priority;
+67	}irqData[] =
+68	{
+69	    { 1U,  SYSC_SharedHandler,         AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+70	    { 3U,  PIOB_InterruptHandler,      AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+71	    { 6U,  FLEXCOM1_InterruptHandler,  AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+72	    { 7U,  FLEXCOM2_InterruptHandler,  AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+73	    { 11U, FLEXCOM8_InterruptHandler,  AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+74	    { 12U, SDMMC0_InterruptHandler,    AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+75	    { 13U, FLEXCOM4_InterruptHandler,  AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+76	    { 17U, TC0_InterruptHandler,       AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+77	    { 20U, XDMAC_InterruptHandler,     AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+78	    { 23U, DRV_USB_UDPHS_Handler,      AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+79	    { 43U, ISC_Handler,                AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+80	    { 52U, CSI2DC_Handler,             AIC_SMR_SRCTYPE_INT_LEVEL_SENSITIVE_Val,  0x0U },
+81	};
+82	
+83	// *****************************************************************************
+84	// *****************************************************************************
+85	// Section: AIC Implementation
+86	// *****************************************************************************
+87	// *****************************************************************************
+88	
+89	void AIC_INT_Initialize( void )
+90	{
+91	    const uint32_t MaxNumPeripherals = 70U;
+92	    const uint32_t MaxInterruptDepth = 8U;
+93	    uint32_t ii;
+94	    uint32_t irqDataEntryCount = sizeof(irqData) / sizeof(irqData[0]);
+95	
+96	    __disable_irq();
+97	    __DMB();
+98	    __ISB();
+99	
+100	    /* Disable all interrupts */
+101	    for( ii= 0; ii < MaxNumPeripherals; ++ii )
+102	    {
+103	        AIC_REGS->AIC_SSR = AIC_SSR_INTSEL(ii);
+104	        AIC_REGS->AIC_IDCR = AIC_IDCR_Msk;
+105	        AIC_REGS->AIC_FFDR = AIC_FFDR_Msk;
+106	        AIC_REGS->AIC_SVRRDR = AIC_SVRRDR_Msk;
+107	        __DSB();
+108	        __ISB();
+109	        AIC_REGS->AIC_ICCR = AIC_ICCR_INTCLR_Msk;
+110	    }
+111	
+112	    /* pop all possible nested interrupts from internal hw stack */
+113	    for( ii = 0; ii < MaxInterruptDepth; ++ii )
+114	    {
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:04:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:05:10Z)**_
+
+The AIC table kills the interrupt-priority theory too, and reveals something important:
+
+- **There is no LCDC/XLCDC interrupt at all** — it's not in the AIC table. So HEO being enabled can't be firing an ISR that starves the ISC.
+- **Every peripheral IRQ is at the same AIC priority `0x0`** (ISC, XDMAC, CSI2DC, all of them). So there's no higher-priority source preempting the ISC.
+
+Combined with the no-op-latch test (the ISC ISR itself isn't blocking), I've now ruled out: splash layer, static config, interrupt priority, and ISR self-block. And the ISC-error probe is impossible (INTSR is clear-on-read + has no error bit).
+
+**So I have to flag a confound I should have caught earlier:** the `cap=1` diag numbers came from the **current build**, which reveals **four scanout layers** (BASE dashboard + OVR1 song-select dialog + OVR2 album art + HEO video). The bisected `d0763197` had only **two** (BASE + HEO). Four simultaneous layers is a lot more DDR read traffic than two — so the `cap=1` collapse you measured may be **DDR bandwidth from the 4-layer current build**, which is a *different* thing from whatever made `d0763197` "look broken" with 2 layers. I've been conflating them.
+
+Two cheap data points resolve this cleanly — and they're what I'd actually do next instead of another probe:
+
+1. **Measure `cap` on a clean `d0763197`** (2 layers). Drop this at the end of `reconcile()` in that commit's `video.c`:
+   ```c
+   static uint32_t dg, lfc;
+   if (++dg >= 50u) { uint32_t fc = ISC_Capture_FrameCount();
+       LOG_INFO("cap=%lu fps\r\n",(unsigned long)(fc-lfc)); lfc=fc; dg=0; }
+   ```
+   - `cap≈1` there → a real 2-layer code regression in `d0763197` (keep digging the diff).
+   - `cap` healthy there → the collapse you saw is the **4-layer bandwidth** of the current build, not `d0763197` — and **Phase 2 fixes it for free** (hiding HEO under the opaque dialog drops you back to ≤2 visible layers).
+
+2. **Bandwidth check on any build:** set `csiObj->csiFps = 30` in `isc_capture.c`. If `cap` climbs toward 30, it's DDR bandwidth-bound; if it stays ~1, it isn't.
+
+Which do you want to run first? My money's now shifted to bandwidth-in-the-current-4-layer-build — in which case the fix is exactly the Phase 2 work we deferred (don't scan HEO + full dashboard + dialog + album all at once).
+
+---
+
+_**User (2026-07-01 03:06:42Z)**_
+
+VIDEO: capture ARMED 720x480
+VIDEO: HEO bound src 720x480 → dst 720x480 @(280,76) 1:1
+GAME: unknown
+cap=21 fps
+cap=0 fps
+cap=1 fps
+cap=0 fps
+cap=0 fps
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:08:20Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:08:24Z)**_
+
+That settles the key confound: **clean `d0763197`, only 2 layers (BASE+HEO), still collapses to ~1 fps.** So it's a genuine regression in that commit, *not* the 4-layer bandwidth of the current build. Same 2 layers as the working `0314c8fc`, C-only diff.
+
+Given no LCDC IRQ and all AIC sources at equal priority, the only way the ISC ISR gets starved to 1 fps is **interrupts held off / the CPU monopolized in a busy-wait**. The one busy-wait in the picture is `XLCDC_UpdateLayerAttributes`'s `while(LCDC_ATTRE)`, hit by the compositor's layer-commit. If `d0763197` made the canvas compositor commit **continuously** (a perpetually-dirty canvas), that busy-wait runs over and over and starves the ISC. Let me check the canvas commit path — whether it commits every cycle and whether it disables interrupts around that spin:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:08:27Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect canvas commit path for continuous commit + IRQ-disable
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+f=default/src/config/default/gfx/canvas/gfx_canvas.c
+echo "=== GFX_CANVAS_Task + commit + critical/IRQ-disable + dirty check ==="
+grep -nE "GFX_CANVAS_Task|SET_LAYER_UNLOCK|SET_LAYER_LOCK|CRITICAL|__disable_irq|taskENTER|IOCTL|dirty|invalid|commit|UpdateLayer|vblank|VBLANK|GFX_IOCTL" "$f" | head -40
+```
+
+```text
+=== GFX_CANVAS_Task + commit + critical/IRQ-disable + dirty check ===
+65:static gfxDriverIOCTLResponse GFX_CANVAS_IOCTL(gfxDriverIOCTLRequest request, void* arg);
+100:    .ioctl = GFX_CANVAS_IOCTL
+130:        gfxIOCTLArg_DisplaySize disp;
+132:        gfxDispCtrlr->ioctl(GFX_IOCTL_GET_DISPLAY_SIZE, (gfxIOCTLArg_DisplaySize *) &disp);
+294:    gfxIOCTLArg_Value argValue;
+295:    gfxIOCTLArg_LayerValue setBaseAddressParm;
+296:    gfxIOCTLArg_LayerValue setLayerEnabledParm;
+297:    gfxIOCTLArg_LayerValue setColorModeParm;
+298:    gfxIOCTLArg_LayerSize setResParm;
+299:    gfxIOCTLArg_LayerPosition setPositionParm;
+300:    gfxIOCTLArg_LayerSize setSizeParm;
+301:    gfxIOCTLArg_LayerValue setAlphaParm;
+314:            gfxDispCtrlr->ioctl(GFX_IOCTL_SET_ACTIVE_LAYER, (gfxIOCTLArg_Value*) &argValue);
+316:            gfxDispCtrlr->ioctl(GFX_IOCTL_GET_FRAMEBUFFER, (gfxIOCTLArg_Value*) &argValue);
+371:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_LOCK, (gfxIOCTLArg_LayerValue *) &setBaseAddressParm);
+374:            gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_BASE_ADDRESS, (gfxIOCTLArg_LayerValue *) &setBaseAddressParm);
+376:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_COLOR_MODE, (gfxIOCTLArg_LayerValue *) &setColorModeParm);
+377:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_SIZE, (gfxIOCTLArg_LayerSize *) &setResParm);
+378:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_POSITION, (void *) &setPositionParm);
+379:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_WINDOW_SIZE, (void *) &setSizeParm);
+381:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_ALPHA, (void *) &setAlphaParm);
+385:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_ENABLED, (gfxIOCTLArg_LayerValue *) &setLayerEnabledParm);
+389:        gfxDispCtrlr->ioctl(GFX_IOCTL_SET_LAYER_UNLOCK, (gfxIOCTLArg_LayerValue *) &setBaseAddressParm);
+595:    gfxIOCTLArg_Value val;
+597:    GFX_CANVAS_IOCTL(GFX_IOCTL_GET_STATUS, &val);
+602:void GFX_CANVAS_Task(void)
+704:gfxDriverIOCTLResponse GFX_CANVAS_IOCTL(gfxDriverIOCTLRequest request,
+707:    gfxIOCTLArg_Value* val;
+708:    gfxIOCTLArg_DisplaySize* disp;
+709:    gfxIOCTLArg_LayerRect* rect;
+713:        case GFX_IOCTL_GET_BUFFER_COUNT:
+715:            val = (gfxIOCTLArg_Value*)arg;
+719:            return GFX_IOCTL_OK;
+721:        case GFX_IOCTL_GET_DISPLAY_SIZE:
+723:            disp = (gfxIOCTLArg_DisplaySize*)arg;
+728:            return GFX_IOCTL_OK;
+730:        case GFX_IOCTL_GET_LAYER_COUNT:
+732:            val = (gfxIOCTLArg_Value*)arg;
+736:            return GFX_IOCTL_OK;
+738:        case GFX_IOCTL_GET_ACTIVE_LAYER:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:08:36Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:08:36Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/canvas/gfx_canvas.c`
+
+```text
+602	void GFX_CANVAS_Task(void)
+603	{
+604	    switch(gfxcState)
+605	    {
+606	        case GFXC_INIT:
+607	        {
+608	#if (CONFIG_CANVAS_ENABLE_FX == true)
+609	            effectsTimer = SYS_TIME_CallbackRegisterMS(effectsTimerCallback,
+610	                           (uintptr_t) NULL,
+611	                           effectsIntervalMS,
+612	                           SYS_TIME_PERIODIC);
+613	            SYS_TIME_TimerStop(effectsTimer);
+614	#endif
+615	            gfxcState = GFXC_RUNNING;
+616	            break;
+617	        }
+618	        case GFXC_RUNNING:
+619	        {
+620	#if (CONFIG_CANVAS_ENABLE_FX == true)
+621	            unsigned int i;
+622	
+623	            //Process effects
+624	            if (oldEffectsTick != effectsTick)
+625	            {
+626	                GFXC_RESULT gres = GFX_FAILURE;
+627	
+628	                for (i = 0; i < CONFIG_CANVAS_NUM_OBJ; i++)
+629	                {
+630	                    if (canvas[i].id != CANVAS_ID_INVALID)
+631	                    {
+632	                        GFXC_RESULT res = GFX_FAILURE;
+633	
+634	#if (CONFIG_CANVAS_ENABLE_FADE_FX == true)
+635	                        //Process alpha effects
+636	                        switch(canvas[i].effects.fade.status)
+637	                        {
+638	                            case GFXC_FX_START:
+639	                            {
+640	                                canvas[i].effects.fade.status = GFXC_FX_RUN;
+641	
+642	                                if(canvas[i].effects.cb != NULL)
+643	                                    //call callback for status change START -> RUN
+644	                                    canvas[i].effects.cb(canvas[i].id,
+645	                                        GFXC_FX_FADE,
+646	                                        GFXC_FX_RUN,
+647	                                        canvas[i].effects.parm);
+648	                                        //no break, start running effect;
+649	                            }
+650	                            case GFXC_FX_RUN:
+651	                            {
+652	                                res = gfxcProcessFadeEffect(&canvas[i]);
+653	                                if (gres == GFX_FAILURE)
+654	                                    gres = res;
+655	                                break;
+656	                            }
+657	                            default:
+658	                                break;
+659	                        }
+660	#endif
+661	#if (CONFIG_CANVAS_ENABLE_MOVE_FX == true)
+662	                        //Process move effects
+663	                        switch(canvas[i].effects.move.status)
+664	                        {
+665	                            case GFXC_FX_START:
+666	                            {
+667	                                canvas[i].effects.move.status = GFXC_FX_RUN;
+668	
+669	                                if (canvas[i].effects.cb != NULL)
+670	                                    //call callback for status change START -> RUN
+671	                                    canvas[i].effects.cb(canvas[i].id,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:09:32Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:09:33Z)**_
+
+Let me look at the commit function itself (the `SET_LAYER_LOCK`…`SET_LAYER_UNLOCK` sequence at 371–389) — specifically whether it runs in a critical section (IRQs off) and how often it's invoked, since that's what would starve the ISC ISR:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:09:33Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/config/default/gfx/canvas/gfx_canvas.c`
+
+```text
+286	    st->rect.height = canvas[baseCanvasID + idx].layer.size.height;
+287	    st->enabled = canvas[baseCanvasID + idx].active;
+288	
+289	    return GFX_SUCCESS;
+290	}
+291	
+292	GFXC_RESULT _gfxcCanvasUpdate(unsigned int canvasID)
+293	{
+294	    gfxIOCTLArg_Value argValue;
+295	    gfxIOCTLArg_LayerValue setBaseAddressParm;
+296	    gfxIOCTLArg_LayerValue setLayerEnabledParm;
+297	    gfxIOCTLArg_LayerValue setColorModeParm;
+298	    gfxIOCTLArg_LayerSize setResParm;
+299	    gfxIOCTLArg_LayerPosition setPositionParm;
+300	    gfxIOCTLArg_LayerSize setSizeParm;
+301	    gfxIOCTLArg_LayerValue setAlphaParm;
+302	
+303	    if (canvasID < CONFIG_CANVAS_NUM_OBJ &&
+304	        canvas[canvasID].layer.id != LAYER_ID_INVALID &&
+305	        gfxDispCtrlr != NULL &&
+306	        gfxDispCtrlr->ioctl != NULL)
+307	    {
+308	        setBaseAddressParm.layer.id = canvas[canvasID].layer.id;
+309	        if (canvas[canvasID].pixelBuffer.pixels != NULL)
+310	            setBaseAddressParm.value.v_pointer = canvas[canvasID].pixelBuffer.pixels;
+311	        else
+312	        {
+313	            argValue.value.v_int = canvas[canvasID].layer.id;
+314	            gfxDispCtrlr->ioctl(GFX_IOCTL_SET_ACTIVE_LAYER, (gfxIOCTLArg_Value*) &argValue);
+315
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:10:27Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:10:40Z)**_
+
+That's decisive: **clean `d0763197`, 2 layers, still collapses.** So it's a real regression in that commit, and the earlier 4-layer bandwidth idea is dead.
+
+Here's what the evidence now forces:
+- ISC `DDONE` ISR is starved to ~1/s. With no LCDC IRQ and all AIC sources at equal priority, the only way that happens is the **CPU being monopolized in a busy-wait** — and the only busy-wait around is `XLCDC_UpdateLayerAttributes`'s `while(LCDC_ATTRE)` + `WAIT_ATTRS_EQ(SIP)`.
+- That spin is hit from two places: (a) the **ISC ISR's per-frame HEO latch** (`SetLayerAddress(HEO,…,true)` in `on_frame_done`) and (b) the **canvas compositor's layer commit** (`_gfxcCanvasUpdate` → `SET_LAYER_UNLOCK` → `SetLayerEnable(…,true)`).
+- The HEO-latch spin exists in **both** `0314c8fc` and `d0763197`, so by itself it's not the difference. What changed is that `d0763197` makes `LCDC_ATTRE` **stay contended** — i.e., the compositor is now committing a layer **continuously** (a perpetually-dirty canvas or a stuck move/fade effect), so that spin now takes ~forever instead of ~one frame. In `0314c8fc`, ATTRE cleared fast, so the same spin was harmless.
+
+That also explains why your no-op-latch test on the *current* build didn't help: removing the ISC-ISR spin still leaves the compositor's own commit spin running continuously.
+
+So the real fix is to **stop the continuous LCDC commits** (find what `d0763197` left perpetually committing) and/or make those `SetLayerEnable(update=true)` commits non-blocking. Before I go further, one decisive test on clean `d0763197` that confirms the mechanism for the 2-layer case — make the ISC-ISR latch non-blocking. In that commit's `video.c` `on_frame_done`, replace:
+
+```c
+XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, buffer_addr, true);
+```
+with:
+```c
+XLCDC_REGS->LCDC_HEO[0].LCDC_HEOYFBA = buffer_addr;   /* non-blocking: no while(LCDC_ATTRE) spin */
+XLCDC_REGS->LCDC_ATTRE |= LCDC_ATTRE_HEO_Msk;
+```
+
+If `cap` recovers on `d0763197`, the spin-in-the-ISC-ISR is confirmed as the 2-layer trigger. If it doesn't, the continuous compositor commit is the dominant one and I'll instrument `_gfxcCanvasUpdate` to find what's committing every cycle (my bet: a canvas move/fade effect left in `RUN` after the splash/nav, so `GFX_CANVAS_Task` commits forever).
+
+Want me to also write the little commit-counter probe for `_gfxcCanvasUpdate` so we can see the commit rate directly? That would pinpoint the continuous-commit source regardless of which test result we get.
+
+---
+
+_**User (2026-07-01 03:18:14Z)**_
+
+did not help
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:19:52Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:20:02Z)**_
+
+OK — that rules out the ISC-ISR latch entirely (consistent with your earlier no-op test). So the starvation comes from the **other** `while(LCDC_ATTRE)` spin: the **canvas compositor's layer commit** (`_gfxcCanvasUpdate` → `SET_LAYER_UNLOCK` → `SetLayerEnable(update=true)`), and it must be running **continuously** to hold ATTRE busy enough to starve the ISC.
+
+Crucial fact I should've weighted sooner: **`d0763197` doesn't touch `video.c`** — `lcd_bind`/HEO-enable is byte-identical to `0314c8fc`. So HEO-enable itself behaves the same; what changed is the **compositor state** while HEO is on. Something the boot rewrite left committing every cycle.
+
+The strongest suspect is a **canvas move/fade effect stuck in `RUN`**. `GFX_CANVAS_Task` only commits layers (the busy-wait) when `effectsTick` advances — i.e., while an effect is active. `d0763197` reworked the **nav** setup (dropped its hardcoded `gfxcSetLayer`, changed how it's parked), and the nav drawer parks off-screen via `gfxcStartEffectMove`. If the new parking leaves that move effect running (never reaching `GFXC_FX_DONE`), `GFX_CANVAS_Task` commits **every tick forever** → ATTRE perpetually contended → the LCDC busy-wait starves the ISC. That's a perfect fit for "C-only boot rewrite, video-file untouched, HEO-enable triggers it."
+
+Two ways to confirm, fastest first:
+
+1. **Commit-rate probe** (definitive): count `_gfxcCanvasUpdate` calls/sec. If it's committing continuously (dozens/sec at steady state) with a static UI, that's the smoking gun. I can add a temp counter to `GFX_CANVAS_Task`/`_gfxcCanvasUpdate` and log it next to `cap`.
+2. **Kill the effect path**: on `d0763197`, temporarily park the nav with a plain `gfxcSetWindowPosition` (no move effect) instead of `gfxcStartEffectMove`, or `#if 0` the effects processing in `GFX_CANVAS_Task`. If `cap` jumps back to ~60, it's a stuck effect.
+
+Want me to write the commit-rate probe? It's the one measurement that will end the guessing — it directly says whether the compositor is spinning on layer commits at steady state.
+
+---
+
+_**User (2026-07-01 03:21:58Z)**_
+
+do the commit-rate probe
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:22:27Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:22:29Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check current checkout state before editing
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git log --oneline -1 2>/dev/null; git status --short --branch 2>/dev/null | head -3
+echo "--- is _gfxcCanvasUpdate present in current tree? ---"
+grep -n "_gfxcCanvasUpdate\|GFX_CANVAS_Task(void)" firmware/marvin/default/src/config/default/gfx/canvas/gfx_canvas.c | head
+```
+
+```text
+ec47f82 marvin: song-select dialog as a modal — open on header tap, close on X/SELECT
+## gui
+ M .specstory/history/2026-06-30_14-33-31Z-added-album-art-to.md
+ M .specstory/statistics.json
+--- is _gfxcCanvasUpdate present in current tree? ---
+292:GFXC_RESULT _gfxcCanvasUpdate(unsigned int canvasID)
+602:void GFX_CANVAS_Task(void)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:23:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:23:13Z)**_
+
+Current tree is clean at `ec47f82` (branch `gui`) — same bug, so I'll instrument here (trivially portable to `d0763197`). The commit-rate lives in vendor `gfx_canvas.c`, so this is a temporary debug counter there + a once/sec log in `video.c`. Let me read the spots first:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:23:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate insertion points in gfx_canvas.c and video.c
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== gfx_canvas.c includes/top (for the global) ==="
+sed -n '38,64p' default/src/config/default/gfx/canvas/gfx_canvas.c 2>/dev/null | grep -nE "#include|^static|^GFXC|CANVAS_ID" | head
+echo "=== video.c reconcile() (current ec47f82) ==="
+grep -n "static void reconcile\|display_apply\|vTaskDelay\|VIDEO_POLL\|ISC_Capture_FrameCount\|#include \"log" default/src/video/video.c | head
+```
+
+```text
+The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). The user provided the following reason for the rejection:  I'm testing in a seperate repo checked out at d07... let me know patch to apply to it
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:24:23Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:24:32Z)**_
+
+Got it — here's the patch to apply to your `d0763197` checkout. It counts every LCDC attribute-update (the `while(LCDC_ATTRE)` busy-wait — the choke point for *all* layer commits, compositor or otherwise) and logs the rate next to `cap`.
+
+**Patch 1 — `default/src/config/default/gfx/driver/controller/xlcdc/plib/plib_xlcdc.c`**
+
+Add a file-scope global (near the top, after the includes/`decoder` statics):
+```c
+volatile uint32_t g_xlcdc_attr_updates;   /* TEMP debug: LCDC layer-commit busy-waits */
+```
+Then in `XLCDC_UpdateLayerAttributes(XLCDC_LAYER layer)`, add one line as the very first statement (right before `while(XLCDC_REGS->LCDC_ATTRE);`):
+```c
+    g_xlcdc_attr_updates++;
+```
+
+**Patch 2 — `default/src/video/video.c`**, at the **end of `reconcile()`** (just before its closing `}`):
+```c
+    extern volatile uint32_t g_xlcdc_attr_updates;
+    static uint32_t dg, lfc, lau;
+    if (++dg >= 50u) {                 /* ~1 s at the 20 ms poll */
+        uint32_t fc = ISC_Capture_FrameCount();
+        uint32_t au = g_xlcdc_attr_updates;
+        LOG_INFO("diag: cap=%lu fps, LCDC commits=%lu/s\r\n",
+                 (unsigned long)(fc - lfc), (unsigned long)(au - lau));
+        lfc = fc; lau = au; dg = 0u;
+    }
+```
+
+Build + flash, and read a few `diag:` lines with HEO up. Interpretation:
+
+- **`LCDC commits` is high (tens–hundreds/s)** while `cap≈1` → **confirmed**: the compositor is committing layers continuously, each one busy-waiting on the display sync → that's what's starving the ISC. Next step is finding *what* keeps committing (my bet: a stuck canvas move/fade effect from the reworked nav) and stopping it.
+- **`LCDC commits` is ~0–1/s** while `cap≈1` → the busy-wait is *not* being hit continuously, so the starvation isn't the compositor commit — and we pivot to the ISC DMA / DDR path itself (I'd then have you try `csiFps=30` to check bandwidth).
+
+Either way this single line ends the guessing. Paste the `diag:` output and I'll take the next step.
+
+---
+
+_**User (2026-07-01 03:28:27Z)**_
+
+IDEO: capture ARMED 720x480
+VIDEO: HEO bound src 720x480 → dst 720x480 @(280,76) 1:1
+GAME: unknown
+diag: cap=22 fps, LCDC commits=17/s
+diag: cap=0 fps, LCDC commits=0/s
+diag: cap=1 fps, LCDC commits=0/s
+diag: cap=0 fps, LCDC commits=0/s
+diag: cap=0 fps, LCDC commits=3/s
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:29:04Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:29:08Z)**_
+
+`LCDC commits ≈ 0/s` while `cap≈1` — so **nothing is busy-waiting on the LCDC**. That kills the continuous-commit theory. The ISC `DDONE` ISR isn't being CPU-starved; the ISC **DMA itself is only completing ~1 frame/s** once HEO scans out. That's **DDR/bus arbitration** — HEO's scanout DMA is starving the ISC write DMA.
+
+Which finally resolves the paradox: a **C-only** commit broke a **bus-arbitration** behavior only if it *removed* some arbitration setup. `d0763197` **deleted `loader.c`** (207 lines). Let me check whether the old loader was programming DDR/matrix QoS or master priority that the new `ui_manager` dropped:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:29:15Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check deleted loader for DDR/matrix/QoS setup lost in d0763197
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== deleted loader.c (0314c8fc): any matrix/QoS/priority/DDR/SCFG setup? ==="
+git show 0314c8fc948a7996d2e08356267b4d14384095bd:firmware/marvin/default/src/ui/loader.c 2>/dev/null | grep -niE "matrix|qos|scfg|defmstr|arb|prior|aximx|mpddrc|sfr|SRAMC|DDR|slot|master|AC69" | head -20
+echo
+echo "=== full symbol/function calls in old loader.c (what did it DO besides splash+video)? ==="
+git show 0314c8fc948a7996d2e08356267b4d14384095bd:firmware/marvin/default/src/ui/loader.c 2>/dev/null | grep -nE "^\s*[A-Za-z_][A-Za-z0-9_]*\(" | grep -vE "if|for|while|switch|return|sizeof" | head -40
+```
+
+```text
+=== deleted loader.c (0314c8fc): any matrix/QoS/priority/DDR/SCFG setup? ===
+19:#define LOADER_TASK_PRIORITY     2u    /* UI band; blocks on SD I/O + the render wait */
+70:     * render as garbage, so require an exact match to the canvas buffer. */
+176:    /* --- Asset pre-load goes here (album art → DDR cache, etc.). None yet. --- */
+191:     * their higher-priority tasks didn't preempt the SD mount + splash render. */
+206:                            NULL, LOADER_TASK_PRIORITY, s_task_stack, &s_task_tcb);
+
+=== full symbol/function calls in old loader.c (what did it DO besides splash+video)? ===
+65:        LOG_WARN("LOADER: no splash %s (fs err %d)\r\n", path, (int)SYS_FS_Error());
+74:        LOG_WARN("LOADER: splash size %ld != expected %u\r\n", (long)sz, (unsigned)cap);
+94:        LOG_WARN("LOADER: splash read short %lu/%ld\r\n", (unsigned long)total, (long)sz);
+98:    LOG_INFO("LOADER: splash %lu B read in %lu ms\r\n", (unsigned long)total, (unsigned long)read_ms);
+137:        vTaskDelay(pdMS_TO_TICKS(RENDER_POLL_MS));
+139:    LOG_WARN("LOADER: render-idle wait timed out\r\n");
+160:        UiManager_CommitSplash();
+164:        LOG_WARN("LOADER: solid-fill splash (no image)\r\n");
+169:    UiManager_EnableBacklight();
+174:    UiManager_AttachMainScreens();
+181:    wait_render_idle();
+187:    UiManager_RevealDashboard();
+192:    App_StartServices();
+196:    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+197:    Video_CaptureEnable();
+198:    Video_DisplayShow();
+200:    vTaskDelete(NULL);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:30:44Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:30:57Z)**_
+
+`LCDC commits ≈ 0/s` with `cap≈1` is the answer I didn't want but needed: **it's not CPU or the compositor at all — the ISC DMA is genuinely completing ~1 frame/s once HEO scans out.** That's **DDR/bus arbitration**: HEO's scanout read is starving the ISC's capture write. No busy-wait, no interrupt starvation.
+
+And notice the very first line: `cap=22` *immediately* after "HEO bound" (which on `d0763197` happens **during the splash** — a 4 MB RGBA8888 layer scanning ~245 MB/s). So HEO comes up concurrently with the heaviest scanout load, and the ISC never gets going. That's the likely resolution of the paradox: `0314c8fc` enabled HEO **after** the splash was torn down (HEO + BASE only), while `d0763197` enables it **during** the splash (HEO + 4 MB splash + capture). If that bandwidth spike wedges the ISC and it doesn't self-recover, it stays dead even after the splash goes away.
+
+Two data points will confirm and point at the fix — please grab both on `d0763197`:
+
+1. **Does `cap` recover after boot?** Keep watching the `diag:` lines past ~6 s (the splash holds 5 s, then the dashboard reveals and the splash's 245 MB/s goes away). 
+   - `cap` climbs back to ~60 after reveal → it's the **HEO-during-splash bandwidth spike** wedging the ISC. Fix: enable HEO *after* splash-hide (what `0314c8fc` did), and/or re-arm the ISC after the spike.
+   - `cap` stays ~1 → steady HEO+BASE bandwidth starves ISC even at 2 layers, which means it's marginal DDR QoS.
+2. **`csiFps = 30`** in `isc_capture.c`. If `cap` climbs toward 30, it's confirmed **bandwidth-bound** → the real fix is DDR arbitration: on SAM9X75 the LCDC vs ISC master priority into the MPDDRC is set in **at91bootstrap** ([[project_at91bootstrap_variant]]) — giving the ISC a fair/higher DDR QoS is the proper fix, and it's outside this repo (which is why no marvin commit "should" have changed it — but the boot reordering exposed the marginality).
+
+My read: it's marginal DDR bandwidth, `0314c8fc` stayed just under the line by not overlapping HEO with the splash, and `d0763197` tipped it over. The post-6 s `cap` reading decides whether the quick fix (enable HEO after splash) is enough or whether we need the at91bootstrap DDR-QoS change. What do those two show?
+
+---
+
+_**User (2026-07-01 03:30:57Z)**_
+
+I don't beleive it's a DDR / bus bandwidth issue. There's no way it went from solid 60fps to <1 fps due to bandwidth unless we changed a setting that broke it.
+
+_**User (2026-07-01 03:31:01Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 03:31:17Z)**_
+
+continue
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:33:28Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:33:41Z)**_
+
+You're right, and I should've weighted that harder — a clean **60 → <1 fps is a hard stall, not contention**. Bandwidth marginality degrades gracefully (you'd see 30–45 fps); a near-total stop means a state/register got wedged when HEO comes up. Dropping the bandwidth theory.
+
+So: the ISC `DDONE` interrupt fires <1/s = the capture pipeline is **stalled**, and enabling HEO is what wedges it — introduced by a C-only change in `d0763197`. The way to find *which* setting is to dump the capture-pipeline register state while it's stalled and see which stage is dead. Add this to the `diag:` block in `d0763197`'s `video.c reconcile()` (these are status/config regs — **not** the clear-on-read `ISC_INTSR`, which we must not touch):
+
+```c
+    if (fc - lfc < 5u) {   /* stalled — dump where the pipeline died */
+        LOG_INFO("  ISC_DCTRL=0x%08lX ISC_DCFG=0x%08lX\r\n",
+                 (unsigned long)ISC_REGS->ISC_DCTRL, (unsigned long)ISC_REGS->ISC_DCFG);
+        LOG_INFO("  CSI2DC_GSR=0x%08lX CSI_PHY_STOPSTATE=0x%08lX\r\n",
+                 (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
+                 (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
+    }
+```
+(put it right after the `LOG_INFO("diag: ...")` line, inside the same `if (++dg >= 50u)` block; `ISC_REGS`/`CSI2DC_REGS`/`CSI_REGS` come from `definitions.h`, already included).
+
+What the dump tells us:
+- **`ISC_DCTRL`** — is the ISC DMA still enabled/running, or did it stop/error? If it went inactive, the stall is ISC-side.
+- **`CSI2DC_GSR`** — CSI2DC reset-in-progress / error (e.g., `ARSTIP` stuck, which `isc_capture` specifically warns about).
+- **`CSI_PHY_STOPSTATE`** — if the D-PHY lanes dropped to stop-state, no pixels are arriving → ISC can't complete frames.
+
+That pins the stalled stage. My hunch given "HEO-enable triggers it": enabling the HEO layer pokes an XLCDC/`ATTRE` update whose sync-wait or a shared register write disturbs the CSI2DC/ISC — and the dump will show it as a CSI2DC or PHY wedge rather than an ISC-DMA stop.
+
+If you'd rather, `isc_capture.c` already has `diag_dump_rx()` which dumps all of this plus the CSI interrupt-status regs — set the log level to DEBUG and call it once when stalled. Paste whichever dump you get and the stalled-stage register values will point straight at the broken setting.
+
+---
+
+_**User (2026-07-01 03:35:58Z)**_
+
+diag: cap=1 fps, LCDC commits=0/s
+  ISC_DCTRL=0x00000001 ISC_DCFG=0x00000442
+  CSI2DC_GSR=0x00000000 CSI_PHY_STOPSTATE=0x00000003
+diag: cap=0 fps, LCDC commits=0/s
+  ISC_DCTRL=0x00000001 ISC_DCFG=0x00000442
+  CSI2DC_GSR=0x00000000 CSI_PHY_STOPSTATE=0x00000003
+diag: cap=1 fps, LCDC commits=0/s
+
+_**User (2026-07-01 03:37:10Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-01 03:37:20Z)**_
+
+occasionally stopstate is 0 instead of 3  CSI2DC_GSR=0x00000000 CSI_PHY_STOPSTATE=0x00000000
+diag: cap=1 fps, LCDC commits=0/s
+  ISC_DCTRL=0x00000001 ISC_DCFG=0x00000442
+  CSI2DC_GSR=0x00000000 CSI_PHY_STOPSTATE=0x00000003
+diag: cap=0 fps, LCDC commits=0/s
+  ISC_DCTRL=0x00000001 ISC_DCFG=0x00000442
+  CSI2DC_GSR=0x00000000 CSI_PHY_STOPSTATE=0x00000003
+diag: cap=1 fps, LCDC commits=0/s
+  ISC_DCTRL=0x00000001 ISC_DCFG=0x00000442
+  CSI2DC_GSR=0x00000000 CSI_PHY_STOPSTATE=0x00000000
+diag: cap=0 fps, LCDC commits=0/s
+  ISC_DCTRL=0x00000001 ISC_DCFG=0x00000442
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:39:23Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:39:39Z)**_
+
+That register dump is the answer — and it's **not** the ISC, DMA, DDR, or display at all:
+
+- `ISC_DCTRL=0x1` → the ISC DMA is **armed and running**.
+- `ISC_DCFG=0x442` → config intact.
+- `CSI2DC_GSR=0x0` → CSI2DC healthy, no error/reset-stuck.
+- `CSI_PHY_STOPSTATE=0x3` (both data lanes in LP‑11 stop-state), flicking to `0x0` occasionally.
+
+**The CSI‑2 D‑PHY receiver has no incoming video** — the lanes are parked in stop-state almost all the time, briefly syncing (→ `0x0`) just often enough to land ~1 frame/s. The whole downstream pipeline (CSI2DC → ISC → DMA) is fine and waiting; **the input died.** So this was never bandwidth, compositor, or the ISC — it's the **capture front-end losing its D‑PHY lock**, and it's *intermittent* (marginal lock), which is the classic fingerprint of a **reference-clock / PHY-bring-up problem**, not a data path problem.
+
+Now the bisect makes total sense. `d0763197` didn't touch the capture code — it **reordered when capture comes up relative to the display**:
+- `0314c8fc`: `Video_CaptureEnable()` runs **last**, after the dashboard is revealed and the display (XLCDC/LVDSC + its PLL) is fully up and settled → the CSI D‑PHY is configured against stable clocks → solid lock, 60 fps.
+- `d0763197`: `app_on_splash_shown` fires `Video_CaptureEnable()` **early, during the splash**, while the display path is still being brought up. The CSI‑2 D‑PHY gets initialized against a clock that's still moving (or gets disturbed when the display PLL/LVDS locks) → marginal lock → lanes mostly stuck in stop-state.
+
+That's why HEO/display "coming up" correlates with the stall, why it's a hard ~0 fps (no sync) rather than graceful degradation, and why it's a C‑only regression with the video files untouched — it's a **timing/ordering** bug around a shared clock, exactly your "a setting/timing broke it" instinct.
+
+Two tests to confirm (either works), on `d0763197`:
+1. **Defer capture bring-up:** move `Video_CaptureEnable()` (and `DisplayShow`) out of `app_on_splash_shown` to the **end of the boot sequence, after reveal** (i.e., after the display is fully up) — matching `0314c8fc`. If it's solid 60 fps, confirmed.
+2. **Re-arm after reveal:** simplest probe — a few seconds after boot, call `Video_CaptureDisable()` then `Video_CaptureEnable()` (forces the CSI/ISC chain to re-init against now-stable clocks). If `cap` jumps to 60, it's the PHY-init-during-unstable-clock ordering.
+
+If #2 fixes it, the clean solution is to (re)arm capture only after the display/LVDS clocks are settled — or explicitly re-init the CSI D‑PHY after display bring-up. Want me to write the reorder patch (move capture-enable to post-reveal) for `d0763197`, and the equivalent for the current `ui_manager` boot path?
+
+---
+
+_**User (2026-07-01 03:45:05Z)**_
+
+#1 did it. I commented out Video_CaptureEnable and DisplayShow in app.c and placed at end of ui_boot_task before the task is deleted.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:46:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:46:07Z)**_
+
+That's the root cause nailed and fixed — the CSI‑2 D‑PHY was being brought up mid-boot (during the splash, amid the startup contention) and locked marginally; arming capture at the **end of `ui_boot_task`, after the display is up and things are quiet, gives it a clean lock**. Great debugging on your end.
+
+Let me fold this into the mainline properly (my HEO refactor already moved *display* into `ui_manager`; now capture-enable moves late too) and strip the diagnostics. First let me see the current tree state:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:46:11Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Assess current working tree state
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git status --short --branch | head -20
+echo "=== does the working tree have my HEO refactor? ==="
+grep -c "UiManager_VideoShow\|heo_reconcile\|Video_SetFrameLatchCallback" firmware/marvin/default/src/ui/ui_manager.c 2>/dev/null
+echo "=== app_on_splash_shown current content ==="
+grep -n "app_on_splash_shown\|Video_CaptureEnable\|Video_DisplayShow\|Video_SetWindow\|App_StartServices" firmware/marvin/default/src/app.c
+```
+
+```text
+## gui
+ M .specstory/history/2026-06-30_14-33-31Z-added-album-art-to.md
+ M .specstory/statistics.json
+ M firmware/marvin/default/src/app.c
+ M firmware/marvin/default/src/ui/ui_manager.c
+ M firmware/marvin/default/src/ui/ui_manager.h
+ M firmware/marvin/default/src/video/video.c
+ M firmware/marvin/default/src/video/video.h
+ M firmware/marvin/docs/journal.md
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+=== does the working tree have my HEO refactor? ===
+8
+=== app_on_splash_shown current content ===
+93:static void app_on_splash_shown(void)
+95:    App_StartServices();
+96:    Video_CaptureEnable();
+127:     * screen — that's our cue to start everything else (see app_on_splash_shown). */
+128:    UiManager_SetSplashShownCallback(app_on_splash_shown);
+133:     * App_StartServices (it sits above the SD tasks in priority). */
+160:     * the card mount and splash load. App_StartServices brings them up, fired from
+161:     * app_on_splash_shown the instant the splash is displayed. */
+170:void App_StartServices(void)
+229:     * App_StartServices, so this is the pre-services floor, not the final one.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:46:46Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:46:49Z)**_
+
+My HEO refactor is intact in the tree. Now I'll apply the real fix (arm capture late, after reveal) and strip all the diagnostic/test scaffolding. Let me update the todos and read the spots I need to clean up:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:46:49Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ Fix: move Video_CaptureEnable() from app_on_splash_shown to end of ui_boot_task (arm capture after display up → clean CSI D-PHY lock)
+- [ ] 🌡️ Clean up: remove VIDEO diag probe (s_diag_* + log block); restore non-blocking heo_frame_latch (drop #if 0); revert SPLASH_HW_LAYER test → OVR1
+- [ ] 🌡️ journal: record CSI D-PHY-lock-during-boot root cause + late-capture-arm fix
+- [ ] 🌡️ Phase 2 (deferred): modal HEO-off + BASE DISCEN while song-select open
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:00Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+216	    else if (!want && s_video_bound)
+217	    {
+218	        heo_unbind();
+219	        s_video_bound = false;
+220	    }
+221	
+222	    /* TEMP bring-up diagnostic: every ~1 s report capture fps + latch activity so we
+223	     * can tell "ISC slow" from "HEO not advancing". Remove once video is verified. */
+224	    static uint32_t diag_ticks, diag_last_fc, diag_last_latches;
+225	    if (++diag_ticks >= 50u)   /* video task ticks every ~20 ms → ~1 s */
+226	    {
+227	        Video_FrameInfo fi;
+228	        Video_GetFrameInfo(&fi);
+229	        LOG_INFO("VIDEO diag: cap=%lu fps, HEO latches=%lu/s addr=0x%08lX bound=%d shown=%d\r\n",
+230	                 (unsigned long)(fi.frame_count - diag_last_fc),
+231	                 (unsigned long)(s_diag_latch_count - diag_last_latches),
+232	                 (unsigned long)s_diag_last_latch, (int)s_video_bound, (int)s_video_shown);
+233	        diag_last_fc      = fi.frame_count;
+234	        diag_last_latches = s_diag_latch_count;
+235	        diag_ticks        = 0u;
+236	    }
+237	}
+238	
+239	/* ISC IRQ: point HEO at the just-completed ring slot every frame so it always scans
+240	 * the freshest complete frame (not a slot the capture engine is mid-write on). This
+241	 * is unconditional: writing the layer address while HEO is disabled (video hidden)
+242	 * is harmless, and keeping the write out of any task/IRQ-shared flag guarantees the
+243	 * scanout base advances regardless of task timing. Latches at the next vsync. */
+244	static void heo_frame_latch(uint32_t buffer_addr)
+245	{
+246	    s_diag_last_latch = buffer_addr;
+247	    s_diag_latch_count++;
+248	
+249	    /* Non-blocking base update: write the HEO frame address and *request* the layer
+250	     * attribute update, but do NOT wait for the sync. XLCDC_SetLayerAddress(...,true)
+251	     * → XLCDC_UpdateLayerAttributes busy-waits on LCDC_ATTRE/ATTRS_SIP until the
+252	     * update latches, which — while HEO is actively scanning — only happens at the
+253	     * next vsync. Spinning ~a full frame inside this ISC IRQ starves the capture DMA
+254	     * (measured: 61 fps → ~1 fps once HEO is enabled). The address register is
+255	     * double-buffered, so the hardware latches the new base at the next vsync on its
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:12Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+255	     * double-buffered, so the hardware latches the new base at the next vsync on its
+256	     * own; the following frame writes the newer address. OR into ATTRE so a pending
+257	     * BASE/OVR update isn't cleared. */
+258	    /* TEMP ISOLATION: HEO update disabled to test whether the per-frame register
+259	     * poke from the ISC IRQ is what starves capture. If cap recovers to ~60 with
+260	     * bound=1, the latch is the culprit (move it out of the IRQ); if cap still
+261	     * collapses, HEO scanout itself starves the ISC (bus/QoS). Video will freeze. */
+262	#if 0
+263	    XLCDC_REGS->LCDC_HEO[0].LCDC_HEOYFBA = buffer_addr;
+264	    XLCDC_REGS->LCDC_ATTRE |= LCDC_ATTRE_HEO_Msk;
+265	#endif
+266	}
+267	
+268	void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+269	{
+270	    rect_t r = { x, y, w, h };
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:21Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:23Z)**_
+
+Now let me clean up. First, remove the diagnostic block from `heo_reconcile`:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:27Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:51Z)**_
+
+Now remove the diag var declarations:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:47:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:04Z)**_
+
+Now revert the splash→OVR2 test in the header:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:06Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:15Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:15Z)**_
+
+Now the actual fix. Remove capture-enable from the (early) splash-shown callback:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:15Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+88	/* Fired by the UI boot task the instant the splash is on screen (registered via
+89	 * UiManager_SetSplashShownCallback). Brings up everything else — runtime services
+90	 * and the camera — in parallel with the behind-the-splash screen painting, so the
+91	 * system is warm by the time the dashboard is revealed. Only capture is armed here;
+92	 * the compositor (ui_manager) owns HEO display and shows the video at reveal. */
+93	static void app_on_splash_shown(void)
+94	{
+95	    App_StartServices();
+96	    Video_CaptureEnable();
+97	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:42Z)**_
+
+Now add capture-enable at the end of `ui_boot_task`, after the video is shown:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:42Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/ui/ui_manager.c`
+
+```text
+470	     * closed: it and its OVR2 cover strip are painted into their canvases but not
+471	     * shown; UiManager_OpenSongSelect() binds + shows the pair on demand (header tap).
+472	     * Set OVR1's colour mode to RGB565 now so the first nav-open (nav shares OVR1 and
+473	     * doesn't poke RGBMODE itself) scans out correctly even before any dialog open. */
+474	    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+475	    XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
+476	
+477	    /* Bring the live video up on HEO over the dashboard. Intent only — the video
+478	     * task binds HEO on its next reconcile once the source is locked. */
+479	    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+480	
+481	    vTaskDelete(NULL);
+482	}
+483	
+484	/* ── public API ──────────────────────────────────────────────────────────── */
+485	
+486	void UiManager_Initialize(void)
+487	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:48:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:05Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:05Z)**_
+
+Let me verify no diagnostic leftovers remain:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:08Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm diagnostics removed and capture-enable relocated
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== leftover diag artifacts (should be none) ==="
+grep -nE "s_diag|VIDEO diag|TEMP|#if 0|diag_ticks|diag_last" default/src/ui/ui_manager.c default/src/video/video.c default/src/video/video.h default/src/app.c || echo "clean"
+echo "=== capture-enable now only at end of ui_boot_task ==="
+grep -rn "Video_CaptureEnable" default/src/app.c default/src/ui/ui_manager.c
+```
+
+```text
+=== leftover diag artifacts (should be none) ===
+clean
+=== capture-enable now only at end of ui_boot_task ===
+default/src/ui/ui_manager.c:486:    Video_CaptureEnable();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:24Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:24Z)**_
+
+Clean. Now correct the journal — my earlier bring-up note blamed the LCDC busy-wait, which the diagnostics disproved. Let me replace it with the real root cause:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:24Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+216	### 2026-06-30 — HEO (video display) control moved into ui_manager; video.c → capture producer
+217	
+218	Refactor so the compositor owns the HEO hardware layer and video.c is a pure capture producer — enabling screens that don't show video, future overlay-on-video (a separate OVR layer, **not** drawing into the RGB888 capture buffer), and HEO reuse when video is idle. **Seam:** video.c keeps ISC/TC358743/ring/subscribers and exposes two registered callbacks; **all HEO/BASE register writes moved to `ui_manager`** but execute in the same contexts as before (so timing/threading is unchanged and no locks are added): `Video_SetDisplayReconcileCallback` fires each video-task tick with `(source_valid, w, h)` → ui_manager's `heo_reconcile` (re)binds/unbinds HEO; `Video_SetFrameLatchCallback` fires from the ISC IRQ with the freshest buffer → ui_manager's `heo_frame_latch` re-points HEO. The UI task only sets volatile intent (`UiManager_VideoShow(rect)` / `UiManager_VideoHide()`), consumed by the reconcile, so HEO/BASE stay single-writer. `heo_bind`/`heo_unbind`/`scaler_factor` + BASE DISCEN moved out of video.c (was `lcd_bind`/`lcd_unbind`/`display_apply`). Video-window layout constants moved app.c → ui_manager (compositor owns layout). Boot: ui_manager parks HEO off after the dashboard binds and calls `UiManager_VideoShow` at reveal; `app.c` now only `Video_CaptureEnable()`s (capture is needed for the detector/gameplay regardless of display). Callbacks registered in `UiManager_Initialize` before the video task starts. **Phase 1 is behavior-preserving** (video window identical) — verify on hardware before Phase 2. **Bring-up (video capture collapsed to ~1 fps once HEO was shown).** Diagnostic (temporary, in `heo_reconcile`) showed capture at **61 fps while HEO was unbound, dropping to ~0–1 fps the instant HEO bound** — the panel then showed a near-frozen, vertically-wrapping frame. Root cause: the per-frame HEO base update runs in the **ISC frame-done IRQ**, and `XLCDC_SetLayerAddress(…, update=true)` → `XLCDC_UpdateLayerAttributes` **busy-waits** (`while(LCDC_ATTRE)` + `WAIT_ATTRS_EQ(SIP)`) for the attribute sync. While HEO is *disabled* that returns instantly (hence 61 fps unbound); while HEO is *actively scanning* the sync only completes at the next vsync, so the IRQ spun ~a full frame every frame and starved the capture DMA. Fix: `heo_frame_latch` now does a **non-blocking** base update — write `LCDC_HEO[0].LCDC_HEOYFBA` and `LCDC_ATTRE |= LCDC_ATTRE_HEO_Msk` (request the update, don't wait); the double-buffered address latches at the next vsync on its own. Also made the latch **unconditional** (no `s_video_bound` guard) so the base always tracks the freshest ring slot. (This blocking wait was latent in the old in-`video.c` IRQ latch too; the refactor's diagnostics surfaced it.) **Phase 2 (deferred):** while the song-select dialog is open, `UiManager_VideoHide()` (HEO output off, capture continues) + set the effective BASE DISCEN to the dialog rect (skip BASE DMA behind the opaque 1100×660 dialog); DISCEN becomes reconcile-owned (`{video → video rect | dialog → dialog rect | none}`) to stay single-writer. **Deferred/possible now:** dim-dashboard by repurposing HEO under OVR1 while a modal is open.
+219	
+220	### 2026-06-30 — Song-select dialog is now a modal (open on header tap, close on X/SELECT)
+221	
+222	The dialog + its OVR2 cover strip no longer show at boot — the dashboard reveals alone and the dialog opens on demand. `ui_manager` gained `UiManager_OpenSongSelect()`/`UiManager_CloseSongSelect()`: open binds + shows the pair (`bind_canvas` SONGSEL→OVR1 RGB565, ALBUM_ART→OVR2 RGBA8888); close `gfxcHideCanvas` both (freeing OVR1 for the nav drawer). State tracked by a `s_songsel_open` guard (idempotent). At reveal the two boot `bind_canvas(...,true)` show calls were removed and replaced by a single `XLCDC_SetLayerRGBColorMode(OVR1, RGB565)` poke so a first nav-open (nav shares OVR1 and doesn't set RGBMODE itself) still scans out correctly before any dialog open. **Open trigger:** a tap on the dashboard **top header bar** — `screen_dashboard.c` re-points the (shared) vtable of `PANEL_BASE_TOP` + `PANEL_SYSTEM_LEFT/TITLE/RIGHT` at a copy whose `touchDownEvent` calls `UiManager_OpenSongSelect` (same per-vtable override pattern as `widget_song_list.c`/`widget_panel_aa.c`). Legato delivers a touch only to the topmost picked widget without bubbling, so the hamburger button (→ nav) and the title labels keep their own behaviour; only taps on the bare header panels open the dialog. **Close:** `screen_song_select.c` wires `BUTTON_SONG_SELECT_CLOSE` (the X) and `_SELECT` release callbacks to `UiManager_CloseSongSelect` (SELECT is a placeholder until it starts gameplay).
+223
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:36Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:49:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:50:07Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Fix: move Video_CaptureEnable() from app_on_splash_shown to end of ui_boot_task (arm capture after display up → clean CSI D-PHY lock)
+- [X] 🌡️ Clean up: remove VIDEO diag probe; restore non-blocking heo_frame_latch; revert SPLASH_HW_LAYER test → OVR1
+- [X] 🌡️ journal: record CSI D-PHY-lock-during-boot root cause + late-capture-arm fix
+- [ ] 🌡️ Phase 2 (deferred): modal HEO-off + BASE DISCEN while song-select open
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:50:21Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:50:32Z)**_
+
+Done. The fix and cleanup are integrated into the mainline HEO refactor:
+
+**The fix** ([ui_manager.c:486](firmware/marvin/default/src/ui/ui_manager.c#L486)): `Video_CaptureEnable()` now fires at the **end of `ui_boot_task`** (after `UiManager_VideoShow`, after reveal), not in `app_on_splash_shown`. Capture arms against settled display clocks, clear of the boot-time contention → the CSI‑2 D‑PHY locks cleanly. This is the same reordering you validated, adapted to the refactored boot (display was already moved to the compositor; now capture-enable joins it late).
+
+**Cleanup:**
+- Removed the `VIDEO diag` probe (the `s_diag_*` vars + the per-second log block).
+- Restored `heo_frame_latch` to the real non-blocking version (dropped the `#if 0` isolation test) — kept as a correctness hardening, clearly noted as *not* the fix.
+- Reverted `SPLASH_HW_LAYER` back to `HW_OVR1` (the OVR2 test).
+
+**Journal** corrected: the root cause is now recorded accurately — CSI‑2 D‑PHY marginal lock from arming capture too early in the reordered boot (`d0763197`), with the full diagnostic trail (bisect → `cap` → `LCDC commits≈0` → `CSI_PHY_STOPSTATE=0x3`) and why the earlier busy-wait/bandwidth theories were wrong. My previous incorrect bring-up note was replaced.
+
+So the whole video path is now: **video.c = capture producer; ui_manager owns HEO display; capture armed last.** This is a big uncommitted change set (video.c/.h, ui_manager.c/.h, app.c, journal). Please build + flash the mainline and confirm video is solid at 60 fps here too — once you're happy, say the word and I'll commit it (and we still have Phase 2 — HEO-off + BASE-DISCEN under the dialog — deferred).
+
+One note: you fixed it in a separate `d0763197` test repo, so the mainline change is the *equivalent* reorder in the refactored boot, not byte-identical — worth a fresh flash to confirm before we commit.
+
+---
+
+_**User (2026-07-01 03:51:17Z)**_
+
+that fixed it at boot. but now fails again after closing song select screen
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:53:16Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:53:28Z)**_
+
+Makes sense, and it fits the picture: the CSI‑2 D‑PHY lock is **marginal** — arming it in a quiet window (the boot fix) gets a clean lock, but a later disturbance knocks it back into stop-state, and it **doesn't self-recover** (the TC358743 still reports "locked," so the video task's reconcile never re-arms → it sits dead). Opening/closing the song-select dialog is a big GFX burst (bind/hide OVR1+OVR2, the album-art RGBA8888 decode+blit, and on close the full dashboard repaints) — exactly the kind of contention that would jostle a marginal D‑PHY. And note: `0314c8fc` never had a dialog to open/close, so this interaction is genuinely new, not something that regressed.
+
+Two ways forward:
+
+**Robust fix — a capture stall-watchdog (recommended).** In the video task, if capture is enabled + the source is locked but the frame count hasn't advanced for ~500 ms, force a `disarm → re-arm`. `capture_arm` re-runs `DRV_CSI_Configure` → **re-inits the D‑PHY**, and by the time the watchdog fires the UI transition is over (quiet), so it re-locks cleanly. This self-heals from *any* disturbance (dialog, future screens, transient glitches), not just this one — and it subsumes needing to hand-tune every UI transition. Cost: a brief (~sub-second) video freeze when it re-locks after a heavy transition.
+
+**Targeted alternative — avoid the disturbance.** Figure out precisely what in open/close knocks the D‑PHY and suppress it. That needs a diagnostic pass (re-add the `cap` + `ISC_DCTRL`/`CSI2DC_GSR`/`CSI_PHY_STOPSTATE` dump, plus `TC358743_IsLocked()`, and watch across an open/close) to confirm it's the same stop-state drop and whether TC still reports locked. More work, and it likely only whack-a-moles this one transition.
+
+I'd go with the watchdog — it's the correct model for a front-end that can lose lock. Want me to implement it in the video task? I'd keep it tight: track `frame_count` deltas per reconcile tick, and if zero for N consecutive ticks while `s_capture_enabled && locked`, `capture_disarm()`+`capture_arm()` (re-init once, not every tick). If you'd rather confirm the exact trigger first, I'll drop in the diagnostic instead — your call.
+
+---
+
+_**User (2026-07-01 03:57:45Z)**_
+
+we should definitely target the robust fix. I also think we should look at the phy clock rate. I think we have it significantly faster than needed right now because easy. but we should revisit and base clock rate on actual bandwidth similar to linux driver. done for the night. please make a note of this and we'll pick it up tomorrow
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 03:58:19Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:58:19Z)**_
+
+Understood — noting it for tomorrow, implementing nothing now. Let me record the plan in the journal:
+
+_**Agent (claude-opus-4-8 2026-07-01 03:58:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:58:55Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ Fix: capture armed at end of ui_boot_task (boot D-PHY lock) — DONE + cleaned up + journaled
+- [ ] 🌡️ TOMORROW (1): capture stall-watchdog in video task — re-arm (re-init CSI D-PHY) when frame count stalls while enabled+locked; self-heals the post-dialog-close drop
+- [ ] 🌡️ TOMORROW (2): revisit CSI-2 D-PHY clock rate — set ISC_CAP_CSI_BITRATE/HSFREQRANGE from actual bandwidth (W*H*bpp*fps/lanes) like the Linux mchp-isc/dw-dphy driver, for a more robust lock
+- [ ] 🌡️ Phase 2 (deferred): modal HEO-off + BASE DISCEN while song-select open
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 03:59:04Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 03:59:12Z)**_
+
+Noted and journaled — nothing else changed tonight. Here's where things stand:
+
+**Landed today (working tree, uncommitted):**
+- HEO/video-display control moved into `ui_manager`; `video.c` is now a pure capture producer.
+- Boot video fix: capture armed at the end of `ui_boot_task` (after the display is up) → clean CSI‑2 D‑PHY lock. Confirmed at boot.
+- Diagnostics stripped, non-blocking HEO latch kept, splash back on OVR1.
+- Journal corrected with the real root cause + full diagnostic trail.
+
+**Queued for tomorrow (in the journal under "OPEN — resume 2026‑07‑01" and the todo list):**
+1. **Capture stall-watchdog** (robust fix) — video task re-arms capture (re-inits the D‑PHY) if the frame count stalls while enabled+locked; self-heals the drop after closing song-select and any future disturbance.
+2. **Right-size the CSI‑2 D‑PHY clock rate** — `ISC_CAP_CSI_BITRATE`/HSFREQRANGE is set high (~972 Mbps/lane) for convenience; recompute from actual bandwidth (`W×H×bpp×fps ÷ lanes`) and pick the matching band like the Linux `mchp-isc`/`dw-dphy-rx` driver, for a more robust lock that reduces the marginality the watchdog is papering over.
+
+Also still deferred: Phase 2 (HEO‑off + BASE DISCEN under the open dialog).
+
+Nothing is committed — the video refactor + boot fix are all in the working tree waiting on your hardware sign-off before we commit. Have a good night; we'll pick up with the watchdog first thing.
+
+---
+
+_**User (2026-07-01 04:00:04Z)**_
+
+please commit what we have now
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-01 04:00:15Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-01 04:00:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Review working tree before commit
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git status --short
+```
+
+```text
+ M .specstory/history/2026-06-30_14-33-31Z-added-album-art-to.md
+ M .specstory/statistics.json
+ M firmware/marvin/default/src/app.c
+ M firmware/marvin/default/src/ui/ui_manager.c
+ M firmware/marvin/default/src/ui/ui_manager.h
+ M firmware/marvin/default/src/video/video.c
+ M firmware/marvin/default/src/video/video.h
+ M firmware/marvin/docs/journal.md
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 04:00:34Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the video refactor + boot capture fix
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/marvin/default/src/app.c \
+        firmware/marvin/default/src/ui/ui_manager.c \
+        firmware/marvin/default/src/ui/ui_manager.h \
+        firmware/marvin/default/src/video/video.c \
+        firmware/marvin/default/src/video/video.h \
+        firmware/marvin/docs/journal.md
+git commit -q -F - <<'MSG'
+marvin: move HEO video-display control into ui_manager; arm capture after boot
+
+video.c becomes a pure capture producer (ISC ring, TC358743, subscribers) and
+exposes two hooks the compositor registers; ui_manager now owns every HEO/BASE
+register write. The hooks run in the existing contexts so threading/timing is
+unchanged: a per-tick display-reconcile (video task) drives heo_bind/unbind, and a
+per-frame frame-latch (ISC IRQ) re-points HEO at the freshest ring slot. The UI
+task only sets volatile intent via UiManager_VideoShow/Hide, so HEO/BASE stay
+single-writer. Video-window layout constants moved app.c -> ui_manager. The HEO
+frame latch is non-blocking (write LCDC_HEOYFBA + request ATTRE, no while-spin) so
+the ISC IRQ never busy-waits on the display.
+
+Fixes a capture-collapse bug (bisected to the earlier boot rewrite d0763197): the
+CSI-2 D-PHY was armed early, during the splash/boot contention, and locked
+marginally -> RX lanes stuck in stop-state, ~0 fps. Diagnosed via a staged probe
+down to CSI_PHY_STOPSTATE=0x3 with the ISC/CSI2DC otherwise healthy. Fix: arm
+Video_CaptureEnable() at the end of ui_boot_task, after the display is up and the
+boot burst has drained, so the D-PHY gets a clean lock. Confirmed at boot.
+
+Known follow-up (journal, resume 2026-07-01): the D-PHY lock is still marginal and
+drops on a later GFX burst (closing the song-select dialog); planned fix is a
+capture stall-watchdog that re-arms/re-inits the D-PHY on a frame-count stall, plus
+right-sizing the CSI-2 lane rate (ISC_CAP_CSI_BITRATE/HSFREQRANGE) to actual
+bandwidth.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+MSG
+git log --oneline -1
+```
+
+```text
+8828671 marvin: move HEO video-display control into ui_manager; arm capture after boot
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-01 04:00:43Z)**_
+
+Committed as `8828671`. It includes the six files of real work — `video.c`/`.h` (capture-producer refactor), `ui_manager.c`/`.h` (HEO ownership + `UiManager_VideoShow/Hide` + the late-capture-arm boot fix + non-blocking latch), `app.c` (capture-enable removed from the early splash callback), and the `journal.md` update with the root cause and the two queued follow-ups.
+
+Left untouched, as before: `.specstory/`, and the untracked `firmware/marvin/docs/sam9x75-chybrid/` and `hardware/t1s-sink/`.
+
+The commit message records the known follow-up (post-dialog-close D‑PHY drop → watchdog + clock right-sizing) so tomorrow's starting point is captured both there and in the journal. Night!
