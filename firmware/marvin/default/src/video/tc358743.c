@@ -12,14 +12,16 @@
 #define REFCLK_HZ               27000000u
 #define CSI_LANES               2u
 #define PLL_PRD                 4u
-/* FBD=144 → hsck = (27M/4)*144 = 972 Mbps/lane. Pairs with the SAM9X75
- * D-PHY HSFREQRANGE band 0x0A (DWC Gen3 table, 950-1000 Mbps).
- * Kernel tabulates this as the rate for 720p60 RGB888 / 1080p50 YUV422
- * over 2 lanes. 2 lanes × 972 Mbps = 1.944 Gbps: fits 720p60 RGB888
- * (1.33 Gbps) with headroom, plus 1080p30 RGB888 (1.49 Gbps). */
+/* FBD=144 → hsck = (27M/4)*144 = 972 Mbps/lane; SAM9X75 D-PHY HSFREQRANGE band
+ * 0x0A. 972 is the correct rate for our low-pixel-clock 720x480p60 source, not a
+ * fallback: the TC358743 has a single 512-word line FIFO and cannot rate-convert,
+ * so the CSI-2 output must outrun the HDMI fill; the higher rate is the better-
+ * conditioned operating point and matches the Raspberry Pi default (972 + FIFO
+ * 374). 594 and below fail HS SoT-sync on this source+PHY pairing — see journal
+ * 2026-07-01. */
 #define PLL_FBD                 144u
 #define CSI_BPS_PER_LANE        ((REFCLK_HZ / PLL_PRD) * PLL_FBD)
-#define FIFO_LEVEL              374u   /* kernel hardcodes this at all rates. */
+#define FIFO_LEVEL              374u   /* 512-word FIFO; ~73% (RPi/kernel default). */
 
 /* D-PHY timing counts for 972 Mbps from kernel driver tc358743.c case 972000000 */
 #define LINEINITCNT_VAL         0x00001B58u

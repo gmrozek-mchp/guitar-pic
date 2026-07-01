@@ -190,6 +190,10 @@ static void capture_watchdog(void)
     {
         LOG_WARN("VIDEO: capture stalled at frame %lu (source locked) — re-arming\r\n",
                  (unsigned long)count);
+        /* Dump the pipeline register state for the first few collapses so the
+         * error class is visible without flooding the UART on every re-arm. */
+        static uint8_t diag_budget = 8u;
+        if (diag_budget > 0u) { ISC_Capture_DumpDiag("stall"); diag_budget--; }
         capture_disarm();
         s_capture_armed = false;
         if (capture_arm()) { s_capture_armed = true; }

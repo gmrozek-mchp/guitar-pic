@@ -22,10 +22,10 @@
 /* At 60 fps depth N gives a subscriber holding a buffer pointer N×16.6 ms
  * before the producer laps. 4 → ~50 ms read window. */
 #define ISC_CAP_NUM_BUFFERS  4u
-/* HSFREQRANGE for SAM9X75 D-PHY RX. SAM9X75 is DWC Gen3 per Linux DT
- * (snps,dw-dphy-rx with snps,phy_type=<0>, 8-bit bus). For 972 Mbps/lane
- * in Gen3 table: 0x0A (band covers ≤1000 Mbps). Was 0x14 at 297 Mbps
- * (works in both Gen2 and Gen3 — bands coincide there). Changes with bitrate. */
+/* HSFREQRANGE for SAM9X75 D-PHY RX, written per-lane by CSI_Analog_Init. Must
+ * match the TC358743 lane rate (tc358743.c CSI_BPS_PER_LANE): 972 Mbps → 0x0A.
+ * (Lower rates were investigated and fail HS SoT-sync on this source; the band
+ * code itself was found not to affect that failure. See journal 2026-07-01.) */
 #define ISC_CAP_CSI_BITRATE  0x0Au
 
 /* Uncached so CPU readers (detectors, recorder) see ISC DMA writes without
@@ -127,41 +127,56 @@ void ISC_Capture_Initialize(void)
     LOG_INFO("ISC_Capture: initialized\r\n");
 }
 
+/* Dump the CSI-2 RX / CSI2DC / ISC pipeline registers at level `lvl`. Reading
+ * the CSI_INT_ST_* registers clears their latched error bits, so this is a
+ * side-effecting read — only call it where clearing status is acceptable
+ * (before a re-arm, or in debug). */
+static void emit_rx_diag(const char *tag, log_level_t lvl)
+{
+    log_printf(lvl, "ISC_Capture diag (%s):\r\n", tag);
+    log_printf(lvl, "  CSI_PHY_RX=0x%08lX  STOPSTATE=0x%08lX\r\n",
+               (unsigned long)CSI_REGS->CSI_PHY_RX,
+               (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
+    log_printf(lvl, "  CSI_INT_ST_MAIN=0x%08lX\r\n",
+               (unsigned long)CSI_REGS->CSI_INT_ST_MAIN);
+    log_printf(lvl, "  CSI_INT_ST  PHY_FATAL=0x%08lX  PKT_FATAL=0x%08lX  FRAME_FATAL=0x%08lX\r\n",
+               (unsigned long)CSI_REGS->CSI_INT_ST_PHY_FATAL,
+               (unsigned long)CSI_REGS->CSI_INT_ST_PKT_FATAL,
+               (unsigned long)CSI_REGS->CSI_INT_ST_FRAME_FATAL);
+    log_printf(lvl, "  CSI_INT_ST  PHY=0x%08lX  PKT=0x%08lX\r\n",
+               (unsigned long)CSI_REGS->CSI_INT_ST_PHY,
+               (unsigned long)CSI_REGS->CSI_INT_ST_PKT);
+    log_printf(lvl, "  CSI2DC_GSR=0x%08lX  GISR=0x%08lX  VPISR=0x%08lX\r\n",
+               (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
+               (unsigned long)CSI2DC_REGS->CSI2DC_GISR,
+               (unsigned long)CSI2DC_REGS->CSI2DC_VPISR);
+    log_printf(lvl, "  CSI2DC_FNVC0R=0x%08lX  LNVC0R=0x%08lX\r\n",
+               (unsigned long)CSI2DC_REGS->CSI2DC_FNVC0R,
+               (unsigned long)CSI2DC_REGS->CSI2DC_LNVC0R);
+    log_printf(lvl, "  ISC_INTSR=0x%08lX  ISC_DCTRL=0x%08lX  ISC_DCFG=0x%08lX\r\n",
+               (unsigned long)ISC_Interrupt_Status(),
+               (unsigned long)ISC_REGS->ISC_DCTRL,
+               (unsigned long)ISC_REGS->ISC_DCFG);
+    log_printf(lvl, "  ISC_RLP_CFG=0x%08lX  ISC_PFE_CFG0=0x%08lX\r\n",
+               (unsigned long)ISC_REGS->ISC_RLP_CFG,
+               (unsigned long)ISC_REGS->ISC_PFE_CFG0);
+    log_printf(lvl, "  CSI2DC_VPCFGR=0x%08lX  CSI2DC_GCFGR=0x%08lX\r\n",
+               (unsigned long)CSI2DC_REGS->CSI2DC_VPCFGR,
+               (unsigned long)CSI2DC_REGS->CSI2DC_GCFGR);
+}
+
 static void diag_dump_rx(const char *tag)
 {
-    /* Skip the dozen register reads when DEBUG level isn't selected. */
+    /* Skip the side-effecting register reads when DEBUG level isn't selected. */
     if ((int)log_get_level() < (int)LOG_LEVEL_DEBUG) { return; }
+    emit_rx_diag(tag, LOG_LEVEL_DEBUG);
+}
 
-    LOG_DEBUG("ISC_Capture diag (%s):\r\n", tag);
-    LOG_DEBUG("  CSI_PHY_RX=0x%08lX  STOPSTATE=0x%08lX\r\n",
-              (unsigned long)CSI_REGS->CSI_PHY_RX,
-              (unsigned long)CSI_REGS->CSI_PHY_STOPSTATE);
-    LOG_DEBUG("  CSI_INT_ST_MAIN=0x%08lX\r\n",
-              (unsigned long)CSI_REGS->CSI_INT_ST_MAIN);
-    LOG_DEBUG("  CSI_INT_ST  PHY_FATAL=0x%08lX  PKT_FATAL=0x%08lX  FRAME_FATAL=0x%08lX\r\n",
-              (unsigned long)CSI_REGS->CSI_INT_ST_PHY_FATAL,
-              (unsigned long)CSI_REGS->CSI_INT_ST_PKT_FATAL,
-              (unsigned long)CSI_REGS->CSI_INT_ST_FRAME_FATAL);
-    LOG_DEBUG("  CSI_INT_ST  PHY=0x%08lX  PKT=0x%08lX\r\n",
-              (unsigned long)CSI_REGS->CSI_INT_ST_PHY,
-              (unsigned long)CSI_REGS->CSI_INT_ST_PKT);
-    LOG_DEBUG("  CSI2DC_GSR=0x%08lX  GISR=0x%08lX  VPISR=0x%08lX\r\n",
-              (unsigned long)CSI2DC_REGS->CSI2DC_GSR,
-              (unsigned long)CSI2DC_REGS->CSI2DC_GISR,
-              (unsigned long)CSI2DC_REGS->CSI2DC_VPISR);
-    LOG_DEBUG("  CSI2DC_FNVC0R=0x%08lX  LNVC0R=0x%08lX\r\n",
-              (unsigned long)CSI2DC_REGS->CSI2DC_FNVC0R,
-              (unsigned long)CSI2DC_REGS->CSI2DC_LNVC0R);
-    LOG_DEBUG("  ISC_INTSR=0x%08lX  ISC_DCTRL=0x%08lX  ISC_DCFG=0x%08lX\r\n",
-              (unsigned long)ISC_Interrupt_Status(),
-              (unsigned long)ISC_REGS->ISC_DCTRL,
-              (unsigned long)ISC_REGS->ISC_DCFG);
-    LOG_DEBUG("  ISC_RLP_CFG=0x%08lX  ISC_PFE_CFG0=0x%08lX\r\n",
-              (unsigned long)ISC_REGS->ISC_RLP_CFG,
-              (unsigned long)ISC_REGS->ISC_PFE_CFG0);
-    LOG_DEBUG("  CSI2DC_VPCFGR=0x%08lX  CSI2DC_GCFGR=0x%08lX\r\n",
-              (unsigned long)CSI2DC_REGS->CSI2DC_VPCFGR,
-              (unsigned long)CSI2DC_REGS->CSI2DC_GCFGR);
+/* Unconditional pipeline dump (LOG_WARN), for capturing the register state at a
+ * capture stall/collapse regardless of the runtime log level. */
+void ISC_Capture_DumpDiag(const char *tag)
+{
+    emit_rx_diag(tag, LOG_LEVEL_WARN);
 }
 
 bool ISC_Capture_Configure(uint32_t width, uint32_t height)

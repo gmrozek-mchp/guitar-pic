@@ -15,6 +15,11 @@ void     ISC_Capture_Stop(void);
 uint32_t ISC_Capture_FrameCount(void);
 bool     ISC_Capture_IsRunning(void);
 
+/* Dump the CSI-2 RX / CSI2DC / ISC pipeline registers at LOG_WARN. Intended for
+ * capturing the failure state at a capture stall. Reading the CSI status
+ * registers clears their latched error bits, so treat as side-effecting. */
+void     ISC_Capture_DumpDiag(const char *tag);
+
 /* Base address of the capture framebuffer pool. Subsequent buffers are at
  * +N × frame_size. Most callers want the per-frame "just completed" address
  * delivered through the frame callback; use this only for one-time setup
