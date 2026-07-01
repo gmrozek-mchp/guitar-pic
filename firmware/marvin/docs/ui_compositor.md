@@ -457,6 +457,25 @@ zero.
   flipping full→cropped). Applies to both windowed and fullscreen; bonus: active
   716×448 ≈ 1.60 = 1280×800, so fullscreen is essentially aspect-correct.
 
+### 15.1 HEO video levels expansion (gamma CLUT)
+
+The source is mildly range-compressed against the panel's full 0..255 — measured
+black cluster ~5 (the dead-border pedestal ~13 is cropped out by §15), white ceiling
+~233. The HEO **CBHS** limited-range black-level block is **YCbCr-only** (SAM9X7 DS
+§6.2.6.7), so it can't touch our RGB888 HEO input. The HEO's **per-component gamma
+CLUT** *does* operate on true RGB (`HEOCFG1.GAM`, four 256-entry LUTs), so `ui_manager`
+loads it with a linear levels-expansion curve (`out = clamp((in−5)·255/228)`;
+`VIDEO_LEVELS_BLACK/WHITE`) — deepening near-black to true black and lifting whites.
+
+- **Display-only:** the DDR capture is untouched, so the detector/gameplay read raw
+  pixels; the expansion is applied by the LCDC at scanout (zero runtime cost).
+- **Load timing:** the CLUT (`LCDC_HEOCLUT[256]`) must be written with `GAM`/`CLUTEN`
+  clear, so it's loaded in `UiManager_Initialize` (post `XLCDC_SetupHEOLayer`, pre any
+  bind). `XLCDC_SetLayerRGBColorMode` rewrites `HEOCFG1` with `GAM(0)` each bind, so
+  `heo_bind` re-asserts `GAM` after it.
+- **Fixed curve.** The ~5/233 pedestal/ceiling may vary by Wii/converter — retune the
+  `VIDEO_LEVELS_*` constants (same per-hardware caveat as §15's detection).
+
 ## 16. Rounded AA video frame (OVR1 overlay)
 
 A 1px rounded frame with anti-aliased corners around the windowed video, matching

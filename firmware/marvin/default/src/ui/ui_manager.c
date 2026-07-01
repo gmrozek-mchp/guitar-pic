@@ -129,6 +129,45 @@ static uint32_t scaler_factor(uint32_t src, uint32_t dst)
     return (uint32_t)(((uint64_t)src << 20) / dst);
 }
 
+/* ── HEO video levels expansion (per-component gamma CLUT) ─────────────────────
+ * The captured source is mildly range-compressed (~5 black pedestal, ~233 white
+ * ceiling) against the panel's full 0..255. The HEO CBHS limited-range block is
+ * YCbCr-only, but the per-component gamma CLUT operates on true RGB, so we load it
+ * with a linear levels-expansion curve (BLACK→0, WHITE→255) and enable GAM. This is
+ * display-only — the capture in DDR is untouched, so the detector/gameplay see raw
+ * pixels — and free at runtime (applied by the LCDC at scanout).
+ *
+ * The CLUT must be written while CLUTEN and GAM are clear (true at init, after MCC's
+ * XLCDC_SetupHEOLayer); XLCDC_SetLayerRGBColorMode rewrites HEOCFG1 with GAM(0) on
+ * every bind, so heo_bind re-asserts GAM after it. Fixed curve — retune VIDEO_LEVELS_*
+ * for a different source. */
+#define VIDEO_LEVELS_BLACK    5u    /* input level mapped to 0   */
+#define VIDEO_LEVELS_WHITE  233u    /* input level mapped to 255 */
+
+static volatile bool s_video_levels = true;   /* GAM (levels CLUT) on; `gamma` cmd toggles */
+
+static void heo_gamma_load(void)
+{
+    const int32_t den = (int32_t)(VIDEO_LEVELS_WHITE - VIDEO_LEVELS_BLACK);
+    for (uint32_t i = 0u; i < 256u; i++)
+    {
+        uint32_t c;
+        if (i <= VIDEO_LEVELS_BLACK)
+        {
+            c = 0u;
+        }
+        else
+        {
+            int32_t v = ((int32_t)(i - VIDEO_LEVELS_BLACK) * 255 + den / 2) / den;
+            c = (v > 255) ? 255u : (uint32_t)v;
+        }
+        XLCDC_REGS->LCDC_HEOCLUT[i] = LCDC_HEOCLUT_ACLUT(0xFFu) |
+                                      LCDC_HEOCLUT_RCLUT(c) |
+                                      LCDC_HEOCLUT_GCLUT(c) |
+                                      LCDC_HEOCLUT_BCLUT(c);
+    }
+}
+
 /* Bind HEO to the capture buffer at the window, engaging the bicubic scaler only
  * when dst != the active source size. The scaler reads only the detected active
  * picture rect (Video_GetActiveRect) — cropping the source's dead black bars — by
@@ -162,6 +201,9 @@ static void heo_bind(uint16_t src_w, uint16_t src_h,
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO, XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+    /* Re-apply the levels CLUT enable (RGBColorMode clears GAM); off = raw pass-through. */
+    if (s_video_levels) { XLCDC_REGS->LCDC_HEOCFG1 |=  LCDC_HEOCFG1_GAM_Msk; }
+    else                { XLCDC_REGS->LCDC_HEOCFG1 &= ~LCDC_HEOCFG1_GAM_Msk; }
     XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, addr, false);
     XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, (uint32_t)(src_w - aw) * bpp, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
@@ -349,6 +391,17 @@ void UiManager_VideoOverlayShow(const void *buf, uint32_t x, uint32_t y,
 void UiManager_VideoOverlayHide(void)
 {
     XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
+}
+
+void UiManager_SetVideoLevels(bool on)
+{
+    s_video_levels = on;
+    s_video_rebind = true;   /* reconcile re-binds HEO next tick, applying the new GAM state */
+}
+
+bool UiManager_GetVideoLevels(void)
+{
+    return s_video_levels;
 }
 
 /* ── navigation drawer layer (OVR2) ───────────────────────────────────────────
@@ -689,6 +742,10 @@ void UiManager_Initialize(void)
      * task then drives heo_reconcile each tick and the ISC IRQ drives heo_frame_latch. */
     Video_SetFrameLatchCallback(heo_frame_latch);
     Video_SetDisplayReconcileCallback(heo_reconcile);
+
+    /* Load the HEO levels-expansion gamma CLUT now, while GAM/CLUTEN are clear
+     * (post XLCDC_SetupHEOLayer, pre any HEO bind). heo_bind enables GAM. */
+    heo_gamma_load();
 
     (void)xTaskCreateStatic(ui_boot_task, "UiBoot", BOOT_TASK_STACK_WORDS,
                             NULL, BOOT_TASK_PRIORITY, s_boot_stack, &s_boot_tcb);

@@ -58,6 +58,12 @@ void UiManager_SetSplashShownCallback(void (*cb)(void));
 void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void UiManager_VideoHide(void);
 
+/* Toggle the HEO video levels-expansion (limited→full range via the gamma CLUT).
+ * On by default. Display-only; takes effect on the next HEO (re)bind (a rebind is
+ * requested so a shown video updates within a frame). For A/B eyeballing. */
+void UiManager_SetVideoLevels(bool on);
+bool UiManager_GetVideoLevels(void);
+
 /* Video frame overlay (OVR1, above HEO). Show binds a caller-owned ARGB_4444
  * framebuffer to OVR1 at the given panel rect (drawn on top of the video for the
  * rounded anti-aliased frame); Hide disables OVR1. The buffer must stay resident

@@ -590,6 +590,22 @@ static void cmd_backlight(EmbeddedCli *cli, char *args, void *ctx)
                    saved ? "saved" : "save FAIL");
 }
 
+static void cmd_gamma(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    if (tok == NULL)
+    {
+        console_printf("video levels = %s  (usage: gamma <on|off>)",
+                       UiManager_GetVideoLevels() ? "on" : "off");
+        return;
+    }
+    if (strcmp(tok, "on") == 0)       { UiManager_SetVideoLevels(true); }
+    else if (strcmp(tok, "off") == 0) { UiManager_SetVideoLevels(false); }
+    else { console_printf("usage: gamma <on|off>"); return; }
+    console_printf("video levels = %s", UiManager_GetVideoLevels() ? "on" : "off");
+}
+
 static void cmd_qspi(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -667,6 +683,7 @@ static void register_commands(void)
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
+        { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
         { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
         { "settings","settings [dump|save|wipe|stress [n]]: persistent settings (QSPI)", true, NULL, cmd_settings },
     };
