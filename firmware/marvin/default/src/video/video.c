@@ -17,6 +17,10 @@
 #define VIDEO_TASK_PRIORITY     4u
 #define VIDEO_POLL_MS           20u
 
+/* Stall-watchdog window: armed + source locked but no new frame for this long
+ * means the CSI-2 D-PHY RX fell out of HS lock (see capture_watchdog). */
+#define VIDEO_STALL_TIMEOUT_MS  500u
+
 /* Capture pixels are RGB_888_PACKED, 3 bytes per pixel. Hard-coded to match
  * isc_capture's ISC_CAP_BPP. If that ever becomes runtime-configurable, push
  * it into a getter. */
@@ -150,6 +154,51 @@ static void reconcile(void)
     }
 }
 
+/* The CSI-2 D-PHY RX can be knocked out of HS lock by a heavy GFX burst (e.g. a
+ * UI transition) while the TC358743 still reports the source locked, so the ISC
+ * frame counter stops advancing but reconcile() never re-arms. Detect that stall
+ * — armed + source locked but no new frame for VIDEO_STALL_TIMEOUT_MS — and cycle
+ * the capture chain, which re-inits the D-PHY and re-locks cleanly once the bus
+ * is quiet. The frame-count reference is reset after each re-arm (ISC_Capture_-
+ * Configure zeroes the counter), so a stuck source retries at most once per
+ * window rather than every tick. */
+static void capture_watchdog(void)
+{
+    static uint32_t  last_count;
+    static TickType_t last_advance_tick;
+
+    /* Not actively capturing: hold the reference fresh so a subsequent arm gets
+     * a full timeout window before it can look stalled. */
+    if (!s_capture_armed || !s_capture_enabled || !TC358743_IsLocked())
+    {
+        last_count        = ISC_Capture_FrameCount();
+        last_advance_tick = xTaskGetTickCount();
+        return;
+    }
+
+    uint32_t  count = ISC_Capture_FrameCount();
+    TickType_t now  = xTaskGetTickCount();
+
+    if (count != last_count)
+    {
+        last_count        = count;
+        last_advance_tick = now;
+        return;
+    }
+
+    if ((now - last_advance_tick) >= pdMS_TO_TICKS(VIDEO_STALL_TIMEOUT_MS))
+    {
+        LOG_WARN("VIDEO: capture stalled at frame %lu (source locked) — re-arming\r\n",
+                 (unsigned long)count);
+        capture_disarm();
+        s_capture_armed = false;
+        if (capture_arm()) { s_capture_armed = true; }
+
+        last_count        = ISC_Capture_FrameCount();
+        last_advance_tick = xTaskGetTickCount();
+    }
+}
+
 /* ─── Task body ────────────────────────────────────────────────────────── */
 
 static void video_task(void *param)
@@ -169,6 +218,7 @@ static void video_task(void *param)
     {
         TC358743_Tasks();
         reconcile();
+        capture_watchdog();
         vTaskDelay(pdMS_TO_TICKS(VIDEO_POLL_MS));
     }
 }

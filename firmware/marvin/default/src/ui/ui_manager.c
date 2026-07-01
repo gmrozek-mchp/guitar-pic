@@ -103,11 +103,20 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
 #define VIDEO_WIN_W   720u
 #define VIDEO_WIN_H   480u
 
+/* Song-select modal geometry, for discarding BASE DMA behind the opaque dialog
+ * while it's open. Mirrors screen_song_select.c's SONGSEL_* (both derive the
+ * centered origin from BASE_W/BASE_H); keep the 1100x660 size in sync. */
+#define DIALOG_W   1100u
+#define DIALOG_H    660u
+#define DIALOG_X   ((BASE_W - DIALOG_W) / 2u)
+#define DIALOG_Y   ((BASE_H - DIALOG_H) / 2u)
+
 typedef struct { uint32_t x, y, w, h; } rect_t;
 
 static volatile bool   s_video_shown;               /* intent (UI task)              */
 static volatile bool   s_video_rebind;              /* window changed → rebind        */
 static volatile rect_t s_video_win;                 /* dst rect (UI task writes)      */
+static volatile bool   s_dialog_discard;            /* discard BASE behind modal (UI) */
 static bool            s_video_bound;               /* HEO bound (video-task only)    */
 static uint16_t        s_bound_src_w, s_bound_src_h;/* geometry HEO is bound at (task) */
 
@@ -119,9 +128,10 @@ static uint32_t scaler_factor(uint32_t src, uint32_t dst)
 }
 
 /* Bind HEO to the capture buffer at the window, engaging the bilinear scaler only
- * when dst != src. BASE DISCEN is set to the window so BASE skips DMA behind the
- * opaque video (§44.6.4.7). Seeds HEO with the latest frame (0 until the first
- * frame, which heo_frame_latch then fixes within a frame-time). Video-task ctx. */
+ * when dst != src. The matching BASE DMA-discard behind the opaque video is set by
+ * base_discard_reconcile (single DISCEN owner). Seeds HEO with the latest frame
+ * (0 until the first frame, which heo_frame_latch then fixes within a frame-time).
+ * Video-task ctx. */
 static void heo_bind(uint16_t src_w, uint16_t src_h,
                      uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
 {
@@ -172,11 +182,6 @@ static void heo_bind(uint16_t src_w, uint16_t src_h,
                                   | LCDC_HEOCFG23_HXSYEN(0) | LCDC_HEOCFG23_HXSCEN(0);
     }
 
-    /* §44.6.4.7 — discard BASE DMA behind the (opaque, RGB888) video rect. */
-    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x) | LCDC_BASECFG5_DISCYPOS(y);
-    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(dst_w - 1u) | LCDC_BASECFG6_DISCYSIZE(dst_h - 1u);
-    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
-
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
     XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
 
@@ -187,12 +192,59 @@ static void heo_bind(uint16_t src_w, uint16_t src_h,
              (unsigned long)x, (unsigned long)y, scaling ? "scaled" : "1:1");
 }
 
-/* Disable HEO output and clear the BASE discard so BASE owns the full panel. */
+/* Disable HEO output. The BASE discard is dropped (or handed to the dialog rect)
+ * by base_discard_reconcile, which owns DISCEN. */
 static void heo_unbind(void)
 {
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
-    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
     XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+}
+
+/* ── BASE DMA-discard (single DISCEN owner, video-task ctx) ───────────────────
+ * The LCDC has one BASE discard window (§44.6.4.7): BASE skips its DDR read where
+ * an opaque layer fully covers it, freeing read bandwidth. base_discard_reconcile
+ * picks the region each tick — the video rect while HEO is bound, else the dialog
+ * rect while the song-select modal is open, else none — and applies only on change
+ * so it isn't re-committing BASE every tick. Keeping every DISCEN write here (never
+ * in heo_bind/heo_unbind or the UI task) keeps BASE single-writer. */
+static struct { bool on; uint32_t x, y, w, h; } s_base_disc;
+
+static void base_discard_apply(bool on, uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    if (on == s_base_disc.on && x == s_base_disc.x && y == s_base_disc.y &&
+        w == s_base_disc.w && h == s_base_disc.h) { return; }
+
+    if (on)
+    {
+        XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x) | LCDC_BASECFG5_DISCYPOS(y);
+        XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(w - 1u) | LCDC_BASECFG6_DISCYSIZE(h - 1u);
+        XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+    }
+    else
+    {
+        XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+    }
+    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);   /* commit the CFG change */
+
+    s_base_disc.on = on;
+    s_base_disc.x = x; s_base_disc.y = y; s_base_disc.w = w; s_base_disc.h = h;
+}
+
+static void base_discard_reconcile(void)
+{
+    if (s_video_bound)
+    {
+        rect_t r = s_video_win;
+        base_discard_apply(true, r.x, r.y, r.w, r.h);
+    }
+    else if (s_dialog_discard)
+    {
+        base_discard_apply(true, DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H);
+    }
+    else
+    {
+        base_discard_apply(false, 0u, 0u, 0u, 0u);
+    }
 }
 
 /* video-task tick: converge HEO to intent + source. Bind on first show, window
@@ -215,6 +267,10 @@ static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
         heo_unbind();
         s_video_bound = false;
     }
+
+    /* Own the single BASE discard window (video rect / dialog rect / none). Runs
+     * after the HEO decision above so it sees the current s_video_bound. */
+    base_discard_reconcile();
 }
 
 /* ISC IRQ: point HEO at the just-completed ring slot every frame so it always scans
@@ -278,6 +334,16 @@ void UiManager_OpenSongSelect(void)
     songsel_set_input(LE_TRUE);
     bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
     bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
+
+    /* The opaque dialog fully covers the video window, so free the DDR read
+     * bandwidth its display was costing: hide HEO (capture keeps running for the
+     * detector/gameplay) and discard BASE DMA behind the 1100x660 dialog. This is
+     * the contention that knocked the CSI-2 D-PHY out of lock on every song switch
+     * (album-art decode/blit + repaint). Both are intent only — the video-task
+     * reconcile applies them, so HEO/BASE stay single-writer. */
+    UiManager_VideoHide();
+    s_dialog_discard = true;
+
     s_songsel_open = true;
 }
 
@@ -287,6 +353,12 @@ void UiManager_CloseSongSelect(void)
     gfxcHideCanvas(CANVAS_SONGSEL);   gfxcCanvasUpdate(CANVAS_SONGSEL);
     gfxcHideCanvas(CANVAS_ALBUM_ART); gfxcCanvasUpdate(CANVAS_ALBUM_ART);
     songsel_set_input(LE_FALSE);
+
+    /* Dashboard is back: drop the modal's BASE discard and bring the live video
+     * back up (reconcile re-binds HEO once the source is locked). */
+    s_dialog_discard = false;
+    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+
     s_songsel_open = false;
 }
 
@@ -453,10 +525,11 @@ static void ui_boot_task(void *param)
      * a layer yet — they take their layers at reveal, once the splash vacates. */
     bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
 
-    /* Park HEO off (video hidden) + clear the BASE discard so the dashboard owns the
-     * full panel until video is shown at reveal. Was video.c's job at task start; the
-     * compositor owns HEO now. Safe as a one-shot here — the video task's reconcile is
-     * a no-op while video is hidden, so this is the only HEO writer at boot. */
+    /* Park HEO off (video hidden) so the dashboard owns the full panel until video
+     * is shown at reveal. BASE discard is off by reset default and stays off until
+     * the reconcile arms it. Was video.c's job at task start; the compositor owns HEO
+     * now. Safe as a one-shot here — the video task's reconcile is a no-op while
+     * video is hidden, so this is the only HEO writer at boot. */
     heo_unbind();
 
     wait_render_idle();
