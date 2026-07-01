@@ -58,6 +58,20 @@ void UiManager_SetSplashShownCallback(void (*cb)(void));
 void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void UiManager_VideoHide(void);
 
+/* Video frame overlay (OVR1, above HEO). Show binds a caller-owned ARGB_4444
+ * framebuffer to OVR1 at the given panel rect (drawn on top of the video for the
+ * rounded anti-aliased frame); Hide disables OVR1. The buffer must stay resident
+ * while shown. Compositor owns the OVR1 register writes. */
+void UiManager_VideoOverlayShow(const void *buf, uint32_t x, uint32_t y,
+                                uint32_t w, uint32_t h);
+void UiManager_VideoOverlayHide(void);
+
+/* Bind / unbind the navigation drawer's canvas to its hardware layer (OVR2, above
+ * the video frame so the drawer covers it when open). Show sets OVR2 to the
+ * drawer's RGB565 mode; the drawer module drives the slide. */
+void UiManager_ShowNavLayer(void);
+void UiManager_HideNavLayer(void);
+
 /* Show / hide the song-select dialog as a modal pair: the RGB565 dialog on OVR1 and
  * its full-color cover strip on OVR2 are bound + shown (open) or hidden together
  * (close). Closing frees OVR1 for the nav drawer. Both are no-ops if already in the

@@ -328,6 +328,45 @@ void UiManager_VideoHide(void)
     s_video_shown = false;
 }
 
+/* ── video frame overlay (OVR1, above HEO) ────────────────────────────────────
+ * A caller-owned ARGB_4444 surface composited on OVR1 over the video for the
+ * rounded anti-aliased frame. Driven directly via the PLIB (not the canvas
+ * framework, which has no 4444 mode) — same pattern as the splash/HEO. OVR1 is
+ * time-shared with the song-select dialog canvas; the frame is hidden whenever
+ * video is (fullscreen / dialog open), so they never contend. */
+void UiManager_VideoOverlayShow(const void *buf, uint32_t x, uint32_t y,
+                                uint32_t w, uint32_t h)
+{
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
+    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1, XLCDC_RGB_COLOR_MODE_ARGB_4444, false);
+    XLCDC_SetLayerAddress(XLCDC_LAYER_OVR1, (uint32_t)(uintptr_t)buf, false);
+    XLCDC_SetLayerXStride(XLCDC_LAYER_OVR1, 0u, false);   /* buffer == window, no gap */
+    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_OVR1, x, y, false);
+    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_OVR1, w, h, false);
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, true, true);
+}
+
+void UiManager_VideoOverlayHide(void)
+{
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
+}
+
+/* ── navigation drawer layer (OVR2) ───────────────────────────────────────────
+ * The drawer canvas rides OVR2 (above the video frame on OVR1, so an open drawer
+ * covers the frame's left edge). bind_canvas sets OVR2 to the drawer's RGB565 mode
+ * each show — needed because album-art leaves OVR2 in RGBA8888. The drawer module
+ * drives the slide FX after showing. */
+void UiManager_ShowNavLayer(void)
+{
+    bind_canvas(CANVAS_NAVIGATION, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+}
+
+void UiManager_HideNavLayer(void)
+{
+    gfxcHideCanvas(CANVAS_NAVIGATION);
+    gfxcCanvasUpdate(CANVAS_NAVIGATION);
+}
+
 /* ── song-select modal (OVR1 dialog + OVR2 cover strip) ───────────────────────
  * The dialog and its full-color cover are a coupled pair shown/hidden together.
  * Both canvases paint continuously into their surfaces; open binds them onto
@@ -374,6 +413,10 @@ void UiManager_OpenSongSelect(void)
 {
     if (s_songsel_open) { return; }
     songsel_set_input(LE_TRUE);
+
+    /* The dialog takes OVR1 from the video frame overlay; drop the frame first
+     * (video is hidden below, so there's nothing to frame). */
+    UiManager_VideoOverlayHide();
     bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
     bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
 
@@ -605,13 +648,13 @@ static void ui_boot_task(void *param)
     /* REVEAL — cut over to the (painted) dashboard. The song-select dialog starts
      * closed: it and its OVR2 cover strip are painted into their canvases but not
      * shown; UiManager_OpenSongSelect() binds + shows the pair on demand (header tap).
-     * Set OVR1's colour mode to RGB565 now so the first nav-open (nav shares OVR1 and
-     * doesn't poke RGBMODE itself) scans out correctly even before any dialog open. */
+     * OVR1/OVR2 colour modes are set by their users when shown (video frame → ARGB_4444,
+     * dialog → RGB565, nav/album-art on OVR2), so no preemptive poke is needed here. */
     ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
-    XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
 
-    /* Bring the live video up (windowed) on HEO over the dashboard. Intent only —
-     * the video task binds HEO on its next reconcile once the source is locked. */
+    /* Bring the live video up (windowed) on HEO over the dashboard, and its OVR1
+     * frame overlay. Video is intent only — the video task binds HEO on its next
+     * reconcile once the source is locked. */
     ScreenVideo_ShowWindowed();
 
     /* Arm capture LAST — after the display is up and the boot-time task/SD/paint

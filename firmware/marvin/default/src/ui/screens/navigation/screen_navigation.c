@@ -127,16 +127,16 @@ static void navigation_slide_to(int target_x)
 static void navigation_open(void)
 {
     /* The drawer's surface is painted once at boot and never changes on show/hide,
-     * so open is a pure layer bind + slide — no repaint. Grab OVR1 only while shown
-     * (it and the song-select dialog share OVR1, so the drawer is unbound when
-     * closed). gfxcSetLayer needs the canvas hidden — it is, until gfxcShowCanvas
-     * below. Caller ensures the dialog isn't holding OVR1. */
-    gfxcSetLayer(CANVAS_NAVIGATION, HW_OVR1);
-    gfxcShowCanvas(CANVAS_NAVIGATION);
+     * so open is a pure layer bind + slide — no repaint. The compositor binds the
+     * drawer canvas to OVR2 (above the video frame on OVR1, so an open drawer covers
+     * the frame's left edge) and sets its RGB565 mode; it and the album-art strip
+     * share OVR2, so the drawer is unbound when closed. Caller ensures album art
+     * isn't holding OVR2. */
+    UiManager_ShowNavLayer();
     navigation_slide_to(0);
     /* Modal: gate the dashboard beneath so nothing behind the drawer reacts. The
-     * drawer (on OVR1) covers the hamburger, so close is via the drawer's Dashboard
-     * entry, not the hamburger — gating the dashboard loses no affordance. */
+     * drawer covers the hamburger, so close is via the drawer's Dashboard entry,
+     * not the hamburger — gating the dashboard loses no affordance. */
     UiManager_SetDashboardPickable(false);
     s_navigation_open = true;
 }
@@ -151,9 +151,10 @@ static void navigation_close(void)
     navigation_slide_to(NAVIGATION_CLOSED_X);
     s_navigation_open = false;
     /* Dashboard input is re-armed by navigation_fx_done once the slide completes,
-     * NOT here: the drawer still owns OVR1 mid-slide, so re-arming now would let a
-     * header tap open the song-select modal (which grabs OVR1) before fx_done hides
-     * the drawer's canvas — the hide would then turn OVR1 off under the dialog. */
+     * NOT here: the drawer still owns OVR2 mid-slide, so re-arming now would let a
+     * header tap open the song-select modal (which grabs OVR2 for album art) before
+     * fx_done hides the drawer's canvas — the hide would then turn OVR2 off under
+     * the cover strip. */
 }
 
 /* Move-effect completion callback. At the off-screen end of a close slide the
@@ -161,7 +162,7 @@ static void navigation_close(void)
  * left; hiding the canvas (disabling its layer) once the slide finishes removes it cleanly. Only
  * acts on a completed close — an open leaves the layer shown, and a re-open
  * mid-close restarts the move (so this won't fire for the abandoned close).
- * Re-arming dashboard input happens here too, only after OVR1 is freed, so no
+ * Re-arming dashboard input happens here too, only after OVR2 is freed, so no
  * mid-slide tap can open a modal onto the layer this hide is about to disable. */
 static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
                                GFXC_FX_STATUS status, void *parm)
@@ -171,8 +172,7 @@ static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
 
     if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_navigation_open)
     {
-        gfxcHideCanvas(CANVAS_NAVIGATION);
-        gfxcCanvasUpdate(CANVAS_NAVIGATION);
+        UiManager_HideNavLayer();
         UiManager_SetDashboardPickable(true);
     }
 }

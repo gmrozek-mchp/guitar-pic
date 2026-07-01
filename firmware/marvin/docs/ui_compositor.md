@@ -134,6 +134,12 @@ lifecycle events are direct calls).
 - **Ceiling:** dashboard + nav + dialog + camera = **all 4 LCDC layers**. A 4th simultaneous UI
   surface needs canvas multiplexing (`gfxcSetBaseCanvasID`) or giving up a layer.
 
+> **Current HW-layer map (supersedes the table above; see §16):** BASE = dashboard, HEO = video,
+> **OVR1 = video frame overlay / song-select dialog**, **OVR2 = nav drawer / album-art strip**.
+> Z-order `OVR2 > OVR1 > HEO > BASE`. Nav moved to OVR2 so it sits *above* the OVR1 video frame
+> (an open drawer covers the frame's left edge). The pairs on each overlay are time-exclusive:
+> frame ⇎ dialog (frame hidden whenever video is), nav ⇎ album-art (nav closed during song-select).
+
 ### 4.1 Two layer counts — don't conflate them
 - **`LE_LAYER_COUNT`** (Legato, `legato_config.h`) = how many canvases / Legato layers the global
   `layerList` manages = **3**. MGS derives it as the **max layer count across all screens** in the
@@ -450,6 +456,57 @@ zero.
   offset per ring slot; `heo_reconcile` rebinds when the rect changes (detection
   flipping full→cropped). Applies to both windowed and fullscreen; bonus: active
   716×448 ≈ 1.60 = 1280×800, so fullscreen is essentially aspect-correct.
+
+## 16. Rounded AA video frame (OVR1 overlay)
+
+A 1px rounded frame with anti-aliased corners around the windowed video, matching
+the dashboard panels (`0x404040` = `SCHEME_PANEL` `LE_SCHM_SHADOWDARK`, radius 6).
+The video is on HEO (a hard rectangle, not a canvas), so `PanelAA`'s backdrop-blend
+can't reach it; instead a per-pixel-alpha overlay *above* HEO composites the frame.
+
+- **Direct-driven ARGB_4444 layer on OVR1.** The GFX canvas framework has no 4444
+  mode (`gfxColorMode` = 5551/8888 only), so the frame is a static framebuffer
+  driven straight through the XLCDC PLIB (splash/HEO-style), not a canvas.
+  ARGB_4444's 16 alpha levels give smooth AA at half the bandwidth of 8888
+  (ARGB_1555's 1 alpha bit cannot AA). Register writes live in `ui_manager`
+  (`UiManager_VideoOverlayShow/Hide`); the buffer + fill live in `screen_video.c`.
+- **Fill** (once, from a rounded-rect SDF): corner-cut = opaque black (the dashboard
+  backdrop, so the video's square corners read as rounded), a 1px stroke, and a
+  transparent interior (video shows through). Alpha AA on the stroke→video edge is
+  what smooths the corner. `alpha = 1 − innerCoverage`; opaque colour = stroke
+  scaled by its share of the opaque part (remainder is the black cut).
+- **Nav moved OVR1 → OVR2** so the drawer sits above the frame and covers its left
+  edge when open (z-order `OVR2 > OVR1 > HEO > BASE`). Nav binds via
+  `UiManager_ShowNavLayer` (`bind_canvas` → RGB565, re-poked each open because
+  album-art leaves OVR2 in RGBA8888).
+- **Lifecycle = windowed video visible:** shown by `ScreenVideo_ShowWindowed`,
+  hidden on fullscreen enter (edge-to-edge) and song-select open (video hidden).
+- **Bandwidth:** an always-on full-rect OVR1 read while windowed (~720×480
+  ARGB_4444 ≈ 41 MB/s) on top of BASE+HEO — watch for CSI-2 D-PHY capture stalls.
+
+### 16.1 Future: per-frame gameplay overlay on this layer
+
+This OVR1 overlay (above HEO, aligned to the video window) is also the natural home
+for a **frame-by-frame gameplay HUD** drawn over the live video — note-highway
+markers, hit/miss annotations, detected-note boxes, timing cues, etc. It would
+compose with (or replace) the static frame in the same surface.
+
+Design implications when we build it:
+- **Direct buffer draw, no Legato.** Same as the frame: the canvas framework can't
+  own this layer (no ARGB_4444 mode, and per-frame Legato repaint is too heavy), so
+  the HUD is rasterised straight into the overlay framebuffer (CPU and/or the GFX2D
+  engine) and the LCDC composites it. Must be **fast / minimal overhead** — it runs
+  every gameplay tick, so favour incremental redraw (clear+draw only changed
+  regions) over full-surface clears.
+- **Double-buffer to avoid tearing.** The static frame is written once so a single
+  buffer is fine; a per-frame HUD redrawn while the LCDC scans it would tear. Use
+  two overlay buffers and flip the layer base address at vsync (mirrors the HEO
+  ring / `heo_frame_latch` non-blocking address update).
+- **Format.** ARGB_4444 keeps bandwidth down and is enough for solid markers/AA
+  edges; bump to ARGB_8888 only if the HUD needs finer gradients.
+- **Geometry.** Overlay coords map 1:1 to the *displayed* video window; if the HUD
+  is derived from source-pixel positions, apply the active-area crop + scale
+  (§15) to place markers correctly on the scaled video.
 
 ## 11. Relationship to spec §4.5 / Q5
 
