@@ -8,20 +8,22 @@
 #include "queue.h"
 
 /* Video pipeline: HDMI source → TC358743 bridge → CSI-2 → CSI2DC → ISC →
- * DDR → XLCDC HEO. The module owns its own FreeRTOS task; everything below
- * (tc358743, isc_capture, HEO bind/unbind, capture/display state machine)
- * runs inside that task except the frame-arrival notification which fires
- * from the ISC IRQ via xQueueSendFromISR.
+ * DDR. This module is the capture *producer*: it owns its own FreeRTOS task
+ * (tc358743, isc_capture, capture state machine) and fans completed frames out
+ * to subscribers from the ISC IRQ via xQueueSendFromISR.
  *
- * Capture and display are independent. CaptureEnable arms the bridge +
- * ISC chain when the source is locked; DisplayShow makes the HEO layer
- * visible at the configured window. You can run capture without display
- * (frames flow into DDR, BASE/UI fills the panel) or display without
- * capture (HEO shows whatever is in the framebuffer — possibly stale).
+ * Display (the HEO hardware layer that scans a captured frame to the LCD) is
+ * owned by the compositor (ui_manager), NOT here — capture and display are fully
+ * independent (the detector/gameplay consume frames whether or not HEO is shown).
+ * The module notifies the compositor through two registered callbacks so the
+ * compositor can own all HEO/BASE register writes while keeping the timing this
+ * task/IRQ already has:
+ *   - a display-reconcile callback, called each task tick with the current source
+ *     validity + size, so the compositor can (re)bind/unbind HEO in task context;
+ *   - a frame-latch callback, called from the ISC IRQ with the freshest completed
+ *     buffer address, so the compositor can latch HEO to the newest ring slot.
  *
- * Defaults at Initialize: capture disabled, display hidden, window
- * unset. Layout is app policy — DisplayShow is a no-op until the
- * caller has set a window with Video_SetWindow. */
+ * Defaults at Initialize: capture disabled, no callbacks. */
 
 void Video_Initialize(void);
 
@@ -31,18 +33,13 @@ void Video_Initialize(void);
 void Video_CaptureEnable(void);
 void Video_CaptureDisable(void);
 
-/* Display layer control. SHOW: HEO visible, BASE DISCEN cleared under
- * the HEO rect (saves DDR read bandwidth). HIDE: HEO disabled, BASE
- * owns full panel. Independent of capture state. */
-void Video_DisplayShow(void);
-void Video_DisplayHide(void);
-
-/* Destination rect on the 1280×800 panel. dst_w/dst_h matching the
- * source frame size → 1:1, scaler bypassed. Otherwise HEO bilinear
- * scaler engages and stretches to fill the rect. The rect must fit
- * within the panel. Takes effect on the next display bind (next
- * DisplayShow call, or when capture/lock state changes). */
-void Video_SetWindow(uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h);
+/* Register the compositor's HEO hooks (see the module note above). Both are
+ * optional (NULL = no display). Set before the video task starts.
+ *   frame-latch: fires in ISC IRQ context with the just-completed buffer address.
+ *   reconcile:   fires each task tick with (source_valid, src_w, src_h). */
+void Video_SetFrameLatchCallback(void (*cb)(uint32_t buffer_addr));
+void Video_SetDisplayReconcileCallback(void (*cb)(bool source_valid,
+                                                  uint16_t src_w, uint16_t src_h));
 
 /* Frame metadata delivered to subscribers on every captured frame. */
 typedef struct

@@ -15,6 +15,7 @@
 #include "log.h"
 #include "flash/settings.h"   /* persisted backlight % */
 #include "game/art.h"         /* Art_LoadAll — cover-art preload during splash */
+#include "video/video.h"      /* capture producer — compositor owns HEO display */
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_assets.h"
@@ -84,6 +85,167 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
     if (show) { gfxcShowCanvas(canvas); }
     gfxcCanvasUpdate(canvas);
     XLCDC_SetLayerRGBColorMode(xlcdc_layer(hw), mode, true);
+}
+
+/* ── HEO video layer (compositor-owned display of the capture producer) ───────
+ * ui_manager owns the HEO hardware layer; video.c is the capture producer that
+ * notifies us via two callbacks registered in UiManager_Initialize:
+ *   heo_reconcile()   — video-task ctx, each tick: (re)bind/unbind HEO to match our
+ *                       show intent + the current source size.
+ *   heo_frame_latch() — ISC IRQ ctx: re-point HEO at the freshest ring slot.
+ * Every HEO/BASE register write lives here but executes in those (video task / IRQ)
+ * contexts, so the UI task only sets volatile intent (UiManager_VideoShow/Hide) and
+ * HEO/BASE stay single-writer. HEO is free for other uses whenever video is hidden. */
+
+/* Live video window on the panel (compositor layout policy; was app.c's VIDEO_WIN_*). */
+#define VIDEO_WIN_X   280u
+#define VIDEO_WIN_Y    76u
+#define VIDEO_WIN_W   720u
+#define VIDEO_WIN_H   480u
+
+typedef struct { uint32_t x, y, w, h; } rect_t;
+
+static volatile bool   s_video_shown;               /* intent (UI task)              */
+static volatile bool   s_video_rebind;              /* window changed → rebind        */
+static volatile rect_t s_video_win;                 /* dst rect (UI task writes)      */
+static bool            s_video_bound;               /* HEO bound (video-task only)    */
+static uint16_t        s_bound_src_w, s_bound_src_h;/* geometry HEO is bound at (task) */
+
+/* HEO scaler factor is 12.20 fixed-point: factor = (src / dst) << 20; 1.0 = 1:1. */
+static uint32_t scaler_factor(uint32_t src, uint32_t dst)
+{
+    if (dst == 0u) { return 0x100000u; }
+    return (uint32_t)(((uint64_t)src << 20) / dst);
+}
+
+/* Bind HEO to the capture buffer at the window, engaging the bilinear scaler only
+ * when dst != src. BASE DISCEN is set to the window so BASE skips DMA behind the
+ * opaque video (§44.6.4.7). Seeds HEO with the latest frame (0 until the first
+ * frame, which heo_frame_latch then fixes within a frame-time). Video-task ctx. */
+static void heo_bind(uint16_t src_w, uint16_t src_h,
+                     uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
+{
+    if (x + dst_w > BASE_W || y + dst_h > BASE_H)
+    {
+        LOG_WARN("UI: video window %lux%lu @(%lu,%lu) exceeds panel; skip bind\r\n",
+                 (unsigned long)dst_w, (unsigned long)dst_h,
+                 (unsigned long)x, (unsigned long)y);
+        return;
+    }
+
+    Video_FrameInfo fi;
+    Video_GetFrameInfo(&fi);
+    uint32_t addr = (uint32_t)(uintptr_t)fi.buffer;
+
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO, XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+    XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, addr, false);
+    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
+
+    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4): equal for 1:1, differ
+     * when scaling. Written directly — XLCDC_SetLayerWindowXYSize sets both equal. */
+    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u) | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
+    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u) | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+
+    bool scaling = (dst_w != src_w) || (dst_h != src_h);
+    if (scaling)
+    {
+        uint32_t hf = scaler_factor(src_w, dst_w);
+        uint32_t vf = scaler_factor(src_h, dst_h);
+
+        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1) | LCDC_HEOCFG23_VXSCEN(1)
+                                  | LCDC_HEOCFG23_HXSYEN(1) | LCDC_HEOCFG23_HXSCEN(1);
+        /* Bicubic luma + chroma, both planes (mirrors MCC's surface-set path). */
+        XLCDC_REGS->LCDC_HEOCFG30 = LCDC_HEOCFG30_VXSYCFG(1) | LCDC_HEOCFG30_VXSYBICU(1)
+                                  | LCDC_HEOCFG30_VXSCCFG(1) | LCDC_HEOCFG30_VXSCBICU(1);
+        XLCDC_REGS->LCDC_HEOCFG31 = LCDC_HEOCFG31_HXSYCFG(1) | LCDC_HEOCFG31_HXSYBICU(1)
+                                  | LCDC_HEOCFG31_HXSCCFG(1) | LCDC_HEOCFG31_HXSCBICU(1);
+        XLCDC_REGS->LCDC_HEOCFG24 = LCDC_HEOCFG24_VXSYFACT(vf);
+        XLCDC_REGS->LCDC_HEOCFG25 = LCDC_HEOCFG25_VXSCFACT(vf);
+        XLCDC_REGS->LCDC_HEOCFG26 = LCDC_HEOCFG26_HXSYFACT(hf);
+        XLCDC_REGS->LCDC_HEOCFG27 = LCDC_HEOCFG27_HXSCFACT(hf);
+    }
+    else
+    {
+        XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(0) | LCDC_HEOCFG23_VXSCEN(0)
+                                  | LCDC_HEOCFG23_HXSYEN(0) | LCDC_HEOCFG23_HXSCEN(0);
+    }
+
+    /* §44.6.4.7 — discard BASE DMA behind the (opaque, RGB888) video rect. */
+    XLCDC_REGS->LCDC_BASECFG5 = LCDC_BASECFG5_DISCXPOS(x) | LCDC_BASECFG5_DISCYPOS(y);
+    XLCDC_REGS->LCDC_BASECFG6 = LCDC_BASECFG6_DISCXSIZE(dst_w - 1u) | LCDC_BASECFG6_DISCYSIZE(dst_h - 1u);
+    XLCDC_REGS->LCDC_BASECFG4 |= LCDC_BASECFG4_DISCEN_Msk;
+
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+
+    s_bound_src_w = src_w;
+    s_bound_src_h = src_h;
+    LOG_INFO("UI: HEO bound src %ux%u -> dst %lux%lu @(%lu,%lu) %s\r\n",
+             (unsigned)src_w, (unsigned)src_h, (unsigned long)dst_w, (unsigned long)dst_h,
+             (unsigned long)x, (unsigned long)y, scaling ? "scaled" : "1:1");
+}
+
+/* Disable HEO output and clear the BASE discard so BASE owns the full panel. */
+static void heo_unbind(void)
+{
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+    XLCDC_REGS->LCDC_BASECFG4 &= ~LCDC_BASECFG4_DISCEN_Msk;
+    XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
+}
+
+/* video-task tick: converge HEO to intent + source. Bind on first show, window
+ * change (rebind flag), or source-size change; unbind when hidden. */
+static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
+{
+    rect_t w = s_video_win;
+    bool   win_valid = (w.w != 0u) && (w.h != 0u);
+    bool   want = s_video_shown && source_valid && win_valid;
+
+    if (want && (!s_video_bound || s_video_rebind ||
+                 src_w != s_bound_src_w || src_h != s_bound_src_h))
+    {
+        heo_bind(src_w, src_h, w.x, w.y, w.w, w.h);
+        s_video_bound  = true;
+        s_video_rebind = false;
+    }
+    else if (!want && s_video_bound)
+    {
+        heo_unbind();
+        s_video_bound = false;
+    }
+}
+
+/* ISC IRQ: point HEO at the just-completed ring slot every frame so it always scans
+ * the freshest complete frame (not a slot the capture engine is mid-write on). This
+ * is unconditional: writing the layer address while HEO is disabled (video hidden)
+ * is harmless, and keeping the write out of any task/IRQ-shared flag guarantees the
+ * scanout base advances regardless of task timing. Latches at the next vsync. */
+static void heo_frame_latch(uint32_t buffer_addr)
+{
+    /* Non-blocking base update: write the HEO frame address and *request* the layer
+     * attribute update, but do NOT wait for the sync. XLCDC_SetLayerAddress(...,true)
+     * → XLCDC_UpdateLayerAttributes busy-waits on LCDC_ATTRE/ATTRS_SIP until the update
+     * latches (a vsync away while HEO scans) — too costly for this per-frame ISC IRQ.
+     * The address register is double-buffered, so the hardware latches the new base at
+     * the next vsync on its own; the following frame writes the newer address. OR into
+     * ATTRE so a pending BASE/OVR update isn't cleared. */
+    XLCDC_REGS->LCDC_HEO[0].LCDC_HEOYFBA = buffer_addr;
+    XLCDC_REGS->LCDC_ATTRE |= LCDC_ATTRE_HEO_Msk;
+}
+
+void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
+{
+    rect_t r = { x, y, w, h };
+    s_video_win    = r;
+    s_video_rebind = true;
+    s_video_shown  = true;
+}
+
+void UiManager_VideoHide(void)
+{
+    s_video_shown = false;
 }
 
 /* ── song-select modal (OVR1 dialog + OVR2 cover strip) ───────────────────────
@@ -291,6 +453,12 @@ static void ui_boot_task(void *param)
      * a layer yet — they take their layers at reveal, once the splash vacates. */
     bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
 
+    /* Park HEO off (video hidden) + clear the BASE discard so the dashboard owns the
+     * full panel until video is shown at reveal. Was video.c's job at task start; the
+     * compositor owns HEO now. Safe as a one-shot here — the video task's reconcile is
+     * a no-op while video is hidden, so this is the only HEO writer at boot. */
+    heo_unbind();
+
     wait_render_idle();
 
     /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
@@ -305,6 +473,17 @@ static void ui_boot_task(void *param)
      * doesn't poke RGBMODE itself) scans out correctly even before any dialog open. */
     ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
     XLCDC_SetLayerRGBColorMode(xlcdc_layer(HW_OVR1), XLCDC_RGB_COLOR_MODE_RGB_565, true);
+
+    /* Bring the live video up on HEO over the dashboard. Intent only — the video
+     * task binds HEO on its next reconcile once the source is locked. */
+    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
+
+    /* Arm capture LAST — after the display is up and the boot-time task/SD/paint
+     * contention has drained. The CSI-2 D-PHY RX is timing-sensitive at bring-up
+     * (it must catch the source's LP11→HS transition); arming it earlier, during the
+     * splash, makes it lock marginally and the lanes sit in stop-state (~0 fps). This
+     * is the one ordering that must hold — see the journal (2026-06-30). */
+    Video_CaptureEnable();
 
     vTaskDelete(NULL);
 }
@@ -325,6 +504,12 @@ void UiManager_Initialize(void)
 
     leSetStringTable(&stringTable);
     initializeStrings();
+
+    /* Register the compositor's HEO display hooks with the capture producer before
+     * the video task starts (Video_Initialize runs later, in APP_Tasks). The video
+     * task then drives heo_reconcile each tick and the ISC IRQ drives heo_frame_latch. */
+    Video_SetFrameLatchCallback(heo_frame_latch);
+    Video_SetDisplayReconcileCallback(heo_reconcile);
 
     (void)xTaskCreateStatic(ui_boot_task, "UiBoot", BOOT_TASK_STACK_WORDS,
                             NULL, BOOT_TASK_PRIORITY, s_boot_stack, &s_boot_tcb);

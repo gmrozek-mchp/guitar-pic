@@ -85,24 +85,16 @@ APP_DATA appData;
 // *****************************************************************************
 // *****************************************************************************
 
-/* Video window: 720×480 video at (280, 76) on the 1280×800 panel — 1:1 with the
- * bridge's typical 480p source, leaving a UI strip below. */
-#define VIDEO_WIN_X   280u
-#define VIDEO_WIN_Y    76u
-#define VIDEO_WIN_W   720u
-#define VIDEO_WIN_H   480u
-
 /* Fired by the UI boot task the instant the splash is on screen (registered via
- * UiManager_SetSplashShownCallback). Brings up everything else — runtime services
- * and the camera — in parallel with the behind-the-splash screen painting, so the
- * system is warm by the time the dashboard is revealed. The video go-live calls
- * just set intent flags the (now-running) video task reconciles. */
+ * UiManager_SetSplashShownCallback). Brings up the runtime services in parallel with
+ * the behind-the-splash screen painting, so the system is warm by the time the
+ * dashboard is revealed. Video capture is deliberately NOT armed here: the CSI-2
+ * D-PHY must be brought up against settled display clocks and away from the boot-time
+ * contention, or it locks marginally and the lanes sit in stop-state (~0 fps). The
+ * compositor arms capture at the end of the boot sequence instead (see ui_manager). */
 static void app_on_splash_shown(void)
 {
     App_StartServices();
-    Video_SetWindow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
-    Video_CaptureEnable();
-    Video_DisplayShow();
 }
 
 // *****************************************************************************

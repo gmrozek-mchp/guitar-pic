@@ -49,6 +49,14 @@ void UiManager_Initialize(void);
  * Set before UiManager_Initialize. */
 void UiManager_SetSplashShownCallback(void (*cb)(void));
 
+/* Video (HEO layer) display control. The compositor owns the HEO hardware layer;
+ * video.c is the capture producer. Show binds the live capture to HEO at the given
+ * panel rect (bilinear-scaled if the rect differs from the source), taking effect
+ * once the source locks; Hide disables HEO output (capture keeps running). Layout
+ * (the rect) is compositor policy. */
+void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
+void UiManager_VideoHide(void);
+
 /* Show / hide the song-select dialog as a modal pair: the RGB565 dialog on OVR1 and
  * its full-color cover strip on OVR2 are bound + shown (open) or hidden together
  * (close). Closing frees OVR1 for the nav drawer. Both are no-ops if already in the
