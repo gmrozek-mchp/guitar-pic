@@ -8,12 +8,13 @@
 
 /* Album-artwork cache: decodes every cover under
  * <card>/games/gh3-wii/art/{small,large}/ once at boot into static, fixed-size
- * RGB888 slots in DDR (spec §4.8.7). Runtime access is then an O(1) leImage*
- * pointer — no card I/O, no decode, no allocation at use time.
+ * DDR slots (spec §4.8.7). Runtime access is then an O(1) leImage* pointer — no
+ * card I/O, no decode, no allocation at use time. Each tier's slot format matches
+ * the hardware layer it's shown on, so the blit is a native copy.
  *
  * Two size tiers, each a fixed slot dimension:
- *   small  144x144  (dashboard now-playing thumbnail)         JPEG on card
- *   large  508x208  (song-select detail strip, difficulty fade baked offline) PNG on card
+ *   small  144x144  RGB565    (dashboard now-playing thumbnail, on the RGB565 BASE) JPEG on card
+ *   large  508x208  RGBA8888  (song-select detail strip, difficulty fade baked offline) PNG on card
  *
  * Covers are keyed by the recognizer's stable (setlist, index). A missing,
  * oversized, wrong-size, or corrupt file simply leaves its slot empty; the

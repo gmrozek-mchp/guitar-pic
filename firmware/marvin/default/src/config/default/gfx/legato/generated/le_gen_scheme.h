@@ -46,7 +46,7 @@ extern const leScheme SCHEME_PANEL_GRAY_18181B;
 extern const leScheme Scheme0;
 extern const leScheme Scheme1;
 extern const leScheme Scheme2;
-extern const leScheme SCHEME_TEXT_GRAY_71717B;
+extern const leScheme SCHEME_TEXT_GRAY_71717A;
 extern const leScheme text_springgreen;
 extern const leScheme SCHEME_TEXT_GRAY_D4D4D8;
 extern const leScheme SCHEME_TEXT_GRAY_52525C;
@@ -83,7 +83,7 @@ extern const leScheme Scheme8;
 extern const leScheme text_dimgray;
 extern const leScheme Scheme9;
 extern const leScheme panel_black_0;
-extern const leScheme text_deepskyblue;
+extern const leScheme STYLE_TEXT_ROBOT;
 extern const leScheme Scheme10;
 extern const leScheme Scheme11;
 extern const leScheme Scheme12;
@@ -103,7 +103,7 @@ extern const leScheme Scheme16;
 extern const leScheme panel_darkred;
 extern const leScheme Scheme17;
 extern const leScheme panel_forestgreen;
-extern const leScheme Scheme18;
+extern const leScheme SCHEME_TEXT_HUMAN;
 extern const leScheme panel_gold;
 extern const leScheme Scheme19;
 extern const leScheme panel_dodgerblue;
@@ -114,6 +114,8 @@ extern const leScheme SCHEME_TEST_PATTERN_GREEN;
 extern const leScheme SCHEME_TEST_PATTERN_MAGENTA;
 extern const leScheme SCHEME_TEST_PATTERN_RED;
 extern const leScheme SCHEME_TEST_PATTERN_BLUE;
+extern const leScheme SCHEME_GUITAR_FRET_YELLOW;
+extern const leScheme SCHEME_TEXT_GRAY_A1A1AA;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility

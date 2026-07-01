@@ -9,6 +9,8 @@
 
 #include "game/catalog.h"
 #include "game/art.h"
+#include "game/selection.h"
+#include "ui/song_detail.h"
 #include "log.h"
 #include "util/legato_utf8.h"
 
@@ -59,6 +61,7 @@ void ScreenSongSelect_InitSurface(void)
 
 static unsigned int s_difficulty = DIFFICULTY_DEFAULT;
 static unsigned int s_mode       = MODE_DEFAULT;
+static int          s_sel_index  = 0;   /* catalog position of the highlighted song */
 
 static leButtonWidget *difficulty_button(unsigned int i)
 {
@@ -230,61 +233,23 @@ static void song_art_show(const catalog_entry_t *e)
 
 /* ── tier label ───────────────────────────────────────────────────────────────
  * SONG_LEVEL shows "★…★ TIER n" for main career tiers 1-8 (n black stars), or
- * "BONUS" for the bonus setlist, colored by difficulty: an 8-tier palette
- * (green(1)→red(8) with blue/purple accents), light gray for bonus. The per-tier
- * text colors live in MGS schemes SCHEME_TEXT_TIER_1..SCHEME_TEXT_TIER_8 (text
- * color = the tier color, matching the art fade); bonus reuses SCHEME_TEXT_GRAY_D4D4D8. */
-static const leScheme *tier_scheme(int tier)
-{
-    switch (tier)
-    {
-        case 1:  return &SCHEME_TEXT_TIER_1;
-        case 2:  return &SCHEME_TEXT_TIER_2;
-        case 3:  return &SCHEME_TEXT_TIER_3;
-        case 4:  return &SCHEME_TEXT_TIER_4;
-        case 5:  return &SCHEME_TEXT_TIER_5;
-        case 6:  return &SCHEME_TEXT_TIER_6;
-        case 7:  return &SCHEME_TEXT_TIER_7;
-        case 8:  return &SCHEME_TEXT_TIER_8;
-        default: return &SCHEME_TEXT_GRAY_D4D4D8;   /* bonus / unknown → light gray */
-    }
-}
-
-/* Catalog difficulty string ("1".."8" or "bonus") → career tier, or 0 (bonus). */
-static int difficulty_tier(const char *d)
-{
-    if (d != NULL && d[0] >= '1' && d[0] <= '8' && d[1] == '\0') { return d[0] - '0'; }
-    return 0;
-}
-
-/* UTF-8 tier text: `tier` black stars (U+2605) + " TIER n", or "BONUS" for 0. */
-static void make_tier_text(int tier, char *buf, size_t n)
-{
-    size_t p = 0;
-    if (tier == 0) { (void)snprintf(buf, n, "BONUS"); return; }
-    for (int i = 0; i < tier && p + 3u < n; i++)
-    {
-        buf[p++] = (char)0xE2; buf[p++] = (char)0x98; buf[p++] = (char)0x85;   /* U+2605 ★ */
-    }
-    (void)snprintf(buf + p, n - p, " TIER %d", tier);
-}
-
-/* Set SONG_LEVEL's text + color from the song's difficulty. */
+ * "BONUS" for the bonus setlist, colored by tier (SongDetail_* — the shared
+ * palette matching the baked art fade). */
 static void tier_label_show(const catalog_entry_t *e)
 {
     leLabelWidget *lbl  = detail_label(DET_LEVEL);
-    int            tier = (e != NULL) ? difficulty_tier(e->difficulty) : 0;
+    int            tier = (e != NULL) ? SongDetail_Tier(e->difficulty) : 0;
     char           txt[40];
 
     if (e == NULL)
     {
         set_detail(DET_LEVEL, "-");
-        lbl->fn->setScheme(lbl, &SCHEME_TEXT_GRAY_D4D4D8);
+        lbl->fn->setScheme(lbl, SongDetail_TierScheme(0));
         return;
     }
-    make_tier_text(tier, txt, sizeof txt);
+    SongDetail_TierText(tier, txt, sizeof txt);
     set_detail(DET_LEVEL, txt);
-    lbl->fn->setScheme(lbl, tier_scheme(tier));
+    lbl->fn->setScheme(lbl, SongDetail_TierScheme(tier));
 }
 
 /* Mirror catalog entry `index` into the detail labels (all "-" if no such song). */
@@ -315,13 +280,8 @@ static void song_detail_show(int index)
     }
     else { set_detail(DET_YEAR, "-"); }
 
-    if (e->length_s != 0u)
-    {
-        (void)snprintf(tmp, sizeof tmp, "%u:%02u",
-                       (unsigned)(e->length_s / 60u), (unsigned)(e->length_s % 60u));
-        set_detail(DET_DURATION, tmp);
-    }
-    else { set_detail(DET_DURATION, "-"); }
+    SongDetail_Duration(e->length_s, tmp, sizeof tmp);
+    set_detail(DET_DURATION, tmp);
 }
 
 /* ── catalog-backed song list ─────────────────────────────────────────────────
@@ -363,7 +323,17 @@ static void song_selected(void *ctx, int index)
     LOG_INFO("songsel: selected #%d  %s - %s\r\n", index,
              (e != NULL) ? e->title : "?", (e != NULL) ? e->artist : "?");
 
+    s_sel_index = index;
     song_detail_show(index);
+}
+
+/* Commit the highlighted song + current difficulty/mode as the gameplay selection.
+ * The dashboard SONG card mirrors it via its Selection observer. */
+static void songsel_commit(void)
+{
+    const catalog_entry_t *e = Catalog_At(s_sel_index);
+    if (e == NULL) { return; }
+    Selection_Set(e->setlist, e->index, (uint8_t)s_difficulty, (uint8_t)s_mode);
 }
 
 /* Build the song list into the LEFT panel. DejaVu Mono 12 — bold title over
@@ -394,9 +364,18 @@ static void song_list_init(void)
     SongList_SetSelected(list, 0);   /* default to the first song (no-op while empty) */
 }
 
-/* Dismiss the dialog. The X (close) and SELECT buttons both close it for now;
- * SELECT will start gameplay once that lands. ui_manager hides the OVR1 dialog and
- * OVR2 cover together and frees OVR1. */
+/* SELECT commits the highlighted song as the gameplay selection (mirrored onto the
+ * dashboard SONG card) and closes the dialog. */
+static void song_select_on_release(leButtonWidget *btn)
+{
+    (void)btn;
+    songsel_commit();
+    UiManager_CloseSongSelect();
+}
+
+/* The X (close) button dismisses the dialog without committing — the dashboard
+ * keeps whatever song was last selected. ui_manager hides the OVR1 dialog and OVR2
+ * cover together and frees OVR1. */
 static void song_close_on_release(leButtonWidget *btn)
 {
     (void)btn;
@@ -415,12 +394,12 @@ void ScreenSongSelect_Setup(void)
     radio_groups_init();
     round_button(Marvin_BUTTON_SONG_SELECT_SELECT, SELECT_RADIUS);   /* AA corners; not a radio */
 
-    /* Close the dialog from the X (upper-right) or SELECT (placeholder until SELECT
-     * starts gameplay). */
+    /* X (upper-right) dismisses without committing; SELECT commits the highlighted
+     * song and closes. */
     Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedEventCallback(Marvin_BUTTON_SONG_SELECT_CLOSE,
                                                                   song_close_on_release);
     Marvin_BUTTON_SONG_SELECT_SELECT->fn->setReleasedEventCallback(Marvin_BUTTON_SONG_SELECT_SELECT,
-                                                                   song_close_on_release);
+                                                                   song_select_on_release);
 
     /* Round the album-art strip: the empty overlay panel over the cover eats its
      * corners back to the dialog gray (0x18181B) it sits in front of. */
@@ -433,4 +412,9 @@ void ScreenSongSelect_Setup(void)
     song_detail_init();
     song_list_init();
     song_detail_show(0);   /* mirror the default (first-song) selection */
+
+    /* Seed the committed selection so the dashboard SONG card shows a coherent
+     * default at boot (not the figma placeholder). Runs after ScreenDashboard_Setup
+     * has registered its Selection observer, so this render lands on the card. */
+    songsel_commit();
 }

@@ -21,13 +21,17 @@
 #define ART_LARGE_W 508u
 #define ART_LARGE_H 208u
 
-/* Slots are RGBA8888 (4 B/px): the display layer is RGBA8888, and only RGB_565 /
- * RGBA_8888 are 2D-engine-blittable (RGB_888 isn't), so an RGBA8888 source is
- * blitted natively with no runtime conversion. Covers are fully opaque (the fade
- * is baked into RGB), so alpha is forced to 0xFF after decode. */
-#define ART_BPP        4u   /* RGBA8888 */
-#define ART_SMALL_SLOT (ART_SMALL_W * ART_SMALL_H * ART_BPP)
-#define ART_LARGE_SLOT (ART_LARGE_W * ART_LARGE_H * ART_BPP)
+/* Each tier's slot format matches the hardware layer it is displayed on, so the
+ * blit is a native copy with no runtime color conversion:
+ *   small  RGB565  (2 B/px) — the dashboard now-playing thumbnail lives on the
+ *          RGB565 BASE layer; 565 has no alpha, so the cover is inherently opaque.
+ *   large  RGBA8888 (4 B/px) — the song-select strip has its own full-color OVR2
+ *          layer, and its baked difficulty gradient needs the extra depth.
+ * Both modes are 2D-engine-blittable (RGB_888 isn't). */
+#define ART_SMALL_BPP  2u   /* RGB565   */
+#define ART_LARGE_BPP  4u   /* RGBA8888 */
+#define ART_SMALL_SLOT (ART_SMALL_W * ART_SMALL_H * ART_SMALL_BPP)
+#define ART_LARGE_SLOT (ART_LARGE_W * ART_LARGE_H * ART_LARGE_BPP)
 
 /* Largest compressed cover we'll read. Oversize files are skipped, not truncated. */
 #define ART_SCRATCH_BYTES (512u * 1024u)
@@ -190,19 +194,20 @@ static void fill_test_pattern(uint8_t *slot, uint16_t w, uint16_t h)
 #endif
 
 /* Read one cover file into scratch, verify it matches the tier slot dimensions,
- * and decode it into the slot as RGBA8888 via the Legato JPEG/PNG decoder. Fills
- * *out_img (RAW, RGBA8888, pointing at slot_px) on success. */
-static bool decode_one(const char *path, leImageFormat fmt,
+ * and decode it into the slot as `mode` (RGB565 or RGBA8888) via the Legato
+ * JPEG/PNG decoder. Fills *out_img (RAW, `mode`, pointing at slot_px) on success. */
+static bool decode_one(const char *path, leImageFormat fmt, leColorMode mode,
                        uint8_t *slot_px, uint16_t w_exp, uint16_t h_exp,
                        leImage *out_img)
 {
+    uint8_t bpp = (mode == LE_COLOR_MODE_RGBA_8888) ? 4u : 2u;
 #if ART_TEST_PATTERN
     (void)path; (void)fmt;
     fill_test_pattern(slot_px, w_exp, h_exp);
-    (void)leImage_Create(out_img, w_exp, h_exp, LE_COLOR_MODE_RGBA_8888, slot_px,
+    (void)leImage_Create(out_img, w_exp, h_exp, mode, slot_px,
                          LE_STREAM_LOCATION_ID_INTERNAL);
     out_img->flags |= LE_IMAGE_DIRECT_BLIT;
-    dcache_CleanByAddr(slot_px, (int32_t)((uint32_t)w_exp * h_exp * ART_BPP));
+    dcache_CleanByAddr(slot_px, (int32_t)((uint32_t)w_exp * h_exp * bpp));
     return true;
 #else
     SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_READ);
@@ -245,16 +250,17 @@ static bool decode_one(const char *path, leImageFormat fmt,
     src.format       = fmt;
     src.header.size  = (uint32_t)size;
 
-    /* Destination: the fixed slot, as a RAW RGBA8888 image. LE_IMAGE_DIRECT_BLIT
-     * routes the on-paint draw through the RAW decoder's _directBlit (a per-row
-     * memcpy) instead of the per-pixel software blit: the 2D engine can't blit an
-     * RGBA8888 source (it's an "alpha mode" → SRC_OVER blend, which the copy-only
-     * GFX2D path declines), so without this every selection re-blits the cover
-     * pixel-by-pixel (visible hesitation). The slot mode matches the RGBA8888 layer,
-     * which _directBlit requires, and the cover is opaque so an overwrite is correct. */
-    (void)leImage_Create(out_img, iw, ih, LE_COLOR_MODE_RGBA_8888, slot_px,
+    /* Destination: the fixed slot as a RAW image in the tier's layer mode.
+     * RGBA8888 (large): the 2D engine declines an alpha-mode source (SRC_OVER, not
+     * a plain copy), so set LE_IMAGE_DIRECT_BLIT to route the on-paint draw through
+     * the RAW decoder's _directBlit (per-row memcpy into the matching-mode OVR2
+     * layer) instead of a per-pixel software blit (visible hesitation on select).
+     * RGB565 (small): source and the BASE layer are both 565, so the standard draw
+     * path uses the 2D engine (a native 565→565 copy) and correctly positions/clips
+     * the thumbnail within the full-screen dashboard canvas — no DIRECT_BLIT. */
+    (void)leImage_Create(out_img, iw, ih, mode, slot_px,
                          LE_STREAM_LOCATION_ID_INTERNAL);
-    out_img->flags |= LE_IMAGE_DIRECT_BLIT;
+    if (mode == LE_COLOR_MODE_RGBA_8888) { out_img->flags |= LE_IMAGE_DIRECT_BLIT; }
 
     leRect full = { 0, 0, (int32_t)iw, (int32_t)ih };
     /* Decode straight into the slot. leImage_Render's return is unreliable
@@ -262,21 +268,21 @@ static bool decode_one(const char *path, leImageFormat fmt,
      * known format, mirroring how leProcessImage drives the decoder. */
     (void)leImage_Render(&src, &full, 0, 0, LE_TRUE, LE_TRUE, out_img);
 
-    /* Force opaque alpha. The covers are fully opaque (the fade is baked into RGB),
-     * but a JPEG/PNG-without-alpha decode into RGBA8888 can leave the alpha byte 0,
-     * which renders the image fully transparent. RGBA_8888 packs 0xRRGGBBAA, so
-     * alpha is the low byte. */
-    uint32_t *px  = (uint32_t *)(void *)slot_px;
-    size_t    npx = (size_t)iw * ih;
-    for (size_t i = 0; i < npx; i++) { px[i] |= 0x000000FFu; }
+    /* Force opaque alpha (RGBA8888 only). The covers are fully opaque (any fade is
+     * baked into RGB), but a JPEG/PNG-without-alpha decode into RGBA8888 can leave
+     * the alpha byte 0, which renders the image fully transparent. RGBA_8888 packs
+     * 0xRRGGBBAA, so alpha is the low byte. RGB565 has no alpha channel. */
+    if (mode == LE_COLOR_MODE_RGBA_8888)
+    {
+        uint32_t *px  = (uint32_t *)(void *)slot_px;
+        size_t    npx = (size_t)iw * ih;
+        for (size_t i = 0; i < npx; i++) { px[i] |= 0x000000FFu; }
+    }
 
-    /* The decode wrote the slot via the CPU (write-back cache); flush it to DDR.
-     * With LE_IMAGE_DIRECT_BLIT the on-paint draw is a CPU memcpy (slot read via
-     * CPU, coherent), so this isn't strictly needed — but it's a cheap one-time
-     * clean of a write-once buffer and keeps DDR correct for any 2D-engine fallback
-     * path (leGPU_BlitBuffer DMA-reads the slot). 32-byte aligned, exact-multiple
-     * size → clean line boundaries, no neighbor interference. */
-    dcache_CleanByAddr(slot_px, (int32_t)((uint32_t)iw * ih * ART_BPP));
+    /* The decode wrote the slot via the CPU (write-back cache); flush it to DDR so
+     * a 2D-engine read (leGPU_BlitBuffer DMA-reads the slot) sees current pixels.
+     * 32-byte aligned, exact-multiple size → clean line boundaries. */
+    dcache_CleanByAddr(slot_px, (int32_t)((uint32_t)iw * ih * bpp));
     return true;
 #endif /* ART_TEST_PATTERN */
 }
@@ -291,7 +297,8 @@ static art_scan_t s_scan[GP_N_SONGS];
  * directory handle before opening any file (otherwise every SYS_FS_FileOpen
  * returns FR_TOO_MANY_OPEN_FILES). Returns the number decoded. */
 static int load_tier(const char *subdir, uint8_t *pool, size_t slot_bytes,
-                     uint16_t w, uint16_t h, leImage *imgs, art_key_t *keys)
+                     uint16_t w, uint16_t h, leColorMode mode,
+                     leImage *imgs, art_key_t *keys)
 {
     char dirpath[ART_PATH_MAX];
     (void)snprintf(dirpath, sizeof dirpath, "%s/%s/%s",
@@ -338,7 +345,7 @@ static int load_tier(const char *subdir, uint8_t *pool, size_t slot_bytes,
                        dirpath, setname, (unsigned)s_scan[i].index, ext);
 
         uint8_t *slot = pool + (size_t)count * slot_bytes;
-        if (decode_one(filepath, s_scan[i].fmt, slot, w, h, &imgs[count]))
+        if (decode_one(filepath, s_scan[i].fmt, mode, slot, w, h, &imgs[count]))
         {
             keys[count].setlist = s_scan[i].setlist;
             keys[count].index   = s_scan[i].index;
@@ -368,9 +375,11 @@ int Art_LoadAll(void)
     if (!Storage_Mount()) { return 0; }
 
     s_small_n = load_tier("small", (uint8_t *)s_small_px, ART_SMALL_SLOT,
-                          ART_SMALL_W, ART_SMALL_H, s_small_img, s_small_key);
+                          ART_SMALL_W, ART_SMALL_H, LE_COLOR_MODE_RGB_565,
+                          s_small_img, s_small_key);
     s_large_n = load_tier("large", (uint8_t *)s_large_px, ART_LARGE_SLOT,
-                          ART_LARGE_W, ART_LARGE_H, s_large_img, s_large_key);
+                          ART_LARGE_W, ART_LARGE_H, LE_COLOR_MODE_RGBA_8888,
+                          s_large_img, s_large_key);
 
     LOG_INFO("ART: loaded %d small, %d large\r\n", s_small_n, s_large_n);
     return s_small_n + s_large_n;

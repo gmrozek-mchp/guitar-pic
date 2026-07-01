@@ -14,7 +14,12 @@ by the recognizer key the firmware expects (<setlist>-<NN>):
   see TIER_COLORS), bonus (or unknown) maps to gray.
   -> <out>/large/<setlist>-<NN>.png
 - small: 144x144 dashboard now-playing thumbnail (pillarboxed, clean, no fade).
-  -> <out>/small/<setlist>-<NN>.jpg
+  Saved as PNG: on-device the covers are decoded offscreen into a static DDR
+  cache, and Legato's JPEG decoder gates its block writes on the (stale, at boot)
+  renderer clip rect — so a runtime JPEG decode lands as noise. The PNG decoder
+  does a plain color-converting buffer copy with no clip dependency, so both tiers
+  use PNG on the card.
+  -> <out>/small/<setlist>-<NN>.png
 
 This is a one-step process+install: <out> defaults to the marvin art tree, so
 there is no separate install step. Existing cover files in each tier are cleared
@@ -213,11 +218,12 @@ def process_cover_art(src_dir, out_base, catalog_path):
 
             # large: PNG strip with baked difficulty fade
             make_large(img, color).save(out_large / (stem + ".png"), "PNG")
-            # small: clean 144x144 JPEG
-            make_small(img).save(out_small / (stem + ".jpg"), "JPEG", quality=92)
+            # small: clean 144x144 PNG (PNG decoder is clip-independent offscreen;
+            # the JPEG decoder is not — see the module docstring)
+            make_small(img).save(out_small / (stem + ".png"), "PNG")
 
             print(f"  {jpg_path.name}: tier {difficulty.get(key) or '-'} "
-                  f"color {color} -> large/{stem}.png, small/{stem}.jpg")
+                  f"color {color} -> large/{stem}.png, small/{stem}.png")
             processed += 1
 
         except Exception as e:
@@ -233,7 +239,7 @@ def process_cover_art(src_dir, out_base, catalog_path):
 
     print(f"\nInstalled to:")
     print(f"  {out_large}  (song-select, PNG, difficulty fade)")
-    print(f"  {out_small}  (dashboard, JPEG)")
+    print(f"  {out_small}  (dashboard, PNG)")
     return 0
 
 

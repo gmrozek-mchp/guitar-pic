@@ -340,6 +340,15 @@ extern leImage figmaImg_Icon_1_0;
  ***********************************/
 extern leImage figmaImg_Icon_18;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   LemmyOnStagePlayerImage
+ * Size:   254x208 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage LemmyOnStagePlayerImage;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/
