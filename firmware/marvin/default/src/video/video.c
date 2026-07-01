@@ -26,6 +26,19 @@
  * it into a getter. */
 #define VIDEO_BYTES_PER_PIXEL   3u
 
+/* Active-area detection (see Video_GetActiveRect). Luma = max(B,G,R) so it is
+ * agnostic to the BGR byte order. The dead border sits at a low pedestal (~13)
+ * while active content spikes past ~145; ACTIVE_LUMA_THR splits them with wide
+ * margin and no dependence on the exact pedestal. Edges are the union of the
+ * per-frame bright-pixel bounds over ACTIVE_ACCUM_FRAMES *bright* frames (dark
+ * frames find no content and are skipped, so a loading screen at capture start
+ * just defers the lock), then accepted only if ≥ the minimum plausible size. */
+#define VIDEO_ACTIVE_LUMA_THR     40u
+#define VIDEO_ACTIVE_MIN_W       700u
+#define VIDEO_ACTIVE_MIN_H       420u
+#define VIDEO_ACTIVE_SAMPLE_STEP   4u   /* subsample stride when profiling a line */
+#define VIDEO_ACTIVE_ACCUM_FRAMES 16u   /* bright frames to union before locking */
+
 /* Public intent — set via the API, read by the task body. Single-writer
  * (each setter is called by one task), single-reader (video task), so
  * plain volatile is sufficient on a 32-bit MCU. */
@@ -54,6 +67,14 @@ static volatile uint16_t s_src_h;
 
 /* Capture-state flag. Task-only. */
 static bool s_capture_armed;
+
+/* Detected active-picture rect (see Video_GetActiveRect). s_active_* are the
+ * locked result (task writes on lock, any task reads); s_acc_* accumulate the
+ * edge union pre-lock (video-task only). */
+static volatile uint16_t s_active_x, s_active_y, s_active_w, s_active_h;
+static volatile bool     s_active_valid;
+static uint16_t          s_acc_top, s_acc_bot, s_acc_left, s_acc_right;
+static uint8_t           s_acc_count;
 
 /* ─── Frame-done ISR (runs in IRQ context) ─────────────────────────────── */
 
@@ -100,6 +121,128 @@ static void on_frame_done(uint32_t frame_count,
     portYIELD_FROM_ISR(higher_priority_task_woken);
 }
 
+/* ─── Active-area detection (video-task ctx) ───────────────────────────── */
+
+static uint8_t luma3(const uint8_t *p)
+{
+    uint8_t m = p[0];
+    if (p[1] > m) { m = p[1]; }
+    if (p[2] > m) { m = p[2]; }
+    return m;
+}
+
+/* Find the bright-content bounds of one frame by scanning inward from each edge
+ * until a sampled pixel clears the threshold. Each scan is bounded to the deepest
+ * border the min-size gate allows (a border thicker than that can't yield an
+ * accepted rect anyway) — so the common case stops after a few lines and the
+ * worst case (a fully dark frame) is still cheap and bounded. Returns false when
+ * any edge isn't found within its bound (blank/dark/too-bordered frame → skipped,
+ * not counted). */
+static bool frame_edges(const uint8_t *buf, uint16_t w, uint16_t h,
+                        uint16_t *top, uint16_t *bot, uint16_t *left, uint16_t *right)
+{
+    const uint32_t stride = (uint32_t)w * VIDEO_BYTES_PER_PIXEL;
+    const uint16_t step   = VIDEO_ACTIVE_SAMPLE_STEP;
+    const uint16_t ybord  = (h > VIDEO_ACTIVE_MIN_H) ? (uint16_t)(h - VIDEO_ACTIVE_MIN_H) : 0u;
+    const uint16_t xbord  = (w > VIDEO_ACTIVE_MIN_W) ? (uint16_t)(w - VIDEO_ACTIVE_MIN_W) : 0u;
+    bool ft = false, fb = false, fl = false, fr = false;
+
+    for (uint16_t y = 0u; y <= ybord && !ft; y++)
+    {
+        const uint8_t *row = buf + (uint32_t)y * stride;
+        for (uint16_t x = 0u; x < w; x += step)
+            if (luma3(row + (uint32_t)x * VIDEO_BYTES_PER_PIXEL) > VIDEO_ACTIVE_LUMA_THR)
+                { *top = y; ft = true; break; }
+    }
+    if (!ft) { return false; }
+
+    for (uint16_t y = 0u; y <= ybord && !fb; y++)
+    {
+        uint16_t yy = (uint16_t)(h - 1u - y);
+        const uint8_t *row = buf + (uint32_t)yy * stride;
+        for (uint16_t x = 0u; x < w; x += step)
+            if (luma3(row + (uint32_t)x * VIDEO_BYTES_PER_PIXEL) > VIDEO_ACTIVE_LUMA_THR)
+                { *bot = yy; fb = true; break; }
+    }
+    if (!fb) { return false; }
+
+    for (uint16_t x = 0u; x <= xbord && !fl; x++)
+        for (uint16_t y = 0u; y < h; y += step)
+            if (luma3(buf + (uint32_t)y * stride + (uint32_t)x * VIDEO_BYTES_PER_PIXEL) > VIDEO_ACTIVE_LUMA_THR)
+                { *left = x; fl = true; break; }
+    if (!fl) { return false; }
+
+    for (uint16_t x = 0u; x <= xbord && !fr; x++)
+    {
+        uint16_t xx = (uint16_t)(w - 1u - x);
+        for (uint16_t y = 0u; y < h; y += step)
+            if (luma3(buf + (uint32_t)y * stride + (uint32_t)xx * VIDEO_BYTES_PER_PIXEL) > VIDEO_ACTIVE_LUMA_THR)
+                { *right = xx; fr = true; break; }
+    }
+
+    return ft && fb && fl && fr;
+}
+
+static void active_reset(void)
+{
+    s_active_valid = false;
+    s_acc_count    = 0u;
+}
+
+/* One detection step per tick until locked: union this frame's bright bounds
+ * into the accumulator; after enough bright frames, lock the union if it clears
+ * the minimum plausible size, else reset and keep trying (fallback stays
+ * full-frame meanwhile). Reads the latest complete ring slot (non-cached DDR,
+ * so coherent; a 4-slot ring means it isn't overwritten mid-scan). */
+static void detect_active(void)
+{
+    if (s_active_valid) { return; }
+
+    const uint8_t *buf = (const uint8_t *)(uintptr_t)s_latest_buffer;
+    uint16_t w = s_src_w, h = s_src_h;
+    if (buf == NULL || w == 0u || h == 0u) { return; }
+
+    uint16_t t, b, l, r;
+    if (!frame_edges(buf, w, h, &t, &b, &l, &r)) { return; }   /* dark frame — skip */
+
+    if (s_acc_count == 0u)
+    {
+        s_acc_top = t; s_acc_bot = b; s_acc_left = l; s_acc_right = r;
+    }
+    else
+    {
+        if (t < s_acc_top)   { s_acc_top   = t; }
+        if (b > s_acc_bot)   { s_acc_bot   = b; }
+        if (l < s_acc_left)  { s_acc_left  = l; }
+        if (r > s_acc_right) { s_acc_right = r; }
+    }
+    if (++s_acc_count < VIDEO_ACTIVE_ACCUM_FRAMES) { return; }
+
+    uint16_t aw = s_acc_right - s_acc_left + 1u;
+    uint16_t ah = s_acc_bot   - s_acc_top  + 1u;
+    if (aw >= VIDEO_ACTIVE_MIN_W && ah >= VIDEO_ACTIVE_MIN_H)
+    {
+        s_active_x = s_acc_left; s_active_y = s_acc_top;
+        s_active_w = aw;         s_active_h = ah;
+        s_active_valid = true;
+        LOG_INFO("VIDEO: active area %ux%u @(%u,%u) in %ux%u frame\r\n",
+                 (unsigned)aw, (unsigned)ah, (unsigned)s_acc_left, (unsigned)s_acc_top,
+                 (unsigned)w, (unsigned)h);
+    }
+    else
+    {
+        static uint8_t warn_budget = 4u;
+        if (warn_budget > 0u)
+        {
+            LOG_WARN("VIDEO: active-area detect %ux%u below min %ux%u; retrying\r\n",
+                     (unsigned)aw, (unsigned)ah,
+                     (unsigned)VIDEO_ACTIVE_MIN_W, (unsigned)VIDEO_ACTIVE_MIN_H);
+            warn_budget--;
+        }
+        s_acc_count = 0u;   /* discard and re-accumulate */
+    }
+}
+
 /* ─── Capture state machine ────────────────────────────────────────────── */
 
 static bool capture_arm(void)
@@ -110,6 +253,7 @@ static bool capture_arm(void)
     if (!ISC_Capture_Configure(w, h)) { return false; }
     s_src_w = w;
     s_src_h = h;
+    active_reset();   /* fresh source — re-detect the active area */
     (void)TC358743_EnableStream(true);
     if (!ISC_Capture_Start())
     {
@@ -147,6 +291,10 @@ static void reconcile(void)
         capture_disarm();
         s_capture_armed = false;
     }
+
+    /* Detect the active picture rect once frames are flowing, before handing the
+     * source to the compositor so it can pick up the crop the same tick. */
+    if (s_capture_armed) { detect_active(); }
 
     if (s_reconcile_cb != NULL)
     {
@@ -308,4 +456,24 @@ void Video_GetFrameInfo(Video_FrameInfo *info)
     info->width           = s_src_w;
     info->height          = s_src_h;
     info->bytes_per_pixel = VIDEO_BYTES_PER_PIXEL;
+}
+
+bool Video_GetActiveRect(uint16_t *x, uint16_t *y, uint16_t *w, uint16_t *h)
+{
+    bool valid = s_active_valid;
+    if (valid)
+    {
+        if (x != NULL) { *x = s_active_x; }
+        if (y != NULL) { *y = s_active_y; }
+        if (w != NULL) { *w = s_active_w; }
+        if (h != NULL) { *h = s_active_h; }
+    }
+    else
+    {
+        if (x != NULL) { *x = 0u; }
+        if (y != NULL) { *y = 0u; }
+        if (w != NULL) { *w = s_src_w; }
+        if (h != NULL) { *h = s_src_h; }
+    }
+    return valid;
 }

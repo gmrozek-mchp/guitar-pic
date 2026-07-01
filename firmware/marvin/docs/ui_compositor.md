@@ -423,6 +423,34 @@ caught on a Legato widget and the interaction is expressed purely as HEO geometr
   `ui_manager` also calls at reveal and on song-select close, so the video always
   returns to a known windowed state.
 
+## 15. Active-picture detection + HEO source-crop
+
+The Wii's component→HDMI conversion frames the active raster with dead black bars
+(measured ≈ **716×448 @ (0,15)** in a 720×480 capture — top 15 / bottom 17 / right
+4 / left 0), and the thickness varies by console/converter, so it's **detected at
+runtime**, not hardcoded. The bars aren't black=0 — they sit at the same ~13
+pedestal as in-video black — so detection keys on a **fixed luma threshold**
+(`max(B,G,R) > 40`, well above the ≤14 border and below the ≥145 content), not on
+zero.
+
+- **Detector lives in `video.c`** (`Video_GetActiveRect`): it owns the frame,
+  format, and ring, and the capture buffer is in `.region_nocache` so CPU reads
+  are coherent. It scans inward from each edge (bounded to the deepest border the
+  ≥700×420 min-size gate allows, so a dark loading frame stays cheap), unions the
+  bright bounds over 16 *bright* frames (dark frames find no content and are
+  skipped — a loading screen at capture start just defers the lock), then locks if
+  the union clears 700×420. One-shot per capture arm; reset on re-arm/source-size
+  change; **full-frame fallback** (`x=y=0`, `w/h`=full) until locked.
+- **`ui_manager` `heo_bind` consumes it as the HEO source crop:** offset the frame
+  base by `y*stride + x*bpp`, size `HEOCFG4` (source memory rect) to the active
+  w/h, and skip the cropped columns each line via `XSTRIDE=(src_w-active_w)*bpp`
+  (same formula the GFX driver uses, `FB_TYPE_SZ*(resx-sizex)`). The bicubic
+  scaler then maps the active rect onto the window/fullscreen dst — the console's
+  dead bars never reach the panel. `heo_frame_latch` (ISC IRQ) adds the same crop
+  offset per ring slot; `heo_reconcile` rebinds when the rect changes (detection
+  flipping full→cropped). Applies to both windowed and fullscreen; bonus: active
+  716×448 ≈ 1.60 = 1280×800, so fullscreen is essentially aspect-correct.
+
 ## 11. Relationship to spec §4.5 / Q5
 
 This answers spec **Q5** (Legato vs. custom UI) for the *presentation* layer: **Legato is the

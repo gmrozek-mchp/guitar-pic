@@ -82,4 +82,18 @@ bool Video_UnsubscribeFrames(QueueHandle_t q);
  * report frame_count = 0 / buffer = NULL if capture has never armed. */
 void Video_GetFrameInfo(Video_FrameInfo *info);
 
+/* Detected active-picture rectangle within the captured frame.
+ *
+ * A component→HDMI source (the Wii bridge) frames its active raster with dead
+ * black bars whose thickness varies by console/converter, so the active area is
+ * detected at runtime — the union of the bright-pixel bounds over the first
+ * frames after capture arms, locked once it clears a minimum size. Detection is
+ * one-shot per capture arm (reset on re-arm / source-size change).
+ *
+ * Returns true with the locked rect (x,y = top-left offset, w,h = size, all in
+ * source pixels) once detected; false until then, filling *x=*y=0 and *w/*h =
+ * the full frame — a safe full-frame fallback so callers always get a usable
+ * rect. Any NULL out-param is skipped. */
+bool Video_GetActiveRect(uint16_t *x, uint16_t *y, uint16_t *w, uint16_t *h);
+
 #endif

@@ -113,7 +113,14 @@ static volatile bool   s_video_rebind;              /* window changed → rebind
 static volatile rect_t s_video_win;                 /* dst rect (UI task writes)      */
 static volatile bool   s_dialog_discard;            /* discard BASE behind modal (UI) */
 static bool            s_video_bound;               /* HEO bound (video-task only)    */
-static uint16_t        s_bound_src_w, s_bound_src_h;/* geometry HEO is bound at (task) */
+static uint16_t        s_bound_src_w, s_bound_src_h;/* full source HEO is bound at (task) */
+static uint16_t        s_bound_aw, s_bound_ah;      /* active crop size HEO is bound at */
+static uint16_t        s_bound_ax, s_bound_ay;      /* active crop offset HEO is bound at */
+
+/* Byte offset from a ring-slot base to the active picture's top-left, applied to
+ * every HEO frame address. Set by heo_bind (video task), added by heo_frame_latch
+ * (ISC IRQ) — single-writer/single-reader of one aligned word. */
+static volatile uint32_t s_heo_crop_off;
 
 /* HEO scaler factor is 12.20 fixed-point: factor = (src / dst) << 20; 1.0 = 1:1. */
 static uint32_t scaler_factor(uint32_t src, uint32_t dst)
@@ -123,10 +130,14 @@ static uint32_t scaler_factor(uint32_t src, uint32_t dst)
 }
 
 /* Bind HEO to the capture buffer at the window, engaging the bicubic scaler only
- * when dst != src. The matching BASE DMA-discard behind the opaque video is set by
- * base_discard_reconcile (single DISCEN owner). Seeds HEO with the latest frame
- * (0 until the first frame, which heo_frame_latch then fixes within a frame-time).
- * Video-task ctx. */
+ * when dst != the active source size. The scaler reads only the detected active
+ * picture rect (Video_GetActiveRect) — cropping the source's dead black bars — by
+ * offsetting the frame base to the active top-left, sizing HEOCFG4 to the active
+ * w/h, and skipping the cropped columns each line via XSTRIDE. Full-frame until
+ * detection locks (safe fallback). The matching BASE DMA-discard behind the opaque
+ * video is set by base_discard_reconcile (single DISCEN owner). Seeds HEO with the
+ * latest frame (0 until the first frame, which heo_frame_latch then fixes within a
+ * frame-time). Video-task ctx. */
 static void heo_bind(uint16_t src_w, uint16_t src_h,
                      uint32_t x, uint32_t y, uint32_t dst_w, uint32_t dst_h)
 {
@@ -140,24 +151,32 @@ static void heo_bind(uint16_t src_w, uint16_t src_h,
 
     Video_FrameInfo fi;
     Video_GetFrameInfo(&fi);
-    uint32_t addr = (uint32_t)(uintptr_t)fi.buffer;
+
+    /* Active picture crop within the full frame (full-frame fallback pre-lock). */
+    uint16_t ax, ay, aw, ah;
+    (void)Video_GetActiveRect(&ax, &ay, &aw, &ah);
+    uint32_t bpp        = fi.bytes_per_pixel;
+    uint32_t stride     = (uint32_t)src_w * bpp;                 /* full line bytes */
+    uint32_t crop_off   = (uint32_t)ay * stride + (uint32_t)ax * bpp;
+    uint32_t addr       = (uint32_t)(uintptr_t)fi.buffer + crop_off;
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO, XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
     XLCDC_SetLayerAddress(XLCDC_LAYER_HEO, addr, false);
-    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, 0u, false);
+    XLCDC_SetLayerXStride(XLCDC_LAYER_HEO, (uint32_t)(src_w - aw) * bpp, false);
     XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, x, y, false);
 
-    /* Display rect (HEOCFG3) and source-memory rect (HEOCFG4): equal for 1:1, differ
-     * when scaling. Written directly — XLCDC_SetLayerWindowXYSize sets both equal. */
+    /* Display rect (HEOCFG3, dst) vs source-memory rect (HEOCFG4, active crop):
+     * equal for 1:1, differ when scaling. Written directly — XLCDC_SetLayerWindowXYSize
+     * sets both equal. */
     XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(dst_w - 1u) | LCDC_HEOCFG3_YSIZE(dst_h - 1u);
-    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(src_w - 1u) | LCDC_HEOCFG4_YMEMSIZE(src_h - 1u);
+    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(aw - 1u) | LCDC_HEOCFG4_YMEMSIZE(ah - 1u);
 
-    bool scaling = (dst_w != src_w) || (dst_h != src_h);
+    bool scaling = (dst_w != aw) || (dst_h != ah);
     if (scaling)
     {
-        uint32_t hf = scaler_factor(src_w, dst_w);
-        uint32_t vf = scaler_factor(src_h, dst_h);
+        uint32_t hf = scaler_factor(aw, dst_w);
+        uint32_t vf = scaler_factor(ah, dst_h);
 
         XLCDC_REGS->LCDC_HEOCFG23 = LCDC_HEOCFG23_VXSYEN(1) | LCDC_HEOCFG23_VXSCEN(1)
                                   | LCDC_HEOCFG23_HXSYEN(1) | LCDC_HEOCFG23_HXSCEN(1);
@@ -180,10 +199,12 @@ static void heo_bind(uint16_t src_w, uint16_t src_h,
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
     XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
 
-    s_bound_src_w = src_w;
-    s_bound_src_h = src_h;
-    LOG_INFO("UI: HEO bound src %ux%u -> dst %lux%lu @(%lu,%lu) %s\r\n",
-             (unsigned)src_w, (unsigned)src_h, (unsigned long)dst_w, (unsigned long)dst_h,
+    s_heo_crop_off = crop_off;
+    s_bound_src_w = src_w; s_bound_src_h = src_h;
+    s_bound_ax = ax; s_bound_ay = ay; s_bound_aw = aw; s_bound_ah = ah;
+    LOG_INFO("UI: HEO bound src %ux%u active %ux%u@(%u,%u) -> dst %lux%lu @(%lu,%lu) %s\r\n",
+             (unsigned)src_w, (unsigned)src_h, (unsigned)aw, (unsigned)ah, (unsigned)ax, (unsigned)ay,
+             (unsigned long)dst_w, (unsigned long)dst_h,
              (unsigned long)x, (unsigned long)y, scaling ? "scaled" : "1:1");
 }
 
@@ -243,15 +264,22 @@ static void base_discard_reconcile(void)
 }
 
 /* video-task tick: converge HEO to intent + source. Bind on first show, window
- * change (rebind flag), or source-size change; unbind when hidden. */
+ * change (rebind flag), source-size change, or active-crop change (detection
+ * locking flips the source from full-frame to the active rect); unbind when
+ * hidden. */
 static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
 {
     rect_t w = s_video_win;
     bool   win_valid = (w.w != 0u) && (w.h != 0u);
     bool   want = s_video_shown && source_valid && win_valid;
 
-    if (want && (!s_video_bound || s_video_rebind ||
-                 src_w != s_bound_src_w || src_h != s_bound_src_h))
+    uint16_t ax, ay, aw, ah;
+    (void)Video_GetActiveRect(&ax, &ay, &aw, &ah);
+    bool geom_changed = src_w != s_bound_src_w || src_h != s_bound_src_h ||
+                        aw != s_bound_aw || ah != s_bound_ah ||
+                        ax != s_bound_ax || ay != s_bound_ay;
+
+    if (want && (!s_video_bound || s_video_rebind || geom_changed))
     {
         heo_bind(src_w, src_h, w.x, w.y, w.w, w.h);
         s_video_bound  = true;
@@ -281,8 +309,9 @@ static void heo_frame_latch(uint32_t buffer_addr)
      * latches (a vsync away while HEO scans) — too costly for this per-frame ISC IRQ.
      * The address register is double-buffered, so the hardware latches the new base at
      * the next vsync on its own; the following frame writes the newer address. OR into
-     * ATTRE so a pending BASE/OVR update isn't cleared. */
-    XLCDC_REGS->LCDC_HEO[0].LCDC_HEOYFBA = buffer_addr;
+     * ATTRE so a pending BASE/OVR update isn't cleared. The crop offset (0 until
+     * the active area is detected) points HEO at the active top-left of the slot. */
+    XLCDC_REGS->LCDC_HEO[0].LCDC_HEOYFBA = buffer_addr + s_heo_crop_off;
     XLCDC_REGS->LCDC_ATTRE |= LCDC_ATTRE_HEO_Msk;
 }
 
