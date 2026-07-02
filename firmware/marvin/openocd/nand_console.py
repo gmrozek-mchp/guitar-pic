@@ -98,7 +98,13 @@ def main():
 
     if op == "program":
         ba, bo, bs, aa, ao, asz = sys.argv[3:9]
-        run(ser, "nand erase 0x0 0x100000", "NAND erase")
+        # Chip-erase, not a fixed-size region erase. `nand write` needs erased
+        # (0xff) pages, and the boot bootstrap reads a fixed CONFIG_IMG_SIZE window
+        # (>= the app) from 0x40000 at boot — every page it writes AND every page
+        # that window reads must be clean, or PMECC fails on a stale/half-written
+        # page. A hardcoded region erase silently undershoots once the app grows
+        # past it; chip-erase always covers both regardless of image or IMG_SIZE.
+        run(ser, "nand erase.chip", "NAND erase")
         run(ser, f"nand write {ba} {bo} {bs}", "written")     # boot region
         run(ser, f"nand write {aa} {ao} {asz}", "written")    # app
         cmd(ser, f"nand read {RB1} {bo} {bs}")

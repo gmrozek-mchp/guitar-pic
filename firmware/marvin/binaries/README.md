@@ -71,6 +71,32 @@ make CROSS_COMPILE=arm-none-eabi- oldconfig </dev/null               # see note
 > `arm-none-eabi-objdump -d <elf> | grep -A8 at91_leds_init` — the blue call
 > should load `r0, #82` (0x52 = PIOC·32+18) with `r1, #0`.
 
+## Marvin customization: app copy window (`CONFIG_IMG_SIZE`) → 4 MiB
+
+The **raw-offset** media bootstraps (NAND, QSPI) copy a fixed `CONFIG_IMG_SIZE`
+bytes from `CONFIG_IMG_ADDRESS` (`0x40000`) to `0x23F00000` and jump — there is no
+size header, so the window is a compile-time constant. Stock is `0x100000` (1 MiB,
+sized for u-boot); marvin (`harmony.bin`) has outgrown that, so we build these
+with **`CONFIG_IMG_SIZE=0x00400000`** (4 MiB) — enough headroom for marvin to keep
+growing. Reading past the app into erased pages is safe (at91bootstrap detects
+all-`0xff` pages), it just costs a little boot-time NAND read. The SD bootstrap has
+no `CONFIG_IMG_SIZE` (it loads the whole file by name from FAT), so it is immune.
+
+This window is **coupled** to two things that must stay consistent:
+- **`../openocd/program-nand.sh` `NAND_IMG_SIZE`** — a guard that refuses to flash a
+  `harmony.bin` larger than the window (which would boot truncated). Bump it to
+  match if you rebuild with a different `CONFIG_IMG_SIZE`.
+- **The flasher chip-erases** (`../openocd/nand_console.py`, program mode) so every
+  page in the copy window is clean `0xff` before the write — otherwise the
+  bootstrap's read of that window hits stale/half-written pages and PMECC fails.
+
+Like the LED override, it's applied to `.config` after `make <defconfig>` (it is a
+`-D` flag so it needs no `oldconfig`, but the LED override's `oldconfig` covers it):
+
+```sh
+sed -i '' 's|^CONFIG_IMG_SIZE=.*|CONFIG_IMG_SIZE="0x00400000"|' .config   # macOS sed
+```
+
 ## Prerequisites
 
 - **at91bootstrap source** (this was built from `v4.0.13`):
@@ -154,24 +180,27 @@ No actual u-boot / Linux is involved; marvin (`harmony.bin`) is the second stage
 cd ~/Projects/microchip/at91bootstrap
 export PATH="/Applications/ArmGNUToolchain/15.2.rel1/arm-none-eabi/bin:$PATH"
 
-# Each build inserts the blue-LED -> PC18 override (see "Marvin customization"
-# above) between `make <defconfig>` and the final `make`:
-led_pc18() {   # run from the at91bootstrap dir, after `make <defconfig>`
+# Each build inserts the marvin overrides (see "Marvin customization" above)
+# between `make <defconfig>` and the final `make`: blue-LED -> PC18, and the app
+# copy window -> 4 MiB. IMG_SIZE only exists in the raw-offset (NAND/QSPI) configs,
+# so its sed is a harmless no-op on the SD build (which loads by filename).
+marvin_cfg() {   # run from the at91bootstrap dir, after `make <defconfig>`
   sed -i '' 's|^CONFIG_LED_B_PIN=.*|CONFIG_LED_B_PIN=18|' .config
   sed -i '' 's|^CONFIG_LED_B_VALUE=.*|CONFIG_LED_B_VALUE=0|' .config
+  sed -i '' 's|^CONFIG_IMG_SIZE=.*|CONFIG_IMG_SIZE="0x00400000"|' .config
   make CROSS_COMPILE=arm-none-eabi- oldconfig </dev/null
 }
 
 # NAND  (raw offset; filename unused)
 make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pronf_uboot_defconfig
-led_pc18 && make CROSS_COMPILE=arm-none-eabi-
+marvin_cfg && make CROSS_COMPILE=arm-none-eabi-
 # QSPI  (raw offset; filename unused)
 make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prodf_qspi_uboot_defconfig
-led_pc18 && make CROSS_COMPILE=arm-none-eabi-
+marvin_cfg && make CROSS_COMPILE=arm-none-eabi-
 # microSD — override the FAT second-stage filename to harmony.bin
 make mrproper && make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_prosd_uboot_defconfig
 sed -i '' 's|^CONFIG_IMAGE_NAME=.*|CONFIG_IMAGE_NAME="harmony.bin"|' .config   # macOS sed
-led_pc18 && make CROSS_COMPILE=arm-none-eabi-
+marvin_cfg && make CROSS_COMPILE=arm-none-eabi-
 # artifacts: build/binaries/sam9x7-{nandflashboot,dataflashboot}-uboot-4.0.13.bin
 #            build/binaries/sam9x7-sdcardboot-harmony-4.0.13.bin
 # (mrproper wipes build/, so copy each .bin out before the next build.)

@@ -47,6 +47,12 @@ CONSOLE="${CONSOLE:-$(ls /dev/cu.usbserial-* 2>/dev/null | sort | sed -n '3p')}"
 BOOT_ADDR=0x21100000; BOOT_OFF=0x0
 APP_ADDR=0x21200000;  APP_OFF=0x40000
 
+# The NAND boot bootstrap copies exactly this many bytes from APP_OFF to 0x23f00000
+# at boot — its compiled-in CONFIG_IMG_SIZE (see binaries/README.md). harmony.bin
+# must fit inside it or the bootstrap loads a truncated app. Keep in sync if the
+# bootstrap is rebuilt with a different window.
+NAND_IMG_SIZE="${NAND_IMG_SIZE:-0x400000}"
+
 xc32bin="$(ls -d /Applications/microchip/xc32/*/bin 2>/dev/null | sort -V | tail -1 || true)"
 READELF="${READELF:-${xc32bin:+$xc32bin/}xc32-readelf}"
 
@@ -59,6 +65,14 @@ done
 roundup() { printf '0x%x' $(( ( ($1 + 0xfff) / 0x1000 ) * 0x1000 )); }
 BOOT_SZ=$(roundup "$(stat -f%z "$NANDBOOT_BIN")")
 APP_SZ=$(roundup "$(stat -f%z "$HARMONY_BIN")")
+
+# Guard: the app must fit the bootstrap's copy window, else it boots truncated.
+if [ "$((APP_SZ))" -gt "$((NAND_IMG_SIZE))" ]; then
+    echo "marvin app $HARMONY_BIN ($APP_SZ rounded) exceeds the bootstrap copy window NAND_IMG_SIZE=$NAND_IMG_SIZE." >&2
+    echo "The bootstrap would load a truncated app. Rebuild the NAND bootstrap with a larger" >&2
+    echo "CONFIG_IMG_SIZE (see ../binaries/README.md) and set NAND_IMG_SIZE to match." >&2
+    exit 1
+fi
 
 boot_entry="$("$READELF" -h "$BOOTSTRAP_ELF" | awk '/Entry point/{print $NF}')"
 
