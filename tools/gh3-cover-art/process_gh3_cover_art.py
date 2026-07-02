@@ -6,12 +6,13 @@ writes the two firmware asset tiers straight into the marvin art folder, named
 by the recognizer key the firmware expects (<setlist>-<NN>):
 
 - large: 508x208 middle strip for the song-select detail screen, with a baked
-  vertical gradient overlay: the difficulty color washes the whole strip and
-  darkens toward the bottom (staying the same hue — a dark color, not pure
-  black — as a legible backdrop for the title/artist text). Saved as PNG so the
-  gradient is lossless. The color is looked up per song from songs.csv: main
-  tiers "1".."8" map to an 8-tier palette (green->red with blue/purple accents,
-  see TIER_COLORS), bonus (or unknown) maps to gray.
+  overlay matching the on-screen album-art card: the difficulty tier's dark tint
+  (Tailwind <hue>-900 at 40%) washes the zinc-900 card behind the cover, the
+  cover is dimmed to 60%, and a black gradient darkens the bottom edge so the
+  title/artist text sits on a legible backdrop. Saved as PNG so the overlay is
+  lossless. The tint is looked up per song from songs.csv: main tiers "1".."8"
+  map to an 8-tier Tailwind palette (see TIER_PALETTE), bonus (or unknown) maps
+  to a neutral gray.
   -> <out>/large/<setlist>-<NN>.png
 - small: 144x144 dashboard now-playing thumbnail (pillarboxed, clean, no fade).
   Saved as PNG: on-device the covers are decoded offscreen into a static DDR
@@ -53,32 +54,31 @@ DEFAULT_CATALOG = "../../firmware/marvin/data/games/gh3-wii/songs.csv"
 # Filename -> (setlist, index): "main_04_rock_and_roll.jpg" -> ("main", 4).
 KEY_RE = re.compile(r"^(main|bonus)_(\d+)_")
 
-# Per-tier difficulty palette (tier 1 easiest -> 8 hardest): cool/calm at the low
-# end, hot at the high end, anchored green(1) -> red(8) with blue/purple accents.
-# The SAME colors drive the art fade here AND the TIER-label text schemes in
-# screen_song_select.c, so keep them in sync. Edit a row to retune one tier.
-TIER_COLORS = {
-    1: (0x4A, 0xDE, 0x53),   # green
-    2: (0x14, 0xB8, 0xA6),   # teal
-    3: (0x3B, 0x82, 0xF6),   # blue
-    4: (0xA8, 0x55, 0xF7),   # purple
-    5: (0xFA, 0xCC, 0x15),   # yellow
-    6: (0xFB, 0x92, 0x3C),   # orange
-    7: (0xFF, 0x56, 0x30),   # red-orange
-    8: (0xEF, 0x44, 0x44),   # red
+# 8-tier difficulty palette, Tailwind ("tailscan") colors, tier 1 easiest -> 8
+# hardest (cool/calm at the low end, hot at the high end). Each tier is
+# (accent, tint): `accent` is the bright label color (Tailwind <hue>-400/-500) —
+# set the matching MGS SCHEME_TEXT_TIER_n text color to this; `tint` is the dark
+# wash (Tailwind <hue>-900) baked behind the large cover art. Edit a row to retune.
+TIER_PALETTE = {
+    #     accent (label)        tint (art wash)      Tailwind hue
+    1: ((0x4A, 0xDE, 0x80), (0x14, 0x53, 0x2D)),   # green
+    2: ((0x2D, 0xD4, 0xBF), (0x13, 0x4E, 0x4A)),   # teal
+    3: ((0x60, 0xA5, 0xFA), (0x1E, 0x3A, 0x8A)),   # blue
+    4: ((0xA7, 0x8B, 0xFA), (0x4C, 0x1D, 0x95)),   # violet
+    5: ((0xFA, 0xCC, 0x15), (0x71, 0x3F, 0x12)),   # yellow
+    6: ((0xFB, 0x92, 0x3C), (0x7C, 0x2D, 0x12)),   # orange
+    7: ((0xF8, 0x71, 0x71), (0x7F, 0x1D, 0x1D)),   # red
+    8: ((0xEF, 0x44, 0x44), (0x45, 0x0A, 0x0A)),   # deep red
 }
-BONUS_GRAY = (96, 96, 96)
+BONUS_ACCENT = (0xD4, 0xD4, 0xD8)   # zinc-300
+BONUS_TINT   = (0x3F, 0x3F, 0x46)   # zinc-700 (neutral, near-invisible wash)
 
-# Fade tunables (visual taste; safe to adjust). A single full-height ramp by height
-# fraction t: the difficulty `color` washes the top and darkens to a near-black tint
-# of the same hue at the bottom edge. FADE_GAMMA shapes it (>1 keeps the top clean
-# and concentrates the darkening into the lower band). FADE_START/FADE_FULL bound the
-# ramp; the defaults (0..1) run it across the whole height.
-FADE_TOP_ALPHA   = 0.35   # wash opacity at the top (0 = no tint, art fully visible)
-FADE_START       = 0.00   # height fraction where darkening begins (raise to keep more clean top)
-FADE_FULL        = 1.00   # height fraction reaching darkest (1.0 = at the bottom edge)
-FADE_BOTTOM_DARK = 0.05   # darkest color = difficulty color * this (same hue, ~black)
-FADE_GAMMA       = 2.00   # ramp shape: >1 keeps the top lighter, darkens lower down
+# Overlay tunables (match the on-screen album-art card; safe to retune).
+ZINC_900      = (0x18, 0x18, 0x1B)   # card background the tier tint sits over
+TINT_ALPHA    = 0.40   # tier tint opacity over the card (Tailwind /40)
+IMAGE_OPACITY = 0.60   # cover opacity over the tinted card (Tailwind opacity-60)
+GRAD_BOTTOM   = 0.80   # black gradient alpha at the bottom edge (from-black/80)
+GRAD_GAMMA    = 1.00   # gradient shape (1.0 = linear top->bottom; >1 keeps top clean)
 
 
 def load_difficulty(catalog_path):
@@ -99,59 +99,52 @@ def load_difficulty(catalog_path):
     return table
 
 
-def difficulty_color(diff_str):
-    """Map a difficulty string to its tier color: "1".."8" -> TIER_COLORS,
-    anything else (e.g. "bonus", empty) -> gray."""
+def tier_tint(diff_str):
+    """Map a difficulty string to its baked art tint: "1".."8" -> TIER_PALETTE
+    tint, anything else (e.g. "bonus", empty) -> neutral gray."""
     try:
         tier = int(diff_str)
     except (TypeError, ValueError):
         tier = None
-    return TIER_COLORS.get(tier, BONUS_GRAY)
+    entry = TIER_PALETTE.get(tier)
+    return entry[1] if entry else BONUS_TINT
 
 
-def build_fade(w, h, color):
-    """Vertical gradient overlay baked over the cover: the difficulty `color`
-    washes the top of the strip, darkens through the middle, and goes to a solid
-    dark tint of the same hue over the lower band so the title/artist text sits on
-    a legible, on-theme backdrop.
+def _blend_rgb(a, b, t):
+    """Linear blend of two RGB tuples: (1-t)*a + t*b."""
+    return tuple(int(round(a[i] * (1.0 - t) + b[i] * t)) for i in range(3))
 
-    Returns (overlay_rgb, alpha) as full-size images for
-    Image.composite(overlay_rgb, image, alpha). Per row, by height fraction t:
-      - t <= FADE_START          : top wash (alpha FADE_TOP_ALPHA, full `color`)
-      - FADE_START < t <= FADE_FULL: eased ramp (FADE_GAMMA) toward darkest
-                                      (alpha -> 1.0, color -> color*FADE_BOTTOM_DARK)
-    With FADE_FULL = 1.0 the ramp runs to the bottom edge, so there is no flat dark
-    band — the bottom half is a continuous gradient."""
-    bottom = tuple(int(c * FADE_BOTTOM_DARK) for c in color)
-    color_col = Image.new("RGB", (1, h))
-    alpha_col = Image.new("L", (1, h))
-    cp = color_col.load()
-    ap = alpha_col.load()
-    span = max(1e-6, FADE_FULL - FADE_START)
+
+def _bottom_gradient_alpha(w, h):
+    """L-mode alpha mask for the bottom black gradient: 0 at the top, GRAD_BOTTOM
+    at the bottom edge (shaped by GRAD_GAMMA). Matches the CSS overlay
+    `bg-gradient-to-t from-black/80 to-transparent`."""
+    col = Image.new("L", (1, h))
+    cp = col.load()
     for y in range(h):
         t = y / (h - 1) if h > 1 else 0.0
-        s = (t - FADE_START) / span          # 0 at FADE_START, 1 at FADE_FULL
-        s = 0.0 if s < 0.0 else (1.0 if s > 1.0 else s)
-        s = s ** FADE_GAMMA
-        cp[0, y] = (int(color[0] * (1.0 - s) + bottom[0] * s),
-                    int(color[1] * (1.0 - s) + bottom[1] * s),
-                    int(color[2] * (1.0 - s) + bottom[2] * s))
-        a = FADE_TOP_ALPHA + (1.0 - FADE_TOP_ALPHA) * s
-        ap[0, y] = max(0, min(255, int(a * 255)))
-    return color_col.resize((w, h)), alpha_col.resize((w, h))
+        a = GRAD_BOTTOM * (t ** GRAD_GAMMA)
+        cp[0, y] = max(0, min(255, int(round(a * 255))))
+    return col.resize((w, h))
 
 
-def make_large(img, color):
-    """Scale to 508 wide, center-crop the middle 508x208 band, bake the
-    difficulty-color wash that darkens toward the bottom. Returns an RGB image."""
+def make_large(img, tint):
+    """Scale to 508 wide, center-crop the middle 508x208 band, then bake the
+    album-art overlay: the tier `tint` washes the zinc-900 card behind the cover,
+    the cover is dimmed to IMAGE_OPACITY, and a black gradient darkens the bottom
+    edge. Returns an RGB image."""
     ratio = LARGE_W / img.width
     scaled = img.resize((LARGE_W, max(LARGE_H, int(round(img.height * ratio)))),
                         Image.Resampling.LANCZOS)
     top = (scaled.height - LARGE_H) // 2
-    strip = scaled.crop((0, top, LARGE_W, top + LARGE_H))
+    strip = scaled.crop((0, top, LARGE_W, top + LARGE_H)).convert("RGB")
 
-    overlay, alpha = build_fade(LARGE_W, LARGE_H, color)
-    return Image.composite(overlay, strip, alpha)
+    card = _blend_rgb(ZINC_900, tint, TINT_ALPHA)            # tier tint over the card
+    backdrop = Image.new("RGB", (LARGE_W, LARGE_H), card)
+    dimmed = Image.blend(backdrop, strip, IMAGE_OPACITY)     # cover at opacity-60
+    black = Image.new("RGB", (LARGE_W, LARGE_H), (0, 0, 0))
+    alpha = _bottom_gradient_alpha(LARGE_W, LARGE_H)
+    return Image.composite(black, dimmed, alpha)             # bottom black gradient
 
 
 def make_small(img):
@@ -206,7 +199,7 @@ def process_cover_art(src_dir, out_base, catalog_path):
             setlist, index = m.group(1), int(m.group(2))
             key = (setlist, index)
             stem = f"{setlist}-{index:02d}"            # firmware naming
-            color = difficulty_color(difficulty.get(key))
+            tint = tier_tint(difficulty.get(key))
 
             img = Image.open(jpg_path)
             if img.mode in ("RGBA", "LA", "P"):
@@ -216,14 +209,14 @@ def process_cover_art(src_dir, out_base, catalog_path):
             elif img.mode != "RGB":
                 img = img.convert("RGB")
 
-            # large: PNG strip with baked difficulty fade
-            make_large(img, color).save(out_large / (stem + ".png"), "PNG")
+            # large: PNG strip with baked album-art overlay (tier tint + gradient)
+            make_large(img, tint).save(out_large / (stem + ".png"), "PNG")
             # small: clean 144x144 PNG (PNG decoder is clip-independent offscreen;
             # the JPEG decoder is not — see the module docstring)
             make_small(img).save(out_small / (stem + ".png"), "PNG")
 
             print(f"  {jpg_path.name}: tier {difficulty.get(key) or '-'} "
-                  f"color {color} -> large/{stem}.png, small/{stem}.png")
+                  f"tint {tint} -> large/{stem}.png, small/{stem}.png")
             processed += 1
 
         except Exception as e:
@@ -238,7 +231,7 @@ def process_cover_art(src_dir, out_base, catalog_path):
         return 1
 
     print(f"\nInstalled to:")
-    print(f"  {out_large}  (song-select, PNG, difficulty fade)")
+    print(f"  {out_large}  (song-select, PNG, album-art overlay)")
     print(f"  {out_small}  (dashboard, PNG)")
     return 0
 

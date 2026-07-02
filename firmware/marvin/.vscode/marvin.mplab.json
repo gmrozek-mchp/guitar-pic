@@ -6,6 +6,7 @@
             "id": "",
             "device": "SAM9X75D2G",
             "imagePath": "./out/marvin/default.elf",
+            "tool": "PKOB nano",
             "packs": [
                 {
                     "name": "SAM9X7_DFP",

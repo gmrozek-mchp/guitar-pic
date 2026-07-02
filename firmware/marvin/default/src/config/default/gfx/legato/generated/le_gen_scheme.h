@@ -116,6 +116,7 @@ extern const leScheme SCHEME_TEST_PATTERN_RED;
 extern const leScheme SCHEME_TEST_PATTERN_BLUE;
 extern const leScheme SCHEME_GUITAR_FRET_YELLOW;
 extern const leScheme SCHEME_TEXT_GRAY_A1A1AA;
+extern const leScheme SCHEME_TEXT_TIER_BONUS;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility
