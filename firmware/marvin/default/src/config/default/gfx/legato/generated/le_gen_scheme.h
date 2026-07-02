@@ -117,6 +117,31 @@ extern const leScheme SCHEME_TEST_PATTERN_BLUE;
 extern const leScheme SCHEME_GUITAR_FRET_YELLOW;
 extern const leScheme SCHEME_TEXT_GRAY_A1A1AA;
 extern const leScheme SCHEME_TEXT_TIER_BONUS;
+extern const leScheme Scheme18;
+extern const leScheme Scheme20;
+extern const leScheme Scheme21;
+extern const leScheme Scheme22;
+extern const leScheme Scheme23;
+extern const leScheme Scheme24;
+extern const leScheme Scheme25;
+extern const leScheme Scheme26;
+extern const leScheme Scheme27;
+extern const leScheme Scheme28;
+extern const leScheme Scheme29;
+extern const leScheme Scheme30;
+extern const leScheme panel_springgreen;
+extern const leScheme text_lightgreen;
+extern const leScheme Scheme31;
+extern const leScheme Scheme32;
+extern const leScheme panel_red;
+extern const leScheme panel_orange;
+extern const leScheme Scheme33;
+extern const leScheme Scheme34;
+extern const leScheme Scheme35;
+extern const leScheme Scheme36;
+extern const leScheme Scheme37;
+extern const leScheme panel_blueviolet;
+extern const leScheme panel_plum;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility
