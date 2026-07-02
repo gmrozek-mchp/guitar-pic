@@ -42,6 +42,7 @@
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "net/fauxmote/fauxmote_link.h"
+#include "game/game_controller.h"
 #include "ui/ui_manager.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
@@ -211,6 +212,11 @@ void App_StartServices(void)
      * follows Video_Initialize. Enable observation explicitly (default off). */
     GameplayEngine_Initialize();
     GameplayEngine_SetObserveEnabled(true);
+
+    /* M10 game-state controller: START (dashboard button / `play` console command)
+     * navigates GH3 to the selected song+difficulty, then hands off to the CV
+     * detector. Follows the gameplay engine + actuator producers it drives. */
+    GameController_Initialize();
 
     /* Interactive operator console on FLEXCOM2 (115200), separate from the DBGU
      * log channel. Started after the actuator/detector modules so its commands

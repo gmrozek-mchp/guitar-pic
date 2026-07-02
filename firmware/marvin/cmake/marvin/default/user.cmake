@@ -9,6 +9,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_classify.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/gameplay_select.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/selection.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_controller.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/timing_pipeline.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"

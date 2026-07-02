@@ -61,4 +61,10 @@ void GameplayEngine_RequestObservation(void);
  * GP_SCREEN_UNKNOWN before the first classified frame. */
 uint8_t GameplayEngine_CurrentScreen(void);
 
+/* Snapshot the most recent classification (screen + selection + frame_epoch),
+ * retained every classify. Returns false until the first classified frame. The
+ * game-state controller polls this (paired with RequestObservation) for a fresh
+ * {screen, selection} after each actuator command. */
+bool GameplayEngine_GetLatest(game_state_t *out);
+
 #endif

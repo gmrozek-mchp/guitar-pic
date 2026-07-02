@@ -374,6 +374,14 @@ _(filled in as destinations are confirmed)_
 
 ## Navigator notes (implementation)
 
+> **Implemented (2026-07-02):** the on-device controller is
+> `firmware/marvin/default/src/game/game_controller.c` — a port of the offline
+> `tools/gameplay` `NavController`. Triggered by the dashboard START button or the
+> console `play` command; reads the committed `Selection`; drives the worked path
+> below closed-loop and hands off to the CV detector at `in_song`. v1 covers the
+> practice path from a menu anchor (RED→`main_menu`); mid-song `+`/pause recovery is
+> not wired (the T1S mask path carries no `+`). See the marvin journal 2026-07-02.
+
 How the controller (M10) uses this map. Unmapped paths don't need modeling —
 they're handled by recovery, not enumeration.
 

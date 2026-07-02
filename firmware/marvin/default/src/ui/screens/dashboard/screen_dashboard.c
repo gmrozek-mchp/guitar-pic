@@ -10,6 +10,7 @@
 #include "game/catalog.h"
 #include "game/art.h"
 #include "game/selection.h"
+#include "game/game_controller.h"
 #include "util/legato_utf8.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
@@ -35,6 +36,14 @@ static void select_song_on_release(leButtonWidget *btn)
 {
     (void)btn;
     UiManager_OpenSongSelect();
+}
+
+/* The gameplay card's START button kicks off the game-state controller: navigate
+ * GH3 to the committed selection and hand off to the CV detector. */
+static void start_on_release(leButtonWidget *btn)
+{
+    (void)btn;
+    GameController_Start();
 }
 
 /* Round the corners of a dashboard card and enable anti-aliased smoothing.
@@ -67,6 +76,11 @@ enum { DASH_TITLE, DASH_ARTIST, DASH_ALBUM, DASH_GENRE, DASH_DURATION, DASH_TIER
 static leChar        s_detail_buf[DASH_COUNT][DASH_CAP];
 static leFixedString s_detail_str[DASH_COUNT];
 
+/* Runtime text for the SONG card's Status label, driven by the game controller
+ * (READY / NAVIGATING / PLAYING / FAILED / …). Same fixed-string mechanism. */
+static leChar        s_status_buf[24];
+static leFixedString s_status_str;
+
 static leLabelWidget *detail_label(int i)
 {
     switch (i)
@@ -98,6 +112,22 @@ static void song_detail_init(void)
         else if (cur != NULL) { fs->fn->setFont(fs, cur->fn->getFont(cur)); }
         lbl->fn->setString(lbl, fs);
     }
+
+    /* Status label: point it at its own fixed string, inheriting its MGS font. */
+    leLabelWidget *st  = Marvin_LABEL_DASHBOARD_SONG_Status;
+    leString      *sfs = (leString *)&s_status_str;
+    leString      *scur = st->fn->getString(st);
+    leFixedString_Constructor(&s_status_str, s_status_buf,
+                              sizeof(s_status_buf) / sizeof(s_status_buf[0]));
+    if (scur != NULL) { sfs->fn->setFont(sfs, scur->fn->getFont(scur)); }
+    st->fn->setString(st, sfs);
+}
+
+/* Game-controller status observer → SONG card Status label. */
+static void dash_game_status(const char *text)
+{
+    (void)lestring_set_utf8((leString *)&s_status_str,
+                            (text != NULL && text[0] != '\0') ? text : "READY");
 }
 
 /* Set a detail value; "-" for an empty/unknown field. */
@@ -237,6 +267,8 @@ void ScreenDashboard_Setup(void)
 
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setReleasedEventCallback(
         Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, select_song_on_release);
+    Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setReleasedEventCallback(
+        Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, start_on_release);
 
     /* Mirror the committed gameplay selection onto the SONG card. Register the
      * observer before song-select's Setup seeds the boot default (ui_manager calls
@@ -244,4 +276,6 @@ void ScreenDashboard_Setup(void)
     song_detail_init();
     Selection_SetObserver(dash_selection_changed);
     if (Selection_Get()->valid) { dash_selection_changed(Selection_Get()); }
+
+    GameController_SetStatusObserver(dash_game_status);
 }

@@ -42,6 +42,11 @@ static volatile bool    s_observe_enabled;
 static volatile bool    s_force_observe;
 static volatile uint8_t s_current_screen = GP_SCREEN_UNKNOWN;
 
+/* Latest classified state, retained every classify (not just on change) so the
+ * game-state controller can poll a fresh {screen, selection} synchronously. */
+static volatile bool s_have_latest;
+static game_state_t  s_latest;
+
 static const char *screen_name(uint8_t idx)
 {
     return (idx < GP_N_SCREENS) ? gp_screen_ids[idx] : "unknown";
@@ -121,6 +126,16 @@ static void game_task(void *param)
         const char *sel_name = NULL, *sel_name2 = NULL;
         int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
 
+        taskENTER_CRITICAL();
+        s_latest.frame_epoch  = frame.frame_count;
+        s_latest.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
+        s_latest.screen       = screen;
+        s_latest.best_dist    = best_dist;
+        s_latest.margin       = margin;
+        s_latest.selection    = sel;
+        s_have_latest         = true;
+        taskEXIT_CRITICAL();
+
         if (screen != last_screen || sel != last_sel)
         {
             game_state_t ev;
@@ -188,4 +203,15 @@ bool GameplayEngine_ObserveEnabled(void)
 uint8_t GameplayEngine_CurrentScreen(void)
 {
     return s_current_screen;
+}
+
+bool GameplayEngine_GetLatest(game_state_t *out)
+{
+    if (out == NULL) { return false; }
+    bool have;
+    taskENTER_CRITICAL();
+    have = s_have_latest;
+    if (have) { *out = s_latest; }
+    taskEXIT_CRITICAL();
+    return have;
 }

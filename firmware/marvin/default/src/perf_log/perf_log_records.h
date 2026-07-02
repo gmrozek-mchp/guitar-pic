@@ -335,9 +335,10 @@ typedef struct __attribute__((packed))
  *              stamps (still useful, but redundant for the common case). */
 typedef enum
 {
-    PERF_ACTUATOR_PRODUCER_NONE   = 0,
-    PERF_ACTUATOR_PRODUCER_TIMING = 1,
-    PERF_ACTUATOR_PRODUCER_MANUAL = 2,
+    PERF_ACTUATOR_PRODUCER_NONE     = 0,
+    PERF_ACTUATOR_PRODUCER_TIMING   = 1,
+    PERF_ACTUATOR_PRODUCER_MANUAL   = 2,
+    PERF_ACTUATOR_PRODUCER_GAMEPLAY = 3,   /* M10 game-state controller: menu nav */
 } perf_actuator_producer_t;
 
 typedef struct __attribute__((packed))

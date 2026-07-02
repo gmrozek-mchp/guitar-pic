@@ -31,6 +31,8 @@
 #include "results/results.h"
 #include "game/catalog.h"
 #include "game/art.h"
+#include "game/selection.h"
+#include "game/game_controller.h"
 #include "ui/ui_manager.h"
 #include "flash/qspi_smoke.h"
 #include "flash/settings.h"
@@ -735,6 +737,34 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
 }
 #endif
 
+static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub != NULL && strcmp(sub, "stop") == 0)
+    {
+        GameController_Stop();
+        console_printf("play: stop requested");
+        return;
+    }
+    if (sub != NULL && strcmp(sub, "status") == 0)
+    {
+        console_printf("play: %s", GameController_IsBusy() ? "busy" : "idle");
+        return;
+    }
+
+    const selection_t *s = Selection_Get();
+    if (!s->valid)
+    {
+        console_printf("play: no song selected yet (pick one in song-select first)");
+        return;
+    }
+    GameController_Start();
+    console_printf("play: starting (setlist %u, song #%u, difficulty %u)",
+                   (unsigned)s->setlist, (unsigned)s->index, (unsigned)s->difficulty);
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -752,6 +782,7 @@ static void register_commands(void)
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
         { "timing", "timing <on|off|gate <on|off>>: chord/strum scheduler (gate=in-song only)", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
+        { "play",   "play [stop|status]: auto-navigate GH3 to the selected song + let CV play it", true, NULL, cmd_play },
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]", true, NULL, cmd_fauxmote },
 #endif
