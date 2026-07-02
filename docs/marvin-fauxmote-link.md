@@ -254,11 +254,18 @@ not a rewrite.
 - Emits `STATUS` from the existing `Wiimote_Is*` / `Fauxmote_*` state.
 - The CLI stays for manual bring-up/debug.
 
-**marvin** — a new module under `net/` (e.g. `net/fauxmote/fauxmote_link.c`):
-- Owns the FLEXCOM USART + framing; exposes `Fauxmote_SendGuitar(mask, whammy, aux)`,
-  `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and a `STATUS` callback.
-- An **alternative sink** to `T1SLink_SendToGuitar` — the gameplay controller (M10)
-  and the operator UI drive whichever is active. `GUITAR` byte 0 == the T1S mask.
+**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02):
+- Owns the **FLEXCOM1 USART (PA28/PA29)** — the fretboard UART-transport pins, free
+  while the guitar node rides T1S — and the framing. Exposes
+  `Fauxmote_SendGuitar(mask, whammy, aux)` / `SendGuitarMask(mask)`,
+  `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)`.
+- A TX task re-sends the latched `GUITAR` slice on change (low latency) and at a
+  50 ms floor; an RX task parses the `STATUS` uplink.
+- **Mirror-to-both** (not a switched sink): `FretboardLink_Send()` — the one choke
+  point both producers (timing pipeline + `manual_control`) call — also calls
+  `Fauxmote_SendGuitarMask()`, so the T1S guitar node and fauxmote move in lock-step.
+  `GUITAR` byte 0 == the T1S 7-bit mask. Compile-guarded to the T1S guitar build
+  (fauxmote owns FLEXCOM1, mutually exclusive with a `TRANSPORT=UART` guitar).
 
 ## 8. T1S transport (transport #2, future)
 
@@ -276,8 +283,10 @@ is hardware-dependent and genuinely future work; UART is the working link.
 
 ## 9. Open questions
 
-- Exact marvin FLEXCOM instance + pins (integration-time). *fauxmote side settled:
-  UART1 on Feather RX=`GPIO7` / TX=`GPIO8`.*
+- ~~Exact marvin FLEXCOM instance + pins~~ **settled 2026-07-02:** marvin =
+  **FLEXCOM1 / PA28 (TX) / PA29 (RX)** (the fretboard UART-transport pins, free while
+  the guitar rides T1S); fauxmote = UART1 on Feather RX=`GPIO7` / TX=`GPIO8`. Wiring:
+  marvin PA28 → ESP `GPIO7`, ESP `GPIO8` → marvin PA29, common GND.
 - When to make the planned `ACCEL` slice live in fauxmote (drive the Wiimote accel
   field from it) — this is what makes GH3 star power (`GUITAR` aux `bit3`) work.
 - Whether `ACCEL` needs finer than 8-bit-per-axis for smooth tilt; 10-bit can be

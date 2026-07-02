@@ -31,11 +31,22 @@
 
 void TimingPipeline_Initialize(void);
 
-/* Output gate. Default: true. When false, the pipeline still advances
- * internal state but suppresses the FretboardLink_Send call so a peer
- * producer (manual_control today, future game-state controller §4.8) can
- * own the wire. Internal state stays current so the next advance() after
- * re-enable republishes the right mask without a stale frame. */
+/* Output enable. Default: **false** (see .c — the boot screen is a menu, not a
+ * note highway). When false, the pipeline still advances internal state but
+ * suppresses actuation so a peer producer (manual_control, future game-state
+ * controller §4.8) can own the wire; disabling also releases the wire once.
+ * Internal state stays current so the next advance() after re-enable republishes
+ * the right mask without a stale frame. */
 void TimingPipeline_SetEnabled(bool enabled);
+bool TimingPipeline_IsEnabled(void);
+
+/* Screen gate (default true): while enabled, actuate only when the gameplay
+ * engine reports GP_SCREEN_in_song; on any other screen the detector's mask is
+ * suppressed to a release. Turn off for bench tests that feed a highway outside
+ * a live game. This is the detector half of the actuation-source arbitration
+ * (spec §4.8 / journal): detector drives during a song, the game-state
+ * controller drives menu navigation. */
+void TimingPipeline_SetGateOnGameplay(bool enabled);
+bool TimingPipeline_GateOnGameplay(void);
 
 #endif

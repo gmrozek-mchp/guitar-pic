@@ -18,6 +18,7 @@
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/t1s/t1s_link.h"
+#include "net/fauxmote/fauxmote_link.h"  /* mirror the mask to the ESP32 Wiimote link */
 #include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
 #endif
 
@@ -319,6 +320,12 @@ void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
      * any unsent older one — keeps a stalled write from accumulating
      * stale chord state. */
     (void)xQueueOverwrite(s_cmd_queue, &v);
+
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+    /* Mirror-to-both: the guitar node rides T1S; fauxmote gets the same mask over
+     * FLEXCOM1 so the Wii plays in lock-step. GUITAR byte 0 == the T1S mask. */
+    Fauxmote_SendGuitarMask(v);
+#endif
 
     uint8_t strum_dir = 0u;
     if      (v & TIMING_BIT_STRUM_DOWN) { strum_dir = 1u; }

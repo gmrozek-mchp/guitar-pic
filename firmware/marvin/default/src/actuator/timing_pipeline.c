@@ -11,6 +11,8 @@
 
 #include "log.h"
 #include "detector/detector.h"
+#include "game/gameplay_engine.h"     /* screen gate: actuate only while in a song */
+#include "game/gameplay_metadata.h"       /* GP_SCREEN_in_song */
 #include "perf_log/perf_log.h"
 
 #define TP_TASK_STACK_WORDS    768u
@@ -69,7 +71,15 @@ static uint8_t  s_output_mask;
 static uint32_t s_now_ms;
 static uint64_t s_last_frame_us;
 
-static volatile bool s_pipeline_enabled = true;
+/* Default OFF: on boot the CV detector is watching a menu, not a note highway, so
+ * leaving the pipeline live would actuate spurious frets. Enable it (console
+ * `timing on`) once a song is starting. */
+static volatile bool s_pipeline_enabled = false;
+
+/* Screen gate: when true, only actuate while the gameplay engine reports the
+ * in-song screen — the detector's output on a menu is meaningless. Turn off
+ * (`timing gate off`) for bench tests that feed a highway outside a live game. */
+static volatile bool s_gate_on_gameplay = true;
 
 static const uint8_t s_fret_bit[FRET_COUNT] =
 {
@@ -147,10 +157,17 @@ static bool strum_q_needs_by(uint8_t bit, uint32_t by_ms)
 static void publish_mask(uint8_t mask)
 {
     s_output_mask = mask;
-    if (s_pipeline_enabled)
+    if (!s_pipeline_enabled)
     {
-        FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
+        return;
     }
+    /* Off a live note highway the detector's mask is noise — release instead of
+     * actuating it (keeps the guitar/fauxmote from holding garbage frets on a menu). */
+    if (s_gate_on_gameplay && GameplayEngine_CurrentScreen() != GP_SCREEN_in_song)
+    {
+        mask = 0u;
+    }
+    FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
 }
 
 /* Edge derivation:
@@ -431,5 +448,30 @@ void TimingPipeline_Initialize(void)
 
 void TimingPipeline_SetEnabled(bool enabled)
 {
+    if (enabled == s_pipeline_enabled)
+    {
+        return;
+    }
     s_pipeline_enabled = enabled;
+    if (!enabled)
+    {
+        /* Release the wire on disable so no frets stay held (the actuator's own
+         * heartbeat would otherwise keep re-sending the last mask). */
+        FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
+    }
+}
+
+bool TimingPipeline_IsEnabled(void)
+{
+    return s_pipeline_enabled;
+}
+
+void TimingPipeline_SetGateOnGameplay(bool enabled)
+{
+    s_gate_on_gameplay = enabled;
+}
+
+bool TimingPipeline_GateOnGameplay(void)
+{
+    return s_gate_on_gameplay;
 }

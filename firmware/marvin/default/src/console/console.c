@@ -22,6 +22,11 @@
 #include "video/video.h"
 #include "game/fret.h"
 #include "net/t1s/t1s_link.h"
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+#include <stdlib.h>                      /* strtoul for the fauxmote btn mask */
+#include "net/fauxmote/fauxmote_link.h"
+#include "net/fauxmote/mf_proto.h"
+#endif
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/catalog.h"
@@ -164,6 +169,8 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("detect cv:  %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)  ? "on" : "off");
     console_printf("detect adc: %s", Detector_IsEnabled(DETECTOR_ADC_FRETBOARD) ? "on" : "off");
     console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
+    console_printf("timing:     %s (gate %s)", TimingPipeline_IsEnabled() ? "on" : "off",
+                   TimingPipeline_GateOnGameplay() ? "on" : "off");
     console_printf("video:      %ux%u frame=%lu",
                    (unsigned)vi.width, (unsigned)vi.height,
                    (unsigned long)vi.frame_count);
@@ -504,14 +511,26 @@ static void cmd_active(EmbeddedCli *cli, char *args, void *ctx)
 static void cmd_timing(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
-    int val = parse_onoff(embeddedCliGetToken(args, 1));
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub != NULL && strcmp(sub, "gate") == 0)
+    {
+        int g = parse_onoff(embeddedCliGetToken(args, 2));
+        if (g < 0) { console_printf("usage: timing gate <on|off>  (gate on = actuate only in-song)"); return; }
+        TimingPipeline_SetGateOnGameplay(g != 0);
+        console_printf("timing gate = %s", g ? "on (in-song only)" : "off (always)");
+        return;
+    }
+
+    int val = parse_onoff(sub);
     if (val < 0)
     {
-        console_printf("usage: timing <on|off>");
+        console_printf("usage: timing <on|off|gate <on|off>>");
         return;
     }
     TimingPipeline_SetEnabled(val != 0);
-    console_printf("timing = %s", val ? "on" : "off");
+    console_printf("timing = %s (gate %s)", val ? "on" : "off",
+                   TimingPipeline_GateOnGameplay() ? "on" : "off");
 }
 
 static void cmd_manual(EmbeddedCli *cli, char *args, void *ctx)
@@ -663,6 +682,59 @@ static void cmd_settings(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("usage: settings [dump|save|wipe|stress [n]]  (set backlight via `backlight <pct>`)");
 }
 
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub == NULL || strcmp(sub, "status") == 0)
+    {
+        uint8_t flags, slot, mode, res;
+        uint32_t age;
+        if (!Fauxmote_GetStatus(&flags, &slot, &mode, &res, &age))
+        {
+            console_printf("fauxmote: no STATUS received yet");
+            return;
+        }
+        console_printf("age:       %lu ms", (unsigned long)age);
+        console_printf("connected: %s", (flags & MF_ST_CONNECTED) ? "yes" : "no");
+        console_printf("assigned:  %s (slot %u)", (flags & MF_ST_ASSIGNED) ? "yes" : "no", slot);
+        console_printf("ext:       %s", (flags & MF_ST_EXT_ATTACHED) ? "yes" : "no");
+        console_printf("pairing:   %s", (flags & MF_ST_PAIRING) ? "yes" : "no");
+        console_printf("bonded:    %s", (flags & MF_ST_BONDED) ? "yes" : "no");
+        console_printf("mode:      0x%02x  last_result=%u", mode, res);
+        return;
+    }
+    if (strcmp(sub, "pair") == 0)      { Fauxmote_SendCmd(MF_CMD_PAIR);      console_printf("fauxmote: pair");      return; }
+    if (strcmp(sub, "stop") == 0)      { Fauxmote_SendCmd(MF_CMD_STOP);      console_printf("fauxmote: stop");      return; }
+    if (strcmp(sub, "reconnect") == 0) { Fauxmote_SendCmd(MF_CMD_RECONNECT); console_printf("fauxmote: reconnect"); return; }
+    if (strcmp(sub, "unlink") == 0)    { Fauxmote_SendCmd(MF_CMD_UNLINK);    console_printf("fauxmote: unlink");    return; }
+    if (strcmp(sub, "ext") == 0)
+    {
+        int v = parse_onoff(embeddedCliGetToken(args, 2));
+        if (v < 0) { console_printf("usage: fauxmote ext <on|off>"); return; }
+        Fauxmote_SendCmd(v ? MF_CMD_EXT_ATTACH : MF_CMD_EXT_DETACH);
+        console_printf("fauxmote: ext %s", v ? "on" : "off");
+        return;
+    }
+    if (strcmp(sub, "btn") == 0)
+    {
+        const char *m = embeddedCliGetToken(args, 2);
+        if (m == NULL) { console_printf("usage: fauxmote btn <mask>  (e.g. 0x21 = green+strumdown; 0 = release)"); return; }
+        if (TimingPipeline_IsEnabled())
+        {
+            console_printf("note: timing on — the pipeline will overwrite this mask; run 'timing off' first");
+        }
+        uint8_t mask = (uint8_t)strtoul(m, NULL, 0);
+        Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+        console_printf("fauxmote: guitar mask=0x%02x", mask);
+        return;
+    }
+    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]");
+}
+#endif
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -678,8 +750,11 @@ static void register_commands(void)
         { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
-        { "timing", "timing <on|off>: marvin chord/strum scheduler",       true, NULL, cmd_timing },
+        { "timing", "timing <on|off|gate <on|off>>: chord/strum scheduler (gate=in-song only)", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+        { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]", true, NULL, cmd_fauxmote },
+#endif
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
