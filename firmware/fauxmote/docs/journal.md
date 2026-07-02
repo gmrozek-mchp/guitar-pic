@@ -124,6 +124,7 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-02 | **marvin↔fauxmote link = UART first, layered message protocol (spec: [`docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md)).** Three layers: transport-agnostic message layer (`TYPE`+fixed payload), a UART framing layer (`SOF 0x7E`/`TYPE`/`LEN`/`CRC8`), UART PHY (1 Mbaud 8-N-1 on a **second** UART, not the CDC console). Messages are **independent state-slice updaters**: `GUITAR` (3 B hot: fret/strum mask + whammy + aux), `WIIMOTE` (4 B nav: core buttons/D-pad/stick), plus planned `ACCEL` (3 B, tilt→star power) and `POINTER` (3 B, IR) slices, `LINK_CMD` (1 B: pair/stop/reconnect/unlink/ext), and `STATUS` (4 B f→m). fauxmote latches each slice and assembles the Wii report from all of them; each slice is absolute/latest-wins. A **single** 200 ms link watchdog (reset by any control message) reverts *all* slices to safe defaults when the link goes fully quiet. `GUITAR` byte 0 is bit-identical to marvin's T1S guitar mask. The link is a second front-end over the existing `Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs (a `marvin_link.c` beside the CLI). | Primary purpose is low-latency GH gameplay, so the hot path is one tiny fixed message with no handshake/ack. Absolute state matches both ends (marvin's bitmask + fauxmote's ~15 ms streaming) and self-heals dropped frames. Layering keeps the message bytes identical when the transport later moves to T1S — only the framing binding changes (Ethernet FCS replaces `SOF`/`CRC`). Reusing the CLI's module APIs avoids duplicating any behavior. Resolves Q5. |
 | 2026-06-13 | **Removed the persistent auto-reconnect task; recovery is the manual `reconnect` command only.** Drops just reset state (`Wiimote_NotifyDisconnected`); no automatic re-initiation. | Auto-reconnect neither survived the GH3 game-launch handoff nor served as a keep-awake mechanism (reconnecting ≠ staying awake). Keeping the Wii awake is better done with occasional input/state changes, which Marvin's command stream provides during use. Removing it also drops the slot-leak/backoff complexity. The sniff-delay override (idle→sniff = 65 s) stays — that genuinely prevents idle supervision-timeout drops. |
 | 2026-06-13 | **Extension encryption is mandatory for GH3 and implemented in the base Wiimote (`ext_crypto.c`); the guitar module stays plaintext.** GH3's real key handshake (register trace): `0x55`→`0xf0` (disable) → read ID `0xfa` in clear → `0xAA`→`0xf0` (enable) → 16-byte key to `0x40`-`0x4f`. The base captures the key, derives ft/sb, and encrypts outgoing ext data (streamed bytes @ offset `0x08`; reg reads @ `addr & 7`). | Everything GH3 reads from the extension is decrypted with that key, so plaintext is garbage (the "green/red worked unencrypted" observation was a decryption coincidence). Encryption is a generic Wiimote feature (nunchuk/classic encrypt too), so it belongs in the base, not the guitar. Corrects the plan's guess that GH3 used the old `0→0x40` init. |
 | 2026-06-13 | **Cipher tables come from Dolphin's 1st-party set, not `rnconrad/WiimoteEmulator`'s `wm_crypto.c`.** rnconrad's S-boxes are corrupted (sbox[3]@0x60, [4]@0xd8, [6]@0x88/0xec are `0xD0`/`0xF0` & `0xD2`/`0xE2` transcription flips → not valid permutations). Used Dolphin's `keygen_sbox_1st_party` + `sboxes_1st_party[8]`; verified the key-schedule/encrypt algorithm term-for-term against Dolphin and round-tripped GH3's real key (idx 0, encrypt→decrypt identity). | Wrong table bytes silently corrupt the keystream → undebuggable "notes are garbage." Dolphin is GPL and validated against real games; the marcan tables are reverse-engineered hardware constants (facts), reproduced with our own code. |
@@ -142,7 +143,10 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Open questions
 
-- **Q5 — marvin↔fauxmote link** (UART bitmask mirror of the fretboard protocol vs USB CDC vs other). Deferred; revisit before Phase 4 integration.
+- Exact marvin FLEXCOM instance + fauxmote UART1 GPIO pins for the command link (integration-time).
+- Star-Power mechanism in fauxmote (Wiimote tilt synthesis) so the `GUITAR` aux star-power bit can go live.
+
+(Q5 resolved 2026-07-02: marvin↔fauxmote link = UART first, layered message protocol; spec at [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md) — see decision log.)
 
 (Q1 resolved 2026-06-12: ESP-IDF `esp_hidd`'s auto-generated SDP record is NOT accepted by the Wii → pivoted to raw L2CAP + hand-built SDP record — see decision log.)
 
@@ -151,6 +155,19 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-07-02 — marvin↔fauxmote link protocol drafted (Phase 4 seam)
+
+- Worked up the command-link protocol spec: [`docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md)
+  (top-level, mirroring `docs/t1s-podl-link.md` since it spans marvin + fauxmote).
+- Layered: transport-agnostic message layer, UART framing (`SOF/TYPE/LEN/CRC8`),
+  UART PHY (1 Mbaud). Messages `GUITAR`/`WIIMOTE`/`LINK_CMD` (m→f) + `STATUS` (f→m).
+  Absolute/latest-wins hot path; 200 ms link-timeout fail-safe.
+- Confirmed scope with Greg: split hot `GUITAR` vs nav `WIIMOTE` (not one unified
+  message), include nav now, and put full BT link management (pair/unlink/reconnect/
+  stop/ext) + a status uplink on the link. Resolved Q5.
+- No firmware written yet — spec first. Next: implement `marvin_link.c` (second
+  UART, framing, dispatch to the existing CLI-backing APIs) and the marvin side.
 
 ### 2026-06-13 — Phase 3 done: GH3 guitar plays (module + encryption + basic IR)
 

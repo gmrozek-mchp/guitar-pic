@@ -52,10 +52,14 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 ## 4. Interfaces
 
 - **Downstream (fauxmote → Wii):** Bluetooth Classic HID, as above.
-- **Upstream (commands → fauxmote):** **deferred.** Early phases use a local test
-  command source (serial console + canned chord/strum patterns). The eventual marvin
-  link is undecided; the likely candidate is mirroring the fretboard 1-byte fret/strum
-  bitmask over UART (see [fretboard SPEC](../fretboard/SPEC.md) button-output section).
+- **Upstream (commands → fauxmote):** the **marvin command link** — a layered
+  message protocol, **UART first** (T1S later), specified in
+  [`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md). marvin sends a
+  tiny fixed `GUITAR` hot message (fret/strum mask + whammy + aux), a `WIIMOTE` nav
+  message (core buttons/D-pad/stick), and `LINK_CMD` (Bluetooth link management:
+  pair/stop/reconnect/unlink/ext); fauxmote returns `STATUS`. Absolute/latest-wins;
+  a link timeout releases all inputs. The link is a second front-end over the same
+  module APIs the CLI uses. Early bring-up still uses the local CLI (§ below).
 - **Debug:** USB-C CDC serial for flashing + logs (`idf.py monitor`).
 
 ## 5. Software
@@ -88,10 +92,10 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 | **1** ✅ | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID channels (PSM 0x11 control + 0x13 interrupt) without immediately dropping. *Done via custom SDP + raw L2CAP (§5).* |
 | **2** ✅ | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
 | **3** ✅ | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Done: GH3 detects the guitar and frets/strum/whammy register in-game, through the extension cipher (§3). Known open: GH3 game-launch handoff drops the link — workaround is to restart fauxmote after the game starts (see journal).* |
-| **4** | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the future marvin link. |
+| **4** | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the marvin link. *Protocol spec done ([`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md)); `marvin_link.c` implementation pending.* |
 
 ## 7. Out of scope
 
 - Retiring or modifying the fretboard GPIO-press path.
-- The concrete marvin↔fauxmote wiring/protocol (deferred).
+- The exact link wiring (marvin FLEXCOM instance + fauxmote UART GPIO pins) — set at integration.
 - Any edge-ai retargeting toward fauxmote.
