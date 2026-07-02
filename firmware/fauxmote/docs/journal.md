@@ -88,6 +88,16 @@ On hardware: GH3 detects the guitar and frets/strum/whammy register in-game.
   single IR calibration. Deferred idea: drive `SX/SY` (guitar module already owns them,
   fixed at center `0x20`) for guitar-mode Home navigation if Marvin ever needs it.
 
+**Phase 4 IN PROGRESS — marvin command link (fauxmote side done).** `marvin_link.c`
+is a second front-end beside the CLI: a UART1 task (Feather RX=`GPIO7`/TX=`GPIO8`,
+1 Mbaud) that parses framed messages (`mf_proto.h`: `SOF/TYPE/LEN/CRC8`) and drives
+the existing `Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs — `GUITAR` (fret/strum/whammy/
+aux), `WIIMOTE` (core/D-pad/stick, via new `Guitar_SetStick`), `LINK_CMD`, planned
+`ACCEL`/`POINTER` slices, and a `STATUS` uplink (on-change + 500 ms heartbeat). One
+200 ms link watchdog reverts all inputs to safe defaults when the link goes quiet.
+**On hardware: builds, boots, and the Wii connects with the link task running.**
+Not yet driven by marvin (that's the next side). Wire protocol: `docs/marvin-fauxmote-link.md`.
+
 **Link stability (done):** idle disconnects are fixed — Bluedroid's JV idle→sniff
 delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DELAY_MS`
 in the top-level CMake (`#ifndef`'d `#define`; the timeout field is UINT16 + a 197 ms
@@ -143,7 +153,7 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Open questions
 
-- Exact marvin FLEXCOM instance + fauxmote UART1 GPIO pins for the command link (integration-time).
+- Exact marvin FLEXCOM instance + pins for the command link (integration-time). *fauxmote side settled: UART1 on Feather RX=`GPIO7`/TX=`GPIO8`.*
 - Star-Power mechanism in fauxmote (Wiimote tilt synthesis) so the `GUITAR` aux star-power bit can go live.
 
 (Q5 resolved 2026-07-02: marvin↔fauxmote link = UART first, layered message protocol; spec at [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md) — see decision log.)
@@ -155,6 +165,23 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-07-02 — Phase 4: fauxmote side of the marvin link implemented + on hardware
+
+- Implemented the fauxmote end of the command link. New `mf_proto.h` (transport-neutral
+  wire constants + CRC-8/CCITT, meant to be shared verbatim with marvin), `marvin_link.c`/`.h`
+  (UART1 task on Feather RX=`GPIO7`/TX=`GPIO8` @ 1 Mbaud; `SOF/TYPE/LEN/CRC8` parser with
+  resync; dispatch to `Wiimote_*`/`Guitar_*`/`Fauxmote_*`; one 200 ms watchdog → neutralize;
+  `STATUS` uplink on-change + 500 ms heartbeat).
+- Small API additions to reuse existing logic: `Guitar_SetStick(x,y)` (nav stick had no
+  setter) and `Wiimote_ExtAttached()` (for the `STATUS` ext bit). Wired `MarvinLink_Start()`
+  into `main.c`; added `marvin_link.c` + `esp_driver_uart` to `main/CMakeLists.txt`.
+- Confirmed Feather V2 (PICO-MINI-02) breaks out GPIO7/8 as the second hardware UART
+  (`Serial1`), independent of the USB console — so the CLI keeps UART0. Resolved the
+  fauxmote half of the pin open-question.
+- Reconciled the spec's whammy encoding to the extension's real rest value (~`0x10`).
+- **On hardware: builds clean, boots, and the Wii connects with the link task running.**
+  Not yet exercised by marvin. Next: the marvin (SAM9X75) transmit side over a FLEXCOM USART.
 
 ### 2026-07-02 — marvin↔fauxmote link protocol drafted (Phase 4 seam)
 

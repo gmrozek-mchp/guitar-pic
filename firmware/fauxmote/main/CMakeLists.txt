@@ -1,6 +1,6 @@
-idf_component_register(SRCS "ext_crypto.c" "guitar.c" "console_cli.c" "main.c" "bt_hid_device.c" "wiimote_sdp.c" "wiimote.c" "status_led.c"
+idf_component_register(SRCS "ext_crypto.c" "guitar.c" "console_cli.c" "main.c" "bt_hid_device.c" "wiimote_sdp.c" "wiimote.c" "status_led.c" "marvin_link.c"
                        INCLUDE_DIRS "."
-                       REQUIRES bt nvs_flash esp_driver_gpio console)
+                       REQUIRES bt nvs_flash esp_driver_gpio esp_driver_uart console)
 
 # wiimote_sdp.c uses Bluedroid's internal SDP database API (SDP_CreateRecord /
 # SDP_AddAttribute / …) — the public esp_sdp API cannot host an arbitrary record.

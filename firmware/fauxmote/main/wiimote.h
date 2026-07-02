@@ -29,3 +29,4 @@ void Wiimote_ClearPointer(void);
 /* Extension: a registered extension (e.g. the guitar) also handles its button names
  * via Wiimote_SetButton/TapButton. SetExtension reports it attached/detached. */
 void Wiimote_SetExtension(bool connected);
+bool Wiimote_ExtAttached(void);                        /* extension reported attached */

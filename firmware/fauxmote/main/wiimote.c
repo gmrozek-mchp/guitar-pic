@@ -396,6 +396,8 @@ void Wiimote_SetExtension(bool connected)
     s_ext_connected = connected;
 }
 
+bool Wiimote_ExtAttached(void) { return s_ext_connected; }
+
 void Wiimote_NotifyDisconnected(void)
 {
     s_data_fd = -1;          /* mark not-connected at once (don't wait for the reader to exit) */

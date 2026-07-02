@@ -5,6 +5,7 @@
 #include "status_led.h"
 #include "console_cli.h"
 #include "guitar.h"
+#include "marvin_link.h"
 
 static const char *TAG = "fauxmote";
 
@@ -20,6 +21,7 @@ void app_main(void)
     StatusLed_Start();
     Guitar_Init();          /* register the guitar extension with the base Wiimote */
     Fauxmote_BtStart();
+    MarvinLink_Start();     /* marvin command link (UART), a second front-end beside the CLI */
     Cli_Start();
     ESP_LOGI(TAG, "ready — type `pair` then sync the Wii (`help` for commands)");
 }

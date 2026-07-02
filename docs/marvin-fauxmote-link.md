@@ -58,7 +58,7 @@ two implementations of that seam (§7).
 | Baud | **1 000 000** (1 Mbaud), 8-N-1, no flow control |
 | Wiring | 3 wires: marvin TX → fauxmote RX, fauxmote TX → marvin RX, common GND |
 | marvin port | a spare FLEXCOM in USART mode (TBD at integration; the legacy fretboard UART is freed as that path moves to T1S) |
-| fauxmote port | a **second** UART (e.g. UART1 on two free Feather GPIOs) — **not** UART0, which is the USB-CDC console/CLI |
+| fauxmote port | **UART1** on the Feather V2's broken-out RX=`GPIO7` / TX=`GPIO8` (the board's second hardware UART, `Serial1`) — **not** UART0, which is the USB-CDC console/CLI |
 
 Baud is generous on purpose: a 7-byte hot frame is ~70 µs on the wire, negligible
 against the Wii's ~15 ms report period, so the link adds no meaningful latency.
@@ -139,7 +139,7 @@ All fields are single bytes, so byte order is irrelevant. Bits are numbered
 | Byte | Field | Encoding |
 |---|---|---|
 | 0 | fret/strum mask | `bit0` Green, `bit1` Red, `bit2` Yellow, `bit3` Blue, `bit4` Orange, `bit5` Strum-Down, `bit6` Strum-Up, `bit7` reserved |
-| 1 | whammy | `0..31` (0 = released; upper bits 0) |
+| 1 | whammy | raw 5-bit extension value `0..31`: rest ≈ `0x10`, fully pressed ≈ `0x1F` (upper bits 0) |
 | 2 | aux | `bit0` Start (`+`), `bit1` Select (`−`), `bit2` Pedal, `bit3` Star-Power*, `bit4`–`7` reserved |
 
 Byte 0 is **bit-identical to marvin's existing guitar-node command bitmask** (the
@@ -230,8 +230,8 @@ is alive and gate/annotate commands.
 - **Fail-safe (fauxmote), one watchdog.** A single **link timeout** (200 ms
   default) is reset by *any* control message. While it holds, all latched slices
   stay in effect. On expiry (the link has gone fully quiet) fauxmote reverts *all*
-  slices to their safe defaults at once — `GUITAR` all-zero (frets/strum released,
-  whammy 0), `WIIMOTE` buttons released / stick centered, `ACCEL` level, `POINTER`
+  slices to their safe defaults at once — `GUITAR` frets/strum released + whammy
+  rest (≈ `0x10`), `WIIMOTE` buttons released / stick centered, `ACCEL` level, `POINTER`
   off. A dead link never holds a note. (marvin's ~10 Hz refresh of at least one
   slice keeps the watchdog alive during normal play.)
 - **`STATUS` cadence (fauxmote).** On every state change, plus a ~500 ms heartbeat,
@@ -276,7 +276,8 @@ is hardware-dependent and genuinely future work; UART is the working link.
 
 ## 9. Open questions
 
-- Exact marvin FLEXCOM instance + fauxmote UART1 GPIO pins (integration-time).
+- Exact marvin FLEXCOM instance + pins (integration-time). *fauxmote side settled:
+  UART1 on Feather RX=`GPIO7` / TX=`GPIO8`.*
 - When to make the planned `ACCEL` slice live in fauxmote (drive the Wiimote accel
   field from it) — this is what makes GH3 star power (`GUITAR` aux `bit3`) work.
 - Whether `ACCEL` needs finer than 8-bit-per-axis for smooth tilt; 10-bit can be

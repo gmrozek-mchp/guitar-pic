@@ -60,6 +60,12 @@ void Guitar_SetWhammy(uint8_t value)
     s_whammy = value & 0x1F;
 }
 
+void Guitar_SetStick(uint8_t x, uint8_t y)
+{
+    s_sx = x & 0x3F;
+    s_sy = y & 0x3F;
+}
+
 static const wiimote_extension_t s_guitar = {
     .name        = "guitar",
     .regs        = s_regs,
