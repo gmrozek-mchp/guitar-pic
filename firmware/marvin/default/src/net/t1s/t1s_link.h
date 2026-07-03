@@ -32,6 +32,7 @@ uint8_t  T1SLink_NodeId(void);    /* PLCA coordinator id (0) */
 uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
 uint32_t T1SLink_TxCount(void);   /* command frames sent */
 uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
+uint32_t T1SLink_ServiceOverruns(void); /* times service_pump hit its iter cap */
 
 /* Per-node presence (from follower heartbeats, ethertype 0x88B6). */
 typedef struct {

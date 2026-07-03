@@ -195,6 +195,7 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
     console_printf("tx cmds: %lu", (unsigned long)T1SLink_TxCount());
     console_printf("rx frms: %lu", (unsigned long)T1SLink_RxCount());
+    console_printf("svc ovr: %lu", (unsigned long)T1SLink_ServiceOverruns());
 }
 
 static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)

@@ -26,6 +26,21 @@
 #define T1S_TASK_STACK_WORDS (1024u)
 #define T1S_TASK_PRIORITY    (5u)
 
+/* Upper bound on TC6_Service calls per service_pump. The MAC-PHY can keep the
+ * "need service" flag asserted indefinitely (e.g. a persistent IRQ_N with no
+ * PLCA peer on the bus), which would spin this prio-5 task at 100% CPU and
+ * starve every lower task — the whole UI/console/detector stack. Cap the pump
+ * so it always returns to the task loop (which then blocks on s_svc_sem),
+ * yielding the CPU; any still-pending work is picked up on the next wake. */
+#define T1S_SERVICE_MAX_ITERS (8u)
+
+/* MAC-PHY bring-up bounds. If the LAN8651 isn't populated/responding, the task
+ * backs off and retries every T1S_ABSENT_RETRY_MS instead of servicing a dead
+ * SPI bus — ~0% CPU with no chip, and it self-heals if one is attached later. */
+#define T1S_BRINGUP_ACCEPT_MS   (500u)    /* deadline for TC6Regs_Init to be accepted */
+#define T1S_BRINGUP_INITDONE_MS (3000u)   /* deadline for the async reg writes to finish */
+#define T1S_ABSENT_RETRY_MS     (1000u)   /* backoff between bring-up attempts when absent */
+
 /* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
  * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
 #define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
@@ -133,6 +148,7 @@ static T1SLink_FrameHandler s_frame_handler;
 /* Traffic counters (read by the console t1s/nodes commands). */
 static volatile uint32_t s_tx_count;   /* command frames sent */
 static volatile uint32_t s_rx_count;   /* frames received from a known node */
+static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -210,28 +226,64 @@ static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t paylo
 
 /* Run the protocol stack until it has no immediately pending work. IRQ_N is
  * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
-static void service_pump(void)
+/* Returns true if it bailed with work still pending (hit the iteration cap) —
+ * the caller must then yield so a stuck MAC-PHY can't starve other tasks. */
+static bool service_pump(void)
 {
+    unsigned iters = 0u;
     do {
         s_need_service = false;
         bool no_int = (T1S_IRQ_N_Get() != 0u);
         (void)TC6_Service(s_tc6, no_int);
-    } while (s_need_service);
+    } while (s_need_service && (++iters < T1S_SERVICE_MAX_ITERS));
+
     TC6Regs_CheckTimers();
+
+    /* Persistent need-service = the MAC-PHY isn't quiescing (stuck IRQ / no
+     * peer). Don't spin on it; count it and tell the caller to yield. */
+    if (s_need_service) { s_service_overruns++; return true; }
+    return false;
 }
 
-static void t1s_task(void *param)
+/* One MAC-PHY bring-up attempt: reset pulse, push the register + PLCA config,
+ * and drive the async writes to completion within a deadline. Returns true only
+ * if the chip acked init done. False = absent/unresponsive → the caller backs
+ * off and retries (so an unpopulated LAN8651 never turns into a dead-bus spin).
+ * Re-pulsing reset each attempt also resets a chip attached after boot. */
+static bool t1s_try_bringup(void)
 {
-    (void)param;
-
     /* Hardware reset pulse (T1S_RST is active-low, idle high). */
     T1S_RST_Clear();
     vTaskDelay(pdMS_TO_TICKS(10));
     T1S_RST_Set();
     vTaskDelay(pdMS_TO_TICKS(10));
 
+    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
+     * during bring-up so RX isn't filtered before the node table exists.
+     * TC6Regs_Init only queues the writes — bounded accept retry. */
+    TickType_t accept_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_ACCEPT_MS);
+    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
+        if ((int32_t)(accept_dl - xTaskGetTickCount()) <= 0) { return false; }
+        vTaskDelay(pdMS_TO_TICKS(50));
+    }
+
+    /* Drive the async register writes to completion (bounded). */
+    TickType_t done_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_INITDONE_MS);
+    while (!TC6Regs_GetInitDone(s_tc6) &&
+           ((int32_t)(done_dl - xTaskGetTickCount()) > 0)) {
+        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
+        (void)service_pump();
+    }
+    return TC6Regs_GetInitDone(s_tc6);
+}
+
+static void t1s_task(void *param)
+{
+    (void)param;
+
     /* SPI: Mode 0 (CPOL=0 idle low, CPHA=0 leading edge), 8-bit, 15 MHz.
-     * Source clock 0 => PLib uses the FLEXCOM4 peripheral clock. */
+     * Source clock 0 => PLib uses the FLEXCOM4 peripheral clock. One-time. */
     FLEXCOM_SPI_TRANSFER_SETUP setup = {
         .clockFrequency = T1S_SPI_HZ,
         .clockPhase     = FLEXCOM_SPI_CLOCK_PHASE_LEADING_EDGE,
@@ -251,49 +303,41 @@ static void t1s_task(void *param)
     (void)PIO_PinInterruptCallbackRegister(T1S_IRQ_N_PIN, irq_cb, 0u);
     PIO_PinInterruptEnable(T1S_IRQ_N_PIN);
 
-    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
-     * during bring-up so RX isn't filtered before the node table exists. */
-    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
-                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
-//        LOG_WARN("T1S: TC6Regs_Init busy, retrying\r\n");
-        vTaskDelay(pdMS_TO_TICKS(50));
-    }
-
-    /* Drive the async register writes to completion (bounded for the up log). */
-    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(3000);
-    while (!TC6Regs_GetInitDone(s_tc6) &&
-           ((int32_t)(deadline - xTaskGetTickCount()) > 0)) {
-        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
-        service_pump();
-    }
-
-    if (TC6Regs_GetInitDone(s_tc6)) {
-        s_link_up = true;
-        TC6_EnableData(s_tc6, true);
-        LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
-                 "PLCA coord id=%u/%u\r\n",
-                 (unsigned)TC6Regs_GetChipRevision(s_tc6),
-                 s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
-                 (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
-    } else {
-        LOG_WARN("T1S: MAC-PHY not responding (check EVB/wiring); still servicing\r\n");
-    }
+    bool warned_absent = false;
 
     for (;;) {
-        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
-        service_pump();
-        if (!s_link_up && TC6Regs_GetInitDone(s_tc6)) {
-            s_link_up = true;
+        /* Bring up (or re-bring-up) the MAC-PHY. Absent/unresponsive → warn once
+         * and retry with backoff instead of servicing a dead bus. */
+        if (!s_link_up) {
+            if (!t1s_try_bringup()) {
+                if (!warned_absent) {
+                    LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
+                             "retry every %ums\r\n", (unsigned)T1S_ABSENT_RETRY_MS);
+                    warned_absent = true;
+                }
+                vTaskDelay(pdMS_TO_TICKS(T1S_ABSENT_RETRY_MS));
+                continue;
+            }
+            s_link_up      = true;
+            warned_absent  = false;
             TC6_EnableData(s_tc6, true);
-            LOG_INFO("T1S: LAN8651 up (late) — chipRev=%u\r\n",
-                     (unsigned)TC6Regs_GetChipRevision(s_tc6));
+            LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+                     "PLCA coord id=%u/%u\r\n",
+                     (unsigned)TC6Regs_GetChipRevision(s_tc6),
+                     s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
+                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
         }
+
+        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
+        /* If the pump bailed with work still pending, force a yield so this
+         * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
+        if (service_pump()) { vTaskDelay(pdMS_TO_TICKS(1)); }
 
         /* Flush the latest pending command to the active guitar (actuator)
          * node. All TC6 access stays in this task; producers only stash via
          * the API. (Single guitar today; an active-guitar selector goes here
          * when multiple guitar nodes share the bus.) */
-        if (s_link_up && s_cmd_dirty && !s_tx_busy) {
+        if (s_cmd_dirty && !s_tx_busy) {
             const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
             if (guitar != NULL) {
                 /* Clear before reading so a concurrent update re-arms dirty
@@ -339,6 +383,7 @@ uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
 uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
 uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
 uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
+uint32_t T1SLink_ServiceOverruns(void) { return s_service_overruns; }
 
 uint8_t T1SLink_NodeTableCount(void) { return (uint8_t)T1S_NODE_TABLE_LEN; }
 
