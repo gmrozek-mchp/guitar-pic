@@ -80,6 +80,10 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
   extension cipher (`ext_crypto.c`) lives in the base — it captures the host's key
   handshake and encrypts outgoing extension data (streamed bytes + register reads),
   which Guitar Hero 3 requires.
+- **marvin command link:** `main/marvin_link.c` is a FreeRTOS task that owns UART1,
+  the framing/CRC, and message parse/dispatch, driving the same module APIs the CLI
+  uses and emitting `STATUS`. Started at boot via `MarvinLink_Start()` (`main.c`).
+  Protocol in [`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md).
 - **Allocation:** application code follows the project's **static-allocation**
   preference (no `malloc` in our code). Bluedroid's internal allocation is
   framework-owned and out of scope.
@@ -92,7 +96,7 @@ References: wiibrew [`Wiimote`](https://wiibrew.org/wiki/Wiimote) and
 | **1** ✅ | Bluetooth identity / pairing (highest risk) | A real Wii authenticates and opens the HID channels (PSM 0x11 control + 0x13 interrupt) without immediately dropping. *Done via custom SDP + raw L2CAP (§5).* |
 | **2** ✅ | Core Wiimote emulation | Wii shows one stable connected Wiimote; emulated buttons drive the Home-menu cursor; connection survives minutes. Includes device-initiated reconnect after idle + keep-awake (see journal). |
 | **3** ✅ | Guitar extension emulation | A real Guitar Hero / Rock Band Wii title detects the guitar and registers scripted fret+strum notes. *Done: GH3 detects the guitar and frets/strum/whammy register in-game, through the extension cipher (§3). Known open: GH3 game-launch handoff drops the link — workaround is to restart fauxmote after the game starts (see journal).* |
-| **4** | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the marvin link. *Protocol spec done ([`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md)); `marvin_link.c` implementation pending.* |
+| **4** ✅ | Command source | Local test driver (serial console + canned patterns) exercises the emulator independently; a clean seam is left for the marvin link. *Done: protocol spec ([`docs/marvin-fauxmote-link.md`](../../docs/marvin-fauxmote-link.md)) and the `marvin_link.c` UART receiver (§5) both built; the CLI stays for manual bring-up.* |
 
 ## 7. Out of scope
 

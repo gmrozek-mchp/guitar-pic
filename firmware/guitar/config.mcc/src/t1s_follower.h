@@ -11,7 +11,7 @@
  * drives the 7 Wii-guitar GPIOs. Transport is the vendored OPEN Alliance TC6
  * driver (third_party/oa-tc6-lib) wrapped with the SERCOM0 SPI PLib, a
  * GPIO chip-select held across each transfer, the T1S_RST / T1S_IRQ_N pins
- * (EIC EXTINT15), and a SysTick-based millisecond clock. Bare-metal: the
+ * (EIC EXTINT13), and a SysTick-based millisecond clock. Bare-metal: the
  * protocol is serviced from the main loop, woken by IRQ_N. See
  * firmware/guitar/SPEC.md and docs/t1s-podl-link.md.
  *

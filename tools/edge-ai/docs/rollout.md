@@ -29,7 +29,7 @@ Scoped with the user into a single **standalone model-driven** bring-up (marvin 
 |---|---|---|
 | **3. On-device port** | Same model running on PIC32 | **✓ Done.** int8 PTQ ([`quantize.py`](../edge_ai/quantize.py)); two inference modules ([runtime.md](runtime.md)) **bit-exact** with the host reference (gated by `tests/test_bitexact.py` + `test_stream_bitexact.py`). Streaming locks to 240 Hz. |
 | **4. Side-by-side dry-run** | AI predicts but doesn't drive | **Subsumed.** Went straight to standalone model-driven; `applied_mask` telemetry carries the model's command for live inspection instead of a separate `PERF_REC_MODEL_OUT`. |
-| **5. Cut-over** | AI drives the controller | **In progress.** Build-time `FRETBOARD_MODE=MODEL_DRIVEN` + SW0 runtime toggle flips wire ownership from `cmd_receive` to the model; plays hard on the bench. **Open:** gameplay scoring against a marvin-driven baseline. |
+| **5. Cut-over** | AI drives the controller | **In progress.** The SW0 runtime arm hands wire ownership to the model, whose command is forwarded to the guitar node over T1S; plays hard on the bench. **Open:** gameplay scoring against a marvin-driven baseline. |
 
 ### Phase 3 verification
 

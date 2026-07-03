@@ -61,7 +61,7 @@ Full-range vs limited-range is sender-controlled. TC358743's AVI InfoFrame carri
 
 ### 2.2 TC358743 HDMI-to-CSI-2 bridge
 
-Driver: `firmware/marvin/default/src/tc358743.c`. Register values derived from mainline Linux `tc358743.c`.
+Driver: `firmware/marvin/default/src/video/tc358743.c`. Register values derived from mainline Linux `tc358743.c`.
 
 | Register | Value | Meaning |
 |---|---|---|
@@ -92,7 +92,7 @@ Driver: `firmware/marvin/default/src/config/default/vision/drivers/csi/` (MCC-ge
 Key setting — **the one parameter that took us the longest to get right**:
 
 ```c
-// isc_capture.c:25
+// video/isc_capture.c:29
 #define ISC_CAP_CSI_BITRATE  0x0Au
 ```
 
@@ -136,7 +136,7 @@ void CSI2DC_Configure_VideoPipe(uint32_t dt, uint32_t vc, uint32_t align_isc) {
 ```
 
 Other CSI2DC config:
-- `GCFGR.MIPIFRN = 0` (free-running, matches TC358743's continuous-clock mode). MCC default is gated (`MIPIFRN=1`); mismatch leaves `CSI2DC.GSR.ARSTIP` stuck on reset. Override via `csi2dcObj->enableMIPIFreeRun = true;` in `isc_capture.c`.
+- `GCFGR.MIPIFRN = 0` (free-running, matches TC358743's continuous-clock mode). MCC default is gated (`MIPIFRN=1`); mismatch leaves `CSI2DC.GSR.ARSTIP` stuck on reset. Override via `csi2dcObj->enableMIPIFreeRun = true;` in `video/isc_capture.c`.
 - `VPER = 1` (video pipe enabled).
 
 ### 2.5 ISC — Parallel Front End (PFE)
@@ -168,7 +168,7 @@ MCC's `ISC_PFE_Crop_Area()` function is defined in `plib_isc.c` but **never call
 We program these directly after `DRV_ISC_Configure()`. With RMS=1, COLMAX is in ISC sample units (32-bit byte-stream words), so the formula is `(width × 3 / 4) - 1`:
 
 ```c
-// isc_capture.c
+// video/isc_capture.c
 ISC_REGS->ISC_PFE_CFG1 = ISC_PFE_CFG1_COLMIN(0u)
                        | ISC_PFE_CFG1_COLMAX((width * 3u / 4u) - 1u);  // 959 at 1280px
 ISC_REGS->ISC_PFE_CFG2 = ISC_PFE_CFG2_ROWMIN(0u)
@@ -184,7 +184,7 @@ DS60001813 §50.6.19, §50.7.67.
 
 | RLP_CFG field | Value | Reason |
 |---|---|---|
-| **MODE (3:0)** | **15 = BYPASS** | "32-bit input is sampled and written to the rlp output port. Select this mode for MIPI RMS mode." Passes `sub420_data[31:0]` through unchanged. With our RMS=0 input that's `0x00RRGGBB`. |
+| **MODE (3:0)** | **15 = BYPASS** | "32-bit input is sampled and written to the rlp output port. Select this mode for MIPI RMS mode." Passes `sub420_data[31:0]` through unchanged. With our RMS=1 byte-stream input each 32-bit word carries 4 dense BGR bytes. |
 | ALPHA (15:8) | — | Ignored in BYPASS mode (only used by ARGB444/ARGB555/ARGB32 modes) |
 | YMODE / LSH / REP | 0 | Not applicable to BYPASS |
 
@@ -198,7 +198,7 @@ rlp_data[7:0]   = B = sub420_data[9:2]
 
 These bit positions are the output format of the ISC **CSC module** (Color Space Conversion, §50.6.15), not raw MIPI RGB888. On our bypass path, R/G/B sit at `[23:16]/[15:8]/[7:0]` — a 6/4/2-bit shift off what ARGB32 RLP wants. Attempting it yields mangled 3-shifted-copies-of-garbage per 12 bytes. **ARGB32 RLP is structurally unusable for MIPI RGB888 bypass;** it would require enabling the full demosaic pipeline (for Bayer sources) or CSC (for YCbCr).
 
-Consequence: we cannot get `alpha = 0xFF` in-pipeline for free. We get `alpha = 0x00` because CSI2DC zeros the upper 16 bits of each 40-bit VP word. If `0xFF` alpha matters, a one-shot CPU pass to set `buf[3::4] = 0xFF` does it cheaply, or stamp 0xFF into the framebuffer once at init (DMA writes never touch byte 3 if pixel stride matches — need to verify that assumption before relying on it).
+Consequence: under RMS=1 the framebuffer is dense BGR888 (3 B/pixel) with **no alpha byte at all** — there is nothing to fill. A 4-byte ARGB layout is only relevant to the RMS=0 pixel-per-word path (see §7 for why that path is structurally unsuited to in-pipeline ARGB32).
 
 **Driver hint:** `iscObj->rlpMode = ISC_RLP_CFG_MODE_BYPASS` (value 15 in the MCC enum). `drv_isc.c` writes this into RLP_CFG during `DRV_ISC_Configure`.
 
@@ -216,7 +216,7 @@ DS60001813 §50.6.20, §50.7.70.
 MCC's `DRV_ISC_Configure` sets PACKED8 + BEATS8 if `iscObj->layout = ISC_LAYOUT_PACKED8`. We override after `DRV_ISC_Configure`:
 
 ```c
-// isc_capture.c:219-221
+// video/isc_capture.c:263-265
 ISC_REGS->ISC_DCFG = ISC_DCFG_IMODE_PACKED32
                    | ISC_DCFG_YMBSIZE_BEATS32
                    | ISC_DCFG_CMBSIZE_BEATS32;
@@ -229,7 +229,7 @@ The write is safe because nothing in MCC writes DCFG again after this point (the
 ### 2.8 Framebuffer layout in DDR
 
 ```c
-// isc_capture.c
+// video/isc_capture.c
 #define ISC_CAP_MAX_W        1280u
 #define ISC_CAP_MAX_H        720u
 #define ISC_CAP_BPP          3u      /* BGR888 packed */
@@ -246,29 +246,28 @@ static __attribute__((__section__(".region_nocache")))
 - At 480p: only 720×480×3×4 = ~4.1 MB actually used.
 - 4-deep ring gives slow consumers up to ~50 ms read window before lapping.
 
-Pixel access pattern (0-indexed, little-endian):
+Pixel access pattern (0-indexed). The buffer is dense BGR888, 3 B/pixel, so the row stride is `width × 3` (`video.c` uses `stride = w × VIDEO_BYTES_PER_PIXEL`, `VIDEO_BYTES_PER_PIXEL = 3`):
 
 ```c
-uint8_t *px = &g_framebuffer[(y * W + x) * 4];
+uint8_t *px = &g_framebuffer[y * (W * 3) + x * 3];
 uint8_t B = px[0];
 uint8_t G = px[1];
 uint8_t R = px[2];
-// px[3] = 0x00 (X / unused)
+// no 4th byte — the next pixel starts at px[3]
 ```
 
-As a 32-bit word: `*(uint32_t*)px == 0x00RRGGBB` (native little-endian).
+There is no padding/alpha byte: pixel *n+1* begins immediately after pixel *n*'s R.
 
 ### Sizing strategy
 
-The buffer pool is statically allocated for the **maximum supported resolution** (`ISC_CAP_MAX_W × ISC_CAP_MAX_H × ISC_CAP_BPP × ISC_CAP_NUM_BUFFERS` = 1920 × 1080 × 4 × 2 = 15.8 MB), reserved once at link time in `.region_cache_aligned`. Per-capture the ISC DMA descriptor is programmed for only `width × height × 4` bytes; the rest of the pool sits idle.
+The buffer pool is statically allocated for the **maximum supported resolution** (`ISC_CAP_MAX_W × ISC_CAP_MAX_H × ISC_CAP_BPP × ISC_CAP_NUM_BUFFERS` = 1280 × 720 × 3 × 4 ≈ 11 MB), reserved once at link time in `.region_nocache`. Per-capture the ISC DMA descriptor is programmed for only `width × height × 3` bytes; the rest of the pool sits idle.
 
-| Resolution | In use / frame | 2-buffer total | Idle |
+| Resolution | In use / frame | 4-buffer total | Idle |
 |---|---|---|---|
-| 480p60 | 1.32 MB | 2.64 MB | 13.2 MB |
-| 720p60 | 3.69 MB | 7.37 MB | 8.4 MB |
-| 1080p60 | 7.90 MB | 15.8 MB | 0 |
+| 480p60 (720×480) | 1.04 MB | 4.15 MB | ~6.9 MB |
+| 720p60 (1280×720) | 2.76 MB | 11.06 MB | 0 |
 
-Trade-off: idle DDR at low resolutions (trivial on this 256 MB platform) in exchange for zero reallocation on source-resolution change — buffer base pointers stay constant, the consumer never needs to re-bind. `ISC_Capture_Configure` rejects any `width > MAX_W || height > MAX_H` so the guarantee is enforced.
+Trade-off: idle DDR at low resolutions (trivial on this platform) in exchange for zero reallocation on source-resolution change — buffer base pointers stay constant, the consumer never needs to re-bind. `ISC_Capture_Configure` rejects any `width > MAX_W || height > MAX_H` so the guarantee is enforced.
 
 ---
 
@@ -276,13 +275,13 @@ Trade-off: idle DDR at low resolutions (trivial on this 256 MB platform) in exch
 
 Pi source, 720p60 RGB limited-range (so peak = 0xFE). Probe reports memory at representative points across the frame:
 
-| Source color | Memory (`b0 b1 b2 b3`) | Decode |
+| Source color | Memory (`b0 b1 b2`) | Decode |
 |---|---|---|
-| Red   | `00 00 FE 00` | B=0, G=0, R=0xFE, X=0 |
-| Green | `00 FE 00 00` | B=0, G=0xFE, R=0, X=0 |
-| Blue  | `FE 00 00 00` | B=0xFE, G=0, R=0, X=0 |
-| White | `FE FE FE 00` | B=G=R=0xFE, X=0 |
-| Black | `00 00 00 00` | — |
+| Red   | `00 00 FE` | B=0, G=0, R=0xFE |
+| Green | `00 FE 00` | B=0, G=0xFE, R=0 |
+| Blue  | `FE 00 00` | B=0xFE, G=0, R=0 |
+| White | `FE FE FE` | B=G=R=0xFE |
+| Black | `00 00 00` | — |
 
 All five match expectation across the full 1280×720 extent (rows 0..719 completely written, no cliff). Framerate sustained at 70 fps probe-window average (≈60 fps real + diagnostic ticks).
 
@@ -292,15 +291,15 @@ All five match expectation across the full 1280×720 extent (rows 0..719 complet
 
 | Stage | File | Line | Change |
 |---|---|---|---|
-| TC358743 D-PHY timing | `default/src/tc358743.c` | 25–33 | 972 Mbps timing constants (kernel-derived) |
-| TC358743 PLL | `default/src/tc358743.c` | 14–20 | `PLL_PRD=4`, `PLL_FBD=144` |
-| CSI HSFREQRANGE | `default/src/isc_capture.c` | 23 | `0x0A` for DWC Gen3 @ 972 Mbps |
-| CSI bitrate override | `default/src/isc_capture.c` | 83 | `csiObj->csiBitRate = ISC_CAP_CSI_BITRATE` (MCC default is `0x16`) |
-| CSI2DC RMS=0 | `default/src/config/default/vision/drivers/csi2dc/plib_csi2dc.c` | 71–78 | dropped `CSI2DC_VPCFGR_RMS_1` from VPCFGR write |
-| CSI2DC free-run | `default/src/isc_capture.c` | 88 | `enableMIPIFreeRun = true` |
-| ISC PFE crop | `default/src/isc_capture.c` | 195–202 | direct `PFE_CFG1/2` + `COLEN`/`ROWEN` writes |
-| ISC DMA config | `default/src/isc_capture.c` | 209–211 | direct `DCFG` write (PACKED32 + BEATS32×2) |
-| Framebuffer BPP | `default/src/isc_capture.c` | 17 | `ISC_CAP_BPP = 4` |
+| TC358743 D-PHY timing | `default/src/video/tc358743.c` | 27–39 | 972 Mbps timing constants (kernel-derived) |
+| TC358743 PLL | `default/src/video/tc358743.c` | 14–22 | `PLL_PRD=4`, `PLL_FBD=144` |
+| CSI HSFREQRANGE | `default/src/video/isc_capture.c` | 29 | `0x0A` for DWC Gen3 @ 972 Mbps |
+| CSI bitrate override | `default/src/video/isc_capture.c` | 115 | `csiObj->csiBitRate = ISC_CAP_CSI_BITRATE` (MCC default is `0x16`) |
+| CSI2DC RMS=1 | `default/src/config/default/vision/drivers/csi2dc/plib_csi2dc.c` | 78–81 | added `CSI2DC_VPCFGR_RMS_1` to VPCFGR write (byte-stream mode) |
+| CSI2DC free-run | `default/src/video/isc_capture.c` | 120 | `enableMIPIFreeRun = true` |
+| ISC PFE crop | `default/src/video/isc_capture.c` | 249–253 | direct `PFE_CFG1/2` + `COLEN`/`ROWEN` writes |
+| ISC DMA config | `default/src/video/isc_capture.c` | 263–265 | direct `DCFG` write (PACKED32 + BEATS32×2) |
+| Framebuffer BPP | `default/src/video/isc_capture.c` | 21 | `ISC_CAP_BPP = 3` (dense BGR888) |
 
 ---
 
@@ -311,7 +310,7 @@ Runtime log is intentionally quiet — initialization, format detection, and a o
 What lands on the DBGU during normal operation:
 
 1. **TC358743 init + lock sequence** — I2C presence, init, SYS_STATUS transitions as HDMI negotiates, final `detected WxH @ FPS, RGB ...` with raster dimensions.
-2. **`ISC_Capture: configured WxH BGRX32 (N bytes/frame)`** — called by `app_coordinate_capture` when TC358743 reports a locked format.
+2. **`ISC_Capture: configured WxH BGR888 packed (N bytes/frame)`** — printed by `ISC_Capture_Configure` when TC358743 reports a locked format.
 3. **`ISC_Capture diag (pre-start):` block** — one-shot register snapshot printed from `diag_dump_rx()` right before `DRV_ISC_Start_Capture`. Contains CSI / CSI2DC / ISC state at the moment capture is armed. When diagnosing new sources or regressions, this is the first place to look.
 4. **`ISC_Capture: capture started`** — green light. Quiet from here.
 5. **TC358743 format-change events** — if the source switches resolution mid-run, the watcher prints a new detection line and the capture module re-configures.
@@ -324,8 +323,8 @@ If deeper inspection is needed (byte-level probes, phase scanners, content bound
 
 - **`INTSR.HDTO` always set** after capture start — informational-only residual, not a stop signal. Also present under working RMS=1 config. Safe to ignore.
 - **DDONE interrupt unreliable** — `iscObj->frameIndex` advances rarely or not at all; `g_frame_count` (incremented from the frame-done callback, driven by VD) counts correctly. DMA itself works (buffers update on schedule). Investigate before building consumer logic that relies on DDONE firing per frame.
-- **Pixel range 0x00–0xFE** because TC358743 passes through source's limited-range signaling. EDID overrides or TC358743 colorimetry registers can force full-range; deferred until display stage forces the issue.
-- **Alpha channel = 0x00** — not 0xFF. Acceptable for display framebuffers that ignore alpha; requires CPU fix-up if alpha is semantic.
+- **Pixel range 0x00–0xFE** because TC358743 passes through source's limited-range signaling. EDID overrides or TC358743 colorimetry registers can force full-range; the display stage expands levels via the HEO gamma CLUT (see `ui_compositor.md` §15.1).
+- **No alpha byte.** The RMS=1 byte-stream is dense BGR888 (3 B/pixel); there is no 4th/alpha byte in the framebuffer. Consumers that need per-pixel alpha must convert to a 4-byte layout.
 
 ---
 
@@ -339,5 +338,5 @@ If someone revisits this and asks "can we get ARGB32 directly in-pipeline?":
 
 Therefore the cleanest path to ARGB32 is:
 - **Software post-pass:** single `memset` of byte 3 at framebuffer init (if DMA stride matches) or a per-frame byte-smearing pass (expensive).
-- **GFX2D blit:** use the 2D graphics engine to copy BGRX32 → ARGB32 with alpha fill. Zero CPU cost if the engine supports it.
+- **GFX2D blit:** use the 2D graphics engine to copy BGR888 → ARGB32 with alpha fill. Zero CPU cost if the engine supports it.
 - **Display IP native BGRX support:** SAM9X75 LCDC supports multiple BGRX/ARGB layouts — pick one that doesn't care about alpha. Probably the right answer.

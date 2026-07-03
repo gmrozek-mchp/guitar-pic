@@ -68,7 +68,7 @@ EXTINT13, falling).
 
 #### SERCOM1 — operator console
 
-Hosts the embedded-cli console + diagnostic log. TX PB00 / RX PB01, **500 000** 8N1,
+Hosts the embedded-cli console + diagnostic log. TX PB00 / RX PB01, **115200** 8N1,
 ring-buffer mode (TX ring ≥ 512 B).
 
 ## Software Architecture

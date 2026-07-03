@@ -43,6 +43,10 @@ the marvin side.
 
 ## Session log
 
+### 2026-07-03 — doc-vs-code audit fixes
+
+Part of a repo-wide doc audit ([`../../../docs/doc-audit-2026-07.md`](../../../docs/doc-audit-2026-07.md)). `README.md` said "skeleton + design — firmware not yet built"; corrected to "working on hardware" to match `SPEC.md` (follower up, receives+actuates marvin's command over T1S, heartbeat + CLI live). `SPEC.md` §2/§4 reframed from "to build" to implemented-in-`t1s_follower.c`; dropped the stale "port of fretboard's `cmd_receive.c`" reference (that file is gone — the open-drain logic is the `BTN_APPLY` macro). Also fixed a wrong in-code comment in `t1s_follower.h` (EIC EXTINT15 → EXTINT13).
+
 ### 2026-06-17 — fretboard live on the bus; planned SPI bump to 12 MHz (both ends)
 
 - The `fretboard` detector+actuator node is up on T1S (id 1) and **commands the guitar directly** over the bus (peer-to-peer, ethertype `0x88B5`) — the guitar applies it like any `0x88B5` frame (no source filtering). End-to-end command-latency budget ≈ 6–7 ms worst case, dominated by the 240 Hz tick + the **1 MHz host SPI** (`docs/t1s-podl-link.md` §4.1).

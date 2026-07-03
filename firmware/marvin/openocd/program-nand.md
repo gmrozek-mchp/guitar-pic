@@ -10,9 +10,9 @@ hosts where SAM-BA isn't used. It reproduces exactly what SAM-BA does:
 
 | SAM-BA (`nand_flash.bat`)            | here (u-boot console)                       |
 |--------------------------------------|---------------------------------------------|
-| `erase::0x100000`                    | `nand erase 0x0 0x100000`                    |
-| `writeboot:sam9x7-nandflashboot…bin` | `nand write 0x22000000 0x0 0x4000`           |
-| `write:harmony.bin:0x40000`          | `nand write 0x22100000 0x40000 0x80000`      |
+| `erase::0x100000`                    | `nand erase.chip` (full chip)                |
+| `writeboot:sam9x7-nandflashboot…bin` | `nand write 0x21100000 0x0 0x4000`           |
+| `write:harmony.bin:0x40000`          | `nand write 0x21200000 0x40000 0x80000`      |
 
 ## Why u-boot (and not OpenOCD's NAND driver)
 
@@ -79,9 +79,11 @@ cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-20
    (b) over one JTAG pass, brings up DDR via the init-and-stop at91bootstrap and
    stages at91bootstrap → `0x21100000`, `harmony.bin` → `0x21200000`, u-boot →
    `0x23f00000`, then jumps to u-boot; (c) drives the u-boot console
-   (`nand_console.py`) to erase `0x0..0x100000`, `nand write` both blobs, and
-   verify each region against its staged DDR copy (`cmp.b`). Exit status is
-   non-zero unless both verifies pass.
+   (`nand_console.py`) to chip-erase NAND (`nand erase.chip`), `nand write` both
+   blobs, and verify each region against its staged DDR copy (`cmp.b`). Exit status
+   is non-zero unless both verifies pass. (Full-chip erase — rather than a fixed
+   `0x0..0x100000` region — guarantees every page the bootstrap's copy window reads
+   is clean `0xff`, regardless of app size or `CONFIG_IMG_SIZE`.)
 
    Staging addresses sit outside the windows u-boot's default `bootcmd` reads
    into (`0x21000000-0x21080000`, `0x22000000-0x22600000`), and the console driver
@@ -92,9 +94,8 @@ cp u-boot.bin <repo>/firmware/marvin/binaries/sam9x75-uboot-nandflash-flasher-20
    power on. marvin boots from NAND — DBGU banner, no JTAG.
 
 To program by hand instead (e.g. debugging), open the console
-(`screen /dev/cu.usbserial-...2 115200`) after staging and run: `nand erase 0x0
-0x100000`, `nand write 0x21100000 0x0 0x4000`, `nand write 0x21200000 0x40000
-0x80000`.
+(`screen /dev/cu.usbserial-...2 115200`) after staging and run: `nand erase.chip`,
+`nand write 0x21100000 0x0 0x4000`, `nand write 0x21200000 0x40000 0x80000`.
 
 ## Layout reference
 
@@ -114,7 +115,7 @@ but generate the word from the **actual** chip params (`nand info`:
 (2048/64/4), which don't match this board's NAND.
 
 The at91bootstrap reads the app from raw offset `0x40000` (`CONFIG_IMG_ADDRESS`,
-`CONFIG_IMG_SIZE=0x100000`) and jumps to `0x23f00000` — where marvin links. See
+`CONFIG_IMG_SIZE=0x400000`) and jumps to `0x23f00000` — where marvin links. See
 `../binaries/README.md`.
 
 ## Validation & caveats

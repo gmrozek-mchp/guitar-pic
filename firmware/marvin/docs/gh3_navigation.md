@@ -12,11 +12,14 @@ name ↔ original-snapshot mapping). Raw `marvin-perf snapshot` captures land in
 the gitignored `tools/marvin-perf/snapshots/`. Native capture is 720×480.
 
 **Scope now:** the navigation *structure* — screens, their items, and the edges
-between them. The **vision** side (per-screen classifier regions, highlight
-readout) is deferred until the observer (M9) is built; screen snapshots are
-recorded here now so that work has its corpus ready.
+between them. The **vision** side is now built: the observer classifier lives in
+`game/gameplay_classify.c` (`gp_classify()`), and the controller
+(`game/game_controller.c`) uses it closed-loop (see Navigator notes below). This
+doc remains the source artifact for the screen/edge model those consume; screen
+snapshots stay recorded here as the corpus.
 
-Status: **in progress** — populated screen-by-screen. `TBD` = not yet captured.
+Status: **in progress** — this navigation map is populated screen-by-screen
+(`TBD` = not yet captured); the observer + controller that consume it are built.
 
 ---
 
@@ -446,4 +449,6 @@ until the observer exists, restrict to songs known to show LEAD-at-top. Per-song
   the top item. If lists wrap, that breaks and the navigator must read the
   highlight instead. Confirm for static lists.
   (Affects shortest-path planning in the controller.)
-- _(deferred to M9)_ per-screen vision classifier regions + highlight readout.
+- ✅ per-screen vision classifier + highlight readout — built in
+  `game/gameplay_classify.c` (`gp_classify()`); the controller reads the classified
+  `{screen, selection}` via the gameplay engine (`game_controller.c` `observe()`).

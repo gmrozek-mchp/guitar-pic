@@ -23,7 +23,8 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
    │           │       (operator UI)    │                  │
    │           └────────── SD card ─────┘  (recording)    │
    └────────┬──────────────────────────┬───────────────────┘
-            │ FLEXCOM2 UART (cmds)     │ FLEXCOM2 UART (ADC)
+            │ T1S bus (cmds)           │ T1S bus (ADC)
+            │ [FLEXCOM1 UART fallback] │
             ▼                          │
    ┌──────────────────────────────────┐│
    │   fretboard (PIC32CM6408)        │┘
@@ -37,9 +38,11 @@ Wii ──HDMI──► ElectronWarp ──HDMI──► TC358743 ──CSI-2─
                   (calibration / detector tuning / replay)
 ```
 
-The diagram shows today's single-board UART path. The architecture is moving to a
-**multi-node T1S bus** (§6, [T1S/PoDL link](docs/t1s-podl-link.md)) where sensing and
-actuation are separate node *classes* — see "Node classes" below.
+The diagram is schematic. The shipping link is a **multi-node T1S bus** (§6, [T1S/PoDL
+link](docs/t1s-podl-link.md)) — marvin the PLCA coordinator, the guitar/fretboard nodes
+followers — where sensing and actuation are separate node *classes* (see "Node classes"
+below). A direct FLEXCOM1 UART wire between marvin and the fretboard remains as a build-time
+fallback transport.
 
 **Per-tier role summary:**
 
@@ -136,13 +139,13 @@ The actuator choice is intentionally still open — `hardware/actuators/` contai
 | ✅ | fret-tuner used at the bench for detector tuning |
 | ✅ | marvin perf-log USB CDC export — live RTOS analytics + pixel strip viewer (`tools/marvin-perf`) |
 | ✅ | **M1** — marvin reference detector v0 (`cv_marvin_v1` running, `detector_state_t` bus active) |
-| ✅ | **M2** — fretboard ↔ marvin link (commands flowing; link rewired USB CDC host → FLEXCOM2 UART for the Curiosity Hybrid board, pending on-hardware re-validation) |
+| ✅ | **M2** — fretboard ↔ marvin link (commands flowing; link rewired USB CDC host → FLEXCOM1 UART for the Curiosity Hybrid board, since superseded by T1S as the shipping default — see the T1S link row) |
 | ✅ | **M3** — end-to-end play (timing pipeline + fretboard actuation; Expert and Easy tested) |
 | 🚧 | **M4** — recording-to-SD (detector-state + keyframes + ADC + commands) |
-| 🚧 | **M5** — operator UI v0; manual-control surface (8 buttons) done; full live-view + mode-toggle UI not started |
+| 🚧 | **M5** — operator UI v0; multi-screen Legato UI done (dashboard, song-select with album-art detail, navigation drawer, splash, manual-control surface); full calibration/live-view + mode-toggle UI not started |
 | 🚧 | **M6**+ — calibration UI, replay, fretboard-takeover validation |
 | 🚧 | **M9** — game-state observer: Phases 1+2 (screen classifier + section-select/song readers) ported to firmware `gameplay_engine`, MPLAB build confirmed, pending hardware test; Phase 3 (number/score readers) not started |
-| 🚧 | **M10** — game-state controller: navigator/closed-loop algorithm complete in `tools/gameplay` prototype; firmware port not started |
+| 🚧 | **M10** — game-state controller: navigator/closed-loop algorithm complete in `tools/gameplay` prototype; firmware port in progress (`game/game_controller.c`: menu-step planner + CV-plays loop, driven by the `play` console command + dashboard button), pending hardware validation |
 | 🚧 | **T1S link** — marvin (PLCA coordinator) ↔ `guitar` actuator node (follower) **working** over 10BASE-T1S (LAN8651 each end): command TX + presence heartbeat + link/`nodes` diagnostics. `fretboard` node (id 1) firmware **written T1S-only** (2026-06-17): streams data to marvin **and** drives the guitar directly (its model infers the bitmask, peer-to-peer); MCC config done. Remaining: fretboard build-wiring + hardware bring-up, active-source arbitration (marvin active-detector/active-guitar selection), and dumb PoDL (power on the pair). [Detail](docs/t1s-podl-link.md) |
 
 Detail (definitions of done, demos) in [marvin spec §8](firmware/marvin/docs/spec.md).

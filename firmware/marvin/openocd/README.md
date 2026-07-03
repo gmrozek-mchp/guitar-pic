@@ -35,6 +35,8 @@ terminal while debugging.
 | `program-nand.{sh,cfg}` | Program marvin into on-board NAND from macOS (u-boot RAM-loaded over JTAG as a PMECC flasher) — see `program-nand.md` |
 | `erase-nand.{sh,cfg}` | Erase NAND over JTAG to make the board non-bootable — return to RAM dev without touching jumpers (e.g. board in an enclosure) |
 | `nand_console.py` | Shared u-boot-console driver (pre-flight port check, erase, program+verify) used by `program-nand.sh` / `erase-nand.sh` |
+| `program-qspi.{sh,cfg}` | Program QSPI NOR (splash / UI assets) from macOS over JTAG (u-boot RAM-loaded as an `sf` flasher) — see `program-qspi.md` |
+| `qspi_console.py` | Shared u-boot-console driver (pre-flight port check, `sf` probe/erase/write+verify) used by `program-qspi.sh` |
 
 ## Usage
 
@@ -106,13 +108,14 @@ Mechanism (`marvin_load_ram`, also the by-hand recipe):
 `reset init` (resets the SoC from any state via the 500 ms nSRST pulse, then
 disables the watchdog + MMU/caches) → `adapter speed 0` (RTCK adaptive clocking —
 **required**; at fixed TCK, OpenOCD loses JTAG sync when at91bootstrap switches
-the master clock) → load the init-and-stop at91bootstrap → resume → brief wait →
-halt (clocks + DDR now up, MMU/caches off; the bootstrap just loops) → load
-marvin → resume at `0x23f00000`. An I-cache invalidate (`arm mcr 15 0 7 5 0 0`)
-follows each `load_image`. The reset re-initializes the MPDDRC, so the bootstrap
-brings DDR3L up fresh each run — that is what makes the loop repeatable without a
-power-cycle. (An `INIT_AND_STOP` bootstrap halts itself after DDR init, so no
-breakpoint or disassembly is needed.)
+the master clock) → load the init-and-stop at91bootstrap → resume → `wait_halt`
+catches the bootstrap's `BKPT_NOTIFY_DONE` after DDR init (clocks + DDR now up,
+MMU/caches off) → load marvin → resume at `0x23f00000`. An I-cache invalidate
+(`arm mcr 15 0 7 5 0 0`) follows each `load_image`. The reset re-initializes the
+MPDDRC, so the bootstrap brings DDR3L up fresh each run — that is what makes the
+loop repeatable without a power-cycle. (The bootstrap issues a `bkpt`
+(`CONFIG_BKPT_NOTIFY_DONE`) after DDR init, which OpenOCD catches with `wait_halt`
+— no manual breakpoint or disassembly needed.)
 
 **Headless note:** with no display/maXTouch panel connected, marvin's maXTouch
 driver init fails gracefully (driver → ERROR) and the rest of the system runs.
@@ -234,6 +237,8 @@ It **programs on-board NAND from macOS** via [`program-nand.sh`](program-nand.md
 — u-boot is RAM-loaded over JTAG (same mechanism as `load-ram`) and acts as a
 PMECC-aware flasher; marvin then boots standalone from NAND. Validated on
 hardware (2026-06-11). This replaces the SAM-BA `../binaries/nand_flash.bat` flow
-on macOS. **QSPI** still needs SAM-BA (`../binaries/qspi_flash.bat`, Linux/Windows)
-or MPLAB — OpenOCD has no SAM9X7 QSPI driver and the u-boot QSPI-boot path isn't
-wired up here.
+on macOS. It also **programs QSPI NOR data** (splash / UI assets) from macOS over
+JTAG via [`program-qspi.sh`](program-qspi.md) — u-boot RAM-loaded as an `sf`
+flasher, same mechanism, no SAM-BA. Only **QSPI boot** still needs SAM-BA
+(`../binaries/qspi_flash.bat`, Linux/Windows) or MPLAB: OpenOCD has no SAM9X7 QSPI
+driver and the u-boot QSPI-*boot* header path isn't wired up here.

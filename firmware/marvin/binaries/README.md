@@ -114,9 +114,9 @@ sed -i '' 's|^CONFIG_IMG_SIZE=.*|CONFIG_IMG_SIZE="0x00400000"|' .config   # macO
 ## Build the JTAG load-to-RAM bootstrap (`sam9x7-boot-none-*.elf`)
 
 This is the `bkptnone` defconfig — `CONFIG_INIT_AND_STOP=y`: it inits clocks + DDR
-and then **loops**, leaving MMU/caches off, so a debugger can load a binary into
-the freshly-initialized DDR. (It does *not* issue a `bkpt`, so it is harmless with
-no debugger attached.)
+and then issues a `bkpt` (`CONFIG_BKPT_NOTIFY_DONE`, at `0x3000a0` in the ELF),
+leaving MMU/caches off, so a debugger can catch the halt (`wait_halt`) and load a
+binary into the freshly-initialized DDR.
 
 ```sh
 cd ~/Projects/microchip/at91bootstrap

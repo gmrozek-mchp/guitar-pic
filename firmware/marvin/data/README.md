@@ -19,7 +19,7 @@ CSV-quoted (and may be empty); `bpm`/`length_s`/`year` are integers, `0` when
 unknown. Rows may be sparse or out of order — only `(setlist, index)` is the key.
 
 `title`/`artist`/`album` are sourced from the `SONGS` table in
-[`tools/fetch_gh3_cover_art.py`](../../../../tools/fetch_gh3_cover_art.py); that
+[`tools/gh3-cover-art/fetch_gh3_cover_art.py`](../../../tools/gh3-cover-art/fetch_gh3_cover_art.py); that
 script's `--catalog` mode also fills `year` and `genre` from MusicBrainz. `bpm`,
 `length_s`, and `difficulty` are reserved-but-blank for now (GH3 exposes no
 per-song difficulty rating).

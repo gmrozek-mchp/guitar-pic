@@ -1,0 +1,1015 @@
+# marvin — Journal archive: 2026-Q2 (firmware bring-up, May 20 → June 16)
+
+Preserved session-log entries from marvin's firmware build-out, **2026-05-20 → 2026-06-16**. This work is complete/settled: system spec drafted, M1 detector scaffolding, video fan-out, static-allocation conversion, USB CDC host bring-up (later retired on the Curiosity Hybrid port), the perf-log channel (framing → STRIP/RUNTIME → multi-IRP throughput → host `marvin-perf` viewer), the fretboard-link move to FLEXCOM UART, JTAG load-to-RAM + NAND programming from macOS, the M9 game-state observer firmware port, and T1S MAC-PHY bring-up through Phase 4.
+
+Kept here for "how we got here" reference — not part of the live working journal. For current state see [`journal.md`](journal.md); for the system-level description of marvin see [`spec.md`](spec.md). Decisions and open questions from this period live in the active journal's Decision log / Open questions sections, not here.
+
+Newest entries at the top.
+
+---
+
+### 2026-06-16 — T1S Phase 4: wire under the FretboardLink API (transport flag)
+
+- T1S now sits behind the existing `FretboardLink_{Initialize,Send,IsConnected}` API, selected by a compile flag `MARVIN_FRETBOARD_TRANSPORT` (`FRETBOARD_TRANSPORT_UART` default / `_T1S`) in `fretboard_link.h`. `app.c` is unchanged (the explicit `T1SLink_Initialize()` call was removed — `fretboard_link` owns transport bring-up). Producers (`timing_pipeline`, `manual_control`) and all perf-log records are identical above the transport.
+- **TX**: factored `send_one_byte()` per transport. UART path unchanged. T1S path calls `T1SLink_SendToFretboard(mask)` and keeps the same `PERF_STAGE_FBL_SEND` / `ACTUATOR` stamping. To keep TC6 single-threaded, `T1SLink_SendToFretboard` only stashes a latest-wins command + wakes the service task; the **t1s service task** flushes it via `send_to_node(fretboard)`. This retired the Phase 3 bring-up heartbeat.
+- **RX**: factored `emit_fretboard_frame()` (validated 17-byte frame → `PERF_REC_FRETBOARD_RAW`), shared by both paths. UART path = ring drain + `0x03..0xFC` resync → emit. T1S path = `t1s_frame_handler` registered via `T1SLink_SetFrameHandler`; the MAC-PHY/TC6 already deframes, so it only checks markers → emit. Runs in the t1s service task (perf-log producers are task-safe).
+- **Node mapping**: `T1SLink` resolves the fretboard node by type (`node_for_type`) for both TX target and RX `detector_id`, so the API stays node-agnostic.
+- **The t1s branch now builds T1S by default** (`MARVIN_FRETBOARD_TRANSPORT=1` set in `user.cmake`) — the branch is all-in on T1S; UART is one commented line away for fallback. (Until the fretboard T1S side lands, a marvin built this way drives the T1S link, not the real UART fretboard.)
+- **Status: both builds confirmed on hardware.** UART build is a clean regression; the `MARVIN_FRETBOARD_TRANSPORT=1` build runs with the T1S link up as PLCA coordinator (`chipRev=2`, `Reset_Complete`) under the `FretboardLink` API — command TX flows to node 1 (no receiver yet; the real fretboard is still on UART). End-to-end T1S data validation waits on the fretboard PIC32CM T1S side (next subproject).
+
+### 2026-06-16 — T1S Phase 3: L2 framing + static node table (marvin)
+
+- Added L2 framing and the node directory to `net/t1s/t1s_link.c`. Ethertype fixed at **`0x88B5`** (local/experimental range — no registration needed; updated the T1S doc, dropped it from open items). 14-byte Ethernet header built/parsed; payloads ride inside verbatim.
+- **Node table**: static `s_nodes[]` mapping PLCA id / MAC → `detector_id`. One entry today — node 1 (`02:00:00:00:00:01`) → `DETECTOR_ADC_FRETBOARD`. `node_mac()` derives a follower MAC; `node_for_mac()` demuxes an incoming src MAC to a node. Adding a node is a one-row edit (design-for-N).
+- **TX**: `send_to_node()` frames a payload (dst = node MAC, src = coordinator MAC, ethertype) into a static buffer and calls `TC6_SendRawEthernetPacket`; `tx_done_cb` frees the buffer (one in-flight at a time via `s_tx_busy`).
+- **RX**: `OnRxEthernetPacket` validates length + ethertype, demuxes by src MAC → node, and exposes the payload (Phase 4 routes it to the detector bus). Unknown/foreign frames dropped (promiscuous RX is on during bring-up).
+- **Verification aid**: since a single node can't round-trip, the service loop sends a 1 Hz 1-byte heartbeat to node 1 and logs every 5th (`T1S: heartbeat #N tx=1`) to confirm the TX path cycles on the bus. The heartbeat is replaced by the real command byte in Phase 4.
+- **Status: confirmed on hardware.** Builds clean; link still comes up as PLCA coordinator and the `heartbeat #N tx=1` logs advance — the framing + TX path cycles on the bus. Full RX-demux validation waits on a second node (fretboard or test peer). Next: Phase 4 (wire under the FretboardLink API behind the transport flag; RX payload → detector bus / PERF_REC_FRETBOARD_RAW, 1-byte command TX).
+
+### 2026-06-16 — T1S Phase 1/2: marvin MAC-PHY bring-up code (adapt oa-tc6-lib)
+
+- Prereqs cleared and committed (`9438ac2`): FLEXCOM4 SPI (Mode 0, CSAAT, IRQ-driven) + `T1S_IRQ_N` (PB25, falling-edge → PIOB in AIC) + `T1S_RST` (PB3); `oa-tc6-lib` v3.1.5 submodule at `third_party/oa-tc6-lib` (`7e0e312`).
+- Reviewed the real `libtc6` API (`tc6.h`, `tc6-regs.h`, and the `noIP-SAM-E54` `tc6-stub.c`/`tc6-noip.c` reference). **Key find: `TC6Regs_Init()` does the LAN8651 register config *and* PLCA setup in one call, and `TC6Regs_GetChipRevision()` is the sanity gate — so Phases 1 and 2 collapse into a single bring-up step** with the library approach.
+- Wrote the marvin glue in new `default/src/net/t1s/` (kept out of the MCC `config/` tree):
+  - `tc6-conf.h` — marvin's build config for the vendored driver (one instance, default chunk/queue sizes).
+  - `t1s_link.{c,h}` — `T1SLink_Initialize()` creates a FreeRTOS service task; the task does the `T1S_RST` pulse, `FLEXCOM4_SPI_TransferSetup` (15 MHz, Mode 0), `TC6_Init` + `TC6Regs_Init` (PLCA coordinator, node id 0 / count 8, MAC `02:00:00:00:00:00`, promiscuous during bring-up), then services to init-done and logs chip revision. SPI completion ISR → `TC6_SpiBufferDone` + semaphore; `T1S_IRQ_N` falling-edge → semaphore; `OnNeedService` → flag. RX callbacks log only (L2 demux is Phase 3).
+  - Mandatory integrator callbacks implemented here; `TC6_CB_OnExtendedStatus` deliberately *not* (tc6-regs.c provides it). Examples are not compiled (no duplicate-symbol clash).
+- Build: `user.cmake` gains `t1s_link.c` + `libtc6/src/tc6.c` + `tc6-regs.c` and include dirs (`net/t1s`, `libtc6/inc`, `libtc6/src`). `app.c` calls `T1SLink_Initialize()` alongside `FretboardLink_Initialize()` — T1S runs in parallel with the UART link during bring-up (no transport arbitration yet; that's Phase 4).
+- **Status: gate PASSED on hardware.** Builds clean in MPLAB; on the wired LAN8651 EVB the link reports `T1S: LAN8651 up — chipRev=2, MAC=02:00:00:00:00:00, PLCA coord id=0/8` followed by the `Reset_Complete` event. Confirms SPI Mode 0 + CS framing, the OA TC6 control path, the IRQ-driven service loop, MAC-PHY register config, and PLCA coordinator bring-up — all end-to-end. Next: Phase 3 (L2 framing + node table) then Phase 4 (wire under the FretboardLink API behind the transport flag).
+
+### 2026-06-16 — T1S inter-node link: scope locked, marvin-side planned, held on prereqs
+
+- Started the T1S workstream. Reframed the link from a 2-node fretboard↔marvin swap (as [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) had it) to a **multi-node** bus — several guitars + phototransistor detector nodes on one PLCA pair. Locked four forks (see decision log): **design addressing for N now / build one link**, **adapt `oa-tc6-lib`** (not from-scratch), **keep FLEXCOM1 UART in parallel** behind a `MARVIN_FRETBOARD_TRANSPORT` build flag, and the link develops against a **LAN8651 EVB/Click wired to the SAM9X75 Curiosity now**.
+- Defined the addressing scheme (marvin = PLCA coordinator ID 0; static node table → `detector_id`) and the layering (SPI PLib → TC6 chunk driver → MAC-PHY/PLCA init → L2 framing + node table → transport flag under the `FretboardLink_*` API). Code to live in `default/src/net/t1s/`, MCC kept out via `user.cmake`. Corrected the stale "marvin is bare-metal" note → FreeRTOS+Harmony (no netdev, so own TC6 driver still required; `IRQ_N` → service task).
+- **Grounding turned up two hard prerequisites; coding is held on both:** the generated tree has *no SPI PLib* (only `plib_flexcom1/2_usart` + TWI), so a free FLEXCOM must be regenerated in SPI-master mode in MCC against the EVB pinout; and `oa-tc6-lib` is not on disk / not fetchable in-sandbox, so Greg is adding it as a subproject. **No code changes this session** — decisions captured here + in the T1S doc + fretboard journal.
+
+### 2026-06-15 — M9 observer Phase 2: selection + song readers (log on change)
+
+Greg confirmed Phase 1 **builds clean** in MPLAB (no hardware test yet) and asked for a log
+line whenever the screen *and/or selection* changes. Added the selection readers (pulling
+Phase 2 forward) and reworked the observer to log on either change.
+
+- **New `game/gameplay_select.{h,c}`** (pure, FreeRTOS-free, like `gameplay_classify`): the
+  static-list highlight reader (`gp_read_selection` — per-cell deviation from the learned
+  baseline) and the `song_select` reader (`gp_read_song` — slot-bitmap nearest-template match
+  with the offset search). Metadata already in `gameplay_metadata.h` from Phase 0.
+- **`gameplay_engine.c`**: after classify, reads the selection (static-list cell, or song
+  template on `song_select`, else none), publishes it in `game_state_t.selection`, and
+  `LOG_INFO`s on a screen-*or*-selection change — `GAME: <screen> / <item>` for menus,
+  `GAME: song_select / <setlist> #<n> <song>` for songs, `GAME: <screen>` otherwise.
+- **Rate-limited the observer to ~5 Hz** (`GAME_OBSERVE_PERIOD_MS = 200`), with a one-shot
+  **force trigger** (`GameplayEngine_RequestObservation`) that runs the next frame regardless —
+  for closed-loop control (M10): observe right after sending an actuator command instead of
+  waiting for the next background tick. (Caveat for M10: GH3 menus take several frames to
+  transition — cursor animation, fades, `loading` — so the controller must let the screen
+  settle / poll-until-expected before trusting a forced read, not trigger it instantly. Noted
+  on the API + in the gameplay Phase-3 plan.) Background 5 Hz is plenty for human-paced changes and
+  bounds CPU: the song match densely re-reads its ROI across the 15-offset search on uncached
+  DDR (tens of ms), which at frame rate would pin a vision-tier task. (Perf follow-up if needed:
+  subsample the song grid / trim the offset set.)
+- **Validation:** both new units compile clean under `cc -Wall -Wextra`; the host cross-check
+  (`test_firmware_classify.py`) now also confirms `gp_read_selection` and `gp_read_song` match
+  the prototype's `read_selection`/`read_song` on real corpus frames. Still **pending Greg's
+  MPLAB build of this delta + first hardware run**.
+
+### 2026-06-15 — M9 game-state observer v0 (screen classifier) — firmware port Phase 1
+
+Ported the host-proven GH3 screen classifier (offline prototype in `tools/gameplay`) into a
+firmware `gameplay_engine` (spec §4.8). New `game/` module, no MCC regen (pure compute on the
+existing video frame queue + no new peripheral). **Code-complete + syntax-checked; not yet
+built in MPLAB or run on hardware.**
+
+- **Files:** `game/gameplay_metadata.h` (generated by `gameplay export-c` — region grid,
+  per-class `uint8` centroids, thresholds, screen-id table; ~150 KB, regenerate, don't
+  hand-edit); `game/gameplay_classify.{h,c}` (pure FreeRTOS-free classify math — fixed-region
+  fingerprint → per-frame normalize → L1 to centroids → margin/abs reject); `game/gameplay_engine.{h,c}`
+  (the `game_task`: subscribes to the video frame queue like `cv_marvin_v1`, classifies each
+  720×480 BGR frame, publishes `game_state_t` on a new `xGameStateQueue` on screen change, logs
+  the change). Wired into `app.c` (`GameplayEngine_Initialize` + `SetObserveEnabled(true)` after
+  `Console_Initialize`) and `user.cmake`.
+- **Numerics:** soft-float per-frame normalization over a 288-element vector (decided — ARM926
+  has no FPU but it's microseconds at this size; revisit fixed-point only if profiling says so).
+- **Validation without hardware:** the pure classify unit compiles clean under
+  `cc -std=c11 -Wall -Wextra`, and a host cross-check (`tools/gameplay/tests/test_firmware_classify.py`)
+  compiles `gameplay_classify.c` into a driver and confirms its screen decision **matches the
+  Python prototype's `classify_image` on real corpus frames** — so the C port + exported metadata
+  reproduce the proven algorithm. The marvin build itself is Greg's (MPLAB/XC32).
+- **Next:** Phase 2 folds in the selection + song readers (more `game_state_t` detail); Phase 3
+  is the navigator/controller (M10) as the third `FretboardLink` producer behind an
+  `actuator_mode` arbiter. Observability beyond the LOG line (a perf-log game-state record /
+  console command) is a small follow-up.
+
+### 2026-06-15 — GH3 navigation map (M9/M10 on-ramp): [`gh3_navigation.md`](gh3_navigation.md)
+
+Captured the GH3 (Wii) menu structure for the §4.8 game-state work, from a corpus of on-demand snapshots. New doc [`gh3_navigation.md`](gh3_navigation.md) + committed screen corpus in [`gh3_screens/`](gh3_screens/) (101 renamed PNGs + README index; raw captures stay in the gitignored `tools/marvin-perf/snapshots/`).
+
+- **Training/practice path fully mapped, closed-loop:** `main_menu → training_menu → song_select → part_select → difficulty_select → section_select → speed_select → loading → in_song`, plus the in-song `pause_menu`, `quit_confirm`, and post-song `practice_end_menu` — all looping back into known nodes. Full main + bonus song catalog with artist metadata.
+- **Key modeling decisions** (in the doc): two highlight paradigms (static-list = read which row is lit; fixed-slot = read the highlight slot); navigation is strum-up/down + GREEN (confirm) / RED (back); the controller must be **closed-loop** (verify each screen before/after input, RED-to-recover on mismatch) — never a blind macro; for "always want the top item" steps (FULL SONG, FULL SPEED) strum up to saturate at the top.
+- **Open**: per-song `part_select` variants (lead/rhythm vs lead/bass, sometimes absent), list wrap-around behavior, QUICKPLAY/CAREER modes (expected to reuse `song_select`/`difficulty_select`), and extending the actuator command path to carry non-fret/strum buttons (`+`/`−`) — fauxmote already emulates the full controller.
+- **Scope call:** training mode is enough to be useful and may be all we need. Next: implementation (M9 observer / M10 controller) — sequencing TBD (open-loop actuation on the deterministic path vs. minimal screen classifier first). Vision/observer keying deliberately deferred; this doc is structure + metadata only.
+
+### 2026-06-14 — Snapshot save = PNG-only + auto-incrementing filenames (CLI)
+
+Snapshot save was `.bgr` + `.json` (+ `.png`). PNG is lossless for the packed RGB, so the raw `.bgr` is redundant and the `.json` only carried `frame_epoch` — now tucked into a PNG `tEXt` chunk. Dropped both. `save_snapshot` is PNG-only across CLI + GUI; `pillow` promoted from the `viewer` group to a base dependency (snapshot is a base feature).
+
+CLI `marvin-perf snapshot` now supports rapid "jump through screens" capture: `--out` is optional and, when omitted or pointed at a directory, the filename auto-increments as `snapshot-NNNN.png` (scans the dir, max+1) under `./snapshots/` by default. An explicit `--out foo.png` is used verbatim. GUI still uses its timestamped stem (one PNG per click) — auto-increment there is a later nicety if wanted. Tests: PNG-only + lossless round-trip + tEXt epoch (`test_snapshot.py`), `_resolve_snapshot_out` cases (`test_cli.py`), live save asserts `.png`. Suite **145 passed**.
+
+### 2026-06-14 — Target-ring overlay moved off the capture buffer (clean snapshot + clean panel)
+
+Snapshots were picking up the per-fret calibration rings and occasionally showed tearing. Root cause: `draw_overlay()` burned the rings **into the shared ISC capture buffer** — the same buffer HEO displays and the snapshot copies — and the SENSING/STRIKE strips were emitted *pre-overlay*, so the rings landed on the panel + snapshot but **not** the strips (the inverse of what's wanted). Reworked so rings are drawn **only onto the SENSING strip copy** that ships to the viewer; the capture frame is never written.
+
+- **Firmware:**
+  - `cv_marvin_v1.c`: dropped the `draw_overlay((uint8_t*)frame.buffer, …)` call. SENSING now row-copies into a static `s_sensing_scratch`, paints the rings there (when the overlay sink is on), and ships via the new `PerfLog_EmitStripPacked`. STRIKE stays a clean `EmitStripFromFrame` (no sensors there). Strip rects promoted to named consts. `draw_overlay` now takes `(buf, bw, bh, ox, oy)` and translates sensor coords by the strip origin. SENSING copy gated on the STRIP mask so it's free when the host isn't consuming strips.
+  - `perf_log.{c,h}`: factored the strip slot-claim/header/enqueue into `strip_slot_claim`/`strip_slot_commit`; added `PerfLog_EmitStripPacked` (prepacked, single memcpy). Added `s_overlay_flags` (boots `PERF_OVERLAY_STRIP`) + `PerfLog_Set/GetOverlayFlags`.
+  - `perf_log_records.h` / `perf_log_rx.c`: new host→device `PERF_CMD_SET_OVERLAY` (0x03) + `perf_cmd_set_overlay_t` + `PERF_OVERLAY_STRIP`/`PERF_OVERLAY_PANEL` flag bits. **No schema bump** (commands don't touch the record format). PANEL bit reserved for a future LVDS demo overlay (no-op today).
+- **Host (`tools/marvin-perf`):** `encode_set_overlay_payload`; `live.set_overlay()`; `POST /api/live/overlay`; overlay state in `status()`/`hello` + a WS `overlay` event; `marvin-perf set-overlay --port … --on/--off`. Snapshot needs **no** per-capture toggling now — the capture buffer is always clean.
+- **GUI:** "◎ Overlay" toggle in the live toolbar (active = rings on the SENSING strip), reflecting device state.
+- **Tests:** 3 new `test_live.py` cases (set_overlay round-trip + status, inactive-raises, payload layout). Suite **140 passed**.
+- **Decisions this session:** kept capture at **4 buffers** — 5 overflows the 16 MiB `.region_nocache` by ~1.1 MB once the 3.9 MB XLCDC framebuffer is counted (descriptor ring supports up to 10; memory is the limit). Snapshot tearing-retry deferred (captured screens are mostly static). LVDS panel kept clean for now; re-adding a demo overlay later is the `PERF_OVERLAY_PANEL` path.
+- **Not yet done:** firmware not built (MPLAB/XC32) or hardware-tested.
+
+### 2026-06-14 — marvin-perf viewer: Snapshot button (GUI for the snapshot command)
+
+Follow-up to the snapshot-capture entry below: the capture only existed as the headless `marvin-perf snapshot` CLI, which opens its **own** serial port. The `serve` web viewer runs a persistent single-tenant live session whose reader thread **owns** the port, so the GUI couldn't open a second connection. Hooked snapshot assembly into the existing live reader thread instead.
+
+- **Backend (`web/live.py`):** `request_snapshot(out_stem)` latches a fresh `SnapshotAssembler` + monotonic deadline (`_SNAPSHOT_TIMEOUT_S = 8 s`) and sends `PERF_CMD_SNAPSHOT` over the session's already-open port. The reader loop intercepts `STRIP` records of kind `SNAPSHOT`, feeds the assembler, and (on the LAST band) saves to disk via the existing `save_snapshot`, caches the frame, and pushes a `snapshot` WS event. Snapshot bands never enter the normal record stream / strip slots. Timeout checked at the top of each reader iteration.
+- **Backend (`web/api.py`):** `POST /api/live/snapshot {out}` (409 if no live session / already in progress) and `GET /api/live/snapshot.png` (renders the cached frame via the existing `render_strip_png`).
+- **Frontend:** new `#snapshot-controls` toolbar group (out-path input + 📷 button, live-only) and a preview overlay (`#snapshot-modal`) with the rendered PNG, dims/epoch/saved-paths, a download link, and Esc/backdrop close. WS `snapshot` event drives banner → preview.
+- **Tests:** 5 new `test_live.py` cases (assemble+save+no-leak, no-stem caches-but-writes-nothing, in-progress conflict, inactive raises, timeout) using the existing `_FakeSerial`/`ser_factory` harness. Full suite: **137 passed**.
+- **Not yet done:** untested against hardware (needs marvin flashed with the schema-5 firmware, still unbuilt).
+
+### 2026-06-14 — Full-frame snapshot capture (perf-log command) — on-ramp to the M9 gameplay engine
+
+Starting the gameplay engine (spec §4.8): watch the video for which screen we're on, current selections, score, etc. GH3 screens/fonts/layouts are fixed, so the plan is a simple GH3-specific detection library, not general CV. First we need to study real screens offline — and marvin had no way to get a full frame off the device. Built on-demand full-frame snapshot capture (see decision-log entry for full rationale).
+
+- **Firmware:** `PERF_CMD_SNAPSHOT` (id 0x02, header-only) handled in `perf_log_rx.c` → `PerfLog_RequestSnapshot()` latches a flag; the perf-drain task copies the current frame into a static 1280×720×3 staging buffer and streams it back as full-width `PERF_STRIP_SNAPSHOT` bands written directly to the sink (bypasses the 6-slot strip pool; last band flags `PERF_STRIP_FLAG_LAST`). New kind + flag repurpose strip `reserved[0]`; schema bumped 4 → 5. Touches only `perf_log_records.h`, `perf_log_rx.c`, `perf_log.{h,c}` — no video/detector/actuation changes.
+- **Host (`tools/marvin-perf`):** mirrored the wire additions in `records.py`/`decode.py`; new `snapshot.py` (`SnapshotAssembler` + `save_snapshot`) and a `marvin-perf snapshot --port … --out …` subcommand that triggers, reassembles bands by `frame_epoch`, and writes `.bgr` + `.json` (+ `.png` via Pillow). Added `SerialSource.read_chunk()` for idle-timeout reads.
+- **Tests:** new `tests/test_snapshot.py` (assembler ordering/contiguity/width-mismatch + save); fixed two pre-existing fallout points — `_STRIP_BODY` packers in `conftest.py`/`test_decode.py` for the new flags byte, and a stale `schema_ok is True` assertion in `test_api.py` (the shared fixture is intentionally schema v3, so under a current host it's correctly a *mismatch* — that test had been red since the earlier 3→4 bump). Full suite: **132 passed** via `uv run --group dev --group viewer pytest`.
+- **Not yet done:** firmware not built (needs MPLAB/XC32 on Greg's side) or hardware-tested; no `gameplay_engine` task and no detection library yet (both deliberately out of scope — detection comes after we've captured a corpus of GH3 screens).
+
+### 2026-06-12 — Serial operator console (embedded-cli on FLEXCOM2); fretlink moved to FLEXCOM1
+
+Greg didn't like Harmony's `SYS_CONSOLE`/`SYS_COMMAND` and wanted an interactive command console on a channel separate from the DBGU log chatter. Landed the design + code (see the decision-log entry for full rationale; spec §4.9).
+
+- **Approach:** in-tree `console/console.{h,c}` modeled on `fretboard_link.c` — owns the FLEXCOM2 USART ring-buffer plib directly, one task drains RX on a 1-byte threshold notification, feeds vendored **embedded-cli** (static-allocation mode, no malloc), dispatches a static command table into existing setters. No MCC coupling; sources + include dir via `user.cmake`.
+- **Channel swap:** console → FLEXCOM2 @ 115 200; fretboard link → FLEXCOM1 @ 500 000 (mechanical `FLEXCOM2_*`→`FLEXCOM1_*` rename in the only non-generated consumer). The 6 Mbps FLEXCOM1 in `b236806` was just a test.
+- **Commands v0:** `status`, `detect <cv|adc> <on|off>`, `active <cv|adc>`, `timing <on|off>`, `manual <on|off>`, `fret <g|r|y|b|o> <0|1>`, `strum <down|up>`.
+- **Vendored:** `third_party/embedded-cli/` (embedded_cli.{h,c} + LICENSE + provenance README), pinned at upstream `master` commit `8e796cb`. Fetched outside the command sandbox (GitHub not on the sandbox allowlist).
+- **Doc fix:** the log/printf channel is the dedicated **DBGU** peripheral, not "FLEXCOM4" — spec §3.2 corrected.
+- **Prerequisite before build (Greg, MCC):** FLEXCOM1 → ring-buffer @ 500 000, FLEXCOM2 → ring-buffer @ 115 200 (TX ring ≥ 512 B). Code uses the ring-buffer plib API and won't compile until FLEXCOM1 is regenerated out of basic mode. **Not yet built or hardware-tested.**
+
+### 2026-06-11 — NAND programmed from macOS over JTAG (no SAM-BA); marvin boots standalone from NAND
+
+Goal: get marvin resident in the cHybrid's on-board NAND without SAM-BA. Landed it. See the decision-log entry for the full design + rationale; mechanics and runbook in [`openocd/program-nand.md`](../openocd/program-nand.md).
+
+- **Approach:** reuse the `load-ram` JTAG mechanism but jump to **u-boot** (built from `sam9x75_curiosity_pro_nandflash_defconfig` in `~/Projects/microchip/u-boot-mchp`) instead of marvin; u-boot's `atmel_nand` is the PMECC-aware flasher. Images are pre-staged into DDR over JTAG, then `nand erase`/`nand write` from the DBGU console (channel C, `/dev/cu.usbserial-W16_2026_4302` @115200). NAND layout: at91bootstrap @ `0x0`, `harmony.bin` @ `0x40000` (mirrors the SD/QSPI `nand_flash.bat`).
+- **Confirmed chip (`nand info`):** page 4096, OOB 256, ECC 8-bit, sector 512 — matches the u-boot DT and the at91bootstrap header math (eccOffset 152), so the data write is RomBOOT-compatible.
+- **First boot attempt: RomBOOT-only (no-go).** Root cause: SAM9X7 ROM needs a NAND parameter header on page 0 (read without ECC) that a plain `nand write` doesn't add. Fixed by prepending the 52×word header (`binaries/make-pmecchead.sh`, real params → `0xc2605007`, code at `0xD0`). Verified the header survived the PMECC round-trip (`md.l` of a `nand read` of page 0 → `c2605007` ×, vectors at `0xd0`).
+- **Second gotcha:** u-boot's `bootcmd` autoboot clobbered the staged blobs at `0x22000000` with `0xff` between staging and programming. Moved staging to `0x21100000`/`0x21200000` and stop autoboot on console connect.
+- **Validated on hardware:** power-cycle (JP3 NAND in, JP4 QSPI out, no SD) → `RomBOOT` → `AT91Bootstrap 4.0.13` → `NAND: Copy 0x100000 bytes from 0x40000 to 0x23f00000` → marvin up (fretboard link, pipeline, TC358743 detected 720x480p@60, ISC capture armed). Bit-exact app verify (`cmp.b` 517328 B same).
+- **Artifacts (all in-repo, self-contained):** `binaries/sam9x7-nandflashboot-uboot-4.0.13-pmecchead.bin` (headed bootstrap) + `make-pmecchead.sh` generator (no external-tree dep); the flasher `binaries/sam9x75-uboot-nandflash-flasher-2025.07.bin` (built from <https://github.com/linux4microchip/u-boot-mchp> `linux4microchip-2026.04`; build recipe in `binaries/README.md`); `openocd/program-nand.{sh,cfg,md}`, `openocd/erase-nand.{sh,cfg}`, and the shared `openocd/nand_console.py`. `openocd/README.md` "Scope" updated (NAND-from-macOS no longer R&D).
+- **Follow-ups landed same session:** `erase-nand.sh` (return to RAM dev with no jumper access — `reset init` + CP15 MMU/cache-off recovers a booting/wedged board); `program-nand.sh` made fully automated (pre-flight console check → stage → erase/write/verify via `nand_console.py`) and guarded against staging into a live NAND-booting board (erase-first). **Still SAM-BA-only:** QSPI (no OpenOCD/u-boot QSPI-boot path explored).
+
+### 2026-06-10 — Boot binaries rebuilt with clean version banner (4.0.13, no git-describe suffix)
+
+The bootstraps banner'd as `AT91Bootstrap 4.0.13-00001-gc2e3f87b` instead of a clean `4.0.13`. Root cause: the upstream `v4.0.13` tag is a **lightweight** tag, but `host-utilities/setlocalversion` gates the clean-version path on `git describe --exact-match`, which only sees **annotated** tags. HEAD (`c2e3f87b`) is exactly on `v4.0.13`, but `--exact-match` fell back to the nearest annotated tag (`v4.0.13-rc1`, 1 commit back) and appended the `-00001-g<hash>` suffix.
+
+- **Fix (local clone only):** re-created `v4.0.13` as an annotated tag on `c2e3f87b` in `~/Projects/microchip/at91bootstrap` (`git tag -d v4.0.13 && git tag -a v4.0.13 -m … c2e3f87b`). Now `git describe --exact-match` → `v4.0.13`, `SCMINFO` is empty. Not pushed (no origin write access); a `fetch --tags --force`/re-clone will restore the lightweight tag and the suffix returns — re-annotate if so.
+- **Rebuilt all four** boot binaries from the same source/defconfigs into `binaries/` — only change vs prior build is the embedded version string; same DDR/clock/`JUMP_ADDR`/source commit. Banners now read `AT91Bootstrap 4.0.13`. Filenames unchanged (`VERSION` was always `4.0.13`), so `load-ram.sh` / SAM-BA `.bat` scripts need no edits. SD `CONFIG_IMAGE_NAME=harmony.bin` override re-applied and verified.
+- **Validated:** `none` (JTAG load-to-RAM) variant confirmed working on hardware. NAND/QSPI/SD not yet re-flashed/re-tested (banner-only change, no functional risk expected).
+
+### 2026-06-09 — Display refresh 50 → 55 Hz after Curiosity Hybrid port (yellow-tinge re-test)
+
+With marvin ported to the SAM9X75 Curiosity Hybrid (same 10.1″ panel + LVDS cable), re-ran the yellow-tinge frame-rate sweep to see whether the new board's transmit-side SI bought higher refresh than the original board's 50 Hz.
+
+- **Result: cliff moved up ~5 Hz.** 60 Hz → only *mild* overlay yellow (was *severe* on the original board); 57 Hz → clean at rest but slight yellow inducible by handling the cable at the connector (right at the new edge); **55 Hz → clean and handling-robust**. New cliff edge ~57–58 Hz vs the original 52–54 Hz window.
+- **Production = 55 Hz** (`Mul=37, Frac=2738881, DivPMC=2` → 451.84 MHz LVDS / 64.55 MHz pixel / 55.00 Hz). ~3.5% margin under the 57 Hz edge, +5 Hz over the old 50 Hz. Set in both the MCC source (`le_gfx_driver_xlcdc.yml`) and the emitted `plib_xlcdc.c`.
+- **MCC regen verified clean:** the 55 Hz `MUL/FRACR/DIVPMC` came through from the yml, and the datasheet-optimal `PMC_PLL_ACR = 0x12023010` (re-apply patch #2) survived — the regen only touched the XLCDC clock component, so no other re-apply patches were clobbered.
+- Improvement is entirely transmit-side (board routing/connector/power, plus the USB-host EMI aggressor is gone on the Hybrid); the receiver (panel + cable) is unchanged, so the root cause and overlay-only / yellow-on-white / cable-handling signature are all as documented. A better-rated cable remains the lever for a robust 60 Hz (not pursued).
+- Doc: `yellow_tinge.md` got a current-status banner + new §9 (Hybrid sweep, 55 Hz production values); original-board §1–§8 kept as historical record.
+
+### 2026-06-09 — Phase 1 dev workflow: no-power-cycle reload SOLVED (correct nSRST reset config), VS Code debug, macOS microSD
+
+Built out the rest of the macOS-native dev/program workflow on top of the proven JTAG load-to-RAM (plan: `.claude/plans/wondrous-bubbling-waffle.md`). The headline: **the dev loop is now repeatable with NO physical power-cycle** — `./load-ram.sh`, edit, rebuild, `./load-ram.sh` again. Validated on hardware (twice back-to-back from a running marvin; both booted, MMU on, pc advancing in DDR).
+
+**Root cause — the `sam9x75-chybrid.cfg` reset config was broken; "DDR3L isn't re-runnable / needs a power-cycle" was a red herring.** Our hand-rolled nSRST config (`-oe 0x0020` only, `srst_open_drain srst_nogate`, `adapter srst delay 300`, no `pulse_width`) **did not actually reset the SoC** — `reset halt` left a running marvin executing (`pc=0x23f245b0, MMU enabled`). Because the chip was never reset, at91bootstrap then ran against marvin's live MMU/clocks → DDR "scrambled", Undefined-Instruction at `pc=0x20`, etc. Every "DDR not re-runnable" symptom traced back to this. **Greg pushed to use the working Microchip class-material config** (`test_sam9x75_hybrid_curiosity/sam9x75.cfg`); aligning to it fixed everything.
+
+**The fix — adopt the example's reset machinery:** push-pull `nSRST -data 0x20 -oe 0x20` (the example's `nTRST` on AD4 is omitted — AD4 is N/C per the schematic), `reset_config srst_only srst_pulls_trst`, and crucially **`adapter srst delay 500` + `adapter srst pulse_width 500`** (a real 500 ms reset pulse — our asserts had been far too short, and `-oe`-only never drove AD5 at all). Plus a **`reset-init` event** that disables the watchdog (`WDT_MR.WDDIS`) and MMU/caches, and a **work area at SRAM `0x300000`** (fixes the `No working memory available` warning → fast `load_image`). With this, **standard `reset init` reliably resets a running marvin** and `marvin_load_ram` is single-session: `reset init` → at91bootstrap (DDR up fresh, since reset re-inits the MPDDRC) → load marvin → run. No software-reset hack needed.
+
+- **Dead ends discarded this session (retracted):** (1) a `soft_reset_halt`/preserve-live-DDR reload (`reload-ram.sh`/`marvin_reload_ram`) — core-only, didn't stop DMA, first DDR write hit `SYSCOMP & DBGACK` timeout; (2) a software-PROCRST (`RSTC_CR=0xA5000001`) two-session loop — it *did* work, but was an over-complicated workaround for the broken reset config; removed once `reset init` worked. Also wrong along the way: "nSRST can't reset a running marvin / adapter-side limitation" — it was purely the missing `pulse_width`/push-pull config; once corrected, nSRST resets fine. The `No working memory … falling back to memory writes` warning was benign (now gone with the work area).
+- **`load-ram.sh`** — single OpenOCD session: `marvin_load_ram` (`reset init` → at91bootstrap → load + run marvin). Repeatable, no power-cycle. `reset` / `reset halt` / `reset init` now also work in plain debug sessions (resets a running marvin, like the board button). **Gotcha (validated):** there must be **no bootable medium** present — JP3/JP4 out AND no bootable microSD. With a card in, RomBOOT boots SD (highest priority) before `reset init`'s early-halt catches the core, and the load fails (caught in Abort mode, cp15 timeouts, garbage pc). Remove the card → clean.
+- **Overlay-flicker-under-load-ram — ROOT-CAUSED & FIXED.** Symptom: JTAG-loaded marvin's CV overlay rings (`draw_overlay`, `cv_marvin_v1.c`) flickered intermittently (worse on repeated/warm loads, occasionally even the 1st; whole-screen blanked at times) while hardware-DMA video looked fine — and **never** on SD boot, *same marvin binary*. **Root cause:** `marvin_load_ram` broke at the return of `hw_init()`, stopping the init-and-stop bootstrap *mid-`main()`* and skipping the rest of its low-level init (the slow-clock `osc32` switch, etc.). The bkptnone bootstrap is *designed* to run `main()` to completion and stop at crt0's own `bkpt` (`CONFIG_BKPT_NOTIFY_DONE`) — the intended "init done, debugger take over" handoff (effectively what the SD/MPLAB path does). **Fix:** drop the `hw_init`-return breakpoint — `resume` the bootstrap and let *its own* `bkpt` halt us (full init complete), then load marvin. Validated clean across 10+ repeated loads with the display connected. **Ruled out along the way (all wrong):** JTAG-transfer corruption (slowest verified writes still flickered); clock drop (`CPU_CKR=0x302`/`MCKR=0x01` matched a good baseline even on a flickering instance); marginal-DDR-from-early-halt (a breakpoint *at* `hw_init`-return still flickered); PMIC config (MCP16501TA has none in at91bootstrap — OTP defaults); `fast_memory_access`/6 MHz TCK (a real reliability risk, but not this bug); JP3/JP4 RomBOOT-probe (jumpers were already out). **Testing confound:** an inserted SD card made `reset init` catch the SD-booted marvin (System mode) instead of the ROM monitor → invalid runs; keep SD out + JP3/JP4 out for load-ram. **Speed:** with the fix in, DCC (completion-checked; `fast_memory_access` left OFF as unsafe) at 6 MHz gives a ~4 s load (vs ~22 s plain).
+- **Known-provenance bootstrap (built from source).** Replaced the mystery Feb-build `binaries/at91bootstrap.elf` with `binaries/sam9x7-boot-none-4.0.13.elf`, built from at91bootstrap v4.0.13 `sam9x75_curiosity_pro_bkptnone_defconfig` (`CONFIG_INIT_AND_STOP=y`, `CONFIG_DDR_W632GU6NB12I`). The cHybrid maps to the `curiosity_pro` variant (red LED on PC14 per schematic; `pro`=PC14, plain `curiosity`=PC19; DDR identical). Build: `make CROSS_COMPILE=arm-none-eabi- sam9x75_curiosity_pro_bkptnone_defconfig && make` (ArmGNU 15.2 at `/Applications/ArmGNUToolchain/...`); source at `~/Projects/microchip/at91bootstrap`. `marvin_load_ram` runs the bootstrap to completion and lets its own `BKPT_NOTIFY_DONE` `bkpt` (in crt0) halt it — i.e. after the *full* `main()` init, not at `hw_init`'s return (see the overlay-flicker entry above for why that distinction matters). No `objdump`/`bl hw_init`/manual-breakpoint machinery.
+- **Production bootstraps built (NAND/QSPI/SD).** Built all three media bootstraps from v4.0.13 into `binaries/` (known provenance, replacing the unverified `boot.bin`/`at91bootstrap.bin` which were removed): `sam9x7-nandflashboot-uboot-4.0.13.bin` (`pronf`), `sam9x7-dataflashboot-uboot-4.0.13.bin` (`prodf_qspi`), `sam9x7-sdcardboot-harmony-4.0.13.bin` (`prosd`). The `*_uboot_*` configs are NOT u-boot-specific — confirmed `CONFIG_JUMP_ADDR=0x23F00000` (= marvin's run address), so marvin (`harmony.bin`) is the second stage. NAND/QSPI place the app raw at `0x40000` (`IMG_ADDRESS`), filename irrelevant (kept stock `-uboot-` name); **SD loads it from FAT by `CONFIG_IMAGE_NAME`, which we override from the stock `u-boot.bin` to `harmony.bin`** (Harmony MPU convention) — at91bootstrap then auto-names the output `-sdcardboot-harmony-`. `make-sdcard.sh` writes the SD bootstrap as `boot.bin` + marvin as `harmony.bin`. Updated `nand_flash.bat`/`qspi_flash.bat` `writeboot` targets. Build recipe (incl. the SD `IMAGE_NAME` override) in `binaries/README.md`.
+- **Boot order (SAM9X75 ROM, from the Microchip boot-process page):** sequential fall-through **SDMMC0 → SDMMC1 → QSPI → NAND → SPI(FLEXCOM5)**, first valid image wins, customizable only via the OTP Boot Configuration Packet. So SD outranks NAND (good for an SD override/recovery with NAND resident), and **QSPI must be empty/disabled for NAND to boot** (it's checked first). The JTAG dev loop pulls JP3+JP4 and uses no card → ROM falls through to the SAM-BA monitor.
+- **Flashing paths:** NAND/QSPI need SAM-BA on Linux/Windows (macOS has none); SD is fully macOS-native via `make-sdcard.sh` (and is highest boot priority, so it's the quickest standalone path). macOS-native NAND/QSPI over JTAG is open R&D (OpenOCD `at91sam9` NAND driver, or load u-boot via `load-ram` and flash from its console). **BOSSA is not applicable** — it programs Cortex-M on-chip flash over the SAM-BA protocol, not SAM9 external NVM, and not over JTAG.
+- **VS Code debugging — `.vscode/launch.json` + `.vscode/tasks.json`.** A background task starts `openocd -f firmware/marvin/openocd/sam9x75-chybrid.cfg` (gdb server `:3333`); two attach configs (Microsoft **cppdbg** and **Native Debug**/`webfreak.debug`) attach `arm-none-eabi-gdb` (Arm GNU 15.2, `/opt/homebrew/bin`), load symbols from `out/marvin/default.elf`, and stop the server on exit. Debugger only *attaches* — marvin is loaded via `load-ram.sh`. gdb-CLI equivalent in the README.
+- **Bootable microSD — `openocd/make-sdcard.sh`.** macOS-native: FAT-format the card (MBR) and write the SD bootstrap as `boot.bin` (what the ROM reads) + marvin as `harmony.bin` to root (SAM9X75 ROM SD-boot layout). Refuses a fixed internal disk and requires retyping the disk id before erasing. **VALIDATED end-to-end on hardware:** prepared a card on macOS (`/dev/disk4`), inserted it, power-cycled → marvin boots standalone (DBGU banner confirmed), no JTAG / no SAM-BA / no Linux. This is the first fully-standalone boot of marvin from our own known-provenance bootstrap. (Bootstrap/app filenames finalized in the production-bootstraps entry below.)
+- **Docs:** `openocd/README.md` updated (repeatable load loop, reset config, VS Code/gdb debug, microSD). **No marvin source changes** this entry (the maXTouch absent-panel fix landed earlier, commit 45a675a).
+- **SD reset-button reconciliation (Greg's question):** resolved — the button always worked because it's a real reset; our JTAG reset just wasn't configured to actually drive/hold nSRST. With the correct config the FTDI resets exactly like the button.
+- **Phase 2 (separate session):** verify/rebuild a known-good at91bootstrap per medium; macOS-native NAND via OpenOCD `at91sam9` (R&D); QSPI via SAM-BA on Linux/Windows.
+
+### 2026-06-09 — T1S + PoDL link direction documented
+
+- Recorded a direction (not yet built) to move the fretboard link from FLEXCOM2 USART to **10BASE-T1S + dumb PoDL** (LAN8651B1 MAC-PHY each end). Since marvin is bare-metal it gets no free netdev — plan is a shared portable OA TC6 SPI driver also used on the fretboard PIC32CM. `FretboardLink_*` API and perf-log records stay put; only the transport under `fretboard_link.c` swaps (SPI + TC6 chunks + 14-byte L2 header over the existing frames). Motivation: PoDL (power+data on one pair), robustness, PLCA multidrop, Microchip T1S+PoDL system demo — not bandwidth.
+- System-level in [`../../../SPEC.md`](../../../SPEC.md) §5/§6/§7; engineering detail in new [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). Open item added above; mirrored in the fretboard journal. **No code changes.**
+
+### 2026-06-08 — JTAG program-over-RAM bring-up (Phase 1, IN PROGRESS — blocked on DDR init)
+
+Goal: load marvin into DDR over JTAG and run it without the microSD card (dev loop), as step 1 toward programming on-board NAND (Phase 2). Plan approved (reuse the validated at91bootstrap to init DDR, then load marvin and jump). Substantial groundwork done; **not yet working end-to-end** — two approaches each blocked on a board-specific bring-up detail. Findings below are the state to resume from.
+
+**Hardware/boot facts established:**
+- marvin runs from DDR (`.text` @ `0x23F00000`, entry `0x23F00000`); it does **not** init DDR (assumes bootstrap did). `out/marvin/default.elf` loadable size ≈ 517 KB.
+- SoC is **SAM9X75D2G = in-package DDR3L** (Winbond W632GU6NB12I, 2Gbit; `ddramc.c:81` in linux4sam/at91bootstrap). DDR init = PLLA + MPDDRC JEDEC sequence (`ddram_init`→`ddr3_sdram_initialize`) — too large/fragile to hand-port to OpenOCD TCL, hence reuse boot.elf.
+- **No SD card present**, but the board **auto-boots a factory/example image from on-board flash (NAND/QSPI)** which DOES init DDR and runs an app (caught it running in SRAM/Thumb, MMU off, I-cache on).
+- at91bootstrap artifacts live in `firmware/marvin/binaries/`: `at91bootstrap.elf` (symbols: `hw_init` @ 0x300240, `ddram_init` @ 0x300e64, entry 0x300000, links to SRAM 0x300000, ~4 KB). NAND/QSPI are flashed via SAM-BA (`nand_flash.bat`/`qspi_flash.bat`: `sam-ba -b sam9x75-curiosity -a nandflash -c writeboot:at91bootstrap.bin` then `write:harmony.bin:0x40000`).
+
+**What works (validated, kept):**
+- `sam9x75-chybrid.cfg` gained a **robust reset** (slow clock 100 kHz during reset + `reset-deassert-post` retry-halt loop). Needed because the board auto-boots fast → a single post-reset halt is racy. Reliably catches the core now.
+- I-cache must be **invalidated** (`arm mcr 15 0 7 5 0 0`) after `load_image`, else stale lines from the running factory app make freshly-loaded code crash. CPSR must be forced to ARM/SVC (`reg cpsr 0x000000d3`) since the factory app runs Thumb. `arm mrc`/`arm mcr` exist but `arm mrc` does **not** return its value to Tcl (prints only) — can't read-modify-write SCTLR easily; invalidate-only works.
+- The PLL/clock switch inside `hw_init` causes a **transient garbage JTAG sample** (a single halt-poll reads cpsr 0xffffffff / pc 0xffffffff); the retry-halt loop rides through it. Don't trust a single halt during clock changes.
+- Loading marvin into (already-live) DDR works: 517 KB @ ~150 KiB/s in ~3.4 s at `adapter speed 6000` + `arm7_9 dcc_downloads/fast_memory_access enable`.
+
+**Blocker A — boot.elf reuse:** after `reset halt` → load at91bootstrap.elf → invalidate I-cache → `resume 0x300000`, it free-runs but **hangs in a delay/console loop in `hw_init` BEFORE `ddram_init`** (pc cycles ~0x300c90 TC-timer-delay loop / 0x300cd4 `usart_putc` TXRDY-wait / 0x300d48 `usart_puts`). DDR never gets initialized (DDR reads come back scrambled). Likely the banner-print console UART or the TC timer isn't clocked when launched via JTAG (vs RomBOOT). Needs the at91bootstrap console/timer/clock config, or a bootstrap built without the banner / as DDR-init-only.
+
+**Blocker B — hot-load into live DDR (factory image already inited DDR):** `init` → retry-halt the factory app (DDR up) → invalidate I-cache → `load_image marvin` → `resume 0x23f00000` gets marvin **running**, but it takes an **Undefined Instruction exception early** (lands at undef vector pc=0x20, undef mode). Residual factory CPU state (MMU remap of 0x0→SRAM with factory vectors, I-cache, or coprocessor state) corrupts marvin's startup before it installs its own vectors. Also risky: factory app's DMA may still run after a core-only halt.
+
+**Files in `firmware/marvin/openocd/` (Phase 1, NOT yet working):** `load-ram.cfg` (`marvin_load_ram` proc: reset halt → run boot.elf to hw_init return → load marvin → jump; currently blocked by Blocker A) and `load-ram.sh` (resolves ELF paths + hw_init addr, drives OpenOCD). The `sam9x75-chybrid.cfg` retry-halt change is good and worth committing independently. `sam9x75-example.cfg` is a reference config pulled from another project (nTRST on AD4 is wrong for the cHybrid; otherwise informed the retry-halt/wdt-disable ideas).
+
+**Root cause (refined):** at91bootstrap source is in-repo at `firmware/marvin/at91bootstrap/` with `.config`: console = **DBGU (index 0)**, banner ON, 24 MHz crystal, MCK 266 MHz, DDR3L `W632GU6NB12I`, LOAD_AND_JUMP. The `hw_init` "hang" is actually the core **crawling on the 32 kHz slow clock** — `lowlevel_clock_init` (`clk-common.c`) switches MCK to slow clock, then PLLA is supposed to lock and MCK switch to it; PLLA isn't ending up as MCK source, so the PIT-based `wait_interval_timer` (clocked off MCK) and everything else runs at ~32 kHz → looks hung. Confirmed: across resets the catch PC scatters through crt0 → `hw_init` → `usart_init`, always crawling; after 800 ms it's only reached crt0 `0x3000a0`. The reason PLLA doesn't come up: at91bootstrap is being launched from the **factory image's already-running state** (PLL locked, MCK 266, peripherals/DMA live, I-cache hot, vectors remapped), not RomBOOT's clean post-reset state it assumes. Catching a clean ROM state is racy because the factory image (on QSPI `SST26VF064BA` / NAND) auto-boots fast.
+
+**Conclusion / fork (needs product decision, not more debugging):** a clean boot state is required. Options: (1) force the ROM **SAM-BA monitor** (erase/disable the boot flash, or a boot-disable strap if the board has one) → clean clocks → at91bootstrap-via-JTAG works → DDR up → load marvin; (2) **reflash the board's flash with the user's own at91bootstrap + marvin via SAM-BA** (USB-A/Type-C J1; SAM-BA is Linux/Windows only, not macOS) — this directly achieves the standalone-boot goal and replaces the factory image with a known-clean stack, after which the JTAG load-to-RAM loop would start from a clean state. Board bring-up is documented as SAM-BA-over-USB-A (user guide §3.4.1). The pure-JTAG-from-dirty-state path (scrub PMC + CPU state in OpenOCD) is possible but fragile and was deprioritized.
+
+**Update — CS jumpers pulled (JP3=NAND CS, JP4=QSPI CS), big progress:** with both flash chip-selects disconnected the auto-boot is suppressed and reset lands in a much cleaner ARM/SVC bootstrap state (not the Thumb factory app). From that cleaner state the **marvin JTAG-load + run MECHANISM works end-to-end**: `reset halt` → `reg cpsr 0x000000d3` → invalidate I-cache (`arm mcr 15 0 7 5 0 0`) → `load_image default.elf` (517 KB @ ~150 KiB/s, `adapter speed 6000` + `arm7_9 dcc_downloads/fast_memory_access enable`) → invalidate I-cache → `resume 0x23f00000`. marvin's cstartup runs to completion (**MMU + caches enabled**, executing in DDR). DDR round-trips perfectly (0x20000000/0x23f00000/0x25000000). **Remaining issue:** marvin parks in an infinite loop in `vApplicationMallocFailedHook` (`0x23f03fbc`) — a FreeRTOS **heap allocation fails**, i.e. the DDR/clock environment from the *hijacked* boot isn't the full one marvin expects (likely DDR not fully sized/clocked the way a real at91bootstrap boot leaves it, or clocks off). Also: once marvin is stuck (MMU on, IRQ masked), warm `reset halt` no longer cleanly resets it — a **power-cycle** is needed for a guaranteed-clean start. **Next:** power-cycle with both CS jumpers still out → RomBOOT finds no boot media → ROM SAM-BA monitor (clean: MMU off, RomBOOT clocks, no app/DMA). From that monitor state, run our at91bootstrap so it does the *full* clock+DDR init (no crawl, since clocks start clean) → then load marvin → it should boot with the correct environment and not hit malloc-fail. The working load sequence above should become `load-ram.cfg`/`load-ram.sh` once the clean-boot prerequisite is nailed.
+
+**Update 2 — CS jumpers do NOT suppress the factory boot:** pulled both JP3 (NAND CS) + JP4 (QSPI CS) and **power-cycled**; the board *still* auto-boots the factory image (reset lands on a Thumb app at `0x0030de40`). So those jumpers don't gate the actual boot source (factory image boots from something else, or removing the jumper floats CS rather than deselecting). We still can't get a clean ROM/monitor state via JTAG, so our at91bootstrap can't do a deterministic full init. **Two open problems remain, separable:** (1) **clean-state**: how to stop the factory auto-boot (find real boot source / boot-mode strap, or just reflash the board's flash with the user's own at91bootstrap+marvin via SAM-BA on Linux/Windows — the destination goal anyway, which yields a matched clean env); (2) **malloc-fail**: even on a "good" catch (bootstrap mid-run, DDR up) marvin boots into FreeRTOS but its heap alloc fails — likely because the loaded `out/marvin/default.elf` expects the clock/DDR/heap environment of *its own* matched at91bootstrap, not the factory bootstrap's. Both point to the same real fix: **boot the board from the user's own matched at91bootstrap** (via SAM-BA reflash, or by solving clean-state so our bootstrap runs). Session boundary reached after extensive iteration; mechanism (JTAG load + I-cache invalidate + ARM-state + retry-halt + fast load) all proven and in `load-ram.cfg`/`sh`.
+
+**Update 3 — CORRECTION: the jumpers DO work; we now have a clean state.** Board memories are only NAND (MX30LF4G28AD) + QSPI (SST26VF064BA) + microSD (user guide §3.3); no eMMC/other flash. With JP3+JP4 out and no SD, there is **no boot source**, so RomBOOT sits in the **SAM-BA monitor** (confirmed: accessing DDR at 0x20000000 *hangs* → DDR is NOT initialized; the Thumb code at `0x0030de40` is ROM monitor code in SRAM, not a "factory app" — that was a misread). So the earlier "marvin booted into FreeRTOS" run was running on DDR left initialized from *before* the power-cycle. **Now genuinely clean.** Remaining difficulty is purely getting our at91bootstrap to free-run reliably via JTAG from this monitor state to init DDR — batch `openocd -c` chains are a poor tool here (they truncate/hang, e.g. on an uninitialized-DDR access), making iteration slow. **Recommended paths:** (a) the board is *now in the SAM-BA monitor* — the supported tool for exactly this state — so SAM-BA (Linux/Windows, over USB-A or the channel-C DBGU) can init DDR + load/flash directly; or (b) a *live* interactive OpenOCD+gdb session (vs one-shot batches) to single-step at91bootstrap and pin down the free-run fault. Note: single-stepping at91bootstrap's crt0 executes correctly; only free-run faults — likely a residual debug/breakpoint or cache/vector state, tractable in a live session.
+
+**Update 4 — BREAKTHROUGH: the "free-run crash" was JTAG desync, fixed by adaptive clocking (RTCK).** Set up a persistent OpenOCD server (`openocd -f sam9x75-chybrid.cfg` in background) driven interactively over telnet via `nc localhost 4444` (strip telnet bytes with `LC_ALL=C tr -cd '[:print:]\n'`; keep each experiment in ONE nc session — across sessions the WDT can reset the target after ~16 s). Root cause of the prior "free-run faults / cp15 timeout / pc=0xffffffxx": at fixed TCK, OpenOCD loses sync when at91bootstrap's `lowlevel_clock_init` switches MCK — it was reading garbage, not a crashed core. **`adapter speed 0` (RTCK adaptive, AD7) fixes it** — OpenOCD tracks the core through clock changes. **Working recipe (verified)** from the clean ROM-monitor state: `reset halt` → `adapter speed 0` → `reg cpsr 0x000000d3` → `load_image ../binaries/at91bootstrap.elf` → `arm mcr 15 0 7 5 0 0` (inval I-cache) → `bp 0x30021c 4` (the return of `hw_init`, i.e. instr after `bl hw_init` in `main` @0x300218 — DDR init done, before banner/media-load) → `resume 0x300000`. Halts cleanly at `0x30021c`. **Remaining issue:** DDR still reads scrambled at that point (`a5a5a5a5`→`5678a5a5`: read = my-low16 | next-word-low16<<16 — an addressing/training fault). Strong suspicion: `ddram_init` (DDR3L ZQ-cal + mode regs) has been re-run many times this power session and isn't cleanly re-runnable on an already-initialized MPDDRC; needs a **fresh power-on**. NEXT: power-cycle, restart the server (FTDI is USB-bus-powered, may or may not re-enumerate depending on how power is cycled), do ONE clean boot.elf→0x30021c run, verify DDR; if clean, `load_image default.elf` + `arm mcr 15 0 7 5 0 0` + `resume 0x23f00000` should boot marvin with the correct env (no malloc-fail). Bp address `0x30021c` from `xc32-objdump -d`: `main`@0x300214, `bl hw_init` @0x300218 → returns 0x30021c.
+
+**Update 5 — JTAG LOAD-TO-RAM WORKS (infrastructure complete); remaining issue is a marvin heap config, not bring-up.** From a **fresh power-on** (jumpers out → ROM SAM-BA monitor, MPDDRC uninitialized), one clean run inits DDR correctly: `reset halt` → `adapter speed 0` → `reg cpsr 0x000000d3` → `load_image binaries/at91bootstrap.elf` → `arm mcr 15 0 7 5 0 0` → `bp 0x30021c 4` → `resume 0x300000` halts at `0x30021c` with **DDR verified clean** (`0x20000000`←`0xa5a5a5a5` round-trips). Note: at91bootstrap's `hw_init` also *disables the WDT*, so once halted at `0x30021c` the target is stable indefinitely (no more inter-command WDT resets). Then, continuing from there (no reset, DDR stays up): `load_image out/marvin/default.elf` + `arm mcr 15 0 7 5 0 0` + `resume 0x23f00000` → **marvin boots into FreeRTOS** (MMU+caches on, running in DDR). Confirmed the earlier scramble was the repeated-`ddram_init`-without-power-cycle issue: DDR3L init must run once on a fresh MPDDRC.
+- **The malloc-fail is NOT a heap/code regression — it's the disconnected display/maXTouch panel.** marvin parks in `vApplicationMallocFailedHook` (`heap_1`, no-free; `configTOTAL_HEAP_SIZE=40960`; `ucHeap`@0x24091288; `xNextFreeByte`=0x9ff0/40,944 at the fault). The stack at the fault shows it inside **`DRV_MAXTOUCH_Tasks`/driver init**. Root cause (confirmed by Greg): the **display + maXTouch touch panel is not physically connected**, so the maXTouch driver can't read a valid object-table over I²C (FLEXCOM8), reads bogus values, and over-allocates — and `heap_1` never frees, so it accumulates to exhaustion. Ruled out: code regression (nothing relevant changed since the known-good 35b36e6), marvin's own queues (all `xQueueCreateStatic` = static, not heap), task count (tasks.c *shrank* 40 lines — USB Host task removed), and the ELF load (verified equivalent to harmony.bin, .bss zeroed by cstartup). **With the display/maXTouch connected (or the maXTouch driver disabled for headless bring-up), marvin should boot normally.** This also *validates the JTAG load-to-RAM flow end-to-end*: marvin runs cstartup, MMU/caches, FreeRTOS, and driver init — only tripping on absent hardware. **Infrastructure (DDR init + load + boot via JTAG, all macOS/OpenOCD) is DONE and PROVEN.**
+- **Operational prerequisites for the dev flow:** (1) both CS jumpers (JP3 NAND, JP4 QSPI) OUT so the board sits in the ROM monitor (clean, DDR uninit); (2) power-cycle for a fresh MPDDRC before a DDR-init run (DDR3L init not cleanly re-runnable); (3) `adapter speed 0` (RTCK) is mandatory — fixed TCK desyncs through at91bootstrap's clock switch; (4) `arm mcr 15 0 7 5 0 0` (I-cache invalidate) after each `load_image`. Driving via a background `openocd` server + `nc localhost 4444` works well on macOS; the FTDI is USB-bus-powered so a power-cycle that drops USB kills the server (restart it).
+
+### 2026-06-08 — FT4232H EEPROM: identity + driver flags (macOS ignores VCP bit)
+
+Follow-on to the JTAG bring-up below. Tried to stop the JTAG channel (A) and the two unconnected channels (B/D) from showing up as `/dev/cu` serial ports by setting their EEPROM driver to D2XX, keeping only the DBGU (C) as VCP.
+
+- **Found the EEPROM blank.** `ftdi_eeprom --read-eeprom` errored with a checksum error; a raw `ftdi_read_eeprom_location` loop showed all 256 words = `0xFFFF`. So the 93LC46B (confirmed present on sch sheet 14, U9) was unprogrammed → FT4232H ran on defaults ("Quad RS232-HS", all 4 channels VCP).
+- **Confirmed the channel map from the schematic** (sheet 14, `SAM9X75 cHybrid-REV1_SCH.PDF`): A=JTAG, C=DBGU (R149/R151 populated), B+D unconnected (B's `DBGU_*_FTDI` bridge resistors are DNP). I initially misread the `pdftotext` extraction and tied DBGU to B; Greg corrected from the schematic — it's C.
+- **Authored + flashed** [`ft4232h-chybrid.conf`](../ftdi/ft4232h-chybrid.conf) (A/B/D=D2XX, C=VCP; `Microchip`/`SAM9X75 cHybrid`/`W16-2026-359`). Validated with `--build-eeprom` dry-runs + a `cha_vcp` true/false byte-diff (bit 3 of EEPROM byte `0x00`) before writing. Write succeeded (`FTDI write eeprom: 0`), read-back confirmed the image on-chip, and the device re-enumerated with the new strings/serial without a replug.
+- **Result:** macOS 26 (Tahoe) still shows **4** ports (`/dev/cu.usbserial-W16_2026_3590..3`) — `AppleUSBFTDI` does not consult the per-channel VCP flag. Port-hiding is not achievable on macOS this way; kept the flash for the identity/serial benefit (see decision log). JTAG re-verified working post-flash (halt at pc≈0x0030dc40).
+
+- **Flashed all three boards** with unique serials and JTAG-verified each: `W16-2026-359`, `W16-2026-430`, `W16-2026-413` (all halt cleanly, TAP `0x0792603f`).
+- **Tooling, split by concern:** EEPROM programming lives in `firmware/marvin/ftdi/` (`ft4232h-chybrid.conf` base image + `flash-eeprom.sh <SERIAL>`, which overrides the serial and flashes the connected board — run one board at a time since `ftdi_eeprom` selects by VID/PID); JTAG debug lives in `firmware/marvin/openocd/` (`sam9x75-chybrid.cfg`, supports `-c "set FTDI_SERIAL <serial>"` to pick a specific board via `adapter serial`). Each folder has its own README. Scratch `ft4232h-read.conf` + built `.bin` were removed; host-side libusb/libftdi probes (`/tmp/usblist.c`, `/tmp/eepread.c`) were one-offs.
+
+**macOS sandbox gotcha (carried over):** all `ftdi_eeprom`/`openocd`/libusb calls must run outside the Claude command sandbox — it blocks USB enumeration.
+
+### 2026-06-08 — JTAG debug bring-up on the Curiosity Hybrid (OpenOCD + onboard FT4232H)
+
+Goal: program/debug the SAM9X75 over the board's onboard FT4232H JTAG (channel A) instead of treating it as four serial ports. The board enumerates as FTDI "Quad RS232-HS" (`0403:6011`) with all four channels grabbed by Apple's in-kernel FTDI driver as `/dev/cu.usbserial-100..103`; the worry was that a driver swap would be needed on macOS (26.5.1, Apple Silicon).
+
+- **pyOCD ruled out**, OpenOCD chosen — SAM9X75 is ARM926EJ-S, and pyOCD is Cortex-M/CMSIS-DAP only and can't drive raw FTDI MPSSE. Homebrew `openocd` 0.12.0 + `libusb`/`libftdi` already installed.
+- **Red herring diagnosed:** first `openocd`/`ftdi_eeprom` runs reported "device not found", and a libusb probe saw **0 USB devices total** even though `ioreg`/`system_profiler` listed the FTDI. Cause = the Claude Code **command sandbox blocks libusb USB enumeration**; `ioreg` works because it reads the IORegistry. Re-running the libusb probe with the sandbox disabled: device visible, `libusb_open` + `libusb_claim_interface(0)` both succeed. So Apple's driver does **not** block channel A — no driver swap, no EEPROM reflash.
+- **Wrote [`firmware/marvin/openocd/sam9x75-chybrid.cfg`](../openocd/sam9x75-chybrid.cfg)** (FTDI channel 0, MPSSE JTAG pinout, `arm926ejs` target, `reset_config none`). Probe result: TAP IDCODE `0x0792603f` (ARM926EJ-S), EmbeddedICE v6, 2 HW breakpoints, gdb server on :3333, **halt/resume verified** — CPU halted from internal SRAM (pc≈0x0030d8ec, Supervisor/Thumb, MMU off). OpenOCD logs a harmless `libusb_detach_kernel_driver ... LIBUSB_ERROR_ACCESS` warning, then proceeds.
+
+**Caveat for future sessions:** to run OpenOCD from a Claude `Bash` call you must disable the command sandbox (it blocks USB); from Greg's own terminal there's no sandbox, so plain `openocd -f firmware/marvin/openocd/sam9x75-chybrid.cfg` works.
+
+**Open follow-ups:** (1) nTRST/nSRST aren't in the MPSSE byte layout — fine for halt/resume, but reset-halt / flashing may need them wired (check the Hybrid schematic for the FT4232H ADBUS4-7 → reset mapping). (2) No SAM9X7-specific board cfg in mainline OpenOCD; MPLAB X bundles an OpenOCD with SAM9X7 support if richer target/flash support is wanted. (3) DDR/flash-load init scripts not written — current config only does core debug.
+
+### 2026-06-08 — fretboard link: USB CDC host → FLEXCOM2 USART (Curiosity Hybrid port)
+
+Part of the ongoing port to the **SAM9X75 Curiosity Hybrid** board. The Hybrid has no host-capable USB port, so the fretboard link can't ride the EDBG CDC-ACM bridge anymore. Greg's prior MCC work on this branch (`598d370` removed USB Host + moved display/MIPI I²C to FLEXCOM8; `3af09bc` added FLEXCOM2 for the guitar serial link, pins `PA13 GUITAR_TX` / `PA14 GUITAR_RX`) left the firmware mid-migration: FLEXCOM2 was initialized but unused while `app.c` still called `USB_HOST_BusEnable` and `fretboard_link.c` still drove the (no-longer-initialized) USB host stack. This session finished the cleanup.
+
+- **Regenerated FLEXCOM2 USART in ring-buffer mode** (RX ring 512 B ≈125 ms headroom at 4080 B/s, TX ring 64 B; baud 500 000 8N1 — `BRGR CD=66 FP=5`, 8× oversampling ≈ 500 312 Bd, 0.06 % error). Ring-buffer over the basic single-transfer plib so the continuous 240 Hz RX stream has no re-arm gap to overrun on.
+- **Rewrote [`actuator/fretboard_link.c`](../default/src/actuator/fretboard_link.c)**: dropped all `usb/*` includes, the CDC handle/attach/detach machinery, `open_cdc`/`close_cdc`, line-coding + DTR control-line-state, and the `s_rx_stream` stream buffer. TX = `FLEXCOM2_USART_Write(&byte,1)` (synchronous enqueue, no ack semaphore). RX = persistent read-threshold (`DS_FRAME_LEN`=17) notification → `rx_event_handler` (ISR) gives `s_rx_notify` → `fretboard_rx_task` drains the ring via `FLEXCOM2_USART_Read`/`ReadCountGet` and runs the unchanged `0x03 … 0xFC` resync + `PerfLog_EmitFretboardRaw`. `s_connected` → `s_link_up` (a wire is always "up"). Public API and all perf-log emits preserved.
+- **Did NOT emit `PERF_STAGE_FBL_READ_COMPLETE`** — first draft did, but [`perf_log_records.h:52`](../default/src/perf_log/perf_log_records.h#L52) shows that stage was deliberately removed (per-Read emit at 240 Hz doubled timeline markers and froze the live viewer; FRETBOARD_RAW carries its own `ts_counter`). Left it out.
+- **[`app.c`](../default/src/app.c)**: removed `#include "usb/usb_host.h"`, `app_usb_host_event_handler`, the `VBUS_AH_PC27/PC31` enables, `USB_HOST_EventHandlerSet`, and `USB_HOST_BusEnable`. `FretboardLink_Initialize` stays in the same spot.
+- **[`fretboard_link.h`](../default/src/actuator/fretboard_link.h)**: header comment rewritten (USB CDC host → FLEXCOM2 ring-buffer UART).
+
+**Verification:** both changed TUs compile clean with the project's XC32 v4.60 invocation (via `compile_commands.json`, `-fsyntax-only`); no `USB_HOST`/`VBUS_AH` references remain in `app.c` or `actuator/`. Full link not run here (no `ninja`/`cmake` in this environment) — **needs a full MPLAB build + on-hardware bring-up to validate** (frame rate at the `fretboard_rx_task` debug line should read `parsed=240/s skipped=0`, and gameplay should actuate as before).
+
+**Re-apply patch list cleanup** (see "MCC-file modifications maintenance risk" below): patches **#5** (per-pin VBUS) and **#7** (`usb_host_cdc.c` `bInterfaceProtocol==0`) are **obsolete on the Hybrid board** — both are USB-host-only and there's no USB host anymore. Patch **#9** (UDPHS *device* multi-IRP) still applies — it's the perf-log device path, unaffected. Annotated inline below.
+
+**Also reconciled FLEXCOM6 → FLEXCOM8 doc drift this session.** The broader Hybrid port moved TC358743 control I²C (and display MIPI I²C) off FLEXCOM6/PA24-PA25 to FLEXCOM8 TWI/PB4-PB5 (`LCD_MIPI_SDA/SCL`, `DRV_I2C_INDEX_0` → `FLEXCOM8_TWI_*` in `initialization.c`; no source-code references FLEXCOM6 since the TC358743 driver uses the `DRV_I2C` handle). Updated `spec.md` §3.1 (bridge row) and §3.2 (peripheral table: FLEXCOM6 row → FLEXCOM8). The dated 2026-05-01/05-20 entries above and `journal-archive.md` are left as historical record (FLEXCOM6 was correct on the original Curiosity board). Patch #6 in the re-apply list annotated with the Hybrid peripheral name.
+
+### 2026-06-03 — cv_marvin_v1: wire PerfLog_EmitDetector
+
+First end-to-end export-ml run on hardware produced a 248-second CSV with **0 DETECTOR records** despite the firmware-side enabled-mask correctly carrying bit 3 (`PerfLog: mask=0x0000084a` = SESSION+DETECTOR+DROP+FRETBOARD_RAW). Root cause: `PerfLog_EmitDetector` was defined in [`perf_log.c:453`](../default/src/perf_log/perf_log.c#L453) and declared in [`perf_log.h:31`](../default/src/perf_log/perf_log.h#L31) but **never actually called from anywhere**. cv_marvin_v1's `detect_frame` was building a `detector_state_t`, posting it to the detector bus (which is why the actuator/timing pipeline runs and the game plays correctly), but skipping the perf-log mirror of the same per-frame decision.
+
+Fix: add the call at the bottom of [`cv_marvin_v1.c:detect_frame`](../default/src/detector/cv_marvin_v1.c) right after the bus push. Build `hold_dist[]` / `edge_dist[]` / `pressed_mask` / `edge_active_mask` from the same struct fields the bus message carried (`state.fret[i].raw_value`, `state.fret[i].confidence`, `s_pressed[i]`, `s_edge_active[i]`). The perf-log struct's hold/edge values already share the 0..65535 scaling with `detector_state_t.{raw_value, confidence}` per the schema comment, so no rescaling needed.
+
+Also confirmed via grep that all other `PerfLog_Emit*` declarations have at least one caller — this was a singleton miss.
+
+### 2026-06-03 — marvin-perf: prepend cached SESSION + DETECTOR_CONFIG to recordings
+
+First real export-ml run on hardware tripped over a missing `SESSION` record in the bin: the firmware emits SESSION exactly once per sink-attach edge, but the web-mode recorder doesn't start mirroring framed bytes to disk until the user clicks Record — usually well after attach. By then the SESSION has been received and consumed by the reader thread, but it's never written to the recording's bin, so the offline exporter can't recover `timer_freq_hz`.
+
+Fix in [`tools/marvin-perf/marvin_perf/web/live.py`](../../../tools/marvin-perf/marvin_perf/web/live.py): cache the framed bytes of each "prepend-worthy" record type into a `prepend_framed: dict[str, bytes]`. On `record_start`, write the cached bytes to the new bin in declared order before letting the live mirror take over. The two types covered today:
+
+- **SESSION** — strictly one-shot per attach; without it the bin has no `timer_freq_hz` anchor and downstream tools can't convert `ts_counter` to seconds.
+- **DETECTOR_CONFIG** — re-emits at ~1 Hz from cv_marvin_v1 ([cv_marvin_v1.c:374](../default/src/detector/cv_marvin_v1.c#L374)) but a sub-second capture might end before the next heartbeat. Carries cv sample coords + thresholds + colour weights — needed by the offline review UI to render STRIP overlays from frame 0 and useful for auditability of the detector configuration that produced the labels.
+
+Other 1 Hz heartbeats (`DROP`, `TASK_HIGHWATER`, `TASK_RUNTIME`) are cumulative counters; the second sample (1 second in) gives the same info, no prepend needed. Per-event records (`STAMP`, `DETECTOR`, `TIMING`, `STRIP`, `ACTUATOR`, `FRETBOARD_RAW`) are high-rate and self-contained. New types added in the future just need an entry in `_PREPEND_TYPES`.
+
+Also tightened the exporter so the first emitted CSV row's timestamp is **0.0** instead of `(first_row.ts_counter - session.ts_counter) / freq` — closer to SensiML's "elapsed since logging started" convention and friendlier when sessions span minutes between attach and record-start.
+
+The headless `marvin-perf record` path was never affected: opening the serial port toggles DTR, which fires the firmware-side SESSION emit, which lands in the very first frames of the bin.
+
+### 2026-06-02 — marvin-perf export-ml: SensiML CSV from a capture
+
+Step 2 of the Edge-AI training-dataset workstream. Capture pipeline was already wiring `PERF_REC_FRETBOARD_RAW` (240 Hz) and `PERF_REC_DETECTOR` (60 Hz) through marvin-perf's recording sink; this session adds the offline export that turns one of those captures into a labelled CSV ready for [MPLAB Machine Learning Development Suite](https://www.microchip.com/en-us/tools-resources/develop/mplab-machine-learning-development-suite) / SensiML Data Capture Lab.
+
+**Phototransistor placement note (clarified this session).** The fretboard sensors sit *upstream* of the strike line, at roughly the same vertical position as cv_marvin_v1's hold sense line. So the cv detector's `pressed_mask` aligns instantaneously with each fretboard ADC sample at the same moment in time — no need to time-shift labels backward. The downstream actuator (timing pipeline) owns sensor→strike-line propagation as a fixed deterministic delay. Edge-AI model's job is therefore just per-fret presence detection: "is a note at my sensor right now?" — five independent binary classifiers.
+
+**v0 export shape:**
+- One CSV per capture, one row per `FRETBOARD_RAW` record (~240 Hz).
+- Columns: `timestamp, ph_green, ph_red, ph_yellow, ph_blue, ph_orange, label_green, label_red, label_yellow, label_blue, label_orange`.
+- `timestamp` is decimal seconds since the SESSION record's `ts_counter`, matching the [MPLAB Data Visualizer SensiML CSV preset](https://onlinedocs.microchip.com/oxy/GUID-4FF3C687-0C30-4D21-82D0-5AE401E8BE9D-en-US-8/GUID-6D2B490A-A171-4C9F-8F48-68438016B07D.html).
+- `ph_*` are raw 12-bit ints (no normalisation; SensiML normalises during training).
+- `label_*` are five independent binaries from `pressed_mask`, broadcast forward by `frame_epoch` (one cv frame ~ four fretboard rows).
+
+**Implementation:**
+- New package [`tools/marvin-perf/marvin_perf/exporters/`](../../../tools/marvin-perf/marvin_perf/exporters/), single module `sensiml_csv.py` with `export_sensiml_csv(capture_path, out_path, *, strict=False) -> ExportStats`. Stream-decode (no all-in-memory load) walking SESSION → DETECTOR-cursor → emit-row-per-FRETBOARD_RAW. Stdlib `csv.writer`; no pandas dep added.
+- New CLI subcommand `marvin-perf export-ml <capture> --out <csv>` (`cli.py`). Mirrors the shape of the existing `record` / `set-mask` / `serve` subcommands; intentionally does NOT pull in the `viewer` dep group (no fastapi import) so it works in headless contexts.
+- `ExportError` raised if the capture has no SESSION record (no `timer_freq_hz` → no way to compute timestamps); partial output file is unlinked on failure.
+- New `build_fretboard_raw_payload` test helper in `tests/conftest.py`.
+
+**Edge cases handled:**
+- `FretboardRaw` records arriving before any `Detector` record — emitted with all labels = 0 by default; `--strict` drops them so every row carries a real label.
+- `frame_epoch == 0` records — included; the cursor's most-recent label still applies.
+
+**Tests:** 8 new in `test_export_sensiml_csv.py` covering header schema, row count, ADC-column passthrough, label step-function correctness, timestamp arithmetic, both pre-detector strict/non-strict paths, and the missing-SESSION error. 82/82 host pytests pass.
+
+**Out of scope (deliberate):**
+- `.dcli` segment-label sidecar — defer until segmentation policy is decided after first SensiML import attempt.
+- Per-fret CSV split — single combined CSV is simpler; user creates 5 SensiML projects each focused on one `label_*` column.
+- Edge prediction / windowed samples — Data Capture Lab does its own segmenting after import.
+- `_LoadedCapture` lift from `web/api.py` to a non-web home — kept as-is to keep this diff small; the exporter does its own streaming decode and avoids the cross-import.
+
+### 2026-06-02 — fretboard ADC stream into perf-log
+
+Step 1 of the Edge-AI training-dataset workstream. Goal: route fretboard 5-channel ADC samples through marvin's perf-log so an offline tool can join them with `cv_marvin_v1` detector output for labelled training data. (Edge-AI MCU = future device that has only the fretboard sensors, no HDMI; `cv_marvin_v1` is ground truth.)
+
+- New record `PERF_REC_FRETBOARD_RAW = 0x0B` (28 B framed): `perf_hdr_t` + `uint16_t adc[FRET_COUNT]` + `uint16_t reserved`. Schema purely additive — no `PERF_LOG_SCHEMA_VERSION` bump. Producer is `PerfLog_EmitFretboardRaw(adc, frame_epoch)` in [`perf_log.c`](../default/src/perf_log/perf_log.c); slot union and `record_size()` dispatch updated.
+- [`fretboard_link.c`](../default/src/actuator/fretboard_link.c) gains the RX path it never had: `s_rx_stream` (512 B static stream buffer), `s_rx_buf[64]` for the in-flight USB Read, a `READ_COMPLETE` handler that pushes bytes via `xStreamBufferSendFromISR` and re-arms via `arm_rx_read`, plus first-arm at the end of `open_cdc()` after `ControlLineStateSet` settles. `cdc_event_handler` was previously write-only.
+- New sibling task `fretboard_rx_task` (priority 5, 512-word stack, `PERF_TASK_FRETBOARD_RX = 17`). Pops bytes off the stream buffer, runs the same `0x03 … 0xFC` resync logic as [`tools/ds_monitor.py`](../../../firmware/fretboard/tools/ds_monitor.py), then on each valid 12-byte frame parses 5×u16 LE, reads `Video_GetFrameInfo()` for the current `frame_count`, and calls the new perf-log producer. Sibling rather than folded into `fretboard_link_task` because that task's blocking `xQueueReceive` shape doesn't compose with the stream buffer without bigger surgery, and the RX path is independent of the TX state machine.
+- Default-disabled at boot: this is a 240 Hz × 28 B ≈ 6.7 KB/s record type, follows the existing `STAMP/DETECTOR/TIMING/STRIP` posture. Host turns it on with `marvin-perf set-mask` when capturing.
+- Host decoder updated in lockstep: [`tools/marvin-perf/marvin_perf/records.py`](../../../tools/marvin-perf/marvin_perf/records.py) gets `FretboardRaw` dataclass + `RecordType.FRETBOARD_RAW` + `TaskId.FRETBOARD_RX`; [`decode.py`](../../../tools/marvin-perf/marvin_perf/decode.py) adds `_decode_fretboard_raw` and dispatch entry. 74 existing pytests still pass; manual roundtrip-decode of a synthetic frame returns the expected 5-tuple.
+
+**Out of scope this session** — `adc_fretboard` detector that publishes onto the detector-state bus (§4.2, M2; bus slot `DETECTOR_ADC_FRETBOARD = 1` already reserved); offline join/export tool that turns a perf-log capture into a training-friendly format (natural next step now that the records exist).
+
+**End-to-end verified on hardware later the same day.** With FRETBOARD_RAW + STAMP enabled, marvin parsed 240 frames per second exactly (one full second's worth between adjacent serial-log lines), `skipped=0` framing-error count, sensible ADC values (~3800–3970/4095, expected for "no note present" since the spec says lower = brighter sensor). Two real bugs surfaced during bring-up:
+
+1. **`xStreamBufferCreateStatic` size off-by-one.** First-cut code declared `s_rx_stream_storage[FBL_RX_STREAM_BYTES + 1u]` (the FreeRTOS `+1` byte) but then passed `sizeof(storage)` as `xBufferSizeBytes`, asking the impl for one byte more than it was given. Fixed to pass `FBL_RX_STREAM_BYTES` directly. Latent — would have shown up as a one-byte-end overrun under sustained pressure.
+2. **Host UI didn't auto-render a checkbox for the new type.** The `RECORD_TYPES` array in `tools/marvin-perf/marvin_perf/web/static/app.js` is hand-maintained; adding a new `RecordType` enum entry isn't enough. Added `FRETBOARD_RAW` (bit 11, default-off matching the STRIP convention).
+
+Also restored IDLE/OTHER to the per-task RTOS table — they were filtered out in the 2026-06-01 RTOS-CPU-snapshot work on the assumption that the new totals header above the table (busy / idle / other) was sufficient. The user wants both: keep the totals header but include IDLE/OTHER in the workload table for direct comparison.
+
+A new `PERF_STAGE_FBL_READ_COMPLETE = 0x42` perf-log STAMP fires once per USB Read completion (gated by the host type-mask) so the host can see Read-side timing as a peer of the existing `CDC_WRITE_COMPLETE` stamp. `aux` packs `(result << 24) | length`. Useful for tuning USB latency end-to-end now that we're capturing both transport directions. Periodic `LOG_DEBUG` line in the RX task prints `parsed`/`skipped` counts plus current ADC values; off by default (level INFO), enable with `log_set_level(LOG_LEVEL_DEBUG)`.
+
+### 2026-06-01 — marvin-perf RTOS view: CPU% snapshot
+
+RTOS tab in [`tools/marvin-perf`](../../../tools/marvin-perf) now shows per-task CPU% so the user can see what's actually consuming the SAM9X75 in real time. Closes the [`web/api.py`](../../../tools/marvin-perf/marvin_perf/web/api.py) `cpu_pct: None  # Phase 2` placeholder and unsticks the "RTOS tab is empty in live mode" symptom.
+
+- New `compute_cpu_snapshot(records)` in [`analyze.py`](../../../tools/marvin-perf/marvin_perf/analyze.py): groups TASK_RUNTIME records by task_id, takes the last two per task, computes Δrun_time_counter (uint32-wrap-safe) and normalizes against the sum of deltas across every emitting task. Σ across all tasks (incl IDLE and OTHER) = 100% by construction since the firmware producer at [`perf_log.c:225`](../default/src/perf_log/perf_log.c#L225) emits OTHER as `Σ all − Σ registered`.
+- `/api/capture/{id}/rtos` populates `tasks[*].cpu_pct` and `totals.cpu_pct_idle` / `cpu_pct_busy`. Tasks with TaskHighwater records but no TaskRuntime samples (or fewer than 2) still appear in the table with `cpu_pct: null`.
+- **Live mode was the bigger gap** — `state.rtos` was only ever populated by `loadCapture()` (offline path), so the live WS streamed TaskRuntime/TaskHighwater into `state.records` but never re-rendered the panel. New `recomputeLiveRtos()` in `app.js` mirrors the host snapshot logic in JS, runs from `scheduleLiveRedraw` on every WS-debounce tick (250 ms), and produces the same `{tasks, totals}` shape the offline endpoint returns so `renderRtosPanel()` reads both sources uniformly.
+- **Firmware bug fixed:** IDLE was registering as NULL because `PerfLog_Start()` runs from `APP_Initialize()` ([app.c:186](../default/src/app.c#L186)) — pre-scheduler. `xTaskGetIdleTaskHandle()` returns NULL until `vTaskStartScheduler()` creates the idle task, so slot 6 stayed unset and idle's run_time_counter fell into OTHER (which presented as ~98% on hardware — what we *thought* was idle). Moved the idle lookup into `register_post_scheduler_tasks()` (renamed from `register_mcc_tasks`), which the drain task calls on first iteration after the scheduler is up. Same one-shot pattern the MCC task lookups already use.
+- UI: added a CPU totals block at the top of the RTOS tab — `busy / idle / other` %. IDLE is the FreeRTOS idle task (its own slot, registered via `xTaskGetIdleTaskHandle()` at [perf_log.c:386](../default/src/perf_log/perf_log.c#L386)); OTHER is `Σ all − Σ registered` ([perf_log.c:237](../default/src/perf_log/perf_log.c#L237)) and should idle near zero — surfacing it in the header makes a nonzero value (= an unnamed task is running) immediately visible. Both pulled out of the per-task table so the table is the workload view (sorted by CPU% desc, hottest first). HWM column rules unchanged (red <32 words, yellow <64).
+- 104/104 pytests pass. New tests: `compute_cpu_snapshot` simple three-task, last-two-only windowing, uint32 wrap-around, single-sample empty, no-runtime-records empty; plus `/rtos` returns CPU% when TaskRuntime records are present.
+
+Snapshot rather than time-series for v0 — answers "what's hot right now" in one glance and avoids a second Plotly chart on the panel. Time-series can plug in later if a transient (Legato spike during UI redraw) needs root-causing — same `compute_cpu_snapshot` shape applied over a sliding window of records.
+
+### 2026-06-01 — perf-log v3 plan: pivot to tuning visibility
+
+The low-level perf-log channel work is done (v1 framing/integrity, v2 STRIP + TASK_RUNTIME, multi-IRP throughput at 2.77 MB/s with zero drops). The wire's job pivots: from "prove bytes survived and the pipeline isn't dropping" to "show the host what the detection algorithm and actuator are thinking." Integrity records (SESSION, DROP, framing layer) keep their existing semantics — the trust they buy is load-bearing for everything else on the wire. Tuning records expand.
+
+One schema bump (v2 → v3) bundles four additions to avoid multiple rounds of firmware/host sync.
+
+**`DETECTOR_CONFIG` (new, low-rate / on-change).** Carries cv_marvin_v1 per-fret configuration the host needs to interpret the per-frame DETECTOR record:
+- sample coords `(hx, hy, ex, ey)` per fret
+- `hold_thresh`, `hold_release_frac`, `edge_thresh`
+- color filter `target[3]`, `reject[3]` per fret
+
+Static today (compile-time tables in [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c)); will become tunable when M6 calibration UI lands. Strip-relative pixel coords are computed host-side: `sample_x_in_strip = hx − strip.x`, since STRIP records already carry `(x, y, w, h)` in frame space.
+
+**`ACTUATOR` (new, per-publish or 1 Hz heartbeat).** Replaces the partial picture from `FBL_SEND` STAMP + `TIMING.publish_mask`:
+- `intended_mask` — what the active producer wants
+- `asserted_mask` — what's currently on the wire
+- `strum_dir` — next direction (toggles each strum)
+- `producer_id` — 1 byte tag (`timing_pipeline`, `manual_control`, future `game_state_controller`). The arbitration signal that's invisible today: when manual_control takes the wire, nothing on the wire indicates the handoff.
+- ack timing fields — relate ACTUATOR ts to last `CDC_WRITE_COMPLETE` for transport-side latency.
+
+**`TIMING` (extended, per-frame snapshot).** Today's record carries counts only (`chord_window_fill`, `fifo_depth`). v3 carries the snapshot needed to answer "why did it publish *that* mask":
+- `now_ms` (pipeline clock, anchors all `*_at_ms` deltas)
+- `chord_open`, `chord_age_ms`, `chord_mask` — open window's accumulating mask
+- `note_q_count`, `note_head_at_ms`, `note_head_mask`, `note_tail_mask` — front of queue + union of remainder
+- `strum_q_count`, `strum_head_at_ms`, `strum_head_mask`, `strum_dir_next`
+- `frets_active`, `strum_active`, `strum_release_at_ms`
+- `release_pending_mask`, `release_min_at_ms`
+- `publish_mask` (kept)
+
+~36 B body, per-detector-frame rate (60 Hz) ≈ 2 KB/s. Snapshot, not causal trace; if push/pop trace becomes necessary later, a sibling `TIMING_EVENT` record plugs in cleanly without revisiting this design.
+
+**CPU accounting completion.** TASK_RUNTIME already supports per-window CPU% (host subtracts adjacent `run_time_counter` records — wrap-safe modular subtraction; uint32 wire field is fine since 1-second window delta at 266 MHz is ~266M counts, well under 2³²). Three additions:
+- `PERF_TASK_IDLE` — register `xTaskGetIdleTaskHandle()` so absolute CPU% = `1 − idle_delta / Σ_all_delta` is computable.
+- **MCC per-task slots** (`LEGATO`, `XLCDC`, `MAXTOUCH`, `SYS_INPUT`, `USB_DEVICE`, `USB_HOST`, `DRV_USB_UDPHS`, `DRV_USB_HOST`, `APP`) — registered by string name via `xTaskGetHandle` from the perf-drain task at startup (pcName matches MCC's emitted `tasks.c` literals). MCC tasks are created in `SYS_Tasks()` just before `vTaskStartScheduler`, so handle lookup must happen *after* scheduler start — drain task does it on first iteration. Missing names log a warning and fall through into OTHER. Legato is the primary tuning target (Composer + Legato render path is the biggest single MCC CPU consumer); the rest come along essentially for free.
+- `PERF_TASK_OTHER` — pseudo-slot that emits `Σ all-task runtime − Σ registered-task runtime` from `uxTaskGetSystemState`. With every notable named task registered, OTHER should normally idle near zero — a non-trivial OTHER means a task is active that we aren't naming yet (e.g. an unanticipated Harmony service).
+
+**Host-side pickups (marvin-perf).** [`web/api.py`](../../../tools/marvin-perf/marvin_perf/web/api.py)'s `/capture/{id}/rtos` endpoint currently returns `cpu_pct: None  # Phase 2` and `cpu_pct_idle: None  # Phase 2`. With idle + OTHER on the wire, the per-window math fills those in. Viewer also gets:
+- Strip overlays — sample dots in fret colors at `(hx,hy)` / `(ex,ey)` from DETECTOR_CONFIG, per-frame value labels from DETECTOR's `hold_dist` / `edge_dist`, threshold reference lines.
+- Actuator panel — intended vs asserted mask, producer name, strum_dir history.
+- Timing detail panel — chord window mask, note/strum queue head with deadlines, release-pending visualization.
+
+**What stays.** Framing layer (SOF + LEN + Fletcher-16), `SESSION`, `DROP`, `STAMP`, `STRIP`, `DETECTOR`, `TASK_HIGHWATER` all unchanged.
+
+**Out of scope this round.** Causal-trace `TIMING_EVENT` records, per-task MCC breakdown, ISR latency histograms, Cortex-A5 PMU instrumentation (cycles / cache misses / instructions retired), free-heap reporting (heap_1 is static post-init; Legato pool needs separate APIs).
+
+### 2026-06-01 — doc accuracy sweep
+
+Swept all marvin docs for accuracy relative to the current implementation. Changes made:
+
+- **`spec.md`** — §1.3/1.4/2.1/2.2/2.3/3.2: BGRX32 → BGR888 packed throughout. §1.4 status table: updated CV detection (M1 done), fretboard link (✅ USB CDC host), timing pipeline (✅ working), operator UI, and system services to reflect current state. §3.1: fretboard connection note updated from "UART" to USB CDC host over EDBG. §3.2: USB device now ✅ in use (perf-log), USB host row added ✅ in use (fretboard link). §4.3: changed from "UART" to USB CDC host description.  §4.6: `.bgrx` → `.bgr` keyframe extension, 1.38 MB → 1.04 MB keyframe size, `"format": "BGRX32"` → `"BGR888"` in manifest sample.
+- **`capture_pipeline.md`** — Title, header, §1 pipeline diagram, §2.4 (RMS=0 → RMS=1 — documents current path, includes patch #3 code), §2.5 COLMAX formula updated for RMS=1, §2.7 DMA IMODE description, §2.8 framebuffer layout (4 B/px → 3 B/px, 4-deep ring, `.region_nocache`).
+- **`display_path.md`** — Title, header, §1 overview diagram (OVR1 → HEO, ARGB_8888 → RGB_888_PACKED, `.region_cache_aligned` → `.region_nocache`), §2.1 (OVR1 → HEO with rationale), §2.2 (ARGB_8888 → RGB_888_PACKED), §2.5 (single-buffer limitation → per-frame pointer swap done), §3 cache coherency simplified (nocache = no maintenance needed), §4.2 call sequence updated, §5 limitations updated.
+- **`README.md`** — Added one-sentence project description and pointers to spec.md and journal.md.
+
+### 2026-05-29 — perf-log USB throughput: multi-IRP, drain refactor, Fletcher-16, single MAX_BYTES
+
+Day-long push to unblock perf-log throughput beyond the ~1.88 MB/s ceiling that the journal's [2026-05-22 USB CDC bandwidth headroom](#2026-05-22--usb-cdc-bandwidth-headroom--state-queue-starvation-diagnosis) entry diagnosed. Outcome on hardware (185×32 sensing + 290×32 strike strips, 60 fps, 20 s capture): **2.77 MB/s sustained, zero drops anywhere, every record type flowing at 100% of its design rate, ts_counter inversions bounded to 5 ms (queue-interleave noise only), drain CPU recovered from ~26% (soft CRC) to ~2% (Fletcher), UI responsive again**. Several discrete landings, documented in causal order along with the diagnostic that drove each.
+
+| Metric (185×32 + 290×32 strips, 20 s) | Before this session | After |
+|---|---|---|
+| Sustained wire | 1.88 MB/s ceiling, ~700 state drops/s | **2.77 MB/s, no ceiling reached, 0 state drops** |
+| Sink drops | 0 at 1.88, climbing above | **0**, headroom remaining |
+| Strip drops | growing at higher dims | **0** |
+| Frame-side stamps | 71% delivery (CV_END worst at 8%) | **100%** (60.0/s exactly) |
+| FBL_SEND / CDC_WRITE_COMPLETE | 71% | **100%** (240/s exactly) |
+| HWM/RUNTIME records | absent (lost at state queue) | **5/s each, flowing** |
+| ts_counter inversion p99 | 7,345 ms (queue lag) | **5.2 ms** (drain-cycle interleave only) |
+| Drain CPU on CRC | ~26% (soft, bit-by-bit) | **~2%** (Fletcher) |
+
+**Multi-IRP pipelining via UDPHS driver patch.** The journal's "lever 1" hypothesis (pipeline CDC writes for 2-3× win) had a hidden gotcha. The CDC layer accepts multiple in-flight IRPs (`queueSizeWrite` and `USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED` are both knobs), but the underlying UDPHS device driver only programs the DMA channel in `IRPSubmit`'s queue-empty branch. Subsequent IRPs are linked into the endpoint's queue but *never armed for transmission* — `Tasks_ISR_DMA` advances `irpQueue = irp->next` after a callback fires but doesn't re-program the DMA hardware. Net effect: even with all three layers configured for N=3 in-flight, only one IRP ever transmitted; the other two sat as `STATUS_PENDING` in the linked list forever.
+
+Walked the IRPSubmit and Tasks_ISR_DMA paths line by line in [drv_usb_udphs_device.c](../default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_device.c) before convincing myself this was a real driver-side limitation. Fix: extracted the existing inline DMA-arm code (~80 lines mirroring lines 1880-2008 of the IRPSubmit body) into a static helper `F_DRV_USB_UDPHS_DEVICE_ArmDmaForIrp` and added a call after the queue advance in two places — `Tasks_ISR_DMA` (DMA-completion ISR) and the ZLP-completion path inside `Tasks_ISR`. Patch markers (`/* PATCH: */`) make the change findable after MCC regen. Logged as **patch #9** in the re-apply list. False starts before getting here:
+
+- N=3 ring + counting semaphore + sink reject path (correct in principle, blocked by `queueSizeWrite=1` cap in MCC's emitted CDC init).
+- Bumped combined queue depth to 5 + per-instance `queueSizeWrite` to 3 (correct, but blocked by missing DMA arm in driver).
+- Patched the driver (real fix).
+
+The MCC-side prerequisites for the patch to do anything useful:
+- `usb_device_cdc_0.yml` adds `CONFIG_USB_DEVICE_FUNCTION_WRITE_Q_SIZE = 3` (per-instance write queue).
+- `usb_device_cdc.yml` adds `CONFIG_USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED = 5` (RX prime + write queue + serialState — exact fit, no slack).
+- `usb_device_init_data.c` shows `.queueSizeWrite = 3` after regen.
+- `configuration.h` shows `USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED = 5U`.
+All three are now in MCC yml — regen preserves them, no re-apply patch needed for the config side. Just the driver change is patch #9.
+
+**Sink rewrite to N=3 staging ring + counting semaphore.** With multi-IRP working at the driver, [perf_log_sink_cdc.c](../default/src/perf_log/perf_log_sink_cdc.c) swapped the single staging buffer + binary `s_write_done` semaphore for a 3-deep `s_tx_ring[3][SINK_FRAME_BYTES_MAX]` + counting semaphore (init=3) `s_tx_credits`. Producer takes a credit, fills `s_tx_ring[s_tx_head]`, submits non-blocking, advances head; ISR `WRITE_COMPLETE` returns one credit. Single producer (drain task) + FIFO completion order on the bulk endpoint = no race. `SINK_FRAME_BYTES_MAX` derived from `PERF_STRIP_MAX_BYTES + record/framing overhead, rounded to cache-line` so the two constants can't drift again — the hand-tuned `23104u` literal had already drifted once when the strip max bumped.
+
+**`PL_STATE_QUEUE_DEPTH` 128 → 1024.** Phase A. State queue was overflowing under STAMP burst traffic — 60 Hz × multiple frame stages plus 240/s FBL_SEND/CDC_WRITE_COMPLETE = ~780/s producer rate. 1024 covers ~1.3 s at full producer rate with drain stalled. Kept after analysis even though current load uses <1% of that — BSS cost is 35 KB on 240 MB cached DDR (rounding error), and the headroom matters if a future strip-size bump pushes toward wire saturation (drain blocks on credit timeouts, state queue accumulates during the block).
+
+**Drain-loop fix: drain ALL state records per outer iteration.** First symptom after the multi-IRP work landed: at 185×32 + 290×20 strips (2.14 MB/s), state queue was clean. Bumped strike to 290×32 (2.65 MB/s) and state queue started dropping at 240/s while sink and strip queues stayed clean. Root cause: drain-task loop had `if (xQueueReceive(state_q,…)) WriteFramed(…)` — *one* state record per outer iteration. Strips dominate per-iteration time (~5 ms each on the wire), so state drained at ~50 records/s while produced at ~700/s. Fixed by adding an inner `while` loop that drains every currently-queued state record before moving to the strip drain. After: state delta = 0 across 20 s captures.
+
+**Pointer-pool refactor for the strip queue.** FreeRTOS queues are pass-by-value: every `xQueueSend`/`xQueueReceive` does `memcpy(slot, src, item_size)` inside a critical section. With `sizeof(perf_rec_strip_t)` at 23-61 KB depending on `PERF_STRIP_MAX_H`, that's 38-100 µs of *interrupts-off* time per queue op × 240 ops/s = 9-24 ms/s of ISR-latency stretching. Discovered when bumping `PERF_STRIP_MAX_H` to 64 caused the firmware to exhibit erratic behaviour even before any cv_marvin dimension change — the bigger queue items alone were the trigger, via critical-section duration.
+
+Refactored: [perf_log.c](../default/src/perf_log/perf_log.c) `s_strip_q` now carries 1-byte slot indices into a static `s_strip_pool[6]` (queue depth + 2 to cover "1 slot in producer's hand, 1 in drain's hand" while preserving drop-on-full semantics). A second small queue, `s_strip_free_q` (depth 6, 1-byte items), holds the free-list. Producer claims a free index, fills the pool slot directly via pointer, queues just the index. Drain dequeues the index, processes via pointer, returns the index to the free list. Removed the producer's `static perf_rec_strip_t r;` and the drain's `static perf_rec_strip_t s_strip_drain;` — same total BSS, no extra copies. Critical sections drop from ~38-100 µs to ~1 µs per queue op.
+
+**Fletcher-16 replaces CRC-16/CCITT-FALSE in the framing layer.** Soft CRC bit-by-bit was burning ~26% CPU at 2.65 MB/s — the biggest remaining CPU sink and the cause of the UI sluggishness symptom under load. SAM9X75 has **no CRCCU peripheral** (the journal lever-2 entry was wrong about that — verified by the device pack header list at `packs/SAM9X75D2G_DFP/component/`: AES, SHA, TDES, TRNG, PMECC, but no CRCCU). Hardware-DMA CRC isn't an option on this part.
+
+Considered alternatives:
+
+| Option | Cycles/byte | CPU @ 2.65 MB/s | Detection |
+|---|---|---|---|
+| CRC-16 bit-by-bit (current) | ~25 | ~26% | full CRC strength |
+| CRC-16 table-driven (256 × u16 LUT) | ~6 | ~6% | full CRC strength |
+| **Fletcher-16** | **~2** | **~2%** | single-byte changes, adjacent swaps, most non-adjacent swaps; ~1/65536 false-positive rate against random byte sequences |
+| Sum-16 / XOR-16 | ~1 | ~1% | far weaker (misses swaps and most reorders) |
+| No checksum | 0 | 0% | rely on USB hardware + record magic + length bounds |
+
+USB hardware already CRCs every bulk packet on the wire, so our framing-layer checksum's job is *firmware-side framing-bug detection* + *resync alignment* (false SOF in the middle of a corrupt stream). Both jobs are well-served by Fletcher-16. Picked it.
+
+Wire format unchanged (still SOF | LEN | PAYLOAD | 16-bit checksum). Old `.bin` captures from before this change can't be decoded with new code (one-shot break, fine for dev). Updated both ends:
+
+- Firmware [perf_log_sink_cdc.c](../default/src/perf_log/perf_log_sink_cdc.c) TX path — block-mod Fletcher pattern from RFC 1146 (deferred mod once per ~5800 iterations to keep uint32 from overflowing).
+- Firmware [perf_log_rx.c](../default/src/perf_log/perf_log_rx.c) RX state machine — streaming Fletcher with byte-at-a-time mod 255 (single-byte pace, no overflow concern).
+- Host [framing.py](../../../tools/marvin-perf/marvin_perf/framing.py) — `fletcher16()` replaces `crc16_ccitt_false`. `FrameStats.fcs_mismatches` (was `crc_mismatches`).
+- All `crc_*` field names renamed to `fcs_*` across host (decode.py, records.py, web/api.py, web/live.py, cli.py, web/static/app.js).
+- Test vector `fletcher16(b"123456789") == 0x1EDE` (hand-computed, verified end-to-end).
+
+Net CPU win at 2.77 MB/s wire: drain task drops from ~26% (CRC) to ~2% (Fletcher). UI responsiveness recovered immediately on flash.
+
+**`PERF_STRIP_MAX_W`/`MAX_H` collapsed to single `PERF_STRIP_MAX_BYTES`.** The split-into-W*H pair was always arbitrary — producer code only ever checks total bytes (`w * h * BPP <= PERF_STRIP_MAX_BYTES`), not the per-axis dimensions. Discovered the *actual* binding constraint isn't the UDPHS DMA cap (128 KB at current `DRV_USB_UDPHS_DMA_MAX_TRANSFER_SIZE = 2`) but the wire LEN field, which is `uint16_t` → max 65535-byte payload → max ~65,507 byte pixel data per strip. Replaced both constants on both ends with `PERF_STRIP_MAX_BYTES = 65000u` (just under the LEN cap with a small margin). Producer accepts any (w, h) shape under that. Practical envelope: 720×30, 480×45, 320×64, 290×72. Going beyond requires bumping LEN to u32 — wire-format break, not worth doing casually since the wire-bandwidth ceiling kicks in around the same point at 60 fps.
+
+**Default-disabled strips at boot.** Firmware now initializes the type mask to `DROP | TASK_HIGHWATER | TASK_RUNTIME` only — the cheap diagnostic types (~300 B/s combined). Higher-rate types (STAMP, DETECTOR, TIMING, STRIP) start disabled; host viewer enables them via `PERF_CMD_SET_TYPE_MASK` once it's ready to consume them. Avoids the unattended-firmware case where boot generates ~3 MB/s of strip records that all get dropped at the sink (no DTR), wasting producer-side CPU. SESSION is still always emitted regardless of mask (host needs `timer_freq_hz` on attach).
+
+**Host-side manifest improvements.** Working through diagnosis, hit two real gaps:
+
+1. `frame_epoch_first` was reporting 0 because `FBL_SEND` and `CDC_WRITE_COMPLETE` STAMPs use `frame_epoch=0` as a "no frame association" sentinel — the chord queue between `timing_pipeline` and `fretboard_link` strips the epoch (decision logged 2026-05-20). The earlier filter enumerated record types (SESSION/DROP/TASK_HIGHWATER/TASK_RUNTIME); now it just skips `frame_epoch == 0` records, type-agnostic.
+2. Manifest gained `recording_started_at`, `recording_stopped_at`, `recording_duration_s` — the live recorder ([web/live.py](../../../tools/marvin-perf/marvin_perf/web/live.py)) already tracked `_Recording.started_at` but didn't write it to disk. Now it does. Also added `timer_freq_hz` fallback from the cached SESSION dict (`_state.last_session_dict`), so captures starting mid-stream still get the freq for ts_counter conversion.
+
+**RTOS stack/CPU snapshot at 2.77 MB/s** (from RUNTIME records, percentages relative to recorded tasks — idle excluded):
+
+| Task | % of busy time | Stack used |
+|---|---|---|
+| `CV_MARVIN_V1` | 71.97 | 153 / 1024 words |
+| `PERF_DRAIN` | 26.99 | 138 / 512 words |
+| `FRETBOARD_LINK` | 0.71 | 109 / 768 |
+| `TIMING` | 0.26 | 127 / 768 |
+| `VIDEO` | 0.08 | 187 / 1024 |
+
+System overall is mostly idle — non-idle CPU is single-digit % absolute. CV_MARVIN's 72% relative is detect_frame + the per-strip producer fill (memcpy from frame buffer to pool slot). PERF_DRAIN's 27% is Fletcher + the pool→ring memcpy + USB submit per write.
+
+**Out of scope today, sequenced for later:**
+
+- **Lever 5 (zero-copy DMA scatter-gather from frame buffer)** — would eliminate the producer-side memcpy and the drain's pool→ring memcpy. Requires programming UDPHS DMA descriptors with one entry per pixel-row plus header/trailer. Modest CPU win (~2%); only worth it if a CRCCU equivalent ever shows up. The frame buffer is already in `.region_nocache` so cache coherence is free.
+- **Lever 4 (move bulk-IN from EP3 → EP2 for 3-bank FIFO depth)** — would matter if we approach wire saturation; not needed at current load. Single-knob change in `usb_device_cdc_0.yml`.
+- **Boot-time SESSION re-emit on host command** — would close the `timer_freq_hz: null` case for live captures starting mid-stream when DTR didn't toggle. Either (a) host sends a "request session" command on WS attach, or (b) firmware emits SESSION at 0.1 Hz alongside DROP. Latter is simpler.
+- **Stack-overflow hook is still silent infinite-loop** — `vApplicationStackOverflowHook` would benefit from a UART log line naming the offending task. Carried forward separately.
+
+### 2026-05-22 — marvin-perf web viewer: live-mode recording (Phase 3 of 3)
+
+Closes the iteration loop. While a live session is up, the user picks an out-dir, hits Record, and the reader thread mirrors validated framed bytes (`FrameBytes.framed`) to `<dir>/perf.bin` directly — no second decode, no resync garbage. Stop / Live-Stop / serial-error all funnel through the same `record_stop()` finalize path that `cli.cmd_record` uses (`finalize_capture_dir(..., source=CaptureSource(kind="serial", port=…))`), so the resulting capture opens cleanly in Offline mode without any extra handling.
+
+**Reader-thread tap.** Per-frame, under the session lock: if `_rec` is set, `rec.fh.write(frame.framed)` then bump byte/frame counters. Lock is held briefly (microseconds) — reader is single-producer, control endpoints are the only other contender. Write failures (disk full, ENOSPC) disable the recording in place and post a `record-write` error over the WS rather than tearing down the whole session.
+
+**Auto-finalize.** `_LiveSession.stop()` calls `record_stop()` first, while the reader is still alive, so in-flight frames land in the bin instead of being lost to the close race. The reader's own `finally` block also calls `record_stop()` to cover the serial-disconnect path. Both calls hit the same idempotent path (lock-take fh, null `_rec`, close, `finalize_capture_dir`).
+
+**REST + WS shape.** `POST /api/live/record/{start,stop}`. Start body `{out_dir}`; 409 on already-recording or session-inactive, 409 on `init_capture_dir(exist_ok=False)` collision so the user gets explicit feedback rather than silently overwriting. Stop is idempotent; returns `{capture_dir, bytes_written, n_frames, manifest}` for scripting use. WS broadcasts `{type:"recording", state:"started"|"stopped", …}` so a passively-attached browser sees state changes from any source — including auto-finalize.
+
+**Frontend.** New record-controls toolbar group: out-dir input (suggested `captures/web-YYYYMMDD-HHMMSS` on live-start), Record/Stop buttons, and a pill that pulses red while recording. UI flips on the WS broadcast, not the REST response, so a re-attached browser mid-recording reflects reality. Reload during a live recording: `probeLiveSession()` reads `/api/live/status`, sees `recording != null`, re-attaches the WS, and the pill picks up the in-flight session.
+
+**Out of scope.** Resumable / appendable recordings (each Record click is a fresh dir), client-side progress meter (REST manifest summary in the stop banner is enough), and dual-mode "open the just-finalized capture in offline tab" auto-handoff.
+
+### 2026-05-22 — marvin-perf web viewer: live-mode frontend (Phase 2 of 3)
+
+Frontend half of "browser is the iteration surface." Single-page app gains a Mode toggle (Offline/Live), port `<select>`, Start/Stop buttons, mask display, and an 8-checkbox types panel with ALL/MIN presets. Records stream over the WS into a sliding-window buffer (last 30 s, hard-capped at 10 k). STRIP records render client-side from the `bgr_b64` payload — no server PNG round-trip. The existing offline path is unchanged: every offline route + UI element still works as before; the mode toggle is the boundary.
+
+**State machine.** Added `state.fsm = "live"` and `state.mode = "live" | "offline"`. Live disables transport (prev/next/play-pause/speed) — playhead is always "now". Crossing the mode boundary calls `resetCaptureState()` to clear the previous mode's records, panels, and Plotly charts so leftover state can't bleed across.
+
+**Sliding window.** Each WS record append calls `pruneLiveBuffer()` which drops anything older than the newest record's `ts_counter` minus `LIVE_BUFFER_SECONDS * timer_freq_hz`, then enforces `LIVE_MAX_RECORDS`. `state.ts0` re-pins to the oldest survivor so timeline x-axis stays sensible as the window slides. Plotly redraw is debounced 250 ms; the playhead text + strip canvas update inline so per-frame visuals stay smooth.
+
+**Mask checkboxes.** SESSION is pinned-on (firmware always emits it; checkbox disabled). Any change debounces 200 ms then `POST /api/live/set-mask` with the integer mask; server reply updates the displayed `0x…` value. ALL / MIN preset buttons map to `0xFFFFFFFF` and `(SESSION|DROP)` respectively. The very first start fires an immediate set-mask so server and UI start synchronized.
+
+**Strip render.** `paintBgrIntoCanvas(canvas, b64, w, h)` decodes base64 → BGR-byte string → `ImageData` (RGBA via per-pixel byte swap) → `putImageData`. First STRIP record of a new kind triggers `indexByKind() + renderStripSlots()` so the canvas exists before paint; subsequent strips paint directly. Offline strip path still uses the PNG endpoint — `updateStripsAtPlayhead` prefers `rec.bgr_b64` when present, falls through to PNG otherwise.
+
+**WS lifecycle.** Open on Live-Start (after `/api/live/start` returns OK), close on Live-Stop. Auto-reconnect on unexpected close: 1 s × attempt-count, capped at 5 s. Server's `session_replay` on reconnect re-binds `timer_freq_hz`. Close code 4409 ("already in use") surfaces as a banner without retry. On page reload mid-session, `probeLiveSession()` sees the active session via `/api/live/status` and re-attaches the WS — no manual restart.
+
+**Out of scope this commit:** recording start/stop UI + backend (Phase 3), debounced timeline patching via `Plotly.extendTraces` (current full-replot is fine at the 250 ms cadence), and a "drops since session" live counter.
+
+### 2026-05-22 — marvin-perf web viewer: live-mode backend (Phase 1 of 3)
+
+Backend half of "make the browser the iteration surface." Single-tenant live session: one serial reader thread, one open `SerialSource`, one WebSocket peer at a time (a second WS gets close code 4409 with reason `"live already in use"`). REST for control (`/api/live/{start,stop,set-mask,status}`, `/api/serial/ports`), WS for the data stream (`/api/live/ws`); browser sends nothing over WS. No frontend changes yet — frontend live mode + record-types panel is Phase 2; recording start/stop is Phase 3.
+
+**Module shape.** New [`web/live.py`](../../../tools/marvin-perf/marvin_perf/web/live.py) owns a mutex-guarded `_LiveSession` singleton. Reader thread runs `iter_frames(SerialSource, stats) → decode_record(frame.payload) → _record_to_dict(rec, include_bgr=True)` and posts onto a per-WS-attach `asyncio.Queue` via `loop.call_soon_threadsafe`. Disconnects in either direction flow through the same shutdown path that joins the thread and closes the port. `_record_to_dict` is late-bound from `api.py` to avoid the import cycle.
+
+**Recording groundwork.** Added `framed: bytes` field to `FrameBytes`, populated from the same `buf[:total]` slice `iter_frames` already constructs — Phase 3's record path becomes a one-line write of validated frame bytes with no extra CRC compute. The existing `transport.TeeSource` would tee resync garbage too, so it's not the right shape for live recording.
+
+**Strip pixels in WS messages.** Offline mode keeps strip pixels on the dedicated PNG endpoint, but live mode has no `capture_id` to hang a URL off. `_record_to_dict` grew an `include_bgr` flag — when set, Strip records carry `bgr_b64` (base64) so the browser can render client-side onto the existing strip canvas without a server round-trip.
+
+**Tests.** 92/92 pass. New `test_iter_frames_yields_framed_bytes`, plus 8 in `test_live.py` (lifecycle, mask round-trip via fake `SerialSource`, error paths, status). Test injection point on `_LiveSession.start(port, *, ser_factory=...)` lets unit tests substitute a context-managed fake that yields nothing until `__exit__` fires — exercises the thread-join and stop-event paths without real serial.
+
+**Out of scope this commit:** all frontend changes (mode toggle, port `<select>`, record-types checkboxes, sliding-window timeline append, client-side strip render, WS reconnect) and the recording REST routes. Verification beyond unit tests waits on the frontend landing — `curl POST /api/live/start` + `websocat ws://…/api/live/ws` is the Phase-1 hardware smoke check.
+
+### 2026-05-22 — perf-log host→device record-type masking
+
+Bidirectional control on the perf-log channel. Host can now narrow which record types the device emits per-capture without rebuilding firmware. Default is all-on (parity with prior behavior); host sends a `PERF_CMD_SET_TYPE_MASK` over the same SOF/LEN/CRC framer that's used for records, with a distinct command magic (`0x4D43` 'MC' vs records' `0x4D56` 'MV') so misrouted bytes can't be parsed in the wrong direction.
+
+**Device side.** New [`perf_log_rx.{h,c}`](../default/src/perf_log/perf_log_rx.c) holds a small SOF-resync state machine fed from the CDC sink's `USB_DEVICE_CDC_EVENT_READ_COMPLETE` handler; valid `SET_TYPE_MASK` frames call `PerfLog_SetEnabledMask`. The CDC sink primes a 64-byte read on `EVENT_DEVICE_CONFIGURED` and re-primes after each completion. Filter is one `s_enabled_mask` (volatile u32, lock-free single-load on Cortex-A) checked at three early-return points: `send_state` (covers all state records), `PerfLog_EmitStripFromFrame`, and `PerfLog_EmitStampFromISR`. SESSION is always emitted regardless of mask — the host needs `timer_freq_hz` on attach.
+
+**Host side.** New `frame_encode` in [`framing.py`](../../../tools/marvin-perf/marvin_perf/framing.py) (mirror of the device framer); `encode_set_mask_payload` + `RECORD_TYPE_BY_NAME` in [`records.py`](../../../tools/marvin-perf/marvin_perf/records.py); `SerialSource.send_command` in [`transport.py`](../../../tools/marvin-perf/marvin_perf/transport.py). CLI `live` and `record` get `--types STAMP,SESSION,DROP,…` (special tokens `ALL`, `MIN`); new `set-mask` subcommand pokes a running capture from another terminal. 9 new tests; 83/83 passing.
+
+**Why now.** The 1.88 MB/s STRIP-dominated load was masking HWM/RUNTIME records (state-queue starvation, ~707 dropped/s — see prior entry). Cutting record types at the source is a cleaner fix than enlarging queues we don't actually want full. With STRIP off, expected sink load drops to ~25 KB/s, and the state queue should drain freely.
+
+**Out of scope.** No schema bump (purely additive at the host→device edge — v2 stays v2). No flash persistence of the mask. No mask-state echo back (host knows what it sent). No viewer UI checkbox panel — deferred to when live-WS lands.
+
+**Verification pending hardware.** Bench check: `marvin-perf record --types STAMP,SESSION,DROP,HIGHWATER,RUNTIME --port … --out-dir …` should produce a capture with zero STRIP/DETECTOR/TIMING records and `dropped_state == 0`. Sanity: firmware UART log shows `PerfLog: mask=0x...` when the host attaches.
+
+### 2026-05-22 — USB CDC bandwidth headroom + state-queue starvation diagnosis
+
+End-to-end strip viewer is up and rendering after the user adjusted strip dimensions in [`cv_marvin_v1.c:341-347`](../default/src/detector/cv_marvin_v1.c#L341-L347) to sensing 185×16 @ (265, 310) and strike 290×20 @ (212, 395). At those dimensions current device→host load is **1.88 MB/s** (≈8.9 KB sensing + ≈17.4 KB strike per frame × 60 Hz + ~25 KB/s state pipeline + ~80 B/frame record overhead) — the link badge is green and `dropped_strip`/`dropped_sink` are flat. But we were dropping at slightly higher dimensions just before this, so our practical CDC-ACM ceiling is < 5 MB/s on this firmware build today. Two concrete things came out of investigating that:
+
+**(1) Where the bandwidth is actually going.** The USB-HS bulk-IN theoretical ceiling on UDPHS is ~40-45 MB/s real-world; we're leaving ~85 % of it on the floor. The conservative 5 MB/s working number isn't a USB-HS limit — it's a software-pipeline limit specific to how the sink writes today. Five candidate levers, ranked by expected payoff:
+
+  1. **Pipeline writes** ([`perf_log_sink_cdc.c:251-267`](../default/src/perf_log/perf_log_sink_cdc.c#L251-L267)) — biggest single win, expect 2-3×. Today the sink owns a single staging buffer and pends a `WRITE_COMPLETE` semaphore between writes, so the USB DMA sits idle for the round-trip. The CDC write-queue depth is already 3 (`USB_DEVICE_CDC_QUEUE_DEPTH_COMBINED = 3U` in [`configuration.h:243`](../default/src/config/default/configuration.h#L243)) so multi-buffer queueing is supported by the layers below — the sink just doesn't use it. Move to a 2- or 3-deep ring of staging buffers; submit the next write as soon as the previous returns to the queue, not when it completes.
+  2. **Hardware CRC via CRCCU** — soft CRC at [`perf_log_sink_cdc.c:58-70`](../default/src/perf_log/perf_log_sink_cdc.c#L58-L70) burns ~14 % of CPU at the current rate (byte-at-a-time over every framed payload). CRCCU peripheral does CCITT-FALSE in DMA. Frees CPU for whatever the next bottleneck turns out to be; not a bandwidth knob in itself, but it's the cheapest path to free headroom.
+  3. **Combine sensing+strike into one wire frame** — saves ~80 B framing overhead per ISC frame (×60 Hz = 4.8 KB/s, ~5-15 % of state-pipeline payload). Small but free if the schema accommodates it; revisit only if (1) and (2) aren't enough.
+  4. **Move bulk-IN from EP3 → EP2** — UDPHS only exposes 3-bank FIFO depth on EP1-2 ([`drv_usb_udphs_local.h:159`](../default/src/config/default/driver/usb/udphs/src/drv_usb_udphs_local.h#L159) `DRV_USB_UDPHS_EPT_BK = 0x00060000`); EP3-7 are 2-bank only. The current bulk-IN is on EP3 ([`usb_device_init_data.c:213-220`](../default/src/config/default/usb_device_init_data.c#L213-L220)). 3-bank lets the controller pre-load three packets ahead of the host IN tokens; smooths out scheduler micro-stalls. Marginal win unless we're already pipelining at the software layer (so do this *after* lever 1).
+  5. **Eliminate one memcpy** (architectural) — strip producer copies pixel rows out of the ISC frame into a queue slot, drain task copies that slot bytes onto the wire. Could be reduced to one copy if the strip producer wrote into a sink-owned ring directly, at the cost of tighter coupling between perf_log and the sink. Defer; the ratio of CPU spent in memcpy vs CRC favors lever 2 first.
+
+  **What's *not* the bottleneck:** the `DRV_USB_UDPHS_DMA_MAX_TRANSFER_SIZE = 2` knob in [`configuration.h:255`](../default/src/config/default/configuration.h#L255) (multiples of 64 KB, so 128 KB cap). Our largest single record is the 23 KB strip — 5× under the cap. Bumping this to 4 or 8 changes nothing about today's behavior. Documented here because it was the first knob the user noticed and it's tempting to try; save the time.
+
+**(2) HWM + RUNTIME records are absent from captures because the state queue is full.** Decoded a 24 s capture — zero `PERF_REC_TASK_HIGHWATER` and zero `PERF_REC_TASK_RUNTIME` records, but `dropped_state since_session = 17188` (~707 dropped/s). Producers are wired and the drain task is calling them every second; the records hit a full queue and get counted as drops instead. Root cause: all state-pipeline records share `s_state_q` ([`perf_log.c:50-52`](../default/src/perf_log/perf_log.c#L50-L52), `PL_STATE_QUEUE_DEPTH = 128`). The 60 Hz × multiple-stage STAMP traffic — especially fretboard_link's `CDC_WRITE_COMPLETE` and `FBL_SEND` pair, which fire on every actuator wire byte — bursts faster than the drain can pull, the queue stays near full, and the once-per-second HWM/RUNTIME emits land on a full queue. Three candidate fixes:
+
+  1. **Bump `PL_STATE_QUEUE_DEPTH` from 128 to 1024.** Cheapest. 128 × 32 B/slot = 4 KB today → 32 KB after; static BSS, no malloc. Probably enough on its own — the drain isn't *behind*, it's just unable to absorb burst peaks at 128 slots. Try first.
+  2. **Give HWM/RUNTIME a dedicated low-pressure queue** drained on the same 1 Hz tick as DROP. Decouples the slow analytics path from the fast stamp path entirely; HWM/RUNTIME can never lose to a stamp burst. More plumbing (second queue + second drain branch) but it's the right shape long-term — and natural alongside lever 1 above (pipelining the sink) since the drain task changes anyway.
+  3. **Throttle the high-rate stamp producers** — e.g. drop `CDC_WRITE_COMPLETE` to 1-in-N, or roll FBL_SEND/CDC_WRITE_COMPLETE into a single record. Loses information from the timeline; do this only if (1) and (2) both fail.
+
+  Going to start with (1) since it's a single `#define` change and HWM is the most useful "is something about to overflow its stack" signal — we want it back before any of the bandwidth-lever work begins, since stack pressure is exactly the kind of thing that surfaces while we're refactoring the sink.
+
+Neither finding is being acted on in this session — captured here so the analysis survives context.
+
+### 2026-05-22 — Phase 2 perf-log: schema v2 (STRIP + TASK_RUNTIME) wired
+
+Schema bump landed end-to-end. Firmware emits the two new record types; host decoder, analyzer, and viewer read them.
+
+**Schema v2.** [`perf_log_records.h`](../default/src/perf_log/perf_log_records.h) bumps `PERF_LOG_SCHEMA_VERSION` to 2. `PERF_REC_PATCH (0x05)` is replaced by `PERF_REC_STRIP (0x05)` — variable-length BGR888 region tagged by `perf_strip_kind_t` (SENSING=0, STRIP=1; 256 codes available). `PERF_REC_TASK_RUNTIME (0x08)` adds per-task state/priority/`ulRunTimeCounter` snapshots. Both mirrored on the host in [`records.py`](../../../tools/marvin-perf/marvin_perf/records.py); `EXPECTED_SCHEMA_VERSION = 2`.
+
+**STRIP producer in [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c).** Two strips per ISC frame, emitted between `detect_frame` and `draw_overlay` so the captured pixels are clean detector input. Sensing line at (240, 295) 240×32, strike line at (240, 400) 240×32 — same coordinates `cv_marvin_v1` already samples for fret detection. Cost: 240×32×3 × 2 × 60 Hz ≈ 2.76 MB/s, well under the 5 MB/s CDC ceiling. The strip queue holds max-sized slots (`PERF_STRIP_MAX_BYTES = 23040`); drain task computes the on-wire length per record from `(w, h)` so future kinds at smaller dimensions cost only what they emit.
+
+**TASK_RUNTIME producer in `perf_log.c`.** 1 Hz alongside the existing HWM emitter — `sample_and_emit_runtimes` fills a static `TaskStatus_t buf[16]` via `uxTaskGetSystemState`, maps each handle to its `perf_task_id_t` via `s_task_handles[]`, and emits `state` (mapped from `eTaskState`), `uxCurrentPriority`, and `ulRunTimeCounter`. Static buffer + bounded loop (no malloc, no recursion). Cost: 24 B × 6 tasks × 1 Hz = 144 B/s.
+
+**FreeRTOSConfig.** `INCLUDE_eTaskGetState` flipped 0 → 1 — required for the `eCurrentState` field that `uxTaskGetSystemState` populates. `configRUN_TIME_COUNTER_TYPE = uint64_t` from patch #8 already in place.
+
+**Host.** `decode.py` validates `len(bgr) == w*h*3` against on-wire dims (not a compile-time constant) so future kinds at other rectangles decode cleanly. `analyze.py` field rename `dropped_patch → dropped_strip`. Viewer's `STRIP_KIND_REGISTRY` already kind-driven from Phase 1 — strips render in their pre-allocated slots without additional work. 60 → 74 passing pytests.
+
+End-to-end verification still pending: user builds in MPLAB X, captures a session, confirms strips render in the viewer and the RTOS-tab CPU% chart populates.
+
+### 2026-05-22 — STAMP producers wired across pipeline; 64-bit ts_counter; diag UART dump retired
+
+Follow-on session to Phase 1 — wired the seven `perf_stage_t` producers that had been declared since the schema landed but had no emitters, fixed a 32-bit timer truncation that was poisoning the timeline, and retired the 10 s diag UART dump now that the perf-log channel covers RTOS analytics.
+
+**STAMP producers (commit `f4e8aa8`).** One emitter per stage:
+- [`video.c`](../default/src/video/video.c) `on_frame_done` ISR → `ISC_IRQ` at top, `VIDEO_PUBLISH` after the subscriber fan-out (subscriber bitmap in aux).
+- [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c) task → `CV_START` / `CV_END` bracketing `detect_frame`.
+- [`timing_pipeline.c`](../default/src/actuator/timing_pipeline.c) `process_frame` → `TP_TICK` at end with `s_output_mask` in aux.
+- [`fretboard_link.c`](../default/src/actuator/fretboard_link.c) → `FBL_SEND` after a successful `USB_HOST_CDC_Write` (tx byte in aux), `CDC_WRITE_COMPLETE` from the CDC event ISR (USB result code in aux).
+
+Five frame-side stages share `frame_epoch` from the ISC frame counter; `FBL_SEND`/`CDC_WRITE_COMPLETE` use `frame_epoch=0` since the cmd queue between TimingPipeline and FretboardLink carries only the fret mask byte. Host pairs that two-stage segment by `ts_counter` adjacency rather than threading an epoch through the queue — the plan's design choice.
+
+Hardware-verified with a 53.4 s capture: 3199 frames at 59.9 Hz, 5 stages × 3199 records each, `dropped_state = 0`, `dropped_patch = 0` over the full run. `dropped_sink ≈ 1 MB` is fixed first→last drop record (pre-attach accumulation, no in-capture loss).
+
+**64-bit `ts_counter` (commit `2cad94a`).** First post-Phase-1 capture showed the timeline collapsing to ~16 s with negative deltas — `hdr_fill` was casting a 32-bit `SYS_TIME_CounterGet()` to `uint64_t` *after* truncation, so the counter wrapped every `UINT32_MAX / 266 MHz ≈ 16.1 s`. Switched to `SYS_TIME_Counter64Get()` (already declared in `sys_time.h` and used by FreeRTOSConfig patch #8). One-line change at [`perf_log.c:78`](../default/src/perf_log/perf_log.c#L78). Captures now hold their full duration end-to-end.
+
+**Diag UART dump retired (commit `895eece`).** The 10 s `vTaskListTasks` + run-time-stats UART dump in `diag/diag.c` (added 2026-05-21) was the temporary observation channel pending perf-log RTOS records. With `PERF_REC_TASK_HIGHWATER` shipping at 1 Hz and `PERF_REC_TASK_RUNTIME` queued for the v2 schema bump, the UART path no longer earns its keep — the perf-log channel reaches the visual viewer; the UART output was invisible to it and lost to history. Deleted `diag.c`/`diag.h` and the `app.c` init call. `vTaskListTasks` / `vTaskGetRunTimeStatistics` / `uxTaskGetStackHighWaterMark` stay enabled in `FreeRTOSConfig.h` since the perf-log producers are their consumers now.
+
+Phase 2 (live WS + STRIP + TASK_RUNTIME, schema bump to v2) is the next chunk.
+
+### 2026-05-22 — Visual review viewer (Phase 1) + HWM producer wired
+
+Phase 1 of the marvin perf-log visual review tool landed. Plan in `~/.claude/plans/start-planning-on-host-iterative-floyd.md`. Two halves shipped together:
+
+**Host (`tools/marvin-perf/marvin_perf/web/`):**
+- Capture-as-directory container — `manifest.json` + `perf.bin`. `record --out-dir DIR` writes both; legacy `--out FILE.bin` still works. Viewer accepts a directory or a bare `.bin` (synthesizes manifest by scanning the bin once).
+- FastAPI server gated behind a `viewer` dep group (`uv sync --group viewer`). Routes: `/api/capture/open`, `/manifest`, `/summary`, `/records?from=&to=&types=`, `/strip/{epoch}/{kind}.png`, `/health`, `/rtos`, plus `/api/preloaded` so `marvin-perf serve --capture PATH` auto-loads in the browser.
+- Pure-fn layers (`render.py` for BGR888 → PNG via Pillow, `capture.py` for dir round-trip) tested without uvicorn.
+- Vanilla-JS frontend — three-pane layout (strips / inspector / Plotly timeline), playback FSM (`idle | loaded | playing | paused`), `requestAnimationFrame` advancing the playhead in `ts_counter` space, click-to-seek on timeline, kbd shortcuts (space, ←/→, Shift+←/→, [/]). Strip panel is **kind-driven** via a `STRIP_KIND_REGISTRY` so future kinds (score, minimap) are one entry each. RTOS tab renders HWM trend per task.
+- 42 → 60 passing pytests; new: `test_capture.py`, `test_render.py`, `test_api.py`. End-to-end demo with a synthetic 369-record capture verified the `/api/preloaded` auto-load path works.
+- Frontend commit: `b83b938`.
+
+**Firmware (`firmware/marvin/default/src/perf_log/`):**
+- `PerfLog_EmitTaskHighwater(task_id, words)` and `PerfLog_RegisterTaskForHighwater(task_id, handle)` added to `perf_log.h`/`.c`. Drain task at 1 Hz now iterates a `s_task_handles[PL_TASK_SLOT_COUNT]` array, samples `uxTaskGetStackHighWaterMark`, and emits one `PERF_REC_TASK_HIGHWATER` per registered task. Unregistered slots are skipped (so `PERF_TASK_DETECTOR_DRAIN`, whose task was deleted earlier, is silently absent — wire-format slot stays in the enum for stability).
+- Per-task self-registration: each marvin task module captures the `TaskHandle_t` returned by `xTaskCreateStatic` and calls `PerfLog_RegisterTaskForHighwater` immediately after. Wired in [`video.c`](../default/src/video/video.c), [`cv_marvin_v1.c`](../default/src/detector/cv_marvin_v1.c), [`timing_pipeline.c`](../default/src/actuator/timing_pipeline.c), [`fretboard_link.c`](../default/src/actuator/fretboard_link.c), and the drain task self-registers as `PERF_TASK_PERF_DRAIN` inside `PerfLog_Start`. Coupling stays minimal — modules call the registrar; `perf_log` doesn't reach into them.
+- Cost: 24 B per record × 5 active tasks × 1 Hz = 120 B/s, dwarfed by the strip budget that lands in Phase 2.
+
+This closes the host side of the carry-forward "FreeRTOS analytics — dump path still TODO" item: HWM is now visible in the viewer's RTOS panel as soon as a capture is opened. Phase 2 (live WS + STRIP + TASK_RUNTIME, schema bump to v2) is the next chunk.
+
+### 2026-05-22 — Host-side perf-log decoder landed (`tools/marvin-perf/`)
+
+Built v0 of the host decoder for the perf-log USB CDC stream. Runs under **uv** — `uv run marvin-perf ...` is the canonical invocation, `pyproject.toml` is the dep source-of-truth, `uv.lock` committed for reproducibility, no `requirements.txt`. Python 3.12 pinned via `.python-version`.
+
+Layout (`tools/marvin-perf/`):
+
+- `marvin_perf/records.py` — schema mirror of [`perf_log_records.h`](../default/src/perf_log/perf_log_records.h) (`EXPECTED_SCHEMA_VERSION = 1`). Hand-mirror, not codegen — small + version-gated, and a hand-mirror is the diff a reviewer reads when the schema bumps. `Patch` keeps the 5×150 B BGR payload as raw bytes; v0 doesn't render pixels.
+- `marvin_perf/framing.py` — table-based CRC-16/CCITT-FALSE (verified against the canonical `0x29B1` test vector) + a streaming SOF-resync state machine that handles arbitrary chunk boundaries, oversized/undersized LEN, mid-payload SOF false positives, and CRC drops. `FrameStats` exposes counters (`frames_ok`, `bytes_resync_dropped`, `crc_mismatches`, `bad_lengths`) for diagnostics.
+- `marvin_perf/decode.py` — `Header.unpack` + per-type decoders dispatched by `RecordType`. Unknown types yield `UnknownRecord` rather than aborting, so a forward-schema firmware doesn't crash an older host.
+- `marvin_perf/transport.py` — `FileSource(path)`, `SerialSource(port)` (lazy `import serial`, asserts DTR on open to trip the firmware sink's re-emit-SESSION path), `TeeSource(upstream, out_path)` (live + record).
+- `marvin_perf/analyze.py` — adjacent stage-pair latency histograms (p50/p95/p99/max), drop deltas, per-task HWM trend. Sanity checks: schema-version match (hard fail), `frame_epoch` monotonicity, VIDEO_PUBLISH cadence (16.67 ms ± 2 ms at 60 Hz).
+- `marvin_perf/cli.py` — argparse subcommands `live` / `record` / `decode` / `summarize`.
+- `tests/` — 42 passing pytest cases covering CRC vectors, frame round-trips per record type, SOF resync, partial-chunk reassembly, length sanity, decode-error paths, and analysis math (drops, HWM, schema mismatch, cadence).
+
+Updated `perf_log_records.h:8-9` to point the mirror reference at `tools/marvin-perf` (was the placeholder `tools/perf-log-decoder`).
+
+Producer wiring is still incomplete (per the 2026-05-21 perf-log entry — only `SESSION` on DTR + 1 Hz `DROP` heartbeat fire today), but the decoder is built and tested against the wire format that's settled, so it stays correct as STAMP/DETECTOR/TIMING/PATCH/TASK_HIGHWATER come online. `summarize` will produce real latency tables and HWM trends as soon as those producers land — closes the carry-forward "FreeRTOS analytics dump path" on the host side once `PERF_REC_TASK_HIGHWATER` emission lands.
+
+### 2026-05-21 — FreeRTOS resource inventory + priority/analytics review
+
+Stood up the work to enable FreeRTOS analytics (`vTaskListTasks`, `vTaskGetRunTimeStatistics`, `uxTaskGetStackHighWaterMark`) and audit task priority assignments across marvin. Three findings worth logging — one outright bug, one priority inversion, one structural problem with the priority budget.
+
+**Resource inventory (16 tasks, 8 sync primitives).**
+
+Hand-written (under `default/src/`, all `xTaskCreateStatic` per the static-allocation rule):
+
+| Task | Prio | Stack (words) | File:Line | Cadence | Notes |
+|---|---:|---:|---|---|---|
+| `VideoTask` | 1 | 1024 | [video.c:323](../default/src/video/video.c#L323) | 20 ms poll | Capture-pipeline state machine; arms ISC on TC358743 lock; rebinds HEO per frame in ISR |
+| `CvMarvinV1` | 2 | 1024 | [cv_marvin_v1.c:357](../default/src/detector/cv_marvin_v1.c#L357) | event (frame queue, portMAX_DELAY) | 5×5 patch sample + threshold + bus publish |
+| `Timing` | 2 | 768 | [timing_pipeline.c:358](../default/src/actuator/timing_pipeline.c#L358) | event (bus queue, 5 ms timeout) | Chord window + strum scheduler |
+| `FretLink` | 2 | 768 | [fretboard_link.c:248](../default/src/actuator/fretboard_link.c#L248) | event (cmd queue, 50 ms timeout) | USB-host CDC writer + 50 ms heartbeat republish |
+| `PerfDrain` | 2 | 512 | [perf_log.c:176](../default/src/perf_log/perf_log.c#L176) | event (state queue, 20 ms timeout) | Frames + writes to USB-device CDC sink |
+| `DetectorDrain` | 1 | 512 | [detector.c:69](../default/src/detector/detector.c#L69) | event (bus queue, portMAX_DELAY) | **M1 stub consumer; should have been deleted when M3 wired Timing** |
+
+(`ManualControl` has no task — it's a synchronous API that calls `FretboardLink_Send` directly.)
+
+MCC-generated (under `default/src/config/default/`, all `xTaskCreate` dynamic, all priority 1, all 1024-word stacks, all 10 ms `vTaskDelay` polling loops):
+
+| Task | File:Line |
+|---|---|
+| `XLCDC_Tasks` | [tasks.c:178](../default/src/config/default/tasks.c#L178) |
+| `DRV_MAXTOUCH_Tasks` | [tasks.c:187](../default/src/config/default/tasks.c#L187) |
+| `USB_DEVICE_TASKS` | [tasks.c:199](../default/src/config/default/tasks.c#L199) |
+| `USB_HOST_TASKS` | [tasks.c:208](../default/src/config/default/tasks.c#L208) |
+| `DRV_USB_UDPHS_TASKS` | [tasks.c:217](../default/src/config/default/tasks.c#L217) |
+| `LEGATO_Tasks` | [tasks.c:226](../default/src/config/default/tasks.c#L226) |
+| `DRV_USB_HOST_TASKS` | [tasks.c:235](../default/src/config/default/tasks.c#L235) — wraps EHCI + OHCI |
+| `SYS_INPUT_Tasks` | [tasks.c:244](../default/src/config/default/tasks.c#L244) |
+| `APP_Tasks` | [tasks.c:257](../default/src/config/default/tasks.c#L257) — self-deletes after one tick (see [app.c:198-205](../default/src/app.c#L198-L205)) |
+
+Sync primitives (all hand-written, all static):
+
+| Primitive | Type | Depth × item | Producers → Consumers |
+|---|---|---|---|
+| `s_bus_queue` ([detector.c:61](../default/src/detector/detector.c#L61)) | Queue | 8 × `detector_state_t` | CvMarvinV1 → **Timing + DetectorDrain (bug)** |
+| `frames` ([cv_marvin_v1.c:309](../default/src/detector/cv_marvin_v1.c#L309)) | Queue | 1 × `Video_FrameInfo` | Video ISR → CvMarvinV1 |
+| `s_cmd_queue` ([fretboard_link.c:230](../default/src/actuator/fretboard_link.c#L230)) | Queue | 1 × `uint8_t` (overwrite) | Timing + ManualControl → FretLink |
+| `s_state_q` ([perf_log.c:161](../default/src/perf_log/perf_log.c#L161)) | Queue | 128 × 40 B union slot | All perf producers → PerfDrain |
+| `s_patch_q` ([perf_log.c:167](../default/src/perf_log/perf_log.c#L167)) | Queue | 8 × `perf_rec_patch_t` | CvMarvinV1 (future) → PerfDrain |
+| `s_write_done` ([fretboard_link.c:236](../default/src/actuator/fretboard_link.c#L236)) | BinarySemaphore | — | Host CDC ISR → FretLink |
+| `s_ctrl_done` ([fretboard_link.c:239](../default/src/actuator/fretboard_link.c#L239)) | BinarySemaphore | — | Host CDC ISR → FretLink |
+| `s_write_done` ([perf_log_sink_cdc.c:50](../default/src/perf_log/perf_log_sink_cdc.c#L50)) | BinarySemaphore | — | Device CDC ISR → PerfDrain |
+| `s_mutex` ([log.c:20](../default/src/log.c#L20)) | Mutex | — | log_vprintf() — **`portMAX_DELAY` ⇒ ISR-illegal**, see 2026-05-21 freeze entry |
+
+No event groups, no stream/message buffers, no task notifications anywhere in the codebase today.
+
+**Finding 1 (bug, fix before next test): `DetectorDrain` is double-consuming the bus.** Both `DetectorDrain` (priority 1, [detector.c:30-57](../default/src/detector/detector.c#L30-L57)) and `Timing` (priority 2, [timing_pipeline.c:330,338](../default/src/actuator/timing_pipeline.c#L330)) call `xQueueReceive` on `s_bus_queue`. FreeRTOS queues are single-consumer-per-record by design, so each task sees roughly half the records — the half DetectorDrain gets is silently dropped. Plays nicely with what we observe (gameplay still works, but timing decisions are derived from every other detector publish at best). The 2026-05-20 plan-of-record explicitly said `DetectorDrain` would be deleted when M3 wired the real consumer; that step was missed. Fix is one-line: delete the `xTaskCreateStatic(drain_task, …)` call in `Detector_Initialize` and the supporting `drain_task` function. Throughput logging it provided is moot now that the perf-log path exists.
+
+**Finding 2 (priority inversion): `VideoTask` runs below its consumers.** `VideoTask` is the source of frames `CvMarvinV1` blocks on, but it's at priority 1 while `CvMarvinV1`/`Timing`/`FretLink`/`PerfDrain` all sit at 2. A late-frame condition (TC358743 lock churn, ISC retry) needs `VideoTask` to push the capture-pipeline state machine forward, but any priority-2 work currently runnable will preempt it. The detector then blocks on an empty frame queue while the video task can't run. Empirically not biting because `CvMarvinV1` only runs on frame arrival (event-driven, blocks immediately after consuming), but it's a latent class of stall whenever a priority-2 task ends up briefly busy. `VideoTask` belongs at priority 2 (or above) — the producer of the real-time pipeline shouldn't be in the same priority band as MCC's polling tasks.
+
+**Finding 3 (structural): the priority budget is too narrow.** `configMAX_PRIORITIES = 5` (priorities 0..4). Idle is 0. With time-slicing on (`configUSE_TIME_SLICING = 1`, `configIDLE_SHOULD_YIELD = 1`) and round-robin between equal-priority Ready tasks, current bunching is:
+
+- Priority 4: (unused)
+- Priority 3: (unused)
+- Priority 2: CvMarvinV1, Timing, FretLink, PerfDrain (4 tasks — real-time path, all event-driven, mostly mutually exclusive)
+- Priority 1: 9 MCC polling tasks + VideoTask + DetectorDrain (11 tasks)
+- Priority 0: idle
+
+With 11 tasks ready at priority 1 and the tick rate at 1 kHz, each priority-1 task gets ≈ 1 ms of every ≈ 11 ms — tolerable but means each MCC stack does its 10 ms `vTaskDelay` poll on roughly the cadence it asks for plus or minus a tick of jitter. The bigger problem is that we have *zero* headroom for further structure: there's no place to put a faster-than-detector watchdog, a strict-priority audio path, or anything that should clearly outrank `Timing` without sharing. If we ever hit a priority-inversion class problem the kernel can't help via priority inheritance because there's nowhere to invert *to*. Preferred fix is to bump `configMAX_PRIORITIES` to 8 — costs 3 × `sizeof(List_t)` ≈ 60 bytes of BSS per extra band on this port, trivial — and reorganize as:
+
+- 4: real-time strum-critical (Timing, FretLink)
+- 3: real-time vision (VideoTask, CvMarvinV1)
+- 2: PerfDrain + MCC USB host/device + DRV_USB_UDPHS (anything where stalling means a missed enumeration window)
+- 1: MCC display/touch/Legato/SYS_INPUT (UI tasks; visible jitter only, not failure)
+- 0: idle
+
+The MCC tasks are dynamic-created but their priority arg comes from a single MCC config knob per task; we can override via the existing `user.cmake` patch list rather than editing `tasks.c` directly. Worth doing alongside enabling analytics — once HWM + run-time-stats are live we'll have the data to confirm the split is correct.
+
+**Analytics enable plan.** Three flags + one macro pair in `FreeRTOSConfig.h`:
+
+```c
+#define configGENERATE_RUN_TIME_STATS         1
+#define configUSE_TRACE_FACILITY              1
+#define configUSE_STATS_FORMATTING_FUNCTIONS  1
+#define INCLUDE_uxTaskGetStackHighWaterMark   1
+```
+
+`configGENERATE_RUN_TIME_STATS` requires a counter source via two macros:
+
+```c
+#define portCONFIGURE_TIMER_FOR_RUN_TIME_STATS()  /* SYS_TIME init runs in SYS_Initialize already, no-op */
+#define portGET_RUN_TIME_COUNTER_VALUE()          ((uint32_t)SYS_TIME_CounterGet())
+```
+
+Same TC0-CH0 source as the perf-log timestamps, so the units are consistent across both surfaces. Cost: `configUSE_TRACE_FACILITY` adds two pointers + a `UBaseType_t` per TCB; on 16 tasks that's a couple hundred bytes. Run-time stats arithmetic on every context switch is one 32-bit subtract + add. Acceptable.
+
+Once enabled, dump on an SBC-style trigger — initially a 10-second-cadence `PERF_REC_TASK_HIGHWATER` from the perf-log drain task is the cheapest path (record format already exists in `perf_log_records.h`), and host-side decoder work makes it visible in the same Gantt view. Stretch: a console UART command to dump `vTaskListTasks` + `vTaskGetRunTimeStatistics` on demand, decoupled from the perf-log path so it works without USB.
+
+Carry-forward "FreeRTOS analytics not yet enabled" note in §Open questions can come out once this lands.
+
+**What landed (findings 1–3 resolved).**
+
+Finding 1 fixed in its own commit: `DetectorDrain` task and its supporting storage deleted from `detector.c`; bus queue create stays. Smoke-tested on hardware before continuing.
+
+Findings 2+3 landed together as a single re-tiering pass after deciding it was cleaner to size the priority budget once with the full layout in mind than to bump VideoTask now and re-shuffle later. `configMAX_PRIORITIES` 5 → 8 (room for 0..7; 60 B BSS for the extra ready-list bands; CLZ-based selection stays constant-time up to 32). Per-task priorities ended up:
+
+| Band | Tasks | Role |
+|---:|---|---|
+| 7 | (reserved) | Future emergency-stop / hard watchdog |
+| 6 | (reserved) | Future soft watchdog / fault recovery |
+| 5 | `Timing`, `FretLink`, `USB_HOST_TASKS`, `DRV_USB_HOST_TASKS` | Strum-critical output (and the wire it travels) |
+| 4 | `VideoTask`, `CvMarvinV1` | Vision real-time |
+| 3 | `PerfDrain`, `USB_DEVICE_TASKS`, `DRV_USB_UDPHS_TASKS` | Diagnostic + perf-log wire |
+| 2 | `LEGATO_Tasks`, `DRV_MAXTOUCH_Tasks`, `XLCDC_Tasks`, `SYS_INPUT_Tasks` | UI |
+| 1 | (reserved) | Background housekeeping |
+| 0 | idle, `APP_Tasks` (self-deletes) | — |
+
+The MCC priorities are set in the per-component yml files (`gfx_legato.yml`, `usb_host.yml`, `drv_usbhs_v1.yml`, `drv_usb_udphs.yml`, `usb_device.yml`, `gfx_maxtouch_controller.yml`, `le_gfx_driver_xlcdc.yml`, `sys_input.yml`) plus `FreeRTOS.yml` for `FREERTOS_MAX_PRIORITIES = 8`, so MCC regen will produce the same `tasks.c` priority arguments — **no MCC re-apply patch needed for this layout**.
+
+Hand-written tasks already had `*_TASK_PRIORITY` constants at file top; updates are one-line each in [video.c](../default/src/video/video.c), [cv_marvin_v1.c](../default/src/detector/cv_marvin_v1.c), [timing_pipeline.c](../default/src/actuator/timing_pipeline.c), [fretboard_link.c](../default/src/actuator/fretboard_link.c), and [perf_log.c](../default/src/perf_log/perf_log.c). Normalized `perf_log.c`'s priority constant from `(tskIDLE_PRIORITY + N)` to a bare integer literal to match the rest of the marvin code; `tskIDLE_PRIORITY` is `0` so this is a stylistic change only.
+
+Hardware behavior post-change: gameplay path unaffected (Easy/Expert smoke-tested). One observation: framebuffer paint is visibly slower to come up during boot, which is expected — Legato is now in band 2, below USB (3/5), VideoTask + CvMarvinV1 (4), and Timing + FretLink (5), so the early-boot window where USB is enumerating, capture is locking, and the detector is spinning up gives Legato less CPU. Steady-state UI responsiveness is unchanged because higher-priority tasks all spend most time blocked.
+
+**Analytics enabled + UART diag dump live.** Flipped `configGENERATE_RUN_TIME_STATS`, `configUSE_TRACE_FACILITY`, `configUSE_STATS_FORMATTING_FUNCTIONS`, and `INCLUDE_uxTaskGetStackHighWaterMark` via the FreeRTOS Harmony component (per-component yml updated). Wired the run-time counter to `SYS_TIME_Counter64Get` with `configRUN_TIME_COUNTER_TYPE = uint64_t` directly in [`FreeRTOSConfig.h`](../default/src/config/default/FreeRTOSConfig.h) — added as patch #8 on the MCC re-apply list. The `uint64_t` choice was forced by hardware: SYS_TIME runs at ~266 MHz, so a `uint32_t` cumulative counter wraps after ~16 s of accumulated CPU time across all tasks and percentages immediately go to nonsense — caught the wrap on the first multi-minute test.
+- New [`diag/diag.{h,c}`](../default/src/diag/) module: priority-1 task at 10 s cadence dumps `uxTaskGetSystemState` results line-by-line over the existing `LOG_INFO` channel — task name, state, priority, stack high-water, accumulated CPU (ms), and percentage. Uses a static `TaskStatus_t[24]` array; **does not** call `vTaskListTasks` / `vTaskGetRunTimeStatistics` because both pvPortMalloc internally on every call, and our `heap_1` linker doesn't free — the convenience wrappers freeze the system after ~2 dumps when the 40 KB heap is exhausted (also a static-allocation-rule violation, would have been a footgun even with heap_4).
+- Steady-state baseline measured during a multi-minute Easy-mode gameplay session: **97.9% idle**. CvMarvinV1 0.72% (≈ 120 µs/frame at 60 Hz for 5 patches × 5×5 BGR sample + threshold), FretLink 0.34%, Timing 0.10%, LEGATO 0.04%, VideoTask 0.02% (zero-copy DMA confirmed — VideoTask just rotates buffers and notifies subscribers, no per-frame memcpy). Stack high-waters all stable; `PerfDrain` is the tightest at 173 free of 512 (66% used) and worth bumping when producers wire up.
+- Still pending: 10 s `PERF_REC_TASK_HIGHWATER` cadence on the perf-log channel (record type already in [perf_log_records.h](../default/src/perf_log/perf_log_records.h)) for off-device replay alongside the rest of the perf-log stream. The on-device UART dump is enough for live tuning today; the perf-log version becomes the durable record once the host decoder lands.
+
+### 2026-05-21 — Perf-log producer-side module landed
+
+Built the perf-log subsystem end-to-end on the producer side, including the real USB-device CDC ACM sink. Producers are not yet wired (module is dark beyond a SESSION + 1 Hz DROP heartbeat), but the wire path is live: a `PERF_REC_SESSION` is re-emitted on every host DTR-rising edge, so reconnecting a terminal mid-session always sees the schema record.
+
+**What landed under [`firmware/marvin/default/src/perf_log/`](../default/src/perf_log/):**
+- `perf_log_records.h` — wire format, schema version 1. 16 B common header (`magic` 0x4D56 'MV', `type`, `flags`, `frame_epoch`, `ts_counter`). Record types: SESSION, STAMP, DETECTOR, TIMING, PATCH, DROP, TASK_HIGHWATER. Stage IDs cover ISC_IRQ, VIDEO_PUBLISH, CV_START, CV_END, TP_TICK, FBL_SEND, CDC_WRITE_COMPLETE.
+- `perf_log.{h,c}` — façade with separate task / `*FromISR` entry points (mirrors `xQueueSend` / `xQueueSendFromISR`). Two queues sized for the 30× small/large record-size ratio: state queue (slot = 40 B largest small record, depth 128) and patch queue (slot = `sizeof(perf_rec_patch_t)` = 814 B, depth 8). Drop-on-full, never block. Per-queue + sink drop counters RMW under `taskENTER_CRITICAL` / `taskENTER_CRITICAL_FROM_ISR` (the XC32 ARM926 port doesn't link libatomic; GCC's `__atomic_add_fetch` falls through to a libcall and won't link). Drain task at `tskIDLE_PRIORITY + 2` (above idle, below detector/timing) with 2 KB stack; emits one `PERF_REC_DROP` per second.
+- `perf_log_sink.h` + `perf_log_sink_cdc.c` — sink interface and USB-device CDC ACM implementation. CRC-16/CCITT-FALSE over `LEN || PAYLOAD`; framing is `0x55 0x4D 0x52 0x56 || u16 LEN || PAYLOAD || u16 CRC`. MCC now ships USB-device + USB-device-CDC class config (UDPHS); the sink owns the application side: opens `USB_DEVICE_INDEX_0`, registers the device-layer event handler (Attach on POWER_DETECTED, register CDC handler on CONFIGURED), and exposes a blocking `WriteFramed`. CDC class events handle GET/SET line coding, control-line state (DTR latched into `s_cls`), and signal `WRITE_COMPLETE` via `xSemaphoreGiveFromISR` on a binary semaphore. Single producer (the drain task); writes are serialized one at a time on a single cache-aligned 832 B staging buffer (header + max patch payload + CRC). DTR-gated: if the host hasn't asserted DTR, frames are dropped into `s_drop_sink`. Write timeout (100 ms) drops + accumulates and the next state-machine pass observes DECONFIGURED if the host went away.
++ Cold-boot-with-cable required an explicit `Detach → 100 ms → Attach` edge after handler registration; relying on the driver's natural VBUS-edge `POWER_DETECTED` event to fire after-the-fact didn't enumerate (suspected: host gave up retrying after observing transient pull-up state during early boot, or the UDPHS driver's `vbusLevel` tracking races with handler-registration timing). The forced edge gives the host an unambiguous device-arrival regardless.
+- μs timestamps via `SYS_TIME_CounterGet()` (TC0 CH0 raw counter) — host divides by `timer_freq_hz` from the SESSION record. Explicitly *not* the `xTaskGetTickCount() * (1000000 / configTICK_RATE_HZ)` pattern at [cv_marvin_v1.c:156](../default/src/detector/cv_marvin_v1.c#L156); that's ms-resolution masquerading as μs and is useless for sub-frame attribution.
+
+**Wired into [`app.c`](../default/src/app.c):** `PerfLog_Initialize()` after `Video_Initialize()` (queues exist before any producer can post); `PerfLog_Start()` at the end of `APP_Initialize` (creates the drain task; Harmony brings the scheduler up after `APP_Initialize` returns, so this is the standard "create static tasks before `vTaskStartScheduler`" pattern). `cmake/marvin/default/user.cmake` updated.
+
+**Producers not yet wired** — module is dark today. Next steps land them in this order: (1) ISR producers (`video.c` ISC_IRQ + VIDEO_PUBLISH; `fretboard_link.c` CDC_WRITE_COMPLETE — *no* `LOG_INFO` from this ISR per the 2026-05-20/21 freeze pattern); (2) task producers in `cv_marvin_v1`, `timing_pipeline`, `fretboard_link.FretboardLink_Send`. Replaces the commented-out 2 Hz dump at [`cv_marvin_v1.c:336-351`](../default/src/detector/cv_marvin_v1.c#L336-L351). `PERF_REC_PATCH` emission slots in last (Tier 2 — reuses already-sampled 5×5 patches, no new I/O).
+
+### 2026-05-21 — Perf-logging bandwidth/capacity scoping
+
+Crunched numbers ahead of designing a frame-by-frame perf log (video + detector + actuator state) so we know which resolutions and which transports are actually in scope. Detail below; takeaway is that the spec's already-chosen "sparse keyframes + dense state" point (~1 MB/s) is the only real sweet spot, and the "full-rate raw video" wish is dead on arrival across every transport SAM9X75 has.
+
+**Baseline — 720×480 RGB888 (BGR888-packed in our pipeline) @ 60 Hz**
+
+- Per frame: 720 × 480 × 3 = **1.04 MB**.
+- Per second: **62.2 MB/s ≈ 498 Mb/s**.
+- All state payload (detector_state_t × 2 detectors + actuator + timing snapshot + per-frame metadata header) is ~150 B/frame ≈ **9 KB/s** — rounding error against pixels. This is a video-bandwidth problem, not a state-volume problem.
+
+**Scaled-down variants (per-second bandwidth)**
+
+| Variant | B/s |
+|---|---|
+| Full 720×480 RGB888 @ 60 Hz | 62.2 MB/s |
+| Same @ 30 Hz | 31.1 MB/s |
+| 720×480 RGB565 @ 60 Hz | 41.5 MB/s |
+| 720×480 grayscale @ 60 Hz | 20.7 MB/s |
+| 360×240 RGB888 @ 60 Hz | 15.6 MB/s |
+| 360×240 RGB888 @ 30 Hz | 7.78 MB/s |
+| 180×120 RGB888 @ 30 Hz | 1.94 MB/s |
+| Strike-line strip 720×80 @ 60 Hz | 10.4 MB/s |
+| 5 ROI patches 32×32 RGB888 @ 60 Hz | 922 KB/s |
+| State-only (no pixels) @ 60 Hz | 9.1 KB/s |
+
+**Capacity over a session length**
+
+| Stream | 1 min | 5 min (song) | 10 min |
+|---|---|---|---|
+| Full @ 60 Hz | 3.73 GB | 18.7 GB | 37.3 GB |
+| 360×240 @ 30 Hz | 467 MB | 2.33 GB | 4.67 GB |
+| 1 keyframe/s + state (≈ spec §4.6) | 62 MB | 311 MB | 622 MB |
+| ROI patches 60 Hz | 55 MB | 277 MB | 553 MB |
+| State only | 547 KB | 2.7 MB | 5.5 MB |
+
+**Transport ceilings on this hardware** (sustained, realistic)
+
+| Channel | Sustained | Peripheral status |
+|---|---|---|
+| UART 115.2 kBd (console) | ~11 KB/s | in use (FLEXCOM4) |
+| UART 921.6 kBd | ~92 KB/s | EDBG bridge cap |
+| UART 3 Mbd (FLEXCOM max) | ~300 KB/s | unlikely through bridges |
+| USB CDC ACM (HS device, class-stack overhead) | ~5–15 MB/s | device peripheral unused |
+| USB Bulk (HS device, custom class) | ~30–40 MB/s | needs custom host-side reader |
+| SDMMC Class-10 via FAT32 | ~5–10 MB/s | already planned for §4.6 keyframes |
+| SDMMC UHS-I | ~25–50 MB/s | bus capable, FS overhead bites |
+| GMAC Ethernet UDP | ~30–60 MB/s | GMAC unused |
+| GMAC Ethernet TCP | ~10–20 MB/s | GMAC unused |
+
+**What fits where**
+
+- **State-only (9 KB/s)** fits everywhere including the console UART — no new transport needed if the goal is just "trace detector + timing + actuator decisions per frame."
+- **ROI patches 60 Hz (~1 MB/s)** preserves everything cv_marvin_v1 actually samples; streams comfortably over USB CDC, fits an entire song on SD with room to spare.
+- **1 keyframe/s + dense state (~1 MB/s)** is what spec §4.6 already commits to, fits any modern SD card, and survives over USB CDC or Ethernet.
+- **Full 60 Hz (62 MB/s)** doesn't fit any transport sustained, *and* a 5-minute song at that rate is 18.7 GB — DOA.
+
+**Implication for what to build next.** The scoping confirms the spec's existing reference-data architecture is the right place to start; perf-logging is a *consumer* of the same infrastructure, not a separate path. Next step is to figure out which questions the perf log actually has to answer (latency attribution? frame-rate stability? detector confidence over time? actuator jitter?) and pick the minimum stream that answers them. State-only might already be enough for the latency/jitter questions; ROI patches are the cheapest way to get "did the detector see what I think it saw" replayability.
+
+### 2026-05-21 — cv_marvin_v1 threshold tuning + timing-pipeline tweaks
+
+First end-to-end gameplay test on hardware. Detector was firing roughly random presses at first; resolved by reading actual signal values rather than guessing.
+
+**Visibility added:**
+- State-reactive overlay in `cv_marvin_v1.c` — position rings always; filled center dot when `s_pressed[i]` (white in the hold ring) or `s_edge_active[i]` (fret-color in the edge ring). Lets the user watch chatter live: stable note → steady dot for hold duration; strum window → flash on the edge dot.
+- Periodic ~2 Hz log dump (`frame_count % 30 == 0`) showing per-fret `hold_dist / edge_dist / P E` flags.
+
+**Diagnosis (Easy mode, no real B/O presses):**
+- Idle hold floor sits at 22–48 across all five frets, **not** the limited-range 16 floor `display_path.md` would suggest. Playfield-glow at the sample sites is well above the limited-range black point.
+- Real-press hold spikes to 67–186, leaving a clean gap above the noise ceiling.
+- Hold threshold 50 with release-frac 0.6 (release=30) was *below* the idle floor for Y and B → those frets latched permanently pressed and never released.
+- Edge threshold 50 was at the peak of real-edge signal (40–53), almost never tripping. timing_pipeline only uses `pressed` today, so dead edges aren't the chatter source — but lowering edge threshold lets `s_edge_active` overlay flicker meaningfully again.
+
+**Settings landed (in `cv_marvin_v1.c`):**
+- `CV_HOLD_THRESH`: 50 → **100** (after iterating 65 → 80 → 100; 100 cleanly above noise across all frets, real presses still spike to 150–186).
+- `CV_HOLD_RELEASE_FRAC`: 0.60 → **0.78** (release ≈ 78 — above the noise ceiling, comfortably below real-press floor).
+- `CV_EDGE_THRESH`: 50 → **25** (gives the overlay an honest edge indicator without affecting pipeline behavior).
+- Sample coords nudged 1 px on G/R/Y/B/O edges + B hold for slightly cleaner alignment.
+
+**Performance:** Expert-mode play is now quite good — clean note recognition, fret hold-through across consecutive same-fret notes confirmed by trace through `process_releases` (release suppressed when the next chord-commit's `note_q` entry already needs the bit, within `TP_STRUM_DELAY_MS − TP_CHORD_WINDOW_MS = 190 ms` of detector-release-to-detector-press).
+
+**Timing-pipeline tweaks** (Greg's hand-edits): `TP_STRUM_PULSE_MS` 50→25, `TP_CHORD_WINDOW_MS` 20→30, `TP_FIFO_CAP` 16→32.
+
+Open question added above: `TP_STRUM_DELAY_MS = 220 ms` is Expert-tuned; Easy/Medium/Hard may need different values because note travel time differs.
+
+### 2026-05-21 — Manual fretboard-control producer + timing-pipeline gate
+
+Stood up the actuator-side half of a basic on-device manual-control surface — primarily for game-menu navigation (start a song, advance menus, hit pause) where single-finger input is the natural shape. UI half waits on a Microchip Graphics Composer regen.
+
+What landed:
+
+- `actuator/manual_control.{h,c}` — second producer of `FretboardLink_Send`, alongside `timing_pipeline`. Internal state: `s_fret_mask` (bits 0..4) and `s_strum_mask` (bits 5..6). Public API: `Initialize / SetEnabled / IsEnabled / SetFret / SetStrum`. Both fret and strum are momentary — held while the UI button is down, cleared on release. `recompute_and_send` only calls `FretboardLink_Send` while enabled.
+- `TimingPipeline_SetEnabled(bool)` — output gate on `publish_mask`. Pipeline still advances internal state when gated, so the next `advance()` (≤ `TP_TICK_MS` = 5 ms) after re-enable republishes the right mask without a stale frame.
+- `ManualControl_SetEnabled` ordering: enter manual mode = gate timing pipeline first, zero local state, send `0`, set enabled flag (so a stale pipeline frame can't race a manual zero on the wire); exit = clear enabled flag, zero state, send `0`, ungate pipeline.
+- App init wires `ManualControl_Initialize()` after `TimingPipeline_Initialize()`. No Legato dependency at this stage.
+- `cmake/marvin/default/user.cmake` adds `manual_control.c` and `ui/manual_input.c`.
+
+UI half landed same session after Greg ran the Composer regen. Composer added 8 buttons to `Screen0` — `Screen0_Button_Manual_{Green,Red,Yellow,Blue,Orange,StrumDown,StrumUp,Enable}` — plus 15 extern `event_Screen0_Button_Manual_*` handler declarations the application must define. The binding shape came out simpler than the plan called for: `screenShow_Screen0` itself calls `setPressedEventCallback` / `setReleasedEventCallback` with those extern symbols, so the linker resolves them and **no `ManualInput_Bind()` walk is needed**. `ui/manual_input.c` is just the 15 function bodies forwarding to `ManualControl_SetFret / Strum / SetEnabled`. The originally planned `APP_Tasks` poll-loop for null widget pointers is moot — `APP_Tasks` keeps the existing `vTaskDelete(NULL)`.
+
+Strum buttons are momentary, not one-shot: holding the strum button keeps the fretboard's strum line asserted, which Guitar Hero / Rock Band menus interpret as auto-repeat scrolling — the primary use case for this surface. Gameplay-path strums still pulse correctly because they go through `timing_pipeline`, which has its own `TP_STRUM_PULSE_MS` one-shot. The Enable button is `setToggleable(LE_TRUE)` with only `OnReleased`; both the widget and `ManualControl` default to off, so a simple `SetEnabled(!IsEnabled())` flip stays in sync without querying the widget's toggle state.
+
+Plan agent flagged two real blockers worth recording: (1) Legato's input pipeline routes each touch to one focus widget — multi-finger momentary chords aren't possible without a custom dispatcher, so the model is single-finger only; (2) the lazy widget-pointer init means any code that walks the `Screen0_*` pointers has to run post-`screenShow_Screen0` — moot here because Composer does the wiring itself, but still true for any future shim that needs to read or modify widget state.
+
+Decision-log entries above cover the producer-as-peer pattern, the Composer-driven UI choice, and the single-finger input model.
+
+**Bring-up over the wire.** Marvin enumerates the EDBG CDC and `FretboardLink_Send` round-trips cleanly through the queue, but the fretboard MCU's SERCOM1 wasn't receiving anything. Two real fixes:
+
+1. **EDBG bridge needs DTR raised.** The bridge holds its UART TX idle until the host asserts DTR. Added `USB_HOST_CDC_ACM_ControlLineStateSet` with `dtr=1, carrier=1` to `open_cdc()` after the existing `LineCodingSet(115200)`. Baud matters here — fretboard runs a real UART at 115200, not USB-CDC-ignored.
+2. **Control-pipe completion handlers run from ISR context.** First instrumented attempt logged `LOG_INFO` directly from the new `SET_LINE_CODING_COMPLETE` / `SET_CONTROL_LINE_STATE_COMPLETE` event cases; system froze mid-print. Microchip's CDC stack dispatches *all* class events from ISR (the existing `WRITE_COMPLETE` case already uses `*FromISR` primitives — that was the precedent). `log_vprintf` takes a mutex with `portMAX_DELAY`, illegal from ISR. Stripped both the diagnostic logging and the latch infrastructure once the link was confirmed functional. Captured for the journal because it's a recurring shape: any new event-handler case in this stack must stay strictly ISR-safe.
+
+### 2026-05-20 — USB CDC host attach: EDBG composite enumerates, CDC class driver now binds
+
+Picked up where the prior session left off — VBUS not asserting, no device detected. Closed both halves.
+
+**VBUS.** MCC's `DRV_USB_VBUSPowerEnable` callback is wired in the host driver but the host stack never invokes it on this build. Asserted the two VBUS GPIOs (`VBUS_AH_PC27_PowerEnable_Set` / `VBUS_AH_PC31_PowerEnable_Set`) directly from `APP_Initialize` ahead of consumer init and `USB_HOST_BusEnable`. EDBG immediately enumerates.
+
+**Class-driver binding.** Enumeration succeeded but the CDC attach handler never fired. Added per-interface descriptor logging inside `F_USB_HOST_UpdateDeviceTask` to see what was actually being matched. Output revealed VID `0x03EB` PID `0x2175` — an EDBG composite with five interfaces: HID/CMSIS-DAP, CDC ACM IAD pair (comm + data), vendor, MSC. The IAD passed TPL match and got assigned to the CDC driver, but the CDC instance still flipped to `STATE_ERROR` without our app-level handler ever seeing the attach.
+
+Root cause was inside Microchip's CDC class driver: `F_USB_HOST_CDC_InterfaceAssign` (both single-interface and IAD paths) requires the comm interface to declare `bInterfaceProtocol == USB_CDC_PROTOCOL_AT_V250` (`0x01`). EDBG declares `0x00` (none) — functionally identical CDC ACM in practice; Linux/macOS accept either. The TPL/IAD pre-check passes (TPL wildcards subclass/protocol), the CDC driver gets the interface group, then immediately rejects it on the AT-V.250 check. The interrupt pipe never opens, the instance errors out, and the app-level listener stays silent.
+
+Fix: relaxed both checks to `(AT_V250 || NO_CLASS_SPECIFIC)`. After the patch the FBL log shows `CDC device attached, handle opened` and `c=Y` heartbeat as expected. Logged as patch #7 in the MCC re-apply list.
+
+Also tested a hypothesis from the prior session that `USB_HOST_Initialize` had to run *after* the EHCI/OHCI driver inits. With the diagnostic logging in place, MCC's emitted order (`USB_HOST_Initialize` → `Legato_Initialize` → driver inits) enumerates and binds the CDC IAD just as well — the host layer evidently looks up HCD interfaces lazily at `USB_HOST_BusEnable` time. Backed out the hand-edit; one fewer re-apply patch to maintain. Decision-log entry above.
+
+Diagnostic instrumentation stripped at the end of the session: the per-interface descriptor dump and enumeration state-change logger in `usb_host.c`, and the periodic OHCI/EHCI register heartbeat in `fretboard_link.c`. What remains on disk: the two `usb_host_cdc.c` protocol-relaxation lines (patch #7), the app-level VBUS asserts, and a minimal `USB_HOST_EVENT` printf so future host-stack drama still surfaces in the log.
+
+Next session: revisit timing-pipeline behavior end-to-end now that the actuator wire is live.
+
+### 2026-05-20 — Hardware bring-up after USB CDC host regen: TC358743 wedge resolved
+
+First on-target test after the M2 actuator path landed. Symptoms: video stream not starting, USB ports unpowered, FBL heartbeat firing with `connected=N`. Boot stopped after `TC358743: probe starting`.
+
+Root cause: the USB MCC regen reordered SYS_Initialize so `MMU_Initialize` and `AIC_INT_Initialize` ran *after* `TC0_CH0_TimerInitialize`, `FLEXCOM6_TWI_Initialize`, and `XLCDC_Initialize`. With AIC initialized late, the FLEXCOM6 interrupt vector wasn't owned by the AIC when the first I²C transfer ran; `OSAL_SEM_Pend(transferDone, WAIT_FOREVER)` blocked forever waiting for an ISR that never fired. FBL stayed alive because it's pure FreeRTOS — no peripheral interrupt dependency.
+
+Fix: reverted SYS_Initialize order so MMU/AIC/WDT-disable run before TC0/FLEXCOM6/XLCDC. Display + capture came back on first boot. Logged as patch #6 in the MCC re-apply list above.
+
+USB enumeration is still not working (VBUS not asserting, no device detected). That's a separate investigation — next session.
+
+### 2026-05-20 — Static-allocation conversion, cv_marvin_v1 port, USB CDC host bring-up
+
+Long session covering three independent threads:
+
+1. **Static-allocation conversion.** Adopted project rule: marvin code never uses dynamic FreeRTOS APIs. MCC regenerated with `configSUPPORT_STATIC_ALLOCATION=1` and `vApplicationGetIdleTaskMemory`. Converted `log.c`, `video.c`, `detector.c`, `cv_marvin_v1.c` to `xTaskCreateStatic` / `xQueueCreateStatic` / `xSemaphoreCreateMutexStatic` with per-module `Static{Task,Queue,Semaphore}_t` plus storage arrays at file scope. FreeRTOS heap stays at heap_1 only because MCC tasks still need it. Also fixed two latent video.c issues surfaced by the build: forward-declared `s_capture_armed/s_display_bound` above the ISR that reads them, added missing `#include <stdbool.h>` to `video.h`.
+
+2. **cv_marvin_v1 reference port.** Ported `tools/fret-tuner/detect_video.py` to C — 5×5 patch BGR sampling, brightness-based hold detect with hysteresis (`HOLD_THRESH=50`, release at 60%), color-filtered edge detect with rising-edge `press_count`, per-fret BGR target/reject filter table. Coords scaled from Python's 1920×1080 anchor to 720×480 (Wii 480p60) at port time — same Elgato direct-pixel topology, just different resolution. Bus record stays canonical (option A): only `pressed / confidence / raw_value` cross the bus; `press_count` and raw color distances stay private to the module. Recording-format choice (custom packed binary vs nanopb vs CBOR) deferred to M5. ISC framebuffer pool moved from `.region_cache_aligned` to `.region_nocache` so CPU readers see DMA writes coherently; cap dropped 1080p→720p to fit the 16 MB nocache region.
+
+3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
+
+Spec update: added §4.8 game-state awareness & control as a marvin subsystem (peer of detection but separate bus, video-frame consumer not a detector). Defers recognizer algorithm + arbitration boundary as Q10/Q11.
+
+Next session: USB device CDC on fretboard side, then wire-protocol design (framing, command set, baud, ack semantics) before either host or device code is written.
+
+### 2026-05-20 — Video fan-out + per-frame buffer routing
+
+Two-commit sequence opening up video capture for parallel CV consumers:
+
+1. **Per-frame buffer routing + multi-subscriber.** Found that `ISC_Capture_GetBufferAddress()` always returned the base, so HEO and `cv_marvin_v1` were both reading slot 0 only — slot 1 written and silently lost. Bumped the ISC frame callback signature to deliver the just-completed buffer address (computed from `iscObj->frameIndex`, which the driver pre-increments). `video.c` now re-points HEO in the ISR every frame and fans out the frame info to a static array of 4 subscribers.
+2. **Ring depth from 2 to 4.** Cheap DDR cost; gives slow consumers ~50 ms read window before lapping.
+
+Deferred: per-task XDMAC sub-region copies for slow / sub-region consumers (e.g., menu/score readers). Will add when the first such consumer arrives.
+
+### 2026-05-20 — M1 scaffolding landed
+
+Stood up the detector subsystem skeleton. New module at `default/src/detector/`:
+
+- `detector.h` — `detector_state_t` (canonical layout from spec §4.2.3), `fret_t` enum, `detector_id_t` enum, `Detector_Initialize`, `Detector_BusQueue`.
+- `detector.c` — owns `xDetectorStateQueue` (depth 8, holds `detector_state_t`) and a temporary `DetectorDrain` task that consumes the bus and logs records/sec at INFO. Drain task is M1-only scaffolding; the timing pipeline (M3) will replace it as sole consumer.
+- `cv_marvin_v1.{h,c}` — owns its FreeRTOS task. Creates a depth-1 frame queue, calls `Video_SubscribeFrames`, blocks on `xQueueReceive`, publishes one `detector_state_t` per frame with `frame_epoch = frame.frame_count`, `timestamp_us = xTaskGetTickCount() × CV_US_PER_TICK`, all-zero `fret[]`.
+
+Wired from `app.c`'s `APP_Initialize` after `Video_Initialize`. Added both `.c` files to `cmake/marvin/default/user.cmake`. No code change to video or capture; `Video_FrameInfo.bytes_per_pixel` already reports 3 (RGB888 packed).
+
+Spec touch-up: §4.2.2 "BGRX32 frames" → "RGB888-packed (3 B/pixel) frames". Surfaced the broader spec drift on capture format as a carried-forward open question — deserves a doc-only sweep before M5 (recording schema depends on it).
+
+Added per-detector enable/disable + single-active selector to the bus API (`Detector_Enable`/`Disable`/`IsEnabled` + `Detector_SetActive`/`GetActive`). Defaults all-disabled; app explicitly enables `DETECTOR_CV_MARVIN_V1` and selects it as active. cv_marvin_v1 still drains its frame queue when disabled but skips publishing. Future video CV tasks (menu, score) go in as video-frame consumers, not detectors — needs a multi-subscriber upgrade to `Video_SubscribeFrames` before the second one lands.
+
+Next session: pick Q8 (initial CV algorithm — leaning pixel-mean threshold per ROI as the simplest end-to-end bring-up) and start populating the `fret[]` field in cv_marvin_v1. ROI geometry calibration also needs a home — spec §4.7 (system config) is the planned destination.
+
+### 2026-05-20 — System spec drafted
+
+Stepped back from per-feature work and scoped marvin's role across the whole guitar-playing-robot system. Output is [`spec.md`](spec.md), a durable system-level description (versus this journal as running diary). Drafted in document order: §1 purpose & scope, §2 system context (three-tier diagram, ownership table, latency budget), §3 hardware platform inventory, §4 all seven subsystems (4.2 CV detection + detector-state bus and 4.6 reference-data recording fully drafted; 4.1 video capture summarized referencing existing docs; 4.3–4.5 + 4.7 sketched). §5–9 stubbed.
+
+Settled architectural decisions (all in the decision log above):
+- Marvin replaces fret-tuner PC as runtime brain.
+- Marvin is the reference detector; recording is first-class.
+- Multiple coexisting detectors on one canonical bus.
+- Timing pipeline centralized on marvin with a fretboard-takeover fallback mode.
+- Reference data = SD card + detector-state + sparse keyframes (60-frame stride, raw BGRX32).
+- `frame_epoch` is the master sync token.
+- Operating modes are independent toggles, not a state machine.
+
+Open questions moved into spec §9: UI framework choice (Q5), initial CV algorithm (Q8), config persistence location (Q9), Ethernet ref-data live stream (Q2; deferred post-M8).
+
+Next session resumes at **M1 — Reference detector v0** (one CV detector running on captured frames, publishing `detector_state_t` records). No code changed today.
+
+_(Earlier session entries — 2026-05-15 back through 2026-05-01 — are in [`journal-archive.md`](journal-archive.md).)_

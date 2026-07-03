@@ -20,9 +20,10 @@ This split lets sensing (detector nodes) and actuation (guitar nodes) live on se
 of one PLCA bus, with marvin selecting the active one of each class (see top-level
 [`SPEC.md`](../../SPEC.md) §2 "Node classes"). Multiple guitar variants may coexist on the bus.
 
-The actuation logic is a direct port of fretboard's [`cmd_receive.c`](../fretboard/cmd_receive.c)
-(bitmask → open-drain assert / tri-state release) — it has no detector dependencies. fretboard
-keeps actuating until this node is proven; marvin flips its command target then.
+The actuation logic (bitmask → open-drain assert / tri-state release) lives in the
+`BTN_APPLY` macro in [`t1s_follower.c`](config.mcc/src/t1s_follower.c) — it has no detector
+dependencies. fretboard keeps actuating until this node is proven; marvin flips its command
+target then.
 
 ## 2. Hardware
 
@@ -72,13 +73,15 @@ A **PLCA follower** — the mirror of marvin's coordinator glue, reusing the sha
 The marvin-side reference for all of this is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator) — the follower inverts the roles: RX the command, no detector-stream TX.
 
-## 4. Firmware design (to build)
+## 4. Firmware design
+
+Implemented in [`t1s_follower.c`](config.mcc/src/t1s_follower.c):
 
 1. **Bring-up:** reset the LAN8651 (`RST` pulse), configure SPI (Mode 0), `TC6_Init` +
    `TC6Regs_Init` as follower id 2. Gate: read chip revision + PLCA *follower* status.
 2. **RX path:** TC6 delivers the marvin command frame → validate ethertype `0x88B5` → take the
-   1-byte payload as the button bitmask → apply to the 7 GPIOs (port fretboard's
-   `cmd_receive_apply_mask` logic).
+   1-byte payload as the button bitmask → apply to the 7 GPIOs (open-drain assert / tri-state
+   release via the `BTN_APPLY` macro).
 3. **TX path:** none required initially. Optional `applied_mask` telemetry back to marvin (for
    edge-ai zero-skew labels) is **deferred** with the edge-ai re-homing effort.
 4. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.

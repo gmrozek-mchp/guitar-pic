@@ -120,10 +120,13 @@ Estimates; static allocation only (no malloc), per project rule.
 | GPIO | 2–3 | `CS_N`, `IRQ_N` (ext-int), reset. |
 | CPU | negligible | One chunk per 240 Hz tick, interrupt-driven off `IRQ_N`; the TC0 ISR stays lean. |
 
-SPI clock: SERCOM SPI master maxes at GCLK/2 ≈ **12 MHz** on the 24 MHz part
-(`BAUD=0`; not the chip's 25 MHz ceiling). Irrelevant for *throughput* (the wire
-is 10 Mbps) but it **dominates command latency** — see §4.1. Both nodes brought up
-at `BAUD=11` ≈ 1 MHz (conservative); planned bump to 12 MHz.
+SPI clock: the PIC32CM SERCOM SPI master maxes at GCLK/2 ≈ **12 MHz** on the 24 MHz
+part (`BAUD=0`; not the chip's 25 MHz ceiling). Irrelevant for *throughput* (the wire
+is 10 Mbps) but it **dominates command latency** — see §4.1. The PIC32CM followers
+(fretboard + guitar) are brought up at `BAUD=11` ≈ 1 MHz (conservative); planned bump
+toward the 12 MHz ceiling. This ≤12 MHz / 1 MHz figure is **follower-side only**:
+marvin, the PLCA coordinator, drives its FLEXCOM SPI at **15 MHz** (`t1s_link.c`
+`T1S_SPI_HZ`).
 
 Everything fits comfortably inside 64 KB / 8 KB.
 

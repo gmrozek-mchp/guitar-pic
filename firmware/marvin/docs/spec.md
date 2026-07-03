@@ -42,12 +42,12 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 | FreeRTOS scheduler, video task, OSAL I²C | ✅ landed. |
 | Lightweight log shim, FreeRTOS analytics, task priorities | ✅ done. |
 | CV detection pipeline | 🚧 M1 complete: `cv_marvin_v1` running on captured frames, `detector_state_t` bus active. No actuation path through detector yet. §4.2. |
-| Fretboard link (FLEXCOM1 USART or T1S) | ✅ working; UART @ 500 kbaud validated on Curiosity Hybrid. T1S multi-node option validated 2026-06-17 (marvin PLCA coordinator, fretboard node 1, guitar node 2). Build flag selects transport: `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}`. §4.3. |
+| Fretboard/guitar link (T1S default, FLEXCOM1 USART fallback) | ✅ working; **T1S is the shipping default** (`user.cmake` hard-sets `MARVIN_FRETBOARD_TRANSPORT=T1S`) — marvin PLCA coordinator, fretboard node 1, guitar node 2, validated 2026-06-17. FLEXCOM1 UART @ 500 kbaud (validated on Curiosity Hybrid) is the fallback transport; in the T1S build FLEXCOM1 instead hosts the fauxmote link (§4.3, §4.9). §4.3. |
 | Timing pipeline (chord FIFO, strum) | ✅ working; end-to-end gameplay tested on Expert and Easy. §4.4. |
-| Operator UI (Legato) | 🚧 Manual-control surface (8 buttons, Legato Composer) done; full calibration/log UI not started. §4.5, open Q5. |
+| Operator UI (Legato) | 🚧 Multi-screen surface live: dashboard, song-select (+ album-art detail), album-art, navigation, splash, and live-video screens, plus custom widgets (`ui/screens/*`, `ui/widgets/*`). Calibration and log/history screens not started. §4.5, open Q5. |
 | Reference-data recording & export (SD) | 🚧 SD recording not started. Perf-log USB CDC export (separate dev-tooling path) complete at 2.77 MB/s. §4.6, open Q1/Q2. |
 | System services (config, time, watchdog) | 🚧 Partial: logging, FreeRTOS analytics, static task priorities done; config persistence and watchdog not started. §4.7. |
-| Game-state awareness & high-level game control | 🚧 M9 Phases 1+2 firmware-complete (screen classifier + section-select/song readers; MPLAB build confirmed, pending hardware test). M9 Phase 3 (number/score readers) and M10 (controller/navigator) not yet started in firmware. §4.8. |
+| Game-state awareness & high-level game control | 🚧 M9 Phases 1+2 firmware-complete (screen classifier + section-select/song readers; MPLAB build confirmed, pending hardware test). M9 Phase 3 (number/score readers) not yet started. M10 controller/navigator in progress in firmware (`game/game_controller.c`: menu-step planner, `nav_to_main_menu`, retry/timeout, CV-plays loop; driven by the `play` console command + dashboard button), pending hardware validation. §4.8. |
 
 ---
 
@@ -92,8 +92,9 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
    │      reference-data export                   │ │           │   │
    │       (Ethernet / SD / USB CDC — §4.6)       │ │           │   │
    └──────────────┬────────────────────────────┬──┴─┘           │   │
-                  │ FLEXCOM1 UART              │ FLEXCOM1 UART  │   │
+                  │ T1S bus (default)          │ T1S bus        │   │
                   │ (frets/strum cmds)         │ (ADC stream)   │   │
+                  │ [FLEXCOM1 UART fallback]   │                │   │
                   ▼                            │                │   │
    ┌────────────────────────────────────┐      │                │   │
    │      fretboard (PIC32CM6408)       │──────┘                │   │
@@ -142,10 +143,10 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 
 1. **Frame ready** — ISC writes a BGR888 packed frame to DDR; the video task notifies subscribers.
 2. **CV detect** — one or more CV detectors read the frame and emit detector-state events.
-3. **ADC ingest** — a UART task receives raw ADC samples from the fretboard and runs an ADC detector that emits detector-state events on the same bus.
+3. **ADC ingest** — a link task receives raw ADC samples from the fretboard (over T1S by default, UART fallback) and runs an ADC detector that emits detector-state events on the same bus.
 4. **Arbitrate** — the timing pipeline picks the active detector (or fuses), maintains the chord-accumulation window, and pushes finished chords onto its FIFO.
 5. **Schedule** — the FIFO emits fret-assert and strum-pulse commands at the correct ticks.
-6. **Send** — commands are encoded and transmitted to the fretboard over UART.
+6. **Send** — commands are encoded and transmitted to the guitar/fretboard node over the T1S bus (FLEXCOM1 UART fallback).
 7. **Display** — the captured frame is composited with overlays (sensor crosshairs, detector outputs, chord state, latency markers) and shown on the LVDS panel.
 8. **Record** (optional) — when recording is enabled, a derived/compressed reference-data record (frame epoch + detector state + raw ADC + emitted commands) is buffered and exported via the chosen transport.
 
@@ -172,7 +173,7 @@ The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees
 | **SAM9X75 Curiosity** | marvin host (CPU, DDR, peripherals, panel/touch ports) | — |
 | **Waveshare HDMI → CSI-2 adapter** (TC358743) | HDMI → MIPI CSI-2 bridge | I²C (FLEXCOM8 TWI, PB4/PB5, 400 kHz, addr `0x0F`) for control; 2-lane CSI-2 RX for data; PC15 PWD, PC19 RESET (currently unused — software reset over I²C). |
 | **Microchip 10.1″ 1280×800 LVDS panel + maxtouch** | Operator UI | LVDSC pair from XLCDC; I²C for maxtouch (existing Harmony driver). |
-| **fretboard board** (PIC32CM6408PL10048) | Detector MCU; streams to marvin & commands guitar over T1S | FLEXCOM1 USART (marvin PA28 `GUITAR_TX` / PA29 `GUITAR_RX` ↔ fretboard SERCOM1 PB00 TX / PB01 RX, 500 000 Bd 8N1, ring-buffer mode) or T1S (node id=1). |
+| **fretboard board** (PIC32CM6408PL10048) | Detector MCU; streams to marvin & commands guitar over T1S | T1S (node id=1) by default; FLEXCOM1 USART is the fallback (marvin PA28 `GUITAR_TX` / PA29 `GUITAR_RX` ↔ fretboard SERCOM1 PB00 TX / PB01 RX, 500 000 Bd 8N1, ring-buffer mode). In the T1S build FLEXCOM1 carries the fauxmote link instead (§4.3, §4.9). |
 | **Wii guitar controller** | Physical input target | Open-drain GPIO on fretboard, not directly on marvin. |
 | **(optional) dev PC** | Calibration / training-data ingest / replay viewer + operator console | SD card swap (primary), USB CDC for perf-log, and the FLEXCOM2 serial console (115 200 8N1, via an FTDI channel) for interactive control (§4.9). No runtime dependency. |
 
@@ -186,17 +187,17 @@ Pin assignments live in `firmware/marvin/default/src/config/default/pin_configur
 | XLCDC + LVDSC | ✅ in use | HEO layer, RGB\_888\_PACKED, per-frame pointer swap, pillarbox/letterbox. |
 | FLEXCOM8 (I²C/TWI) | ✅ in use | TC358743 control + display MIPI I²C, shared bus on PB4/PB5 (`DRV_I2C_INDEX_0`). Was FLEXCOM6/PA24-PA25 on the original Curiosity board; moved during the Hybrid port. |
 | DBGU (UART) | ✅ in use | `printf` retarget (`printf → xc32_monitor → DBGU`); lightweight log shim. Log/diagnostic chatter only — kept off the console channel. |
-| FLEXCOM1 (USART) | ✅ in use | Fretboard link — 500 000 Bd 8N1, ring-buffer mode (§4.3). |
+| FLEXCOM1 (USART) | ✅ in use | Fretboard-link UART fallback — 500 000 Bd 8N1, ring-buffer mode (§4.3). In the shipping T1S build it hosts the fauxmote link instead (§4.3, §4.9). |
 | FLEXCOM2 (USART) | ✅ in use | Operator command console — 115 200 Bd 8N1, ring-buffer mode (§4.9). |
 | FreeRTOS (Harmony OSAL) | ✅ in use | Scheduler running; video task split out (commit `6b85d5e`). |
 | TC0 (SYS_TIME) | ✅ in use | OSAL synchronous I²C requires it. |
 | GMAC (Ethernet) | ⚪ unused | Reserved for future live-stream ref-data export (not MVP). |
-| SDMMC | 🚧 to be enabled | MVP transport for reference-data recording (§4.6). |
+| SDMMC | ✅ in use | Card mounted at `/mnt/marvin` (`storage/storage.c`, `app.c`); `sd` console command live; results / catalog / album-art loaders build on it. The §4.6 recording *writer* is still not started. |
 | USB host (EHCI + OHCI) | ⚪ removed | Was the fretboard link on the original Curiosity board; the Curiosity Hybrid has no host-capable port, so the link moved to a direct UART (§4.3). |
 | USB device (UDPHS) | ✅ in use | Perf-log CDC ACM sink; marvin presents as USB device to dev PC, streams perf records at up to 2.77 MB/s. |
 | Maxtouch I²C | 🚧 driver patched | Bounded-init / headless-fallback fix implemented (MCC re-apply patch #10); operator UI surface (§4.5) not yet wired up. |
 | Watchdog | 🚧 not configured | System services (§4.7). |
-| Free FLEXCOMs | several available | FLEXCOM1 = fretboard link (§4.3), FLEXCOM2 = console (§4.9), FLEXCOM8 = I²C; others remain free. |
+| Free FLEXCOMs | several available | FLEXCOM1 = fretboard-link UART fallback / fauxmote link in the T1S build (§4.3), FLEXCOM2 = console (§4.9), FLEXCOM8 = I²C; others remain free. |
 
 ---
 
@@ -272,11 +273,14 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 
 ### 4.3 Fretboard link ✅
 
+**Transport.** The shipping default is the **10BASE-T1S bus** (`user.cmake` hard-sets `MARVIN_FRETBOARD_TRANSPORT=T1S`; see [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md)): marvin is the PLCA coordinator and the guitar/fretboard nodes are followers. The **FLEXCOM1 USART** below is the fallback transport, selected by building with `MARVIN_FRETBOARD_TRANSPORT=UART`. The 1-byte command and 17-byte ADC frame formats are identical on either transport. In the T1S build FLEXCOM1 is free and instead hosts the **fauxmote link** (see below and §4.9).
+
 Direct **FLEXCOM1 USART** link between marvin and the fretboard MCU — a plain UART wire, no USB. marvin's `PA28` (FLEXCOM1_IO0, `GUITAR_TX`) and `PA29` (FLEXCOM1_IO1, `GUITAR_RX`) connect to the fretboard's SERCOM1 (`PB01` RX / `PB00` TX). Both ends run **500 000 baud, 8N1**. The FLEXCOM1 USART runs in Harmony ring-buffer mode so RX never drops bytes between reads. (Was FLEXCOM2 until the console moved onto FLEXCOM2 — see §4.9.)
 
 - **Marvin → fretboard:** command bitmask (which frets to assert + strum direction). 1-byte bitmask, no framing. `fretboard_link_task` writes the latest mask via `FLEXCOM1_USART_Write`.
 - **Fretboard → marvin:** raw ADC stream (5 channels × 16-bit) at 240 Hz, in a 17-byte start/end-bracketed frame (`0x03 … 0xFC`, with `sample_seq` + `applied_mask`). The FLEXCOM1 RX ring fills continuously from its ISR; a persistent read-threshold notification wakes `fretboard_rx_task`, which drains the ring, resyncs on the frame markers, and republishes each valid frame as a `PERF_REC_FRETBOARD_RAW` perf-log record (default-disabled, host enables via `PERF_CMD_SET_TYPE_MASK`). This is the on-board capture path until the SD-card recorder lands; it's also the substrate for the future `adc_fretboard` detector (§4.2).
 - **Standalone fallback:** when marvin's timing pipeline is disabled (see §4.4 and §6), the fretboard runs its own existing chord FIFO (`fret_button.c`) and continues to stream ADC + emitted-command telemetry to marvin for capture/display.
+- **Fauxmote link (T1S build only):** with the guitar node on T1S, FLEXCOM1 is free, so in the T1S build marvin brings up a link to the fauxmote board (ESP32 Wiimote emulator, §7 top-level SPEC) on FLEXCOM1 (`net/fauxmote/fauxmote_link.c`, `Fauxmote_Initialize`). It mirrors every gameplay bitmask — `FretboardLink_Send` taps `Fauxmote_SendGuitarMask` — and is inspected/controlled via the `fauxmote` console command (§4.9).
 
 ### 4.4 Timing pipeline 🚧
 
@@ -300,6 +304,8 @@ Centralized on marvin by default. Owns:
 - Logs / history / stats (recent commands, miss/hit counts, dropped frames).
 - Song picker with album artwork and per-player results (§4.8.6, §4.8.7) — artwork is decoded via Legato's already-enabled JPEG/PNG decoders.
 
+**Built today:** a multi-screen UI is live — dashboard, song-select (with an album-art detail view), album-art, navigation, splash, and live-video screens (`ui/screens/*`), backed by custom widgets (`ui/widgets/*`: `button_aa`, `song_list`, `panel_aa`). The calibration/tuning and log/history/stats surfaces above remain not started.
+
 **UI framework — open Q5.** Legato is already pulled in for capture init and could absorb the operator UI directly (heavy but in-tree). Alternative: a lightweight custom widget layer over GFX2D / direct framebuffer composition. Decision deferred until we attempt the first non-trivial screen (calibration overlay).
 
 **Presentation layer (decided 2026-06-25).** For the *presentation* half of Q5: keep **Legato as the renderer**, add a thin marvin **compositor over the GFX Canvas component** — pre-render panels into static non-cached RAM surfaces and multiplex the two free LCDC overlay layers (`OVR1`/`OVR2`) across them for instant reveal/slide without redrawing what's behind. Authoritative design in [`ui_compositor.md`](ui_compositor.md). This does not dictate per-screen *authoring* (MGS vs. custom widgets).
@@ -322,11 +328,10 @@ Recordings are persisted to an SD card via SDMMC + a simple filesystem (FAT32 vi
 
 Bandwidth ceiling: SDMMC sustained write ≥ 5 MB/s on Class-10 cards is reliably achievable. The recording format below is sized to land well below that.
 
-The card is also the runtime store for everything that changes independently of the firmware image — config, the song catalog, album artwork, and per-player results — alongside recordings. Canonical layout (single reference for all subsystems):
+The card is also the runtime store for everything that changes independently of the firmware image — the song catalog, album artwork, and per-player results — alongside recordings. (Config persistence lives on QSPI flash, not the card — see §4.7.) Canonical layout (single reference for all subsystems):
 
 ```
 /marvin/
-├── config.json                 // §4.7 config persistence
 ├── games/
 │   └── gh3-wii/
 │       ├── songs.csv           // song catalog labels (§4.8.3)
@@ -420,7 +425,7 @@ Cross-cutting services not owned by any one subsystem:
 
 - **Logging** ✅ severity-filtered printf shim (commit `a79042f`).
 - **Time** ✅ TC0 / SYS_TIME for OSAL.
-- **Config persistence** 🚧 calibration values, mode toggles, last-used recording stride. Stored as `/marvin/config.json` on the SD card (§4.6.2 layout) — resolves Q9. Loaded at startup after the FAT mount (M4); absent/unparseable file → compiled-in defaults.
+- **Config persistence** ✅ implemented on **QSPI NOR flash**, not the SD card (resolves Q9). `flash/settings.c` maintains a power-fail-safe 256-byte-slot ring-log (`MVST` magic + CRC), exposing `Settings_Load/Get/Save/SetBacklight`. Today it persists the backlight brightness, which is restored at splash (`ui_manager.c`); the `settings` console command dumps/saves/wipes/stress-tests the store. Loads at first use, before the scheduler if needed, and survives with no card present; absent/invalid record → compiled-in defaults. Additional fields (calibration values, mode toggles, recording stride) extend the same record.
 - **Watchdog** 🚧 not yet enabled.
 - **OTA** ⚪ out of scope for now.
 
@@ -440,6 +445,8 @@ This is *not* the gameplay note-detection path (§4.2). cv_marvin_v1 plays notes
 Recognition is bootstrapped offline: the on-demand snapshot path (§4.6.8) collects a corpus of real GH3 screens, detection algorithms are prototyped host-side in Python (`tools/gameplay/`) against that corpus, and only the proven GH3-specific logic is ported into the firmware `gameplay_engine` module. Per Q10, the approach favors fixed-region/color/glyph matching over general CV — GH3's screens, fonts, and layouts are static.
 
 **M9 progress:** Phase 1 (screen-context classifier: main_menu / song_select / gameplay / pause / score) and Phase 2 (section-select and song-name readers) are prototyped and ported to firmware (`gameplay_engine.c`); the MPLAB build is confirmed. Phase 3 (number/score readers) is not yet started. The firmware module is pending hardware validation.
+
+**M10 progress:** the game controller (capability 2 above) is in progress in firmware — `game/game_controller.c` implements a menu-step planner (`nav_to_main_menu`, per-step wait/retry/timeout, and a CV-plays-until-song-end loop), driven by the `play` console command and the dashboard's play button. Pending hardware validation.
 
 #### 4.8.2 Module shape
 
@@ -560,7 +567,7 @@ An **interactive text console** over **FLEXCOM2 USART (115 200 8N1, ring-buffer 
 - **Why not Harmony `SYS_CONSOLE`/`SYS_COMMAND`:** those are MCC-config-coupled and live in regenerated files (this board already carries ~10 re-apply patches against clobbered generated code). The console is instead a small in-tree module (`console/console.{h,c}`) in the same shape as `fretboard_link`/`perf_log`: it owns the USART plib directly, is fully statically allocated, and is kept out of MCC via `user.cmake`.
 - **Library:** [embedded-cli](https://github.com/funbiscuit/embedded-cli) (vendored under `default/src/third_party/embedded-cli/`, MIT), used in static-allocation mode (a fixed `CLI_UINT` buffer → no `malloc`). Provides line editing, history, and tab-completion.
 - **Mechanics:** one FreeRTOS task drains the FLEXCOM2 RX ring (woken by a 1-byte read-threshold notification, like `fretboard_rx_task`), feeds bytes to embedded-cli, and runs the dispatcher. Output is written byte-by-byte into the TX ring.
-- **Commands (v0):** `status`, `detect <cv|adc> <on|off>`, `active <cv|adc>`, `timing <on|off>`, `manual <on|off>`, `fret <g|r|y|b|o> <0|1>`, `strum <down|up>` — dispatching into the existing `Detector_*`, `TimingPipeline_SetEnabled`, and `ManualControl_*` setters. The binding table is a plain static array; adding a command is one row. Maps onto the §6 operating-mode toggles. (`record`/`game_*` toggles and runtime timing-constant setters are deferred until those subsystems / setters exist.)
+- **Commands:** the live binding table (`console.c` `register_commands`) is: `status`, `t1s`, `nodes`, `sd`, `health`, `time`, `player`, `scores`, `results`, `catalog`, `art`, `detect <cv|adc> <on|off>`, `active <cv|adc>`, `timing <on|off|gate <on|off>>`, `manual <on|off>`, `play`, `fauxmote` (T1S build only), `fret <g|r|y|b|o> <0|1>`, `strum <down|up>`, `backlight <0-100>`, `gamma <on|off>`, `qspi`, `settings` — dispatching into the existing `Detector_*`, `TimingPipeline_*`, `ManualControl_*`, `GameController_*`, storage/RTC, and settings setters. The binding table is a plain static array; adding a command is one row. Maps onto the §6 operating-mode toggles. (`record`/`game_*` observe toggles and runtime timing-constant setters are deferred until those subsystems / setters exist.)
 
 ---
 
@@ -604,7 +611,7 @@ Proposed order; each is a buildable demo:
 7. **M7 — Replay** (§6). Load a recording from SD, replay through the timing pipeline.
 8. **M8 — Standalone-fretboard fallback** (§4.4). Marvin-disabled-pipeline mode validated.
 9. **M9 — Game-state observer v0** (§4.8). 🚧 Phases 1+2 ported to firmware and MPLAB build confirmed (screen classifier + section-select/song readers); pending hardware test. Phase 3 (number/score readers) not yet started. Full milestone done when all contexts recognized and surfaced as `xGameStateQueue` events.
-10. **M10 — Game-state control v0** (§4.8). Navigator/closed-loop algorithm complete in `tools/gameplay` prototype; firmware port not started. Done when high-level verbs ("start single-player song X") drive menu navigation through the same fretboard link.
+10. **M10 — Game-state control v0** (§4.8). 🚧 Navigator/closed-loop algorithm complete in `tools/gameplay` prototype; firmware port in progress (`game/game_controller.c`: menu-step planner, `nav_to_main_menu`, retry/timeout, CV-plays loop; driven by the `play` console command + dashboard button), pending hardware validation. Done when high-level verbs ("start single-player song X") drive menu navigation through the same fretboard link.
 
 Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 
@@ -620,7 +627,7 @@ Live-stream Ethernet, Edge-AI integration, and config-on-flash are post-M8.
 | Q6 | Operating-mode model — independent toggles. | Settled (§6). |
 | Q7 | Fret-tuner's long-term fate — survives as off-band dev/calibration tool. | Settled; not in runtime path. |
 | Q8 | Initial CV algorithm choice for `cv_marvin_v1`. | Open. Decide at M1. |
-| Q9 | Config persistence location (SD file vs internal flash). | Resolved: `/marvin/config.json` on SD (§4.7, §4.6.2 layout). |
+| Q9 | Config persistence location (SD file vs internal flash). | Resolved: **QSPI NOR flash** — `flash/settings.c`, an `MVST`-magic 256-byte-slot ring-log (not an SD file). Backlight persisted/restored; `settings` console command (§4.7). |
 | Q10 | Game-state recognizer algorithm — template matching vs OCR vs color/region heuristics vs small CNN. | Open. Decide at M9; revisit if first algorithm misclassifies on real game UI. |
 | Q11 | Command-path arbitration between game-state controller and timing pipeline (§4.4 vs §4.8). Default working assumption: mutually exclusive (controller runs only outside `gameplay` state); may need richer arbitration if a game has gameplay-screen menus or pause overlays we want to drive. | Open. Decide at M10. |
 | Q12 | Performance-result player identity (§4.8.6) — the player-id scheme (operator-entered string vs. selectable profiles). | Partly resolved: timestamps are UTC from the RTC (persistent across power cycles); results format is CSV. Player-id scheme still open; decide when the gameplay write path is wired (M9 Phase 3). |

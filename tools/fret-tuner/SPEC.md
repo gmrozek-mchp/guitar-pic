@@ -1,5 +1,11 @@
 # Fret-Tuner Specification
 
+> **Legacy tool.** This is an offline detector-tuning harness. The runtime brain
+> now lives on the marvin firmware (vision-based gameplay engine), so the "move
+> the entire pipeline to the PC" / "PC is the runtime brain" framing below is
+> superseded — fret-tuner remains useful for iterating on detection algorithms
+> against captured/live ADC data, not as the deployed runtime.
+
 ## Overview
 
 Web-based Python tool for developing and refining fret-press detection algorithms. Consumes the same raw ADC data the firmware sees -- either live from the board over UART or replayed from a captured CSV -- runs detection logic in Python, and visualizes everything in an interactive browser UI. Optionally sends actuation commands back to the microcontroller, moving the entire detection and strum-timing pipeline to the PC for rapid iteration.
@@ -428,7 +434,7 @@ python fret-tuner.py --csv capture.csv --fast
 
 ## Dependencies
 
-Managed with `uv` (inline script metadata in `ds_monitor.py`; `pyproject.toml` for the main tool). Required packages:
+Managed with `requirements.txt` (pip): install into a virtualenv and launch with `python fret-tuner.py`. Required packages:
 
 - `pyserial >= 3.5`
 - `numpy >= 1.24`

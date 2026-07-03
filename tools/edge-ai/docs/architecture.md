@@ -29,21 +29,23 @@ Wii ──► marvin (cv_marvin_v1 + timing_pipeline)
                                                             (model_weights.h)
 ```
 
-Both record streams already flow through perf-log keyed by `frame_epoch` + `ts_counter`. The exporter joins them offline. See [training.md](training.md) for the exporter change and CSV schema.
+The **deployed** path is the atomic `actuator-fb` schema: the fretboard frame carries its `applied_mask` + `fb_seq` in the same 240 Hz frame as the ADC scan, so labels pair with features on-device with no cross-stream join. The `frame_epoch` + `ts_counter` cross-stream join shown above is the **legacy `actuator` mode** — the two record streams flow through perf-log and the exporter joins them offline (with an unknown skew). See [training.md](training.md) §2 for both exporter modes and the CSV schema.
 
 ## 2. Inference-time data flow (on-device, as built)
 
 ```
 fretboard TC0 ISR @ 240 Hz (short & bounded):
-    fret_scan_all()                  ──► model_infer_stream_step(scan) ──► cmd
-                                            │  (streaming: ~1 conv col/layer/tick,
-                                            │   no full-window buffer)
-                                            ▼
-    cmd_receive_apply_mask(enabled ? cmd : 0)  (open-drain fret GPIOs + strum)
-    data_stream_send()                          (applied_mask telemetry)
+    fret_scan_all()  ──► push scan onto SPSC queue s_adc_q
+    cmd = armed ? s_latest_cmd : 0            (SW0 arms actuation)
+    data_stream_send(cmd)                     (ADC + driven applied_mask → marvin)
+
+fretboard main loop:
+    drain s_adc_q ──► model_infer_stream_step(scan) ──► s_latest_cmd
+                        │  (streaming: ~1 conv col/layer/tick, no full-window buffer)
+    T1SDetector_SetCommand(s_current_cmd) ──► guitar node over T1S (open-drain frets + strum)
 ```
 
-The marvin command stream (`cmd_receive`) is bypassed when fretboard is in `MODEL_DRIVEN` mode; the model owns the wire. The deployed path is **streaming** inference (locks to 240 Hz, runs inline); a **recompute** fallback runs in the main loop for non-RF-width models. SW0 toggles model control at runtime. See [runtime.md](runtime.md) for the full integration shape and the two inference modules.
+The fretboard no longer drives controller GPIOs locally; the model's command byte is forwarded to the **guitar node over T1S** (`T1SDetector_SetCommand`), which applies it to its open-drain controller outputs. marvin coordinates and logs but is out of the command path. The deployed path is **streaming** inference (locks to 240 Hz); both it and the **recompute** fallback (for non-RF-width models) run in the main loop — the ISR only samples. SW0 arms actuation at runtime. See [runtime.md](runtime.md) for the full integration shape and the two inference modules.
 
 ## 3. Inference cadence
 

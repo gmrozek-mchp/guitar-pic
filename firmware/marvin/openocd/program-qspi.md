@@ -90,7 +90,7 @@ cd firmware/marvin/openocd
 It (a) pre-flight checks the DBGU console is free; (b) over one JTAG pass, brings up
 DDR via the init-and-stop at91bootstrap, stages the blob → `0x21100000` and u-boot →
 `0x23f00000`, then jumps to u-boot; (c) drives the u-boot console (`qspi_console.py`)
-to `sf probe` / `sf erase` (4 KiB-rounded length) / `sf write` from DDR / verify by
+to `sf probe` / `sf erase` (64 KiB-rounded length) / `sf write` from DDR / verify by
 reading back to scratch DDR (`0x21600000`) and `cmp.b`. Exit status is non-zero
 unless the verify passes. The blob stages below u-boot's autoboot read window and the
 console waits for a *stable* prompt, so autoboot can't clobber it or eat commands.

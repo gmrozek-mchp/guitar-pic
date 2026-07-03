@@ -12,4 +12,6 @@ separate node classes on one PLCA bus.
 - **Decisions + progress:** [`docs/journal.md`](docs/journal.md)
 - **System context:** top-level [`SPEC.md`](../../SPEC.md), [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md)
 
-Status: skeleton + design — firmware not yet built.
+Status: working on hardware — the T1S PLCA follower is up, receives and actuates
+marvin's command over T1S, and runs a presence heartbeat plus a debug-UART CLI.
+See [`SPEC.md`](SPEC.md) for the current milestone state.

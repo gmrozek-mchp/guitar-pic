@@ -212,9 +212,9 @@ is alive and gate/annotate commands.
 
 | Byte | Field | Encoding |
 |---|---|---|
-| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6`–`7` reserved |
+| 0 | flags | `bit0` discoverable, `bit1` connected (HID data channel), `bit2` assigned (Wii gave a player slot), `bit3` ext-attached, `bit4` pairing-active, `bit5` bonded (bond in NVS), `bit6`–`7` reserved. fauxmote sets `bit0` and `bit4` **together** — discoverable and pairing-active are the same state in the current code |
 | 1 | player_slot | `0` = none, else `1..4` |
-| 2 | report_mode | the Wii's last-requested report ID (e.g. `0x37`), `0` if unknown |
+| 2 | report_mode | the Wii's last-requested report ID (e.g. `0x37`); defaults to `0x30` (core buttons) before the Wii sets a mode, never `0` |
 | 3 | last_result | result of the most recent `LINK_CMD`: `0` = ok/idle, nonzero = error code |
 
 ## 6. Semantics & timing
@@ -244,9 +244,9 @@ is alive and gate/annotate commands.
 Keep the message layer transport-agnostic so the T1S move (§8) is a transport swap,
 not a rewrite.
 
-**fauxmote** — a new `marvin_link.c` module:
+**fauxmote** — `main/marvin_link.c` (implemented 2026-07-02):
 - Owns the second UART, the §3.2 framing/CRC, and message parse/dispatch (FreeRTOS
-  task).
+  task); started at boot via `MarvinLink_Start()`.
 - On `GUITAR`/`WIIMOTE`/`LINK_CMD`, calls the **same module APIs the CLI uses**
   (`Wiimote_SetButton`, `Guitar_SetWhammy`, `Wiimote_SetPointer`,
   `Fauxmote_EnterPairing`/`StopPairing`/`Reconnect`/`Unlink`, `Wiimote_SetExtension`),

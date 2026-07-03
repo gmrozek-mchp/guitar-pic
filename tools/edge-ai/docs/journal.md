@@ -94,6 +94,10 @@ Difficulty target was **hard** first (all 5 frets, slower scroll). **Open next-s
 
 ## Session log
 
+### 2026-07-03 — doc-vs-code audit: firmware-integration docs corrected
+
+Part of a repo-wide doc audit ([`../../../docs/doc-audit-2026-07.md`](../../../docs/doc-audit-2026-07.md)). The Python package docs (model/training/quantize/CLI) verified accurate; the drift was in the firmware-integration docs, which still described a pre-T1S fretboard. Fixed in `runtime.md`/`architecture.md`/`rollout.md`: the command is forwarded to the guitar node over T1S (no local `cmd_receive.c`/open-drain path), the `FRETBOARD_MODE` build gate is gone (runtime enable is SW0-arm only; compile flag is `MODEL_INFER_STREAMING`), streaming inference runs in the main loop draining an SPSC queue (not inline in the TC0 ISR), and the deployed training-data path is the atomic `actuator-fb` schema.
+
 ### 2026-06-05 — model visualisation tooling (`edge-ai viz`)
 
 - Added a `viz` dependency group (`torchinfo`, `torchview`, `matplotlib`) and `edge_ai/viz.py` with three helpers, wired to a new `edge-ai viz` subcommand. Reads arch from a checkpoint (`--model`) or from `--channels/--kernel/--dilations/--window` flags (deploy defaults: 16ch, kernel 5, `(1,4,16)`, window=RF).

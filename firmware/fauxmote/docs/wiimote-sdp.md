@@ -34,7 +34,7 @@ Plus the standard service-class (`0x1124` HID), protocol descriptor list
 
 Generic Desktop / Game Pad collection. Output reports `0x10`–`0x1a`, input
 reports `0x20`–`0x3f`; each non-global item is `report-id, count, vendor-usage,
-in/out`. This is the array currently in `main/bt_hid_device.c`.
+in/out`. This is the `s_hid_descriptor[]` array in `main/wiimote_sdp.c`.
 
 ```
 05 01 09 05 A1 01

@@ -2,16 +2,17 @@
 
 Host-side decoder and analyzer for the marvin firmware **perf-log** wire format.
 
-The firmware emits framed binary records (schema version 1) over its USB-device
-CDC ACM port. This tool consumes that stream live, records it to disk, replays
-captures offline, and produces summary analyses (latency attribution, drop
-accounting, stack high-water trends).
+The firmware emits framed binary records (schema version 5) over its USB-device
+CDC ACM port. This tool consumes that stream live, records it to disk, and
+replays captures offline. Summary analyses (latency attribution, drop
+accounting, stack high-water trends) are produced by the `serve` viewer, not a
+standalone CLI verb.
 
 Wire format source-of-truth lives in the firmware tree at
 [`firmware/marvin/default/src/perf_log/perf_log_records.h`](../../firmware/marvin/default/src/perf_log/perf_log_records.h).
 The Python schema mirror in [`marvin_perf/records.py`](marvin_perf/records.py)
-must match it byte-for-byte; bump `PERF_LOG_SCHEMA_VERSION` on both sides
-together.
+must match it byte-for-byte; bump `EXPECTED_SCHEMA_VERSION` (Python side) and
+`PERF_LOG_SCHEMA_VERSION` (firmware side) together.
 
 ## Setup
 
@@ -22,8 +23,8 @@ bootstrap:
     uv sync --group viewer   # include viewer deps for the serve command
 
 `uv sync` creates `.venv/` and writes `uv.lock`. Subsequent invocations use the
-existing venv automatically. Omit `--group viewer` if you only need the CLI
-decode/record commands.
+existing venv automatically. Omit `--group viewer` if you only need the headless
+CLI helpers (record, set-mask, set-overlay, snapshot, export-ml).
 
 ## Usage
 
@@ -33,11 +34,21 @@ decode/record commands.
     uv run marvin-perf serve --host 0.0.0.0 --port 8765
     uv run marvin-perf serve --capture session.bin   # pre-load a capture on startup
 
-    # Capture raw bytes from the marvin USB-device CDC port (no decode)
+    # Capture raw bytes from the marvin USB-device CDC port
     uv run marvin-perf record --port /dev/cu.usbmodem... --out session.bin
+    uv run marvin-perf record --port /dev/cu.usbmodem... --out-dir session/   # perf.bin + manifest.json
 
     # Push a type-mask to a running device without attaching for capture
     uv run marvin-perf set-mask --port /dev/cu.usbmodem... --types ALL
+
+    # Toggle the per-fret target rings on the SENSING strip
+    uv run marvin-perf set-overlay --port /dev/cu.usbmodem... --on
+
+    # Capture one full video frame from a running device and save it
+    uv run marvin-perf snapshot --port /dev/cu.usbmodem... --out snapshots/
+
+    # Export a capture as a SensiML-format CSV for MPLAB ML training
+    uv run marvin-perf export-ml session/ --out session.csv --labels actuator-fb
 
 ## Tests
 

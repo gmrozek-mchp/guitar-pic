@@ -166,6 +166,10 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Session log
 
+### 2026-07-03 — doc-vs-code audit fixes
+
+Part of a repo-wide doc audit ([`../../../docs/doc-audit-2026-07.md`](../../../docs/doc-audit-2026-07.md)). `SPEC.md` Phase 4 marked done (`marvin_link.c` is built + on hardware, per the 2026-07-02 entry below) and added to the §5 Software list. `docs/wiimote-sdp.md` HID-descriptor location corrected (`main/wiimote_sdp.c`, not `bt_hid_device.c`). Cross-cutting link docs also touched: `docs/marvin-fauxmote-link.md` STATUS-byte details (report_mode default `0x30`; discoverable+pairing bits set together) and `docs/t1s-podl-link.md` (marvin coordinator SPI is 15 MHz; the ≤12 MHz note is follower-side).
+
 ### 2026-07-02 — Phase 4: fauxmote side of the marvin link implemented + on hardware
 
 - Implemented the fauxmote end of the command link. New `mf_proto.h` (transport-neutral
