@@ -78,6 +78,8 @@ bool Results_Append(const results_record_t *rec)
 
     bool need_header = true;
     SYS_FS_FSTAT st;
+    memset(&st, 0, sizeof st);   /* lfname MUST be NULL — else FATFS_stat writes
+                                  * through it (a garbage stack value → data abort) */
     if (SYS_FS_FileStat(path, &st) == SYS_FS_RES_SUCCESS && st.fsize > 0u)
     {
         need_header = false;
