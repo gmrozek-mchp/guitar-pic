@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "mplabdocs": {
+      "type": "http",
+      "url": "https://ai.microchip.com/tools/mplabdocs/mcp"
+    }
+  }
+}
