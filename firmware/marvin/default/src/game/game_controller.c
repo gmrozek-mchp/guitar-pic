@@ -265,7 +265,9 @@ static bool nav_to_main_menu(void)
 }
 
 /* CV plays; hold until the song ends (practice_end_menu), we leave gameplay, or
- * Stop is requested. Passive polling — don't force-observe while the detector runs. */
+ * Stop is requested. Observation is request-triggered, so poll via observe() — a
+ * classify during in_song is cheap (no song-match) and keeps the in_song gate
+ * (GameplayEngine_CurrentScreen) fresh for the timing pipeline. */
 static void play_until_done(void)
 {
     status("PLAYING");
@@ -275,9 +277,9 @@ static void play_until_done(void)
     {
         vTaskDelay(pdMS_TO_TICKS(GC_PLAY_POLL_MS));
         if (s_stop_req) { break; }
-        game_state_t gs;
-        if (GameplayEngine_GetLatest(&gs) && gs.screen != GP_SCREEN_in_song
-            && gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
+        uint8_t sc; int16_t sel;
+        if (observe(&sc, &sel) && sc != GP_SCREEN_in_song
+            && sc != GP_SCREEN_loading && sc != GP_SCREEN_UNKNOWN)
         {
             break;   /* song ended (practice_end_menu) or left gameplay */
         }
@@ -353,7 +355,6 @@ static void run(void)
      * ManualControl_SetEnabled(false) flips timing on — the arbitration trap). */
     if (ManualControl_IsEnabled()) { ManualControl_SetEnabled(false); }
     TimingPipeline_SetEnabled(false);
-    GameplayEngine_SetObserveEnabled(true);
 
     if (!nav_to_main_menu())
     {

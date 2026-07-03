@@ -21,12 +21,13 @@
 #define GAME_BYTES_PER_PIXEL    3u
 #define GAME_US_PER_TICK        (1000000u / configTICK_RATE_HZ)
 
-/* Observe in the background at ~5 Hz, not frame rate: bounds CPU (the song match
- * densely re-reads its ROI across the offset search on uncached DDR — tens of
- * ms) and is plenty to catch human-paced screen/selection changes. A forced
- * trigger (GameplayEngine_RequestObservation) runs the next frame regardless,
- * for closed-loop verification after an actuator command. */
-#define GAME_OBSERVE_PERIOD_MS  200u
+/* Observation is purely request-triggered: the task sleeps (draining frames) and
+ * classifies exactly one frame per GameplayEngine_RequestObservation() call —
+ * there is no free-running background scan. The only consumer is the game
+ * controller (menu nav + song-end polling), which requests an observation
+ * whenever it needs one. This keeps an idle marvin at ~0 CPU: the song_select
+ * match is a heavy soft-float compute (no FPU on this core, ~tens of ms) and
+ * must never run unasked — a continuous scan pegged prio-4 and froze the UI. */
 
 static QueueHandle_t s_bus_queue;
 static StaticQueue_t s_bus_queue_buf;
@@ -96,26 +97,22 @@ static void game_task(void *param)
 
     uint8_t   last_screen = GP_SCREEN_UNKNOWN;
     int16_t   last_sel    = -2;  /* != any real selection or -1, so first read logs */
-    TickType_t last_tick  = 0;
-    const TickType_t period = pdMS_TO_TICKS(GAME_OBSERVE_PERIOD_MS);
 
     for (;;)
     {
         Video_FrameInfo frame;
         if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
 
-        /* Always drain, even when disabled, so frames don't back up. */
+        /* Drain every frame so the queue never backs up, but classify only when an
+         * observation has been requested — no free-running scan. A bad frame leaves
+         * the request pending so it's served by the next valid one. */
         if (!s_observe_enabled)                            { continue; }
+        if (!s_force_observe)                              { continue; }
         if (frame.buffer == NULL)                          { continue; }
         if (frame.bytes_per_pixel != GAME_BYTES_PER_PIXEL) { continue; }
-
-        /* Background rate-limit to ~5 Hz, unless a forced trigger is pending
-         * (closed-loop: observe the next frame right after an actuator command). */
-        TickType_t now = xTaskGetTickCount();
-        if (!s_force_observe && (TickType_t)(now - last_tick) < period) { continue; }
         s_force_observe = false;
-        last_tick = now;
 
+        TickType_t now = xTaskGetTickCount();
         const uint8_t *buf = (const uint8_t *)frame.buffer;
         int w = (int)frame.width, h = (int)frame.height;
 
@@ -175,6 +172,9 @@ void GameplayEngine_Initialize(void)
                                      s_bus_queue_storage,
                                      &s_bus_queue_buf);
     configASSERT(s_bus_queue != NULL);
+
+    /* Master gate on; the task still does nothing until a RequestObservation. */
+    s_observe_enabled = true;
 
     (void)xTaskCreateStatic(game_task, "GameEngine", GAME_TASK_STACK_WORDS,
                             NULL, GAME_TASK_PRIORITY, s_task_stack, &s_task_tcb);
