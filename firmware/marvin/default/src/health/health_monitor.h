@@ -21,6 +21,12 @@
  * FatFs path is the thing that is wedged. */
 void HealthMonitor_Initialize(void);
 
+/* Arm the monitor. Both tasks stay completely idle (no card I/O, no task-list
+ * walks) until this is called — health-monitor activity during the fragile
+ * capture/reveal boot window perturbs it. Call once the UI is revealed and
+ * capture is armed (end of the boot sequence). */
+void HealthMonitor_NotifyReady(void);
+
 /* Render the current per-task table (header, one row per task, heap footer)
  * through a caller-supplied line sink. Used by the `health` console command;
  * safe to call from any task. */

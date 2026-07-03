@@ -16,6 +16,7 @@
 #include "log.h"
 #include "flash/settings.h"   /* persisted backlight % */
 #include "game/art.h"         /* Art_LoadAll — cover-art preload during splash */
+#include "health/health_monitor.h"  /* armed at end of boot (HealthMonitor_NotifyReady) */
 #include "video/video.h"      /* capture producer — compositor owns HEO display */
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -716,6 +717,10 @@ static void ui_boot_task(void *param)
      * splash, makes it lock marginally and the lanes sit in stop-state (~0 fps). This
      * is the one ordering that must hold — see the journal (2026-06-30). */
     Video_CaptureEnable();
+
+    /* Boot sequence done — arm the health monitor now (it stays idle until this
+     * so its card I/O + task-list walks never perturb the reveal window). */
+    HealthMonitor_NotifyReady();
 
     vTaskDelete(NULL);
 }
