@@ -31,7 +31,7 @@ D2,PC22,,Available,In,,,,,,,,
 D3,PC21,LED_GREEN,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 D5,PC29,LED_7,GPIO,Out,Low,No,Disabled,Yes,No,Disabled,No,Low
 D7,PC31,,Available,In,,,,,,,,
-D8,PB25,T1S_IRQ_N,GPIO,In,n/a,No,Falling Edge,No,No,Disabled,No,Low
+D8,PB25,T1S_IRQ_N,GPIO,In,n/a,No,Falling Edge,Yes,No,Disabled,No,Low
 D10,PB22,QSPI_IO1,QSPI_QIO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 D16,PD10,NAND_D4,EBI_NANDDAT4,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 D17,PB8,,Available,In,,,,,,,,
@@ -99,7 +99,7 @@ T7,PA7,LED_3,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
 T8,PB11,,Available,In,,,,,,,,
 T9,PA1,SDMMC0_CMD,SDMMC0_CMD,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 T10,PA15,,Available,In,,,,,,,,
-T11,PA9,T1S_MISO,FLEXCOM4_IO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
+T11,PA9,T1S_MISO,FLEXCOM4_IO1,n/a,n/a,No,Disabled,No,Yes,Disabled,No,Low
 U7,PA20,BSP_MAXTOUCH_CHG,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low
 U8,PA16,,Available,In,,,,,,,,
 U9,PA23,SDMMC0_CD,GPIO,In,n/a,No,Disabled,No,No,Disabled,No,Low

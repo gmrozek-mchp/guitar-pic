@@ -5699,6 +5699,52 @@ data:
         id: XDMAC_CC1_PERID
         label: DMA Request
       type: Combo
+    PIOB_PUER_VALUE:
+      attributes:
+        id: PIOB_PUER_VALUE
+        label: PIOB_PUER
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '33554432'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_55_PU:
+      attributes:
+        id: PIN_55_PU
+        label: Pull Up
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
+    PIOA_PPDEN_VALUE:
+      attributes:
+        id: PIOA_PPDEN_VALUE
+        label: PIOA_PPDEN
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '512'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PIN_223_PD:
+      attributes:
+        id: PIN_223_PD
+        label: Pull Down
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
   userData:
     children:
     - attributes:
