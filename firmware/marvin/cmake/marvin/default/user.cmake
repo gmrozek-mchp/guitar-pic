@@ -31,6 +31,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_sink_cdc.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/console/console.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/health/health_monitor.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/fault/fault_report.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/storage/storage.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/flash/qspi_smoke.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/flash/settings.c"
