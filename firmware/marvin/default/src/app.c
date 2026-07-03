@@ -46,6 +46,7 @@
 #include "ui/ui_manager.h"
 #include "game/gameplay_engine.h"
 #include "console/console.h"
+#include "health/health_monitor.h"
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/catalog.h"
@@ -226,6 +227,12 @@ void App_StartServices(void)
     /* Per-frame perf-log drain task, launched last so every producer's queue
      * handle is already valid when the first records hit the sink. */
     PerfLog_Start();
+
+    /* Liveness + resource monitor: a just-above-idle task that heartbeats to
+     * SD + DBGU every minute and dumps the per-task stack table every 10 min,
+     * so an unattended freeze can be located in time and inspected after the
+     * fact. Started last — it only observes. See health/health_monitor.h. */
+    HealthMonitor_Initialize();
 }
 
 

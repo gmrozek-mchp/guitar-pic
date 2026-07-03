@@ -28,6 +28,7 @@
 #include "net/fauxmote/mf_proto.h"
 #endif
 #include "storage/storage.h"
+#include "health/health_monitor.h"
 #include "results/results.h"
 #include "game/catalog.h"
 #include "game/art.h"
@@ -481,6 +482,12 @@ static void cmd_sd(EmbeddedCli *cli, char *args, void *ctx)
     }
 }
 
+static void cmd_health(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)args; (void)ctx;
+    HealthMonitor_Report(sd_out, NULL);   /* per-task stack + runtime table */
+}
+
 static void cmd_detect(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -772,6 +779,7 @@ static void register_commands(void)
         { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
         { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
         { "sd",     "sd <info|ls|bench|mount|unmount> [arg]: SD-card bring-up", true, NULL, cmd_sd },
+        { "health", "Print the per-task stack high-water + runtime table",     false, NULL, cmd_health },
         { "time",   "time [set YYYY-MM-DD HH:MM:SS]: read/set the RTC (UTC)",   true, NULL, cmd_time },
         { "player", "player [name]: show/set the current player",              true, NULL, cmd_player },
         { "scores", "scores <main|bonus> <index> [difficulty]: top scores",    true, NULL, cmd_scores },
