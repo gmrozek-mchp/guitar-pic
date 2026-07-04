@@ -32,39 +32,27 @@ typedef struct
 
 /* Brings up the game-state bus queue and the observer task. The observer
  * subscribes to the video frame queue from inside its task, so call this after
- * Video_Initialize. Observation starts disabled; call SetObserveEnabled(true)
- * to begin publishing (spec §6 game_observe_enable). */
+ * Video_Initialize. The task idles (draining frames, ~0 CPU) until a
+ * GameplayEngine_Observe() request arrives. */
 void GameplayEngine_Initialize(void);
 
 /* Game-state event bus. Consumers (operator UI, the controller at M10) read
  * here. Returns NULL until GameplayEngine_Initialize has run. */
 QueueHandle_t GameplayEngine_BusQueue(void);
 
-/* Observation toggle. When off the task still drains frames (so the video
- * queue doesn't back up) but classifies nothing and emits no events. */
-void GameplayEngine_SetObserveEnabled(bool on);
-bool GameplayEngine_ObserveEnabled(void);
-
-/* Force the observer to run on the next captured frame, bypassing the ~5 Hz
- * background rate limit. Intended for closed-loop control (M10): read the result
- * of an actuator command promptly instead of waiting for the next background
- * tick. One-shot (cleared once consumed); thread-safe (single volatile flag).
+/* Synchronous observation: request a classification of a fresh frame and block
+ * until the result arrives, or timeout_ms elapses. On success writes the
+ * {screen, selection, …} into *out and returns true; returns false on timeout or
+ * a NULL out. This is the only way to read screen state — there is no retained
+ * "current screen" to poll, so a read never returns stale state.
  *
- * NOTE: don't trigger this the instant after sending the command — GH3 menus
- * take several frames to transition (cursor animation, screen fades, a `loading`
- * screen). The caller should let the screen settle first (a delay, and/or poll
- * until the expected screen appears with a timeout) rather than trust a single
- * immediate read. That settle policy lives in the controller (M10). */
-void GameplayEngine_RequestObservation(void);
-
-/* Most recently classified screen (GP_SCREEN_* index, or GP_SCREEN_UNKNOWN);
- * GP_SCREEN_UNKNOWN before the first classified frame. */
-uint8_t GameplayEngine_CurrentScreen(void);
-
-/* Snapshot the most recent classification (screen + selection + frame_epoch),
- * retained every classify. Returns false until the first classified frame. The
- * game-state controller polls this (paired with RequestObservation) for a fresh
- * {screen, selection} after each actuator command. */
-bool GameplayEngine_GetLatest(game_state_t *out);
+ * The classified frame is guaranteed to have been captured after the request
+ * (the task skips the in-hand frame, which predates it). The sole requester is
+ * the game controller; do not call concurrently from multiple tasks.
+ *
+ * NOTE: GH3 menus take several frames to transition (cursor animation, fades, a
+ * `loading` screen), so the controller settles/re-observes rather than trusting
+ * one read the instant after actuating. */
+bool GameplayEngine_Observe(game_state_t *out, uint32_t timeout_ms);
 
 #endif

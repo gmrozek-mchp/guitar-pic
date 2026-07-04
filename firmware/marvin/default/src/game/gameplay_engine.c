@@ -21,17 +21,22 @@
 #define GAME_BYTES_PER_PIXEL    3u
 #define GAME_US_PER_TICK        (1000000u / configTICK_RATE_HZ)
 
-/* Observation is purely request-triggered: the task sleeps (draining frames) and
- * classifies exactly one frame per GameplayEngine_RequestObservation() call —
- * there is no free-running background scan. The only consumer is the game
- * controller (menu nav + song-end polling), which requests an observation
- * whenever it needs one. This keeps an idle marvin at ~0 CPU: the song_select
- * match is a heavy soft-float compute (no FPU on this core, ~tens of ms) and
- * must never run unasked — a continuous scan pegged prio-4 and froze the UI. */
+/* Observation is a synchronous request/response: the task idles (draining frames,
+ * ~0 CPU) until GameplayEngine_Observe() posts a request, then classifies exactly
+ * one fresh frame and hands the result back through s_resp_queue. There is no
+ * free-running scan and no retained "latest" to poll — a read blocks for a frame
+ * captured after the request, so it can never return stale state. The song_select
+ * match is heavy soft-float (no FPU, ~tens of ms) and must never run unasked — a
+ * continuous scan once pegged prio-4 and froze the UI. */
 
 static QueueHandle_t s_bus_queue;
 static StaticQueue_t s_bus_queue_buf;
 static uint8_t       s_bus_queue_storage[GAME_BUS_DEPTH * sizeof(game_state_t)];
+
+/* Response back to the single requester (the game controller). Depth 1. */
+static QueueHandle_t s_resp_queue;
+static StaticQueue_t s_resp_queue_buf;
+static uint8_t       s_resp_queue_storage[1 * sizeof(game_state_t)];
 
 static StaticQueue_t s_frame_queue_buf;
 static uint8_t       s_frame_queue_storage[GAME_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
@@ -39,14 +44,7 @@ static uint8_t       s_frame_queue_storage[GAME_FRAME_QUEUE_DEPTH * sizeof(Video
 static StackType_t   s_task_stack[GAME_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
 
-static volatile bool    s_observe_enabled;
-static volatile bool    s_force_observe;
-static volatile uint8_t s_current_screen = GP_SCREEN_UNKNOWN;
-
-/* Latest classified state, retained every classify (not just on change) so the
- * game-state controller can poll a fresh {screen, selection} synchronously. */
-static volatile bool s_have_latest;
-static game_state_t  s_latest;
+static volatile bool s_req_pending;
 
 static const char *screen_name(uint8_t idx)
 {
@@ -97,20 +95,24 @@ static void game_task(void *param)
 
     uint8_t   last_screen = GP_SCREEN_UNKNOWN;
     int16_t   last_sel    = -2;  /* != any real selection or -1, so first read logs */
+    bool      armed       = false;  /* pre-request frame discarded; next one is fresh */
 
     for (;;)
     {
         Video_FrameInfo frame;
         if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
 
-        /* Drain every frame so the queue never backs up, but classify only when an
-         * observation has been requested — no free-running scan. A bad frame leaves
-         * the request pending so it's served by the next valid one. */
-        if (!s_observe_enabled)                            { continue; }
-        if (!s_force_observe)                              { continue; }
+        /* Drain every frame so the queue never backs up. Classify only while a
+         * request is pending — no free-running scan. */
+        if (!s_req_pending) { armed = false; continue; }
+
+        /* The frame in hand when the request arrived predates it; skip it so the
+         * classified frame is guaranteed to have been captured after the request. */
+        if (!armed) { armed = true; continue; }
+
+        /* A bad frame leaves the request pending so the next valid one serves it. */
         if (frame.buffer == NULL)                          { continue; }
         if (frame.bytes_per_pixel != GAME_BYTES_PER_PIXEL) { continue; }
-        s_force_observe = false;
 
         TickType_t now = xTaskGetTickCount();
         const uint8_t *buf = (const uint8_t *)frame.buffer;
@@ -118,31 +120,29 @@ static void game_task(void *param)
 
         int32_t best_dist = 0, margin = 0;
         uint8_t screen = gp_classify(buf, w, h, &best_dist, &margin);
-        s_current_screen = screen;
 
         const char *sel_name = NULL, *sel_name2 = NULL;
         int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
 
+        game_state_t ev;
+        memset(&ev, 0, sizeof(ev));
+        ev.frame_epoch  = frame.frame_count;
+        ev.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
+        ev.screen       = screen;
+        ev.best_dist    = best_dist;
+        ev.margin       = margin;
+        ev.selection    = sel;
+
+        /* Answer the requester first (clear pending before the send so a follow-up
+         * Observe that wakes on the response can't have its new request cleared). */
+        armed = false;
         taskENTER_CRITICAL();
-        s_latest.frame_epoch  = frame.frame_count;
-        s_latest.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
-        s_latest.screen       = screen;
-        s_latest.best_dist    = best_dist;
-        s_latest.margin       = margin;
-        s_latest.selection    = sel;
-        s_have_latest         = true;
+        s_req_pending = false;
         taskEXIT_CRITICAL();
+        (void)xQueueSend(s_resp_queue, &ev, 0);
 
         if (screen != last_screen || sel != last_sel)
         {
-            game_state_t ev;
-            memset(&ev, 0, sizeof(ev));
-            ev.frame_epoch  = frame.frame_count;
-            ev.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
-            ev.screen       = screen;
-            ev.best_dist    = best_dist;
-            ev.margin       = margin;
-            ev.selection    = sel;
             (void)xQueueSend(s_bus_queue, &ev, 0);
 
             if (sel_name2 != NULL)  /* song_select: "<setlist> #<idx> <song>" */
@@ -173,8 +173,9 @@ void GameplayEngine_Initialize(void)
                                      &s_bus_queue_buf);
     configASSERT(s_bus_queue != NULL);
 
-    /* Master gate on; the task still does nothing until a RequestObservation. */
-    s_observe_enabled = true;
+    s_resp_queue = xQueueCreateStatic(1, sizeof(game_state_t),
+                                      s_resp_queue_storage, &s_resp_queue_buf);
+    configASSERT(s_resp_queue != NULL);
 
     (void)xTaskCreateStatic(game_task, "GameEngine", GAME_TASK_STACK_WORDS,
                             NULL, GAME_TASK_PRIORITY, s_task_stack, &s_task_tcb);
@@ -185,33 +186,18 @@ QueueHandle_t GameplayEngine_BusQueue(void)
     return s_bus_queue;
 }
 
-void GameplayEngine_SetObserveEnabled(bool on)
-{
-    s_observe_enabled = on;
-}
-
-void GameplayEngine_RequestObservation(void)
-{
-    s_force_observe = true;
-}
-
-bool GameplayEngine_ObserveEnabled(void)
-{
-    return s_observe_enabled;
-}
-
-uint8_t GameplayEngine_CurrentScreen(void)
-{
-    return s_current_screen;
-}
-
-bool GameplayEngine_GetLatest(game_state_t *out)
+bool GameplayEngine_Observe(game_state_t *out, uint32_t timeout_ms)
 {
     if (out == NULL) { return false; }
-    bool have;
+
+    /* Discard any stale response (e.g. from a prior timed-out request), then post
+     * the request and block for the result. */
+    game_state_t drain;
+    while (xQueueReceive(s_resp_queue, &drain, 0) == pdTRUE) { }
+
     taskENTER_CRITICAL();
-    have = s_have_latest;
-    if (have) { *out = s_latest; }
+    s_req_pending = true;
     taskEXIT_CRITICAL();
-    return have;
+
+    return (xQueueReceive(s_resp_queue, out, pdMS_TO_TICKS(timeout_ms)) == pdTRUE);
 }

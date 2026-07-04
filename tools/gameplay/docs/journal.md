@@ -163,15 +163,20 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Open questions
 
-- **section_select reading — deferred to the navigator (M10), by design.** Variable,
-  song-dependent list, so no fixed-row-index reader. The screen is recognized now (constant
-  chrome) and FULL SONG is always the top row, but the corpus has only the FULL-SONG-selected
-  frame — no "other section selected" negative — so a standalone FULL-SONG-vs-other detector
-  can't be built/validated yet (would need ~2 captures: a non-top section selected, on 2
-  different songs). Decided approach instead: the navigator strums **UP until the highlight
-  stops moving** (frame-difference saturation detection — *not* a blind fixed strum count),
-  then confirms against the FULL SONG top-slot template. Needs no new data; revisit a
-  standalone detector only if the saturation approach proves insufficient at M10.
+- **section_select FULL SONG reader — still wanted; firmware assumes-and-GREENs for now
+  (2026-07-04, Greg).** Variable, song-dependent list, so no fixed-row-index reader; the
+  screen is recognized (constant chrome) and FULL SONG is always the top row. The offline
+  plan was to strum UP until the highlight stops moving (frame-diff saturation) — but the
+  firmware has no frame-diff primitive and `read_selection` returns -1 on `section_select`
+  (no layout), which FAIL-looped the closed-loop controller (it could never confirm a top).
+  **Interim decision:** since we only ever reach this screen with FULL SONG selected, the
+  controller `saturate_top` GREENs straight through it (no strum, no confirm). **To revisit:
+  a real FULL SONG top-slot detector** — a highlight match at the top-slot ROI (mirrors the
+  `song_select` slot match) returning selected/not, exported into `gameplay_metadata.h`, so
+  the controller *confirms* rather than assumes. Still blocked on data: need a "non-top
+  section selected" negative (~2 captures on different songs) to build/validate the
+  threshold; the lone FULL-SONG-selected frame can't prove an unhighlighted top slot is
+  rejected.
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
   bonus tab differs visually); the centroid spans both and classifies fine today. The
   song reader distinguishes the active setlist by page background colour (resolved, 100%).
@@ -189,6 +194,22 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-07-04 — firmware controller made fully closed-loop (marvin)
+Fixed a real navigation misfire in the ported `game_controller` (marvin): after the Wii
+remote woke, the `practice_end_menu` exit strummed down 1 + GREEN (→ RESTART) instead of
+down 4 (→ QUIT). Two root causes, both in the marvin firmware (not the offline prototype):
+observation returned stale state (a `RequestObservation`+fixed-delay+`GetLatest` poll of a
+retained "latest"), and GREEN was pressed without re-verifying the cursor landed. Made
+observation **synchronous** (`GameplayEngine_Observe` blocks for a fresh post-request
+frame; deleted the retained-latest/`GetLatest`/`SetObserveEnabled` vestiges) and added
+**confirm-before-GREEN with bail-to-recover** (`select_and_confirm`: blind-move the delta,
+re-observe, GREEN only when the observed cursor == target on the expected screen; else
+recover). Also removed the timing pipeline's `CurrentScreen()` actuation gate (layering
+inversion) — the controller owns the actuation window via `TimingPipeline_SetEnabled`. This
+mirrors the offline `NavController`'s re-observe-until-match contract; the prototype was
+already correct, the port had drifted. Detail in the marvin journal 2026-07-04. Pending
+Greg's MPLAB build + hardware validation.
 
 ### 2026-06-15 — marvin port Phase 2: selection + song readers
 Greg confirmed Phase 1 builds in MPLAB and asked for a log on screen/selection change. Ported

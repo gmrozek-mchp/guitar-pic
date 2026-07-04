@@ -209,12 +209,12 @@ void App_StartServices(void)
 
     /* Game-state observer (spec §4.8, M9): a video-frame consumer that classifies
      * the current GH3 screen. It subscribes to the video frame queue from its task
-     * (so it follows Video_Initialize) but is purely request-triggered — it does
-     * NOTHING until GameplayEngine_RequestObservation() is called (by the game
-     * controller). There is no free-running scan: the song_select match is ~tens of
-     * ms of soft-float on this FPU-less core, and running it unasked pegged prio-4
-     * and froze the UI. The dashboard uses the touch Selection; the bus has no
-     * other consumer. */
+     * (so it follows Video_Initialize) but observation is synchronous and on-demand —
+     * it does NOTHING until GameplayEngine_Observe() blocks for a fresh classification
+     * (called by the game controller). There is no free-running scan: the song_select
+     * match is ~tens of ms of soft-float on this FPU-less core, and running it unasked
+     * pegged prio-4 and froze the UI. The dashboard uses the touch Selection; the bus
+     * has no other consumer. */
     GameplayEngine_Initialize();
 
     /* M10 game-state controller: START (dashboard button / `play` console command)

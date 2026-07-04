@@ -37,10 +37,10 @@
  * strum must read as a discrete edge (not a held auto-repeat). */
 #define GC_PULSE_MS         70u    /* bit asserted (edge for GH3 to register) */
 #define GC_GAP_MS           180u   /* released gap between inputs (keeps them discrete) */
-/* Settle used only for the RED/recover pauses. */
+/* Settle used only for the RED/recover pauses and setlist toggles. */
 #define GC_SETTLE_MS        500u
-/* Force + wait for a fresh classification (RequestObservation → next frame). */
-#define GC_OBS_WAIT_MS      140u
+/* Blocking wait for one synchronous observation (classify of a fresh frame). */
+#define GC_OBS_TIMEOUT_MS   800u   /* covers song_select's ~190 ms soft-float match */
 /* Poll bounds. */
 #define GC_STEP_POLL_MS     150u
 #define GC_STEP_TIMEOUT_MS  4000u  /* wait for a menu transition after a step */
@@ -53,6 +53,9 @@
 #define GC_MAX_RECOVER      12
 #define GC_MAX_MOVE         64
 #define GC_MAX_EXIT_ITERS   16   /* menu hops to reach main_menu (anchor / song-end exit) */
+#define GC_MAX_CONFIRM      4    /* re-observe/re-move tries to land a cursor before GREEN */
+#define GC_MAX_CONFIRM_FAIL 4    /* consecutive un-confirmable steps before FAILED */
+#define GC_SATURATE_STRUMS  24   /* max strum-ups to drive a readable list to its top */
 
 typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT } gc_act_t;
 
@@ -87,14 +90,12 @@ static int gc_abs(int v) { return v < 0 ? -v : v; }
 
 /* ── observation ──────────────────────────────────────────────────────────── */
 
-/* Force a fresh classification and return the resulting {screen, selection}.
- * false only before the first classified frame ever. */
+/* Synchronously observe a fresh {screen, selection}. Blocks until the engine
+ * classifies a frame captured after this call, or the timeout elapses. */
 static bool observe(uint8_t *screen, int16_t *sel)
 {
-    GameplayEngine_RequestObservation();
-    vTaskDelay(pdMS_TO_TICKS(GC_OBS_WAIT_MS));
     game_state_t gs;
-    if (!GameplayEngine_GetLatest(&gs)) { return false; }
+    if (!GameplayEngine_Observe(&gs, GC_OBS_TIMEOUT_MS)) { return false; }
     *screen = gs.screen;
     *sel    = gs.selection;
     return true;
@@ -110,56 +111,89 @@ static void send_input(uint8_t mask)
     vTaskDelay(pdMS_TO_TICKS(GC_GAP_MS));
 }
 
-/* Move a static-list cursor to an absolute index from the observed position,
- * then confirm. Signed-delta strum is sticky-default-safe. */
-static void select_to(int target, int16_t cur)
+/* Move a static-list cursor onto `target` and confirm with GREEN — fully
+ * closed-loop. Blind-strums the signed delta from the observed cursor (sticky-
+ * default-safe), then re-observes and repeats if it under/overshoots. GREEN is
+ * pressed only once the observed cursor == target while still on `expect_screen`.
+ * Returns false (never pressing GREEN) if the screen isn't the expected one, the
+ * selection is unreadable, or the cursor won't settle — the caller recovers. */
+static bool select_and_confirm(uint8_t expect_screen, int target)
 {
-    if (cur < 0) { return; }   /* selection unreadable — let the loop retry/recover */
-    int delta = target - (int)cur;
-    uint8_t move = (delta > 0) ? GC_STRUM_DOWN : GC_STRUM_UP;
-    int n = gc_abs(delta);
-    if (n > GC_MAX_MOVE) { n = GC_MAX_MOVE; }
-    for (int i = 0; i < n; i++) { send_input(move); }
-    send_input(GC_GREEN);
-}
-
-/* song_select is fixed-slot: `sel` is a gp_song_templates[] index. Toggle setlist
- * if needed, then strum the signed ordinal delta to the target song. */
-static void select_song(int16_t tmpl)
-{
-    const selection_t *want = Selection_Get();
-    if (tmpl < 0 || tmpl >= GP_N_SONGS) { return; }
-
-    if (gp_song_templates[tmpl].setlist != want->setlist)
-    {
-        send_input((want->setlist == GP_SETLIST_BONUS) ? GC_BLUE : GC_YELLOW);
-        vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS));
-        uint8_t sc;
-        if (!observe(&sc, &tmpl) || tmpl < 0 || tmpl >= GP_N_SONGS) { return; }
-    }
-
-    int delta = (int)want->index - (int)gp_song_templates[tmpl].index;
-    uint8_t move = (delta > 0) ? GC_STRUM_DOWN : GC_STRUM_UP;
-    int n = gc_abs(delta);
-    if (n > GC_MAX_MOVE) { n = GC_MAX_MOVE; }
-    for (int i = 0; i < n; i++) { send_input(move); }
-    send_input(GC_GREEN);
-}
-
-/* Strum up until the selection stops moving (top), then confirm — robust to a
- * sticky entry position (FULL SONG / FULL SPEED = index 0). */
-static void saturate_top(void)
-{
-    int16_t prev = -999;
-    for (int i = 0; i < GC_MAX_MOVE; i++)
+    for (int attempt = 0; attempt < GC_MAX_CONFIRM; attempt++)
     {
         uint8_t sc; int16_t cur;
-        if (!observe(&sc, &cur)) { break; }
-        if (cur == 0 || cur == prev) { break; }
-        prev = cur;
+        if (!observe(&sc, &cur))     { return false; }
+        if (sc != expect_screen)     { return false; }
+        if (cur < 0)                 { return false; }
+        if ((int)cur == target)      { send_input(GC_GREEN); return true; }
+
+        int delta = target - (int)cur;
+        uint8_t move = (delta > 0) ? GC_STRUM_DOWN : GC_STRUM_UP;
+        int n = gc_abs(delta);
+        if (n > GC_MAX_MOVE) { n = GC_MAX_MOVE; }
+        for (int i = 0; i < n; i++) { send_input(move); }
+    }
+    return false;
+}
+
+/* song_select is fixed-slot: the observed selection is a gp_song_templates[]
+ * index. Toggle to the wanted setlist if needed, then strum the signed ordinal
+ * delta to the target song, re-observing until the target occupies the slot,
+ * then GREEN. Same closed-loop contract as select_and_confirm. */
+static bool select_song(void)
+{
+    const selection_t *want = Selection_Get();
+
+    for (int attempt = 0; attempt < GC_MAX_CONFIRM; attempt++)
+    {
+        uint8_t sc; int16_t tmpl;
+        if (!observe(&sc, &tmpl))                { return false; }
+        if (sc != GP_SCREEN_song_select)         { return false; }
+        if (tmpl < 0 || tmpl >= GP_N_SONGS)      { return false; }
+
+        if (gp_song_templates[tmpl].setlist != want->setlist)
+        {
+            send_input((want->setlist == GP_SETLIST_BONUS) ? GC_BLUE : GC_YELLOW);
+            vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS));   /* let the list swap before re-reading */
+            continue;
+        }
+
+        if ((int)gp_song_templates[tmpl].index == (int)want->index)
+        {
+            send_input(GC_GREEN);
+            return true;
+        }
+
+        int delta = (int)want->index - (int)gp_song_templates[tmpl].index;
+        uint8_t move = (delta > 0) ? GC_STRUM_DOWN : GC_STRUM_UP;
+        int n = gc_abs(delta);
+        if (n > GC_MAX_MOVE) { n = GC_MAX_MOVE; }
+        for (int i = 0; i < n; i++) { send_input(move); }
+    }
+    return false;
+}
+
+/* Move to the top item and GREEN — the always-want-the-top steps (FULL SONG /
+ * FULL SPEED = index 0). Where the row is readable (speed_select) strum up until
+ * the selection reports the top (strumming up can't overshoot — no wrap). Where
+ * it isn't (section_select has no row reader) GREEN through, assuming the top is
+ * already selected — we only reach it with FULL SONG selected. See
+ * firmware/marvin/docs/journal.md for the deferred section_select FULL SONG reader.
+ * Returns false only if the screen isn't the expected one or an observation fails. */
+static bool saturate_top(uint8_t expect_screen)
+{
+    uint8_t sc; int16_t cur;
+    if (!observe(&sc, &cur)) { return false; }
+    if (sc != expect_screen) { return false; }
+
+    for (int i = 0; i < GC_SATURATE_STRUMS && cur > 0; i++)
+    {
         send_input(GC_STRUM_UP);
+        if (!observe(&sc, &cur)) { return false; }
+        if (sc != expect_screen) { return false; }
     }
     send_input(GC_GREEN);
+    return true;
 }
 
 static bool wait_for(uint8_t target, uint32_t timeout_ms)
@@ -216,15 +250,18 @@ static const gc_step_t *step_for(uint8_t screen)
     return NULL;
 }
 
-static void execute(const gc_step_t *st, int16_t sel)
+/* Run a step closed-loop. Returns true only if the step's activation was
+ * confirmed (cursor landed then GREEN, or the WAIT reached its target); false
+ * means "did not activate" — the caller re-observes and retries / recovers. */
+static bool execute(const gc_step_t *st)
 {
     switch (st->act)
     {
-        case ACT_SELECT_INDEX:  select_to(st->index, sel);              break;
-        case ACT_SELECT_SONG:   select_song(sel);                       break;
-        case ACT_SATURATE_TOP:  saturate_top();                         break;
-        case ACT_WAIT:          wait_for(st->to, GC_LOADING_TIMEOUT_MS); break;
-        default:                                                        break;
+        case ACT_SELECT_INDEX:  return select_and_confirm(st->from, st->index);
+        case ACT_SELECT_SONG:   return select_song();
+        case ACT_SATURATE_TOP:  return saturate_top(st->from);
+        case ACT_WAIT:          return wait_for(st->to, GC_LOADING_TIMEOUT_MS);
+        default:                return false;
     }
 }
 
@@ -253,10 +290,10 @@ static bool nav_to_main_menu(void)
 
         switch (sc)
         {
-            case GP_SCREEN_practice_end_menu: select_to(4, sel); break;  /* QUIT → main_menu */
-            case GP_SCREEN_quit_confirm:      select_to(1, sel); break;  /* QUIT (confirm) → main_menu */
-            case GP_SCREEN_pause_menu:        select_to(6, sel); break;  /* QUIT → quit_confirm */
-            default:                          send_input(GC_RED); break; /* back up one level */
+            case GP_SCREEN_practice_end_menu: (void)select_and_confirm(sc, 4); break;  /* QUIT → main_menu */
+            case GP_SCREEN_quit_confirm:      (void)select_and_confirm(sc, 1); break;  /* QUIT (confirm) → main_menu */
+            case GP_SCREEN_pause_menu:        (void)select_and_confirm(sc, 6); break;  /* QUIT → quit_confirm */
+            default:                          send_input(GC_RED);              break;  /* back up one level */
         }
         (void)wait_screen_change(sc, GC_STEP_TIMEOUT_MS);
     }
@@ -265,13 +302,13 @@ static bool nav_to_main_menu(void)
 }
 
 /* CV plays; hold until the song ends (practice_end_menu), we leave gameplay, or
- * Stop is requested. Observation is request-triggered, so poll via observe() — a
- * classify during in_song is cheap (no song-match) and keeps the in_song gate
- * (GameplayEngine_CurrentScreen) fresh for the timing pipeline. */
+ * Stop is requested. Poll via observe() to detect the end — a classify during
+ * in_song is cheap (no song-match). The timing pipeline actuates for the whole
+ * enabled window; the controller owns that window (enable here, disable on exit). */
 static void play_until_done(void)
 {
     status("PLAYING");
-    TimingPipeline_SetEnabled(true);   /* in_song gate arms actuation automatically */
+    TimingPipeline_SetEnabled(true);   /* controller owns the actuation window */
 
     for (;;)
     {
@@ -365,6 +402,7 @@ static void run(void)
     build_plan(sel);
 
     int recover = 0;
+    int confirm_fail = 0;
     for (int iter = 0; iter < GC_MAX_ITERS; iter++)
     {
         if (s_stop_req) { finish("READY"); return; }
@@ -382,15 +420,25 @@ static void run(void)
         if (st != NULL)
         {
             LOG_INFO("GC: %s\r\n", st->desc);
-            execute(st, s);
-            /* Wait for the transition off this screen before re-evaluating, so the
-             * same step can't re-fire (and a stray input can't hit the next screen).
-             * ACT_WAIT already blocked until its target screen. */
-            if (st->act != ACT_WAIT)
+            if (execute(st))
             {
-                (void)wait_screen_change(st->from, GC_STEP_TIMEOUT_MS);
+                /* Wait for the transition off this screen before re-evaluating, so
+                 * the same step can't re-fire (and a stray input can't hit the next
+                 * screen). ACT_WAIT already blocked until its target screen. */
+                if (st->act != ACT_WAIT)
+                {
+                    (void)wait_screen_change(st->from, GC_STEP_TIMEOUT_MS);
+                }
+                recover = 0;
+                confirm_fail = 0;
             }
-            recover = 0;
+            else
+            {
+                /* Couldn't confirm the cursor/activation on a known screen — never
+                 * press GREEN blind. Re-observe and retry; give up if it persists. */
+                if (++confirm_fail > GC_MAX_CONFIRM_FAIL) { finish("FAILED"); return; }
+                LOG_INFO("GC: unconfirmed on screen %u — retrying\r\n", (unsigned)sc);
+            }
         }
         else
         {

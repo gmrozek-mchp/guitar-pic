@@ -172,8 +172,7 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("detect cv:  %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)  ? "on" : "off");
     console_printf("detect adc: %s", Detector_IsEnabled(DETECTOR_ADC_FRETBOARD) ? "on" : "off");
     console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
-    console_printf("timing:     %s (gate %s)", TimingPipeline_IsEnabled() ? "on" : "off",
-                   TimingPipeline_GateOnGameplay() ? "on" : "off");
+    console_printf("timing:     %s", TimingPipeline_IsEnabled() ? "on" : "off");
     console_printf("video:      %ux%u frame=%lu",
                    (unsigned)vi.width, (unsigned)vi.height,
                    (unsigned long)vi.frame_count);
@@ -521,26 +520,14 @@ static void cmd_active(EmbeddedCli *cli, char *args, void *ctx)
 static void cmd_timing(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
-    const char *sub = embeddedCliGetToken(args, 1);
-
-    if (sub != NULL && strcmp(sub, "gate") == 0)
-    {
-        int g = parse_onoff(embeddedCliGetToken(args, 2));
-        if (g < 0) { console_printf("usage: timing gate <on|off>  (gate on = actuate only in-song)"); return; }
-        TimingPipeline_SetGateOnGameplay(g != 0);
-        console_printf("timing gate = %s", g ? "on (in-song only)" : "off (always)");
-        return;
-    }
-
-    int val = parse_onoff(sub);
+    int val = parse_onoff(embeddedCliGetToken(args, 1));
     if (val < 0)
     {
-        console_printf("usage: timing <on|off|gate <on|off>>");
+        console_printf("usage: timing <on|off>");
         return;
     }
     TimingPipeline_SetEnabled(val != 0);
-    console_printf("timing = %s (gate %s)", val ? "on" : "off",
-                   TimingPipeline_GateOnGameplay() ? "on" : "off");
+    console_printf("timing = %s", val ? "on" : "off");
 }
 
 static void cmd_manual(EmbeddedCli *cli, char *args, void *ctx)
@@ -789,7 +776,7 @@ static void register_commands(void)
         { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
-        { "timing", "timing <on|off|gate <on|off>>: chord/strum scheduler (gate=in-song only)", true, NULL, cmd_timing },
+        { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [stop|status]: auto-navigate GH3 to the selected song + let CV play it", true, NULL, cmd_play },
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)

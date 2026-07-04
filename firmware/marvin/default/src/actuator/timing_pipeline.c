@@ -11,8 +11,6 @@
 
 #include "log.h"
 #include "detector/detector.h"
-#include "game/gameplay_engine.h"     /* screen gate: actuate only while in a song */
-#include "game/gameplay_metadata.h"       /* GP_SCREEN_in_song */
 #include "perf_log/perf_log.h"
 
 #define TP_TASK_STACK_WORDS    768u
@@ -20,7 +18,7 @@
 
 /* Drives chord aggregation, strum scheduling, and pending release timing.
  * Matches the fret-tuner Python defaults so behavior carries 1:1. */
-#define TP_STRUM_DELAY_MS      300u
+#define TP_STRUM_DELAY_MS      250u
 #define TP_FRET_EARLY_MS       50u
 #define TP_STRUM_PULSE_MS      40u
 #define TP_CHORD_WINDOW_MS     30u
@@ -31,7 +29,7 @@
  * note-assert deadlines that fall between detector publishes. 5 ms keeps
  * jitter well under our 16 ms detector cadence and below human-perceptible
  * timing error. */
-#define TP_TICK_MS             5u
+#define TP_TICK_MS             2u
 
 typedef struct
 {
@@ -75,11 +73,6 @@ static uint64_t s_last_frame_us;
  * leaving the pipeline live would actuate spurious frets. Enable it (console
  * `timing on`) once a song is starting. */
 static volatile bool s_pipeline_enabled = false;
-
-/* Screen gate: when true, only actuate while the gameplay engine reports the
- * in-song screen — the detector's output on a menu is meaningless. Turn off
- * (`timing gate off`) for bench tests that feed a highway outside a live game. */
-static volatile bool s_gate_on_gameplay = true;
 
 static const uint8_t s_fret_bit[FRET_COUNT] =
 {
@@ -160,12 +153,6 @@ static void publish_mask(uint8_t mask)
     if (!s_pipeline_enabled)
     {
         return;
-    }
-    /* Off a live note highway the detector's mask is noise — release instead of
-     * actuating it (keeps the guitar/fauxmote from holding garbage frets on a menu). */
-    if (s_gate_on_gameplay && GameplayEngine_CurrentScreen() != GP_SCREEN_in_song)
-    {
-        mask = 0u;
     }
     FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
 }
@@ -464,14 +451,4 @@ void TimingPipeline_SetEnabled(bool enabled)
 bool TimingPipeline_IsEnabled(void)
 {
     return s_pipeline_enabled;
-}
-
-void TimingPipeline_SetGateOnGameplay(bool enabled)
-{
-    s_gate_on_gameplay = enabled;
-}
-
-bool TimingPipeline_GateOnGameplay(void)
-{
-    return s_gate_on_gameplay;
 }
