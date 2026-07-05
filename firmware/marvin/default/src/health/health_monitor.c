@@ -19,8 +19,17 @@
 #define HM_TASK_STACK_WORDS  1024u
 #define HM_TASK_PRIORITY     1u        /* just above idle — starved first by a spin */
 
-#define HM_HEARTBEAT_MS      10000u    /* one heartbeat line per 10 s (debug cadence) */
+#define HM_HEARTBEAT_MS      60000u    /* one heartbeat per 60 s */
 #define HM_STACKDUMP_MS      600000u   /* full stack table every 10 min */
+
+/* Compile-time switch for the on-card log (health/heartbeat.csv + stacks.txt).
+ * Off by default now the freeze investigation is done — the supervisor's RUNAWAY
+ * line (logged at ERROR, always on) is the live watch, and the periodic
+ * telemetry drops to DEBUG. Build with -DHM_SD_LOG_ENABLED=1 to restore the
+ * on-card crash-timing record. */
+#ifndef HM_SD_LOG_ENABLED
+#define HM_SD_LOG_ENABLED    0
+#endif
 
 #define HM_MAX_TASKS         28u       /* snapshot buffer; sized above the task count */
 
@@ -71,10 +80,12 @@ static uint64_t          s_prev_total;
 
 /* ---- helpers ------------------------------------------------------------ */
 
+#if HM_SD_LOG_ENABLED
 static void build_path(char *buf, size_t n, const char *rel)
 {
     (void)snprintf(buf, n, "%s/%s", Storage_MountPoint(), rel);
 }
+#endif
 
 static void iso8601_utc(char *buf, size_t n)
 {
@@ -138,7 +149,7 @@ void HealthMonitor_Report(health_print_fn out, void *ctx)
 static void log_line(void *ctx, const char *line)
 {
     (void)ctx;
-    LOG_INFO("HM| %s\r\n", line);
+    LOG_DEBUG("HM| %s\r\n", line);
 }
 
 /* ---- heartbeat ---------------------------------------------------------- */
@@ -173,11 +184,12 @@ static void heartbeat_write(void)
 
     unsigned heap = (unsigned)xPortGetFreeHeapSize();
 
-    /* Mirror to the log first — survives even if SD is the wedged path. */
-    LOG_INFO("HM: %s up=%lus frames=%lu heap=%u worststk=%s:%u\r\n",
-             ts, (unsigned long)up_s, (unsigned long)vi.frame_count,
-             heap, worst_name, worst);
+    /* Periodic telemetry — DEBUG (silent at the default INFO level). */
+    LOG_DEBUG("HM: %s up=%lus frames=%lu heap=%u worststk=%s:%u\r\n",
+              ts, (unsigned long)up_s, (unsigned long)vi.frame_count,
+              heap, worst_name, worst);
 
+#if HM_SD_LOG_ENABLED
     /* Only touch the card once the boot task has mounted it. The monitor never
      * mounts itself — a second mounter races the boot mount, and FatFs is built
      * non-reentrant (FF_FS_REENTRANT=0). */
@@ -227,48 +239,49 @@ static void heartbeat_write(void)
         (void)SYS_FS_FileWrite(h, line, (size_t)len);
     }
     (void)SYS_FS_FileClose(h);
+#endif /* HM_SD_LOG_ENABLED */
 }
 
 /* ---- stack dump --------------------------------------------------------- */
 
+#if HM_SD_LOG_ENABLED
 static void file_line(void *ctx, const char *line)
 {
     SYS_FS_HANDLE h = *(const SYS_FS_HANDLE *)ctx;
     (void)SYS_FS_FileWrite(h, line, strlen(line));
     (void)SYS_FS_FileWrite(h, "\n", 1u);
 }
+#endif
 
 static void stackdump_write(void)
 {
-    /* The table always goes to the log; the file is best-effort on top, and
-     * only once the boot task has mounted the card (never self-mounts). */
-    if (!Storage_IsMounted())
+#if HM_SD_LOG_ENABLED
+    /* Best-effort on-card copy, once the boot task has mounted (never self-mounts). */
+    if (Storage_IsMounted())
     {
-        HealthMonitor_Report(log_line, NULL);
-        return;
+        char dir[64];
+        build_path(dir, sizeof(dir), HM_REL_DIR);
+        (void)SYS_FS_DirectoryMake(dir);
+
+        char path[80];
+        build_path(path, sizeof(path), HM_REL_DUMP);
+
+        SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_WRITE);  /* truncate/create */
+        if (h != SYS_FS_HANDLE_INVALID)
+        {
+            char ts[24];
+            iso8601_utc(ts, sizeof(ts));
+            file_line(&h, ts);
+            HealthMonitor_Report(file_line, &h);
+            (void)SYS_FS_FileClose(h);
+        }
+        else
+        {
+            LOG_DEBUG("HM: stackdump open failed (fs err %d)\r\n", (int)SYS_FS_Error());
+        }
     }
-
-    char dir[64];
-    build_path(dir, sizeof(dir), HM_REL_DIR);
-    (void)SYS_FS_DirectoryMake(dir);
-
-    char path[80];
-    build_path(path, sizeof(path), HM_REL_DUMP);
-
-    SYS_FS_HANDLE h = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_WRITE);  /* truncate/create */
-    if (h == SYS_FS_HANDLE_INVALID)
-    {
-        LOG_DEBUG("HM: stackdump open failed (fs err %d)\r\n", (int)SYS_FS_Error());
-        HealthMonitor_Report(log_line, NULL);
-        return;
-    }
-
-    char ts[24];
-    iso8601_utc(ts, sizeof(ts));
-    file_line(&h, ts);
-    HealthMonitor_Report(file_line, &h);
-    (void)SYS_FS_FileClose(h);
-
+#endif
+    /* The table always goes to the log (DEBUG). */
     HealthMonitor_Report(log_line, NULL);
 }
 
@@ -345,8 +358,8 @@ static void supervisor_sample(uint32_t seq)
     }
     else if (!starved && (seq % HM_SUP_SUMMARY_N) == 0u)
     {
-        LOG_INFO("SUP: idle=%u%% top=%s:%u%% isr=%u%%\r\n",
-                 idle_pct, hot_name, hot_pct, isr_pct);
+        LOG_DEBUG("SUP: idle=%u%% top=%s:%u%% isr=%u%%\r\n",
+                  idle_pct, hot_name, hot_pct, isr_pct);
     }
 }
 
@@ -354,8 +367,8 @@ static void supervisor_task(void *param)
 {
     (void)param;
 
-    LOG_INFO("HM: supervisor started (prio %u, %ums)\r\n",
-             (unsigned)HM_SUP_PRIORITY, (unsigned)HM_SUP_SAMPLE_MS);
+    LOG_DEBUG("HM: supervisor started (prio %u, %ums)\r\n",
+              (unsigned)HM_SUP_PRIORITY, (unsigned)HM_SUP_SAMPLE_MS);
 
     uint32_t   seq  = 0u;
     TickType_t last = xTaskGetTickCount();
@@ -373,8 +386,8 @@ static void health_task(void *param)
 {
     (void)param;
 
-    LOG_INFO("HM: health monitor started (hb=%us dump=%us)\r\n",
-             (unsigned)(HM_HEARTBEAT_MS / 1000u), (unsigned)(HM_STACKDUMP_MS / 1000u));
+    LOG_DEBUG("HM: health monitor started (hb=%us dump=%us)\r\n",
+              (unsigned)(HM_HEARTBEAT_MS / 1000u), (unsigned)(HM_STACKDUMP_MS / 1000u));
 
     /* Hold off until the UI is revealed — see s_ready. */
     while (!s_ready) { vTaskDelay(pdMS_TO_TICKS(100)); }
