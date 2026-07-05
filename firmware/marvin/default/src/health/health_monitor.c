@@ -67,6 +67,14 @@ static SemaphoreHandle_t s_lock;
 static StaticSemaphore_t s_lock_buf;
 static TaskStatus_t      s_tasks[HM_MAX_TASKS];
 
+/* HealthMonitor_Report shows a recent-window CPU%, not cumulative-since-boot
+ * (which buries current load under startup): it snapshots, waits this window,
+ * snapshots again, and diffs. s_rpt_* holds the first snapshot's runtime keyed
+ * by handle for the diff. */
+#define HM_REPORT_WINDOW_MS  500u
+static TaskHandle_t      s_rpt_h[HM_MAX_TASKS];
+static uint64_t          s_rpt_rt[HM_MAX_TASKS];
+
 /* Set once the boot sequence has revealed the UI. Until then both tasks stay
  * idle — HM card I/O + task-list walks in the capture/reveal window wedge boot. */
 static volatile bool     s_ready;
@@ -112,18 +120,40 @@ static char state_char(eTaskState s)
 
 /* ---- table report (shared by console, stack-dump file, and log) --------- */
 
+static uint64_t rpt_prev_rt(TaskHandle_t h, UBaseType_t prev_n)
+{
+    for (UBaseType_t i = 0u; i < prev_n; i++)
+    {
+        if (s_rpt_h[i] == h) { return s_rpt_rt[i]; }
+    }
+    return 0u;   /* task not in the first snapshot → count all its time as new */
+}
+
 void HealthMonitor_Report(health_print_fn out, void *ctx)
 {
     if (out == NULL) { return; }
 
     (void)xSemaphoreTake(s_lock, portMAX_DELAY);
 
-    uint64_t    total_rt = 0u;
-    UBaseType_t n        = uxTaskGetSystemState(s_tasks, HM_MAX_TASKS, &total_rt);
-    uint64_t    denom    = total_rt / 100u;   /* percent divisor; avoids *100 overflow */
+    /* First snapshot; retain per-task runtime, then wait the window. */
+    uint64_t    t0 = 0u;
+    UBaseType_t prev_n = uxTaskGetSystemState(s_tasks, HM_MAX_TASKS, &t0);
+    for (UBaseType_t i = 0u; i < prev_n; i++)
+    {
+        s_rpt_h[i]  = s_tasks[i].xHandle;
+        s_rpt_rt[i] = s_tasks[i].ulRunTimeCounter;
+    }
+
+    vTaskDelay(pdMS_TO_TICKS(HM_REPORT_WINDOW_MS));
+
+    /* Second snapshot; report each task's share of the window's runtime. */
+    uint64_t    t1    = 0u;
+    UBaseType_t n     = uxTaskGetSystemState(s_tasks, HM_MAX_TASKS, &t1);
+    uint64_t    dtot  = (t1 > t0) ? (t1 - t0) : 0u;
+    uint64_t    denom = dtot / 100u;   /* percent divisor; avoids *100 overflow */
 
     char line[96];
-    out(ctx, "task             st pri  stkfree  run%");
+    out(ctx, "task             st pri  stkfree  cpu%");
     if (n == 0u)
     {
         out(ctx, "(task count exceeds HM_MAX_TASKS snapshot buffer)");
@@ -131,16 +161,18 @@ void HealthMonitor_Report(health_print_fn out, void *ctx)
     for (UBaseType_t i = 0u; i < n; i++)
     {
         const TaskStatus_t *t = &s_tasks[i];
-        unsigned stk = (unsigned)t->usStackHighWaterMark * (unsigned)sizeof(StackType_t);
-        unsigned pct = (denom > 0u) ? (unsigned)(t->ulRunTimeCounter / denom) : 0u;
+        unsigned stk  = (unsigned)t->usStackHighWaterMark * (unsigned)sizeof(StackType_t);
+        uint64_t prev = rpt_prev_rt(t->xHandle, prev_n);
+        uint64_t d    = (t->ulRunTimeCounter >= prev) ? (t->ulRunTimeCounter - prev) : 0u;
+        unsigned pct  = (denom > 0u) ? (unsigned)(d / denom) : 0u;
         (void)snprintf(line, sizeof(line), "%-16s %c %3u  %6u  %3u",
                        (t->pcTaskName != NULL) ? t->pcTaskName : "?",
                        state_char(t->eCurrentState),
                        (unsigned)t->uxCurrentPriority, stk, pct);
         out(ctx, line);
     }
-    (void)snprintf(line, sizeof(line), "heap: %u free",
-                   (unsigned)xPortGetFreeHeapSize());
+    (void)snprintf(line, sizeof(line), "heap: %u free  (cpu%% over %ums)",
+                   (unsigned)xPortGetFreeHeapSize(), (unsigned)HM_REPORT_WINDOW_MS);
     out(ctx, line);
 
     (void)xSemaphoreGive(s_lock);
