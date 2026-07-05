@@ -1,3 +1,4 @@
 {
-    "specstory.cloudSync.enabled": "never"
+    "specstory.cloudSync.enabled": "never",
+    "idf.currentSetup": "/Users/gregmrozek/.espressif/v6.0.1/esp-idf"
 }

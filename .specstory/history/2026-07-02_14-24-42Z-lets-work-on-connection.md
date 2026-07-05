@@ -20366,3 +20366,998 @@ Final state:
 `gui-wiimote` and `wip-snapshot-m10-health` are gone; nothing was lost (the regen lives on `humanplayer-regen`, M10+health on `gameplay`). The mess is untangled.
 
 Next when you're ready: rebuild `gameplay` in MPLAB to confirm it's clean without the regen, and reintroduce `humanplayer-regen` via an MGS/MCC pass when you want the HumanPlayer art back. Nothing pushed — `gameplay` is 8 ahead of `origin/gameplay` whenever you want to publish.
+
+---
+
+_**User (2026-07-05 14:59:45Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+need to add fauxmote commant for the IR pointer.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-05 15:00:27Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:00:29Z)**_
+
+On it — that's the marvin-side `POINTER` sender (the fauxmote ESP32 side already receives/applies `POINTER` via `apply_pointer`; marvin just doesn't send it yet). Let me read the current marvin fauxmote_link + the proto + the console command to match the existing pattern.
+
+_**Agent (claude-opus-4-8 2026-07-05 15:00:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.h`
+
+```text
+1	#ifndef FAUXMOTE_LINK_H
+2	#define FAUXMOTE_LINK_H
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	
+7	/* marvin -> fauxmote command link: transmits controller input over the FLEXCOM1
+8	 * USART (PA28/PA29, the fretboard UART-transport pins, free while the guitar rides
+9	 * T1S) to the ESP32 Wiimote emulator, and receives its STATUS uplink. Wire protocol
+10	 * in net/fauxmote/mf_proto.h / docs/marvin-fauxmote-link.md.
+11	 *
+12	 * Owns FLEXCOM1 exclusively, so it may only be built when the guitar actuator uses
+13	 * the T1S transport (a UART-transport build drives the guitar node on FLEXCOM1). A
+14	 * TX task sends the latched GUITAR state on change and at a floor rate (self-heals
+15	 * dropped frames + keeps fauxmote's link watchdog fed); WIIMOTE nav and LINK_CMD go
+16	 * out on demand. Send calls are non-blocking and safe from any producer context.
+17	 * Call Fauxmote_Initialize once after SYS_Initialize (FLEXCOM1 up) and before the
+18	 * mask producers start. */
+19	
+20	void Fauxmote_Initialize(void);
+21	
+22	/* GUITAR slice. SendGuitarMask is the gameplay mirror hook (whammy=rest, aux=0);
+23	 * SendGuitar exposes the full slice for future whammy/star-power producers. */
+24	void Fauxmote_SendGuitarMask(uint8_t mask);
+25	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux);
+26	
+27	/* WIIMOTE nav slice (core buttons, d-pad, 6-bit stick) and LINK_CMD opcode. */
+28	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y);
+29	void Fauxmote_SendCmd(uint8_t op);
+30	
+31	/* Latest STATUS from fauxmote. Returns false if none has ever been received.
+32	 * Any out pointer may be NULL. age_ms = ms since the last STATUS arrived. */
+33	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+34	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms);
+35	
+36	#endif
+37
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:00:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/mf_proto.h`
+
+```text
+35	#define MF_MAX_PAYLOAD   8u   /* largest LEN across all types */
+36	
+37	/* --- GUITAR (3B): [0] fret/strum mask, [1] whammy, [2] aux */
+38	#define MF_G_GREEN       (1u << 0)
+39	#define MF_G_RED         (1u << 1)
+40	#define MF_G_YELLOW      (1u << 2)
+41	#define MF_G_BLUE        (1u << 3)
+42	#define MF_G_ORANGE      (1u << 4)
+43	#define MF_G_STRUM_DOWN  (1u << 5)
+44	#define MF_G_STRUM_UP    (1u << 6)
+45	
+46	#define MF_WHAMMY_MASK   0x1Fu
+47	#define MF_WHAMMY_REST   0x10u   /* released/idle whammy value (safe default) */
+48	
+49	#define MF_AUX_PLUS       (1u << 0)   /* Start / pause */
+50	#define MF_AUX_MINUS      (1u << 1)   /* Select */
+51	#define MF_AUX_PEDAL      (1u << 2)
+52	#define MF_AUX_STARPOWER  (1u << 3)   /* planned: maps to a Wiimote tilt (no-op for now) */
+53	
+54	/* --- WIIMOTE (4B): [0] core buttons, [1] d-pad, [2] stick X, [3] stick Y */
+55	#define MF_W_A           (1u << 0)
+56	#define MF_W_B           (1u << 1)
+57	#define MF_W_ONE         (1u << 2)
+58	#define MF_W_TWO         (1u << 3)
+59	#define MF_W_PLUS        (1u << 4)
+60	#define MF_W_MINUS       (1u << 5)
+61	#define MF_W_HOME        (1u << 6)
+62	
+63	#define MF_W_UP          (1u << 0)
+64	#define MF_W_DOWN        (1u << 1)
+65	#define MF_W_LEFT        (1u << 2)
+66	#define MF_W_RIGHT       (1u << 3)
+67	
+68	#define MF_STICK_CENTER  0x20u   /* 6-bit stick 0..63, center (safe default) */
+69	
+70	/* --- LINK_CMD (1B): [0] opcode */
+71	enum {
+72	    MF_CMD_PAIR       = 0x01,
+73	    MF_CMD_STOP       = 0x02,
+74	    MF_CMD_RECONNECT  = 0x03,
+75	    MF_CMD_UNLINK     = 0x04,
+76	    MF_CMD_EXT_ATTACH = 0x05,
+77	    MF_CMD_EXT_DETACH = 0x06,
+78	    MF_CMD_STATUS_REQ = 0x07,
+79	};
+80	
+81	/* --- STATUS (4B): [0] flags, [1] player_slot, [2] report_mode, [3] last_result */
+82	#define MF_ST_DISCOVERABLE (1u << 0)
+83	#define MF_ST_CONNECTED    (1u << 1)
+84	#define MF_ST_ASSIGNED     (1u << 2)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:00:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:00:41Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.c`
+
+```text
+1	#include "fauxmote_link.h"
+2	#include "mf_proto.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	#include "semphr.h"
+12	
+13	#include "definitions.h"
+14	#include "log.h"
+15	
+16	#define FX_TX_TASK_STACK_WORDS  512u
+17	#define FX_RX_TASK_STACK_WORDS  512u
+18	#define FX_TASK_PRIORITY        5u
+19	
+20	/* Floor re-send of the GUITAR slice: bounds latency of a dropped frame and keeps
+21	 * fauxmote's 200 ms link watchdog fed when gameplay is idle. Well under 200 ms. */
+22	#define FX_REFRESH_MS           50u
+23	
+24	#define FX_CMD_QUEUE_DEPTH      4u
+25	#define FX_RX_WAIT_MS           100u
+26	
+27	static bool s_ready;
+28	
+29	/* Latched controller state (written by producers, read by the TX task). Guarded
+30	 * by a short critical section — a few-byte copy, never a blocking call. */
+31	static uint8_t s_g_mask;
+32	static uint8_t s_g_whammy = MF_WHAMMY_REST;
+33	static uint8_t s_g_aux;
+34	
+35	static uint8_t s_nav_core;
+36	static uint8_t s_nav_dpad;
+37	static uint8_t s_nav_sx = MF_STICK_CENTER;
+38	static uint8_t s_nav_sy = MF_STICK_CENTER;
+39	static bool    s_nav_dirty;
+40	
+41	/* Latest STATUS from fauxmote. */
+42	static bool       s_status_valid;
+43	static uint8_t    s_status[MF_LEN_STATUS];
+44	static TickType_t s_status_tick;
+45	
+46	static QueueHandle_t   s_cmd_queue;
+47	static StaticQueue_t   s_cmd_queue_buf;
+48	static uint8_t         s_cmd_queue_storage[FX_CMD_QUEUE_DEPTH];
+49	
+50	static SemaphoreHandle_t s_tx_notify;
+51	static StaticSemaphore_t s_tx_notify_buf;
+52	static SemaphoreHandle_t s_rx_notify;
+53	static StaticSemaphore_t s_rx_notify_buf;
+54	
+55	static StackType_t   s_tx_stack[FX_TX_TASK_STACK_WORDS];
+56	static StaticTask_t  s_tx_tcb;
+57	static StackType_t   s_rx_stack[FX_RX_TASK_STACK_WORDS];
+58	static StaticTask_t  s_rx_tcb;
+59	
+60	/* ---- TX (single writer: the TX task) ------------------------------------ */
+61	
+62	static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+63	{
+64	    uint8_t f[3u + MF_MAX_PAYLOAD + 1u];
+65	    f[0] = MF_SOF;
+66	    f[1] = type;
+67	    f[2] = len;
+68	    if (len != 0u) { memcpy(&f[3], payload, len); }
+69	    f[3u + len] = mf_crc8(&f[1], (size_t)(2u + len));   /* CRC over TYPE,LEN,payload */
+70	    (void)FLEXCOM1_USART_Write(f, (size_t)(4u + len));
+71	}
+72	
+73	static void fx_tx_task(void *param)
+74	{
+75	    (void)param;
+76	    LOG_INFO("FX: fauxmote link started (FLEXCOM1, %lu baud)\r\n",
+77	             (unsigned long)MF_UART_BAUD);
+78	
+79	    for (;;)
+80	    {
+81	        /* Wake on a producer change (low latency) or the floor refresh timeout. */
+82	        (void)xSemaphoreTake(s_tx_notify, pdMS_TO_TICKS(FX_REFRESH_MS));
+83	
+84	        uint8_t g[MF_LEN_GUITAR];
+85	        uint8_t nav[MF_LEN_WIIMOTE];
+86	        bool    nav_dirty;
+87	
+88	        taskENTER_CRITICAL();
+89	        g[0] = s_g_mask;
+90	        g[1] = s_g_whammy;
+91	        g[2] = s_g_aux;
+92	        nav[0] = s_nav_core;
+93	        nav[1] = s_nav_dpad;
+94	        nav[2] = s_nav_sx;
+95	        nav[3] = s_nav_sy;
+96	        nav_dirty = s_nav_dirty;
+97	        s_nav_dirty = false;
+98	        taskEXIT_CRITICAL();
+99	
+100	        send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+101	        if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
+102	
+103	        uint8_t op;
+104	        while (xQueueReceive(s_cmd_queue, &op, 0) == pdTRUE)
+105	        {
+106	            send_frame(MF_MSG_LINK_CMD, &op, MF_LEN_LINK_CMD);
+107	        }
+108	    }
+109	}
+110	
+111	/* ---- RX (STATUS uplink parser) ------------------------------------------ */
+112	
+113	typedef enum { P_SOF, P_TYPE, P_LEN, P_PAYLOAD, P_CRC } parse_state_t;
+114	
+115	static void parse_byte(uint8_t b)
+116	{
+117	    static parse_state_t state = P_SOF;
+118	    static uint8_t type, len, idx;
+119	    static uint8_t payload[MF_MAX_PAYLOAD];
+120	
+121	    switch (state)
+122	    {
+123	        case P_SOF:
+124	            if (b == MF_SOF) { state = P_TYPE; }
+125	            break;
+126	        case P_TYPE:
+127	            if (b == 0x00u) { state = P_SOF; break; }
+128	            type = b;
+129	            state = P_LEN;
+130	            break;
+131	        case P_LEN:
+132	            if (b > MF_MAX_PAYLOAD) { state = P_SOF; break; }
+133	            len = b;
+134	            idx = 0u;
+135	            state = (b == 0u) ? P_CRC : P_PAYLOAD;
+136	            break;
+137	        case P_PAYLOAD:
+138	            payload[idx++] = b;
+139	            if (idx >= len) { state = P_CRC; }
+140	            break;
+141	        case P_CRC:
+142	        {
+143	            uint8_t hdr[2u + MF_MAX_PAYLOAD];
+144	            hdr[0] = type;
+145	            hdr[1] = len;
+146	            memcpy(&hdr[2], payload, len);
+147	            state = P_SOF;
+148	            if (mf_crc8(hdr, (size_t)(2u + len)) != b) { break; }   /* bad CRC */
+149	
+150	            if (type == MF_MSG_STATUS && len == MF_LEN_STATUS)
+151	            {
+152	                bool changed = !s_status_valid ||
+153	                               memcmp(s_status, payload, MF_LEN_STATUS) != 0;
+154	                taskENTER_CRITICAL();
+155	                memcpy(s_status, payload, MF_LEN_STATUS);
+156	                s_status_valid = true;
+157	                s_status_tick  = xTaskGetTickCount();
+158	                taskEXIT_CRITICAL();
+159	                if (changed)
+160	                {
+161	                    LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
+162	                             payload[0], payload[1], payload[2], payload[3]);
+163	                }
+164	            }
+165	            break;
+166	        }
+167	        default:
+168	            state = P_SOF;
+169	            break;
+170	    }
+171	}
+172	
+173	static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
+174	{
+175	    (void)context;
+176	    BaseType_t hpw = pdFALSE;
+177	
+178	    switch (event)
+179	    {
+180	        case FLEXCOM_USART_EVENT_READ_THRESHOLD_REACHED:
+181	        case FLEXCOM_USART_EVENT_READ_BUFFER_FULL:
+182	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+183	            break;
+184	        case FLEXCOM_USART_EVENT_READ_ERROR:
+185	            (void)FLEXCOM1_USART_ErrorGet();
+186	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+187	            break;
+188	        default:
+189	            break;
+190	    }
+191	
+192	    portYIELD_FROM_ISR(hpw);
+193	}
+194	
+195	static void fx_rx_task(void *param)
+196	{
+197	    (void)param;
+198	
+199	    for (;;)
+200	    {
+201	        if (FLEXCOM1_USART_ReadCountGet() == 0u)
+202	        {
+203	            (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FX_RX_WAIT_MS));
+204	            continue;
+205	        }
+206	
+207	        uint8_t c;
+208	        while (FLEXCOM1_USART_Read(&c, 1u) == 1u)
+209	        {
+210	            parse_byte(c);
+211	        }
+212	    }
+213	}
+214	
+215	/* ---- public API --------------------------------------------------------- */
+216	
+217	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux)
+218	{
+219	    if (!s_ready) { return; }
+220	    taskENTER_CRITICAL();
+221	    s_g_mask   = (uint8_t)(mask & 0x7Fu);
+222	    s_g_whammy = (uint8_t)(whammy & MF_WHAMMY_MASK);
+223	    s_g_aux    = aux;
+224	    taskEXIT_CRITICAL();
+225	    (void)xSemaphoreGive(s_tx_notify);
+226	}
+227	
+228	void Fauxmote_SendGuitarMask(uint8_t mask)
+229	{
+230	    Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+231	}
+232	
+233	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y)
+234	{
+235	    if (!s_ready) { return; }
+236	    taskENTER_CRITICAL();
+237	    s_nav_core  = core;
+238	    s_nav_dpad  = dpad;
+239	    s_nav_sx    = (uint8_t)(stick_x & 0x3Fu);
+240	    s_nav_sy    = (uint8_t)(stick_y & 0x3Fu);
+241	    s_nav_dirty = true;
+242	    taskEXIT_CRITICAL();
+243	    (void)xSemaphoreGive(s_tx_notify);
+244	}
+245	
+246	void Fauxmote_SendCmd(uint8_t op)
+247	{
+248	    if (!s_ready) { return; }
+249	    (void)xQueueSend(s_cmd_queue, &op, 0);
+250	    (void)xSemaphoreGive(s_tx_notify);
+251	}
+252	
+253	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+254	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms)
+255	{
+256	    uint8_t    snap[MF_LEN_STATUS];
+257	    bool       valid;
+258	    TickType_t tick;
+259	
+260	    taskENTER_CRITICAL();
+261	    valid = s_status_valid;
+262	    memcpy(snap, s_status, MF_LEN_STATUS);
+263	    tick = s_status_tick;
+264	    taskEXIT_CRITICAL();
+265	
+266	    if (!valid) { return false; }
+267	
+268	    if (flags)       { *flags       = snap[0]; }
+269	    if (player_slot) { *player_slot = snap[1]; }
+270	    if (report_mode) { *report_mode = snap[2]; }
+271	    if (last_result) { *last_result = snap[3]; }
+272	    if (age_ms)      { *age_ms = (uint32_t)(xTaskGetTickCount() - tick) * portTICK_PERIOD_MS; }
+273	    return true;
+274	}
+275	
+276	void Fauxmote_Initialize(void)
+277	{
+278	    s_cmd_queue = xQueueCreateStatic(FX_CMD_QUEUE_DEPTH, sizeof(uint8_t),
+279	                                     s_cmd_queue_storage, &s_cmd_queue_buf);
+280	    configASSERT(s_cmd_queue != NULL);
+281	    s_tx_notify = xSemaphoreCreateBinaryStatic(&s_tx_notify_buf);
+282	    s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
+283	    configASSERT(s_tx_notify != NULL && s_rx_notify != NULL);
+284	
+285	    /* Reconfigure FLEXCOM1 (MCC default 500000, unused while the guitar is on T1S)
+286	     * to the link baud, 8-N-1. */
+287	    FLEXCOM_USART_SERIAL_SETUP setup = {
+288	        .baudRate = MF_UART_BAUD,
+289	        .dataWidth = FLEXCOM_USART_DATA_8_BIT,
+290	        .parity    = FLEXCOM_USART_PARITY_NONE,
+291	        .stopBits  = FLEXCOM_USART_STOP_1_BIT,
+292	    };
+293	    (void)FLEXCOM1_USART_SerialSetup(&setup, FLEXCOM1_USART_FrequencyGet());
+294	
+295	    /* Arm continuous RX for the STATUS uplink: wake the parser on each byte. */
+296	    FLEXCOM1_USART_ReadCallbackRegister(rx_event_handler, 0u);
+297	    FLEXCOM1_USART_ReadThresholdSet(1u);
+298	    (void)FLEXCOM1_USART_ReadNotificationEnable(true, true);
+299	
+300	    (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
+301	                            NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
+302	    (void)xTaskCreateStatic(fx_rx_task, "FxRx", FX_RX_TASK_STACK_WORDS,
+303	                            NULL, FX_TASK_PRIORITY, s_rx_stack, &s_rx_tcb);
+304	
+305	    s_ready = true;
+306	}
+307
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:01:30Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:01:31Z)**_
+
+Clear — the fauxmote side already applies `POINTER`; I just need the marvin-side sender + a console command, plus a named flag in the shared proto. Adding `MF_PTR_VISIBLE` to both `mf_proto.h` copies (keeping them byte-identical), then the sender.
+
+_**Agent (claude-opus-4-8 2026-07-05 15:01:35Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/mf_proto.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:01:44Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/mf_proto.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:01:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm both proto headers still byte-identical
+
+`diff -q /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/mf_proto.h /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/mf_proto.h && echo "mf_proto.h copies IDENTICAL ✓"`
+
+```text
+mf_proto.h copies IDENTICAL ✓
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:01:56Z)**_
+
+Now the marvin sender — header prototype, latched slice + TX, and the send function:
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:00Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:41Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:41Z)**_
+
+Now the console `pointer` subcommand. Let me read the current `cmd_fauxmote`:
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:43Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Read cmd_fauxmote handler
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src
+grep -n "static void cmd_fauxmote" console/console.c
+sed -n "$(grep -n 'static void cmd_fauxmote' console/console.c | head -1 | cut -d: -f1),/^}/p" console/console.c | head -60
+```
+
+```text
+683:static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
+static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1);
+
+    if (sub == NULL || strcmp(sub, "status") == 0)
+    {
+        uint8_t flags, slot, mode, res;
+        uint32_t age;
+        if (!Fauxmote_GetStatus(&flags, &slot, &mode, &res, &age))
+        {
+            console_printf("fauxmote: no STATUS received yet");
+            return;
+        }
+        console_printf("age:       %lu ms", (unsigned long)age);
+        console_printf("connected: %s", (flags & MF_ST_CONNECTED) ? "yes" : "no");
+        console_printf("assigned:  %s (slot %u)", (flags & MF_ST_ASSIGNED) ? "yes" : "no", slot);
+        console_printf("ext:       %s", (flags & MF_ST_EXT_ATTACHED) ? "yes" : "no");
+        console_printf("pairing:   %s", (flags & MF_ST_PAIRING) ? "yes" : "no");
+        console_printf("bonded:    %s", (flags & MF_ST_BONDED) ? "yes" : "no");
+        console_printf("mode:      0x%02x  last_result=%u", mode, res);
+        return;
+    }
+    if (strcmp(sub, "pair") == 0)      { Fauxmote_SendCmd(MF_CMD_PAIR);      console_printf("fauxmote: pair");      return; }
+    if (strcmp(sub, "stop") == 0)      { Fauxmote_SendCmd(MF_CMD_STOP);      console_printf("fauxmote: stop");      return; }
+    if (strcmp(sub, "reconnect") == 0) { Fauxmote_SendCmd(MF_CMD_RECONNECT); console_printf("fauxmote: reconnect"); return; }
+    if (strcmp(sub, "unlink") == 0)    { Fauxmote_SendCmd(MF_CMD_UNLINK);    console_printf("fauxmote: unlink");    return; }
+    if (strcmp(sub, "ext") == 0)
+    {
+        int v = parse_onoff(embeddedCliGetToken(args, 2));
+        if (v < 0) { console_printf("usage: fauxmote ext <on|off>"); return; }
+        Fauxmote_SendCmd(v ? MF_CMD_EXT_ATTACH : MF_CMD_EXT_DETACH);
+        console_printf("fauxmote: ext %s", v ? "on" : "off");
+        return;
+    }
+    if (strcmp(sub, "btn") == 0)
+    {
+        const char *m = embeddedCliGetToken(args, 2);
+        if (m == NULL) { console_printf("usage: fauxmote btn <mask>  (e.g. 0x21 = green+strumdown; 0 = release)"); return; }
+        if (TimingPipeline_IsEnabled())
+        {
+            console_printf("note: timing on — the pipeline will overwrite this mask; run 'timing off' first");
+        }
+        uint8_t mask = (uint8_t)strtoul(m, NULL, 0);
+        Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+        console_printf("fauxmote: guitar mask=0x%02x", mask);
+        return;
+    }
+    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]");
+}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:52Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:02:57Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:02Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:03Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/console/console.c`
+
+```text
+718	    if (strcmp(sub, "btn") == 0)
+719	    {
+720	        const char *m = embeddedCliGetToken(args, 2);
+721	        if (m == NULL) { console_printf("usage: fauxmote btn <mask>  (e.g. 0x21 = green+strumdown; 0 = release)"); return; }
+722	        if (TimingPipeline_IsEnabled())
+723	        {
+724	            console_printf("note: timing on — the pipeline will overwrite this mask; run 'timing off' first");
+725	        }
+726	        uint8_t mask = (uint8_t)strtoul(m, NULL, 0);
+727	        Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+728	        console_printf("fauxmote: guitar mask=0x%02x", mask);
+729	        return;
+730	    }
+731	    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]");
+732	}
+733	#endif
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:15Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:22Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:24Z)**_
+
+Update the command's help text, and use the named flag in the fauxmote receiver:
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate binding help + fauxmote apply_pointer
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -n '"fauxmote"' firmware/marvin/default/src/console/console.c
+grep -n "flags & 0x01\|apply_pointer" firmware/fauxmote/main/marvin_link.c
+```
+
+```text
+804:        { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]", true, NULL, cmd_fauxmote },
+65:static void apply_pointer(uint8_t x, uint8_t y, uint8_t flags)
+67:    if (flags & 0x01) {
+184:            apply_pointer(p->payload[0], p->payload[1], p->payload[2]);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:39Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/main/marvin_link.c`
+
+```text
+65	static void apply_pointer(uint8_t x, uint8_t y, uint8_t flags)
+66	{
+67	    if (flags & 0x01) {
+68	        Wiimote_SetPointer((float)x / 255.0f, (float)y / 255.0f);
+69	    } else {
+70	        Wiimote_ClearPointer();
+71	    }
+72	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:48Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/marvin_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:03:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:00Z)**_
+
+Now update the protocol doc to reflect POINTER is implemented:
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:00Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find POINTER references in the spec doc
+
+`grep -n "POINTER\|MF_PTR\|pointer" /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md`
+
+```text
+105:| `0x05` | `POINTER` | m→f | 3 | planned | IR pointer position (bare-Wiimote menu nav). |
+116:IR pointer, extension bytes). Its report sender already assembles the Wii Bluetooth
+120:`GUITAR` never touches the accel slice, `POINTER` never touches the frets, etc. So
+126:(`GUITAR`/`WIIMOTE`/`ACCEL`/`POINTER`) resets it. So long as fauxmote receives *any*
+164:The analog stick is the guitar-mode Home-menu control (the IR pointer is
+166:journal). Bare-Wiimote menu nav uses the separate `POINTER` slice (§5.6).
+185:### 5.6 `POINTER` (m→f, 3 bytes) — *planned*
+187:IR pointer position, for bare-Wiimote menu navigation (feeds
+195:| 2 | flags | `bit0` visible (`0` = pointer off / off-screen), `bit1`–`7` reserved |
+197:Default when the slice is stale/absent: **off** (pointer off-screen).
+229:  `GUITAR` continuously during gameplay, `WIIMOTE`/`POINTER` only while navigating.
+234:  rest (≈ `0x10`), `WIIMOTE` buttons released / stick centered, `ACCEL` level, `POINTER`
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:07Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:13Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/marvin-fauxmote-link.md`
+
+```text
+185	### 5.6 `POINTER` (m→f, 3 bytes) — *planned*
+186	
+187	IR pointer position, for bare-Wiimote menu navigation (feeds
+188	`Wiimote_SetPointer`/`ClearPointer`). Independent of `WIIMOTE`. Moot while the
+189	Wiimote is seated in the guitar (camera blocked) — use the analog stick there.
+190	
+191	| Byte | Field | Encoding |
+192	|---|---|---|
+193	| 0 | x | `0..255` → `0..1`, `0` = left edge |
+194	| 1 | y | `0..255` → `0..1`, `0` = top edge |
+195	| 2 | flags | `bit0` visible (`0` = pointer off / off-screen), `bit1`–`7` reserved |
+196	
+197	Default when the slice is stale/absent: **off** (pointer off-screen).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:22Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:37Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:42Z)**_
+
+Sweep the edited files for stray artifacts and confirm the proto copies still match:
+
+_**Agent (claude-opus-4-8 2026-07-05 15:04:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify edits, proto sync, and POINTER wiring
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== stray tags ==="
+grep -rn "</content>\|</antml\|</parameter>" \
+  firmware/marvin/default/src/net/fauxmote/fauxmote_link.c \
+  firmware/marvin/default/src/net/fauxmote/fauxmote_link.h \
+  firmware/marvin/default/src/net/fauxmote/mf_proto.h \
+  firmware/marvin/default/src/console/console.c \
+  firmware/fauxmote/main/mf_proto.h \
+  firmware/fauxmote/main/marvin_link.c 2>/dev/null; echo "exit=$? (1=clean)"
+echo "=== proto copies identical? ==="
+diff -q firmware/fauxmote/main/mf_proto.h firmware/marvin/default/src/net/fauxmote/mf_proto.h && echo "IDENTICAL ✓"
+echo "=== SendPointer wired end-to-end ==="
+grep -rn "Fauxmote_SendPointer\|MF_MSG_POINTER\|MF_PTR_VISIBLE\|fauxmote: pointer" \
+  firmware/marvin/default/src/net/fauxmote/fauxmote_link.c \
+  firmware/marvin/default/src/console/console.c \
+  firmware/fauxmote/main/marvin_link.c | head
+```
+
+```text
+=== stray tags ===
+exit=1 (1=clean)
+=== proto copies identical? ===
+IDENTICAL ✓
+=== SendPointer wired end-to-end ===
+firmware/marvin/default/src/net/fauxmote/fauxmote_link.c:43:static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
+firmware/marvin/default/src/net/fauxmote/fauxmote_link.c:114:        if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
+firmware/marvin/default/src/net/fauxmote/fauxmote_link.c:266:void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible)
+firmware/marvin/default/src/net/fauxmote/fauxmote_link.c:272:    s_ptr_flags = visible ? MF_PTR_VISIBLE : 0u;
+firmware/fauxmote/main/marvin_link.c:67:    if (flags & MF_PTR_VISIBLE) {
+firmware/fauxmote/main/marvin_link.c:182:        case MF_MSG_POINTER:
+firmware/marvin/default/src/console/console.c:736:            Fauxmote_SendPointer(0u, 0u, false);
+firmware/marvin/default/src/console/console.c:737:            console_printf("fauxmote: pointer off");
+firmware/marvin/default/src/console/console.c:748:        Fauxmote_SendPointer(x, y, true);
+firmware/marvin/default/src/console/console.c:749:        console_printf("fauxmote: pointer %u,%u", (unsigned)x, (unsigned)y);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:05:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:05:16Z)**_
+
+Done — the marvin-side `POINTER` sender is wired end-to-end and everything checks clean (proto copies byte-identical, no stray artifacts).
+
+**What changed:**
+- `mf_proto.h` (both copies, kept identical): added `MF_PTR_VISIBLE` flag.
+- [fauxmote_link.h](firmware/marvin/default/src/net/fauxmote/fauxmote_link.h)/[.c](firmware/marvin/default/src/net/fauxmote/fauxmote_link.c): `Fauxmote_SendPointer(x, y, visible)` + a latched POINTER slice the TX task sends on change (GUITAR's 50 ms floor keeps the watchdog fed, so the pointer just latches until moved/hidden).
+- [console.c](firmware/marvin/default/src/console/console.c): `fauxmote pointer <x> <y>` and `fauxmote pointer off`.
+- fauxmote `marvin_link.c`: `apply_pointer` now uses `MF_PTR_VISIBLE` (cosmetic — same `0x01`, wire-compatible).
+- Protocol doc: POINTER promoted to **v1** with the console usage.
+
+**Encoding:** `x`/`y` are `0..255` mapping to `0..1` of the screen, `(0,0)` = top-left; `off` hides it.
+
+**Test:**
+```
+fauxmote pointer 128 128   # center
+fauxmote pointer 0 0       # top-left
+fauxmote pointer off       # hide
+```
+
+**Two caveats for it to actually move the Wii cursor:**
+- The Wiimote must be **out of the guitar** (the IR camera is physically blocked when seated), and you likely want `fauxmote ext off` so the Wii treats it as a bare Wiimote using the IR pointer rather than the guitar extension.
+- The wire is compatible with the *old* fauxmote binary (`0x01` == `MF_PTR_VISIBLE`), so a **marvin-only rebuild** interoperates; rebuilding fauxmote is optional (only picks up the cosmetic constant rename).
+
+Not committed — flag me when you want this committed (it'd touch both `firmware/marvin` and `firmware/fauxmote`, so we can decide whether it's one commit or split per subproject).
+
+---
+
+_**User (2026-07-05 15:14:29Z)**_
+
+please commit both in one
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-05 15:14:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:14:59Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check branch + modified files before staging
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== branch ==="; git rev-parse --abbrev-ref HEAD
+echo "=== modified (tracked) ==="; git status --short | grep -vE '^\?\?'
+echo "=== doc diff summary (does it carry unrelated user edits?) ==="; git diff --stat docs/marvin-fauxmote-link.md
+```
+
+```text
+=== branch ===
+gameplay
+=== modified (tracked) ===
+ M .specstory/history/2026-07-02_14-24-42Z-lets-work-on-connection.md
+ M .specstory/history/2026-07-03_03-06-15Z-marvin-seems-to-be.md
+ M .specstory/statistics.json
+ M .vscode/settings.json
+ M docs/marvin-fauxmote-link.md
+ M firmware/fauxmote/main/marvin_link.c
+ M firmware/fauxmote/main/mf_proto.h
+ M firmware/marvin/default/src/console/console.c
+ M firmware/marvin/default/src/net/fauxmote/fauxmote_link.c
+ M firmware/marvin/default/src/net/fauxmote/fauxmote_link.h
+ M firmware/marvin/default/src/net/fauxmote/mf_proto.h
+=== doc diff summary (does it carry unrelated user edits?) ===
+ docs/marvin-fauxmote-link.md | 15 +++++++++------
+ 1 file changed, 9 insertions(+), 6 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:15:10Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-05 15:15:11Z)**_
+
+Doc diff is just my 15-line POINTER change (the header rewrite is already committed), and `timing_pipeline.h` isn't in the list, so it's clean. Staging exactly the POINTER files across both subprojects and committing as one:
+
+_**Agent (claude-opus-4-8 2026-07-05 15:15:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage POINTER files across both subprojects
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add docs/marvin-fauxmote-link.md \
+  firmware/fauxmote/main/marvin_link.c \
+  firmware/fauxmote/main/mf_proto.h \
+  firmware/marvin/default/src/console/console.c \
+  firmware/marvin/default/src/net/fauxmote/fauxmote_link.c \
+  firmware/marvin/default/src/net/fauxmote/fauxmote_link.h \
+  firmware/marvin/default/src/net/fauxmote/mf_proto.h
+git status --short | grep -vE '^\?\?|^ M \.'
+```
+
+```text
+M  docs/marvin-fauxmote-link.md
+M  firmware/fauxmote/main/marvin_link.c
+M  firmware/fauxmote/main/mf_proto.h
+M  firmware/marvin/default/src/console/console.c
+M  firmware/marvin/default/src/net/fauxmote/fauxmote_link.c
+M  firmware/marvin/default/src/net/fauxmote/fauxmote_link.h
+M  firmware/marvin/default/src/net/fauxmote/mf_proto.h
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:15:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit IR POINTER command (both subprojects)
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -m "$(cat <<'EOF'
+marvin+fauxmote: IR POINTER command over the command link
+
+Add the marvin-side POINTER sender so marvin can drive fauxmote's IR
+pointer for bare-Wiimote menu navigation (fauxmote already applies it via
+Wiimote_SetPointer/ClearPointer).
+
+- mf_proto.h (both copies, kept byte-identical): named MF_PTR_VISIBLE flag.
+- marvin fauxmote_link: Fauxmote_SendPointer(x, y, visible) + a latched
+  POINTER slice the TX task emits on change (GUITAR's 50 ms floor keeps the
+  link watchdog fed, so the pointer latches until moved/hidden).
+- marvin console: `fauxmote pointer <x> <y>` / `fauxmote pointer off`.
+- fauxmote apply_pointer uses MF_PTR_VISIBLE (cosmetic; wire-identical).
+- docs: POINTER promoted to v1.
+
+x/y are 0..255 → 0..1 of the screen (0,0 = top-left). Wire-compatible with
+the existing fauxmote binary; fauxmote reflash optional.
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[gameplay 66232de] marvin+fauxmote: IR POINTER command over the command link
+ 7 files changed, 68 insertions(+), 9 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-05 15:15:34Z)**_
+
+Committed as **`66232de`** on `gameplay` — one commit spanning both subprojects (marvin sender + console, fauxmote constant, shared proto, doc). Left `.specstory`/`.vscode` alone.
+
+Summary of what's in it:
+- `Fauxmote_SendPointer(x, y, visible)` + latched POINTER slice on the marvin side
+- `fauxmote pointer <x> <y>` / `pointer off` console command
+- `MF_PTR_VISIBLE` in both (identical) `mf_proto.h` copies; fauxmote `apply_pointer` uses it
+- POINTER marked v1 in the protocol doc
+
+Rebuild marvin to get the command; fauxmote reflash is optional (wire-compatible). `gameplay` is now 9 ahead of `origin/gameplay` whenever you want to push.

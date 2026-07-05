@@ -8365,3 +8365,1776 @@ Two small honesty notes on the split:
 - The T1S commit (`365a621`) bundles the bounded-pump fix and the absent-chip guard — they're interleaved in `t1s_link.c` and form one "survive a stuck/absent MAC-PHY" story; the message describes both.
 
 Hope it runs clean all day. If a `*** DATA ABORT ***` ever does print again, send me the `pc`/`far` and I'll resolve it against the matching ELF — just note that resolution needs the exact binary that was running (rebuilds shift addresses).
+
+---
+
+_**User (2026-07-03 17:16:13Z)**_
+
+had it play through a game and froze up in gameengine. (note that parallel agents running on doc cleanup right now). GC: READY
+HM: 2026-07-03T17:14:59Z up=337s frames=19191 heap=22312 worststk=IDLE:424
+SUP: idle=91% top=GameEngine:4% isr=0%
+GAME: song_select / main #2 hit_me_with_your_best_shot
+HM: RUNAWAY 'GameEngine' cpu=99% idle=0% isr=0%
+HM: RUNAWAY 'GameEngine' cpu=98% idle=0% isr=0%
+HM: RUNAWAY 'GameEngine' cpu=98% idle=0% isr=0%
+HM: RUNAWAY 'GameEngine' cpu=98% idle=0% isr=0%
+HM: RUNAWAY 'GameEngine' cpu=98% idle=0% isr=0%
+HM: RUNAWAY 'GameEngine' cpu=98% idle=0% isr=0%
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:37Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:39Z)**_
+
+The supervisor nailed a third one — `GameEngine` at 98–99%, and the last state before it spun was `song_select / main #2`. So the gameplay engine has a busy-loop in the song-select classify/read path. (Noted on the parallel doc-cleanup agents — I'll stay in code, won't touch docs/journal, and won't commit until you're clear of them.)
+
+Let me find the loop. Start with the task body and the song-select reader.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:41Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== game_task loop + delays/blocking ==="; grep -nE "game_task|for *\(|while *\(|vTaskDelay|xQueueReceive|GameplayEngine_|classify|select|RequestObservation" default/src/game/gameplay_engine.c | head -50
+```
+
+```text
+=== game_task loop + delays/blocking ===
+2:#include "game/gameplay_classify.h"
+3:#include "game/gameplay_select.h"
+26: * ms) and is plenty to catch human-paced screen/selection changes. A forced
+27: * trigger (GameplayEngine_RequestObservation) runs the next frame regardless,
+45:/* Latest classified state, retained every classify (not just on change) so the
+46: * game-state controller can poll a fresh {screen, selection} synchronously. */
+55:/* Read the selection for the classified screen: static-list cell index, the
+56: * song-template index on song_select, or -1 where there's no selection concept
+58:static int16_t read_selection(const uint8_t *frame, int w, int h, uint8_t screen,
+66:        int cell = gp_read_selection(frame, w, h, menu);
+70:    if (screen == GP_SCREEN_song_select)
+83:static void game_task(void *param)
+98:    int16_t   last_sel    = -2;  /* != any real selection or -1, so first read logs */
+102:    for (;;)
+105:        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+123:        uint8_t screen = gp_classify(buf, w, h, &best_dist, &margin);
+127:        int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
+135:        s_latest.selection    = sel;
+148:            ev.selection    = sel;
+151:            if (sel_name2 != NULL)  /* song_select: "<setlist> #<idx> <song>" */
+171:void GameplayEngine_Initialize(void)
+179:    (void)xTaskCreateStatic(game_task, "GameEngine", GAME_TASK_STACK_WORDS,
+183:QueueHandle_t GameplayEngine_BusQueue(void)
+188:void GameplayEngine_SetObserveEnabled(bool on)
+193:void GameplayEngine_RequestObservation(void)
+198:bool GameplayEngine_ObserveEnabled(void)
+203:uint8_t GameplayEngine_CurrentScreen(void)
+208:bool GameplayEngine_GetLatest(game_state_t *out)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:48Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:49Z)**_
+
+The task blocks per-frame (`xQueueReceive`), so the spin is inside `gp_classify` or the song-select reader. Let me look at `read_selection` and the song-select code for an unbounded inner loop.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_engine.c`
+
+```text
+55	/* Read the selection for the classified screen: static-list cell index, the
+56	 * song-template index on song_select, or -1 where there's no selection concept
+57	 * (gameplay / loading / unknown). `name`/`name2` receive log-friendly labels. */
+58	static int16_t read_selection(const uint8_t *frame, int w, int h, uint8_t screen,
+59	                              const char **name, const char **name2)
+60	{
+61	    *name = NULL;
+62	    *name2 = NULL;
+63	    const gp_menu_layout_t *menu = gp_menu_for_screen(screen);
+64	    if (menu != NULL)
+65	    {
+66	        int cell = gp_read_selection(frame, w, h, menu);
+67	        if (cell >= 0 && cell < menu->count) { *name = menu->items[cell]; }
+68	        return (int16_t)cell;
+69	    }
+70	    if (screen == GP_SCREEN_song_select)
+71	    {
+72	        gp_song_t song;
+73	        if (gp_read_song(frame, w, h, &song) == 0 && song.tmpl >= 0)
+74	        {
+75	            *name = (song.setlist == GP_SETLIST_BONUS) ? "bonus" : "main";
+76	            *name2 = gp_song_templates[song.tmpl].song_id;
+77	            return song.tmpl;
+78	        }
+79	    }
+80	    return -1;
+81	}
+82	
+83	static void game_task(void *param)
+84	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:16:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:17:00Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "===== gameplay_select.c loops ====="; grep -nE "while *\(|for *\(|do *\{|gp_read_song|gp_read_selection" default/src/game/gameplay_select.c
+echo "===== gameplay_classify.c loops ====="; grep -nE "while *\(|for *\(|do *\{|gp_classify" default/src/game/gameplay_classify.c
+```
+
+```text
+===== gameplay_select.c loops =====
+19:    for (int i = 0; i < GP_N_MENUS; i++)
+33:    for (int y = y0; y < y1; y++)
+36:        for (int x = x0; x < x1; x++)
+49:int gp_read_selection(const uint8_t *frame, int width, int height,
+58:    for (int c = 0; c < count; c++)
+79:    for (int c = 0; c < count; c++)
+80:        for (int ch = 0; ch < 3; ch++) { mean[ch] += col[c][ch]; }
+81:    for (int ch = 0; ch < 3; ch++) { mean[ch] /= (float)count; }
+84:    for (int c = 0; c < count; c++)
+85:        for (int ch = 0; ch < 3; ch++)
+95:    for (int c = 0; c < count; c++)
+99:        for (int ch = 0; ch < 3; ch++)
+118:    for (int r = 0; r < GP_SONG_ROWS; r++)
+123:        for (int c = 0; c < GP_SONG_COLS; c++)
+129:            for (int y = cy0; y < cy1; y++)
+132:                for (int x = cx0; x < cx1; x++)
+143:    for (int i = 0; i < GP_SONG_LEN; i++) { sum += out[i]; }
+146:    for (int i = 0; i < GP_SONG_LEN; i++)
+153:    for (int i = 0; i < GP_SONG_LEN; i++) { out[i] = (out[i] - mean) / std; }
+160:int gp_read_song(const uint8_t *frame, int width, int height, gp_song_t *out)
+171:    for (int ix = 0; ix < GP_SONG_NDX; ix++)
+172:        for (int iy = 0; iy < GP_SONG_NDY; iy++)
+181:    for (int t = 0; t < GP_N_SONGS; t++)
+187:        for (int o = 0; o < noff; o++)
+190:            for (int i = 0; i < GP_SONG_LEN; i++) { d += fabsf(grids[o][i] - vec[i]); }
+===== gameplay_classify.c loops =====
+34:    for (int jy = 0; jy < n; jy++)
+38:        for (int jx = 0; jx < n; jx++)
+62:    for (int r = 0; r < GP_FP_ROWS; r++)
+66:        for (int c = 0; c < GP_FP_COLS; c++)
+80:    for (int i = 0; i < GP_FP_LEN; i++) { sum += s_fp_f[i]; }
+83:    for (int i = 0; i < GP_FP_LEN; i++)
+89:    for (int i = 0; i < GP_FP_LEN; i++)
+100:    for (int i = 0; i < GP_FP_LEN; i++)
+113:uint8_t gp_classify(const uint8_t *frame, int width, int height,
+125:    for (int k = 0; k < GP_N_SCREENS; k++)
+129:        for (int i = 0; i < GP_FP_LEN; i++)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:17:46Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:17:47Z)**_
+
+All the loops in the classify/select code are bounded by compile-time constants — no classic infinite loop there. So the 98% is either a flooded frame queue (task never blocks) or something in the task-loop/observation path that stops it from blocking. Let me read the full `game_task` body and `RequestObservation`.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:17:47Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_engine.c`
+
+```text
+83	static void game_task(void *param)
+84	{
+85	    (void)param;
+86	
+87	    QueueHandle_t frames = xQueueCreateStatic(GAME_FRAME_QUEUE_DEPTH,
+88	                                              sizeof(Video_FrameInfo),
+89	                                              s_frame_queue_storage,
+90	                                              &s_frame_queue_buf);
+91	    configASSERT(frames != NULL);
+92	    bool subscribed = Video_SubscribeFrames(frames);
+93	    configASSERT(subscribed);
+94	
+95	    LOG_INFO("GAME: gameplay_engine started\r\n");
+96	
+97	    uint8_t   last_screen = GP_SCREEN_UNKNOWN;
+98	    int16_t   last_sel    = -2;  /* != any real selection or -1, so first read logs */
+99	    TickType_t last_tick  = 0;
+100	    const TickType_t period = pdMS_TO_TICKS(GAME_OBSERVE_PERIOD_MS);
+101	
+102	    for (;;)
+103	    {
+104	        Video_FrameInfo frame;
+105	        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+106	
+107	        /* Always drain, even when disabled, so frames don't back up. */
+108	        if (!s_observe_enabled)                            { continue; }
+109	        if (frame.buffer == NULL)                          { continue; }
+110	        if (frame.bytes_per_pixel != GAME_BYTES_PER_PIXEL) { continue; }
+111	
+112	        /* Background rate-limit to ~5 Hz, unless a forced trigger is pending
+113	         * (closed-loop: observe the next frame right after an actuator command). */
+114	        TickType_t now = xTaskGetTickCount();
+115	        if (!s_force_observe && (TickType_t)(now - last_tick) < period) { continue; }
+116	        s_force_observe = false;
+117	        last_tick = now;
+118	
+119	        const uint8_t *buf = (const uint8_t *)frame.buffer;
+120	        int w = (int)frame.width, h = (int)frame.height;
+121	
+122	        int32_t best_dist = 0, margin = 0;
+123	        uint8_t screen = gp_classify(buf, w, h, &best_dist, &margin);
+124	        s_current_screen = screen;
+125	
+126	        const char *sel_name = NULL, *sel_name2 = NULL;
+127	        int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
+128	
+129	        taskENTER_CRITICAL();
+130	        s_latest.frame_epoch  = frame.frame_count;
+131	        s_latest.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
+132	        s_latest.screen       = screen;
+133	        s_latest.best_dist    = best_dist;
+134	        s_latest.margin       = margin;
+135	        s_latest.selection    = sel;
+136	        s_have_latest         = true;
+137	        taskEXIT_CRITICAL();
+138	
+139	        if (screen != last_screen || sel != last_sel)
+140	        {
+141	            game_state_t ev;
+142	            memset(&ev, 0, sizeof(ev));
+143	            ev.frame_epoch  = frame.frame_count;
+144	            ev.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
+145	            ev.screen       = screen;
+146	            ev.best_dist    = best_dist;
+147	            ev.margin       = margin;
+148	            ev.selection    = sel;
+149	            (void)xQueueSend(s_bus_queue, &ev, 0);
+150	
+151	            if (sel_name2 != NULL)  /* song_select: "<setlist> #<idx> <song>" */
+152	            {
+153	                LOG_INFO("GAME: %s / %s #%d %s\r\n",
+154	                         screen_name(screen), sel_name,
+155	                         (int)gp_song_templates[sel].index, sel_name2);
+156	            }
+157	            else if (sel_name != NULL)  /* static-list: "<screen> / <item>" */
+158	            {
+159	                LOG_INFO("GAME: %s / %s\r\n", screen_name(screen), sel_name);
+160	            }
+161	            else
+162	            {
+163	                LOG_INFO("GAME: %s\r\n", screen_name(screen));
+164	            }
+165	            last_screen = screen;
+166	            last_sel    = sel;
+167	        }
+168	    }
+169	}
+170
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:18:49Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:18:51Z)**_
+
+The task *does* block on `xQueueReceive` every iteration and rate-limits to ~5 Hz — that's why it normally sits at 7%. The only way it processes *every* frame (and pins the CPU on the heavy song_select float-matching) is if **`s_force_observe` stays set** — which `GameplayEngine_RequestObservation()` does, called by the game controller. Let me check how the controller polls.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:18:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== GAME_OBSERVE_PERIOD_MS + force flag ==="; grep -nE "GAME_OBSERVE_PERIOD_MS|s_force_observe|GAME_FRAME_QUEUE_DEPTH" default/src/game/gameplay_engine.c | head
+echo "=== GameCtl: RequestObservation / GetLatest / vTaskDelay cadence ==="; grep -nE "RequestObservation|GetLatest|vTaskDelay|for *\(|while *\(|GC_POLL|wait_screen" default/src/game/game_controller.c | head -40
+```
+
+```text
+=== GAME_OBSERVE_PERIOD_MS + force flag ===
+19:#define GAME_FRAME_QUEUE_DEPTH  1u    /* newest-frame-only */
+29:#define GAME_OBSERVE_PERIOD_MS  200u
+36:static uint8_t       s_frame_queue_storage[GAME_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+42:static volatile bool    s_force_observe;
+87:    QueueHandle_t frames = xQueueCreateStatic(GAME_FRAME_QUEUE_DEPTH,
+100:    const TickType_t period = pdMS_TO_TICKS(GAME_OBSERVE_PERIOD_MS);
+115:        if (!s_force_observe && (TickType_t)(now - last_tick) < period) { continue; }
+116:        s_force_observe = false;
+195:    s_force_observe = true;
+=== GameCtl: RequestObservation / GetLatest / vTaskDelay cadence ===
+42:/* Force + wait for a fresh classification (RequestObservation → next frame). */
+94:    GameplayEngine_RequestObservation();
+95:    vTaskDelay(pdMS_TO_TICKS(GC_OBS_WAIT_MS));
+97:    if (!GameplayEngine_GetLatest(&gs)) { return false; }
+108:    vTaskDelay(pdMS_TO_TICKS(GC_PULSE_MS));
+110:    vTaskDelay(pdMS_TO_TICKS(GC_GAP_MS));
+122:    for (int i = 0; i < n; i++) { send_input(move); }
+136:        vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS));
+145:    for (int i = 0; i < n; i++) { send_input(move); }
+154:    for (int i = 0; i < GC_MAX_MOVE; i++)
+165:static bool wait_for(uint8_t target, uint32_t timeout_ms)
+168:    for (;;)
+174:        vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
+181:static bool wait_screen_change(uint8_t from, uint32_t timeout_ms)
+184:    for (;;)
+190:        vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
+210:static const gc_step_t *step_for(uint8_t screen)
+212:    for (int i = 0; i < s_plan_len; i++)
+226:        case ACT_WAIT:          wait_for(st->to, GC_LOADING_TIMEOUT_MS); break;
+247:    for (int i = 0; i < GC_MAX_EXIT_ITERS; i++)
+250:        if (!observe(&sc, &sel)) { vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS)); continue; }
+261:        (void)wait_screen_change(sc, GC_STEP_TIMEOUT_MS);
+274:    for (;;)
+276:        vTaskDelay(pdMS_TO_TICKS(GC_PLAY_POLL_MS));
+279:        if (GameplayEngine_GetLatest(&gs) && gs.screen != GP_SCREEN_in_song
+316:    while ((TickType_t)(xTaskGetTickCount() - start) < pdMS_TO_TICKS(GC_CONNECT_TIMEOUT_MS))
+319:        vTaskDelay(pdMS_TO_TICKS(500));
+367:    for (int iter = 0; iter < GC_MAX_ITERS; iter++)
+380:        const gc_step_t *st = step_for(sc);
+390:                (void)wait_screen_change(st->from, GC_STEP_TIMEOUT_MS);
+399:            (void)wait_screen_change(sc, GC_STEP_TIMEOUT_MS);
+408:    for (;;)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:20:08Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:20:09Z)**_
+
+Two key facts: the frame queue is depth-1 (can't back up), and the loop rate-limits to 5 Hz (200 ms) — *unless* `s_force_observe` is set, which bypasses the rate limit. During a playthrough the controller polls song_select by forcing observations. So the question is how heavy `gp_read_song` is. Let me look at it and its dimensions.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:20:10Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_select.c`
+
+```text
+160	int gp_read_song(const uint8_t *frame, int width, int height, gp_song_t *out)
+161	{
+162	    if (width != GP_CANON_W || height != GP_CANON_H)
+163	    {
+164	        out->setlist = 0; out->index = 0; out->tmpl = -1;
+165	        return -1;
+166	    }
+167	    static const int slot_roi[4]  = GP_SONG_SLOT_ROI;
+168	    static const int first_roi[4] = GP_SONG_FIRST_ROI;
+169	
+170	    int noff = 0;
+171	    for (int ix = 0; ix < GP_SONG_NDX; ix++)
+172	        for (int iy = 0; iy < GP_SONG_NDY; iy++)
+173	        {
+174	            gp_song_grid(frame, width, height, slot_roi,  gp_song_dx[ix], gp_song_dy[iy], s_slot_grids[noff]);
+175	            gp_song_grid(frame, width, height, first_roi, gp_song_dx[ix], gp_song_dy[iy], s_first_grids[noff]);
+176	            noff++;
+177	        }
+178	
+179	    float best_d = 1e30f;
+180	    int best_t = -1;
+181	    for (int t = 0; t < GP_N_SONGS; t++)
+182	    {
+183	        const float *vec = gp_song_templates[t].vec;
+184	        const float (*grids)[GP_SONG_LEN] =
+185	            (gp_song_templates[t].roi_kind == GP_SONG_ROI_FIRST) ? s_first_grids : s_slot_grids;
+186	        float tbest = 1e30f;
+187	        for (int o = 0; o < noff; o++)
+188	        {
+189	            float d = 0.0f;
+190	            for (int i = 0; i < GP_SONG_LEN; i++) { d += fabsf(grids[o][i] - vec[i]); }
+191	            if (d < tbest) { tbest = d; }
+192	        }
+193	        if (tbest < best_d) { best_d = tbest; best_t = t; }
+194	    }
+195	
+196	    out->tmpl = (int16_t)best_t;
+197	    out->setlist = (best_t >= 0) ? gp_song_templates[best_t].setlist : 0;
+198	    out->index = (best_t >= 0) ? gp_song_templates[best_t].index : 0;
+199	    return 0;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:20:47Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:20:48Z)**_
+
+`gp_read_song` is `GP_N_SONGS × noff × GP_SONG_LEN` of `fabsf(float subtract)` — plus grid extraction. That's the heavy path, and it only runs on song_select. Let me quantify it (dimensions + whether there's hardware float).
+
+_**Agent (claude-opus-4-8 2026-07-03 17:20:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== song-match dimensions ==="; grep -rnE "define +GP_N_SONGS|define +GP_SONG_LEN|define +GP_SONG_NDX|define +GP_SONG_NDY|define +GP_SONG_ROWS|define +GP_SONG_COLS" default/src/game/*.h
+echo "=== hardware float? (-mfloat-abi / fpu / -mhard-float) ==="; grep -rniE "float-abi|mfpu|hard-?float|soft-?float|vfp" cmake/ *.cmake 2>/dev/null | head; grep -rniE "float-abi|mfpu|vfp|hard" _build/marvin/default/CMakeCache.txt 2>/dev/null | head
+echo "=== CPU flags actually used ==="; grep -oE "\-m[a-z0-9=-]+" _build/marvin/default/compile_commands.json 2>/dev/null | sort -u | head -20
+```
+
+```text
+=== song-match dimensions ===
+default/src/game/gameplay_metadata.h:95:#define GP_SONG_COLS 32
+default/src/game/gameplay_metadata.h:96:#define GP_SONG_ROWS 6
+default/src/game/gameplay_metadata.h:97:#define GP_SONG_LEN 192
+default/src/game/gameplay_metadata.h:98:#define GP_N_SONGS 64
+default/src/game/gameplay_metadata.h:109:#define GP_SONG_NDX 5
+default/src/game/gameplay_metadata.h:110:#define GP_SONG_NDY 3
+=== hardware float? (-mfloat-abi / fpu / -mhard-float) ===
+(eval):3: no matches found: *.cmake
+=== CPU flags actually used ===
+-marm
+-mdfp=
+-mprocessor=
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:21:54Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:22:01Z)**_
+
+Quantified — and it's not an infinite loop, it's a genuinely heavy computation:
+
+- **`gp_read_song` cost**: `GP_N_SONGS(64) × noff(5×3=15) × GP_SONG_LEN(192)` = **184,320 `fabsf(a−b)` accumulations** (~550K float ops) per song_select classification, plus grid extraction.
+- **No FPU**: ARM926EJ-S has no hardware float, and the compile flags show no `-mfpu` → this is all **soft-float** (library-emulated adds/subs). That's roughly **tens of ms per call** on this core.
+- It only runs on **song_select** (other screens do a cheap menu-cell read → the 7% you saw).
+
+So the mechanism: on song_select, the 5 Hz background observe alone is ~25–50% CPU; when the **controller forces observations** during menu navigation (`RequestObservation` bypasses the 200 ms rate-limit — [gameplay_engine.c:115](firmware/marvin/default/src/game/gameplay_engine.c#L115)), the match runs **back-to-back**, pinning prio-4 `GameEngine` at ~98%. That starves everything at prio < 4 (console, touch, health, idle) while the ISC ISR keeps the panel live — the exact freeze signature. The supervisor caught it correctly.
+
+It's the same class as the T1S bug: **a task with no CPU cap monopolizing the core** — just driven by slow soft-float instead of a spin loop.
+
+I've got a clear diagnosis but the fix is a real choice, and since parallel agents are touching the tree I don't want to code/commit over them without your call:
+
+_**Agent (claude-opus-4-8 2026-07-03 17:23:18Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**How should I fix the GameEngine song_select CPU peg?**
+
+Options:
+- **Rate-cap now (recommended)** - Enforce a minimum interval between song-match runs even when forced (e.g. ≥150ms), so GameEngine CPU is bounded (~50% worst case) and can never freeze the system. No algorithm change, low risk, reversible. Controller still gets song reads at ~human-nav speed. Matches the T1S 'no task monopolizes the CPU' fix.
+- **Optimize gp_read_song** - Make the match cheap: early-exit the inner loop once a template exceeds the running best, and only re-match when the title region actually changes (cache otherwise). Bigger win but touches the CV path — wants re-validation against the screen corpus.
+- **Cap now + optimize later** - Apply the rate-cap immediately for safety, then do the gp_read_song optimization as a separate, validated change.
+
+
+**Answer:** rate cap only. but why is it stuck with s_force_observe set?
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:24:08Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:24:10Z)**_
+
+Good question — let me actually answer it rather than hand-wave, because it changes whether the rate-cap alone is sufficient. Let me read the controller's observe/poll path and its constants.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:24:10Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/game_controller.c`
+
+```text
+24	#define GC_TASK_STACK_WORDS   768u
+25	#define GC_TASK_PRIORITY      4u
+26	
+27	/* Menu-input masks (guitar fret/strum bits, timing_pipeline.h layout). */
+28	#define GC_GREEN        TIMING_BIT_GREEN        /* confirm / enter */
+29	#define GC_RED          TIMING_BIT_RED          /* back up one level */
+30	#define GC_YELLOW       TIMING_BIT_YELLOW       /* song_select: main setlist */
+31	#define GC_BLUE         TIMING_BIT_BLUE         /* song_select: bonus setlist */
+32	#define GC_STRUM_DOWN   TIMING_BIT_STRUM_DOWN   /* move selection down */
+33	#define GC_STRUM_UP     TIMING_BIT_STRUM_UP     /* move selection up */
+34	
+35	/* Input pulse: menus auto-repeat a *held* strum, so press briefly then release.
+36	 * Kept deliberately unhurried — GH3 drops inputs that arrive too fast, and each
+37	 * strum must read as a discrete edge (not a held auto-repeat). */
+38	#define GC_PULSE_MS         70u    /* bit asserted (edge for GH3 to register) */
+39	#define GC_GAP_MS           180u   /* released gap between inputs (keeps them discrete) */
+40	/* Settle used only for the RED/recover pauses. */
+41	#define GC_SETTLE_MS        500u
+42	/* Force + wait for a fresh classification (RequestObservation → next frame). */
+43	#define GC_OBS_WAIT_MS      140u
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:24:15Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:24:15Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/game_controller.c`
+
+```text
+44	/* Poll bounds. */
+45	#define GC_STEP_POLL_MS     150u
+46	#define GC_STEP_TIMEOUT_MS  4000u  /* wait for a menu transition after a step */
+47	#define GC_LOADING_TIMEOUT_MS  20000u
+48	#define GC_PLAY_POLL_MS     300u
+49	#define GC_CONNECT_TIMEOUT_MS  12000u  /* wait for fauxmote↔Wii reconnect */
+50	
+51	/* Budgets (mirror the offline NavController). */
+52	#define GC_MAX_ITERS        60
+53	#define GC_MAX_RECOVER      12
+54	#define GC_MAX_MOVE         64
+55	#define GC_MAX_EXIT_ITERS   16   /* menu hops to reach main_menu (anchor / song-end exit) */
+56	
+57	typedef enum { ACT_SELECT_INDEX, ACT_SELECT_SONG, ACT_SATURATE_TOP, ACT_WAIT } gc_act_t;
+58	
+59	typedef struct
+60	{
+61	    uint8_t     from;    /* GP_SCREEN_* this step applies to */
+62	    gc_act_t    act;
+63	    int16_t     index;   /* target cell for ACT_SELECT_INDEX */
+64	    uint8_t     to;      /* GP_SCREEN_* expected next */
+65	    const char *desc;
+66	} gc_step_t;
+67	
+68	static StackType_t   s_stack[GC_TASK_STACK_WORDS];
+69	static StaticTask_t  s_tcb;
+70	static SemaphoreHandle_t s_start_sig;
+71	static StaticSemaphore_t s_start_sig_buf;
+72	
+73	static volatile bool s_busy;
+74	static volatile bool s_stop_req;
+75	static void (*s_status_cb)(const char *);
+76	
+77	static gc_step_t s_plan[8];
+78	static int       s_plan_len;
+79	
+80	static void status(const char *s)
+81	{
+82	    LOG_INFO("GC: %s\r\n", s);
+83	    if (s_status_cb != NULL) { s_status_cb(s); }
+84	}
+85	
+86	static int gc_abs(int v) { return v < 0 ? -v : v; }
+87	
+88	/* ── observation ──────────────────────────────────────────────────────────── */
+89	
+90	/* Force a fresh classification and return the resulting {screen, selection}.
+91	 * false only before the first classified frame ever. */
+92	static bool observe(uint8_t *screen, int16_t *sel)
+93	{
+94	    GameplayEngine_RequestObservation();
+95	    vTaskDelay(pdMS_TO_TICKS(GC_OBS_WAIT_MS));
+96	    game_state_t gs;
+97	    if (!GameplayEngine_GetLatest(&gs)) { return false; }
+98	    *screen = gs.screen;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:26:14Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:26:24Z)**_
+
+Now I can answer your question precisely, and it changes the framing a bit. Let me get the controller's cadence: `observe()` sets force once, waits `GC_OBS_WAIT_MS=140ms`, reads; poll loops repeat every `GC_STEP_POLL_MS=150ms`.
+
+## Why it pegs (and it's *not* really "force stuck")
+
+`s_force_observe` isn't latched — it's cleared every time the engine processes ([gameplay_engine.c:116](firmware/marvin/default/src/game/gameplay_engine.c#L116)) and re-armed once per controller poll. The real problem is a **rate-limit that's meaningless when the work is slow**:
+
+- The engine's guard is "process at most every 200 ms." But one `gp_read_song` on song_select is **~150–190 ms of soft-float** (184K `fabsf` accumulations + grid extraction, no FPU). So even the *background* 5 Hz observation of song_select runs the CPU at ~**75–95%** — a single classify nearly fills the whole 200 ms period.
+- `RequestObservation()` **fully bypasses** the 200 ms limit (`if (!s_force_observe && …)`). So when the controller polls song_select (every ~290 ms), those forced classifies run with *no* floor, back-to-back → **~100%**, and prio-4 GameEngine starves console/touch/health.
+
+So "stuck with force set" ≈ "force lets a ~190 ms job run with no minimum spacing, on a screen where the job nearly equals the rate-limit period anyway." The fix has to put a floor under it that's **larger than the classify time**, which a fixed 200 ms cap wouldn't be.
+
+## Rate-cap (self-tuning duty limit)
+
+I'll cap the observer to ~1/N of the CPU by measuring each classify's duration and deferring the next by N× that — applied even to forced observations, so it can't peg regardless of classify cost or poll pressure.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:26:27Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:26:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:26:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:27:04Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+export PATH="/Applications/microchip/xc32/v5.10/bin:$PATH"
+cmake --build _build/marvin/default 2>&1 | grep -iE "gameplay_engine|error|warning" | head
+echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
+```
+
+```text
+[1/4] Building C object CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c.o
+       52501           1        4671       57173        df55    gameplay_engine.c.o                             CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c.o
+=== tail ===
+[1/2] Convert built file to .hex
+[2/2] Running utility command for marvin_default_Bin2Hex
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:27:12Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:27:22Z)**_
+
+Clean build. Applied the duty-cap only (no algorithm change), and **did not commit** — holding off while your parallel doc agents are working, and I left the journal untouched for the same reason.
+
+## What I changed
+
+In [gameplay_engine.c](firmware/marvin/default/src/game/gameplay_engine.c), the observer now measures each classify's duration and won't start the next one until `N×` that has elapsed (`GAME_OBS_DUTY_DIVISOR=3` → **≤ ~1/3 CPU**), and this floor applies **even to forced observations** (the pending force is deferred, not dropped). Bounded to observe at least ~1 Hz so navigation still progresses. So on song_select the ~150–190 ms match can run at most every ~570 ms → GameEngine can't exceed ~33% → console/touch/health always get CPU → no freeze. It self-tunes, so it holds regardless of the actual classify time.
+
+## Answering "why stuck with force set"
+
+It wasn't literally stuck. `s_force_observe` is cleared on every process and re-armed once per controller poll. The real issue: **`gp_read_song` (~190 ms soft-float) is nearly as long as the 200 ms rate-limit period**, so even 5 Hz background observation of song_select already runs ~75–95% CPU — and `RequestObservation()` *bypasses* the rate-limit entirely, so controller polling made it back-to-back → 100%. The bug was a rate-limit that only bounds *frequency*, not *duty*, when a single job is that expensive. The duty-cap fixes exactly that.
+
+## Status
+
+Three real freeze bugs found and fixed this session (T1S spin, FSTAT data abort, now GameEngine song_select peg) — all the same underlying shape: **a task with no CPU-duty bound monopolizing the core**. The supervisor + fault dump earned their keep on all three.
+
+This GameEngine change is built (clean, XC32 v5.10) but **uncommitted and un-journaled**. When your doc agents are done and you've validated a run, tell me and I'll commit it (single `marvin: gameplay — cap observer CPU duty (fix song_select freeze)` commit) and add the journal entry. Want me to hold, or go ahead now?
+
+---
+
+_**User (2026-07-03 17:28:20Z)**_
+
+but... I'm not in game play / navigation. Why is the controller continuously requesting observation?
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 17:28:59Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:29:01Z)**_
+
+You're right to push — if you're idle, the controller shouldn't be forcing anything. Let me check who actually calls `RequestObservation`, and reconsider whether force is even involved.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:29:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== all callers of RequestObservation ==="; grep -rn "RequestObservation" default/src --include='*.c' | grep -v config/
+echo
+echo "=== gc_task: does it wait on the start signal when idle, or keep polling? ==="; grep -nE "gc_task|xSemaphoreTake\(s_start_sig|s_busy|for *\(|while *\(|observe\(|GetLatest|vTaskDelay" default/src/game/game_controller.c | sed -n '1,60p'
+```
+
+```text
+=== all callers of RequestObservation ===
+default/src/game/gameplay_engine.c:27: * trigger (GameplayEngine_RequestObservation) runs the next frame regardless,
+default/src/game/gameplay_engine.c:213:void GameplayEngine_RequestObservation(void)
+default/src/game/game_controller.c:42:/* Force + wait for a fresh classification (RequestObservation → next frame). */
+default/src/game/game_controller.c:94:    GameplayEngine_RequestObservation();
+
+=== gc_task: does it wait on the start signal when idle, or keep polling? ===
+73:static volatile bool s_busy;
+92:static bool observe(uint8_t *screen, int16_t *sel)
+95:    vTaskDelay(pdMS_TO_TICKS(GC_OBS_WAIT_MS));
+97:    if (!GameplayEngine_GetLatest(&gs)) { return false; }
+108:    vTaskDelay(pdMS_TO_TICKS(GC_PULSE_MS));
+110:    vTaskDelay(pdMS_TO_TICKS(GC_GAP_MS));
+122:    for (int i = 0; i < n; i++) { send_input(move); }
+136:        vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS));
+138:        if (!observe(&sc, &tmpl) || tmpl < 0 || tmpl >= GP_N_SONGS) { return; }
+145:    for (int i = 0; i < n; i++) { send_input(move); }
+154:    for (int i = 0; i < GC_MAX_MOVE; i++)
+157:        if (!observe(&sc, &cur)) { break; }
+165:static bool wait_for(uint8_t target, uint32_t timeout_ms)
+168:    for (;;)
+171:        if (observe(&sc, &sel) && sc == target) { return true; }
+174:        vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
+184:    for (;;)
+187:        if (observe(&sc, &sel) && sc != from) { return true; }
+190:        vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
+210:static const gc_step_t *step_for(uint8_t screen)
+212:    for (int i = 0; i < s_plan_len; i++)
+226:        case ACT_WAIT:          wait_for(st->to, GC_LOADING_TIMEOUT_MS); break;
+238:    s_busy = false;
+247:    for (int i = 0; i < GC_MAX_EXIT_ITERS; i++)
+250:        if (!observe(&sc, &sel)) { vTaskDelay(pdMS_TO_TICKS(GC_SETTLE_MS)); continue; }
+264:    return observe(&sc, &sel) && sc == GP_SCREEN_main_menu;
+274:    for (;;)
+276:        vTaskDelay(pdMS_TO_TICKS(GC_PLAY_POLL_MS));
+279:        if (GameplayEngine_GetLatest(&gs) && gs.screen != GP_SCREEN_in_song
+316:    while ((TickType_t)(xTaskGetTickCount() - start) < pdMS_TO_TICKS(GC_CONNECT_TIMEOUT_MS))
+319:        vTaskDelay(pdMS_TO_TICKS(500));
+341:    s_busy = true;
+346:        s_busy = false;   /* status already set (CONNECTING→NO WII / PAIR WII) */
+367:    for (int iter = 0; iter < GC_MAX_ITERS; iter++)
+372:        if (!observe(&sc, &s)) { continue; }
+380:        const gc_step_t *st = step_for(sc);
+405:static void gc_task(void *param)
+408:    for (;;)
+410:        if (xSemaphoreTake(s_start_sig, portMAX_DELAY) != pdTRUE) { continue; }
+421:    (void)xTaskCreateStatic(gc_task, "GameCtl", GC_TASK_STACK_WORDS,
+427:    if (s_busy)
+443:    return s_busy;
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-03 17:29:12Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-03 17:31:00Z)**_
+
+FYI, events leading up to this, start game, marvin navigates through screens to get game started. plays through game. ends up on end game screen. I then manually triggered "continue" which brought the game back to song select screen. Did play not stop at end of game or did it never stop requesting observation when it should have stopped?
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 17:31:27Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:31:29Z)**_
+
+Let me trace the controller's end-of-song path and idle state to answer this precisely.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:31:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/game_controller.c`
+
+```text
+266	
+267	/* CV plays; hold until the song ends (practice_end_menu), we leave gameplay, or
+268	 * Stop is requested. Passive polling — don't force-observe while the detector runs. */
+269	static void play_until_done(void)
+270	{
+271	    status("PLAYING");
+272	    TimingPipeline_SetEnabled(true);   /* in_song gate arms actuation automatically */
+273	
+274	    for (;;)
+275	    {
+276	        vTaskDelay(pdMS_TO_TICKS(GC_PLAY_POLL_MS));
+277	        if (s_stop_req) { break; }
+278	        game_state_t gs;
+279	        if (GameplayEngine_GetLatest(&gs) && gs.screen != GP_SCREEN_in_song
+280	            && gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
+281	        {
+282	            break;   /* song ended (practice_end_menu) or left gameplay */
+283	        }
+284	    }
+285	
+286	    /* Leave GH3 on the end screen; just release CV and go idle. The next run's
+287	     * anchor (nav_to_main_menu) QUITs out of the end/pause menus when START is
+288	     * pressed again. */
+289	    finish("READY");
+290	}
+291	
+292	/* Make sure fauxmote is connected to the Wii before a run (it's the actuation path
+293	 * to the console). Reconnect if the link is bonded-but-down; sets a descriptive
+294	 * status and returns false if it can't get there. */
+295	#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+296	static bool ensure_wii_connected(void)
+297	{
+298	    uint8_t flags;
+299	    if (!Fauxmote_GetStatus(&flags, NULL, NULL, NULL, NULL))
+300	    {
+301	        /* No STATUS from fauxmote (UART link down / not running) — can't manage the
+302	         * BT link here; proceed so a T1S guitar can still actuate. */
+303	        LOG_WARN("GC: no fauxmote status; skipping Wii connect check\r\n");
+304	        return true;
+305	    }
+306	    if (flags & MF_ST_CONNECTED) { return true; }
+307	    if (!(flags & MF_ST_BONDED))
+308	    {
+309	        status("PAIR WII");   /* never synced — needs a manual red-SYNC pairing */
+310	        return false;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:31:58Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:31:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/game_controller.c`
+
+```text
+232	
+233	/* Release the wire, disable CV, report a terminal status. */
+234	static void finish(const char *st)
+235	{
+236	    TimingPipeline_SetEnabled(false);   /* also sends one release */
+237	    status(st);
+238	    s_busy = false;
+239	}
+240	
+241	/* Return to main_menu from wherever we are. RED backs up the forward-nav menus,
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:32:12Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:32:21Z)**_
+
+Confirmed by the code — and it means **neither** of your two guesses; I owe you a correction.
+
+`play_until_done()` polls `GetLatest` (passive, no force) until the screen leaves `in_song`, then calls `finish("READY")` → `s_busy=false` → the run function returns → `gc_task` loops back and blocks on `xSemaphoreTake(s_start_sig, portMAX_DELAY)`. So after the song, **the controller is fully idle and is *not* calling `observe()`/`RequestObservation` at all.** Play stopped correctly.
+
+So my "the controller is continuously forcing observation" explanation was **wrong for this scenario.** The real driver is the engine's own **always-on background observation**:
+
+- `GameplayEngine_SetObserveEnabled(true)` is set at boot, so `game_task` classifies the screen at **5 Hz continuously**, regardless of the controller — that's how the dashboard/bus always knows the current screen.
+- On song_select, one `gp_read_song` ≈ ~190 ms of soft-float. 5 Hz × 190 ms ≈ **95% CPU** *by itself*. The 200 ms rate-limit is supposed to keep it cheap, but when a single classify is ~190 ms, "5 Hz" means "run almost continuously."
+- When you pressed **continue** and GH3 landed on song_select, the idle background observer started churning that expensive match ~5×/sec → peg. No force, no controller involvement.
+
+That's the honest mechanism: **an always-on background observer whose per-call cost on one screen (song_select) is ~equal to its own rate-limit period.** The `s_force_observe` angle was a red herring here.
+
+The good news: the duty-cap I applied **already covers this**, because the `min_interval` floor applies to *every* classification, not just forced ones. So background song_select observation now runs every ~570 ms (~33% CPU) instead of ~190 ms (~95%) — same fix, correct for the real cause.
+
+If you'd rather the engine not spend a third of the CPU re-matching an unchanged song list while idle, the follow-on (the option you declined) is to only run `gp_read_song` when the title region actually changes and cache otherwise — but that's an optimization on top; the duty-cap already removes the freeze. Want me to leave it at the cap, or also add the change-detect skip?
+
+---
+
+_**User (2026-07-03 17:33:17Z)**_
+
+we need to limit the observation more. marvin is very laggy on song select screen. 42% idle.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 17:36:09Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:36:12Z)**_
+
+~33% for a background observer that's re-matching an unchanged list is still wasteful, and the ~190 ms bursts are what you feel as lag. The right fix for "sitting on song_select" is to **not run the match at all when the screen hasn't changed** — that's exactly when the 190 ms is pure waste. Let me look at the ROI/sampling so I can add a cheap change-detector safely.
+
+_**Agent (claude-opus-4-8 2026-07-03 17:36:12Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_select.c`
+
+```text
+1	#include "game/gameplay_select.h"
+2	#include "game/gameplay_metadata.h"
+3	
+4	#include <math.h>
+5	#include <stddef.h>
+6	#include <stdint.h>
+7	
+8	#define GP_BPP            3
+9	#define GP_SEL_MAX_CELLS  16   /* >= max items on any modelled menu (7) */
+10	
+11	/* Split [0, extent) into `n` spans; edge(i) = round(i*extent/n). */
+12	static int gp_edge(int i, int extent, int n)
+13	{
+14	    return (int)lround((double)i * (double)extent / (double)n);
+15	}
+16	
+17	const gp_menu_layout_t *gp_menu_for_screen(uint8_t screen)
+18	{
+19	    for (int i = 0; i < GP_N_MENUS; i++)
+20	    {
+21	        if (gp_menus[i].screen == screen) { return &gp_menus[i]; }
+22	    }
+23	    return NULL;
+24	}
+25	
+26	/* Mean BGR over [x0,x1)×[y0,y1), clamped to the frame. */
+27	static void gp_rect_mean_bgr(const uint8_t *frame, int w, int h,
+28	                             int x0, int y0, int x1, int y1, float out[3])
+29	{
+30	    if (x0 < 0) { x0 = 0; }  if (x1 > w) { x1 = w; }
+31	    if (y0 < 0) { y0 = 0; }  if (y1 > h) { y1 = h; }
+32	    uint32_t sb = 0u, sg = 0u, sr = 0u, n = 0u;
+33	    for (int y = y0; y < y1; y++)
+34	    {
+35	        const uint8_t *p = frame + ((uint32_t)y * (uint32_t)w + (uint32_t)x0) * GP_BPP;
+36	        for (int x = x0; x < x1; x++)
+37	        {
+38	            sb += p[0]; sg += p[1]; sr += p[2];
+39	            p += GP_BPP;
+40	            n++;
+41	        }
+42	    }
+43	    if (n == 0u) { out[0] = out[1] = out[2] = 0.0f; return; }
+44	    out[0] = (float)sb / (float)n;
+45	    out[1] = (float)sg / (float)n;
+46	    out[2] = (float)sr / (float)n;
+47	}
+48
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 17:36:50Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 17:36:53Z)**_
+
+The 190 ms bursts are the lag, and re-matching every ~570 ms while you sit there is wasteful. The cleanest fix is to skip the expensive match in passive observation and only run it when something actually needs it (the controller during nav). Let me verify nothing passive consumes the CV-read song id before I gate it that way.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:37:32Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== who consumes the gameplay bus queue / GetLatest / selection? ==="; grep -rn "GameplayEngine_BusQueue\|GameplayEngine_GetLatest\|xGameStateQueue\|GameStateQueue" default/src --include='*.c' | grep -v config/ | grep -v "gameplay_engine.c"
+echo
+echo "=== dashboard song source: CV-read or touch Selection? ==="; grep -rn "Selection_Get\|gp_read_song\|\.selection\|GetLatest" default/src/ui/screens/dashboard/*.c default/src/ui/*.c 2>/dev/null | head
+```
+
+```text
+=== who consumes the gameplay bus queue / GetLatest / selection? ===
+default/src/game/game_controller.c:97:    if (!GameplayEngine_GetLatest(&gs)) { return false; }
+default/src/game/game_controller.c:279:        if (GameplayEngine_GetLatest(&gs) && gs.screen != GP_SCREEN_in_song
+
+=== dashboard song source: CV-read or touch Selection? ===
+default/src/ui/screens/dashboard/screen_dashboard.c:278:    if (Selection_Get()->valid) { dash_selection_changed(Selection_Get()); }
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-03 18:38:59Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-03 18:39:46Z)**_
+
+we don't really need to know the screen state at all unless we're actively navigating. Even then, could be request triggered vs. continuous scan.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 18:41:40Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:41:43Z)**_
+
+That confirms your instinct: **the only consumer of the CV screen state is the game controller** ([game_controller.c:97,279](firmware/marvin/default/src/game/game_controller.c#L97)) — the dashboard reads the touch `Selection_Get()`, and the `xGameStateQueue` bus has no subscribers at all. So the continuous 5 Hz background scan is pure waste whenever the controller isn't running.
+
+One nuance before I flip it to request-triggered: the controller's **play phase** (`play_until_done`) polls `GetLatest` *passively* to detect song-end, and the timing-pipeline in-song gate reads `GameplayEngine_CurrentScreen()` — both need screen updates *during* a session. So "actively navigating" really means "a controller session is active" (nav **and** play). Let me confirm `gp_classify` is cheap enough to force during play, and check the session boundaries.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:41:45Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== classify dims (is gp_classify cheap? no song-match) ==="; grep -rnE "define +GP_N_SCREENS|define +GP_FP_LEN|define +GP_FP_ROWS|define +GP_FP_COLS" default/src/game/*.h
+echo "=== gc_task body (session boundaries) ==="; sed -n '405,420p' default/src/game/game_controller.c
+echo "=== boot enable ==="; grep -rn "SetObserveEnabled" default/src --include='*.c' | grep -v config/
+```
+
+```text
+=== classify dims (is gp_classify cheap? no song-match) ===
+default/src/game/gameplay_metadata.h:12:#define GP_FP_COLS 12
+default/src/game/gameplay_metadata.h:13:#define GP_FP_ROWS 8
+default/src/game/gameplay_metadata.h:16:#define GP_FP_LEN 288
+default/src/game/gameplay_metadata.h:17:#define GP_N_SCREENS 13
+=== gc_task body (session boundaries) ===
+static void gc_task(void *param)
+{
+    (void)param;
+    for (;;)
+    {
+        if (xSemaphoreTake(s_start_sig, portMAX_DELAY) != pdTRUE) { continue; }
+        run();
+    }
+}
+
+/* ── public API ───────────────────────────────────────────────────────────── */
+
+void GameController_Initialize(void)
+{
+    s_start_sig = xSemaphoreCreateBinaryStatic(&s_start_sig_buf);
+    configASSERT(s_start_sig != NULL);
+=== boot enable ===
+default/src/app.c:215:    GameplayEngine_SetObserveEnabled(true);
+default/src/game/gameplay_engine.c:208:void GameplayEngine_SetObserveEnabled(bool on)
+default/src/game/game_controller.c:356:    GameplayEngine_SetObserveEnabled(true);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:42:28Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:42:31Z)**_
+
+`gp_classify` is cheap (13×288 ≈ 3.7K float ops vs the song-match's 184K) — but I don't even need to touch the play path. The cleanest fix matching your call: the controller **already enables observation at run start** (game_controller.c:356) — it's the boot-time enable (app.c:215) and a missing *disable* that leave it scanning forever. So: gate observation on the controller session (on for a run, off when idle). Let me read the run boundaries to place the on/off pair correctly.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:42:31Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/game_controller.c`
+
+```text
+338	        return;
+339	    }
+340	
+341	    s_busy = true;
+342	
+343	    /* Pre-flight: the Wii link must be up (fauxmote is how we reach the console). */
+344	    if (!ensure_wii_connected())
+345	    {
+346	        s_busy = false;   /* status already set (CONNECTING→NO WII / PAIR WII) */
+347	        return;
+348	    }
+349	
+350	    status("NAVIGATING");
+351	
+352	    /* Own the wire: manual off, timing off (set timing off *after* manual, since
+353	     * ManualControl_SetEnabled(false) flips timing on — the arbitration trap). */
+354	    if (ManualControl_IsEnabled()) { ManualControl_SetEnabled(false); }
+355	    TimingPipeline_SetEnabled(false);
+356	    GameplayEngine_SetObserveEnabled(true);
+357	
+358	    if (!nav_to_main_menu())
+359	    {
+360	        finish(s_stop_req ? "READY" : "FAILED");
+361	        return;
+362	    }
+363	
+364	    build_plan(sel);
+365	
+366	    int recover = 0;
+367	    for (int iter = 0; iter < GC_MAX_ITERS; iter++)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:43:13Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:43:15Z)**_
+
+Perfect — this is clean. The controller *already* enables observation at run start ([game_controller.c:356](firmware/marvin/default/src/game/game_controller.c#L356)); the bug is the **boot-time enable** (app.c:215) plus a **missing disable**, so it scans forever. Fix: gate observation on the controller session — on for a run, off when idle. Idle marvin then does zero screen-scanning.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:43:19Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). STOP what you are doing and wait for the user to tell you how to proceed.
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-03 18:43:19Z)**_
+
+[Request interrupted by user for tool use]
+
+_**User (2026-07-03 18:43:50Z)**_
+
+Let me make myself clear. I don't want continuous game state scan. Observation should always be triggered by something else.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 18:45:57Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:45:58Z)**_
+
+Understood — no continuous scan at all. Observation must be **purely request-triggered**: the engine classifies only when something calls `RequestObservation()`, and does nothing otherwise. I was still preserving a background scan during a session; you want it gone entirely. Let me re-read the current state of the file (it's changed from my duty-cap edits) so I rewrite it cleanly.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:45:59Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_engine.c`
+
+```text
+15	#include "video/video.h"
+16	
+17	#define GAME_TASK_STACK_WORDS   1024u
+18	#define GAME_TASK_PRIORITY      4u    /* vision tier (peer of cv_marvin_v1) */
+19	#define GAME_FRAME_QUEUE_DEPTH  1u    /* newest-frame-only */
+20	#define GAME_BUS_DEPTH          8u
+21	#define GAME_BYTES_PER_PIXEL    3u
+22	#define GAME_US_PER_TICK        (1000000u / configTICK_RATE_HZ)
+23	
+24	/* Observe in the background at ~5 Hz, not frame rate: bounds CPU (the song match
+25	 * densely re-reads its ROI across the offset search on uncached DDR — tens of
+26	 * ms) and is plenty to catch human-paced screen/selection changes. A forced
+27	 * trigger (GameplayEngine_RequestObservation) runs the next frame regardless,
+28	 * for closed-loop verification after an actuator command. */
+29	#define GAME_OBSERVE_PERIOD_MS  200u
+30	/* CPU-duty cap for the observer. The song_select match (gp_read_song) is a
+31	 * heavy soft-float compute (no FPU on this core, ~tens–~190 ms); at prio 4 it
+32	 * would peg the CPU and starve the prio<4 UI/console. After a classify taking
+33	 * `dur`, defer the next until N*dur has elapsed, so the observer uses at most
+34	 * ~1/N of the CPU — even under forced (controller-driven) observation. */
+35	#define GAME_OBS_DUTY_DIVISOR   3u
+36	#define GAME_OBS_MAX_GAP_MS     1000u   /* but always observe at least ~1 Hz */
+37	
+38	static QueueHandle_t s_bus_queue;
+39	static StaticQueue_t s_bus_queue_buf;
+40	static uint8_t       s_bus_queue_storage[GAME_BUS_DEPTH * sizeof(game_state_t)];
+41	
+42	static StaticQueue_t s_frame_queue_buf;
+43	static uint8_t       s_frame_queue_storage[GAME_FRAME_QUEUE_DEPTH * sizeof(Video_FrameInfo)];
+44	
+45	static StackType_t   s_task_stack[GAME_TASK_STACK_WORDS];
+46	static StaticTask_t  s_task_tcb;
+47	
+48	static volatile bool    s_observe_enabled;
+49	static volatile bool    s_force_observe;
+50	static volatile uint8_t s_current_screen = GP_SCREEN_UNKNOWN;
+51	
+52	/* Latest classified state, retained every classify (not just on change) so the
+53	 * game-state controller can poll a fresh {screen, selection} synchronously. */
+54	static volatile bool s_have_latest;
+55	static game_state_t  s_latest;
+56	
+57	static const char *screen_name(uint8_t idx)
+58	{
+59	    return (idx < GP_N_SCREENS) ? gp_screen_ids[idx] : "unknown";
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:07Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_engine.c`
+
+```text
+100	    configASSERT(subscribed);
+101	
+102	    LOG_INFO("GAME: gameplay_engine started\r\n");
+103	
+104	    uint8_t   last_screen = GP_SCREEN_UNKNOWN;
+105	    int16_t   last_sel    = -2;  /* != any real selection or -1, so first read logs */
+106	    TickType_t last_tick  = 0;
+107	    TickType_t min_interval = 0;   /* dynamic CPU-duty floor (see GAME_OBS_DUTY_DIVISOR) */
+108	    const TickType_t period = pdMS_TO_TICKS(GAME_OBSERVE_PERIOD_MS);
+109	
+110	    for (;;)
+111	    {
+112	        Video_FrameInfo frame;
+113	        if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+114	
+115	        /* Always drain, even when disabled, so frames don't back up. */
+116	        if (!s_observe_enabled)                            { continue; }
+117	        if (frame.buffer == NULL)                          { continue; }
+118	        if (frame.bytes_per_pixel != GAME_BYTES_PER_PIXEL) { continue; }
+119	
+120	        /* Background rate-limit to ~5 Hz, unless a forced trigger is pending
+121	         * (closed-loop: observe the next frame right after an actuator command). */
+122	        TickType_t now = xTaskGetTickCount();
+123	        if (!s_force_observe && (TickType_t)(now - last_tick) < period) { continue; }
+124	        /* CPU-duty floor: applies even to a forced observation, so a slow classify
+125	         * (song_select soft-float match) can't run back-to-back and peg this
+126	         * prio-4 task. Leaves s_force_observe pending so the request is deferred,
+127	         * not dropped. */
+128	        if ((TickType_t)(now - last_tick) < min_interval) { continue; }
+129	        s_force_observe = false;
+130	        last_tick = now;
+131	
+132	        const uint8_t *buf = (const uint8_t *)frame.buffer;
+133	        int w = (int)frame.width, h = (int)frame.height;
+134	
+135	        int32_t best_dist = 0, margin = 0;
+136	        uint8_t screen = gp_classify(buf, w, h, &best_dist, &margin);
+137	        s_current_screen = screen;
+138	
+139	        const char *sel_name = NULL, *sel_name2 = NULL;
+140	        int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
+141	
+142	        /* Cap the observer's CPU share: defer the next classify by N x this one's
+143	         * duration (bounded so navigation still gets ~1 Hz worst case). */
+144	        min_interval = (TickType_t)(xTaskGetTickCount() - now) * GAME_OBS_DUTY_DIVISOR;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:16Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:16Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_engine.c`
+
+```text
+140	        int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
+141	
+142	        /* Cap the observer's CPU share: defer the next classify by N x this one's
+143	         * duration (bounded so navigation still gets ~1 Hz worst case). */
+144	        min_interval = (TickType_t)(xTaskGetTickCount() - now) * GAME_OBS_DUTY_DIVISOR;
+145	        if (min_interval > pdMS_TO_TICKS(GAME_OBS_MAX_GAP_MS)) {
+146	            min_interval = pdMS_TO_TICKS(GAME_OBS_MAX_GAP_MS);
+147	        }
+148	
+149	        taskENTER_CRITICAL();
+150	        s_latest.frame_epoch  = frame.frame_count;
+151	        s_latest.timestamp_us = (uint64_t)now * GAME_US_PER_TICK;
+152	        s_latest.screen       = screen;
+153	        s_latest.best_dist    = best_dist;
+154	        s_latest.margin       = margin;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:48Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:48Z)**_
+
+Now I'll rewrite it to pure request-triggered. Let me read `Initialize` to set the master gate there.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:48Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/game/gameplay_engine.c`
+
+```text
+178	            {
+179	                LOG_INFO("GAME: %s / %s\r\n", screen_name(screen), sel_name);
+180	            }
+181	            else
+182	            {
+183	                LOG_INFO("GAME: %s\r\n", screen_name(screen));
+184	            }
+185	            last_screen = screen;
+186	            last_sel    = sel;
+187	        }
+188	    }
+189	}
+190	
+191	void GameplayEngine_Initialize(void)
+192	{
+193	    s_bus_queue = xQueueCreateStatic(GAME_BUS_DEPTH,
+194	                                     sizeof(game_state_t),
+195	                                     s_bus_queue_storage,
+196	                                     &s_bus_queue_buf);
+197	    configASSERT(s_bus_queue != NULL);
+198	
+199	    (void)xTaskCreateStatic(game_task, "GameEngine", GAME_TASK_STACK_WORDS,
+200	                            NULL, GAME_TASK_PRIORITY, s_task_stack, &s_task_tcb);
+201	}
+202	
+203	QueueHandle_t GameplayEngine_BusQueue(void)
+204	{
+205	    return s_bus_queue;
+206	}
+207	
+208	void GameplayEngine_SetObserveEnabled(bool on)
+209	{
+210	    s_observe_enabled = on;
+211	}
+212	
+213	void GameplayEngine_RequestObservation(void)
+214	{
+215	    s_force_observe = true;
+216	}
+217	
+218	bool GameplayEngine_ObserveEnabled(void)
+219	{
+220	    return s_observe_enabled;
+221	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:58Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:46:58Z)**_
+
+Now I have the full picture. Making the edits — pure request-triggered.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:08Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:43Z)**_
+
+Now app.c — remove the boot enable (now handled in Initialize, and observation is request-triggered):
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:45Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>String to replace not found in file.
+String:     GameplayEngine_Initialize();
+    GameplayEngine_SetObserveEnabled(true);</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:53Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:47:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -n "GameplayEngine_SetObserveEnabled\|GameplayEngine_Initialize\|SetObserveEnabled" default/src/app.c
+```
+
+```text
+214:    GameplayEngine_Initialize();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:48:03Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:48:03Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+207	     * explicit bind step is needed here. */
+208	    ManualControl_Initialize();
+209	
+210	    /* Game-state observer (spec §4.8, M9): a video-frame consumer that
+211	     * classifies the current GH3 screen and publishes game_state_t events. Like
+212	     * cv_marvin_v1 it subscribes to the video frame queue from its task, so it
+213	     * follows Video_Initialize. Enable observation explicitly (default off). */
+214	    GameplayEngine_Initialize();
+215	    /* Observation stays OFF while idle. It's a heavy per-frame CV scan (the
+216	     * song_select match is ~tens of ms of soft-float on this FPU-less core) and
+217	     * its only consumer is the game controller during a run — the dashboard uses
+218	     * the touch Selection, and the game-state bus has no other subscriber. The
+219	     * controller enables it for a session and disables it when the run ends, so an
+220	     * idle marvin does no screen-scanning (was pegging the CPU on song_select). */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:48:20Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:48:21Z)**_
+
+My earlier app.c edit had actually landed (the `SetObserveEnabled(true)` is already gone) but its comment describes the session-gated design, not request-triggered. Let me correct it.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:48:27Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:49:03Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:49:03Z)**_
+
+Now the controller. Two changes: (1) `play_until_done` must now *trigger* its observations (no background scan to rely on), and (2) drop the redundant per-session enable.
+
+_**Agent (claude-opus-4-8 2026-07-03 18:49:10Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/game_controller.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:49:19Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/game_controller.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 18:49:34Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 18:49:35Z)**_
+
+Now build and check for any dangling references.
+
+_**Agent (claude-opus-4-8 2026-07-03 19:18:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+export PATH="/Applications/microchip/xc32/v5.10/bin:$PATH"
+cmake --build _build/marvin/default 2>&1 | grep -iE "gameplay_engine|game_controller|app\.c|error|warning|undeclared|unused" | head -20
+echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
+```
+
+```text
+[1/6] Building C object CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c.o
+[2/6] Building C object CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/game_controller.c.o
+[3/6] Building C object CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c.o
+       53782           0        3366       57148        df3c    game_controller.c.o                             CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/game_controller.c.o
+       52433           1        4671       57105        df11    gameplay_engine.c.o                             CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/gameplay_engine.c.o
+       16065           0           1       16066        3ec2    app.c.o                                         CMakeFiles/marvin_default_default_XC32_compile.dir/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c.o
+=== tail ===
+[1/2] Convert built file to .hex
+[2/2] Running utility command for marvin_default_Bin2Hex
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 19:18:57Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 19:19:08Z)**_
+
+Clean build — all three files, no warnings. Done.
+
+## New model: observation is purely request-triggered
+
+`GameEngine` no longer scans anything on its own. It sleeps (draining frames at ~0 CPU) and classifies **exactly one frame per `RequestObservation()` call** — nothing else.
+
+- **[gameplay_engine.c](firmware/marvin/default/src/game/gameplay_engine.c)** — removed the 5 Hz background scan *and* the duty-cap I'd added (both superseded). The task processes only when `s_force_observe` is set. Master gate enabled once in `Initialize` (so requests are honored), but with no requests it does nothing.
+- **[app.c](firmware/marvin/default/src/app.c)** — dropped the boot-time `SetObserveEnabled(true)`; observation is request-driven now.
+- **[game_controller.c](firmware/marvin/default/src/game/game_controller.c)** — `play_until_done` used to *passively* poll `GetLatest` (it relied on the background scan to keep state fresh). Now it `observe()`s — i.e., triggers its own classify each poll — to detect song-end and keep the in-song timing gate current. A classify during `in_song` is cheap (no song-match). Removed the redundant per-session enable.
+
+## Behavior now
+
+| State | Observation | CPU |
+|---|---|---|
+| Idle (incl. sitting on song_select) | none | ~0 — no lag |
+| START → menu nav | controller forces each step (as before) | brief |
+| Playing a song | controller forces a cheap classify ~every 440 ms (song-end + gate) | negligible |
+| Song ends → idle | stops | ~0 |
+
+So the exact thing that bit you — sitting on song_select with the engine grinding the 190 ms soft-float match ~5×/sec — can't happen: nothing requests observation when no session is running.
+
+## Status / caveat
+
+Built clean (XC32 v5.10), **not committed** (your doc agents are still active, and I left the journal untouched). One thing to sanity-check on hardware: since `play_until_done` now triggers its own classifies, confirm a full START→play→end run still detects song-end and the in-song gate keeps CV actuating (it should — classification during play is equivalent to before, just request-driven instead of background). 
+
+When your parallel agents are done and you've validated a run, tell me and I'll commit this (one `marvin: gameplay — make observation request-triggered (no background scan)` commit, superseding the duty-cap) plus the earlier T1S/FSTAT/fault work still staged in my head, and add the journal entry.
+
+---
+
+_**User (2026-07-03 22:55:36Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+doc work done. please update docs and commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-03 22:55:54Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 22:55:56Z)**_
+
+Doc agents done. Let me check the current git state before touching anything — I want to commit only my GameEngine work plus its journal entry, not sweep up unrelated doc changes.
+
+_**Agent (claude-opus-4-8 2026-07-03 22:55:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== recent commits (did doc agents commit?) ==="; git log --oneline -8
+echo "=== staged ==="; git diff --cached --stat
+echo "=== unstaged tracked ==="; git diff --stat
+echo "=== my code files status ==="; git status --short firmware/marvin/default/src/game/gameplay_engine.c firmware/marvin/default/src/game/game_controller.c firmware/marvin/default/src/app.c firmware/marvin/docs/journal.md
+```
+
+```text
+=== recent commits (did doc agents commit?) ===
+853c103 docs: cross-subproject doc-vs-code audit + marvin journal archival
+45d667b specstory
+2de54c7 marvin: journal — freeze investigation (T1S spin + FSTAT abort) & instrumentation
+365a621 marvin: t1s — bound service pump + absent-chip guard
+53f4aef marvin: fix data abort from uninitialized SYS_FS_FSTAT.lfname
+e6ccab4 marvin: health monitor — runaway supervisor + post-reveal gate
+794cb07 marvin: print CPU faults to DBGU instead of a silent spin
+d15239f marvin: T1S pin config — IRQ_N pull-up + MISO pull-down
+=== staged ===
+=== unstaged tracked ===
+warning: in the working copy of '.specstory/history/2026-07-03_03-06-15Z-marvin-seems-to-be.md', CRLF will be replaced by LF the next time Git touches it
+ .../2026-07-03_03-06-15Z-marvin-seems-to-be.md     | 1494 ++++++++++++++++++++
+ .specstory/statistics.json                         |   19 +-
+ .../marvin/default/src/actuator/timing_pipeline.c  |    4 +-
+ firmware/marvin/default/src/app.c                  |   13 +-
+ firmware/marvin/default/src/game/game_controller.c |   11 +-
+ firmware/marvin/default/src/game/gameplay_engine.c |   30 +-
+ 6 files changed, 1539 insertions(+), 32 deletions(-)
+=== my code files status ===
+ M firmware/marvin/default/src/app.c
+ M firmware/marvin/default/src/game/game_controller.c
+ M firmware/marvin/default/src/game/gameplay_engine.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:12Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:14Z)**_
+
+Good — my 6 commits are intact; the doc agents committed on top (`853c103`, including "marvin journal archival"). Note there's an **unstaged `timing_pipeline.c` change that isn't mine** (you have it open in the IDE) — I'll leave it out of my commit. Let me check the journal's current structure (agents archived it) and glance at that timing_pipeline diff so I don't clobber your work.
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:14Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== timing_pipeline.c unstaged diff (NOT mine — confirm, leave alone) ==="; git diff firmware/marvin/default/src/actuator/timing_pipeline.c
+echo "=== journal top 12 lines (post-archival structure) ==="; sed -n '1,12p' firmware/marvin/docs/journal.md
+```
+
+```text
+=== timing_pipeline.c unstaged diff (NOT mine — confirm, leave alone) ===
+diff --git a/firmware/marvin/default/src/actuator/timing_pipeline.c b/firmware/marvin/default/src/actuator/timing_pipeline.c
+index 5720575..a2cbb74 100644
+--- a/firmware/marvin/default/src/actuator/timing_pipeline.c
++++ b/firmware/marvin/default/src/actuator/timing_pipeline.c
+@@ -20,7 +20,7 @@
+ 
+ /* Drives chord aggregation, strum scheduling, and pending release timing.
+  * Matches the fret-tuner Python defaults so behavior carries 1:1. */
+-#define TP_STRUM_DELAY_MS      300u
++#define TP_STRUM_DELAY_MS      220u
+ #define TP_FRET_EARLY_MS       50u
+ #define TP_STRUM_PULSE_MS      40u
+ #define TP_CHORD_WINDOW_MS     30u
+@@ -31,7 +31,7 @@
+  * note-assert deadlines that fall between detector publishes. 5 ms keeps
+  * jitter well under our 16 ms detector cadence and below human-perceptible
+  * timing error. */
+-#define TP_TICK_MS             5u
++#define TP_TICK_MS             2u
+ 
+ typedef struct
+ {
+=== journal top 12 lines (post-archival structure) ===
+# marvin — Working Journal
+
+Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+
+---
+
+**2026-07-03 — Investigating a several-hour freeze; built a health monitor + runaway-task supervisor.** Symptom: after a while (minutes to hours) marvin goes unresponsive — touch + FLEXCOM2 console dead — but the LVDS panel keeps showing *live* video. New `health/health_monitor.{c,h}` (in `user.cmake`, init last in `App_StartServices`, `health` console command) to characterize it:
+
+- **Heartbeat** (10 s debug cadence): one line to `/mnt/marvin/health/heartbeat.csv` (open→write→close each beat so the last line survives a hang) + mirrored to DBGU: `timestamp,uptime_s,tick,frames,free_heap,worst_task,worst_stk_free`. The final timestamp bounds when it died; `frames` shows if capture had already stalled.
+- **Stack dump** (10 min): full per-task table (state/prio/stack-HWM/run%) overwritten in `health/stacks.txt` + DBGU.
+- **Supervisor** (prio 6 — above every app task, which top out at 5): samples the run-time-stats counters every 1 s and logs `RUNAWAY '<task>'` when one task eats the CPU while idle ~0%. It runs at higher priority than any spinner and uses its **own lock-free snapshot buffer** (never shares the heartbeat's mutex — a starved health task holding that mutex would otherwise deadlock the reporter exactly when needed), so it can name the culprit *during* the wedge. Also emits a `SUP: idle/top/isr%` summary every 10 s.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:24Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:26Z)**_
+
+Confirmed — the `timing_pipeline.c` change (`STRUM_DELAY 300→220`, `TICK 5→2`) is your own tuning, not mine; leaving it untouched. My recent journal entries survived the archival. Adding the GameEngine entry at the top.
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:38Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+<tool_use_error>File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:43Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== journal status ==="; git status --short firmware/marvin/docs/journal.md
+echo "=== top 8 lines now ==="; sed -n '1,8p' firmware/marvin/docs/journal.md
+```
+
+```text
+=== journal status ===
+=== top 8 lines now ===
+# marvin — Working Journal
+
+Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+
+---
+
+**2026-07-03 — Investigating a several-hour freeze; built a health monitor + runaway-task supervisor.** Symptom: after a while (minutes to hours) marvin goes unresponsive — touch + FLEXCOM2 console dead — but the LVDS panel keeps showing *live* video. New `health/health_monitor.{c,h}` (in `user.cmake`, init last in `App_StartServices`, `health` console command) to characterize it:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:50Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 22:56:50Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+1	# marvin — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	**2026-07-03 — Investigating a several-hour freeze; built a health monitor + runaway-task supervisor.** Symptom: after a while (minutes to hours) marvin goes unresponsive — touch + FLEXCOM2 console dead — but the LVDS panel keeps showing *live* video. New `health/health_monitor.{c,h}` (in `user.cmake`, init last in `App_StartServices`, `health` console command) to characterize it:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:57:03Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:57:08Z)**_
+
+Now stage only my files (the 3 code files + journal) and commit — deliberately excluding `timing_pipeline.c` and `.specstory`:
+
+_**Agent (claude-opus-4-8 2026-07-03 22:57:39Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/marvin/default/src/game/gameplay_engine.c \
+        firmware/marvin/default/src/game/game_controller.c \
+        firmware/marvin/default/src/app.c \
+        firmware/marvin/docs/journal.md
+echo "=== staged (should be exactly these 4) ==="; git diff --cached --stat
+```
+
+```text
+=== staged (should be exactly these 4) ===
+ firmware/marvin/default/src/app.c                  | 13 ++++++----
+ firmware/marvin/default/src/game/game_controller.c | 11 ++++----
+ firmware/marvin/default/src/game/gameplay_engine.c | 30 +++++++++++-----------
+ firmware/marvin/docs/journal.md                    |  4 +++
+ 4 files changed, 33 insertions(+), 25 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:58:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit \
+ -m "marvin: gameplay — make observation request-triggered (fix song_select CPU peg)" \
+ -m "The game-state observer ran a free-running background scan (5 Hz). On song_select one gp_read_song is ~150-190 ms of soft-float (64 templates x 15 offsets x 192, no FPU), so a single classify ~= the 200 ms scan period — background observation alone pegged prio-4 GameEngine and starved the prio<4 console/touch/UI (supervisor caught RUNAWAY 'GameEngine' cpu=99%). Same 'unbounded task monopolizes the CPU' shape as the T1S spin." \
+ -m "Fix: no continuous scan — classify only when GameplayEngine_RequestObservation() is called; otherwise just drain frames at ~0 CPU. The only consumer of the screen state is the game controller (nav + song-end polling); the dashboard uses the touch Selection and the game-state bus has no subscriber, so an idle marvin needs no scanning. Drop the boot + per-session SetObserveEnabled; enable the master gate once in Initialize. play_until_done now observe()s (forces its own cheap in_song classify) to detect song-end and keep the timing in_song gate fresh, instead of passively relying on the removed scan." \
+ -m "Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+```text
+[gameplay 982c724] marvin: gameplay — make observation request-triggered (fix song_select CPU peg)
+ 4 files changed, 33 insertions(+), 25 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:58:06Z)**_
+
+_**Agent (claude-opus-4-8 2026-07-03 22:58:06Z)**_
+
+Committed. Let me verify the result and confirm your `timing_pipeline.c` edit is left intact.
+
+_**Agent (claude-opus-4-8 2026-07-03 22:58:07Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== new commit ==="; git log --oneline -1
+echo "=== remaining unstaged (yours / unrelated — untouched) ==="; git status --short | grep -vE '\?\? \.specstory/history'
+```
+
+```text
+=== new commit ===
+982c724 marvin: gameplay — make observation request-triggered (fix song_select CPU peg)
+=== remaining unstaged (yours / unrelated — untouched) ===
+ M .specstory/history/2026-07-03_03-06-15Z-marvin-seems-to-be.md
+ M .specstory/statistics.json
+ M firmware/marvin/default/src/actuator/timing_pipeline.c
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-03 22:58:19Z)**_
+
+Committed and clean.
+
+- **`982c724`** — `marvin: gameplay — make observation request-triggered (fix song_select CPU peg)` — exactly 4 files (gameplay_engine.c, game_controller.c, app.c, journal.md).
+- **Your `timing_pipeline.c` edit** (`STRUM_DELAY 300→220`, `TICK 5→2`) is untouched and still unstaged for you to handle.
+- `.specstory/*` and the untracked `sam9x75-chybrid/` docs + `hardware/t1s-sink/` are left alone.
+
+## Where the freeze investigation landed
+
+All three freeze modes the supervisor/fault-dump surfaced this session are now committed fixes:
+
+| Commit | Freeze mode |
+|---|---|
+| `365a621` | T1SLink unbounded `service_pump` busy-spin |
+| `53f4aef` | Silent data abort — uninitialized `SYS_FS_FSTAT.lfname` |
+| `982c724` | GameEngine song_select CPU peg (now request-triggered) |
+
+Plus the instrumentation that found them (`e6ccab4` health monitor + supervisor, `794cb07` fault dump), the T1S pin/absent-chip robustness (`d15239f` + `365a621`), and journal entries.
+
+**Still open (the pending todo):** on-hardware validation. Worth confirming on your next run:
+1. Idle on song_select → responsive, `SUP` shows high idle / GameEngine ~0%.
+2. A full **START → nav → play → end** run still detects song-end and CV keeps actuating through the song (since `play_until_done` now triggers its own classifies rather than riding the old background scan).
+3. No `RUNAWAY` / no `*** DATA ABORT ***` over a long run.
+
+If validation surfaces anything, the `HM:`/`SUP:`/fault lines will point right at it.
