@@ -5,6 +5,7 @@ static leWidget* root0;
 static leWidget* root1;
 static leWidget* root2;
 static leWidget* root3;
+static leWidget* root4;
 
 leWidget* Marvin_PANEL_DASHBOARD;
 leWidget* Marvin_PANEL_DASHBOARD_TOP;
@@ -21,6 +22,7 @@ leWidget* Marvin_PANEL_DASHBOARD_GAMEPLAY;
 leWidget* Marvin_PANEL_DASHBOARD_HUMAN;
 leWidget* Marvin_PANEL_DASHBOARD_ROBOT_PLAYER;
 leWidget* Marvin_PANEL_DASHBOARD_ROBOT_GAMEPLAY;
+leWidget* Marvin_PANEL_DASHBOARD_ROBOT_BORDER;
 leImageWidget* Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER;
 leLabelWidget* Marvin_LABEL_DASHBOARD_ROBOT_Name;
 leLabelWidget* Marvin_LABEL_DASHBOARD_ROBOT_RobotPlayer;
@@ -136,19 +138,15 @@ leWidget* Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY_DIVIDER;
 leButtonWidget* Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG;
 leButtonWidget* Marvin_BUTTON_DASHBOARD_GAMEPLAY_START;
 leLabelWidget* Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_Difficulty;
-leWidget* Marvin_panel_Container_75_0;
-leWidget* Marvin_panel_Container_80_0;
-leWidget* Marvin_panel_Image__Player__0;
-leWidget* Marvin_panel_Container_76_0;
-leWidget* Marvin_panel_Container_77_0;
-leWidget* Marvin_panel_Container_78_0;
-leWidget* Marvin_panel_Container_79_0;
-leWidget* Marvin_panel_Paragraph_10_0;
-leWidget* Marvin_panel_Paragraph_11_0;
-leLabelWidget* Marvin_label_PLAYER_0;
-leLabelWidget* Marvin_label_Human_Player_0;
-leWidget* Marvin_panel_Text_21_0;
-leLabelWidget* Marvin_label_IDLE_1_0;
+leWidget* Marvin_PANEL_DASHBOARD_HUMAN_PLAYER;
+leWidget* Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY;
+leWidget* Marvin_PANEL_DASHBOARD_HUMAN_BORDER;
+leImageWidget* Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER;
+leLabelWidget* Marvin_LABEL_DASHBOARD_HUMAN_Name;
+leLabelWidget* Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer;
+leWidget* Marvin_PANEL_DASHBOARD_HUMAN_STATE;
+leWidget* Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED;
+leLabelWidget* Marvin_LABEL_DASHBOARD_HUMAN_STATE;
 leWidget* Marvin_panel_Container_81_0;
 leWidget* Marvin_panel_Container_84_0;
 leWidget* Marvin_panel_Container_93_0;
@@ -266,6 +264,166 @@ leWidget* Marvin_PANEL_ALBUM_ART_OVERLAY;
 leLabelWidget* Marvin_LABEL_SONG_SELECT_SongTier;
 leLabelWidget* Marvin_LABEL_SONG_SELECT_SongTitle;
 leLabelWidget* Marvin_LABEL_SONG_SELECT_Artist;
+leWidget* Marvin_panel_Marvin;
+leWidget* Marvin_panel_App_0;
+leWidget* Marvin_panel_Container_45;
+leWidget* Marvin_panel_Container_4_0;
+leWidget* Marvin_panel_Container_0_0;
+leWidget* Marvin_panel_Container_2_0;
+leWidget* Marvin_panel_Button___Open_menu_0;
+leWidget* Marvin_panel_Container_1_0;
+leWidget* Marvin_panel_Icon_4;
+leImageWidget* Marvin_image_Icon_4;
+leWidget* Marvin_panel_Heading_1_0;
+leLabelWidget* Marvin_label_GUITAR_PIC_0;
+leWidget* Marvin_panel_Container_3_1;
+leWidget* Marvin_panel_Image__Microchip__margin_0;
+leWidget* Marvin_panel_Image__Microchip__0;
+leWidget* Marvin_panel_Container_5_0;
+leWidget* Marvin_panel_Container_8_0;
+leWidget* Marvin_panel_Container_6_0;
+leWidget* Marvin_panel_Container_7_0;
+leWidget* Marvin_panel_Heading_2_0;
+leWidget* Marvin_panel_Paragraph_4;
+leLabelWidget* Marvin_label_MANUAL_OVERRIDE_0;
+leLabelWidget* Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0;
+leWidget* Marvin_panel_Text_3;
+leWidget* Marvin_panel_Text_0_1;
+leLabelWidget* Marvin_label_OVERRIDE_MODE_0;
+leWidget* Marvin_panel_ControllerPanel_1;
+leWidget* Marvin_panel_ControllerPanel_0_0;
+leWidget* Marvin_panel_Container_9_0;
+leWidget* Marvin_panel_Container_11_1;
+leWidget* Marvin_panel_Container_21_1;
+leWidget* Marvin_panel_Container_10_0;
+leWidget* Marvin_panel_Button_37;
+leLabelWidget* Marvin_label_Robot__Lemmy__0;
+leWidget* Marvin_panel_Text_1_1;
+leLabelWidget* Marvin_label_ENABLED_0;
+leWidget* Marvin_panel_Paragraph_0_0;
+leWidget* Marvin_panel_Container_12_1;
+leWidget* Marvin_panel_Container_13_0;
+leLabelWidget* Marvin_label_GUITAR_EXTENSION_1;
+leWidget* Marvin_panel_Button_0_0;
+leWidget* Marvin_panel_Button_1_0;
+leWidget* Marvin_panel_Button_2_0;
+leWidget* Marvin_panel_Button_3_0;
+leWidget* Marvin_panel_Button_4_0;
+leWidget* Marvin_panel_Container_14_1;
+leWidget* Marvin_panel_Container_15_1;
+leWidget* Marvin_panel_Container_20_1;
+leWidget* Marvin_panel_Button_5_0;
+leWidget* Marvin_panel_Button_6_0;
+leWidget* Marvin_panel_Icon_0_0;
+leLabelWidget* Marvin_label__UP_1;
+leImageWidget* Marvin_image_Icon_0_0;
+leWidget* Marvin_panel_Icon_1_0;
+leLabelWidget* Marvin_label__DN_1;
+leImageWidget* Marvin_image_Icon_1_0;
+leLabelWidget* Marvin_label_WHAMMY_1;
+leWidget* Marvin_panel_WhammySlider_1;
+leWidget* Marvin_panel_Container_16_1;
+leWidget* Marvin_panel_Container_17_1;
+leWidget* Marvin_panel_Container_18_1;
+leWidget* Marvin_panel_Container_19_1;
+leWidget* Marvin_panel_Button_7_0;
+leWidget* Marvin_panel_Button_8_0;
+leLabelWidget* Marvin_label___11;
+leLabelWidget* Marvin_label___0_1;
+leWidget* Marvin_panel_Container_22_1;
+leWidget* Marvin_panel_Container_24_1;
+leWidget* Marvin_panel_Container_26_1;
+leWidget* Marvin_panel_Paragraph_1_0;
+leWidget* Marvin_panel_Container_23_1;
+leLabelWidget* Marvin_label_WIIMOTE_1;
+leWidget* Marvin_panel_Button_9_0;
+leWidget* Marvin_panel_Button_10_0;
+leWidget* Marvin_panel_Button_11_0;
+leWidget* Marvin_panel_Button_12_0;
+leLabelWidget* Marvin_label___1_1;
+leLabelWidget* Marvin_label___2_1;
+leLabelWidget* Marvin_label___3_0;
+leLabelWidget* Marvin_label___4_0;
+leWidget* Marvin_panel_Button_13_0;
+leWidget* Marvin_panel_Container_25_1;
+leLabelWidget* Marvin_label_HOME_1;
+leWidget* Marvin_panel_Button_14_0;
+leWidget* Marvin_panel_Button_15_0;
+leWidget* Marvin_panel_Button_16_0;
+leWidget* Marvin_panel_Button_17_0;
+leLabelWidget* Marvin_label_A_1;
+leLabelWidget* Marvin_label_B_1;
+leLabelWidget* Marvin_label__1_1;
+leLabelWidget* Marvin_label__2_1;
+leWidget* Marvin_panel_TiltControl_1;
+leImageWidget* Marvin_image_TiltControl_1;
+leLabelWidget* Marvin_label_TILT_1;
+leWidget* Marvin_panel_Container_27_0;
+leWidget* Marvin_panel_Container_29_0;
+leWidget* Marvin_panel_Container_39_0;
+leWidget* Marvin_panel_Container_28_0;
+leWidget* Marvin_panel_Button_18_0;
+leLabelWidget* Marvin_label_Human_Player_1;
+leWidget* Marvin_panel_Text_2_1;
+leLabelWidget* Marvin_label_DISABLED_0;
+leWidget* Marvin_panel_Paragraph_2_0;
+leWidget* Marvin_panel_Container_30_0;
+leWidget* Marvin_panel_Container_31_0;
+leLabelWidget* Marvin_label_GUITAR_EXTENSION_0_0;
+leWidget* Marvin_panel_Button_19_0;
+leWidget* Marvin_panel_Button_20_0;
+leWidget* Marvin_panel_Button_21_0;
+leWidget* Marvin_panel_Button_22_0;
+leWidget* Marvin_panel_Button_23_0;
+leWidget* Marvin_panel_Container_32_0;
+leWidget* Marvin_panel_Container_33_0;
+leWidget* Marvin_panel_Container_38_0;
+leWidget* Marvin_panel_Button_24_0;
+leWidget* Marvin_panel_Button_25_0;
+leWidget* Marvin_panel_Icon_2_0;
+leLabelWidget* Marvin_label__UP_0_0;
+leImageWidget* Marvin_image_Icon_2_0;
+leWidget* Marvin_panel_Icon_3_0;
+leLabelWidget* Marvin_label__DN_0_0;
+leImageWidget* Marvin_image_Icon_3_0;
+leLabelWidget* Marvin_label_WHAMMY_0_0;
+leWidget* Marvin_panel_WhammySlider_0_0;
+leWidget* Marvin_panel_Container_34_0;
+leWidget* Marvin_panel_Container_35_1;
+leWidget* Marvin_panel_Container_36_1;
+leWidget* Marvin_panel_Container_37_0;
+leWidget* Marvin_panel_Button_26_0;
+leWidget* Marvin_panel_Button_27_0;
+leLabelWidget* Marvin_label___5_0;
+leLabelWidget* Marvin_label___6_0;
+leWidget* Marvin_panel_Container_40_0;
+leWidget* Marvin_panel_Container_42_0;
+leWidget* Marvin_panel_Container_44_0;
+leWidget* Marvin_panel_Paragraph_3_0;
+leWidget* Marvin_panel_Container_41_0;
+leLabelWidget* Marvin_label_WIIMOTE_0_0;
+leWidget* Marvin_panel_Button_28_0;
+leWidget* Marvin_panel_Button_29_0;
+leWidget* Marvin_panel_Button_30_0;
+leWidget* Marvin_panel_Button_31_0;
+leLabelWidget* Marvin_label___7_0;
+leLabelWidget* Marvin_label___8_0;
+leLabelWidget* Marvin_label___9_0;
+leLabelWidget* Marvin_label___10_0;
+leWidget* Marvin_panel_Button_32_0;
+leWidget* Marvin_panel_Container_43_0;
+leLabelWidget* Marvin_label_HOME_0_0;
+leWidget* Marvin_panel_Button_33_0;
+leWidget* Marvin_panel_Button_34_0;
+leWidget* Marvin_panel_Button_35_0;
+leWidget* Marvin_panel_Button_36_0;
+leLabelWidget* Marvin_label_A_0_0;
+leLabelWidget* Marvin_label_B_0_0;
+leLabelWidget* Marvin_label__1_0_0;
+leLabelWidget* Marvin_label__2_0_0;
+leWidget* Marvin_panel_TiltControl_0_0;
+leImageWidget* Marvin_image_TiltControl_0_0;
+leLabelWidget* Marvin_label_TILT_0_0;
 
 static leBool initialized = LE_FALSE;
 static leBool showing = LE_FALSE;
@@ -374,7 +532,6 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_ROBOT->fn->setPosition(Marvin_PANEL_DASHBOARD_ROBOT, 0, 12);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->setSize(Marvin_PANEL_DASHBOARD_ROBOT, 256, 716);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT, &SCHEME_PANEL_GRAY_18181B);
-    Marvin_PANEL_DASHBOARD_ROBOT->fn->setBorderType(Marvin_PANEL_DASHBOARD_ROBOT, LE_WIDGET_BORDER_LINE);
     Marvin_PANEL_DASHBOARD_BOTTOM->fn->addChild(Marvin_PANEL_DASHBOARD_BOTTOM, (leWidget*)Marvin_PANEL_DASHBOARD_ROBOT);
 
     Marvin_PANEL_DASHBOARD_ROBOT_PLAYER = leWidget_New();
@@ -389,7 +546,7 @@ leResult screenShow_Marvin(void)
     Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER->fn->setSize(Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER, 254, 208);
     Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER->fn->setScheme(Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER, &SCHEME_BACKGROUND);
     Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER->fn->setBorderType(Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER, LE_WIDGET_BORDER_NONE);
-    Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER->fn->setImage(Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER, (leImage*)&LemmyOnStagePlayerImage);
+    Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER->fn->setImage(Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER, (leImage*)&LemmyOnStagePlayerImage_gradient);
     Marvin_PANEL_DASHBOARD_ROBOT_PLAYER->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT_PLAYER, (leWidget*)Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER);
 
     Marvin_LABEL_DASHBOARD_ROBOT_Name = leLabelWidget_New();
@@ -914,6 +1071,14 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_DASHBOARD_ROBOT_ACTUATOR_GUITAR_1->fn->setBorderType(Marvin_BUTTON_DASHBOARD_ROBOT_ACTUATOR_GUITAR_1, LE_WIDGET_BORDER_NONE);
     Marvin_PANEL_DASHBOARD_ROBOT_ACTUATORS->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT_ACTUATORS, (leWidget*)Marvin_BUTTON_DASHBOARD_ROBOT_ACTUATOR_GUITAR_1);
 
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER = leWidget_New();
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER->fn->setPosition(Marvin_PANEL_DASHBOARD_ROBOT_BORDER, 0, 0);
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER->fn->setSize(Marvin_PANEL_DASHBOARD_ROBOT_BORDER, 256, 716);
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_BORDER, &SCHEME_PANEL_GRAY_18181B);
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER->fn->setBackgroundType(Marvin_PANEL_DASHBOARD_ROBOT_BORDER, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER->fn->setBorderType(Marvin_PANEL_DASHBOARD_ROBOT_BORDER, LE_WIDGET_BORDER_LINE);
+    Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_PANEL_DASHBOARD_ROBOT_BORDER);
+
     Marvin_PANEL_DASHBOARD_GAMEPLAY = leWidget_New();
     Marvin_PANEL_DASHBOARD_GAMEPLAY->fn->setPosition(Marvin_PANEL_DASHBOARD_GAMEPLAY, 268, 12);
     Marvin_PANEL_DASHBOARD_GAMEPLAY->fn->setSize(Marvin_PANEL_DASHBOARD_GAMEPLAY, 720, 716);
@@ -1303,107 +1468,75 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_HUMAN->fn->setBorderType(Marvin_PANEL_DASHBOARD_HUMAN, LE_WIDGET_BORDER_LINE);
     Marvin_PANEL_DASHBOARD_BOTTOM->fn->addChild(Marvin_PANEL_DASHBOARD_BOTTOM, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN);
 
-    Marvin_panel_Container_75_0 = leWidget_New();
-    Marvin_panel_Container_75_0->fn->setPosition(Marvin_panel_Container_75_0, 1, 1);
-    Marvin_panel_Container_75_0->fn->setSize(Marvin_panel_Container_75_0, 254, 208);
-    Marvin_panel_Container_75_0->fn->setScheme(Marvin_panel_Container_75_0, &panel_black_0);
-    Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_panel_Container_75_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER = leWidget_New();
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, 1, 1);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, 254, 208);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, &panel_black_0);
+    Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_PLAYER);
 
-    Marvin_panel_Image__Player__0 = leWidget_New();
-    Marvin_panel_Image__Player__0->fn->setPosition(Marvin_panel_Image__Player__0, 0, 0);
-    Marvin_panel_Image__Player__0->fn->setSize(Marvin_panel_Image__Player__0, 254, 207);
-    Marvin_panel_Image__Player__0->fn->setScheme(Marvin_panel_Image__Player__0, &Scheme4);
-    Marvin_panel_Container_75_0->fn->addChild(Marvin_panel_Container_75_0, (leWidget*)Marvin_panel_Image__Player__0);
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER = leImageWidget_New();
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER->fn->setPosition(Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER, 0, 0);
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER->fn->setSize(Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER, 254, 208);
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER->fn->setScheme(Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER, &SCHEME_BACKGROUND);
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER->fn->setBorderType(Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER, LE_WIDGET_BORDER_NONE);
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER->fn->setImage(Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER, (leImage*)&HumanPlayer_gradient);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, (leWidget*)Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER);
 
-    Marvin_panel_Container_76_0 = leWidget_New();
-    Marvin_panel_Container_76_0->fn->setPosition(Marvin_panel_Container_76_0, 0, 0);
-    Marvin_panel_Container_76_0->fn->setSize(Marvin_panel_Container_76_0, 254, 207);
-    Marvin_panel_Container_76_0->fn->setScheme(Marvin_panel_Container_76_0, &Scheme4);
-    Marvin_panel_Container_75_0->fn->addChild(Marvin_panel_Container_75_0, (leWidget*)Marvin_panel_Container_76_0);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name = leLabelWidget_New();
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setPosition(Marvin_LABEL_DASHBOARD_HUMAN_Name, 12, 166);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setSize(Marvin_LABEL_DASHBOARD_HUMAN_Name, 160, 18);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_Name, &SCHEME_TEXT_HUMAN);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_Name, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_Name, LE_VALIGN_TOP);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_Name, 0, 0, 0, 0);
+    Marvin_LABEL_DASHBOARD_HUMAN_Name->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_Name, (leString*)&string_figmaStr_PLAYER);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, (leWidget*)Marvin_LABEL_DASHBOARD_HUMAN_Name);
 
-    Marvin_panel_Container_77_0 = leWidget_New();
-    Marvin_panel_Container_77_0->fn->setPosition(Marvin_panel_Container_77_0, 12, 166);
-    Marvin_panel_Container_77_0->fn->setSize(Marvin_panel_Container_77_0, 230, 34);
-    Marvin_panel_Container_77_0->fn->setScheme(Marvin_panel_Container_77_0, &SCHEME_BACKGROUND);
-    Marvin_panel_Container_77_0->fn->setBackgroundType(Marvin_panel_Container_77_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_75_0->fn->addChild(Marvin_panel_Container_75_0, (leWidget*)Marvin_panel_Container_77_0);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer = leLabelWidget_New();
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setPosition(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, 12, 184);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setSize(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, 160, 16);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, &Scheme10);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, LE_VALIGN_TOP);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, 0, 0, 0, 0);
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer, (leString*)&string_figmaStr_Human_Player);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, (leWidget*)Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer);
 
-    Marvin_panel_Container_78_0 = leWidget_New();
-    Marvin_panel_Container_78_0->fn->setPosition(Marvin_panel_Container_78_0, 0, 0);
-    Marvin_panel_Container_78_0->fn->setSize(Marvin_panel_Container_78_0, 87, 34);
-    Marvin_panel_Container_78_0->fn->setScheme(Marvin_panel_Container_78_0, &SCHEME_BACKGROUND);
-    Marvin_panel_Container_78_0->fn->setBackgroundType(Marvin_panel_Container_78_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_77_0->fn->addChild(Marvin_panel_Container_77_0, (leWidget*)Marvin_panel_Container_78_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE = leWidget_New();
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_STATE, 185, 180);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_STATE, 57, 20);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_STATE, &Scheme11);
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_PLAYER, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_STATE);
 
-    Marvin_panel_Paragraph_10_0 = leWidget_New();
-    Marvin_panel_Paragraph_10_0->fn->setPosition(Marvin_panel_Paragraph_10_0, 0, 0);
-    Marvin_panel_Paragraph_10_0->fn->setSize(Marvin_panel_Paragraph_10_0, 87, 18);
-    Marvin_panel_Paragraph_10_0->fn->setScheme(Marvin_panel_Paragraph_10_0, &SCHEME_BACKGROUND);
-    Marvin_panel_Paragraph_10_0->fn->setBackgroundType(Marvin_panel_Paragraph_10_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_78_0->fn->addChild(Marvin_panel_Container_78_0, (leWidget*)Marvin_panel_Paragraph_10_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED = leWidget_New();
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED, 8, 7);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED, 6, 6);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED, &Scheme12);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_STATE, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED);
 
-    Marvin_label_PLAYER_0 = leLabelWidget_New();
-    Marvin_label_PLAYER_0->fn->setPosition(Marvin_label_PLAYER_0, 0, 0);
-    Marvin_label_PLAYER_0->fn->setSize(Marvin_label_PLAYER_0, 160, 18);
-    Marvin_label_PLAYER_0->fn->setScheme(Marvin_label_PLAYER_0, &SCHEME_TEXT_HUMAN);
-    Marvin_label_PLAYER_0->fn->setBackgroundType(Marvin_label_PLAYER_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_label_PLAYER_0->fn->setVAlignment(Marvin_label_PLAYER_0, LE_VALIGN_TOP);
-    Marvin_label_PLAYER_0->fn->setMargins(Marvin_label_PLAYER_0, 0, 0, 0, 0);
-    Marvin_label_PLAYER_0->fn->setString(Marvin_label_PLAYER_0, (leString*)&string_figmaStr_PLAYER);
-    Marvin_panel_Paragraph_10_0->fn->addChild(Marvin_panel_Paragraph_10_0, (leWidget*)Marvin_label_PLAYER_0);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE = leLabelWidget_New();
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setPosition(Marvin_LABEL_DASHBOARD_HUMAN_STATE, 20, 2);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setSize(Marvin_LABEL_DASHBOARD_HUMAN_STATE, 29, 16);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_STATE, &text_dimgray);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_STATE, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_STATE, LE_VALIGN_TOP);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_STATE, 0, 0, 0, 0);
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_STATE, (leString*)&string_figmaStr_IDLE_1);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_STATE, (leWidget*)Marvin_LABEL_DASHBOARD_HUMAN_STATE);
 
-    Marvin_panel_Paragraph_11_0 = leWidget_New();
-    Marvin_panel_Paragraph_11_0->fn->setPosition(Marvin_panel_Paragraph_11_0, 0, 18);
-    Marvin_panel_Paragraph_11_0->fn->setSize(Marvin_panel_Paragraph_11_0, 87, 16);
-    Marvin_panel_Paragraph_11_0->fn->setScheme(Marvin_panel_Paragraph_11_0, &SCHEME_BACKGROUND);
-    Marvin_panel_Paragraph_11_0->fn->setBackgroundType(Marvin_panel_Paragraph_11_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_78_0->fn->addChild(Marvin_panel_Container_78_0, (leWidget*)Marvin_panel_Paragraph_11_0);
-
-    Marvin_label_Human_Player_0 = leLabelWidget_New();
-    Marvin_label_Human_Player_0->fn->setPosition(Marvin_label_Human_Player_0, 0, 0);
-    Marvin_label_Human_Player_0->fn->setSize(Marvin_label_Human_Player_0, 160, 16);
-    Marvin_label_Human_Player_0->fn->setScheme(Marvin_label_Human_Player_0, &Scheme10);
-    Marvin_label_Human_Player_0->fn->setBackgroundType(Marvin_label_Human_Player_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_label_Human_Player_0->fn->setVAlignment(Marvin_label_Human_Player_0, LE_VALIGN_TOP);
-    Marvin_label_Human_Player_0->fn->setMargins(Marvin_label_Human_Player_0, 0, 0, 0, 0);
-    Marvin_label_Human_Player_0->fn->setString(Marvin_label_Human_Player_0, (leString*)&string_figmaStr_Human_Player);
-    Marvin_panel_Paragraph_11_0->fn->addChild(Marvin_panel_Paragraph_11_0, (leWidget*)Marvin_label_Human_Player_0);
-
-    Marvin_panel_Container_79_0 = leWidget_New();
-    Marvin_panel_Container_79_0->fn->setPosition(Marvin_panel_Container_79_0, 173, 14);
-    Marvin_panel_Container_79_0->fn->setSize(Marvin_panel_Container_79_0, 57, 20);
-    Marvin_panel_Container_79_0->fn->setScheme(Marvin_panel_Container_79_0, &Scheme11);
-    Marvin_panel_Container_77_0->fn->addChild(Marvin_panel_Container_77_0, (leWidget*)Marvin_panel_Container_79_0);
-
-    Marvin_panel_Text_21_0 = leWidget_New();
-    Marvin_panel_Text_21_0->fn->setPosition(Marvin_panel_Text_21_0, 8, 7);
-    Marvin_panel_Text_21_0->fn->setSize(Marvin_panel_Text_21_0, 6, 6);
-    Marvin_panel_Text_21_0->fn->setScheme(Marvin_panel_Text_21_0, &Scheme12);
-    Marvin_panel_Container_79_0->fn->addChild(Marvin_panel_Container_79_0, (leWidget*)Marvin_panel_Text_21_0);
-
-    Marvin_label_IDLE_1_0 = leLabelWidget_New();
-    Marvin_label_IDLE_1_0->fn->setPosition(Marvin_label_IDLE_1_0, 20, 2);
-    Marvin_label_IDLE_1_0->fn->setSize(Marvin_label_IDLE_1_0, 29, 16);
-    Marvin_label_IDLE_1_0->fn->setScheme(Marvin_label_IDLE_1_0, &text_dimgray);
-    Marvin_label_IDLE_1_0->fn->setBackgroundType(Marvin_label_IDLE_1_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_label_IDLE_1_0->fn->setVAlignment(Marvin_label_IDLE_1_0, LE_VALIGN_TOP);
-    Marvin_label_IDLE_1_0->fn->setMargins(Marvin_label_IDLE_1_0, 0, 0, 0, 0);
-    Marvin_label_IDLE_1_0->fn->setString(Marvin_label_IDLE_1_0, (leString*)&string_figmaStr_IDLE_1);
-    Marvin_panel_Container_79_0->fn->addChild(Marvin_panel_Container_79_0, (leWidget*)Marvin_label_IDLE_1_0);
-
-    Marvin_panel_Container_80_0 = leWidget_New();
-    Marvin_panel_Container_80_0->fn->setPosition(Marvin_panel_Container_80_0, 1, 209);
-    Marvin_panel_Container_80_0->fn->setSize(Marvin_panel_Container_80_0, 254, 506);
-    Marvin_panel_Container_80_0->fn->setScheme(Marvin_panel_Container_80_0, &SCHEME_BACKGROUND);
-    Marvin_panel_Container_80_0->fn->setBackgroundType(Marvin_panel_Container_80_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_panel_Container_80_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY = leWidget_New();
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, 1, 209);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, 254, 506);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, &SCHEME_BACKGROUND);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->setBackgroundType(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY);
 
     Marvin_panel_Container_81_0 = leWidget_New();
     Marvin_panel_Container_81_0->fn->setPosition(Marvin_panel_Container_81_0, 12, 12);
     Marvin_panel_Container_81_0->fn->setSize(Marvin_panel_Container_81_0, 230, 52);
     Marvin_panel_Container_81_0->fn->setScheme(Marvin_panel_Container_81_0, &SCHEME_BACKGROUND);
     Marvin_panel_Container_81_0->fn->setBackgroundType(Marvin_panel_Container_81_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_80_0->fn->addChild(Marvin_panel_Container_80_0, (leWidget*)Marvin_panel_Container_81_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, (leWidget*)Marvin_panel_Container_81_0);
 
     Marvin_panel_Container_82_0 = leWidget_New();
     Marvin_panel_Container_82_0->fn->setPosition(Marvin_panel_Container_82_0, 0, 0);
@@ -1508,7 +1641,7 @@ leResult screenShow_Marvin(void)
     Marvin_panel_Container_84_0->fn->setSize(Marvin_panel_Container_84_0, 230, 26);
     Marvin_panel_Container_84_0->fn->setScheme(Marvin_panel_Container_84_0, &SCHEME_BACKGROUND);
     Marvin_panel_Container_84_0->fn->setBackgroundType(Marvin_panel_Container_84_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_80_0->fn->addChild(Marvin_panel_Container_80_0, (leWidget*)Marvin_panel_Container_84_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, (leWidget*)Marvin_panel_Container_84_0);
 
     Marvin_panel_Container_85_0 = leWidget_New();
     Marvin_panel_Container_85_0->fn->setPosition(Marvin_panel_Container_85_0, 0, 0);
@@ -1649,7 +1782,7 @@ leResult screenShow_Marvin(void)
     Marvin_panel_Container_93_0->fn->setSize(Marvin_panel_Container_93_0, 230, 28);
     Marvin_panel_Container_93_0->fn->setScheme(Marvin_panel_Container_93_0, &SCHEME_BACKGROUND);
     Marvin_panel_Container_93_0->fn->setBackgroundType(Marvin_panel_Container_93_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_80_0->fn->addChild(Marvin_panel_Container_80_0, (leWidget*)Marvin_panel_Container_93_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, (leWidget*)Marvin_panel_Container_93_0);
 
     Marvin_panel_Container_94_0 = leWidget_New();
     Marvin_panel_Container_94_0->fn->setPosition(Marvin_panel_Container_94_0, 0, 0);
@@ -1715,14 +1848,14 @@ leResult screenShow_Marvin(void)
     Marvin_panel_Container_97_0->fn->setPosition(Marvin_panel_Container_97_0, 12, 148);
     Marvin_panel_Container_97_0->fn->setSize(Marvin_panel_Container_97_0, 230, 1);
     Marvin_panel_Container_97_0->fn->setScheme(Marvin_panel_Container_97_0, &Scheme11);
-    Marvin_panel_Container_80_0->fn->addChild(Marvin_panel_Container_80_0, (leWidget*)Marvin_panel_Container_97_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, (leWidget*)Marvin_panel_Container_97_0);
 
     Marvin_panel_Container_98_0 = leWidget_New();
     Marvin_panel_Container_98_0->fn->setPosition(Marvin_panel_Container_98_0, 12, 159);
     Marvin_panel_Container_98_0->fn->setSize(Marvin_panel_Container_98_0, 230, 82);
     Marvin_panel_Container_98_0->fn->setScheme(Marvin_panel_Container_98_0, &SCHEME_BACKGROUND);
     Marvin_panel_Container_98_0->fn->setBackgroundType(Marvin_panel_Container_98_0, LE_WIDGET_BACKGROUND_NONE);
-    Marvin_panel_Container_80_0->fn->addChild(Marvin_panel_Container_80_0, (leWidget*)Marvin_panel_Container_98_0);
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY, (leWidget*)Marvin_panel_Container_98_0);
 
     Marvin_panel_Paragraph_13_0 = leWidget_New();
     Marvin_panel_Paragraph_13_0->fn->setPosition(Marvin_panel_Paragraph_13_0, 0, 0);
@@ -1870,6 +2003,14 @@ leResult screenShow_Marvin(void)
     Marvin_label__68__0->fn->setMargins(Marvin_label__68__0, 0, 0, 0, 0);
     Marvin_label__68__0->fn->setString(Marvin_label__68__0, (leString*)&string_figmaStr_68_);
     Marvin_panel_Text_37_0->fn->addChild(Marvin_panel_Text_37_0, (leWidget*)Marvin_label__68__0);
+
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER = leWidget_New();
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_BORDER, 0, 0);
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_BORDER, 256, 716);
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_BORDER, &SCHEME_PANEL_GRAY_18181B);
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER->fn->setBackgroundType(Marvin_PANEL_DASHBOARD_HUMAN_BORDER, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER->fn->setBorderType(Marvin_PANEL_DASHBOARD_HUMAN_BORDER, LE_WIDGET_BORDER_LINE);
+    Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_BORDER);
 
     leAddRootWidget(root0, 0);
     leSetLayerColorMode(0, LE_COLOR_MODE_RGB_565);
@@ -2430,6 +2571,1244 @@ leResult screenShow_Marvin(void)
     leAddRootWidget(root3, 3);
     leSetLayerColorMode(3, LE_COLOR_MODE_RGBA_8888);
 
+    // layer 4
+    root4 = leWidget_New();
+    root4->fn->setSize(root4, LE_DEFAULT_SCREEN_WIDTH, LE_DEFAULT_SCREEN_HEIGHT);
+    root4->fn->setBackgroundType(root4, LE_WIDGET_BACKGROUND_NONE);
+    root4->fn->setMargins(root4, 0, 0, 0, 0);
+    root4->flags |= LE_WIDGET_IGNOREEVENTS;
+    root4->flags |= LE_WIDGET_IGNOREPICK;
+
+    Marvin_panel_Marvin = leWidget_New();
+    Marvin_panel_Marvin->fn->setPosition(Marvin_panel_Marvin, 0, 0);
+    Marvin_panel_Marvin->fn->setSize(Marvin_panel_Marvin, 1280, 800);
+    Marvin_panel_Marvin->fn->setScheme(Marvin_panel_Marvin, &Scheme18);
+    root4->fn->addChild(root4, (leWidget*)Marvin_panel_Marvin);
+
+    Marvin_panel_App_0 = leWidget_New();
+    Marvin_panel_App_0->fn->setPosition(Marvin_panel_App_0, 0, 0);
+    Marvin_panel_App_0->fn->setSize(Marvin_panel_App_0, 1280, 800);
+    Marvin_panel_App_0->fn->setScheme(Marvin_panel_App_0, &Scheme20);
+    Marvin_panel_Marvin->fn->addChild(Marvin_panel_Marvin, (leWidget*)Marvin_panel_App_0);
+
+    Marvin_panel_Container_45 = leWidget_New();
+    Marvin_panel_Container_45->fn->setPosition(Marvin_panel_Container_45, 12, 12);
+    Marvin_panel_Container_45->fn->setSize(Marvin_panel_Container_45, 1256, 49);
+    Marvin_panel_Container_45->fn->setScheme(Marvin_panel_Container_45, &Scheme21);
+    Marvin_panel_App_0->fn->addChild(Marvin_panel_App_0, (leWidget*)Marvin_panel_Container_45);
+
+    Marvin_panel_Container_0_0 = leWidget_New();
+    Marvin_panel_Container_0_0->fn->setPosition(Marvin_panel_Container_0_0, 0, 0);
+    Marvin_panel_Container_0_0->fn->setSize(Marvin_panel_Container_0_0, 390, 40);
+    Marvin_panel_Container_0_0->fn->setScheme(Marvin_panel_Container_0_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_0_0->fn->setBackgroundType(Marvin_panel_Container_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_45->fn->addChild(Marvin_panel_Container_45, (leWidget*)Marvin_panel_Container_0_0);
+
+    Marvin_panel_Button___Open_menu_0 = leWidget_New();
+    Marvin_panel_Button___Open_menu_0->fn->setPosition(Marvin_panel_Button___Open_menu_0, 0, 0);
+    Marvin_panel_Button___Open_menu_0->fn->setSize(Marvin_panel_Button___Open_menu_0, 40, 40);
+    Marvin_panel_Button___Open_menu_0->fn->setScheme(Marvin_panel_Button___Open_menu_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Button___Open_menu_0->fn->setBackgroundType(Marvin_panel_Button___Open_menu_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_0_0->fn->addChild(Marvin_panel_Container_0_0, (leWidget*)Marvin_panel_Button___Open_menu_0);
+
+    Marvin_panel_Icon_4 = leWidget_New();
+    Marvin_panel_Icon_4->fn->setPosition(Marvin_panel_Icon_4, 8, 8);
+    Marvin_panel_Icon_4->fn->setSize(Marvin_panel_Icon_4, 24, 24);
+    Marvin_panel_Icon_4->fn->setScheme(Marvin_panel_Icon_4, &SCHEME_BACKGROUND);
+    Marvin_panel_Icon_4->fn->setBackgroundType(Marvin_panel_Icon_4, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Button___Open_menu_0->fn->addChild(Marvin_panel_Button___Open_menu_0, (leWidget*)Marvin_panel_Icon_4);
+
+    Marvin_image_Icon_4 = leImageWidget_New();
+    Marvin_image_Icon_4->fn->setPosition(Marvin_image_Icon_4, 0, 0);
+    Marvin_image_Icon_4->fn->setSize(Marvin_image_Icon_4, 24, 24);
+    Marvin_image_Icon_4->fn->setScheme(Marvin_image_Icon_4, &SCHEME_BACKGROUND);
+    Marvin_image_Icon_4->fn->setBackgroundType(Marvin_image_Icon_4, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_Icon_4->fn->setBorderType(Marvin_image_Icon_4, LE_WIDGET_BORDER_NONE);
+    Marvin_image_Icon_4->fn->setImage(Marvin_image_Icon_4, (leImage*)&figmaImg_Icon);
+    Marvin_panel_Icon_4->fn->addChild(Marvin_panel_Icon_4, (leWidget*)Marvin_image_Icon_4);
+
+    Marvin_panel_Container_1_0 = leWidget_New();
+    Marvin_panel_Container_1_0->fn->setPosition(Marvin_panel_Container_1_0, 52, 6);
+    Marvin_panel_Container_1_0->fn->setSize(Marvin_panel_Container_1_0, 338, 28);
+    Marvin_panel_Container_1_0->fn->setScheme(Marvin_panel_Container_1_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_1_0->fn->setBackgroundType(Marvin_panel_Container_1_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_0_0->fn->addChild(Marvin_panel_Container_0_0, (leWidget*)Marvin_panel_Container_1_0);
+
+    Marvin_panel_Heading_1_0 = leWidget_New();
+    Marvin_panel_Heading_1_0->fn->setPosition(Marvin_panel_Heading_1_0, 0, 0);
+    Marvin_panel_Heading_1_0->fn->setSize(Marvin_panel_Heading_1_0, 338, 28);
+    Marvin_panel_Heading_1_0->fn->setScheme(Marvin_panel_Heading_1_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Heading_1_0->fn->setBackgroundType(Marvin_panel_Heading_1_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_1_0->fn->addChild(Marvin_panel_Container_1_0, (leWidget*)Marvin_panel_Heading_1_0);
+
+    Marvin_label_GUITAR_PIC_0 = leLabelWidget_New();
+    Marvin_label_GUITAR_PIC_0->fn->setPosition(Marvin_label_GUITAR_PIC_0, 0, 0);
+    Marvin_label_GUITAR_PIC_0->fn->setSize(Marvin_label_GUITAR_PIC_0, 338, 28);
+    Marvin_label_GUITAR_PIC_0->fn->setScheme(Marvin_label_GUITAR_PIC_0, &Scheme22);
+    Marvin_label_GUITAR_PIC_0->fn->setBackgroundType(Marvin_label_GUITAR_PIC_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_GUITAR_PIC_0->fn->setVAlignment(Marvin_label_GUITAR_PIC_0, LE_VALIGN_TOP);
+    Marvin_label_GUITAR_PIC_0->fn->setMargins(Marvin_label_GUITAR_PIC_0, 0, 0, 0, 0);
+    Marvin_label_GUITAR_PIC_0->fn->setString(Marvin_label_GUITAR_PIC_0, (leString*)&string_figmaStr_GUITAR_PIC);
+    Marvin_panel_Heading_1_0->fn->addChild(Marvin_panel_Heading_1_0, (leWidget*)Marvin_label_GUITAR_PIC_0);
+
+    Marvin_panel_Container_2_0 = leWidget_New();
+    Marvin_panel_Container_2_0->fn->setPosition(Marvin_panel_Container_2_0, 1083, 4);
+    Marvin_panel_Container_2_0->fn->setSize(Marvin_panel_Container_2_0, 174, 32);
+    Marvin_panel_Container_2_0->fn->setScheme(Marvin_panel_Container_2_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_2_0->fn->setBackgroundType(Marvin_panel_Container_2_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_45->fn->addChild(Marvin_panel_Container_45, (leWidget*)Marvin_panel_Container_2_0);
+
+    Marvin_panel_Container_3_1 = leWidget_New();
+    Marvin_panel_Container_3_1->fn->setPosition(Marvin_panel_Container_3_1, 0, 10);
+    Marvin_panel_Container_3_1->fn->setSize(Marvin_panel_Container_3_1, 12, 12);
+    Marvin_panel_Container_3_1->fn->setScheme(Marvin_panel_Container_3_1, &Scheme23);
+    Marvin_panel_Container_2_0->fn->addChild(Marvin_panel_Container_2_0, (leWidget*)Marvin_panel_Container_3_1);
+
+    Marvin_panel_Image__Microchip__margin_0 = leWidget_New();
+    Marvin_panel_Image__Microchip__margin_0->fn->setPosition(Marvin_panel_Image__Microchip__margin_0, 28, 0);
+    Marvin_panel_Image__Microchip__margin_0->fn->setSize(Marvin_panel_Image__Microchip__margin_0, 146, 32);
+    Marvin_panel_Image__Microchip__margin_0->fn->setScheme(Marvin_panel_Image__Microchip__margin_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Image__Microchip__margin_0->fn->setBackgroundType(Marvin_panel_Image__Microchip__margin_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_2_0->fn->addChild(Marvin_panel_Container_2_0, (leWidget*)Marvin_panel_Image__Microchip__margin_0);
+
+    Marvin_panel_Image__Microchip__0 = leWidget_New();
+    Marvin_panel_Image__Microchip__0->fn->setPosition(Marvin_panel_Image__Microchip__0, 8, 0);
+    Marvin_panel_Image__Microchip__0->fn->setSize(Marvin_panel_Image__Microchip__0, 138, 32);
+    Marvin_panel_Image__Microchip__0->fn->setScheme(Marvin_panel_Image__Microchip__0, &Scheme20);
+    Marvin_panel_Image__Microchip__margin_0->fn->addChild(Marvin_panel_Image__Microchip__margin_0, (leWidget*)Marvin_panel_Image__Microchip__0);
+
+    Marvin_panel_Container_4_0 = leWidget_New();
+    Marvin_panel_Container_4_0->fn->setPosition(Marvin_panel_Container_4_0, 12, 61);
+    Marvin_panel_Container_4_0->fn->setSize(Marvin_panel_Container_4_0, 1256, 728);
+    Marvin_panel_Container_4_0->fn->setScheme(Marvin_panel_Container_4_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_4_0->fn->setBackgroundType(Marvin_panel_Container_4_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_App_0->fn->addChild(Marvin_panel_App_0, (leWidget*)Marvin_panel_Container_4_0);
+
+    Marvin_panel_Container_5_0 = leWidget_New();
+    Marvin_panel_Container_5_0->fn->setPosition(Marvin_panel_Container_5_0, 0, 12);
+    Marvin_panel_Container_5_0->fn->setSize(Marvin_panel_Container_5_0, 1256, 44);
+    Marvin_panel_Container_5_0->fn->setScheme(Marvin_panel_Container_5_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_5_0->fn->setBackgroundType(Marvin_panel_Container_5_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_4_0->fn->addChild(Marvin_panel_Container_4_0, (leWidget*)Marvin_panel_Container_5_0);
+
+    Marvin_panel_Container_6_0 = leWidget_New();
+    Marvin_panel_Container_6_0->fn->setPosition(Marvin_panel_Container_6_0, 0, 0);
+    Marvin_panel_Container_6_0->fn->setSize(Marvin_panel_Container_6_0, 369, 44);
+    Marvin_panel_Container_6_0->fn->setScheme(Marvin_panel_Container_6_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_6_0->fn->setBackgroundType(Marvin_panel_Container_6_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_5_0->fn->addChild(Marvin_panel_Container_5_0, (leWidget*)Marvin_panel_Container_6_0);
+
+    Marvin_panel_Heading_2_0 = leWidget_New();
+    Marvin_panel_Heading_2_0->fn->setPosition(Marvin_panel_Heading_2_0, 0, 0);
+    Marvin_panel_Heading_2_0->fn->setSize(Marvin_panel_Heading_2_0, 369, 28);
+    Marvin_panel_Heading_2_0->fn->setScheme(Marvin_panel_Heading_2_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Heading_2_0->fn->setBackgroundType(Marvin_panel_Heading_2_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_6_0->fn->addChild(Marvin_panel_Container_6_0, (leWidget*)Marvin_panel_Heading_2_0);
+
+    Marvin_label_MANUAL_OVERRIDE_0 = leLabelWidget_New();
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setPosition(Marvin_label_MANUAL_OVERRIDE_0, 0, 0);
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setSize(Marvin_label_MANUAL_OVERRIDE_0, 163, 28);
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setScheme(Marvin_label_MANUAL_OVERRIDE_0, &Scheme22);
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setBackgroundType(Marvin_label_MANUAL_OVERRIDE_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setVAlignment(Marvin_label_MANUAL_OVERRIDE_0, LE_VALIGN_TOP);
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setMargins(Marvin_label_MANUAL_OVERRIDE_0, 0, 0, 0, 0);
+    Marvin_label_MANUAL_OVERRIDE_0->fn->setString(Marvin_label_MANUAL_OVERRIDE_0, (leString*)&string_figmaStr_MANUAL_OVERRIDE);
+    Marvin_panel_Heading_2_0->fn->addChild(Marvin_panel_Heading_2_0, (leWidget*)Marvin_label_MANUAL_OVERRIDE_0);
+
+    Marvin_panel_Paragraph_4 = leWidget_New();
+    Marvin_panel_Paragraph_4->fn->setPosition(Marvin_panel_Paragraph_4, 0, 28);
+    Marvin_panel_Paragraph_4->fn->setSize(Marvin_panel_Paragraph_4, 369, 16);
+    Marvin_panel_Paragraph_4->fn->setScheme(Marvin_panel_Paragraph_4, &SCHEME_BACKGROUND);
+    Marvin_panel_Paragraph_4->fn->setBackgroundType(Marvin_panel_Paragraph_4, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_6_0->fn->addChild(Marvin_panel_Container_6_0, (leWidget*)Marvin_panel_Paragraph_4);
+
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0 = leLabelWidget_New();
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setPosition(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, 0, 0);
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setSize(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, 369, 16);
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setScheme(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, &Scheme24);
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setBackgroundType(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setVAlignment(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, LE_VALIGN_TOP);
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setMargins(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, 0, 0, 0, 0);
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0->fn->setString(Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0, (leString*)&string_figmaStr_Direct_injection___Wiimote___Guitar_Hero_extension);
+    Marvin_panel_Paragraph_4->fn->addChild(Marvin_panel_Paragraph_4, (leWidget*)Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0);
+
+    Marvin_panel_Container_7_0 = leWidget_New();
+    Marvin_panel_Container_7_0->fn->setPosition(Marvin_panel_Container_7_0, 1120, 7);
+    Marvin_panel_Container_7_0->fn->setSize(Marvin_panel_Container_7_0, 136, 30);
+    Marvin_panel_Container_7_0->fn->setScheme(Marvin_panel_Container_7_0, &Scheme25);
+    Marvin_panel_Container_5_0->fn->addChild(Marvin_panel_Container_5_0, (leWidget*)Marvin_panel_Container_7_0);
+
+    Marvin_panel_Text_3 = leWidget_New();
+    Marvin_panel_Text_3->fn->setPosition(Marvin_panel_Text_3, 13, 11);
+    Marvin_panel_Text_3->fn->setSize(Marvin_panel_Text_3, 8, 8);
+    Marvin_panel_Text_3->fn->setScheme(Marvin_panel_Text_3, &Scheme26);
+    Marvin_panel_Container_7_0->fn->addChild(Marvin_panel_Container_7_0, (leWidget*)Marvin_panel_Text_3);
+
+    Marvin_panel_Text_0_1 = leWidget_New();
+    Marvin_panel_Text_0_1->fn->setPosition(Marvin_panel_Text_0_1, 29, 7);
+    Marvin_panel_Text_0_1->fn->setSize(Marvin_panel_Text_0_1, 94, 16);
+    Marvin_panel_Text_0_1->fn->setScheme(Marvin_panel_Text_0_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Text_0_1->fn->setBackgroundType(Marvin_panel_Text_0_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_7_0->fn->addChild(Marvin_panel_Container_7_0, (leWidget*)Marvin_panel_Text_0_1);
+
+    Marvin_label_OVERRIDE_MODE_0 = leLabelWidget_New();
+    Marvin_label_OVERRIDE_MODE_0->fn->setPosition(Marvin_label_OVERRIDE_MODE_0, 0, 0);
+    Marvin_label_OVERRIDE_MODE_0->fn->setSize(Marvin_label_OVERRIDE_MODE_0, 94, 16);
+    Marvin_label_OVERRIDE_MODE_0->fn->setScheme(Marvin_label_OVERRIDE_MODE_0, &Scheme27);
+    Marvin_label_OVERRIDE_MODE_0->fn->setBackgroundType(Marvin_label_OVERRIDE_MODE_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_OVERRIDE_MODE_0->fn->setVAlignment(Marvin_label_OVERRIDE_MODE_0, LE_VALIGN_TOP);
+    Marvin_label_OVERRIDE_MODE_0->fn->setMargins(Marvin_label_OVERRIDE_MODE_0, 0, 0, 0, 0);
+    Marvin_label_OVERRIDE_MODE_0->fn->setString(Marvin_label_OVERRIDE_MODE_0, (leString*)&string_figmaStr_OVERRIDE_MODE);
+    Marvin_panel_Text_0_1->fn->addChild(Marvin_panel_Text_0_1, (leWidget*)Marvin_label_OVERRIDE_MODE_0);
+
+    Marvin_panel_Container_8_0 = leWidget_New();
+    Marvin_panel_Container_8_0->fn->setPosition(Marvin_panel_Container_8_0, 0, 68);
+    Marvin_panel_Container_8_0->fn->setSize(Marvin_panel_Container_8_0, 1256, 660);
+    Marvin_panel_Container_8_0->fn->setScheme(Marvin_panel_Container_8_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_8_0->fn->setBackgroundType(Marvin_panel_Container_8_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_4_0->fn->addChild(Marvin_panel_Container_4_0, (leWidget*)Marvin_panel_Container_8_0);
+
+    Marvin_panel_ControllerPanel_1 = leWidget_New();
+    Marvin_panel_ControllerPanel_1->fn->setPosition(Marvin_panel_ControllerPanel_1, 0, 0);
+    Marvin_panel_ControllerPanel_1->fn->setSize(Marvin_panel_ControllerPanel_1, 620, 660);
+    Marvin_panel_ControllerPanel_1->fn->setScheme(Marvin_panel_ControllerPanel_1, &Scheme28);
+    Marvin_panel_Container_8_0->fn->addChild(Marvin_panel_Container_8_0, (leWidget*)Marvin_panel_ControllerPanel_1);
+
+    Marvin_panel_Container_9_0 = leWidget_New();
+    Marvin_panel_Container_9_0->fn->setPosition(Marvin_panel_Container_9_0, 17, 17);
+    Marvin_panel_Container_9_0->fn->setSize(Marvin_panel_Container_9_0, 586, 24);
+    Marvin_panel_Container_9_0->fn->setScheme(Marvin_panel_Container_9_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_9_0->fn->setBackgroundType(Marvin_panel_Container_9_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_ControllerPanel_1->fn->addChild(Marvin_panel_ControllerPanel_1, (leWidget*)Marvin_panel_Container_9_0);
+
+    Marvin_panel_Container_10_0 = leWidget_New();
+    Marvin_panel_Container_10_0->fn->setPosition(Marvin_panel_Container_10_0, 0, 2);
+    Marvin_panel_Container_10_0->fn->setSize(Marvin_panel_Container_10_0, 110, 20);
+    Marvin_panel_Container_10_0->fn->setScheme(Marvin_panel_Container_10_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_10_0->fn->setBackgroundType(Marvin_panel_Container_10_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_9_0->fn->addChild(Marvin_panel_Container_9_0, (leWidget*)Marvin_panel_Container_10_0);
+
+    Marvin_label_Robot__Lemmy__0 = leLabelWidget_New();
+    Marvin_label_Robot__Lemmy__0->fn->setPosition(Marvin_label_Robot__Lemmy__0, 0, 0);
+    Marvin_label_Robot__Lemmy__0->fn->setSize(Marvin_label_Robot__Lemmy__0, 110, 20);
+    Marvin_label_Robot__Lemmy__0->fn->setScheme(Marvin_label_Robot__Lemmy__0, &Scheme29);
+    Marvin_label_Robot__Lemmy__0->fn->setBackgroundType(Marvin_label_Robot__Lemmy__0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_Robot__Lemmy__0->fn->setVAlignment(Marvin_label_Robot__Lemmy__0, LE_VALIGN_TOP);
+    Marvin_label_Robot__Lemmy__0->fn->setMargins(Marvin_label_Robot__Lemmy__0, 0, 0, 0, 0);
+    Marvin_label_Robot__Lemmy__0->fn->setString(Marvin_label_Robot__Lemmy__0, (leString*)&string_figmaStr_Robot__Lemmy_);
+    Marvin_panel_Container_10_0->fn->addChild(Marvin_panel_Container_10_0, (leWidget*)Marvin_label_Robot__Lemmy__0);
+
+    Marvin_panel_Button_37 = leWidget_New();
+    Marvin_panel_Button_37->fn->setPosition(Marvin_panel_Button_37, 499, 0);
+    Marvin_panel_Button_37->fn->setSize(Marvin_panel_Button_37, 87, 24);
+    Marvin_panel_Button_37->fn->setScheme(Marvin_panel_Button_37, &Scheme30);
+    Marvin_panel_Container_9_0->fn->addChild(Marvin_panel_Container_9_0, (leWidget*)Marvin_panel_Button_37);
+
+    Marvin_panel_Text_1_1 = leWidget_New();
+    Marvin_panel_Text_1_1->fn->setPosition(Marvin_panel_Text_1_1, 12, 9);
+    Marvin_panel_Text_1_1->fn->setSize(Marvin_panel_Text_1_1, 6, 6);
+    Marvin_panel_Text_1_1->fn->setScheme(Marvin_panel_Text_1_1, &panel_springgreen);
+    Marvin_panel_Button_37->fn->addChild(Marvin_panel_Button_37, (leWidget*)Marvin_panel_Text_1_1);
+
+    Marvin_label_ENABLED_0 = leLabelWidget_New();
+    Marvin_label_ENABLED_0->fn->setPosition(Marvin_label_ENABLED_0, 24, 4);
+    Marvin_label_ENABLED_0->fn->setSize(Marvin_label_ENABLED_0, 51, 16);
+    Marvin_label_ENABLED_0->fn->setScheme(Marvin_label_ENABLED_0, &text_lightgreen);
+    Marvin_label_ENABLED_0->fn->setBackgroundType(Marvin_label_ENABLED_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_ENABLED_0->fn->setHAlignment(Marvin_label_ENABLED_0, LE_HALIGN_CENTER);
+    Marvin_label_ENABLED_0->fn->setVAlignment(Marvin_label_ENABLED_0, LE_VALIGN_TOP);
+    Marvin_label_ENABLED_0->fn->setMargins(Marvin_label_ENABLED_0, 0, 0, 0, 0);
+    Marvin_label_ENABLED_0->fn->setString(Marvin_label_ENABLED_0, (leString*)&string_figmaStr_ENABLED);
+    Marvin_panel_Button_37->fn->addChild(Marvin_panel_Button_37, (leWidget*)Marvin_label_ENABLED_0);
+
+    Marvin_panel_Container_11_1 = leWidget_New();
+    Marvin_panel_Container_11_1->fn->setPosition(Marvin_panel_Container_11_1, 17, 53);
+    Marvin_panel_Container_11_1->fn->setSize(Marvin_panel_Container_11_1, 586, 272);
+    Marvin_panel_Container_11_1->fn->setScheme(Marvin_panel_Container_11_1, &Scheme31);
+    Marvin_panel_ControllerPanel_1->fn->addChild(Marvin_panel_ControllerPanel_1, (leWidget*)Marvin_panel_Container_11_1);
+
+    Marvin_panel_Paragraph_0_0 = leWidget_New();
+    Marvin_panel_Paragraph_0_0->fn->setPosition(Marvin_panel_Paragraph_0_0, 12, 12);
+    Marvin_panel_Paragraph_0_0->fn->setSize(Marvin_panel_Paragraph_0_0, 562, 16);
+    Marvin_panel_Paragraph_0_0->fn->setScheme(Marvin_panel_Paragraph_0_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Paragraph_0_0->fn->setBackgroundType(Marvin_panel_Paragraph_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_11_1->fn->addChild(Marvin_panel_Container_11_1, (leWidget*)Marvin_panel_Paragraph_0_0);
+
+    Marvin_label_GUITAR_EXTENSION_1 = leLabelWidget_New();
+    Marvin_label_GUITAR_EXTENSION_1->fn->setPosition(Marvin_label_GUITAR_EXTENSION_1, 0, 0);
+    Marvin_label_GUITAR_EXTENSION_1->fn->setSize(Marvin_label_GUITAR_EXTENSION_1, 134, 16);
+    Marvin_label_GUITAR_EXTENSION_1->fn->setScheme(Marvin_label_GUITAR_EXTENSION_1, &Scheme24);
+    Marvin_label_GUITAR_EXTENSION_1->fn->setBackgroundType(Marvin_label_GUITAR_EXTENSION_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_GUITAR_EXTENSION_1->fn->setVAlignment(Marvin_label_GUITAR_EXTENSION_1, LE_VALIGN_TOP);
+    Marvin_label_GUITAR_EXTENSION_1->fn->setMargins(Marvin_label_GUITAR_EXTENSION_1, 0, 0, 0, 0);
+    Marvin_label_GUITAR_EXTENSION_1->fn->setString(Marvin_label_GUITAR_EXTENSION_1, (leString*)&string_figmaStr_GUITAR_EXTENSION);
+    Marvin_panel_Paragraph_0_0->fn->addChild(Marvin_panel_Paragraph_0_0, (leWidget*)Marvin_label_GUITAR_EXTENSION_1);
+
+    Marvin_panel_Container_12_1 = leWidget_New();
+    Marvin_panel_Container_12_1->fn->setPosition(Marvin_panel_Container_12_1, 12, 38);
+    Marvin_panel_Container_12_1->fn->setSize(Marvin_panel_Container_12_1, 564, 64);
+    Marvin_panel_Container_12_1->fn->setScheme(Marvin_panel_Container_12_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_12_1->fn->setBackgroundType(Marvin_panel_Container_12_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_11_1->fn->addChild(Marvin_panel_Container_11_1, (leWidget*)Marvin_panel_Container_12_1);
+
+    Marvin_panel_Button_0_0 = leWidget_New();
+    Marvin_panel_Button_0_0->fn->setPosition(Marvin_panel_Button_0_0, 0, 0);
+    Marvin_panel_Button_0_0->fn->setSize(Marvin_panel_Button_0_0, 107, 64);
+    Marvin_panel_Button_0_0->fn->setScheme(Marvin_panel_Button_0_0, &Scheme32);
+    Marvin_panel_Container_12_1->fn->addChild(Marvin_panel_Container_12_1, (leWidget*)Marvin_panel_Button_0_0);
+
+    Marvin_panel_Button_1_0 = leWidget_New();
+    Marvin_panel_Button_1_0->fn->setPosition(Marvin_panel_Button_1_0, 115, 0);
+    Marvin_panel_Button_1_0->fn->setSize(Marvin_panel_Button_1_0, 107, 64);
+    Marvin_panel_Button_1_0->fn->setScheme(Marvin_panel_Button_1_0, &panel_red);
+    Marvin_panel_Container_12_1->fn->addChild(Marvin_panel_Container_12_1, (leWidget*)Marvin_panel_Button_1_0);
+
+    Marvin_panel_Button_2_0 = leWidget_New();
+    Marvin_panel_Button_2_0->fn->setPosition(Marvin_panel_Button_2_0, 229, 0);
+    Marvin_panel_Button_2_0->fn->setSize(Marvin_panel_Button_2_0, 107, 64);
+    Marvin_panel_Button_2_0->fn->setScheme(Marvin_panel_Button_2_0, &panel_orange);
+    Marvin_panel_Container_12_1->fn->addChild(Marvin_panel_Container_12_1, (leWidget*)Marvin_panel_Button_2_0);
+
+    Marvin_panel_Button_3_0 = leWidget_New();
+    Marvin_panel_Button_3_0->fn->setPosition(Marvin_panel_Button_3_0, 344, 0);
+    Marvin_panel_Button_3_0->fn->setSize(Marvin_panel_Button_3_0, 107, 64);
+    Marvin_panel_Button_3_0->fn->setScheme(Marvin_panel_Button_3_0, &Scheme33);
+    Marvin_panel_Container_12_1->fn->addChild(Marvin_panel_Container_12_1, (leWidget*)Marvin_panel_Button_3_0);
+
+    Marvin_panel_Button_4_0 = leWidget_New();
+    Marvin_panel_Button_4_0->fn->setPosition(Marvin_panel_Button_4_0, 458, 0);
+    Marvin_panel_Button_4_0->fn->setSize(Marvin_panel_Button_4_0, 107, 64);
+    Marvin_panel_Button_4_0->fn->setScheme(Marvin_panel_Button_4_0, &Scheme34);
+    Marvin_panel_Container_12_1->fn->addChild(Marvin_panel_Container_12_1, (leWidget*)Marvin_panel_Button_4_0);
+
+    Marvin_panel_Container_13_0 = leWidget_New();
+    Marvin_panel_Container_13_0->fn->setPosition(Marvin_panel_Container_13_0, 12, 112);
+    Marvin_panel_Container_13_0->fn->setSize(Marvin_panel_Container_13_0, 564, 148);
+    Marvin_panel_Container_13_0->fn->setScheme(Marvin_panel_Container_13_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_13_0->fn->setBackgroundType(Marvin_panel_Container_13_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_11_1->fn->addChild(Marvin_panel_Container_11_1, (leWidget*)Marvin_panel_Container_13_0);
+
+    Marvin_panel_Container_14_1 = leWidget_New();
+    Marvin_panel_Container_14_1->fn->setPosition(Marvin_panel_Container_14_1, 0, 0);
+    Marvin_panel_Container_14_1->fn->setSize(Marvin_panel_Container_14_1, 180, 148);
+    Marvin_panel_Container_14_1->fn->setScheme(Marvin_panel_Container_14_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_14_1->fn->setBackgroundType(Marvin_panel_Container_14_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_13_0->fn->addChild(Marvin_panel_Container_13_0, (leWidget*)Marvin_panel_Container_14_1);
+
+    Marvin_panel_Button_5_0 = leWidget_New();
+    Marvin_panel_Button_5_0->fn->setPosition(Marvin_panel_Button_5_0, 0, 0);
+    Marvin_panel_Button_5_0->fn->setSize(Marvin_panel_Button_5_0, 180, 71);
+    Marvin_panel_Button_5_0->fn->setScheme(Marvin_panel_Button_5_0, &Scheme21);
+    Marvin_panel_Container_14_1->fn->addChild(Marvin_panel_Container_14_1, (leWidget*)Marvin_panel_Button_5_0);
+
+    Marvin_panel_Icon_0_0 = leWidget_New();
+    Marvin_panel_Icon_0_0->fn->setPosition(Marvin_panel_Icon_0_0, 65, 26);
+    Marvin_panel_Icon_0_0->fn->setSize(Marvin_panel_Icon_0_0, 20, 20);
+    Marvin_panel_Icon_0_0->fn->setScheme(Marvin_panel_Icon_0_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Icon_0_0->fn->setBackgroundType(Marvin_panel_Icon_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Button_5_0->fn->addChild(Marvin_panel_Button_5_0, (leWidget*)Marvin_panel_Icon_0_0);
+
+    Marvin_image_Icon_0_0 = leImageWidget_New();
+    Marvin_image_Icon_0_0->fn->setPosition(Marvin_image_Icon_0_0, 0, 0);
+    Marvin_image_Icon_0_0->fn->setSize(Marvin_image_Icon_0_0, 20, 20);
+    Marvin_image_Icon_0_0->fn->setScheme(Marvin_image_Icon_0_0, &SCHEME_BACKGROUND);
+    Marvin_image_Icon_0_0->fn->setBackgroundType(Marvin_image_Icon_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_Icon_0_0->fn->setBorderType(Marvin_image_Icon_0_0, LE_WIDGET_BORDER_NONE);
+    Marvin_image_Icon_0_0->fn->setImage(Marvin_image_Icon_0_0, (leImage*)&figmaImg_Icon_0_1);
+    Marvin_panel_Icon_0_0->fn->addChild(Marvin_panel_Icon_0_0, (leWidget*)Marvin_image_Icon_0_0);
+
+    Marvin_label__UP_1 = leLabelWidget_New();
+    Marvin_label__UP_1->fn->setPosition(Marvin_label__UP_1, 89, 26);
+    Marvin_label__UP_1->fn->setSize(Marvin_label__UP_1, 26, 20);
+    Marvin_label__UP_1->fn->setScheme(Marvin_label__UP_1, &Scheme35);
+    Marvin_label__UP_1->fn->setBackgroundType(Marvin_label__UP_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__UP_1->fn->setHAlignment(Marvin_label__UP_1, LE_HALIGN_CENTER);
+    Marvin_label__UP_1->fn->setVAlignment(Marvin_label__UP_1, LE_VALIGN_TOP);
+    Marvin_label__UP_1->fn->setMargins(Marvin_label__UP_1, 0, 0, 0, 0);
+    Marvin_label__UP_1->fn->setString(Marvin_label__UP_1, (leString*)&string_figmaStr__UP);
+    Marvin_panel_Button_5_0->fn->addChild(Marvin_panel_Button_5_0, (leWidget*)Marvin_label__UP_1);
+
+    Marvin_panel_Button_6_0 = leWidget_New();
+    Marvin_panel_Button_6_0->fn->setPosition(Marvin_panel_Button_6_0, 0, 77);
+    Marvin_panel_Button_6_0->fn->setSize(Marvin_panel_Button_6_0, 180, 71);
+    Marvin_panel_Button_6_0->fn->setScheme(Marvin_panel_Button_6_0, &Scheme21);
+    Marvin_panel_Container_14_1->fn->addChild(Marvin_panel_Container_14_1, (leWidget*)Marvin_panel_Button_6_0);
+
+    Marvin_panel_Icon_1_0 = leWidget_New();
+    Marvin_panel_Icon_1_0->fn->setPosition(Marvin_panel_Icon_1_0, 65, 26);
+    Marvin_panel_Icon_1_0->fn->setSize(Marvin_panel_Icon_1_0, 20, 20);
+    Marvin_panel_Icon_1_0->fn->setScheme(Marvin_panel_Icon_1_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Icon_1_0->fn->setBackgroundType(Marvin_panel_Icon_1_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Button_6_0->fn->addChild(Marvin_panel_Button_6_0, (leWidget*)Marvin_panel_Icon_1_0);
+
+    Marvin_image_Icon_1_0 = leImageWidget_New();
+    Marvin_image_Icon_1_0->fn->setPosition(Marvin_image_Icon_1_0, 0, 0);
+    Marvin_image_Icon_1_0->fn->setSize(Marvin_image_Icon_1_0, 20, 20);
+    Marvin_image_Icon_1_0->fn->setScheme(Marvin_image_Icon_1_0, &SCHEME_BACKGROUND);
+    Marvin_image_Icon_1_0->fn->setBackgroundType(Marvin_image_Icon_1_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_Icon_1_0->fn->setBorderType(Marvin_image_Icon_1_0, LE_WIDGET_BORDER_NONE);
+    Marvin_image_Icon_1_0->fn->setImage(Marvin_image_Icon_1_0, (leImage*)&figmaImg_Icon_1_1);
+    Marvin_panel_Icon_1_0->fn->addChild(Marvin_panel_Icon_1_0, (leWidget*)Marvin_image_Icon_1_0);
+
+    Marvin_label__DN_1 = leLabelWidget_New();
+    Marvin_label__DN_1->fn->setPosition(Marvin_label__DN_1, 89, 26);
+    Marvin_label__DN_1->fn->setSize(Marvin_label__DN_1, 26, 20);
+    Marvin_label__DN_1->fn->setScheme(Marvin_label__DN_1, &Scheme35);
+    Marvin_label__DN_1->fn->setBackgroundType(Marvin_label__DN_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__DN_1->fn->setHAlignment(Marvin_label__DN_1, LE_HALIGN_CENTER);
+    Marvin_label__DN_1->fn->setVAlignment(Marvin_label__DN_1, LE_VALIGN_TOP);
+    Marvin_label__DN_1->fn->setMargins(Marvin_label__DN_1, 0, 0, 0, 0);
+    Marvin_label__DN_1->fn->setString(Marvin_label__DN_1, (leString*)&string_figmaStr__DN);
+    Marvin_panel_Button_6_0->fn->addChild(Marvin_panel_Button_6_0, (leWidget*)Marvin_label__DN_1);
+
+    Marvin_panel_Container_15_1 = leWidget_New();
+    Marvin_panel_Container_15_1->fn->setPosition(Marvin_panel_Container_15_1, 200, 0);
+    Marvin_panel_Container_15_1->fn->setSize(Marvin_panel_Container_15_1, 273, 148);
+    Marvin_panel_Container_15_1->fn->setScheme(Marvin_panel_Container_15_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_15_1->fn->setBackgroundType(Marvin_panel_Container_15_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_13_0->fn->addChild(Marvin_panel_Container_13_0, (leWidget*)Marvin_panel_Container_15_1);
+
+    Marvin_label_WHAMMY_1 = leLabelWidget_New();
+    Marvin_label_WHAMMY_1->fn->setPosition(Marvin_label_WHAMMY_1, 110, 23);
+    Marvin_label_WHAMMY_1->fn->setSize(Marvin_label_WHAMMY_1, 54, 20);
+    Marvin_label_WHAMMY_1->fn->setScheme(Marvin_label_WHAMMY_1, &Scheme36);
+    Marvin_label_WHAMMY_1->fn->setBackgroundType(Marvin_label_WHAMMY_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_WHAMMY_1->fn->setVAlignment(Marvin_label_WHAMMY_1, LE_VALIGN_TOP);
+    Marvin_label_WHAMMY_1->fn->setMargins(Marvin_label_WHAMMY_1, 0, 0, 0, 0);
+    Marvin_label_WHAMMY_1->fn->setString(Marvin_label_WHAMMY_1, (leString*)&string_figmaStr_WHAMMY);
+    Marvin_panel_Container_15_1->fn->addChild(Marvin_panel_Container_15_1, (leWidget*)Marvin_label_WHAMMY_1);
+
+    Marvin_panel_WhammySlider_1 = leWidget_New();
+    Marvin_panel_WhammySlider_1->fn->setPosition(Marvin_panel_WhammySlider_1, 0, 0);
+    Marvin_panel_WhammySlider_1->fn->setSize(Marvin_panel_WhammySlider_1, 297, 148);
+    Marvin_panel_WhammySlider_1->fn->setScheme(Marvin_panel_WhammySlider_1, &SCHEME_BACKGROUND);
+    Marvin_panel_WhammySlider_1->fn->setBackgroundType(Marvin_panel_WhammySlider_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_15_1->fn->addChild(Marvin_panel_Container_15_1, (leWidget*)Marvin_panel_WhammySlider_1);
+
+    Marvin_panel_Container_16_1 = leWidget_New();
+    Marvin_panel_Container_16_1->fn->setPosition(Marvin_panel_Container_16_1, 0, 42);
+    Marvin_panel_Container_16_1->fn->setSize(Marvin_panel_Container_16_1, 273, 64);
+    Marvin_panel_Container_16_1->fn->setScheme(Marvin_panel_Container_16_1, &Scheme31);
+    Marvin_panel_WhammySlider_1->fn->addChild(Marvin_panel_WhammySlider_1, (leWidget*)Marvin_panel_Container_16_1);
+
+    Marvin_panel_Container_17_1 = leWidget_New();
+    Marvin_panel_Container_17_1->fn->setPosition(Marvin_panel_Container_17_1, 137, 0);
+    Marvin_panel_Container_17_1->fn->setSize(Marvin_panel_Container_17_1, 1, 64);
+    Marvin_panel_Container_17_1->fn->setScheme(Marvin_panel_Container_17_1, &Scheme37);
+    Marvin_panel_Container_16_1->fn->addChild(Marvin_panel_Container_16_1, (leWidget*)Marvin_panel_Container_17_1);
+
+    Marvin_panel_Container_18_1 = leWidget_New();
+    Marvin_panel_Container_18_1->fn->setPosition(Marvin_panel_Container_18_1, 137, 0);
+    Marvin_panel_Container_18_1->fn->setSize(Marvin_panel_Container_18_1, 1, 64);
+    Marvin_panel_Container_18_1->fn->setScheme(Marvin_panel_Container_18_1, &panel_blueviolet);
+    Marvin_panel_Container_16_1->fn->addChild(Marvin_panel_Container_16_1, (leWidget*)Marvin_panel_Container_18_1);
+
+    Marvin_panel_Container_19_1 = leWidget_New();
+    Marvin_panel_Container_19_1->fn->setPosition(Marvin_panel_Container_19_1, 131, 12);
+    Marvin_panel_Container_19_1->fn->setSize(Marvin_panel_Container_19_1, 16, 40);
+    Marvin_panel_Container_19_1->fn->setScheme(Marvin_panel_Container_19_1, &panel_plum);
+    Marvin_panel_Container_16_1->fn->addChild(Marvin_panel_Container_16_1, (leWidget*)Marvin_panel_Container_19_1);
+
+    Marvin_panel_Container_20_1 = leWidget_New();
+    Marvin_panel_Container_20_1->fn->setPosition(Marvin_panel_Container_20_1, 493, 0);
+    Marvin_panel_Container_20_1->fn->setSize(Marvin_panel_Container_20_1, 71, 148);
+    Marvin_panel_Container_20_1->fn->setScheme(Marvin_panel_Container_20_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_20_1->fn->setBackgroundType(Marvin_panel_Container_20_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_13_0->fn->addChild(Marvin_panel_Container_13_0, (leWidget*)Marvin_panel_Container_20_1);
+
+    Marvin_panel_Button_7_0 = leWidget_New();
+    Marvin_panel_Button_7_0->fn->setPosition(Marvin_panel_Button_7_0, 0, 0);
+    Marvin_panel_Button_7_0->fn->setSize(Marvin_panel_Button_7_0, 71, 71);
+    Marvin_panel_Button_7_0->fn->setScheme(Marvin_panel_Button_7_0, &Scheme31);
+    Marvin_panel_Container_20_1->fn->addChild(Marvin_panel_Container_20_1, (leWidget*)Marvin_panel_Button_7_0);
+
+    Marvin_label___11 = leLabelWidget_New();
+    Marvin_label___11->fn->setPosition(Marvin_label___11, 28, 20);
+    Marvin_label___11->fn->setSize(Marvin_label___11, 15, 32);
+    Marvin_label___11->fn->setScheme(Marvin_label___11, &Scheme35);
+    Marvin_label___11->fn->setBackgroundType(Marvin_label___11, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___11->fn->setHAlignment(Marvin_label___11, LE_HALIGN_CENTER);
+    Marvin_label___11->fn->setVAlignment(Marvin_label___11, LE_VALIGN_TOP);
+    Marvin_label___11->fn->setMargins(Marvin_label___11, 0, 0, 0, 0);
+    Marvin_label___11->fn->setString(Marvin_label___11, (leString*)&string_figmaStr___3);
+    Marvin_panel_Button_7_0->fn->addChild(Marvin_panel_Button_7_0, (leWidget*)Marvin_label___11);
+
+    Marvin_panel_Button_8_0 = leWidget_New();
+    Marvin_panel_Button_8_0->fn->setPosition(Marvin_panel_Button_8_0, 0, 77);
+    Marvin_panel_Button_8_0->fn->setSize(Marvin_panel_Button_8_0, 71, 71);
+    Marvin_panel_Button_8_0->fn->setScheme(Marvin_panel_Button_8_0, &Scheme31);
+    Marvin_panel_Container_20_1->fn->addChild(Marvin_panel_Container_20_1, (leWidget*)Marvin_panel_Button_8_0);
+
+    Marvin_label___0_1 = leLabelWidget_New();
+    Marvin_label___0_1->fn->setPosition(Marvin_label___0_1, 28, 20);
+    Marvin_label___0_1->fn->setSize(Marvin_label___0_1, 15, 32);
+    Marvin_label___0_1->fn->setScheme(Marvin_label___0_1, &Scheme35);
+    Marvin_label___0_1->fn->setBackgroundType(Marvin_label___0_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___0_1->fn->setHAlignment(Marvin_label___0_1, LE_HALIGN_CENTER);
+    Marvin_label___0_1->fn->setVAlignment(Marvin_label___0_1, LE_VALIGN_TOP);
+    Marvin_label___0_1->fn->setMargins(Marvin_label___0_1, 0, 0, 0, 0);
+    Marvin_label___0_1->fn->setString(Marvin_label___0_1, (leString*)&string_figmaStr___0_0);
+    Marvin_panel_Button_8_0->fn->addChild(Marvin_panel_Button_8_0, (leWidget*)Marvin_label___0_1);
+
+    Marvin_panel_Container_21_1 = leWidget_New();
+    Marvin_panel_Container_21_1->fn->setPosition(Marvin_panel_Container_21_1, 17, 337);
+    Marvin_panel_Container_21_1->fn->setSize(Marvin_panel_Container_21_1, 588, 306);
+    Marvin_panel_Container_21_1->fn->setScheme(Marvin_panel_Container_21_1, &Scheme31);
+    Marvin_panel_ControllerPanel_1->fn->addChild(Marvin_panel_ControllerPanel_1, (leWidget*)Marvin_panel_Container_21_1);
+
+    Marvin_panel_Container_22_1 = leWidget_New();
+    Marvin_panel_Container_22_1->fn->setPosition(Marvin_panel_Container_22_1, 12, 12);
+    Marvin_panel_Container_22_1->fn->setSize(Marvin_panel_Container_22_1, 225, 249);
+    Marvin_panel_Container_22_1->fn->setScheme(Marvin_panel_Container_22_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_22_1->fn->setBackgroundType(Marvin_panel_Container_22_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_21_1->fn->addChild(Marvin_panel_Container_21_1, (leWidget*)Marvin_panel_Container_22_1);
+
+    Marvin_panel_Paragraph_1_0 = leWidget_New();
+    Marvin_panel_Paragraph_1_0->fn->setPosition(Marvin_panel_Paragraph_1_0, 0, 0);
+    Marvin_panel_Paragraph_1_0->fn->setSize(Marvin_panel_Paragraph_1_0, 225, 20);
+    Marvin_panel_Paragraph_1_0->fn->setScheme(Marvin_panel_Paragraph_1_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Paragraph_1_0->fn->setBackgroundType(Marvin_panel_Paragraph_1_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_22_1->fn->addChild(Marvin_panel_Container_22_1, (leWidget*)Marvin_panel_Paragraph_1_0);
+
+    Marvin_label_WIIMOTE_1 = leLabelWidget_New();
+    Marvin_label_WIIMOTE_1->fn->setPosition(Marvin_label_WIIMOTE_1, 0, 0);
+    Marvin_label_WIIMOTE_1->fn->setSize(Marvin_label_WIIMOTE_1, 58, 16);
+    Marvin_label_WIIMOTE_1->fn->setScheme(Marvin_label_WIIMOTE_1, &Scheme24);
+    Marvin_label_WIIMOTE_1->fn->setBackgroundType(Marvin_label_WIIMOTE_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_WIIMOTE_1->fn->setVAlignment(Marvin_label_WIIMOTE_1, LE_VALIGN_TOP);
+    Marvin_label_WIIMOTE_1->fn->setMargins(Marvin_label_WIIMOTE_1, 0, 0, 0, 0);
+    Marvin_label_WIIMOTE_1->fn->setString(Marvin_label_WIIMOTE_1, (leString*)&string_figmaStr_WIIMOTE);
+    Marvin_panel_Paragraph_1_0->fn->addChild(Marvin_panel_Paragraph_1_0, (leWidget*)Marvin_label_WIIMOTE_1);
+
+    Marvin_panel_Container_23_1 = leWidget_New();
+    Marvin_panel_Container_23_1->fn->setPosition(Marvin_panel_Container_23_1, 0, 24);
+    Marvin_panel_Container_23_1->fn->setSize(Marvin_panel_Container_23_1, 225, 225);
+    Marvin_panel_Container_23_1->fn->setScheme(Marvin_panel_Container_23_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_23_1->fn->setBackgroundType(Marvin_panel_Container_23_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_22_1->fn->addChild(Marvin_panel_Container_22_1, (leWidget*)Marvin_panel_Container_23_1);
+
+    Marvin_panel_Button_9_0 = leWidget_New();
+    Marvin_panel_Button_9_0->fn->setPosition(Marvin_panel_Button_9_0, 77, 0);
+    Marvin_panel_Button_9_0->fn->setSize(Marvin_panel_Button_9_0, 71, 71);
+    Marvin_panel_Button_9_0->fn->setScheme(Marvin_panel_Button_9_0, &Scheme31);
+    Marvin_panel_Container_23_1->fn->addChild(Marvin_panel_Container_23_1, (leWidget*)Marvin_panel_Button_9_0);
+
+    Marvin_label___1_1 = leLabelWidget_New();
+    Marvin_label___1_1->fn->setPosition(Marvin_label___1_1, 30, 22);
+    Marvin_label___1_1->fn->setSize(Marvin_label___1_1, 11, 28);
+    Marvin_label___1_1->fn->setScheme(Marvin_label___1_1, &Scheme35);
+    Marvin_label___1_1->fn->setBackgroundType(Marvin_label___1_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___1_1->fn->setHAlignment(Marvin_label___1_1, LE_HALIGN_CENTER);
+    Marvin_label___1_1->fn->setVAlignment(Marvin_label___1_1, LE_VALIGN_TOP);
+    Marvin_label___1_1->fn->setMargins(Marvin_label___1_1, 0, 0, 0, 0);
+    Marvin_label___1_1->fn->setString(Marvin_label___1_1, (leString*)&string_figmaStr___1_0);
+    Marvin_panel_Button_9_0->fn->addChild(Marvin_panel_Button_9_0, (leWidget*)Marvin_label___1_1);
+
+    Marvin_panel_Button_10_0 = leWidget_New();
+    Marvin_panel_Button_10_0->fn->setPosition(Marvin_panel_Button_10_0, 0, 77);
+    Marvin_panel_Button_10_0->fn->setSize(Marvin_panel_Button_10_0, 71, 71);
+    Marvin_panel_Button_10_0->fn->setScheme(Marvin_panel_Button_10_0, &Scheme31);
+    Marvin_panel_Container_23_1->fn->addChild(Marvin_panel_Container_23_1, (leWidget*)Marvin_panel_Button_10_0);
+
+    Marvin_label___2_1 = leLabelWidget_New();
+    Marvin_label___2_1->fn->setPosition(Marvin_label___2_1, 30, 22);
+    Marvin_label___2_1->fn->setSize(Marvin_label___2_1, 11, 28);
+    Marvin_label___2_1->fn->setScheme(Marvin_label___2_1, &Scheme35);
+    Marvin_label___2_1->fn->setBackgroundType(Marvin_label___2_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___2_1->fn->setHAlignment(Marvin_label___2_1, LE_HALIGN_CENTER);
+    Marvin_label___2_1->fn->setVAlignment(Marvin_label___2_1, LE_VALIGN_TOP);
+    Marvin_label___2_1->fn->setMargins(Marvin_label___2_1, 0, 0, 0, 0);
+    Marvin_label___2_1->fn->setString(Marvin_label___2_1, (leString*)&string_figmaStr___2_0);
+    Marvin_panel_Button_10_0->fn->addChild(Marvin_panel_Button_10_0, (leWidget*)Marvin_label___2_1);
+
+    Marvin_panel_Button_11_0 = leWidget_New();
+    Marvin_panel_Button_11_0->fn->setPosition(Marvin_panel_Button_11_0, 154, 77);
+    Marvin_panel_Button_11_0->fn->setSize(Marvin_panel_Button_11_0, 71, 71);
+    Marvin_panel_Button_11_0->fn->setScheme(Marvin_panel_Button_11_0, &Scheme31);
+    Marvin_panel_Container_23_1->fn->addChild(Marvin_panel_Container_23_1, (leWidget*)Marvin_panel_Button_11_0);
+
+    Marvin_label___3_0 = leLabelWidget_New();
+    Marvin_label___3_0->fn->setPosition(Marvin_label___3_0, 30, 22);
+    Marvin_label___3_0->fn->setSize(Marvin_label___3_0, 11, 28);
+    Marvin_label___3_0->fn->setScheme(Marvin_label___3_0, &Scheme35);
+    Marvin_label___3_0->fn->setBackgroundType(Marvin_label___3_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___3_0->fn->setHAlignment(Marvin_label___3_0, LE_HALIGN_CENTER);
+    Marvin_label___3_0->fn->setVAlignment(Marvin_label___3_0, LE_VALIGN_TOP);
+    Marvin_label___3_0->fn->setMargins(Marvin_label___3_0, 0, 0, 0, 0);
+    Marvin_label___3_0->fn->setString(Marvin_label___3_0, (leString*)&string_figmaStr___3_0);
+    Marvin_panel_Button_11_0->fn->addChild(Marvin_panel_Button_11_0, (leWidget*)Marvin_label___3_0);
+
+    Marvin_panel_Button_12_0 = leWidget_New();
+    Marvin_panel_Button_12_0->fn->setPosition(Marvin_panel_Button_12_0, 77, 154);
+    Marvin_panel_Button_12_0->fn->setSize(Marvin_panel_Button_12_0, 71, 71);
+    Marvin_panel_Button_12_0->fn->setScheme(Marvin_panel_Button_12_0, &Scheme31);
+    Marvin_panel_Container_23_1->fn->addChild(Marvin_panel_Container_23_1, (leWidget*)Marvin_panel_Button_12_0);
+
+    Marvin_label___4_0 = leLabelWidget_New();
+    Marvin_label___4_0->fn->setPosition(Marvin_label___4_0, 30, 22);
+    Marvin_label___4_0->fn->setSize(Marvin_label___4_0, 11, 28);
+    Marvin_label___4_0->fn->setScheme(Marvin_label___4_0, &Scheme35);
+    Marvin_label___4_0->fn->setBackgroundType(Marvin_label___4_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___4_0->fn->setHAlignment(Marvin_label___4_0, LE_HALIGN_CENTER);
+    Marvin_label___4_0->fn->setVAlignment(Marvin_label___4_0, LE_VALIGN_TOP);
+    Marvin_label___4_0->fn->setMargins(Marvin_label___4_0, 0, 0, 0, 0);
+    Marvin_label___4_0->fn->setString(Marvin_label___4_0, (leString*)&string_figmaStr___4);
+    Marvin_panel_Button_12_0->fn->addChild(Marvin_panel_Button_12_0, (leWidget*)Marvin_label___4_0);
+
+    Marvin_panel_Container_24_1 = leWidget_New();
+    Marvin_panel_Container_24_1->fn->setPosition(Marvin_panel_Container_24_1, 253, 12);
+    Marvin_panel_Container_24_1->fn->setSize(Marvin_panel_Container_24_1, 150, 249);
+    Marvin_panel_Container_24_1->fn->setScheme(Marvin_panel_Container_24_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_24_1->fn->setBackgroundType(Marvin_panel_Container_24_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_21_1->fn->addChild(Marvin_panel_Container_21_1, (leWidget*)Marvin_panel_Container_24_1);
+
+    Marvin_panel_Button_13_0 = leWidget_New();
+    Marvin_panel_Button_13_0->fn->setPosition(Marvin_panel_Button_13_0, 0, 20);
+    Marvin_panel_Button_13_0->fn->setSize(Marvin_panel_Button_13_0, 150, 71);
+    Marvin_panel_Button_13_0->fn->setScheme(Marvin_panel_Button_13_0, &Scheme31);
+    Marvin_panel_Container_24_1->fn->addChild(Marvin_panel_Container_24_1, (leWidget*)Marvin_panel_Button_13_0);
+
+    Marvin_label_HOME_1 = leLabelWidget_New();
+    Marvin_label_HOME_1->fn->setPosition(Marvin_label_HOME_1, 58, 26);
+    Marvin_label_HOME_1->fn->setSize(Marvin_label_HOME_1, 34, 20);
+    Marvin_label_HOME_1->fn->setScheme(Marvin_label_HOME_1, &Scheme35);
+    Marvin_label_HOME_1->fn->setBackgroundType(Marvin_label_HOME_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_HOME_1->fn->setHAlignment(Marvin_label_HOME_1, LE_HALIGN_CENTER);
+    Marvin_label_HOME_1->fn->setVAlignment(Marvin_label_HOME_1, LE_VALIGN_TOP);
+    Marvin_label_HOME_1->fn->setMargins(Marvin_label_HOME_1, 0, 0, 0, 0);
+    Marvin_label_HOME_1->fn->setString(Marvin_label_HOME_1, (leString*)&string_figmaStr_HOME);
+    Marvin_panel_Button_13_0->fn->addChild(Marvin_panel_Button_13_0, (leWidget*)Marvin_label_HOME_1);
+
+    Marvin_panel_Container_25_1 = leWidget_New();
+    Marvin_panel_Container_25_1->fn->setPosition(Marvin_panel_Container_25_1, 0, 99);
+    Marvin_panel_Container_25_1->fn->setSize(Marvin_panel_Container_25_1, 150, 150);
+    Marvin_panel_Container_25_1->fn->setScheme(Marvin_panel_Container_25_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_25_1->fn->setBackgroundType(Marvin_panel_Container_25_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_24_1->fn->addChild(Marvin_panel_Container_24_1, (leWidget*)Marvin_panel_Container_25_1);
+
+    Marvin_panel_Button_14_0 = leWidget_New();
+    Marvin_panel_Button_14_0->fn->setPosition(Marvin_panel_Button_14_0, 0, 0);
+    Marvin_panel_Button_14_0->fn->setSize(Marvin_panel_Button_14_0, 71, 71);
+    Marvin_panel_Button_14_0->fn->setScheme(Marvin_panel_Button_14_0, &Scheme31);
+    Marvin_panel_Container_25_1->fn->addChild(Marvin_panel_Container_25_1, (leWidget*)Marvin_panel_Button_14_0);
+
+    Marvin_label_A_1 = leLabelWidget_New();
+    Marvin_label_A_1->fn->setPosition(Marvin_label_A_1, 30, 22);
+    Marvin_label_A_1->fn->setSize(Marvin_label_A_1, 11, 28);
+    Marvin_label_A_1->fn->setScheme(Marvin_label_A_1, &Scheme35);
+    Marvin_label_A_1->fn->setBackgroundType(Marvin_label_A_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_A_1->fn->setHAlignment(Marvin_label_A_1, LE_HALIGN_CENTER);
+    Marvin_label_A_1->fn->setVAlignment(Marvin_label_A_1, LE_VALIGN_TOP);
+    Marvin_label_A_1->fn->setMargins(Marvin_label_A_1, 0, 0, 0, 0);
+    Marvin_label_A_1->fn->setString(Marvin_label_A_1, (leString*)&string_figmaStr_A);
+    Marvin_panel_Button_14_0->fn->addChild(Marvin_panel_Button_14_0, (leWidget*)Marvin_label_A_1);
+
+    Marvin_panel_Button_15_0 = leWidget_New();
+    Marvin_panel_Button_15_0->fn->setPosition(Marvin_panel_Button_15_0, 79, 0);
+    Marvin_panel_Button_15_0->fn->setSize(Marvin_panel_Button_15_0, 71, 71);
+    Marvin_panel_Button_15_0->fn->setScheme(Marvin_panel_Button_15_0, &Scheme31);
+    Marvin_panel_Container_25_1->fn->addChild(Marvin_panel_Container_25_1, (leWidget*)Marvin_panel_Button_15_0);
+
+    Marvin_label_B_1 = leLabelWidget_New();
+    Marvin_label_B_1->fn->setPosition(Marvin_label_B_1, 30, 22);
+    Marvin_label_B_1->fn->setSize(Marvin_label_B_1, 11, 28);
+    Marvin_label_B_1->fn->setScheme(Marvin_label_B_1, &Scheme35);
+    Marvin_label_B_1->fn->setBackgroundType(Marvin_label_B_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_B_1->fn->setHAlignment(Marvin_label_B_1, LE_HALIGN_CENTER);
+    Marvin_label_B_1->fn->setVAlignment(Marvin_label_B_1, LE_VALIGN_TOP);
+    Marvin_label_B_1->fn->setMargins(Marvin_label_B_1, 0, 0, 0, 0);
+    Marvin_label_B_1->fn->setString(Marvin_label_B_1, (leString*)&string_figmaStr_B_0);
+    Marvin_panel_Button_15_0->fn->addChild(Marvin_panel_Button_15_0, (leWidget*)Marvin_label_B_1);
+
+    Marvin_panel_Button_16_0 = leWidget_New();
+    Marvin_panel_Button_16_0->fn->setPosition(Marvin_panel_Button_16_0, 0, 79);
+    Marvin_panel_Button_16_0->fn->setSize(Marvin_panel_Button_16_0, 71, 71);
+    Marvin_panel_Button_16_0->fn->setScheme(Marvin_panel_Button_16_0, &Scheme31);
+    Marvin_panel_Container_25_1->fn->addChild(Marvin_panel_Container_25_1, (leWidget*)Marvin_panel_Button_16_0);
+
+    Marvin_label__1_1 = leLabelWidget_New();
+    Marvin_label__1_1->fn->setPosition(Marvin_label__1_1, 30, 22);
+    Marvin_label__1_1->fn->setSize(Marvin_label__1_1, 11, 28);
+    Marvin_label__1_1->fn->setScheme(Marvin_label__1_1, &Scheme35);
+    Marvin_label__1_1->fn->setBackgroundType(Marvin_label__1_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__1_1->fn->setHAlignment(Marvin_label__1_1, LE_HALIGN_CENTER);
+    Marvin_label__1_1->fn->setVAlignment(Marvin_label__1_1, LE_VALIGN_TOP);
+    Marvin_label__1_1->fn->setMargins(Marvin_label__1_1, 0, 0, 0, 0);
+    Marvin_label__1_1->fn->setString(Marvin_label__1_1, (leString*)&string_figmaStr_1);
+    Marvin_panel_Button_16_0->fn->addChild(Marvin_panel_Button_16_0, (leWidget*)Marvin_label__1_1);
+
+    Marvin_panel_Button_17_0 = leWidget_New();
+    Marvin_panel_Button_17_0->fn->setPosition(Marvin_panel_Button_17_0, 79, 79);
+    Marvin_panel_Button_17_0->fn->setSize(Marvin_panel_Button_17_0, 71, 71);
+    Marvin_panel_Button_17_0->fn->setScheme(Marvin_panel_Button_17_0, &Scheme31);
+    Marvin_panel_Container_25_1->fn->addChild(Marvin_panel_Container_25_1, (leWidget*)Marvin_panel_Button_17_0);
+
+    Marvin_label__2_1 = leLabelWidget_New();
+    Marvin_label__2_1->fn->setPosition(Marvin_label__2_1, 30, 22);
+    Marvin_label__2_1->fn->setSize(Marvin_label__2_1, 11, 28);
+    Marvin_label__2_1->fn->setScheme(Marvin_label__2_1, &Scheme35);
+    Marvin_label__2_1->fn->setBackgroundType(Marvin_label__2_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__2_1->fn->setHAlignment(Marvin_label__2_1, LE_HALIGN_CENTER);
+    Marvin_label__2_1->fn->setVAlignment(Marvin_label__2_1, LE_VALIGN_TOP);
+    Marvin_label__2_1->fn->setMargins(Marvin_label__2_1, 0, 0, 0, 0);
+    Marvin_label__2_1->fn->setString(Marvin_label__2_1, (leString*)&string_figmaStr_2);
+    Marvin_panel_Button_17_0->fn->addChild(Marvin_panel_Button_17_0, (leWidget*)Marvin_label__2_1);
+
+    Marvin_panel_Container_26_1 = leWidget_New();
+    Marvin_panel_Container_26_1->fn->setPosition(Marvin_panel_Container_26_1, 419, 12);
+    Marvin_panel_Container_26_1->fn->setSize(Marvin_panel_Container_26_1, 157, 213);
+    Marvin_panel_Container_26_1->fn->setScheme(Marvin_panel_Container_26_1, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_26_1->fn->setBackgroundType(Marvin_panel_Container_26_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_21_1->fn->addChild(Marvin_panel_Container_21_1, (leWidget*)Marvin_panel_Container_26_1);
+
+    Marvin_panel_TiltControl_1 = leWidget_New();
+    Marvin_panel_TiltControl_1->fn->setPosition(Marvin_panel_TiltControl_1, 0, 56);
+    Marvin_panel_TiltControl_1->fn->setSize(Marvin_panel_TiltControl_1, 157, 157);
+    Marvin_panel_TiltControl_1->fn->setScheme(Marvin_panel_TiltControl_1, &SCHEME_BACKGROUND);
+    Marvin_panel_TiltControl_1->fn->setBackgroundType(Marvin_panel_TiltControl_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_26_1->fn->addChild(Marvin_panel_Container_26_1, (leWidget*)Marvin_panel_TiltControl_1);
+
+    Marvin_image_TiltControl_1 = leImageWidget_New();
+    Marvin_image_TiltControl_1->fn->setPosition(Marvin_image_TiltControl_1, 0, 0);
+    Marvin_image_TiltControl_1->fn->setSize(Marvin_image_TiltControl_1, 157, 157);
+    Marvin_image_TiltControl_1->fn->setScheme(Marvin_image_TiltControl_1, &SCHEME_BACKGROUND);
+    Marvin_image_TiltControl_1->fn->setBackgroundType(Marvin_image_TiltControl_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_TiltControl_1->fn->setBorderType(Marvin_image_TiltControl_1, LE_WIDGET_BORDER_NONE);
+    Marvin_image_TiltControl_1->fn->setImage(Marvin_image_TiltControl_1, (leImage*)&figmaImg_TiltControl);
+    Marvin_panel_TiltControl_1->fn->addChild(Marvin_panel_TiltControl_1, (leWidget*)Marvin_image_TiltControl_1);
+
+    Marvin_label_TILT_1 = leLabelWidget_New();
+    Marvin_label_TILT_1->fn->setPosition(Marvin_label_TILT_1, 4, 1);
+    Marvin_label_TILT_1->fn->setSize(Marvin_label_TILT_1, 28, 16);
+    Marvin_label_TILT_1->fn->setScheme(Marvin_label_TILT_1, &Scheme36);
+    Marvin_label_TILT_1->fn->setBackgroundType(Marvin_label_TILT_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_TILT_1->fn->setVAlignment(Marvin_label_TILT_1, LE_VALIGN_TOP);
+    Marvin_label_TILT_1->fn->setMargins(Marvin_label_TILT_1, 0, 0, 0, 0);
+    Marvin_label_TILT_1->fn->setString(Marvin_label_TILT_1, (leString*)&string_figmaStr_TILT);
+    Marvin_panel_TiltControl_1->fn->addChild(Marvin_panel_TiltControl_1, (leWidget*)Marvin_label_TILT_1);
+
+    Marvin_panel_ControllerPanel_0_0 = leWidget_New();
+    Marvin_panel_ControllerPanel_0_0->fn->setPosition(Marvin_panel_ControllerPanel_0_0, 636, 0);
+    Marvin_panel_ControllerPanel_0_0->fn->setSize(Marvin_panel_ControllerPanel_0_0, 620, 660);
+    Marvin_panel_ControllerPanel_0_0->fn->setScheme(Marvin_panel_ControllerPanel_0_0, &Scheme28);
+    Marvin_panel_Container_8_0->fn->addChild(Marvin_panel_Container_8_0, (leWidget*)Marvin_panel_ControllerPanel_0_0);
+
+    Marvin_panel_Container_27_0 = leWidget_New();
+    Marvin_panel_Container_27_0->fn->setPosition(Marvin_panel_Container_27_0, 17, 17);
+    Marvin_panel_Container_27_0->fn->setSize(Marvin_panel_Container_27_0, 586, 24);
+    Marvin_panel_Container_27_0->fn->setScheme(Marvin_panel_Container_27_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_27_0->fn->setBackgroundType(Marvin_panel_Container_27_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_ControllerPanel_0_0->fn->addChild(Marvin_panel_ControllerPanel_0_0, (leWidget*)Marvin_panel_Container_27_0);
+
+    Marvin_panel_Container_28_0 = leWidget_New();
+    Marvin_panel_Container_28_0->fn->setPosition(Marvin_panel_Container_28_0, 0, 2);
+    Marvin_panel_Container_28_0->fn->setSize(Marvin_panel_Container_28_0, 102, 20);
+    Marvin_panel_Container_28_0->fn->setScheme(Marvin_panel_Container_28_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_28_0->fn->setBackgroundType(Marvin_panel_Container_28_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_27_0->fn->addChild(Marvin_panel_Container_27_0, (leWidget*)Marvin_panel_Container_28_0);
+
+    Marvin_label_Human_Player_1 = leLabelWidget_New();
+    Marvin_label_Human_Player_1->fn->setPosition(Marvin_label_Human_Player_1, 0, 0);
+    Marvin_label_Human_Player_1->fn->setSize(Marvin_label_Human_Player_1, 102, 20);
+    Marvin_label_Human_Player_1->fn->setScheme(Marvin_label_Human_Player_1, &Scheme29);
+    Marvin_label_Human_Player_1->fn->setBackgroundType(Marvin_label_Human_Player_1, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_Human_Player_1->fn->setVAlignment(Marvin_label_Human_Player_1, LE_VALIGN_TOP);
+    Marvin_label_Human_Player_1->fn->setMargins(Marvin_label_Human_Player_1, 0, 0, 0, 0);
+    Marvin_label_Human_Player_1->fn->setString(Marvin_label_Human_Player_1, (leString*)&string_figmaStr_Human_Player_0);
+    Marvin_panel_Container_28_0->fn->addChild(Marvin_panel_Container_28_0, (leWidget*)Marvin_label_Human_Player_1);
+
+    Marvin_panel_Button_18_0 = leWidget_New();
+    Marvin_panel_Button_18_0->fn->setPosition(Marvin_panel_Button_18_0, 492, 0);
+    Marvin_panel_Button_18_0->fn->setSize(Marvin_panel_Button_18_0, 94, 24);
+    Marvin_panel_Button_18_0->fn->setScheme(Marvin_panel_Button_18_0, &Scheme21);
+    Marvin_panel_Container_27_0->fn->addChild(Marvin_panel_Container_27_0, (leWidget*)Marvin_panel_Button_18_0);
+
+    Marvin_panel_Text_2_1 = leWidget_New();
+    Marvin_panel_Text_2_1->fn->setPosition(Marvin_panel_Text_2_1, 12, 9);
+    Marvin_panel_Text_2_1->fn->setSize(Marvin_panel_Text_2_1, 6, 6);
+    Marvin_panel_Text_2_1->fn->setScheme(Marvin_panel_Text_2_1, &Scheme37);
+    Marvin_panel_Button_18_0->fn->addChild(Marvin_panel_Button_18_0, (leWidget*)Marvin_panel_Text_2_1);
+
+    Marvin_label_DISABLED_0 = leLabelWidget_New();
+    Marvin_label_DISABLED_0->fn->setPosition(Marvin_label_DISABLED_0, 24, 4);
+    Marvin_label_DISABLED_0->fn->setSize(Marvin_label_DISABLED_0, 58, 16);
+    Marvin_label_DISABLED_0->fn->setScheme(Marvin_label_DISABLED_0, &Scheme24);
+    Marvin_label_DISABLED_0->fn->setBackgroundType(Marvin_label_DISABLED_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_DISABLED_0->fn->setHAlignment(Marvin_label_DISABLED_0, LE_HALIGN_CENTER);
+    Marvin_label_DISABLED_0->fn->setVAlignment(Marvin_label_DISABLED_0, LE_VALIGN_TOP);
+    Marvin_label_DISABLED_0->fn->setMargins(Marvin_label_DISABLED_0, 0, 0, 0, 0);
+    Marvin_label_DISABLED_0->fn->setString(Marvin_label_DISABLED_0, (leString*)&string_figmaStr_DISABLED_0);
+    Marvin_panel_Button_18_0->fn->addChild(Marvin_panel_Button_18_0, (leWidget*)Marvin_label_DISABLED_0);
+
+    Marvin_panel_Container_29_0 = leWidget_New();
+    Marvin_panel_Container_29_0->fn->setPosition(Marvin_panel_Container_29_0, 17, 53);
+    Marvin_panel_Container_29_0->fn->setSize(Marvin_panel_Container_29_0, 586, 272);
+    Marvin_panel_Container_29_0->fn->setScheme(Marvin_panel_Container_29_0, &Scheme31);
+    Marvin_panel_ControllerPanel_0_0->fn->addChild(Marvin_panel_ControllerPanel_0_0, (leWidget*)Marvin_panel_Container_29_0);
+
+    Marvin_panel_Paragraph_2_0 = leWidget_New();
+    Marvin_panel_Paragraph_2_0->fn->setPosition(Marvin_panel_Paragraph_2_0, 12, 12);
+    Marvin_panel_Paragraph_2_0->fn->setSize(Marvin_panel_Paragraph_2_0, 562, 16);
+    Marvin_panel_Paragraph_2_0->fn->setScheme(Marvin_panel_Paragraph_2_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Paragraph_2_0->fn->setBackgroundType(Marvin_panel_Paragraph_2_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_29_0->fn->addChild(Marvin_panel_Container_29_0, (leWidget*)Marvin_panel_Paragraph_2_0);
+
+    Marvin_label_GUITAR_EXTENSION_0_0 = leLabelWidget_New();
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setPosition(Marvin_label_GUITAR_EXTENSION_0_0, 0, 0);
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setSize(Marvin_label_GUITAR_EXTENSION_0_0, 134, 16);
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setScheme(Marvin_label_GUITAR_EXTENSION_0_0, &Scheme24);
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setBackgroundType(Marvin_label_GUITAR_EXTENSION_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setVAlignment(Marvin_label_GUITAR_EXTENSION_0_0, LE_VALIGN_TOP);
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setMargins(Marvin_label_GUITAR_EXTENSION_0_0, 0, 0, 0, 0);
+    Marvin_label_GUITAR_EXTENSION_0_0->fn->setString(Marvin_label_GUITAR_EXTENSION_0_0, (leString*)&string_figmaStr_GUITAR_EXTENSION_0);
+    Marvin_panel_Paragraph_2_0->fn->addChild(Marvin_panel_Paragraph_2_0, (leWidget*)Marvin_label_GUITAR_EXTENSION_0_0);
+
+    Marvin_panel_Container_30_0 = leWidget_New();
+    Marvin_panel_Container_30_0->fn->setPosition(Marvin_panel_Container_30_0, 12, 38);
+    Marvin_panel_Container_30_0->fn->setSize(Marvin_panel_Container_30_0, 564, 64);
+    Marvin_panel_Container_30_0->fn->setScheme(Marvin_panel_Container_30_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_30_0->fn->setBackgroundType(Marvin_panel_Container_30_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_29_0->fn->addChild(Marvin_panel_Container_29_0, (leWidget*)Marvin_panel_Container_30_0);
+
+    Marvin_panel_Button_19_0 = leWidget_New();
+    Marvin_panel_Button_19_0->fn->setPosition(Marvin_panel_Button_19_0, 0, 0);
+    Marvin_panel_Button_19_0->fn->setSize(Marvin_panel_Button_19_0, 107, 64);
+    Marvin_panel_Button_19_0->fn->setScheme(Marvin_panel_Button_19_0, &Scheme32);
+    Marvin_panel_Container_30_0->fn->addChild(Marvin_panel_Container_30_0, (leWidget*)Marvin_panel_Button_19_0);
+
+    Marvin_panel_Button_20_0 = leWidget_New();
+    Marvin_panel_Button_20_0->fn->setPosition(Marvin_panel_Button_20_0, 115, 0);
+    Marvin_panel_Button_20_0->fn->setSize(Marvin_panel_Button_20_0, 107, 64);
+    Marvin_panel_Button_20_0->fn->setScheme(Marvin_panel_Button_20_0, &panel_red);
+    Marvin_panel_Container_30_0->fn->addChild(Marvin_panel_Container_30_0, (leWidget*)Marvin_panel_Button_20_0);
+
+    Marvin_panel_Button_21_0 = leWidget_New();
+    Marvin_panel_Button_21_0->fn->setPosition(Marvin_panel_Button_21_0, 229, 0);
+    Marvin_panel_Button_21_0->fn->setSize(Marvin_panel_Button_21_0, 107, 64);
+    Marvin_panel_Button_21_0->fn->setScheme(Marvin_panel_Button_21_0, &panel_orange);
+    Marvin_panel_Container_30_0->fn->addChild(Marvin_panel_Container_30_0, (leWidget*)Marvin_panel_Button_21_0);
+
+    Marvin_panel_Button_22_0 = leWidget_New();
+    Marvin_panel_Button_22_0->fn->setPosition(Marvin_panel_Button_22_0, 344, 0);
+    Marvin_panel_Button_22_0->fn->setSize(Marvin_panel_Button_22_0, 107, 64);
+    Marvin_panel_Button_22_0->fn->setScheme(Marvin_panel_Button_22_0, &Scheme33);
+    Marvin_panel_Container_30_0->fn->addChild(Marvin_panel_Container_30_0, (leWidget*)Marvin_panel_Button_22_0);
+
+    Marvin_panel_Button_23_0 = leWidget_New();
+    Marvin_panel_Button_23_0->fn->setPosition(Marvin_panel_Button_23_0, 458, 0);
+    Marvin_panel_Button_23_0->fn->setSize(Marvin_panel_Button_23_0, 107, 64);
+    Marvin_panel_Button_23_0->fn->setScheme(Marvin_panel_Button_23_0, &Scheme34);
+    Marvin_panel_Container_30_0->fn->addChild(Marvin_panel_Container_30_0, (leWidget*)Marvin_panel_Button_23_0);
+
+    Marvin_panel_Container_31_0 = leWidget_New();
+    Marvin_panel_Container_31_0->fn->setPosition(Marvin_panel_Container_31_0, 12, 112);
+    Marvin_panel_Container_31_0->fn->setSize(Marvin_panel_Container_31_0, 564, 148);
+    Marvin_panel_Container_31_0->fn->setScheme(Marvin_panel_Container_31_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_31_0->fn->setBackgroundType(Marvin_panel_Container_31_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_29_0->fn->addChild(Marvin_panel_Container_29_0, (leWidget*)Marvin_panel_Container_31_0);
+
+    Marvin_panel_Container_32_0 = leWidget_New();
+    Marvin_panel_Container_32_0->fn->setPosition(Marvin_panel_Container_32_0, 0, 0);
+    Marvin_panel_Container_32_0->fn->setSize(Marvin_panel_Container_32_0, 180, 148);
+    Marvin_panel_Container_32_0->fn->setScheme(Marvin_panel_Container_32_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_32_0->fn->setBackgroundType(Marvin_panel_Container_32_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_31_0->fn->addChild(Marvin_panel_Container_31_0, (leWidget*)Marvin_panel_Container_32_0);
+
+    Marvin_panel_Button_24_0 = leWidget_New();
+    Marvin_panel_Button_24_0->fn->setPosition(Marvin_panel_Button_24_0, 0, 0);
+    Marvin_panel_Button_24_0->fn->setSize(Marvin_panel_Button_24_0, 180, 71);
+    Marvin_panel_Button_24_0->fn->setScheme(Marvin_panel_Button_24_0, &Scheme21);
+    Marvin_panel_Container_32_0->fn->addChild(Marvin_panel_Container_32_0, (leWidget*)Marvin_panel_Button_24_0);
+
+    Marvin_panel_Icon_2_0 = leWidget_New();
+    Marvin_panel_Icon_2_0->fn->setPosition(Marvin_panel_Icon_2_0, 65, 26);
+    Marvin_panel_Icon_2_0->fn->setSize(Marvin_panel_Icon_2_0, 20, 20);
+    Marvin_panel_Icon_2_0->fn->setScheme(Marvin_panel_Icon_2_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Icon_2_0->fn->setBackgroundType(Marvin_panel_Icon_2_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Button_24_0->fn->addChild(Marvin_panel_Button_24_0, (leWidget*)Marvin_panel_Icon_2_0);
+
+    Marvin_image_Icon_2_0 = leImageWidget_New();
+    Marvin_image_Icon_2_0->fn->setPosition(Marvin_image_Icon_2_0, 0, 0);
+    Marvin_image_Icon_2_0->fn->setSize(Marvin_image_Icon_2_0, 20, 20);
+    Marvin_image_Icon_2_0->fn->setScheme(Marvin_image_Icon_2_0, &SCHEME_BACKGROUND);
+    Marvin_image_Icon_2_0->fn->setBackgroundType(Marvin_image_Icon_2_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_Icon_2_0->fn->setBorderType(Marvin_image_Icon_2_0, LE_WIDGET_BORDER_NONE);
+    Marvin_image_Icon_2_0->fn->setImage(Marvin_image_Icon_2_0, (leImage*)&figmaImg_Icon_2_0);
+    Marvin_panel_Icon_2_0->fn->addChild(Marvin_panel_Icon_2_0, (leWidget*)Marvin_image_Icon_2_0);
+
+    Marvin_label__UP_0_0 = leLabelWidget_New();
+    Marvin_label__UP_0_0->fn->setPosition(Marvin_label__UP_0_0, 89, 26);
+    Marvin_label__UP_0_0->fn->setSize(Marvin_label__UP_0_0, 26, 20);
+    Marvin_label__UP_0_0->fn->setScheme(Marvin_label__UP_0_0, &Scheme35);
+    Marvin_label__UP_0_0->fn->setBackgroundType(Marvin_label__UP_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__UP_0_0->fn->setHAlignment(Marvin_label__UP_0_0, LE_HALIGN_CENTER);
+    Marvin_label__UP_0_0->fn->setVAlignment(Marvin_label__UP_0_0, LE_VALIGN_TOP);
+    Marvin_label__UP_0_0->fn->setMargins(Marvin_label__UP_0_0, 0, 0, 0, 0);
+    Marvin_label__UP_0_0->fn->setString(Marvin_label__UP_0_0, (leString*)&string_figmaStr__UP_0);
+    Marvin_panel_Button_24_0->fn->addChild(Marvin_panel_Button_24_0, (leWidget*)Marvin_label__UP_0_0);
+
+    Marvin_panel_Button_25_0 = leWidget_New();
+    Marvin_panel_Button_25_0->fn->setPosition(Marvin_panel_Button_25_0, 0, 77);
+    Marvin_panel_Button_25_0->fn->setSize(Marvin_panel_Button_25_0, 180, 71);
+    Marvin_panel_Button_25_0->fn->setScheme(Marvin_panel_Button_25_0, &Scheme21);
+    Marvin_panel_Container_32_0->fn->addChild(Marvin_panel_Container_32_0, (leWidget*)Marvin_panel_Button_25_0);
+
+    Marvin_panel_Icon_3_0 = leWidget_New();
+    Marvin_panel_Icon_3_0->fn->setPosition(Marvin_panel_Icon_3_0, 65, 26);
+    Marvin_panel_Icon_3_0->fn->setSize(Marvin_panel_Icon_3_0, 20, 20);
+    Marvin_panel_Icon_3_0->fn->setScheme(Marvin_panel_Icon_3_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Icon_3_0->fn->setBackgroundType(Marvin_panel_Icon_3_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Button_25_0->fn->addChild(Marvin_panel_Button_25_0, (leWidget*)Marvin_panel_Icon_3_0);
+
+    Marvin_image_Icon_3_0 = leImageWidget_New();
+    Marvin_image_Icon_3_0->fn->setPosition(Marvin_image_Icon_3_0, 0, 0);
+    Marvin_image_Icon_3_0->fn->setSize(Marvin_image_Icon_3_0, 20, 20);
+    Marvin_image_Icon_3_0->fn->setScheme(Marvin_image_Icon_3_0, &SCHEME_BACKGROUND);
+    Marvin_image_Icon_3_0->fn->setBackgroundType(Marvin_image_Icon_3_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_Icon_3_0->fn->setBorderType(Marvin_image_Icon_3_0, LE_WIDGET_BORDER_NONE);
+    Marvin_image_Icon_3_0->fn->setImage(Marvin_image_Icon_3_0, (leImage*)&figmaImg_Icon_3_0);
+    Marvin_panel_Icon_3_0->fn->addChild(Marvin_panel_Icon_3_0, (leWidget*)Marvin_image_Icon_3_0);
+
+    Marvin_label__DN_0_0 = leLabelWidget_New();
+    Marvin_label__DN_0_0->fn->setPosition(Marvin_label__DN_0_0, 89, 26);
+    Marvin_label__DN_0_0->fn->setSize(Marvin_label__DN_0_0, 26, 20);
+    Marvin_label__DN_0_0->fn->setScheme(Marvin_label__DN_0_0, &Scheme35);
+    Marvin_label__DN_0_0->fn->setBackgroundType(Marvin_label__DN_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__DN_0_0->fn->setHAlignment(Marvin_label__DN_0_0, LE_HALIGN_CENTER);
+    Marvin_label__DN_0_0->fn->setVAlignment(Marvin_label__DN_0_0, LE_VALIGN_TOP);
+    Marvin_label__DN_0_0->fn->setMargins(Marvin_label__DN_0_0, 0, 0, 0, 0);
+    Marvin_label__DN_0_0->fn->setString(Marvin_label__DN_0_0, (leString*)&string_figmaStr__DN_0);
+    Marvin_panel_Button_25_0->fn->addChild(Marvin_panel_Button_25_0, (leWidget*)Marvin_label__DN_0_0);
+
+    Marvin_panel_Container_33_0 = leWidget_New();
+    Marvin_panel_Container_33_0->fn->setPosition(Marvin_panel_Container_33_0, 200, 0);
+    Marvin_panel_Container_33_0->fn->setSize(Marvin_panel_Container_33_0, 273, 148);
+    Marvin_panel_Container_33_0->fn->setScheme(Marvin_panel_Container_33_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_33_0->fn->setBackgroundType(Marvin_panel_Container_33_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_31_0->fn->addChild(Marvin_panel_Container_31_0, (leWidget*)Marvin_panel_Container_33_0);
+
+    Marvin_label_WHAMMY_0_0 = leLabelWidget_New();
+    Marvin_label_WHAMMY_0_0->fn->setPosition(Marvin_label_WHAMMY_0_0, 110, 23);
+    Marvin_label_WHAMMY_0_0->fn->setSize(Marvin_label_WHAMMY_0_0, 54, 20);
+    Marvin_label_WHAMMY_0_0->fn->setScheme(Marvin_label_WHAMMY_0_0, &Scheme36);
+    Marvin_label_WHAMMY_0_0->fn->setBackgroundType(Marvin_label_WHAMMY_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_WHAMMY_0_0->fn->setVAlignment(Marvin_label_WHAMMY_0_0, LE_VALIGN_TOP);
+    Marvin_label_WHAMMY_0_0->fn->setMargins(Marvin_label_WHAMMY_0_0, 0, 0, 0, 0);
+    Marvin_label_WHAMMY_0_0->fn->setString(Marvin_label_WHAMMY_0_0, (leString*)&string_figmaStr_WHAMMY_0);
+    Marvin_panel_Container_33_0->fn->addChild(Marvin_panel_Container_33_0, (leWidget*)Marvin_label_WHAMMY_0_0);
+
+    Marvin_panel_WhammySlider_0_0 = leWidget_New();
+    Marvin_panel_WhammySlider_0_0->fn->setPosition(Marvin_panel_WhammySlider_0_0, 0, 0);
+    Marvin_panel_WhammySlider_0_0->fn->setSize(Marvin_panel_WhammySlider_0_0, 297, 148);
+    Marvin_panel_WhammySlider_0_0->fn->setScheme(Marvin_panel_WhammySlider_0_0, &SCHEME_BACKGROUND);
+    Marvin_panel_WhammySlider_0_0->fn->setBackgroundType(Marvin_panel_WhammySlider_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_33_0->fn->addChild(Marvin_panel_Container_33_0, (leWidget*)Marvin_panel_WhammySlider_0_0);
+
+    Marvin_panel_Container_34_0 = leWidget_New();
+    Marvin_panel_Container_34_0->fn->setPosition(Marvin_panel_Container_34_0, 0, 42);
+    Marvin_panel_Container_34_0->fn->setSize(Marvin_panel_Container_34_0, 273, 64);
+    Marvin_panel_Container_34_0->fn->setScheme(Marvin_panel_Container_34_0, &Scheme31);
+    Marvin_panel_WhammySlider_0_0->fn->addChild(Marvin_panel_WhammySlider_0_0, (leWidget*)Marvin_panel_Container_34_0);
+
+    Marvin_panel_Container_35_1 = leWidget_New();
+    Marvin_panel_Container_35_1->fn->setPosition(Marvin_panel_Container_35_1, 137, 0);
+    Marvin_panel_Container_35_1->fn->setSize(Marvin_panel_Container_35_1, 1, 64);
+    Marvin_panel_Container_35_1->fn->setScheme(Marvin_panel_Container_35_1, &Scheme37);
+    Marvin_panel_Container_34_0->fn->addChild(Marvin_panel_Container_34_0, (leWidget*)Marvin_panel_Container_35_1);
+
+    Marvin_panel_Container_36_1 = leWidget_New();
+    Marvin_panel_Container_36_1->fn->setPosition(Marvin_panel_Container_36_1, 137, 0);
+    Marvin_panel_Container_36_1->fn->setSize(Marvin_panel_Container_36_1, 1, 64);
+    Marvin_panel_Container_36_1->fn->setScheme(Marvin_panel_Container_36_1, &panel_blueviolet);
+    Marvin_panel_Container_34_0->fn->addChild(Marvin_panel_Container_34_0, (leWidget*)Marvin_panel_Container_36_1);
+
+    Marvin_panel_Container_37_0 = leWidget_New();
+    Marvin_panel_Container_37_0->fn->setPosition(Marvin_panel_Container_37_0, 131, 12);
+    Marvin_panel_Container_37_0->fn->setSize(Marvin_panel_Container_37_0, 16, 40);
+    Marvin_panel_Container_37_0->fn->setScheme(Marvin_panel_Container_37_0, &panel_plum);
+    Marvin_panel_Container_34_0->fn->addChild(Marvin_panel_Container_34_0, (leWidget*)Marvin_panel_Container_37_0);
+
+    Marvin_panel_Container_38_0 = leWidget_New();
+    Marvin_panel_Container_38_0->fn->setPosition(Marvin_panel_Container_38_0, 493, 0);
+    Marvin_panel_Container_38_0->fn->setSize(Marvin_panel_Container_38_0, 71, 148);
+    Marvin_panel_Container_38_0->fn->setScheme(Marvin_panel_Container_38_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_38_0->fn->setBackgroundType(Marvin_panel_Container_38_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_31_0->fn->addChild(Marvin_panel_Container_31_0, (leWidget*)Marvin_panel_Container_38_0);
+
+    Marvin_panel_Button_26_0 = leWidget_New();
+    Marvin_panel_Button_26_0->fn->setPosition(Marvin_panel_Button_26_0, 0, 0);
+    Marvin_panel_Button_26_0->fn->setSize(Marvin_panel_Button_26_0, 71, 71);
+    Marvin_panel_Button_26_0->fn->setScheme(Marvin_panel_Button_26_0, &Scheme31);
+    Marvin_panel_Container_38_0->fn->addChild(Marvin_panel_Container_38_0, (leWidget*)Marvin_panel_Button_26_0);
+
+    Marvin_label___5_0 = leLabelWidget_New();
+    Marvin_label___5_0->fn->setPosition(Marvin_label___5_0, 28, 20);
+    Marvin_label___5_0->fn->setSize(Marvin_label___5_0, 15, 32);
+    Marvin_label___5_0->fn->setScheme(Marvin_label___5_0, &Scheme35);
+    Marvin_label___5_0->fn->setBackgroundType(Marvin_label___5_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___5_0->fn->setHAlignment(Marvin_label___5_0, LE_HALIGN_CENTER);
+    Marvin_label___5_0->fn->setVAlignment(Marvin_label___5_0, LE_VALIGN_TOP);
+    Marvin_label___5_0->fn->setMargins(Marvin_label___5_0, 0, 0, 0, 0);
+    Marvin_label___5_0->fn->setString(Marvin_label___5_0, (leString*)&string_figmaStr___5);
+    Marvin_panel_Button_26_0->fn->addChild(Marvin_panel_Button_26_0, (leWidget*)Marvin_label___5_0);
+
+    Marvin_panel_Button_27_0 = leWidget_New();
+    Marvin_panel_Button_27_0->fn->setPosition(Marvin_panel_Button_27_0, 0, 77);
+    Marvin_panel_Button_27_0->fn->setSize(Marvin_panel_Button_27_0, 71, 71);
+    Marvin_panel_Button_27_0->fn->setScheme(Marvin_panel_Button_27_0, &Scheme31);
+    Marvin_panel_Container_38_0->fn->addChild(Marvin_panel_Container_38_0, (leWidget*)Marvin_panel_Button_27_0);
+
+    Marvin_label___6_0 = leLabelWidget_New();
+    Marvin_label___6_0->fn->setPosition(Marvin_label___6_0, 28, 20);
+    Marvin_label___6_0->fn->setSize(Marvin_label___6_0, 15, 32);
+    Marvin_label___6_0->fn->setScheme(Marvin_label___6_0, &Scheme35);
+    Marvin_label___6_0->fn->setBackgroundType(Marvin_label___6_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___6_0->fn->setHAlignment(Marvin_label___6_0, LE_HALIGN_CENTER);
+    Marvin_label___6_0->fn->setVAlignment(Marvin_label___6_0, LE_VALIGN_TOP);
+    Marvin_label___6_0->fn->setMargins(Marvin_label___6_0, 0, 0, 0, 0);
+    Marvin_label___6_0->fn->setString(Marvin_label___6_0, (leString*)&string_figmaStr___6);
+    Marvin_panel_Button_27_0->fn->addChild(Marvin_panel_Button_27_0, (leWidget*)Marvin_label___6_0);
+
+    Marvin_panel_Container_39_0 = leWidget_New();
+    Marvin_panel_Container_39_0->fn->setPosition(Marvin_panel_Container_39_0, 17, 337);
+    Marvin_panel_Container_39_0->fn->setSize(Marvin_panel_Container_39_0, 588, 306);
+    Marvin_panel_Container_39_0->fn->setScheme(Marvin_panel_Container_39_0, &Scheme31);
+    Marvin_panel_ControllerPanel_0_0->fn->addChild(Marvin_panel_ControllerPanel_0_0, (leWidget*)Marvin_panel_Container_39_0);
+
+    Marvin_panel_Container_40_0 = leWidget_New();
+    Marvin_panel_Container_40_0->fn->setPosition(Marvin_panel_Container_40_0, 12, 12);
+    Marvin_panel_Container_40_0->fn->setSize(Marvin_panel_Container_40_0, 225, 249);
+    Marvin_panel_Container_40_0->fn->setScheme(Marvin_panel_Container_40_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_40_0->fn->setBackgroundType(Marvin_panel_Container_40_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_39_0->fn->addChild(Marvin_panel_Container_39_0, (leWidget*)Marvin_panel_Container_40_0);
+
+    Marvin_panel_Paragraph_3_0 = leWidget_New();
+    Marvin_panel_Paragraph_3_0->fn->setPosition(Marvin_panel_Paragraph_3_0, 0, 0);
+    Marvin_panel_Paragraph_3_0->fn->setSize(Marvin_panel_Paragraph_3_0, 225, 20);
+    Marvin_panel_Paragraph_3_0->fn->setScheme(Marvin_panel_Paragraph_3_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Paragraph_3_0->fn->setBackgroundType(Marvin_panel_Paragraph_3_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_40_0->fn->addChild(Marvin_panel_Container_40_0, (leWidget*)Marvin_panel_Paragraph_3_0);
+
+    Marvin_label_WIIMOTE_0_0 = leLabelWidget_New();
+    Marvin_label_WIIMOTE_0_0->fn->setPosition(Marvin_label_WIIMOTE_0_0, 0, 0);
+    Marvin_label_WIIMOTE_0_0->fn->setSize(Marvin_label_WIIMOTE_0_0, 58, 16);
+    Marvin_label_WIIMOTE_0_0->fn->setScheme(Marvin_label_WIIMOTE_0_0, &Scheme24);
+    Marvin_label_WIIMOTE_0_0->fn->setBackgroundType(Marvin_label_WIIMOTE_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_WIIMOTE_0_0->fn->setVAlignment(Marvin_label_WIIMOTE_0_0, LE_VALIGN_TOP);
+    Marvin_label_WIIMOTE_0_0->fn->setMargins(Marvin_label_WIIMOTE_0_0, 0, 0, 0, 0);
+    Marvin_label_WIIMOTE_0_0->fn->setString(Marvin_label_WIIMOTE_0_0, (leString*)&string_figmaStr_WIIMOTE_0);
+    Marvin_panel_Paragraph_3_0->fn->addChild(Marvin_panel_Paragraph_3_0, (leWidget*)Marvin_label_WIIMOTE_0_0);
+
+    Marvin_panel_Container_41_0 = leWidget_New();
+    Marvin_panel_Container_41_0->fn->setPosition(Marvin_panel_Container_41_0, 0, 24);
+    Marvin_panel_Container_41_0->fn->setSize(Marvin_panel_Container_41_0, 225, 225);
+    Marvin_panel_Container_41_0->fn->setScheme(Marvin_panel_Container_41_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_41_0->fn->setBackgroundType(Marvin_panel_Container_41_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_40_0->fn->addChild(Marvin_panel_Container_40_0, (leWidget*)Marvin_panel_Container_41_0);
+
+    Marvin_panel_Button_28_0 = leWidget_New();
+    Marvin_panel_Button_28_0->fn->setPosition(Marvin_panel_Button_28_0, 77, 0);
+    Marvin_panel_Button_28_0->fn->setSize(Marvin_panel_Button_28_0, 71, 71);
+    Marvin_panel_Button_28_0->fn->setScheme(Marvin_panel_Button_28_0, &Scheme31);
+    Marvin_panel_Container_41_0->fn->addChild(Marvin_panel_Container_41_0, (leWidget*)Marvin_panel_Button_28_0);
+
+    Marvin_label___7_0 = leLabelWidget_New();
+    Marvin_label___7_0->fn->setPosition(Marvin_label___7_0, 30, 22);
+    Marvin_label___7_0->fn->setSize(Marvin_label___7_0, 11, 28);
+    Marvin_label___7_0->fn->setScheme(Marvin_label___7_0, &Scheme35);
+    Marvin_label___7_0->fn->setBackgroundType(Marvin_label___7_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___7_0->fn->setHAlignment(Marvin_label___7_0, LE_HALIGN_CENTER);
+    Marvin_label___7_0->fn->setVAlignment(Marvin_label___7_0, LE_VALIGN_TOP);
+    Marvin_label___7_0->fn->setMargins(Marvin_label___7_0, 0, 0, 0, 0);
+    Marvin_label___7_0->fn->setString(Marvin_label___7_0, (leString*)&string_figmaStr___7);
+    Marvin_panel_Button_28_0->fn->addChild(Marvin_panel_Button_28_0, (leWidget*)Marvin_label___7_0);
+
+    Marvin_panel_Button_29_0 = leWidget_New();
+    Marvin_panel_Button_29_0->fn->setPosition(Marvin_panel_Button_29_0, 0, 77);
+    Marvin_panel_Button_29_0->fn->setSize(Marvin_panel_Button_29_0, 71, 71);
+    Marvin_panel_Button_29_0->fn->setScheme(Marvin_panel_Button_29_0, &Scheme31);
+    Marvin_panel_Container_41_0->fn->addChild(Marvin_panel_Container_41_0, (leWidget*)Marvin_panel_Button_29_0);
+
+    Marvin_label___8_0 = leLabelWidget_New();
+    Marvin_label___8_0->fn->setPosition(Marvin_label___8_0, 30, 22);
+    Marvin_label___8_0->fn->setSize(Marvin_label___8_0, 11, 28);
+    Marvin_label___8_0->fn->setScheme(Marvin_label___8_0, &Scheme35);
+    Marvin_label___8_0->fn->setBackgroundType(Marvin_label___8_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___8_0->fn->setHAlignment(Marvin_label___8_0, LE_HALIGN_CENTER);
+    Marvin_label___8_0->fn->setVAlignment(Marvin_label___8_0, LE_VALIGN_TOP);
+    Marvin_label___8_0->fn->setMargins(Marvin_label___8_0, 0, 0, 0, 0);
+    Marvin_label___8_0->fn->setString(Marvin_label___8_0, (leString*)&string_figmaStr___8);
+    Marvin_panel_Button_29_0->fn->addChild(Marvin_panel_Button_29_0, (leWidget*)Marvin_label___8_0);
+
+    Marvin_panel_Button_30_0 = leWidget_New();
+    Marvin_panel_Button_30_0->fn->setPosition(Marvin_panel_Button_30_0, 154, 77);
+    Marvin_panel_Button_30_0->fn->setSize(Marvin_panel_Button_30_0, 71, 71);
+    Marvin_panel_Button_30_0->fn->setScheme(Marvin_panel_Button_30_0, &Scheme31);
+    Marvin_panel_Container_41_0->fn->addChild(Marvin_panel_Container_41_0, (leWidget*)Marvin_panel_Button_30_0);
+
+    Marvin_label___9_0 = leLabelWidget_New();
+    Marvin_label___9_0->fn->setPosition(Marvin_label___9_0, 30, 22);
+    Marvin_label___9_0->fn->setSize(Marvin_label___9_0, 11, 28);
+    Marvin_label___9_0->fn->setScheme(Marvin_label___9_0, &Scheme35);
+    Marvin_label___9_0->fn->setBackgroundType(Marvin_label___9_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___9_0->fn->setHAlignment(Marvin_label___9_0, LE_HALIGN_CENTER);
+    Marvin_label___9_0->fn->setVAlignment(Marvin_label___9_0, LE_VALIGN_TOP);
+    Marvin_label___9_0->fn->setMargins(Marvin_label___9_0, 0, 0, 0, 0);
+    Marvin_label___9_0->fn->setString(Marvin_label___9_0, (leString*)&string_figmaStr___9);
+    Marvin_panel_Button_30_0->fn->addChild(Marvin_panel_Button_30_0, (leWidget*)Marvin_label___9_0);
+
+    Marvin_panel_Button_31_0 = leWidget_New();
+    Marvin_panel_Button_31_0->fn->setPosition(Marvin_panel_Button_31_0, 77, 154);
+    Marvin_panel_Button_31_0->fn->setSize(Marvin_panel_Button_31_0, 71, 71);
+    Marvin_panel_Button_31_0->fn->setScheme(Marvin_panel_Button_31_0, &Scheme31);
+    Marvin_panel_Container_41_0->fn->addChild(Marvin_panel_Container_41_0, (leWidget*)Marvin_panel_Button_31_0);
+
+    Marvin_label___10_0 = leLabelWidget_New();
+    Marvin_label___10_0->fn->setPosition(Marvin_label___10_0, 30, 22);
+    Marvin_label___10_0->fn->setSize(Marvin_label___10_0, 11, 28);
+    Marvin_label___10_0->fn->setScheme(Marvin_label___10_0, &Scheme35);
+    Marvin_label___10_0->fn->setBackgroundType(Marvin_label___10_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label___10_0->fn->setHAlignment(Marvin_label___10_0, LE_HALIGN_CENTER);
+    Marvin_label___10_0->fn->setVAlignment(Marvin_label___10_0, LE_VALIGN_TOP);
+    Marvin_label___10_0->fn->setMargins(Marvin_label___10_0, 0, 0, 0, 0);
+    Marvin_label___10_0->fn->setString(Marvin_label___10_0, (leString*)&string_figmaStr___10);
+    Marvin_panel_Button_31_0->fn->addChild(Marvin_panel_Button_31_0, (leWidget*)Marvin_label___10_0);
+
+    Marvin_panel_Container_42_0 = leWidget_New();
+    Marvin_panel_Container_42_0->fn->setPosition(Marvin_panel_Container_42_0, 253, 12);
+    Marvin_panel_Container_42_0->fn->setSize(Marvin_panel_Container_42_0, 150, 249);
+    Marvin_panel_Container_42_0->fn->setScheme(Marvin_panel_Container_42_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_42_0->fn->setBackgroundType(Marvin_panel_Container_42_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_39_0->fn->addChild(Marvin_panel_Container_39_0, (leWidget*)Marvin_panel_Container_42_0);
+
+    Marvin_panel_Button_32_0 = leWidget_New();
+    Marvin_panel_Button_32_0->fn->setPosition(Marvin_panel_Button_32_0, 0, 20);
+    Marvin_panel_Button_32_0->fn->setSize(Marvin_panel_Button_32_0, 150, 71);
+    Marvin_panel_Button_32_0->fn->setScheme(Marvin_panel_Button_32_0, &Scheme31);
+    Marvin_panel_Container_42_0->fn->addChild(Marvin_panel_Container_42_0, (leWidget*)Marvin_panel_Button_32_0);
+
+    Marvin_label_HOME_0_0 = leLabelWidget_New();
+    Marvin_label_HOME_0_0->fn->setPosition(Marvin_label_HOME_0_0, 58, 26);
+    Marvin_label_HOME_0_0->fn->setSize(Marvin_label_HOME_0_0, 34, 20);
+    Marvin_label_HOME_0_0->fn->setScheme(Marvin_label_HOME_0_0, &Scheme35);
+    Marvin_label_HOME_0_0->fn->setBackgroundType(Marvin_label_HOME_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_HOME_0_0->fn->setHAlignment(Marvin_label_HOME_0_0, LE_HALIGN_CENTER);
+    Marvin_label_HOME_0_0->fn->setVAlignment(Marvin_label_HOME_0_0, LE_VALIGN_TOP);
+    Marvin_label_HOME_0_0->fn->setMargins(Marvin_label_HOME_0_0, 0, 0, 0, 0);
+    Marvin_label_HOME_0_0->fn->setString(Marvin_label_HOME_0_0, (leString*)&string_figmaStr_HOME_0);
+    Marvin_panel_Button_32_0->fn->addChild(Marvin_panel_Button_32_0, (leWidget*)Marvin_label_HOME_0_0);
+
+    Marvin_panel_Container_43_0 = leWidget_New();
+    Marvin_panel_Container_43_0->fn->setPosition(Marvin_panel_Container_43_0, 0, 99);
+    Marvin_panel_Container_43_0->fn->setSize(Marvin_panel_Container_43_0, 150, 150);
+    Marvin_panel_Container_43_0->fn->setScheme(Marvin_panel_Container_43_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_43_0->fn->setBackgroundType(Marvin_panel_Container_43_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_42_0->fn->addChild(Marvin_panel_Container_42_0, (leWidget*)Marvin_panel_Container_43_0);
+
+    Marvin_panel_Button_33_0 = leWidget_New();
+    Marvin_panel_Button_33_0->fn->setPosition(Marvin_panel_Button_33_0, 0, 0);
+    Marvin_panel_Button_33_0->fn->setSize(Marvin_panel_Button_33_0, 71, 71);
+    Marvin_panel_Button_33_0->fn->setScheme(Marvin_panel_Button_33_0, &Scheme31);
+    Marvin_panel_Container_43_0->fn->addChild(Marvin_panel_Container_43_0, (leWidget*)Marvin_panel_Button_33_0);
+
+    Marvin_label_A_0_0 = leLabelWidget_New();
+    Marvin_label_A_0_0->fn->setPosition(Marvin_label_A_0_0, 30, 22);
+    Marvin_label_A_0_0->fn->setSize(Marvin_label_A_0_0, 11, 28);
+    Marvin_label_A_0_0->fn->setScheme(Marvin_label_A_0_0, &Scheme35);
+    Marvin_label_A_0_0->fn->setBackgroundType(Marvin_label_A_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_A_0_0->fn->setHAlignment(Marvin_label_A_0_0, LE_HALIGN_CENTER);
+    Marvin_label_A_0_0->fn->setVAlignment(Marvin_label_A_0_0, LE_VALIGN_TOP);
+    Marvin_label_A_0_0->fn->setMargins(Marvin_label_A_0_0, 0, 0, 0, 0);
+    Marvin_label_A_0_0->fn->setString(Marvin_label_A_0_0, (leString*)&string_figmaStr_A_0);
+    Marvin_panel_Button_33_0->fn->addChild(Marvin_panel_Button_33_0, (leWidget*)Marvin_label_A_0_0);
+
+    Marvin_panel_Button_34_0 = leWidget_New();
+    Marvin_panel_Button_34_0->fn->setPosition(Marvin_panel_Button_34_0, 79, 0);
+    Marvin_panel_Button_34_0->fn->setSize(Marvin_panel_Button_34_0, 71, 71);
+    Marvin_panel_Button_34_0->fn->setScheme(Marvin_panel_Button_34_0, &Scheme31);
+    Marvin_panel_Container_43_0->fn->addChild(Marvin_panel_Container_43_0, (leWidget*)Marvin_panel_Button_34_0);
+
+    Marvin_label_B_0_0 = leLabelWidget_New();
+    Marvin_label_B_0_0->fn->setPosition(Marvin_label_B_0_0, 30, 22);
+    Marvin_label_B_0_0->fn->setSize(Marvin_label_B_0_0, 11, 28);
+    Marvin_label_B_0_0->fn->setScheme(Marvin_label_B_0_0, &Scheme35);
+    Marvin_label_B_0_0->fn->setBackgroundType(Marvin_label_B_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_B_0_0->fn->setHAlignment(Marvin_label_B_0_0, LE_HALIGN_CENTER);
+    Marvin_label_B_0_0->fn->setVAlignment(Marvin_label_B_0_0, LE_VALIGN_TOP);
+    Marvin_label_B_0_0->fn->setMargins(Marvin_label_B_0_0, 0, 0, 0, 0);
+    Marvin_label_B_0_0->fn->setString(Marvin_label_B_0_0, (leString*)&string_figmaStr_B_0_0);
+    Marvin_panel_Button_34_0->fn->addChild(Marvin_panel_Button_34_0, (leWidget*)Marvin_label_B_0_0);
+
+    Marvin_panel_Button_35_0 = leWidget_New();
+    Marvin_panel_Button_35_0->fn->setPosition(Marvin_panel_Button_35_0, 0, 79);
+    Marvin_panel_Button_35_0->fn->setSize(Marvin_panel_Button_35_0, 71, 71);
+    Marvin_panel_Button_35_0->fn->setScheme(Marvin_panel_Button_35_0, &Scheme31);
+    Marvin_panel_Container_43_0->fn->addChild(Marvin_panel_Container_43_0, (leWidget*)Marvin_panel_Button_35_0);
+
+    Marvin_label__1_0_0 = leLabelWidget_New();
+    Marvin_label__1_0_0->fn->setPosition(Marvin_label__1_0_0, 30, 22);
+    Marvin_label__1_0_0->fn->setSize(Marvin_label__1_0_0, 11, 28);
+    Marvin_label__1_0_0->fn->setScheme(Marvin_label__1_0_0, &Scheme35);
+    Marvin_label__1_0_0->fn->setBackgroundType(Marvin_label__1_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__1_0_0->fn->setHAlignment(Marvin_label__1_0_0, LE_HALIGN_CENTER);
+    Marvin_label__1_0_0->fn->setVAlignment(Marvin_label__1_0_0, LE_VALIGN_TOP);
+    Marvin_label__1_0_0->fn->setMargins(Marvin_label__1_0_0, 0, 0, 0, 0);
+    Marvin_label__1_0_0->fn->setString(Marvin_label__1_0_0, (leString*)&string_figmaStr__1_0);
+    Marvin_panel_Button_35_0->fn->addChild(Marvin_panel_Button_35_0, (leWidget*)Marvin_label__1_0_0);
+
+    Marvin_panel_Button_36_0 = leWidget_New();
+    Marvin_panel_Button_36_0->fn->setPosition(Marvin_panel_Button_36_0, 79, 79);
+    Marvin_panel_Button_36_0->fn->setSize(Marvin_panel_Button_36_0, 71, 71);
+    Marvin_panel_Button_36_0->fn->setScheme(Marvin_panel_Button_36_0, &Scheme31);
+    Marvin_panel_Container_43_0->fn->addChild(Marvin_panel_Container_43_0, (leWidget*)Marvin_panel_Button_36_0);
+
+    Marvin_label__2_0_0 = leLabelWidget_New();
+    Marvin_label__2_0_0->fn->setPosition(Marvin_label__2_0_0, 30, 22);
+    Marvin_label__2_0_0->fn->setSize(Marvin_label__2_0_0, 11, 28);
+    Marvin_label__2_0_0->fn->setScheme(Marvin_label__2_0_0, &Scheme35);
+    Marvin_label__2_0_0->fn->setBackgroundType(Marvin_label__2_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label__2_0_0->fn->setHAlignment(Marvin_label__2_0_0, LE_HALIGN_CENTER);
+    Marvin_label__2_0_0->fn->setVAlignment(Marvin_label__2_0_0, LE_VALIGN_TOP);
+    Marvin_label__2_0_0->fn->setMargins(Marvin_label__2_0_0, 0, 0, 0, 0);
+    Marvin_label__2_0_0->fn->setString(Marvin_label__2_0_0, (leString*)&string_figmaStr__2_0);
+    Marvin_panel_Button_36_0->fn->addChild(Marvin_panel_Button_36_0, (leWidget*)Marvin_label__2_0_0);
+
+    Marvin_panel_Container_44_0 = leWidget_New();
+    Marvin_panel_Container_44_0->fn->setPosition(Marvin_panel_Container_44_0, 419, 12);
+    Marvin_panel_Container_44_0->fn->setSize(Marvin_panel_Container_44_0, 157, 213);
+    Marvin_panel_Container_44_0->fn->setScheme(Marvin_panel_Container_44_0, &SCHEME_BACKGROUND);
+    Marvin_panel_Container_44_0->fn->setBackgroundType(Marvin_panel_Container_44_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_39_0->fn->addChild(Marvin_panel_Container_39_0, (leWidget*)Marvin_panel_Container_44_0);
+
+    Marvin_panel_TiltControl_0_0 = leWidget_New();
+    Marvin_panel_TiltControl_0_0->fn->setPosition(Marvin_panel_TiltControl_0_0, 0, 56);
+    Marvin_panel_TiltControl_0_0->fn->setSize(Marvin_panel_TiltControl_0_0, 157, 157);
+    Marvin_panel_TiltControl_0_0->fn->setScheme(Marvin_panel_TiltControl_0_0, &SCHEME_BACKGROUND);
+    Marvin_panel_TiltControl_0_0->fn->setBackgroundType(Marvin_panel_TiltControl_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_panel_Container_44_0->fn->addChild(Marvin_panel_Container_44_0, (leWidget*)Marvin_panel_TiltControl_0_0);
+
+    Marvin_image_TiltControl_0_0 = leImageWidget_New();
+    Marvin_image_TiltControl_0_0->fn->setPosition(Marvin_image_TiltControl_0_0, 0, 0);
+    Marvin_image_TiltControl_0_0->fn->setSize(Marvin_image_TiltControl_0_0, 157, 157);
+    Marvin_image_TiltControl_0_0->fn->setScheme(Marvin_image_TiltControl_0_0, &SCHEME_BACKGROUND);
+    Marvin_image_TiltControl_0_0->fn->setBackgroundType(Marvin_image_TiltControl_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_image_TiltControl_0_0->fn->setBorderType(Marvin_image_TiltControl_0_0, LE_WIDGET_BORDER_NONE);
+    Marvin_image_TiltControl_0_0->fn->setImage(Marvin_image_TiltControl_0_0, (leImage*)&figmaImg_TiltControl_0);
+    Marvin_panel_TiltControl_0_0->fn->addChild(Marvin_panel_TiltControl_0_0, (leWidget*)Marvin_image_TiltControl_0_0);
+
+    Marvin_label_TILT_0_0 = leLabelWidget_New();
+    Marvin_label_TILT_0_0->fn->setPosition(Marvin_label_TILT_0_0, 4, 1);
+    Marvin_label_TILT_0_0->fn->setSize(Marvin_label_TILT_0_0, 28, 16);
+    Marvin_label_TILT_0_0->fn->setScheme(Marvin_label_TILT_0_0, &Scheme36);
+    Marvin_label_TILT_0_0->fn->setBackgroundType(Marvin_label_TILT_0_0, LE_WIDGET_BACKGROUND_NONE);
+    Marvin_label_TILT_0_0->fn->setVAlignment(Marvin_label_TILT_0_0, LE_VALIGN_TOP);
+    Marvin_label_TILT_0_0->fn->setMargins(Marvin_label_TILT_0_0, 0, 0, 0, 0);
+    Marvin_label_TILT_0_0->fn->setString(Marvin_label_TILT_0_0, (leString*)&string_figmaStr_TILT_0);
+    Marvin_panel_TiltControl_0_0->fn->addChild(Marvin_panel_TiltControl_0_0, (leWidget*)Marvin_label_TILT_0_0);
+
+    leAddRootWidget(root4, 4);
+    leSetLayerColorMode(4, LE_COLOR_MODE_RGB_565);
+
     showing = LE_TRUE;
 
     return LE_SUCCESS;
@@ -2441,6 +3820,7 @@ void screenUpdate_Marvin(void)
     root1->fn->setSize(root1, root1->rect.width, root1->rect.height);
     root2->fn->setSize(root2, root2->rect.width, root2->rect.height);
     root3->fn->setSize(root3, root3->rect.width, root3->rect.height);
+    root4->fn->setSize(root4, root4->rect.width, root4->rect.height);
 }
 
 void screenHide_Marvin(void)
@@ -2465,6 +3845,7 @@ void screenHide_Marvin(void)
     Marvin_PANEL_DASHBOARD_HUMAN = NULL;
     Marvin_PANEL_DASHBOARD_ROBOT_PLAYER = NULL;
     Marvin_PANEL_DASHBOARD_ROBOT_GAMEPLAY = NULL;
+    Marvin_PANEL_DASHBOARD_ROBOT_BORDER = NULL;
     Marvin_IMAGE_DASHBOARD_ROBOT_PLAYER = NULL;
     Marvin_LABEL_DASHBOARD_ROBOT_Name = NULL;
     Marvin_LABEL_DASHBOARD_ROBOT_RobotPlayer = NULL;
@@ -2580,19 +3961,15 @@ void screenHide_Marvin(void)
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG = NULL;
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_START = NULL;
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_Difficulty = NULL;
-    Marvin_panel_Container_75_0 = NULL;
-    Marvin_panel_Container_80_0 = NULL;
-    Marvin_panel_Image__Player__0 = NULL;
-    Marvin_panel_Container_76_0 = NULL;
-    Marvin_panel_Container_77_0 = NULL;
-    Marvin_panel_Container_78_0 = NULL;
-    Marvin_panel_Container_79_0 = NULL;
-    Marvin_panel_Paragraph_10_0 = NULL;
-    Marvin_panel_Paragraph_11_0 = NULL;
-    Marvin_label_PLAYER_0 = NULL;
-    Marvin_label_Human_Player_0 = NULL;
-    Marvin_panel_Text_21_0 = NULL;
-    Marvin_label_IDLE_1_0 = NULL;
+    Marvin_PANEL_DASHBOARD_HUMAN_PLAYER = NULL;
+    Marvin_PANEL_DASHBOARD_HUMAN_GAMEPLAY = NULL;
+    Marvin_PANEL_DASHBOARD_HUMAN_BORDER = NULL;
+    Marvin_IMAGE_DASHBOARD_HUMAN_PLAYER = NULL;
+    Marvin_LABEL_DASHBOARD_HUMAN_Name = NULL;
+    Marvin_LABEL_DASHBOARD_HUMAN_HumanPlayer = NULL;
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE = NULL;
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED = NULL;
+    Marvin_LABEL_DASHBOARD_HUMAN_STATE = NULL;
     Marvin_panel_Container_81_0 = NULL;
     Marvin_panel_Container_84_0 = NULL;
     Marvin_panel_Container_93_0 = NULL;
@@ -2726,6 +4103,171 @@ void screenHide_Marvin(void)
     Marvin_LABEL_SONG_SELECT_SongTitle = NULL;
     Marvin_LABEL_SONG_SELECT_Artist = NULL;
 
+    leRemoveRootWidget(root4, 4);
+    leWidget_Delete(root4);
+    root4 = NULL;
+
+    Marvin_panel_Marvin = NULL;
+    Marvin_panel_App_0 = NULL;
+    Marvin_panel_Container_45 = NULL;
+    Marvin_panel_Container_4_0 = NULL;
+    Marvin_panel_Container_0_0 = NULL;
+    Marvin_panel_Container_2_0 = NULL;
+    Marvin_panel_Button___Open_menu_0 = NULL;
+    Marvin_panel_Container_1_0 = NULL;
+    Marvin_panel_Icon_4 = NULL;
+    Marvin_image_Icon_4 = NULL;
+    Marvin_panel_Heading_1_0 = NULL;
+    Marvin_label_GUITAR_PIC_0 = NULL;
+    Marvin_panel_Container_3_1 = NULL;
+    Marvin_panel_Image__Microchip__margin_0 = NULL;
+    Marvin_panel_Image__Microchip__0 = NULL;
+    Marvin_panel_Container_5_0 = NULL;
+    Marvin_panel_Container_8_0 = NULL;
+    Marvin_panel_Container_6_0 = NULL;
+    Marvin_panel_Container_7_0 = NULL;
+    Marvin_panel_Heading_2_0 = NULL;
+    Marvin_panel_Paragraph_4 = NULL;
+    Marvin_label_MANUAL_OVERRIDE_0 = NULL;
+    Marvin_label_Direct_injection___Wiimote___Guitar_Hero_extension_0 = NULL;
+    Marvin_panel_Text_3 = NULL;
+    Marvin_panel_Text_0_1 = NULL;
+    Marvin_label_OVERRIDE_MODE_0 = NULL;
+    Marvin_panel_ControllerPanel_1 = NULL;
+    Marvin_panel_ControllerPanel_0_0 = NULL;
+    Marvin_panel_Container_9_0 = NULL;
+    Marvin_panel_Container_11_1 = NULL;
+    Marvin_panel_Container_21_1 = NULL;
+    Marvin_panel_Container_10_0 = NULL;
+    Marvin_panel_Button_37 = NULL;
+    Marvin_label_Robot__Lemmy__0 = NULL;
+    Marvin_panel_Text_1_1 = NULL;
+    Marvin_label_ENABLED_0 = NULL;
+    Marvin_panel_Paragraph_0_0 = NULL;
+    Marvin_panel_Container_12_1 = NULL;
+    Marvin_panel_Container_13_0 = NULL;
+    Marvin_label_GUITAR_EXTENSION_1 = NULL;
+    Marvin_panel_Button_0_0 = NULL;
+    Marvin_panel_Button_1_0 = NULL;
+    Marvin_panel_Button_2_0 = NULL;
+    Marvin_panel_Button_3_0 = NULL;
+    Marvin_panel_Button_4_0 = NULL;
+    Marvin_panel_Container_14_1 = NULL;
+    Marvin_panel_Container_15_1 = NULL;
+    Marvin_panel_Container_20_1 = NULL;
+    Marvin_panel_Button_5_0 = NULL;
+    Marvin_panel_Button_6_0 = NULL;
+    Marvin_panel_Icon_0_0 = NULL;
+    Marvin_label__UP_1 = NULL;
+    Marvin_image_Icon_0_0 = NULL;
+    Marvin_panel_Icon_1_0 = NULL;
+    Marvin_label__DN_1 = NULL;
+    Marvin_image_Icon_1_0 = NULL;
+    Marvin_label_WHAMMY_1 = NULL;
+    Marvin_panel_WhammySlider_1 = NULL;
+    Marvin_panel_Container_16_1 = NULL;
+    Marvin_panel_Container_17_1 = NULL;
+    Marvin_panel_Container_18_1 = NULL;
+    Marvin_panel_Container_19_1 = NULL;
+    Marvin_panel_Button_7_0 = NULL;
+    Marvin_panel_Button_8_0 = NULL;
+    Marvin_label___11 = NULL;
+    Marvin_label___0_1 = NULL;
+    Marvin_panel_Container_22_1 = NULL;
+    Marvin_panel_Container_24_1 = NULL;
+    Marvin_panel_Container_26_1 = NULL;
+    Marvin_panel_Paragraph_1_0 = NULL;
+    Marvin_panel_Container_23_1 = NULL;
+    Marvin_label_WIIMOTE_1 = NULL;
+    Marvin_panel_Button_9_0 = NULL;
+    Marvin_panel_Button_10_0 = NULL;
+    Marvin_panel_Button_11_0 = NULL;
+    Marvin_panel_Button_12_0 = NULL;
+    Marvin_label___1_1 = NULL;
+    Marvin_label___2_1 = NULL;
+    Marvin_label___3_0 = NULL;
+    Marvin_label___4_0 = NULL;
+    Marvin_panel_Button_13_0 = NULL;
+    Marvin_panel_Container_25_1 = NULL;
+    Marvin_label_HOME_1 = NULL;
+    Marvin_panel_Button_14_0 = NULL;
+    Marvin_panel_Button_15_0 = NULL;
+    Marvin_panel_Button_16_0 = NULL;
+    Marvin_panel_Button_17_0 = NULL;
+    Marvin_label_A_1 = NULL;
+    Marvin_label_B_1 = NULL;
+    Marvin_label__1_1 = NULL;
+    Marvin_label__2_1 = NULL;
+    Marvin_panel_TiltControl_1 = NULL;
+    Marvin_image_TiltControl_1 = NULL;
+    Marvin_label_TILT_1 = NULL;
+    Marvin_panel_Container_27_0 = NULL;
+    Marvin_panel_Container_29_0 = NULL;
+    Marvin_panel_Container_39_0 = NULL;
+    Marvin_panel_Container_28_0 = NULL;
+    Marvin_panel_Button_18_0 = NULL;
+    Marvin_label_Human_Player_1 = NULL;
+    Marvin_panel_Text_2_1 = NULL;
+    Marvin_label_DISABLED_0 = NULL;
+    Marvin_panel_Paragraph_2_0 = NULL;
+    Marvin_panel_Container_30_0 = NULL;
+    Marvin_panel_Container_31_0 = NULL;
+    Marvin_label_GUITAR_EXTENSION_0_0 = NULL;
+    Marvin_panel_Button_19_0 = NULL;
+    Marvin_panel_Button_20_0 = NULL;
+    Marvin_panel_Button_21_0 = NULL;
+    Marvin_panel_Button_22_0 = NULL;
+    Marvin_panel_Button_23_0 = NULL;
+    Marvin_panel_Container_32_0 = NULL;
+    Marvin_panel_Container_33_0 = NULL;
+    Marvin_panel_Container_38_0 = NULL;
+    Marvin_panel_Button_24_0 = NULL;
+    Marvin_panel_Button_25_0 = NULL;
+    Marvin_panel_Icon_2_0 = NULL;
+    Marvin_label__UP_0_0 = NULL;
+    Marvin_image_Icon_2_0 = NULL;
+    Marvin_panel_Icon_3_0 = NULL;
+    Marvin_label__DN_0_0 = NULL;
+    Marvin_image_Icon_3_0 = NULL;
+    Marvin_label_WHAMMY_0_0 = NULL;
+    Marvin_panel_WhammySlider_0_0 = NULL;
+    Marvin_panel_Container_34_0 = NULL;
+    Marvin_panel_Container_35_1 = NULL;
+    Marvin_panel_Container_36_1 = NULL;
+    Marvin_panel_Container_37_0 = NULL;
+    Marvin_panel_Button_26_0 = NULL;
+    Marvin_panel_Button_27_0 = NULL;
+    Marvin_label___5_0 = NULL;
+    Marvin_label___6_0 = NULL;
+    Marvin_panel_Container_40_0 = NULL;
+    Marvin_panel_Container_42_0 = NULL;
+    Marvin_panel_Container_44_0 = NULL;
+    Marvin_panel_Paragraph_3_0 = NULL;
+    Marvin_panel_Container_41_0 = NULL;
+    Marvin_label_WIIMOTE_0_0 = NULL;
+    Marvin_panel_Button_28_0 = NULL;
+    Marvin_panel_Button_29_0 = NULL;
+    Marvin_panel_Button_30_0 = NULL;
+    Marvin_panel_Button_31_0 = NULL;
+    Marvin_label___7_0 = NULL;
+    Marvin_label___8_0 = NULL;
+    Marvin_label___9_0 = NULL;
+    Marvin_label___10_0 = NULL;
+    Marvin_panel_Button_32_0 = NULL;
+    Marvin_panel_Container_43_0 = NULL;
+    Marvin_label_HOME_0_0 = NULL;
+    Marvin_panel_Button_33_0 = NULL;
+    Marvin_panel_Button_34_0 = NULL;
+    Marvin_panel_Button_35_0 = NULL;
+    Marvin_panel_Button_36_0 = NULL;
+    Marvin_label_A_0_0 = NULL;
+    Marvin_label_B_0_0 = NULL;
+    Marvin_label__1_0_0 = NULL;
+    Marvin_label__2_0_0 = NULL;
+    Marvin_panel_TiltControl_0_0 = NULL;
+    Marvin_image_TiltControl_0_0 = NULL;
+    Marvin_label_TILT_0_0 = NULL;
+
 
     showing = LE_FALSE;
 }
@@ -2760,6 +4302,10 @@ leWidget* screenGetRoot_Marvin(uint32_t lyrIdx)
         case 3:
         {
             return root3;
+        }
+        case 4:
+        {
+            return root4;
         }
         default:
         {
