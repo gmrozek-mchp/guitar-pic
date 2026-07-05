@@ -102,7 +102,7 @@ Framing overhead is 4 bytes; a 3-byte `GUITAR` payload is 7 bytes on the wire.
 | `0x02` | `WIIMOTE` | m→f | 4 | v1 | Menu-nav input (core buttons, D-pad, analog stick). |
 | `0x03` | `LINK_CMD` | m→f | 1 | v1 | Bluetooth link management (pair/stop/reconnect/unlink/ext). |
 | `0x04` | `ACCEL` | m→f | 3 | planned | Wiimote accelerometer state (tilt → star power, motion). |
-| `0x05` | `POINTER` | m→f | 3 | planned | IR pointer position (bare-Wiimote menu nav). |
+| `0x05` | `POINTER` | m→f | 3 | v1 | IR pointer position (bare-Wiimote menu nav). |
 | `0x81` | `STATUS` | f→m | 4 | v1 | Link/connection/extension state + last-command result. |
 
 `0x00` reserved (invalid). `0x06`–`0x7F` reserved for future m→f; `0x82`–`0xFF`
@@ -182,17 +182,20 @@ consumed by fauxmote yet — the emulator currently streams a fixed level accel;
 makes the `GUITAR` aux star-power bit meaningful). A finer 10-bit encoding can be
 added later without changing the type.
 
-### 5.6 `POINTER` (m→f, 3 bytes) — *planned*
+### 5.6 `POINTER` (m→f, 3 bytes)
 
-IR pointer position, for bare-Wiimote menu navigation (feeds
-`Wiimote_SetPointer`/`ClearPointer`). Independent of `WIIMOTE`. Moot while the
-Wiimote is seated in the guitar (camera blocked) — use the analog stick there.
+IR pointer position, for bare-Wiimote menu navigation. marvin sends it via
+`Fauxmote_SendPointer(x, y, visible)` (latched, on-change); fauxmote applies it
+through `Wiimote_SetPointer`/`ClearPointer`. Independent of `WIIMOTE`. Moot while
+the Wiimote is seated in the guitar (camera blocked) — use the analog stick there.
 
 | Byte | Field | Encoding |
 |---|---|---|
 | 0 | x | `0..255` → `0..1`, `0` = left edge |
 | 1 | y | `0..255` → `0..1`, `0` = top edge |
-| 2 | flags | `bit0` visible (`0` = pointer off / off-screen), `bit1`–`7` reserved |
+| 2 | flags | `bit0` `MF_PTR_VISIBLE` (`0` = pointer off / off-screen), `bit1`–`7` reserved |
+
+Console: `fauxmote pointer <x> <y>` / `fauxmote pointer off`.
 
 Default when the slice is stale/absent: **off** (pointer off-screen).
 

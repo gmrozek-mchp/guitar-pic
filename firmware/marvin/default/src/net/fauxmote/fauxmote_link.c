@@ -38,6 +38,11 @@ static uint8_t s_nav_sx = MF_STICK_CENTER;
 static uint8_t s_nav_sy = MF_STICK_CENTER;
 static bool    s_nav_dirty;
 
+static uint8_t s_ptr_x;
+static uint8_t s_ptr_y;
+static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
+static bool    s_ptr_dirty;
+
 /* Latest STATUS from fauxmote. */
 static bool       s_status_valid;
 static uint8_t    s_status[MF_LEN_STATUS];
@@ -83,7 +88,9 @@ static void fx_tx_task(void *param)
 
         uint8_t g[MF_LEN_GUITAR];
         uint8_t nav[MF_LEN_WIIMOTE];
+        uint8_t ptr[MF_LEN_POINTER];
         bool    nav_dirty;
+        bool    ptr_dirty;
 
         taskENTER_CRITICAL();
         g[0] = s_g_mask;
@@ -95,10 +102,16 @@ static void fx_tx_task(void *param)
         nav[3] = s_nav_sy;
         nav_dirty = s_nav_dirty;
         s_nav_dirty = false;
+        ptr[0] = s_ptr_x;
+        ptr[1] = s_ptr_y;
+        ptr[2] = s_ptr_flags;
+        ptr_dirty = s_ptr_dirty;
+        s_ptr_dirty = false;
         taskEXIT_CRITICAL();
 
         send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
         if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
+        if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
 
         uint8_t op;
         while (xQueueReceive(s_cmd_queue, &op, 0) == pdTRUE)
@@ -247,6 +260,18 @@ void Fauxmote_SendCmd(uint8_t op)
 {
     if (!s_ready) { return; }
     (void)xQueueSend(s_cmd_queue, &op, 0);
+    (void)xSemaphoreGive(s_tx_notify);
+}
+
+void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible)
+{
+    if (!s_ready) { return; }
+    taskENTER_CRITICAL();
+    s_ptr_x     = x;
+    s_ptr_y     = y;
+    s_ptr_flags = visible ? MF_PTR_VISIBLE : 0u;
+    s_ptr_dirty = true;
+    taskEXIT_CRITICAL();
     (void)xSemaphoreGive(s_tx_notify);
 }
 

@@ -64,7 +64,7 @@ static void apply_wiimote(uint8_t core, uint8_t dpad, uint8_t sx, uint8_t sy)
 
 static void apply_pointer(uint8_t x, uint8_t y, uint8_t flags)
 {
-    if (flags & 0x01) {
+    if (flags & MF_PTR_VISIBLE) {
         Wiimote_SetPointer((float)x / 255.0f, (float)y / 255.0f);
     } else {
         Wiimote_ClearPointer();

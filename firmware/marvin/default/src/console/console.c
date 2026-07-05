@@ -728,7 +728,28 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("fauxmote: guitar mask=0x%02x", mask);
         return;
     }
-    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]");
+    if (strcmp(sub, "pointer") == 0)
+    {
+        const char *xs = embeddedCliGetToken(args, 2);
+        if (xs != NULL && strcmp(xs, "off") == 0)
+        {
+            Fauxmote_SendPointer(0u, 0u, false);
+            console_printf("fauxmote: pointer off");
+            return;
+        }
+        const char *ys = embeddedCliGetToken(args, 3);
+        if (xs == NULL || ys == NULL)
+        {
+            console_printf("usage: fauxmote pointer <x> <y> | off   (x,y 0..255, 0,0=top-left)");
+            return;
+        }
+        uint8_t x = (uint8_t)strtoul(xs, NULL, 0);
+        uint8_t y = (uint8_t)strtoul(ys, NULL, 0);
+        Fauxmote_SendPointer(x, y, true);
+        console_printf("fauxmote: pointer %u,%u", (unsigned)x, (unsigned)y);
+        return;
+    }
+    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]");
 }
 #endif
 
@@ -780,7 +801,7 @@ static void register_commands(void)
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [stop|status]: auto-navigate GH3 to the selected song + let CV play it", true, NULL, cmd_play },
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
-        { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>]", true, NULL, cmd_fauxmote },
+        { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
 #endif
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },

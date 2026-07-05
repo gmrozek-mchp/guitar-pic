@@ -67,6 +67,9 @@ enum {
 
 #define MF_STICK_CENTER  0x20u   /* 6-bit stick 0..63, center (safe default) */
 
+/* --- POINTER (3B): [0] x, [1] y (0..255 -> 0..1, 0,0 = top-left), [2] flags */
+#define MF_PTR_VISIBLE   (1u << 0)   /* 0 = pointer off / hidden */
+
 /* --- LINK_CMD (1B): [0] opcode */
 enum {
     MF_CMD_PAIR       = 0x01,

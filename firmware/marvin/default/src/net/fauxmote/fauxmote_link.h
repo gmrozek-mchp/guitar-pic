@@ -28,6 +28,10 @@ void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux);
 void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y);
 void Fauxmote_SendCmd(uint8_t op);
 
+/* POINTER slice: IR pointer at (x,y), each 0..255 mapping to 0..1 of the screen
+ * (0,0 = top-left). visible=false hides the pointer (off-screen). */
+void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible);
+
 /* Latest STATUS from fauxmote. Returns false if none has ever been received.
  * Any out pointer may be NULL. age_ms = ms since the last STATUS arrived. */
 bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
