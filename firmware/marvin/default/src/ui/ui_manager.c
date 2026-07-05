@@ -5,6 +5,7 @@
 #include "ui/screens/album_art/screen_album_art.h"
 #include "ui/screens/splash/screen_splash.h"
 #include "ui/screens/video/screen_video.h"
+#include "ui/screens/wiimotes/screen_wiimotes.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -589,6 +590,7 @@ static void init_screens(void)
     ScreenNavigation_Setup();
     ScreenSongSelect_Setup();
     ScreenAlbumArt_Setup();
+    ScreenWiimotes_Setup();
 
     /* Song-select starts closed: disable its layer-screens' background panels so
      * those (hidden) overlays don't capture touches meant for the dashboard.
@@ -610,6 +612,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
     Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
     Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->invalidate(Marvin_PANEL_SONG_SELECT_ALBUM_ART);
+    Marvin_panel_Marvin->fn->invalidate(Marvin_panel_Marvin);
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -737,6 +740,7 @@ void UiManager_Initialize(void)
     ScreenNavigation_InitSurface();
     ScreenSongSelect_InitSurface();
     ScreenAlbumArt_InitSurface();
+    ScreenWiimotes_InitSurface();
     GFX_CANVAS_Task();
 
     leSetStringTable(&stringTable);

@@ -60,13 +60,13 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/FreeRTOSConfig.h
   hash: f036073a652c04741562fa12c5133e4276c1fec78f26d79d10f08a052bfd11b4
 - file: ../src/config/default/configuration.h
-  hash: f6dfbc75b7a0c0c1903a6bb2a4c4f2dbf2599a33b589f8af8d8753fb728da769
+  hash: 8fb176bf9a97726e2406690eb1016714521ef4e7dd5564fe49d41727d0fcec90
 - file: ../src/config/default/cstartup.S
   hash: 900818c8d32308868463f9d71e8ef173e68325a19e1301706e8b6107ba8966ba
 - file: ../src/config/default/ddram.ld
   hash: 97f47af57df7b001d60815bb59f95e011690ba241216b51211f2288487bf6b93
 - file: ../src/config/default/definitions.h
-  hash: 0dc881f09741dadcdd83450fe356c9d12923328843487669a1a4e8f5f1bdeddd
+  hash: d494aa0b4d63f90dfbc160e9a3a9a68b8ec03b7b4e9e1793604dfbe7edc4909f
 - file: ../src/config/default/device.h
   hash: c59514bb3f1551407ee3f43109f637b28b915d65539b1eb92c55ded669c4ba5f
 - file: ../src/config/default/device_cache.h
@@ -258,9 +258,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
   hash: 76efb5d7593b9c987dcfe53ab1b3dc534bcb25d8c6d10c893d2428dd0c02f4d6
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
-  hash: ab3d1651a5fa43ab31692ea477dca3adff72c00d9156f551c7bec3d879722e07
+  hash: df71cf40b04be1037bde4b24c4aea1c930f1ab845ece59ac2a780909cbc6829d
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h
-  hash: 7a82b19dac8fe85e0bc34f1fea27a61faa74adaa1c87dc8c7c11554965121cdd
+  hash: 01b6ff6de9402718d53daef6cd247c3ff751e3d89753d0d39f5ad93ae7b67ef3
 - file: ../src/config/default/gfx/legato/image/jpeg/jidctint.c
   hash: 8997d893fe52e5702acd160837989e558b8ee3b3c918055eef8647b2d0a8e7d3
 - file: ../src/config/default/gfx/legato/image/jpeg/legato_imagedecoder_jpeg.c
@@ -648,7 +648,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/widget/window/legato_widget_window_skin_classic.c
   hash: dd6b3e7c710431206685fc51459a31358dae4e99be8dd14849be4fe858ba4cc8
 - file: ../src/config/default/initialization.c
-  hash: ca11db26c7146c602ea6ee6bbe2c5ec46f2f393454ee0fc7f4b9fbecb548ad98
+  hash: d0d6c23b2603568b6f8ccd9795f705f52079c30dc05327fbe9960f71b8c2cada
 - file: ../src/config/default/interrupts.c
   hash: 10b3cf3d38c0646d51b17db3a93bb914b9f6079ebc804d76318a4fcde225c275
 - file: ../src/config/default/interrupts.h
