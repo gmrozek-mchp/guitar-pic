@@ -4,8 +4,11 @@
 
 #include "ui/ui_manager.h"   /* CANVAS_DASH, BASE_W, BASE_H, UiManager_OpenSongSelect */
 #include "ui/song_detail.h"
+#include "ui/dashboard_feed.h"   /* DashboardFeed_PostSelection — route updates via the feed */
 #include "ui/widgets/button_aa/widget_button_aa.h"
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
+
+#include "actuator/timing_pipeline.h"   /* TIMING_BIT_* fret mask layout */
 
 #include "game/catalog.h"
 #include "game/art.h"
@@ -123,11 +126,11 @@ static void song_detail_init(void)
     st->fn->setString(st, sfs);
 }
 
-/* Game-controller status observer → SONG card Status label. */
+/* Game-controller status observer — runs in the game-controller task's context.
+ * Never touches widgets; just enqueues so the feed consumer applies it. */
 static void dash_game_status(const char *text)
 {
-    (void)lestring_set_utf8((leString *)&s_status_str,
-                            (text != NULL && text[0] != '\0') ? text : "READY");
+    DashboardFeed_PostStatus(text);
 }
 
 /* Set a detail value; "-" for an empty/unknown field. */
@@ -191,9 +194,11 @@ static void tier_show(const catalog_entry_t *e)
 }
 
 /* Mirror the committed selection onto the SONG card: artwork + metadata from the
- * catalog, tier from the song, mode + difficulty from the selection. */
-static void dash_selection_changed(const selection_t *sel)
+ * catalog, tier from the song, mode + difficulty from the selection. Sole caller is
+ * the dashboard feed consumer (plus a synchronous seed from Setup, pre-reveal). */
+void ScreenDashboard_ApplySelection(void)
 {
+    const selection_t *sel = Selection_Get();
     catalog_entry_t e;
     bool            ok = Catalog_Lookup(sel->setlist, sel->index, &e);
     char            tmp[96];
@@ -240,6 +245,54 @@ static void dash_selection_changed(const selection_t *sel)
         Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY_Difficulty, difficulty_scheme(sel->difficulty));
 }
 
+/* Selection observer — runs in the committing task's context (touch / song-select).
+ * Never touches widgets; just enqueues so the feed consumer applies it as the single
+ * dashboard writer. */
+static void dash_selection_changed(const selection_t *sel)
+{
+    (void)sel;
+    DashboardFeed_PostSelection();
+}
+
+/* Reflect the live guitar mask on the ROBOT fret buttons: pressed = fret held. Only
+ * the buttons whose state changed are touched, so a steady chord costs nothing. The
+ * buttons are toggleable so setPressed latches the state (a non-toggleable button
+ * treats setPressed(TRUE) as a click and stays UP), and we invalidate explicitly —
+ * setPressed only self-invalidates for image/bevel/offset buttons, not for a plain
+ * scheme-filled one, so the UP↔TOGGLED scheme-colour swap wouldn't otherwise repaint. */
+void ScreenDashboard_ApplyFret(uint8_t mask)
+{
+    static const struct { leButtonWidget **btn; uint8_t bit; } frets[] = {
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_GREEN,  TIMING_BIT_GREEN  },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_RED,    TIMING_BIT_RED    },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_YELLOW, TIMING_BIT_YELLOW },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_BLUE,   TIMING_BIT_BLUE   },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_ORANGE, TIMING_BIT_ORANGE },
+    };
+    static uint8_t s_last_mask;
+
+    uint8_t changed = (uint8_t)(mask ^ s_last_mask);
+    if (changed == 0u) { return; }
+    s_last_mask = mask;
+
+    for (unsigned i = 0; i < (sizeof frets / sizeof frets[0]); i++)
+    {
+        if (changed & frets[i].bit)
+        {
+            leButtonWidget *b = *frets[i].btn;
+            b->fn->setPressed(b, (mask & frets[i].bit) ? LE_TRUE : LE_FALSE);
+            b->fn->invalidate(b);
+        }
+    }
+}
+
+/* Game-controller status → SONG card Status label. */
+void ScreenDashboard_ApplyStatus(const char *text)
+{
+    (void)lestring_set_utf8((leString *)&s_status_str,
+                            (text != NULL && text[0] != '\0') ? text : "READY");
+}
+
 void ScreenDashboard_Setup(void)
 {
     /* Full-screen at the origin. The root is on Legato layer 0 (built by MGS); the
@@ -265,6 +318,20 @@ void ScreenDashboard_Setup(void)
     round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_BLUE,      4);
     round_button(Marvin_BUTTON_DASHBOARD_ROBOT_FRET_ORANGE,    4);
 
+    /* The fret buttons are a status display, not an input: toggleable so their
+     * pressed state holds under program control (ScreenDashboard_ApplyFret), and
+     * IGNOREEVENTS so operator taps don't fight the live mask. */
+    leButtonWidget *frets[] = {
+        Marvin_BUTTON_DASHBOARD_ROBOT_FRET_GREEN,  Marvin_BUTTON_DASHBOARD_ROBOT_FRET_RED,
+        Marvin_BUTTON_DASHBOARD_ROBOT_FRET_YELLOW, Marvin_BUTTON_DASHBOARD_ROBOT_FRET_BLUE,
+        Marvin_BUTTON_DASHBOARD_ROBOT_FRET_ORANGE,
+    };
+    for (unsigned i = 0; i < (sizeof frets / sizeof frets[0]); i++)
+    {
+        frets[i]->fn->setToggleable(frets[i], LE_TRUE);
+        frets[i]->widget.flags |= LE_WIDGET_IGNOREEVENTS;
+    }
+
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setReleasedEventCallback(
         Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, select_song_on_release);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setReleasedEventCallback(
@@ -275,7 +342,7 @@ void ScreenDashboard_Setup(void)
      * this screen's Setup first), so that first commit lands here. */
     song_detail_init();
     Selection_SetObserver(dash_selection_changed);
-    if (Selection_Get()->valid) { dash_selection_changed(Selection_Get()); }
+    if (Selection_Get()->valid) { ScreenDashboard_ApplySelection(); }
 
     GameController_SetStatusObserver(dash_game_status);
 }

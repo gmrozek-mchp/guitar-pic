@@ -6,6 +6,7 @@
 #include "ui/screens/splash/screen_splash.h"
 #include "ui/screens/video/screen_video.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
+#include "ui/dashboard_feed.h"
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -566,6 +567,42 @@ static void scene_edit_end(void)
     if (s_legato_task != NULL) { vTaskResume(s_legato_task); }
 }
 
+/* Runtime render lock — mutual exclusion for post-boot widget edits (setString/
+ * setPressed/setScheme/invalidate) done from an app task. Legato here is
+ * single-threaded (no LEGATO_USE_OSAL, no renderer lock): leUpdate runs in
+ * LEGATO_Tasks and any concurrent widget/damage edit races it, dropping the damage
+ * (stale-by-one repaints) or corrupting the damage list mid-paint. This suspends the
+ * two Legato threads, and — because rendering is one-pass (LE_SCRATCH sized to a full
+ * screen, see the journal) — only proceeds once leRenderer_IsIdle() confirms no paint
+ * is in flight, so appending damage can't corrupt an active paint traversal. Held
+ * only for the microseconds of an edit; never touches the actuation tasks (prio 4–5),
+ * which are unaffected by suspending the prio-2 render/input pair. */
+void UiManager_RenderLock(void)
+{
+    if (s_legato_task == NULL) { s_legato_task = xTaskGetHandle("LEGATO_Tasks"); }
+    if (s_input_task  == NULL) { s_input_task  = xTaskGetHandle("SYS_INPUT_Tasks"); }
+
+    for (;;)
+    {
+        if (s_legato_task != NULL) { vTaskSuspend(s_legato_task); }
+        if (s_input_task  != NULL) { vTaskSuspend(s_input_task);  }
+
+        /* Idle (or no render task to guard) → safe to edit. */
+        if (s_legato_task == NULL || leRenderer_IsIdle()) { return; }
+
+        /* Suspended mid-paint — back off, let the frame finish, retry. */
+        if (s_input_task  != NULL) { vTaskResume(s_input_task);  }
+        vTaskResume(s_legato_task);
+        vTaskDelay(1);
+    }
+}
+
+void UiManager_RenderUnlock(void)
+{
+    if (s_input_task  != NULL) { vTaskResume(s_input_task);  }
+    if (s_legato_task != NULL) { vTaskResume(s_legato_task); }
+}
+
 /* Build the Marvin master screen and run per-panel setup. screenInit_Marvin builds
  * all layer-screens and places each on its own Legato layer/canvas (dashboard 0,
  * navigation 1, song-select 2) — no re-hosting. Each panel module's *_Setup() then sets
@@ -721,6 +758,11 @@ static void ui_boot_task(void *param)
      * is the one ordering that must hold — see the journal (2026-06-30). */
     Video_CaptureEnable();
 
+    /* Dashboard is revealed and every surface is painted — start the telemetry feed
+     * consumer now. It's the sole writer of dashboard widgets; deferring it to here
+     * keeps it off the widget tree during the build/paint/reveal window. */
+    DashboardFeed_Start();
+
     /* Boot sequence done — arm the health monitor now (it stays idle until this
      * so its card I/O + task-list walks never perturb the reveal window). */
     HealthMonitor_NotifyReady();
@@ -742,6 +784,11 @@ void UiManager_Initialize(void)
     ScreenAlbumArt_InitSurface();
     ScreenWiimotes_InitSurface();
     GFX_CANVAS_Task();
+
+    /* Dashboard telemetry feed: create the event queue now so producers (fret
+     * actuation, selection) can post immediately; the consumer task starts
+     * post-reveal (below), draining any buffered events on its first run. */
+    DashboardFeed_Init();
 
     leSetStringTable(&stringTable);
     initializeStrings();

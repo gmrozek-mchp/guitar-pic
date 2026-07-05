@@ -14,6 +14,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/fretboard_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/actuator/manual_control.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/ui_manager.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/dashboard_feed.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/manual_input.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/song_detail.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/dashboard/screen_dashboard.c"

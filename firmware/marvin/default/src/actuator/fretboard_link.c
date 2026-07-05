@@ -15,6 +15,7 @@
 #include "perf_log/perf_log.h"
 #include "video/video.h"
 #include "game/fret.h"
+#include "ui/dashboard_feed.h"  /* best-effort mirror of the mask to the dashboard */
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/t1s/t1s_link.h"
@@ -326,6 +327,10 @@ void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
      * FLEXCOM1 so the Wii plays in lock-step. GUITAR byte 0 == the T1S mask. */
     Fauxmote_SendGuitarMask(v);
 #endif
+
+    /* Mirror the mask to the dashboard fret display — a single non-blocking queue
+     * post (drop-on-full), so the actuation path is never delayed. */
+    DashboardFeed_PostFret(v);
 
     uint8_t strum_dir = 0u;
     if      (v & TIMING_BIT_STRUM_DOWN) { strum_dir = 1u; }

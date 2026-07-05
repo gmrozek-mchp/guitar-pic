@@ -92,6 +92,14 @@ void UiManager_CloseSongSelect(void);
  * Toggles pickability only — the dashboard surface is never re-drawn. */
 void UiManager_SetDashboardPickable(bool on);
 
+/* Runtime render lock for post-boot widget edits from an app task (Legato here is
+ * single-threaded and unlocked). Lock suspends the Legato render/input threads and
+ * waits for the current paint to finish; do the setString/setPressed/invalidate work,
+ * then Unlock. Held only for the microseconds of an edit — never around blocking work.
+ * Used by the dashboard feed consumer (ui/dashboard_feed.c). */
+void UiManager_RenderLock(void);
+void UiManager_RenderUnlock(void);
+
 /* Set the LCD backlight brightness, 0–100% (clamped). PWM-dimmed on PC18; valid
  * once the PWM channel is up (after the splash is shown at boot). */
 void UiManager_SetBacklight(uint32_t pct);
