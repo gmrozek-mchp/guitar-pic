@@ -38,6 +38,8 @@
 #define VIDEO_ACTIVE_MIN_H       420u
 #define VIDEO_ACTIVE_SAMPLE_STEP   4u   /* subsample stride when profiling a line */
 #define VIDEO_ACTIVE_ACCUM_FRAMES 16u   /* bright frames to union before locking */
+#define VIDEO_ACTIVE_SCAN_MS     100u   /* re-scan for the active rect at most ~10 Hz while unlatched (not every 20 ms tick) */
+#define VIDEO_ACTIVE_DARK_STEP    64u   /* coarse grid stride for the cheap "any light?" pre-check */
 
 /* Public intent — set via the API, read by the task body. Single-writer
  * (each setter is called by one task), single-reader (video task), so
@@ -194,16 +196,43 @@ static void active_reset(void)
  * the minimum plausible size, else reset and keep trying (fallback stays
  * full-frame meanwhile). Reads the latest complete ring slot (non-cached DDR,
  * so coherent; a 4-slot ring means it isn't overwritten mid-scan). */
+/* Cheap whole-frame "is anything lit?" gate: coarse grid, returns on the first
+ * bright sample. Lets detect_active skip the (much heavier) border edge scan
+ * while the source is dark/asleep — detection resumes the moment it brightens. */
+static bool frame_has_light(const uint8_t *buf, uint16_t w, uint16_t h)
+{
+    const uint32_t stride = (uint32_t)w * VIDEO_BYTES_PER_PIXEL;
+    for (uint16_t y = 0u; y < h; y += VIDEO_ACTIVE_DARK_STEP)
+    {
+        const uint8_t *row = buf + (uint32_t)y * stride;
+        for (uint16_t x = 0u; x < w; x += VIDEO_ACTIVE_DARK_STEP)
+            if (luma3(row + (uint32_t)x * VIDEO_BYTES_PER_PIXEL) > VIDEO_ACTIVE_LUMA_THR)
+                { return true; }
+    }
+    return false;
+}
+
 static void detect_active(void)
 {
     if (s_active_valid) { return; }
+
+    /* Don't re-scan every 20 ms video tick — cap the search to ~VIDEO_ACTIVE_SCAN_MS
+     * while unlatched. This never gives up: it keeps trying (cheaply) so it still
+     * frames the picture whenever the source brightens (e.g. the Wii waking). */
+    static TickType_t last_scan;
+    TickType_t now = xTaskGetTickCount();
+    if ((TickType_t)(now - last_scan) < pdMS_TO_TICKS(VIDEO_ACTIVE_SCAN_MS)) { return; }
+    last_scan = now;
 
     const uint8_t *buf = (const uint8_t *)(uintptr_t)s_latest_buffer;
     uint16_t w = s_src_w, h = s_src_h;
     if (buf == NULL || w == 0u || h == 0u) { return; }
 
+    /* Source dark/asleep → nothing to detect; skip the heavy border scan and wait. */
+    if (!frame_has_light(buf, w, h)) { return; }
+
     uint16_t t, b, l, r;
-    if (!frame_edges(buf, w, h, &t, &b, &l, &r)) { return; }   /* dark frame — skip */
+    if (!frame_edges(buf, w, h, &t, &b, &l, &r)) { return; }   /* border dark — skip */
 
     if (s_acc_count == 0u)
     {
