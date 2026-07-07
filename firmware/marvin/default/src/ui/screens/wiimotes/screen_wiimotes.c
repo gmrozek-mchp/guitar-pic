@@ -26,12 +26,20 @@ void ScreenWiimotes_Setup(void)
     gfxcSetWindowPosition(CANVAS_WIIMOTES, 0, 0);
     gfxcSetWindowSize(CANVAS_WIIMOTES, BASE_W, BASE_H);
 
-    /* Gate the screen out of picking while it isn't shown. Legato picks across every
-     * attached layer top-to-bottom regardless of canvas visibility, so this topmost
-     * layer's background panel would otherwise swallow touches meant for the
-     * dashboard beneath it. Clearing LE_WIDGET_ENABLED on the background panel gates
-     * its whole subtree from picking without repainting (leUtils_PickFromWidget
-     * descends only into ENABLED children; the renderer never reads the flag) — the
-     * same mechanism ui_manager uses for the closed song-select overlays. */
-    Marvin_panel_Marvin->flags &= ~LE_WIDGET_ENABLED;
+    /* Start not shown → gate out of picking (see ScreenWiimotes_SetInput). */
+    ScreenWiimotes_SetInput(false);
+}
+
+/* Gate the screen's whole subtree in/out of picking. Legato picks across every
+ * attached layer top-to-bottom regardless of canvas visibility, so while this
+ * screen isn't the shown base view its background panel would otherwise swallow
+ * touches meant for the view beneath it. Clearing LE_WIDGET_ENABLED on the
+ * background panel gates the subtree without repainting (leUtils_PickFromWidget
+ * descends only into ENABLED children; the renderer never reads the flag) — the
+ * same mechanism ui_manager uses for the closed song-select overlays. ui_manager
+ * drives this on base-view show/hide and drawer-modal open/close. */
+void ScreenWiimotes_SetInput(bool on)
+{
+    if (on) { Marvin_PANEL_WIIMOTES->flags |=  LE_WIDGET_ENABLED; }
+    else    { Marvin_PANEL_WIIMOTES->flags &= ~LE_WIDGET_ENABLED; }
 }

@@ -288,15 +288,6 @@ extern leImage LED_SYSTEM_INACTIVE;
 
 /*********************************
  * Legato Image Asset
- * Name:   LOGO_MICROCHIP
- * Size:   361x84 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage LOGO_MICROCHIP;
-
-/*********************************
- * Legato Image Asset
  * Name:   BUTTON_ICON_CHECK
  * Size:   20x20 pixels
  * Type:   RGB Data
@@ -439,6 +430,60 @@ extern leImage HumanPlayer;
  ***********************************/
 extern leImage HumanPlayer_gradient;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   Gemini_Generated_Image_9oeot89oeot89oeo
+ * Size:   402x53 pixels
+ * Type:   RGB Data
+ * Format: RGB_565
+ ***********************************/
+extern leImage Gemini_Generated_Image_9oeot89oeot89oeo;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LOGO_PIC
+ * Size:   121x43 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage LOGO_PIC;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LOGO_GUITAR
+ * Size:   225x45 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage LOGO_GUITAR;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LOGO_MICROCHIP
+ * Size:   194x45 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage LOGO_MICROCHIP;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   LOGO_MGS
+ * Size:   162x45 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage LOGO_MGS;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   Image0
+ * Size:   61x42 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage Image0;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/
@@ -510,7 +555,7 @@ extern leRasterFont figmaFont_Menlo_24;
  * Baseline:     14
  * Style:        Antialias
  * Glyph Count:  95
- * Range Count:  9
+ * Range Count:  3
  * Glyph Ranges: 0x20-0x7E
 ***********************************/
 extern leRasterFont figmaFont_Menlo_18;
@@ -678,7 +723,7 @@ extern leRasterFont figmaFont_Menlo_16_0;
  * Baseline:     12
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  11
+ * Range Count:  18
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -704,7 +749,7 @@ extern leRasterFont DejaVuSansMono_14;
  * Baseline:     15
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  14
+ * Range Count:  15
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -769,7 +814,7 @@ extern leRasterFont DejaVuSansMono_28;
  * Baseline:     17
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  9
+ * Range Count:  12
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -835,7 +880,7 @@ extern leRasterFont DejaVuSansMonoBold_16;
  * Baseline:     15
  * Style:        Antialias
  * Glyph Count:  95
- * Range Count:  13
+ * Range Count:  9
  * Glyph Ranges: 0x20-0x7E
 ***********************************/
 extern leRasterFont figmaFont_Menlo_20_0;
@@ -994,11 +1039,30 @@ extern leRasterFont figmaFont_Menlo_24_2;
 ***********************************/
 extern leRasterFont figmaFont_Inter_13;
 
+/*********************************
+ * Legato Font Asset
+ * Name:         DejaVuSansMonoBoldOblique_40
+ * Height:       37
+ * Baseline:     37
+ * Style:        Antialias
+ * Glyph Count:  9
+ * Range Count:  8
+ * Glyph Ranges: 0x20
+                 0x41
+                 0x43
+                 0x47
+                 0x49
+                 0x50
+                 0x52
+                 0x54-0x55
+***********************************/
+extern leRasterFont DejaVuSansMonoBoldOblique_40;
+
 /*****************************************************************************
  * Legato String Table
  * Encoding        UTF8
  * Language Count: 1
- * String Count:   231
+ * String Count:   232
  *****************************************************************************/
 
 // language IDs
@@ -1012,7 +1076,7 @@ extern leRasterFont figmaFont_Inter_13;
 #define stringID_figmaStr_ENABLED    4
 #define stringID_figmaStr_1x    5
 #define stringID_figmaStr_T3_0    6
-#define stringID_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER_0    7
+#define stringID_TITLE_BAR_GUITAR_PIC    7
 #define stringID_figmaStr_TILT_0    8
 #define stringID_figmaStr_STREAK    9
 #define stringID_SONG_SELECT_EASY    10
@@ -1101,7 +1165,7 @@ extern leRasterFont figmaFont_Inter_13;
 #define stringID_figmaStr___4    93
 #define stringID_figmaStr_Best__89    94
 #define stringID_figmaStr_GENRE    95
-#define stringID_figmaStr_Robot_Controller_v2_1_4    96
+#define stringID_NAV_Marvin_v1_0_0    96
 #define stringID_figmaStr__    97
 #define stringID_figmaStr_Direct_injection___Wiimote___Guitar_Hero_extension    98
 #define stringID_figmaStr_ACCURACY_0_0    99
@@ -1186,56 +1250,57 @@ extern leRasterFont figmaFont_Inter_13;
 #define stringID_figmaStr_2    178
 #define stringID_figmaStr_0    179
 #define stringID_GUITAR_STRUM_DOWN    180
-#define stringID_figmaStr_G    181
-#define stringID_figmaStr_SCORE_0_0    182
-#define stringID_figmaStr_NO_SIGNAL    183
-#define stringID_figmaStr_Computer_Vision    184
-#define stringID_figmaStr_Connected_0    185
-#define stringID_figmaStr_T3    186
-#define stringID_figmaStr_TILT    187
-#define stringID_figmaStr_IDLE    188
-#define stringID_figmaStr_O    189
-#define stringID_figmaStr_SYSTEM_STATUS    190
-#define stringID_figmaStr___3_0    191
-#define stringID_figmaStr_MODE    192
-#define stringID_figmaStr_Human_Player_0    193
-#define stringID_figmaStr_STREAK_0    194
-#define stringID_figmaStr_Performance    195
-#define stringID_figmaStr_7_22    196
-#define stringID_figmaStr_Wii_guitar    197
-#define stringID_figmaStr_MEMORY    198
-#define stringID_figmaStr_FRET_ACTIVITY    199
-#define stringID_figmaStr_45ms    200
-#define stringID_SONG_SELECT_HARD    201
-#define stringID_LABEL_SONG_SELECT_MODE    202
-#define stringID_figmaStr_HIT    203
-#define stringID_figmaStr_T5_0    204
-#define stringID_figmaStr_BPM    205
-#define stringID_figmaStr_Neural_Network    206
-#define stringID_SONG_SELECT_GENRE    207
-#define stringID_figmaStr__0_1    208
-#define stringID_figmaStr__3_42_0    209
-#define stringID_figmaStr_68_    210
-#define stringID_figmaStr_142x    211
-#define stringID_SONG_SELECT_SETLIST    212
-#define stringID_figmaStr_EXPERT    213
-#define stringID_figmaStr_5_36    214
-#define stringID_figmaStr_LEMMY    215
-#define stringID_figmaStr_RESPONSE_DELAY    216
-#define stringID_figmaStr_4x    217
-#define stringID_figmaStr_Through_the_Fire_and_Flames    218
-#define stringID_figmaStr_SCORE    219
-#define stringID_figmaStr_12ms    220
-#define stringID_figmaStr_NAVIGATION    221
-#define stringID_figmaStr_IDLE_0    222
-#define stringID_figmaStr__START    223
-#define stringID_figmaStr_ACCURACY_0    224
-#define stringID_figmaStr_3x    225
-#define stringID_figmaStr_1247_1320    226
-#define stringID_figmaStr_STATUS    227
-#define stringID_figmaStr_IDLE_1    228
-#define stringID_figmaStr___0_0    229
-#define stringID_figmaStr_NAVIGATION_0    230
+#define stringID_NAV_BUTTON_Wiimotes    181
+#define stringID_figmaStr_G    182
+#define stringID_figmaStr_SCORE_0_0    183
+#define stringID_figmaStr_NO_SIGNAL    184
+#define stringID_figmaStr_Computer_Vision    185
+#define stringID_figmaStr_Connected_0    186
+#define stringID_figmaStr_T3    187
+#define stringID_figmaStr_TILT    188
+#define stringID_figmaStr_IDLE    189
+#define stringID_figmaStr_O    190
+#define stringID_figmaStr_SYSTEM_STATUS    191
+#define stringID_figmaStr___3_0    192
+#define stringID_figmaStr_MODE    193
+#define stringID_figmaStr_Human_Player_0    194
+#define stringID_figmaStr_STREAK_0    195
+#define stringID_figmaStr_Performance    196
+#define stringID_figmaStr_7_22    197
+#define stringID_figmaStr_Wii_guitar    198
+#define stringID_figmaStr_MEMORY    199
+#define stringID_figmaStr_FRET_ACTIVITY    200
+#define stringID_figmaStr_45ms    201
+#define stringID_SONG_SELECT_HARD    202
+#define stringID_LABEL_SONG_SELECT_MODE    203
+#define stringID_figmaStr_HIT    204
+#define stringID_figmaStr_T5_0    205
+#define stringID_figmaStr_BPM    206
+#define stringID_figmaStr_Neural_Network    207
+#define stringID_SONG_SELECT_GENRE    208
+#define stringID_figmaStr__0_1    209
+#define stringID_figmaStr__3_42_0    210
+#define stringID_figmaStr_68_    211
+#define stringID_figmaStr_142x    212
+#define stringID_SONG_SELECT_SETLIST    213
+#define stringID_figmaStr_EXPERT    214
+#define stringID_figmaStr_5_36    215
+#define stringID_figmaStr_LEMMY    216
+#define stringID_figmaStr_RESPONSE_DELAY    217
+#define stringID_figmaStr_4x    218
+#define stringID_figmaStr_Through_the_Fire_and_Flames    219
+#define stringID_figmaStr_SCORE    220
+#define stringID_figmaStr_12ms    221
+#define stringID_NAV_NAVIGATION    222
+#define stringID_figmaStr_IDLE_0    223
+#define stringID_figmaStr__START    224
+#define stringID_figmaStr_ACCURACY_0    225
+#define stringID_figmaStr_3x    226
+#define stringID_figmaStr_1247_1320    227
+#define stringID_figmaStr_STATUS    228
+#define stringID_figmaStr_IDLE_1    229
+#define stringID_figmaStr___0_0    230
+#define stringID_figmaStr_NAVIGATION_0    231
 
 extern const leStringTable stringTable;
 
@@ -1248,7 +1313,7 @@ extern leTableString string_figmaStr_Y;
 extern leTableString string_figmaStr_ENABLED;
 extern leTableString string_figmaStr_1x;
 extern leTableString string_figmaStr_T3_0;
-extern leTableString string_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER_0;
+extern leTableString string_TITLE_BAR_GUITAR_PIC;
 extern leTableString string_figmaStr_TILT_0;
 extern leTableString string_figmaStr_STREAK;
 extern leTableString string_SONG_SELECT_EASY;
@@ -1337,7 +1402,7 @@ extern leTableString string_SONG_SELECT_1P_ROBOT;
 extern leTableString string_figmaStr___4;
 extern leTableString string_figmaStr_Best__89;
 extern leTableString string_figmaStr_GENRE;
-extern leTableString string_figmaStr_Robot_Controller_v2_1_4;
+extern leTableString string_NAV_Marvin_v1_0_0;
 extern leTableString string_figmaStr__;
 extern leTableString string_figmaStr_Direct_injection___Wiimote___Guitar_Hero_extension;
 extern leTableString string_figmaStr_ACCURACY_0_0;
@@ -1422,6 +1487,7 @@ extern leTableString string_figmaStr_Robot_Player;
 extern leTableString string_figmaStr_2;
 extern leTableString string_figmaStr_0;
 extern leTableString string_GUITAR_STRUM_DOWN;
+extern leTableString string_NAV_BUTTON_Wiimotes;
 extern leTableString string_figmaStr_G;
 extern leTableString string_figmaStr_SCORE_0_0;
 extern leTableString string_figmaStr_NO_SIGNAL;
@@ -1462,7 +1528,7 @@ extern leTableString string_figmaStr_4x;
 extern leTableString string_figmaStr_Through_the_Fire_and_Flames;
 extern leTableString string_figmaStr_SCORE;
 extern leTableString string_figmaStr_12ms;
-extern leTableString string_figmaStr_NAVIGATION;
+extern leTableString string_NAV_NAVIGATION;
 extern leTableString string_figmaStr_IDLE_0;
 extern leTableString string_figmaStr__START;
 extern leTableString string_figmaStr_ACCURACY_0;

@@ -92,6 +92,18 @@ void UiManager_CloseSongSelect(void);
  * Toggles pickability only — the dashboard surface is never re-drawn. */
 void UiManager_SetDashboardPickable(bool on);
 
+/* Base-view control: swap the full-screen BASE hardware layer between the dashboard
+ * and the wiimotes screen (peer full-screen views on their own canvases). Showing
+ * wiimotes hides the live video; returning to the dashboard restores it. No-ops if
+ * the requested view is already active. Driven by the nav drawer's entries. */
+void UiManager_ShowDashboard(void);
+void UiManager_ShowWiimotes(void);
+
+/* Gate the currently-shown base view's pickability (routes to the dashboard or the
+ * wiimotes screen per the active view). Used by the nav drawer to be modal over
+ * whichever base view is beneath it. */
+void UiManager_SetBaseViewPickable(bool on);
+
 /* Runtime render lock for post-boot widget edits from an app task (Legato here is
  * single-threaded and unlocked). Lock suspends the Legato render/input threads and
  * waits for the current paint to finish; do the setString/setPressed/invalidate work,

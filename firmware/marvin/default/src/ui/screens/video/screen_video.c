@@ -101,12 +101,12 @@ static void set_dashboard_input(bool on)
 {
     if (on)
     {
-        Marvin_PANEL_DASHBOARD_TOP->flags    |= LE_WIDGET_ENABLED;
+        Marvin_PANEL_DASHBOARD_TITLEBAR->flags |= LE_WIDGET_ENABLED;
         Marvin_PANEL_DASHBOARD_BOTTOM->flags |= LE_WIDGET_ENABLED;
     }
     else
     {
-        Marvin_PANEL_DASHBOARD_TOP->flags    &= ~LE_WIDGET_ENABLED;
+        Marvin_PANEL_DASHBOARD_TITLEBAR->flags &= ~LE_WIDGET_ENABLED;
         Marvin_PANEL_DASHBOARD_BOTTOM->flags &= ~LE_WIDGET_ENABLED;
     }
 }

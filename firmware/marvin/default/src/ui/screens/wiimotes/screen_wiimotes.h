@@ -1,6 +1,8 @@
 #ifndef UI_SCREEN_WIIMOTES_H
 #define UI_SCREEN_WIIMOTES_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -17,6 +19,11 @@ extern "C" {
  */
 void ScreenWiimotes_InitSurface(void);
 void ScreenWiimotes_Setup(void);
+
+/* Enable/disable picking on the whole wiimotes subtree (LE_WIDGET_ENABLED on the
+ * background panel; no repaint). ui_manager calls this when it shows/hides the
+ * wiimotes base view and when the nav drawer opens over it. */
+void ScreenWiimotes_SetInput(bool on);
 
 #ifdef __cplusplus
 }

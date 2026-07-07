@@ -46,18 +46,19 @@ static uint16_t FB_NOCACHE s_fb_navigation[NAVIGATION_W * NAVIGATION_H];
 static bool s_navigation_open = false;
 
 /* Navigation entries, in panel order. The selected one is the active screen. */
-#define NAVIGATION_COUNT  6u
+#define NAVIGATION_COUNT  7u
 
 static leButtonWidget *navigation_button(unsigned int i)
 {
     switch (i)
     {
-        case 0:  return Marvin_BUTTON_NAV_DASHBOARD_0;
-        case 1:  return Marvin_BUTTON_NAV_LOGS_0;
-        case 2:  return Marvin_BUTTON_NAV_PERFORMANCE_0;
-        case 3:  return Marvin_BUTTON_NAV_SYSTEM_INFO_0;
-        case 4:  return Marvin_BUTTON_NAV_DIAGNOSTICS_0;
-        default: return Marvin_BUTTON_NAV_SETTINGS_0;
+        case 0:  return Marvin_BUTTON_NAV_DASHBOARD;
+        case 1:  return Marvin_BUTTON_NAV_WIIMOTES;
+        case 2:  return Marvin_BUTTON_NAV_LOGS;
+        case 3:  return Marvin_BUTTON_NAV_PERFORMANCE;
+        case 4:  return Marvin_BUTTON_NAV_SYSTEM_INFO;
+        case 5:  return Marvin_BUTTON_NAV_DIAGNOSTICS;
+        default: return Marvin_BUTTON_NAV_SETTINGS;
     }
 }
 
@@ -76,16 +77,22 @@ static void navigation_highlight(leButtonWidget *active)
     }
 }
 
-/* Released-event sink for every navigation entry. Switch the highlight; Dashboard
- * means "back to the main view" so it also closes the drawer, while the other
- * entries just change the selection and stay open. The active screen-switch will
- * hook here once the per-screen canvas model lands. */
+/* Released-event sink for every navigation entry. Switch the highlight, then swap
+ * the base view for the entries that own one (Dashboard, Wiimotes) and close the
+ * drawer. The remaining entries have no screen yet — they just change the highlight
+ * and leave the drawer open. */
 static void navigation_on_release(leButtonWidget *btn)
 {
     navigation_highlight(btn);
 
-    if (btn == Marvin_BUTTON_NAV_DASHBOARD_0)
+    if (btn == Marvin_BUTTON_NAV_DASHBOARD)
     {
+        UiManager_ShowDashboard();
+        navigation_close();
+    }
+    else if (btn == Marvin_BUTTON_NAV_WIIMOTES)
+    {
+        UiManager_ShowWiimotes();
         navigation_close();
     }
 }
@@ -106,7 +113,7 @@ static void navigation_buttons_init(void)
 
     /* Dashboard is the active entry at startup — set the highlight only (calling
      * the release sink here would close the not-yet-open drawer). */
-    navigation_highlight(Marvin_BUTTON_NAV_DASHBOARD_0);
+    navigation_highlight(Marvin_BUTTON_NAV_DASHBOARD);
 }
 
 /* Animate the drawer to target_x from wherever it currently sits. Cancel any
@@ -134,10 +141,12 @@ static void navigation_open(void)
      * isn't holding OVR2. */
     UiManager_ShowNavLayer();
     navigation_slide_to(0);
-    /* Modal: gate the dashboard beneath so nothing behind the drawer reacts. The
-     * drawer covers the hamburger, so close is via the drawer's Dashboard entry,
-     * not the hamburger — gating the dashboard loses no affordance. */
-    UiManager_SetDashboardPickable(false);
+    /* Modal: gate the base view beneath (dashboard or wiimotes) so nothing behind the
+     * drawer reacts — and, since the wiimotes view sits on a higher Legato layer than
+     * the drawer, gating it off is what lets the drawer receive touches at all. The
+     * drawer covers the hamburger, so close is via a drawer entry, not the hamburger —
+     * gating loses no affordance. */
+    UiManager_SetBaseViewPickable(false);
     s_navigation_open = true;
 }
 
@@ -173,11 +182,12 @@ static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
     if (effect == GFXC_FX_MOVE && status == GFXC_FX_DONE && !s_navigation_open)
     {
         UiManager_HideNavLayer();
-        UiManager_SetDashboardPickable(true);
+        UiManager_SetBaseViewPickable(true);
     }
 }
 
-/* Hamburger on the dashboard header toggles the navigation drawer. */
+/* The titlebar hamburger (present on both the dashboard and the wiimotes screen)
+ * toggles the navigation drawer. */
 static void hamburger_on_press(leButtonWidget *btn)
 {
     (void)btn;
@@ -208,8 +218,10 @@ void ScreenNavigation_Setup(void)
 
     navigation_buttons_init();
 
-    /* The hamburger lives on the dashboard header (Marvin layer 0); wire its press
-     * to toggle the drawer. */
-    Marvin_BUTTON_NAV_HAMBURGER->fn->setPressedEventCallback(Marvin_BUTTON_NAV_HAMBURGER,
-                                                             hamburger_on_press);
+    /* Both base views carry a titlebar hamburger (dashboard header on layer 0, and
+     * the wiimotes screen's own titlebar on layer 4); wire both to toggle the drawer. */
+    Marvin_BUTTON_DASHBOARD_TITLEBAR_NAVIGATION->fn->setPressedEventCallback(
+        Marvin_BUTTON_DASHBOARD_TITLEBAR_NAVIGATION, hamburger_on_press);
+    Marvin_BUTTON_WIIMOTES_TITLEBAR_NAVIGATION->fn->setPressedEventCallback(
+        Marvin_BUTTON_WIIMOTES_TITLEBAR_NAVIGATION, hamburger_on_press);
 }

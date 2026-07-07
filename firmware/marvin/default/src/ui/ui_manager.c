@@ -503,6 +503,61 @@ void UiManager_CloseSongSelect(void)
     s_songsel_open = false;
 }
 
+/* ── Base view (BASE hardware layer) ──────────────────────────────────────────
+ * The BASE layer shows one full-screen view at a time. Boot reveals the dashboard;
+ * the nav drawer swaps it. The dashboard (CANVAS_DASH, layer 0) and wiimotes
+ * (CANVAS_WIIMOTES, layer 4) are peer full-screen canvases; the swap hides the
+ * outgoing canvas (an active canvas drives its HW layer — two on BASE would fight)
+ * then binds the incoming one to BASE. Picking is gated to the shown view: Legato
+ * picks across all attached layers regardless of canvas visibility, so the hidden
+ * view's panel must be gated off or it would still intercept touches. */
+typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES } base_view_t;
+static base_view_t s_base_view = BASE_VIEW_DASHBOARD;
+
+/* Gate the currently-shown base view in/out of picking (used by the nav drawer to
+ * be modal over whichever view is active). */
+void UiManager_SetBaseViewPickable(bool on)
+{
+    if (s_base_view == BASE_VIEW_WIIMOTES) { ScreenWiimotes_SetInput(on); }
+    else                                   { UiManager_SetDashboardPickable(on); }
+}
+
+void UiManager_ShowWiimotes(void)
+{
+    if (s_base_view == BASE_VIEW_WIIMOTES) { return; }
+
+    /* The wiimotes screen owns the whole panel — drop the live video (HEO) and its
+     * OVR1 frame overlay. Intent only; the video-task reconcile applies it. */
+    UiManager_VideoHide();
+    UiManager_VideoOverlayHide();
+
+    /* Hide the dashboard canvas so it stops driving BASE, and gate its (still-
+     * attached) panel out of picking, then bring wiimotes onto BASE. */
+    gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
+    UiManager_SetDashboardPickable(false);
+
+    bind_canvas(CANVAS_WIIMOTES, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    ScreenWiimotes_SetInput(true);
+
+    s_base_view = BASE_VIEW_WIIMOTES;
+}
+
+void UiManager_ShowDashboard(void)
+{
+    if (s_base_view == BASE_VIEW_DASHBOARD) { return; }
+
+    gfxcHideCanvas(CANVAS_WIIMOTES); gfxcCanvasUpdate(CANVAS_WIIMOTES);
+    ScreenWiimotes_SetInput(false);
+
+    bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    UiManager_SetDashboardPickable(true);
+
+    s_base_view = BASE_VIEW_DASHBOARD;
+
+    /* Restore the live video (reconcile re-binds HEO once the source locks). */
+    ScreenVideo_ShowWindowed();
+}
+
 static uint32_t s_backlight_pct;
 
 /* Set the backlight brightness (0–100%, clamped). The backlight is PWM-dimmed on
@@ -649,7 +704,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_NAVIGATION->fn->invalidate(Marvin_PANEL_NAVIGATION);
     Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
     Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->invalidate(Marvin_PANEL_SONG_SELECT_ALBUM_ART);
-    Marvin_panel_Marvin->fn->invalidate(Marvin_panel_Marvin);
+    Marvin_PANEL_WIIMOTES->fn->invalidate(Marvin_PANEL_WIIMOTES);
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
