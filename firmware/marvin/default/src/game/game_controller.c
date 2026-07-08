@@ -15,6 +15,7 @@
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "perf_log/perf_log_records.h"
+#include "ui/dashboard_feed.h"   /* playtime → dashboard progress bar */
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/fauxmote/fauxmote_link.h"   /* pre-flight: ensure the Wii link is up */
@@ -309,11 +310,17 @@ static void play_until_done(void)
 {
     status("PLAYING");
     TimingPipeline_SetEnabled(true);   /* controller owns the actuation window */
+    TickType_t play_start = xTaskGetTickCount();
+    DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar */
 
     for (;;)
     {
         vTaskDelay(pdMS_TO_TICKS(GC_PLAY_POLL_MS));
         if (s_stop_req) { break; }
+
+        DashboardFeed_PostPlaytime((uint32_t)(xTaskGetTickCount() - play_start)
+                                   * portTICK_PERIOD_MS);
+
         uint8_t sc; int16_t sel;
         if (observe(&sc, &sel) && sc != GP_SCREEN_in_song
             && sc != GP_SCREEN_loading && sc != GP_SCREEN_UNKNOWN)
@@ -321,6 +328,10 @@ static void play_until_done(void)
             break;   /* song ended (practice_end_menu) or left gameplay */
         }
     }
+
+    uint32_t play_ms = (uint32_t)(xTaskGetTickCount() - play_start) * portTICK_PERIOD_MS;
+    LOG_INFO("GC: playtime %lu.%03lu s\r\n",
+             (unsigned long)(play_ms / 1000u), (unsigned long)(play_ms % 1000u));
 
     /* Leave GH3 on the end screen; just release CV and go idle. The next run's
      * anchor (nav_to_main_menu) QUITs out of the end/pause menus when START is

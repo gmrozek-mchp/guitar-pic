@@ -722,10 +722,12 @@ extern leRasterFont figmaFont_Menlo_16_0;
  * Height:       37
  * Baseline:     12
  * Style:        Antialias
- * Glyph Count:  191
- * Range Count:  18
+ * Glyph Count:  193
+ * Range Count:  22
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
+                 0x25A0
+                 0x2605
 ***********************************/
 extern leRasterFont DejaVuSansMono_12;
 
@@ -775,7 +777,7 @@ extern leRasterFont DejaVuSansMono_18;
  * Baseline:     19
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  2
+ * Range Count:  7
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -880,7 +882,7 @@ extern leRasterFont DejaVuSansMonoBold_16;
  * Baseline:     15
  * Style:        Antialias
  * Glyph Count:  95
- * Range Count:  9
+ * Range Count:  1
  * Glyph Ranges: 0x20-0x7E
 ***********************************/
 extern leRasterFont figmaFont_Menlo_20_0;
@@ -892,7 +894,7 @@ extern leRasterFont figmaFont_Menlo_20_0;
  * Baseline:     10
  * Style:        Antialias
  * Glyph Count:  99
- * Range Count:  18
+ * Range Count:  19
  * Glyph Ranges: 0x20-0x7E
                  0xB7
                  0x2014
@@ -908,7 +910,7 @@ extern leRasterFont figmaFont_Menlo_12_1;
  * Baseline:     12
  * Style:        Antialias
  * Glyph Count:  95
- * Range Count:  13
+ * Range Count:  11
  * Glyph Ranges: 0x20-0x7E
 ***********************************/
 extern leRasterFont figmaFont_Menlo_14_1;
@@ -1081,7 +1083,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_STREAK    9
 #define stringID_SONG_SELECT_EASY    10
 #define stringID_figmaStr__0_2    11
-#define stringID_figmaStr_READY    12
+#define stringID_SONG_INFO_Status    12
 #define stringID_figmaStr_TEST_PATTERN    13
 #define stringID_figmaStr_WHAMMY_0    14
 #define stringID_figmaStr_WIIMOTE    15
@@ -1099,7 +1101,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_T2_1    27
 #define stringID_figmaStr_T2    28
 #define stringID_figmaStr_29_9_    29
-#define stringID_figmaStr______    30
+#define stringID_SONG_INFO_Tier    30
 #define stringID_figmaStr___STAR_POWER_0    31
 #define stringID_figmaStr_WIIMOTE_0    32
 #define stringID_figmaStr___3    33
@@ -1109,16 +1111,16 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_UPTIME    37
 #define stringID_GUITAR_PLUS    38
 #define stringID_figmaStr_R    39
-#define stringID_figmaStr__7_22_0    40
+#define stringID_SONG_INFO_STOP_TIME    40
 #define stringID_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER    41
 #define stringID_figmaStr_MANUAL_CONTROLS    42
 #define stringID_SONG_SELECT_SongTier    43
 #define stringID_figmaStr_DISABLED    44
 #define stringID_SONG_SELECT_SELECT    45
-#define stringID_figmaStr_TIER    46
+#define stringID_SONG_INFO_TIER    46
 #define stringID_figmaStr_T4_1    47
 #define stringID_figmaStr__3x_0    48
-#define stringID_figmaStr_0_00    49
+#define stringID_SONG_INFO_START_TIME    49
 #define stringID_figmaStr_T4_0    50
 #define stringID_figmaStr_T1_0    51
 #define stringID_figmaStr_Battery    52
@@ -1141,10 +1143,10 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_B_0    69
 #define stringID_figmaStr_T2_0    70
 #define stringID_figmaStr_Settings    71
-#define stringID_figmaStr_Inhuman_Rampage___2006    72
+#define stringID_SONG_INFO_Album_Year    72
 #define stringID_figmaStr_Dashboard    73
 #define stringID_figmaStr__2x_0    74
-#define stringID_figmaStr_DragonForce    75
+#define stringID_SONG_INFO_Artist    75
 #define stringID_figmaStr_Diagnostics    76
 #define stringID_figmaStr_B_0_0    77
 #define stringID_figmaStr_T4    78
@@ -1155,7 +1157,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr___STAR_POWER    83
 #define stringID_figmaStr_Wii_remote    84
 #define stringID_figmaStr___1    85
-#define stringID_figmaStr_Power_Metal    86
+#define stringID_SONG_INFO_Genre    86
 #define stringID_figmaStr_Connected_0_0    87
 #define stringID_figmaStr_Marvin_v2_1_4    88
 #define stringID_figmaStr__0_0    89
@@ -1164,7 +1166,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_SONG_SELECT_1P_ROBOT    92
 #define stringID_figmaStr___4    93
 #define stringID_figmaStr_Best__89    94
-#define stringID_figmaStr_GENRE    95
+#define stringID_SONG_INFO_GENRE    95
 #define stringID_NAV_Marvin_v1_0_0    96
 #define stringID_figmaStr__    97
 #define stringID_figmaStr_Direct_injection___Wiimote___Guitar_Hero_extension    98
@@ -1186,7 +1188,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_Marvin_v2_1_4_0    114
 #define stringID_figmaStr_Calibration    115
 #define stringID_figmaStr_1    116
-#define stringID_figmaStr_DURATION    117
+#define stringID_SONG_INFO_DURATION    117
 #define stringID_figmaStr_GUITAR_ACTUATORS    118
 #define stringID_figmaStr_CONFIGURATION    119
 #define stringID_figmaStr_1P___ROBOT    120
@@ -1266,7 +1268,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_Human_Player_0    194
 #define stringID_figmaStr_STREAK_0    195
 #define stringID_figmaStr_Performance    196
-#define stringID_figmaStr_7_22    197
+#define stringID_SONG_INFO_Duration    197
 #define stringID_figmaStr_Wii_guitar    198
 #define stringID_figmaStr_MEMORY    199
 #define stringID_figmaStr_FRET_ACTIVITY    200
@@ -1288,7 +1290,7 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 #define stringID_figmaStr_LEMMY    216
 #define stringID_figmaStr_RESPONSE_DELAY    217
 #define stringID_figmaStr_4x    218
-#define stringID_figmaStr_Through_the_Fire_and_Flames    219
+#define stringID_SONG_INFO_Title    219
 #define stringID_figmaStr_SCORE    220
 #define stringID_figmaStr_12ms    221
 #define stringID_NAV_NAVIGATION    222
@@ -1318,7 +1320,7 @@ extern leTableString string_figmaStr_TILT_0;
 extern leTableString string_figmaStr_STREAK;
 extern leTableString string_SONG_SELECT_EASY;
 extern leTableString string_figmaStr__0_2;
-extern leTableString string_figmaStr_READY;
+extern leTableString string_SONG_INFO_Status;
 extern leTableString string_figmaStr_TEST_PATTERN;
 extern leTableString string_figmaStr_WHAMMY_0;
 extern leTableString string_figmaStr_WIIMOTE;
@@ -1336,7 +1338,7 @@ extern leTableString string_figmaStr__DN_0;
 extern leTableString string_figmaStr_T2_1;
 extern leTableString string_figmaStr_T2;
 extern leTableString string_figmaStr_29_9_;
-extern leTableString string_figmaStr______;
+extern leTableString string_SONG_INFO_Tier;
 extern leTableString string_figmaStr___STAR_POWER_0;
 extern leTableString string_figmaStr_WIIMOTE_0;
 extern leTableString string_figmaStr___3;
@@ -1346,16 +1348,16 @@ extern leTableString string_NAV_BUTTON_Activity_Logs;
 extern leTableString string_figmaStr_UPTIME;
 extern leTableString string_GUITAR_PLUS;
 extern leTableString string_figmaStr_R;
-extern leTableString string_figmaStr__7_22_0;
+extern leTableString string_SONG_INFO_STOP_TIME;
 extern leTableString string_figmaStr_GUITAR_HERO_ROBOT_CONTROLLER;
 extern leTableString string_figmaStr_MANUAL_CONTROLS;
 extern leTableString string_SONG_SELECT_SongTier;
 extern leTableString string_figmaStr_DISABLED;
 extern leTableString string_SONG_SELECT_SELECT;
-extern leTableString string_figmaStr_TIER;
+extern leTableString string_SONG_INFO_TIER;
 extern leTableString string_figmaStr_T4_1;
 extern leTableString string_figmaStr__3x_0;
-extern leTableString string_figmaStr_0_00;
+extern leTableString string_SONG_INFO_START_TIME;
 extern leTableString string_figmaStr_T4_0;
 extern leTableString string_figmaStr_T1_0;
 extern leTableString string_figmaStr_Battery;
@@ -1378,10 +1380,10 @@ extern leTableString string_figmaStr_73;
 extern leTableString string_figmaStr_B_0;
 extern leTableString string_figmaStr_T2_0;
 extern leTableString string_figmaStr_Settings;
-extern leTableString string_figmaStr_Inhuman_Rampage___2006;
+extern leTableString string_SONG_INFO_Album_Year;
 extern leTableString string_figmaStr_Dashboard;
 extern leTableString string_figmaStr__2x_0;
-extern leTableString string_figmaStr_DragonForce;
+extern leTableString string_SONG_INFO_Artist;
 extern leTableString string_figmaStr_Diagnostics;
 extern leTableString string_figmaStr_B_0_0;
 extern leTableString string_figmaStr_T4;
@@ -1392,7 +1394,7 @@ extern leTableString string_figmaStr___2_0;
 extern leTableString string_figmaStr___STAR_POWER;
 extern leTableString string_figmaStr_Wii_remote;
 extern leTableString string_figmaStr___1;
-extern leTableString string_figmaStr_Power_Metal;
+extern leTableString string_SONG_INFO_Genre;
 extern leTableString string_figmaStr_Connected_0_0;
 extern leTableString string_figmaStr_Marvin_v2_1_4;
 extern leTableString string_figmaStr__0_0;
@@ -1401,7 +1403,7 @@ extern leTableString string_figmaStr_Activity_Logs;
 extern leTableString string_SONG_SELECT_1P_ROBOT;
 extern leTableString string_figmaStr___4;
 extern leTableString string_figmaStr_Best__89;
-extern leTableString string_figmaStr_GENRE;
+extern leTableString string_SONG_INFO_GENRE;
 extern leTableString string_NAV_Marvin_v1_0_0;
 extern leTableString string_figmaStr__;
 extern leTableString string_figmaStr_Direct_injection___Wiimote___Guitar_Hero_extension;
@@ -1423,7 +1425,7 @@ extern leTableString string_SONG_SELECT_MEDIUM;
 extern leTableString string_figmaStr_Marvin_v2_1_4_0;
 extern leTableString string_figmaStr_Calibration;
 extern leTableString string_figmaStr_1;
-extern leTableString string_figmaStr_DURATION;
+extern leTableString string_SONG_INFO_DURATION;
 extern leTableString string_figmaStr_GUITAR_ACTUATORS;
 extern leTableString string_figmaStr_CONFIGURATION;
 extern leTableString string_figmaStr_1P___ROBOT;
@@ -1503,7 +1505,7 @@ extern leTableString string_figmaStr_MODE;
 extern leTableString string_figmaStr_Human_Player_0;
 extern leTableString string_figmaStr_STREAK_0;
 extern leTableString string_figmaStr_Performance;
-extern leTableString string_figmaStr_7_22;
+extern leTableString string_SONG_INFO_Duration;
 extern leTableString string_figmaStr_Wii_guitar;
 extern leTableString string_figmaStr_MEMORY;
 extern leTableString string_figmaStr_FRET_ACTIVITY;
@@ -1525,7 +1527,7 @@ extern leTableString string_figmaStr_5_36;
 extern leTableString string_figmaStr_LEMMY;
 extern leTableString string_figmaStr_RESPONSE_DELAY;
 extern leTableString string_figmaStr_4x;
-extern leTableString string_figmaStr_Through_the_Fire_and_Flames;
+extern leTableString string_SONG_INFO_Title;
 extern leTableString string_figmaStr_SCORE;
 extern leTableString string_figmaStr_12ms;
 extern leTableString string_NAV_NAVIGATION;

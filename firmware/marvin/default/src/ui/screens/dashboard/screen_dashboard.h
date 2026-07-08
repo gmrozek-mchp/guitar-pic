@@ -24,6 +24,7 @@ void ScreenDashboard_Setup(void);
 void ScreenDashboard_ApplySelection(void);
 void ScreenDashboard_ApplyFret(uint8_t mask);
 void ScreenDashboard_ApplyStatus(const char *text);
+void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms);
 
 #ifdef __cplusplus
 }

@@ -17,7 +17,7 @@ void SongDetail_TierText(int tier, char *buf, size_t n)
     {
         buf[p++] = (char)0xE2; buf[p++] = (char)0x98; buf[p++] = (char)0x85;   /* U+2605 ★ */
     }
-    (void)snprintf(buf + p, n - p, " TIER %d", tier);
+    if (p < n) { buf[p] = '\0'; } else if (n > 0u) { buf[n - 1u] = '\0'; }
 }
 
 const leScheme *SongDetail_TierScheme(int tier)

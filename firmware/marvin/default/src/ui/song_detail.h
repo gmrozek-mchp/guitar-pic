@@ -14,7 +14,7 @@
  * (bonus / unknown). */
 int SongDetail_Tier(const char *difficulty);
 
-/* UTF-8 tier text: `tier` black stars (U+2605) + " TIER n", or "BONUS" for 0. */
+/* UTF-8 tier text: `tier` black stars (U+2605), or "BONUS" for 0. */
 void SongDetail_TierText(int tier, char *buf, size_t n);
 
 /* Text color scheme for a tier: SCHEME_TEXT_TIER_1..8, or light gray for bonus. */

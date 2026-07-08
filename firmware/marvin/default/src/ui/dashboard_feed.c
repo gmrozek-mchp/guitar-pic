@@ -50,6 +50,12 @@ void DashboardFeed_PostStatus(const char *text)
     post(&e);
 }
 
+void DashboardFeed_PostPlaytime(uint32_t elapsed_ms)
+{
+    dashboard_evt_t e = { .type = DASH_EVT_PLAYTIME, .u.play_ms = elapsed_ms };
+    post(&e);
+}
+
 void DashboardFeed_PostScore(uint32_t score)
 {
     dashboard_evt_t e = { .type = DASH_EVT_SCORE, .u.score = score };
@@ -97,6 +103,7 @@ static void dashboard_task(void *param)
         UiManager_RenderLock();
         if (have[DASH_EVT_SELECTION]) { ScreenDashboard_ApplySelection(); }
         if (have[DASH_EVT_STATUS])    { ScreenDashboard_ApplyStatus(latest[DASH_EVT_STATUS].u.text); }
+        if (have[DASH_EVT_PLAYTIME])  { ScreenDashboard_ApplyPlaytime(latest[DASH_EVT_PLAYTIME].u.play_ms); }
         if (have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(latest[DASH_EVT_FRET].u.fret_mask); }
         UiManager_RenderUnlock();
     }

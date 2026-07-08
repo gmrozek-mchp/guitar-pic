@@ -29,6 +29,7 @@ typedef enum
     DASH_EVT_FRET = 0,   /* u.fret_mask — 7-bit guitar mask (TIMING_BIT_*)   */
     DASH_EVT_SELECTION,  /* no payload — consumer reads Selection_Get()       */
     DASH_EVT_STATUS,     /* u.text — game-controller status line              */
+    DASH_EVT_PLAYTIME,   /* u.play_ms — elapsed play time, scaled to bar fill */
     DASH_EVT_SCORE,      /* u.score      (future)                             */
     DASH_EVT_MULTIPLIER, /* u.mult       (future)                             */
     DASH_EVT_STREAK,     /* u.streak     (future)                             */
@@ -46,6 +47,7 @@ typedef struct
         uint32_t score;
         uint16_t mult;
         uint16_t streak;
+        uint32_t play_ms;
         char     text[DASH_EVT_TEXT_CAP];
     } u;
 } dashboard_evt_t;
@@ -61,6 +63,7 @@ void DashboardFeed_Start(void);
 void DashboardFeed_PostFret(uint8_t mask);
 void DashboardFeed_PostSelection(void);
 void DashboardFeed_PostStatus(const char *text);
+void DashboardFeed_PostPlaytime(uint32_t elapsed_ms);
 void DashboardFeed_PostScore(uint32_t score);
 void DashboardFeed_PostMultiplier(uint16_t mult);
 void DashboardFeed_PostStreak(uint16_t streak);

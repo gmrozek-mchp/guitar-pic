@@ -27,6 +27,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/song_list/widget_song_list.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/button_aa/widget_button_aa.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/panel_aa/widget_panel_aa.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/progressbar_aa/widget_progressbar_aa.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/aa_corners.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/perf_log/perf_log_rx.c"
