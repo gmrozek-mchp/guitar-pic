@@ -195,6 +195,105 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-07 — prototype: title **length + prefix** song reader (`songselect_prefix.py`) — negative result
+
+Greg flagged the `song_select` reader mis-reading certain songs on real hardware and asked
+whether a minimal-OCR "length + prefix" approach could do better. **CSV analysis** of the
+64-song catalog (`data/games/gh3-wii/songs.csv`): the full title charset is 54 glyphs, but the
+identifying signal is up front — **`(title length, first 2 case-insensitive chars)` uniquely
+separates all 64 songs** (7-char case-insensitive prefix alone also does; first-2 alone leaves
+15 collision groups, e.g. "The…" ×5, so length is the tie-breaker).
+
+Built a **parallel** reader (`gameplay/songselect_prefix.py`, original `songselect.py`
+untouched): reads only the **title sub-band** (top ~30% of the slot ROI; artist/year is below),
+and matches on two features — normalized **ink extent (length)** + a low-res normalized luma
+grid over the **leading window** of the title — with the same read-time offset search. Distance
+= `prefix_L1 + length_weight·|Δlength|`.
+
+**Result — it does not beat the whole-slot match; it's a useful negative:**
+- Clean corpus **64/64** (ties baseline). But **worst inter-song margin collapses** (~0.04–0.79
+  vs baseline **5.63**), and analog-slop robustness is **~88% at best vs baseline 99.1%**.
+- Category breakdown pinpoints why: gain/offset/noise **100%**, but **scale ~58–60%**,
+  **translate ~85%**. Rendered title lengths are packed **~1 px apart** (min gap 0 px on a
+  330 px ROI), so the length feature that must break the many shared-prefix ties has **no margin
+  against overscan/underscan (±3% ≈ ±10 px)** — exactly the analog slop we can't avoid.
+- **Root cause / takeaway:** the information-theoretic sufficiency of (length, first-2-chars)
+  does **not** survive as *analog bitmap* features. Many titles share leading glyphs (matches
+  the CSV collision groups), so the prefix grid barely separates them, and the length tie-breaker
+  is the single most scale-fragile feature. The whole-slot match wins because it uses the entire
+  title's ink as independent evidence.
+- **The real "minimal OCR" path is discrete, not bitmap:** classify the first ~2–3 glyphs to
+  actual character *labels* + read an integer length → exact-key lookup, immune to
+  analog-distance collapse. That needs a glyph classifier (segmentation + per-glyph templates;
+  ~26 glyph classes cover all first-3 prefixes) — a bigger lift with a one-frame-per-song data
+  constraint, deferred pending Greg's call. **Caveat:** the corpus is clean digital captures
+  (baseline already 100%/99.1% here), so it does not reproduce the on-hardware mis-reads Greg
+  sees — the synthetic slop envelope is only a proxy. Files: `gameplay/songselect_prefix.py` (new).
+
+**Follow-up (same day) — the port is faithful; the misreads are an integration gap (active-area
+offset not applied by the CV readers).** Greg gave four real on-hardware misreads
+(paint_it_black→cult_of_personality, same_old_song_and_dance→my_name_is_jonas,
+cult_of_personality→kool_thing, raining_blood→before_i_forget) and noted the corpus is exported
+directly from marvin — *the exact data marvin sees*. Ran the port down:
+- **On the exact corpus frames, all four read correctly with large margins** (wrong target 15–82
+  L1 away; raining_blood→before_i_forget is the tightest at margin 13). So it is **not** value/position
+  slop as modelled, not a close-template problem on the settled frame.
+- **The C port is byte-faithful.** Built the `gp_read_song` C unit and compared to Python over
+  **all 64** songs → **0 mismatches** (the existing cross-check only spot-checks `songs[::8]`, which
+  skips all four failing indices 14/22/34/35 — a real test gap). The committed `gameplay_metadata.h`
+  is **identical to a fresh export** (not stale). Pixel format matches: the CV path uses a dedicated
+  dense **BGR888 3 B/px** ISC capture (`isc_capture.c`), and `GP_BPP`/`GAME_BYTES_PER_PIXEL`=3 —
+  not the display BGRX32. Resolution is 720×480 (Wii 480p), matching `GP_CANON_*`.
+- **First hypothesis (active-area drift) — rejected by Greg:** the system is stable (same rig
+  since start, constant screen size/offset) and the raw frame buffer is never cropped (active-area
+  detection only picks a region to scale for *display*; the 720×480 raw data is untouched). So
+  corpus == runtime pixels, and drift is not the cause.
+- **ACTUAL ROOT CAUSE — the song ROIs are mis-registered; they don't sit on the selected title.**
+  Measured the selected (gold) title's y-position across the whole main list: it's **y≈246 for every
+  song 1–38** (rock-steady), and **y≈291 for the first song (slow_ride)** — the list can't scroll up
+  past the top, so song 0 sits ~45 px lower. But `SONG_SLOT_ROI` is **y=145–192** and `SONG_FIRST_ROI`
+  is **y=178–225** — both **~55–100 px too high**. Cropping the exact sampled region confirms it
+  visually: on the `paint_it_black` frame the ROI contains *"The Seeker / THE WHO"*, on
+  `cult_of_personality` it contains *"3's & 7's"*, etc. **The reader has never matched the selected
+  song — it matches whichever unselected neighbour sits ~2 rows above.** That scores 64/64 on the
+  corpus only because each song's upstream-neighbour is unique *at the one scroll position the corpus
+  captured*; the neighbour is a scroll-state artifact, not a stable property of the selection, so it's
+  fragile on hardware (and the confusion targets are just other songs with a similar mis-sampled
+  region). This is the "different y for song 0" concern Greg raised: the code *does* special-case
+  index 0 with a lower `FIRST_ROI`, but layered on a base ROI that is itself in the wrong place.
+- **Fix (validated in the prototype):** move the ROIs down onto the actual selection — SLOT ≈
+  **y=238–285**, FIRST ≈ **y=283–330** (the +45 px first-song offset). Re-run over the corpus:
+  clean **64/64**, slop **99.1%→100%**, and **worst inter-song margin 5.63→26.7 (≈5×)**. The tiny
+  5.63 margin was the fragility. This is a **data fix in the ROI constants** (`metadata.py` →
+  re-export `gameplay_metadata.h`), not an algorithm or OCR change — and it explains the misreads
+  without any drift. TODO before landing: (1) nail the exact bands data-driven per setlist (verify
+  bonus/avalancha positions); (2) confirm the *last* songs' runtime y (list can't scroll down past
+  the end either — the corpus shows even `one`(38) at y≈246, which may not be the true end-of-list
+  scroll position); (3) widen the C cross-check from `songs[::8]` to all 64; (4) get Greg's sign-off
+  (firmware data change). Prototype ROIs still un-committed pending this.
+
+**LANDED (same day, with Greg positioning the bands live).** Confirmed with Greg: only the *first*
+row is special (last songs sit at the normal y≈246, verified across both setlists; avalancha/first
+at y≈296). Went **title-only** and started the ROI right of the album-art thumbnail. Final,
+Greg-approved values (host + re-exported header):
+- `SONG_SLOT_ROI = (183, 233, 385, 266)`, `SONG_FIRST_ROI = (183, 282, 385, 315)` — title glyphs
+  only, x0=183 (right of art), first song +49 px.
+- `SongConfig.dy_search = (-6,-3,0,3,6)` (was ±3). A uniform-shift sweep showed the vertical
+  positional budget is set by `dy_search`: ±3 tolerates ≈ −6..+3 px at ≥95%, **±6 tolerates ±6 px
+  fully (±9 at 95%)** — chosen for per-rig position headroom. dx unchanged (32-col grid is coarse;
+  ±6 already covers it). Cost is fine: the title-only ROI is smaller than the old title+artist one,
+  so 25 offsets ≈ the old 15's cost, at a few Hz.
+- Results: `song_eval` **64/64 clean, 704/704 slop (100%), worst inter-song margin 5.63→33.68**.
+  All four reported misreads now read correctly with large margins (paint_it_black 44.5,
+  same_old 51.9, cult_of_personality 85.4, raining_blood 44.5).
+- Re-exported `gameplay_metadata.h` (ROIs, `gp_song_dy[5]`, `GP_SONG_NDY 5`, regenerated song
+  templates). Widened the C cross-check from `songs[::8]` to **all 64** — full suite **51 passed**,
+  C still matches Python on every song. **Pending Greg's MPLAB build + on-hardware confirmation**
+  that the four songs (and the rest) now read correctly live. Files: `metadata.py`, `songselect.py`,
+  `tests/test_firmware_classify.py`, `firmware/marvin/default/src/game/gameplay_metadata.h`
+  (generated). The `songselect_prefix.py` prototype stays as-is (unused; the root cause was
+  registration, not the matcher).
+
 ### 2026-07-04 — firmware controller made fully closed-loop (marvin)
 Fixed a real navigation misfire in the ported `game_controller` (marvin): after the Wii
 remote woke, the `practice_end_menu` exit strummed down 1 + GREEN (→ RESTART) instead of

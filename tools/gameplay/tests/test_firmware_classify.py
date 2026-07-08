@@ -142,7 +142,7 @@ def test_c_song_matches_python(corpus, driver, tmp_path):
 
     catalog = build_song_catalog(corpus)
     songs = [s for s in corpus if song_from_filename(s.path.name) is not None]
-    for s in songs[::8]:  # every 8th song — subprocess per frame
+    for s in songs:  # all 64 — subprocess per frame
         r = read_song(s.image, catalog)
         py = (0 if r.setlist == "main" else 1, r.index)
         c = tuple(int(x) for x in _c_run(driver, s.image, tmp_path, "song").split())

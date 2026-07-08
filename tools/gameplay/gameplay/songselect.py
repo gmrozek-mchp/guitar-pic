@@ -1,10 +1,12 @@
 """song_select reader: which song is in the highlight slot, and which setlist.
 
 `song_select` is fixed-slot — the selected song sits in a fixed highlight slot
-(title + artist/year) while the list scrolls under it. We identify the song by
-**matching that slot's low-resolution bitmap against the known per-song
-templates** (closed-set nearest-match, the same idea as the screen classifier;
-deliberately *not* char-level OCR — we have a reference image of every song).
+while the list scrolls under it. We identify the song by **matching the selected
+title line's low-resolution bitmap against the known per-song templates**
+(closed-set nearest-match, the same idea as the screen classifier; deliberately
+*not* char-level OCR — we have a reference image of every song). The ROI is
+registered on the highlighted title glyphs (right of the album-art thumbnail);
+see `metadata.SONG_SLOT_ROI`.
 
 Two wrinkles, both from the corpus:
 - Each setlist's first song (Slow Ride on main, Avalancha on bonus) sits one row
@@ -46,12 +48,12 @@ SLOT = "slot"
 @dataclass(frozen=True)
 class SongConfig:
     cols: int = 32  # horizontal cells across the title (captures the ink pattern)
-    rows: int = 6   # title + artist split into a few rows
+    rows: int = 6   # vertical cells down the title line
     # Small read-time offset search (px) that re-aligns the slot before matching —
     # this is what makes the fine grid tolerant of the analog path's positional
     # slop (without it, a few-px shift drops translate robustness to ~70%).
     dx_search: tuple[int, ...] = (-6, -3, 0, 3, 6)
-    dy_search: tuple[int, ...] = (-3, 0, 3)
+    dy_search: tuple[int, ...] = (-6, -3, 0, 3, 6)
 
 
 DEFAULT_SONG_CONFIG = SongConfig()

@@ -111,13 +111,16 @@ def selected_item_from_filename(filename: str) -> str | None:
 # it, with one exception per setlist: the *first* song (Slow Ride on main,
 # Avalancha on bonus) sits one row lower, because the list can't scroll up past
 # the top. So 38/39 main + 24/25 bonus use SONG_SLOT_ROI; each setlist's song 0
-# uses SONG_FIRST_ROI. Both ROIs cover the title + artist/year line, which is
-# what we match (bitmap, not OCR) against the per-song templates.
+# uses SONG_FIRST_ROI. Both ROIs cover the highlighted *title* line only (the
+# selected title glyphs, right of the album-art thumbnail), which we match
+# (bitmap, not OCR) against the per-song templates.
 #
-# ROIs in canonical 720x480 space; converged against the corpus via inter-song
-# match margin (see docs/journal.md).
-SONG_SLOT_ROI = (55, 145, 385, 192)
-SONG_FIRST_ROI = (55, 178, 385, 225)
+# ROIs in canonical 720x480 space, registered on the selected title: normal songs
+# render the title at y≈246, the first song ~45 px lower at y≈291 (measured across
+# the corpus). x0 starts right of the album art so only text is sampled. See
+# docs/journal.md.
+SONG_SLOT_ROI = (183, 233, 385, 266)
+SONG_FIRST_ROI = (183, 282, 385, 315)
 
 # Which setlist is active is read from the *page background colour*, not the tabs:
 # the "setlist"/"bonus" tabs are only on screen when the first song is selected
