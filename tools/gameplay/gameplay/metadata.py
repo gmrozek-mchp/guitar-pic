@@ -51,7 +51,7 @@ MENU_LAYOUTS: dict[str, MenuLayout] = {
     "difficulty_select": MenuLayout(
         "difficulty_select",
         ("easy", "medium", "hard", "expert"),
-        band=(35, 158, 245, 310),
+        band=(120, 156, 280, 331),
     ),
     "speed_select": MenuLayout(
         "speed_select",

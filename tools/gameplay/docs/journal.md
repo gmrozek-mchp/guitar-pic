@@ -294,6 +294,20 @@ Greg-approved values (host + re-exported header):
   (generated). The `songselect_prefix.py` prototype stays as-is (unused; the root cause was
   registration, not the matcher).
 
+**Follow-up — audited all 8 static-list menu ROIs; difficulty_select was significantly
+mis-registered, fixed.** After the song fix, checked the highlight-reader bands the same way
+(overlay cells on frames + a uniform-shift positional-budget sweep). Seven of eight are well
+placed (vertical budget ±7…±24 px, all reads correct); `main_menu` is well-centered but inherently
+tight (±5 px — 7 items in 195 px). **`difficulty_select` was significantly off on both axes:**
+band `(35,158,245,310)` started ~85 px too far left (sampling the side collage) and its 38 px cells
+were shorter than the ~44 px item spacing, so lower rows (HARD/EXPERT) sagged out of their cells —
+worst budget ±4 px and 1 slop miss. Measured item centers from the dark glyph rows
+(178/222/265/309, even 44 px spacing) and re-registered to **`(120,156,280,331)`** (Greg set the
+160 px width). Result: vertical budget **±4→±18 px**, slop 43/44→**44/44**, still 100 % clean.
+Re-exported the header (band + regenerated per-cell baselines); full suite **51 passed**. Files:
+`metadata.py`, `firmware/marvin/default/src/game/gameplay_metadata.h`. **Pending Greg's build +
+on-hardware check** (difficulty_select selection reads correctly live).
+
 ### 2026-07-04 — firmware controller made fully closed-loop (marvin)
 Fixed a real navigation misfire in the ported `game_controller` (marvin): after the Wii
 remote woke, the `practice_end_menu` exit strummed down 1 + GREEN (→ RESTART) instead of

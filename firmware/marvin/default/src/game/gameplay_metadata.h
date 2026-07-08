@@ -58,7 +58,7 @@ static const uint8_t gp_centroids[GP_N_SCREENS][GP_FP_LEN] = {
 static const char *const gp_menu_main_menu_items[7] = {"career", "co_op_career", "quickplay", "multiplayer", "training", "options", "nintendo_wfc"};
 static const float gp_menu_main_menu_baseline[21] = {-0.608836f,-0.705373f,-0.726503f,-0.527554f,-0.756323f,-0.950867f,0.495279f,0.876993f,0.950113f,0.115107f,0.329449f,0.306931f,-0.369744f,-0.173333f,-0.141377f,-0.185937f,-0.21729f,-0.297637f,-0.798849f,-1.34418f,-1.7244f};
 static const char *const gp_menu_difficulty_select_items[4] = {"easy", "medium", "hard", "expert"};
-static const float gp_menu_difficulty_select_baseline[12] = {-0.748446f,-0.939734f,-1.32281f,-0.154531f,-0.276461f,-0.522917f,1.29315f,1.28958f,1.01675f,0.988174f,0.95262f,0.68473f};
+static const float gp_menu_difficulty_select_baseline[12] = {0.885432f,0.746004f,0.264827f,0.694763f,0.536754f,0.0624244f,0.688777f,0.553502f,0.0230633f,0.776092f,0.686519f,0.135467f};
 static const char *const gp_menu_speed_select_items[4] = {"full_speed", "slow", "slower", "slowest"};
 static const float gp_menu_speed_select_baseline[12] = {0.322818f,0.126627f,-0.233649f,-0.422047f,-0.802081f,-1.14752f,-0.265627f,-0.632889f,-1.02919f,-0.159529f,-0.5124f,-0.879945f};
 static const char *const gp_menu_pause_menu_items[7] = {"resume", "restart", "options", "change_speed", "change_section", "new_song", "quit"};
@@ -82,7 +82,7 @@ typedef struct {
 } gp_menu_layout_t;
 static const gp_menu_layout_t gp_menus[GP_N_MENUS] = {
   {GP_SCREEN_main_menu, GP_AXIS_V, 7, {349,87,574,282}, gp_menu_main_menu_items, gp_menu_main_menu_baseline},
-  {GP_SCREEN_difficulty_select, GP_AXIS_V, 4, {35,158,245,310}, gp_menu_difficulty_select_items, gp_menu_difficulty_select_baseline},
+  {GP_SCREEN_difficulty_select, GP_AXIS_V, 4, {120,156,280,331}, gp_menu_difficulty_select_items, gp_menu_difficulty_select_baseline},
   {GP_SCREEN_speed_select, GP_AXIS_V, 4, {255,198,452,324}, gp_menu_speed_select_items, gp_menu_speed_select_baseline},
   {GP_SCREEN_pause_menu, GP_AXIS_V, 7, {277,156,433,322}, gp_menu_pause_menu_items, gp_menu_pause_menu_baseline},
   {GP_SCREEN_practice_end_menu, GP_AXIS_V, 5, {368,115,547,217}, gp_menu_practice_end_menu_items, gp_menu_practice_end_menu_baseline},
