@@ -354,6 +354,41 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-09 — dashboard: live CV score → ROBOT score label (pending build)
+
+Wired the ported score reader's output to the dashboard `Marvin_LABEL_DASHBOARD_ROBOT_Score`
+(added in MGS), reusing the already-stubbed feed path: `game_controller.play_until_done` observes
+the full `game_state_t` in its ~3 Hz play poll and `DashboardFeed_PostScore(gs.score)` on
+`in_song` (resets to 0 at song start); the dashboard-feed consumer applies `DASH_EVT_SCORE` via a
+new `ScreenDashboard_ApplyScore` that formats the value into a `leFixedString` and `setString`s the
+label (mirrors `ApplyPlaytime`/`ApplyStatus`). Files: `game/game_controller.c`, `ui/dashboard_feed.c`,
+`ui/screens/dashboard/screen_dashboard.{c,h}` — all our own source (no generated edits;
+`DASH_EVT_SCORE`/`DashboardFeed_PostScore` already existed). **Pending Greg's MPLAB build**: on a
+training run the label should track the on-screen score (~3 Hz), reset at song start, hold the final
+value. Follow-ups: multiplier/streak labels (feed stubs exist), career-font score mode.
+
+### 2026-07-09 — gameplay_engine: in-song score reader ported (M9 Phase 3, pending build)
+
+Added the in-song score reader to the observer, mirroring the classifier/selection/song ports.
+New pure-C `game/gameplay_score.{h,c}`: `gp_read_score(frame, w, h, mode, *out)` — proportional
+GH3 score OCR (relative-threshold ink mask, gap-based column segmentation into digit blobs, per-cell
+ink-coverage glyph, **integer L1 argmin over 10 per-digit coverage-mask templates**). Driven by a
+new `export_c` score block in `gameplay_metadata.h` (`GP_SCORE_*` geometry/params, per-mode digit
+band + a `[10][140]` uint8 template array). **Mode-parameterized** (`GP_SCORE_MODE_TRAINING` now;
+career green font appends as a second mode with no API change). Started as a 270-exemplar float 1-NN
+(554 KB header, soft-float) but Greg rightly flagged it as overkill for a fixed 10-glyph font;
+simplified to the coverage-mask match (integer-only, header 157 KB, same accuracy). **No chrome
+registration in v0** — the rig is stable and the host
+registration always resolved to (0,0), so a fixed digit band suffices (deferred on-device
+registration if drift appears). `gameplay_engine` gained `game_state_t.score`, reads it on
+`GP_SCREEN_in_song` (logs `GAME: in_song / score N`); `gameplay_score.c` added to `user.cmake`.
+
+Proven before build: the host cross-check (`tools/gameplay/tests/test_firmware_classify.py`, new
+`score` driver mode) compiles `gameplay_score.c` and confirms `gp_read_score` matches the prototype
+`read_score` on all 54 corpus frames. The prototype reads all 6549 real capture frames with 0
+monotonic violations. **Pending Greg's MPLAB build + on-hardware check.** Detail in the gameplay
+journal (2026-07-09).
+
 ### 2026-07-09 — perf_log: region-stream command (host-selected sub-region at full frame rate)
 
 Added a `PERF_CMD_REGION_STREAM` command + `PERF_STRIP_REGION` strip kind so the host can stream

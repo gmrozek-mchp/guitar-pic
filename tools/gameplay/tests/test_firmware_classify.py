@@ -34,6 +34,7 @@ _DRIVER_C = r"""
 #include <string.h>
 #include "game/gameplay_classify.h"
 #include "game/gameplay_select.h"
+#include "game/gameplay_score.h"
 #include "game/gameplay_metadata.h"
 int main(int argc, char **argv) {
     if (argc < 5) return 2;
@@ -54,6 +55,10 @@ int main(int argc, char **argv) {
         gp_song_t s;
         gp_read_song(buf, w, h, &s);
         printf("%d %d\n", (int)s.setlist, (int)s.index);
+    } else if (strcmp(mode, "score") == 0) {
+        gp_score_t s;
+        gp_read_score(buf, w, h, (uint8_t)atoi(argv[5]), &s);
+        printf("%d\n", (int)s.value);
     }
     return 0;
 }
@@ -76,6 +81,7 @@ def driver(tmp_path_factory):
          str(d / "driver.c"),
          str(_FW_SRC / "game" / "gameplay_classify.c"),
          str(_FW_SRC / "game" / "gameplay_select.c"),
+         str(_FW_SRC / "game" / "gameplay_score.c"),
          "-lm", "-o", str(exe)],
         capture_output=True, text=True,
     )
@@ -147,3 +153,23 @@ def test_c_song_matches_python(corpus, driver, tmp_path):
         py = (0 if r.setlist == "main" else 1, r.index)
         c = tuple(int(x) for x in _c_run(driver, s.image, tmp_path, "song").split())
         assert c == py, f"{s.path.name}: C={c} Python={py}"
+
+
+def test_c_score_matches_python(score_corpus, driver, tmp_path):
+    """gp_read_score (fixed band, mode training) == score.py read_score on all frames.
+
+    Firmware v0 has no chrome registration, so compare against read_score with
+    calibration=None (fixed band). The reader takes a full 720x480 frame, so feed
+    the block embedded exactly as score.py does internally (_ensure_full_frame).
+    """
+    import numpy as np
+
+    from gameplay.metadata import score_from_filename
+    from gameplay.score import _ensure_full_frame, build_score_catalog, read_score
+
+    catalog = build_score_catalog(score_corpus)
+    for s in score_corpus:
+        py = read_score(s.image, catalog, None).value
+        full = np.ascontiguousarray(_ensure_full_frame(s.image))
+        c = int(_c_run(driver, full, tmp_path, "score", "0"))  # GP_SCORE_MODE_TRAINING
+        assert c == py, f"{s.path.name}: C={c} Python={py} (true {score_from_filename(s.path.name)[1]})"

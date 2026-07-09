@@ -92,6 +92,11 @@ static leFixedString s_start_str;
 static leChar        s_stop_buf[8];
 static leFixedString s_stop_str;
 
+/* Runtime text for the ROBOT card's score label — the CV-read GH3 score, updated
+ * live during a run by the game controller via the dashboard feed. */
+static leChar        s_score_buf[12];
+static leFixedString s_score_str;
+
 /* Selected song length (s), captured on ApplySelection so ApplyPlaytime can scale
  * elapsed play time into the 0-100 progress-bar fill. 0 = unknown → no fill. */
 static uint16_t s_song_len_s;
@@ -154,6 +159,15 @@ static void song_detail_init(void)
                               sizeof(s_stop_buf) / sizeof(s_stop_buf[0]));
     if (tcur != NULL) { tfs->fn->setFont(tfs, tcur->fn->getFont(tcur)); }
     stop->fn->setString(stop, tfs);
+
+    /* ROBOT score label: point it at its own fixed string, inheriting its MGS font. */
+    leLabelWidget *score = Marvin_LABEL_DASHBOARD_ROBOT_Score;
+    leString      *pfs   = (leString *)&s_score_str;
+    leString      *pcur  = score->fn->getString(score);
+    leFixedString_Constructor(&s_score_str, s_score_buf,
+                              sizeof(s_score_buf) / sizeof(s_score_buf[0]));
+    if (pcur != NULL) { pfs->fn->setFont(pfs, pcur->fn->getFont(pcur)); }
+    score->fn->setString(score, pfs);
 }
 
 /* Game-controller status observer — runs in the game-controller task's context.
@@ -329,6 +343,14 @@ void ScreenDashboard_ApplyStatus(const char *text)
 {
     (void)lestring_set_utf8((leString *)&s_status_str,
                             (text != NULL && text[0] != '\0') ? text : "READY");
+}
+
+/* CV-read GH3 score → the ROBOT card's score label. */
+void ScreenDashboard_ApplyScore(uint32_t score)
+{
+    char tmp[12];
+    (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)score);
+    (void)lestring_set_utf8((leString *)&s_score_str, tmp);
 }
 
 /* Elapsed play time → the left marker (m:ss, counting up) and the bar fill, both

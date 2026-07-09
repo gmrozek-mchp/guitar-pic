@@ -21,18 +21,24 @@ from __future__ import annotations
 import numpy as np
 
 from .classifier import build_templates
-from .corpus import Sample, load_corpus
+from .corpus import Sample, load_corpus, load_score_corpus
 from .evaluate import labelled_fps, recommend_thresholds
 from .fingerprint import CANONICAL_H, CANONICAL_W, FingerprintConfig
 from .highlight import build_selection_calibration
 from .metadata import (
     HORIZONTAL,
     MENU_LAYOUTS,
+    SCORE_DIGIT_BAND,
     SETLIST_BG_ROI,
     SONG_FIRST_ROI,
     SONG_SLOT_ROI,
 )
+from .score import DEFAULT_SCORE_CONFIG, build_score_catalog
 from .songselect import DEFAULT_SONG_CONFIG, FIRST, build_song_catalog
+
+# Score modes emitted, in device-index order (GP_SCORE_MODE_*). Career (green
+# font) appends here once it has a labelled corpus + digit band — no API change.
+_SCORE_MODES = ("training",)
 
 
 def _c_ident(name: str) -> str:
@@ -172,5 +178,53 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
           % (setlist, t.index, roi, t.song_id, i))
     w("};")
     w("")
+
+    # ── in-song score reader ───────────────────────────────────────────────
+    w("/* ── in-song score reader (gap-segment + per-cell ink-coverage mask, L1) ── */")
+    scfg = DEFAULT_SCORE_CONFIG
+    score_len = scfg.glyph_rows * scfg.glyph_cols
+    # Per-mode catalogs (only modes with a labelled corpus are emitted).
+    score_samples = load_score_corpus()
+    mode_cats = [(m, build_score_catalog(score_samples, mode=m)) for m in _SCORE_MODES]
+    mode_cats = [(m, c) for m, c in mode_cats if c.templates]
+    bands = [SCORE_DIGIT_BAND[m] for m, _ in mode_cats]
+    max_bw = max((b[2] - b[0]) for b in bands) if bands else 0
+    max_bh = max((b[3] - b[1]) for b in bands) if bands else 0
+
+    w("#define GP_SCORE_GLYPH_ROWS %d" % scfg.glyph_rows)
+    w("#define GP_SCORE_GLYPH_COLS %d" % scfg.glyph_cols)
+    w("#define GP_SCORE_LEN %d" % score_len)
+    w("#define GP_SCORE_NDIGITS 10          /* templates 0-9; row index == digit */")
+    w("#define GP_SCORE_INK_FRAC %.6gf" % scfg.ink_frac)
+    w("#define GP_SCORE_MIN_GAP %d" % scfg.min_gap)
+    w("#define GP_SCORE_MIN_WIDTH %d" % scfg.min_width)
+    w("#define GP_SCORE_MIN_INK %d" % scfg.min_ink)
+    w("#define GP_SCORE_MAX_DIGITS 8        /* scratch bound; scores are <= 6 digits */")
+    w("#define GP_SCORE_BAND_MAX_W %d" % max_bw)
+    w("#define GP_SCORE_BAND_MAX_H %d" % max_bh)
+    for i, (m, _c) in enumerate(mode_cats):
+        w("#define GP_SCORE_MODE_%s %d" % (_c_ident(m).upper(), i))
+    w("#define GP_N_SCORE_MODES %d" % len(mode_cats))
+    w("")
+    # Per-mode uint8 template array: row d = digit d's mean ink-coverage mask.
+    for m, cat in mode_cats:
+        by_digit = {t.digit: t.vec for t in cat.templates}
+        rows = np.stack([by_digit[d] for d in range(10)])  # requires all 0-9 present
+        w("static const uint8_t gp_score_%s_tmpl[GP_SCORE_NDIGITS][GP_SCORE_LEN] = {"
+          % _c_ident(m))
+        w(_u8_rows(rows))
+        w("};")
+    w("")
+    w("typedef struct {")
+    w("  uint16_t band[4];                          /* x0, y0, x1, y1 (canonical space) */")
+    w("  const uint8_t (*tmpl)[GP_SCORE_LEN];       /* [10] per-digit coverage masks */")
+    w("} gp_score_mode_t;")
+    w("static const gp_score_mode_t gp_score_modes[GP_N_SCORE_MODES] = {")
+    for m, _cat in mode_cats:
+        b = SCORE_DIGIT_BAND[m]
+        w("  {{%d,%d,%d,%d}, gp_score_%s_tmpl}," % (b[0], b[1], b[2], b[3], _c_ident(m)))
+    w("};")
+    w("")
+
     w("#endif /* GAMEPLAY_METADATA_H */")
     return "\n".join(L) + "\n"

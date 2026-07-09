@@ -120,16 +120,20 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
    real observer. (Deferred: non-practice modes; real fret/strum/`+` bit mapping is the port.)
 5. ✅ **Number/score region readers (host-only; training-mode white font)** — per-digit
    glyph OCR of the open-ended score. The font is **proportional** (not tabular), so digits
-   are segmented by their **ink gaps** (right-to-left blobs), each normalized to a canonical
-   cell and 1-NN-matched; digit count falls out of segmentation. Templates built from a
-   **54-frame capture-derived corpus**; chrome-of-the-block registration retained. Result:
+   are segmented by their **ink gaps** (right-to-left blobs), each resized to a canonical cell
+   of per-cell **ink coverage** and matched (integer L1) against **10 per-digit templates** (one
+   averaged coverage mask per glyph). Templates built from a **54-frame capture-derived corpus**;
+   chrome-of-the-block registration retained (host-side). Result:
    **54/54 clean exact, 270/270 per-digit, LOO 54/54, A2D slop 99.7%, re-register 100%**, and —
    the decisive check — **0 monotonic violations across all 6549 real capture frames** (a play
    only climbs), covering 3–6-digit scores (250→101720). Supersedes the earlier fixed-pitch
-   attempt (only 10/16 held-out — the font isn't monospace). Career (green segmented) font, the
-   multiplier / streak counter, and the firmware port are deferred.
+   attempt (only 10/16 held-out — the font isn't monospace). **Ported to marvin firmware**
+   (`game/gameplay_score.{h,c}` + `export_c` score block, mode-parameterized, no on-device chrome
+   registration in v0; C cross-checks byte-faithful on all 54 frames). Career (green segmented)
+   font + the multiplier / streak counter are deferred.
 6. 🚧 **Firmware port** — `gameplay_engine` on marvin (spec §4.8). Phase 0 (metadata exporter)
-   ✅; Phases 1–3 (observer / readers / controller) ⬜. See Current focus for the phase plan.
+   ✅; screen classifier / selection / song / **score** readers ported (code-complete, pending
+   Greg's MPLAB build); navigator/controller (M10) ported earlier. See Current focus.
 
 ---
 
@@ -215,6 +219,34 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-07-09 — score reader ported to marvin firmware (M9 Phase 3, code-complete pending build)
+
+Froze the proven proportional score reader into firmware, mirroring the classifier/selection/song
+port pattern. `export_c.py` gained a score block (pulls `build_score_catalog` + `SCORE_DIGIT_BAND`):
+`GP_SCORE_*` geometry/seg-params, a per-mode `gp_score_<mode>_tmpl[10][140]` **uint8** template
+array (row d = digit d's coverage mask), and a `gp_score_modes[]` table carrying the digit band +
+templates — **mode-parameterized** (`GP_SCORE_MODE_TRAINING`; career appends later, no API change).
+New pure-C `game/gameplay_score.{h,c}`: `gp_read_score(frame,w,h,mode,*out)` — band ink mask
+(relative threshold), gap-based column segmentation, per-cell ink-coverage glyph, **integer L1
+argmin over the 10 templates** — a faithful port of `score.py`. **No chrome registration in v0**
+(fixed band; the rig is stable and host registration always resolved to (0,0)). Wired into
+`gameplay_engine` (new `game_state_t.score`, read on `GP_SCREEN_in_song`, `GAME: in_song / score N`
+log) + `user.cmake`.
+
+Matcher note (Greg): first ported a heavy 270-exemplar float 1-NN + per-glyph normalization (554 KB
+header, soft-float) — Greg pushed back ("10 fixed glyphs shouldn't need this"). Diagnosed on the
+6549-frame capture: a plain binary mask misread only 8→5/3 and 0→3 (thin closed-loop strokes lost to
+1-bit). Switched to per-cell **ink coverage** (0-255) with **10 averaged per-digit templates** +
+integer L1 — same accuracy (0 monotonic violations over 6549), integer-only, header 554 KB → 157 KB.
+
+Cross-check: extended `test_firmware_classify.py` with a `score` driver mode that compiles
+`gameplay_score.c` and asserts `gp_read_score` == `read_score` on all 54 corpus frames — **passes**
+(the C is byte-faithful). Full suite **60 passed**;
+generated header compiles clean under `cc -std=c11 -Wall -Wextra`; `gameplay_score.c` clean with
+`-Wall -Wextra`. **Pending Greg's MPLAB build + on-hardware check** (GAME log shows the score during
+training in_song). Follow-ups: career (green) font mode, continuous in-song score tracking +
+dashboard/results wiring, optional on-device chrome registration.
 
 ### 2026-07-09 — score reader reworked: proportional (gap-based) segmentation + 6549-frame capture corpus
 

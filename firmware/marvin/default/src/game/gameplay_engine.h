@@ -28,6 +28,7 @@ typedef struct
     int32_t  best_dist;     /* L1 to the nearest centroid */
     int32_t  margin;        /* second-best − best (confidence) */
     int16_t  selection;     /* static-list cell, song-template index, or -1 (none) */
+    int32_t  score;         /* in-song score read (training font), or -1 (not in_song) */
 } game_state_t;
 
 /* Brings up the game-state bus queue and the observer task. The observer

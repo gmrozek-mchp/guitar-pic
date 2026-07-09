@@ -312,6 +312,7 @@ static void play_until_done(void)
     TimingPipeline_SetEnabled(true);   /* controller owns the actuation window */
     TickType_t play_start = xTaskGetTickCount();
     DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar */
+    DashboardFeed_PostScore(0u);       /* reset the dashboard score for the new song */
 
     for (;;)
     {
@@ -321,11 +322,19 @@ static void play_until_done(void)
         DashboardFeed_PostPlaytime((uint32_t)(xTaskGetTickCount() - play_start)
                                    * portTICK_PERIOD_MS);
 
-        uint8_t sc; int16_t sel;
-        if (observe(&sc, &sel) && sc != GP_SCREEN_in_song
-            && sc != GP_SCREEN_loading && sc != GP_SCREEN_UNKNOWN)
+        /* Observe the full state so the CV-read score can ride the dashboard feed;
+         * the same read detects the song ending (screen leaves gameplay). */
+        game_state_t gs;
+        if (GameplayEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
         {
-            break;   /* song ended (practice_end_menu) or left gameplay */
+            if (gs.screen == GP_SCREEN_in_song)
+            {
+                if (gs.score >= 0) { DashboardFeed_PostScore((uint32_t)gs.score); }
+            }
+            else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
+            {
+                break;   /* song ended (practice_end_menu) or left gameplay */
+            }
         }
     }
 

@@ -1,6 +1,7 @@
 #include "game/gameplay_engine.h"
 #include "game/gameplay_classify.h"
 #include "game/gameplay_select.h"
+#include "game/gameplay_score.h"
 #include "game/gameplay_metadata.h"
 
 #include <stdint.h>
@@ -124,6 +125,14 @@ static void game_task(void *param)
         const char *sel_name = NULL, *sel_name2 = NULL;
         int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
 
+        /* In-song: read the open-ended score (training font). -1 elsewhere. */
+        int32_t score = -1;
+        if (screen == GP_SCREEN_in_song)
+        {
+            gp_score_t sc;
+            if (gp_read_score(buf, w, h, GP_SCORE_MODE_TRAINING, &sc) == 0) { score = sc.value; }
+        }
+
         game_state_t ev;
         memset(&ev, 0, sizeof(ev));
         ev.frame_epoch  = frame.frame_count;
@@ -132,6 +141,7 @@ static void game_task(void *param)
         ev.best_dist    = best_dist;
         ev.margin       = margin;
         ev.selection    = sel;
+        ev.score        = score;
 
         /* Answer the requester first (clear pending before the send so a follow-up
          * Observe that wakes on the response can't have its new request cleared). */
@@ -154,6 +164,10 @@ static void game_task(void *param)
             else if (sel_name != NULL)  /* static-list: "<screen> / <item>" */
             {
                 LOG_INFO("GAME: %s / %s\r\n", screen_name(screen), sel_name);
+            }
+            else if (screen == GP_SCREEN_in_song)  /* "in_song / score N" */
+            {
+                LOG_INFO("GAME: %s / score %ld\r\n", screen_name(screen), (long)score);
             }
             else
             {

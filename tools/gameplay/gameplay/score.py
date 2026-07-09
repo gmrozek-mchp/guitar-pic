@@ -5,9 +5,10 @@ open-ended number, so it is read digit by digit. The training font is white and
 **proportional** (a `1` is narrower than an `8`, so digit x-positions shift with
 the value — verified on a 6549-frame capture), but the digits are cleanly
 gap-separated. So digits are isolated by their ink (the gaps between them), not a
-fixed grid; each is normalized to a canonical cell and matched against a per-mode
-bank of 0-9 glyph exemplars (1-NN). The digit count falls out of the segmentation
-(no fixed N, no blank class).
+fixed grid; each is resized to a canonical cell whose cells hold **ink coverage**
+(0-255), and matched by integer L1 against a per-mode bank of **10 per-digit
+templates** (one averaged coverage mask per glyph — it's a fixed 10-glyph font).
+The digit count falls out of the segmentation (no fixed N, no blank class).
 
 Two stages, because the field position is fixed on a given rig but the analog
 capture varies frame to frame:
@@ -20,17 +21,19 @@ capture varies frame to frame:
   `ScoreCalibration`); the digit band is then a fixed offset inside it. Run once
   at gameplay start over a few frames.
 - **Per-frame read (continual).** `read_score` crops the digit band at the locked
-  offset, segments it, and 1-NN-classifies each glyph — no offset search. A
-  per-band relative ink threshold and per-glyph normalization cancel A2D
-  gain/offset drift. Cheap: an ink mask + a small L1 per digit.
+  offset, segments it, and matches each glyph's coverage mask (argmin integer L1)
+  against the 10 templates — no offset search. The per-band relative ink threshold
+  makes the coverage gain/offset robust, so no per-frame normalization is needed.
+  Cheap: an ink mask + a small integer L1 over 10 tiny templates.
 
 Templates are built from the labelled score corpus: each frame's digits (from its
-filename value) map left→right onto the segmented glyphs, each kept as a 1-NN
-exemplar — no hand-cropping. Integer-friendly for the firmware port.
+filename value) map left→right onto the segmented glyphs, averaged per digit into
+10 uint8 coverage masks — no hand-cropping. Integer-only; light for the firmware.
 """
 
 from __future__ import annotations
 
+from collections import defaultdict
 from dataclasses import dataclass
 
 import numpy as np
@@ -86,8 +89,8 @@ DEFAULT_SCORE_CONFIG = ScoreConfig()
 
 @dataclass(frozen=True)
 class DigitTemplate:
-    digit: int  # 0-9
-    vec: np.ndarray
+    digit: int         # 0-9
+    vec: np.ndarray    # uint8 ink-coverage mask, length glyph_rows*glyph_cols
 
 
 @dataclass(frozen=True)
@@ -99,7 +102,7 @@ class ChromeReference:
 @dataclass(frozen=True)
 class ScoreCatalog:
     mode: str
-    templates: list[DigitTemplate]  # one per labelled glyph exemplar (1-NN, not centroid)
+    templates: list[DigitTemplate]  # 10 per-digit averaged coverage masks (0-9)
     chrome: ChromeReference
     config: ScoreConfig
 
@@ -163,26 +166,29 @@ def _segment_digits(band: np.ndarray, cfg: ScoreConfig) -> list[tuple[int, int]]
     ]
 
 
-def _glyph_vec(band: np.ndarray, run: tuple[int, int], cfg: ScoreConfig) -> np.ndarray:
-    """Normalized fingerprint of one segmented digit (bbox → canonical grid)."""
+def _glyph_cov(band: np.ndarray, run: tuple[int, int], cfg: ScoreConfig) -> np.ndarray:
+    """Ink-coverage fingerprint of one segmented digit (bbox → canonical grid).
+
+    Each cell holds the fraction of its pixels above the band's relative ink
+    threshold, quantized to uint8 0-255. Coverage (not a 1-bit mask) keeps the
+    thin/antialiased strokes that separate look-alike digits (8 vs 5/3); the
+    relative threshold makes it gain/offset robust. Matching is then a plain
+    integer L1 over 10 per-digit templates — no float normalization.
+    """
     x0, x1 = run
-    sub = band[:, x0:x1 + 1]
-    # Crop to the glyph's ink rows so height variation doesn't dominate.
-    rmask = _ink_mask(band, cfg)[:, x0:x1 + 1].any(1)
-    ys = np.where(rmask)[0]
+    mask = _ink_mask(band, cfg)[:, x0:x1 + 1]
+    ys = np.where(mask.any(1))[0]
     if len(ys):
-        sub = sub[ys.min():ys.max() + 1, :]
-    ye = np.linspace(0, sub.shape[0], cfg.glyph_rows + 1).round().astype(int)
-    xe = np.linspace(0, sub.shape[1], cfg.glyph_cols + 1).round().astype(int)
+        mask = mask[ys.min():ys.max() + 1, :]
+    m = mask.astype(np.float64)
+    ye = np.linspace(0, m.shape[0], cfg.glyph_rows + 1).round().astype(int)
+    xe = np.linspace(0, m.shape[1], cfg.glyph_cols + 1).round().astype(int)
     g = np.empty((cfg.glyph_rows, cfg.glyph_cols), dtype=np.float64)
     for r in range(cfg.glyph_rows):
         for c in range(cfg.glyph_cols):
-            blk = sub[ye[r]:max(ye[r] + 1, ye[r + 1]), xe[c]:max(xe[c] + 1, xe[c + 1])]
+            blk = m[ye[r]:max(ye[r] + 1, ye[r + 1]), xe[c]:max(xe[c] + 1, xe[c + 1])]
             g[r, c] = blk.mean() if blk.size else 0.0
-    v = g.reshape(-1)
-    v -= v.mean()
-    s = v.std()
-    return v / s if s > 1e-6 else v
+    return np.round(g.reshape(-1) * 255.0).astype(np.uint8)
 
 
 # ─── chrome registration (locks the block; unchanged) ───────────────────────────
@@ -265,14 +271,14 @@ def build_score_catalog(
     mode: str = "training",
     config: ScoreConfig = DEFAULT_SCORE_CONFIG,
 ) -> ScoreCatalog:
-    """Build the per-mode 0-9 glyph exemplars + the chrome reference.
+    """Build the per-mode 0-9 coverage templates + the chrome reference.
 
-    Each labelled frame is segmented; the segmented glyphs map left→right onto the
-    digits of the filename value (the run count must match), and each glyph vector
-    is kept as a 1-NN exemplar. Matching is nearest-exemplar (not a centroid): the
-    crisp digits blur together when averaged, so exemplars separate them cleanly.
+    Each labelled frame is segmented; the glyphs map left→right onto the digits of
+    the filename value (the run count must match). One template per digit — the
+    mean ink-coverage over its exemplars (uint8) — since the fixed font's glyphs
+    are consistent enough that a single averaged coverage mask separates all ten.
     """
-    templates: list[DigitTemplate] = []
+    acc: dict[int, list[np.ndarray]] = defaultdict(list)
     mode_images: list[np.ndarray] = []
     for s in samples:
         parsed = score_from_filename(s.path.name)
@@ -286,7 +292,11 @@ def build_score_catalog(
         if len(runs) != len(digits):
             continue  # segmentation disagrees with the label — skip this frame
         for run, ch in zip(runs, digits):
-            templates.append(DigitTemplate(digit=int(ch), vec=_glyph_vec(band, run, config)))
+            acc[int(ch)].append(_glyph_cov(band, run, config))
+    templates = [
+        DigitTemplate(digit=d, vec=np.round(np.mean(np.stack(v), axis=0)).astype(np.uint8))
+        for d, v in sorted(acc.items())
+    ]
     chrome = build_chrome_reference(mode_images, config)
     return ScoreCatalog(mode=mode, templates=templates, chrome=chrome, config=config)
 
@@ -298,24 +308,24 @@ def read_score(
 ) -> ScoreResult:
     """Read the score: crop the (registered) digit band, segment, classify each glyph.
 
-    The digit count is however many glyphs the segmentation finds. Each glyph is
-    1-NN-matched (argmin L1) against the exemplars; the digits assemble left→right
-    into the integer. `calibration` supplies the locked block offset; if omitted
-    the nominal band is used (a well-registered frame / tests).
+    The digit count is however many glyphs the segmentation finds. Each glyph's
+    coverage mask is matched (argmin integer L1) against the 10 per-digit
+    templates; the digits assemble left→right into the integer. `calibration`
+    supplies the locked block offset; if omitted the nominal band is used.
     """
     cfg = catalog.config
     dx = calibration.dx if calibration is not None else 0
     dy = calibration.dy if calibration is not None else 0
     band = _band_luma(image, catalog.mode, dx, dy)
 
-    vecs = np.stack([t.vec for t in catalog.templates])
+    vecs = np.stack([t.vec.astype(np.int32) for t in catalog.templates])
     tdig = np.array([t.digit for t in catalog.templates])
 
     digits: list[int] = []
     dists: list[float] = []
     margins: list[float] = []
     for run in _segment_digits(band, cfg):
-        fv = _glyph_vec(band, run, cfg)
+        fv = _glyph_cov(band, run, cfg).astype(np.int32)
         d = np.abs(vecs - fv).sum(1)
         order = np.argsort(d)
         best = int(tdig[order[0]])
