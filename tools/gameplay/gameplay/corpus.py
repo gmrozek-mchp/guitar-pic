@@ -21,12 +21,22 @@ from .screens import screen_id_for_filename
 # tools/gameplay/gameplay/corpus.py -> repo root is parents[3].
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _DEFAULT_CORPUS_DIR = _REPO_ROOT / "firmware" / "marvin" / "docs" / "gh3_screens"
+# The score corpus is a small hand-labelled set kept alongside the prototype
+# (tools/gameplay/data/scores/), separate from the screen corpus: score frames
+# carry their numeric value in the filename, not a screen/menu label.
+_DEFAULT_SCORE_CORPUS_DIR = Path(__file__).resolve().parents[1] / "data" / "scores"
 
 
 def corpus_dir() -> Path:
     """Resolve the corpus directory (overridable via $GAMEPLAY_CORPUS_DIR)."""
     env = os.environ.get("GAMEPLAY_CORPUS_DIR")
     return Path(env) if env else _DEFAULT_CORPUS_DIR
+
+
+def score_corpus_dir() -> Path:
+    """Resolve the score corpus directory (overridable via $GAMEPLAY_SCORE_CORPUS_DIR)."""
+    env = os.environ.get("GAMEPLAY_SCORE_CORPUS_DIR")
+    return Path(env) if env else _DEFAULT_SCORE_CORPUS_DIR
 
 
 @dataclass(frozen=True)
@@ -57,3 +67,16 @@ def load_corpus(directory: str | Path | None = None) -> list[Sample]:
         Sample(screen_id=screen_id_for_filename(f.name), path=f, image=load_bgr(f))
         for f in files
     ]
+
+
+def load_score_corpus(directory: str | Path | None = None) -> list[Sample]:
+    """Load the labelled score frames (`score__<mode>__<value>__*.png`).
+
+    Labelled by numeric value in the filename (see `metadata.score_from_filename`),
+    so these are returned as `in_song` samples; the score value is parsed from the
+    path by the score reader/eval. Returns [] if the directory is missing/empty
+    (the score corpus is optional relative to the screen corpus).
+    """
+    d = Path(directory) if directory is not None else score_corpus_dir()
+    files = sorted(d.glob("score__*.png"))
+    return [Sample(screen_id="in_song", path=f, image=load_bgr(f)) for f in files]

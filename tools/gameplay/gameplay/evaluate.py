@@ -28,10 +28,16 @@ from .classifier import (
     build_templates,
     classify_fp,
 )
-from .corpus import Sample, load_corpus
+from .corpus import Sample, load_corpus, load_score_corpus
 from .fingerprint import CANONICAL_H, CANONICAL_W, BPP, FingerprintConfig, fingerprint
 from .highlight import build_selection_calibration, read_selection
-from .metadata import MENU_LAYOUTS, selected_item_from_filename, song_from_filename
+from .metadata import (
+    MENU_LAYOUTS,
+    score_from_filename,
+    selected_item_from_filename,
+    song_from_filename,
+)
+from .score import build_score_catalog, calibrate_score, read_score, _labels_for_value
 from .screens import UNKNOWN
 from .songselect import build_song_catalog, read_setlist, read_song
 
@@ -401,6 +407,107 @@ def song_eval(samples: list[Sample], seed: int = 1234) -> SongEvalResult:
     )
 
 
+# ─── in-song score reader (per-digit glyph OCR) ─────────────────────────────────
+
+
+# Fixed per-rig position shifts to exercise auto-registration (position is stable
+# on a rig, so this models re-registering on a *different* rig, not per-frame slop).
+_SCORE_REG_SHIFTS = ((4, 0), (0, 3), (-6, 4), (6, -3), (8, -4))
+
+
+@dataclass
+class ScoreEvalResult:
+    n_total: int
+    n_exact_ok: int        # clean full-value exact match, locked geometry
+    n_loo_exact_ok: int    # LOO of the digit classifier (geometry locked on session)
+    n_digit_ok: int        # clean per-cell class matches
+    n_digit_total: int
+    a2d_ok: int            # exact match under A2D slop (gain/offset/noise), fixed calib
+    a2d_total: int
+    reg_ok: int            # exact match after re-registering on a shifted session
+    reg_total: int
+    margin_min: float      # worst per-frame weakest-digit margin (clean)
+    failures: list[tuple[str, str, str]]  # (filename, true value, pred value)
+
+    @property
+    def exact_acc(self) -> float:
+        return self.n_exact_ok / self.n_total if self.n_total else 0.0
+
+    @property
+    def loo_exact_acc(self) -> float:
+        return self.n_loo_exact_ok / self.n_total if self.n_total else 0.0
+
+    @property
+    def digit_acc(self) -> float:
+        return self.n_digit_ok / self.n_digit_total if self.n_digit_total else 0.0
+
+    @property
+    def a2d_acc(self) -> float:
+        return self.a2d_ok / self.a2d_total if self.a2d_total else 0.0
+
+    @property
+    def reg_acc(self) -> float:
+        return self.reg_ok / self.reg_total if self.reg_total else 0.0
+
+
+def score_eval(samples: list[Sample], mode: str = "training", seed: int = 1234) -> ScoreEvalResult:
+    """Evaluate the score reader on the labelled score corpus.
+
+    Registers once on the whole session (as at gameplay start), then:
+    - clean: search-free per-frame exact-match + per-cell accuracy + worst margin;
+    - LOO: the digit classifier's generalization (templates from the other frames);
+    - A2D: exact-match under gain/offset/noise at the *fixed* calibration (the
+      continual-operation model — position is locked, only the capture drifts);
+    - registration: re-register on whole-session position shifts, then exact-match.
+    """
+    labelled = [s for s in samples if (p := score_from_filename(s.path.name)) and p[0] == mode]
+    catalog = build_score_catalog(labelled, mode=mode)
+    calib = calibrate_score([s.image for s in labelled], catalog)
+    rng = np.random.default_rng(seed)
+
+    n = exact = loo_exact = digit_ok = digit_total = 0
+    a2d_ok = a2d_total = 0
+    margins: list[float] = []
+    failures: list[tuple[str, str, str]] = []
+    for s in labelled:
+        value = score_from_filename(s.path.name)[1]
+        n += 1
+        r = read_score(s.image, catalog, calib)
+        margins.append(r.margin)
+        if r.value == value:
+            exact += 1
+        else:
+            failures.append((s.path.name, str(value), str(r.value)))
+        truth = _labels_for_value(value, catalog.config.n_digits)
+        digit_ok += sum(a == b for a, b in zip(r.digits, truth))
+        digit_total += len(truth)
+        # LOO: rebuild the classifier without this frame (geometry stays locked).
+        loo_cat = build_score_catalog([o for o in labelled if o.path.name != s.path.name], mode=mode)
+        loo_exact += read_score(s.image, loo_cat, calib).value == value
+        # A2D slop at the fixed calibration.
+        for cat_name, _name, pimg in perturb.envelope(s.image, rng):
+            if cat_name not in ("gain", "offset", "noise"):
+                continue
+            a2d_total += 1
+            a2d_ok += read_score(pimg, catalog, calib).value == value
+
+    # Registration robustness: shift the whole session, re-register, read.
+    reg_ok = reg_total = 0
+    for dx, dy in _SCORE_REG_SHIFTS:
+        shifted = [perturb.translate(s.image, dx, dy) for s in labelled]
+        cal2 = calibrate_score(shifted, catalog)
+        for s, img in zip(labelled, shifted):
+            reg_total += 1
+            reg_ok += read_score(img, catalog, cal2).value == score_from_filename(s.path.name)[1]
+
+    return ScoreEvalResult(
+        n_total=n, n_exact_ok=exact, n_loo_exact_ok=loo_exact,
+        n_digit_ok=digit_ok, n_digit_total=digit_total,
+        a2d_ok=a2d_ok, a2d_total=a2d_total, reg_ok=reg_ok, reg_total=reg_total,
+        margin_min=min(margins) if margins else 0.0, failures=failures,
+    )
+
+
 # ─── Orchestration / reporting ─────────────────────────────────────────────────
 
 
@@ -501,6 +608,26 @@ def run_report(
     )
     for fname, true_song, pred in song.failures:
         lines.append(f"    {fname}: {true_song} -> {pred}")
+    lines.append("")
+
+    # in-song score reader (slice 5): per-digit glyph OCR of the open-ended value.
+    score_samples = load_score_corpus()
+    if score_samples:
+        sc = score_eval(score_samples)
+        lines.append(
+            f"score reader (training): {sc.n_exact_ok}/{sc.n_total} exact "
+            f"({sc.exact_acc:.1%}); per-digit {sc.n_digit_ok}/{sc.n_digit_total} "
+            f"({sc.digit_acc:.1%}); LOO exact {sc.n_loo_exact_ok}/{sc.n_total} ({sc.loo_exact_acc:.1%})"
+        )
+        lines.append(
+            f"  A2D slop (gain/offset/noise, fixed calib): {sc.a2d_ok}/{sc.a2d_total} "
+            f"({sc.a2d_acc:.1%}); re-register on position shift: {sc.reg_ok}/{sc.reg_total} "
+            f"({sc.reg_acc:.1%}); worst digit margin: {sc.margin_min:.1f}"
+        )
+        for fname, true_v, pred in sc.failures:
+            lines.append(f"    {fname}: {true_v} -> {pred}")
+    else:
+        lines.append("score reader: (no score corpus found; skipped)")
     lines.append("")
 
     if sweep:

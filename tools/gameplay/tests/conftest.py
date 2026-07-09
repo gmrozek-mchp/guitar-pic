@@ -4,9 +4,14 @@ from __future__ import annotations
 
 import pytest
 
-from gameplay.corpus import load_corpus
+from gameplay.corpus import load_corpus, load_score_corpus
 
 
 @pytest.fixture(scope="session")
 def corpus():
     return load_corpus()
+
+
+@pytest.fixture(scope="session")
+def score_corpus():
+    return load_score_corpus()

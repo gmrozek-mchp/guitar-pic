@@ -11,14 +11,19 @@ import sys
 
 from . import evaluate
 from .classifier import build_templates, classify_image
-from .corpus import load_bgr, load_corpus
+from .corpus import load_bgr, load_corpus, load_score_corpus
 from .fingerprint import FingerprintConfig
 from .highlight import _cell_bounds, build_selection_calibration, read_selection
-from .metadata import MENU_LAYOUTS, selected_item_from_filename
+from .metadata import MENU_LAYOUTS, score_from_filename, selected_item_from_filename
+from .score import BLANK, build_score_catalog, calibrate_score, read_score
 from .screens import screen_id_for_filename
 from .navigator import NavController, plan_practice_run
 from .simgame import SimActuator, SimConfig, SimGame, SimObserver
 from .songselect import build_song_catalog, read_song
+
+
+def _digit_str(digits: tuple[int, ...]) -> str:
+    return "".join("_" if d == BLANK else str(d) for d in digits)
 
 
 def _config_from_args(args: argparse.Namespace) -> FingerprintConfig:
@@ -56,6 +61,13 @@ def cmd_classify(args: argparse.Namespace) -> int:
             f"  song: [{song.setlist} #{song.index}] {song.song_id}\t"
             f"(dist={song.dist:.0f} margin={song.margin:.1f})"
         )
+    elif result.screen_id == "in_song":
+        score_samples = load_score_corpus()
+        if score_samples:
+            catalog = build_score_catalog(score_samples)
+            calib = calibrate_score([s.image for s in score_samples], catalog)
+            r = read_score(image, catalog, calib)
+            print(f"  score: {r.value}\t(margin={r.margin:.1f} dist={r.dist:.0f})")
     return 0
 
 
@@ -76,6 +88,24 @@ def cmd_rows(args: argparse.Namespace) -> int:
         print(f"  [{i}] {item:<16} dev={sel.scores[i]:>5.2f}  cell=({x0},{y0},{x1},{y1}){mark}{star}")
     if truth is not None:
         print(f"predicted={sel.item}  true={truth}  {'OK' if sel.item == truth else 'WRONG'}")
+    return 0
+
+
+def cmd_score(args: argparse.Namespace) -> int:
+    """Debug the score reader: per-cell digit reads for one in-song image."""
+    score_samples = load_score_corpus()
+    if not score_samples:
+        print("read-score: no score corpus found (tools/gameplay/data/scores/)", file=sys.stderr)
+        return 2
+    image = load_bgr(args.image)
+    catalog = build_score_catalog(score_samples, mode=args.mode)
+    calib = calibrate_score([s.image for s in score_samples], catalog)
+    r = read_score(image, catalog, calib)
+    print(f"score: {r.value}\t(cells={_digit_str(r.digits)} margin={r.margin:.2f} dist={r.dist:.1f})")
+    parsed = score_from_filename(args.image.rsplit("/", 1)[-1])
+    if parsed is not None:
+        true_v = parsed[1]
+        print(f"predicted={r.value}  true={true_v}  {'OK' if r.value == true_v else 'WRONG'}")
     return 0
 
 
@@ -153,6 +183,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_rows.add_argument("image", help="path to a PNG/BGR frame")
     p_rows.add_argument("--screen", help="screen id (default: inferred from filename)")
     p_rows.set_defaults(func=cmd_rows)
+
+    p_score = sub.add_parser("read-score", help="Debug the in-song score reader on one image.")
+    p_score.add_argument("image", help="path to a PNG/BGR frame")
+    p_score.add_argument("--mode", default="training", help="score mode/font (default training)")
+    p_score.set_defaults(func=cmd_score)
 
     p_export = sub.add_parser("export-c", help="Emit recognizer metadata as a C header for the firmware.")
     p_export.add_argument("--out", help="output .h path (default: stdout)")

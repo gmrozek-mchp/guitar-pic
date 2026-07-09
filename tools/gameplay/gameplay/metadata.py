@@ -149,3 +149,50 @@ def song_from_filename(filename: str) -> tuple[str, int, str] | None:
     if not head.isdigit() or not song_id:
         return None
     return setlist, int(head), song_id
+
+
+# ─── in-song score (per-digit glyph OCR) ───────────────────────────────────────
+#
+# The score is an *open-ended* value, so unlike the menu/song readers it needs
+# per-digit glyph recognition rather than a whole-field template match. The score
+# is right-aligned in a fixed HUD box and grows leftward; GH3 renders tabular
+# (fixed-advance) digits, so the field splits into `N_SCORE_DIGITS` equal cells
+# anchored at the right edge, each matched against 0-9 (+ a blank class for the
+# unused leading cells). Per gameplay mode, because the font/box differs
+# (training = white proportional; career = green segmented, added later).
+#
+# ROIs in canonical 720x480 space. Training-mode values measured across the
+# labelled score corpus: units-digit right edge x≈197, pitch ≈10 px, digit band
+# y≈315-333 (60 px wide = 6 cells x 10 px). See docs/journal.md.
+N_SCORE_DIGITS = 6
+SCORE_ROI: dict[str, tuple[int, int, int, int]] = {
+    "training": (139, 315, 199, 333),
+}
+
+# The whole scoring block. This is the marvin-perf capture region *and* the
+# registration fiducial: its chrome (the ornate box frame, inner panel texture,
+# and medallion ring) is static — independent of the score digits and identical
+# in training and career (verified: both modes' chrome registers to the same
+# position) — so the block is located once by matching that chrome, and the digit
+# cells sit at fixed offsets inside it. Fits both modes' full scoring display
+# (score + multiplier + streak). Canonical 720x480 space.
+SCORE_BLOCK_ROI = (114, 309, 210, 414)
+# Inner box rectangle whose static chrome drives registration (the mask keeps the
+# low-variation chrome pixels inside this rect, excluding the digit/multiplier/
+# medallion-interior regions that change). Canonical 720x480 space.
+SCORE_CHROME_BOX = (127, 311, 190, 397)
+
+
+def score_from_filename(filename: str) -> tuple[str, int] | None:
+    """Parse a score corpus filename into (mode, value).
+
+    `score__training__010584__snap0121.png` -> ("training", 10584).
+    Returns None for non-score filenames.
+    """
+    stem = filename.rsplit("/", 1)[-1]
+    if stem.endswith(".png"):
+        stem = stem[: -len(".png")]
+    parts = stem.split("__")
+    if len(parts) < 3 or parts[0] != "score" or not parts[2].isdigit():
+        return None
+    return parts[1], int(parts[2])

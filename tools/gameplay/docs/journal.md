@@ -118,8 +118,15 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 4. ✅ **Navigator (M10)** — graph + planner (`practice_run` + `goto`) + closed-loop
    `NavController` over an Observer/Actuator seam, proven against a simulated menu and the
    real observer. (Deferred: non-practice modes; real fret/strum/`+` bit mapping is the port.)
-5. ⬜ **Number/score region readers** — score, multiplier, etc. This is where char/digit
-   glyph recognition (open-ended values, no template) actually belongs.
+5. ✅ **Number/score region readers (host-only; training-mode white font)** — per-digit
+   glyph OCR of the open-ended score: fixed-pitch right-anchored 6-cell segmentation +
+   per-cell 1-NN glyph match, register-once (chrome-of-the-block match) then
+   search-free per-frame read. 9/9 clean, 54/54 per-digit, 100% A2D slop, 100% position
+   re-registration on the ~9-frame corpus — but a held-out test on the wider `0097–0129`
+   run is only **10/16** (template set too thin; all misses low-margin →8 confusions, cleanly
+   rejectable by a ~7 margin gate). Next: enrich templates via a marvin-perf score-crop
+   capture. Career (green segmented) font, the multiplier / streak counter, and the firmware
+   port are deferred.
 6. 🚧 **Firmware port** — `gameplay_engine` on marvin (spec §4.8). Phase 0 (metadata exporter)
    ✅; Phases 1–3 (observer / readers / controller) ⬜. See Current focus for the phase plan.
 
@@ -129,6 +136,9 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-09 | **Score reader = register-once + search-free per-frame read; registration keys on the block *chrome*, not the digits.** The whole scoring block (`SCORE_BLOCK_ROI (114,309,210,414)`, 96×105) is located once by a masked normalized-SAD offset search matching its static chrome (box frame + inner panel texture + medallion ring); the 6 digit cells are then fixed offsets inside it. Each subsequent frame samples those cells and 1-NN-classifies — no per-frame search. Mask is a hand-drawn artifact (`data/scores/score_block_mask.png`, magenta = chrome). | Greg: field position is stable on a rig (won't vary moment-to-moment); slop is position (per-rig) + A2D colour/brightness, **not** scale. So the search belongs at gameplay start, not per frame; per-frame luma normalization handles A2D (100% on gain/offset/noise). Chrome is a better anchor than the digits: **digit-independent** (registers before any valid score, can't alias a cell onto a neighbour) and **mode-independent** — the box chrome is pixel-identical in training and career (verified: all 25 training + 44 career snapshot frames register to (0,0) against a training-built reference; shift recovery exact to ±7 px). Greg flagged that a variance-derived mask wrongly kept the left of the digit row as "chrome" (our samples top out at 5 digits, so it's always blank there) — the hand mask hard-excludes the full digit row so a 6-digit score can't corrupt registration. The block doubles as the marvin-perf capture region. First tried digit-template two-stage registration (wide whole-field + per-cell refine); superseded by chrome the same day. |
+| 2026-07-09 | **Score digits read by per-digit glyph OCR: fixed-pitch, right-anchored 6-cell grid + per-cell 1-NN over labelled cell exemplars (not a per-class centroid).** ROI `(139,315,199,333)`, `N_SCORE_DIGITS=6`, blank class for unused leading cells. | The score is open-ended (no whole-field template), so it must be decoded per digit — the case the earlier phases deferred. Measured on the corpus: the training white font is **tabular** (cluster-count == digit-count, units right edge locked at x=197, ~10 px pitch), so a fixed right-anchored grid segments cleanly. 1-NN beats a centroid because the crisp digits blur together when averaged (8/3/0 collide); keeping exemplars lifted clean reads 8/9→9/9 and A2D 16/18→18/18. Score is right-aligned/grows left (Greg), so cells anchor at the right and short scores leave leading cells blank. |
+| 2026-07-09 | **Score corpus = ~9 hand-labelled training-white in-song frames from `marvin-perf/snapshots/`, value in the filename (`score__training__NNNNNN__snapNNNN.png`); host-side under `tools/gameplay/data/scores/`.** | Greg: minimal manual labelling. The 9 distinct scores cover all 10 glyphs (multiple exemplars each), enough to build templates + a real eval, without bulk labelling. LOO is only 6/9 — the small-corpus ceiling (a held-out digit sometimes has a single look-alike exemplar left), not an algorithm limit (clean/A2D/registration are all 100%). Enriching via a marvin-perf score-crop capture is the follow-up to lift LOO and harden templates. |
 | 2026-06-15 | **Port to marvin firmware is phased (Phase 0 exporter → 1 observer → 2 readers → 3 controller); numerics stay soft-float for v0; metadata ships as a generated C header (`gameplay export-c`).** No MCC regen needed. | The firmware is built/flashed by Greg in MPLAB (I write + syntax-review C), so phases land "code-complete, pending build"; M9 (observer) and M10 (controller) are already separate milestones, so the phase split mirrors them. Soft-float chosen over fixed-point for v0: the only float work is per-frame normalization over small vectors (~hundreds of values), microseconds even soft-float on the ARM926 — re-validating a fixed-point reimplementation isn't worth it until profiling says so. A generated header (not hand-ported constants) keeps the firmware data in lockstep with the proven prototype and re-emittable when the corpus/params change; plain PODs + flat arrays avoid coupling to firmware struct layout. `game_task` is pure compute on the existing video frame queue + `FretboardLink_Send`, so no new peripheral / no re-apply-patch churn. |
 | 2026-06-15 | **Navigator is observation-driven: each loop iteration runs whichever plan step's `expected_from` matches the currently observed screen (not a fixed program counter).** Verbs: `practice_run` + generic `goto`. Selections strum the signed delta from the observed cursor; FULL SONG/FULL SPEED strum up until the selection stops moving. | One rule gives the three behaviours the nav doc needs: normal progress (next screen matches the next step), the `part_select` skip (an absent part means the observed `difficulty_select` matches a later step and the part step is simply never run), and recovery (an off-plan screen matches no step → press RED to back up until a known screen reappears, then resume). Delta-from-observed-selection is sticky-default-safe; saturate-until-stable avoids a blind strum count (and is the agreed `section_select` mechanism). Closed-loop verification is implicit: a mis-fire just means the next observation matches no expected step → recover. |
 | 2026-06-15 | **Offline navigator is proven against a simulated GH3 menu (`simgame`) behind an `Observer`/`Actuator` seam; the real observer is exercised via a `CorpusObserver`.** | No console/actuator offline, so the sim is the test oracle (with configurable part-absent / sticky / misfire to actually exercise the control logic). The seam is the firmware boundary — swap in the CV observer + fretboard link to port. The `CorpusObserver` runs the whole practice run on real corpus frames through the phase-1–3 vision stack (0 fallbacks in the default config), proving the observer's outputs are exactly what the controller consumes. |
@@ -177,6 +187,14 @@ subsampled path costs <1% CPU at 5–10 Hz.
   section selected" negative (~2 captures on different songs) to build/validate the
   threshold; the lone FULL-SONG-selected frame can't prove an unhighlighted top slot is
   rejected.
+- **Score reader follow-ups (phase 5).** (1) **Career (green segmented) font** — a second
+  `SCORE_ROI["career"]` + template bank; color (green-dominant ROI) is the natural
+  font/mode discriminator. (2) **Richer templates / LOO** — the ~9-frame corpus reads
+  clean/A2D/registration at 100% but LOO is 6/9 (sparse exemplars); a small marvin-perf
+  score-crop capture would add many glyph exemplars (self-supervised via the proven reader)
+  and lift it. (3) **6-digit scores** — the reader supports them, but the corpus tops out at
+  5 digits, so that path is untested. (4) **Firmware port** — `export_c` digit banks +
+  `gp_read_score` (register once when `in_song` goes stable, then search-free read).
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
   bonus tab differs visually); the centroid spans both and classifies fine today. The
   song reader distinguishes the active setlist by page background colour (resolved, 100%).
@@ -194,6 +212,59 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-07-09 — phase 5 built (score reader, host-only, training-mode white font)
+
+Stood up the open-ended **score** reader (gameplay phase 5 / marvin M9 Phase 3). New
+`gameplay/score.py`: `ScoreConfig` / `DigitTemplate` / `ScoreCatalog` / `ScoreCalibration` /
+`ScoreResult`; `build_score_catalog` (per-cell exemplars from the labelled corpus),
+`calibrate_score` (two-stage register-once), `read_score` (search-free per-frame 1-NN).
+`metadata.py` gained `SCORE_ROI["training"] = (139,315,199,333)`, `N_SCORE_DIGITS=6`, and
+`score_from_filename`; `corpus.py` gained `load_score_corpus`; `evaluate.py` gained
+`score_eval` (clean exact + per-digit + LOO + A2D-slop + re-registration) wired into
+`run_report`; `cli.py` gained an `in_song` branch in `classify` + a `read-score` debug verb.
+Curated **9 training-white in-song frames** from `marvin-perf/snapshots/` into
+`data/scores/`, value in the filename (all 10 glyphs covered).
+
+Design arc this session (see decision log): started with a per-frame per-cell offset search
+(clean 9/9) but that models per-frame jitter, which Greg corrected — position is **stable per
+rig**, so switched to **register-once + search-free read**. A single global field offset
+per frame under-fit (8/9, per-digit sub-pixel variance); a wide *per-cell* registration
+**aliased cells onto neighbouring digits**; the fix is two-stage registration (whole-field
+wide → per-cell small). Averaged centroids blurred 8/3/0 → switched to **1-NN over
+exemplars**. Result on the ~9-frame corpus: **clean 9/9 exact, 54/54 per-digit, A2D
+(gain/offset/noise) 100%, position re-registration 100%**; **LOO 6/9** is the small-corpus
+ceiling. Scale confirmed a non-concern (Greg). Full suite **56 passed** (+5). Host-only — no
+firmware export or career-font work yet.
+
+**Expanded held-out test (same day) — the thin corpus overstates accuracy; margin separates
+right from wrong.** Rather than hand-label more, used the fact that Claude reads these frames
+reliably (and scores are **monotonically increasing within a play** — an independent
+consistency check) to auto-label the whole `0097–0129` training run: two plays (`0097–0108`
+1138→17728, then a restart via the `0109–0113` menus, `0114–0129` 9056→12236), 25 frames after
+dropping `0123/0126/0128` (screen tearing through the digits — Greg). Reading these with
+templates+registration from the **9-frame** corpus only: **total 19/25, held-out (16 new
+frames) 10/16.** All 6 failures are low-margin (≤4.7) digit confusions, overwhelmingly **→8**
+(6→8 ×3, 9→8, 5→8) plus one dropped leading digit — 1-NN sparsity (≈4 exemplars/digit; a stray
+"8" exemplar sits near everything in the low-res cell space). **Every correct read has margin
+≥10.1 and every miss ≤4.7**, so a confidence gate (~7) rejects all errors with zero false
+rejects — useful for the closed-loop (reject → re-read next frame). Takeaway: the fix is
+**more exemplars** (the marvin-perf score-crop capture), not an algorithm change; the clean
+9/9 was optimistic. Screen tearing is a real capture artifact to reject downstream.
+
+**Registration reworked to key on the block chrome (same day).** Settled the marvin-perf
+**capture region = `SCORE_BLOCK_ROI (114,309,210,414)`, 96×105** (Greg tuned it live to fit both
+modes' full scoring block — score + multiplier + streak). Greg's insight: that block's chrome is
+a far better positioning anchor than the digits (strong straight edges, static, mode-shared).
+Replaced the digit-template two-stage `calibrate_score` with **chrome registration**: median
+block luma reference + a **hand-drawn mask** (`data/scores/score_block_mask.png`) marking the
+static chrome (panel/ring/border, hard-excluding the full digit row and the medallion interior),
+matched by masked normalized-SAD over an offset search. Validated: all 69 real frames (25 train +
+44 career) register to (0,0), shift recovery exact to ±7 px, mode-independent. Reading unchanged
+(19/25, 10/16 held-out — template-limited, pending more data). Full suite **59 passed**. Also
+added `SCORE_BLOCK_ROI`/`SCORE_CHROME_BOX` to metadata and `load_chrome_mask`/`build_chrome_reference`
+to `score.py`. Next: the marvin-perf full-rate score-block capture (firmware + host) to enrich
+the digit templates.
 
 ### 2026-07-07 — prototype: title **length + prefix** song reader (`songselect_prefix.py`) — negative result
 
