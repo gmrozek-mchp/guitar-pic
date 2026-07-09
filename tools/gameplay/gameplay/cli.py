@@ -15,7 +15,7 @@ from .corpus import load_bgr, load_corpus, load_score_corpus
 from .fingerprint import FingerprintConfig
 from .highlight import _cell_bounds, build_selection_calibration, read_selection
 from .metadata import MENU_LAYOUTS, score_from_filename, selected_item_from_filename
-from .score import BLANK, build_score_catalog, calibrate_score, read_score
+from .score import build_score_catalog, calibrate_score, read_score
 from .screens import screen_id_for_filename
 from .navigator import NavController, plan_practice_run
 from .simgame import SimActuator, SimConfig, SimGame, SimObserver
@@ -23,7 +23,7 @@ from .songselect import build_song_catalog, read_song
 
 
 def _digit_str(digits: tuple[int, ...]) -> str:
-    return "".join("_" if d == BLANK else str(d) for d in digits)
+    return "".join(str(d) for d in digits)
 
 
 def _config_from_args(args: argparse.Namespace) -> FingerprintConfig:
@@ -92,7 +92,7 @@ def cmd_rows(args: argparse.Namespace) -> int:
 
 
 def cmd_score(args: argparse.Namespace) -> int:
-    """Debug the score reader: per-cell digit reads for one in-song image."""
+    """Debug the score reader: segmented digit read for one in-song image."""
     score_samples = load_score_corpus()
     if not score_samples:
         print("read-score: no score corpus found (tools/gameplay/data/scores/)", file=sys.stderr)
@@ -101,12 +101,25 @@ def cmd_score(args: argparse.Namespace) -> int:
     catalog = build_score_catalog(score_samples, mode=args.mode)
     calib = calibrate_score([s.image for s in score_samples], catalog)
     r = read_score(image, catalog, calib)
-    print(f"score: {r.value}\t(cells={_digit_str(r.digits)} margin={r.margin:.2f} dist={r.dist:.1f})")
+    print(f"score: {r.value}\t(digits={_digit_str(r.digits)} margin={r.margin:.2f} dist={r.dist:.1f})")
     parsed = score_from_filename(args.image.rsplit("/", 1)[-1])
     if parsed is not None:
         true_v = parsed[1]
         print(f"predicted={r.value}  true={true_v}  {'OK' if r.value == true_v else 'WRONG'}")
     return 0
+
+
+def cmd_score_monotonic(args: argparse.Namespace) -> int:
+    """Label-free score check over an extracted-capture dir: count monotonic violations."""
+    res = evaluate.score_monotonic_eval(args.frames_dir)
+    print(
+        f"score-monotonic: {res.n_frames} frames, {res.n_violations} violations "
+        f"({res.clean_frac:.2%} clean); range {res.first}..{res.last}; "
+        f"digit-count hist {res.digit_hist}"
+    )
+    for name, prev, got in res.violations:
+        print(f"  violation {name}: running-max {prev} -> read {got}")
+    return 0 if res.n_violations == 0 else 1
 
 
 def cmd_eval(args: argparse.Namespace) -> int:
@@ -188,6 +201,13 @@ def build_parser() -> argparse.ArgumentParser:
     p_score.add_argument("image", help="path to a PNG/BGR frame")
     p_score.add_argument("--mode", default="training", help="score mode/font (default training)")
     p_score.set_defaults(func=cmd_score)
+
+    p_mono = sub.add_parser(
+        "score-monotonic",
+        help="Label-free score check over an extracted-capture dir (count monotonic violations).",
+    )
+    p_mono.add_argument("frames_dir", help="dir of extracted score-block PNGs (marvin-perf export-region)")
+    p_mono.set_defaults(func=cmd_score_monotonic)
 
     p_export = sub.add_parser("export-c", help="Emit recognizer metadata as a C header for the firmware.")
     p_export.add_argument("--out", help="output .h path (default: stdout)")

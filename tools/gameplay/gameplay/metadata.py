@@ -154,19 +154,19 @@ def song_from_filename(filename: str) -> tuple[str, int, str] | None:
 # ─── in-song score (per-digit glyph OCR) ───────────────────────────────────────
 #
 # The score is an *open-ended* value, so unlike the menu/song readers it needs
-# per-digit glyph recognition rather than a whole-field template match. The score
-# is right-aligned in a fixed HUD box and grows leftward; GH3 renders tabular
-# (fixed-advance) digits, so the field splits into `N_SCORE_DIGITS` equal cells
-# anchored at the right edge, each matched against 0-9 (+ a blank class for the
-# unused leading cells). Per gameplay mode, because the font/box differs
-# (training = white proportional; career = green segmented, added later).
+# per-digit glyph recognition rather than a whole-field template match. The
+# training font is white and *proportional* (not tabular — a `1` is narrower than
+# an `8`, so digit x-positions shift with the value; verified on a 6549-frame
+# capture). The digits are cleanly gap-separated, so they are segmented by their
+# ink (gaps between digits) rather than a fixed grid, then each is matched against
+# 0-9. Per gameplay mode, because the font/box differs (training = white
+# proportional; career = green segmented, added later).
 #
-# ROIs in canonical 720x480 space. Training-mode values measured across the
-# labelled score corpus: units-digit right edge x≈197, pitch ≈10 px, digit band
-# y≈315-333 (60 px wide = 6 cells x 10 px). See docs/journal.md.
-N_SCORE_DIGITS = 6
-SCORE_ROI: dict[str, tuple[int, int, int, int]] = {
-    "training": (139, 315, 199, 333),
+# The digit search band, relative to the chrome-registered block: the glyph rows,
+# spanning the full box interior so up to 6 digits fit (score can exceed 99999).
+# Canonical 720x480 space. See docs/journal.md.
+SCORE_DIGIT_BAND: dict[str, tuple[int, int, int, int]] = {
+    "training": (122, 316, 204, 332),
 }
 
 # The whole scoring block. This is the marvin-perf capture region *and* the

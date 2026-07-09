@@ -119,14 +119,15 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
    `NavController` over an Observer/Actuator seam, proven against a simulated menu and the
    real observer. (Deferred: non-practice modes; real fret/strum/`+` bit mapping is the port.)
 5. ✅ **Number/score region readers (host-only; training-mode white font)** — per-digit
-   glyph OCR of the open-ended score: fixed-pitch right-anchored 6-cell segmentation +
-   per-cell 1-NN glyph match, register-once (chrome-of-the-block match) then
-   search-free per-frame read. 9/9 clean, 54/54 per-digit, 100% A2D slop, 100% position
-   re-registration on the ~9-frame corpus — but a held-out test on the wider `0097–0129`
-   run is only **10/16** (template set too thin; all misses low-margin →8 confusions, cleanly
-   rejectable by a ~7 margin gate). Next: enrich templates via a marvin-perf score-crop
-   capture. Career (green segmented) font, the multiplier / streak counter, and the firmware
-   port are deferred.
+   glyph OCR of the open-ended score. The font is **proportional** (not tabular), so digits
+   are segmented by their **ink gaps** (right-to-left blobs), each normalized to a canonical
+   cell and 1-NN-matched; digit count falls out of segmentation. Templates built from a
+   **54-frame capture-derived corpus**; chrome-of-the-block registration retained. Result:
+   **54/54 clean exact, 270/270 per-digit, LOO 54/54, A2D slop 99.7%, re-register 100%**, and —
+   the decisive check — **0 monotonic violations across all 6549 real capture frames** (a play
+   only climbs), covering 3–6-digit scores (250→101720). Supersedes the earlier fixed-pitch
+   attempt (only 10/16 held-out — the font isn't monospace). Career (green segmented) font, the
+   multiplier / streak counter, and the firmware port are deferred.
 6. 🚧 **Firmware port** — `gameplay_engine` on marvin (spec §4.8). Phase 0 (metadata exporter)
    ✅; Phases 1–3 (observer / readers / controller) ⬜. See Current focus for the phase plan.
 
@@ -192,7 +193,9 @@ subsampled path costs <1% CPU at 5–10 Hz.
   font/mode discriminator. (2) **Richer templates / LOO** — the ~9-frame corpus reads
   clean/A2D/registration at 100% but LOO is 6/9 (sparse exemplars); a small marvin-perf
   score-crop capture would add many glyph exemplars (self-supervised via the proven reader)
-  and lift it. (3) **6-digit scores** — the reader supports them, but the corpus tops out at
+  and lift it. **(Built 2026-07-09: `marvin-perf score-capture` streams the 96×105 block to
+  PNGs at full rate — host done, firmware pending Greg's MPLAB build; see marvin journal.
+  Next: capture a play, auto-label via visual read + monotonic-increase, rebuild templates.)** (3) **6-digit scores** — the reader supports them, but the corpus tops out at
   5 digits, so that path is untested. (4) **Firmware port** — `export_c` digit banks +
   `gp_read_score` (register once when `in_song` goes stable, then search-free read).
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
@@ -212,6 +215,30 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-07-09 — score reader reworked: proportional (gap-based) segmentation + 6549-frame capture corpus
+
+Greg captured the scoring block at full rate via the new `marvin-perf score-capture`/REGION
+stream (`captures/web-20260709-142721`, 6549 frames climbing 250→101720) and flagged that the
+training font is **not monospace** — right-aligned, but digit x-positions shift with the value
+(a `1` is narrower than an `8`). Confirmed on the capture: fixed-pitch cells can't sit on the
+digits, but the digits are cleanly **gap-separated** (no touching). So the fixed-pitch grid +
+blank-class was replaced with **gap-based segmentation**: threshold the digit band (relative
+`min+0.6·range`, gain/offset-robust), split the column ink profile into digit blobs (right-to-
+left), resize each blob's bbox to a canonical grid, 1-NN-match. Digit count = blob count (no
+fixed N, no blank class). Chrome-of-the-block registration retained; block crops are embedded
+into a full frame (`_ensure_full_frame`) so the absolute ROIs / registration work unchanged.
+
+Corpus: extracted the 6549 REGION frames (`export-region`), read **54** spanning 3–6 digits off
+montages (values cross-checked by the monotonic ordering), committed as
+`score__training__NNNNNN__capNNNN.png` (replacing the 9-frame set; the capture itself is
+gitignored). `metadata.SCORE_DIGIT_BAND` (block-relative digit band) replaces the old fixed
+`SCORE_ROI`; `score.py` reworked (`_segment_digits`/`_glyph_vec`, `read_score`/`build_score_catalog`);
+`evaluate.py` gained the gap-based `score_eval` + `score_monotonic_eval`; `cli.py` a
+`score-monotonic <dir>` verb. Results: `score_eval` **54/54 exact, 270/270 per-digit, LOO 54/54,
+A2D 99.7%, re-register 100%**; **`score-monotonic` over all 6549 = 0 violations** (100% clean).
+Full suite **59 passed**. The earlier fixed-pitch reader + its held-out 10/16 finding is
+superseded (root cause: proportional font). Career font / firmware port still deferred.
 
 ### 2026-07-09 — phase 5 built (score reader, host-only, training-mode white font)
 

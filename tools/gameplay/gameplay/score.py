@@ -1,13 +1,13 @@
 """In-song score reader: per-digit glyph OCR of the open-ended score value.
 
 Unlike the menu/song readers (closed-set template matches), the score is an
-open-ended number, so it is read digit by digit. The score is right-aligned in a
-fixed HUD box and grows leftward; GH3 renders tabular (fixed-advance) digits, so
-the score ROI (`metadata.SCORE_ROI[mode]`) splits into `N_SCORE_DIGITS` equal
-cells anchored at the right edge. Each cell is fingerprinted (low-res normalized
-luma grid, the same idea as the song reader) and matched against a per-mode bank
-of digit templates 0-9 plus a `BLANK` class for the unused leading cells.
-Non-blank cells, left to right, assemble the integer value.
+open-ended number, so it is read digit by digit. The training font is white and
+**proportional** (a `1` is narrower than an `8`, so digit x-positions shift with
+the value — verified on a 6549-frame capture), but the digits are cleanly
+gap-separated. So digits are isolated by their ink (the gaps between them), not a
+fixed grid; each is normalized to a canonical cell and matched against a per-mode
+bank of 0-9 glyph exemplars (1-NN). The digit count falls out of the segmentation
+(no fixed N, no blank class).
 
 Two stages, because the field position is fixed on a given rig but the analog
 capture varies frame to frame:
@@ -17,22 +17,16 @@ capture varies frame to frame:
   and medallion ring, which are digit-independent and identical in training and
   career. A masked (`metadata` + hand-drawn `score_block_mask.png`) normalized-SAD
   offset search finds the block's `(dx, dy)` for this rig (`calibrate_score` →
-  `ScoreCalibration`); the digit cells are then fixed offsets inside it. This is a
-  better anchor than the digits themselves: it can't alias onto a neighbouring
-  digit, needs no digit templates to register, and works before a valid score has
-  even appeared. Run once at gameplay start over a few frames.
-- **Per-frame read (continual).** `read_score` samples the locked cells and
-  argmin-classifies each — no search. Per-frame luma normalization cancels the
-  A2D gain/offset/brightness drift, so the fixed cells read correctly frame to
-  frame. Cheap: a handful of rect-means + an L1 over the digit templates.
+  `ScoreCalibration`); the digit band is then a fixed offset inside it. Run once
+  at gameplay start over a few frames.
+- **Per-frame read (continual).** `read_score` crops the digit band at the locked
+  offset, segments it, and 1-NN-classifies each glyph — no offset search. A
+  per-band relative ink threshold and per-glyph normalization cancel A2D
+  gain/offset drift. Cheap: an ink mask + a small L1 per digit.
 
-Templates are built from the labelled score corpus: each frame's known value is
-right-justified across the cells, giving every cell a digit (or blank) label, and
-every labelled cell fingerprint is kept as a 1-NN exemplar — no hand-cropping.
-
-Integer-friendly for the firmware port: fixed cells + argmin L1 over uint8-scale
-vectors, exactly like `gp_read_song`; registration is a masked SAD over the block,
-run once instead of per frame.
+Templates are built from the labelled score corpus: each frame's digits (from its
+filename value) map left→right onto the segmented glyphs, each kept as a 1-NN
+exemplar — no hand-cropping. Integer-friendly for the firmware port.
 """
 
 from __future__ import annotations
@@ -42,27 +36,48 @@ from dataclasses import dataclass
 import numpy as np
 
 from .corpus import Sample, load_bgr, score_corpus_dir
-from .fingerprint import _to_canonical
+from .fingerprint import CANONICAL_H, CANONICAL_W, _to_canonical
 from .metadata import (
-    N_SCORE_DIGITS,
     SCORE_BLOCK_ROI,
-    SCORE_ROI,
+    SCORE_DIGIT_BAND,
     score_from_filename,
 )
-from .songselect import _LUMA_W, _luma_grid, _shift
+from .songselect import _LUMA_W
 
-BLANK = 10  # class label for an unused (empty) leading cell
 CHROME_MASK_FILE = "score_block_mask.png"
+
+
+def _ensure_full_frame(image: np.ndarray) -> np.ndarray:
+    """Return a canonical 720x480 frame.
+
+    The marvin-perf region capture (and this corpus) provides just the 96x105
+    scoring block; embed it into a black full frame at its real position so the
+    reader's absolute ROIs / chrome registration work unchanged. A full frame is
+    returned as-is; anything else falls back to `_to_canonical` (resize).
+    """
+    a = np.asarray(image)
+    if a.shape[:2] == (CANONICAL_H, CANONICAL_W):
+        return a
+    x0, y0, x1, y1 = SCORE_BLOCK_ROI
+    if a.shape[:2] == (y1 - y0, x1 - x0):
+        full = np.zeros((CANONICAL_H, CANONICAL_W, a.shape[2]), dtype=a.dtype)
+        full[y0:y1, x0:x1] = a
+        return full
+    return _to_canonical(image)
 
 
 @dataclass(frozen=True)
 class ScoreConfig:
-    n_digits: int = N_SCORE_DIGITS
-    cols: int = 8   # per-cell grid columns (captures the digit's ink pattern)
-    rows: int = 14  # per-cell grid rows
-    # Registration search radius (px), used *once* to lock the block position for
-    # the rig; not on the per-frame read path. Wide enough to cover per-rig
-    # position variation.
+    glyph_rows: int = 14   # canonical glyph grid (rows), each segmented digit resized to this
+    glyph_cols: int = 10   # canonical glyph grid (cols)
+    # Segmentation: relative ink threshold (fraction of the band's min..max luma
+    # range — gain/offset robust since the digits are the brightest ink), and the
+    # run/gap filters that split the ink profile into digit blobs.
+    ink_frac: float = 0.6
+    min_gap: int = 1       # empty columns (>this) that separate two digits
+    min_width: int = 1     # drop runs narrower than this (specks)
+    min_ink: int = 4       # drop runs with fewer than this many ink pixels
+    # Registration search radius (px), used *once* to lock the block for the rig.
     reg_search: int = 8
 
 
@@ -71,7 +86,7 @@ DEFAULT_SCORE_CONFIG = ScoreConfig()
 
 @dataclass(frozen=True)
 class DigitTemplate:
-    digit: int  # 0-9, or BLANK
+    digit: int  # 0-9
     vec: np.ndarray
 
 
@@ -84,7 +99,7 @@ class ChromeReference:
 @dataclass(frozen=True)
 class ScoreCatalog:
     mode: str
-    templates: list[DigitTemplate]  # one per labelled cell exemplar (1-NN, not centroid)
+    templates: list[DigitTemplate]  # one per labelled glyph exemplar (1-NN, not centroid)
     chrome: ChromeReference
     config: ScoreConfig
 
@@ -92,40 +107,90 @@ class ScoreCatalog:
 @dataclass(frozen=True)
 class ScoreCalibration:
     mode: str
-    cells: tuple[tuple[int, int, int, int], ...]  # locked per-cell ROIs (len n_digits)
-    dx: int = 0  # block offset found at registration (for debug/report)
+    dx: int = 0  # block offset found at registration
     dy: int = 0
 
 
 @dataclass(frozen=True)
 class ScoreResult:
     value: int
-    digits: tuple[int, ...]  # per-cell class, left->right (BLANK for empty leading cells)
-    dist: float              # worst (max) per-cell best-distance
-    margin: float            # weakest (min) per-cell 2nd-best - best
+    digits: tuple[int, ...]  # the digits read, left->right
+    dist: float              # worst (max) per-digit best-distance
+    margin: float            # weakest (min) per-digit runner-up gap
 
 
-def _cell_rois(roi: tuple[int, int, int, int], n: int) -> list[tuple[int, int, int, int]]:
-    """Split a score ROI into `n` equal-width digit cells (left->right)."""
-    x0, y0, x1, y1 = roi
-    xs = np.linspace(x0, x1, n + 1).round().astype(int)
-    return [(int(xs[i]), y0, int(xs[i + 1]), y1) for i in range(n)]
+# ─── digit band luma + segmentation ─────────────────────────────────────────────
 
 
-def _labels_for_value(value: int, n_digits: int) -> list[int]:
-    """Right-justify `value` across `n_digits` cells -> per-cell class labels.
+def _band_luma(image: np.ndarray, mode: str, dx: int = 0, dy: int = 0) -> np.ndarray:
+    """Luma of the digit search band, shifted by the registration offset."""
+    img = _ensure_full_frame(image)
+    x0, y0, x1, y1 = SCORE_DIGIT_BAND[mode]
+    patch = img[y0 + dy:y1 + dy, x0 + dx:x1 + dx].astype(np.float64)
+    return patch @ _LUMA_W / 256.0
 
-    Leading (unused) cells are BLANK; e.g. 1138 over 6 cells ->
-    [BLANK, BLANK, 1, 1, 3, 8]. Scores never carry leading zeros.
+
+def _ink_mask(band: np.ndarray, cfg: ScoreConfig) -> np.ndarray:
+    thr = band.min() + cfg.ink_frac * (band.max() - band.min())
+    return band > thr
+
+
+def _segment_digits(band: np.ndarray, cfg: ScoreConfig) -> list[tuple[int, int]]:
+    """Split the digit band into per-digit column runs (left->right).
+
+    A column with any ink extends the current run; more than `min_gap` empty
+    columns closes it. Specks (too narrow / too little ink) are dropped.
     """
-    s = str(value)
-    pad = n_digits - len(s)
-    return [BLANK] * pad + [int(c) for c in s]
+    col = _ink_mask(band, cfg).sum(0)
+    runs: list[tuple[int, int]] = []
+    start: int | None = None
+    gap = 0
+    for x, c in enumerate(col):
+        if c > 0:
+            if start is None:
+                start = x
+            gap = 0
+        elif start is not None:
+            gap += 1
+            if gap > cfg.min_gap:
+                runs.append((start, x - gap))
+                start = None
+    if start is not None:
+        runs.append((start, len(col) - 1))
+    return [
+        (x0, x1) for x0, x1 in runs
+        if (x1 - x0 + 1) >= cfg.min_width and int(col[x0:x1 + 1].sum()) >= cfg.min_ink
+    ]
+
+
+def _glyph_vec(band: np.ndarray, run: tuple[int, int], cfg: ScoreConfig) -> np.ndarray:
+    """Normalized fingerprint of one segmented digit (bbox → canonical grid)."""
+    x0, x1 = run
+    sub = band[:, x0:x1 + 1]
+    # Crop to the glyph's ink rows so height variation doesn't dominate.
+    rmask = _ink_mask(band, cfg)[:, x0:x1 + 1].any(1)
+    ys = np.where(rmask)[0]
+    if len(ys):
+        sub = sub[ys.min():ys.max() + 1, :]
+    ye = np.linspace(0, sub.shape[0], cfg.glyph_rows + 1).round().astype(int)
+    xe = np.linspace(0, sub.shape[1], cfg.glyph_cols + 1).round().astype(int)
+    g = np.empty((cfg.glyph_rows, cfg.glyph_cols), dtype=np.float64)
+    for r in range(cfg.glyph_rows):
+        for c in range(cfg.glyph_cols):
+            blk = sub[ye[r]:max(ye[r] + 1, ye[r + 1]), xe[c]:max(xe[c] + 1, xe[c + 1])]
+            g[r, c] = blk.mean() if blk.size else 0.0
+    v = g.reshape(-1)
+    v -= v.mean()
+    s = v.std()
+    return v / s if s > 1e-6 else v
+
+
+# ─── chrome registration (locks the block; unchanged) ───────────────────────────
 
 
 def _block_luma(image: np.ndarray, dx: int = 0, dy: int = 0) -> np.ndarray:
     """Luma of the scoring block at the nominal position shifted by (dx, dy)."""
-    img = _to_canonical(image)
+    img = _ensure_full_frame(image)
     x0, y0, x1, y1 = SCORE_BLOCK_ROI
     patch = img[y0 + dy:y1 + dy, x0 + dx:x1 + dx].astype(np.float64)
     return patch @ _LUMA_W / 256.0
@@ -158,58 +223,24 @@ def build_chrome_reference(
     return ChromeReference(ref=ref, mask=load_chrome_mask(mask_path))
 
 
-def build_score_catalog(
-    samples: list[Sample],
-    mode: str = "training",
-    config: ScoreConfig = DEFAULT_SCORE_CONFIG,
-) -> ScoreCatalog:
-    """Build per-mode digit templates (0-9 + BLANK) + the chrome reference.
-
-    Each frame's value is right-justified over the cells to label every cell, and
-    every labelled cell fingerprint is kept as its own template — matching is 1-NN
-    over the exemplars (not a per-class centroid): the crisp digits blur together
-    when averaged (8/3/0), so nearest-exemplar separates them cleanly. The chrome
-    reference (for registration) is the median block over the same frames.
-    """
-    cells = _cell_rois(SCORE_ROI[mode], config.n_digits)
-    templates: list[DigitTemplate] = []
-    mode_images: list[np.ndarray] = []
-    for s in samples:
-        parsed = score_from_filename(s.path.name)
-        if parsed is None or parsed[0] != mode:
-            continue
-        _mode, value = parsed
-        mode_images.append(s.image)
-        labels = _labels_for_value(value, config.n_digits)
-        for cell, label in zip(cells, labels):
-            templates.append(DigitTemplate(digit=label, vec=_luma_grid(s.image, cell, config)))
-    chrome = build_chrome_reference(mode_images, config)
-    return ScoreCatalog(mode=mode, templates=templates, chrome=chrome, config=config)
-
-
 def _norm_masked(a: np.ndarray, mask: np.ndarray) -> np.ndarray:
     """Zero-mean/unit-std over the masked pixels (cancels A2D gain/offset)."""
     m = a[mask]
     return (a - m.mean()) / (m.std() + 1e-6)
 
 
-def calibrate_score(
-    images: list[np.ndarray],
-    catalog: ScoreCatalog,
-) -> ScoreCalibration:
+def calibrate_score(images: list[np.ndarray], catalog: ScoreCatalog) -> ScoreCalibration:
     """Lock the scoring block's position for this rig (run once at gameplay start).
 
-    Locates the block by matching its static chrome: over an offset search, the
-    masked, per-frame-normalized SAD between each calibration frame's block and
-    the chrome reference is summed; the `(dx, dy)` with the smallest total wins.
-    The digit cells are then the nominal cells shifted by that offset. Using the
-    chrome (not the digits) means registration is digit-independent and can't
-    alias a cell onto a neighbouring digit.
+    Matches the static chrome: over an offset search, the masked,
+    per-frame-normalized SAD between each calibration frame's block and the chrome
+    reference is summed; the `(dx, dy)` with the smallest total wins. The digit
+    band is then that offset applied to the nominal band. Registering on the chrome
+    (not the digits) is digit-independent and robust before any valid score shows.
     """
     cfg = catalog.config
-    chrome = catalog.chrome
-    mask = chrome.mask
-    ref_n = _norm_masked(chrome.ref, mask)
+    mask = catalog.chrome.mask
+    ref_n = _norm_masked(catalog.chrome.ref, mask)
     rng = cfg.reg_search
 
     best: tuple[float, int, int] | None = None
@@ -223,8 +254,41 @@ def calibrate_score(
                 best = (total, dx, dy)
     assert best is not None
     _t, dx, dy = best
-    cells = tuple(_cell_rois(_shift(SCORE_ROI[catalog.mode], dx, dy), cfg.n_digits))
-    return ScoreCalibration(mode=catalog.mode, cells=cells, dx=dx, dy=dy)
+    return ScoreCalibration(mode=catalog.mode, dx=dx, dy=dy)
+
+
+# ─── catalog build + read ────────────────────────────────────────────────────────
+
+
+def build_score_catalog(
+    samples: list[Sample],
+    mode: str = "training",
+    config: ScoreConfig = DEFAULT_SCORE_CONFIG,
+) -> ScoreCatalog:
+    """Build the per-mode 0-9 glyph exemplars + the chrome reference.
+
+    Each labelled frame is segmented; the segmented glyphs map left→right onto the
+    digits of the filename value (the run count must match), and each glyph vector
+    is kept as a 1-NN exemplar. Matching is nearest-exemplar (not a centroid): the
+    crisp digits blur together when averaged, so exemplars separate them cleanly.
+    """
+    templates: list[DigitTemplate] = []
+    mode_images: list[np.ndarray] = []
+    for s in samples:
+        parsed = score_from_filename(s.path.name)
+        if parsed is None or parsed[0] != mode:
+            continue
+        _mode, value = parsed
+        mode_images.append(s.image)
+        band = _band_luma(s.image, mode)
+        runs = _segment_digits(band, config)
+        digits = str(value)
+        if len(runs) != len(digits):
+            continue  # segmentation disagrees with the label — skip this frame
+        for run, ch in zip(runs, digits):
+            templates.append(DigitTemplate(digit=int(ch), vec=_glyph_vec(band, run, config)))
+    chrome = build_chrome_reference(mode_images, config)
+    return ScoreCatalog(mode=mode, templates=templates, chrome=chrome, config=config)
 
 
 def read_score(
@@ -232,36 +296,40 @@ def read_score(
     catalog: ScoreCatalog,
     calibration: ScoreCalibration | None = None,
 ) -> ScoreResult:
-    """Read the score from the locked cells — no offset search (search-free per frame).
+    """Read the score: crop the (registered) digit band, segment, classify each glyph.
 
-    Each cell is fingerprinted (per-frame normalized, so A2D gain/offset drift is
-    cancelled) and argmin-classified against the digit/blank templates. Non-blank
-    classes, left to right, assemble the integer value. `calibration` gives the
-    locked per-cell rects from `calibrate_score`; if omitted the nominal ROI cells
-    are used (convenient for a single well-registered frame / tests).
+    The digit count is however many glyphs the segmentation finds. Each glyph is
+    1-NN-matched (argmin L1) against the exemplars; the digits assemble left→right
+    into the integer. `calibration` supplies the locked block offset; if omitted
+    the nominal band is used (a well-registered frame / tests).
     """
     cfg = catalog.config
-    if calibration is not None:
-        cells = list(calibration.cells)
-    else:
-        cells = _cell_rois(SCORE_ROI[catalog.mode], cfg.n_digits)
-    templates = catalog.templates
+    dx = calibration.dx if calibration is not None else 0
+    dy = calibration.dy if calibration is not None else 0
+    band = _band_luma(image, catalog.mode, dx, dy)
 
-    per_cell: list[tuple[int, float, float]] = []
-    for cell in cells:
-        fp = _luma_grid(image, cell, cfg)
-        scored = sorted((float(np.abs(fp - t.vec).sum()), t.digit) for t in templates)
-        best_d, best_c = scored[0]
-        # margin = distance to the nearest exemplar of a *different* class.
-        other = next((d for d, c in scored if c != best_c), best_d)
-        per_cell.append((best_c, best_d, other - best_d))
+    vecs = np.stack([t.vec for t in catalog.templates])
+    tdig = np.array([t.digit for t in catalog.templates])
 
-    digits = tuple(c for c, _d, _m in per_cell)
-    text = "".join(str(c) for c in digits if c != BLANK)
-    value = int(text) if text else 0
+    digits: list[int] = []
+    dists: list[float] = []
+    margins: list[float] = []
+    for run in _segment_digits(band, cfg):
+        fv = _glyph_vec(band, run, cfg)
+        d = np.abs(vecs - fv).sum(1)
+        order = np.argsort(d)
+        best = int(tdig[order[0]])
+        digits.append(best)
+        dists.append(float(d[order[0]]))
+        # runner-up gap = nearest exemplar of a different digit − nearest
+        other = next((float(d[i]) for i in order if int(tdig[i]) != best), float(d[order[0]]))
+        margins.append(other - float(d[order[0]]))
+
+    text = "".join(str(x) for x in digits)
+    value = int(text) if text else -1
     return ScoreResult(
         value=value,
-        digits=digits,
-        dist=max(d for _c, d, _m in per_cell),
-        margin=min(m for _c, _d, m in per_cell),
+        digits=tuple(digits),
+        dist=max(dists) if dists else 0.0,
+        margin=min(margins) if margins else 0.0,
     )

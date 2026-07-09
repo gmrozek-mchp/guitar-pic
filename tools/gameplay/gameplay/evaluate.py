@@ -28,16 +28,17 @@ from .classifier import (
     build_templates,
     classify_fp,
 )
-from .corpus import Sample, load_corpus, load_score_corpus
+from .corpus import Sample, load_bgr, load_corpus, load_score_corpus
 from .fingerprint import CANONICAL_H, CANONICAL_W, BPP, FingerprintConfig, fingerprint
 from .highlight import build_selection_calibration, read_selection
 from .metadata import (
     MENU_LAYOUTS,
+    SCORE_BLOCK_ROI,
     score_from_filename,
     selected_item_from_filename,
     song_from_filename,
 )
-from .score import build_score_catalog, calibrate_score, read_score, _labels_for_value
+from .score import build_score_catalog, calibrate_score, read_score
 from .screens import UNKNOWN
 from .songselect import build_song_catalog, read_setlist, read_song
 
@@ -478,7 +479,7 @@ def score_eval(samples: list[Sample], mode: str = "training", seed: int = 1234) 
             exact += 1
         else:
             failures.append((s.path.name, str(value), str(r.value)))
-        truth = _labels_for_value(value, catalog.config.n_digits)
+        truth = [int(c) for c in str(value)]
         digit_ok += sum(a == b for a, b in zip(r.digits, truth))
         digit_total += len(truth)
         # LOO: rebuild the classifier without this frame (geometry stays locked).
@@ -505,6 +506,65 @@ def score_eval(samples: list[Sample], mode: str = "training", seed: int = 1234) 
         n_digit_ok=digit_ok, n_digit_total=digit_total,
         a2d_ok=a2d_ok, a2d_total=a2d_total, reg_ok=reg_ok, reg_total=reg_total,
         margin_min=min(margins) if margins else 0.0, failures=failures,
+    )
+
+
+@dataclass
+class ScoreMonotonicResult:
+    n_frames: int
+    n_violations: int           # reads that decreased vs the running max (a play only climbs)
+    digit_hist: dict[int, int]  # digit-count → frame count
+    first: int
+    last: int
+    violations: list[tuple[str, int, int]]  # (filename, prev_max, read) — first few
+
+    @property
+    def clean_frac(self) -> float:
+        return 1.0 - (self.n_violations / self.n_frames) if self.n_frames else 0.0
+
+
+def score_monotonic_eval(
+    frames_dir, samples: list[Sample] | None = None, mode: str = "training"
+) -> ScoreMonotonicResult:
+    """Label-free accuracy proxy over a whole extracted-capture directory.
+
+    A play's score only climbs, so any read that *decreases* vs the running max is
+    a misread. Reads every `*.png` (sorted) with templates from the committed
+    corpus, registered once, and reports the violation count + digit-count
+    histogram. The capture isn't committed, so this is a local check.
+    """
+    from pathlib import Path
+
+    if samples is None:
+        samples = load_score_corpus()
+    catalog = build_score_catalog(samples, mode=mode)
+    # Register once on the (reliable) corpus, not the target dir's first file.
+    calib = calibrate_score([s.image for s in samples], catalog)
+    # Only score-block-sized (or full-frame) images — skip stray files (montages).
+    x0, y0, x1, y1 = SCORE_BLOCK_ROI
+    block_shape = (y1 - y0, x1 - x0)
+
+    prev_max = -1
+    viol = 0
+    hist: dict[int, int] = defaultdict(int)
+    first = last = -1
+    violations: list[tuple[str, int, int]] = []
+    files = [f for f in sorted(Path(frames_dir).glob("*.png"))
+             if load_bgr(f).shape[:2] in (block_shape, (CANONICAL_H, CANONICAL_W))]
+    for f in files:
+        r = read_score(load_bgr(f), catalog, calib)
+        hist[len(r.digits)] += 1
+        if first < 0:
+            first = r.value
+        last = r.value
+        if r.value < prev_max:
+            viol += 1
+            if len(violations) < 20:
+                violations.append((f.name, prev_max, r.value))
+        prev_max = max(prev_max, r.value)
+    return ScoreMonotonicResult(
+        n_frames=len(files), n_violations=viol, digit_hist=dict(sorted(hist.items())),
+        first=first, last=last, violations=violations,
     )
 
 
