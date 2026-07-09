@@ -35,11 +35,13 @@ from ..decode import decode_record
 from ..framing import FrameStats, frame_encode, iter_frames
 from ..records import (
     PERF_OVERLAY_STRIP,
+    DEFAULT_REGION_RECT,
     RECORD_TYPE_BY_NAME,
     DetectorConfig,
     Session,
     Strip,
     StripKind,
+    encode_region_stream_payload,
     encode_set_mask_payload,
     encode_set_overlay_payload,
     encode_snapshot_payload,
@@ -79,6 +81,10 @@ class _State:
     # Mirrors the device's boot default (PERF_OVERLAY_STRIP on). Tracked so a
     # late-attaching WS client can render the toggle in the right state.
     overlay_enabled: bool = True
+    # Region stream (score-block capture). Off at device boot; the strips ride
+    # the normal record path into the capture .bin like any other record.
+    region_enabled: bool = False
+    region_rect: tuple[int, int, int, int] = DEFAULT_REGION_RECT
     started_at: str | None = None
     framing_stats: FrameStats = field(default_factory=FrameStats)
     last_session_dict: dict[str, Any] | None = None
@@ -231,6 +237,32 @@ class _LiveSession:
         self._post("overlay", {"enabled": enabled, "source": "client"})
         return enabled
 
+    def set_region_stream(
+        self, enabled: bool, rect: tuple[int, int, int, int] | None = None
+    ) -> dict[str, Any]:
+        """Start/stop streaming a sub-region as one REGION strip per frame.
+
+        The strips are ordinary PERF_REC_STRIP records, so an active recording
+        captures them into the .bin like everything else — no special path.
+        Defaults to the scoring-block rect.
+        """
+        with self._lock:
+            ser = self._ser
+            if ser is None:
+                raise RuntimeError("live session not active")
+            if rect is not None:
+                self._state.region_rect = tuple(rect)  # type: ignore[assignment]
+            x, y, w, h = self._state.region_rect
+            self._state.region_enabled = enabled
+        ser.send_command(frame_encode(encode_region_stream_payload(enabled, x, y, w, h)))
+        info = {"enabled": enabled, "rect": [x, y, w, h], "source": "client"}
+        self._post("region", info)
+        return info
+
+    def _region_dict_locked(self) -> dict[str, Any]:
+        x, y, w, h = self._state.region_rect
+        return {"enabled": self._state.region_enabled, "rect": [x, y, w, h]}
+
     def status(self) -> dict[str, Any]:
         with self._lock:
             active = self.is_active()
@@ -239,6 +271,7 @@ class _LiveSession:
                 "port": self._state.port if active else None,
                 "mask": f"0x{self._state.mask:08x}" if active else None,
                 "overlay": self._state.overlay_enabled if active else None,
+                "region": self._region_dict_locked() if active else None,
                 "recording": self._recording_dict_locked(),
                 "started_at": self._state.started_at if active else None,
                 "framing": {

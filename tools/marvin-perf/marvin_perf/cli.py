@@ -18,23 +18,30 @@ from .capture import (
     CaptureSource,
     finalize_capture_dir,
     init_capture_dir,
+    open_capture,
 )
 from .exporters import export_sensiml_csv
 from .exporters.sensiml_csv import ExportError
 from .decode import decode_record
-from .framing import frame_encode, iter_frames
+from .framing import FrameStats, frame_encode, iter_frames
 from .records import (
     PERF_OVERLAY_STRIP,
+    DEFAULT_REGION_RECT,
     RECORD_TYPE_BY_NAME,
     TYPE_MASK_ALL,
     TYPE_MASK_MIN,
     Strip,
+    StripKind,
+    encode_region_stream_payload,
     encode_set_mask_payload,
     encode_set_overlay_payload,
     encode_snapshot_payload,
 )
-from .snapshot import SnapshotAssembler, save_snapshot
-from .transport import SerialSource
+from .snapshot import CompletedSnapshot, SnapshotAssembler, save_region_strips, save_snapshot
+from .transport import FileSource, SerialSource
+
+# Default capture region — the scoring block (both training/career modes fit).
+SCORE_BLOCK_RECT = DEFAULT_REGION_RECT
 
 
 # ─── Type-mask CLI parsing ───────────────────────────────────────────────────
@@ -233,6 +240,71 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
+def _parse_rect(spec: str | None) -> tuple[int, int, int, int]:
+    """Parse an "x,y,w,h" rect, or return the default score block."""
+    if not spec:
+        return SCORE_BLOCK_RECT
+    parts = spec.split(",")
+    if len(parts) != 4:
+        raise ValueError(f"--rect must be x,y,w,h (got {spec!r})")
+    x, y, w, h = (int(p) for p in parts)
+    return x, y, w, h
+
+
+def _score_dir_start(out: str | None) -> tuple[Path, int]:
+    """Resolve the output directory and the next free score-NNNN index."""
+    p = Path(out) if out else Path("scores")
+    p.mkdir(parents=True, exist_ok=True)
+    nums = [
+        int(m.group(1))
+        for f in p.glob("score-*.png")
+        if (m := re.fullmatch(r"score-(\d+)", f.stem))
+    ]
+    return p, (max(nums) + 1 if nums else 1)
+
+
+def cmd_score_capture(args: argparse.Namespace) -> int:
+    """Stream a fixed video sub-region to disk, one PNG per frame, at full rate.
+
+    Sends PERF_CMD_REGION_STREAM (start) for the requested rect (default: the
+    scoring block), saves each returned REGION strip as `score-NNNN.png`, and
+    stops on `--count` or Ctrl-C, sending the stop command on the way out. Each
+    REGION strip is one complete region frame, so no reassembly is needed.
+    Requires the STRIP record type to be enabled (the default).
+    """
+    x, y, w, h = _parse_rect(args.rect)
+    out_dir, n = _score_dir_start(args.out)
+    saved = 0
+    with SerialSource(args.port) as ser:
+        ser.send_command(frame_encode(encode_region_stream_payload(True, x, y, w, h)))
+        print(
+            f"[score-capture] streaming ({x},{y},{w}×{h}) → {out_dir}/score-NNNN.png; "
+            "Ctrl-C to stop",
+            file=sys.stderr,
+            flush=True,
+        )
+        try:
+            for fb in iter_frames(_idle_chunks(ser, args.timeout)):
+                rec = decode_record(fb.payload)
+                if not isinstance(rec, Strip) or rec.kind != int(StripKind.REGION):
+                    continue
+                snap = CompletedSnapshot(
+                    width=rec.w, height=rec.h, frame_epoch=rec.hdr.frame_epoch, bgr=rec.bgr
+                )
+                save_snapshot(snap, out_dir / f"score-{n:04d}.png")
+                saved += 1
+                n += 1
+                if args.count and saved >= args.count:
+                    break
+        except KeyboardInterrupt:
+            pass
+        finally:
+            ser.send_command(frame_encode(encode_region_stream_payload(False)))
+
+    print(f"score-capture: saved {saved} frame(s) to {out_dir}/", file=sys.stderr)
+    return 0 if saved else 1
+
+
 def cmd_export_ml(args: argparse.Namespace) -> int:
     """Export a finished capture as a SensiML-format CSV for MPLAB ML.
 
@@ -329,6 +401,30 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_export_region(args: argparse.Namespace) -> int:
+    """Extract REGION strips from a capture into numbered PNGs.
+
+    Pulls the score-block frames recorded (via the web viewer's Record button or
+    `record`) out of a capture and writes them as `score-NNNN.png` — the input to
+    the gameplay score-template corpus.
+    """
+    cap = open_capture(args.capture)
+    records = []
+    stats = FrameStats()
+    with FileSource(cap.bin_path) as src:
+        for frame in iter_frames(src, stats):
+            try:
+                records.append(decode_record(frame.payload))
+            except Exception:
+                continue
+    written = save_region_strips(records, args.out or "scores")
+    print(
+        f"export-region: {len(written)} REGION frame(s) → {args.out or 'scores'}/",
+        file=sys.stderr,
+    )
+    return 0 if written else 1
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     try:
         from .web.server import run as run_server
@@ -398,6 +494,37 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_snapshot.set_defaults(func=cmd_snapshot)
 
+    p_score = sub.add_parser(
+        "score-capture",
+        help="Stream a fixed video sub-region (default: scoring block) to PNGs at full rate.",
+    )
+    p_score.add_argument("--port", required=True)
+    p_score.add_argument(
+        "--out",
+        default=None,
+        help="Directory for auto-incrementing score-NNNN.png (default: ./scores/).",
+    )
+    p_score.add_argument(
+        "--rect",
+        default=None,
+        help="Region as x,y,w,h in the 720x480 frame (default: the scoring block "
+             f"{','.join(str(v) for v in SCORE_BLOCK_RECT)}).",
+    )
+    p_score.add_argument(
+        "--count",
+        type=int,
+        default=None,
+        help="Stop after N frames (default: run until Ctrl-C).",
+    )
+    p_score.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Idle timeout in seconds — stop if no frames arrive for this long "
+             "(default: 5).",
+    )
+    p_score.set_defaults(func=cmd_score_capture)
+
     p_export_ml = sub.add_parser(
         "export-ml",
         help="Export a capture as a SensiML-format CSV for MPLAB ML training.",
@@ -424,6 +551,16 @@ def build_parser() -> argparse.ArgumentParser:
              "record (default: emit them with all labels = 0).",
     )
     p_export_ml.set_defaults(func=cmd_export_ml)
+
+    p_export_region = sub.add_parser(
+        "export-region",
+        help="Extract REGION strips from a capture into numbered PNGs (score corpus input).",
+    )
+    p_export_region.add_argument("capture", help="Capture directory or .bin file")
+    p_export_region.add_argument(
+        "--out", default=None, help="Output directory for score-NNNN.png (default: ./scores/)."
+    )
+    p_export_region.set_defaults(func=cmd_export_region)
 
     p_serve = sub.add_parser(
         "serve", help="Run the visual review server (requires viewer dep group)."

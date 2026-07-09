@@ -9,6 +9,7 @@ tEXt chunk).
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -118,3 +119,30 @@ def save_snapshot(snap: CompletedSnapshot, out: str | Path) -> list[Path]:
     png_path = base.with_suffix(".png")
     img.save(png_path, pnginfo=meta)
     return [png_path]
+
+
+def save_region_strips(
+    records: Iterable[object],
+    out_dir: str | Path,
+    *,
+    kind: StripKind = StripKind.REGION,
+    prefix: str = "score",
+) -> list[Path]:
+    """Save each REGION (or given-kind) strip in `records` as a numbered PNG.
+
+    Each such strip is one complete region frame (single record), so it maps
+    straight to a `CompletedSnapshot` and reuses `save_snapshot`. Returns the
+    written paths, ordered as encountered.
+    """
+    out = Path(out_dir)
+    out.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+    for rec in records:
+        if not isinstance(rec, Strip) or rec.kind != int(kind):
+            continue
+        snap = CompletedSnapshot(
+            width=rec.w, height=rec.h, frame_epoch=rec.hdr.frame_epoch, bgr=rec.bgr
+        )
+        n = len(written) + 1
+        written.extend(save_snapshot(snap, out / f"{prefix}-{n:04d}.png"))
+    return written

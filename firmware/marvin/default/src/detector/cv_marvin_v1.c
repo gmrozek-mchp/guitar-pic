@@ -452,6 +452,11 @@ static void cv_marvin_v1_task(void *param)
                                     CV_SENSING_W, CV_SENSING_H, s_sensing_scratch);
         }
 
+        /* REGION: host-selected sub-region (e.g. the score block), streamed one
+         * strip per frame when the host has started the stream. No-op otherwise. */
+        PerfLog_EmitRegionIfEnabled(frame.frame_count, (const uint8_t *)frame.buffer,
+                                    fstride, frame.width, frame.height);
+
         // /* ~2 Hz signal dump for threshold tuning. hold/edge values shown
         //  * vs the 50 threshold, with P/E flags reflecting current state. */
         // if ((frame.frame_count % 30u) == 0u)

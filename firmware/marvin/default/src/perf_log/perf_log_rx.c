@@ -102,6 +102,15 @@ static void dispatch_payload(void)
             }
             break;
 
+        case PERF_CMD_REGION_STREAM:
+            if (s_len == sizeof(perf_cmd_region_stream_t))
+            {
+                perf_cmd_region_stream_t cmd;
+                memcpy(&cmd, s_payload, sizeof(cmd));
+                PerfLog_SetRegionStream(cmd.enable != 0u, cmd.x, cmd.y, cmd.w, cmd.h);
+            }
+            break;
+
         default:
             break;
     }

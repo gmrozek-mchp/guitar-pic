@@ -22,6 +22,7 @@ PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
 PERF_CMD_SET_TYPE_MASK = 0x01
 PERF_CMD_SNAPSHOT = 0x02
 PERF_CMD_SET_OVERLAY = 0x03
+PERF_CMD_REGION_STREAM = 0x04
 
 # Overlay sinks for the per-fret target rings (PERF_CMD_SET_OVERLAY flags).
 # STRIP draws rings onto the viewer's SENSING strip copy; PANEL is reserved for
@@ -64,6 +65,7 @@ class StripKind(IntEnum):
     SENSING = 0
     STRIKE = 1
     SNAPSHOT = 2
+    REGION = 3  # host-selected sub-region, one strip per frame
 
 
 # Strip flags byte (Strip.flags). SNAPSHOT bands set LAST on the final
@@ -420,4 +422,25 @@ def encode_set_overlay_payload(flags: int) -> bytes:
     """Pack a SET_OVERLAY command payload (no SOF/LEN/FCS framing)."""
     return _CMD_SET_OVERLAY_FMT.pack(
         PERF_CMD_HDR_MAGIC, PERF_CMD_SET_OVERLAY, 0, flags & 0xFFFFFFFF
+    )
+
+
+# Default region for the score-block capture (x, y, w, h) in the 720x480 frame,
+# matching gameplay's SCORE_BLOCK_ROI. Fits both training and career scoring blocks.
+DEFAULT_REGION_RECT = (114, 309, 96, 105)
+
+# magic, cmd_id, reserved, enable, reserved, x, y, w, h  (mirrors perf_cmd_region_stream_t)
+_CMD_REGION_STREAM_FMT = struct.Struct("<HBBBBHHHH")
+
+
+def encode_region_stream_payload(
+    enable: bool, x: int = 0, y: int = 0, w: int = 0, h: int = 0
+) -> bytes:
+    """Pack a REGION_STREAM command payload (no SOF/LEN/FCS framing).
+
+    enable=True starts streaming the (x, y, w, h) sub-region as one REGION strip
+    per frame; enable=False stops (rect ignored).
+    """
+    return _CMD_REGION_STREAM_FMT.pack(
+        PERF_CMD_HDR_MAGIC, PERF_CMD_REGION_STREAM, 0, 1 if enable else 0, 0, x, y, w, h
     )

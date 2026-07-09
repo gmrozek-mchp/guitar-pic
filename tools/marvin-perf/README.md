@@ -29,6 +29,9 @@ CLI helpers (record, set-mask, set-overlay, snapshot, export-ml).
 ## Usage
 
     # Launch the visual review server (default when no subcommand is given)
+    # In live mode the "▣ Score region" toggle streams the scoring block; hit
+    # Record to capture it into the .bin like any other record, then extract it
+    # offline with `export-region`.
     uv run marvin-perf
     uv run marvin-perf serve
     uv run marvin-perf serve --host 0.0.0.0 --port 8765
@@ -46,6 +49,13 @@ CLI helpers (record, set-mask, set-overlay, snapshot, export-ml).
 
     # Capture one full video frame from a running device and save it
     uv run marvin-perf snapshot --port /dev/cu.usbmodem... --out snapshots/
+
+    # Stream a fixed sub-region (default: the scoring block) to PNGs at full rate
+    uv run marvin-perf score-capture --port /dev/cu.usbmodem... --out scores/ --count 500
+    uv run marvin-perf score-capture --port /dev/cu.usbmodem... --rect 114,309,96,105
+
+    # Extract REGION strips from a recorded capture into score-NNNN.png (score corpus)
+    uv run marvin-perf export-region session/ --out scores/
 
     # Export a capture as a SensiML-format CSV for MPLAB ML training
     uv run marvin-perf export-ml session/ --out session.csv --labels actuator-fb

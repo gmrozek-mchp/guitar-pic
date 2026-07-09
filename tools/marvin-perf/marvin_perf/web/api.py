@@ -171,6 +171,11 @@ class OverlayRequest(BaseModel):
     enabled: bool
 
 
+class RegionRequest(BaseModel):
+    enabled: bool
+    rect: list[int] | None = None  # [x, y, w, h]; default = scoring block
+
+
 # ─── Routes ──────────────────────────────────────────────────────────────────
 
 
@@ -607,6 +612,20 @@ def live_overlay(req: OverlayRequest) -> dict[str, Any]:
     except RuntimeError as e:
         raise HTTPException(409, str(e))
     return {"overlay": enabled}
+
+
+@router.post("/live/region")
+def live_region(req: RegionRequest) -> dict[str, Any]:
+    """Start/stop the score-block region stream. Recorded like any other record."""
+    rect = None
+    if req.rect is not None:
+        if len(req.rect) != 4:
+            raise HTTPException(422, "rect must be [x, y, w, h]")
+        rect = tuple(req.rect)
+    try:
+        return _LIVE.set_region_stream(req.enabled, rect)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
 
 
 @router.websocket("/live/ws")

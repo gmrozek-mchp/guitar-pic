@@ -14,8 +14,10 @@ import pytest
 from marvin_perf.capture import BIN_NAME, MANIFEST_NAME
 from marvin_perf.framing import FrameStats, frame_encode, iter_frames
 from marvin_perf.records import (
+    DEFAULT_REGION_RECT,
     HDR_SIZE,
     PERF_CMD_HDR_MAGIC,
+    PERF_CMD_REGION_STREAM,
     PERF_CMD_SET_OVERLAY,
     PERF_CMD_SET_TYPE_MASK,
     PERF_CMD_SNAPSHOT,
@@ -26,6 +28,7 @@ from marvin_perf.records import (
     RecordType,
     Session,
     StripKind,
+    encode_region_stream_payload,
     encode_set_mask_payload,
     encode_set_overlay_payload,
     encode_snapshot_payload,
@@ -135,6 +138,42 @@ def test_set_mask_round_trips_to_serial_send() -> None:
         assert payload[2] == PERF_CMD_SET_TYPE_MASK
     finally:
         sess.stop()
+
+
+def test_set_region_stream_round_trips_to_serial_send() -> None:
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    try:
+        info = sess.set_region_stream(True)  # default rect = scoring block
+        assert info["enabled"] is True
+        assert tuple(info["rect"]) == DEFAULT_REGION_RECT
+        ser = captured["ser"]
+        assert ser.sent[-1] == frame_encode(
+            encode_region_stream_payload(True, *DEFAULT_REGION_RECT)
+        )
+        payload = ser.sent[-1][6:-2]
+        assert payload[2] == PERF_CMD_REGION_STREAM
+
+        sess.set_region_stream(False)
+        assert ser.sent[-1] == frame_encode(
+            encode_region_stream_payload(False, *DEFAULT_REGION_RECT)
+        )
+        assert sess.status()["region"]["enabled"] is False
+    finally:
+        sess.stop()
+
+
+def test_set_region_stream_when_inactive_raises() -> None:
+    sess = _make_session()
+    with pytest.raises(RuntimeError):
+        sess.set_region_stream(True)
 
 
 def test_set_mask_when_inactive_raises() -> None:

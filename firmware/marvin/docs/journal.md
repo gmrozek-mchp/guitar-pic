@@ -354,6 +354,43 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-09 — perf_log: region-stream command (host-selected sub-region at full frame rate)
+
+Added a `PERF_CMD_REGION_STREAM` command + `PERF_STRIP_REGION` strip kind so the host can stream
+a fixed video **sub-region** back as one STRIP record per frame, continuously, tear-free — built
+to gather scoring-block training data for the gameplay score reader (`tools/gameplay`), but the
+rect is host-parameterized so it's a generic region streamer (repointable without a reflash).
+
+Reuses the existing machinery: `PerfLog_EmitStripFromFrame` already coherently row-copies an
+arbitrary `w×h` window per frame (the same path as the 60 Hz SENSING/STRIKE strips), and 96×105×3
+= 30 KB fits one STRIP record, so no banding/staging. New: `perf_cmd_region_stream_t` (enable +
+x,y,w,h), a `volatile` flag/rect in `perf_log.c` (mirrors the overlay-flags pattern) with
+`PerfLog_SetRegionStream` + a bounds-checked `PerfLog_EmitRegionIfEnabled`, an RX dispatch case,
+and one call in the `cv_marvin_v1` per-frame loop beside the SENSING/STRIKE emits. Default off;
+pooled/drop-on-full path (never the snapshot drain monopoly); STRIP-mask gated. **No schema bump**
+— a new strip kind is forward-compat (records.h says so) and a host→device command doesn't change
+any record layout (SET_OVERLAY precedent). Files: `perf_log/{perf_log_records.h,perf_log.c,
+perf_log.h,perf_log_rx.c}`, `detector/cv_marvin_v1.c`. **Pending Greg's MPLAB build.**
+
+Host side (`tools/marvin-perf`): `StripKind.REGION` + `encode_region_stream_payload`, no schema
+bump. **Fretboard vs scoreboard are independent** (Greg): the three strip kinds were all gated by the
+single `PERF_REC_STRIP` type mask, coupling them. Fixed by making the REGION strip **command-gated
+only**, bypassing the type mask (a `honor_mask` flag on `strip_slot_claim`; REGION passes false —
+its own start/stop command, default off, is the gate). So the STRIP mask now gates only the fretboard
+SENSING+STRIKE pair, and the region command gates the scoreboard, toggled separately. (Frontend
+mirrors this: the live-record mask filter exempts REGION-kind strips.)
+
+Two capture paths: (1) the **web viewer** (`serve`) — a **SCORE checkbox in the types panel**
+(grouped with the record-type checkboxes; `POST /api/live/region` → `LiveSession.set_region_stream`)
+starts the stream, independent of the STRIP box; the block renders live in the strip pane at its
+frame position like the sensing/strike strips (`REGION` added to the JS `STRIP_KIND_REGISTRY`), and
+the existing **Record** button captures the REGION strips into the `.bin` like any other record
+(the mirror path has no type filter, so zero changes there); (2) the headless **`score-capture`** verb
+that streams straight to `scores/score-NNNN.png` (`--count`/Ctrl-C, `--rect`). Offline,
+**`export-region`** pulls REGION strips out of a recorded capture into `score-NNNN.png`
+(`save_region_strips`), and the offline viewer already renders them (`kind_name`="region"). 153
+tests pass. See gameplay journal for the downstream template-enrichment plan.
+
 ### 2026-07-03 — Journal archival + cross-subproject doc-vs-code audit
 
 Two housekeeping efforts:

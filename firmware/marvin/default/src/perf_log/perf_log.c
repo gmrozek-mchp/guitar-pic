@@ -126,6 +126,11 @@ static inline bool type_enabled(uint8_t type)
  * the viewer strips, capture buffer untouched. */
 static volatile uint32_t s_overlay_flags = PERF_OVERLAY_STRIP;
 
+/* Host-selected sub-region streamed as one REGION strip per frame. Read
+ * lock-free by the CV producer; set by PERF_CMD_REGION_STREAM. Default off. */
+static volatile bool     s_region_on;
+static volatile uint16_t s_region_x, s_region_y, s_region_w, s_region_h;
+
 /* ─── Header fill ────────────────────────────────────────────────────────── */
 
 static inline void hdr_fill(perf_hdr_t *h, uint8_t type, uint8_t flags,
@@ -626,17 +631,20 @@ void PerfLog_EmitTaskRuntime(perf_task_id_t id,
 }
 
 /* Claim a free strip pool slot and fill its header. Returns the slot pointer
- * (writing its index to *out_idx) or NULL when STRIP is masked off, the args
- * are invalid, or the pool is empty (drop counted). The caller fills r->bgr
- * then calls strip_slot_commit. No struct memcpy in the queue critical
+ * (writing its index to *out_idx) or NULL when the args are invalid, the pool
+ * is empty (drop counted), or — when honor_mask is set — STRIP is masked off.
+ * honor_mask=false is for the REGION stream, which has its own start/stop
+ * command as its gate (default off), so it toggles independently of the STRIP
+ * type mask that gates the fretboard SENSING/STRIKE strips. The caller fills
+ * r->bgr then calls strip_slot_commit. No struct memcpy in the queue critical
  * section — only a 1-byte index transfer. */
 static perf_rec_strip_t *strip_slot_claim(uint32_t frame_epoch, perf_strip_kind_t kind,
                                           uint16_t x, uint16_t y,
                                           uint16_t w, uint16_t h,
-                                          uint8_t *out_idx)
+                                          bool honor_mask, uint8_t *out_idx)
 {
     if (s_strip_q == NULL || s_strip_free_q == NULL) { return NULL; }
-    if (!type_enabled(PERF_REC_STRIP)) { return NULL; }
+    if (honor_mask && !type_enabled(PERF_REC_STRIP)) { return NULL; }
     if (w == 0u || h == 0u) { return NULL; }
     if ((uint32_t)w * (uint32_t)h * PERF_STRIP_BPP > PERF_STRIP_MAX_BYTES) { return NULL; }
 
@@ -675,16 +683,15 @@ static void strip_slot_commit(uint8_t slot_idx)
  * strided source frame directly into the slot, then enqueue the slot index.
  * Total pixel bytes (w*h*3) must fit the slot's bgr[] (PERF_STRIP_MAX_BYTES);
  * per-axis shape is unconstrained beyond that. Drop-on-pool-empty. */
-void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
-                                perf_strip_kind_t kind,
-                                const uint8_t *frame, uint32_t frame_stride,
-                                uint16_t x, uint16_t y,
-                                uint16_t w, uint16_t h)
+static void emit_strip_from_frame(uint32_t frame_epoch, perf_strip_kind_t kind,
+                                  const uint8_t *frame, uint32_t frame_stride,
+                                  uint16_t x, uint16_t y, uint16_t w, uint16_t h,
+                                  bool honor_mask)
 {
     if (frame == NULL) { return; }
 
     uint8_t slot_idx;
-    perf_rec_strip_t *r = strip_slot_claim(frame_epoch, kind, x, y, w, h, &slot_idx);
+    perf_rec_strip_t *r = strip_slot_claim(frame_epoch, kind, x, y, w, h, honor_mask, &slot_idx);
     if (r == NULL) { return; }
 
     const uint32_t row_bytes = (uint32_t)w * PERF_STRIP_BPP;
@@ -700,6 +707,15 @@ void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
     strip_slot_commit(slot_idx);
 }
 
+void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
+                                perf_strip_kind_t kind,
+                                const uint8_t *frame, uint32_t frame_stride,
+                                uint16_t x, uint16_t y,
+                                uint16_t w, uint16_t h)
+{
+    emit_strip_from_frame(frame_epoch, kind, frame, frame_stride, x, y, w, h, true);
+}
+
 void PerfLog_EmitStripPacked(uint32_t frame_epoch,
                              perf_strip_kind_t kind,
                              uint16_t x, uint16_t y,
@@ -709,7 +725,7 @@ void PerfLog_EmitStripPacked(uint32_t frame_epoch,
     if (pixels == NULL) { return; }
 
     uint8_t slot_idx;
-    perf_rec_strip_t *r = strip_slot_claim(frame_epoch, kind, x, y, w, h, &slot_idx);
+    perf_rec_strip_t *r = strip_slot_claim(frame_epoch, kind, x, y, w, h, true, &slot_idx);
     if (r == NULL) { return; }
 
     memcpy(r->bgr, pixels, (uint32_t)w * (uint32_t)h * PERF_STRIP_BPP);
@@ -774,4 +790,38 @@ void PerfLog_SetOverlayFlags(uint32_t flags)
 uint32_t PerfLog_GetOverlayFlags(void)
 {
     return s_overlay_flags;
+}
+
+/* ─── Region stream ──────────────────────────────────────────────────────── */
+
+void PerfLog_SetRegionStream(bool enable, uint16_t x, uint16_t y,
+                             uint16_t w, uint16_t h)
+{
+    if (enable)
+    {
+        s_region_x = x;
+        s_region_y = y;
+        s_region_w = w;
+        s_region_h = h;
+    }
+    s_region_on = enable;
+    LOG_INFO("PerfLog: region=%s (%u,%u,%u,%u)\r\n", enable ? "on" : "off",
+             (unsigned)x, (unsigned)y, (unsigned)w, (unsigned)h);
+}
+
+void PerfLog_EmitRegionIfEnabled(uint32_t frame_epoch, const uint8_t *frame,
+                                 uint32_t frame_stride,
+                                 uint16_t frame_w, uint16_t frame_h)
+{
+    if (!s_region_on || frame == NULL) { return; }
+    uint16_t x = s_region_x, y = s_region_y, w = s_region_w, h = s_region_h;
+    /* Ignore an out-of-bounds rect (strip_slot_claim only caps w*h*BPP, not
+     * the source extent, so bounds must be checked before the row-copy). */
+    if (w == 0u || h == 0u) { return; }
+    if ((uint32_t)x + w > frame_w || (uint32_t)y + h > frame_h) { return; }
+    /* honor_mask=false: the region command is the gate, so the scoreboard
+     * stream is independent of the STRIP type mask (which gates the fretboard
+     * SENSING/STRIKE strips). */
+    emit_strip_from_frame(frame_epoch, PERF_STRIP_REGION, frame, frame_stride,
+                          x, y, w, h, false);
 }

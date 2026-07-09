@@ -219,6 +219,7 @@ typedef enum
     PERF_STRIP_SENSING  = 0,
     PERF_STRIP_STRIKE   = 1,
     PERF_STRIP_SNAPSHOT = 2,
+    PERF_STRIP_REGION   = 3,   /* host-selected sub-region, streamed per frame */
 } perf_strip_kind_t;
 
 /* Strip flags byte (perf_rec_strip_t.flags). SNAPSHOT producers set LAST on
@@ -389,6 +390,7 @@ typedef enum
     PERF_CMD_SET_TYPE_MASK = 0x01u,
     PERF_CMD_SNAPSHOT      = 0x02u,
     PERF_CMD_SET_OVERLAY   = 0x03u,
+    PERF_CMD_REGION_STREAM = 0x04u,
 } perf_cmd_t;
 
 /* Overlay sinks for the per-fret target rings, gated independently via
@@ -428,5 +430,20 @@ typedef struct __attribute__((packed))
     perf_cmd_hdr_t hdr;
     uint32_t       flags;
 } perf_cmd_set_overlay_t;
+
+/* PERF_CMD_REGION_STREAM — start/stop continuously streaming a fixed sub-region
+ * of each video frame back as one PERF_REC_STRIP (kind REGION) per frame via the
+ * pooled strip path (drop-on-full). `enable`=1 starts with the given rect
+ * (source-frame pixels); `enable`=0 stops (rect ignored). This command is the
+ * gate, so REGION strips are emitted independent of the STRIP type mask (which
+ * gates the fretboard SENSING/STRIKE strips). The rect is host-selected so it
+ * can be repointed without a firmware rebuild. */
+typedef struct __attribute__((packed))
+{
+    perf_cmd_hdr_t hdr;
+    uint8_t        enable;
+    uint8_t        reserved;
+    uint16_t       x, y, w, h;
+} perf_cmd_region_stream_t;
 
 #endif /* PERF_LOG_RECORDS_H */

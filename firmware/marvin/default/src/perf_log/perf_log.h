@@ -155,4 +155,17 @@ uint32_t PerfLog_GetEnabledMask(void);
 void     PerfLog_SetOverlayFlags(uint32_t flags);
 uint32_t PerfLog_GetOverlayFlags(void);
 
+/* ─── Region stream (host-controlled) ─────────────────────────────────────────
+ *
+ * Stream a fixed sub-region of each video frame back as one PERF_REC_STRIP
+ * (kind REGION) per frame. Started/stopped via PERF_CMD_REGION_STREAM; the CV
+ * producer calls PerfLog_EmitRegionIfEnabled once per frame, which reads the
+ * flag/rect lock-free and emits (drop-on-pool-empty, STRIP-mask gated) only
+ * when enabled and the rect is within the frame. Default off. */
+void PerfLog_SetRegionStream(bool enable, uint16_t x, uint16_t y,
+                             uint16_t w, uint16_t h);
+void PerfLog_EmitRegionIfEnabled(uint32_t frame_epoch, const uint8_t *frame,
+                                 uint32_t frame_stride,
+                                 uint16_t frame_w, uint16_t frame_h);
+
 #endif /* PERF_LOG_H */

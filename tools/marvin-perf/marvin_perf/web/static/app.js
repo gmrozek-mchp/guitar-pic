@@ -7,7 +7,12 @@
 const STRIP_KIND_REGISTRY = {
   0: { id: "sensing", label: "Sensing line", color: "#6cb4ff", cadence: "60 Hz" },
   1: { id: "strike",  label: "Strike line",  color: "#4ade80", cadence: "60 Hz" },
+  3: { id: "score",   label: "Score region", color: "#f0abfc", cadence: "60 Hz" },
 };
+
+// REGION-kind strips are gated by their own command, independent of the STRIP
+// type mask (which gates the fretboard SENSING/STRIKE strips).
+const SCORE_STRIP_KIND = 3;
 
 // Display zoom for the shared frame-relative pane. Same factor for all kinds
 // so spatial offsets between strips match the source frame.
@@ -92,6 +97,7 @@ const state = {
   pendingMaskHandle: null,
   liveMask: MASK_ALL,
   overlayEnabled: true,   // SENSING-strip target rings (device boots on)
+  regionEnabled: false,   // score-block REGION stream (device boots off)
   recording: null,        // null | { capture_dir, started_at }
 };
 
@@ -952,6 +958,7 @@ async function liveStart() {
   $("#record-start").disabled = false;
   $("#snapshot-btn").disabled = false;
   $("#overlay-toggle").disabled = false;
+  setRegionCbDisabled(false);
   setBadge("badge-live", "yellow", "live …");
   suggestRecordOutDir();
   suggestSnapshotOut();
@@ -979,6 +986,8 @@ async function liveStop() {
   $("#record-stop").disabled = true;
   $("#snapshot-btn").disabled = true;
   $("#overlay-toggle").disabled = true;
+  setRegionChecked(false);  // device stops streaming on disconnect
+  setRegionCbDisabled(true);
   setRecordingPill(null);
   setBadge("badge-live", null, "live ●");
   state.fsm = "idle";
@@ -1042,8 +1051,10 @@ function handleWSMessage(msg) {
       // Re-attach mid-recording: reflect the server's view in the UI.
       applyRecordingState(msg.session.recording || null);
       if (typeof msg.session.overlay === "boolean") setOverlayButton(msg.session.overlay);
+      if (msg.session.region) setRegionChecked(!!msg.session.region.enabled);
       $("#snapshot-btn").disabled = state.fsm !== "live";
       $("#overlay-toggle").disabled = state.fsm !== "live";
+      setRegionCbDisabled(state.fsm !== "live");
       suggestSnapshotOut();
       break;
     case "session_replay":
@@ -1077,6 +1088,9 @@ function handleWSMessage(msg) {
       break;
     case "overlay":
       setOverlayButton(!!msg.enabled);
+      break;
+    case "region":
+      setRegionChecked(!!msg.enabled);
       break;
     case "error":
       setBanner(`device error: ${msg.code}: ${msg.msg}`, "error");
@@ -1165,6 +1179,38 @@ async function toggleOverlay() {
   }
 }
 
+function setRegionChecked(enabled) {
+  state.regionEnabled = enabled;
+  const cb = $("#region-cb");
+  if (cb) cb.checked = enabled;
+}
+
+function setRegionCbDisabled(disabled) {
+  const cb = $("#region-cb");
+  if (cb) cb.disabled = disabled;
+}
+
+async function setRegionEnabled(enabled) {
+  // Independent of the STRIP (fretboard) type mask — the device gates the
+  // region stream on this command alone.
+  const cb = $("#region-cb");
+  if (cb) cb.disabled = true;
+  try {
+    const body = await api("/api/live/region", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ enabled }),
+    });
+    setRegionChecked(!!body.enabled);  // WS 'region' echo also lands
+    if (enabled) setBanner("Score region streaming — hit Record to capture it", "info");
+  } catch (e) {
+    setBanner(`score-region toggle failed: ${e.message}`, "error");
+    setRegionChecked(!enabled);  // revert the checkbox on failure
+  } finally {
+    if (cb) cb.disabled = state.fsm !== "live";
+  }
+}
+
 function suggestSnapshotOut() {
   const inp = $("#snapshot-out");
   if (!inp || inp.value.trim()) return;
@@ -1187,8 +1233,11 @@ function appendLiveRecord(rec) {
   // the WS. Drop them here so the UI reacts immediately. Session is always
   // accepted so timer_freq_hz / replay still binds on reconnect.
   if (rec.type !== "Session") {
+    // REGION strips are command-gated (independent of the STRIP type mask),
+    // so don't drop them when the fretboard STRIP box is unticked.
+    const isRegion = rec.type === "Strip" && rec.kind === SCORE_STRIP_KIND;
     const bit = TYPE_NAME_TO_BIT[rec.type];
-    if (bit !== undefined && (state.liveMask & (1 << bit)) === 0) return;
+    if (!isRegion && bit !== undefined && (state.liveMask & (1 << bit)) === 0) return;
   }
   if (!state.records.length) {
     state.ts0 = rec.ts_counter;
@@ -1291,10 +1340,29 @@ function buildTypesPanel() {
     lbl.appendChild(span);
     wrap.appendChild(lbl);
   }
+
+  // Score-region capture: not a record-type mask bit but a device command
+  // (start/stop the REGION strip stream). Grouped with the type checkboxes for
+  // consistency; the strip renders in the pane like sensing/strike, and Record
+  // captures it into the .bin like any other record.
+  const rlbl = document.createElement("label");
+  rlbl.className = "type-cb";
+  rlbl.title = "Stream the scoring block as a REGION strip (records into the .bin like any other record)";
+  const rcb = document.createElement("input");
+  rcb.type = "checkbox";
+  rcb.id = "region-cb";
+  rcb.checked = state.regionEnabled;
+  rcb.disabled = state.fsm !== "live";
+  rcb.addEventListener("change", () => setRegionEnabled(rcb.checked));
+  const rspan = document.createElement("span");
+  rspan.textContent = "SCORE";
+  rlbl.appendChild(rcb);
+  rlbl.appendChild(rspan);
+  wrap.appendChild(rlbl);
 }
 
 function applyMaskToCheckboxes(mask) {
-  $$("#types-checkboxes input").forEach((cb) => {
+  $$("#types-checkboxes input[data-bit]").forEach((cb) => {
     const bit = Number(cb.dataset.bit);
     cb.checked = (mask & (1 << bit)) !== 0;
   });
@@ -1306,7 +1374,7 @@ function applyMaskFromCheckboxes({ immediate } = {}) {
     state.pendingMaskHandle = null;
   }
   let mask = 0;
-  $$("#types-checkboxes input").forEach((cb) => {
+  $$("#types-checkboxes input[data-bit]").forEach((cb) => {
     const bit = Number(cb.dataset.bit);
     if (cb.checked) mask |= (1 << bit);
   });
@@ -1342,7 +1410,7 @@ function applyMaskFromCheckboxes({ immediate } = {}) {
 }
 
 function applyMaskPreset(mask) {
-  $$("#types-checkboxes input").forEach((cb) => {
+  $$("#types-checkboxes input[data-bit]").forEach((cb) => {
     if (cb.disabled) return;
     const bit = Number(cb.dataset.bit);
     cb.checked = (mask & (1 << bit)) !== 0;
@@ -1508,7 +1576,9 @@ async function probeLiveSession() {
       $("#record-start").disabled = !!s.recording;
       $("#snapshot-btn").disabled = false;
       $("#overlay-toggle").disabled = false;
+      setRegionCbDisabled(false);
       if (typeof s.overlay === "boolean") setOverlayButton(s.overlay);
+      if (s.region) setRegionChecked(!!s.region.enabled);
       state.fsm = "live";
       state.liveMask = parseInt(s.mask, 16) >>> 0;
       $("#live-mask").textContent = s.mask;
