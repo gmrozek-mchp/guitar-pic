@@ -29,6 +29,7 @@ typedef struct
     int32_t  margin;        /* second-best − best (confidence) */
     int16_t  selection;     /* static-list cell, song-template index, or -1 (none) */
     int32_t  score;         /* in-song score read (training font), or -1 (not in_song) */
+    uint8_t  multiplier;    /* in-song score multiplier 1..4, or 0 (not in_song) */
 } game_state_t;
 
 /* Brings up the game-state bus queue and the observer task. The observer

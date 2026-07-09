@@ -43,6 +43,10 @@ from .fingerprint import CANONICAL_H, CANONICAL_W, _to_canonical
 from .metadata import (
     SCORE_BLOCK_ROI,
     SCORE_DIGIT_BAND,
+    SCORE_MULT_BRIGHT_MIN,
+    SCORE_MULT_MIN_COUNT,
+    SCORE_MULT_ROI,
+    SCORE_MULT_SAT_MIN,
     score_from_filename,
 )
 from .songselect import _LUMA_W
@@ -343,3 +347,31 @@ def read_score(
         dist=max(dists) if dists else 0.0,
         margin=min(margins) if margins else 0.0,
     )
+
+
+def read_multiplier(image: np.ndarray) -> int:
+    """Classify the score multiplier (1..4) by the medallion glyph's colour.
+
+    2x = gold, 3x = green, 4x = purple; 1x shows no digit (dim portrait). Count
+    bright, saturated pixels of each hue in the small `SCORE_MULT_ROI` patch and
+    take the argmax — 1x if none clears `SCORE_MULT_MIN_COUNT`. Colour-only (no
+    shape/segmentation), so a small patch suffices; works on a block crop or a
+    full frame. Mode-independent.
+    """
+    img = _ensure_full_frame(image)
+    x0, y0, x1, y1 = SCORE_MULT_ROI
+    s = img[y0:y1, x0:x1].reshape(-1, 3).astype(np.int32)  # BGR
+    b, g, r = s[:, 0], s[:, 1], s[:, 2]
+    mx = s.max(1)
+    bright = (mx > SCORE_MULT_BRIGHT_MIN) & ((mx - s.min(1)) > SCORE_MULT_SAT_MIN)
+    purple = int((bright & (r > g + 25) & (b > g + 25)).sum())
+    green = int((bright & (g > r + 20) & (g > b + 20)).sum())
+    yellow = int((bright & (r > b + 40) & (g > b + 40)).sum())
+    best = max(purple, green, yellow)
+    if best < SCORE_MULT_MIN_COUNT:
+        return 1
+    if purple >= green and purple >= yellow:
+        return 4
+    if green >= yellow:
+        return 3
+    return 2

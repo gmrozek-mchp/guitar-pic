@@ -26,4 +26,9 @@ typedef struct
 int gp_read_score(const uint8_t *frame, int width, int height,
                   uint8_t mode, gp_score_t *out);
 
+/* Classify the score multiplier (1..4) from the medallion glyph's colour
+ * (2x gold / 3x green / 4x purple; 1x = no digit). Colour-count over a small
+ * fixed ROI — no segmentation, mode-independent. Returns 1 on a bad frame size. */
+int gp_read_multiplier(const uint8_t *frame, int width, int height);
+
 #endif

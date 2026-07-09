@@ -105,6 +105,7 @@ static void dashboard_task(void *param)
         if (have[DASH_EVT_STATUS])    { ScreenDashboard_ApplyStatus(latest[DASH_EVT_STATUS].u.text); }
         if (have[DASH_EVT_PLAYTIME])  { ScreenDashboard_ApplyPlaytime(latest[DASH_EVT_PLAYTIME].u.play_ms); }
         if (have[DASH_EVT_SCORE])     { ScreenDashboard_ApplyScore(latest[DASH_EVT_SCORE].u.score); }
+        if (have[DASH_EVT_MULTIPLIER]) { ScreenDashboard_ApplyMultiplier(latest[DASH_EVT_MULTIPLIER].u.mult); }
         if (have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(latest[DASH_EVT_FRET].u.fret_mask); }
         UiManager_RenderUnlock();
     }

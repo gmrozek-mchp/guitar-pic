@@ -29,6 +29,10 @@ from .metadata import (
     HORIZONTAL,
     MENU_LAYOUTS,
     SCORE_DIGIT_BAND,
+    SCORE_MULT_BRIGHT_MIN,
+    SCORE_MULT_MIN_COUNT,
+    SCORE_MULT_ROI,
+    SCORE_MULT_SAT_MIN,
     SETLIST_BG_ROI,
     SONG_FIRST_ROI,
     SONG_SLOT_ROI,
@@ -224,6 +228,15 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
         b = SCORE_DIGIT_BAND[m]
         w("  {{%d,%d,%d,%d}, gp_score_%s_tmpl}," % (b[0], b[1], b[2], b[3], _c_ident(m)))
     w("};")
+    w("")
+
+    # ── score multiplier (colour-count classifier) ─────────────────────────
+    w("/* ── score multiplier (colour of the medallion glyph: 2x gold/3x green/4x purple) ── */")
+    w("#define GP_MULT_ROI {%d,%d,%d,%d}" % SCORE_MULT_ROI)
+    w("#define GP_MULT_BRIGHT_MIN %d" % SCORE_MULT_BRIGHT_MIN)
+    w("#define GP_MULT_SAT_MIN %d" % SCORE_MULT_SAT_MIN)
+    w("#define GP_MULT_MIN_COUNT %d  /* fewer than this of the winning colour => 1x */"
+      % SCORE_MULT_MIN_COUNT)
     w("")
 
     w("#endif /* GAMEPLAY_METADATA_H */")

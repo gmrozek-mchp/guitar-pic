@@ -338,6 +338,27 @@ void ScreenDashboard_ApplyFret(uint8_t mask)
     }
 }
 
+/* CV-read score multiplier (1..4) → highlight the active ROBOT {1,2,3,4}X button,
+ * clearing the other three (same toggle/latch mechanism as ApplyFret). */
+void ScreenDashboard_ApplyMultiplier(uint8_t mult)
+{
+    if (mult < 1u || mult > 4u) { return; }
+    static uint8_t s_last_mult;
+    if (mult == s_last_mult) { return; }
+    s_last_mult = mult;
+
+    leButtonWidget *btns[4] = {
+        Marvin_BUTTON_DASHBOARD_ROBOT_1X, Marvin_BUTTON_DASHBOARD_ROBOT_2X,
+        Marvin_BUTTON_DASHBOARD_ROBOT_3X, Marvin_BUTTON_DASHBOARD_ROBOT_4X,
+    };
+    for (uint8_t i = 0; i < 4u; i++)
+    {
+        leButtonWidget *b = btns[i];
+        b->fn->setPressed(b, (i == (uint8_t)(mult - 1u)) ? LE_TRUE : LE_FALSE);
+        b->fn->invalidate(b);
+    }
+}
+
 /* Game-controller status → SONG card Status label. */
 void ScreenDashboard_ApplyStatus(const char *text)
 {

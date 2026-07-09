@@ -354,6 +354,20 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-09 — gameplay_engine: score multiplier reader + dashboard 1X-4X buttons (pending build)
+
+Added the in-song score **multiplier** (1x/2x/3x/4x) alongside the score. `gp_read_multiplier`
+(`game/gameplay_score.c`, pure C) classifies it by **colour** — the medallion glyph is 2x gold /
+3x green / 4x purple (1x = no digit) — counting bright saturated pixels of each hue in a small
+16×24 ROI (`GP_MULT_ROI`) and taking the argmax (floor → 1x). No segmentation/templates;
+mode-independent. `game_state_t.multiplier` read on `GP_SCREEN_in_song` (log `score N x<m>`). The
+game controller posts it (`DashboardFeed_PostMultiplier`, reset 1x at song start) and the dashboard
+feed consumer applies `DASH_EVT_MULTIPLIER` → `ScreenDashboard_ApplyMultiplier`, highlighting the
+active `Marvin_BUTTON_DASHBOARD_ROBOT_{1,2,3,4}X` button and clearing the rest (the ApplyFret latch
+pattern). Host cross-check confirms `gp_read_multiplier` == the prototype on all 54 corpus frames;
+validated on the 6549-frame capture (multiplier only climbs by 1 / resets, 1 anomalous transition).
+**Pending Greg's MPLAB build.** Detail in the gameplay journal (2026-07-09).
+
 ### 2026-07-09 — dashboard: live CV score → ROBOT score label (pending build)
 
 Wired the ported score reader's output to the dashboard `Marvin_LABEL_DASHBOARD_ROBOT_Score`

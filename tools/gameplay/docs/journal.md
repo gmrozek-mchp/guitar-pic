@@ -220,6 +220,26 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-09 — score multiplier reader (colour-count classifier) + dashboard buttons
+
+Added the in-song **multiplier** reader (1x/2x/3x/4x). The medallion glyph has a fixed colour per
+value (2x gold, 3x green, 4x purple; 1x = no digit / dim portrait), so it's read by **colour, not
+shape** (Greg): count bright, saturated purple/green/yellow pixels in a **small 16×24 patch** over
+the digit (`SCORE_MULT_ROI`, ~6× smaller than the glyph), argmax → 4/3/2, floor → 1x. Validated on
+the 6549-frame capture: sensible distribution (mostly 4x, 1/2/3 at starts/resets) and the value
+only climbs by 1 / resets to 1 (**1 anomalous transition in 6548**). Mode-independent (colours
+identical training/career) — one classifier, no per-mode data, no segmentation.
+
+Host `read_multiplier` (`score.py`) + `metadata` ROI/thresholds; `export_c` emits a tiny `GP_MULT_*`
+block; pure-C `gp_read_multiplier` (`gameplay_score.c`) with independent integer colour counts
+(matches the Python's non-exclusive masks). Cross-check (`test_firmware_classify` `mult` mode):
+`gp_read_multiplier` == `read_multiplier` on all 54 corpus frames. Engine: `game_state_t.multiplier`
+read on in_song (log `score N x<m>`). Dashboard: `game_controller` posts it (reset 1x at song
+start), the feed consumer applies `DASH_EVT_MULTIPLIER` → `ScreenDashboard_ApplyMultiplier` which
+highlights the active `Marvin_BUTTON_DASHBOARD_ROBOT_{1,2,3,4}X` (clears the others; the ApplyFret
+latch pattern). Full suite **61 passed**; `gameplay_score.c` clean. **Pending Greg's MPLAB build.**
+Streak counter (`DASH_EVT_STREAK` stub) + career-font score mode remain deferred.
+
 ### 2026-07-09 — score reader ported to marvin firmware (M9 Phase 3, code-complete pending build)
 
 Froze the proven proportional score reader into firmware, mirroring the classifier/selection/song

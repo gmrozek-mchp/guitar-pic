@@ -59,6 +59,8 @@ int main(int argc, char **argv) {
         gp_score_t s;
         gp_read_score(buf, w, h, (uint8_t)atoi(argv[5]), &s);
         printf("%d\n", (int)s.value);
+    } else if (strcmp(mode, "mult") == 0) {
+        printf("%d\n", gp_read_multiplier(buf, w, h));
     }
     return 0;
 }
@@ -173,3 +175,16 @@ def test_c_score_matches_python(score_corpus, driver, tmp_path):
         full = np.ascontiguousarray(_ensure_full_frame(s.image))
         c = int(_c_run(driver, full, tmp_path, "score", "0"))  # GP_SCORE_MODE_TRAINING
         assert c == py, f"{s.path.name}: C={c} Python={py} (true {score_from_filename(s.path.name)[1]})"
+
+
+def test_c_multiplier_matches_python(score_corpus, driver, tmp_path):
+    """gp_read_multiplier == score.py read_multiplier on all corpus frames (colour-count)."""
+    import numpy as np
+
+    from gameplay.score import _ensure_full_frame, read_multiplier
+
+    for s in score_corpus:
+        py = read_multiplier(s.image)
+        full = np.ascontiguousarray(_ensure_full_frame(s.image))
+        c = int(_c_run(driver, full, tmp_path, "mult"))
+        assert c == py, f"{s.path.name}: C={c} Python={py}"

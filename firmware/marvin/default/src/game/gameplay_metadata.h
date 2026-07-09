@@ -284,4 +284,10 @@ static const gp_score_mode_t gp_score_modes[GP_N_SCORE_MODES] = {
   {{122,316,204,332}, gp_score_training_tmpl},
 };
 
+/* ── score multiplier (colour of the medallion glyph: 2x gold/3x green/4x purple) ── */
+#define GP_MULT_ROI {164,367,180,391}
+#define GP_MULT_BRIGHT_MIN 110
+#define GP_MULT_SAT_MIN 40
+#define GP_MULT_MIN_COUNT 30  /* fewer than this of the winning colour => 1x */
+
 #endif /* GAMEPLAY_METADATA_H */

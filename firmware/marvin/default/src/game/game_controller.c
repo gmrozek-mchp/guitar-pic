@@ -313,6 +313,7 @@ static void play_until_done(void)
     TickType_t play_start = xTaskGetTickCount();
     DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar */
     DashboardFeed_PostScore(0u);       /* reset the dashboard score for the new song */
+    DashboardFeed_PostMultiplier(1u);  /* reset the dashboard multiplier to 1x */
 
     for (;;)
     {
@@ -330,6 +331,7 @@ static void play_until_done(void)
             if (gs.screen == GP_SCREEN_in_song)
             {
                 if (gs.score >= 0) { DashboardFeed_PostScore((uint32_t)gs.score); }
+                if (gs.multiplier >= 1u) { DashboardFeed_PostMultiplier(gs.multiplier); }
             }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {

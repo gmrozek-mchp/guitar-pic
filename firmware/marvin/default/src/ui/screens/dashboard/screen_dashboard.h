@@ -26,6 +26,7 @@ void ScreenDashboard_ApplyFret(uint8_t mask);
 void ScreenDashboard_ApplyStatus(const char *text);
 void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms);
 void ScreenDashboard_ApplyScore(uint32_t score);
+void ScreenDashboard_ApplyMultiplier(uint8_t mult);
 
 #ifdef __cplusplus
 }

@@ -182,6 +182,19 @@ SCORE_BLOCK_ROI = (114, 309, 210, 414)
 # medallion-interior regions that change). Canonical 720x480 space.
 SCORE_CHROME_BOX = (127, 311, 190, 397)
 
+# ─── score multiplier (colour-count classifier) ────────────────────────────────
+#
+# The multiplier glyph in the medallion has a fixed colour per value: 2x = gold,
+# 3x = green, 4x = purple/magenta; 1x shows no digit (the dim portrait). So it's
+# read by *colour*, not shape — count bright, saturated purple/green/yellow pixels
+# in a small patch over the digit and take the argmax (or 1x if none clears a
+# floor). A 16x24 patch is enough (we need only the hue), ~6x smaller than the
+# glyph. Mode-independent (colours identical in training/career). 720x480 space.
+SCORE_MULT_ROI = (164, 367, 180, 391)
+SCORE_MULT_BRIGHT_MIN = 110   # a pixel counts only if max(R,G,B) exceeds this
+SCORE_MULT_SAT_MIN = 40       # ...and (max-min) exceeds this (saturated)
+SCORE_MULT_MIN_COUNT = 30     # fewer than this of the winning colour => 1x
+
 
 def score_from_filename(filename: str) -> tuple[str, int] | None:
     """Parse a score corpus filename into (mode, value).

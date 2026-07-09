@@ -125,12 +125,15 @@ static void game_task(void *param)
         const char *sel_name = NULL, *sel_name2 = NULL;
         int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
 
-        /* In-song: read the open-ended score (training font). -1 elsewhere. */
+        /* In-song: read the open-ended score (training font) + multiplier. Sentinels
+         * (-1 / 0) elsewhere. */
         int32_t score = -1;
+        uint8_t multiplier = 0;
         if (screen == GP_SCREEN_in_song)
         {
             gp_score_t sc;
             if (gp_read_score(buf, w, h, GP_SCORE_MODE_TRAINING, &sc) == 0) { score = sc.value; }
+            multiplier = (uint8_t)gp_read_multiplier(buf, w, h);
         }
 
         game_state_t ev;
@@ -142,6 +145,7 @@ static void game_task(void *param)
         ev.margin       = margin;
         ev.selection    = sel;
         ev.score        = score;
+        ev.multiplier   = multiplier;
 
         /* Answer the requester first (clear pending before the send so a follow-up
          * Observe that wakes on the response can't have its new request cleared). */
@@ -165,9 +169,10 @@ static void game_task(void *param)
             {
                 LOG_INFO("GAME: %s / %s\r\n", screen_name(screen), sel_name);
             }
-            else if (screen == GP_SCREEN_in_song)  /* "in_song / score N" */
+            else if (screen == GP_SCREEN_in_song)  /* "in_song / score N x<mult>" */
             {
-                LOG_INFO("GAME: %s / score %ld\r\n", screen_name(screen), (long)score);
+                LOG_INFO("GAME: %s / score %ld x%u\r\n",
+                         screen_name(screen), (long)score, (unsigned)multiplier);
             }
             else
             {

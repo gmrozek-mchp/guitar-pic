@@ -178,3 +178,36 @@ int gp_read_score(const uint8_t *frame, int width, int height,
     out->margin = (ndigits > 0) ? min_margin : 0;
     return 0;
 }
+
+/* Multiplier: count bright, saturated purple/green/yellow pixels in the medallion
+ * ROI (independent tests, mirroring score.py read_multiplier), argmax → 4/3/2, or
+ * 1x if the winner is below the floor. Colour only — no shape/segmentation. */
+int gp_read_multiplier(const uint8_t *frame, int width, int height)
+{
+    if (width != GP_CANON_W || height != GP_CANON_H) { return 1; }
+    static const int roi[4] = GP_MULT_ROI;
+    int x0 = roi[0], y0 = roi[1], x1 = roi[2], y1 = roi[3];
+
+    int purple = 0, green = 0, yellow = 0;
+    for (int y = y0; y < y1; y++)
+    {
+        const uint8_t *p = frame + ((uint32_t)y * (uint32_t)width + (uint32_t)x0) * GP_BPP;
+        for (int x = x0; x < x1; x++, p += GP_BPP)
+        {
+            int B = p[0], G = p[1], R = p[2];
+            int mx = R > G ? R : G; if (B > mx) { mx = B; }
+            int mn = R < G ? R : G; if (B < mn) { mn = B; }
+            if (mx <= GP_MULT_BRIGHT_MIN || (mx - mn) <= GP_MULT_SAT_MIN) { continue; }
+            if (R > G + 25 && B > G + 25) { purple++; }
+            if (G > R + 20 && G > B + 20) { green++; }
+            if (R > B + 40 && G > B + 40) { yellow++; }
+        }
+    }
+    int best = purple;
+    if (green > best) { best = green; }
+    if (yellow > best) { best = yellow; }
+    if (best < GP_MULT_MIN_COUNT) { return 1; }
+    if (purple >= green && purple >= yellow) { return 4; }
+    if (green >= yellow) { return 3; }
+    return 2;
+}
