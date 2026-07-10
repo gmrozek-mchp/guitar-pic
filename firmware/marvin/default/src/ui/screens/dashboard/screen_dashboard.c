@@ -389,13 +389,13 @@ void ScreenDashboard_ApplyScore(uint32_t score)
 }
 
 /* CV-read GH3 note streak → the ROBOT card's streak label. 0 means the odometer
- * isn't shown yet (streak < ~25) or the run reset, so the label is left blank to
- * mirror the on-screen counter. */
+ * isn't shown yet (streak < ~25) or the run reset; shown as "0" (not blank) so the
+ * label repaints — setting an empty string does not clear the prior glyphs, which
+ * left a stale count on song start / after a miss. */
 void ScreenDashboard_ApplyStreak(uint16_t streak)
 {
     char tmp[8];
-    if (streak == 0u) { tmp[0] = '\0'; }
-    else { (void)snprintf(tmp, sizeof tmp, "%u", (unsigned)streak); }
+    (void)snprintf(tmp, sizeof tmp, "%u", (unsigned)streak);
     (void)lestring_set_utf8((leString *)&s_streak_str, tmp);
 }
 

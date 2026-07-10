@@ -222,6 +222,15 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-10 — streak dashboard label: show "0" at reset (fix stale value not clearing)
+
+The dashboard streak wasn't clearing at song start or after a miss — it kept showing the pre-reset
+count. `ScreenDashboard_ApplyStreak` set an **empty** string for streak 0, and `lestring_set_utf8("")`
+doesn't repaint/clear the previously-rendered glyphs (the score/status labels never hit this — they
+always render a non-empty string). Now it always renders the number, so 0 shows "0" and repaints. Both
+reset paths already posted 0 (song start: `run()` posts `PostStreak(0)`; miss: the tracker → 0 once the
+odometer isn't locked) — the label just wasn't clearing. Firmware-only, `screen_dashboard.c`.
+
 ### 2026-07-10 — streak corpus growth: fix units-9/0/6 detection (units-only exemplars mined from the capture)
 
 The units wheel (dark-on-light, rolling) has a fat distance tail, so a correct digit from an
@@ -327,7 +336,8 @@ edges) — removes all FP from the reader (the ARM926 has no FPU) *and* the roun
 bit-exact parity; deferred so the working version can be tested/committed first. `test_streak.py`:
 corpus reader sanity + synthetic tracker cases. Engine: `game_state_t.streak`, tracker advanced on
 in_song / reset when leaving gameplay (log adds `streak<s>`). Dashboard: feed applies `DASH_EVT_STREAK`
-→ `ScreenDashboard_ApplyStreak` → `Marvin_LABEL_DASHBOARD_ROBOT_Streak` (blank at 0). **Reset
+→ `ScreenDashboard_ApplyStreak` → `Marvin_LABEL_DASHBOARD_ROBOT_Streak` (shows "0" at reset — see
+2026-07-10 label-clear fix). **Reset
 behaviour (w/ Greg):** score/mult/streak clear the instant a run is *requested* (top of `run()`, not
 on reaching gameplay); a broken streak mid-song blanks immediately (odometer not locked → 0);
 **everything persists after the song ends** (next run's request is the only reset). `play_until_done`
