@@ -222,6 +222,28 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-10 — streak corpus growth: fix units-9/0/6 detection (units-only exemplars mined from the capture)
+
+The units wheel (dark-on-light, rolling) has a fat distance tail, so a correct digit from an
+under-sampled template can exceed the confidence gate and be dropped. Most visible on **units-9** (4
+exemplars → real 9s matched their own template at dist ~12300 > gate 9500, so nearly all confident 9s
+were discarded — "rarely detects 9"). Fixed by mining the 6549-frame capture (unused until now):
+select frames by units-cell `argmin==d` spread across the run, hand-verify via montage (argmin was
+reliable — every candidate was truly that digit), and add **30 units-only crops** (10 each of the
+three thinnest: 9/0/6).
+
+Labelled `streak__xx<u>__cap…` (`x` = a place not used for labelling) so they feed **only** the
+dark-on-light units bank. First attempt used full 3-digit labels, but these frames were picked for
+units clarity — their tens/hundreds were often mid-roll, and feeding those into the white-on-dark
+bank pulled a clean 7 and 1 toward 9 (2 in-sample cross-confusions). Units-only labels keep the
+white-on-dark bank the clean original 46; `streak_from_filename` already maps `x`→None so those places
+are skipped. (Reusable pattern for future wheel-specific growth.)
+
+Result: units-9 median distance **12300 → ~5700** (clears the gate); capture confident reads units-9
+**0 → 256**, units-0 435, units-6 335; in-sample **154/154**; tracker unchanged (0 big jumps, max 304,
+anchors exact); 74 tests. Corpus 46 → 76. Remaining thin units digits (2/3/4 at 3-4 exemplars) read
+fine and were left; grow them the same way if a gap shows up.
+
 ### 2026-07-10 — streak tracker: per-place debounce + plausibility clamp (fixes lock, 0↔8 flicker, carry blip)
 
 Reworked the streak tracker to fix a reported **lock** and two failures it surfaced. The prior
