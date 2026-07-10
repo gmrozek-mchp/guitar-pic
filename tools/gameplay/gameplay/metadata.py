@@ -244,7 +244,8 @@ STREAK_CELL_U = (194, 392, 202, 407)   # units    — dark-on-light (highlighted
 
 STREAK_GLYPH_ROWS = 16       # canonical glyph grid (each cell's ink bbox resized to this)
 STREAK_GLYPH_COLS = 10
-STREAK_INK_FRAC = 0.5        # relative ink threshold within a cell (gain/offset robust)
+STREAK_INK_NUM = 1           # relative ink threshold within a cell = num/den of the
+STREAK_INK_DEN = 2           # min..max luma range (1/2 = midpoint; gain/offset robust)
 STREAK_NOTE_MAX_SAD = 2000   # note-icon coverage L1 below this => odometer locked/settled (present)
 STREAK_UNK_DIST = 9500       # per-cell best L1 above this => digit unreadable (rolling)
 STREAK_UNK_MARGIN = 1200     # runner-up gap below this => digit unreadable (ambiguous)

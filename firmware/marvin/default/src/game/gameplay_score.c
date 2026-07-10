@@ -1,7 +1,6 @@
 #include "game/gameplay_score.h"
 #include "game/gameplay_metadata.h"
 
-#include <math.h>
 #include <stddef.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -9,11 +8,13 @@
 #define GP_BPP             3
 #define GP_SCORE_MAX_RUNS  16   /* raw runs before filtering (>= any digit count) */
 
-/* Split [0, extent) into `n` spans; edge(i) = round(i*extent/n). Matches the
- * prototype's np.linspace bin edges and gameplay_select.c's gp_edge. */
+/* Split [0, extent) into `n` spans; edge(i) = round(i*extent/n), half-up, in pure
+ * integer (matches score.py _edge). The whole coverage pipeline is integer so it
+ * reproduces the host prototype bit-for-bit — float would differ by rounding mode
+ * and float32/64, and this core also runs on the FPU-less ARM926. */
 static int gp_edge(int i, int extent, int n)
 {
-    return (int)lround((double)i * (double)extent / (double)n);
+    return (2 * i * extent + n) / (2 * n);
 }
 
 /* Digit-band scratch (one mode's band), row-major. */
@@ -22,8 +23,9 @@ static uint16_t s_col_ink[GP_SCORE_BAND_MAX_W];                   /* ink-pixel c
 static uint8_t  s_glyph[GP_SCORE_LEN];                            /* one digit's coverage mask (0-255) */
 static uint16_t s_runs[GP_SCORE_MAX_RUNS][2];                     /* [x0, x1] inclusive column runs */
 
-/* Fill s_ink (0/1) over the band rect: luma = (B*29+G*150+R*77)/256, ink where
- * luma > min + INK_FRAC*(max-min) (relative → gain/offset robust). bw/bh out. */
+/* Fill s_ink (0/1) over the band rect: integer luma = B*29+G*150+R*77 (no /256 — it
+ * cancels in the relative threshold), ink where DEN*(luma-lo) > NUM*(hi-lo) (i.e.
+ * luma > lo + NUM/DEN*(hi-lo)). bw/bh out. */
 static void band_ink(const uint8_t *frame, int w, int h,
                      const uint16_t band[4], int *bw, int *bh)
 {
@@ -32,27 +34,30 @@ static void band_ink(const uint8_t *frame, int w, int h,
     *bw = W;
     *bh = H;
 
-    float lo = 1e30f, hi = -1e30f;
-    static float lum[GP_SCORE_BAND_MAX_H * GP_SCORE_BAND_MAX_W];
+    static int32_t lum[GP_SCORE_BAND_MAX_H * GP_SCORE_BAND_MAX_W];
+    int32_t lo = INT32_MAX, hi = INT32_MIN;
     for (int r = 0; r < H; r++)
     {
         int fy = y0 + r;
         for (int c = 0; c < W; c++)
         {
             int fx = x0 + c;
-            float v = 0.0f;
+            int32_t v = 0;
             if (fx >= 0 && fx < w && fy >= 0 && fy < h)
             {
                 const uint8_t *p = frame + ((uint32_t)fy * (uint32_t)w + (uint32_t)fx) * GP_BPP;
-                v = (float)((double)p[0] * 29.0 + (double)p[1] * 150.0 + (double)p[2] * 77.0) / 256.0f;
+                v = (int32_t)p[0] * 29 + (int32_t)p[1] * 150 + (int32_t)p[2] * 77;
             }
             lum[r * W + c] = v;
             if (v < lo) { lo = v; }
             if (v > hi) { hi = v; }
         }
     }
-    float thr = lo + GP_SCORE_INK_FRAC * (hi - lo);
-    for (int i = 0; i < W * H; i++) { s_ink[i] = (lum[i] > thr) ? 1u : 0u; }
+    int32_t rhs = (int32_t)GP_SCORE_INK_NUM * (hi - lo);
+    for (int i = 0; i < W * H; i++)
+    {
+        s_ink[i] = ((int32_t)GP_SCORE_INK_DEN * (lum[i] - lo) > rhs) ? 1u : 0u;
+    }
 }
 
 /* Per-cell ink coverage (0-255) of one digit run [x0,x1] (inclusive), cropped to
@@ -76,11 +81,13 @@ static void glyph_cov(int bw, int bh, int x0, int x1)
         int ya = gp_edge(gr, rh, GP_SCORE_GLYPH_ROWS);
         int yb = gp_edge(gr + 1, rh, GP_SCORE_GLYPH_ROWS);
         if (yb <= ya) { yb = ya + 1; }
+        if (yb > rh) { yb = rh; }   /* clamp past the bbox → empty cell (matches numpy slice) */
         for (int gc = 0; gc < GP_SCORE_GLYPH_COLS; gc++)
         {
             int xa = gp_edge(gc, rw, GP_SCORE_GLYPH_COLS);
             int xb = gp_edge(gc + 1, rw, GP_SCORE_GLYPH_COLS);
             if (xb <= xa) { xb = xa + 1; }
+            if (xb > rw) { xb = rw; }
             uint32_t sum = 0u, n = 0u;
             for (int r = ry0 + ya; r < ry0 + yb; r++)
                 for (int c = x0 + xa; c < x0 + xb; c++)
@@ -228,31 +235,35 @@ static void streak_cell_cov_roi(const uint8_t *frame, int w, int h,
     int x0 = roi[0], y0 = roi[1], x1 = roi[2], y1 = roi[3];
     int W = x1 - x0, H = y1 - y0;
 
-    static float lum[GP_STREAK_CELL_MAX_H * GP_STREAK_CELL_MAX_W];
-    float lo = 1e30f, hi = -1e30f;
+    static int32_t lum[GP_STREAK_CELL_MAX_H * GP_STREAK_CELL_MAX_W];
+    int32_t lo = INT32_MAX, hi = INT32_MIN;
     for (int r = 0; r < H; r++)
     {
         int fy = y0 + r;
         for (int c = 0; c < W; c++)
         {
             int fx = x0 + c;
-            float v = 0.0f;
+            int32_t v = 0;
             if (fx >= 0 && fx < w && fy >= 0 && fy < h)
             {
                 const uint8_t *p = frame + ((uint32_t)fy * (uint32_t)w + (uint32_t)fx) * GP_BPP;
-                v = (float)((double)p[0] * 29.0 + (double)p[1] * 150.0 + (double)p[2] * 77.0) / 256.0f;
+                v = (int32_t)p[0] * 29 + (int32_t)p[1] * 150 + (int32_t)p[2] * 77;
             }
             lum[r * W + c] = v;
             if (v < lo) { lo = v; }
             if (v > hi) { hi = v; }
         }
     }
-    float thr = is_light ? (lo + (1.0f - GP_STREAK_INK_FRAC) * (hi - lo))
-                         : (lo + GP_STREAK_INK_FRAC * (hi - lo));
+    /* Bright ink (dark wheel): DEN*(luma-lo) > NUM*(hi-lo). Dark ink (light units
+     * wheel): luma < lo + (1-NUM/DEN)*(hi-lo)  =>  DEN*(luma-lo) < (DEN-NUM)*(hi-lo). */
+    int32_t range = hi - lo;
+    int32_t bright_rhs = (int32_t)GP_STREAK_INK_NUM * range;
+    int32_t dark_rhs = (int32_t)(GP_STREAK_INK_DEN - GP_STREAK_INK_NUM) * range;
     for (int i = 0; i < W * H; i++)
     {
-        s_scell_ink[i] = is_light ? (lum[i] < thr ? 1u : 0u)
-                                  : (lum[i] > thr ? 1u : 0u);
+        int32_t lhs = (int32_t)GP_STREAK_INK_DEN * (lum[i] - lo);
+        s_scell_ink[i] = is_light ? (lhs < dark_rhs ? 1u : 0u)
+                                  : (lhs > bright_rhs ? 1u : 0u);
     }
 
     /* Ink bounding box (rows ry0..ry1, cols cx0..cx1). */
@@ -278,11 +289,13 @@ static void streak_cell_cov_roi(const uint8_t *frame, int w, int h,
         int ya = gp_edge(gr, rh, GP_STREAK_GLYPH_ROWS);
         int yb = gp_edge(gr + 1, rh, GP_STREAK_GLYPH_ROWS);
         if (yb <= ya) { yb = ya + 1; }
+        if (yb > rh) { yb = rh; }   /* clamp past the bbox → empty cell (matches numpy slice) */
         for (int gc = 0; gc < GP_STREAK_GLYPH_COLS; gc++)
         {
             int xa = gp_edge(gc, rw, GP_STREAK_GLYPH_COLS);
             int xb = gp_edge(gc + 1, rw, GP_STREAK_GLYPH_COLS);
             if (xb <= xa) { xb = xa + 1; }
+            if (xb > rw) { xb = rw; }
             uint32_t sum = 0u, n = 0u;
             for (int r = ry0 + ya; r < ry0 + yb; r++)
                 for (int c = cx0 + xa; c < cx0 + xb; c++)

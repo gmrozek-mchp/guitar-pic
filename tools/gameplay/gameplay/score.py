@@ -53,7 +53,8 @@ from .metadata import (
     STREAK_GLYPH_COLS,
     STREAK_GLYPH_ROWS,
     STREAK_DEBOUNCE,
-    STREAK_INK_FRAC,
+    STREAK_INK_NUM,
+    STREAK_INK_DEN,
     STREAK_MAX_STEP,
     STREAK_NOTE_CELL,
     STREAK_NOTE_MAX_SAD,
@@ -90,10 +91,11 @@ def _ensure_full_frame(image: np.ndarray) -> np.ndarray:
 class ScoreConfig:
     glyph_rows: int = 14   # canonical glyph grid (rows), each segmented digit resized to this
     glyph_cols: int = 10   # canonical glyph grid (cols)
-    # Segmentation: relative ink threshold (fraction of the band's min..max luma
-    # range — gain/offset robust since the digits are the brightest ink), and the
-    # run/gap filters that split the ink profile into digit blobs.
-    ink_frac: float = 0.6
+    # Segmentation: relative ink threshold as an integer fraction num/den of the
+    # band's min..max luma range (gain/offset robust; 3/5 = 0.6), and the run/gap
+    # filters that split the ink profile into digit blobs.
+    ink_num: int = 3
+    ink_den: int = 5
     min_gap: int = 1       # empty columns (>this) that separate two digits
     min_width: int = 1     # drop runs narrower than this (specks)
     min_ink: int = 4       # drop runs with fewer than this many ink pixels
@@ -139,20 +141,62 @@ class ScoreResult:
     margin: float            # weakest (min) per-digit runner-up gap
 
 
+# ─── integer coverage core (shared by the score + streak readers) ───────────────
+#
+# All coverage math is integer, so the firmware C reproduces it bit-for-bit (float
+# would differ by rounding mode + float32/64 between host and device). Luma keeps
+# the raw B*29+G*150+R*77 sum (no /256 — the divide cancels in the relative ink
+# threshold). The threshold is a rational num/den. Grid edges and the per-cell
+# coverage use one integer round-half-up rule mirrored in gameplay_score.c.
+
+_LUMA_WI = np.array([29, 150, 77], dtype=np.int64)  # BGR weights; luma has no /256
+
+
+def _luma_i(patch: np.ndarray) -> np.ndarray:
+    return patch.astype(np.int64) @ _LUMA_WI
+
+
+def _edge(i: int, extent: int, n: int) -> int:
+    """round(i*extent/n) half-up, integer (matches gameplay_score.c gp_edge)."""
+    return (2 * i * extent + n) // (2 * n)
+
+
+def _cov_grid(m: np.ndarray, rows: int, cols: int) -> np.ndarray:
+    """Resize a cropped bool ink mask to a rows×cols uint8 coverage grid (0-255).
+
+    Each cell = round(ink_fraction * 255) via `(count*255 + npx//2)//npx` — the
+    same integer form gameplay_score.c uses.
+    """
+    if m.size == 0:
+        return np.zeros(rows * cols, dtype=np.uint8)
+    rh, rw = m.shape
+    mi = m.astype(np.int64)
+    g = np.empty(rows * cols, dtype=np.uint8)
+    for r in range(rows):
+        ya = _edge(r, rh, rows)
+        yb = min(rh, max(ya + 1, _edge(r + 1, rh, rows)))  # clamp past the bbox → empty
+        for c in range(cols):
+            xa = _edge(c, rw, cols)
+            xb = min(rw, max(xa + 1, _edge(c + 1, rw, cols)))
+            blk = mi[ya:yb, xa:xb]
+            npx = blk.size
+            g[r * cols + c] = ((int(blk.sum()) * 255 + npx // 2) // npx) if npx else 0
+    return g
+
+
 # ─── digit band luma + segmentation ─────────────────────────────────────────────
 
 
 def _band_luma(image: np.ndarray, mode: str, dx: int = 0, dy: int = 0) -> np.ndarray:
-    """Luma of the digit search band, shifted by the registration offset."""
+    """Integer luma of the digit search band, shifted by the registration offset."""
     img = _ensure_full_frame(image)
     x0, y0, x1, y1 = SCORE_DIGIT_BAND[mode]
-    patch = img[y0 + dy:y1 + dy, x0 + dx:x1 + dx].astype(np.float64)
-    return patch @ _LUMA_W / 256.0
+    return _luma_i(img[y0 + dy:y1 + dy, x0 + dx:x1 + dx])
 
 
 def _ink_mask(band: np.ndarray, cfg: ScoreConfig) -> np.ndarray:
-    thr = band.min() + cfg.ink_frac * (band.max() - band.min())
-    return band > thr
+    lo, hi = int(band.min()), int(band.max())
+    return cfg.ink_den * (band - lo) > cfg.ink_num * (hi - lo)
 
 
 def _segment_digits(band: np.ndarray, cfg: ScoreConfig) -> list[tuple[int, int]]:
@@ -197,15 +241,7 @@ def _glyph_cov(band: np.ndarray, run: tuple[int, int], cfg: ScoreConfig) -> np.n
     ys = np.where(mask.any(1))[0]
     if len(ys):
         mask = mask[ys.min():ys.max() + 1, :]
-    m = mask.astype(np.float64)
-    ye = np.linspace(0, m.shape[0], cfg.glyph_rows + 1).round().astype(int)
-    xe = np.linspace(0, m.shape[1], cfg.glyph_cols + 1).round().astype(int)
-    g = np.empty((cfg.glyph_rows, cfg.glyph_cols), dtype=np.float64)
-    for r in range(cfg.glyph_rows):
-        for c in range(cfg.glyph_cols):
-            blk = m[ye[r]:max(ye[r] + 1, ye[r + 1]), xe[c]:max(xe[c] + 1, xe[c + 1])]
-            g[r, c] = blk.mean() if blk.size else 0.0
-    return np.round(g.reshape(-1) * 255.0).astype(np.uint8)
+    return _cov_grid(mask, cfg.glyph_rows, cfg.glyph_cols)
 
 
 # ─── chrome registration (locks the block; unchanged) ───────────────────────────
@@ -405,7 +441,8 @@ def read_multiplier(image: np.ndarray) -> int:
 class StreakConfig:
     glyph_rows: int = STREAK_GLYPH_ROWS
     glyph_cols: int = STREAK_GLYPH_COLS
-    ink_frac: float = STREAK_INK_FRAC
+    ink_num: int = STREAK_INK_NUM
+    ink_den: int = STREAK_INK_DEN
     note_max_sad: int = STREAK_NOTE_MAX_SAD
     unk_dist: int = STREAK_UNK_DIST
     unk_margin: int = STREAK_UNK_MARGIN
@@ -441,7 +478,7 @@ class StreakRaw:
 def _cell_luma(image: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
     img = _ensure_full_frame(image)
     x0, y0, x1, y1 = roi
-    return img[y0:y1, x0:x1].astype(np.float64) @ _LUMA_W / 256.0
+    return _luma_i(img[y0:y1, x0:x1])
 
 
 def _cell_cov(cell: np.ndarray, is_light: bool, cfg: StreakConfig) -> np.ndarray:
@@ -452,24 +489,17 @@ def _cell_cov(cell: np.ndarray, is_light: bool, cfg: StreakConfig) -> np.ndarray
     holding its ink fraction (uint8 0-255) — the same coverage representation the
     score reader matches with integer L1.
     """
-    lo, hi = cell.min(), cell.max()
-    if is_light:
-        ink = cell < lo + (1.0 - cfg.ink_frac) * (hi - lo)
-    else:
-        ink = cell > lo + cfg.ink_frac * (hi - lo)
+    lo, hi = int(cell.min()), int(cell.max())
+    if is_light:  # dark ink on the light wheel: luma < lo + (1-frac)*(hi-lo)
+        ink = cfg.ink_den * (cell - lo) < (cfg.ink_den - cfg.ink_num) * (hi - lo)
+    else:         # bright ink on a dark wheel: luma > lo + frac*(hi-lo)
+        ink = cfg.ink_den * (cell - lo) > cfg.ink_num * (hi - lo)
     ys = np.where(ink.any(1))[0]
     xs = np.where(ink.any(0))[0]
     if not len(ys) or not len(xs):
         return np.zeros(cfg.glyph_rows * cfg.glyph_cols, dtype=np.uint8)
-    m = ink[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.float64)
-    ye = np.linspace(0, m.shape[0], cfg.glyph_rows + 1).round().astype(int)
-    xe = np.linspace(0, m.shape[1], cfg.glyph_cols + 1).round().astype(int)
-    g = np.empty((cfg.glyph_rows, cfg.glyph_cols), dtype=np.float64)
-    for r in range(cfg.glyph_rows):
-        for c in range(cfg.glyph_cols):
-            blk = m[ye[r]:max(ye[r] + 1, ye[r + 1]), xe[c]:max(xe[c] + 1, xe[c + 1])]
-            g[r, c] = blk.mean() if blk.size else 0.0
-    return np.round(g.reshape(-1) * 255.0).astype(np.uint8)
+    m = ink[ys.min():ys.max() + 1, xs.min():xs.max() + 1]
+    return _cov_grid(m, cfg.glyph_rows, cfg.glyph_cols)
 
 
 def _streak_classify(cov: np.ndarray, bank: list[np.ndarray]) -> tuple[int, int, int]:

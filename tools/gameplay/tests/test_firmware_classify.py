@@ -210,16 +210,9 @@ def test_c_streak_matches_python(streak_corpus, driver, tmp_path):
     catalog = build_streak_catalog(streak_corpus)
     for s in streak_corpus:
         r = read_streak(s.image, catalog)
+        py = (int(r.present), *r.digits, *(int(k) for k in r.known))
         full = np.ascontiguousarray(_ensure_full_frame(s.image))
         c = tuple(int(x) for x in _c_run(driver, full, tmp_path, "streak").split())
-        c_present, c_dig, c_known = c[0], c[1:4], c[4:7]
-        # Presence must match exactly. A wheel's digit must match wherever *both* sides
-        # call it confident. The `known` flag itself can differ on a wheel whose match
-        # sits right on the confidence threshold — Python rounds the coverage grid
-        # half-to-even (np.round) while the C port rounds half-up, so a 1-LSB coverage
-        # delta can flip a borderline gate. That is benign (the tracker fills an
-        # unknown wheel anyway); the pending integer-coverage rewrite makes it exact.
-        assert c_present == int(r.present), f"{s.path.name}: present C={c_present} py={int(r.present)}"
-        for i in range(3):
-            if r.known[i] and c_known[i]:
-                assert c_dig[i] == r.digits[i], f"{s.path.name} wheel{i}: C={c_dig[i]} py={r.digits[i]}"
+        # Integer coverage → C reproduces Python bit-for-bit: presence, every wheel's
+        # digit (even unreadable ones), and every confidence flag must match exactly.
+        assert c == py, f"{s.path.name}: C={c} Python={py}"

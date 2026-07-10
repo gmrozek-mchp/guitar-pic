@@ -222,6 +222,35 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-10 — integer-math rewrite of the score + streak readers (bit-exact C↔Python; fixes a coverage OOB bug)
+
+Rewrote the shared coverage pipeline (luma → ink threshold → grid resize → per-cell coverage) to
+**pure integer** so the firmware reproduces the host prototype bit-for-bit. Why it mattered for
+*accuracy*, not just speed: the firmware extracted coverage in float32 while the templates were built
+and validated in Python float64, with different rounding (`np.round` half-to-even vs C half-up,
+`np.linspace().round()` vs `lround`) — so the device's reads diverged from the host-validated reads
+(more hardware misreads than the host showed). Now:
+- luma = `B*29+G*150+R*77` (no `/256` — cancels in the relative threshold);
+- ink threshold = a rational `NUM/DEN` of the cell's min..max range (score 3/5, streak 1/2), tested as
+  `DEN*(luma-lo) ≷ NUM*(hi-lo)`;
+- grid edges = `(2*i*extent+n)/(2*n)` (round-half-up); per-cell coverage = `(count*255 + npx/2)/npx`.
+No float remains in the readers (the ARM926 has no FPU). The screen classifier / song matcher (a
+separate float-normalization path) are untouched — out of scope.
+
+**Found + fixed a coverage out-of-bounds bug** doing this: when a glyph's ink bbox is smaller than the
+grid (e.g. a 6-row bbox stretched to 16 grid rows), the last grid cell's block runs *past the bbox*.
+numpy silently clamps the slice to empty (→ coverage 0), but the C loop read one row/col beyond, into
+the **unused tail of the scratch buffer** (stale data) → wrong coverage on short glyphs. Fixed by
+clamping `yb→rh`, `xb→rw` in both C loops (host made explicit to match). This was present in the float
+version too — it's why the streak cross-check kept a `known`-flag mismatch on cap4247, and it means
+the device had real misreads on short glyphs (now gone).
+
+Cross-check is now **strict bit-exact** (C == Python on presence, every digit, every confidence flag,
+all frames). Re-validated: score LOO 54/54, streak in-sample 154/154, capture anchors exact, units
+detection intact (0/6/9 = 434/335/256). Digit banks in `gameplay_metadata.h` rebuilt with the integer
+coverage. Remaining edge: a 2-frame song-end slide-out can re-seed on misaligned digits (capture max
+384) — a brief-dropout-reseed case, separate follow-up.
+
 ### 2026-07-10 — streak dashboard label: show "0" at reset (fix stale value not clearing)
 
 The dashboard streak wasn't clearing at song start or after a miss — it kept showing the pre-reset
