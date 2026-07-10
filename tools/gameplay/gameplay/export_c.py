@@ -25,6 +25,7 @@ from .corpus import Sample, load_corpus, load_score_corpus
 from .evaluate import labelled_fps, recommend_thresholds
 from .fingerprint import CANONICAL_H, CANONICAL_W, FingerprintConfig
 from .highlight import build_selection_calibration
+from .corpus import load_streak_corpus
 from .metadata import (
     HORIZONTAL,
     MENU_LAYOUTS,
@@ -36,8 +37,18 @@ from .metadata import (
     SETLIST_BG_ROI,
     SONG_FIRST_ROI,
     SONG_SLOT_ROI,
+    STREAK_NOTE_CELL,
+    STREAK_NOTE_MAX_SAD,
+    STREAK_UNK_DIST,
+    STREAK_UNK_MARGIN,
 )
-from .score import DEFAULT_SCORE_CONFIG, build_score_catalog
+from .score import (
+    DEFAULT_SCORE_CONFIG,
+    DEFAULT_STREAK_CONFIG,
+    STREAK_CELLS,
+    build_score_catalog,
+    build_streak_catalog,
+)
 from .songselect import DEFAULT_SONG_CONFIG, FIRST, build_song_catalog
 
 # Score modes emitted, in device-index order (GP_SCORE_MODE_*). Career (green
@@ -237,6 +248,51 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     w("#define GP_MULT_SAT_MIN %d" % SCORE_MULT_SAT_MIN)
     w("#define GP_MULT_MIN_COUNT %d  /* fewer than this of the winning colour => 1x */"
       % SCORE_MULT_MIN_COUNT)
+    w("")
+
+    # ── note-streak counter (odometer OCR: dual-polarity per-cell coverage, L1) ──
+    w("/* ── note-streak counter (3-tumbler odometer; per-cell coverage L1, 2 banks) ── */")
+    tcfg = DEFAULT_STREAK_CONFIG
+    streak_len = tcfg.glyph_rows * tcfg.glyph_cols
+    tcat = build_streak_catalog(load_streak_corpus())
+    max_cw = max(roi[2] - roi[0] for roi, _light in STREAK_CELLS)
+    max_ch = max(roi[3] - roi[1] for roi, _light in STREAK_CELLS)
+    w("#define GP_STREAK_GLYPH_ROWS %d" % tcfg.glyph_rows)
+    w("#define GP_STREAK_GLYPH_COLS %d" % tcfg.glyph_cols)
+    w("#define GP_STREAK_LEN %d" % streak_len)
+    w("#define GP_STREAK_NDIGITS 10        /* templates 0-9 per bank; row index == digit */")
+    w("#define GP_STREAK_NCELLS %d          /* hundreds, tens, units */" % len(STREAK_CELLS))
+    w("#define GP_STREAK_INK_FRAC %.6gf" % tcfg.ink_frac)
+    w("#define GP_STREAK_CELL_MAX_W %d" % max(max_cw, STREAK_NOTE_CELL[2] - STREAK_NOTE_CELL[0]))
+    w("#define GP_STREAK_CELL_MAX_H %d" % max(max_ch, STREAK_NOTE_CELL[3] - STREAK_NOTE_CELL[1]))
+    w("#define GP_STREAK_NOTE_ROI {%d,%d,%d,%d}  /* gold note-icon locked-position fiducial */"
+      % STREAK_NOTE_CELL)
+    w("#define GP_STREAK_NOTE_MAX_SAD %d  /* note-icon coverage L1 below this => locked (present) */"
+      % STREAK_NOTE_MAX_SAD)
+    w("#define GP_STREAK_UNK_DIST %d       /* best L1 above this => wheel unreadable */" % STREAK_UNK_DIST)
+    w("#define GP_STREAK_UNK_MARGIN %d     /* runner-up gap below this => wheel unreadable */" % STREAK_UNK_MARGIN)
+    w("#define GP_STREAK_BANK_WD 0         /* white-on-dark bank (hundreds, tens) */")
+    w("#define GP_STREAK_BANK_DL 1         /* dark-on-light bank (units wheel) */")
+    w("")
+    # Note-icon coverage template (locked-position fiducial) + the two per-polarity
+    # uint8 digit banks: row d = digit d's mean coverage mask.
+    w("static const uint8_t gp_streak_note_tmpl[GP_STREAK_LEN] = {%s};"
+      % ",".join(str(int(v)) for v in tcat.note_tmpl))
+    for nm, bank in (("wd", tcat.tmpl_wd), ("dl", tcat.tmpl_dl)):
+        w("static const uint8_t gp_streak_tmpl_%s[GP_STREAK_NDIGITS][GP_STREAK_LEN] = {" % nm)
+        w(_u8_rows(np.stack(bank)))
+        w("};")
+    w("")
+    w("typedef struct {")
+    w("  uint16_t roi[4];   /* x0, y0, x1, y1 (canonical space) */")
+    w("  uint8_t  is_light; /* 1 = dark-digit-on-light wheel (units); 0 = white-on-dark */")
+    w("  uint8_t  bank;     /* GP_STREAK_BANK_* */")
+    w("} gp_streak_cell_t;")
+    w("static const gp_streak_cell_t gp_streak_cells[GP_STREAK_NCELLS] = {")
+    for roi, light in STREAK_CELLS:
+        bank = "GP_STREAK_BANK_DL" if light else "GP_STREAK_BANK_WD"
+        w("  {{%d,%d,%d,%d}, %d, %s}," % (roi[0], roi[1], roi[2], roi[3], int(light), bank))
+    w("};")
     w("")
 
     w("#endif /* GAMEPLAY_METADATA_H */")

@@ -47,7 +47,18 @@ from .metadata import (
     SCORE_MULT_MIN_COUNT,
     SCORE_MULT_ROI,
     SCORE_MULT_SAT_MIN,
+    STREAK_CELL_H,
+    STREAK_CELL_T,
+    STREAK_CELL_U,
+    STREAK_GLYPH_COLS,
+    STREAK_GLYPH_ROWS,
+    STREAK_INK_FRAC,
+    STREAK_NOTE_CELL,
+    STREAK_NOTE_MAX_SAD,
+    STREAK_UNK_DIST,
+    STREAK_UNK_MARGIN,
     score_from_filename,
+    streak_from_filename,
 )
 from .songselect import _LUMA_W
 
@@ -375,3 +386,203 @@ def read_multiplier(image: np.ndarray) -> int:
     if green >= yellow:
         return 3
     return 2
+
+
+# ─── note-streak counter (odometer OCR + monotonic tracker) ─────────────────────
+#
+# Three fixed digit cells (hundreds/tens white-on-dark, units dark-on-light — the
+# highlighted wheel), each read independently: extract ink by the cell's polarity,
+# resize the ink bbox to a canonical coverage grid, and match (integer L1) against a
+# per-polarity bank of 0-9 templates. A cell whose best distance/margin fails the
+# confidence gate is flagged unreadable (a mid-roll tumbler). `read_streak` is
+# stateless (one frame → per-cell raw reads); `StreakTracker` reconciles the noisy
+# reads over time using the monotonic-increasing assumption (see its docstring).
+
+
+@dataclass(frozen=True)
+class StreakConfig:
+    glyph_rows: int = STREAK_GLYPH_ROWS
+    glyph_cols: int = STREAK_GLYPH_COLS
+    ink_frac: float = STREAK_INK_FRAC
+    note_max_sad: int = STREAK_NOTE_MAX_SAD
+    unk_dist: int = STREAK_UNK_DIST
+    unk_margin: int = STREAK_UNK_MARGIN
+
+
+DEFAULT_STREAK_CONFIG = StreakConfig()
+
+# Place order is (hundreds, tens, units); each entry is (cell ROI, is_light).
+STREAK_CELLS: tuple[tuple[tuple[int, int, int, int], bool], ...] = (
+    (STREAK_CELL_H, False),
+    (STREAK_CELL_T, False),
+    (STREAK_CELL_U, True),
+)
+
+
+@dataclass(frozen=True)
+class StreakCatalog:
+    note_tmpl: np.ndarray      # note-icon coverage mask at the locked position (presence fiducial)
+    tmpl_wd: list[np.ndarray]  # 10 white-on-dark coverage masks, index == digit
+    tmpl_dl: list[np.ndarray]  # 10 dark-on-light coverage masks, index == digit
+    config: StreakConfig
+
+
+@dataclass(frozen=True)
+class StreakRaw:
+    present: bool                       # odometer shown (streak >= ~25)
+    digits: tuple[int, int, int]        # per-place best-match digit (h, t, u)
+    known: tuple[bool, bool, bool]      # per-place: read was confident (settled wheel)
+
+
+def _cell_luma(image: np.ndarray, roi: tuple[int, int, int, int]) -> np.ndarray:
+    img = _ensure_full_frame(image)
+    x0, y0, x1, y1 = roi
+    return img[y0:y1, x0:x1].astype(np.float64) @ _LUMA_W / 256.0
+
+
+def _cell_cov(cell: np.ndarray, is_light: bool, cfg: StreakConfig) -> np.ndarray:
+    """Ink-coverage fingerprint of one odometer cell (polarity-aware, bbox → grid).
+
+    White-on-dark cells take the bright pixels as ink; the light units wheel takes
+    the dark pixels. The ink bbox is resized to the canonical grid, each cell
+    holding its ink fraction (uint8 0-255) — the same coverage representation the
+    score reader matches with integer L1.
+    """
+    lo, hi = cell.min(), cell.max()
+    if is_light:
+        ink = cell < lo + (1.0 - cfg.ink_frac) * (hi - lo)
+    else:
+        ink = cell > lo + cfg.ink_frac * (hi - lo)
+    ys = np.where(ink.any(1))[0]
+    xs = np.where(ink.any(0))[0]
+    if not len(ys) or not len(xs):
+        return np.zeros(cfg.glyph_rows * cfg.glyph_cols, dtype=np.uint8)
+    m = ink[ys.min():ys.max() + 1, xs.min():xs.max() + 1].astype(np.float64)
+    ye = np.linspace(0, m.shape[0], cfg.glyph_rows + 1).round().astype(int)
+    xe = np.linspace(0, m.shape[1], cfg.glyph_cols + 1).round().astype(int)
+    g = np.empty((cfg.glyph_rows, cfg.glyph_cols), dtype=np.float64)
+    for r in range(cfg.glyph_rows):
+        for c in range(cfg.glyph_cols):
+            blk = m[ye[r]:max(ye[r] + 1, ye[r + 1]), xe[c]:max(xe[c] + 1, xe[c + 1])]
+            g[r, c] = blk.mean() if blk.size else 0.0
+    return np.round(g.reshape(-1) * 255.0).astype(np.uint8)
+
+
+def _streak_classify(cov: np.ndarray, bank: list[np.ndarray]) -> tuple[int, int, int]:
+    """(digit, best L1, runner-up margin) for one cell against a 10-template bank."""
+    vecs = np.stack([b.astype(np.int32) for b in bank])  # row d == digit d
+    d = np.abs(vecs - cov.astype(np.int32)).sum(1)
+    order = np.argsort(d)
+    best = int(order[0])
+    return best, int(d[order[0]]), int(d[order[1]] - d[order[0]])
+
+
+def build_streak_catalog(
+    samples: list[Sample], config: StreakConfig = DEFAULT_STREAK_CONFIG
+) -> StreakCatalog:
+    """Build the two per-polarity 0-9 coverage banks from the labelled streak corpus.
+
+    Each labelled cell (whose digit is known — not a mid-roll `x`) contributes its
+    coverage mask to the white-on-dark bank (hundreds/tens) or the dark-on-light
+    bank (units); one template per digit is the mean over its exemplars.
+    """
+    accW: dict[int, list[np.ndarray]] = defaultdict(list)
+    accL: dict[int, list[np.ndarray]] = defaultdict(list)
+    notes: list[np.ndarray] = []
+    for s in samples:
+        lab = streak_from_filename(s.path.name)
+        if lab is None:
+            continue
+        notes.append(_cell_cov(_cell_luma(s.image, STREAK_NOTE_CELL), False, config))
+        for (roi, light), digit in zip(STREAK_CELLS, lab):
+            if digit is None:
+                continue
+            cov = _cell_cov(_cell_luma(s.image, roi), light, config)
+            (accL if light else accW)[digit].append(cov)
+
+    def bank(acc: dict[int, list[np.ndarray]]) -> list[np.ndarray]:
+        return [
+            np.round(np.mean(np.stack(acc[d]), axis=0)).astype(np.uint8)
+            for d in range(10)
+        ]  # KeyError if any digit is unseen — corpus must cover 0-9 per polarity
+
+    note_tmpl = np.round(np.mean(np.stack(notes), axis=0)).astype(np.uint8)
+    return StreakCatalog(note_tmpl=note_tmpl, tmpl_wd=bank(accW), tmpl_dl=bank(accL), config=config)
+
+
+def read_streak(image: np.ndarray, catalog: StreakCatalog) -> StreakRaw:
+    """Stateless per-frame odometer read: presence + per-place (digit, confident?).
+
+    Presence means the odometer is *locked at its final position* — detected from the
+    fixed note-icon glyph, not the digits: the counter slides in and bounces, so
+    mid-slide the cells are misaligned. The note-icon coverage must match the locked
+    template (L1 below `note_max_sad`); otherwise (absent or sliding) the odometer is
+    not read. When locked, each cell is matched against its polarity's bank; a place
+    is `known` only if the match clears the distance/margin gates (a mid-roll wheel is
+    left unknown for the tracker to fill).
+    """
+    cfg = catalog.config
+    img = _ensure_full_frame(image)
+    note = _cell_cov(_cell_luma(img, STREAK_NOTE_CELL), False, cfg)
+    if int(np.abs(note.astype(np.int32) - catalog.note_tmpl.astype(np.int32)).sum()) >= cfg.note_max_sad:
+        return StreakRaw(False, (0, 0, 0), (False, False, False))
+    banks = (catalog.tmpl_wd, catalog.tmpl_wd, catalog.tmpl_dl)
+    digits: list[int] = []
+    known: list[bool] = []
+    for (roi, light), bank in zip(STREAK_CELLS, banks):
+        cov = _cell_cov(_cell_luma(img, roi), light, cfg)
+        digit, best, margin = _streak_classify(cov, bank)
+        digits.append(digit)
+        known.append(best < cfg.unk_dist and margin > cfg.unk_margin)
+    return StreakRaw(True, (digits[0], digits[1], digits[2]), (known[0], known[1], known[2]))
+
+
+class StreakTracker:
+    """Reconcile noisy per-frame odometer reads into a streak value.
+
+    Presence is binary: the odometer is either locked (shown, streak ≥ ~25) or not
+    (absent / mid-slide). **When it is not present the streak has reset — go straight
+    to 0** (that is the only reset path; a broken streak makes the counter disappear).
+
+    While it is present, a **confident wheel read is authoritative for its place** —
+    it always wins, even if it means the value drops (a misread is then a
+    self-correcting one-frame blip, not a permanent lock). The wheels roll, so a
+    place read as unreadable is *filled*: it holds its last digit, unless a higher
+    place changed this frame (a carry/rollover), in which case it resets to 0. A
+    first appearance seeds from the confident wheels (unknown places 0) once ≥2 agree.
+    """
+
+    def __init__(self, config: StreakConfig = DEFAULT_STREAK_CONFIG) -> None:
+        self.cfg = config
+        self.reset()
+
+    def reset(self) -> None:
+        self.val = 0
+        self.seen = False
+        self.dg = [0, 0, 0]   # per-place digits [hundreds, tens, units]
+
+    def update(self, raw: StreakRaw) -> int:
+        if not raw.present:
+            self.reset()   # odometer gone (streak reset / not shown) → 0
+            return 0
+        nconf = sum(raw.known)
+
+        if not self.seen:
+            if nconf < 2:
+                return 0  # need ≥2 confident wheels to seed a value
+            self.dg = [raw.digits[i] if raw.known[i] else 0 for i in range(3)]
+            self.seen = True
+        else:
+            # Confident wheels trump (authoritative); unknown wheels are filled —
+            # held from last, or reset to 0 when a higher place changed (rollover).
+            carry = False
+            for i in range(3):  # hundreds → tens → units
+                if raw.known[i]:
+                    if raw.digits[i] != self.dg[i]:
+                        carry = True
+                    self.dg[i] = raw.digits[i]
+                elif carry:
+                    self.dg[i] = 0
+
+        self.val = self.dg[0] * 100 + self.dg[1] * 10 + self.dg[2]
+        return self.val

@@ -311,9 +311,10 @@ static void play_until_done(void)
     status("PLAYING");
     TimingPipeline_SetEnabled(true);   /* controller owns the actuation window */
     TickType_t play_start = xTaskGetTickCount();
-    DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar */
-    DashboardFeed_PostScore(0u);       /* reset the dashboard score for the new song */
-    DashboardFeed_PostMultiplier(1u);  /* reset the dashboard multiplier to 1x */
+    DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar (run reset the rest) */
+
+    uint32_t final_score = 0u;   /* last CV-read score this run (the song total) */
+    uint16_t peak_streak = 0u;   /* longest note streak this run — persists across misses */
 
     for (;;)
     {
@@ -330,8 +331,10 @@ static void play_until_done(void)
         {
             if (gs.screen == GP_SCREEN_in_song)
             {
-                if (gs.score >= 0) { DashboardFeed_PostScore((uint32_t)gs.score); }
+                if (gs.score >= 0) { final_score = (uint32_t)gs.score; DashboardFeed_PostScore(final_score); }
                 if (gs.multiplier >= 1u) { DashboardFeed_PostMultiplier(gs.multiplier); }
+                if (gs.streak > peak_streak) { peak_streak = gs.streak; }
+                DashboardFeed_PostStreak(gs.streak);
             }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {
@@ -343,6 +346,10 @@ static void play_until_done(void)
     uint32_t play_ms = (uint32_t)(xTaskGetTickCount() - play_start) * portTICK_PERIOD_MS;
     LOG_INFO("GC: playtime %lu.%03lu s\r\n",
              (unsigned long)(play_ms / 1000u), (unsigned long)(play_ms % 1000u));
+    /* Run result — the values the results writer will persist once the score-file
+     * write path is wired (spec §4.8.6 Results_Append). */
+    LOG_INFO("GC: result score %lu, peak streak %u\r\n",
+             (unsigned long)final_score, (unsigned)peak_streak);
 
     /* Leave GH3 on the end screen; just release CV and go idle. The next run's
      * anchor (nav_to_main_menu) QUITs out of the end/pause menus when START is
@@ -400,6 +407,12 @@ static void run(void)
     }
 
     s_busy = true;
+
+    /* Clear the ROBOT telemetry the instant a run is requested — score/multiplier/
+     * streak zero out on Play, without waiting to navigate into gameplay. */
+    DashboardFeed_PostScore(0u);
+    DashboardFeed_PostMultiplier(1u);
+    DashboardFeed_PostStreak(0u);
 
     /* Pre-flight: the Wii link must be up (fauxmote is how we reach the console). */
     if (!ensure_wii_connected())

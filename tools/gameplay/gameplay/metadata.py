@@ -209,3 +209,58 @@ def score_from_filename(filename: str) -> tuple[str, int] | None:
     if len(parts) < 3 or parts[0] != "score" or not parts[2].isdigit():
         return None
     return parts[1], int(parts[2])
+
+
+# ─── note-streak counter (3-tumbler odometer, dual polarity + monotonic tracker) ─
+#
+# The streak counter is a mechanical odometer (a note icon + 3 digit tumblers) in
+# the scoring block, right of the multiplier medallion. It only appears once the
+# streak is ~25+, and the wheels *roll* into place — the units constantly, the
+# tens/hundreds at carries — so any single frame can show one or more mid-roll
+# (unreadable) digits. Each place is read independently at a fixed cell and the
+# noisy per-frame reads are reconciled by a stateful tracker that assumes the count
+# is monotonic increasing within a run (see StreakTracker).
+#
+# Polarity differs by wheel: the units is the *highlighted* wheel — a dark digit on
+# a light tumbler — while the tens/hundreds are white-on-dark like the score. So
+# each cell extracts ink by its polarity (bright pixels vs dark pixels), then the
+# coverage mask is matched against a per-polarity bank of 0-9 templates.
+#
+# Presence ("odometer settled at its locked position") is detected from the note
+# icon, NOT from the digits: the whole counter *slides in from the bottom, overshoots,
+# and bounces down* to its final spot, and mid-slide the digit cells are misaligned
+# (reading them gives garbage). The fixed gold note glyph at the odometer's left is
+# a position-sensitive fiducial — its coverage matches the locked template only when
+# the counter is settled (absent → dark; sliding → glyph off-position). So we only
+# read digits when the note-icon match clears the threshold; otherwise the streak is
+# treated as not-shown (→ 0). (score-0335.png is the reference locked frame.)
+#
+# Cells are in canonical 720x480 space, fixed offsets inside SCORE_BLOCK_ROI
+# (origin x0=114, y0=309): (x0, y0, x1, y1). Measured on the 6549-frame capture.
+STREAK_NOTE_CELL = (150, 392, 160, 407)  # gold note-icon fiducial (locked-position detector)
+STREAK_CELL_H = (165, 392, 173, 407)   # hundreds — white-on-dark
+STREAK_CELL_T = (179, 392, 187, 407)   # tens     — white-on-dark
+STREAK_CELL_U = (194, 392, 202, 407)   # units    — dark-on-light (highlighted wheel)
+
+STREAK_GLYPH_ROWS = 16       # canonical glyph grid (each cell's ink bbox resized to this)
+STREAK_GLYPH_COLS = 10
+STREAK_INK_FRAC = 0.5        # relative ink threshold within a cell (gain/offset robust)
+STREAK_NOTE_MAX_SAD = 2000   # note-icon coverage L1 below this => odometer locked/settled (present)
+STREAK_UNK_DIST = 9500       # per-cell best L1 above this => digit unreadable (rolling)
+STREAK_UNK_MARGIN = 1200     # runner-up gap below this => digit unreadable (ambiguous)
+
+
+def streak_from_filename(filename: str) -> tuple[int | None, int | None, int | None] | None:
+    """Parse a streak corpus filename into (hundreds, tens, units) digits.
+
+    `streak__101__cap1623.png` -> (1, 0, 1). A place is `None` when its label is
+    `x` (the wheel was mid-roll / unreadable when the frame was captured, so it has
+    no ground-truth digit). Returns None for non-streak filenames.
+    """
+    stem = filename.rsplit("/", 1)[-1]
+    if stem.endswith(".png"):
+        stem = stem[: -len(".png")]
+    parts = stem.split("__")
+    if len(parts) < 2 or parts[0] != "streak" or len(parts[1]) != 3:
+        return None
+    return tuple(None if ch == "x" else int(ch) for ch in parts[1])  # type: ignore[return-value]

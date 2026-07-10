@@ -211,3 +211,172 @@ int gp_read_multiplier(const uint8_t *frame, int width, int height)
     if (green >= yellow) { return 3; }
     return 2;
 }
+
+/* ── note-streak counter (odometer OCR + monotonic tracker) ────────────────── */
+
+static uint8_t s_scell_ink[GP_STREAK_CELL_MAX_H * GP_STREAK_CELL_MAX_W];
+static uint8_t s_scell_cov[GP_STREAK_LEN];   /* one cell's coverage mask (0-255) */
+
+/* Polarity-aware ink-coverage mask of one odometer cell into s_scell_cov, mirroring
+ * score.py _cell_cov: threshold the cell luma by its polarity (bright pixels for a
+ * white-on-dark wheel, dark pixels for the light units wheel), crop to the ink
+ * bounding box, and resize that box to the canonical grid (uses gp_edge like the
+ * score glyph). */
+static void streak_cell_cov_roi(const uint8_t *frame, int w, int h,
+                                const uint16_t roi[4], int is_light)
+{
+    int x0 = roi[0], y0 = roi[1], x1 = roi[2], y1 = roi[3];
+    int W = x1 - x0, H = y1 - y0;
+
+    static float lum[GP_STREAK_CELL_MAX_H * GP_STREAK_CELL_MAX_W];
+    float lo = 1e30f, hi = -1e30f;
+    for (int r = 0; r < H; r++)
+    {
+        int fy = y0 + r;
+        for (int c = 0; c < W; c++)
+        {
+            int fx = x0 + c;
+            float v = 0.0f;
+            if (fx >= 0 && fx < w && fy >= 0 && fy < h)
+            {
+                const uint8_t *p = frame + ((uint32_t)fy * (uint32_t)w + (uint32_t)fx) * GP_BPP;
+                v = (float)((double)p[0] * 29.0 + (double)p[1] * 150.0 + (double)p[2] * 77.0) / 256.0f;
+            }
+            lum[r * W + c] = v;
+            if (v < lo) { lo = v; }
+            if (v > hi) { hi = v; }
+        }
+    }
+    float thr = is_light ? (lo + (1.0f - GP_STREAK_INK_FRAC) * (hi - lo))
+                         : (lo + GP_STREAK_INK_FRAC * (hi - lo));
+    for (int i = 0; i < W * H; i++)
+    {
+        s_scell_ink[i] = is_light ? (lum[i] < thr ? 1u : 0u)
+                                  : (lum[i] > thr ? 1u : 0u);
+    }
+
+    /* Ink bounding box (rows ry0..ry1, cols cx0..cx1). */
+    int ry0 = -1, ry1 = -1, cx0 = -1, cx1 = -1;
+    for (int r = 0; r < H; r++)
+        for (int c = 0; c < W; c++)
+            if (s_scell_ink[r * W + c])
+            {
+                if (ry0 < 0) { ry0 = r; }
+                ry1 = r;
+                if (cx0 < 0 || c < cx0) { cx0 = c; }
+                if (c > cx1) { cx1 = c; }
+            }
+    if (ry0 < 0)
+    {
+        for (int i = 0; i < GP_STREAK_LEN; i++) { s_scell_cov[i] = 0u; }
+        return;
+    }
+    int rh = ry1 - ry0 + 1, rw = cx1 - cx0 + 1;
+
+    for (int gr = 0; gr < GP_STREAK_GLYPH_ROWS; gr++)
+    {
+        int ya = gp_edge(gr, rh, GP_STREAK_GLYPH_ROWS);
+        int yb = gp_edge(gr + 1, rh, GP_STREAK_GLYPH_ROWS);
+        if (yb <= ya) { yb = ya + 1; }
+        for (int gc = 0; gc < GP_STREAK_GLYPH_COLS; gc++)
+        {
+            int xa = gp_edge(gc, rw, GP_STREAK_GLYPH_COLS);
+            int xb = gp_edge(gc + 1, rw, GP_STREAK_GLYPH_COLS);
+            if (xb <= xa) { xb = xa + 1; }
+            uint32_t sum = 0u, n = 0u;
+            for (int r = ry0 + ya; r < ry0 + yb; r++)
+                for (int c = cx0 + xa; c < cx0 + xb; c++)
+                {
+                    sum += s_scell_ink[r * W + c];
+                    n++;
+                }
+            s_scell_cov[gr * GP_STREAK_GLYPH_COLS + gc] =
+                (n != 0u) ? (uint8_t)((sum * 255u + n / 2u) / n) : 0u;
+        }
+    }
+}
+
+int gp_read_streak(const uint8_t *frame, int width, int height, gp_streak_raw_t *out)
+{
+    out->present = 0u;
+    for (int i = 0; i < 3; i++) { out->digit[i] = 0u; out->known[i] = 0u; }
+    if (width != GP_CANON_W || height != GP_CANON_H) { return -1; }
+
+    /* Presence = odometer locked at final position: the fixed note-icon glyph's
+     * coverage matches its locked template. Rejects both absent (dark) and mid-slide
+     * (glyph off-position) frames — digit cells are only aligned when locked. */
+    static const uint16_t note_roi[4] = GP_STREAK_NOTE_ROI;
+    streak_cell_cov_roi(frame, width, height, note_roi, 0);
+    int32_t note_sad = 0;
+    for (int k = 0; k < GP_STREAK_LEN; k++) { note_sad += abs((int)s_scell_cov[k] - (int)gp_streak_note_tmpl[k]); }
+    if (note_sad >= GP_STREAK_NOTE_MAX_SAD) { return 0; }
+    out->present = 1u;
+
+    for (int i = 0; i < GP_STREAK_NCELLS; i++)
+    {
+        const gp_streak_cell_t *cell = &gp_streak_cells[i];
+        streak_cell_cov_roi(frame, width, height, cell->roi, cell->is_light);
+        const uint8_t (*bank)[GP_STREAK_LEN] =
+            (cell->bank == GP_STREAK_BANK_DL) ? gp_streak_tmpl_dl : gp_streak_tmpl_wd;
+
+        int32_t best = INT32_MAX, second = INT32_MAX;
+        int best_digit = 0;
+        for (int d = 0; d < GP_STREAK_NDIGITS; d++)
+        {
+            int32_t l1 = 0;
+            for (int k = 0; k < GP_STREAK_LEN; k++) { l1 += abs((int)s_scell_cov[k] - (int)bank[d][k]); }
+            if (l1 < best) { second = best; best = l1; best_digit = d; }
+            else if (l1 < second) { second = l1; }
+        }
+        out->digit[i] = (uint8_t)best_digit;
+        out->known[i] = (best < GP_STREAK_UNK_DIST && (second - best) > GP_STREAK_UNK_MARGIN) ? 1u : 0u;
+    }
+    return 0;
+}
+
+void gp_streak_reset(gp_streak_state_t *st)
+{
+    st->val = 0u;
+    st->seen = 0u;
+    st->dg[0] = 0u; st->dg[1] = 0u; st->dg[2] = 0u;
+}
+
+uint16_t gp_streak_track(gp_streak_state_t *st, const gp_streak_raw_t *raw)
+{
+    if (!raw->present)
+    {
+        gp_streak_reset(st);   /* odometer gone (streak reset / not shown) → 0 */
+        return 0u;
+    }
+    int nconf = (int)raw->known[0] + (int)raw->known[1] + (int)raw->known[2];
+
+    if (!st->seen)
+    {
+        if (nconf < 2) { return 0u; }  /* need ≥2 confident wheels to seed */
+        for (int i = 0; i < 3; i++) { st->dg[i] = raw->known[i] ? raw->digit[i] : 0u; }
+        st->seen = 1u;
+    }
+    else
+    {
+        /* A confident wheel is authoritative for its place (trumps the rollover
+         * logic — a misread self-corrects next frame). An unreadable wheel is
+         * filled: it holds its last digit, or resets to 0 when a higher place
+         * changed this frame (a carry/rollover). */
+        int carry = 0;
+        for (int i = 0; i < 3; i++)  /* hundreds → tens → units */
+        {
+            if (raw->known[i])
+            {
+                if (raw->digit[i] != st->dg[i]) { carry = 1; }
+                st->dg[i] = raw->digit[i];
+            }
+            else if (carry)
+            {
+                st->dg[i] = 0u;
+            }
+        }
+    }
+
+    st->val = (uint16_t)(st->dg[0] * 100u + st->dg[1] * 10u + st->dg[2]);
+    return st->val;
+}

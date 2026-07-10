@@ -47,6 +47,10 @@ static StaticTask_t  s_task_tcb;
 
 static volatile bool s_req_pending;
 
+/* Streak tracker state: advanced by the observer across in_song reads, reset when
+ * gameplay is left (owned solely by game_task; not shared). */
+static gp_streak_state_t s_streak;
+
 static const char *screen_name(uint8_t idx)
 {
     return (idx < GP_N_SCREENS) ? gp_screen_ids[idx] : "unknown";
@@ -125,15 +129,24 @@ static void game_task(void *param)
         const char *sel_name = NULL, *sel_name2 = NULL;
         int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);
 
-        /* In-song: read the open-ended score (training font) + multiplier. Sentinels
-         * (-1 / 0) elsewhere. */
+        /* In-song: read the open-ended score (training font) + multiplier + the note
+         * streak. Sentinels (-1 / 0) elsewhere. The streak tracker is stateful: it
+         * advances across in_song observations and resets whenever gameplay is left
+         * (a fresh run re-seeds from the odometer). */
         int32_t score = -1;
         uint8_t multiplier = 0;
+        uint16_t streak = 0;
         if (screen == GP_SCREEN_in_song)
         {
             gp_score_t sc;
             if (gp_read_score(buf, w, h, GP_SCORE_MODE_TRAINING, &sc) == 0) { score = sc.value; }
             multiplier = (uint8_t)gp_read_multiplier(buf, w, h);
+            gp_streak_raw_t sr;
+            if (gp_read_streak(buf, w, h, &sr) == 0) { streak = gp_streak_track(&s_streak, &sr); }
+        }
+        else
+        {
+            gp_streak_reset(&s_streak);
         }
 
         game_state_t ev;
@@ -146,6 +159,7 @@ static void game_task(void *param)
         ev.selection    = sel;
         ev.score        = score;
         ev.multiplier   = multiplier;
+        ev.streak       = streak;
 
         /* Answer the requester first (clear pending before the send so a follow-up
          * Observe that wakes on the response can't have its new request cleared). */
@@ -169,10 +183,10 @@ static void game_task(void *param)
             {
                 LOG_INFO("GAME: %s / %s\r\n", screen_name(screen), sel_name);
             }
-            else if (screen == GP_SCREEN_in_song)  /* "in_song / score N x<mult>" */
+            else if (screen == GP_SCREEN_in_song)  /* "in_song / score N x<mult> streak<s>" */
             {
-                LOG_INFO("GAME: %s / score %ld x%u\r\n",
-                         screen_name(screen), (long)score, (unsigned)multiplier);
+                LOG_INFO("GAME: %s / score %ld x%u streak%u\r\n",
+                         screen_name(screen), (long)score, (unsigned)multiplier, (unsigned)streak);
             }
             else
             {

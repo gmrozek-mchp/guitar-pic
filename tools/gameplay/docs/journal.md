@@ -129,11 +129,13 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
    only climbs), covering 3–6-digit scores (250→101720). Supersedes the earlier fixed-pitch
    attempt (only 10/16 held-out — the font isn't monospace). **Ported to marvin firmware**
    (`game/gameplay_score.{h,c}` + `export_c` score block, mode-parameterized, no on-device chrome
-   registration in v0; C cross-checks byte-faithful on all 54 frames). Career (green segmented)
-   font + the multiplier / streak counter are deferred.
+   registration in v0; C cross-checks byte-faithful on all 54 frames). The **multiplier** (colour)
+   and **streak** (odometer OCR + confident-read tracker) readers followed; career (green segmented)
+   score font is the only deferred scoring-block item.
 6. 🚧 **Firmware port** — `gameplay_engine` on marvin (spec §4.8). Phase 0 (metadata exporter)
-   ✅; screen classifier / selection / song / **score** readers ported (code-complete, pending
-   Greg's MPLAB build); navigator/controller (M10) ported earlier. See Current focus.
+   ✅; screen classifier / selection / song / **score / multiplier / streak** readers ported
+   (code-complete, pending Greg's MPLAB build); navigator/controller (M10) ported earlier. See
+   Current focus.
 
 ---
 
@@ -219,6 +221,71 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-07-10 — note-streak counter (odometer OCR + confident-read tracker) → dashboard label
+
+Added the last scoring-block value: the **note streak**, a 3-tumbler mechanical odometer (note icon
++ hundreds/tens/units) right of the multiplier. Two halves, mirroring the firmware split:
+
+- **Stateless reader** (`read_streak`, `score.py`). **Presence = the odometer is *locked at its
+  final position*, detected from the note icon — NOT the digits** (Greg): the whole counter *slides
+  in from the bottom, overshoots, and bounces down* to settle (≈20 frames; `score-0335.png` is the
+  reference locked frame), and mid-slide the digit cells are misaligned → garbage. The fixed gold
+  note-icon glyph is a position-sensitive fiducial: its coverage matches the locked template (L1 <
+  `NOTE_MAX_SAD`=2000) only when settled — cleanly separates locked (≤~1300) from slide/overshoot
+  (~3200–10000) and absent (~17000+). Three fixed digit cells; polarity differs — **units is
+  dark-on-light** (highlighted), **tens/hundreds white-on-dark** (like the score). Per cell: ink by
+  polarity → 16×10 coverage grid → integer-L1 argmin over a **per-polarity** 0-9 bank; a cell is
+  **unreadable** when best-L1/margin fail the gate (mid-roll). *All three wheels roll* (Greg), so no
+  place is trusted per-frame. ROIs are consistent 8×15 digit cells + a 10×15 note cell (Greg's box
+  refinement → 100 % in-sample confident-digit accuracy). All positions are **absolute** in the
+  720×480 frame (fixed rig; the score reader's chrome registration exists but is unused in v0).
+- **Stateful tracker** (`StreakTracker`). **Presence is binary: not present ⇒ the streak reset ⇒ 0**
+  (immediate — the counter only vanishes on a miss/below-threshold; the sole reset path). While
+  present, **a confident wheel read is authoritative for its place** (Greg: "a clear read of a digit
+  trumps the automatic rollover logic") — it always wins, even if the value drops, so a misread is a
+  self-correcting one-frame blip, not a permanent lock. An unreadable (rolling) wheel is *filled*:
+  it holds its last digit, or resets to 0 when a higher place changed this frame (a carry). ≥2
+  confident wheels seed a first appearance. This **replaced an earlier monotonic constrained-search**
+  (`[last, last+30]`, ties→smallest): that forward-only window could never represent a value *below*
+  `last`, so a single tens misread that nudged `last` up got locked in — every subsequent units roll
+  then forced the tens upward (11x read as 14x, 12x→15x…). Confident-trumps fixes that.
+
+**No filename ground truth** (unlike the score), so a **hand-labelled odometer corpus** (`data/streak/`,
+46 block crops read from capture montages, `x` = mid-roll wheel) builds the banks. Validation over the
+full **6549-frame capture**: hand-read anchors exact, **0 non-reset decreases**, correct slide-gating
+(0 through the slide, reads only once locked), max 304; **100 % in-sample confident-digit accuracy**
+with the refined 8×15 cells.
+
+**Known follow-up — the tens 0↔8 confusion (deferred, to fix with a per-place debounce).** Dropping
+the monotonic window unmasked a *pre-existing* systematic misread the old window had accidentally
+hidden: the odometer's zero has a center slash, and A2D aliasing closes its top loop on ~half the
+frames, so a tens "0" wheel genuinely matches the **8** template better (dist 4590 vs 6885) and reads
+8 *confidently* — alternating 0,8,0,8 frame-to-frame (100↔180, 200↔280, 300↔380; a hundreds variant
+flashes 900). It is a real per-frame ambiguity, not a template/threshold bug, so it needs **temporal**
+handling: require a *changed* confident digit to persist ≥2 consecutive reads before committing
+(debounces the alternation; a sustained real change still commits with ~1-frame lag; cannot lock since
+it follows reads up *or* down). Committing the lock fix first; debounce is the next change.
+
+`metadata` (note + cell ROIs/thresholds) + `export_c` `GP_STREAK_*` block (note-icon template + two
+uint8 digit banks + geometry + tracker params); pure-C `gp_read_streak` (stateless, cross-checked) +
+`gp_streak_track`/`_reset` (state owned by the caller) in `gameplay_score.c`. Cross-check
+(`test_firmware_classify` `streak`): C == Python on **presence** (exact) + every **confident** digit,
+all 46 frames. Caveat: the per-wheel `known` flag can differ on a wheel sitting on the confidence
+threshold — Python rounds the coverage grid half-to-even (`np.round`), the C port half-up, so a 1-LSB
+coverage delta flips a borderline gate; benign (the tracker fills an unknown wheel anyway). **Pending
+fix: make the coverage integer end-to-end** (midpoint threshold since ink_frac=0.5, integer grid
+edges) — removes all FP from the reader (the ARM926 has no FPU) *and* the rounding-mode gap, giving
+bit-exact parity; deferred so the working version can be tested/committed first. `test_streak.py`:
+corpus reader sanity + synthetic tracker cases. Engine: `game_state_t.streak`, tracker advanced on
+in_song / reset when leaving gameplay (log adds `streak<s>`). Dashboard: feed applies `DASH_EVT_STREAK`
+→ `ScreenDashboard_ApplyStreak` → `Marvin_LABEL_DASHBOARD_ROBOT_Streak` (blank at 0). **Reset
+behaviour (w/ Greg):** score/mult/streak clear the instant a run is *requested* (top of `run()`, not
+on reaching gameplay); a broken streak mid-song blanks immediately (odometer not locked → 0);
+**everything persists after the song ends** (next run's request is the only reset). `play_until_done`
+tracks **peak streak** + **final score** over the run (logged for the eventual `Results_Append`).
+Full suite **71 passed**. **Pending Greg's MPLAB build.** Deferred: integer-coverage rewrite;
+career-font score mode.
 
 ### 2026-07-09 — score multiplier reader (colour-count classifier) + dashboard buttons
 

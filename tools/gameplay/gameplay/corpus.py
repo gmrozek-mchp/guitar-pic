@@ -25,6 +25,10 @@ _DEFAULT_CORPUS_DIR = _REPO_ROOT / "firmware" / "marvin" / "docs" / "gh3_screens
 # (tools/gameplay/data/scores/), separate from the screen corpus: score frames
 # carry their numeric value in the filename, not a screen/menu label.
 _DEFAULT_SCORE_CORPUS_DIR = Path(__file__).resolve().parents[1] / "data" / "scores"
+# The streak corpus (tools/gameplay/data/streak/) is the hand-labelled odometer set:
+# each frame is a scoring-block crop whose 3-digit value is in the filename (with
+# `x` for a mid-roll/unreadable wheel). See metadata.streak_from_filename.
+_DEFAULT_STREAK_CORPUS_DIR = Path(__file__).resolve().parents[1] / "data" / "streak"
 
 
 def corpus_dir() -> Path:
@@ -37,6 +41,12 @@ def score_corpus_dir() -> Path:
     """Resolve the score corpus directory (overridable via $GAMEPLAY_SCORE_CORPUS_DIR)."""
     env = os.environ.get("GAMEPLAY_SCORE_CORPUS_DIR")
     return Path(env) if env else _DEFAULT_SCORE_CORPUS_DIR
+
+
+def streak_corpus_dir() -> Path:
+    """Resolve the streak corpus directory (overridable via $GAMEPLAY_STREAK_CORPUS_DIR)."""
+    env = os.environ.get("GAMEPLAY_STREAK_CORPUS_DIR")
+    return Path(env) if env else _DEFAULT_STREAK_CORPUS_DIR
 
 
 @dataclass(frozen=True)
@@ -79,4 +89,16 @@ def load_score_corpus(directory: str | Path | None = None) -> list[Sample]:
     """
     d = Path(directory) if directory is not None else score_corpus_dir()
     files = sorted(d.glob("score__*.png"))
+    return [Sample(screen_id="in_song", path=f, image=load_bgr(f)) for f in files]
+
+
+def load_streak_corpus(directory: str | Path | None = None) -> list[Sample]:
+    """Load the labelled streak frames (`streak__<hundreds><tens><units>__*.png`).
+
+    Scoring-block crops labelled by the odometer's 3-digit value in the filename
+    (see `metadata.streak_from_filename`). Returned as `in_song` samples. Returns
+    [] if the directory is missing/empty (the streak corpus is optional).
+    """
+    d = Path(directory) if directory is not None else streak_corpus_dir()
+    files = sorted(d.glob("streak__*.png"))
     return [Sample(screen_id="in_song", path=f, image=load_bgr(f)) for f in files]

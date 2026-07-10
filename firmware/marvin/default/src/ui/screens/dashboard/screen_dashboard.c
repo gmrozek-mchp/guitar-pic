@@ -97,6 +97,11 @@ static leFixedString s_stop_str;
 static leChar        s_score_buf[12];
 static leFixedString s_score_str;
 
+/* Runtime text for the ROBOT card's note-streak label — the CV-read GH3 streak
+ * (blank until the odometer appears at ~25), likewise fed live during a run. */
+static leChar        s_streak_buf[8];
+static leFixedString s_streak_str;
+
 /* Selected song length (s), captured on ApplySelection so ApplyPlaytime can scale
  * elapsed play time into the 0-100 progress-bar fill. 0 = unknown → no fill. */
 static uint16_t s_song_len_s;
@@ -168,6 +173,15 @@ static void song_detail_init(void)
                               sizeof(s_score_buf) / sizeof(s_score_buf[0]));
     if (pcur != NULL) { pfs->fn->setFont(pfs, pcur->fn->getFont(pcur)); }
     score->fn->setString(score, pfs);
+
+    /* ROBOT note-streak label: same fixed-string handoff, inheriting its MGS font. */
+    leLabelWidget *streak = Marvin_LABEL_DASHBOARD_ROBOT_Streak;
+    leString      *kfs    = (leString *)&s_streak_str;
+    leString      *kcur   = streak->fn->getString(streak);
+    leFixedString_Constructor(&s_streak_str, s_streak_buf,
+                              sizeof(s_streak_buf) / sizeof(s_streak_buf[0]));
+    if (kcur != NULL) { kfs->fn->setFont(kfs, kcur->fn->getFont(kcur)); }
+    streak->fn->setString(streak, kfs);
 }
 
 /* Game-controller status observer — runs in the game-controller task's context.
@@ -372,6 +386,17 @@ void ScreenDashboard_ApplyScore(uint32_t score)
     char tmp[12];
     (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)score);
     (void)lestring_set_utf8((leString *)&s_score_str, tmp);
+}
+
+/* CV-read GH3 note streak → the ROBOT card's streak label. 0 means the odometer
+ * isn't shown yet (streak < ~25) or the run reset, so the label is left blank to
+ * mirror the on-screen counter. */
+void ScreenDashboard_ApplyStreak(uint16_t streak)
+{
+    char tmp[8];
+    if (streak == 0u) { tmp[0] = '\0'; }
+    else { (void)snprintf(tmp, sizeof tmp, "%u", (unsigned)streak); }
+    (void)lestring_set_utf8((leString *)&s_streak_str, tmp);
 }
 
 /* Elapsed play time → the left marker (m:ss, counting up) and the bar fill, both
