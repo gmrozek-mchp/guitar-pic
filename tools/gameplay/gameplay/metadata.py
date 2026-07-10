@@ -248,6 +248,19 @@ STREAK_INK_FRAC = 0.5        # relative ink threshold within a cell (gain/offset
 STREAK_NOTE_MAX_SAD = 2000   # note-icon coverage L1 below this => odometer locked/settled (present)
 STREAK_UNK_DIST = 9500       # per-cell best L1 above this => digit unreadable (rolling)
 STREAK_UNK_MARGIN = 1200     # runner-up gap below this => digit unreadable (ambiguous)
+# Tracker debounce: consecutive confident reads a *changed* digit needs before it
+# commits, per place [hundreds, tens, units]. The slow wheels (h, t) require 2 — that
+# kills a single-frame misread (e.g. the tens 0↔8 aliasing flip) without locking,
+# since a sustained real change still commits. The units wheel rolls fast, so it is
+# immediate (1) — debouncing it would freeze it.
+STREAK_DEBOUNCE = (2, 2, 1)
+# Tracker plausibility clamp: reject a committed per-frame value change larger than
+# this. A streak can't gain ~50 in one ~3 Hz poll, so a jump this big is a misread —
+# e.g. the hundreds wheel read mid-roll during a carry, which debounce alone can let
+# through if it persists 2 frames. Symmetric (unlike a forward-only window), so it
+# corrects downward and never locks; the seed bypasses it, so a real reappearance
+# still jumps straight to the value.
+STREAK_MAX_STEP = 50
 
 
 def streak_from_filename(filename: str) -> tuple[int | None, int | None, int | None] | None:

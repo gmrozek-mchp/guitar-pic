@@ -62,9 +62,11 @@ int gp_read_streak(const uint8_t *frame, int width, int height, gp_streak_raw_t 
 
 typedef struct
 {
-    uint16_t val;     /* last committed streak */
-    uint8_t  seen;    /* a value has been seeded this run */
-    uint8_t  dg[3];   /* per-place digits [hundreds, tens, units] */
+    uint16_t val;       /* last committed streak */
+    uint8_t  seen;      /* a value has been seeded this run */
+    uint8_t  dg[3];     /* per-place committed digits [hundreds, tens, units] */
+    uint8_t  pend[3];   /* per-place pending (unconfirmed) digit, 0xFF = none */
+    uint8_t  pend_n[3]; /* consecutive confident reads of the pending digit */
 } gp_streak_state_t;
 
 void     gp_streak_reset(gp_streak_state_t *st);

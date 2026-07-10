@@ -52,7 +52,9 @@ from .metadata import (
     STREAK_CELL_U,
     STREAK_GLYPH_COLS,
     STREAK_GLYPH_ROWS,
+    STREAK_DEBOUNCE,
     STREAK_INK_FRAC,
+    STREAK_MAX_STEP,
     STREAK_NOTE_CELL,
     STREAK_NOTE_MAX_SAD,
     STREAK_UNK_DIST,
@@ -407,6 +409,8 @@ class StreakConfig:
     note_max_sad: int = STREAK_NOTE_MAX_SAD
     unk_dist: int = STREAK_UNK_DIST
     unk_margin: int = STREAK_UNK_MARGIN
+    debounce: tuple[int, int, int] = STREAK_DEBOUNCE
+    max_step: int = STREAK_MAX_STEP
 
 
 DEFAULT_STREAK_CONFIG = StreakConfig()
@@ -544,12 +548,21 @@ class StreakTracker:
     (absent / mid-slide). **When it is not present the streak has reset — go straight
     to 0** (that is the only reset path; a broken streak makes the counter disappear).
 
-    While it is present, a **confident wheel read is authoritative for its place** —
-    it always wins, even if it means the value drops (a misread is then a
-    self-correcting one-frame blip, not a permanent lock). The wheels roll, so a
-    place read as unreadable is *filled*: it holds its last digit, unless a higher
-    place changed this frame (a carry/rollover), in which case it resets to 0. A
-    first appearance seeds from the confident wheels (unknown places 0) once ≥2 agree.
+    While it is present, a confident wheel read is authoritative for its place, but a
+    *changed* digit must be **debounced** — confirmed by `cfg.debounce[place]`
+    consecutive confident reads before it commits. The slow wheels (hundreds, tens)
+    need 2, so a single-frame misread (e.g. the tens 0↔8 aliasing flip) never sticks
+    yet a sustained real change still commits; the units wheel is immediate (1). A
+    committed change carries: unreadable lower places reset to 0 (a rollover). An
+    unreadable place otherwise holds its last digit. First appearance seeds from the
+    confident wheels (unknown places 0) once ≥2 agree. Debounce follows reads up *or*
+    down, so it never locks.
+
+    A committed value change larger than `cfg.max_step` is rejected as implausible
+    (the frame is ignored) — a streak can't jump that much per poll, so it's a
+    misread that cleared debounce (e.g. a hundreds wheel read mid-roll during a
+    carry). The clamp is symmetric, so it still corrects downward and never locks;
+    the seed bypasses it (a real reappearance jumps straight in).
     """
 
     def __init__(self, config: StreakConfig = DEFAULT_STREAK_CONFIG) -> None:
@@ -559,30 +572,44 @@ class StreakTracker:
     def reset(self) -> None:
         self.val = 0
         self.seen = False
-        self.dg = [0, 0, 0]   # per-place digits [hundreds, tens, units]
+        self.dg = [0, 0, 0]      # per-place committed digits [hundreds, tens, units]
+        self.pend = [-1, -1, -1]  # per-place pending (unconfirmed) digit, -1 = none
+        self.pend_n = [0, 0, 0]   # consecutive confident reads of the pending digit
 
     def update(self, raw: StreakRaw) -> int:
         if not raw.present:
             self.reset()   # odometer gone (streak reset / not shown) → 0
             return 0
-        nconf = sum(raw.known)
 
         if not self.seen:
-            if nconf < 2:
+            if sum(raw.known) < 2:
                 return 0  # need ≥2 confident wheels to seed a value
             self.dg = [raw.digits[i] if raw.known[i] else 0 for i in range(3)]
+            self.pend = [-1, -1, -1]
+            self.pend_n = [0, 0, 0]
             self.seen = True
-        else:
-            # Confident wheels trump (authoritative); unknown wheels are filled —
-            # held from last, or reset to 0 when a higher place changed (rollover).
-            carry = False
-            for i in range(3):  # hundreds → tens → units
-                if raw.known[i]:
-                    if raw.digits[i] != self.dg[i]:
-                        carry = True
-                    self.dg[i] = raw.digits[i]
-                elif carry:
-                    self.dg[i] = 0
+            self.val = self.dg[0] * 100 + self.dg[1] * 10 + self.dg[2]
+            return self.val
 
-        self.val = self.dg[0] * 100 + self.dg[1] * 10 + self.dg[2]
+        snap = (list(self.dg), list(self.pend), list(self.pend_n))
+        carry = False
+        for i in range(3):  # hundreds → tens → units
+            if raw.known[i]:
+                r = raw.digits[i]
+                if r == self.dg[i]:
+                    self.pend[i], self.pend_n[i] = -1, 0  # confirms committed
+                else:
+                    self.pend_n[i] = self.pend_n[i] + 1 if r == self.pend[i] else 1
+                    self.pend[i] = r
+                    if self.pend_n[i] >= self.cfg.debounce[i]:  # change confirmed
+                        self.dg[i], self.pend[i], self.pend_n[i] = r, -1, 0
+                        carry = True
+            elif carry:  # unreadable wheel below a place that just rolled → 0
+                self.dg[i], self.pend[i], self.pend_n[i] = 0, -1, 0
+
+        new_val = self.dg[0] * 100 + self.dg[1] * 10 + self.dg[2]
+        if abs(new_val - self.val) > self.cfg.max_step:
+            self.dg, self.pend, self.pend_n = snap  # implausible jump → ignore frame
+        else:
+            self.val = new_val
         return self.val

@@ -303,6 +303,8 @@ static const gp_score_mode_t gp_score_modes[GP_N_SCORE_MODES] = {
 #define GP_STREAK_NOTE_MAX_SAD 2000  /* note-icon coverage L1 below this => locked (present) */
 #define GP_STREAK_UNK_DIST 9500       /* best L1 above this => wheel unreadable */
 #define GP_STREAK_UNK_MARGIN 1200     /* runner-up gap below this => wheel unreadable */
+#define GP_STREAK_DEBOUNCE {2,2,1}  /* consecutive reads to commit a change [h,t,u] */
+#define GP_STREAK_MAX_STEP 50      /* reject a committed value jump larger than this (implausible) */
 #define GP_STREAK_BANK_WD 0         /* white-on-dark bank (hundreds, tens) */
 #define GP_STREAK_BANK_DL 1         /* dark-on-light bank (units wheel) */
 

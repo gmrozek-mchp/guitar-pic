@@ -77,36 +77,54 @@ def test_tracker_holds_when_unreadable():
     assert tr.update(_raw()) == 100                     # all wheels unreadable → hold
 
 
-def test_tracker_carries_over_hundred():
-    tr = StreakTracker()
-    tr.update(_raw(h=(0, True), t=(9, True), u=(9, True)))   # seed 99
-    assert tr.val == 99
-    got = tr.update(_raw(h=(1, True), t=(0, True), u=(0, True)))  # 099 → 100
-    assert got == 100
-
-
-def test_tracker_confident_read_trumps_rollover():
-    # The bug this guards: a tens misread must not lock the value high. A confident
-    # wheel is authoritative for its place, even when it means the value drops.
-    tr = StreakTracker()
-    tr.update(_raw(h=(1, True), t=(1, True), u=(0, True)))   # 110
-    tr.update(_raw(h=(1, True), t=(4, True), u=(0, True)))   # misread tens → 140 (blip)
-    assert tr.val == 140
-    # next frame reads the true tens again → must correct straight back down.
-    assert tr.update(_raw(h=(1, True), t=(1, True), u=(2, True))) == 112
-
-
-def test_tracker_advances_on_confident_units():
+def test_tracker_units_is_immediate():
     tr = StreakTracker()
     tr.update(_raw(h=(1, True), t=(0, True), u=(0, True)))   # seed 100
+    # units debounce is 1 → a confident units read applies at once.
     assert tr.update(_raw(h=(1, True), t=(0, True), u=(5, True))) == 105
 
 
-def test_tracker_carry_resets_unknown_units():
-    # tens increments while units is mid-roll (unreadable) → units rolls to 0.
+def test_tracker_debounces_tens_misread():
+    # A single-frame tens misread must not move the value (the 0↔8 aliasing flip).
+    tr = StreakTracker()
+    tr.update(_raw(h=(1, True), t=(0, True), u=(0, True)))   # 100
+    assert tr.update(_raw(h=(1, True), t=(8, True), u=(0, True))) == 100  # blip ignored
+    assert tr.update(_raw(h=(1, True), t=(0, True), u=(0, True))) == 100  # back to true
+
+
+def test_tracker_flicker_never_commits():
+    # Alternating 0,8,0,8 on the tens must never commit the 8 (debounce resets on the 0).
+    tr = StreakTracker()
+    tr.update(_raw(h=(1, True), t=(0, True), u=(0, True)))
+    for t in (8, 0, 8, 0, 8):
+        tr.update(_raw(h=(1, True), t=(t, True), u=(0, True)))
+    assert tr.val == 100
+
+
+def test_tracker_commits_sustained_tens_change():
+    # A real tens change commits after debounce (2 confident reads); the rolled units
+    # (unknown) resets to 0 on the carry.
     tr = StreakTracker()
     tr.update(_raw(h=(1, True), t=(1, True), u=(9, True)))   # 119
-    assert tr.update(_raw(h=(1, True), t=(2, True))) == 120  # u unknown, tens carried → 0
+    assert tr.update(_raw(h=(1, True), t=(2, True))) == 119  # 1st read of change → held
+    assert tr.update(_raw(h=(1, True), t=(2, True))) == 120  # confirmed → carry, units 0
+
+
+def test_tracker_no_lock_corrects_downward():
+    # The lock bug: a value stuck high must be pullable back down by a sustained read.
+    tr = StreakTracker()
+    tr.update(_raw(h=(1, True), t=(4, True), u=(0, True)))   # seed 140 (as if misread-high)
+    tr.update(_raw(h=(1, True), t=(1, True), u=(0, True)))   # 1st read of lower tens
+    assert tr.update(_raw(h=(1, True), t=(1, True), u=(0, True))) == 110  # confirmed down
+
+
+def test_tracker_clamp_rejects_implausible_jump():
+    # A carry-roll misread that clears debounce (hundreds reads 9 for 2 frames) would
+    # commit 900 from 90 -- a +810 jump the streak can't make. The clamp rejects it.
+    tr = StreakTracker()
+    tr.update(_raw(h=(0, True), t=(9, True), u=(0, True)))   # seed 90
+    tr.update(_raw(h=(9, True), t=(0, True), u=(0, True)))   # 1st read (pending)
+    assert tr.update(_raw(h=(9, True), t=(0, True), u=(0, True))) == 90  # 2nd would be 900 → rejected
 
 
 def test_tracker_resets_when_absent():

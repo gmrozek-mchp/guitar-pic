@@ -222,6 +222,32 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-10 — streak tracker: per-place debounce + plausibility clamp (fixes lock, 0↔8 flicker, carry blip)
+
+Reworked the streak tracker to fix a reported **lock** and two failures it surfaced. The prior
+monotonic forward window `[last, last+30]` couldn't represent a value *below* `last`, so a tens
+misread that nudged `last` up locked in and every units roll then forced the tens higher (11x read as
+14x, 12x→15x…). Replacing it with plain "confident read trumps" fixed the lock but unmasked two
+pre-existing misreads the window had hidden: the **tens 0↔8 flicker** (the slashed zero's top loop
+closes under A2D aliasing → a tens "0" matches the 8-template better and reads 8 *confidently*,
+alternating frame-to-frame, 100↔180) and a **carry-roll blip** (at 99→100 the mid-roll hundreds wheel
+reads 9 confidently for ~2 frames → a 900 flash).
+
+Fix = two temporal/physical guards, both symmetric so they correct downward and **never lock**:
+- **Per-place debounce** (`GP_STREAK_DEBOUNCE {2,2,1}`): a *changed* digit commits only after N
+  consecutive confident reads. Slow wheels (hundreds/tens) N=2 → single-frame flips (0↔8) never
+  stick; units N=1 → stays responsive (debouncing the fast wheel would freeze it). A committed change
+  carries (unreadable lower places → 0); an unreadable place holds.
+- **Plausibility clamp** (`GP_STREAK_MAX_STEP 50`): reject a committed per-frame value change > 50 —
+  a streak can't gain that much per ~3 Hz poll, so it's a misread that cleared debounce (the 2-frame
+  carry hundreds read). The seed bypasses it (a real reappearance jumps straight in).
+
+Over the 6549-frame capture: **0 implausible jumps (94 → 15 with debounce alone → 0 with the clamp),
+max back to 304, anchors exact.** `test_streak.py` gains flicker/debounce/clamp cases (74 pass).
+**Still open — units-9 detection:** the units wheel (dark-on-light) has a fat distance tail, so a
+correct 9 (dist ~12300) exceeds the `UNK_DIST` gate and is dropped; needs more units exemplars — a
+corpus-growth pass mining the capture is next.
+
 ### 2026-07-10 — note-streak counter (odometer OCR + confident-read tracker) → dashboard label
 
 Added the last scoring-block value: the **note streak**, a 3-tumbler mechanical odometer (note icon

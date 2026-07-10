@@ -338,42 +338,74 @@ void gp_streak_reset(gp_streak_state_t *st)
 {
     st->val = 0u;
     st->seen = 0u;
-    st->dg[0] = 0u; st->dg[1] = 0u; st->dg[2] = 0u;
+    for (int i = 0; i < 3; i++) { st->dg[i] = 0u; st->pend[i] = 0xFFu; st->pend_n[i] = 0u; }
 }
 
 uint16_t gp_streak_track(gp_streak_state_t *st, const gp_streak_raw_t *raw)
 {
+    static const uint8_t debounce[3] = GP_STREAK_DEBOUNCE;
+
     if (!raw->present)
     {
         gp_streak_reset(st);   /* odometer gone (streak reset / not shown) → 0 */
         return 0u;
     }
-    int nconf = (int)raw->known[0] + (int)raw->known[1] + (int)raw->known[2];
 
     if (!st->seen)
     {
-        if (nconf < 2) { return 0u; }  /* need ≥2 confident wheels to seed */
-        for (int i = 0; i < 3; i++) { st->dg[i] = raw->known[i] ? raw->digit[i] : 0u; }
+        if (((int)raw->known[0] + raw->known[1] + raw->known[2]) < 2) { return 0u; }  /* need ≥2 to seed */
+        for (int i = 0; i < 3; i++)
+        {
+            st->dg[i] = raw->known[i] ? raw->digit[i] : 0u;
+            st->pend[i] = 0xFFu; st->pend_n[i] = 0u;
+        }
         st->seen = 1u;
     }
     else
     {
-        /* A confident wheel is authoritative for its place (trumps the rollover
-         * logic — a misread self-corrects next frame). An unreadable wheel is
-         * filled: it holds its last digit, or resets to 0 when a higher place
-         * changed this frame (a carry/rollover). */
+        /* A confident wheel is authoritative for its place, but a *changed* digit
+         * must be confirmed by debounce[i] consecutive confident reads before it
+         * commits (kills single-frame misreads on the slow wheels without locking;
+         * units is immediate). A committed change carries: unreadable lower places
+         * reset to 0. An unreadable place otherwise holds its last digit. */
+        uint8_t s_dg[3], s_pend[3], s_pn[3];
+        for (int i = 0; i < 3; i++) { s_dg[i] = st->dg[i]; s_pend[i] = st->pend[i]; s_pn[i] = st->pend_n[i]; }
+
         int carry = 0;
         for (int i = 0; i < 3; i++)  /* hundreds → tens → units */
         {
             if (raw->known[i])
             {
-                if (raw->digit[i] != st->dg[i]) { carry = 1; }
-                st->dg[i] = raw->digit[i];
+                uint8_t r = raw->digit[i];
+                if (r == st->dg[i])
+                {
+                    st->pend[i] = 0xFFu; st->pend_n[i] = 0u;  /* confirms committed */
+                }
+                else
+                {
+                    st->pend_n[i] = (r == st->pend[i]) ? (uint8_t)(st->pend_n[i] + 1u) : 1u;
+                    st->pend[i] = r;
+                    if (st->pend_n[i] >= debounce[i])  /* change confirmed */
+                    {
+                        st->dg[i] = r; st->pend[i] = 0xFFu; st->pend_n[i] = 0u; carry = 1;
+                    }
+                }
             }
             else if (carry)
             {
-                st->dg[i] = 0u;
+                st->dg[i] = 0u; st->pend[i] = 0xFFu; st->pend_n[i] = 0u;
             }
+        }
+
+        /* Reject an implausible per-frame value jump (a misread that cleared
+         * debounce, e.g. a hundreds wheel read mid-roll during a carry). Symmetric,
+         * so it still corrects downward and never locks. */
+        int new_val = st->dg[0] * 100 + st->dg[1] * 10 + st->dg[2];
+        int delta = new_val - (int)st->val;
+        if (delta < 0) { delta = -delta; }
+        if (delta > GP_STREAK_MAX_STEP)
+        {
+            for (int i = 0; i < 3; i++) { st->dg[i] = s_dg[i]; st->pend[i] = s_pend[i]; st->pend_n[i] = s_pn[i]; }
         }
     }
 
