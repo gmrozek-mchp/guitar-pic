@@ -39,6 +39,7 @@ from .metadata import (
     SONG_SLOT_ROI,
     STREAK_DEBOUNCE,
     STREAK_MAX_STEP,
+    STREAK_WRAP_MIN,
     STREAK_NOTE_CELL,
     STREAK_NOTE_MAX_SAD,
     STREAK_UNK_DIST,
@@ -279,6 +280,8 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
       % STREAK_DEBOUNCE)
     w("#define GP_STREAK_MAX_STEP %d      /* reject a committed value jump larger than this (implausible) */"
       % STREAK_MAX_STEP)
+    w("#define GP_STREAK_WRAP_MIN %d       /* units drop >= this => wheel wrapped => step the tens */"
+      % STREAK_WRAP_MIN)
     w("#define GP_STREAK_BANK_WD 0         /* white-on-dark bank (hundreds, tens) */")
     w("#define GP_STREAK_BANK_DL 1         /* dark-on-light bank (units wheel) */")
     w("")

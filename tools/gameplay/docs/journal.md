@@ -222,6 +222,29 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-10 — streak: audited/cleaned the training set + units-wrap tens carry (fixes the carry lag)
+
+Two linked changes after Greg reviewed the corpus by eye:
+
+1. **Training-set audit.** The auto-selected units exemplars had let **mid-roll** samples in — a
+   rolling wheel momentarily reads as a digit but the glyph is half-transitioned, and averaging those
+   smears the template. Greg reviewed every crop; removed the mid-roll ones and relabelled full-label
+   crops whose ones was rolling to exclude just the units (`08x`, `11x`, `16x` — keeping their settled
+   tens/hundreds). Corpus 76→65. **Future policy (Greg): a digit is usable only if it reads identically
+   across neighbouring frames** — any frame-to-frame change = not settled. (To implement in the
+   auto-growth tooling.) After cleanup some units digits are thin (2:3, 3:2, 4:3) — re-grow with the
+   stability gate if they under-detect.
+
+2. **Units-wrap tens carry.** Cleaner data made units-9 detect better, which *exposed* the tens carry
+   lag: at a ten-crossing the units rolls to 0 immediately but the debounced tens lagged, so the
+   display dipped 49→40→50. Fixed by stepping the tens the instant the units wraps — a confident units
+   read that dropped by ≥`STREAK_WRAP_MIN`(5) bumps the *current* (debounced) tens by one, cascading to
+   the hundreds. **Safe against the earlier lock**: it works off the debounced digits and fires only on
+   a genuine wrap, so it never re-rounds a stale value — if a wrong-high tens was corrected downward,
+   the units isn't wrapping, no carry fires, and the correction stands. Verified by a regression test
+   (a 2-frame tens misread commits ~141 then recovers to 11x, *not* stuck) and over the capture:
+   carry-lag dips 30→0, 0 implausible jumps, anchors exact, 4 transient recoveries, 76 tests green.
+
 ### 2026-07-10 — integer-math rewrite of the score + streak readers (bit-exact C↔Python; fixes a coverage OOB bug)
 
 Rewrote the shared coverage pipeline (luma → ink threshold → grid resize → per-cell coverage) to

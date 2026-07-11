@@ -56,6 +56,7 @@ from .metadata import (
     STREAK_INK_NUM,
     STREAK_INK_DEN,
     STREAK_MAX_STEP,
+    STREAK_WRAP_MIN,
     STREAK_NOTE_CELL,
     STREAK_NOTE_MAX_SAD,
     STREAK_UNK_DIST,
@@ -448,6 +449,7 @@ class StreakConfig:
     unk_margin: int = STREAK_UNK_MARGIN
     debounce: tuple[int, int, int] = STREAK_DEBOUNCE
     max_step: int = STREAK_MAX_STEP
+    wrap_min: int = STREAK_WRAP_MIN
 
 
 DEFAULT_STREAK_CONFIG = StreakConfig()
@@ -636,6 +638,26 @@ class StreakTracker:
                         carry = True
             elif carry:  # unreadable wheel below a place that just rolled → 0
                 self.dg[i], self.pend[i], self.pend_n[i] = 0, -1, 0
+
+        # Units wrap → tens carry (anticipate the tens step). A confident units read
+        # that dropped sharply (9→0-ish) means the units wheel wrapped, so the tens
+        # has stepped — bump the *current* (debounced) tens by one, cascading to the
+        # hundreds. This applies the carry the instant the ones rolls (49→50) instead
+        # of waiting for the debounced tens wheel (which lagged: 49→40→50).
+        #
+        # Crucially it works off the debounced digits and fires ONLY on a genuine
+        # wrap — never rounding the stale previous value. So it can't fight a tens
+        # correction or run away: if a wrong-high tens was just corrected downward,
+        # the units isn't wrapping, no carry fires, and the correction stands (avoids
+        # the "stuck 30-high, can't recover" failure).
+        prev_units = snap[0][2]
+        if raw.known[2] and (prev_units - raw.digits[2]) >= self.cfg.wrap_min:
+            self.dg[1] += 1
+            if self.dg[1] > 9:
+                self.dg[1] = 0
+                self.dg[0] = min(9, self.dg[0] + 1)
+            self.pend[0] = self.pend[1] = -1
+            self.pend_n[0] = self.pend_n[1] = 0
 
         new_val = self.dg[0] * 100 + self.dg[1] * 10 + self.dg[2]
         if abs(new_val - self.val) > self.cfg.max_step:

@@ -410,6 +410,20 @@ uint16_t gp_streak_track(gp_streak_state_t *st, const gp_streak_raw_t *raw)
             }
         }
 
+        /* Units wrap → tens carry (anticipate the tens step): a confident units read
+         * that dropped sharply (9→0-ish) means the units wheel wrapped, so step the
+         * current (debounced) tens by one, cascading to the hundreds. Applies the
+         * carry the instant the ones rolls (49→50) rather than waiting for the tens
+         * wheel to be re-read (which lagged: 49→40→50). Works off the debounced
+         * digits and fires only on a genuine wrap, so it can't fight a downward tens
+         * correction or run away (avoids "stuck 30-high, can't recover"). */
+        if (raw->known[2] && (int)s_dg[2] - (int)raw->digit[2] >= GP_STREAK_WRAP_MIN)
+        {
+            if (++st->dg[1] > 9u) { st->dg[1] = 0u; if (st->dg[0] < 9u) { st->dg[0]++; } }
+            st->pend[0] = st->pend[1] = 0xFFu;
+            st->pend_n[0] = st->pend_n[1] = 0u;
+        }
+
         /* Reject an implausible per-frame value jump (a misread that cleared
          * debounce, e.g. a hundreds wheel read mid-roll during a carry). Symmetric,
          * so it still corrects downward and never locks. */

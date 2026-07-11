@@ -118,6 +118,27 @@ def test_tracker_no_lock_corrects_downward():
     assert tr.update(_raw(h=(1, True), t=(1, True), u=(0, True))) == 110  # confirmed down
 
 
+def test_tracker_units_wrap_carries_tens():
+    # The reported lag: 49 → units rolls to 0 (tens mid-step, unknown) must read 50
+    # promptly, not 40 then later 50.
+    tr = StreakTracker()
+    tr.update(_raw(h=(0, True), t=(4, True), u=(9, True)))   # 49
+    assert tr.update(_raw(h=(0, True), t=(4, False), u=(0, True))) == 50  # wrap → step tens
+
+
+def test_tracker_wrap_carry_recovers_from_stuck():
+    # The failure to guard against: a tens misread that clears debounce (→ stuck high)
+    # must still recover — the wrap-carry must not re-inflate a stale value ("30 off,
+    # couldn't recover").
+    tr = StreakTracker()
+    tr.update(_raw(h=(1, True), t=(1, True), u=(0, True)))       # 110
+    tr.update(_raw(h=(1, True), t=(4, True), u=(1, True)))       # tens misread 4 (frame 1)
+    assert tr.update(_raw(h=(1, True), t=(4, True), u=(1, True))) >= 140  # commits ~141 (stuck high)
+    for u in (2, 3, 4):                                          # true reads: tens=1, units climbs
+        v = tr.update(_raw(h=(1, True), t=(1, True), u=(u, True)))
+    assert 110 <= v <= 119, v   # recovered to 11x, not stuck at 14x
+
+
 def test_tracker_clamp_rejects_implausible_jump():
     # A carry-roll misread that clears debounce (hundreds reads 9 for 2 frames) would
     # commit 900 from 90 -- a +810 jump the streak can't make. The clamp rejects it.

@@ -262,6 +262,10 @@ STREAK_DEBOUNCE = (2, 2, 1)
 # corrects downward and never locks; the seed bypasses it, so a real reappearance
 # still jumps straight to the value.
 STREAK_MAX_STEP = 50
+# Tracker units-wrap carry: a confident units read that dropped by at least this
+# much (9→0-ish) is a wheel wrap → step the tens. Large enough to ignore a small
+# units misread, small enough to catch a wrap even if the last units seen was ~5.
+STREAK_WRAP_MIN = 5
 
 
 def streak_from_filename(filename: str) -> tuple[int | None, int | None, int | None] | None:
