@@ -26,6 +26,11 @@
 
 static bool s_ready;
 
+/* When set, the gameplay-mirror hook (Fauxmote_SendGuitarMask) is ignored so a
+ * higher-priority producer owns the GUITAR slice. The wiimotes manual-override
+ * screen engages it while shown. */
+static volatile bool s_override;
+
 /* Latched controller state (written by producers, read by the TX task). Guarded
  * by a short critical section — a few-byte copy, never a blocking call. */
 static uint8_t s_g_mask;
@@ -240,7 +245,13 @@ void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux)
 
 void Fauxmote_SendGuitarMask(uint8_t mask)
 {
+    if (s_override) { return; }
     Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+}
+
+void Fauxmote_SetOverride(bool on)
+{
+    s_override = on;
 }
 
 void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y)

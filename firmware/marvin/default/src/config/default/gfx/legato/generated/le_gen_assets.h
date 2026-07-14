@@ -763,11 +763,14 @@ extern leRasterFont DejaVuSansMono_16;
  * Height:       37
  * Baseline:     17
  * Style:        Antialias
- * Glyph Count:  192
- * Range Count:  3
+ * Glyph Count:  195
+ * Range Count:  6
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
                  0x25B2
+                 0x25B6
+                 0x25BC
+                 0x25C0
 ***********************************/
 extern leRasterFont DejaVuSansMono_18;
 

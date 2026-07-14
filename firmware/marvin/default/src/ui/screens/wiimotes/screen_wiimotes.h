@@ -25,6 +25,13 @@ void ScreenWiimotes_Setup(void);
  * wiimotes base view and when the nav drawer opens over it. */
 void ScreenWiimotes_SetInput(bool on);
 
+/* Take (shown) / relinquish (hidden) the fauxmote link as this manual-override view
+ * becomes/stops being the active base view. While shown, the screen's buttons drive
+ * fauxmote directly and take priority over the gameplay mirror. Distinct from
+ * SetInput, which the drawer modal also toggles. ui_manager calls this on the real
+ * base-view show/hide only. */
+void ScreenWiimotes_SetShown(bool shown);
+
 #ifdef __cplusplus
 }
 #endif

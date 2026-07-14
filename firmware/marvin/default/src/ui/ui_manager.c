@@ -538,6 +538,7 @@ void UiManager_ShowWiimotes(void)
 
     bind_canvas(CANVAS_WIIMOTES, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     ScreenWiimotes_SetInput(true);
+    ScreenWiimotes_SetShown(true);
 
     s_base_view = BASE_VIEW_WIIMOTES;
 }
@@ -548,6 +549,7 @@ void UiManager_ShowDashboard(void)
 
     gfxcHideCanvas(CANVAS_WIIMOTES); gfxcCanvasUpdate(CANVAS_WIIMOTES);
     ScreenWiimotes_SetInput(false);
+    ScreenWiimotes_SetShown(false);
 
     bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     UiManager_SetDashboardPickable(true);
