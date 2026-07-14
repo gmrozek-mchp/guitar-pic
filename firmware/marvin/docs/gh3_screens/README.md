@@ -103,6 +103,11 @@ snapshot number.
 | quit_confirm__quit.png | 95 | quit confirm — quit |
 | loading.png | 96 | loading |
 | in_song__training.png | 97 | in song — training |
+| in_song_2p__0200.png | 200 | in song — 2-player (left = robot highway) |
+| in_song_2p__0201.png | 201 | in song — 2-player |
+| in_song_2p__0202.png | 202 | in song — 2-player |
+| in_song_2p__0203.png | 203 | in song — 2-player |
+| in_song_2p__web0714.png | — | in song — 2-player (web capture 2026-07-14) |
 | practice_end_menu__continue.png | 109 | practice end menu — continue |
 | practice_end_menu__restart.png | 110 | practice end menu — restart |
 | practice_end_menu__change_speed.png | 111 | practice end menu — change speed |

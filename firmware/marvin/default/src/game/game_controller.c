@@ -14,6 +14,7 @@
 #include "actuator/timing_pipeline.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
+#include "detector/cv_marvin_v1.h"   /* select the highway geometry at gameplay entry */
 #include "perf_log/perf_log_records.h"
 #include "ui/dashboard_feed.h"   /* playtime → dashboard progress bar */
 
@@ -48,6 +49,7 @@
 #define GC_LOADING_TIMEOUT_MS  20000u
 #define GC_PLAY_POLL_MS     300u
 #define GC_CONNECT_TIMEOUT_MS  12000u  /* wait for fauxmote↔Wii reconnect */
+#define GC_ATTACH_WAIT_MS   120000u    /* attach mode: how long to wait for a gameplay screen */
 
 /* Budgets (mirror the offline NavController). */
 #define GC_MAX_ITERS        60
@@ -74,8 +76,11 @@ static StaticTask_t  s_tcb;
 static SemaphoreHandle_t s_start_sig;
 static StaticSemaphore_t s_start_sig_buf;
 
+typedef enum { GC_MODE_NAV = 0, GC_MODE_ATTACH } gc_mode_t;
+
 static volatile bool s_busy;
 static volatile bool s_stop_req;
+static volatile uint8_t s_mode = GC_MODE_NAV;   /* set by Start / StartAttach */
 static void (*s_status_cb)(const char *);
 
 static gc_step_t s_plan[8];
@@ -336,6 +341,12 @@ static void play_until_done(void)
                 if (gs.streak > peak_streak) { peak_streak = gs.streak; }
                 DashboardFeed_PostStreak(gs.streak);
             }
+            else if (gs.screen == GP_SCREEN_in_song_2p)
+            {
+                /* 2p: only the left-highway note detection runs; the 1p score/
+                 * multiplier/streak scoreboard readers don't apply (2p uses the
+                 * separate amp scoreboards — a different WIP). Stay in the loop. */
+            }
             else if (gs.screen != GP_SCREEN_loading && gs.screen != GP_SCREEN_UNKNOWN)
             {
                 break;   /* song ended (practice_end_menu) or left gameplay */
@@ -397,10 +408,39 @@ static bool ensure_wii_connected(void)
 static bool ensure_wii_connected(void) { return true; }
 #endif
 
+/* Attach mode: no navigation. Wait for the operator's manually-started game to
+ * reach a gameplay screen, point the CV detector at the matching highway, then
+ * actuate the song to its end. Times out to idle if no game appears. */
+static void play_attached(void)
+{
+    status("WAIT GAME");
+    TickType_t t0 = xTaskGetTickCount();
+    for (;;)
+    {
+        if (s_stop_req) { finish("READY"); return; }
+
+        uint8_t sc; int16_t sel;
+        if (observe(&sc, &sel) &&
+            (sc == GP_SCREEN_in_song || sc == GP_SCREEN_in_song_2p))
+        {
+            CvMarvinV1_SetConfig(sc == GP_SCREEN_in_song_2p
+                                 ? &CV_MARVIN_CFG_2P_LEFT : &CV_MARVIN_CFG_1P);
+            play_until_done();   /* actuates until the song ends / Stop / leaves gameplay */
+            return;
+        }
+        if ((TickType_t)(xTaskGetTickCount() - t0) > pdMS_TO_TICKS(GC_ATTACH_WAIT_MS))
+        {
+            finish("NO GAME");   /* no gameplay screen within the wait budget */
+            return;
+        }
+        vTaskDelay(pdMS_TO_TICKS(GC_STEP_POLL_MS));
+    }
+}
+
 static void run(void)
 {
     const selection_t *sel = Selection_Get();
-    if (!sel->valid)
+    if (s_mode == GC_MODE_NAV && !sel->valid)
     {
         status("NO SONG");
         return;
@@ -428,6 +468,9 @@ static void run(void)
     if (ManualControl_IsEnabled()) { ManualControl_SetEnabled(false); }
     TimingPipeline_SetEnabled(false);
 
+    /* Attach mode skips menu navigation entirely — the operator set the game up. */
+    if (s_mode == GC_MODE_ATTACH) { play_attached(); return; }
+
     if (!nav_to_main_menu())
     {
         finish(s_stop_req ? "READY" : "FAILED");
@@ -445,8 +488,13 @@ static void run(void)
         uint8_t sc; int16_t s;
         if (!observe(&sc, &s)) { continue; }
 
-        if (sc == GP_SCREEN_in_song)
+        if (sc == GP_SCREEN_in_song || sc == GP_SCREEN_in_song_2p)
         {
+            /* Point the CV detector at the highway that matches the observed
+             * gameplay screen: 2p reads the left (robot) highway, 1p the
+             * centered one. (The console `cvcfg` override can force either.) */
+            CvMarvinV1_SetConfig(sc == GP_SCREEN_in_song_2p
+                                 ? &CV_MARVIN_CFG_2P_LEFT : &CV_MARVIN_CFG_1P);
             play_until_done();
             return;
         }
@@ -513,6 +561,19 @@ void GameController_Start(void)
         LOG_WARN("GC: busy — ignoring start\r\n");
         return;
     }
+    s_mode = GC_MODE_NAV;
+    s_stop_req = false;
+    (void)xSemaphoreGive(s_start_sig);
+}
+
+void GameController_StartAttach(void)
+{
+    if (s_busy)
+    {
+        LOG_WARN("GC: busy — ignoring attach\r\n");
+        return;
+    }
+    s_mode = GC_MODE_ATTACH;
     s_stop_req = false;
     (void)xSemaphoreGive(s_start_sig);
 }

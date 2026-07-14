@@ -382,6 +382,54 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-14 — CV detector: config-selectable 1p / 2p-left highway geometry (pending build)
+
+Made `cv_marvin_v1` read the note-detector geometry from a **passed-in config** so the one detector
+can sample either the single-player centered highway or the **2-player left (robot) highway** (the
+right player is a human — no second detector, no two-guitar actuation, no bus/perf schema change).
+2p-left coords calibrated host-side 2026-07-14 (see `tools/gameplay/docs/journal.md`).
+
+- `detector/cv_marvin_v1.h`: new public `cv_marvin_v1_config_t` (per-fret `cv_sensor_xy_t` sample
+  points + SENSING/STRIKE strip ROIs + `name`), two `extern const` configs `CV_MARVIN_CFG_1P` /
+  `CV_MARVIN_CFG_2P_LEFT`, and `CvMarvinV1_SetConfig()`/`GetConfig()`.
+- `detector/cv_marvin_v1.c`: replaced the file-static `s_sensor_coords` + `CV_SENSING_*`/`CV_STRIKE_*`
+  `#define`s with the two config tables + a `s_active_cfg`/`s_pending_cfg` pointer pair. The task picks
+  up a pending swap at the top of the loop (even while disabled), **resets the per-fret latch state**
+  (`s_pressed`/`s_edge_active`/dists/press_count) so stale latches don't leak across highways, and
+  re-publishes detector config. `detect_frame`/`draw_overlay`/`publish_detector_config` + the strip
+  copy all read geometry from the active config. SENSING scratch sized to the max strip
+  (`CV_SENSING_MAX_W/H`) so a swap can't overflow it. Detector identity (`DETECTOR_CV_MARVIN_V1`) and
+  the color/threshold constants stay shared — geometry is the only per-highway difference for now
+  (thresholds can move into the config later if the 2p highway needs different values). Config swap is
+  lock-light (volatile pointer; a benign read-then-clear race just delays a rare swap by a frame).
+- `console/console.c`: `cvcfg <1p|2pl>` command (bare `cvcfg` prints the active config name) — the
+  primary bring-up/validation tool, mirroring the 1p sensor bring-up.
+- **`play attach`** (new `GameController_StartAttach`, `gc_mode_t{NAV,ATTACH}`): a playthrough that
+  **skips all menu navigation** — the operator sets the game up by hand (a 2-player match), and marvin
+  owns the wire, waits for a gameplay screen (`GC_ATTACH_WAIT_MS` = 2 min budget), auto-selects the
+  highway config from the observed `in_song`/`in_song_2p`, then actuates the whole song via
+  `play_until_done` and goes idle. `play` (unchanged) still auto-navigates the 1p practice path from
+  the committed Selection. Both share the wire-ownership prologue + `ensure_wii_connected` pre-flight.
+- `game/game_controller.c`: at gameplay entry it now accepts `GP_SCREEN_in_song_2p` as gameplay and
+  **auto-selects** the matching config (`in_song_2p` → 2p-left, `in_song` → 1p); the 2p branch in
+  `play_until_done` keeps the loop alive without running the 1p score/multiplier/streak readers (2p
+  uses the separate amp scoreboards — different WIP). `gameplay_engine.c` unchanged (1p readers stay
+  gated on `GP_SCREEN_in_song`; `in_song_2p` just publishes screen state + logs generically).
+- Screen-classifier side (host `tools/gameplay`): added the `in_song_2p` class + regenerated
+  `game/gameplay_metadata.h` (`GP_N_SCREENS` 13→14). Detail in the gameplay journal, same date.
+
+**Fauxmote/actuation unchanged** — marvin still drives its single guitar exactly as in 1p; the
+`ensure_wii_connected()` pre-flight in `run()` is the existing fauxmote path.
+
+**Bring-up plan (Greg, MPLAB build):** on a live 2-player game, `detect cv on` + `cvcfg 2pl`, open the
+host viewer, confirm the SENSING overlay rings sit on the left highway's five gems and the fret P/E
+flags fire on notes — the on-hardware analog of the host `sense_marked.png` overlay. `cvcfg 1p`
+restores single-player behavior. Then the integrated path (auto-select from `in_song_2p`). **Pending
+Greg's build + hardware validation.** Open: 2p-highway note-scroll *lead time* at the same y=311 may
+differ from 1p (shorter highway) — may need to drop the sense row after watching real 2p scroll; and
+the automated 2p *menu* navigation is out of scope (the controller's practice-run plan is 1p; 2p is
+human-set-up + console/timing for now).
+
 ### 2026-07-09 — gameplay_engine: score multiplier reader + dashboard 1X-4X buttons (pending build)
 
 Added the in-song score **multiplier** (1x/2x/3x/4x) alongside the score. `gp_read_multiplier`

@@ -29,6 +29,7 @@ SCREEN_IDS: tuple[str, ...] = (
     "speed_select",
     "loading",
     "in_song",
+    "in_song_2p",
     "pause_menu",
     "quit_confirm",
     "practice_end_menu",

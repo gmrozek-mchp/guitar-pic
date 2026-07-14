@@ -33,34 +33,49 @@
 
 #define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
 
-/* Strip regions published to the host viewer each frame (native capture-frame
- * coords). SENSING spans the sensor row (the rings land here); STRIKE spans the
- * strum trigger zone below the sensors (no rings there). */
-#define CV_SENSING_X           265u
-#define CV_SENSING_Y           300u
-#define CV_SENSING_W           185u
-#define CV_SENSING_H           32u
-#define CV_STRIKE_X            212u
-#define CV_STRIKE_Y            395u
-#define CV_STRIKE_W            290u
-#define CV_STRIKE_H            32u
+/* SENSING scratch is sized for the largest configured strip so a runtime
+ * config swap can't overflow it (1p's 185×32 dominates 2p-left's 155×32). */
+#define CV_SENSING_MAX_W       185u
+#define CV_SENSING_MAX_H       32u
 
-/* Sensor coordinates in native capture-frame space, anchored to 720×480
- * (Wii 480p60 — primary production source). (hx,hy) = brightness sensor,
- * (ex,ey) = color-filtered edge sensor; both above the strike line.
- * Derived from fret-tuner detect_video.py 1920×1080 defaults via the
- * same Elgato HDMI capture, scaled by (3/8, 4/9). Runtime calibration
- * UI lands with M6. */
-typedef struct { uint16_t hx, hy, ex, ey; } sensor_xy_t;
-
-static const sensor_xy_t s_sensor_coords[FRET_COUNT] =
+/* Per-highway geometry, selectable at runtime via CvMarvinV1_SetConfig.
+ * (hx,hy) = brightness sensor, (ex,ey) = color-filtered edge sensor. 1p coords
+ * derive from fret-tuner detect_video.py defaults via the Elgato HDMI capture;
+ * 2p-left calibrated 2026-07-14 (tools/gameplay/docs/journal.md). SENSING spans
+ * the sensor row (rings painted here); STRIKE spans the strum zone below. */
+const cv_marvin_v1_config_t CV_MARVIN_CFG_1P =
 {
-    [FRET_GREEN]  = { 280, 311, 293, 311 },
-    [FRET_RED]    = { 317, 311, 330, 311 },
-    [FRET_YELLOW] = { 355, 311, 368, 311 },
-    [FRET_BLUE]   = { 393, 311, 380, 311 },
-    [FRET_ORANGE] = { 430, 311, 417, 311 },
+    .name = "1p",
+    .sensor =
+    {
+        [FRET_GREEN]  = { 280, 311, 293, 311 },
+        [FRET_RED]    = { 317, 311, 330, 311 },
+        [FRET_YELLOW] = { 355, 311, 368, 311 },
+        [FRET_BLUE]   = { 393, 311, 380, 311 },
+        [FRET_ORANGE] = { 430, 311, 417, 311 },
+    },
+    .sensing_x = 265u, .sensing_y = 300u, .sensing_w = 185u, .sensing_h = 32u,
+    .strike_x  = 212u, .strike_y  = 395u, .strike_w  = 290u, .strike_h  = 32u,
 };
+
+const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
+{
+    .name = "2p-left",
+    .sensor =
+    {
+        [FRET_GREEN]  = { 166, 311, 176, 311 },
+        [FRET_RED]    = { 195, 311, 204, 311 },
+        [FRET_YELLOW] = { 223, 311, 233, 311 },
+        [FRET_BLUE]   = { 251, 311, 242, 311 },
+        [FRET_ORANGE] = { 279, 311, 269, 311 },
+    },
+    .sensing_x = 150u, .sensing_y = 300u, .sensing_w = 155u, .sensing_h = 32u,
+    .strike_x  = 120u, .strike_y  = 395u, .strike_w  = 205u, .strike_h  = 34u,
+};
+
+/* Active geometry, and a pending swap picked up by the task on the next frame. */
+static const cv_marvin_v1_config_t *volatile s_active_cfg  = &CV_MARVIN_CFG_1P;
+static const cv_marvin_v1_config_t *volatile s_pending_cfg = NULL;
 
 /* Per-fret BGR target / reject weights. Edge signal is
  * (target·c − max(0, reject·c)) × sat_ratio. Reject totals exceed 1.0
@@ -92,7 +107,7 @@ static uint8_t       s_frame_queue_storage[CV_FRAME_QUEUE_DEPTH * sizeof(Video_F
  * the rings are painted on the copy, then it's shipped via PerfLog_EmitStripPacked
  * — the source capture frame is never written, so snapshots and the LVDS panel
  * stay clean. */
-static uint8_t s_sensing_scratch[CV_SENSING_W * CV_SENSING_H * CV_BYTES_PER_PIXEL];
+static uint8_t s_sensing_scratch[CV_SENSING_MAX_W * CV_SENSING_MAX_H * CV_BYTES_PER_PIXEL];
 
 static StackType_t   s_task_stack[CV_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
@@ -167,7 +182,8 @@ static float color_signal(const float bgr[3], const color_filter_t *f)
 
 /* ─── Detection ────────────────────────────────────────────────────────── */
 
-static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
+static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus,
+                         const cv_marvin_v1_config_t *cfg)
 {
     detector_state_t state;
     memset(&state, 0, sizeof(state));
@@ -182,7 +198,7 @@ static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus)
 
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
-        sensor_xy_t s = s_sensor_coords[i];
+        cv_sensor_xy_t s = cfg->sensor[i];
         float hold_bgr[3], edge_bgr[3];
         sample_patch_bgr(fbuf, fw, fh, s.hx, s.hy, hold_bgr);
         sample_patch_bgr(fbuf, fw, fh, s.ex, s.ey, edge_bgr);
@@ -316,12 +332,13 @@ static void draw_filled_disk(uint8_t *frame, int fw, int fh,
  * coords translated by the buffer's frame-space origin (ox, oy). Pixels falling
  * outside the buffer are clipped by put_pixel_bgr. */
 static void draw_overlay(uint8_t *buf, uint16_t bw, uint16_t bh,
-                         uint16_t ox, uint16_t oy)
+                         uint16_t ox, uint16_t oy,
+                         const cv_marvin_v1_config_t *cfg)
 {
     int w = (int)bw, h = (int)bh;
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
-        sensor_xy_t s = s_sensor_coords[i];
+        cv_sensor_xy_t s = cfg->sensor[i];
         const uint8_t *e = s_overlay_edge_bgr[i];
         int hx = (int)s.hx - (int)ox, hy = (int)s.hy - (int)oy;
         int ex = (int)s.ex - (int)ox, ey = (int)s.ey - (int)oy;
@@ -350,16 +367,16 @@ static void draw_overlay(uint8_t *buf, uint16_t bw, uint16_t bh,
  * color filter weights) into a wire record. Static today; when M6
  * calibration UI lands and these become runtime-tunable, this function
  * is the single point that re-publishes after each tweak. */
-static void publish_detector_config(void)
+static void publish_detector_config(const cv_marvin_v1_config_t *geom)
 {
     perf_rec_detector_config_t cfg;
     memset(&cfg, 0, sizeof(cfg));
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
-        cfg.sensor_hx[i]      = s_sensor_coords[i].hx;
-        cfg.sensor_hy[i]      = s_sensor_coords[i].hy;
-        cfg.sensor_ex[i]      = s_sensor_coords[i].ex;
-        cfg.sensor_ey[i]      = s_sensor_coords[i].ey;
+        cfg.sensor_hx[i]      = geom->sensor[i].hx;
+        cfg.sensor_hy[i]      = geom->sensor[i].hy;
+        cfg.sensor_ex[i]      = geom->sensor[i].ex;
+        cfg.sensor_ey[i]      = geom->sensor[i].ey;
         cfg.color_target_b[i] = s_color_filter[i].target[0];
         cfg.color_target_g[i] = s_color_filter[i].target[1];
         cfg.color_target_r[i] = s_color_filter[i].target[2];
@@ -371,6 +388,17 @@ static void publish_detector_config(void)
     cfg.hold_release_frac = CV_HOLD_RELEASE_FRAC;
     cfg.edge_thresh       = CV_EDGE_THRESH;
     PerfLog_EmitDetectorConfig(&cfg);
+}
+
+/* Clear per-fret latch/hysteresis state — called on a geometry swap so stale
+ * press/edge latches from the old highway don't leak into the new one. */
+static void reset_detector_state(void)
+{
+    memset(s_hold_dist,   0, sizeof(s_hold_dist));
+    memset(s_edge_dist,   0, sizeof(s_edge_dist));
+    memset(s_pressed,     0, sizeof(s_pressed));
+    memset(s_edge_active, 0, sizeof(s_edge_active));
+    memset(s_press_count, 0, sizeof(s_press_count));
 }
 
 /* ─── Task ─────────────────────────────────────────────────────────────── */
@@ -392,12 +420,25 @@ static void cv_marvin_v1_task(void *param)
 
     LOG_INFO("CV: cv_marvin_v1 started\r\n");
 
-    publish_detector_config();
+    publish_detector_config(s_active_cfg);
 
     for (;;)
     {
         Video_FrameInfo frame;
         if (xQueueReceive(frames, &frame, portMAX_DELAY) != pdTRUE) { continue; }
+
+        /* Apply a pending geometry swap before touching the frame, even when
+         * disabled, so a config change while paused takes effect on resume. */
+        const cv_marvin_v1_config_t *pending = s_pending_cfg;
+        if (pending != NULL)
+        {
+            s_pending_cfg = NULL;
+            s_active_cfg  = pending;
+            reset_detector_state();
+            publish_detector_config(pending);
+            LOG_INFO("CV: config -> %s\r\n", pending->name);
+        }
+        const cv_marvin_v1_config_t *cfg = s_active_cfg;
 
         /* Always drain, even when disabled, so frames don't back up. */
         if (!Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)) { continue; }
@@ -406,15 +447,13 @@ static void cv_marvin_v1_task(void *param)
         if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
 
         PerfLog_EmitStamp(PERF_STAGE_CV_START, frame.frame_count, 0u);
-        detect_frame(&frame, bus);
+        detect_frame(&frame, bus, cfg);
         PerfLog_EmitStamp(PERF_STAGE_CV_END, frame.frame_count, 0u);
 
         /* Re-emit detector config at ~1 Hz so a mid-stream host attach
          * picks it up within a second of frames flowing. Cheap (~188 B/s
-         * × 1 record/s). When config becomes runtime-tunable, this becomes
-         * the heartbeat — on-change emits land via publish_detector_config
-         * directly from the setter path. */
-        if ((frame.frame_count % 60u) == 0u) { publish_detector_config(); }
+         * × 1 record/s). On-change emits land above via the pending-swap path. */
+        if ((frame.frame_count % 60u) == 0u) { publish_detector_config(cfg); }
 
         const uint32_t fstride = (uint32_t)frame.width * CV_BYTES_PER_PIXEL;
 
@@ -422,7 +461,8 @@ static void cv_marvin_v1_task(void *param)
          * sensors there → no rings). */
         PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_STRIKE,
                                    (const uint8_t *)frame.buffer, fstride,
-                                   CV_STRIKE_X, CV_STRIKE_Y, CV_STRIKE_W, CV_STRIKE_H);
+                                   cfg->strike_x, cfg->strike_y,
+                                   cfg->strike_w, cfg->strike_h);
 
         /* SENSING: copy the sensor row into scratch and (when the overlay sink
          * is on) paint the target rings onto the copy before shipping it. The
@@ -432,11 +472,11 @@ static void cv_marvin_v1_task(void *param)
         if ((PerfLog_GetEnabledMask() & (1u << PERF_REC_STRIP)) != 0u)
         {
             const uint8_t *src = (const uint8_t *)frame.buffer
-                               + (uint32_t)CV_SENSING_Y * fstride
-                               + (uint32_t)CV_SENSING_X * CV_BYTES_PER_PIXEL;
-            const uint32_t row_bytes = (uint32_t)CV_SENSING_W * CV_BYTES_PER_PIXEL;
+                               + (uint32_t)cfg->sensing_y * fstride
+                               + (uint32_t)cfg->sensing_x * CV_BYTES_PER_PIXEL;
+            const uint32_t row_bytes = (uint32_t)cfg->sensing_w * CV_BYTES_PER_PIXEL;
             uint8_t *dst = s_sensing_scratch;
-            for (uint16_t row = 0u; row < CV_SENSING_H; row++)
+            for (uint16_t row = 0u; row < cfg->sensing_h; row++)
             {
                 memcpy(dst, src, row_bytes);
                 src += fstride;
@@ -444,12 +484,12 @@ static void cv_marvin_v1_task(void *param)
             }
             if ((PerfLog_GetOverlayFlags() & PERF_OVERLAY_STRIP) != 0u)
             {
-                draw_overlay(s_sensing_scratch, CV_SENSING_W, CV_SENSING_H,
-                             CV_SENSING_X, CV_SENSING_Y);
+                draw_overlay(s_sensing_scratch, cfg->sensing_w, cfg->sensing_h,
+                             cfg->sensing_x, cfg->sensing_y, cfg);
             }
             PerfLog_EmitStripPacked(frame.frame_count, PERF_STRIP_SENSING,
-                                    CV_SENSING_X, CV_SENSING_Y,
-                                    CV_SENSING_W, CV_SENSING_H, s_sensing_scratch);
+                                    cfg->sensing_x, cfg->sensing_y,
+                                    cfg->sensing_w, cfg->sensing_h, s_sensing_scratch);
         }
 
         /* REGION: host-selected sub-region (e.g. the score block), streamed one
@@ -474,6 +514,16 @@ static void cv_marvin_v1_task(void *param)
         //              s_pressed[FRET_ORANGE]     ? 'P' : '.', s_edge_active[FRET_ORANGE] ? 'E' : '.');
         // }
     }
+}
+
+void CvMarvinV1_SetConfig(const cv_marvin_v1_config_t *cfg)
+{
+    if (cfg != NULL) { s_pending_cfg = cfg; }
+}
+
+const cv_marvin_v1_config_t *CvMarvinV1_GetConfig(void)
+{
+    return s_active_cfg;
 }
 
 void CvMarvinV1_Initialize(void)

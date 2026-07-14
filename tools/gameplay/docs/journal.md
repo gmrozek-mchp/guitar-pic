@@ -222,6 +222,79 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-14 — `in_song_2p` screen class (so the detector knows which highway to read)
+
+Added a **2-player in_song** class to the screen classifier so the system can tell a 1-player
+gameplay screen from a 2-player one *from the video* — that's the trigger marvin uses to point the CV
+note-detector at the 1p vs 2p-left highway geometry (see the marvin journal, same date, for the
+firmware config-select side). Host-only recognizer change:
+
+- `screens.py`: `in_song_2p` added to `SCREEN_IDS` (between `in_song` and `pause_menu`).
+- Corpus: the 5 available 2P `in_song` frames (`tools/marvin-perf/snapshots/snapshot-0200..0203` +
+  `web-20260714-112721`, all confirmed 720×480 gameplay) copied into
+  `firmware/marvin/docs/gh3_screens/` as `in_song_2p__{0200..0203,web0714}.png`; README table updated.
+- Re-exported `firmware/marvin/default/src/game/gameplay_metadata.h` (`gameplay export-c`):
+  `GP_N_SCREENS` 13→14, `GP_SCREEN_in_song_2p` added, centroid + screen-id table regenerated.
+- `tests/test_export_c.py` dimension assert bumped 13→14.
+
+Validation: all 5 2P frames classify `in_song_2p` (margins 2934–5690, well clear of `t_margin`
+664); the 1p `in_song` frame still reads `in_song` (dist 0). **`in_song_2p` LOO 5/5** (now a
+multi-sample class, unlike the single-sample `in_song`/`loading`/etc.). No 1p→2p or 2p→1p leakage.
+Full suite **76 passed**. The 2p screens are visually very distinct (two highways, different stage),
+so the whole-frame centroid separates them cleanly.
+
+Caveat: only 5 labelled 2P frames, and they're from one capture session — capture more across
+songs/stages to measure real in-class spread (mirrors the existing single-sample-class open item).
+
+### 2026-07-14 — 2-player CV note-detector sense-line calibration (host-only, geometry)
+
+Placed the **note-detector** (`cv_marvin_v1`, spec §4.2) sample points for the two 2-player
+highways, mirroring how the single-player sensors sit. This is the note/fret detector, **not** the
+gameplay/score readers (that's the separate 2P amp-scoreboard thread also dated today). Worked off
+`snapshot-0200.png` (the reference 2P `in_song` frame); overlays rendered host-side, no firmware
+change yet.
+
+**What the single-player detector does (established by overlaying its coords on a real rig frame,
+`snapshot-0100`):** the sense row sits **mid-highway at y≈311, ~100 px above the target rings**
+(strike line y≈410), not on the rings — it reads gems partway down the highway for actuator lead
+time. Per fret it samples two 5×5 patches: a **hold** (brightness) point and an **edge** (colour)
+point offset ~13 px inward. 1P coords (from `cv_marvin_v1.c`): hold x = {G280,R317,Y355,B393,O430},
+edge x = {293,330,368,380,417}, all y=311.
+
+**Model used for the 2P placement.** Each highway is a perspective fan: all 5 lanes converge to one
+vanishing point. Greg hand-tuned the **strike-line ring anchors** (bottom of each lane) by eye; I fit
+each highway's **vanishing point** from the rails, then projected each ring up its lane to y=311.
+Sanity check: t=0.645 up the lane from V to the ring reproduces the 1P hand-tuned coords, so the same
+construction transfers. Edge offset = ±0.347·(lane pitch) inward, same sign pattern as 1P (G/R/Y →+,
+B/O →−). Lane pitch at the sense row ≈28 px (vs 37.5 px on 1P — 0.71× playfield scale + deeper
+foreshortening at this height). Vanishing y fixed to 131 for both; P2's x nudged with Greg to line
+the fan onto the neck.
+
+**Locked 2P calibration** (720×480 capture coords; strike y=410, sense y=311):
+
+| | V (x,y) | ring x (strike, G→O) |
+|---|---|---|
+| P1 (left)  | (223,131) | 135, 179, 223, 267, 310 |
+| P2 (right) | (488,131) | 399, 443, 487, 531, 574 |
+
+| | G | R | Y | B | O |
+|--|--|--|--|--|--|
+| P1 hold (y=311) | 166 | 195 | 223 | 251 | 279 |
+| P1 edge (y=311) | 176 | 204 | 233 | 242 | 269 |
+| P2 hold (y=311) | 431 | 459 | 487 | 516 | 543 |
+| P2 edge (y=311) | 440 | 469 | 497 | 506 | 534 |
+
+**Open / next:**
+- **Lead-time caveat.** Same y=311 as 1P was Greg's choice. Because the 2P highways are shorter, y=311
+  is proportionally higher up the (shorter) neck than on 1P, so the *time* a gem takes from sense row
+  to strike may differ from 1P. May need to drop the row after watching real 2P note-scroll; revisit
+  against 0201–0203 + the web 2P capture.
+- **Firmware wiring (design, not yet done).** `cv_marvin_v1.c` has a single hard-coded
+  `s_sensor_coords[FRET_COUNT]` and one detector state set. 2P needs a second coord set (P2) + doubled
+  per-fret state + a 1P/2P mode the detector currently has no notion of. Plan this before editing the
+  detector. SENSING/STRIKE strip ROIs + the overlay ring painter are also 1P-only today.
+- **Validate the anchors across the other 2P frames** before treating them as rig-final.
+
 ### 2026-07-14 — 2-player scoreboard: started with the per-side location (chrome) mask
 
 Kicked off reading the **2-player** amp scoreboards (`snapshot-0200.png` is the reference 2P

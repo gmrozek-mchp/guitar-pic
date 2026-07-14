@@ -19,7 +19,7 @@ def test_header_is_deterministic(corpus):
 
 def test_header_dimensions(corpus):
     h = build_metadata_header(corpus)
-    assert "#define GP_N_SCREENS 13" in h
+    assert "#define GP_N_SCREENS 14" in h
     assert "#define GP_N_MENUS 8" in h
     assert "#define GP_N_SONGS 64" in h
     assert "#define GP_FP_LEN 288" in h

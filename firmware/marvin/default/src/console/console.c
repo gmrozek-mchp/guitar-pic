@@ -19,6 +19,7 @@
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "detector/detector.h"
+#include "detector/cv_marvin_v1.h"
 #include "video/video.h"
 #include "game/fret.h"
 #include "net/t1s/t1s_link.h"
@@ -517,6 +518,22 @@ static void cmd_active(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("active = %s", (id == DETECTOR_CV_MARVIN_V1) ? "cv" : "adc");
 }
 
+static void cmd_cvcfg(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *w = embeddedCliGetToken(args, 1);
+    if (w == NULL)
+    {
+        console_printf("cvcfg = %s (usage: cvcfg <1p|2pl>)",
+                       CvMarvinV1_GetConfig()->name);
+        return;
+    }
+    if (strcmp(w, "1p") == 0)        { CvMarvinV1_SetConfig(&CV_MARVIN_CFG_1P); }
+    else if (strcmp(w, "2pl") == 0)  { CvMarvinV1_SetConfig(&CV_MARVIN_CFG_2P_LEFT); }
+    else { console_printf("usage: cvcfg <1p|2pl>"); return; }
+    console_printf("cvcfg -> %s", w);
+}
+
 static void cmd_timing(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -769,6 +786,14 @@ static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("play: %s", GameController_IsBusy() ? "busy" : "idle");
         return;
     }
+    if (sub != NULL && strcmp(sub, "attach") == 0)
+    {
+        /* No navigation: the operator set the game up by hand (e.g. a 2-player
+         * match). Wait for gameplay, auto-pick the highway, actuate the song. */
+        GameController_StartAttach();
+        console_printf("play: attach — waiting for a gameplay screen");
+        return;
+    }
 
     const selection_t *s = Selection_Get();
     if (!s->valid)
@@ -797,9 +822,10 @@ static void register_commands(void)
         { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
         { "detect", "detect <cv|adc> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
         { "active", "active <cv|adc>: select the actuated detector",       true, NULL, cmd_active },
+        { "cvcfg",  "cvcfg <1p|2pl>: select CV detector highway geometry",  true, NULL, cmd_cvcfg },
         { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
-        { "play",   "play [stop|status]: auto-navigate GH3 to the selected song + let CV play it", true, NULL, cmd_play },
+        { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
 #endif

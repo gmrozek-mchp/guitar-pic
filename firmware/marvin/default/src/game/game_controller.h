@@ -20,6 +20,14 @@
 
 void GameController_Initialize(void);   /* spawn the controller task (idle) */
 void GameController_Start(void);        /* begin a run from the committed Selection */
+
+/* Attach mode: skip all menu navigation. Own the wire, wait for a gameplay
+ * screen to appear (the operator sets the game up by hand — e.g. a 2-player
+ * match), point the CV detector at the matching highway (2p → left/robot, 1p →
+ * centered), actuate the whole song, and go idle at the end. Use when the run is
+ * started manually rather than driven from the committed Selection. */
+void GameController_StartAttach(void);
+
 void GameController_Stop(void);         /* abort/stop: release the guitar, CV off */
 bool GameController_IsBusy(void);       /* true while a run is navigating/playing */
 
