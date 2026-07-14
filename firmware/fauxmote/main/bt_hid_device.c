@@ -13,6 +13,7 @@
 #include "bt_hid_device.h"
 #include "wiimote_sdp.h"
 #include "wiimote.h"
+#include "bt_role.h"
 
 static const char *TAG = "fauxmote.bt";
 
@@ -168,6 +169,14 @@ static void l2cap_cb(esp_bt_l2cap_cb_event_t event, esp_bt_l2cap_cb_param_t *par
                  param->open.status, (unsigned)param->open.handle,
                  param->open.fd, (int)param->open.tx_mtu);
         hid_link_start(param->open.fd, param->open.handle);
+        /* Diagnostic: a real Wiimote is always the BT slave. If we're master, a
+         * second real Wiimote makes the Wii a scatternet node and our link lags
+         * (see docs/journal.md). Use the `role slave` console command to correct. */
+        {
+            uint8_t acl_role = BtRole_Get(param->open.rem_bda);
+            ESP_LOGW(TAG, "ACL role to Wii = %s",
+                     acl_role == 1u ? "SLAVE" : acl_role == 0u ? "MASTER" : "UNKNOWN");
+        }
         /* Connected — stop being discoverable (stay connectable for reconnects),
          * matching a real Wiimote which doesn't advertise once connected. */
         esp_bt_gap_set_scan_mode(ESP_BT_CONNECTABLE, ESP_BT_NON_DISCOVERABLE);

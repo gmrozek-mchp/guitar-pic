@@ -166,6 +166,62 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 ## Session log
 
+### 2026-07-14 — FIXED: two-controller input lag = L2CAP tx-FIFO stuffed with stale duplicates
+
+**Root cause (not role — that was ruled out, see entry below; role is SLAVE).** `sender_task`
+streamed a full input report **every 15 ms unconditionally** while streaming. Bluedroid's L2CAP tx
+path is a **10-deep FIFO** (`SLOT_TX_QUEUE_SIZE = 10`, `btc_l2cap.c`) with a *blocking* writer
+(`l2cap_vfs_write` waits on `tx_event_group` when full). fauxmote is the ACL **slave**, so it only
+transmits when the Wii (master) polls it. With one controller the Wii polls fast → the FIFO drains
+and stays empty. With a second **real** Wiimote, the Wii's poll rate *to fauxmote* drops (it
+sniff-schedules the real one), the FIFO fills with **10 identical, stale snapshots**, and a fresh
+button-press report enqueues *behind* them → multi-hundred-ms lag **on fauxmote only** (the real
+Wiimote, on its own reserved schedule, stayed crisp).
+
+**Fix (`wiimote.c`, `sender_task`): send on change + keepalive.** Send a report only when its bytes
+differ from the last one sent; otherwise resend once per `SENDER_KEEPALIVE_MS = 250` ms (well under
+the ~1 s supervision timeout — `supv_to 1600` observed). The keepalive timer resets on *every* send,
+so a steady input stream never triggers a keepalive. On-change keeps the tx FIFO empty while idle, so
+a press ships on the **next** poll regardless of contention. Reset the last-sent tracker in
+`Wiimote_NotifyDisconnected` so the first report after a reconnect always ships. Correct across
+report modes / encryption: the dedup compares the final report bytes, and the extension cipher is
+position-keyed (identical state → identical ciphertext). Side benefit: idle BT airtime drops ~67 Hz
+→ 4 Hz, friendlier to the shared piconet.
+
+**Confirmed on hardware:** significant improvement to two-controller input latency.
+
+### 2026-07-14 — Two-controller input lag: ACL-role instrumentation (`role` cmd + open-time log)
+
+**Symptom (hardware, marvin 2p bring-up):** with fauxmote *and* a real Wiimote both connected
+to the Wii, **fauxmote's** inputs lag noticeably (seconds-scale, visible on the Wiimote-settings
+screen) while the **real Wiimote stays crisp**. Single fauxmote is fine; a real Wii runs 4 real
+Wiimotes with no contention. Player slot is stable (fauxmote=1, real=2) — not slot reassignment.
+
+**Leading hypothesis — Bluetooth role / scatternet.** A real Wiimote is always the piconet
+**slave**; the Wii is master and schedules all its Wiimotes on one clock (why 4 coexist cleanly).
+If fauxmote is instead **master** of its link (Wii = slave to it), then when a real Wiimote joins
+(Wii = master of *that* piconet) the Wii becomes a scatternet node — one radio, two piconets, two
+clocks — and must time-hop between them. The foreign piconet (fauxmote's) gets serviced only
+intermittently → lag on fauxmote's link only. Matches every observation. Fauxmote can end up master
+because it never forces slave, and role isn't fixed by who paged: either side can role-switch, and
+Bluedroid/ESP32 may request master on connect (so even a fresh Wii-paged pair can leave us master).
+
+**Instrumentation added (no automatic behavior change yet):**
+- `bt_role.{c,h}` — `BtRole_Get()` / `BtRole_Switch(to_slave)` over Bluedroid internal
+  `BTM_GetRole` / `BTM_SwitchRole` (`stack/btm_api.h`). Isolated TU like `wiimote_sdp.c` because the
+  internal `BTM_*`/`stack` headers clash with the public `esp_*` BT headers in one file.
+- `bt_hid_device.c` `L2CAP_OPEN_EVT` now logs `ACL role to Wii = MASTER/SLAVE/UNKNOWN`.
+- Console `role [slave|master]` — `role` prints the current ACL role; `role slave` requests the
+  switch (real-Wiimote behavior). Manual lever kept deliberately (not auto) so we confirm the role
+  *and* test the fix before committing to always-slave.
+
+**Next (hardware):** connect fauxmote, read the open-time role log; connect the 2nd Wiimote; if
+fauxmote is `master`, run `role slave` and check whether the lag clears. If it does → make the
+switch automatic at `L2CAP_OPEN` (and/or set link policy to allow role switch / force slave). If the
+role is already `slave` → scatternet is ruled out; pivot to link parameters (the active-mode /
+sniff-off choice from the 2026-06-13 idle-disconnect fix, `Tpoll`, or an ESP32 2-ACL scheduling
+limit — `CONFIG_BTDM_CTRL_BR_EDR_MAX_ACL_CONN=2`).
+
 ### 2026-07-03 — doc-vs-code audit fixes
 
 Part of a repo-wide doc audit ([`../../../docs/doc-audit-2026-07.md`](../../../docs/doc-audit-2026-07.md)). `SPEC.md` Phase 4 marked done (`marvin_link.c` is built + on hardware, per the 2026-07-02 entry below) and added to the §5 Software list. `docs/wiimote-sdp.md` HID-descriptor location corrected (`main/wiimote_sdp.c`, not `bt_hid_device.c`). Cross-cutting link docs also touched: `docs/marvin-fauxmote-link.md` STATUS-byte details (report_mode default `0x30`; discoverable+pairing bits set together) and `docs/t1s-podl-link.md` (marvin coordinator SPI is 15 MHz; the ≤12 MHz note is follower-side).

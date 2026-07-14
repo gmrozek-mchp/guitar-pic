@@ -1,4 +1,4 @@
-idf_component_register(SRCS "ext_crypto.c" "guitar.c" "console_cli.c" "main.c" "bt_hid_device.c" "wiimote_sdp.c" "wiimote.c" "status_led.c" "marvin_link.c"
+idf_component_register(SRCS "bt_role.c" "ext_crypto.c" "guitar.c" "console_cli.c" "main.c" "bt_hid_device.c" "wiimote_sdp.c" "wiimote.c" "status_led.c" "marvin_link.c"
                        INCLUDE_DIRS "."
                        REQUIRES bt nvs_flash esp_driver_gpio esp_driver_uart console)
 

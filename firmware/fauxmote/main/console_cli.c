@@ -12,6 +12,7 @@
 #include "bt_hid_device.h"
 #include "wiimote.h"
 #include "guitar.h"
+#include "bt_role.h"
 
 static void print_bda(const char *label, const uint8_t *bda)
 {
@@ -54,6 +55,27 @@ static int cmd_status(int argc, char **argv)
     printf("discoverable=%d connected=%d assigned=%d report_mode=0x%02x\n",
            Fauxmote_IsDiscoverable(), Wiimote_IsConnected(), Wiimote_IsAssigned(),
            Wiimote_ReportMode());
+    return 0;
+}
+
+static int cmd_role(int argc, char **argv)
+{
+    const uint8_t *wii = Fauxmote_WiiAddr();
+    if (!wii) {
+        printf("no bonded Wii (pair first)\n");
+        return 1;
+    }
+    if (argc >= 2) {
+        bool to_slave;
+        if      (strcmp(argv[1], "slave")  == 0) { to_slave = true;  }
+        else if (strcmp(argv[1], "master") == 0) { to_slave = false; }
+        else { printf("usage: role [slave|master]\n"); return 1; }
+        bool ok = BtRole_Switch(wii, to_slave);
+        printf("role switch to %s %s\n", argv[1], ok ? "requested" : "REJECTED");
+        return ok ? 0 : 1;
+    }
+    uint8_t r = BtRole_Get(wii);
+    printf("ACL role = %s\n", r == 1u ? "slave" : r == 0u ? "master" : "unknown (no link)");
     return 0;
 }
 
@@ -162,6 +184,7 @@ void Cli_Start(void)
     register_cmd("reconnect", "device-initiated reconnect to the last bonded Wii", cmd_reconnect);
     register_cmd("unlink", "erase the bond (link key) from NVS", cmd_unlink);
     register_cmd("status", "show BT / connection state", cmd_status);
+    register_cmd("role", "role [slave|master] — show/switch the ACL role to the Wii (real Wiimotes are slave)", cmd_role);
     register_cmd("btn", "btn <name> <0|1> — hold/release a button (core or guitar)", cmd_btn);
     register_cmd("tap", "tap <name> — brief press+release (e.g. tap strumdown)", cmd_tap);
     register_cmd("point", "point <x 0..1> <y 0..1> | point off — IR cursor", cmd_point);

@@ -14,6 +14,10 @@ static const char *TAG = "fauxmote.wm";
 #define EEPROM_SIZE       0x1700u   /* readable EEPROM range is 0x0000..0x16FF */
 #define EEPROM_READ_MAX   0x16FFu
 #define SENDER_PERIOD_MS  15
+/* Resend the current state at least this often even when nothing changed, so the
+ * link stays alive (well under the ~1 s supervision timeout). Between keepalives
+ * we send only on change — see sender_task. */
+#define SENDER_KEEPALIVE_MS 250
 #define SENDER_STACK      3072
 #define ACCEL_NEUTRAL     0x85      /* zero-g raw value (matches the EEPROM calibration) */
 
@@ -50,6 +54,14 @@ static bool    s_crypt_armed;              /* host wrote 0xAA→0xf0; awaiting k
 
 static StaticTask_t s_sender_tcb;
 static StackType_t  s_sender_stack[SENDER_STACK];
+
+/* Last report handed to the L2CAP tx path (mode byte + payload) + when. The
+ * sender only writes a new report when the bytes change or the keepalive elapses,
+ * so the 10-deep tx FIFO never fills with stale duplicates (which would delay a
+ * fresh press behind them under two-controller poll contention). */
+static uint8_t    s_last_tx[1 + 21];
+static int        s_last_tx_len = -1;   /* -1 = force the next report to be sent */
+static TickType_t s_last_tx_at;
 
 /* Accelerometer calibration the Wii reads from EEPROM 0x16 (mirrored at 0x20).
  * Canonical zero-G 0x85 / 1G 0xA0 per axis + checksum (from a real RVL-CNT-01). */
@@ -402,6 +414,7 @@ void Wiimote_NotifyDisconnected(void)
 {
     s_data_fd = -1;          /* mark not-connected at once (don't wait for the reader to exit) */
     s_streaming = false;
+    s_last_tx_len = -1;      /* force a fresh send on the next connection */
     s_leds = 0;
     s_btn0 = s_btn1 = 0;
     s_crypt_on = s_crypt_armed = false;   /* host re-inits encryption on reconnect */
@@ -462,7 +475,21 @@ static void sender_task(void *arg)
                 mode = 0x30;
                 len = build_report(mode, p);
             }
-            wm_send(s_data_fd, mode, p, len);
+            /* Send on change; otherwise only after SENDER_KEEPALIVE_MS of no send.
+             * s_last_tx_at is bumped on every send, so a steady input stream never
+             * triggers a keepalive, and the tx FIFO isn't fed stale duplicates. */
+            bool changed = (s_last_tx_len != len + 1) ||
+                           (s_last_tx[0] != mode) ||
+                           (memcmp(&s_last_tx[1], p, (size_t)len) != 0);
+            bool keepalive = (int32_t)(now - s_last_tx_at) >=
+                             (int32_t)pdMS_TO_TICKS(SENDER_KEEPALIVE_MS);
+            if (changed || keepalive) {
+                wm_send(s_data_fd, mode, p, len);
+                s_last_tx[0] = mode;
+                memcpy(&s_last_tx[1], p, (size_t)len);
+                s_last_tx_len = len + 1;
+                s_last_tx_at  = now;
+            }
         }
     }
 }
