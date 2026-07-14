@@ -182,6 +182,22 @@ SCORE_BLOCK_ROI = (114, 309, 210, 414)
 # medallion-interior regions that change). Canonical 720x480 space.
 SCORE_CHROME_BOX = (127, 311, 190, 397)
 
+# ─── 2-player amp scoreboards (per-side location / chrome registration) ─────────
+#
+# Two-player mode replaces the single bottom-left scoring block with two amp
+# scoreboards near the top of the frame (one per player). They are the same amp
+# art at ~0.71x the single-player scale, relocated. Each side is located
+# independently — the amp is static on screen, so registration only absorbs minor
+# per-rig offset (same design as the single-player chrome registration above, but
+# per side). The registration fiducial is the static dark panel texture, marked by
+# a hand-painted magenta mask (amp2p_<side>_mask.png; the digit strip and medallion
+# interior are excluded because they change). Both sides share the block size, so
+# only the origin differs. Canonical 720x480 space. See docs/journal.md.
+AMP2P_BLOCK: dict[str, tuple[int, int, int, int]] = {
+    "left":  (128, 164, 196, 242),
+    "right": (515, 164, 583, 242),
+}
+
 # ─── score multiplier (colour-count classifier) ────────────────────────────────
 #
 # The multiplier glyph in the medallion has a fixed colour per value: 2x = gold,

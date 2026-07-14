@@ -222,6 +222,55 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-07-14 — 2-player scoreboard: started with the per-side location (chrome) mask
+
+Kicked off reading the **2-player** amp scoreboards (`snapshot-0200.png` is the reference 2P
+in_song frame; 0201–0203 + `web-20260714-112721.png` are the other 4 available 2P frames).
+Established geometry vs the single-player block:
+
+- **Two amps, top of frame, ~0.71× the single-player amp's linear size.** Gold-trim boxes measured
+  off a labelled grid overlay: **P1 (left) ≈ (132,169)–(189,236)** (~57×67), **P2 (right) ≈
+  (514,168)–(573,237)** (~59×69). Same overall amp art/layout as single-player (digit strip on top,
+  medallion below), just smaller and relocated. P2's score appears right-aligned to its box like P1
+  (the lone "0" hugs the right edge), so the layout may not be mirrored — but each side registers
+  independently regardless.
+- **Block ROIs chosen (same 68×78 size, per-side origin):** `left (128,164,196,242)`,
+  `right (515,164,583,242)`. Both fully contain their amp with a few px margin (right block
+  re-centered off an initial too-far-left crop that pulled in the neighbour portrait; true right
+  box is (522,170)–(577,235)).
+
+**Approach = per-side chrome registration, mirroring the single-player score-block design** (decision
+log 2026-07-09). The amp is static on screen, so **one clean frame** builds each side's chrome
+reference; the location mask marks the digit-independent static chrome (box frame + panel texture +
+medallion ring, excluding the green digit strip and medallion interior). Registration then absorbs
+only minor per-rig offset — validated by synthetic ±N px shifts (as the single-player re-register
+check did), **not** by a multi-frame corpus (Greg: the amp position doesn't change).
+
+Paint templates written for Greg to mask (6× upscale, like `score_block_ref_6x.png`):
+`data/scores/amp2p_{left,right}_ref_6x.png` → he returns `amp2p_{left,right}_mask.png`.
+
+**Location mask DONE + validated (host-only).** Greg painted both masks (magenta over the static
+dark panel, excluding the digit strip + medallion interior) directly onto the 6× templates → renamed
+`data/scores/amp2p_{left,right}_mask.png` (1338/5304 px each). Clean per-side references committed
+as `amp2p_{left,right}_ref.png` (68×78 crops of `snapshot-0200`). New `gameplay/amp2p.py` (self-
+contained; mirrors the single-player chrome design rather than refactoring `score.py`):
+`AMP2P_BLOCK` in `metadata.py`, `load_amp2p_mask` / `build_reference` / `calibrate` (masked,
+per-frame-normalized SAD offset search). Validation:
+- **Cross-frame lock:** all 5 available 2P frames register to (0,0) both sides — position is
+  identical everywhere, ROIs are dead-on.
+- **Synthetic-shift recovery:** **289/289** over the full ±8 px grid, both sides.
+- **A2D robustness:** **135/135** across gain 0.7–1.3× × offset ±30 × shifts, both sides
+  (normalization absorbs hardware colour variation).
+The panel-only mask localizes perfectly despite being a low-contrast region (the panel pixels
+adjacent to the carved-out digit-strip/medallion boundaries carry the position signal).
+
+**Next (needs sign-off; separate phases):** (1) 2P **digit** reader — the green LED font at ~0.71×
+scale, right-aligned in each registered block; needs its own digit band offsets + green-font
+templates (the single-player white-font banks won't transfer). (2) 2P **multiplier**/**streak** if
+present in 2-player. (3) A committed pytest fixture for the registration (crops of the 5 frames) and,
+later, the firmware export/port. No firmware work yet — this is host-only, matching the phase-5
+host-first pattern.
+
 ### 2026-07-10 — streak: audited/cleaned the training set + units-wrap tens carry (fixes the carry lag)
 
 Two linked changes after Greg reviewed the corpus by eye:
