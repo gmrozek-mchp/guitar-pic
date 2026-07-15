@@ -31,8 +31,6 @@
 #define CV_HOLD_RELEASE_FRAC   0.78f
 #define CV_EDGE_THRESH         25.0f
 
-#define CV_US_PER_TICK         (1000000u / configTICK_RATE_HZ)
-
 /* SENSING scratch is sized for the largest configured strip so a runtime
  * config swap can't overflow it (1p's 185×32 dominates 2p-left's 155×32). */
 #define CV_SENSING_MAX_W       185u
@@ -190,7 +188,7 @@ static void detect_frame(const Video_FrameInfo *frame,
     detector_state_t state;
     memset(&state, 0, sizeof(state));
     state.frame_epoch  = frame->frame_count;
-    state.timestamp_us = (uint64_t)xTaskGetTickCount() * CV_US_PER_TICK;
+    state.timestamp_us = frame->timestamp_us;   /* capture time, not detect time */
     state.strike_at_ms = (uint32_t)(state.timestamp_us / 1000ull)
                        + cfg->observation_lead_ms;
     state.detector_id  = (uint8_t)DETECTOR_CV_MARVIN_V1;

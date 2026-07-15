@@ -28,7 +28,7 @@
 #define TP_FIFO_CAP            32u
 
 /* Background tick: bound on between-frame latency for strum-pulse and
- * note-assert deadlines that fall between detector publishes. 5 ms keeps
+ * note-assert deadlines that fall between detector publishes. 2 ms keeps
  * jitter well under our 16 ms detector cadence and below human-perceptible
  * timing error. */
 #define TP_TICK_MS             2u
@@ -74,7 +74,6 @@ static uint32_t s_now_ms;
  * strum, release) are scheduled in this base; s_now_ms drives only input
  * aggregation and the emit-anchored strum pulse. */
 static uint32_t s_strike_at_ms;
-static uint64_t s_last_frame_us;
 
 /* Default OFF: on boot the CV detector is watching a menu, not a note highway, so
  * leaving the pipeline live would actuate spurious frets. Enable it (console
@@ -371,7 +370,6 @@ static void process_frame(const detector_state_t *state)
      * deterministic. timestamp_us is monotonic per spec §4.2.3. */
     s_now_ms = (uint32_t)(state->timestamp_us / 1000ull);
     s_strike_at_ms = state->strike_at_ms;
-    s_last_frame_us = state->timestamp_us;
 
     uint8_t presses, releases, pressed_mask;
     derive_edges(state, &presses, &releases, &pressed_mask);

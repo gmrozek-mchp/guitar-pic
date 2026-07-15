@@ -103,6 +103,8 @@ static void on_frame_done(uint32_t frame_count,
     {
         .buffer          = (void *)(uintptr_t)buffer_addr,
         .frame_count     = frame_count,
+        .timestamp_us    = (uint64_t)xTaskGetTickCountFromISR()
+                         * (1000000u / configTICK_RATE_HZ),
         .width           = s_src_w,
         .height          = s_src_h,
         .bytes_per_pixel = VIDEO_BYTES_PER_PIXEL,
@@ -482,6 +484,7 @@ void Video_GetFrameInfo(Video_FrameInfo *info)
     if (info == NULL) { return; }
     info->buffer          = (void *)(uintptr_t)s_latest_buffer;
     info->frame_count     = ISC_Capture_FrameCount();
+    info->timestamp_us    = 0u;   /* synchronous state read, not a capture event */
     info->width           = s_src_w;
     info->height          = s_src_h;
     info->bytes_per_pixel = VIDEO_BYTES_PER_PIXEL;

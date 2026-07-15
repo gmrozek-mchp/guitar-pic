@@ -46,6 +46,9 @@ typedef struct
 {
     void    *buffer;          /* pointer to most-recent complete frame in DDR */
     uint32_t frame_count;     /* monotonic since last ISC start */
+    uint64_t timestamp_us;    /* capture time (frame-done IRQ), marvin-local.
+                               * Anchor timing to when the frame completed, not
+                               * when a consumer got around to processing it. */
     uint16_t width;
     uint16_t height;
     uint16_t bytes_per_pixel;
