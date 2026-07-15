@@ -60,6 +60,14 @@ void Detector_Initialize(void);
  * them. Returns NULL until Detector_Initialize has run. */
 QueueHandle_t Detector_BusQueue(void);
 
+/* Publish a record onto the bus. The record reaches the bus only if its
+ * detector_id is the active one (Detector_SetActive) — arbitration lives
+ * here, so the single consumer never sees more than one source and does not
+ * filter. Non-active detectors still run and feed their own recording/UI
+ * paths; they just don't drive the pipeline. Records are dropped if the bus
+ * is full (latest observation matters, not a stale backlog). */
+void Detector_Publish(const detector_state_t *state);
+
 /* Per-detector enable: controls whether a detector publishes records onto
  * the bus. Multiple detectors may be enabled simultaneously — recording
  * (§4.6) snoops everything for side-by-side training data. Disabled

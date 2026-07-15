@@ -256,9 +256,9 @@ Fields are fixed-width, naturally aligned, little-endian — this is also the on
 
 #### 4.2.4 Bus mechanics
 
-- A single FreeRTOS queue (`xDetectorStateQueue`) carries `detector_state_t` records, one entry per detector emit.
-- The timing pipeline task (§4.4) is the sole consumer.
-- The recording task (§4.6) snoops the queue via a side-channel: each producer publishes simultaneously to the timing-pipeline queue and to a recording stream buffer. (Single producer→multiple consumers is implemented by tee'ing inside each detector, not by a broker; keeps queue semantics blocking and simple.)
+- A single FreeRTOS queue (`s_bus_queue`) carries `detector_state_t` records, one entry per detector emit. The timing pipeline task (§4.4) is the sole consumer.
+- **Source arbitration is on the push side, in the detector module.** Detectors emit via `Detector_Publish`, which forwards a record onto the bus only if that detector is the *active* one (`Detector_SetActive`); a source switch drains the queue. So the bus carries a single source's stream and the consumer never filters. Non-active detectors still run and feed the recording/UI paths.
+- The recording task (§4.6) does **not** read this bus — recording is a separate side-channel: each detector emits a `perf_rec_detector_t` (via `PerfLog_EmitDetector`) regardless of active state, so *all enabled* detectors' ground truth is captured for side-by-side training data.
 - Detectors run on their own FreeRTOS tasks (one per detector instance) so a slow detector cannot stall the frame pipeline.
 
 #### 4.2.5 Reference-detector responsibilities
@@ -287,7 +287,7 @@ Direct **FLEXCOM1 USART** link between marvin and the fretboard MCU — a plain 
 
 ### 4.4 Timing pipeline 🚧
 
-Centralized on marvin by default. Schedules **in the strike-line time base** — it acts on each detector record's `strike_at_ms` (§4.2.3) rather than holding an observation-delay constant of its own; the observation lead now lives with the detector. Owns:
+Centralized on marvin by default. It is the **decide layer** — a peer of the detector (§4.2) and the actuator link (§4.3), not part of either — and lives in the game-control subsystem (`game/timing_pipeline.c`) alongside `game_controller` (§4.8), the other autonomous command producer. The two are mutually exclusive (note-highway gameplay vs. menu navigation); coordinating them is open **Q11**. It schedules **in the strike-line time base** — it acts on each detector record's `strike_at_ms` (§4.2.3) rather than holding an observation-delay constant of its own; the observation lead now lives with the detector. Owns:
 
 - Chord-accumulation window (`CHORD_WINDOW_MS` ≈ 20–40 ms).
 - Pending-chord FIFO with per-chord `press_at` / `strum_at` ticks (both derived from `strike_at_ms`).

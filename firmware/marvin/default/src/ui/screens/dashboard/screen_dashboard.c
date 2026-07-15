@@ -9,7 +9,7 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/progressbar_aa/widget_progressbar_aa.h"
 
-#include "actuator/timing_pipeline.h"   /* TIMING_BIT_* fret mask layout */
+#include "game/timing_pipeline.h"   /* TIMING_BIT_* fret mask layout */
 
 #include "game/catalog.h"
 #include "game/art.h"

@@ -15,7 +15,7 @@
 #include "log.h"
 #include "embedded_cli.h"
 
-#include "actuator/timing_pipeline.h"
+#include "game/timing_pipeline.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "detector/detector.h"

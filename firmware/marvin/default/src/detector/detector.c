@@ -33,6 +33,15 @@ QueueHandle_t Detector_BusQueue(void)
     return s_bus_queue;
 }
 
+void Detector_Publish(const detector_state_t *state)
+{
+    if (state->detector_id != s_active_id)
+    {
+        return;
+    }
+    (void)xQueueSend(s_bus_queue, state, 0);
+}
+
 void Detector_Enable(detector_id_t id)
 {
     taskENTER_CRITICAL();
@@ -55,6 +64,12 @@ bool Detector_IsEnabled(detector_id_t id)
 void Detector_SetActive(detector_id_t id)
 {
     s_active_id = (uint8_t)id;
+    /* Drop any records the previous source left queued so the consumer
+     * doesn't act on a frame or two of stale detector state after a switch. */
+    if (s_bus_queue != NULL)
+    {
+        (void)xQueueReset(s_bus_queue);
+    }
 }
 
 detector_id_t Detector_GetActive(void)

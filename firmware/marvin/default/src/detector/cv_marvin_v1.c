@@ -184,7 +184,7 @@ static float color_signal(const float bgr[3], const color_filter_t *f)
 
 /* ─── Detection ────────────────────────────────────────────────────────── */
 
-static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus,
+static void detect_frame(const Video_FrameInfo *frame,
                          const cv_marvin_v1_config_t *cfg)
 {
     detector_state_t state;
@@ -235,7 +235,7 @@ static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus,
         state.fret[i].raw_value = (uint16_t)h;
     }
 
-    (void)xQueueSend(bus, &state, 0);
+    Detector_Publish(&state);
 
     /* Mirror the same per-frame decision into the perf-log so offline tools
      * (marvin-perf, export-ml) can join detector ground truth with sensor
@@ -419,9 +419,6 @@ static void cv_marvin_v1_task(void *param)
     bool subscribed = Video_SubscribeFrames(frames);
     configASSERT(subscribed);
 
-    QueueHandle_t bus = Detector_BusQueue();
-    configASSERT(bus != NULL);
-
     LOG_INFO("CV: cv_marvin_v1 started\r\n");
 
     publish_detector_config(s_active_cfg);
@@ -451,7 +448,7 @@ static void cv_marvin_v1_task(void *param)
         if (frame.bytes_per_pixel != CV_BYTES_PER_PIXEL){ continue; }
 
         PerfLog_EmitStamp(PERF_STAGE_CV_START, frame.frame_count, 0u);
-        detect_frame(&frame, bus, cfg);
+        detect_frame(&frame, cfg);
         PerfLog_EmitStamp(PERF_STAGE_CV_END, frame.frame_count, 0u);
 
         /* Re-emit detector config at ~1 Hz so a mid-stream host attach

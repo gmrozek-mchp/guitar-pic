@@ -11,7 +11,7 @@
 #include "selection.h"
 #include "gameplay_engine.h"
 #include "gameplay_metadata.h"
-#include "actuator/timing_pipeline.h"
+#include "game/timing_pipeline.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "detector/cv_marvin_v1.h"   /* select the highway geometry at gameplay entry */

@@ -38,7 +38,7 @@
 #include "log.h"
 #include "video/video.h"
 #include "detector/detector.h"
-#include "actuator/timing_pipeline.h"
+#include "game/timing_pipeline.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "net/fauxmote/fauxmote_link.h"

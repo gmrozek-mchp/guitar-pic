@@ -1,5 +1,5 @@
 #include "timing_pipeline.h"
-#include "fretboard_link.h"
+#include "actuator/fretboard_link.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -419,10 +419,8 @@ static void timing_pipeline_task(void *param)
         detector_state_t state;
         if (xQueueReceive(bus, &state, pdMS_TO_TICKS(TP_TICK_MS)) == pdTRUE)
         {
-            if ((detector_id_t)state.detector_id != Detector_GetActive())
-            {
-                continue;
-            }
+            /* The bus carries only the active detector's records (arbitrated
+             * in Detector_Publish), so act on whatever arrives. */
             process_frame(&state);
         }
         else

@@ -11,7 +11,7 @@
 
 #include "definitions.h"
 #include "log.h"
-#include "timing_pipeline.h"
+#include "game/timing_pipeline.h"
 #include "perf_log/perf_log.h"
 #include "video/video.h"
 #include "game/fret.h"

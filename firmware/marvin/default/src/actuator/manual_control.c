@@ -1,7 +1,7 @@
 #include "manual_control.h"
 
 #include "fretboard_link.h"
-#include "timing_pipeline.h"
+#include "game/timing_pipeline.h"
 
 #include <stdint.h>
 #include <stdbool.h>
