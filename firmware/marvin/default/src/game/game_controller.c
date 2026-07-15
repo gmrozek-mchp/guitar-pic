@@ -14,6 +14,7 @@
 #include "game/timing_pipeline.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
+#include "actuator/guitar_cmd.h"
 #include "detector/cv_marvin_v1.h"   /* select the highway geometry at gameplay entry */
 #include "perf_log/perf_log_records.h"
 #include "ui/dashboard_feed.h"   /* playtime → dashboard progress bar */
@@ -27,12 +28,12 @@
 #define GC_TASK_PRIORITY      4u
 
 /* Menu-input masks (guitar fret/strum bits, timing_pipeline.h layout). */
-#define GC_GREEN        TIMING_BIT_GREEN        /* confirm / enter */
-#define GC_RED          TIMING_BIT_RED          /* back up one level */
-#define GC_YELLOW       TIMING_BIT_YELLOW       /* song_select: main setlist */
-#define GC_BLUE         TIMING_BIT_BLUE         /* song_select: bonus setlist */
-#define GC_STRUM_DOWN   TIMING_BIT_STRUM_DOWN   /* move selection down */
-#define GC_STRUM_UP     TIMING_BIT_STRUM_UP     /* move selection up */
+#define GC_GREEN        GUITAR_BTN_GREEN        /* confirm / enter */
+#define GC_RED          GUITAR_BTN_RED          /* back up one level */
+#define GC_YELLOW       GUITAR_BTN_YELLOW       /* song_select: main setlist */
+#define GC_BLUE         GUITAR_BTN_BLUE         /* song_select: bonus setlist */
+#define GC_STRUM_DOWN   GUITAR_BTN_STRUM_DOWN   /* move selection down */
+#define GC_STRUM_UP     GUITAR_BTN_STRUM_UP     /* move selection up */
 
 /* Input pulse: menus auto-repeat a *held* strum, so press briefly then release.
  * Kept deliberately unhurried — GH3 drops inputs that arrive too fast, and each

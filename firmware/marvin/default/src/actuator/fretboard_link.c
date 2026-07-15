@@ -11,7 +11,7 @@
 
 #include "definitions.h"
 #include "log.h"
-#include "game/timing_pipeline.h"
+#include "guitar_cmd.h"
 #include "perf_log/perf_log.h"
 #include "video/video.h"
 #include "game/fret.h"
@@ -316,7 +316,7 @@ bool FretboardLink_IsConnected(void)
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 {
     if (s_cmd_queue == NULL) { return; }
-    uint8_t v = (uint8_t)(mask & TIMING_BIT_VALID_MASK);
+    uint8_t v = (uint8_t)(mask & GUITAR_BTN_VALID_MASK);
     /* Overwrite is strictly latest-wins: a newer producer's mask replaces
      * any unsent older one — keeps a stalled write from accumulating
      * stale chord state. */
@@ -333,8 +333,8 @@ void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
     DashboardFeed_PostFret(v);
 
     uint8_t strum_dir = 0u;
-    if      (v & TIMING_BIT_STRUM_DOWN) { strum_dir = 1u; }
-    else if (v & TIMING_BIT_STRUM_UP)   { strum_dir = 2u; }
+    if      (v & GUITAR_BTN_STRUM_DOWN) { strum_dir = 1u; }
+    else if (v & GUITAR_BTN_STRUM_UP)   { strum_dir = 2u; }
 
     PerfLog_EmitActuator(v, s_last_sent_byte, strum_dir, producer_id,
                          s_last_ack_result, s_last_ack_ts_counter);

@@ -9,7 +9,7 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/progressbar_aa/widget_progressbar_aa.h"
 
-#include "game/timing_pipeline.h"   /* TIMING_BIT_* fret mask layout */
+#include "actuator/guitar_cmd.h"   /* GUITAR_BTN_* fret mask layout */
 
 #include "game/catalog.h"
 #include "game/art.h"
@@ -329,11 +329,11 @@ static void dash_selection_changed(const selection_t *sel)
 void ScreenDashboard_ApplyFret(uint8_t mask)
 {
     static const struct { leButtonWidget **btn; uint8_t bit; } frets[] = {
-        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_GREEN,  TIMING_BIT_GREEN  },
-        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_RED,    TIMING_BIT_RED    },
-        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_YELLOW, TIMING_BIT_YELLOW },
-        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_BLUE,   TIMING_BIT_BLUE   },
-        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_ORANGE, TIMING_BIT_ORANGE },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_GREEN,  GUITAR_BTN_GREEN  },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_RED,    GUITAR_BTN_RED    },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_YELLOW, GUITAR_BTN_YELLOW },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_BLUE,   GUITAR_BTN_BLUE   },
+        { &Marvin_BUTTON_DASHBOARD_ROBOT_FRET_ORANGE, GUITAR_BTN_ORANGE },
     };
     static uint8_t s_last_mask;
 

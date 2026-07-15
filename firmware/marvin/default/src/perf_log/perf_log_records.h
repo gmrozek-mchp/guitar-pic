@@ -120,7 +120,7 @@ typedef struct __attribute__((packed))
  * detector events forward through the visible queue state. All *_at_ms
  * deadlines are deltas from the same now_ms field; chord_age_ms is
  * (now_ms - chord_start_ms) for the currently-open chord window. Counts
- * are 0..TP_FIFO_CAP (32 today). Masks use the same TIMING_BIT_* bit
+ * are 0..TP_FIFO_CAP (32 today). Masks use the same GUITAR_BTN_* bit
  * layout as the wire byte to fretboard. */
 typedef struct __attribute__((packed))
 {

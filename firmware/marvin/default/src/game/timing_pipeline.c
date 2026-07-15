@@ -1,5 +1,6 @@
 #include "timing_pipeline.h"
 #include "actuator/fretboard_link.h"
+#include "actuator/guitar_cmd.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -82,11 +83,11 @@ static volatile bool s_pipeline_enabled = false;
 
 static const uint8_t s_fret_bit[FRET_COUNT] =
 {
-    [FRET_GREEN]  = TIMING_BIT_GREEN,
-    [FRET_RED]    = TIMING_BIT_RED,
-    [FRET_YELLOW] = TIMING_BIT_YELLOW,
-    [FRET_BLUE]   = TIMING_BIT_BLUE,
-    [FRET_ORANGE] = TIMING_BIT_ORANGE,
+    [FRET_GREEN]  = GUITAR_BTN_GREEN,
+    [FRET_RED]    = GUITAR_BTN_RED,
+    [FRET_YELLOW] = GUITAR_BTN_YELLOW,
+    [FRET_BLUE]   = GUITAR_BTN_BLUE,
+    [FRET_ORANGE] = GUITAR_BTN_ORANGE,
 };
 
 static inline bool note_q_empty(void) { return s_note_count == 0u; }
@@ -300,7 +301,7 @@ static void advance(uint8_t live_pressed_mask)
     uint8_t mask = s_frets_active;
     if (s_strum_active)
     {
-        mask |= s_strum_direction ? TIMING_BIT_STRUM_UP : TIMING_BIT_STRUM_DOWN;
+        mask |= s_strum_direction ? GUITAR_BTN_STRUM_UP : GUITAR_BTN_STRUM_DOWN;
     }
     publish_mask(mask);
 }

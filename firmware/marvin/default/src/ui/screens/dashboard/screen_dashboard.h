@@ -20,7 +20,7 @@ void ScreenDashboard_Setup(void);
 /* Apply live dashboard state. Called only from the dashboard feed's consumer task
  * (ui/dashboard_feed.c) — the sole writer of dashboard widgets — never directly by
  * producers. ApplySelection rebuilds the SONG card from the committed Selection_Get();
- * ApplyFret reflects the 7-bit guitar mask (TIMING_BIT_*) on the ROBOT fret buttons. */
+ * ApplyFret reflects the 7-bit guitar mask (GUITAR_BTN_*) on the ROBOT fret buttons. */
 void ScreenDashboard_ApplySelection(void);
 void ScreenDashboard_ApplyFret(uint8_t mask);
 void ScreenDashboard_ApplyStatus(const char *text);

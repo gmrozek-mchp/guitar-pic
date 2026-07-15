@@ -1,6 +1,7 @@
 #include "manual_control.h"
 
 #include "fretboard_link.h"
+#include "guitar_cmd.h"
 #include "game/timing_pipeline.h"
 
 #include <stdint.h>
@@ -12,11 +13,11 @@
 
 static const uint8_t s_fret_bit[FRET_COUNT] =
 {
-    [FRET_GREEN]  = TIMING_BIT_GREEN,
-    [FRET_RED]    = TIMING_BIT_RED,
-    [FRET_YELLOW] = TIMING_BIT_YELLOW,
-    [FRET_BLUE]   = TIMING_BIT_BLUE,
-    [FRET_ORANGE] = TIMING_BIT_ORANGE,
+    [FRET_GREEN]  = GUITAR_BTN_GREEN,
+    [FRET_RED]    = GUITAR_BTN_RED,
+    [FRET_YELLOW] = GUITAR_BTN_YELLOW,
+    [FRET_BLUE]   = GUITAR_BTN_BLUE,
+    [FRET_ORANGE] = GUITAR_BTN_ORANGE,
 };
 
 static volatile bool    s_enabled;
@@ -80,7 +81,7 @@ void ManualControl_SetFret(fret_t fret, bool pressed)
 
 void ManualControl_SetStrum(bool down, bool pressed)
 {
-    uint8_t bit = down ? TIMING_BIT_STRUM_DOWN : TIMING_BIT_STRUM_UP;
+    uint8_t bit = down ? GUITAR_BTN_STRUM_DOWN : GUITAR_BTN_STRUM_UP;
     if (pressed) { s_strum_mask |= bit; }
     else         { s_strum_mask &= (uint8_t)~bit; }
     recompute_and_send();
