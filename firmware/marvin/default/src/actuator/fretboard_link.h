@@ -16,6 +16,17 @@
 #define MARVIN_FRETBOARD_TRANSPORT FRETBOARD_TRANSPORT_UART
 #endif
 
+/* Mechanical actuation advance (ms): how far ahead of the intended physical
+ * transition the active actuator node must be commanded so its own latency
+ * lands the effect on time. A property of the node marvin drives — the
+ * open-drain GPIO guitar node is effectively instant (0); a future solenoid
+ * rig would set its rise time here. Producers that schedule in strike-line
+ * time (timing_pipeline) subtract this when deciding when to emit; the wire
+ * byte stays a bare "assert now" mask. Static per-node constant for now. */
+#ifndef FRETBOARD_ACTUATOR_ADVANCE_MS
+#define FRETBOARD_ACTUATOR_ADVANCE_MS 0u
+#endif
+
 /* Fretboard link — FLEXCOM1 USART (ring-buffer) writer that ferries a 7-bit
  * GPIO bitmask to the fretboard MCU as a stream of single-byte messages, and
  * a parse task that drains the fretboard's 17-byte ADC frames off the RX ring

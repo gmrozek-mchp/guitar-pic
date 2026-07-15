@@ -216,12 +216,12 @@ static void chord_commit(void)
     s_chord_mask = 0u;
 }
 
-static void process_notes(void)
+static void process_notes(uint32_t fire_now)
 {
     while (!note_q_empty())
     {
         const pending_note_t *n = &s_note_q[s_note_head];
-        if ((int32_t)(s_now_ms - n->assert_at_ms) < 0) { break; }
+        if ((int32_t)(fire_now - n->assert_at_ms) < 0) { break; }
 
         for (uint8_t i = 0u; i < FRET_COUNT; i++)
         {
@@ -235,12 +235,12 @@ static void process_notes(void)
     }
 }
 
-static void process_strums(void)
+static void process_strums(uint32_t fire_now)
 {
     while (!strum_q_empty())
     {
         const pending_strum_t *s = &s_strum_q[s_strum_head];
-        if ((int32_t)(s_now_ms - s->strum_at_ms) < 0) { break; }
+        if ((int32_t)(fire_now - s->strum_at_ms) < 0) { break; }
 
         s_strum_active        = true;
         s_strum_direction     = !s_strum_direction;
@@ -250,13 +250,13 @@ static void process_strums(void)
     }
 }
 
-static void process_releases(uint8_t live_pressed_mask)
+static void process_releases(uint8_t live_pressed_mask, uint32_t fire_now)
 {
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
         uint8_t bit = s_fret_bit[i];
         if ((s_release_pending_mask & bit) == 0u) { continue; }
-        if ((int32_t)(s_now_ms - s_release_at_ms[i]) < 0) { continue; }
+        if ((int32_t)(fire_now - s_release_at_ms[i]) < 0) { continue; }
         if (live_pressed_mask & bit) { continue; }
         /* Hold only if re-needed at/before this release (back-to-back); a need
          * further out releases now for a clean per-note command. */
@@ -275,14 +275,21 @@ static void advance(uint8_t live_pressed_mask)
         chord_commit();
     }
 
+    /* Emit strike-line deadlines FRETBOARD_ACTUATOR_ADVANCE_MS early so the
+     * actuator's mechanical latency lands the effect on the strike line. The
+     * strum pulse release stays on s_now_ms — it's anchored to the (already
+     * advanced) emit instant, so its wire pulse width is preserved. 0 for the
+     * open-drain guitar node, making this behavior-preserving there. */
+    uint32_t fire_now = s_now_ms + FRETBOARD_ACTUATOR_ADVANCE_MS;
+
     if (s_strum_active && (int32_t)(s_now_ms - s_strum_release_at_ms) >= 0)
     {
         s_strum_active = false;
     }
 
-    process_notes();
-    process_strums();
-    process_releases(live_pressed_mask);
+    process_notes(fire_now);
+    process_strums(fire_now);
+    process_releases(live_pressed_mask, fire_now);
 
     uint8_t mask = s_frets_active;
     if (s_strum_active)
