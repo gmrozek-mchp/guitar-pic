@@ -386,6 +386,48 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-15 — Gameplay screens classified by scoreboard-chrome presence (fixes intermittent 2p dropout; pending build)
+
+The 2-player `in_song_2p` screen classification was intermittently dropping out. Root cause: every
+screen — menu *and* gameplay — was classified by one whole-frame 12×8 centroid (`gp_classify`).
+Menus are ~static so that's solid; a gameplay frame is mostly *dynamic* (two scrolling note
+highways, animated crowd, changing score/amp digits), and the `in_song_2p` centroid was trained on
+5 frames from one session, so a different song/stage/character drifts many grid cells → the L1
+crosses `t_abs` or the margin collapses → UNKNOWN. The fix keys gameplay detection on the one static
+element, whose **layout is itself the 1p/2p signature**: one bottom-left score block (1p) vs two top
+amp panels (2p). Highways are irrelevant to *classification* (they belong to the CV detector).
+
+- New `game/gameplay_present.{c,h}` (pure C, no RTOS/video deps; `-Wall -Wextra` clean): three
+  masked, per-frame-normalized SAD probes at **fixed nominal coords** (no offset search, no
+  registration). Each block's luma is standardized to mean128/std48 over its masked static-chrome
+  pixels (same quantize as `gp_fingerprint`), integer L1 vs a baked uint8 reference over the mask,
+  / npix. `GameplayPresent_Classify()` returns `GP_SCREEN_in_song` / `in_song_2p` / `UNKNOWN`. Decision: `1p iff
+  p1≤TAU & p1≤max(pL,pR)`; `2p iff max(pL,pR)≤TAU`. TAU = 18.
+- `gameplay_engine.c` observe path is now **probe-first**: `GameplayPresent_Classify()` runs first; on UNKNOWN it
+  falls through to `gp_classify()` for the static screens. The `in_song`/`in_song_2p` centroids stay
+  in the classifier as a harmless fallback — the probe is authoritative for gameplay. `game_task`
+  score/streak/multiplier readers stay gated on `GP_SCREEN_in_song`; `game_controller.c` already
+  accepts `in_song_2p` and auto-selects the 2p-left highway — both unchanged.
+- Tables baked into `game/gameplay_metadata.h` by `export_c.py`: `gp_probes[]` (block coords,
+  bw/bh, npix, uint8 mask + uint8 mean128/std48 reference) + `GP_PRESENT_TAU`. Header regen only —
+  no MCC/Legato hand-edits.
+
+Why no registration (I initially over-modeled it): the classifier needs none. marvin captures
+pixel-locked native BGR888 at the Wii's 720×480 (`capture_pipeline.md`); the component→HDMI
+converter re-samples to a fixed raster, so there's no per-frame position jitter and the real 2p
+snapshots already sit at nominal offset. Any static per-rig offset is a one-time concern, deferred
+with the 2p digit reader (`amp2p.calibrate`, host-only) — the present probe is fixed-offset.
+
+**Proven offline first** (host `tools/gameplay`; see its journal same date): 0/187 corpus frames
+misclassified; value-slop envelope worst present 10.1 vs best absent 28.8 → **2.9× margin** around
+TAU 18; pause-overlay partial chrome stays clearly absent; C `GameplayPresent_Classify` == Python on every corpus
+frame (new `test_firmware_classify.py` `present` mode). Full host suite **80 passed**.
+
+**Pending Greg's MPLAB build + hardware validation** (a live 2p game should now hold `in_song_2p`
+without dropout; 1p unaffected). **Data follow-up:** the in-sample present margin (~0.04) is
+optimistic — capture career/quickplay 1p and cross-session 2p to measure the true out-of-sample
+margin.
+
 ### 2026-07-15 — CV strike time anchored to capture, not detect time; two small cleanups (pending build)
 
 Area review of the game-pipeline / detector / actuator turned up three fixable items (a fourth — multi-producer wire arbitration — deferred to Open questions).

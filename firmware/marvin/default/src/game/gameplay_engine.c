@@ -1,5 +1,6 @@
 #include "game/gameplay_engine.h"
 #include "game/gameplay_classify.h"
+#include "game/gameplay_present.h"
 #include "game/gameplay_select.h"
 #include "game/gameplay_score.h"
 #include "game/gameplay_metadata.h"
@@ -123,8 +124,17 @@ static void game_task(void *param)
         const uint8_t *buf = (const uint8_t *)frame.buffer;
         int w = (int)frame.width, h = (int)frame.height;
 
+        /* Probe-first: the gameplay screens (in_song / in_song_2p) are identified by
+         * static scoreboard-chrome presence (GameplayPresent_Classify) — robust to the dynamic
+         * highway/crowd content that makes a whole-frame centroid flaky. Everything
+         * else falls through to the centroid classifier, which the static menu
+         * screens match tightly. */
         int32_t best_dist = 0, margin = 0;
-        uint8_t screen = gp_classify(buf, w, h, &best_dist, &margin);
+        uint8_t screen = GameplayPresent_Classify(buf, w, h, NULL);
+        if (screen == GP_SCREEN_UNKNOWN)
+        {
+            screen = gp_classify(buf, w, h, &best_dist, &margin);
+        }
 
         const char *sel_name = NULL, *sel_name2 = NULL;
         int16_t sel = read_selection(buf, w, h, screen, &sel_name, &sel_name2);

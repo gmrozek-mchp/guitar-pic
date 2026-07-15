@@ -207,10 +207,14 @@ subsampled path costs <1% CPU at 5–10 Hz.
 - **song_select sub-modes.** Main vs bonus setlist share one `song_select` class (the
   bonus tab differs visually); the centroid spans both and classifies fine today. The
   song reader distinguishes the active setlist by page background colour (resolved, 100%).
-- **Gameplay background variance.** The corpus has only the training-mode `in_song`
-  background. Other modes (career/quickplay) use different backgrounds; the gameplay
-  classifier may need a discriminative fixed region (the invariant 5-colour note-target row)
-  rather than a whole-frame centroid. Recapture `in_song` across modes before trusting it.
+- ✅ **Gameplay background variance.** Resolved (2026-07-15): the gameplay screens
+  (`in_song`, `in_song_2p`) are now classified by **scoreboard-chrome presence**
+  (`present.py` / `gameplay_present.c`), not the whole-frame centroid — see the session log
+  below. A whole-frame centroid keys on the dynamic highway/crowd/background, so it drifts
+  across modes/songs (the intermittent 2p dropout); the static scoring chrome does not.
+  Remaining data gap: still only training-mode `in_song` + one-session 2p frames, so the
+  in-class present margin (~0.04) is optimistic — capture career/quickplay 1p and cross-session
+  2p to tighten the true out-of-sample margin (the slop proof shows the *mechanism* generalizes).
 - **Impostor leak (9/101).** Unmodeled screens (e.g. options submenus) can be accepted as a
   known peer. Acceptable for v0 (navigator recovers), but phase 2's per-screen regions or an
   explicit "options" template could tighten it if it bites.
@@ -221,6 +225,46 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-07-15 — gameplay screens classified by scoreboard-chrome presence (not whole-frame centroid)
+
+Fixes the intermittent 2-player `in_song_2p` classification dropout. Root cause: every screen
+(menu *and* gameplay) was classified by one whole-frame 12×8 centroid. Menus are ~static so that
+works; a gameplay frame is mostly dynamic (two scrolling highways, animated crowd, changing
+digits), and the `in_song_2p` centroid was built from 5 frames of one session — so a different
+song/stage/character drifts many cells, the L1 crosses `t_abs` / the margin collapses, and the
+frame reads UNKNOWN. **The scoring chrome is the one static element, and its layout is the 1p/2p
+signature.**
+
+New approach (host source of truth `gameplay/present.py`, ported to `gameplay_present.c`): three
+masked, per-frame-normalized SAD probes at **fixed nominal coords** — 1p bottom-left score block
+(`SCORE_BLOCK_ROI` + `score_block_ref/_mask`), 2p left+right amp panels (`AMP2P_BLOCK` +
+`amp2p_{side}_ref/_mask`). Each block's luma is standardized to mean128/std48 over its masked
+(static-chrome) pixels (the same quantize `gp_fingerprint` uses → integer L1, exact C↔Python),
+then integer L1 vs the baked reference over the mask, / npix. Decision: `1p iff p1≤TAU & p1≤max(pL,pR)`;
+`2p iff max(pL,pR)≤TAU`; else fall through to the centroid classifier (which keeps the static
+screens). **TAU = 18** (L1-per-masked-pixel).
+
+**Proven offline** (`scan_scoreboard_presence.py`, `tests/test_present.py`): 0/187 corpus frames
+misclassified; value-slop envelope (gain/offset/noise) worst present **10.1** vs best absent **28.8**
+→ **2.9× margin** around TAU 18; 1p/2p mutually exclusive; pause-overlay partial chrome reads ~0.62
+(unit-std), safely absent. **No registration/offset search:** marvin's capture is pixel-locked
+native BGR888 (`capture_pipeline.md`), the real 2p snapshots sit at nominal offset, and the
+component→HDMI converter re-samples to a fixed raster — so positional slop is a one-time concern
+(deferred with the 2p digit reader `amp2p.calibrate`), not per-frame. Per-frame cost is one masked
+SAD per block at the existing ~3 Hz classify cadence.
+
+- Host: `gameplay/present.py` (+ `tests/test_present.py`); `export_c.py` bakes `gp_probes[]`
+  (block coords, bw/bh, npix, uint8 mask + uint8 mean128/std48 reference) + `GP_PRESENT_TAU` into
+  `gameplay_metadata.h`. `test_firmware_classify.py` adds a `present` mode: C `GameplayPresent_Classify` == Python
+  on every corpus frame (decision exact, SAD within tol). Full suite **80 passed**.
+- Firmware (marvin, pending Greg's MPLAB build): `game/gameplay_present.{c,h}` (pure, `-Wall
+  -Wextra` clean); `gameplay_engine.c` observe path is **probe-first** — `GameplayPresent_Classify` for the
+  gameplay screens, `gp_classify` for everything else. `in_song`/`in_song_2p` centroids stay as a
+  harmless fallback (probe is authoritative). See marvin journal, same date.
+- Data follow-up (unchanged from the open item): capture career/quickplay 1p + cross-session 2p to
+  tighten the true out-of-sample margin; the `clean` present ~0.04 is in-sample (ref is a crop of a
+  2p frame).
 
 ### 2026-07-14 — `in_song_2p` screen class (so the detector knows which highway to read)
 

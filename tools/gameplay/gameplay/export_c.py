@@ -53,6 +53,7 @@ from .score import (
     build_streak_catalog,
 )
 from .songselect import DEFAULT_SONG_CONFIG, FIRST, build_song_catalog
+from .present import TAU as PRESENT_TAU, build_probes as build_present_probes
 
 # Score modes emitted, in device-index order (GP_SCORE_MODE_*). Career (green
 # font) appends here once it has a labelled corpus + digit band — no API change.
@@ -303,6 +304,52 @@ def build_metadata_header(samples: list[Sample] | None = None) -> str:
     for roi, light in STREAK_CELLS:
         bank = "GP_STREAK_BANK_DL" if light else "GP_STREAK_BANK_WD"
         w("  {{%d,%d,%d,%d}, %d, %s}," % (roi[0], roi[1], roi[2], roi[3], int(light), bank))
+    w("};")
+    w("")
+
+    # ── gameplay-screen detector (static scoreboard-chrome presence) ────────
+    w("/* ── gameplay-screen detector (scoreboard-chrome presence; see gameplay/present.py) ──")
+    w("   A gameplay screen is identified by its static scoring chrome, not the whole-frame")
+    w("   centroid (dynamic-content-dominated). 1p = one bottom-left score block; 2p = two top")
+    w("   amp panels. Each probe: standardize the block luma to mean128/std48 over its masked")
+    w("   (static-chrome) pixels, integer L1 vs the baked reference over the mask, / npix. Fixed")
+    w("   nominal offset (capture is pixel-locked). 1p present iff p1<=TAU & p1<=max(pL,pR);")
+    w("   2p present iff max(pL,pR)<=TAU; else fall through to the centroid classifier. */")
+    probes = build_present_probes()
+    order = [("1P", "1p"), ("2PL", "2pL"), ("2PR", "2pR")]
+    w("#define GP_PRESENT_TAU %d   /* L1-per-masked-pixel accept threshold */" % PRESENT_TAU)
+    w("#define GP_N_PROBES %d" % len(order))
+    for i, (ident, _key) in enumerate(order):
+        w("#define GP_PROBE_%s %d" % (ident, i))
+    w("#define GP_PRESENT_SCREEN_1P GP_SCREEN_in_song")
+    w("#define GP_PRESENT_SCREEN_2P GP_SCREEN_in_song_2p")
+    w("#define GP_PROBE_LUMA_B 29   /* BGR luma weights (== score reader); normalize follows */")
+    w("#define GP_PROBE_LUMA_G 150")
+    w("#define GP_PROBE_LUMA_R 77")
+    max_len = max(p.mask.size for p in probes.values())
+    w("#define GP_PROBE_MAX_LEN %d   /* largest block bw*bh (scratch bound) */" % max_len)
+    w("")
+    for ident, key in order:
+        p = probes[key]
+        cid = ident.lower()
+        w("static const uint8_t gp_probe_%s_mask[%d] = {%s};"
+          % (cid, p.mask.size, ",".join(str(int(v)) for v in p.mask.reshape(-1))))
+        w("static const uint8_t gp_probe_%s_ref[%d] = {%s};"
+          % (cid, p.ref_u8.size, ",".join(str(int(v)) for v in p.ref_u8.reshape(-1))))
+    w("")
+    w("typedef struct {")
+    w("  uint16_t block[4];    /* x0, y0, x1, y1 (canonical space) */")
+    w("  uint16_t bw, bh;      /* block dimensions (x1-x0, y1-y0) */")
+    w("  uint16_t npix;        /* masked-pixel count (L1 divisor) */")
+    w("  const uint8_t *mask;  /* bw*bh row-major; 1 = static-chrome pixel, compared */")
+    w("  const uint8_t *ref;   /* bw*bh row-major; mean128/std48-normalized reference luma */")
+    w("} gp_probe_t;")
+    w("static const gp_probe_t gp_probes[GP_N_PROBES] = {")
+    for ident, key in order:
+        p = probes[key]
+        x0, y0, x1, y1 = p.block
+        w("  {{%d,%d,%d,%d}, %d, %d, %d, gp_probe_%s_mask, gp_probe_%s_ref},"
+          % (x0, y0, x1, y1, x1 - x0, y1 - y0, p.npix, ident.lower(), ident.lower()))
     w("};")
     w("")
 

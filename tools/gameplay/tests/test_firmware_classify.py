@@ -35,6 +35,7 @@ _DRIVER_C = r"""
 #include "game/gameplay_classify.h"
 #include "game/gameplay_select.h"
 #include "game/gameplay_score.h"
+#include "game/gameplay_present.h"
 #include "game/gameplay_metadata.h"
 int main(int argc, char **argv) {
     if (argc < 5) return 2;
@@ -59,6 +60,10 @@ int main(int argc, char **argv) {
         gp_score_t s;
         gp_read_score(buf, w, h, (uint8_t)atoi(argv[5]), &s);
         printf("%d\n", (int)s.value);
+    } else if (strcmp(mode, "present") == 0) {
+        int32_t sad[GP_N_PROBES];
+        int scr = GameplayPresent_Classify(buf, w, h, sad);
+        printf("%d %d %d %d\n", scr, (int)sad[0], (int)sad[1], (int)sad[2]);
     } else if (strcmp(mode, "mult") == 0) {
         printf("%d\n", gp_read_multiplier(buf, w, h));
     } else if (strcmp(mode, "streak") == 0) {
@@ -90,6 +95,7 @@ def driver(tmp_path_factory):
          str(_FW_SRC / "game" / "gameplay_classify.c"),
          str(_FW_SRC / "game" / "gameplay_select.c"),
          str(_FW_SRC / "game" / "gameplay_score.c"),
+         str(_FW_SRC / "game" / "gameplay_present.c"),
          "-lm", "-o", str(exe)],
         capture_output=True, text=True,
     )
@@ -194,6 +200,33 @@ def test_c_multiplier_matches_python(score_corpus, driver, tmp_path):
         full = np.ascontiguousarray(_ensure_full_frame(s.image))
         c = int(_c_run(driver, full, tmp_path, "mult"))
         assert c == py, f"{s.path.name}: C={c} Python={py}"
+
+
+def test_c_present_matches_python(corpus, driver, tmp_path):
+    """GameplayPresent_Classify == present.classify_present on every corpus frame.
+
+    Asserts the gameplay-screen decision (in_song / in_song_2p / not-gameplay) matches
+    exactly, and each probe's L1-per-masked-pixel matches within a small tolerance
+    (C float32 + lroundf vs Python float64 + np.round differ by <1 in these units;
+    the 2.9x margin means that never flips the decision)."""
+    from gameplay.classifier import build_templates as _bt
+    from gameplay.present import build_probes, classify_present, probe_sad
+
+    cfg = FingerprintConfig()
+    ids = list(_bt(labelled_fps(corpus, cfg), cfg).ids)
+    probes = build_probes()
+    keys = ("1p", "2pL", "2pR")
+
+    for s in corpus:
+        py = classify_present(s.image, probes)
+        py_idx = _UNKNOWN_IDX if py.screen_id is None else ids.index(py.screen_id)
+        out = _c_run(driver, s.image, tmp_path, "present").split()
+        c_idx = int(out[0])
+        assert c_idx == py_idx, f"{s.path.name}: C={c_idx} Python={py_idx}"
+        c_sad = [int(x) / 1000.0 for x in out[1:4]]
+        py_sad = [probe_sad(s.image, probes[k]) for k in keys]
+        for k, cs, ps in zip(keys, c_sad, py_sad):
+            assert abs(cs - ps) < 0.5, f"{s.path.name} {k}: C={cs:.2f} Python={ps:.2f}"
 
 
 def test_c_streak_matches_python(streak_corpus, driver, tmp_path):
