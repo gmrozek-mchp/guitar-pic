@@ -156,11 +156,11 @@ A SAM9X75 captures Wii HDMI video at 720×480 / 1280×720 @ 60 Hz over a TC35874
 |---|---|---|
 | HDMI source → DDR (capture) | ≤ 16.7 ms | One frame @ 60 Hz; bounded by capture pipeline. |
 | Detect on frame | ≤ 16.7 ms | One frame budget for CV; ADC path is separate and faster. |
-| Timing pipeline → command emit | latency dominated by `STRUM_DELAY_MS` (≈ 200 ms) — intentional, not waste; compensates for sensor placement above strike line. |
+| Timing pipeline → command emit | latency dominated by the detector **observation lead** (`observation_lead_ms` ≈ 200–250 ms) — intentional, not waste; compensates for sensor placement above strike line. |
 | UART command → fretboard GPIO | ≤ 5 ms | Short fixed-format frame at ≥ 115 200 Bd. |
-| Total user-visible latency | ≈ 200–250 ms | Tunable via `STRUM_DELAY_MS`, set per-game by calibration. |
+| Total user-visible latency | ≈ 200–250 ms | Tunable via `observation_lead_ms`, set per-detector/per-game by calibration. |
 
-The dominant fixed delay (`STRUM_DELAY_MS`) exists by design — the camera sees notes before they reach the strike line. Capture + detect + UART jitter is what we actually budget against.
+The dominant fixed delay (the detector's `observation_lead_ms`) exists by design — the camera sees notes before they reach the strike line, so the detector stamps a strike-line time (§4.2.3) that far ahead and the pipeline schedules to it. Capture + detect + UART jitter is what we actually budget against.
 
 ---
 
@@ -238,6 +238,9 @@ Future detectors may include alternate CV algorithms running in parallel for com
 ```
 typedef struct {
     uint32_t frame_epoch;     // master sync token (§4.6.4)
+    uint32_t strike_at_ms;    // timestamp_us/1000 + detector observation lead;
+                              //   when this observation reaches the strike line.
+                              //   The timing pipeline (§4.4) schedules in this base.
     uint64_t timestamp_us;    // monotonic, marvin-local
     uint8_t  detector_id;     // 0=cv_marvin_v1, 1=adc_fretboard, ...
     uint8_t  reserved[3];
@@ -284,13 +287,14 @@ Direct **FLEXCOM1 USART** link between marvin and the fretboard MCU — a plain 
 
 ### 4.4 Timing pipeline 🚧
 
-Centralized on marvin by default. Owns:
+Centralized on marvin by default. Schedules **in the strike-line time base** — it acts on each detector record's `strike_at_ms` (§4.2.3) rather than holding an observation-delay constant of its own; the observation lead now lives with the detector. Owns:
 
 - Chord-accumulation window (`CHORD_WINDOW_MS` ≈ 20–40 ms).
-- Pending-chord FIFO with per-chord `press_at` / `strum_at` ticks.
+- Pending-chord FIFO with per-chord `press_at` / `strum_at` ticks (both derived from `strike_at_ms`).
 - Per-fret release scheduling.
 - Strum direction alternation and pulse generation.
-- `STRUM_DELAY_MS` / `FRET_EARLY_MS` / `STRUM_PULSE_MS` constants — initial values port from `tools/fret-tuner/SPEC.md` and `firmware/fretboard/SPEC.md`.
+- `FRET_EARLY_MS` / `STRUM_PULSE_MS` musical-scheduling constants — initial values port from `tools/fret-tuner/SPEC.md` and `firmware/fretboard/SPEC.md`. (The former `STRUM_DELAY_MS` is now the detector's per-config `observation_lead_ms`.)
+- **Actuator advance:** subtracts the active actuator node's declared mechanical advance (`FRETBOARD_ACTUATOR_ADVANCE_MS`, 0 for the open-drain guitar node) when deciding when to emit, so a solenoid rig's rise time lands the effect on the strike line. The wire byte stays a bare "assert now" mask (Option A; see journal 2026-07-15).
 
 **Disable / handoff mode:** an operator-mode toggle (§6) deactivates marvin's pipeline. fretboard then runs its own existing pipeline; marvin still ingests ADC + emitted-command telemetry for recording/display, but does not emit commands.
 

@@ -16,12 +16,13 @@
 #define TP_TASK_STACK_WORDS    768u
 #define TP_TASK_PRIORITY       5u
 
-/* Drives chord aggregation, strum scheduling, and pending release timing.
- * Matches the fret-tuner Python defaults so behavior carries 1:1. */
-#define TP_STRUM_DELAY_MS      250u
-#define TP_FRET_EARLY_MS       50u
-#define TP_STRUM_PULSE_MS      40u
-#define TP_CHORD_WINDOW_MS     30u
+/* Musical scheduling constants — ported from the fret-tuner Python defaults.
+ * The observation lead (how early the detector sees a note) is NOT here: the
+ * detector stamps detector_state_t.strike_at_ms and the pipeline schedules in
+ * that strike-line time base (spec §4.4). */
+#define TP_FRET_EARLY_MS       50u   /* press the fret this early vs the strum */
+#define TP_STRUM_PULSE_MS      40u   /* strum-bit assert width on the wire */
+#define TP_CHORD_WINDOW_MS     30u   /* press-aggregation window */
 
 #define TP_FIFO_CAP            32u
 
@@ -67,6 +68,11 @@ static uint8_t  s_release_pending_mask;
 
 static uint8_t  s_output_mask;
 static uint32_t s_now_ms;
+/* Strike-line clock: the detector-stamped strike time of the current frame,
+ * advanced 1:1 with s_now_ms between frames. All output deadlines (assert,
+ * strum, release) are scheduled in this base; s_now_ms drives only input
+ * aggregation and the emit-anchored strum pulse. */
+static uint32_t s_strike_at_ms;
 static uint64_t s_last_frame_us;
 
 /* Default OFF: on boot the CV detector is watching a menu, not a note highway, so
@@ -193,8 +199,8 @@ static void chord_commit(void)
         return;
     }
 
-    uint32_t assert_at = s_now_ms + TP_STRUM_DELAY_MS - TP_FRET_EARLY_MS;
-    uint32_t strum_at  = s_now_ms + TP_STRUM_DELAY_MS;
+    uint32_t assert_at = s_strike_at_ms - TP_FRET_EARLY_MS;
+    uint32_t strum_at  = s_strike_at_ms;
 
     if (!strum_q_empty())
     {
@@ -363,6 +369,7 @@ static void process_frame(const detector_state_t *state)
     /* Detector frame timestamps drive the clock so this is replay-
      * deterministic. timestamp_us is monotonic per spec §4.2.3. */
     s_now_ms = (uint32_t)(state->timestamp_us / 1000ull);
+    s_strike_at_ms = state->strike_at_ms;
     s_last_frame_us = state->timestamp_us;
 
     uint8_t presses, releases, pressed_mask;
@@ -383,7 +390,7 @@ static void process_frame(const detector_state_t *state)
     {
         if (releases & s_fret_bit[i])
         {
-            s_release_at_ms[i]      = s_now_ms + TP_STRUM_DELAY_MS;
+            s_release_at_ms[i]      = s_strike_at_ms;
             s_release_pending_mask |= s_fret_bit[i];
         }
     }
@@ -420,9 +427,11 @@ static void timing_pipeline_task(void *param)
         }
         else
         {
-            /* No new frame; advance the clock so deadlines that fell
-             * between frames (strum pulses, release timers) still fire. */
+            /* No new frame; advance both clocks in lockstep so deadlines that
+             * fell between frames (strum pulses, release timers) still fire and
+             * the strike-line base stays referenced to now. */
             s_now_ms += TP_TICK_MS;
+            s_strike_at_ms += TP_TICK_MS;
             advance(s_prev_pressed_mask);
         }
     }

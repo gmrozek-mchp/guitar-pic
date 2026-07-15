@@ -26,6 +26,11 @@ typedef struct
      * (rings painted here); STRIKE spans the strum zone below (no rings). */
     uint16_t sensing_x, sensing_y, sensing_w, sensing_h;
     uint16_t strike_x,  strike_y,  strike_w,  strike_h;
+    /* Observation lead (ms): travel time for a note from the sensor row down to
+     * the strike line. The detector adds this to each frame's timestamp to
+     * stamp detector_state_t.strike_at_ms; the timing pipeline schedules in
+     * that strike-line time base and holds no delay constant of its own. */
+    uint16_t observation_lead_ms;
 } cv_marvin_v1_config_t;
 
 extern const cv_marvin_v1_config_t CV_MARVIN_CFG_1P;

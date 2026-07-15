@@ -56,6 +56,7 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_1P =
     },
     .sensing_x = 265u, .sensing_y = 300u, .sensing_w = 185u, .sensing_h = 32u,
     .strike_x  = 212u, .strike_y  = 395u, .strike_w  = 290u, .strike_h  = 32u,
+    .observation_lead_ms = 250u,
 };
 
 const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
@@ -71,6 +72,7 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
     },
     .sensing_x = 150u, .sensing_y = 300u, .sensing_w = 155u, .sensing_h = 32u,
     .strike_x  = 120u, .strike_y  = 395u, .strike_w  = 205u, .strike_h  = 34u,
+    .observation_lead_ms = 250u,
 };
 
 /* Active geometry, and a pending swap picked up by the task on the next frame. */
@@ -189,6 +191,8 @@ static void detect_frame(const Video_FrameInfo *frame, QueueHandle_t bus,
     memset(&state, 0, sizeof(state));
     state.frame_epoch  = frame->frame_count;
     state.timestamp_us = (uint64_t)xTaskGetTickCount() * CV_US_PER_TICK;
+    state.strike_at_ms = (uint32_t)(state.timestamp_us / 1000ull)
+                       + cfg->observation_lead_ms;
     state.detector_id  = (uint8_t)DETECTOR_CV_MARVIN_V1;
 
     const float    hold_release = CV_HOLD_THRESH * CV_HOLD_RELEASE_FRAC;

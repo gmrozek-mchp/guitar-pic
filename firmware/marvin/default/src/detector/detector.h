@@ -33,6 +33,10 @@ typedef enum
 typedef struct
 {
     uint32_t frame_epoch;     /* master sync token, spec §4.6.4 */
+    uint32_t strike_at_ms;    /* when this observation reaches the strike line:
+                               * timestamp_us/1000 + detector observation lead.
+                               * The timing pipeline schedules in this time base
+                               * (spec §4.4); the detector owns the lead. */
     uint64_t timestamp_us;    /* monotonic, marvin-local */
     uint8_t  detector_id;     /* detector_id_t */
     uint8_t  reserved[3];
