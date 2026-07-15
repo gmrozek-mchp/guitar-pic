@@ -1,4 +1,4 @@
-#include "game/catalog.h"
+#include "game/game_catalog.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -14,7 +14,7 @@
 #define CAT_LINE_MAX  256
 #define CAT_FIELDS    10  /* setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty */
 
-static catalog_entry_t s_entries[GP_N_SONGS];
+static game_catalog_entry_t s_entries[GP_N_SONGS];
 static int             s_count  = 0;
 static bool            s_loaded = false;
 
@@ -41,13 +41,13 @@ static void copy_field(char *dst, size_t n, const char *src)
 
 /* ---- load --------------------------------------------------------------- */
 
-void Catalog_Initialize(void)
+void GameCatalog_Initialize(void)
 {
     s_count  = 0;
     s_loaded = false;
 }
 
-bool Catalog_Reload(void)
+bool GameCatalog_Reload(void)
 {
     s_count  = 0;
     s_loaded = true;   /* one attempt; lookups won't re-load until next Reload */
@@ -75,7 +75,7 @@ bool Catalog_Reload(void)
         int sl = setlist_id(f[0]);
         if (sl < 0) { continue; }
 
-        catalog_entry_t *e = &s_entries[s_count];
+        game_catalog_entry_t *e = &s_entries[s_count];
         e->setlist  = (uint8_t)sl;
         e->index    = (uint8_t)atoi(f[1]);
         copy_field(e->title,  sizeof(e->title),  f[2]);
@@ -96,10 +96,10 @@ bool Catalog_Reload(void)
 
 /* ---- lookup ------------------------------------------------------------- */
 
-bool Catalog_Lookup(uint8_t setlist, uint8_t index, catalog_entry_t *out)
+bool GameCatalog_Lookup(uint8_t setlist, uint8_t index, game_catalog_entry_t *out)
 {
     if (out == NULL) { return false; }
-    if (!s_loaded) { (void)Catalog_Reload(); }
+    if (!s_loaded) { (void)GameCatalog_Reload(); }
 
     for (int i = 0; i < s_count; i++)
     {
@@ -112,16 +112,16 @@ bool Catalog_Lookup(uint8_t setlist, uint8_t index, catalog_entry_t *out)
     return false;
 }
 
-bool Catalog_LookupSong(const gp_song_t *song, catalog_entry_t *out)
+bool GameCatalog_LookupSong(const gp_song_t *song, game_catalog_entry_t *out)
 {
     if (song == NULL) { return false; }
-    return Catalog_Lookup(song->setlist, song->index, out);
+    return GameCatalog_Lookup(song->setlist, song->index, out);
 }
 
-int  Catalog_Count(void)    { return s_count; }
-bool Catalog_IsLoaded(void) { return s_loaded; }
+int  GameCatalog_Count(void)    { return s_count; }
+bool GameCatalog_IsLoaded(void) { return s_loaded; }
 
-const catalog_entry_t *Catalog_At(int i)
+const game_catalog_entry_t *GameCatalog_At(int i)
 {
     if (i < 0 || i >= s_count) { return NULL; }
     return &s_entries[i];

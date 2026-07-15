@@ -7,9 +7,9 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/song_list/widget_song_list.h"
 
-#include "game/catalog.h"
-#include "game/art.h"
-#include "game/selection.h"
+#include "game/game_catalog.h"
+#include "game/game_art.h"
+#include "game/game_selection.h"
 #include "ui/song_detail.h"
 #include "log.h"
 #include "util/legato_utf8.h"
@@ -225,9 +225,9 @@ static void set_detail(int i, const char *s)
 
 /* Point the dialog's album-art widget at the selected song's pre-decoded large
  * strip, or blank it (NULL) when the song or its cover is absent. */
-static void song_art_show(const catalog_entry_t *e)
+static void song_art_show(const game_catalog_entry_t *e)
 {
-    const leImage *img = (e != NULL) ? Art_Large(e->setlist, e->index) : NULL;
+    const leImage *img = (e != NULL) ? GameArt_Large(e->setlist, e->index) : NULL;
     Marvin_IMAGE_ALBUM_ART->fn->setImage(Marvin_IMAGE_ALBUM_ART, (leImage *)img);
 }
 
@@ -235,7 +235,7 @@ static void song_art_show(const catalog_entry_t *e)
  * SONG_LEVEL shows "★…★ TIER n" for main career tiers 1-8 (n black stars), or
  * "BONUS" for the bonus setlist, colored by tier (SongDetail_* — the shared
  * palette matching the baked art fade). */
-static void tier_label_show(const catalog_entry_t *e)
+static void tier_label_show(const game_catalog_entry_t *e)
 {
     leLabelWidget *lbl  = detail_label(DET_LEVEL);
     int            tier = (e != NULL) ? SongDetail_Tier(e->difficulty) : 0;
@@ -255,7 +255,7 @@ static void tier_label_show(const catalog_entry_t *e)
 /* Mirror catalog entry `index` into the detail labels (all "-" if no such song). */
 static void song_detail_show(int index)
 {
-    const catalog_entry_t *e = Catalog_At(index);
+    const game_catalog_entry_t *e = GameCatalog_At(index);
     char tmp[16];
 
     song_art_show(e);
@@ -294,7 +294,7 @@ static void song_detail_show(int index)
  * is formatted into a static scratch buffer the widget reads immediately. */
 static bool song_row(void *ctx, int index, songlist_row_t *out)
 {
-    const catalog_entry_t *e = Catalog_At(index);
+    const game_catalog_entry_t *e = GameCatalog_At(index);
     static char dur[8];
 
     (void)ctx;
@@ -317,7 +317,7 @@ static bool song_row(void *ctx, int index, songlist_row_t *out)
 
 static void song_selected(void *ctx, int index)
 {
-    const catalog_entry_t *e = Catalog_At(index);
+    const game_catalog_entry_t *e = GameCatalog_At(index);
 
     (void)ctx;
     LOG_INFO("songsel: selected #%d  %s - %s\r\n", index,
@@ -331,9 +331,9 @@ static void song_selected(void *ctx, int index)
  * The dashboard SONG card mirrors it via its Selection observer. */
 static void songsel_commit(void)
 {
-    const catalog_entry_t *e = Catalog_At(s_sel_index);
+    const game_catalog_entry_t *e = GameCatalog_At(s_sel_index);
     if (e == NULL) { return; }
-    Selection_Set(e->setlist, e->index, (uint8_t)s_difficulty, (uint8_t)s_mode);
+    GameSelection_Set(e->setlist, e->index, (uint8_t)s_difficulty, (uint8_t)s_mode);
 }
 
 /* Build the song list into the LEFT panel. DejaVu Mono 12 — bold title over
@@ -343,7 +343,7 @@ static void song_list_init(void)
     leWidget *list = SongList_New();
     if (list == NULL) { return; }
 
-    (void)Catalog_Reload();
+    (void)GameCatalog_Reload();
 
     list->fn->setPosition(list, 0, SONGLIST_HEADER_H);
     list->fn->setSize(list, 320, 594 - SONGLIST_HEADER_H);
@@ -356,7 +356,7 @@ static void song_list_init(void)
                       (const leFont *)&DejaVuSansMono_12,       /* artist/duration — 12 */
                       (const leFont *)&DejaVuSansMono_12);      /* badge (unused)      */
     SongList_SetRowHeight(list, SONGLIST_ROW_H);
-    SongList_SetModel(list, Catalog_Count(), song_row, NULL);
+    SongList_SetModel(list, GameCatalog_Count(), song_row, NULL);
     SongList_SetSelectHandler(list, song_selected, NULL);
 
     Marvin_PANEL_SONG_SELECT_LEFT->fn->addChild(Marvin_PANEL_SONG_SELECT_LEFT, list);

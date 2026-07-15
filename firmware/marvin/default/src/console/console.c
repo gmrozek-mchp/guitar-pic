@@ -15,13 +15,13 @@
 #include "log.h"
 #include "embedded_cli.h"
 
-#include "game/timing_pipeline.h"
+#include "game/game_timing.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "detector/detector.h"
 #include "detector/cv_marvin_v1.h"
 #include "video/video.h"
-#include "game/fret.h"
+#include "fret.h"
 #include "net/t1s/t1s_link.h"
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include <stdlib.h>                      /* strtoul for the fauxmote btn mask */
@@ -31,9 +31,9 @@
 #include "storage/storage.h"
 #include "health/health_monitor.h"
 #include "results/results.h"
-#include "game/catalog.h"
-#include "game/art.h"
-#include "game/selection.h"
+#include "game/game_catalog.h"
+#include "game/game_art.h"
+#include "game/game_selection.h"
 #include "game/game_controller.h"
 #include "ui/ui_manager.h"
 #include "flash/qspi_smoke.h"
@@ -173,7 +173,7 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("detect cv:  %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1)  ? "on" : "off");
     console_printf("detect adc: %s", Detector_IsEnabled(DETECTOR_ADC_FRETBOARD) ? "on" : "off");
     console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
-    console_printf("timing:     %s", TimingPipeline_IsEnabled() ? "on" : "off");
+    console_printf("timing:     %s", GameTiming_IsEnabled() ? "on" : "off");
     console_printf("video:      %ux%u frame=%lu",
                    (unsigned)vi.width, (unsigned)vi.height,
                    (unsigned long)vi.frame_count);
@@ -364,18 +364,18 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
     }
     if (strcmp(sub, "reload") == 0)
     {
-        bool ok = Catalog_Reload();
+        bool ok = GameCatalog_Reload();
         console_printf("%s; %d song(s) cached", ok ? "reloaded" : "no catalog",
-                       Catalog_Count());
+                       GameCatalog_Count());
         return;
     }
     if (strcmp(sub, "ls") == 0)
     {
-        int n = Catalog_Count();
+        int n = GameCatalog_Count();
         if (n == 0) { console_printf("catalog empty (try: catalog reload)"); return; }
         for (int i = 0; i < n; i++)
         {
-            const catalog_entry_t *e = Catalog_At(i);
+            const game_catalog_entry_t *e = GameCatalog_At(i);
             console_printf("%-5s %2u  %-32s %s",
                            (e->setlist == GP_SETLIST_BONUS) ? "bonus" : "main",
                            (unsigned)e->index, e->title, e->artist);
@@ -393,8 +393,8 @@ static void cmd_catalog(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
 
-    catalog_entry_t e;
-    if (!Catalog_Lookup((uint8_t)sl, (uint8_t)parse_u32(idx, 0u), &e))
+    game_catalog_entry_t e;
+    if (!GameCatalog_Lookup((uint8_t)sl, (uint8_t)parse_u32(idx, 0u), &e))
     {
         console_printf("Unknown song");
         return;
@@ -421,8 +421,8 @@ static void cmd_art(EmbeddedCli *cli, char *args, void *ctx)
     if (sub == NULL || strcmp(sub, "ls") == 0)
     {
         console_printf("art: %s; %d small, %d large cached",
-                       Art_IsLoaded() ? "loaded" : "not loaded",
-                       Art_CountSmall(), Art_CountLarge());
+                       GameArt_IsLoaded() ? "loaded" : "not loaded",
+                       GameArt_CountSmall(), GameArt_CountLarge());
         return;
     }
 
@@ -439,8 +439,8 @@ static void cmd_art(EmbeddedCli *cli, char *args, void *ctx)
     uint8_t s = (uint8_t)sl, i = (uint8_t)parse_u32(idx, 0u);
     console_printf("%s-%02u: small %s, large %s",
                    (s == GP_SETLIST_BONUS) ? "bonus" : "main", (unsigned)i,
-                   (Art_Small(s, i) != NULL) ? "yes" : "no",
-                   (Art_Large(s, i) != NULL) ? "yes" : "no");
+                   (GameArt_Small(s, i) != NULL) ? "yes" : "no",
+                   (GameArt_Large(s, i) != NULL) ? "yes" : "no");
 }
 
 static void sd_out(void *ctx, const char *line)
@@ -543,7 +543,7 @@ static void cmd_timing(EmbeddedCli *cli, char *args, void *ctx)
         console_printf("usage: timing <on|off>");
         return;
     }
-    TimingPipeline_SetEnabled(val != 0);
+    GameTiming_SetEnabled(val != 0);
     console_printf("timing = %s", val ? "on" : "off");
 }
 
@@ -736,7 +736,7 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
     {
         const char *m = embeddedCliGetToken(args, 2);
         if (m == NULL) { console_printf("usage: fauxmote btn <mask>  (e.g. 0x21 = green+strumdown; 0 = release)"); return; }
-        if (TimingPipeline_IsEnabled())
+        if (GameTiming_IsEnabled())
         {
             console_printf("note: timing on — the pipeline will overwrite this mask; run 'timing off' first");
         }
@@ -795,7 +795,7 @@ static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
 
-    const selection_t *s = Selection_Get();
+    const game_selection_t *s = GameSelection_Get();
     if (!s->valid)
     {
         console_printf("play: no song selected yet (pick one in song-select first)");

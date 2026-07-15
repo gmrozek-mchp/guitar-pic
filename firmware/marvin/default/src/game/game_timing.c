@@ -1,4 +1,4 @@
-#include "timing_pipeline.h"
+#include "game_timing.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/guitar_cmd.h"
 
@@ -434,7 +434,7 @@ static void timing_pipeline_task(void *param)
     }
 }
 
-void TimingPipeline_Initialize(void)
+void GameTiming_Initialize(void)
 {
     TaskHandle_t h = xTaskCreateStatic(timing_pipeline_task,
                                        "Timing",
@@ -446,7 +446,7 @@ void TimingPipeline_Initialize(void)
     PerfLog_RegisterTaskForHighwater(PERF_TASK_TIMING, h);
 }
 
-void TimingPipeline_SetEnabled(bool enabled)
+void GameTiming_SetEnabled(bool enabled)
 {
     if (enabled == s_pipeline_enabled)
     {
@@ -461,7 +461,7 @@ void TimingPipeline_SetEnabled(bool enabled)
     }
 }
 
-bool TimingPipeline_IsEnabled(void)
+bool GameTiming_IsEnabled(void)
 {
     return s_pipeline_enabled;
 }

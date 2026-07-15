@@ -11,9 +11,9 @@
 
 #include "actuator/guitar_cmd.h"   /* GUITAR_BTN_* fret mask layout */
 
-#include "game/catalog.h"
-#include "game/art.h"
-#include "game/selection.h"
+#include "game/game_catalog.h"
+#include "game/game_art.h"
+#include "game/game_selection.h"
 #include "game/game_controller.h"
 #include "util/legato_utf8.h"
 
@@ -202,8 +202,8 @@ static const char *mode_text(uint8_t m)
 {
     switch (m)
     {
-        case SEL_MODE_1P_ROBOT: return "1P ROBOT";
-        case SEL_MODE_1P_HUMAN: return "1P HUMAN";
+        case GAME_MODE_1P_ROBOT: return "1P ROBOT";
+        case GAME_MODE_1P_HUMAN: return "1P HUMAN";
         default:                return "2P R vs H";
     }
 }
@@ -212,9 +212,9 @@ static const char *difficulty_text(uint8_t d)
 {
     switch (d)
     {
-        case SEL_DIFF_EASY:   return "EASY";
-        case SEL_DIFF_MEDIUM: return "MEDIUM";
-        case SEL_DIFF_HARD:   return "HARD";
+        case GAME_DIFF_EASY:   return "EASY";
+        case GAME_DIFF_MEDIUM: return "MEDIUM";
+        case GAME_DIFF_HARD:   return "HARD";
         default:              return "EXPERT";
     }
 }
@@ -225,16 +225,16 @@ static const leScheme *difficulty_scheme(uint8_t d)
 {
     switch (d)
     {
-        case SEL_DIFF_EASY:   return &SCHEME_BUTTON_EASY;
-        case SEL_DIFF_MEDIUM: return &SCHEME_BUTTON_MEDIUM;
-        case SEL_DIFF_HARD:   return &SCHEME_BUTTON_HARD;
+        case GAME_DIFF_EASY:   return &SCHEME_BUTTON_EASY;
+        case GAME_DIFF_MEDIUM: return &SCHEME_BUTTON_MEDIUM;
+        case GAME_DIFF_HARD:   return &SCHEME_BUTTON_HARD;
         default:              return &SCHEME_BUTTON_EXPERT;
     }
 }
 
 /* Set SONG_SongTier's text + color from the song's career tier (or "-" when the
  * song has no catalog entry). */
-static void tier_show(const catalog_entry_t *e)
+static void tier_show(const game_catalog_entry_t *e)
 {
     leLabelWidget *lbl = detail_label(DASH_TIER);
     char           txt[40];
@@ -256,14 +256,14 @@ static void tier_show(const catalog_entry_t *e)
  * the dashboard feed consumer (plus a synchronous seed from Setup, pre-reveal). */
 void ScreenDashboard_ApplySelection(void)
 {
-    const selection_t *sel = Selection_Get();
-    catalog_entry_t e;
-    bool            ok = Catalog_Lookup(sel->setlist, sel->index, &e);
+    const game_selection_t *sel = GameSelection_Get();
+    game_catalog_entry_t e;
+    bool            ok = GameCatalog_Lookup(sel->setlist, sel->index, &e);
     char            tmp[96];
 
     Marvin_PANEL_DASHBOARD_SONG_AlbumArt->fn->setImage(
         Marvin_PANEL_DASHBOARD_SONG_AlbumArt,
-        (leImage *)Art_Small(sel->setlist, sel->index));
+        (leImage *)GameArt_Small(sel->setlist, sel->index));
 
     if (ok)
     {
@@ -314,7 +314,7 @@ void ScreenDashboard_ApplySelection(void)
 /* Selection observer — runs in the committing task's context (touch / song-select).
  * Never touches widgets; just enqueues so the feed consumer applies it as the single
  * dashboard writer. */
-static void dash_selection_changed(const selection_t *sel)
+static void dash_selection_changed(const game_selection_t *sel)
 {
     (void)sel;
     DashboardFeed_PostSelection();
@@ -479,8 +479,8 @@ void ScreenDashboard_Setup(void)
      * observer before song-select's Setup seeds the boot default (ui_manager calls
      * this screen's Setup first), so that first commit lands here. */
     song_detail_init();
-    Selection_SetObserver(dash_selection_changed);
-    if (Selection_Get()->valid) { ScreenDashboard_ApplySelection(); }
+    GameSelection_SetObserver(dash_selection_changed);
+    if (GameSelection_Get()->valid) { ScreenDashboard_ApplySelection(); }
 
     GameController_SetStatusObserver(dash_game_status);
 }

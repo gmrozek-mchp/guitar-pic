@@ -3,7 +3,7 @@
 
 #include <stdbool.h>
 
-#include "game/fret.h"
+#include "fret.h"
 
 /* Manual fretboard control — peer producer to timing_pipeline. Driven by
  * on-device UI button events (Microchip Graphics Composer widgets, bound by

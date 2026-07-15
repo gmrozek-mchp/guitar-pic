@@ -1,5 +1,5 @@
-#ifndef GAMEPLAY_SCORE_H
-#define GAMEPLAY_SCORE_H
+#ifndef MARVIN_GAMEPLAY_SCORE_H
+#define MARVIN_GAMEPLAY_SCORE_H
 
 #include <stdint.h>
 

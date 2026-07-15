@@ -256,10 +256,10 @@ SAD per block at the existing ~3 Hz classify cadence.
 
 - Host: `gameplay/present.py` (+ `tests/test_present.py`); `export_c.py` bakes `gp_probes[]`
   (block coords, bw/bh, npix, uint8 mask + uint8 mean128/std48 reference) + `GP_PRESENT_TAU` into
-  `gameplay_metadata.h`. `test_firmware_classify.py` adds a `present` mode: C `GameplayPresent_Classify` == Python
+  `gameplay_metadata.h`. `test_firmware_classify.py` adds a `present` mode: C `gp_present` == Python
   on every corpus frame (decision exact, SAD within tol). Full suite **80 passed**.
 - Firmware (marvin, pending Greg's MPLAB build): `game/gameplay_present.{c,h}` (pure, `-Wall
-  -Wextra` clean); `gameplay_engine.c` observe path is **probe-first** — `GameplayPresent_Classify` for the
+  -Wextra` clean); `gameplay_engine.c` observe path is **probe-first** — `gp_present` for the
   gameplay screens, `gp_classify` for everything else. `in_song`/`in_song_2p` centroids stay as a
   harmless fallback (probe is authoritative). See marvin journal, same date.
 - Data follow-up (unchanged from the open item): capture career/quickplay 1p + cross-session 2p to

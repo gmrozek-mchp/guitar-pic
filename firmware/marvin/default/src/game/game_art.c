@@ -1,4 +1,4 @@
-#include "game/art.h"
+#include "game/game_art.h"
 
 #include <ctype.h>     /* tolower */
 #include <stdio.h>     /* snprintf */
@@ -360,14 +360,14 @@ static int load_tier(const char *subdir, uint8_t *pool, size_t slot_bytes,
 
 /* ---- public ------------------------------------------------------------- */
 
-void Art_Initialize(void)
+void GameArt_Initialize(void)
 {
     s_small_n = 0;
     s_large_n = 0;
     s_loaded  = false;
 }
 
-int Art_LoadAll(void)
+int GameArt_LoadAll(void)
 {
     if (s_loaded) { return s_small_n + s_large_n; }
     s_loaded = true;   /* one attempt; lookups won't trigger a re-load */
@@ -385,9 +385,9 @@ int Art_LoadAll(void)
     return s_small_n + s_large_n;
 }
 
-bool Art_IsLoaded(void) { return s_loaded; }
-int  Art_CountSmall(void) { return s_small_n; }
-int  Art_CountLarge(void) { return s_large_n; }
+bool GameArt_IsLoaded(void) { return s_loaded; }
+int  GameArt_CountSmall(void) { return s_small_n; }
+int  GameArt_CountLarge(void) { return s_large_n; }
 
 static const leImage *lookup(const art_key_t *keys, const leImage *imgs, int n,
                              uint8_t setlist, uint8_t index)
@@ -402,12 +402,12 @@ static const leImage *lookup(const art_key_t *keys, const leImage *imgs, int n,
     return NULL;
 }
 
-const leImage *Art_Small(uint8_t setlist, uint8_t index)
+const leImage *GameArt_Small(uint8_t setlist, uint8_t index)
 {
     return lookup(s_small_key, s_small_img, s_small_n, setlist, index);
 }
 
-const leImage *Art_Large(uint8_t setlist, uint8_t index)
+const leImage *GameArt_Large(uint8_t setlist, uint8_t index)
 {
     return lookup(s_large_key, s_large_img, s_large_n, setlist, index);
 }

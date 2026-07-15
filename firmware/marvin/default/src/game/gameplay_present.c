@@ -61,7 +61,7 @@ static int32_t gp_probe_l1(const uint8_t *frame, int width, const gp_probe_t *p)
     return l1;
 }
 
-uint8_t GameplayPresent_Classify(const uint8_t *frame, int width, int height, int32_t *out_sad_milli)
+uint8_t gp_present(const uint8_t *frame, int width, int height, int32_t *out_sad_milli)
 {
     if (width != GP_CANON_W || height != GP_CANON_H)
     {

@@ -1,5 +1,5 @@
-#ifndef GAMEPLAY_PRESENT_H
-#define GAMEPLAY_PRESENT_H
+#ifndef MARVIN_GAMEPLAY_PRESENT_H
+#define MARVIN_GAMEPLAY_PRESENT_H
 
 #include <stdint.h>
 
@@ -21,6 +21,6 @@
  * L1-per-masked-pixel ×1000 (diagnostics / host cross-check). The gameplay-screen
  * counterpart to gp_classify (the whole-frame centroid classifier for the static
  * screens); the observer runs this first and falls back to gp_classify. */
-uint8_t GameplayPresent_Classify(const uint8_t *frame, int width, int height, int32_t *out_sad_milli);
+uint8_t gp_present(const uint8_t *frame, int width, int height, int32_t *out_sad_milli);
 
 #endif

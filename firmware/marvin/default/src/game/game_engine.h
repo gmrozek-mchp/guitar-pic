@@ -1,5 +1,5 @@
-#ifndef GAMEPLAY_ENGINE_H
-#define GAMEPLAY_ENGINE_H
+#ifndef MARVIN_GAME_ENGINE_H
+#define MARVIN_GAME_ENGINE_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -36,12 +36,12 @@ typedef struct
 /* Brings up the game-state bus queue and the observer task. The observer
  * subscribes to the video frame queue from inside its task, so call this after
  * Video_Initialize. The task idles (draining frames, ~0 CPU) until a
- * GameplayEngine_Observe() request arrives. */
-void GameplayEngine_Initialize(void);
+ * GameEngine_Observe() request arrives. */
+void GameEngine_Initialize(void);
 
 /* Game-state event bus. Consumers (operator UI, the controller at M10) read
- * here. Returns NULL until GameplayEngine_Initialize has run. */
-QueueHandle_t GameplayEngine_BusQueue(void);
+ * here. Returns NULL until GameEngine_Initialize has run. */
+QueueHandle_t GameEngine_BusQueue(void);
 
 /* Synchronous observation: request a classification of a fresh frame and block
  * until the result arrives, or timeout_ms elapses. On success writes the
@@ -56,6 +56,6 @@ QueueHandle_t GameplayEngine_BusQueue(void);
  * NOTE: GH3 menus take several frames to transition (cursor animation, fades, a
  * `loading` screen), so the controller settles/re-observes rather than trusting
  * one read the instant after actuating. */
-bool GameplayEngine_Observe(game_state_t *out, uint32_t timeout_ms);
+bool GameEngine_Observe(game_state_t *out, uint32_t timeout_ms);
 
 #endif

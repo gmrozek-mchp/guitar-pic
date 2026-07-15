@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "game/fret.h"
+#include "fret.h"
 
 /* Perf-log wire format. Mirror this header byte-for-byte in the host
  * decoder (tools/marvin-perf). Bump PERF_LOG_SCHEMA_VERSION on

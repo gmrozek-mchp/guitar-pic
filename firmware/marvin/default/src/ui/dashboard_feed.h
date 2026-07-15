@@ -27,7 +27,7 @@ extern "C" {
 typedef enum
 {
     DASH_EVT_FRET = 0,   /* u.fret_mask — 7-bit guitar mask (GUITAR_BTN_*)   */
-    DASH_EVT_SELECTION,  /* no payload — consumer reads Selection_Get()       */
+    DASH_EVT_SELECTION,  /* no payload — consumer reads GameSelection_Get()       */
     DASH_EVT_STATUS,     /* u.text — game-controller status line              */
     DASH_EVT_PLAYTIME,   /* u.play_ms — elapsed play time, scaled to bar fill */
     DASH_EVT_SCORE,      /* u.score      (future)                             */

@@ -4,7 +4,7 @@
 #include <stdbool.h>
 
 /* M10 — GH3 game-state controller. On Start it reads the committed Selection
- * (game/selection.h), navigates the Training/Practice menu path to a FULL SONG /
+ * (game/game_selection.h), navigates the Training/Practice menu path to a FULL SONG /
  * FULL SPEED playthrough of the selected song at the selected difficulty, then
  * enables the CV timing pipeline so the detector plays it (the timing pipeline's
  * in-song gate arms actuation automatically once the observer sees GP_SCREEN_in_song).
@@ -33,7 +33,7 @@ bool GameController_IsBusy(void);       /* true while a run is navigating/playin
 
 /* Single status-text observer (e.g. the dashboard Status label), invoked on each
  * phase change with a short string ("READY"/"NAVIGATING"/"PLAYING"/"FAILED"/…).
- * NULL clears it. Mirrors Selection_SetObserver. */
+ * NULL clears it. Mirrors GameSelection_SetObserver. */
 void GameController_SetStatusObserver(void (*cb)(const char *text));
 
 #endif /* MARVIN_GAME_CONTROLLER_H */

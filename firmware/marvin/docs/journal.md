@@ -386,6 +386,44 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-15 — `game/` module naming cleanup + `fret.h` relocation (pending build)
+
+Made the `game/` module fully consistent — symbols, filenames, and header guards. Documented the
+full file inventory + external/internal split (see below). No behavior change — renames + one file
+move only.
+
+**Convention (decided w/ Greg):** two tiers keyed on visibility, and **the filename prefix mirrors
+the symbol tier**:
+- **Public API → `game_*.{c,h}` files, `Game<Area>_Verb` symbols** (types `game_*_t`). Every public
+  symbol starts with `Game`; every public file starts with `game_`:
+  - `art`→`game_art` (`Art_`→`GameArt_`), `catalog`→`game_catalog` (`Catalog_`→`GameCatalog_`,
+    `catalog_entry_t`→`game_catalog_entry_t`), `selection`→`game_selection` (`Selection_`→
+    `GameSelection_`, `selection_t`→`game_selection_t`, `sel_difficulty_t`/`sel_mode_t`→
+    `game_difficulty_t`/`game_mode_t`, `SEL_DIFF_*`/`SEL_MODE_*`→`GAME_DIFF_*`/`GAME_MODE_*`),
+    `timing_pipeline`→`game_timing` (`TimingPipeline_`→`GameTiming_`),
+    `gameplay_engine`→`game_engine` (`GameplayEngine_`→`GameEngine_`; `game_state_t` unchanged).
+  - `game_controller` was already conformant.
+- **Internal recognizer → `gameplay_*.{c,h}` files, `gp_*`/`GP_*` symbols** (the pure, Python-mirrored
+  library: `gameplay_classify`/`_select`/`_score`/`_present`/`_metadata`; consumed only by
+  `game_engine.c`, zero external includes). Reverted the presence detector's public-styled name back
+  to this tier: `GameplayPresent_Classify` → **`gp_present`** (sits with `gp_classify`/`gp_fingerprint`).
+  Keeping the recognizer on `gp_` also leaves `gameplay_metadata.h` generation (`export_c.py`) and the
+  host cross-check trivial.
+
+So the file prefix now *is* the boundary marker: **`game_*` = public module API; `gameplay_*` = the
+vision recognizer internals.** Header guards standardized to `MARVIN_<FILENAME>_H` across all game/
+headers (incl. the generated `gameplay_metadata.h`, via `export_c.py`).
+
+**`fret.h` moved out of `game/`** → `src/fret.h` (guard `MARVIN_FRET_H`; include `"fret.h"`).
+`fret_t`/`FRET_*` is a cross-cutting domain primitive used mostly by detector/actuator/timing/
+perf-log (21 files, 324 refs) — the widest-shared symbol and not "game" logic; it now lives at the
+src root beside `app.h`/`log.h`. Names unchanged, only the location + ~6 include paths + guard.
+
+Rule of thumb going forward: **`game_*`/`Game*` = call it from outside `game/`; `gameplay_*`/`gp_*`
+= recognizer internals.** Verified: no dangling old symbols/includes/filenames anywhere in the
+firmware tree; `user.cmake` updated; host cross-check + present + export tests pass (15);
+`gameplay_present.c` clean under `-Wall -Wextra`. **Pending Greg's MPLAB build.**
+
 ### 2026-07-15 — Gameplay screens classified by scoreboard-chrome presence (fixes intermittent 2p dropout; pending build)
 
 The 2-player `in_song_2p` screen classification was intermittently dropping out. Root cause: every
@@ -401,9 +439,9 @@ amp panels (2p). Highways are irrelevant to *classification* (they belong to the
   masked, per-frame-normalized SAD probes at **fixed nominal coords** (no offset search, no
   registration). Each block's luma is standardized to mean128/std48 over its masked static-chrome
   pixels (same quantize as `gp_fingerprint`), integer L1 vs a baked uint8 reference over the mask,
-  / npix. `GameplayPresent_Classify()` returns `GP_SCREEN_in_song` / `in_song_2p` / `UNKNOWN`. Decision: `1p iff
+  / npix. `gp_present()` returns `GP_SCREEN_in_song` / `in_song_2p` / `UNKNOWN`. Decision: `1p iff
   p1≤TAU & p1≤max(pL,pR)`; `2p iff max(pL,pR)≤TAU`. TAU = 18.
-- `gameplay_engine.c` observe path is now **probe-first**: `GameplayPresent_Classify()` runs first; on UNKNOWN it
+- `gameplay_engine.c` observe path is now **probe-first**: `gp_present()` runs first; on UNKNOWN it
   falls through to `gp_classify()` for the static screens. The `in_song`/`in_song_2p` centroids stay
   in the classifier as a harmless fallback — the probe is authoritative for gameplay. `game_task`
   score/streak/multiplier readers stay gated on `GP_SCREEN_in_song`; `game_controller.c` already
@@ -420,7 +458,7 @@ with the 2p digit reader (`amp2p.calibrate`, host-only) — the present probe is
 
 **Proven offline first** (host `tools/gameplay`; see its journal same date): 0/187 corpus frames
 misclassified; value-slop envelope worst present 10.1 vs best absent 28.8 → **2.9× margin** around
-TAU 18; pause-overlay partial chrome stays clearly absent; C `GameplayPresent_Classify` == Python on every corpus
+TAU 18; pause-overlay partial chrome stays clearly absent; C `gp_present` == Python on every corpus
 frame (new `test_firmware_classify.py` `present` mode). Full host suite **80 passed**.
 
 **Pending Greg's MPLAB build + hardware validation** (a live 2p game should now hold `in_song_2p`

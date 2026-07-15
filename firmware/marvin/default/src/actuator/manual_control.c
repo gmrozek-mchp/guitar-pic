@@ -2,7 +2,7 @@
 
 #include "fretboard_link.h"
 #include "guitar_cmd.h"
-#include "game/timing_pipeline.h"
+#include "game/game_timing.h"
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -49,7 +49,7 @@ void ManualControl_SetEnabled(bool enabled)
         /* Gate the pipeline before we own the wire so the next pipeline
          * frame can't race a stale mask onto the link between our zero
          * and our enable flip. */
-        TimingPipeline_SetEnabled(false);
+        GameTiming_SetEnabled(false);
         s_fret_mask = 0u;
         s_strum_mask = 0u;
         s_enabled = true;
@@ -65,7 +65,7 @@ void ManualControl_SetEnabled(bool enabled)
         s_fret_mask = 0u;
         s_strum_mask = 0u;
         FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
-        TimingPipeline_SetEnabled(true);
+        GameTiming_SetEnabled(true);
         LOG_INFO("MC: manual mode off\r\n");
     }
 }

@@ -9,7 +9,7 @@
 /* Scrollable, touch-driven song list (a custom leWidget subclass) for the
  * SELECT SONG screen — spec §4.8, mockup. Decoupled from the catalog: the owner
  * registers a row-provider that fills each visible row on demand, so the widget
- * never depends on game/catalog.h and the screen owns the catalog -> row mapping
+ * never depends on game/game_catalog.h and the screen owns the catalog -> row mapping
  * (and the eventual tier/setlist grouping).
  *
  * Interaction: drag scrolls (content follows the finger) with kinetic inertia on

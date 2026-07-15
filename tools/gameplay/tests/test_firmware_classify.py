@@ -62,7 +62,7 @@ int main(int argc, char **argv) {
         printf("%d\n", (int)s.value);
     } else if (strcmp(mode, "present") == 0) {
         int32_t sad[GP_N_PROBES];
-        int scr = GameplayPresent_Classify(buf, w, h, sad);
+        int scr = gp_present(buf, w, h, sad);
         printf("%d %d %d %d\n", scr, (int)sad[0], (int)sad[1], (int)sad[2]);
     } else if (strcmp(mode, "mult") == 0) {
         printf("%d\n", gp_read_multiplier(buf, w, h));
@@ -203,7 +203,7 @@ def test_c_multiplier_matches_python(score_corpus, driver, tmp_path):
 
 
 def test_c_present_matches_python(corpus, driver, tmp_path):
-    """GameplayPresent_Classify == present.classify_present on every corpus frame.
+    """gp_present == present.classify_present on every corpus frame.
 
     Asserts the gameplay-screen decision (in_song / in_song_2p / not-gameplay) matches
     exactly, and each probe's L1-per-masked-pixel matches within a small tolerance

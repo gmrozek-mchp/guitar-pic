@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "game/fret.h"
+#include "fret.h"
 
 /* Reference vision detector. Owns its FreeRTOS task; subscribes to the video
  * module's frame queue; publishes detector_state_t records onto the detector-

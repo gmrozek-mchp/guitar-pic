@@ -1,5 +1,5 @@
-#ifndef GAMEPLAY_CLASSIFY_H
-#define GAMEPLAY_CLASSIFY_H
+#ifndef MARVIN_GAMEPLAY_CLASSIFY_H
+#define MARVIN_GAMEPLAY_CLASSIFY_H
 
 #include <stdint.h>
 

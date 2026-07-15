@@ -17,7 +17,7 @@
 #include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
 #include "log.h"
 #include "flash/settings.h"   /* persisted backlight % */
-#include "game/art.h"         /* Art_LoadAll — cover-art preload during splash */
+#include "game/game_art.h"         /* GameArt_LoadAll — cover-art preload during splash */
 #include "health/health_monitor.h"  /* armed at end of boot (HealthMonitor_NotifyReady) */
 #include "video/video.h"      /* capture producer — compositor owns HEO display */
 #include "gfx/canvas/gfx_canvas_api.h"
@@ -762,8 +762,8 @@ static void ui_boot_task(void *param)
      * so the song-select panel's initial selection (ScreenSongSelect_Setup ->
      * song_detail_show(0)) finds its cover already cached. Storage mounts here;
      * Legato's image decoders are up from SYS_Initialize. All behind the splash;
-     * the ~1-3 s decode just extends the splash hold. See game/art.h. */
-    (void)Art_LoadAll();
+     * the ~1-3 s decode just extends the splash hold. See game/game_art.h. */
+    (void)GameArt_LoadAll();
 
     /* PHASE 2 — build the Marvin screen + per-panel setup behind the splash.
      * Scene-graph edits (screenInit_Marvin's leAddRootWidget calls) are guarded

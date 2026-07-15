@@ -1,4 +1,4 @@
-#include "game/gameplay_engine.h"
+#include "game/game_engine.h"
 #include "game/gameplay_classify.h"
 #include "game/gameplay_present.h"
 #include "game/gameplay_select.h"
@@ -24,7 +24,7 @@
 #define GAME_US_PER_TICK        (1000000u / configTICK_RATE_HZ)
 
 /* Observation is a synchronous request/response: the task idles (draining frames,
- * ~0 CPU) until GameplayEngine_Observe() posts a request, then classifies exactly
+ * ~0 CPU) until GameEngine_Observe() posts a request, then classifies exactly
  * one fresh frame and hands the result back through s_resp_queue. There is no
  * free-running scan and no retained "latest" to poll — a read blocks for a frame
  * captured after the request, so it can never return stale state. The song_select
@@ -97,7 +97,7 @@ static void game_task(void *param)
     bool subscribed = Video_SubscribeFrames(frames);
     configASSERT(subscribed);
 
-    LOG_INFO("GAME: gameplay_engine started\r\n");
+    LOG_INFO("GAME: game_engine started\r\n");
 
     uint8_t   last_screen = GP_SCREEN_UNKNOWN;
     int16_t   last_sel    = -2;  /* != any real selection or -1, so first read logs */
@@ -125,12 +125,12 @@ static void game_task(void *param)
         int w = (int)frame.width, h = (int)frame.height;
 
         /* Probe-first: the gameplay screens (in_song / in_song_2p) are identified by
-         * static scoreboard-chrome presence (GameplayPresent_Classify) — robust to the dynamic
+         * static scoreboard-chrome presence (gp_present) — robust to the dynamic
          * highway/crowd content that makes a whole-frame centroid flaky. Everything
          * else falls through to the centroid classifier, which the static menu
          * screens match tightly. */
         int32_t best_dist = 0, margin = 0;
-        uint8_t screen = GameplayPresent_Classify(buf, w, h, NULL);
+        uint8_t screen = gp_present(buf, w, h, NULL);
         if (screen == GP_SCREEN_UNKNOWN)
         {
             screen = gp_classify(buf, w, h, &best_dist, &margin);
@@ -208,7 +208,7 @@ static void game_task(void *param)
     }
 }
 
-void GameplayEngine_Initialize(void)
+void GameEngine_Initialize(void)
 {
     s_bus_queue = xQueueCreateStatic(GAME_BUS_DEPTH,
                                      sizeof(game_state_t),
@@ -224,12 +224,12 @@ void GameplayEngine_Initialize(void)
                             NULL, GAME_TASK_PRIORITY, s_task_stack, &s_task_tcb);
 }
 
-QueueHandle_t GameplayEngine_BusQueue(void)
+QueueHandle_t GameEngine_BusQueue(void)
 {
     return s_bus_queue;
 }
 
-bool GameplayEngine_Observe(game_state_t *out, uint32_t timeout_ms)
+bool GameEngine_Observe(game_state_t *out, uint32_t timeout_ms)
 {
     if (out == NULL) { return false; }
 

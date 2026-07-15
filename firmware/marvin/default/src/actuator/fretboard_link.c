@@ -14,7 +14,7 @@
 #include "guitar_cmd.h"
 #include "perf_log/perf_log.h"
 #include "video/video.h"
-#include "game/fret.h"
+#include "fret.h"
 #include "ui/dashboard_feed.h"  /* best-effort mirror of the mask to the dashboard */
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)

@@ -7,7 +7,7 @@
 #include "FreeRTOS.h"
 #include "queue.h"
 
-#include "game/fret.h"
+#include "fret.h"
 
 /* Detector subsystem — see firmware/marvin/docs/spec.md §4.2.
  *

@@ -20,21 +20,21 @@
  * oversized, wrong-size, or corrupt file simply leaves its slot empty; the
  * lookup returns NULL and the UI shows a blank — the loader never fails boot. */
 
-void Art_Initialize(void);   /* state only; no I/O (call before scheduler) */
+void GameArt_Initialize(void);   /* state only; no I/O (call before scheduler) */
 
 /* Mount the card and decode all covers in both tiers into the caches. Idempotent
  * after the first successful pass. Returns the total number of covers decoded.
  * Must run from a task (blocks on SD I/O) and after Legato's image decoders are
  * up — i.e. during the boot/splash sequence. */
-int  Art_LoadAll(void);
-bool Art_IsLoaded(void);
+int  GameArt_LoadAll(void);
+bool GameArt_IsLoaded(void);
 
 /* Decoded cover for (setlist, index), or NULL if absent/failed. The pointer is
  * stable for the life of the cache (no reload today). */
-const leImage *Art_Large(uint8_t setlist, uint8_t index);
-const leImage *Art_Small(uint8_t setlist, uint8_t index);
+const leImage *GameArt_Large(uint8_t setlist, uint8_t index);
+const leImage *GameArt_Small(uint8_t setlist, uint8_t index);
 
-int  Art_CountSmall(void);
-int  Art_CountLarge(void);
+int  GameArt_CountSmall(void);
+int  GameArt_CountLarge(void);
 
 #endif

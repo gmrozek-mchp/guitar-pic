@@ -38,19 +38,19 @@
 #include "log.h"
 #include "video/video.h"
 #include "detector/detector.h"
-#include "game/timing_pipeline.h"
+#include "game/game_timing.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/manual_control.h"
 #include "net/fauxmote/fauxmote_link.h"
 #include "game/game_controller.h"
 #include "ui/ui_manager.h"
-#include "game/gameplay_engine.h"
+#include "game/game_engine.h"
 #include "console/console.h"
 #include "health/health_monitor.h"
 #include "storage/storage.h"
 #include "results/results.h"
-#include "game/catalog.h"
-#include "game/art.h"
+#include "game/game_catalog.h"
+#include "game/game_art.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -149,14 +149,14 @@ void APP_Initialize ( void )
     /* Song catalog (labels keyed by the recognizer's (setlist,index)). State
      * only here; the CSV is lazy-loaded from the card on first lookup / the
      * `catalog` console command. A missing catalog degrades to "Unknown song"
-     * and never affects recognition. See game/catalog.h. */
-    Catalog_Initialize();
+     * and never affects recognition. See game/game_catalog.h. */
+    GameCatalog_Initialize();
 
     /* Album-artwork cache (cover art keyed by (setlist,index)). State only here;
      * the covers are decoded from the card into static RGB888 caches by
-     * Art_LoadAll(), called from the UI boot task during the splash. See
-     * game/art.h. */
-    Art_Initialize();
+     * GameArt_LoadAll(), called from the UI boot task during the splash. See
+     * game/game_art.h. */
+    GameArt_Initialize();
 
     /* The video pipeline, detector, actuator links, gameplay observer, console,
      * and perf-log drain are NOT started here — they spawn tasks at priorities
@@ -199,7 +199,7 @@ void App_StartServices(void)
     /* timing_pipeline runs the chord-window + strum scheduler against the
      * active detector and pushes the resulting 7-bit mask through
      * FretboardLink_Send. */
-    TimingPipeline_Initialize();
+    GameTiming_Initialize();
 
     /* manual_control is a peer producer for direct UI-driven actuation. UI
      * buttons are authored in Microchip Graphics Composer; the generated
@@ -210,12 +210,12 @@ void App_StartServices(void)
     /* Game-state observer (spec §4.8, M9): a video-frame consumer that classifies
      * the current GH3 screen. It subscribes to the video frame queue from its task
      * (so it follows Video_Initialize) but observation is synchronous and on-demand —
-     * it does NOTHING until GameplayEngine_Observe() blocks for a fresh classification
+     * it does NOTHING until GameEngine_Observe() blocks for a fresh classification
      * (called by the game controller). There is no free-running scan: the song_select
      * match is ~tens of ms of soft-float on this FPU-less core, and running it unasked
      * pegged prio-4 and froze the UI. The dashboard uses the touch Selection; the bus
      * has no other consumer. */
-    GameplayEngine_Initialize();
+    GameEngine_Initialize();
 
     /* M10 game-state controller: START (dashboard button / `play` console command)
      * navigates GH3 to the selected song+difficulty, then hands off to the CV

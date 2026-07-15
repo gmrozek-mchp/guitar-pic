@@ -8,10 +8,10 @@
 #include "semphr.h"
 
 #include "log.h"
-#include "selection.h"
-#include "gameplay_engine.h"
+#include "game_selection.h"
+#include "game_engine.h"
 #include "gameplay_metadata.h"
-#include "game/timing_pipeline.h"
+#include "game/game_timing.h"
 #include "actuator/manual_control.h"
 #include "actuator/fretboard_link.h"
 #include "actuator/guitar_cmd.h"
@@ -102,7 +102,7 @@ static int gc_abs(int v) { return v < 0 ? -v : v; }
 static bool observe(uint8_t *screen, int16_t *sel)
 {
     game_state_t gs;
-    if (!GameplayEngine_Observe(&gs, GC_OBS_TIMEOUT_MS)) { return false; }
+    if (!GameEngine_Observe(&gs, GC_OBS_TIMEOUT_MS)) { return false; }
     *screen = gs.screen;
     *sel    = gs.selection;
     return true;
@@ -149,7 +149,7 @@ static bool select_and_confirm(uint8_t expect_screen, int target)
  * then GREEN. Same closed-loop contract as select_and_confirm. */
 static bool select_song(void)
 {
-    const selection_t *want = Selection_Get();
+    const game_selection_t *want = GameSelection_Get();
 
     for (int attempt = 0; attempt < GC_MAX_CONFIRM; attempt++)
     {
@@ -234,7 +234,7 @@ static bool wait_screen_change(uint8_t from, uint32_t timeout_ms)
 
 /* ── plan ─────────────────────────────────────────────────────────────────── */
 
-static void build_plan(const selection_t *sel)
+static void build_plan(const game_selection_t *sel)
 {
     int n = 0;
     s_plan[n++] = (gc_step_t){ GP_SCREEN_main_menu,        ACT_SELECT_INDEX, 4, GP_SCREEN_training_menu,    "TRAINING" };
@@ -277,7 +277,7 @@ static bool execute(const gc_step_t *st)
 /* Release the wire, disable CV, report a terminal status. */
 static void finish(const char *st)
 {
-    TimingPipeline_SetEnabled(false);   /* also sends one release */
+    GameTiming_SetEnabled(false);   /* also sends one release */
     status(st);
     s_busy = false;
 }
@@ -315,7 +315,7 @@ static bool nav_to_main_menu(void)
 static void play_until_done(void)
 {
     status("PLAYING");
-    TimingPipeline_SetEnabled(true);   /* controller owns the actuation window */
+    GameTiming_SetEnabled(true);   /* controller owns the actuation window */
     TickType_t play_start = xTaskGetTickCount();
     DashboardFeed_PostPlaytime(0u);    /* reset the dashboard playtime bar (run reset the rest) */
 
@@ -333,7 +333,7 @@ static void play_until_done(void)
         /* Observe the full state so the CV-read score can ride the dashboard feed;
          * the same read detects the song ending (screen leaves gameplay). */
         game_state_t gs;
-        if (GameplayEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
+        if (GameEngine_Observe(&gs, GC_OBS_TIMEOUT_MS))
         {
             if (gs.screen == GP_SCREEN_in_song)
             {
@@ -440,7 +440,7 @@ static void play_attached(void)
 
 static void run(void)
 {
-    const selection_t *sel = Selection_Get();
+    const game_selection_t *sel = GameSelection_Get();
     if (s_mode == GC_MODE_NAV && !sel->valid)
     {
         status("NO SONG");
@@ -467,7 +467,7 @@ static void run(void)
     /* Own the wire: manual off, timing off (set timing off *after* manual, since
      * ManualControl_SetEnabled(false) flips timing on — the arbitration trap). */
     if (ManualControl_IsEnabled()) { ManualControl_SetEnabled(false); }
-    TimingPipeline_SetEnabled(false);
+    GameTiming_SetEnabled(false);
 
     /* Attach mode skips menu navigation entirely — the operator set the game up. */
     if (s_mode == GC_MODE_ATTACH) { play_attached(); return; }
