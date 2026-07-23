@@ -57,7 +57,7 @@ two implementations of that seam (§7).
 |---|---|
 | Baud | **1 000 000** (1 Mbaud), 8-N-1, no flow control |
 | Wiring | 3 wires: marvin TX → fauxmote RX, fauxmote TX → marvin RX, common GND |
-| marvin port | a spare FLEXCOM in USART mode (TBD at integration; the legacy fretboard UART is freed as that path moves to T1S) |
+| marvin port | **FLEXCOM5 USART** — `PA16` (`FAUXMOTE_TX`) / `PA15` (`FAUXMOTE_RX`); a dedicated peripheral, independent of the guitar transport |
 | fauxmote port | **UART1** on the Feather V2's broken-out RX=`GPIO7` / TX=`GPIO8` (the board's second hardware UART, `Serial1`) — **not** UART0, which is the USB-CDC console/CLI |
 
 Baud is generous on purpose: a 7-byte hot frame is ~70 µs on the wire, negligible
@@ -257,18 +257,18 @@ not a rewrite.
 - Emits `STATUS` from the existing `Wiimote_Is*` / `Fauxmote_*` state.
 - The CLI stays for manual bring-up/debug.
 
-**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02):
-- Owns the **FLEXCOM1 USART (PA28/PA29)** — the fretboard UART-transport pins, free
-  while the guitar node rides T1S — and the framing. Exposes
+**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02; moved to FLEXCOM5 2026-07-23):
+- Owns the **FLEXCOM5 USART (PA16/PA15)** — a dedicated peripheral, independent of
+  the guitar transport — and the framing. Exposes
   `Fauxmote_SendGuitar(mask, whammy, aux)` / `SendGuitarMask(mask)`,
   `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)`.
 - A TX task re-sends the latched `GUITAR` slice on change (low latency) and at a
   50 ms floor; an RX task parses the `STATUS` uplink.
 - **Mirror-to-both** (not a switched sink): `FretboardLink_Send()` — the one choke
   point both producers (timing pipeline + `manual_control`) call — also calls
-  `Fauxmote_SendGuitarMask()`, so the T1S guitar node and fauxmote move in lock-step.
-  `GUITAR` byte 0 == the T1S 7-bit mask. Compile-guarded to the T1S guitar build
-  (fauxmote owns FLEXCOM1, mutually exclusive with a `TRANSPORT=UART` guitar).
+  `Fauxmote_SendGuitarMask()`, so the guitar node and fauxmote move in lock-step.
+  `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build (FLEXCOM5 is
+  dedicated), regardless of `MARVIN_FRETBOARD_TRANSPORT`.
 
 ## 8. T1S transport (transport #2, future)
 
@@ -286,10 +286,12 @@ is hardware-dependent and genuinely future work; UART is the working link.
 
 ## 9. Open questions
 
-- ~~Exact marvin FLEXCOM instance + pins~~ **settled 2026-07-02:** marvin =
-  **FLEXCOM1 / PA28 (TX) / PA29 (RX)** (the fretboard UART-transport pins, free while
-  the guitar rides T1S); fauxmote = UART1 on Feather RX=`GPIO7` / TX=`GPIO8`. Wiring:
-  marvin PA28 → ESP `GPIO7`, ESP `GPIO8` → marvin PA29, common GND.
+- ~~Exact marvin FLEXCOM instance + pins~~ **settled 2026-07-23:** marvin =
+  **FLEXCOM5 / PA16 (`FAUXMOTE_TX`) / PA15 (`FAUXMOTE_RX`)** — a dedicated peripheral,
+  independent of the guitar transport; fauxmote = UART1 on Feather RX=`GPIO7` /
+  TX=`GPIO8`. Wiring: marvin PA16 → ESP `GPIO7`, ESP `GPIO8` → marvin PA15, common GND.
+  (Originally FLEXCOM1/PA28/PA29 on 2026-07-02; moved to a dedicated FLEXCOM5 so the
+  link no longer depends on the guitar being on T1S.)
 - When to make the planned `ACCEL` slice live in fauxmote (drive the Wiimote accel
   field from it) — this is what makes GH3 star power (`GUITAR` aux `bit3`) work.
 - Whether `ACCEL` needs finer than 8-bit-per-axis for smooth tilt; 10-bit can be
