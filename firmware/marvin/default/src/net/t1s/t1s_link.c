@@ -8,7 +8,7 @@
 #include "task.h"
 #include "semphr.h"
 
-#include "definitions.h"   /* FLEXCOM4_SPI_*, PIO_*, T1S_* pin macros */
+#include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
 #include "log.h"
 #include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
 
@@ -164,7 +164,7 @@ static StaticTask_t      s_task_tcb;
  * and process on the OnRxEthernetPacket completion callback. */
 static uint8_t           s_rx_buf[1518];
 
-/* FLEXCOM4 SPI completion ISR callback: the chunk transfer is done, hand the
+/* FLEXCOM3 SPI completion ISR callback: the chunk transfer is done, hand the
  * buffer back to the TC6 driver and wake the service task. */
 static void spi_done_cb(uintptr_t context)
 {
@@ -283,15 +283,15 @@ static void t1s_task(void *param)
     (void)param;
 
     /* SPI: Mode 0 (CPOL=0 idle low, CPHA=0 leading edge), 8-bit, 15 MHz.
-     * Source clock 0 => PLib uses the FLEXCOM4 peripheral clock. One-time. */
+     * Source clock 0 => PLib uses the FLEXCOM3 peripheral clock. One-time. */
     FLEXCOM_SPI_TRANSFER_SETUP setup = {
         .clockFrequency = T1S_SPI_HZ,
         .clockPhase     = FLEXCOM_SPI_CLOCK_PHASE_LEADING_EDGE,
         .clockPolarity  = FLEXCOM_SPI_CLOCK_POLARITY_IDLE_LOW,
         .dataBits       = FLEXCOM_SPI_DATA_BITS_8,
     };
-    (void)FLEXCOM4_SPI_TransferSetup(&setup, 0u);
-    FLEXCOM4_SPI_CallbackRegister(spi_done_cb, 0u);
+    (void)FLEXCOM3_SPI_TransferSetup(&setup, 0u);
+    FLEXCOM3_SPI_CallbackRegister(spi_done_cb, 0u);
 
     s_tc6 = TC6_Init(NULL);
     if (s_tc6 == NULL) {
@@ -430,7 +430,7 @@ bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
     (void)pGlobalTag;
     /* Non-blocking full-duplex transfer; spi_done_cb calls TC6_SpiBufferDone.
      * Returns false if the PLib is busy — the driver retries. */
-    return FLEXCOM4_SPI_WriteRead(pTx, len, pRx, len);
+    return FLEXCOM3_SPI_WriteRead(pTx, len, pRx, len);
 }
 
 void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
