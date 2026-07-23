@@ -77,13 +77,13 @@ static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
     f[2] = len;
     if (len != 0u) { memcpy(&f[3], payload, len); }
     f[3u + len] = mf_crc8(&f[1], (size_t)(2u + len));   /* CRC over TYPE,LEN,payload */
-    (void)FLEXCOM1_USART_Write(f, (size_t)(4u + len));
+    (void)FLEXCOM5_USART_Write(f, (size_t)(4u + len));
 }
 
 static void fx_tx_task(void *param)
 {
     (void)param;
-    LOG_INFO("FX: fauxmote link started (FLEXCOM1, %lu baud)\r\n",
+    LOG_INFO("FX: fauxmote link started (FLEXCOM5, %lu baud)\r\n",
              (unsigned long)MF_UART_BAUD);
 
     for (;;)
@@ -200,7 +200,7 @@ static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
             (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
             break;
         case FLEXCOM_USART_EVENT_READ_ERROR:
-            (void)FLEXCOM1_USART_ErrorGet();
+            (void)FLEXCOM5_USART_ErrorGet();
             (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
             break;
         default:
@@ -216,14 +216,14 @@ static void fx_rx_task(void *param)
 
     for (;;)
     {
-        if (FLEXCOM1_USART_ReadCountGet() == 0u)
+        if (FLEXCOM5_USART_ReadCountGet() == 0u)
         {
             (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FX_RX_WAIT_MS));
             continue;
         }
 
         uint8_t c;
-        while (FLEXCOM1_USART_Read(&c, 1u) == 1u)
+        while (FLEXCOM5_USART_Read(&c, 1u) == 1u)
         {
             parse_byte(c);
         }
@@ -318,20 +318,19 @@ void Fauxmote_Initialize(void)
     s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
     configASSERT(s_tx_notify != NULL && s_rx_notify != NULL);
 
-    /* Reconfigure FLEXCOM1 (MCC default 500000, unused while the guitar is on T1S)
-     * to the link baud, 8-N-1. */
+    /* Reconfigure FLEXCOM5 (MCC default 500000) to the link baud, 8-N-1. */
     FLEXCOM_USART_SERIAL_SETUP setup = {
         .baudRate = MF_UART_BAUD,
         .dataWidth = FLEXCOM_USART_DATA_8_BIT,
         .parity    = FLEXCOM_USART_PARITY_NONE,
         .stopBits  = FLEXCOM_USART_STOP_1_BIT,
     };
-    (void)FLEXCOM1_USART_SerialSetup(&setup, FLEXCOM1_USART_FrequencyGet());
+    (void)FLEXCOM5_USART_SerialSetup(&setup, FLEXCOM5_USART_FrequencyGet());
 
     /* Arm continuous RX for the STATUS uplink: wake the parser on each byte. */
-    FLEXCOM1_USART_ReadCallbackRegister(rx_event_handler, 0u);
-    FLEXCOM1_USART_ReadThresholdSet(1u);
-    (void)FLEXCOM1_USART_ReadNotificationEnable(true, true);
+    FLEXCOM5_USART_ReadCallbackRegister(rx_event_handler, 0u);
+    FLEXCOM5_USART_ReadThresholdSet(1u);
+    (void)FLEXCOM5_USART_ReadNotificationEnable(true, true);
 
     (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
                             NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);

@@ -16,10 +16,10 @@
 #include "video/video.h"
 #include "fret.h"
 #include "ui/dashboard_feed.h"  /* best-effort mirror of the mask to the dashboard */
+#include "net/fauxmote/fauxmote_link.h"  /* mirror the mask to the ESP32 Wiimote link */
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/t1s/t1s_link.h"
-#include "net/fauxmote/fauxmote_link.h"  /* mirror the mask to the ESP32 Wiimote link */
 #include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
 #endif
 
@@ -322,11 +322,9 @@ void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
      * stale chord state. */
     (void)xQueueOverwrite(s_cmd_queue, &v);
 
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
-    /* Mirror-to-both: the guitar node rides T1S; fauxmote gets the same mask over
-     * FLEXCOM1 so the Wii plays in lock-step. GUITAR byte 0 == the T1S mask. */
+    /* Mirror the same mask to fauxmote (its own FLEXCOM5 link) so the Wii plays in
+     * lock-step with the guitar node, on either transport. GUITAR byte 0 == mask. */
     Fauxmote_SendGuitarMask(v);
-#endif
 
     /* Mirror the mask to the dashboard fret display — a single non-blocking queue
      * post (drop-on-full), so the actuation path is never delayed. */

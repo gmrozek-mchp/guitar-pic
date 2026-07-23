@@ -18,11 +18,8 @@
 #include "detector/cv_marvin_v1.h"   /* select the highway geometry at gameplay entry */
 #include "perf_log/perf_log_records.h"
 #include "ui/dashboard_feed.h"   /* playtime → dashboard progress bar */
-
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/fauxmote/fauxmote_link.h"   /* pre-flight: ensure the Wii link is up */
 #include "net/fauxmote/mf_proto.h"
-#endif
 
 #define GC_TASK_STACK_WORDS   768u
 #define GC_TASK_PRIORITY      4u
@@ -372,14 +369,13 @@ static void play_until_done(void)
 /* Make sure fauxmote is connected to the Wii before a run (it's the actuation path
  * to the console). Reconnect if the link is bonded-but-down; sets a descriptive
  * status and returns false if it can't get there. */
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 static bool ensure_wii_connected(void)
 {
     uint8_t flags;
     if (!Fauxmote_GetStatus(&flags, NULL, NULL, NULL, NULL))
     {
-        /* No STATUS from fauxmote (UART link down / not running) — can't manage the
-         * BT link here; proceed so a T1S guitar can still actuate. */
+        /* No STATUS from fauxmote (link down / not running) — can't manage the
+         * BT link here; proceed so the guitar node can still actuate. */
         LOG_WARN("GC: no fauxmote status; skipping Wii connect check\r\n");
         return true;
     }
@@ -405,9 +401,6 @@ static bool ensure_wii_connected(void)
     status("NO WII");
     return false;
 }
-#else
-static bool ensure_wii_connected(void) { return true; }
-#endif
 
 /* Attach mode: no navigation. Wait for the operator's manually-started game to
  * reach a gameplay screen, point the CV detector at the matching highway, then

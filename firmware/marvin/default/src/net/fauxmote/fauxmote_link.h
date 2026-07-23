@@ -4,18 +4,17 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* marvin -> fauxmote command link: transmits controller input over the FLEXCOM1
- * USART (PA28/PA29, the fretboard UART-transport pins, free while the guitar rides
- * T1S) to the ESP32 Wiimote emulator, and receives its STATUS uplink. Wire protocol
- * in net/fauxmote/mf_proto.h / docs/marvin-fauxmote-link.md.
+/* marvin -> fauxmote command link: transmits controller input over the FLEXCOM5
+ * USART (PA16/PA15, dedicated fauxmote pins) to the ESP32 Wiimote emulator, and
+ * receives its STATUS uplink. Wire protocol in net/fauxmote/mf_proto.h /
+ * docs/marvin-fauxmote-link.md.
  *
- * Owns FLEXCOM1 exclusively, so it may only be built when the guitar actuator uses
- * the T1S transport (a UART-transport build drives the guitar node on FLEXCOM1). A
- * TX task sends the latched GUITAR state on change and at a floor rate (self-heals
- * dropped frames + keeps fauxmote's link watchdog fed); WIIMOTE nav and LINK_CMD go
- * out on demand. Send calls are non-blocking and safe from any producer context.
- * Call Fauxmote_Initialize once after SYS_Initialize (FLEXCOM1 up) and before the
- * mask producers start. */
+ * Owns FLEXCOM5 exclusively (a peripheral dedicated to this link, independent of
+ * the guitar transport). A TX task sends the latched GUITAR state on change and at
+ * a floor rate (self-heals dropped frames + keeps fauxmote's link watchdog fed);
+ * WIIMOTE nav and LINK_CMD go out on demand. Send calls are non-blocking and safe
+ * from any producer context. Call Fauxmote_Initialize once after SYS_Initialize
+ * (FLEXCOM5 up) and before the mask producers start. */
 
 void Fauxmote_Initialize(void);
 

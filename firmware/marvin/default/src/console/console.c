@@ -23,11 +23,9 @@
 #include "video/video.h"
 #include "fret.h"
 #include "net/t1s/t1s_link.h"
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include <stdlib.h>                      /* strtoul for the fauxmote btn mask */
 #include "net/fauxmote/fauxmote_link.h"
 #include "net/fauxmote/mf_proto.h"
-#endif
 #include "storage/storage.h"
 #include "health/health_monitor.h"
 #include "results/results.h"
@@ -696,7 +694,6 @@ static void cmd_settings(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("usage: settings [dump|save|wipe|stress [n]]  (set backlight via `backlight <pct>`)");
 }
 
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -768,7 +765,6 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
     }
     console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]");
 }
-#endif
 
 static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
 {
@@ -826,9 +822,7 @@ static void register_commands(void)
         { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
-#endif
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },

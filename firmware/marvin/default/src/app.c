@@ -189,12 +189,10 @@ void App_StartServices(void)
      * writer and the RX parse task (and brings up the T1S link). */
     FretboardLink_Initialize();
 
-#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
-    /* fauxmote command link (ESP32 Wiimote emulator) on FLEXCOM1 — free while the
-     * guitar node rides T1S. Mirrors every gameplay mask (FretboardLink_Send taps
-     * Fauxmote_SendGuitarMask). Must precede the mask producers below. */
+    /* fauxmote command link (ESP32 Wiimote emulator) on its own FLEXCOM5. Mirrors
+     * every gameplay mask (FretboardLink_Send taps Fauxmote_SendGuitarMask). Must
+     * precede the mask producers below. */
     Fauxmote_Initialize();
-#endif
 
     /* timing_pipeline runs the chord-window + strum scheduler against the
      * active detector and pushes the resulting 7-bit mask through
