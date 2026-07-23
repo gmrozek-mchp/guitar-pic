@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: evsys
-coreVersion: 5.9.0
+coreVersion: 5.9.1-tc.c
 device: PIC32CM6408PL10048
 library: []
 dependency:
@@ -81,6 +81,18 @@ data:
       attributes:
         id: GENERATOR_EIC_EXTINT_13_ACTIVE
         label: GENERATOR_EIC_EXTINT_13_ACTIVE
+      children:
+      - children:
+        - attributes:
+            id: eic
+            value: 'false'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    GENERATOR_EIC_EXTINT_2_ACTIVE:
+      attributes:
+        id: GENERATOR_EIC_EXTINT_2_ACTIVE
+        label: GENERATOR_EIC_EXTINT_2_ACTIVE
       children:
       - children:
         - attributes:

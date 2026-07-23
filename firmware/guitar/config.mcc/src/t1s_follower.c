@@ -76,29 +76,27 @@ static void diag_log(const char *prefix, const char *msg)
     log_str("\r\n");
 }
 
-/*>>>>>>>>>>>>>>>>>>>>>>>>>>  Wii-guitar actuation  >>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+/*>>>>>>>>>>>>>>>>>>>>>>>>>>>  Status indicators  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
 
-/* Software open-drain: assert = drive low (Clear + OutputEnable), release =
- * tri-state (InputEnable, controller pull-up restores idle). */
+/* Active-high LED indicators: assert = drive high (Set), release = drive low
+ * (Clear). Pins boot as outputs driving low (off) per PORT_Initialize. */
 #define BTN_APPLY(mask, bit, NAME)                          \
     do {                                                    \
         if ((mask) & (1u << (bit))) {                       \
-            NAME##_Clear();                                 \
-            NAME##_OutputEnable();                          \
+            NAME##_Set();                                   \
         } else {                                            \
-            NAME##_InputEnable();                           \
+            NAME##_Clear();                                 \
         }                                                   \
     } while (0)
 
 static void buttons_release_all(void)
 {
-    FRET_GREEN_InputEnable();
-    FRET_RED_InputEnable();
-    FRET_YELLOW_InputEnable();
-    FRET_BLUE_InputEnable();
-    FRET_ORANGE_InputEnable();
-    STRUM_DOWN_InputEnable();
-    STRUM_UP_InputEnable();
+    FRET_GREEN_Clear();
+    FRET_RED_Clear();
+    FRET_YELLOW_Clear();
+    FRET_BLUE_Clear();
+    FRET_ORANGE_Clear();
+    STRUM_Clear();
 }
 
 static void buttons_apply_mask(uint8_t mask)
@@ -108,8 +106,12 @@ static void buttons_apply_mask(uint8_t mask)
     BTN_APPLY(mask, 2u, FRET_YELLOW);
     BTN_APPLY(mask, 3u, FRET_BLUE);
     BTN_APPLY(mask, 4u, FRET_ORANGE);
-    BTN_APPLY(mask, 5u, STRUM_DOWN);
-    BTN_APPLY(mask, 6u, STRUM_UP);
+    /* Doc collapses strum up/down to a single STRUM strobe indicator. */
+    if ((mask) & ((1u << 5) | (1u << 6))) {
+        STRUM_Set();
+    } else {
+        STRUM_Clear();
+    }
 }
 
 /*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  SPI + IRQ  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
@@ -125,7 +127,7 @@ static void spi_done_cb(uintptr_t context)
     TC6_SpiBufferDone(T1S_INSTANCE, true);
 }
 
-/* T1S_IRQ_N falling-edge (EIC EXTINT13): the MAC-PHY needs servicing. */
+/* T1S_IRQ_N falling-edge (EIC EXTINT2): the MAC-PHY needs servicing. */
 static void irq_cb(uintptr_t context)
 {
     (void)context;
@@ -196,7 +198,7 @@ void T1SFollower_Initialize(void)
 
     log_str("guitar: boot - t1s follower + cli\r\n");  /* one-time banner */
 
-    buttons_release_all();   /* pins boot Out/Low (asserted) — release first */
+    buttons_release_all();   /* indicators off (drive low) at boot */
 
     /* Hardware reset pulse (T1S_RST active-low, idle high). */
     T1S_CS_Set();
@@ -213,7 +215,7 @@ void T1SFollower_Initialize(void)
         return;
     }
 
-    EIC_CallbackRegister(EIC_PIN_13, irq_cb, 0u);   /* EXTINT13 enabled in EIC_Initialize */
+    EIC_CallbackRegister(EIC_PIN_2, irq_cb, 0u);   /* EXTINT2 enabled in EIC_Initialize */
 
     /* Configure the LAN8651 + PLCA as follower id 2. Not promiscuous — the
      * MAC-PHY filters to this node's MAC + broadcast. Non-blocking: the

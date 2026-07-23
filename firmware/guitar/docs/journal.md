@@ -17,6 +17,13 @@ button**. The node sends a 500 ms presence heartbeat (ethertype `0x88B6`) so mar
 present, and an embedded-cli console on the SERCOM1 debug UART (`t1s`/`btn`/`tap`/`id`/`plca`) drives the
 GPIOs and reads link/sync/PLCA diagnostics.
 
+**Board port (2026-07-23):** the firmware is being brought to the **ATE_2026 board**, which carries
+**status LEDs** rather than a Wii guitar — it does not touch a Wiimote. The T1S command path is unchanged;
+only the output stage and pinout differ: the fret/strum GPIOs now drive **active-high LEDs** (`Set` = lit,
+`Clear` = off) and strum up/down collapse to a single **STRUM** indicator (doc's white/strobe). The
+`BTN_APPLY` macro / `buttons_*` "button" naming is retained deliberately — a future board may carry both
+Wii actuators *and* LEDs. See the 2026-07-23 decision-log/session entries for the pin remap.
+
 **Next (G3, full system):** `fretboard` (detector) + `guitar` (actuator) both on the bus with marvin
 selecting the active of each — marvin already targets the guitar node for actuation; the remaining work is
 moving the fretboard onto a T1S detector node and the active-detector/active-guitar selector. Tracked on
@@ -28,6 +35,7 @@ the marvin side.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-23 | **Port to the ATE_2026 board: active-high LED indicators, not open-drain Wii actuators.** Output stage flips from software open-drain (`Clear`+`OutputEnable` assert / `InputEnable` release) to **active-high push-pull** (`Set` = lit / `Clear` = off) in the `BTN_APPLY` macro; strum up/down (bits 5, 6) collapse to a single **STRUM** indicator. Pins remapped (see session log): control `CS`=PA06, `RST`=PA03, `IRQ_N`=PA02 on **EIC EXTINT2** (falling); LEDs `FRET_GREEN`=PA12, `FRET_RED`=PA11, `FRET_YELLOW`=PA10, `FRET_BLUE`=PA09, `FRET_ORANGE`=PA08, `STRUM`=PA13. The `BTN_APPLY` / `buttons_*` "button" naming is kept intentionally. | The new board only exposes status LEDs (no Wiimote), and the doc specifies active-high drive. Keeping the button naming leaves room for a future board that carries both Wii actuators and LEDs, so the command → output mapping code stays shared. Done via the mplab-mcc MCP server (no hand-edited MCC/generated files). |
 | 2026-06-16 | **Wii-guitar actuation becomes its own subproject (`guitar`), split out of fretboard.** PIC32CM PL10, T1S PLCA **follower** node id 2 (MAC `02:00:00:00:00:02`), receives a 1-byte bitmask over ethertype `0x88B5` and drives 7 open-drain Wii-guitar GPIOs. Sensing stays on `fretboard` (detector node). Actuation logic is a verbatim port of fretboard's `cmd_receive.c`. The link reuses `oa-tc6-lib` + the shared L2 framing as the mirror of marvin's coordinator glue. **Bare-metal** (no FreeRTOS on PL10): TC6 serviced from the main loop / tick; `IRQ_N` on a SERCOM-EIC pin. | The T1S bus was built for multiple node classes; separating detector from actuator lets multiple guitar/detector variants coexist on one PLCA pair with marvin selecting the active of each. Same MCU family as fretboard keeps the "OA SPI driver scales across the family" demo and minimizes bring-up. Greg spins up a *fresh* guitar MCC project (not a fork of fretboard). |
 | 2026-06-16 | **Edge-ai / on-device model is out of scope; fretboard keeps actuating until guitar is proven.** This subproject covers only the marvin-driven actuation path. fretboard's MODEL_DRIVEN/standalone modes stay untouched; re-homing the model (detector infers → T1S → guitar) and the `applied_mask` training-label coupling are deferred. marvin flips its command target from the fretboard node to the guitar node only once G3 passes. | Contains the blast radius — the playing system stays up throughout, mirroring the UART/T1S parallel-coexistence approach. |
 
@@ -42,6 +50,16 @@ the marvin side.
 ---
 
 ## Session log
+
+### 2026-07-23 — port to the ATE_2026 board (LED indicators, pin remap)
+
+Bringing the guitar firmware (most-recent T1S logic) onto the **ATE_2026 board**, which has status LEDs and no Wii guitar. All MCC changes made via the **mplab-mcc MCP server** (per project rule — no hand-editing `.yml` or generated source).
+
+- **Control pins remapped:** `T1S_CS` PA15→**PA06**, `T1S_RST` PA14→**PA03**, `T1S_IRQ_N` PA13→**PA02**. SPI unchanged (SERCOM0: SCK=PA05, MISO=PA07, MOSI=PA04). Debug UART now `CDC_TX`/`CDC_RX` on PB00/PB01 (SERCOM1, same pins).
+- **EIC moved EXTINT13 → EXTINT2** (falling edge) on the new `IRQ_N`=PA02. Kept the hardware EIC interrupt (Greg's call). *Gotcha:* a manual MCC regen left the EIC in **polled mode** — channel 2 detection was on but its interrupt (`EIC_INT_2`) was off, so MCC dropped the whole `EIC_CallbackRegister` API and the build failed on an undeclared `EIC_CallbackRegister`. Fix: set `EIC_INT_2=true` + clear the stale `EIC_INT_13=true`, regenerate → callback API restored.
+- **Output stage → active-high LEDs.** Frets on PA08–PA12, single **STRUM** on PA13; all outputs, init `Low` (off). `BTN_APPLY` rewritten from software open-drain to `Set`/`Clear`; `buttons_release_all()` now drives all indicators low; `buttons_apply_mask()` collapses command bits 5|6 into `STRUM`. `EIC_PIN_13`→`EIC_PIN_2` in `t1s_follower.c`; comments in `.c`/`.h` refreshed (EXTINT2, "status indicator" wording). Freed the old board's pins (PB02/PB03, PA14/PA15, PA18, PA21/PA22).
+- **Build: `default: SUCCESS`.** Bit→LED map now: bit0=GREEN(PA12), 1=RED(PA11), 2=YELLOW(PA10), 3=BLUE(PA09), 4=ORANGE(PA08), 5|6→STRUM(PA13).
+- Not yet exercised on the physical ATE_2026 board — bring-up (LEDs light on marvin's command) is the next hardware gate.
 
 ### 2026-07-03 — doc-vs-code audit fixes
 

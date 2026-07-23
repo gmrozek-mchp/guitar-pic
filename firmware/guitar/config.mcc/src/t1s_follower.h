@@ -8,10 +8,10 @@
  *
  * marvin is the PLCA coordinator (node 0); this node is follower id 2. It
  * receives marvin's 1-byte button bitmask (ethertype 0x88B5) over T1S and
- * drives the 7 Wii-guitar GPIOs. Transport is the vendored OPEN Alliance TC6
- * driver (third_party/oa-tc6-lib) wrapped with the SERCOM0 SPI PLib, a
- * GPIO chip-select held across each transfer, the T1S_RST / T1S_IRQ_N pins
- * (EIC EXTINT13), and a SysTick-based millisecond clock. Bare-metal: the
+ * drives the status-indicator GPIOs (5 fret LEDs + 1 strum LED). Transport is
+ * the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib) wrapped with
+ * the SERCOM0 SPI PLib, a GPIO chip-select held across each transfer, the
+ * T1S_RST / T1S_IRQ_N pins (EIC EXTINT2), and a SysTick-based millisecond clock. Bare-metal: the
  * protocol is serviced from the main loop, woken by IRQ_N. See
  * firmware/guitar/SPEC.md and docs/t1s-podl-link.md.
  *
@@ -30,8 +30,8 @@ uint8_t  T1SFollower_LastCmd(void);   /* most recent applied button bitmask */
 uint32_t T1SFollower_RxCount(void);   /* count of accepted command frames */
 uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
 
-/* Drive the Wii-guitar GPIOs directly (manual test, e.g. the CLI's btn/tap).
- * Note: a subsequent T1S command will overwrite this. */
+/* Drive the status-indicator GPIOs directly (manual test, e.g. the CLI's
+ * btn/tap). Note: a subsequent T1S command will overwrite this. */
 void T1SFollower_ApplyButtons(uint8_t mask);
 void T1SFollower_ReleaseButtons(void);
 

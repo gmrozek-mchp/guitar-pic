@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: eic
-coreVersion: 5.9.0
+coreVersion: 5.9.1-tc.c
 device: PIC32CM6408PL10048
 library: []
 dependency:
@@ -141,7 +141,7 @@ data:
       children:
       - children:
         - attributes:
-            value: 'true'
+            value: 'false'
           type: User
         type: Values
       type: Boolean
@@ -159,6 +159,12 @@ data:
       attributes:
         id: EIC_CHAN_2
         label: Enable EIC Channel2
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
       type: Boolean
     EIC_CHAN_3:
       attributes:
@@ -312,7 +318,7 @@ data:
       children:
       - children:
         - attributes:
-            value: '2'
+            value: '0'
           type: User
         type: Values
       type: KeyValueSet
@@ -330,6 +336,12 @@ data:
       attributes:
         id: EIC_CONFIG_SENSE_2
         label: External Interrupt2 Edge Selection
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
       type: KeyValueSet
     EIC_CONFIG_SENSE_3:
       attributes:
@@ -471,7 +483,7 @@ data:
       - children:
         - attributes:
             id: eic
-            value: '8192'
+            value: '4'
           type: Dynamic
         type: Values
       type: Hex
@@ -507,7 +519,7 @@ data:
       children:
       - children:
         - attributes:
-            value: 'true'
+            value: 'false'
           type: User
         type: Values
       type: Boolean
@@ -525,6 +537,12 @@ data:
       attributes:
         id: EIC_INT_2
         label: Enable Interrupt
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
       type: Boolean
     EIC_INT_3:
       attributes:

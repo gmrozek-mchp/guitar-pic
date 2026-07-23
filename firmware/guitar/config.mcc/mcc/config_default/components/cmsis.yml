@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: cmsis
-coreVersion: 5.9.0
+coreVersion: 5.9.1-tc.c
 device: PIC32CM6408PL10048
 library: []
 dependency:
