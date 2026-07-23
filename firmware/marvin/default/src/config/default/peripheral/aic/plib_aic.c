@@ -126,6 +126,18 @@ void AIC_INT_Initialize( void )
         AIC_REGS->AIC_IECR = AIC_IECR_Msk;
     }
 
+    /* Leave UDPHS (source 23) MASKED until the USB device stack is ready to
+     * service it. Its handler/priority are configured above, but the source
+     * stays disabled: with a host attached at boot the controller asserts
+     * ENDRESET before the driver has a client, and the __enable_irq() below
+     * would deliver it immediately, storming the CPU (no client -> the ISR
+     * cannot clear the source) so the scheduler never starts. The perf-log
+     * CDC sink enables it via SYS_INT_SourceEnable(UDPHS_IRQn) once the
+     * device is open and attached. Must be done here, before __enable_irq(),
+     * because masking after AIC_INT_Initialize returns loses the race. */
+    AIC_REGS->AIC_SSR = AIC_SSR_INTSEL((uint32_t) UDPHS_IRQn);
+    AIC_REGS->AIC_IDCR = AIC_IDCR_Msk;
+
     __DSB();
     __enable_irq();
     __ISB();
