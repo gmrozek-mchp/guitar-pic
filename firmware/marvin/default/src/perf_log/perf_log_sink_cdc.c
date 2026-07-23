@@ -272,6 +272,13 @@ void PerfLogSinkCdc_Initialize(void)
     vTaskDelay(pdMS_TO_TICKS(100));
     (void)USB_DEVICE_Attach(s_dev_handle);
 
+    /* The UDPHS interrupt is masked at the AIC during boot (see
+     * SYS_Initialize) so a host attached at power-on can't storm the CPU
+     * with ENDRESET before the stack has a client. Now that the device is
+     * open, has an event handler, and is attached, enable it so enumeration
+     * interrupts are serviced. */
+    (void) SYS_INT_SourceEnable(UDPHS_IRQn);
+
     LOG_INFO("PERF: USB device opened, waiting for host enumeration\r\n");
 }
 

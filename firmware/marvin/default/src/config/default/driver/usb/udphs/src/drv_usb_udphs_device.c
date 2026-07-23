@@ -174,13 +174,20 @@ void F_DRV_USB_UDPHS_DEVICE_Initialize
         drvObj->deviceEndpointObj[count] = &gDrvUSBNonControlEndpoints[index][count - 1U];
     }
 
-    /* Configure the pull-up on D+ and disconnect it */
-    usbID->UDPHS_CTRL |= UDPHS_CTRL_DETACH_Msk;
-    usbID->UDPHS_CTRL |= UDPHS_CTRL_PULLD_DIS_Msk;
-
     /* Reset IP */
     usbID->UDPHS_CTRL &= ~UDPHS_CTRL_EN_UDPHS_Msk;
     usbID->UDPHS_CTRL |= UDPHS_CTRL_EN_UDPHS_Msk;
+
+    /* Configure the pull-up on D+ and disconnect it. This MUST come after
+     * the "Reset IP" EN_UDPHS toggle above: disabling EN_UDPHS resets the
+     * core and clears DETACH, so detaching before the toggle does not stick
+     * and the controller comes up ATTACHED before the stack has a client.
+     * A host then storms it with bus resets (ENDRESET is enabled by
+     * UDPHS_IEN reset default 0x10) and the CPU never escapes the ISR.
+     * Detaching here keeps the D+ pull-up disconnected until the app calls
+     * Attach, so no host interaction occurs during bring-up. */
+    usbID->UDPHS_CTRL |= UDPHS_CTRL_DETACH_Msk;
+    usbID->UDPHS_CTRL |= UDPHS_CTRL_PULLD_DIS_Msk;
 
     /* Disable all endpoints */
     for (count = 0; count < UDPHS_EPT_NUMBER; count++)
@@ -2723,15 +2730,22 @@ void F_DRV_USB_UDPHS_DEVICE_Tasks_ISR
     uint32_t readdata1;
 
 
-    if(false == hDriver->isOpened)
+    if((false == hDriver->isOpened) || (NULL == hDriver->pEventCallBack))
     {
-        /* We need a valid client */
-        SYS_DEBUG_MESSAGE(SYS_ERROR_INFO, "\r\nUSB UDPHS Driver: Driver does not have a client in F_DRV_USB_UDPHS_DEVICE_Tasks_ISR().");
-    }
-    else if(NULL == hDriver->pEventCallBack)
-    {
-        /* We need a valid event handler */
-        SYS_DEBUG_MESSAGE(SYS_ERROR_INFO, "\r\nUSB UDPHS Driver: Driver needs a event handler in F_DRV_USB_UDPHS_DEVICE_Tasks_ISR().");
+        /* No client can service this interrupt. On a level-sensitive
+         * interrupt controller (SAM9x/SAMA5 AIC) returning without
+         * acknowledging re-enters this ISR indefinitely. Masking UDPHS_IEN
+         * alone is not enough: UDPHS_IEN_RESETVALUE has ENDRESET enabled, so
+         * every host-driven USB bus reset resets the core and re-arms it.
+         * Detach (disconnect the D+ pull-up) so an attached host stops
+         * driving bus resets, then mask all sources and clear pending
+         * status. DETACH is not cleared by a USB reset, so this holds until
+         * the stack opens a client and calls Attach (which re-attaches). */
+        usbID = hDriver->usbID;
+        usbID->UDPHS_CTRL  |= UDPHS_CTRL_DETACH_Msk;
+        usbID->UDPHS_IEN    = 0U;
+        usbID->UDPHS_CLRINT = UDPHS_CLRINT_Msk;
+        SYS_DEBUG_MESSAGE(SYS_ERROR_INFO, "\r\nUSB UDPHS Driver: interrupt with no client; detaching in F_DRV_USB_UDPHS_DEVICE_Tasks_ISR().");
     }
     else
     {
