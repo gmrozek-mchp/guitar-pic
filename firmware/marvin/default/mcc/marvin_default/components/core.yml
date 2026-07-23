@@ -2439,11 +2439,12 @@ data:
     PIOC_PPDEN_VALUE:
       attributes:
         id: PIOC_PPDEN_VALUE
+        label: PIOC_PPDEN
       children:
       - children:
         - attributes:
             id: core
-            value: '256'
+            value: '8388864'
           type: Dynamic
         type: Values
       type: Hex
@@ -5913,6 +5914,17 @@ data:
         id: FLEXCOM4_CLOCK_ENABLE
         label: FLEXCOM4
       type: Boolean
+    PIN_68_PD:
+      attributes:
+        id: PIN_68_PD
+        label: Pull Down
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
   userData:
     children:
     - attributes:

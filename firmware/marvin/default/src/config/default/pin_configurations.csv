@@ -38,7 +38,7 @@ D17,PB8,,Available,In,,,,,,,,
 E1,PC16,,Available,In,,,,,,,,
 E2,PC18,LCD_BACKLIGHT_PWM,PWM_PWM0,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 E3,PC15,LED_4,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low
-E4,PC23,T1S_MISO,FLEXCOM3_IO1,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
+E4,PC23,T1S_MISO,FLEXCOM3_IO1,n/a,n/a,No,Disabled,No,Yes,Disabled,No,Low
 E16,PD14,NAND_RDY,EBI_NANDRDY,n/a,n/a,No,Disabled,No,No,Disabled,No,Low
 E17,PB14,,Available,In,,,,,,,,
 F2,PC14,LED_RED,GPIO,Out,Low,No,Disabled,No,No,Disabled,No,Low

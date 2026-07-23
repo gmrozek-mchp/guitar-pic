@@ -708,7 +708,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/mmu/plib_mmu.h
   hash: 7fb6e6b8ad6a80b7fc04c0264b7cdf49e6d6b887e4f3c5aa394eda88e32e0116
 - file: ../src/config/default/peripheral/pio/plib_pio.c
-  hash: 8fef84eeeb4972bc4c112432565dc3be2e3f1f4910a02b818d12cdb242bb97e4
+  hash: eddb26e3d040f352eb753c345ab6a47eda2dceb6b86378f091b48198685879e8
 - file: ../src/config/default/peripheral/pio/plib_pio.h
   hash: 26f4d38bdbad98b330738095a2b3f7bb7abd6c2e426a38b04368522fbb73d55c
 - file: ../src/config/default/peripheral/pit/plib_pit.c
@@ -752,7 +752,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/xdmac/plib_xdmac_common.h
   hash: 36a0f96ea0c5be39dec6d138bb799581e28321fc9d46f1cec049812ec67e146f
 - file: ../src/config/default/pin_configurations.csv
-  hash: a7d79e11088a1335c0ab853c77410e0546758b8c0764e8f0ae629b68070414b3
+  hash: 4aa914c6121fa11afb9ccd33c197080e730bcea8894e7d0199c9c4f88e14a800
 - file: ../src/config/default/stdio/xc32_monitor.c
   hash: 067d7cfcce60bbb8f1e41d9d3c684469087f20ca89094469a3b5c1891c2b5d77
 - file: ../src/config/default/sys_tasks.h
