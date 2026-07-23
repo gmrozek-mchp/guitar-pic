@@ -611,7 +611,6 @@
                 "default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom8_twi_master.c",
                 "default/src/config/default/peripheral/flexcom/usart/plib_flexcom2_usart.c",
                 "default/src/config/default/peripheral/flexcom/usart/plib_flexcom1_usart.c",
-                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom4_spi_master.c",
                 "default/src/config/default/system/fs/src/sys_fs.c",
                 "default/src/config/default/system/fs/src/sys_fs_media_manager.c",
                 "default/src/config/default/system/fs/src/sys_fs_fat_interface.c",
@@ -628,7 +627,9 @@
                 "default/src/config/default/peripheral/pwm/plib_pwm.c",
                 "default/src/config/default/driver/sst26/src/drv_sst26.c",
                 "default/src/config/default/peripheral/qspi/plib_qspi.c",
-                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c"
+                "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c",
+                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom3_spi_master.c",
+                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom3_spi_master.h"
             ]
         }
     ]

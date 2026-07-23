@@ -145,6 +145,14 @@
 #define QSPI_CS_Get()               ((PIOB_REGS->PIO_PDSR >> 20U) & 0x1U)
 #define QSPI_CS_PIN                  PIO_PIN_PB20
 
+/*** Macros for T1S_nCS pin ***/
+#define T1S_nCS_Get()               ((PIOC_REGS->PIO_PDSR >> 24U) & 0x1U)
+#define T1S_nCS_PIN                  PIO_PIN_PC24
+
+/*** Macros for T1S_SCK pin ***/
+#define T1S_SCK_Get()               ((PIOC_REGS->PIO_PDSR >> 26U) & 0x1U)
+#define T1S_SCK_PIN                  PIO_PIN_PC26
+
 /*** Macros for LED_6 pin ***/
 #define LED_6_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<27U))
 #define LED_6_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<27U))
@@ -158,6 +166,17 @@
 #define QSPI_IO2_Get()               ((PIOB_REGS->PIO_PDSR >> 23U) & 0x1U)
 #define QSPI_IO2_PIN                  PIO_PIN_PB23
 
+/*** Macros for T1S_IRQ_N pin ***/
+#define T1S_IRQ_N_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<18U))
+#define T1S_IRQ_N_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<18U))
+#define T1S_IRQ_N_Toggle()            (PIOB_REGS->PIO_ODSR ^= ((uint32_t)1U<<18U))
+#define T1S_IRQ_N_OutputEnable()      (PIOB_REGS->PIO_OER = ((uint32_t)1U<<18U))
+#define T1S_IRQ_N_InputEnable()       (PIOB_REGS->PIO_ODR = ((uint32_t)1U<<18U))
+#define T1S_IRQ_N_Get()               ((PIOB_REGS->PIO_PDSR >> 18U) & 0x1U)
+#define T1S_IRQ_N_PIN                  PIO_PIN_PB18
+#define T1S_IRQ_N_InterruptEnable()   (PIOB_REGS->PIO_IER = (1<<18))
+#define T1S_IRQ_N_InterruptDisable()  (PIOB_REGS->PIO_IDR = (1<<18))
+
 /*** Macros for LED_BLUE pin ***/
 #define LED_BLUE_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<20U))
 #define LED_BLUE_Clear()             (PIOC_REGS->PIO_CODR = ((uint32_t)1U<<20U))
@@ -166,6 +185,10 @@
 #define LED_BLUE_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<20U))
 #define LED_BLUE_Get()               ((PIOC_REGS->PIO_PDSR >> 20U) & 0x1U)
 #define LED_BLUE_PIN                  PIO_PIN_PC20
+
+/*** Macros for T1S_MOSI pin ***/
+#define T1S_MOSI_Get()               ((PIOC_REGS->PIO_PDSR >> 22U) & 0x1U)
+#define T1S_MOSI_PIN                  PIO_PIN_PC22
 
 /*** Macros for LED_GREEN pin ***/
 #define LED_GREEN_Set()               (PIOC_REGS->PIO_SODR = ((uint32_t)1U<<21U))
@@ -184,17 +207,6 @@
 #define LED_7_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<29U))
 #define LED_7_Get()               ((PIOC_REGS->PIO_PDSR >> 29U) & 0x1U)
 #define LED_7_PIN                  PIO_PIN_PC29
-
-/*** Macros for T1S_IRQ_N pin ***/
-#define T1S_IRQ_N_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<25U))
-#define T1S_IRQ_N_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<25U))
-#define T1S_IRQ_N_Toggle()            (PIOB_REGS->PIO_ODSR ^= ((uint32_t)1U<<25U))
-#define T1S_IRQ_N_OutputEnable()      (PIOB_REGS->PIO_OER = ((uint32_t)1U<<25U))
-#define T1S_IRQ_N_InputEnable()       (PIOB_REGS->PIO_ODR = ((uint32_t)1U<<25U))
-#define T1S_IRQ_N_Get()               ((PIOB_REGS->PIO_PDSR >> 25U) & 0x1U)
-#define T1S_IRQ_N_PIN                  PIO_PIN_PB25
-#define T1S_IRQ_N_InterruptEnable()   (PIOB_REGS->PIO_IER = (1<<25))
-#define T1S_IRQ_N_InterruptDisable()  (PIOB_REGS->PIO_IDR = (1<<25))
 
 /*** Macros for QSPI_IO1 pin ***/
 #define QSPI_IO1_Get()               ((PIOB_REGS->PIO_PDSR >> 22U) & 0x1U)
@@ -216,6 +228,10 @@
 #define LED_4_InputEnable()       (PIOC_REGS->PIO_ODR = ((uint32_t)1U<<15U))
 #define LED_4_Get()               ((PIOC_REGS->PIO_PDSR >> 15U) & 0x1U)
 #define LED_4_PIN                  PIO_PIN_PC15
+
+/*** Macros for T1S_MISO pin ***/
+#define T1S_MISO_Get()               ((PIOC_REGS->PIO_PDSR >> 23U) & 0x1U)
+#define T1S_MISO_PIN                  PIO_PIN_PC23
 
 /*** Macros for NAND_RDY pin ***/
 #define NAND_RDY_Get()               ((PIOD_REGS->PIO_PDSR >> 14U) & 0x1U)
@@ -306,10 +322,6 @@
 #define SDMMC0_DAT3_Get()               ((PIOA_REGS->PIO_PDSR >> 5U) & 0x1U)
 #define SDMMC0_DAT3_PIN                  PIO_PIN_PA5
 
-/*** Macros for T1S_SCK pin ***/
-#define T1S_SCK_Get()               ((PIOA_REGS->PIO_PDSR >> 11U) & 0x1U)
-#define T1S_SCK_PIN                  PIO_PIN_PA11
-
 /*** Macros for BUTTON_2 pin ***/
 #define BUTTON_2_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<1U))
 #define BUTTON_2_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<1U))
@@ -327,10 +339,6 @@
 #define BUTTON_3_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<6U))
 #define BUTTON_3_Get()               ((PIOA_REGS->PIO_PDSR >> 6U) & 0x1U)
 #define BUTTON_3_PIN                  PIO_PIN_PA6
-
-/*** Macros for T1S_MOSI pin ***/
-#define T1S_MOSI_Get()               ((PIOA_REGS->PIO_PDSR >> 10U) & 0x1U)
-#define T1S_MOSI_PIN                  PIO_PIN_PA10
 
 /*** Macros for DBGU_RX pin ***/
 #define DBGU_RX_Get()               ((PIOA_REGS->PIO_PDSR >> 26U) & 0x1U)
@@ -385,18 +393,14 @@
 #define SDMMC0_DAT1_Get()               ((PIOA_REGS->PIO_PDSR >> 3U) & 0x1U)
 #define SDMMC0_DAT1_PIN                  PIO_PIN_PA3
 
-/*** Macros for T1S_nCS pin ***/
-#define T1S_nCS_Get()               ((PIOA_REGS->PIO_PDSR >> 12U) & 0x1U)
-#define T1S_nCS_PIN                  PIO_PIN_PA12
-
 /*** Macros for T1S_RST pin ***/
-#define T1S_RST_Set()               (PIOB_REGS->PIO_SODR = ((uint32_t)1U<<3U))
-#define T1S_RST_Clear()             (PIOB_REGS->PIO_CODR = ((uint32_t)1U<<3U))
-#define T1S_RST_Toggle()            (PIOB_REGS->PIO_ODSR ^= ((uint32_t)1U<<3U))
-#define T1S_RST_OutputEnable()      (PIOB_REGS->PIO_OER = ((uint32_t)1U<<3U))
-#define T1S_RST_InputEnable()       (PIOB_REGS->PIO_ODR = ((uint32_t)1U<<3U))
-#define T1S_RST_Get()               ((PIOB_REGS->PIO_PDSR >> 3U) & 0x1U)
-#define T1S_RST_PIN                  PIO_PIN_PB3
+#define T1S_RST_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<17U))
+#define T1S_RST_Clear()             (PIOA_REGS->PIO_CODR = ((uint32_t)1U<<17U))
+#define T1S_RST_Toggle()            (PIOA_REGS->PIO_ODSR ^= ((uint32_t)1U<<17U))
+#define T1S_RST_OutputEnable()      (PIOA_REGS->PIO_OER = ((uint32_t)1U<<17U))
+#define T1S_RST_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<17U))
+#define T1S_RST_Get()               ((PIOA_REGS->PIO_PDSR >> 17U) & 0x1U)
+#define T1S_RST_PIN                  PIO_PIN_PA17
 
 /*** Macros for NAND_D3 pin ***/
 #define NAND_D3_Get()               ((PIOD_REGS->PIO_PDSR >> 9U) & 0x1U)
@@ -457,10 +461,6 @@
 /*** Macros for SDMMC0_CMD pin ***/
 #define SDMMC0_CMD_Get()               ((PIOA_REGS->PIO_PDSR >> 1U) & 0x1U)
 #define SDMMC0_CMD_PIN                  PIO_PIN_PA1
-
-/*** Macros for T1S_MISO pin ***/
-#define T1S_MISO_Get()               ((PIOA_REGS->PIO_PDSR >> 9U) & 0x1U)
-#define T1S_MISO_PIN                  PIO_PIN_PA9
 
 /*** Macros for BSP_MAXTOUCH_CHG pin ***/
 #define BSP_MAXTOUCH_CHG_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<20U))

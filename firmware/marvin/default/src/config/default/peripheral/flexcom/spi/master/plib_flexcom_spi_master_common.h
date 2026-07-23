@@ -67,7 +67,7 @@ extern "C" {
 #endif
 
 // DOM-IGNORE-END
-/****************************** FLEXCOM4 SPI Interface *********************************/
+/****************************** FLEXCOM3 SPI Interface *********************************/
 
 typedef enum
 {

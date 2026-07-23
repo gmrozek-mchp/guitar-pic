@@ -1,11 +1,11 @@
 configVersion: 1.0.0
-componentName: flexcom4
+componentName: flexcom3
 coreVersion: 5.9.0
 device: SAM9X75D2G
 library: []
 dependency:
 - dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
-  name: flexcom4
+  name: flexcom3
   type: module
   version: ''
 - dependencyPackage: ''
@@ -21,9 +21,9 @@ data:
     children:
     - children:
       - attributes:
-          id: flexcom4
-          x: '373'
-          y: '275'
+          id: flexcom3
+          x: '376'
+          y: '279'
         type: ElementPosition
       type: ElementPositions
     type: ComponentGraph
@@ -43,9 +43,9 @@ data:
         id: EXTERNAL_CLOCK_FREQ
         label: External Clock Source
       type: Integer
-    FLEXCOM4_COMMON_HEADER:
+    FLEXCOM3_COMMON_HEADER:
       attributes:
-        id: FLEXCOM4_COMMON_HEADER
+        id: FLEXCOM3_COMMON_HEADER
       children:
       - children:
         - attributes:
@@ -86,9 +86,9 @@ data:
           type: String
         type: Attributes
       type: File
-    FLEXCOM4_HEADER:
+    FLEXCOM3_HEADER:
       attributes:
-        id: FLEXCOM4_HEADER
+        id: FLEXCOM3_HEADER
       children:
       - children:
         - attributes:
@@ -107,7 +107,7 @@ data:
             id: name
           children:
           - type: Value
-            value: plib_flexcom4_spi_master.h
+            value: plib_flexcom3_spi_master.h
           type: String
         - attributes:
             id: project
@@ -129,9 +129,9 @@ data:
           type: String
         type: Attributes
       type: File
-    FLEXCOM4_SOURCE:
+    FLEXCOM3_SOURCE:
       attributes:
-        id: FLEXCOM4_SOURCE
+        id: FLEXCOM3_SOURCE
       children:
       - children:
         - attributes:
@@ -150,7 +150,7 @@ data:
             id: name
           children:
           - type: Value
-            value: plib_flexcom4_spi_master.c
+            value: plib_flexcom3_spi_master.c
           type: String
         - attributes:
             id: project
@@ -259,7 +259,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '255'
           type: Dynamic
         type: Values
@@ -311,7 +311,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '255'
           type: Dynamic
         type: Values
@@ -363,7 +363,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '255'
           type: Dynamic
         type: Values
@@ -415,7 +415,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '255'
           type: Dynamic
         type: Values
@@ -437,8 +437,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
-            value: '0'
+            id: flexcom3
+            value: '1'
           type: Dynamic
         type: Values
       type: Integer
@@ -465,11 +465,30 @@ data:
             value: 'true'
           type: Boolean
         type: Attributes
+      - children:
+        - attributes:
+            value: 'false'
+          type: User
+        type: Values
       type: Boolean
     FLEXCOM_SPI_EN_NPCS1:
       attributes:
         id: FLEXCOM_SPI_EN_NPCS1
         label: Enable NPCS1?
+      children:
+      - children:
+        - attributes:
+            id: visible
+          children:
+          - type: Value
+            value: 'true'
+          type: Boolean
+        type: Attributes
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
       type: Boolean
     FLEXCOM_SPI_EN_NPCS2:
       attributes:
@@ -552,7 +571,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '1'
           type: Dynamic
         type: Values
@@ -564,7 +583,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '266666666'
           type: Dynamic
         type: Values
@@ -638,7 +657,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '266666666'
           type: Dynamic
         type: Values
@@ -655,7 +674,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '165'
           type: Dynamic
         type: Values
@@ -667,7 +686,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '1'
           type: Dynamic
         type: Values
@@ -679,7 +698,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '165'
           type: Dynamic
         type: Values
@@ -766,7 +785,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '266666666'
           type: Dynamic
         type: Values
@@ -778,7 +797,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: '371'
           type: Dynamic
         type: Values
@@ -830,8 +849,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
-            value: '&(FLEXCOM4_REGS->FLEX_SPI_RDR)'
+            id: flexcom3
+            value: '&(FLEXCOM3_REGS->FLEX_SPI_RDR)'
           type: Dynamic
         type: Values
       type: String
@@ -915,7 +934,7 @@ data:
         type: Attributes
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: 'true'
           type: Dynamic
         type: Values
@@ -932,8 +951,8 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
-            value: '&(FLEXCOM4_REGS->FLEX_SPI_TDR)'
+            id: flexcom3
+            value: '&(FLEXCOM3_REGS->FLEX_SPI_TDR)'
           type: Dynamic
         type: Values
       type: String
@@ -944,7 +963,7 @@ data:
       children:
       - children:
         - attributes:
-            id: flexcom4
+            id: flexcom3
             value: 'true'
           type: Dynamic
         type: Values
