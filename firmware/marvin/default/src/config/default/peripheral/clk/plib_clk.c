@@ -123,6 +123,7 @@ static void initPeriphClk(void)
         { ID_FLEXCOM3, 1, 0, 0, 0},
         { ID_FLEXCOM8, 1, 0, 0, 0},
         { ID_SDMMC0, 1, 1, 8, 2},
+        { ID_FLEXCOM5, 1, 0, 0, 0},
         { ID_TC0, 1, 0, 0, 0},
         { ID_PWM, 1, 0, 0, 0},
         { ID_XDMAC, 1, 0, 0, 0},

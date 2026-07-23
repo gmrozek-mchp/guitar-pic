@@ -54,6 +54,7 @@
 #include "usb/usb_chapter_9.h"
 #include "usb/usb_device.h"
 #include "peripheral/flexcom/spi/master/plib_flexcom3_spi_master.h"
+#include "peripheral/flexcom/usart/plib_flexcom5_usart.h"
 #include "peripheral/rtc/plib_rtc.h"
 #include "peripheral/tc/plib_tc0.h"
 #include "peripheral/flexcom/usart/plib_flexcom1_usart.h"

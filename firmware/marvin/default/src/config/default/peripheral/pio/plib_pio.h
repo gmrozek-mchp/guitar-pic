@@ -462,6 +462,10 @@
 #define SDMMC0_CMD_Get()               ((PIOA_REGS->PIO_PDSR >> 1U) & 0x1U)
 #define SDMMC0_CMD_PIN                  PIO_PIN_PA1
 
+/*** Macros for FAUXMOTE_RX pin ***/
+#define FAUXMOTE_RX_Get()               ((PIOA_REGS->PIO_PDSR >> 15U) & 0x1U)
+#define FAUXMOTE_RX_PIN                  PIO_PIN_PA15
+
 /*** Macros for BSP_MAXTOUCH_CHG pin ***/
 #define BSP_MAXTOUCH_CHG_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<20U))
 #define BSP_MAXTOUCH_CHG_Clear()             (PIOA_REGS->PIO_CODR = ((uint32_t)1U<<20U))
@@ -470,6 +474,10 @@
 #define BSP_MAXTOUCH_CHG_InputEnable()       (PIOA_REGS->PIO_ODR = ((uint32_t)1U<<20U))
 #define BSP_MAXTOUCH_CHG_Get()               ((PIOA_REGS->PIO_PDSR >> 20U) & 0x1U)
 #define BSP_MAXTOUCH_CHG_PIN                  PIO_PIN_PA20
+
+/*** Macros for FAUXMOTE_TX pin ***/
+#define FAUXMOTE_TX_Get()               ((PIOA_REGS->PIO_PDSR >> 16U) & 0x1U)
+#define FAUXMOTE_TX_PIN                  PIO_PIN_PA16
 
 /*** Macros for SDMMC0_CD pin ***/
 #define SDMMC0_CD_Set()               (PIOA_REGS->PIO_SODR = ((uint32_t)1U<<23U))

@@ -454,6 +454,8 @@ void SYS_Initialize ( void* data )
 
     FLEXCOM3_SPI_Initialize();
 
+    FLEXCOM5_USART_Initialize();
+
     FLEXCOM8_TWI_Initialize();
 
     PWM_Initialize();

@@ -336,7 +336,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0'
+            value: '98304'
           type: Dynamic
         type: Values
       type: Hex
@@ -360,7 +360,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '1007444031'
+            value: '1007542335'
           type: Dynamic
         type: Values
       type: Hex
@@ -5922,6 +5922,132 @@ data:
       - children:
         - attributes:
             value: 'True'
+          type: User
+        type: Values
+      type: String
+    FLEXCOM5_CLOCK_ENABLE:
+      attributes:
+        id: FLEXCOM5_CLOCK_ENABLE
+        label: FLEXCOM5
+      children:
+      - children:
+        - attributes:
+            id: flexcom5
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM5_CLOCK_FREQUENCY:
+      attributes:
+        id: FLEXCOM5_CLOCK_FREQUENCY
+        label: FLEXCOM5_CLOCK_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '266666666'
+          type: Dynamic
+        type: Values
+      type: Integer
+    FLEXCOM5_INTERRUPT_ENABLE:
+      attributes:
+        id: FLEXCOM5_INTERRUPT_ENABLE
+        label: Enable 14 -- Flexcom 5
+      children:
+      - children:
+        - attributes:
+            id: flexcom5
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    FLEXCOM5_INTERRUPT_HANDLER:
+      attributes:
+        id: FLEXCOM5_INTERRUPT_HANDLER
+        label: Handler
+      children:
+      - children:
+        - attributes:
+            id: flexcom5
+            value: FLEXCOM5_InterruptHandler
+          type: Dynamic
+        type: Values
+      type: String
+    FLEXCOM5_INTERRUPT_HANDLER_LOCK:
+      attributes:
+        id: FLEXCOM5_INTERRUPT_HANDLER_LOCK
+        label: FLEXCOM5_INTERRUPT_HANDLER_LOCK
+      children:
+      - children:
+        - attributes:
+            id: flexcom5
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    PIN_222_FUNCTION_TYPE:
+      attributes:
+        id: PIN_222_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM5_IO1
+          type: User
+        type: Values
+      type: String
+    PIN_222_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_222_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: B
+          type: User
+        type: Values
+      type: String
+    PIN_235_FUNCTION_TYPE:
+      attributes:
+        id: PIN_235_FUNCTION_TYPE
+        label: Type
+      children:
+      - children:
+        - attributes:
+            value: FLEXCOM5_IO0
+          type: User
+        type: Values
+      type: String
+    PIN_235_PERIPHERAL_FUNCTION:
+      attributes:
+        id: PIN_235_PERIPHERAL_FUNCTION
+        label: Peripheral Selection
+      children:
+      - children:
+        - attributes:
+            value: B
+          type: User
+        type: Values
+      type: String
+    PIN_235_FUNCTION_NAME:
+      attributes:
+        id: PIN_235_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: FAUXMOTE_TX
+          type: User
+        type: Values
+      type: String
+    PIN_222_FUNCTION_NAME:
+      attributes:
+        id: PIN_222_FUNCTION_NAME
+        label: Name
+      children:
+      - children:
+        - attributes:
+            value: FAUXMOTE_RX
           type: User
         type: Values
       type: String

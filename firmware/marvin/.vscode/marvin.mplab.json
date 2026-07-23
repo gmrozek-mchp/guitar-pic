@@ -629,7 +629,9 @@
                 "default/src/config/default/peripheral/qspi/plib_qspi.c",
                 "default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c",
                 "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom3_spi_master.c",
-                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom3_spi_master.h"
+                "default/src/config/default/peripheral/flexcom/spi/master/plib_flexcom3_spi_master.h",
+                "default/src/config/default/peripheral/flexcom/usart/plib_flexcom5_usart.c",
+                "default/src/config/default/peripheral/flexcom/usart/plib_flexcom5_usart.h"
             ]
         }
     ]
