@@ -101,7 +101,7 @@ Framing overhead is 4 bytes; a 3-byte `GUITAR` payload is 7 bytes on the wire.
 | `0x01` | `GUITAR` | m→f | 3 | v1 | Hot gameplay input (frets/strum/whammy/aux). |
 | `0x02` | `WIIMOTE` | m→f | 4 | v1 | Menu-nav input (core buttons, D-pad, analog stick). |
 | `0x03` | `LINK_CMD` | m→f | 1 | v1 | Bluetooth link management (pair/stop/reconnect/unlink/ext). |
-| `0x04` | `ACCEL` | m→f | 3 | planned | Wiimote accelerometer state (tilt → star power, motion). |
+| `0x04` | `ACCEL` | m→f | 3 | v1 | Wiimote accelerometer state (X/Y/Z acceleration in g). |
 | `0x05` | `POINTER` | m→f | 3 | v1 | IR pointer position (bare-Wiimote menu nav). |
 | `0x81` | `STATUS` | f→m | 4 | v1 | Link/connection/extension state + last-command result. |
 
@@ -140,17 +140,17 @@ All fields are single bytes, so byte order is irrelevant. Bits are numbered
 |---|---|---|
 | 0 | fret/strum mask | `bit0` Green, `bit1` Red, `bit2` Yellow, `bit3` Blue, `bit4` Orange, `bit5` Strum-Down, `bit6` Strum-Up, `bit7` reserved |
 | 1 | whammy | raw 5-bit extension value `0..31`: rest ≈ `0x10`, fully pressed ≈ `0x1F` (upper bits 0) |
-| 2 | aux | `bit0` Start (`+`), `bit1` Select (`−`), `bit2` Pedal, `bit3` Star-Power*, `bit4`–`7` reserved |
+| 2 | aux | `bit0` Start (`+`), `bit1` Select (`−`), `bit2` Pedal, `bit3` reserved*, `bit4`–`7` reserved |
 
 Byte 0 is **bit-identical to marvin's existing guitar-node command bitmask** (the
 [`T1SLink_SendToGuitar`](../firmware/marvin/default/src/net/t1s/t1s_link.h) mask),
 so marvin feeds the same computed mask to either actuation sink with no
 translation.
 
-\* Star-Power is a semantic bit: fauxmote maps it to whatever mechanism activates
-SP in-game (GH3 uses a Wiimote tilt, not a button — driven via the `ACCEL` slice,
-§5.5). **Not implemented in fauxmote yet** (the emulator streams a fixed level
-accel); a no-op until the `ACCEL` slice goes live.
+\* `bit3` was a "Star-Power" semantic bit. **fauxmote ignores it** — star power is a
+*tilt*, not a device button, and fauxmote emulates only the raw device (a Wiimote +
+guitar extension). marvin expresses star power by driving the accelerometer through the
+`ACCEL` slice (§5.5). The bit is left reserved pending a decision to retire it.
 
 ### 5.2 `WIIMOTE` (m→f, 4 bytes) — menu navigation
 
@@ -165,22 +165,30 @@ The analog stick is the guitar-mode Home-menu control (the IR pointer is
 physically blocked when the Wiimote is seated in the guitar — see the fauxmote
 journal). Bare-Wiimote menu nav uses the separate `POINTER` slice (§5.6).
 
-### 5.5 `ACCEL` (m→f, 3 bytes) — *planned*
+### 5.5 `ACCEL` (m→f, 3 bytes)
 
-Wiimote accelerometer state, the same slice used to synthesize star-power tilt in
-GH3 and general motion input. Independent of `GUITAR`.
+Wiimote accelerometer state — the raw device axis, in physical units. marvin sends
+acceleration; fauxmote renders it into the Wiimote report. It carries **no** tilt or
+star-power semantics: those belong to marvin (e.g. to activate GH3 star power, marvin
+tilts the accelerometer via this slice). Independent of `GUITAR`.
+
+Each byte is a **signed 8-bit (2's-complement) acceleration in g**, `1 LSB = 1/32 g`
+(so `+1 g = +32`), giving an int8 range of `−4.0 g … +3.97 g`.
 
 | Byte | Field | Encoding |
 |---|---|---|
-| 0 | accel X | `0..255`, center `128` (mapped to the Wiimote's accel range) |
-| 1 | accel Y | `0..255`, center `128` |
-| 2 | accel Z | `0..255`, center `128` (gravity ~+1 g at rest) |
+| 0 | accel X | signed g, `+32` = +1 g |
+| 1 | accel Y | signed g, `+32` = +1 g |
+| 2 | accel Z | signed g, `+32` = +1 g (gravity → +1 g at rest) |
 
-Default when the slice is stale/absent: **level** (all `128`, i.e. Z at +1 g). Not
-consumed by fauxmote yet — the emulator currently streams a fixed level accel;
-`ACCEL` goes live when fauxmote drives the accel field from this slice (which also
-makes the `GUITAR` aux star-power bit meaningful). A finer 10-bit encoding can be
-added later without changing the type.
+fauxmote translates each axis to a raw Wiimote report byte using its own advertised
+accelerometer calibration (per-axis zero-g `0x85`, +1 g `0xA0`, i.e. 27 raw counts/g):
+`raw = clamp(0x85 + g·27/32, 0, 255)`. Level therefore maps to raw `{0x85, 0x85, 0xA0}`.
+
+Default when the slice is stale/absent: **level** — `{X=0, Y=0, Z=+32}` (held flat, Z at
++1 g). A finer 10-bit encoding can be added later without changing the type.
+
+Console: `accel <gx> <gy> <gz>` / `accel level`.
 
 ### 5.6 `POINTER` (m→f, 3 bytes)
 
@@ -292,8 +300,13 @@ is hardware-dependent and genuinely future work; UART is the working link.
   TX=`GPIO8`. Wiring: marvin PA16 → ESP `GPIO7`, ESP `GPIO8` → marvin PA15, common GND.
   (Originally FLEXCOM1/PA28/PA29 on 2026-07-02; moved to a dedicated FLEXCOM5 so the
   link no longer depends on the guitar being on T1S.)
-- When to make the planned `ACCEL` slice live in fauxmote (drive the Wiimote accel
-  field from it) — this is what makes GH3 star power (`GUITAR` aux `bit3`) work.
+- ~~When to make the planned `ACCEL` slice live in fauxmote~~ **done (fauxmote side)
+  2026-07-24:** fauxmote drives the accel field from the `ACCEL` slice; encoding is
+  signed g (`1 LSB = 1/32 g`), fauxmote translates to raw. Slices carry no tilt/SP
+  semantics — the `GUITAR` aux star-power bit is ignored; marvin drives star power via
+  `ACCEL`. Marvin-side `Fauxmote_SendAccel()` producer still to do.
+- Whether to retire the now-unused `MF_AUX_STARPOWER` aux bit (star power moved to the
+  `ACCEL` slice); a shared-`mf_proto.h` decision to make with the marvin side.
 - Whether `ACCEL` needs finer than 8-bit-per-axis for smooth tilt; 10-bit can be
   added under the same type.
 - Runtime version negotiation (a `HELLO` exchange) if the two ends ever ship

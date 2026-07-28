@@ -19,7 +19,15 @@ static const char *TAG = "fauxmote.wm";
  * we send only on change — see sender_task. */
 #define SENDER_KEEPALIVE_MS 250
 #define SENDER_STACK      3072
-#define ACCEL_NEUTRAL     0x85      /* zero-g raw value (matches the EEPROM calibration) */
+
+/* Accelerometer raw report scale, matching the calibration advertised in k_accel_cal
+ * (EEPROM 0x16/0x20): per-axis zero-g = 0x85, +1 g = 0xA0, i.e. 27 raw counts per g.
+ * The command link carries signed int8 acceleration in 1/32-g units (MF_ACCEL_*); the
+ * device model translates that to these raw bytes. */
+#define ACCEL_ZERO_G_RAW   0x85
+#define ACCEL_ONE_G_RAW    0xA0
+#define ACCEL_COUNTS_PER_G (ACCEL_ONE_G_RAW - ACCEL_ZERO_G_RAW)   /* 27 */
+#define ACCEL_LSB_PER_G    32                                     /* wire: 1 LSB = 1/32 g */
 
 /* IR pointer calibration in camera coords (1024x768), from on-hardware edge
  * measurement. Pointer (0,0) = top-left, (1,1) = bottom-right maps to screen edges. */
@@ -41,6 +49,8 @@ static bool    s_reporting_continuous;
 static uint8_t s_btn0, s_btn1;       /* core button state (0 = nothing pressed) */
 static float   s_point_x, s_point_y; /* IR pointer position, 0..1 (0,0 = top-left) */
 static bool    s_point_active;       /* false = no IR dots reported */
+static uint8_t s_accel[3] = { ACCEL_ZERO_G_RAW, ACCEL_ZERO_G_RAW, ACCEL_ONE_G_RAW };
+                                     /* raw accel bytes (X,Y,Z); default = held level */
 static uint8_t s_eeprom[EEPROM_SIZE];
 
 static const wiimote_extension_t *s_ext;   /* registered extension, or NULL */
@@ -255,11 +265,14 @@ void Wiimote_HandleRx(int fd, const uint8_t *data, int len)
     }
 }
 
-static void set_accel_level(uint8_t *a)
+/* Translate a signed 1/32-g acceleration to a raw report byte on this device's
+ * calibration (0x85 = 0 g, 27 counts/g), clamped to the byte range. */
+static uint8_t accel_g_to_raw(int8_t g)
 {
-    a[0] = ACCEL_NEUTRAL;   /* X = 0 g */
-    a[1] = ACCEL_NEUTRAL;   /* Y = 0 g */
-    a[2] = 0xA0;            /* Z = +1 g (held level, no roll) */
+    int raw = ACCEL_ZERO_G_RAW + (g * ACCEL_COUNTS_PER_G) / ACCEL_LSB_PER_G;
+    if (raw < 0)   raw = 0;
+    if (raw > 255) raw = 255;
+    return (uint8_t)raw;
 }
 
 /* One extended-IR object: X/Y are 10-bit camera coords (1024x768), or x<0 = "not
@@ -352,13 +365,13 @@ static int build_report(uint8_t mode, uint8_t *p)
     }
     switch (mode) {
     case 0x30: return 2;
-    case 0x31: set_accel_level(&p[2]); return 5;
+    case 0x31: memcpy(&p[2], s_accel, 3); return 5;
     case 0x32: build_extension(&p[2]); return 10;
-    case 0x33: set_accel_level(&p[2]); build_ir_extended(&p[5]); return 17;
+    case 0x33: memcpy(&p[2], s_accel, 3); build_ir_extended(&p[5]); return 17;
     case 0x34: build_extension(&p[2]); return 21;
-    case 0x35: set_accel_level(&p[2]); build_extension(&p[5]); return 21;
+    case 0x35: memcpy(&p[2], s_accel, 3); build_extension(&p[5]); return 21;
     case 0x36: build_ir_basic(&p[2]); build_extension(&p[12]); return 21;   /* btn + 10 IR + 9 ext */
-    case 0x37: set_accel_level(&p[2]); build_ir_basic(&p[5]); build_extension(&p[15]); return 21;  /* + 10 IR + 6 ext */
+    case 0x37: memcpy(&p[2], s_accel, 3); build_ir_basic(&p[5]); build_extension(&p[15]); return 21;  /* + 10 IR + 6 ext */
     case 0x3d: build_extension(&p[0]); return 21;
     case 0x3e: case 0x3f: return 21;
     default:   return 0;
@@ -417,6 +430,7 @@ void Wiimote_NotifyDisconnected(void)
     s_last_tx_len = -1;      /* force a fresh send on the next connection */
     s_leds = 0;
     s_btn0 = s_btn1 = 0;
+    Wiimote_ClearAccel();                 /* start level on the next connection */
     s_crypt_on = s_crypt_armed = false;   /* host re-inits encryption on reconnect */
     for (int i = 0; i < TAP_SLOTS; i++) {
         s_taps[i].active = false;
@@ -450,6 +464,20 @@ void Wiimote_SetPointer(float x, float y)
 void Wiimote_ClearPointer(void)
 {
     s_point_active = false;
+}
+
+void Wiimote_SetAccel(int8_t x, int8_t y, int8_t z)
+{
+    s_accel[0] = accel_g_to_raw(x);
+    s_accel[1] = accel_g_to_raw(y);
+    s_accel[2] = accel_g_to_raw(z);
+}
+
+void Wiimote_ClearAccel(void)
+{
+    s_accel[0] = ACCEL_ZERO_G_RAW;   /* X = 0 g */
+    s_accel[1] = ACCEL_ZERO_G_RAW;   /* Y = 0 g */
+    s_accel[2] = ACCEL_ONE_G_RAW;    /* Z = +1 g (held level) */
 }
 
 static void sender_task(void *arg)

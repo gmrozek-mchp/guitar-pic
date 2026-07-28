@@ -128,6 +128,34 @@ static int cmd_point(int argc, char **argv)
     return 0;
 }
 
+static int8_t g_to_wire(float g)
+{
+    int v = (int)(g * 32.0f + (g >= 0 ? 0.5f : -0.5f));   /* 1/32-g units, rounded */
+    if (v < -128) v = -128;
+    if (v >  127) v =  127;
+    return (int8_t)v;
+}
+
+static int cmd_accel(int argc, char **argv)
+{
+    if (argc >= 2 && strcmp(argv[1], "level") == 0) {
+        Wiimote_ClearAccel();
+        printf("accel level (0, 0, +1 g)\n");
+        return 0;
+    }
+    if (argc < 4) {
+        printf("usage: accel <gx> <gy> <gz> | accel level   (g, +1g on Z = level)\n");
+        return 1;
+    }
+    int8_t x = g_to_wire(atof(argv[1]));
+    int8_t y = g_to_wire(atof(argv[2]));
+    int8_t z = g_to_wire(atof(argv[3]));
+    Wiimote_SetAccel(x, y, z);
+    printf("accel g=(%.2f,%.2f,%.2f) wire=(%d,%d,%d)\n",
+           atof(argv[1]), atof(argv[2]), atof(argv[3]), x, y, z);
+    return 0;
+}
+
 static int cmd_whammy(int argc, char **argv)
 {
     if (argc < 2) {
@@ -188,6 +216,7 @@ void Cli_Start(void)
     register_cmd("btn", "btn <name> <0|1> — hold/release a button (core or guitar)", cmd_btn);
     register_cmd("tap", "tap <name> — brief press+release (e.g. tap strumdown)", cmd_tap);
     register_cmd("point", "point <x 0..1> <y 0..1> | point off — IR cursor", cmd_point);
+    register_cmd("accel", "accel <gx> <gy> <gz> | accel level — accelerometer, in g", cmd_accel);
     register_cmd("whammy", "whammy <0..31> — guitar whammy bar", cmd_whammy);
     register_cmd("ext", "ext <on|off> — attach/detach the guitar extension", cmd_ext);
     esp_console_register_help_command();

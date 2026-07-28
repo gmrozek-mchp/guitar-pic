@@ -134,6 +134,7 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-24 | **The ACCEL slice carries the device's acceleration in g, not tilt/star-power semantics.** Wire = 3 B, signed int8 2's-complement g per axis (X/Y/Z), `1 LSB = 1/32 g` (`+1 g = +32`, range −4.0..+3.97 g), level `{0,0,+32}`. fauxmote translates g → raw report bytes with its own advertised calibration (`raw = clamp(0x85 + g·27/32, 0, 255)`); `MF_AUX_STARPOWER` is ignored on fauxmote. | fauxmote emulates a Wiimote + guitar extension, so it exposes what the *device* has (an accelerometer) as clean physical units and leaves the tilt→star-power interpretation to marvin. Signed g keeps the wire transport-clean and device-agnostic; 1/32-g scale makes gravity a round `+32` and matches raw resolution (~0.84 raw counts/LSB) with no clipping. Resolves the "Star-Power mechanism in fauxmote" open question — it was the wrong framing (fauxmote shouldn't know SP). |
 | 2026-07-02 | **marvin↔fauxmote link = UART first, layered message protocol (spec: [`docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md)).** Three layers: transport-agnostic message layer (`TYPE`+fixed payload), a UART framing layer (`SOF 0x7E`/`TYPE`/`LEN`/`CRC8`), UART PHY (1 Mbaud 8-N-1 on a **second** UART, not the CDC console). Messages are **independent state-slice updaters**: `GUITAR` (3 B hot: fret/strum mask + whammy + aux), `WIIMOTE` (4 B nav: core buttons/D-pad/stick), plus planned `ACCEL` (3 B, tilt→star power) and `POINTER` (3 B, IR) slices, `LINK_CMD` (1 B: pair/stop/reconnect/unlink/ext), and `STATUS` (4 B f→m). fauxmote latches each slice and assembles the Wii report from all of them; each slice is absolute/latest-wins. A **single** 200 ms link watchdog (reset by any control message) reverts *all* slices to safe defaults when the link goes fully quiet. `GUITAR` byte 0 is bit-identical to marvin's T1S guitar mask. The link is a second front-end over the existing `Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs (a `marvin_link.c` beside the CLI). | Primary purpose is low-latency GH gameplay, so the hot path is one tiny fixed message with no handshake/ack. Absolute state matches both ends (marvin's bitmask + fauxmote's ~15 ms streaming) and self-heals dropped frames. Layering keeps the message bytes identical when the transport later moves to T1S — only the framing binding changes (Ethernet FCS replaces `SOF`/`CRC`). Reusing the CLI's module APIs avoids duplicating any behavior. Resolves Q5. |
 | 2026-06-13 | **Removed the persistent auto-reconnect task; recovery is the manual `reconnect` command only.** Drops just reset state (`Wiimote_NotifyDisconnected`); no automatic re-initiation. | Auto-reconnect neither survived the GH3 game-launch handoff nor served as a keep-awake mechanism (reconnecting ≠ staying awake). Keeping the Wii awake is better done with occasional input/state changes, which Marvin's command stream provides during use. Removing it also drops the slot-leak/backoff complexity. The sniff-delay override (idle→sniff = 65 s) stays — that genuinely prevents idle supervision-timeout drops. |
 | 2026-06-13 | **Extension encryption is mandatory for GH3 and implemented in the base Wiimote (`ext_crypto.c`); the guitar module stays plaintext.** GH3's real key handshake (register trace): `0x55`→`0xf0` (disable) → read ID `0xfa` in clear → `0xAA`→`0xf0` (enable) → 16-byte key to `0x40`-`0x4f`. The base captures the key, derives ft/sb, and encrypts outgoing ext data (streamed bytes @ offset `0x08`; reg reads @ `addr & 7`). | Everything GH3 reads from the extension is decrypted with that key, so plaintext is garbage (the "green/red worked unencrypted" observation was a decryption coincidence). Encryption is a generic Wiimote feature (nunchuk/classic encrypt too), so it belongs in the base, not the guitar. Corrects the plan's guess that GH3 used the old `0→0x40` init. |
@@ -154,7 +155,7 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ## Open questions
 
 - Exact marvin FLEXCOM instance + pins for the command link (integration-time). *fauxmote side settled: UART1 on Feather RX=`GPIO7`/TX=`GPIO8`.*
-- Star-Power mechanism in fauxmote (Wiimote tilt synthesis) so the `GUITAR` aux star-power bit can go live.
+- Whether to retire the `MF_AUX_STARPOWER` bit from the shared `mf_proto.h` now that star power is expressed via the ACCEL slice. Deferred — a marvin-side decision, and the two `mf_proto.h` copies must stay byte-for-byte in sync (fauxmote's copy currently leads on the ACCEL constants until the marvin side lands).
 
 (Q5 resolved 2026-07-02: marvin↔fauxmote link = UART first, layered message protocol; spec at [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md) — see decision log.)
 
@@ -162,9 +163,39 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 (Q4 resolved 2026-06-13: GH3 streams mode `0x37`; the guitar report is the first 6 ext bytes and must be **encrypted** — see decision log.)
 
+(Star-Power mechanism resolved 2026-07-24: fauxmote exposes acceleration in g via the ACCEL slice; tilt→SP is marvin's semantics — see decision log.)
+
 ---
 
 ## Session log
+
+### 2026-07-24 — ACCEL slice: expose the Wiimote accelerometer over the marvin link (fauxmote side)
+
+Wired the previously-stubbed `MF_MSG_ACCEL` slice end to end on fauxmote so marvin can
+move the emulated accelerometer (how GH3 activates star power — the player tilts the
+guitar and the console reads the Wiimote accel). fauxmote holds **no** tilt/star-power
+semantics: it emulates a Wiimote + guitar extension and exposes the *device's
+acceleration* as clean physical units; the tilt/SP interpretation is marvin's.
+
+**Wire encoding (settled this session):** ACCEL is 3 B, one **signed int8 (2's-complement)
+acceleration in g per axis** (X/Y/Z), `1 LSB = 1/32 g` ⇒ `+1 g = +32`, range −4.0..+3.97 g.
+Level/rest = `{0, 0, +32}`. fauxmote translates g → raw Wiimote report bytes with its own
+advertised calibration (`accel_g_to_raw`: `raw = clamp(0x85 + g·27/32, 0, 255)`; per-axis
+zero-g `0x85`, +1 g `0xA0` = 27 raw counts/g). Chosen so gravity is a round number and 1
+wire LSB ≈ 0.84 raw counts (no wasted precision, no clipping over the raw envelope).
+
+**Changes:** `mf_proto.h` — added `MF_ACCEL_LSB_PER_G`/`MF_ACCEL_LEVEL_{X,Y,Z}` and
+reworded `MF_AUX_STARPOWER` (fauxmote ignores it; SP is expressed via the ACCEL slice).
+`wiimote.c` — `s_accel[3]` state, `accel_g_to_raw()`, `build_report` copies `s_accel` in
+all four accel modes (0x31/0x33/0x35/0x37), reset to level on disconnect.
+`wiimote.h`/`marvin_link.c` — `Wiimote_SetAccel`/`Wiimote_ClearAccel`; `MF_MSG_ACCEL` now
+an independent slice; `neutralize()` clears accel to level with the other slices.
+`console_cli.c` — `accel <gx> <gy> <gz>` / `accel level` for bring-up. Protocol doc §4/§5.1/§5.5
+updated. **Builds clean** (ESP-IDF v6.0.1). Hardware verification with GH3 (dial in the
+tilt axis/threshold that trips star power) remains.
+
+**Sync caveat:** this diverges fauxmote's `mf_proto.h` from marvin's copy (the ACCEL
+constants) until the marvin side lands. The two are meant to be byte-for-byte identical.
 
 ### 2026-07-14 — FIXED: two-controller input lag = L2CAP tx-FIFO stuffed with stale duplicates
 

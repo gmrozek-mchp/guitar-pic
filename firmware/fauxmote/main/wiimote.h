@@ -26,6 +26,12 @@ bool Wiimote_TapButton(const char *name);
 void Wiimote_SetPointer(float x, float y);
 void Wiimote_ClearPointer(void);
 
+/* Accelerometer, in signed 1/32-g units per axis (+1 g = +32; X/Y/Z). Rendered into
+ * every accel-bearing reporting mode, translated to raw report bytes via this device's
+ * advertised calibration. ClearAccel returns to level (0, 0, +1 g), the safe default. */
+void Wiimote_SetAccel(int8_t x, int8_t y, int8_t z);
+void Wiimote_ClearAccel(void);
+
 /* Extension: a registered extension (e.g. the guitar) also handles its button names
  * via Wiimote_SetButton/TapButton. SetExtension reports it attached/detached. */
 void Wiimote_SetExtension(bool connected);

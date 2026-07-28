@@ -43,7 +43,8 @@ static void apply_guitar(uint8_t mask, uint8_t whammy, uint8_t aux)
     Wiimote_SetButton("gplus",  aux & MF_AUX_PLUS);
     Wiimote_SetButton("gminus", aux & MF_AUX_MINUS);
     Wiimote_SetButton("pedal",  aux & MF_AUX_PEDAL);
-    /* MF_AUX_STARPOWER: no-op until the ACCEL/tilt slice is live. */
+    /* MF_AUX_STARPOWER is ignored: star power is a tilt, not a device button. marvin
+     * expresses it through the ACCEL slice (an accelerometer, which is what we emulate). */
 }
 
 static void apply_wiimote(uint8_t core, uint8_t dpad, uint8_t sx, uint8_t sy)
@@ -77,6 +78,7 @@ static void neutralize(void)
     apply_guitar(0, MF_WHAMMY_REST, 0);
     apply_wiimote(0, 0, MF_STICK_CENTER, MF_STICK_CENTER);
     Wiimote_ClearPointer();
+    Wiimote_ClearAccel();
 }
 
 static void handle_link_cmd(uint8_t op)
@@ -185,7 +187,8 @@ static bool parse_byte(parser_t *p, uint8_t b, bool *status_req)
             return true;
         case MF_MSG_ACCEL:
             if (p->len != MF_LEN_ACCEL) break;
-            /* planned: drive the Wiimote accel field; no-op for now */
+            Wiimote_SetAccel((int8_t)p->payload[0], (int8_t)p->payload[1],
+                             (int8_t)p->payload[2]);
             return true;
         case MF_MSG_LINK_CMD:
             if (p->len != MF_LEN_LINK_CMD) break;
