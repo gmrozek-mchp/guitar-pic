@@ -29,3 +29,7 @@ CONFIG_BT_SDP_PAD_LEN=1024
 # Adafruit Feather V2 has 8 MB flash (boot log warned the 2 MB default header).
 CONFIG_ESPTOOLPY_FLASHSIZE_8MB=y
 CONFIG_ESPTOOLPY_FLASHSIZE="8MB"
+
+# marvin link over the shared 10BASE-T1S PLCA bus (LAN8651 MAC-PHY on SPI). The
+# legacy point-to-point UART link is retained as a build-flag fallback.
+CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S=y

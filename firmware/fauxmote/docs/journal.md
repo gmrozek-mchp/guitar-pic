@@ -88,15 +88,28 @@ On hardware: GH3 detects the guitar and frets/strum/whammy register in-game.
   single IR calibration. Deferred idea: drive `SX/SY` (guitar module already owns them,
   fixed at center `0x20`) for guitar-mode Home navigation if Marvin ever needs it.
 
-**Phase 4 IN PROGRESS — marvin command link (fauxmote side done).** `marvin_link.c`
-is a second front-end beside the CLI: a UART1 task (Feather RX=`GPIO7`/TX=`GPIO8`,
-1 Mbaud) that parses framed messages (`mf_proto.h`: `SOF/TYPE/LEN/CRC8`) and drives
-the existing `Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs — `GUITAR` (fret/strum/whammy/
-aux), `WIIMOTE` (core/D-pad/stick, via new `Guitar_SetStick`), `LINK_CMD`, planned
-`ACCEL`/`POINTER` slices, and a `STATUS` uplink (on-change + 500 ms heartbeat). One
-200 ms link watchdog reverts all inputs to safe defaults when the link goes quiet.
-**On hardware: builds, boots, and the Wii connects with the link task running.**
-Not yet driven by marvin (that's the next side). Wire protocol: `docs/marvin-fauxmote-link.md`.
+**Phase 4 IN PROGRESS — marvin command link (fauxmote side done; now T1S-capable).**
+The link is a second front-end beside the CLI that drives the existing
+`Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs — `GUITAR` (fret/strum/whammy/aux), `WIIMOTE`
+(core/D-pad/stick, via new `Guitar_SetStick`), `LINK_CMD`, `ACCEL`/`POINTER` slices,
+and a `STATUS` uplink (on-change + 500 ms heartbeat). One 200 ms link watchdog reverts
+all inputs to safe defaults when the link goes quiet.
+
+The transport-neutral message layer now lives in `mf_link.c` (`MfLink_Init`/
+`HandleMessage`/`Service`); a Kconfig `choice` selects the backend that provides
+`MarvinLink_Start()` + the `mf_send_fn`:
+- **T1S (default)** — `mf_t1s.c`: LAN8651 MAC-PHY over SPI (SPI2_HOST, mode 0, 15 MHz)
+  driven by the vendored OPEN Alliance TC6 library. PLCA follower id `CONFIG_FAUXMOTE_T1S_NODE_ID`
+  (default 3), MAC `02:00:00:00:00:<id>`; each mf_proto message = one Ethernet frame on
+  ethertype **`0x88B7`** to the coordinator, plus a 500 ms `0x88B6` heartbeat (node_type 3).
+  Feather V2 pin defaults SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32 (all Kconfig-overridable).
+- **UART (fallback)** — `marvin_link.c`: the original UART1 task (Feather RX=`GPIO7`/
+  TX=`GPIO8`, 1 Mbaud) with `SOF/TYPE/LEN/CRC8` framing.
+
+**UART path verified on hardware: builds, boots, the Wii connects with the link task
+running.** T1S path is written ahead of hardware (LAN8651 not yet wired); not yet driven
+by marvin over either transport (coordinator side + bring-up are later sessions). Wire
+protocol: `docs/marvin-fauxmote-link.md`; T1S framing: `docs/t1s-podl-link.md`.
 
 **Link stability (done):** idle disconnects are fixed — Bluedroid's JV idle→sniff
 delay (default 5 s) is overridden to 65 s via a `-D BTA_FTC_OPS_IDLE_TO_SNIFF_DELAY_MS`
@@ -134,6 +147,8 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-28 | **The marvin link moves onto the shared 10BASE-T1S PLCA bus (LAN8651 MAC-PHY over SPI); UART is retained as a build-flag fallback.** Transport is selected by a Kconfig `choice` (`FAUXMOTE_LINK_TRANSPORT_T1S` default / `_UART`), mirroring marvin's `MARVIN_FRETBOARD_TRANSPORT`. The message layer (`mf_proto.h` TYPE + fixed payload, latest-wins slices, 200 ms watchdog, STATUS uplink) is unchanged and now lives in a transport-neutral `mf_link.c`; each transport backend (`marvin_link.c` UART / `mf_t1s.c` T1S) provides `MarvinLink_Start()` and an `mf_send_fn`. | Puts fauxmote on the same wire as the guitar (id 2) and detector (id 1) followers instead of a dedicated UART, so the coordinator drives every actuator over one bus. Splitting the message layer out keeps the wire semantics byte-for-byte identical across transports — only the framing binding changes (Ethernet FCS replaces `SOF`/`LEN`/`CRC8`). Keeping UART as a one-flag fallback preserves the proven bring-up path. |
+| 2026-07-28 | **fauxmote's T1S data channel uses a new dedicated ethertype `0x88B7`; controllers are PLCA node ids 3+ (build-configurable), heartbeat node_type = `3` (controller).** Each mf_proto message = one Ethernet frame `[dst][src][0x88B7][TYPE][payload…]` to the coordinator MAC `02:00:00:00:00:00`; this node's MAC is `02:00:00:00:00:<id>`. Heartbeat stays on `0x88B6` with a new node_type code 3 beside 1=detector, 2=guitar. `CONFIG_FAUXMOTE_T1S_NODE_ID` defaults to 3, range 3–7. | A distinct ethertype keeps the fauxmote channel cleanly demultiplexable from the guitar/detector traffic at the coordinator, and per-node ids/MACs let several fauxmotes share the bus later (one PLCA node each). Reuses the existing heartbeat frame format so the coordinator's presence table just gains a controller type. |
 | 2026-07-24 | **The ACCEL slice carries the device's acceleration in g, not tilt/star-power semantics.** Wire = 3 B, signed int8 2's-complement g per axis (X/Y/Z), `1 LSB = 1/32 g` (`+1 g = +32`, range −4.0..+3.97 g), level `{0,0,+32}`. fauxmote translates g → raw report bytes with its own advertised calibration (`raw = clamp(0x85 + g·27/32, 0, 255)`); `MF_AUX_STARPOWER` is ignored on fauxmote. | fauxmote emulates a Wiimote + guitar extension, so it exposes what the *device* has (an accelerometer) as clean physical units and leaves the tilt→star-power interpretation to marvin. Signed g keeps the wire transport-clean and device-agnostic; 1/32-g scale makes gravity a round `+32` and matches raw resolution (~0.84 raw counts/LSB) with no clipping. Resolves the "Star-Power mechanism in fauxmote" open question — it was the wrong framing (fauxmote shouldn't know SP). |
 | 2026-07-02 | **marvin↔fauxmote link = UART first, layered message protocol (spec: [`docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md)).** Three layers: transport-agnostic message layer (`TYPE`+fixed payload), a UART framing layer (`SOF 0x7E`/`TYPE`/`LEN`/`CRC8`), UART PHY (1 Mbaud 8-N-1 on a **second** UART, not the CDC console). Messages are **independent state-slice updaters**: `GUITAR` (3 B hot: fret/strum mask + whammy + aux), `WIIMOTE` (4 B nav: core buttons/D-pad/stick), plus planned `ACCEL` (3 B, tilt→star power) and `POINTER` (3 B, IR) slices, `LINK_CMD` (1 B: pair/stop/reconnect/unlink/ext), and `STATUS` (4 B f→m). fauxmote latches each slice and assembles the Wii report from all of them; each slice is absolute/latest-wins. A **single** 200 ms link watchdog (reset by any control message) reverts *all* slices to safe defaults when the link goes fully quiet. `GUITAR` byte 0 is bit-identical to marvin's T1S guitar mask. The link is a second front-end over the existing `Wiimote_*`/`Guitar_*`/`Fauxmote_*` APIs (a `marvin_link.c` beside the CLI). | Primary purpose is low-latency GH gameplay, so the hot path is one tiny fixed message with no handshake/ack. Absolute state matches both ends (marvin's bitmask + fauxmote's ~15 ms streaming) and self-heals dropped frames. Layering keeps the message bytes identical when the transport later moves to T1S — only the framing binding changes (Ethernet FCS replaces `SOF`/`CRC`). Reusing the CLI's module APIs avoids duplicating any behavior. Resolves Q5. |
 | 2026-06-13 | **Removed the persistent auto-reconnect task; recovery is the manual `reconnect` command only.** Drops just reset state (`Wiimote_NotifyDisconnected`); no automatic re-initiation. | Auto-reconnect neither survived the GH3 game-launch handoff nor served as a keep-awake mechanism (reconnecting ≠ staying awake). Keeping the Wii awake is better done with occasional input/state changes, which Marvin's command stream provides during use. Removing it also drops the slot-leak/backoff complexity. The sniff-delay override (idle→sniff = 65 s) stays — that genuinely prevents idle supervision-timeout drops. |
@@ -168,6 +183,83 @@ Phase progression and success criteria are in [`../SPEC.md`](../SPEC.md) §6.
 ---
 
 ## Session log
+
+### 2026-07-28 — marvin link onto 10BASE-T1S (fauxmote side, ahead of hardware)
+
+Moved the marvin command link off its dedicated UART and onto the shared 10BASE-T1S
+PLCA bus via a LAN8651 MAC-PHY over SPI — written ahead of hardware, exactly like the
+guitar/detector followers were. ESP32/fauxmote side only; the marvin-coordinator routing
+(0x88B7 demux + controller node-table entry) and physical bring-up are later sessions.
+
+**Transport seam.** Split the old `marvin_link.c` into a transport-neutral message layer
+and two swappable backends:
+- `mf_link.c`/`.h` (new) — the message layer, moved verbatim: `apply_guitar/wiimote/
+  pointer`, ACCEL apply, `neutralize`, `handle_link_cmd`, `build_status`, the 200 ms
+  watchdog and STATUS cadence. API `MfLink_Init(mf_send_fn)` / `MfLink_HandleMessage(type,
+  payload,len)` / `MfLink_Service(now_ms)`. STATUS_REQ now sets an internal flag instead
+  of the plan's out-param.
+- `marvin_link.c` (trimmed) — UART backend: keeps the `SOF/LEN/CRC8` parser + `mf_send`,
+  its post-CRC switch calls `MfLink_HandleMessage`, the task calls `MfLink_Service`.
+- `mf_t1s.c`/`.h` (new) — T1S backend (ESP-IDF port of guitar's `t1s_follower.c`). Owns
+  the SPI/GPIO/IRQ setup, the TC6 integrator callbacks, a static service task, RX demux
+  on ethertype `0x88B7`, the `mf_t1s_send` uplink, and a 500 ms `0x88B6` heartbeat
+  (node_type 3). Provides `MarvinLink_Start()` so `main.c` is unchanged.
+
+**ESP-IDF specifics.** SPI completion is **synchronous**: `TC6_CB_OnSpiTransaction` runs
+a blocking `spi_device_polling_transmit` (manual CS) and calls `TC6_SpiBufferDone` in-line
+before returning — which tc6.h explicitly permits. This is required, not just convenient:
+`TC6Regs_Init` is **not** background/async — it runs the whole register sequence inline as
+a series of `while (initialized && …) TC6_Service(…)` busy-loops that only advance when a
+transaction's completion callback fires. A first cut deferred completion to `service_pump`
+(in the yet-to-exist service task), so during `TC6Regs_Init` nothing ever called
+`TC6_SpiBufferDone`, the loops spun forever, and the task watchdog tripped (~6 s, IDLE0
+starved) before `MarvinLink_Start` returned. Completing in-line fixes both the wired and
+the unwired case: with the LAN8651 present init completes; with it absent every control
+read fails its echo/parity check (`read_rx_ctrl_buffer` → `success=false`), which clears
+`initialized` and lets every loop fall through, so `TC6Regs_Init` returns cleanly with
+`GetInitDone` false instead of hanging.
+
+The runtime service loop needed a second fix. `service_pump` does exactly **one**
+`TC6_Service` per pass (like guitar's follower) — an earlier bounded 8× loop on
+`s_need_service` still starved IDLE0, because synchronous `TC6_SpiBufferDone` re-arms
+`OnNeedService` every pass and the task then spun on IRQ-notify without blocking (task
+watchdog on `mft1s`, not `main`). IRQ_N handling is now **deferred**: the ISR masks IRQ_N
+(`gpio_intr_disable`) and notifies the task, which re-enables it after the service pass —
+so a level-latched or chattering IRQ_N can't re-notify faster than the task consumes it.
+The task blocks on `ulTaskNotifyTake` — the wait clamped to **≥1 tick**, because
+`pdMS_TO_TICKS(2)` truncates to **0** at the default 100 Hz tick, turning the wait into a
+non-blocking poll (this was the third and final watchdog: link came up, then the task
+spun with a zero wait and starved IDLE0 exactly 5 s later). Real RX wakes the task
+immediately via the IRQ notification; the tick timeout is only the fallback poll that
+re-services a level-latched IRQ and drives the heartbeat + STATUS cadence. Blocking there
+is what yields to the idle task. `max_transfer_sz` = 4096
+(multi-chunk transactions concatenate). CS driven manually (`spics_io_num = -1`).
+
+**Build wiring.** `Kconfig.projbuild` (new) — `choice FAUXMOTE_LINK_TRANSPORT` (T1S
+default / UART), `FAUXMOTE_T1S_NODE_ID` (default 3, range 3–7), and six pin ints
+(Feather V2 defaults SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32). `CMakeLists.txt` compiles
+`mf_link.c` always and, per the choice, either `mf_t1s.c` + vendored `tc6.c`/`tc6-regs.c`
+(REQUIRES `esp_driver_spi esp_timer`) or `marvin_link.c` (REQUIRES `esp_driver_uart`).
+`tc6-conf.h` (new) is fauxmote's copy of marvin's, one instance. `sdkconfig.defaults`
+sets `CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S=y`. `console_cli.c` gained a guarded `t1s`
+diagnostics command (link/synced/node id/chipRev + rx/tx/err/hb_seq).
+
+Pin choices dodge the console UART (7/8), status LED (13), NeoPixel (0/2), strapping
+(12/15), and input-only (34–39) pins. SCK/MO/MI route through the GPIO matrix (fine past
+the LAN8651's 25 MHz ceiling). Docs updated: `docs/marvin-fauxmote-link.md` §8,
+`docs/t1s-podl-link.md` §7.1/§7.2.
+
+**On-hardware (LAN8651 wired, not yet on the bus).** Boots stable, no watchdog: `LAN8651
+up - chipRev=2, MAC=02:00:00:00:00:03, PLCA follower id=3/8`, ethertype 0x88B7; the CLI
+and BT/Wiimote paths are unaffected. **Remaining:** connect to the T1S bus and confirm
+against the marvin coordinator — heartbeat (0x88B6, node_type 3) seen, 0x88B7 command
+frames actuate the emulated controller, STATUS uplink, 200 ms neutralize on link loss.
+The marvin-coordinator side (0x88B7 demux + controller node-table entry) is still a
+separate session.
+
+**UART fallback build compiles** (`FAUXMOTE_LINK_TRANSPORT_UART`) — `mf_link.c` +
+`marvin_link.c` with no TC6/SPI deps, `MarvinLink_Start` resolves. Not yet re-run on
+hardware over the UART link.
 
 ### 2026-07-24 — ACCEL slice: expose the Wiimote accelerometer over the marvin link (fauxmote side)
 

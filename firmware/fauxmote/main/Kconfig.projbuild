@@ -1,0 +1,57 @@
+menu "Fauxmote marvin link"
+
+    choice FAUXMOTE_LINK_TRANSPORT
+        prompt "marvin link transport"
+        default FAUXMOTE_LINK_TRANSPORT_T1S
+        help
+            Selects how the fauxmote talks to marvin. T1S is the operational
+            transport (LAN8651 MAC-PHY on the shared 10BASE-T1S PLCA bus); UART
+            is the legacy point-to-point link kept as a bring-up fallback.
+
+        config FAUXMOTE_LINK_TRANSPORT_T1S
+            bool "10BASE-T1S (LAN8651 over SPI)"
+
+        config FAUXMOTE_LINK_TRANSPORT_UART
+            bool "UART (legacy point-to-point)"
+    endchoice
+
+    config FAUXMOTE_T1S_NODE_ID
+        int "T1S PLCA node id for this fauxmote"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 3
+        range 3 7
+        help
+            PLCA follower id / low MAC octet (02:00:00:00:00:<id>). Coordinator
+            is 0, detector 1, guitar 2; controllers take 3+, one per fauxmote.
+
+    config FAUXMOTE_T1S_PIN_SCLK
+        int "SCLK gpio"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 5
+
+    config FAUXMOTE_T1S_PIN_MOSI
+        int "MOSI gpio"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 19
+
+    config FAUXMOTE_T1S_PIN_MISO
+        int "MISO gpio"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 21
+
+    config FAUXMOTE_T1S_PIN_CS
+        int "CS_N gpio"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 33
+
+    config FAUXMOTE_T1S_PIN_RST
+        int "RST_N gpio"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 27
+
+    config FAUXMOTE_T1S_PIN_IRQ
+        int "IRQ_N gpio"
+        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+        default 32
+
+endmenu

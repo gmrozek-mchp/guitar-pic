@@ -204,10 +204,15 @@ command TX targets. marvin selects the active node of each class.
 | marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
 | fretboard | detector | 1 | `02:00:00:00:00:01` | photo-ADC stream → `detector_id` 1; also commands the guitar (id 2) directly |
 | guitar | guitar (actuator) | 2 | `02:00:00:00:00:02` | receives the 1-byte command bitmask (from marvin or a detector) |
-| node *k* | (either) | *k* | `02:00:00:00:00:0k` | future detector/guitar variants |
+| fauxmote | controller | 3+ | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote (id build-configurable, default 3) |
+| node *k* | (any) | *k* | `02:00:00:00:00:0k` | future detector/guitar/controller variants |
 
 - One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
-  registration needed for a private bus) carries the existing payloads verbatim.
+  registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
+- A **second data ethertype** `0x88B7` carries the fauxmote (controller) channel — the
+  mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
+  as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
+  demultiplexes controller traffic apart from the detector/guitar bitmask.
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
@@ -226,9 +231,9 @@ apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
 on receipt and reports it via the `nodes` console command (present = a heartbeat
 within ~2 s).
 
-Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar), `node_id(1)`,
-`flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives the node from the
-src MAC; the payload is informational (seq enables drop detection).
+Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller),
+`node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives the node
+from the src MAC; the payload is informational (seq enables drop detection).
 
 ## 8. Transport coexistence
 

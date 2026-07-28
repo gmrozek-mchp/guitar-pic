@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "sdkconfig.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_console.h"
@@ -13,6 +14,9 @@
 #include "wiimote.h"
 #include "guitar.h"
 #include "bt_role.h"
+#ifdef CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S
+#include "mf_t1s.h"
+#endif
 
 static void print_bda(const char *label, const uint8_t *bda)
 {
@@ -188,6 +192,20 @@ static int cmd_unlink(int argc, char **argv)
     return 0;
 }
 
+#ifdef CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S
+static int cmd_t1s(int argc, char **argv)
+{
+    (void)argc; (void)argv;
+    printf("t1s link=%s synced=%d node_id=%u chipRev=%u\n",
+           MfT1s_IsUp() ? "up" : "down", MfT1s_IsSynced(),
+           MfT1s_NodeId(), MfT1s_ChipRev());
+    printf("    rx=%lu tx=%lu err=%lu hb_seq=%lu\n",
+           (unsigned long)MfT1s_RxCount(), (unsigned long)MfT1s_TxCount(),
+           (unsigned long)MfT1s_ErrCount(), (unsigned long)MfT1s_HbSeq());
+    return 0;
+}
+#endif
+
 static void register_cmd(const char *name, const char *help, esp_console_cmd_func_t fn)
 {
     const esp_console_cmd_t cmd = { .command = name, .help = help, .hint = NULL, .func = fn };
@@ -219,6 +237,9 @@ void Cli_Start(void)
     register_cmd("accel", "accel <gx> <gy> <gz> | accel level — accelerometer, in g", cmd_accel);
     register_cmd("whammy", "whammy <0..31> — guitar whammy bar", cmd_whammy);
     register_cmd("ext", "ext <on|off> — attach/detach the guitar extension", cmd_ext);
+#ifdef CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S
+    register_cmd("t1s", "show 10BASE-T1S link + MAC-PHY diagnostics", cmd_t1s);
+#endif
     esp_console_register_help_command();
 
     ESP_ERROR_CHECK(esp_console_start_repl(repl));

@@ -278,19 +278,30 @@ not a rewrite.
   `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build (FLEXCOM5 is
   dedicated), regardless of `MARVIN_FRETBOARD_TRANSPORT`.
 
-## 8. T1S transport (transport #2, future)
+## 8. T1S transport (transport #2)
 
-When fauxmote (or a successor node) joins the T1S bus, the **message layer (§4–§5)
-travels unchanged as the payload of a T1S Ethernet frame**:
+The fauxmote side of the T1S transport is **implemented** (`main/mf_t1s.c`, a LAN8651
+MAC-PHY on SPI driven by the vendored OPEN Alliance TC6 library) and is the **default**
+build; UART is retained as a Kconfig-selectable fallback (`FAUXMOTE_LINK_TRANSPORT_UART`).
+The **message layer (§4–§5) travels unchanged as the payload of a T1S Ethernet frame**:
 
 - The UART framing layer (§3.2) is dropped — the Ethernet frame provides delimiting
   and an FCS; `TYPE` + payload become the frame payload.
-- Addressed marvin ↔ fauxmote-node like the other T1S nodes (see
-  [`docs/t1s-podl-link.md`](t1s-podl-link.md) §7 for the addressing/ethertype scheme).
+- **Frame layout:** `[dst MAC][src MAC][ethertype 0x88B7][TYPE][payload…]`. dst is the
+  coordinator MAC `02:00:00:00:00:00`; src is this node's MAC `02:00:00:00:00:<id>`.
+  The MAC-PHY appends the FCS and pads short frames to the 46-byte minimum, so no manual
+  padding — the message layer's per-`TYPE` length check ignores the trailing pad.
+- **`STATUS` is an uplink frame** on the same `0x88B7` ethertype, directed at the
+  coordinator MAC, sent on change / on `STATUS_REQ` / as the 500 ms heartbeat — identical
+  cadence to the UART transport, just carried in a frame instead of a `SOF/LEN/CRC8`
+  packet. A separate `0x88B6` presence heartbeat (node_type 3 = controller) rides
+  alongside it; see [`docs/t1s-podl-link.md`](t1s-podl-link.md) §7.1/§7.2.
 - Only the transport seam (§7) changes; message handling and semantics are identical.
 
-**Caveat:** the current ESP32 Feather has no 10BASE-T1S MAC-PHY, so this transport
-is hardware-dependent and genuinely future work; UART is the working link.
+**Status:** written ahead of hardware (no LAN8651 wired to the Feather yet) and not yet
+driven by marvin — the coordinator-side `0x88B7` demux + controller node-table entry are
+a later session. Feather V2 pin defaults are SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32,
+all Kconfig-overridable.
 
 ## 9. Open questions
 
