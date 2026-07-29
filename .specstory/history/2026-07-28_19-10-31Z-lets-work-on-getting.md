@@ -11565,3 +11565,10784 @@ Committed as `17b2907` on `gui` — 13 files, the fauxmote T1S transport work pl
 I noted in the journal that the UART fallback build compiles (untested on hardware) before committing.
 
 The plan is now complete on the fauxmote side. Remaining work is the two out-of-scope future sessions: the marvin-coordinator `0x88B7` demux + controller node-table entry, and physical on-bus verification.
+
+---
+
+_**User (2026-07-29 00:17:13Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/Kconfig.projbuild in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+one more change to fauxmote. there will only be 2 at most.  do we have an overall t1s node table in docs anywhere? I'd like to have fauxmotes as 1-2, guitar 3, fretboard detector 4, and future nodes beatbox 5, lemmy 6, lightshow 7
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:17:41Z)**_
+
+Good question — let me find every place node ids are defined so I can see the full scope before changing anything.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:17:44Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate node id definitions across docs and firmware
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== docs node tables ====="
+grep -rln "PLCA ID\|PLCA follower id\|node.table\|02:00:00:00:00" docs/ SPEC.md firmware/*/docs/ firmware/*/SPEC.md 2>/dev/null
+echo
+echo "===== NODE_ID / node id defines in firmware ====="
+grep -rn "NODE_ID\|NODE_COUNT\|node_id\|PLCA" firmware/guitar/config.mcc/src/t1s_follower.c firmware/fretboard 2>/dev/null | grep -i "define\|=\s*[0-9]" | head -40
+```
+
+```text
+===== docs node tables =====
+docs/t1s-podl-link.md
+docs/marvin-fauxmote-link.md
+firmware/fauxmote/docs/journal.md
+firmware/fretboard/docs/journal.md
+firmware/marvin/docs/journal.md
+SPEC.md
+firmware/guitar/docs/journal.md
+firmware/marvin/docs/journal-archive-2026-q2.md
+firmware/fretboard/SPEC.md
+firmware/guitar/SPEC.md
+
+===== NODE_ID / node id defines in firmware =====
+firmware/guitar/config.mcc/src/t1s_follower.c:14:#define T1S_NODE_ID         (2u)
+firmware/guitar/config.mcc/src/t1s_follower.c:15:#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+firmware/guitar/config.mcc/src/t1s_follower.c:360:                   "guitar: PLCA status = 0x%08lX (plca_status=%d)\r\n",
+firmware/fretboard/t1s_detector.c:14:#define T1S_NODE_ID         (1u)
+firmware/fretboard/t1s_detector.c:15:#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+firmware/fretboard/t1s_detector.c:409:                   "fretboard: PLCA status = 0x%08lX (plca_status=%d)\r\n",
+firmware/fretboard/docs/journal.md:41:| 2026-06-17 | **Keep the command path on the 240 Hz tick cadence (do NOT decouple it to immediate main-loop send).** The model emits one bitmask per 240 Hz sample; the ISR gates it into `s_current_cmd` each tick and the main loop sends that, so actuation is quantized to the ~4.2 ms grid. Leave it. To reduce the *new* T1S transport delay instead, raise the host SPI clock (1 MHz → ~12 MHz, both fretboard and guitar; SERCOM `BAUD=0` = GCLK/2 = 12 MHz) and/or fold a constant offset into the training labels — **not** by changing the command-to-tick coupling. | The model's timing was characterized against this inference→tick→actuate pipeline (the photo-dip→strum delay is baked into the distillation labels, so its output index is fit to *this* cadence). Decoupling would shift every actuation earlier by up to a tick **and** replace the deterministic 240 Hz grid with main-loop jitter — for a model trained on 240 Hz-sampled data, consistent grid-aligned latency beats lower-but-variable latency. Separately, the T1S move already changed timing vs. the old `MODEL_DRIVEN` *local-GPIO* standalone: actuation is now ~1.5–2 ms **later** (host-SPI chunk each end @ 1 MHz dominates; PLCA media access is sub-ms). That transport delta — not the tick — is the real new variable, so the knob is SPI speed (12 MHz removes ~1 ms) + re-validating gameplay timing on the T1S rig (scope fretboard `SetCommand`→guitar apply, check hit rate). Worst-case command latency today ≈ 6–7 ms (≈4.2 ms tick + ~1.5–2 ms transport); ~2–3 ms typical. See edge-ai journal + [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). |
+firmware/fretboard/docs/journal.md:62:3. ~~**T1S link transport — direction, not yet built.**~~ **Resolved 2026-06-17 (see decision log):** the fretboard T1S detector firmware is written — `t1s_detector.{c,h}` (follower id 1, MAC `02:00:00:00:00:01`, ethertype `0x88B5` data + `0x88B6` heartbeat) behind the `FRETBOARD_LINK = T1S` build flag, reusing the shared `third_party/oa-tc6-lib`. The 17-byte frame rides the Ethernet payload unchanged (only the transport swaps, as planned). **Remaining (gated on Greg):** the MCC regen (a SERCOM in SPI-master mode + T1S_CS/T1S_RST/T1S_IRQ_N GPIOs + EIC on IRQ_N — mirror of guitar G0; the detector-only build frees the button pins) and on-hardware bring-up (target banner `LAN8651 up … PLCA follower id=1/8`). The T1S fileSet must add `t1s_detector.c`, `cli.c`, `third_party/embedded-cli/embedded_cli.c`, and `oa-tc6-lib` `tc6.c`/`tc6-regs.c`, plus the `libtc6/inc`+`src` and `third_party/embedded-cli` include dirs, and **exclude** `cmd_receive.c`/`fret_button.c` (button-pin refs that conflict with the SPI pins). PoDL is transparent to the MCU (zero firmware footprint); final PoDL BOM still open.
+firmware/fretboard/docs/journal.md:72:- The fretboard T1S node is **live on the bus**: `LAN8651 up … PLCA follower id=1/8`, and marvin's
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:17:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find marvin coordinator node table
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== marvin node table code ====="
+grep -rln "node_table\|NODE_ID\|PLCA_ID\|node_type\|GUITAR\|DETECTOR" firmware/marvin/default/src/net/ 2>/dev/null
+echo
+grep -rn "id\s*=\|PLCA\|0x02\|02, 0\|node_id\|MAC" firmware/marvin/default/src/net/t1s/*.c firmware/marvin/default/src/net/t1s/*.h 2>/dev/null | grep -i "id\|mac\|node" | head -40
+```
+
+```text
+===== marvin node table code =====
+firmware/marvin/default/src/net/t1s/t1s_link.c
+firmware/marvin/default/src/net/fauxmote/fauxmote_link.c
+firmware/marvin/default/src/net/fauxmote/mf_proto.h
+firmware/marvin/default/src/net/fauxmote/fauxmote_link.h
+
+firmware/marvin/default/src/net/t1s/tc6-conf.h:15:/* One MAC-PHY on the marvin side. */
+firmware/marvin/default/src/net/t1s/t1s_link.c:18:/* marvin is the PLCA coordinator. Node IDs and MACs follow the addressing
+firmware/marvin/default/src/net/t1s/t1s_link.c:19: * scheme in docs/t1s-podl-link.md §7.1: coordinator = ID 0, MAC ...00. */
+firmware/marvin/default/src/net/t1s/t1s_link.c:21:#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length; headroom for nodes 1..7 */
+firmware/marvin/default/src/net/t1s/t1s_link.c:29:/* Upper bound on TC6_Service calls per service_pump. The MAC-PHY can keep the
+firmware/marvin/default/src/net/t1s/t1s_link.c:37:/* MAC-PHY bring-up bounds. If the LAN8651 isn't populated/responding, the task
+firmware/marvin/default/src/net/t1s/t1s_link.c:49:#define T1S_MAC_LEN          (6u)
+firmware/marvin/default/src/net/t1s/t1s_link.c:53:/* Locally administered coordinator MAC (02:00:00:00:00:00). */
+firmware/marvin/default/src/net/t1s/t1s_link.c:54:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+firmware/marvin/default/src/net/t1s/t1s_link.c:70:    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+firmware/marvin/default/src/net/t1s/t1s_link.c:99:/* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
+firmware/marvin/default/src/net/t1s/t1s_link.c:100:static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+firmware/marvin/default/src/net/t1s/t1s_link.c:107:    out[5] = node_id;
+firmware/marvin/default/src/net/t1s/t1s_link.c:121:/* Look up a node by its source MAC (NULL if unknown). */
+firmware/marvin/default/src/net/t1s/t1s_link.c:122:static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
+firmware/marvin/default/src/net/t1s/t1s_link.c:124:    if ((mac[0] != 0x02u) || (mac[1] | mac[2] | mac[3] | mac[4])) {
+firmware/marvin/default/src/net/t1s/t1s_link.c:128:        if (s_nodes[i].node_id == mac[5]) {
+firmware/marvin/default/src/net/t1s/t1s_link.c:151:static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
+firmware/marvin/default/src/net/t1s/t1s_link.c:178:/* T1S_IRQ_N falling-edge PIO ISR callback: the MAC-PHY needs servicing. */
+firmware/marvin/default/src/net/t1s/t1s_link.c:201:/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) and queue it.
+firmware/marvin/default/src/net/t1s/t1s_link.c:203:static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t payload_len)
+firmware/marvin/default/src/net/t1s/t1s_link.c:211:    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+firmware/marvin/default/src/net/t1s/t1s_link.c:212:    memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
+firmware/marvin/default/src/net/t1s/t1s_link.c:230: * the caller must then yield so a stuck MAC-PHY can't starve other tasks. */
+firmware/marvin/default/src/net/t1s/t1s_link.c:242:    /* Persistent need-service = the MAC-PHY isn't quiescing (stuck IRQ / no
+firmware/marvin/default/src/net/t1s/t1s_link.c:248:/* One MAC-PHY bring-up attempt: reset pulse, push the register + PLCA config,
+firmware/marvin/default/src/net/t1s/t1s_link.c:261:    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
+firmware/marvin/default/src/net/t1s/t1s_link.c:265:    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+firmware/marvin/default/src/net/t1s/t1s_link.c:309:        /* Bring up (or re-bring-up) the MAC-PHY. Absent/unresponsive → warn once
+firmware/marvin/default/src/net/t1s/t1s_link.c:314:                    LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
+firmware/marvin/default/src/net/t1s/t1s_link.c:324:            LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+firmware/marvin/default/src/net/t1s/t1s_link.c:325:                     "PLCA coord id=%u/%u\r\n",
+firmware/marvin/default/src/net/t1s/t1s_link.c:333:         * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
+firmware/marvin/default/src/net/t1s/t1s_link.c:347:                if (send_to_node(guitar->node_id, &mask, 1u)) {
+firmware/marvin/default/src/net/t1s/t1s_link.c:395:    out->node_id = s_nodes[idx].node_id;
+firmware/marvin/default/src/net/t1s/t1s_link.h:7:/* 10BASE-T1S inter-node link (marvin side, LAN8651 MAC-PHY over FLEXCOM3 SPI).
+firmware/marvin/default/src/net/t1s/t1s_link.h:9: * marvin is the PLCA coordinator (node ID 0). The transport is the vendored
+firmware/marvin/default/src/net/t1s/t1s_link.h:14: * Phase 1/2 scope: bring the MAC-PHY up (reset, TC6_Init + TC6Regs_Init with
+firmware/marvin/default/src/net/t1s/t1s_link.h:25:/* True once the MAC-PHY has been configured and data path enabled. */
+firmware/marvin/default/src/net/t1s/t1s_link.h:31:uint8_t  T1SLink_NodeId(void);    /* PLCA coordinator id (0) */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:17:56Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+62	{
+63	    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+64	    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
+65	    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+66	} t1s_node_type_t;
+67	
+68	typedef struct
+69	{
+70	    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+71	    uint8_t         detector_id;  /* detector_state_t.detector_id (T1S_NO_DETECTOR for actuators) */
+72	    t1s_node_type_t type;
+73	} t1s_node_t;
+74	
+75	static const t1s_node_t s_nodes[] = {
+76	    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+77	    { 2u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+78	};
+79	
+80	#define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
+81	
+82	/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+83	static struct {
+84	    uint32_t last_seen_tick;
+85	    uint32_t last_seq;
+86	    bool     seen;
+87	} s_node_rt[T1S_NODE_TABLE_LEN];
+88	
+89	static const char *node_type_name(t1s_node_type_t t)
+90	{
+91	    switch (t) {
+92	        case T1S_NODE_FRETBOARD:     return "detector";
+93	        case T1S_NODE_PHOTODETECTOR: return "detector";
+94	        case T1S_NODE_GUITAR:        return "guitar";
+95	        default:                     return "?";
+96	    }
+97	}
+98	
+99	/* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
+100	static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+101	{
+102	    out[0] = 0x02u;
+103	    out[1] = 0x00u;
+104	    out[2] = 0x00u;
+105	    out[3] = 0x00u;
+106	    out[4] = 0x00u;
+107	    out[5] = node_id;
+108	}
+109	
+110	/* Look up a node by type (NULL if none of that type is configured). */
+111	static const t1s_node_t *node_for_type(t1s_node_type_t type)
+112	{
+113	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+114	        if (s_nodes[i].type == type) {
+115	            return &s_nodes[i];
+116	        }
+117	    }
+118	    return NULL;
+119	}
+120	
+121	/* Look up a node by its source MAC (NULL if unknown). */
+122	static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
+123	{
+124	    if ((mac[0] != 0x02u) || (mac[1] | mac[2] | mac[3] | mac[4])) {
+125	        return NULL;
+126	    }
+127	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+128	        if (s_nodes[i].node_id == mac[5]) {
+129	            return &s_nodes[i];
+130	        }
+131	    }
+132	    return NULL;
+133	}
+134	
+135	/* TX frame staging: TC6_SendRawEthernetPacket keeps a pointer to the buffer
+136	 * until its TX callback fires, so the buffer must stay valid meanwhile. One
+137	 * in-flight frame at a time (guarded by s_tx_busy) suffices for the link's
+138	 * rates. */
+139	static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
+140	static volatile bool s_tx_busy;
+141	
+142	/* Latest-wins outbound command to the guitar, flushed by the service task. */
+143	static volatile uint8_t s_cmd;
+144	static volatile bool    s_cmd_dirty;
+145	
+146	static T1SLink_FrameHandler s_frame_handler;
+147	
+148	/* Traffic counters (read by the console t1s/nodes commands). */
+149	static volatile uint32_t s_tx_count;   /* command frames sent */
+150	static volatile uint32_t s_rx_count;   /* frames received from a known node */
+151	static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
+152	
+153	static TC6_t            *s_tc6;
+154	static volatile bool     s_need_service;
+155	static volatile bool     s_link_up;
+156	
+157	static SemaphoreHandle_t s_svc_sem;
+158	static StaticSemaphore_t s_svc_sem_buf;
+159	
+160	static StackType_t       s_task_stack[T1S_TASK_STACK_WORDS];
+161	static StaticTask_t      s_task_tcb;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:18:30Z)**_
+
+I found the full picture. Node ids are hardcoded per-firmware, and there's one authoritative table in docs:
+
+**Authoritative table:** [docs/t1s-podl-link.md §7.1](docs/t1s-podl-link.md) (§7.1). It's also mirrored in SPEC.md, marvin-fauxmote-link.md, and several journals.
+
+**Where ids live in code today:**
+- marvin coordinator `s_nodes[]` in [t1s_link.c:75-78](firmware/marvin/default/src/net/t1s/t1s_link.c#L75-L78) — fretboard=**1**, guitar=**2**
+- guitar [t1s_follower.c:14](firmware/guitar/config.mcc/src/t1s_follower.c#L14) — `T1S_NODE_ID (2u)`
+- fretboard [t1s_detector.c:14](firmware/fretboard/t1s_detector.c#L14) — `T1S_NODE_ID (1u)`
+- fauxmote [mf_t1s.c](firmware/fauxmote/main/mf_t1s.c) / Kconfig — default 3, range 3–7
+
+So your new scheme (fauxmote 1–2, guitar 3, fretboard 4) **swaps ids on already-working nodes**: guitar 2→3 and fretboard 1→4, plus marvin's coordinator table has to change to match, and fretboard=1 would collide with the new fauxmote=1 until fretboard is moved to 4. It only stays coherent if all of them change together.
+
+The fauxmote change you asked for is small; the question is how far to take the rest right now.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:26Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**How far should I take the renumbering in this pass?**
+
+Options:
+- **Full coordinated renumber** - Change all four now: fauxmote 1-2, guitar 2→3, fretboard 1→4, and marvin's s_nodes[] table + docs, so the whole bus is coherent. Guitar/fretboard/marvin firmware would need re-flashing together.
+- **Fauxmote + docs only** - Change fauxmote to id 1 (range 1-2) and update the docs table to the target scheme, but leave guitar=2/fretboard=1 firmware as-is with a flagged follow-up. Bus not coherent until that follow-up.
+
+
+**Answer:** Fauxmote + docs only
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:34Z)**_
+
+The user chose **fauxmote + docs only**. Let me read the Kconfig and make the fauxmote code changes.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:34Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/main/Kconfig.projbuild`
+
+```text
+1	menu "Fauxmote marvin link"
+2	
+3	    choice FAUXMOTE_LINK_TRANSPORT
+4	        prompt "marvin link transport"
+5	        default FAUXMOTE_LINK_TRANSPORT_T1S
+6	        help
+7	            Selects how the fauxmote talks to marvin. T1S is the operational
+8	            transport (LAN8651 MAC-PHY on the shared 10BASE-T1S PLCA bus); UART
+9	            is the legacy point-to-point link kept as a bring-up fallback.
+10	
+11	        config FAUXMOTE_LINK_TRANSPORT_T1S
+12	            bool "10BASE-T1S (LAN8651 over SPI)"
+13	
+14	        config FAUXMOTE_LINK_TRANSPORT_UART
+15	            bool "UART (legacy point-to-point)"
+16	    endchoice
+17	
+18	    config FAUXMOTE_T1S_NODE_ID
+19	        int "T1S PLCA node id for this fauxmote"
+20	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+21	        default 3
+22	        range 3 7
+23	        help
+24	            PLCA follower id / low MAC octet (02:00:00:00:00:<id>). Coordinator
+25	            is 0, detector 1, guitar 2; controllers take 3+, one per fauxmote.
+26	
+27	    config FAUXMOTE_T1S_PIN_SCLK
+28	        int "SCLK gpio"
+29	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+30	        default 5
+31	
+32	    config FAUXMOTE_T1S_PIN_MOSI
+33	        int "MOSI gpio"
+34	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+35	        default 19
+36	
+37	    config FAUXMOTE_T1S_PIN_MISO
+38	        int "MISO gpio"
+39	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+40	        default 21
+41	
+42	    config FAUXMOTE_T1S_PIN_CS
+43	        int "CS_N gpio"
+44	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+45	        default 33
+46	
+47	    config FAUXMOTE_T1S_PIN_RST
+48	        int "RST_N gpio"
+49	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+50	        default 27
+51	
+52	    config FAUXMOTE_T1S_PIN_IRQ
+53	        int "IRQ_N gpio"
+54	        depends on FAUXMOTE_LINK_TRANSPORT_T1S
+55	        default 32
+56	
+57	endmenu
+58
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/Kconfig.projbuild has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:45Z)**_
+
+Now the fallback default and comments in mf_t1s.c:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/mf_t1s.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:19:56Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check remaining id-3 references in fauxmote code
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -rn "default 3\|id 3\|id=3\|ids 3\|3+\|3–7\|3-7\|00:0k\|node id" firmware/fauxmote/main/mf_t1s.h firmware/fauxmote/main/mf_t1s.c firmware/fauxmote/main/console_cli.c firmware/fauxmote/main/mf_link.c 2>/dev/null
+```
+
+```text
+firmware/fauxmote/main/mf_t1s.c:21: * is node id 0; controllers (fauxmotes) take ids 1-2, one PLCA node each (at
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:20:20Z)**_
+
+fauxmote code is done (node_type=3 controller code is unchanged — that's a type code, not the PLCA id). Now the docs table. Let me re-read the exact §7.1 block to edit it precisely.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:20:20Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+196	### 7.1 Addressing (static — no discovery, keeps the M0+ node dumb)
+197	
+198	Followers are typed by **node class** (top-level [`SPEC.md`](../SPEC.md) §2): **detector**
+199	nodes are RX sources (each maps to a marvin `detector_id`); **guitar** (actuator) nodes are
+200	command TX targets. marvin selects the active node of each class.
+201	
+202	| Node | Class | PLCA ID | MAC (locally administered) | Notes |
+203	|---|---|---|---|---|
+204	| marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
+205	| fretboard | detector | 1 | `02:00:00:00:00:01` | photo-ADC stream → `detector_id` 1; also commands the guitar (id 2) directly |
+206	| guitar | guitar (actuator) | 2 | `02:00:00:00:00:02` | receives the 1-byte command bitmask (from marvin or a detector) |
+207	| fauxmote | controller | 3+ | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote (id build-configurable, default 3) |
+208	| node *k* | (any) | *k* | `02:00:00:00:00:0k` | future detector/guitar/controller variants |
+209	
+210	- One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
+211	  registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
+212	- A **second data ethertype** `0x88B7` carries the fauxmote (controller) channel — the
+213	  mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
+214	  as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
+215	  demultiplexes controller traffic apart from the detector/guitar bitmask.
+216	- A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
+217	  `detector_id` (and the actuator target for TX). The single fretboard keeps
+218	  `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
+219	  enumeration protocol — the table is compiled in.
+220	- The 17-byte fretboard→marvin frame and the 1-byte marvin→fretboard bitmask ride
+221	  inside the Ethernet payload unchanged; marvin demuxes incoming frames by src MAC
+222	  and addresses outgoing ones to a specific node.
+223	
+224	### 7.2 Presence heartbeat
+225	
+226	PLCA has **no node discovery**, so the coordinator can't enumerate who's on the
+227	bus. A lightweight application heartbeat fills that gap: each follower
+228	periodically (≈500 ms) sends a small frame to the coordinator
+229	(`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin routes it
+230	apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
+231	on receipt and reports it via the `nodes` console command (present = a heartbeat
+232	within ~2 s).
+233	
+234	Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller),
+235	`node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives the node
+236	from the src MAC; the payload is informational (seq enables drop detection).
+237	
+238	## 8. Transport coexistence
+239	
+240	The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved; the
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:20:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:20:39Z)**_
+
+Now check marvin-fauxmote-link.md for stale id references, and add a decision-log entry to the fauxmote journal:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:20:41Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check marvin-fauxmote-link.md and journal for id refs
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== marvin-fauxmote-link.md id refs ====="
+grep -n "id 3\|id=3\|default 3\|3–7\|3-7\|node.*3\|follower id" docs/marvin-fauxmote-link.md
+echo "===== journal decision-log head ====="
+grep -n "^| 2026-07-28" firmware/fauxmote/docs/journal.md | head
+```
+
+```text
+===== marvin-fauxmote-link.md id refs =====
+297:  packet. A separate `0x88B6` presence heartbeat (node_type 3 = controller) rides
+===== journal decision-log head =====
+150:| 2026-07-28 | **The marvin link moves onto the shared 10BASE-T1S PLCA bus (LAN8651 MAC-PHY over SPI); UART is retained as a build-flag fallback.** Transport is selected by a Kconfig `choice` (`FAUXMOTE_LINK_TRANSPORT_T1S` default / `_UART`), mirroring marvin's `MARVIN_FRETBOARD_TRANSPORT`. The message layer (`mf_proto.h` TYPE + fixed payload, latest-wins slices, 200 ms watchdog, STATUS uplink) is unchanged and now lives in a transport-neutral `mf_link.c`; each transport backend (`marvin_link.c` UART / `mf_t1s.c` T1S) provides `MarvinLink_Start()` and an `mf_send_fn`. | Puts fauxmote on the same wire as the guitar (id 2) and detector (id 1) followers instead of a dedicated UART, so the coordinator drives every actuator over one bus. Splitting the message layer out keeps the wire semantics byte-for-byte identical across transports — only the framing binding changes (Ethernet FCS replaces `SOF`/`LEN`/`CRC8`). Keeping UART as a one-flag fallback preserves the proven bring-up path. |
+151:| 2026-07-28 | **fauxmote's T1S data channel uses a new dedicated ethertype `0x88B7`; controllers are PLCA node ids 3+ (build-configurable), heartbeat node_type = `3` (controller).** Each mf_proto message = one Ethernet frame `[dst][src][0x88B7][TYPE][payload…]` to the coordinator MAC `02:00:00:00:00:00`; this node's MAC is `02:00:00:00:00:<id>`. Heartbeat stays on `0x88B6` with a new node_type code 3 beside 1=detector, 2=guitar. `CONFIG_FAUXMOTE_T1S_NODE_ID` defaults to 3, range 3–7. | A distinct ethertype keeps the fauxmote channel cleanly demultiplexable from the guitar/detector traffic at the coordinator, and per-node ids/MACs let several fauxmotes share the bus later (one PLCA node each). Reuses the existing heartbeat frame format so the coordinator's presence table just gains a controller type. |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:20:57Z)**_
+
+marvin-fauxmote-link.md:297 is the node_type=3 controller code (unchanged). I'll update the same-day journal decision entry to reflect the final numbering rather than leave a same-day contradiction:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:21:08Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:21:11Z)**_
+
+Let me check whether SPEC.md carries a node table that needs the same update:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:21:13Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check SPEC.md for node id table
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -n "PLCA ID\|node id\|id 1\|id 2\|02:00:00\|fauxmote\|coordinator" SPEC.md | head -20
+```
+
+```text
+42:link](docs/t1s-podl-link.md)) — marvin the PLCA coordinator, the guitar/fretboard nodes
+54:**Node classes (T1S bus direction).** marvin is the PLCA coordinator (id 0); followers are typed, and marvin selects the active one of each class:
+69:| guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower id 2). Working: receives marvin's command over T1S and actuates. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
+74:| fauxmote | [`firmware/fauxmote/SPEC.md`](firmware/fauxmote/SPEC.md) — *parallel proof-of-concept:* ESP32 (Adafruit Feather V2) firmware that emulates a Wiimote + guitar extension over Bluetooth to a real Wii, an alternative to the fretboard's physical button-pressing. Not yet in the runtime path; fretboard stays authoritative. | [`firmware/fauxmote/docs/journal.md`](firmware/fauxmote/docs/journal.md) |
+89:│   ├── fauxmote/                # ESP32 Wiimote emulator (proof-of-concept)
+115:| LAN8651B1 (10BASE-T1S MAC-PHY) | T1S bus link, one per node (marvin coordinator + each follower) over single-pair Ethernet + PoDL | [T1S/PoDL link](docs/t1s-podl-link.md) |
+128:- **Sensing and actuation are separate node classes on the T1S bus.** Detector nodes (e.g. `fretboard`) stream observations; guitar nodes (e.g. `guitar`) actuate. A detector may also *command* a guitar directly (peer-to-peer): the `fretboard`'s on-device model infers the bitmask and sends it to the `guitar` node, while marvin can also command the guitar (its timing pipeline). **The split is live and both ends are on T1S** (2026-06-17): marvin (PLCA coordinator) sends its command to the `guitar` node, and the `fretboard` (T1S-only) streams data to marvin + drives the guitar directly. **Open:** no active-source arbitration yet — both marvin and the fretboard can address the guitar, so only one drives at a time (marvin-side active-detector/active-guitar selection is the follow-up; the fretboard's SW0 is an interim manual arm). Addressing/node-table detail in [`docs/t1s-podl-link.md`](docs/t1s-podl-link.md) §7.1.
+149:| 🚧 | **T1S link** — marvin (PLCA coordinator) ↔ `guitar` actuator node (follower) **working** over 10BASE-T1S (LAN8651 each end): command TX + presence heartbeat + link/`nodes` diagnostics. `fretboard` node (id 1) firmware **written T1S-only** (2026-06-17): streams data to marvin **and** drives the guitar directly (its model infers the bitmask, peer-to-peer); MCC config done. Remaining: fretboard build-wiring + hardware bring-up, active-source arbitration (marvin active-detector/active-guitar selection), and dumb PoDL (power on the pair). [Detail](docs/t1s-podl-link.md) |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:21:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify sdkconfig and code changes
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== sdkconfig.defaults node id ====="
+grep -n "NODE_ID\|T1S" firmware/fauxmote/sdkconfig.defaults
+echo "===== confirm fauxmote code changes ====="
+grep -n "NODE_ID  1\|node id 0; controllers" firmware/fauxmote/main/mf_t1s.c
+grep -n "default 1\|range 1 2\|1-2" firmware/fauxmote/main/Kconfig.projbuild
+```
+
+```text
+===== sdkconfig.defaults node id =====
+33:# marvin link over the shared 10BASE-T1S PLCA bus (LAN8651 MAC-PHY on SPI). The
+35:CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S=y
+===== confirm fauxmote code changes =====
+21: * is node id 0; controllers (fauxmotes) take ids 1-2, one PLCA node each (at
+24:#define CONFIG_FAUXMOTE_T1S_NODE_ID  1
+21:        default 1
+22:        range 1 2
+25:            is 0; controllers (fauxmotes) take 1-2, one per fauxmote (at most
+36:        default 19
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:21:40Z)**_
+
+All changes are in. Summary of this pass (**fauxmote + docs only**, per your choice):
+
+**Fauxmote code**
+- [Kconfig.projbuild](firmware/fauxmote/main/Kconfig.projbuild#L18-L25): `FAUXMOTE_T1S_NODE_ID` now `default 1`, `range 1 2`, help text updated.
+- [mf_t1s.c:20-24](firmware/fauxmote/main/mf_t1s.c#L20-L24): fallback default → 1, comment updated.
+- (`node_type = 3` controller code is unchanged — that's a heartbeat type code, not the PLCA id.)
+
+**Docs**
+- [t1s-podl-link.md §7.1](docs/t1s-podl-link.md): the node table is now the canonical **target** scheme — 0 marvin, 1–2 fauxmote(s), 3 guitar, 4 fretboard, 5 beatbox, 6 lemmy, 7 lightshow — with a bold transition note that guitar/fretboard/marvin firmware still run old ids (2/1) and must be renumbered together as a follow-up, and that a default-id-1 fauxmote collides with the fretboard's current id 1 (use id 2 or renumber fretboard first before co-bussing).
+- Journal: added a decision-log entry for the renumber and marked the earlier same-day id-3 entry as superseded.
+
+**Left unchanged (correctly):** SPEC.md still says guitar id 2 / fretboard id 1 — that matches the flashed firmware, so it stays accurate; §7.1 is the pointer to the target scheme.
+
+**Flagged follow-up (not done):** renumber guitar 2→3, fretboard 1→4, and marvin's `s_nodes[]` table + re-flash all three together.
+
+Want me to commit this? (You said "comment and commit" last time — I won't commit this one until you confirm.)
+
+---
+
+_**User (2026-07-29 00:22:15Z)**_
+
+commit this
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:22:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage the renumber changes
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/fauxmote/main/Kconfig.projbuild firmware/fauxmote/main/mf_t1s.c \
+        docs/t1s-podl-link.md firmware/fauxmote/docs/journal.md
+git status --short --untracked-files=no | grep -v "^ "
+```
+
+```text
+M  docs/t1s-podl-link.md
+M  firmware/fauxmote/docs/journal.md
+M  firmware/fauxmote/main/Kconfig.projbuild
+M  firmware/fauxmote/main/mf_t1s.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:22:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit the renumber change
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -m "$(cat <<'EOF'
+fauxmote: renumber T1S PLCA ids — controllers take 1-2
+
+Adopt the target bus node table (docs/t1s-podl-link.md §7.1): coordinator 0,
+fauxmote(s) 1-2 (at most two), guitar 3, fretboard 4, beatbox 5, lemmy 6,
+lightshow 7. CONFIG_FAUXMOTE_T1S_NODE_ID now defaults to 1, range 1-2.
+
+This pass touches fauxmote + docs only. The already-flashed guitar (id 2) and
+fretboard (id 1) firmware plus marvin's coordinator node table still run the
+old ids; renumbering those three to 3/4 is a coordinated follow-up (all
+re-flash together). Until then a default-id-1 fauxmote collides with the
+fretboard's current id 1 — use id 2 or renumber the fretboard first before
+co-bussing. The §7.1 table carries this transition note; heartbeat node_type
+3 (controller) is unchanged.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+EOF
+)" && git log --oneline -1
+```
+
+```text
+[gui 06e9664] fauxmote: renumber T1S PLCA ids — controllers take 1-2
+ 4 files changed, 25 insertions(+), 11 deletions(-)
+06e9664 fauxmote: renumber T1S PLCA ids — controllers take 1-2
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:22:29Z)**_
+
+Committed as `06e9664` on `gui` — the 4 fauxmote+docs files, nothing unrelated staged.
+
+The flagged follow-up (guitar 2→3, fretboard 1→4, marvin `s_nodes[]`, re-flash together) is recorded in the §7.1 transition note and the journal for whenever you take that on.
+
+---
+
+_**User (2026-07-29 00:23:18Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+update guitar node
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:23:34Z)**_
+
+Renumbering the guitar node to id 3 has to stay coherent with marvin's coordinator table (which addresses the guitar by id) — otherwise marvin talks to a node that isn't there. Let me look at both ends.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:23:34Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/config.mcc/src/t1s_follower.c`
+
+```text
+1	#include "t1s_follower.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	#include <stdio.h>
+7	
+8	#include "definitions.h"   /* SERCOM0_SPI_*, SERCOM1_USART_*, EIC_*, PORT macros, CMSIS */
+9	
+10	#include "tc6.h"
+11	#include "tc6-regs.h"
+12	
+13	/* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
+14	#define T1S_NODE_ID         (2u)
+15	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+16	#define T1S_INSTANCE        (0u)
+17	
+18	#define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
+19	#define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+20	#define T1S_ETH_HDR_LEN     (14u)
+21	#define T1S_CMD_BIT_MASK    (0x7Fu)  /* 5 frets + 2 strum */
+22	
+23	/* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
+24	 * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
+25	#define T1S_HB_INTERVAL_MS  (500u)
+26	#define T1S_HB_VERSION      (1u)
+27	#define T1S_HB_TYPE_GUITAR  (2u)     /* 1 = detector, 2 = guitar (shared codes) */
+28	#define T1S_HB_LEN          (8u)
+29	
+30	/* Coordinator-assigned MAC for this node: 02:00:00:00:00:02. */
+31	static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+32	
+33	/* Coordinator (marvin) MAC: 02:00:00:00:00:00 — heartbeat destination. */
+34	static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+35	
+36	static TC6_t            *s_tc6;
+37	static volatile bool     s_need_service;
+38	static volatile bool     s_link_up;
+39	static volatile bool     s_spi_busy;
+40
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:23:49Z)**_
+
+Guitar node_type stays 2 (that's a heartbeat type code, not the PLCA id). Now marvin's coordinator table and all the doc references:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:23:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find guitar id-2 references in marvin code and docs
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== marvin s_nodes guitar entry ====="
+grep -n "T1S_NODE_GUITAR\|2u,\|guitar" firmware/marvin/default/src/net/t1s/t1s_link.c | head
+echo
+echo "===== 'id 2' / guitar-2 refs in docs ====="
+grep -rn "guitar (id 2)\|id 2\|:00:02\|follower id 2\|guitar.*id.*2\|id=2" docs/t1s-podl-link.md docs/marvin-fauxmote-link.md SPEC.md
+```
+
+```text
+===== marvin s_nodes guitar entry =====
+54:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+57: * Detector nodes feed a detector-state bus id (RX source); guitar (actuator)
+65:    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+77:    { 2u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+94:        case T1S_NODE_GUITAR:        return "guitar";
+142:/* Latest-wins outbound command to the guitar, flushed by the service task. */
+336:        /* Flush the latest pending command to the active guitar (actuator)
+338:         * the API. (Single guitar today; an active-guitar selector goes here
+339:         * when multiple guitar nodes share the bus.) */
+341:            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+
+===== 'id 2' / guitar-2 refs in docs =====
+docs/t1s-podl-link.md:102:   - command source → guitar (id 2): the 1-byte button bitmask — sent by marvin
+docs/t1s-podl-link.md:220:> default-id fauxmote with the fretboard yet — pick id 2, or renumber the fretboard first.
+docs/t1s-podl-link.md:261:(id 2) over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on
+docs/t1s-podl-link.md:270:  directly to the guitar (id 2). MCC config done. **Remaining:** build-wiring + on-
+SPEC.md:69:| guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower id 2). Working: receives marvin's command over T1S and actuates. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
+SPEC.md:129:- **The marvin↔node link runs on 10BASE-T1S (built; PoDL planned).** A LAN8651B1 MAC-PHY at each end over SPI + the OPEN Alliance TC6 driver + a minimal L2 header (no IP stack); the existing 1-byte/17-byte frame formats ride inside the Ethernet payload unchanged. **Working today between marvin and the `guitar` node** (command + presence heartbeat + diagnostics); the fretboard detector follows. Motivation, in order: PoDL would carry power *and* data on one pair; better noise/cable tolerance; PLCA multidrop headroom; demonstrating 10BASE-T1S + PoDL inside a larger Microchip system. Bandwidth is not a driver (UART had ~12× headroom). **PoDL** (dumb, fixed-voltage, no SCCP) is design-direction only — not built; the link is separately powered for now. Detail in [`docs/t1s-podl-link.md`](docs/t1s-podl-link.md).
+SPEC.md:149:| 🚧 | **T1S link** — marvin (PLCA coordinator) ↔ `guitar` actuator node (follower) **working** over 10BASE-T1S (LAN8651 each end): command TX + presence heartbeat + link/`nodes` diagnostics. `fretboard` node (id 1) firmware **written T1S-only** (2026-06-17): streams data to marvin **and** drives the guitar directly (its model infers the bitmask, peer-to-peer); MCC config done. Remaining: fretboard build-wiring + hardware bring-up, active-source arbitration (marvin active-detector/active-guitar selection), and dumb PoDL (power on the pair). [Detail](docs/t1s-podl-link.md) |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:24:23Z)**_
+
+This is the coordinated guitar renumber (2→3): guitar firmware + marvin's coordinator table + docs + journals. Let me first sweep the guitar/marvin subprojects for every id-2 reference so nothing is missed.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:24:26Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Sweep guitar/marvin for id-2 references
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== guitar subproject id-2 refs ====="
+grep -rn "id 2\|id=2\|:00:02\|NODE_ID\|follower id\|id/8\|2u" firmware/guitar/config.mcc/src/t1s_follower.c firmware/guitar/SPEC.md 2>/dev/null
+echo
+echo "===== marvin journal / spec guitar id refs (informational) ====="
+grep -rn "guitar.*id 2\|follower id 2\|id 2.*guitar\|:00:02" firmware/marvin/docs/journal.md firmware/marvin/docs/spec.md 2>/dev/null | head
+```
+
+```text
+===== guitar subproject id-2 refs =====
+firmware/guitar/config.mcc/src/t1s_follower.c:13:/* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
+firmware/guitar/config.mcc/src/t1s_follower.c:14:#define T1S_NODE_ID         (2u)
+firmware/guitar/config.mcc/src/t1s_follower.c:27:#define T1S_HB_TYPE_GUITAR  (2u)     /* 1 = detector, 2 = guitar (shared codes) */
+firmware/guitar/config.mcc/src/t1s_follower.c:30:/* Coordinator-assigned MAC for this node: 02:00:00:00:00:02. */
+firmware/guitar/config.mcc/src/t1s_follower.c:31:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+firmware/guitar/config.mcc/src/t1s_follower.c:34:static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+firmware/guitar/config.mcc/src/t1s_follower.c:106:    BTN_APPLY(mask, 2u, FRET_YELLOW);
+firmware/guitar/config.mcc/src/t1s_follower.c:178:    s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
+firmware/guitar/config.mcc/src/t1s_follower.c:220:    /* Configure the LAN8651 + PLCA as follower id 2. Not promiscuous — the
+firmware/guitar/config.mcc/src/t1s_follower.c:224:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+firmware/guitar/config.mcc/src/t1s_follower.c:242:                       "PLCA follower id=%u/%u\r\n",
+firmware/guitar/config.mcc/src/t1s_follower.c:244:                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+firmware/guitar/config.mcc/src/t1s_follower.c:346:uint8_t T1SFollower_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+firmware/guitar/SPEC.md:84:- **Node id 2**, MAC `02:00:00:00:00:02` (addressing scheme: [T1S/PoDL link](../../docs/t1s-podl-link.md) §7.1).
+firmware/guitar/SPEC.md:100:   `TC6Regs_Init` as follower id 2. Gate: read chip revision + PLCA *follower* status.
+firmware/guitar/SPEC.md:126:| ✅ | **G1** — T1S follower bring-up on hardware: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` |
+
+===== marvin journal / spec guitar id refs (informational) =====
+firmware/marvin/docs/journal.md:203:**T1S inter-node link — built and working (marvin ↔ guitar).** marvin is the PLCA **coordinator** (node 0) on a 10BASE-T1S bus (LAN8651 over FLEXCOM4 SPI); hand-authored stack in `default/src/net/t1s/`. It sends the actuator command over T1S to the `guitar` follower node (id 2), which actuates the Wii GPIOs (guitar G1+G2 proven). Followers announce presence via a heartbeat (ethertype `0x88B6`); the `t1s` and `nodes` console commands report link/credits/per-node presence. Transport is behind `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` (T1S default on the `t1s` branch). The `fretboard` node (id 1) firmware is now **written, T1S-only** (fretboard journal 2026-06-17): it streams its 17-byte frame to marvin **and** drives the `guitar` node directly — its on-device model infers the bitmask and sends it peer-to-peer to `02:..:02`. marvin's RX side needed no changes — `fretboard_link.c`'s T1S frame handler already parses the frame from node id 1 (`DETECTOR_ADC_FRETBOARD`) and the node-table + heartbeat-presence demux already cover it. **Next (marvin side):** **active-source arbitration** — both marvin (timing pipeline) and the fretboard now address the guitar (`02:..:02`), so marvin needs active-detector/active-guitar selection to ensure exactly one source drives at a time (the fretboard's SW0 is an interim manual arm; until then, don't run marvin's timing pipeline to the guitar while the fretboard is armed). Then fretboard hardware bring-up. PoDL is design-direction only. Detail in [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); decision log entry 2026-06-17.
+firmware/marvin/docs/journal.md:252:| 2026-06-17 | **T1S actuator command now targets the guitar node (id 2), not the fretboard (id 1).** `net/t1s/t1s_link.c`: added `T1S_NODE_GUITAR` (id 2, MAC `02:00:00:00:00:02`, `detector_id = T1S_NO_DETECTOR`) to the node table; the service-task command flush now sends to `node_for_type(T1S_NODE_GUITAR)`. Renamed `T1SLink_SendToFretboard` → `T1SLink_SendToGuitar` (one caller, `fretboard_link.c`). The fretboard node (id 1) stays in the table as the **detector/RX** source for when it moves to T1S; only the actuator TX target moved. | The actuation role split out to the dedicated `guitar` node, which is now proven on the bus (guitar G1: `LAN8651 up … PLCA follower id=2/8`). marvin was still addressing its 1-byte command to the fretboard node; with the guitar running non-promiscuous (MAC-filtered), commands had to be re-pointed at `02:..:02` to actuate it. Single guitar today, so the target is `node_for_type(T1S_NODE_GUITAR)`; an **active-guitar selector** (mirror of `Detector_SetActive`) is deferred until multiple guitar nodes share the bus. RX/ADC over T1S is unaffected (no T1S detector node exists yet — the real fretboard is still UART). The "FretboardLink" module keeps its name for now (broader rename deferred). |
+firmware/marvin/docs/journal.md:1179:- Re-pointed the T1S actuator command at the guitar node (id 2) now that it's proven on the bus — see today's decision-log entry. Verified G2 end-to-end (marvin's command drives the guitar's Wii button over T1S).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:24:59Z)**_
+
+The guitar is also addressed by the fretboard (peer-to-peer actuation) and marvin. Let me check whether the fretboard hardcodes the guitar's destination MAC — if so, moving the guitar to id 3 must update that target too, or fretboard→guitar breaks.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:02Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check fretboard guitar destination MAC
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== fretboard's guitar-target MAC / id ====="
+grep -n "guitar\|GUITAR\|:00:02\|0x02\|dst\|DST\|SendTo\|02u" firmware/fretboard/t1s_detector.c | head -30
+```
+
+```text
+===== fretboard's guitar-target MAC / id =====
+17:#define T1S_GUITAR_ID       (2u)     /* actuator node this detector drives */
+27:/* Re-send the current guitar command this often even if unchanged, so a dropped
+28: * command frame self-heals (the guitar applies latest-wins, holds otherwise). */
+35:#define T1S_HB_TYPE_DETECTOR (1u)    /* 1 = detector, 2 = guitar (shared codes) */
+39:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+42:static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+44:/* Guitar (actuator) node MAC: 02:00:00:00:00:02 — command destination. */
+45:static const uint8_t s_guitar_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_GUITAR_ID };
+54:static volatile uint32_t s_cmd_count;   /* command frames sent to the guitar */
+73:/* Command TX (to guitar). Set from the main loop (T1SDetector_SetCommand); flushed
+140:/* Fill the constant Ethernet header of a staging buffer (dst, src, ethertype). */
+141:static void fill_eth_header(uint8_t *frame, const uint8_t *dst, uint16_t ethertype)
+143:    memcpy(&frame[0], dst, 6u);
+191:/* Flush the latest guitar command (1-byte bitmask) if a (re)send is pending. */
+247:    fill_eth_header(s_cmd_frame, s_guitar_mac, T1S_ETHERTYPE);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:22Z)**_
+
+Confirmed — the fretboard hardcodes `T1S_GUITAR_ID (2u)` as its peer-to-peer actuation target ([t1s_detector.c:17](firmware/fretboard/t1s_detector.c#L17)). So "update guitar node" to id 3 means updating everywhere the guitar is *addressed*: the guitar firmware itself, marvin's table, and the fretboard's guitar-target. The fretboard's own id stays 1 (still deferred). Let me make the coherent set of edits.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:22Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ guitar t1s_follower.c: T1S_NODE_ID 2→3 + comments
+- [ ] 🌡️ marvin t1s_link.c: s_nodes[] guitar entry 2→3
+- [ ] 🌡️ fretboard t1s_detector.c: T1S_GUITAR_ID 2→3 + comments
+- [ ] 🌡️ docs: t1s-podl-link.md + SPEC.md + guitar SPEC.md id refs
+- [ ] 🌡️ journals: guitar, marvin, fretboard decision entries
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:25Z)**_
+
+Guitar firmware:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/config.mcc/src/t1s_follower.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:33Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/config.mcc/src/t1s_follower.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:39Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/config.mcc/src/t1s_follower.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:44Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ guitar t1s_follower.c: T1S_NODE_ID 2→3 + comments
+- [⚡] 🌡️ marvin t1s_link.c: s_nodes[] guitar entry 2→3
+- [ ] 🌡️ fretboard t1s_detector.c: T1S_GUITAR_ID 2→3 + comments
+- [ ] 🌡️ docs: t1s-podl-link.md + SPEC.md + guitar SPEC.md id refs
+- [ ] 🌡️ journals: guitar, marvin, fretboard decision entries
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:47Z)**_
+
+Marvin coordinator table:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:54Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fretboard/t1s_detector.c`
+
+```text
+14	#define T1S_NODE_ID         (1u)
+15	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+16	#define T1S_INSTANCE        (0u)
+17	#define T1S_GUITAR_ID       (2u)     /* actuator node this detector drives */
+18	
+19	/* IRQ_N external-interrupt line. Must match the MCC EIC pin wired to T1S_IRQ_N. */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:25:59Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/t1s_detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/t1s_detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:09Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ guitar t1s_follower.c: T1S_NODE_ID 2→3 + comments
+- [X] 🌡️ marvin t1s_link.c: s_nodes[] guitar entry 2→3
+- [X] 🌡️ fretboard t1s_detector.c: T1S_GUITAR_ID 2→3 + comments
+- [⚡] 🌡️ docs: t1s-podl-link.md + SPEC.md + guitar SPEC.md id refs
+- [ ] 🌡️ journals: guitar, marvin, fretboard decision entries
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:15Z)**_
+
+Now docs. First the t1s-podl-link.md transition note and inline guitar-id refs:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+98	   so the host prepends a fixed 14-byte Ethernet header (dest MAC, src MAC,
+99	   ethertype) to the payload. For this link the MACs are hardcoded and a custom
+100	   ethertype carries the existing frame formats verbatim:
+101	   - detector (fretboard, id 1) → marvin: the 17-byte data-stream frame (see fretboard SPEC).
+102	   - command source → guitar (id 2): the 1-byte button bitmask — sent by marvin
+103	     (timing pipeline) and/or directly by the active detector (fretboard's model,
+104	     peer-to-peer).
+105	
+106	   17 B + 14 B header = 31 B → a single chunk. The 1-byte command likewise. The
+107	   existing UART framing (`0x03 … 0xFC`, `sample_seq`, etc.) can ride unchanged
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:39Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+255	actuator command now targets the guitar node (`T1SLink_SendToGuitar`). UART and
+256	T1S transports live behind a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build flag**.
+257	The `t1s` branch builds **T1S by default**; UART stays one (commented) line away in
+258	`user.cmake` as a fallback during the fretboard's own transition.
+259	
+260	## 9. Decisions & open items
+261	
+262	**Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower
+263	(id 2) over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on
+264	both ends. The earlier prerequisites (a FLEXCOM/SERCOM in SPI-master mode via MCC;
+265	the `oa-tc6-lib` submodule) are resolved.
+266	
+267	Open / future:
+268	
+269	- **Fretboard node (id 1) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
+270	  T1S-only). Sense+actuate: streams the 17-byte data frame to marvin (RX/detector path
+271	  + node-table slot already in place) **and** sends its model's inferred command
+272	  directly to the guitar (id 2). MCC config done. **Remaining:** build-wiring + on-
+273	  hardware bring-up (banner `LAN8651 up … PLCA follower id=1/8`; confirm the
+274	  `FRETBOARD_RAW` rate holds ≈240 Hz — data + command + heartbeat now share the node's
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:26:56Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:00Z)**_
+
+Now top-level SPEC.md and guitar SPEC.md:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:05Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/SPEC.md`
+
+```text
+82	[`third_party/oa-tc6-lib`](../../third_party/oa-tc6-lib) and the same L2 framing:
+83	
+84	- **Node id 2**, MAC `02:00:00:00:00:02` (addressing scheme: [T1S/PoDL link](../../docs/t1s-podl-link.md) §7.1).
+85	- `TC6_Init` + `TC6Regs_Init(enablePlca=true, nodeId=2, nodeCount=8, …)` — follower, **not**
+86	  coordinator.
+87	- Custom ethertype `0x88B5`; marvin's command rides as a 1-byte payload inside the 14-byte
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:17Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/SPEC.md`
+
+```text
+98	
+99	1. **Bring-up:** reset the LAN8651 (`RST` pulse), configure SPI (Mode 0), `TC6_Init` +
+100	   `TC6Regs_Init` as follower id 2. Gate: read chip revision + PLCA *follower* status.
+101	2. **RX path:** TC6 delivers the marvin command frame → validate ethertype `0x88B5` → take the
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:23Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:33Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/SPEC.md`
+
+```text
+124	|---|---|
+125	| ✅ | **G0** — guitar MCC project: SERCOM0 SPI (Mode 0), EIC EXTINT13 (falling) on `IRQ_N`=PA13, `CS`=PA15 / `RST`=PA14 GPIO, 7 button GPIOs, SERCOM1 debug UART (CS/IRQ_N reassigned to match wiring) |
+126	| ✅ | **G1** — T1S follower bring-up on hardware: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` |
+127	| ✅ | **G2** — end-to-end: marvin's command over T1S → the addressed Wii GPIO asserts |
+128	| ✅ | **CLI** — `t1s`/`btn`/`tap`/`id`/`plca` on the debug UART (embedded-cli). Drives the Wii-guitar GPIOs locally and reports T1S link/sync/PLCA status. |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify no stale guitar id-2 addressing refs remain
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== remaining guitar id-2 addressing refs (should be none except node_type code / historical) ====="
+grep -rn ":00:02\|id 2\|id=2\|nodeId=2\|follower id 2" docs/t1s-podl-link.md docs/marvin-fauxmote-link.md SPEC.md firmware/guitar/SPEC.md firmware/fretboard/SPEC.md 2>/dev/null | grep -vi "node_type\|shared codes\|id=2/8"
+```
+
+```text
+===== remaining guitar id-2 addressing refs (should be none except node_type code / historical) =====
+docs/t1s-podl-link.md:217:> peer-to-peer guitar target). The guitar was last *flashed/verified* at its old id 2, so
+docs/t1s-podl-link.md:222:> default-id fauxmote with the fretboard yet — pick id 2, or renumber the fretboard first.
+docs/t1s-podl-link.md:264:ends. First brought up at guitar id 2; renumbered to the target **id 3** in source
+firmware/fretboard/SPEC.md:20:- **commands** the [`guitar`](../guitar/SPEC.md) node (id 2) directly with the
+firmware/fretboard/SPEC.md:143:  1-byte bitmask to the **guitar node** (id 2, MAC `02:..:02`, ethertype `0x88B5`).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:55Z)**_
+
+Two fretboard SPEC references to the guitar target still say id 2 — the fretboard code now targets id 3, so fix those:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:27:56Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fretboard/SPEC.md`
+
+```text
+18	- **streams** the 17-byte data frame (ADC scan + the driven bitmask) to the marvin
+19	  coordinator — logging / edge-ai training; and
+20	- **commands** the [`guitar`](../guitar/SPEC.md) node (id 2) directly with the
+21	  inferred bitmask — peer-to-peer actuation; marvin coordinates/logs but is out of
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:01Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:05Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fretboard/SPEC.md`
+
+```text
+141	  flight. A frame dropped while busy shows as a `sample_seq` gap.
+142	- **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
+143	  1-byte bitmask to the **guitar node** (id 2, MAC `02:..:02`, ethertype `0x88B5`).
+144	  Sent edge-triggered + re-sent every 50 ms so a dropped command self-heals; the
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:16Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ guitar t1s_follower.c: T1S_NODE_ID 2→3 + comments
+- [X] 🌡️ marvin t1s_link.c: s_nodes[] guitar entry 2→3
+- [X] 🌡️ fretboard t1s_detector.c: T1S_GUITAR_ID 2→3 + comments
+- [X] 🌡️ docs: t1s-podl-link.md + SPEC.md + guitar/fretboard SPEC.md id refs
+- [⚡] 🌡️ journals: guitar, marvin, fretboard decision entries
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:20Z)**_
+
+Now the journals. Let me find the decision-log section headers in the guitar, marvin, and fretboard journals:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find decision-log sections in journals
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+for f in firmware/guitar/docs/journal.md firmware/marvin/docs/journal.md firmware/fretboard/docs/journal.md; do
+  echo "===== $f ====="
+  grep -n "## Decision log\|## Decisions\|^| Date\|^|---" "$f" | head -4
+done
+```
+
+```text
+===== firmware/guitar/docs/journal.md =====
+34:## Decision log
+36:| Date | Decision | Rationale |
+37:|------|----------|-----------|
+===== firmware/marvin/docs/journal.md =====
+222:## Decision log
+224:| Date | Decision | Rationale |
+225:|------|----------|-----------|
+===== firmware/fretboard/docs/journal.md =====
+37:## Decision log
+39:| Date | Decision | Rationale |
+40:|------|----------|-----------|
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/docs/journal.md`
+
+```text
+36	| Date | Decision | Rationale |
+37	|------|----------|-----------|
+38	| 2026-07-23 | **Port to the ATE_2026 board: active-high LED indicators, not open-drain Wii actuators.** Output stage flips from software open-drain (`Clear`+`OutputEnable` assert / `InputEnable` release) to **active-high push-pull** (`Set` = lit / `Clear` = off) in the `BTN_APPLY` macro; strum up/down (bits 5, 6) collapse to a single **STRUM** indicator. Pins remapped (see session log): control `CS`=PA06, `RST`=PA03, `IRQ_N`=PA02 on **EIC EXTINT2** (falling); LEDs `FRET_GREEN`=PA12, `FRET_RED`=PA11, `FRET_YELLOW`=PA10, `FRET_BLUE`=PA09, `FRET_ORANGE`=PA08, `STRUM`=PA13. The `BTN_APPLY` / `buttons_*` "button" naming is kept intentionally. | The new board only exposes status LEDs (no Wiimote), and the doc specifies active-high drive. Keeping the button naming leaves room for a future board that carries both Wii actuators and LEDs, so the command → output mapping code stays shared. Done via the mplab-mcc MCP server (no hand-edited MCC/generated files). |
+39	| 2026-06-16 | **Wii-guitar actuation becomes its own subproject (`guitar`), split out of fretboard.** PIC32CM PL10, T1S PLCA **follower** node id 2 (MAC `02:00:00:00:00:02`), receives a 1-byte bitmask over ethertype `0x88B5` and drives 7 open-drain Wii-guitar GPIOs. Sensing stays on `fretboard` (detector node). Actuation logic is a verbatim port of fretboard's `cmd_receive.c`. The link reuses `oa-tc6-lib` + the shared L2 framing as the mirror of marvin's coordinator glue. **Bare-metal** (no FreeRTOS on PL10): TC6 serviced from the main loop / tick; `IRQ_N` on a SERCOM-EIC pin. | The T1S bus was built for multiple node classes; separating detector from actuator lets multiple guitar/detector variants coexist on one PLCA pair with marvin selecting the active of each. Same MCU family as fretboard keeps the "OA SPI driver scales across the family" demo and minimizes bring-up. Greg spins up a *fresh* guitar MCC project (not a fork of fretboard). |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:40Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:44Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+224	| Date | Decision | Rationale |
+225	|------|----------|-----------|
+226	| 2026-07-23 | **fauxmote link moved to a dedicated FLEXCOM5 USART (PA16/PA15); fauxmote made transport-independent.** New FLEXCOM5 USART in MCC (AIC source 14, ring-buffer, config byte-identical to FLEXCOM1; baud→1 Mbaud at runtime via `SerialSetup`). `fauxmote_link.c/.h` is a mechanical `FLEXCOM1_USART_*`→`FLEXCOM5_USART_*` rename. Dropped every `MARVIN_FRETBOARD_TRANSPORT` guard that only existed to keep fauxmote off UART-guitar builds (`app.c` init, `fretboard_link.c` mirror tap, `console.c` `fauxmote` cmd, `game_controller.c` `ensure_wii_connected`). Commits `a36ccdd` (MCC) + `1872a9c` (app); verified on hardware. | fauxmote borrowing FLEXCOM1 tied it to the T1S guitar build (FLEXCOM1 was only free there). A dedicated peripheral removes the contention so fauxmote runs on every build — and since **every build drives a Wii through fauxmote** (Greg), the Wii-connect pre-flight should always run, not just on T1S. The remaining `MARVIN_FRETBOARD_TRANSPORT` guards are the real guitar UART-vs-T1S actuator split (unchanged). |
+227	| 2026-07-23 | **T1S host SPI moved FLEXCOM4 → FLEXCOM3 (board rework), CS0 → CS1.** New pin map: MOSI PC22, MISO PC23, nCS PC24, SCK PC26 (`FLEXCOM3_IO0/1/4/2`); `T1S_IRQ_N` PB18, `T1S_RST` PA17; AIC source 13→8. App change was a pure `FLEXCOM4_SPI_*`→`FLEXCOM3_SPI_*` rename in `t1s_link.c`; CS is hardware-driven (`FLEX_SPI_MR.PCS=NPCS1`/`CSR[1]`), so CS0→CS1 needed no app change. Re-applied patch #11 (`plib_aic.c`) after regen. Commits `70b1fc7` + `9ce4fcf` (+ `5faa2b7` MISO pull-down); verified driving the guitar on hardware. | Board rework freed the FLEXCOM4 pins for other use and put T1S on PORTC. Keeping the wrapper CS-agnostic (hardware PCS, no manual nCS toggling) is what made the CS0→CS1 move a non-event in firmware. The regen dropped the MISO absent-chip pull-down; re-created on PC23 (`5faa2b7`). |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:28:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fretboard/docs/journal.md`
+
+```text
+39	| Date | Decision | Rationale |
+40	|------|----------|-----------|
+41	| 2026-06-17 | **Keep the command path on the 240 Hz tick cadence (do NOT decouple it to immediate main-loop send).** The model emits one bitmask per 240 Hz sample; the ISR gates it into `s_current_cmd` each tick and the main loop sends that, so actuation is quantized to the ~4.2 ms grid. Leave it. To reduce the *new* T1S transport delay instead, raise the host SPI clock (1 MHz → ~12 MHz, both fretboard and guitar; SERCOM `BAUD=0` = GCLK/2 = 12 MHz) and/or fold a constant offset into the training labels — **not** by changing the command-to-tick coupling. | The model's timing was characterized against this inference→tick→actuate pipeline (the photo-dip→strum delay is baked into the distillation labels, so its output index is fit to *this* cadence). Decoupling would shift every actuation earlier by up to a tick **and** replace the deterministic 240 Hz grid with main-loop jitter — for a model trained on 240 Hz-sampled data, consistent grid-aligned latency beats lower-but-variable latency. Separately, the T1S move already changed timing vs. the old `MODEL_DRIVEN` *local-GPIO* standalone: actuation is now ~1.5–2 ms **later** (host-SPI chunk each end @ 1 MHz dominates; PLCA media access is sub-ms). That transport delta — not the tick — is the real new variable, so the knob is SPI speed (12 MHz removes ~1 ms) + re-validating gameplay timing on the T1S rig (scope fretboard `SetCommand`→guitar apply, check hit rate). Worst-case command latency today ≈ 6–7 ms (≈4.2 ms tick + ~1.5–2 ms transport); ~2–3 ms typical. See edge-ai journal + [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:14Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ guitar t1s_follower.c: T1S_NODE_ID 2→3 + comments
+- [X] 🌡️ marvin t1s_link.c: s_nodes[] guitar entry 2→3
+- [X] 🌡️ fretboard t1s_detector.c: T1S_GUITAR_ID 2→3 + comments
+- [X] 🌡️ docs: t1s-podl-link.md + SPEC.md + guitar/fretboard SPEC.md id refs
+- [X] 🌡️ journals: guitar, marvin, fretboard decision entries
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:30Z)**_
+
+The marvin "Current focus" section (line 203) still describes the guitar as id 2 — that's meant to reflect current state, so update it (leaving historical session/decision entries intact):
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:31Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+203	**T1S inter-node link — built and working (marvin ↔ guitar).** marvin is the PLCA **coordinator** (node 0) on a 10BASE-T1S bus (LAN8651 over FLEXCOM4 SPI); hand-authored stack in `default/src/net/t1s/`. It sends the actuator command over T1S to the `guitar` follower node (id 2), which actuates the Wii GPIOs (guitar G1+G2 proven). Followers announce presence via a heartbeat (ethertype `0x88B6`); the `t1s` and `nodes` console commands report link/credits/per-node presence. Transport is behind `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` (T1S default on the `t1s` branch). The `fretboard` node (id 1) firmware is now **written, T1S-only** (fretboard journal 2026-06-17): it streams its 17-byte frame to marvin **and** drives the `guitar` node directly — its on-device model infers the bitmask and sends it peer-to-peer to `02:..:02`. marvin's RX side needed no changes — `fretboard_link.c`'s T1S frame handler already parses the frame from node id 1 (`DETECTOR_ADC_FRETBOARD`) and the node-table + heartbeat-presence demux already cover it. **Next (marvin side):** **active-source arbitration** — both marvin (timing pipeline) and the fretboard now address the guitar (`02:..:02`), so marvin needs active-detector/active-guitar selection to ensure exactly one source drives at a time (the fretboard's SW0 is an interim manual arm; until then, don't run marvin's timing pipeline to the guitar while the fretboard is armed). Then fretboard hardware bring-up. PoDL is design-direction only. Detail in [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); decision log entry 2026-06-17.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:39Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:44Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated. All occurrences were successfully replaced. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:54Z)**_
+
+Final verification sweep — confirm the only remaining guitar `id 2` / `:00:02` references are intentional (node_type code, historical milestone/session entries):
+
+_**Agent (claude-opus-4-8 2026-07-29 00:29:58Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify guitar addressing is coherent at id 3
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "===== code: guitar addressing (should be id 3 / :03 now) ====="
+grep -rn "NODE_ID\|GUITAR_ID\|3u, T1S_NO_DETECTOR" firmware/guitar/config.mcc/src/t1s_follower.c firmware/fretboard/t1s_detector.c firmware/marvin/default/src/net/t1s/t1s_link.c | grep -i "node_id\|guitar_id\|no_detector"
+echo
+echo "===== any leftover guitar :00:02 / nodeId=2 addressing in code ====="
+grep -rn ":00:02\|nodeId=2\|GUITAR_ID       (2" firmware/guitar firmware/fretboard firmware/marvin/default/src/net 2>/dev/null | grep -v "node_type\|HB_TYPE"
+```
+
+```text
+===== code: guitar addressing (should be id 3 / :03 now) =====
+firmware/guitar/config.mcc/src/t1s_follower.c:14:#define T1S_NODE_ID         (3u)
+firmware/guitar/config.mcc/src/t1s_follower.c:31:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+firmware/guitar/config.mcc/src/t1s_follower.c:178:    s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
+firmware/guitar/config.mcc/src/t1s_follower.c:224:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+firmware/guitar/config.mcc/src/t1s_follower.c:244:                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+firmware/guitar/config.mcc/src/t1s_follower.c:346:uint8_t T1SFollower_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+firmware/marvin/default/src/net/t1s/t1s_link.c:20:#define T1S_NODE_ID         (0u)
+firmware/marvin/default/src/net/t1s/t1s_link.c:54:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+firmware/marvin/default/src/net/t1s/t1s_link.c:77:    { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+firmware/marvin/default/src/net/t1s/t1s_link.c:265:    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+firmware/marvin/default/src/net/t1s/t1s_link.c:328:                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
+firmware/marvin/default/src/net/t1s/t1s_link.c:382:uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+firmware/fretboard/t1s_detector.c:14:#define T1S_NODE_ID         (1u)
+firmware/fretboard/t1s_detector.c:17:#define T1S_GUITAR_ID       (3u)     /* actuator node this detector drives */
+firmware/fretboard/t1s_detector.c:39:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+firmware/fretboard/t1s_detector.c:45:static const uint8_t s_guitar_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_GUITAR_ID };
+firmware/fretboard/t1s_detector.c:222:    s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
+firmware/fretboard/t1s_detector.c:270:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+firmware/fretboard/t1s_detector.c:290:                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+firmware/fretboard/t1s_detector.c:361:uint8_t T1SDetector_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+
+===== any leftover guitar :00:02 / nodeId=2 addressing in code =====
+firmware/guitar/docs/journal.md:10:a PIC32CM PL10 T1S PLCA *follower* (node id 2, MAC `02:00:00:00:00:02`) that receives marvin's 1-byte
+firmware/guitar/docs/journal.md:15:MAC=02:00:00:00:00:02, PLCA follower id=2/8` — and **marvin's command over T1S drives the addressed Wii
+firmware/guitar/docs/journal.md:40:| 2026-06-16 | **Wii-guitar actuation becomes its own subproject (`guitar`), split out of fretboard.** PIC32CM PL10, T1S PLCA **follower** node id 2 (MAC `02:00:00:00:00:02`), receives a 1-byte bitmask over ethertype `0x88B5` and drives 7 open-drain Wii-guitar GPIOs. Sensing stays on `fretboard` (detector node). Actuation logic is a verbatim port of fretboard's `cmd_receive.c`. The link reuses `oa-tc6-lib` + the shared L2 framing as the mirror of marvin's coordinator glue. **Bare-metal** (no FreeRTOS on PL10): TC6 serviced from the main loop / tick; `IRQ_N` on a SERCOM-EIC pin. | The T1S bus was built for multiple node classes; separating detector from actuator lets multiple guitar/detector variants coexist on one PLCA pair with marvin selecting the active of each. Same MCU family as fretboard keeps the "OA SPI driver scales across the family" demo and minimizes bring-up. Greg spins up a *fresh* guitar MCC project (not a fork of fretboard). |
+firmware/guitar/docs/journal.md:112:  - `t1s_follower.{c,h}` — `T1SFollower_Initialize()` + `T1SFollower_Tasks()`. Bare-metal mirror of marvin's `t1s_link.c`: SysTick 1 ms clock, `T1S_RST` pulse, `SERCOM0_SPI_CallbackRegister`, `TC6_Init` + `TC6Regs_Init(nodeId=2, follower, promiscuous=false)`, service to init-done, then serviced from `main()`. SPI completion + `T1S_IRQ_N` (EIC EXTINT15 callback) set a `s_need_service` flag; `service_pump` runs `TC6_Service` until idle.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:30:07Z)**_
+
+The guitar journal's Current-focus header (lines 10, 15) still states id 2 — that's the current-state section, so update it (leaving the historical decision/session entries at lines 40/112 as-is):
+
+_**Agent (claude-opus-4-8 2026-07-29 00:30:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/guitar/docs/journal.md`
+
+```text
+7	## Current focus
+8	
+9	**G1 + G2 done — the node is proven end-to-end on hardware.** guitar is the **Wii-guitar actuator node**:
+10	a PIC32CM PL10 T1S PLCA *follower* (node id 2, MAC `02:00:00:00:00:02`) that receives marvin's 1-byte
+11	button bitmask over ethertype `0x88B5` and drives a Wii guitar controller via open-drain GPIO — the
+12	actuation half of today's [fretboard](../../fretboard/SPEC.md) firmware, on its own node. Firmware
+13	(`config.mcc/src/t1s_follower.{c,h}` + `cli.{c,h}`, reusing `third_party/oa-tc6-lib`, wired via
+14	`user.cmake` + `main.c`) brings the LAN8651 up — bench reports `LAN8651 up - chipRev=2,
+15	MAC=02:00:00:00:00:02, PLCA follower id=2/8` — and **marvin's command over T1S drives the addressed Wii
+16	button**. The node sends a 500 ms presence heartbeat (ethertype `0x88B6`) so marvin's `nodes` shows it
+17	present, and an embedded-cli console on the SERCOM1 debug UART (`t1s`/`btn`/`tap`/`id`/`plca`) drives the
+18	GPIOs and reads link/sync/PLCA diagnostics.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:30:17Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/guitar/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:30:29Z)**_
+
+All edits are in and the bus is coherent at guitar id 3. Here's the full set:
+
+**Code (3 files — all three points that address the guitar):**
+- [guitar/…/t1s_follower.c:14](firmware/guitar/config.mcc/src/t1s_follower.c#L14) — `T1S_NODE_ID` 2→3 (+ MAC/comment)
+- [marvin/…/t1s_link.c:77](firmware/marvin/default/src/net/t1s/t1s_link.c#L77) — coordinator `s_nodes[]` guitar entry 2→3 (marvin's TX target)
+- [fretboard/t1s_detector.c:17](firmware/fretboard/t1s_detector.c#L17) — `T1S_GUITAR_ID` 2→3 (fretboard's peer-to-peer target, +MAC comment)
+
+Guitar/fretboard heartbeat **node_type** codes (2/1) are unchanged — those aren't PLCA ids.
+
+**Docs (5 files):** t1s-podl-link.md (§7.1 transition note + inline refs), top-level SPEC.md, guitar SPEC.md, fretboard SPEC.md.
+
+**Journals (3 files):** guitar, marvin, fretboard each got a 2026-07-28 decision entry, and the stale current-focus lines were corrected.
+
+**Important for hardware:** guitar id 3 only takes effect once you **re-flash both the guitar and marvin together** (marvin filters by MAC, so it must address id 3 too). The guitar was last bench-verified at id 2; re-flash reproduces the banner at `id=3/8`.
+
+**Still deferred:** the fretboard's *own* id (1→4) + its marvin table entry — a separate coordinated step. Until then a default-id-1 fauxmote still collides with the fretboard.
+
+Want me to commit this?
+
+---
+
+_**User (2026-07-29 00:31:04Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/Kconfig.projbuild in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+don't commit yet. I just did clean build of fauxmote and came up with node id 2 instead of 1. I (1263) mft1s: marvin link up on T1S (PLCA follower id=2, ethertype=0x88B7)
+I (1303) mft1s: LAN8651 up - chipRev=2, MAC=02:00:00:00:00:02, PLCA follower id=2/8
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:31:22Z)**_
+
+That's the classic Kconfig range-clamp, not a code bug. Let me confirm what's in the generated `sdkconfig`:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:31:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check node id in sdkconfig files
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote
+echo "===== sdkconfig ====="
+grep -n "FAUXMOTE_T1S_NODE_ID\|FAUXMOTE_LINK_TRANSPORT" sdkconfig 2>/dev/null || echo "(no sdkconfig)"
+echo "===== sdkconfig.old ====="
+grep -n "FAUXMOTE_T1S_NODE_ID" sdkconfig.old 2>/dev/null || echo "(no sdkconfig.old)"
+echo "===== sdkconfig.defaults ====="
+grep -n "FAUXMOTE_T1S_NODE_ID\|FAUXMOTE_LINK_TRANSPORT" sdkconfig.defaults 2>/dev/null || echo "(none)"
+```
+
+```text
+===== sdkconfig =====
+703:CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S=y
+704:# CONFIG_FAUXMOTE_LINK_TRANSPORT_UART is not set
+706:CONFIG_FAUXMOTE_T1S_NODE_ID=2
+===== sdkconfig.old =====
+706:CONFIG_FAUXMOTE_T1S_NODE_ID=3
+===== sdkconfig.defaults =====
+35:CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S=y
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:31:49Z)**_
+
+Confirmed — this is a stale-`sdkconfig` clamp, not a code bug. Your `sdkconfig.old` had `CONFIG_FAUXMOTE_T1S_NODE_ID=3` (the previous default). When I narrowed the Kconfig range to `1 2`, the reconfigure found the saved value `3` out of range and **clamped it to the range max, 2** — then wrote `=2` into `sdkconfig`. A "clean" build wipes `build/` but not `sdkconfig`, and an existing `sdkconfig` value always wins over `sdkconfig.defaults`, so the new default of 1 never got a look-in.
+
+Let me check whether `sdkconfig` is tracked, then fix the stale line:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:31:51Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Check if sdkconfig is git-tracked
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote
+git ls-files --error-unmatch sdkconfig 2>/dev/null && echo "TRACKED" || echo "not tracked (generated/gitignored)"
+grep -n "sdkconfig" .gitignore 2>/dev/null || true
+```
+
+```text
+not tracked (generated/gitignored)
+2:sdkconfig
+3:sdkconfig.old
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:31:58Z)**_
+
+`sdkconfig` is generated/gitignored, so I'll just correct the stale line directly:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:31:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/sdkconfig`
+
+```text
+703	CONFIG_FAUXMOTE_LINK_TRANSPORT_T1S=y
+704	# CONFIG_FAUXMOTE_LINK_TRANSPORT_UART is not set
+705	# default:
+706	CONFIG_FAUXMOTE_T1S_NODE_ID=2
+707	# default:
+708	CONFIG_FAUXMOTE_T1S_PIN_SCLK=5
+709	# default:
+710	CONFIG_FAUXMOTE_T1S_PIN_MOSI=19
+711	# default:
+712	CONFIG_FAUXMOTE_T1S_PIN_MISO=21
+713	# default:
+714	CONFIG_FAUXMOTE_T1S_PIN_CS=33
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:32:04Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/sdkconfig has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:32:18Z)**_
+
+Done — set `CONFIG_FAUXMOTE_T1S_NODE_ID=1` in the active `sdkconfig`. Just rebuild (no `fullclean` needed; the `sdkconfig` edit triggers a reconfigure) and you should see `PLCA follower id=1/8`, MAC `…:01`.
+
+Two notes:
+- No code change was needed — the Kconfig default (1) and firmware are correct; only the leftover generated config was stale.
+- id 2 is a legal value now too (range 1–2), so if you ever *want* the second fauxmote there, that path works — this was just the wrong value sticking around, not a bug.
+
+And a heads-up for coherence: with the guitar now renumbered to **id 3**, node **2** is free, but node **1** still collides with the fretboard's current id 1 (the fretboard renumber to 4 is still deferred). So don't co-bus this id-1 fauxmote with the fretboard until that follow-up lands — id 2 would be the collision-free choice if you bring them up together before then.
+
+Nothing committed. Want me to hold, or is there anything else to adjust first?
+
+---
+
+_**User (2026-07-29 00:33:02Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/sdkconfig in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+can we delete sdconfig and sdkconfig.old to force regeneration? I'm worries something else stale in there
+
+_**User (2026-07-29 00:34:28Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   - **Continuation context**: fauxmote (ESP32 Wiimote/guitar emulator) marvin-link moved onto the shared 10BASE-T1S PLCA bus (LAN8651 MAC-PHY over SPI, ethertype 0x88B7). ESP32/fauxmote side only; marvin-coordinator routing and physical on-bus bring-up are explicitly future sessions. Three task watchdogs were already fixed and validated on hardware in the prior session.
+   - **This session's explicit requests, in order:**
+     1. "builds UART (untested). Please comment and comit" — record that the UART fallback build compiles (untested on hardware), then commit the fauxmote T1S transport work.
+     2. Renumber the T1S node table: "there will only be 2 [fauxmotes] at most. do we have an overall t1s node table in docs anywhere? I'd like to have fauxmotes as 1-2, guitar 3, fretboard detector 4, and future nodes beatbox 5, lemmy 6, lightshow 7". Scope was clarified via AskUserQuestion to **"Fauxmote + docs only"** (fauxmote code → ids 1-2 + docs table update; guitar/fretboard/marvin renumber deferred as flagged follow-up).
+     3. "commit this" — commit the fauxmote renumber.
+     4. "update guitar node" — execute the deferred guitar renumber (id 2→3) coherently across all points that address the guitar.
+     5. "don't commit yet. I just did clean build of fauxmote and came up with node id 2 instead of 1." + log lines showing `PLCA follower id=2, MAC=02:00:00:00:00:02` — diagnose/fix why the clean build produced id 2 instead of the intended 1. Do NOT commit yet.
+
+2. Key Technical Concepts:
+   - 10BASE-T1S single-pair Ethernet + PLCA multidrop; marvin = PLCA coordinator (id 0), followers hang off via LAN8651 MAC-PHYs over SPI + OPEN Alliance TC6 driver.
+   - **Target node-id table**: 0 marvin (coordinator), 1-2 fauxmote controller(s) (at most 2, default 1), 3 guitar (actuator), 4 fretboard (detector), 5 beatbox (future), 6 lemmy (future), 7 lightshow (future). MAC = `02:00:00:00:00:<id>`.
+   - **node_type heartbeat codes are SEPARATE from PLCA ids** and do NOT change on renumber: 1=detector, 2=guitar, 3=controller. E.g. guitar keeps `T1S_HB_TYPE_GUITAR (2u)` even though its PLCA id becomes 3.
+   - **The guitar node id is set at THREE code points that all address it**, and all must change together + be re-flashed together or commands miss the node (MAC-filtered, non-promiscuous): (a) guitar firmware `T1S_NODE_ID`, (b) marvin coordinator table `s_nodes[]` (marvin's TX target), (c) fretboard `T1S_GUITAR_ID` (fretboard's peer-to-peer actuation target).
+   - **ESP-IDF Kconfig/sdkconfig behavior**: an existing `sdkconfig` value always wins over `sdkconfig.defaults`; on reconfigure, a saved value out of the (new) declared `range` is clamped to the nearest bound. A "clean build" (`idf.py fullclean` / `rm -rf build`) does NOT delete `sdkconfig`. `sdkconfig`/`sdkconfig.old` are gitignored (generated).
+   - Ethertypes: 0x88B7 = fauxmote/controller data channel; 0x88B6 = presence heartbeat; 0x88B5 = detector/guitar bitmask channel.
+   - Transport select via Kconfig `choice` FAUXMOTE_LINK_TRANSPORT (T1S default / UART fallback), mirroring marvin's `MARVIN_FRETBOARD_TRANSPORT`.
+   - The USER runs all `idf.py` builds/flashes (Python venv not available to me in sandbox).
+
+3. Files and Code Sections:
+   - **firmware/fauxmote/docs/journal.md**
+     - Added on-hardware milestone note ("Boots stable, no watchdog: `LAN8651 up - chipRev=2, MAC=02:00:00:00:00:03...`"), then a "UART fallback build compiles (`FAUXMOTE_LINK_TRANSPORT_UART`)... Not yet re-run on hardware over the UART link." note.
+     - Added a 2026-07-28 decision-log entry for the bus renumber (fauxmotes 1-2, target table guitar 3/fretboard 4/beatbox 5/lemmy 6/lightshow 7; `CONFIG_FAUXMOTE_T1S_NODE_ID` default 1 range 1-2) and marked the earlier same-day id-3 entry as "(Node-id assignment superseded by the bus-renumber entry above.)".
+   - **firmware/fauxmote/main/Kconfig.projbuild**
+     - `FAUXMOTE_T1S_NODE_ID`: `default 1`, `range 1 2`, help text updated to "controllers (fauxmotes) take 1-2, one per fauxmote (at most two)".
+   - **firmware/fauxmote/main/mf_t1s.c**
+     - Fallback `#define CONFIG_FAUXMOTE_T1S_NODE_ID 1` and comment "controllers (fauxmotes) take ids 1-2, one PLCA node each (at most two)". (T1S_HB_TYPE_CONTROLLER = 3 unchanged.)
+   - **docs/t1s-podl-link.md** (§7.1 authoritative node table)
+     - Rewrote the table to the target scheme with rows: marvin 0, fauxmote(s) 1-2, guitar 3, fretboard 4, beatbox 5, lemmy 6, lightshow 7.
+     - Transition note updated after the guitar renumber to: fauxmote (id 1, range 1-2) and guitar (id 3) on target in source (guitar last flashed/verified at old id 2, re-flash guitar+marvin needed); fretboard still on old id 1 → target 4 deferred; default-id-1 fauxmote collides with fretboard's current id 1 (use id 2 or renumber fretboard first).
+     - Inline refs: "command source → guitar (id 3)"; §9 "Built and working" note now says "First brought up at guitar id 2; renumbered to the target id 3 in source (2026-07-28)"; fretboard open item "directly to the guitar (id 3)".
+   - **firmware/guitar/config.mcc/src/t1s_follower.c** — `#define T1S_NODE_ID (3u)` (was 2u); MAC comment `02:00:00:00:00:03`; init comment "follower id 3". `T1S_HB_TYPE_GUITAR (2u)` unchanged.
+   - **firmware/marvin/default/src/net/t1s/t1s_link.c** — `s_nodes[]` guitar entry: `{ 3u, T1S_NO_DETECTOR, T1S_NODE_GUITAR }` (was 2u).
+   - **firmware/fretboard/t1s_detector.c** — `#define T1S_GUITAR_ID (3u)` (was 2u); guitar MAC comment `02:00:00:00:00:03`. Fretboard's own `T1S_NODE_ID (1u)` unchanged (deferred).
+   - **SPEC.md** — guitar row: "T1S PLCA follower id 3".
+   - **firmware/guitar/SPEC.md** — "Node id 3, MAC 02:00:00:00:00:03"; "nodeId=3"; "follower id 3"; G1 milestone annotated "(node renumbered to id 3 in source 2026-07-28; re-flash reproduces at id=3/8)".
+   - **firmware/fretboard/SPEC.md** — guitar target refs → "(id 3)" and "(id 3, MAC 02:..:03, ethertype 0x88B5)".
+   - **firmware/guitar/docs/journal.md** — new 2026-07-28 decision entry (id 2→3, coordinated with marvin+fretboard, re-flash both); current-focus lines updated to id 3 with historical note.
+   - **firmware/marvin/docs/journal.md** — new 2026-07-28 decision entry (coordinator table guitar 2→3); current-focus updated "guitar follower node (id 3)" and peer-to-peer `02:..:03`.
+   - **firmware/fretboard/docs/journal.md** — new 2026-07-28 decision entry (peer-to-peer guitar target 2→3; fretboard own id stays 1).
+   - **firmware/fauxmote/sdkconfig** (gitignored/generated) — line 706 corrected: `CONFIG_FAUXMOTE_T1S_NODE_ID=1` (was `=2`).
+
+4. Errors and fixes:
+   - **Clean build came up as node id 2 instead of 1** (user message 5). Root cause: `sdkconfig.old` had `CONFIG_FAUXMOTE_T1S_NODE_ID=3` (the old default). When the Kconfig `range` was narrowed to `1 2`, the reconfigure clamped the out-of-range saved value 3 → 2 (range max) and wrote `=2` into `sdkconfig`; the existing `sdkconfig` value wins over `sdkconfig.defaults`, so the new default 1 was never applied. Fix: edited `firmware/fauxmote/sdkconfig` line 706 from `=2` to `=1` directly (file is gitignored/generated). The user will rebuild. (Alternative fixes noted: menuconfig set to 1, or delete sdkconfig so it regenerates from defaults.)
+   - No compilation errors this session.
+
+5. Problem Solving:
+   - Correctly scoped commits to only the fauxmote-related files, leaving unrelated modified/untracked files (marvin cv_marvin_v1.c, mcc-manifest, .specstory/*, guitar-pic.code-workspace, hardware/, etc.) unstaged in both commits.
+   - Used AskUserQuestion to resolve the genuine renumber-scope decision (full coordinated renumber vs fauxmote+docs only) rather than guessing.
+   - For the guitar renumber, correctly identified that the guitar is addressed at 3 code points and updated all of them coherently, plus discovered the fretboard hardcodes the guitar destination (`T1S_GUITAR_ID`), which had to follow.
+   - Handled historical-vs-current-state distinction in journals/SPECs: updated current-focus/addressing statements to id 3, but preserved historical milestone banners (id=2/8) with forward-looking annotations.
+   - Diagnosed the id=2 build result as a config-clamp artifact, not a code regression.
+
+6. All user messages:
+   - "builds UART (untested). Please comment and comit"
+   - "one more change to fauxmote. there will only be 2 at most.  do we have an overall t1s node table in docs anywhere? I'd like to have fauxmotes as 1-2, guitar 3, fretboard detector 4, and future nodes beatbox 5, lemmy 6, lightshow 7"
+   - (AskUserQuestion answer) "How far should I take the renumbering in this pass?" = "Fauxmote + docs only"
+   - "commit this"
+   - "update guitar node"
+   - "don't commit yet. I just did clean build of fauxmote and came up with node id 2 instead of 1. I (1263) mft1s: marvin link up on T1S (PLCA follower id=2, ethertype=0x88B7) / I (1303) mft1s: LAN8651 up - chipRev=2, MAC=02:00:00:00:00:02, PLCA follower id=2/8"
+   - (Standing constraints from CLAUDE.md/memory, still in effect): never `git commit` on own initiative — only on explicit ask; do NOT edit MCC/Legato files under `firmware/*/default/src/config/default/`; do NOT edit `third_party/`; do NOT use `.specstory/` as context; code comments describe current code only (no dev-diary narrative); static allocation only, no malloc; read the relevant subproject journal first and update it as decisions land; use uv for Python.
+
+7. Pending Tasks:
+   - The guitar renumber (id 2→3) changes are staged in the working tree but **uncommitted** — user said "don't commit yet." A commit is expected once the user confirms.
+   - **Deferred follow-up (still not done)**: renumber the fretboard's OWN id (1→4) in `firmware/fretboard/t1s_detector.c` `T1S_NODE_ID` + marvin's `s_nodes[]` fretboard entry, re-flashing both together. Until then a default-id-1 fauxmote collides with the fretboard's current id 1.
+   - **Out of scope (future sessions)**: marvin-coordinator 0x88B7 demux + controller node-table entry + STATUS RX; physical on-bus verification.
+   - User will re-flash guitar + marvin together for guitar id 3 to take effect; will rebuild fauxmote to confirm id 1.
+
+8. Current Work:
+   Immediately before this summary request, I was diagnosing and fixing why the user's clean fauxmote build came up as PLCA follower id 2 instead of 1. I confirmed via grep that `sdkconfig` line 706 held `CONFIG_FAUXMOTE_T1S_NODE_ID=2`, `sdkconfig.old` held `=3`, and `sdkconfig.defaults` did not set the node id. I confirmed `sdkconfig` is gitignored/generated (`.gitignore` lines 2-3 list `sdkconfig` and `sdkconfig.old`). I explained the Kconfig range-clamp (old saved value 3 clamped to new range max 2) and then edited `firmware/fauxmote/sdkconfig` line 706 from `CONFIG_FAUXMOTE_T1S_NODE_ID=2` to `CONFIG_FAUXMOTE_T1S_NODE_ID=1`. This edit was the last action performed. The guitar-renumber changes from the prior request remain complete but uncommitted per the user's "don't commit yet."
+
+9. Optional Next Step:
+   Report the completed sdkconfig fix to the user and let them re-build/verify the fauxmote comes up at `PLCA follower id=1`. The user's most recent explicit instruction was "don't commit yet" — so I should NOT commit the guitar renumber or the sdkconfig change until the user confirms. Direct quote from the user's most recent message establishing the current task: "don't commit yet. I just did clean build of fauxmote and came up with node id 2 instead of 1." The fix (sdkconfig line 706 → `=1`) is done; the appropriate next step is to inform the user it's corrected, note that a rebuild should now show id 1 (and mention the alternatives: `idf.py menuconfig` or deleting `sdkconfig` to regenerate from defaults), and await their go-ahead before any commit.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/7c313450-d23f-4e40-b779-d8155d63eb74.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:34:36Z)**_
+
+Yes — both are generated and gitignored, so deleting them is safe. On the next `idf.py build`/`reconfigure` they'll regenerate from `sdkconfig.defaults` + Kconfig defaults, which is the cleanest way to clear any other stale value.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:34:37Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Delete generated sdkconfig and sdkconfig.old
+
+`rm -f /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/sdkconfig /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/sdkconfig.old && ls /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/sdkconfig* 2>/dev/null; echo "done"`
+
+```text
+/Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/sdkconfig.defaults
+done
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:34:43Z)**_
+
+Deleted. Both files are gone; only `sdkconfig.defaults` (the checked-in source of defaults) remains.
+
+Next `idf.py build` (or `reconfigure`) will regenerate a fresh `sdkconfig` from `sdkconfig.defaults` + Kconfig defaults — so `CONFIG_FAUXMOTE_T1S_NODE_ID` will come up at **1**, and any other stale value that might have been lurking is cleared too. You should see `PLCA follower id=1/8`, MAC `…:01`.
+
+Still nothing committed.
+
+---
+
+_**User (2026-07-29 00:38:00Z)**_
+
+<ide_opened_file>The user opened the file extension-output-espressif.esp-idf-extension-#2-ESP-IDF in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+node id 1 now as it should be. so nothing to commit for this fauxmote fix, correct?
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:38:07Z)**_
+
+Correct — nothing to commit for the fauxmote id fix. The only thing wrong was the stale generated `sdkconfig` (gitignored), and the actual source (Kconfig `default 1`, `mf_t1s.c` fallback) was already correct and already committed in the earlier fauxmote work. Deleting the generated config was the whole fix.
+
+One thing still outstanding, though: the **guitar renumber (id 2→3)** changes from earlier this session are complete but **uncommitted** — you'd said "don't commit yet." Those span guitar firmware, marvin's coordinator table, fretboard's peer target, plus the SPECs/journals/docs. Want me to commit that now?
+
+---
+
+_**User (2026-07-29 00:41:00Z)**_
+
+guitar builds and runs as expected with node 3
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:41:05Z)**_
+
+Nothing to commit for the fauxmote fix, and the guitar renumber is now hardware-confirmed at node 3. 
+
+The guitar renumber (id 2→3) changes are still uncommitted from earlier. Want me to commit them now that it's verified on hardware?
+
+---
+
+_**User (2026-07-29 00:43:30Z)**_
+
+commit guitar changes. Then work on fretboard changes
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 00:43:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show working tree status
+
+`git status --short`
+
+```text
+ M .claude/settings.local.json
+ M .specstory/history/2026-07-28_19-10-31Z-lets-work-on-getting.md
+ M .specstory/statistics.json
+ M SPEC.md
+ M docs/t1s-podl-link.md
+ M firmware/fretboard/SPEC.md
+ M firmware/fretboard/docs/journal.md
+ M firmware/fretboard/t1s_detector.c
+ M firmware/guitar/SPEC.md
+ M firmware/guitar/config.mcc/src/t1s_follower.c
+ M firmware/guitar/docs/journal.md
+ M firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+ M firmware/marvin/default/src/detector/cv_marvin_v1.c
+ M firmware/marvin/default/src/net/t1s/t1s_link.c
+ M firmware/marvin/docs/journal.md
+ M guitar-pic.code-workspace
+?? docs/export-compliance-functional-summary.md
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:43:48Z)**_
+
+Let me verify the fretboard diff only contains the guitar-target change (part of the renumber), not the deferred fretboard own-id change:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:43:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Show fretboard t1s_detector diff
+
+`git diff firmware/fretboard/t1s_detector.c`
+
+```text
+diff --git a/firmware/fretboard/t1s_detector.c b/firmware/fretboard/t1s_detector.c
+index 2acf395..0e0d3f5 100644
+--- a/firmware/fretboard/t1s_detector.c
++++ b/firmware/fretboard/t1s_detector.c
+@@ -14,7 +14,7 @@
+ #define T1S_NODE_ID         (1u)
+ #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+ #define T1S_INSTANCE        (0u)
+-#define T1S_GUITAR_ID       (2u)     /* actuator node this detector drives */
++#define T1S_GUITAR_ID       (3u)     /* actuator node this detector drives */
+ 
+ /* IRQ_N external-interrupt line. Must match the MCC EIC pin wired to T1S_IRQ_N. */
+ #define T1S_IRQ_EIC_PIN     EIC_PIN_13
+@@ -41,7 +41,7 @@ static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE
+ /* Coordinator (marvin) MAC: 02:00:00:00:00:00 — data + heartbeat destination. */
+ static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+ 
+-/* Guitar (actuator) node MAC: 02:00:00:00:00:02 — command destination. */
++/* Guitar (actuator) node MAC: 02:00:00:00:00:03 — command destination. */
+ static const uint8_t s_guitar_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_GUITAR_ID };
+ 
+ static TC6_t            *s_tc6;
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:43:53Z)**_
+
+Good — `T1S_NODE_ID` stays 1 (fretboard's own id, deferred), only `T1S_GUITAR_ID` moved to 3. That's part of the guitar renumber. Staging the 10 renumber files and committing:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:43:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage the guitar-renumber files
+
+```bash
+git add SPEC.md docs/t1s-podl-link.md \
+  firmware/guitar/config.mcc/src/t1s_follower.c firmware/guitar/SPEC.md firmware/guitar/docs/journal.md \
+  firmware/marvin/default/src/net/t1s/t1s_link.c firmware/marvin/docs/journal.md \
+  firmware/fretboard/t1s_detector.c firmware/fretboard/SPEC.md firmware/fretboard/docs/journal.md \
+&& git status --short
+```
+
+```text
+ M .claude/settings.local.json
+ M .specstory/history/2026-07-28_19-10-31Z-lets-work-on-getting.md
+ M .specstory/statistics.json
+M  SPEC.md
+M  docs/t1s-podl-link.md
+M  firmware/fretboard/SPEC.md
+M  firmware/fretboard/docs/journal.md
+M  firmware/fretboard/t1s_detector.c
+M  firmware/guitar/SPEC.md
+M  firmware/guitar/config.mcc/src/t1s_follower.c
+M  firmware/guitar/docs/journal.md
+ M firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+ M firmware/marvin/default/src/detector/cv_marvin_v1.c
+M  firmware/marvin/default/src/net/t1s/t1s_link.c
+M  firmware/marvin/docs/journal.md
+ M guitar-pic.code-workspace
+?? docs/export-compliance-functional-summary.md
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit guitar renumber
+
+```bash
+git commit -m "$(cat <<'EOF'
+t1s: renumber guitar follower to PLCA id 3
+
+Move the guitar actuator node from PLCA id 2 to id 3 to fit the target
+bus node table (fauxmotes 1-2, guitar 3, fretboard 4, future 5-7).
+Updated coherently at all three points that address the guitar:
+
+- guitar firmware T1S_NODE_ID -> 3 (MAC 02:..:03)
+- marvin coordinator s_nodes[] guitar entry -> 3 (marvin's TX target)
+- fretboard T1S_GUITAR_ID -> 3 (peer-to-peer actuation target)
+
+node_type heartbeat codes are unchanged (guitar stays type 2). Verified
+on hardware: guitar builds and runs at id=3/8. Fretboard's own id (1)
+and its renumber to 4 remain deferred.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[gui a853e7c] t1s: renumber guitar follower to PLCA id 3
+ 10 files changed, 36 insertions(+), 28 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:07Z)**_
+
+Committed guitar renumber (`a853e7c`, 10 files). Now the fretboard own-id renumber (1→4). Per the repo rules I'll read the fretboard journal first, then map every place the fretboard's id is stated.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:08Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fretboard/docs/journal.md`
+
+```text
+1	# fretboard — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for the fretboard firmware. Newest entries at the top. For *what fretboard is* (purpose, hardware, modules, frame format), read [`../SPEC.md`](../SPEC.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	## Current focus
+8	
+9	**T1S-only sense+actuate node (single behaviour — no build flags).** UART and the
+10	`FRETBOARD_LINK`/`FRETBOARD_MODE` flags are gone. Each 240 Hz TC0 tick the fretboard
+11	scans the five phototransistors; the on-device int8 model ([`model_infer.c`](../model_infer.c) /
+12	[`model_infer_stream.c`](../model_infer_stream.c), weights in [`model_weights.h`](../model_weights.h))
+13	infers the Wii-guitar bitmask from the ADC window (in the **main loop** — it overruns the tick in the
+14	ISR; see decision log + edge-ai `runtime.md` §3). Over T1S the node then:
+15	
+16	- **streams** the 17-byte data frame (ADC scan + the driven bitmask as `applied_mask`) to the marvin
+17	  coordinator (`0x88B5`, logging / edge-ai training), and
+18	- **commands** the guitar node (id 2) directly with the inferred 1-byte bitmask (`0x88B5`,
+19	  peer-to-peer) — edge-triggered + a 50 ms refresh so a dropped frame self-heals.
+20	
+21	Plus a 500 ms presence heartbeat (`0x88B6`, node_type 1 = detector). All TC6 TX/service is in the main
+22	loop ([`T1SDetector_Tasks`](../t1s_detector.c)); the ISR only scans + stages the data frame. It has **no
+23	local Wii-guitar outputs** (those pins are the LAN8651 SPI). PLCA follower id 1, MAC `02:00:00:00:00:01`.
+24	
+25	**SW0 (PB03)** arms actuation (a manual "active detector" gate until marvin coordinates active-detector/
+26	active-guitar selection); **LED0 (PB02)** shows armed; boots disarmed (sends 0 = released). **Coordination
+27	caveat:** while the fretboard is armed, marvin must NOT also drive the guitar (both target `02:..:02`;
+28	no arbitration yet — the guitar applies whoever transmitted last).
+29	
+30	**MCC done** (SERCOM0 SPI Mode 0 on PA04/05/07; T1S_CS PA15 / T1S_RST PA14 / T1S_IRQ_N PA13 EXTINT13
+31	falling; SysTick 1 ms; SERCOM1 ring-buffer TX 512). **Operator CLI** on SERCOM1 ([`cli.c`](../cli.c),
+32	vendored `third_party/embedded-cli/`): `t1s` (link + data/cmd tx counts), `adc`, `id`, `plca`. Remaining:
+33	build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware bring-up. Build at `-O2`/`-O3`.
+34	
+35	---
+36	
+37	## Decision log
+38	
+39	| Date | Decision | Rationale |
+40	|------|----------|-----------|
+41	| 2026-07-28 | **Peer-to-peer guitar target renumbered id 2 → 3** (`t1s_detector.c` `T1S_GUITAR_ID`, dst MAC now `02:00:00:00:00:03`). The fretboard's **own** node id stays 1 (target 4 renumber still deferred). Part of the coordinated guitar-id move (guitar firmware + marvin table also go to 3). | The guitar node moved to its target id 3 (docs/t1s-podl-link.md §7.1); the fretboard drives the guitar directly (peer-to-peer), so its hardcoded destination has to follow the guitar or that command path misses the node. The fretboard's own 1→4 renumber is a separate coordinated step with marvin's table. |
+42	| 2026-06-17 | **Keep the command path on the 240 Hz tick cadence (do NOT decouple it to immediate main-loop send).** The model emits one bitmask per 240 Hz sample; the ISR gates it into `s_current_cmd` each tick and the main loop sends that, so actuation is quantized to the ~4.2 ms grid. Leave it. To reduce the *new* T1S transport delay instead, raise the host SPI clock (1 MHz → ~12 MHz, both fretboard and guitar; SERCOM `BAUD=0` = GCLK/2 = 12 MHz) and/or fold a constant offset into the training labels — **not** by changing the command-to-tick coupling. | The model's timing was characterized against this inference→tick→actuate pipeline (the photo-dip→strum delay is baked into the distillation labels, so its output index is fit to *this* cadence). Decoupling would shift every actuation earlier by up to a tick **and** replace the deterministic 240 Hz grid with main-loop jitter — for a model trained on 240 Hz-sampled data, consistent grid-aligned latency beats lower-but-variable latency. Separately, the T1S move already changed timing vs. the old `MODEL_DRIVEN` *local-GPIO* standalone: actuation is now ~1.5–2 ms **later** (host-SPI chunk each end @ 1 MHz dominates; PLCA media access is sub-ms). That transport delta — not the tick — is the real new variable, so the knob is SPI speed (12 MHz removes ~1 ms) + re-validating gameplay timing on the T1S rig (scope fretboard `SetCommand`→guitar apply, check hit rate). Worst-case command latency today ≈ 6–7 ms (≈4.2 ms tick + ~1.5–2 ms transport); ~2–3 ms typical. See edge-ai journal + [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). |
+43	| 2026-06-17 | **T1S-only sense+actuate node; the model drives the guitar over T1S.** Removed the UART path and the `FRETBOARD_LINK` + `FRETBOARD_MODE` build flags entirely — one behaviour. The on-device model is always on; its inferred bitmask is (a) streamed to marvin as the data frame's `applied_mask` and (b) sent **directly to the guitar node** over T1S (peer-to-peer, edge-triggered + 50 ms refresh). New `T1SDetector_SetCommand()` + a command TX path/buffer in `t1s_detector.c` (guitar MAC `02:..:02`); `data_stream_send(applied_mask)` takes the mask as a param; the 21-byte model frame is dropped (marvin parses the 17-byte layout). SW0 arms actuation (interim manual active gate); `TC6_TX_ETH_QSIZE` 2→4 (data + command + heartbeat concurrent). | Supersedes the 2026-06-16 "Stage 1 only / model stays UART-bench telemetry" call: per Greg, **inferring actuator commands from the phototransistor data is the entire purpose of this detector**, so it must drive the guitar — and with the outputs gone, that path is T1S. Collapsing to a single T1S behaviour (no UART/flags) matches "clean it all up for T1S." Direct peer-to-peer keeps latency low and the guitar dumb (applies the last `0x88B5` frame from anyone). **Caveat:** no active-source arbitration yet — while the fretboard is armed, marvin must not also command the guitar (both address `02:..:02`); marvin-side active-detector/active-guitar coordination is the follow-up. |
+44	| 2026-06-17 | **Actuator code removed — fretboard is detector-only.** The Wii-guitar button/strum GPIOs were removed from the MCC config; `cmd_receive.{c,h}` + the orphaned `fret_button.{c,h}` and `fret_detect.{c,h}` are deleted. `data_stream` no longer sources `applied_mask` from `cmd_receive` (plain frame = 0; the model frame takes the inferred mask as a parameter). `MODEL_DRIVEN` keeps running the on-device model but as **telemetry** — it streams its inferred bitmask and no longer drives GPIO; SW0 just gates whether the mask is streamed. Reverses the 2026-06-02 "keep the orphaned fallback modules" decision. | The actuator role is fully on the `guitar` node now, so the outputs (and the takeover-fallback `fret_button` path that drove them) have no hardware to drive — leaving the code would be dead and non-compiling (the `BUTTON_*` pin macros are gone from `plib_port.h`). Keeping the model as telemetry (rather than deleting it) preserves the edge-ai on-device validation path with no actuation; Stage 2 re-homes the inferred mask to a guitar node over T1S (direct peer-to-peer). |
+45	| 2026-06-17 | **Fretboard becomes a T1S detector node (id 1) — firmware written.** New build axis `FRETBOARD_LINK = {UART, T1S}` in `fretboard_config.h` (orthogonal to `FRETBOARD_MODE`). The `T1S` build adds `t1s_detector.{c,h}` (TX mirror of guitar's `t1s_follower.c`; shared `third_party/oa-tc6-lib` + a `tc6-conf.h`): follower id 1 / MAC `02:..:01`, streams the existing 17-byte frame to the coordinator (`0x88B5`) + a 500 ms presence heartbeat (`0x88B6`, type 1). `data_stream_send()` routes to `T1SDetector_SendFrame()` instead of SERCOM1; `main.c` services the link from the main loop. **Detector-only:** the `T1S` build compiles out `cmd_receive`/model/button-drive (`FRETBOARD_MODEL_ACTIVE` gate) so the button GPIOs are free for SPI/CS/IRQ/RST. **Command plane for Stage 2 = direct peer-to-peer:** the active detector will TX its command straight to a guitar node's MAC; marvin coordinates active-detector/active-guitar and logs, but is out of the gameplay command path. | Executes the 2026-06-16 detector re-scope onto the bus, now that the guitar node is proven (guitar G1+G2). marvin's RX side was already built (`fretboard_link.c` T1S frame handler + node-table id 1) — the only missing half was the fretboard transmitting, so this is purely additive on the fretboard. Build flag keeps the UART path as the live fallback (same parallel-coexistence as marvin's `MARVIN_FRETBOARD_TRANSPORT` and guitar's split). TX staged in the ISR + flushed in the main loop because TC6 must not run in the 240 Hz ISR (same reason model inference moved out, 2026-06-04); drop-on-busy shows as a `sample_seq` gap, matching the UART drop-on-full semantics. Detector-only frees the button pins for the LAN8651 SPI (guitar reused exactly those pins) and matches the node-class split — actuation lives on `guitar`. Direct peer-to-peer keeps latency low and the guitar dumb (applies the last `0x88B5` frame from anyone); marvin's coordination guarantees one command source at a time. |
+46	| 2026-06-16 | **Direction: fretboard re-scopes to a phototransistor *detector* node; the Wii-guitar *actuator* role moves to the new [`guitar`](../../guitar/SPEC.md) subproject.** Not yet executed — the firmware still does both roles (`fret_scan`/`data_stream` detector + `cmd_receive` actuator + `MODEL_DRIVEN` model) and **keeps actuating until the guitar node is proven**, then marvin flips its command target. No code change this pass. | Part of the T1S multi-node restructuring (top-level [`SPEC.md`](../../../SPEC.md) §2): sensing and actuation become separate node classes on one PLCA bus so multiple detector/guitar variants can coexist and marvin selects the active of each. Keeping fretboard working until guitar is validated holds the playing system up throughout (parallel-coexistence, like the UART/T1S build flag). Edge-ai `MODEL_DRIVEN` re-homing (detector infers → T1S → guitar) is deferred — model modes stay untouched for now. |
+47	| 2026-06-04 | **Added `MODEL_DRIVEN` mode: on-device int8 inference (`model_infer.c/.h` + generated `model_weights.h`), SW0/LED0 enable toggle, and inference run in the main loop — NOT the TC0 ISR.** Active model is a swappable `model_def_t` pointer (`model_infer_set_model`). Build at `-O2`/`-O3`. | Standalone bring-up of the edge-ai model (edge-ai journal 2026-06-04). **Inference must not run in the 240 Hz ISR**: measured on hardware, doing so dropped the callback rate to ~150–190 Hz (so the model's 250 ms window/lag went wrong) *and* starved the interrupt-driven SERCOM TX (recv ~22 fps, heavy drops). Moving `model_infer_run()` to the main loop and having the ISR only sample + apply a `volatile uint8_t` latest-command restored clean 240/240 Hz. The pointer-swap model_def lets per-difficulty weights be selected at runtime and keeps the door open for serial-loaded weights (RAM headroom confirmed; 8 KB SRAM). SW0 (PB03 active-low momentary, debounced) toggles control; LED0 (PB02) shows state; boots disabled (outputs released). `MARVIN_DRIVEN` stays the alternate build for the I/O-bridge path. |
+48	| 2026-06-03 | Data-stream frame grows 12→17 bytes: `0x03 \| g r y b o (5×u16 LE) \| sample_seq (u32 LE) \| applied_mask (u8) \| 0xFC`. `sample_seq` is a monotonic counter incremented once per tick in `data_stream_send` (before the TX-buffer check, so a dropped send shows as a gap); `applied_mask` comes from a new `cmd_receive_current_mask()` getter. Resolves open-questions #3 and #4. | Closes the edge-ai data-sync hole (edge-ai journal 2026-06-03). Pairing the actuator state with the ADC scan *in the same frame* makes label↔feature alignment atomic at the source, instead of marvin reconstructing it across its bursty USB RX and separate TX clocks — which Phase-2 training showed floored strum timing at ~20 ms. The seq counter lets the host reconstruct true 240 Hz ordering and detect dropped frames. Callback order is scan→send→receive, so `current_mask` at send time is exactly the state driven *during* this scan. Wire-format break: requires marvin's RX parser + `perf_rec_fretboard_raw_t` (schema v4) to update in lockstep. 17 B × 240 Hz = 4.08 KB/s, still ~12× under the 500 000-baud budget. |
+49	| 2026-06-02 | Leave the orphaned `fret_detect.*` and `fret_button.*` modules in place (still in MPLAB fileSet, still building, no callers). Don't delete, don't move to a `fallback/` directory. | Marvin's 2026-05-20 decision keeps a "fretboard-takeover" fallback mode in scope — `fret_button.c` is the existing implementation of that mode and is cheap to keep around. Cost is small (a few KB of flash + the stale `#include "fret_detect.h"` in `data_stream.c`). Revisit if the takeover mode is formally dropped or if these files start drifting against a refactor. |
+50	| 2026-06-02 | Loop period moved to 240 Hz, driven by TC0 callback (was 500 Hz from SYSTICK). | Game logic now runs on marvin; the host is the rate-setter and 240 Hz comfortably covers Guitar Hero note-onset timing while leaving SAM9X75 RX-side budget. TC0 callback removes any drift from a polled-SYSTICK loop. |
+51	| 2026-06-02 | SERCOM1 baud raised to 500 000 (was lower). | At 240 Hz × 12-byte TX frames + sporadic RX command bytes, 500 000 baud (≈ 50 000 B/s usable) gives ~17× headroom over the 2 880 B/s steady-state — plenty for jitter and back-pressure without flow control. |
+52	| 2026-06-02 | Data-stream frame is 12 bytes: `0x03 | g | r | y | b | o | 0xFC` (5×u16 LE). | Pressed-state booleans removed; with detection on the host, raw ADC values are the only payload that matters. Smaller frame ⇒ more TX headroom, simpler host parser. |
+53	| 2026-06-02 | Command receive: drain RX each tick, apply only the **last byte** as a 7-bit button bitmask. | The host is expected to send commands at ≤ tick rate; coalescing avoids working through stale bitmasks if anything backs up. Single-byte format means no framing/CRC overhead in either direction — corruption window is one tick at worst. |
+54	
+55	---
+56	
+57	## Open questions
+58	
+59	1. **No corruption signalling on the wire.** A bit-flip inside the 5 uint16 payload bytes is silently accepted — only out-of-range start/end bytes are caught. At 500 000 baud over EDBG-CDC this is probably fine, but if we ever see suspect detector behaviour, adding a Fletcher-16 byte (matching marvin's wire format) is a one-byte frame growth.
+60	
+61	2. **No host→firmware framing.** Command stream is raw bitmask bytes with no start byte. A spurious byte (e.g. line glitch on RX) becomes a button command. Acceptable for now because the line is short and runs over the same EDBG-CDC pair as TX, but worth revisiting if we see ghost presses.
+62	
+63	3. ~~**T1S link transport — direction, not yet built.**~~ **Resolved 2026-06-17 (see decision log):** the fretboard T1S detector firmware is written — `t1s_detector.{c,h}` (follower id 1, MAC `02:00:00:00:00:01`, ethertype `0x88B5` data + `0x88B6` heartbeat) behind the `FRETBOARD_LINK = T1S` build flag, reusing the shared `third_party/oa-tc6-lib`. The 17-byte frame rides the Ethernet payload unchanged (only the transport swaps, as planned). **Remaining (gated on Greg):** the MCC regen (a SERCOM in SPI-master mode + T1S_CS/T1S_RST/T1S_IRQ_N GPIOs + EIC on IRQ_N — mirror of guitar G0; the detector-only build frees the button pins) and on-hardware bring-up (target banner `LAN8651 up … PLCA follower id=1/8`). The T1S fileSet must add `t1s_detector.c`, `cli.c`, `third_party/embedded-cli/embedded_cli.c`, and `oa-tc6-lib` `tc6.c`/`tc6-regs.c`, plus the `libtc6/inc`+`src` and `third_party/embedded-cli` include dirs, and **exclude** `cmd_receive.c`/`fret_button.c` (button-pin refs that conflict with the SPI pins). PoDL is transparent to the MCU (zero firmware footprint); final PoDL BOM still open.
+64	
+65	> Resolved 2026-06-03 (see decision log): #3 "no sample timestamp" and #4 "no applied actuator state" — both fixed by growing the frame to 17 bytes with `sample_seq` + `applied_mask`.
+66	
+67	---
+68	
+69	## Session log
+70	
+71	### 2026-06-17 — Link UP on hardware (detector heartbeat seen on marvin)
+72	
+73	- The fretboard T1S node is **live on the bus**: `LAN8651 up … PLCA follower id=1/8`, and marvin's
+74	  `nodes` shows the detector (id 1) present via its `0x88B6` heartbeat. First end-to-end fretboard↔marvin
+75	  over T1S.
+76	- **Bring-up blocker + gotcha (cost ~an afternoon):** the firmware hung in the vendored
+77	  `TC6Regs_Init → DoInitialization` chip-rev wait (tc6-regs.c:338, no timeout) because **SERCOM0 SPI
+78	  transfers never completed** — `spi_done_cb` never fired. Root cause: **MCC did not enable the SERCOM0
+79	  APB clock** (`MCLK_APBCMASK` was `0x88c` = SERCOM1+TC0+ADC, missing bit 1 = SERCOM0; the guitar's
+80	  `0x806` has it). With no APB clock, every SERCOM0 register access is a silent no-op (no bus fault — which
+81	  is why the banner still printed), so the SPI never ran and its completion IRQ never asserted. SERCOM1
+82	  (debug UART) had its bit, so logging worked throughout — masking the cause. **MCC showed the SERCOM0
+83	  clock as enabled but wasn't emitting the mask bit; toggling/reasserting it in MCC fixed code generation.**
+84	  Diagnosed by decoding `MCLK_APBCMASK` against `mclk.h` and one-shot `DIAG:` checkpoints in
+85	  `spi_done_cb`/init (since removed). For the next node: if SPI bring-up hangs, **check the APB-clock mask
+86	  bit for that SERCOM first.**
+87	- Also surfaced/untangled the MCC tree move `fretboard-mcc/` → `config.mcc/` ("standard layout" cleanup).
+88	
+89	### 2026-06-17 — T1S-only; model drives the guitar over T1S
+90	
+91	- Greg's MCC config landed (reviewed: SERCOM0 SPI Mode 0, EIC EXTINT13, SysTick 1 ms) and was committed
+92	  (`ac9109b`, "MCC regen for T1S … drop button outputs").
+93	- Per Greg: the detector's purpose is to infer actuator commands and drive the guitar — so collapsed the
+94	  firmware to a **single T1S behaviour** (removed UART + `FRETBOARD_LINK` + `FRETBOARD_MODE`). The model is
+95	  always on; its inferred bitmask streams to marvin (`applied_mask` in the 17-byte frame) **and** goes
+96	  straight to the guitar node over T1S.
+97	  - `t1s_detector.c`: added the command-to-guitar TX path — `T1SDetector_SetCommand()` (main loop, edge-
+98	    triggered) + `flush_command()` with a 50 ms refresh, guitar MAC `02:..:02`, its own staging buffer +
+99	    busy flag + `cmd_tx_done`. `TC6_TX_ETH_QSIZE` 2→4 (data + command + heartbeat). Banner now "t1s
+100	    detector + actuator". CLI `t1s` shows data-tx + cmd-tx counts + last cmd.
+101	  - `data_stream.{c,h}`: `data_stream_send(applied_mask)` (param); dropped the 21-byte model frame and all
+102	    `FRETBOARD_LINK` branching — always the 17-byte T1S frame.
+103	  - `main.c`: single path — ISR scans + stages the data frame with the gated command; main loop runs
+104	    inference → `s_latest_cmd`, forwards `s_current_cmd` via `SetCommand`, services TC6 + CLI. SW0 arms
+105	    actuation (LED0 shows armed; boots disarmed → sends 0).
+106	  - `cli.c` / `fretboard_config.h` / `model_infer*.h`: removed the build-flag guards + stale `CMD_BIT_*` /
+107	    `MODEL_DRIVEN` comment references. Grep clean of `FRETBOARD_LINK`/`FRETBOARD_MODE`/`cmd_receive`.
+108	- **Coordination caveat recorded:** no active-source arbitration yet — while the fretboard is armed, marvin
+109	  must not also command the guitar. marvin-side active-detector/active-guitar selection is the follow-up.
+110	- **Not built/flashed** — remaining: build-wiring (add `t1s_detector.c`, `cli.c`, `embedded_cli.c`,
+111	  `tc6.c`/`tc6-regs.c` + include dirs to the fileSet) then on-hardware bring-up. Watch: data (240 Hz) +
+112	  command (edge + 20 Hz refresh) + heartbeat all share the PLCA TX — confirm the data rate holds ≈240 Hz.
+113	
+114	### 2026-06-17 — MCC for T1S done + actuator code removed (detector-only)
+115	
+116	- **MCC regen reviewed — complete & correct.** SERCOM0 SPI master Mode 0 (`CPOL_IDLE_LOW | CPHA_LEADING_EDGE | DORD_MSB`, DOPO0/DIPO3) on PA04 MOSI / PA05 SCK / PA07 MISO; `T1S_CS`=PA15, `T1S_RST`=PA14 (GPIO, idle high); `T1S_IRQ_N`=PA13 / EIC EXTINT13, SENSE13=FALL, INTENSET bit13; EIC+SERCOM0 in NVIC; SysTick added (1 ms tick, `GetTickCounter()`=ms); SERCOM1 USART kept in ring-buffer mode (TX 512 / RX 128). Pins/macros/PLib names all match `t1s_detector.c` + `cli.c`. (SysTick was missing on the first regen pass — added.)
+117	- **Removed the actuator entirely** (outputs gone from hardware): deleted `cmd_receive.{c,h}`, `fret_button.{c,h}`, `fret_detect.{c,h}`. Cleaned references — `data_stream.c` drops the `cmd_receive`/`fret_detect` includes (plain `applied_mask`=0; `data_stream_send_model()` now takes the inferred mask as a param); `main.c` drops `cmd_receive_*`; the model path streams its mask as telemetry instead of driving GPIO. Grep confirms no remaining `cmd_receive`/`fret_button`/`fret_detect`/`BUTTON_`/`STRUM_` references. The deleted files were already out of the MPLAB fileSet.
+118	- **Remaining build-wiring** (T1S build): add `t1s_detector.c`, `cli.c`, `third_party/embedded-cli/embedded_cli.c`, `oa-tc6-lib` `tc6.c`/`tc6-regs.c` + the `libtc6/inc`+`src` and `embedded-cli` include dirs to the fileSet; define `FRETBOARD_LINK=FRETBOARD_LINK_T1S`. Then on-hardware bring-up.
+119	
+120	### 2026-06-17 — Fretboard T1S detector firmware (Stage 1)
+121	
+122	- Wrote the detector-node firmware behind a new `FRETBOARD_LINK = {UART, T1S}` build axis
+123	  (`fretboard_config.h`), orthogonal to `FRETBOARD_MODE`:
+124	  - `t1s_detector.{c,h}` — TX mirror of guitar's `t1s_follower.c`. Follower id 1 / MAC `02:..:01`,
+125	    coordinator-MAC dst, ethertype `0x88B5` for the 17-byte data frame + `0x88B6` heartbeat (type 1 =
+126	    detector). Bare-metal: SysTick clock, RST pulse, `SERCOM0_SPI_CallbackRegister`, GPIO CS held across the
+127	    chunk, EIC IRQ_N, non-blocking `TC6Regs_Init(nodeId=1, follower, non-promiscuous)`, serviced from the
+128	    main loop. `T1SDetector_SendFrame()` stages a frame in the ISR (latest-wins); `T1SDetector_Tasks()`
+129	    flushes it + the 500 ms heartbeat from the main loop, one TX in flight (`s_tx_busy`). `tc6-conf.h`
+130	    copied from guitar (PL10 sizing).
+131	  - `data_stream.c` — `data_stream_send()`/`_send_model()` build the same frame, then hand it to
+132	    `T1SDetector_SendFrame()` under `FRETBOARD_LINK == T1S` instead of `SERCOM1_USART_Write()`. `applied_mask`
+133	    is constant 0 in this build (detector doesn't actuate; `cmd_receive.c` excluded).
+134	  - `main.c` — `FRETBOARD_MODEL_ACTIVE` gate makes the model path mutually exclusive with the T1S build
+135	    (button/SW0/LED0 GPIOs are repurposed for the LAN8651). T1S build: `T1SDetector_Initialize()` after
+136	    `data_stream_init()`, `T1SDetector_Tasks()` in the main loop, ISR scans + streams only.
+137	- marvin side needed **no changes** — `fretboard_link.c`'s T1S frame handler already parses the 17-byte
+138	  frame from node id 1 (`detector_id == DETECTOR_ADC_FRETBOARD`) and emits `PERF_REC_FRETBOARD_RAW`; the
+139	  node table + heartbeat-presence demux already have id 1. The `t1s` branch builds T1S by default.
+140	- Decisions locked: command plane for Stage 2 = **direct peer-to-peer** (active detector → guitar MAC, marvin
+141	  coordinates + logs); this iteration is **Stage 1 only** (detector streams; marvin drives the guitar).
+142	- **Operator CLI on SERCOM1** (`cli.{c,h}` + vendored `third_party/embedded-cli/`, mirror of the guitar node).
+143	  In the T1S build SERCOM1 is free (data moved to the bus), so it becomes an interactive console:
+144	  `t1s` (link/sync/chipRev/PLCA/credits/tx/err), `adc` (latest 5-channel scan), `id` / `plca` (async MAC-PHY
+145	  reg reads, enqueue-only per the guitar 2026-06-17 fix). Bare-metal: `CLI_Tasks()` drains the SERCOM1 RX ring
+146	  each main-loop pass. Added `T1SDetector_GetState/NodeId/NodeCount/ReadId/ReadPlca` accessors. CLI compiled
+147	  only under `FRETBOARD_LINK == T1S` (SERCOM1 is the data stream in the UART build). **MCC note:** keep
+148	  SERCOM1 in ring-buffer mode with a TX ring ≥ 512 B so a `t1s` dump (~8 lines) isn't truncated.
+149	- **Not built/flashed** — gated on the MCC regen (SERCOM SPI + T1S_CS/RST/IRQ_N, mirror of guitar G0) and the
+150	  LAN8651 wiring. Bring-up watch: confirm marvin's `FRETBOARD_RAW` rate holds ≈240 Hz over the bus (the
+151	  240 Hz TX is the new stressor vs guitar's 500 ms heartbeat) and the `nodes` command shows id 1 present.
+152	
+153	### 2026-06-09 — T1S + PoDL link direction documented
+154	
+155	- Evaluated moving the marvin link from SERCOM1 UART to **10BASE-T1S + dumb PoDL** (LAN8651B1 MAC-PHY each end). Feasible on the PIC32CM PL10: no IP stack, just SPI + the OPEN Alliance TC6 chunk protocol + a 14-byte L2 header; the existing 17-byte/1-byte frame formats ride inside the Ethernet payload unchanged. Est. ~6–10 KB flash / ~1–2 KB SRAM, one free SERCOM (SPI) + CS_N/IRQ_N/reset. Motivation: PoDL (power+data on one pair), noise/cable tolerance, PLCA multidrop, and a Microchip T1S+PoDL system demonstration — *not* bandwidth (UART has ~12× headroom).
+156	- Documented system-level in [`../../../SPEC.md`](../../../SPEC.md) §5/§6/§7 and low-level in new [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). Added open-question #3 here; mirrored a note in the marvin journal (it gets its own bare-metal TC6 driver — no free netdev).
+157	- **No code changes.** Direction only; revisit open sub-items (PLCA vs p2p, ethertype/MACs, UART fallback) before implementation.
+158	
+159	### 2026-06-03 — 17-byte frame: sample_seq + applied_mask for edge-ai sync
+160	
+161	- Grew the data frame 12→17 B (decision log). `data_stream.c`: added `sample_seq` (file-static `s_sample_seq`, incremented per tick before the TX-buffer guard) and `applied_mask` (from the new `cmd_receive_current_mask()` getter); `_Static_assert` 17; included `cmd_receive.h`. `cmd_receive.{c,h}`: exposed `current_mask` via the getter.
+162	- Lockstep partners updated the same day: marvin RX parser (`fretboard_link.c`, `DS_FRAME_LEN` 12→17, extract seq+mask) and `perf_rec_fretboard_raw_t` (perf-log schema **v4** — see marvin journal), host `marvin-perf` decoder, and the `--labels=actuator-fb` exporter + edge-ai loader (windows within contiguous `fb_seq` runs).
+163	- **Not yet built/flashed** — needs MPLAB + the rig. Deploy fretboard + marvin together (wire-format break). Then re-capture the Expert corpus and A/B the new atomic labels against the old cross-stream join (edge-ai journal).
+164	
+165	### 2026-06-03 — Edge-AI design proposal authored, then promoted to its own subproject
+166	
+167	- Initial draft landed here as `edge_ai_spec.md`, then moved to its own top-level subproject at [`tools/edge-ai/`](../../../tools/edge-ai/) (docs in [`tools/edge-ai/docs/`](../../../tools/edge-ai/docs/) — SPEC + architecture + training + runtime + rollout + review). Rationale: the work is mostly an offline Python / training-pipeline effort; phases 1–4 don't touch fretboard firmware at all, only phase 5 (cut-over) does. Living under `firmware/fretboard/docs/` framed it as a near-term fretboard plan when it's really its own development effort.
+168	- Locked decisions (preserved across the move): output is 6 bits (5 frets + 1 collapsed strum bit; the wire byte still uses bit 5 for strum-down, bit 6 stays 0 — the up/down collapse is *at export time*, the raw `PERF_REC_ACTUATOR` capture keeps both bits so a future human-trainer corpus can preserve direction). Supervision is distillation against `PERF_REC_ACTUATOR.intended_mask` from marvin self-play. Intended deployment target is the fretboard PIC32CM, but offline phases are MCU-agnostic.
+169	- The shape was picked specifically to dissolve the spatial-mismatch issue between `cv_marvin_v1` (sampling at `y=311`) and the photoxistor row: distilling against marvin's commands means the +220 ms strum delay is baked into the labels, so the model just learns whatever delay maps photo dip → strum from a wide-enough causal window — no mechanical alignment needed.
+170	- No code changes. Open questions surfaced in [`tools/edge-ai/docs/review.md`](../../../tools/edge-ai/docs/review.md) (Q1: hold-vs-edge channel per fret, Q2: AR feedback, Q3: look-ahead vs. now-cast, Q4: strike-line CV detector as alt label source, Q5: photoxistor placement). Awaiting reviewer pushback before any of phase 1 (exporter `--labels=actuator` mode) lands.
+171	- Top-level [`SPEC.md`](../../../SPEC.md) §3 has a new edge-ai row pointing at the subproject.
+172	
+173	### 2026-06-02 — I/O-bridge spec rewrite + ds_monitor
+174	
+175	- Confirmed actual architecture by reading sources: `main.c` has only `fret_scan_all` / `data_stream_send` / `cmd_receive_update` in the TC0 callback; `fret_detect.c` and `fret_button.c` are present but unreferenced.
+176	- Wrote [`tools/ds_monitor.py`](../tools/ds_monitor.py): pyserial-based monitor that resyncs on `0x03 ... 0xFC` framing, prints actual frame rate (with % drift vs 240 Hz expected), bytes/s, framing-error drops, and current ADC values once per second.
+177	- Rewrote [`../SPEC.md`](../SPEC.md) to reflect the I/O-bridge model: TC0 @ 240 Hz, 12-byte TX frame, 1-byte RX bitmask command, 500 000 baud. Old SPEC described the now-extinct on-device chord/strum pipeline.
+178	- Created this journal (per top-level `CLAUDE.md`).
+179
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:32Z)**_
+
+Journal read. The fretboard own-id renumber (1→4) mirrors the guitar move: change the fretboard's `T1S_NODE_ID` and marvin's coordinator table entry, plus docs/SPEC/journal. Let me map every id-1 reference for the fretboard across code and docs.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:36Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find fretboard id refs in code
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== fretboard t1s_detector.c own-id lines ==="
+grep -n "T1S_NODE_ID\|00:00:01\|follower id\|id 1\|id=1" firmware/fretboard/t1s_detector.c
+echo
+echo "=== marvin s_nodes[] + fretboard refs in t1s_link.c ==="
+grep -n "s_nodes\|DETECTOR\|FRETBOARD\|GUITAR\|1u\|3u\|4u" firmware/marvin/default/src/net/t1s/t1s_link.c | head -40
+```
+
+```text
+=== fretboard t1s_detector.c own-id lines ===
+13:/* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
+14:#define T1S_NODE_ID         (1u)
+38:/* Coordinator-assigned MAC for this node: 02:00:00:00:00:01. */
+39:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+222:    s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
+267:    /* Configure the LAN8651 + PLCA as follower id 1. Not promiscuous — the
+270:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+288:                       "PLCA follower id=%u/%u\r\n",
+290:                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+361:uint8_t T1SDetector_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+
+=== marvin s_nodes[] + fretboard refs in t1s_link.c ===
+13:#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+26:#define T1S_TASK_STACK_WORDS (1024u)
+48:#define T1S_ETH_HDR_LEN      (14u)
+59:#define T1S_NO_DETECTOR     (0xFFu)
+63:    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+64:    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
+65:    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+71:    uint8_t         detector_id;  /* detector_state_t.detector_id (T1S_NO_DETECTOR for actuators) */
+75:static const t1s_node_t s_nodes[] = {
+76:    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+77:    { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+80:#define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
+82:/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+92:        case T1S_NODE_FRETBOARD:     return "detector";
+93:        case T1S_NODE_PHOTODETECTOR: return "detector";
+94:        case T1S_NODE_GUITAR:        return "guitar";
+113:    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+114:        if (s_nodes[i].type == type) {
+115:            return &s_nodes[i];
+127:    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+128:        if (s_nodes[i].node_id == mac[5]) {
+129:            return &s_nodes[i];
+139:static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
+341:            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+347:                if (send_to_node(guitar->node_id, &mask, 1u)) {
+395:    out->node_id = s_nodes[idx].node_id;
+396:    out->type    = node_type_name(s_nodes[idx].type);
+478:    uint8_t idx = (uint8_t)(node - s_nodes);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find remaining fretboard id-1 references
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== marvin fretboard_link.c id refs ==="
+grep -rn "node_id\|mac\[5\]\|== 1\|(1u)\|id 1\|00:00:01\|FRETBOARD" firmware/marvin/default/src/net/ | grep -iv "guitar" | grep -i "fret\|node_id\|mac\|id 1\|:01" | head -30
+echo
+echo "=== any other 02:..:01 or fretboard-id-1 across code ==="
+grep -rn "00:00:01\|follower id 1\|id=1/8\|(id 1)" firmware/ docs/ SPEC.md --include=*.c --include=*.h --include=*.md | grep -iv "guitar" | head -40
+```
+
+```text
+=== marvin fretboard_link.c id refs ===
+firmware/marvin/default/src/net/t1s/t1s_link.c:13:#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+firmware/marvin/default/src/net/t1s/t1s_link.c:63:    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+firmware/marvin/default/src/net/t1s/t1s_link.c:70:    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+firmware/marvin/default/src/net/t1s/t1s_link.c:76:    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+firmware/marvin/default/src/net/t1s/t1s_link.c:92:        case T1S_NODE_FRETBOARD:     return "detector";
+firmware/marvin/default/src/net/t1s/t1s_link.c:100:static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+firmware/marvin/default/src/net/t1s/t1s_link.c:107:    out[5] = node_id;
+firmware/marvin/default/src/net/t1s/t1s_link.c:128:        if (s_nodes[i].node_id == mac[5]) {
+firmware/marvin/default/src/net/t1s/t1s_link.c:201:/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) and queue it.
+firmware/marvin/default/src/net/t1s/t1s_link.c:203:static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t payload_len)
+firmware/marvin/default/src/net/t1s/t1s_link.c:211:    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+firmware/marvin/default/src/net/t1s/t1s_link.c:327:                     s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
+firmware/marvin/default/src/net/t1s/t1s_link.c:395:    out->node_id = s_nodes[idx].node_id;
+firmware/marvin/default/src/net/t1s/t1s_link.h:39:    uint8_t     node_id;
+
+=== any other 02:..:01 or fretboard-id-1 across code ===
+(eval):6: no matches found: --include=*.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:44:53Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Grep fretboard id-1 refs across repo
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -rn "00:00:01\|follower id 1\|id=1/8\|(id 1)\|id 1\b" firmware docs SPEC.md 2>/dev/null | grep -iv "guitar\|00:00:00\b" | grep -i "fret\|:01\|id 1\|follower" | grep -v "\.specstory" | head -40
+```
+
+```text
+firmware/fretboard/t1s_detector.h:9: * marvin is the PLCA coordinator (node 0); this node is follower id 1. It both
+firmware/fretboard/fretboard_config.h:7: * The fretboard is a 10BASE-T1S node (PLCA follower id 1) that both senses and
+firmware/fretboard/t1s_detector.c:267:    /* Configure the LAN8651 + PLCA as follower id 1. Not promiscuous — the
+firmware/fretboard/SPEC.md:4:> PLCA follower (id 1) that infers actuator commands from the phototransistor data and drives the
+firmware/fretboard/docs/journal.md:73:- The fretboard T1S node is **live on the bus**: `LAN8651 up … PLCA follower id=1/8`, and marvin's
+firmware/fretboard/docs/journal.md:74:  `nodes` shows the detector (id 1) present via its `0x88B6` heartbeat. First end-to-end fretboard↔marvin
+firmware/fretboard/docs/journal.md:138:  frame from node id 1 (`detector_id == DETECTOR_ADC_FRETBOARD`) and emits `PERF_REC_FRETBOARD_RAW`; the
+firmware/fretboard/docs/journal.md:139:  node table + heartbeat-presence demux already have id 1. The `t1s` branch builds T1S by default.
+docs/t1s-podl-link.md:21:bring-up. marvin's RX side is already in place (node-table id 1 + `fretboard_link.c`
+docs/t1s-podl-link.md:101:   - detector (fretboard, id 1) → marvin: the 17-byte data-stream frame (see fretboard SPEC).
+docs/t1s-podl-link.md:221:> default id 1 **collides with the fretboard's current id 1**, so don't co-bus a
+docs/t1s-podl-link.md:271:- **Fretboard node (id 1) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
+docs/t1s-podl-link.md:275:  hardware bring-up (banner `LAN8651 up … PLCA follower id=1/8`; confirm the
+docs/archive/wiring-diagram.md:92:    IN1 ─┤1                   18├─ OUT1 ──► Solenoid 1
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:19Z)**_
+
+Full map in hand. This is the same shape as the guitar move: two code points (fretboard `T1S_NODE_ID`, marvin `s_nodes[]`) plus comments, SPEC, docs, journals — and I'll preserve historical bring-up banners while updating current-identity statements. Let me read the doc/SPEC sections I need to edit precisely.
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:21Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+200	command TX targets. marvin selects the active node of each class.
+201	
+202	**Target id assignment** (canonical — the whole bus renumbers to this):
+203	
+204	| Node | Class | PLCA ID | MAC (locally administered) | Notes |
+205	|---|---|---|---|---|
+206	| marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
+207	| fauxmote(s) | controller | 1–2 | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote, at most two (id build-configurable, default 1) |
+208	| guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | receives the 1-byte command bitmask (from marvin or a detector) |
+209	| fretboard | detector | 4 | `02:00:00:00:00:04` | photo-ADC stream → `detector_id`; also commands the guitar directly |
+210	| beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved |
+211	| lemmy | (future) | 6 | `02:00:00:00:00:06` | reserved |
+212	| lightshow | (future) | 7 | `02:00:00:00:00:07` | reserved |
+213	
+214	> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2) and the **guitar**
+215	> (id 3) are on the target scheme in source — guitar id 3 is set at all three points that
+216	> address it (guitar firmware, marvin's coordinator node table, and the fretboard's
+217	> peer-to-peer guitar target). The guitar was last *flashed/verified* at its old id 2, so
+218	> re-flash it (and marvin) for id 3 to take effect on the wire. **Still on the old id:**
+219	> the **fretboard** node itself (firmware `T1S_NODE_ID = 1` + marvin's table entry) →
+220	> target 4, a coordinated follow-up (both re-flash together). Until then a fauxmote at the
+221	> default id 1 **collides with the fretboard's current id 1**, so don't co-bus a
+222	> default-id fauxmote with the fretboard yet — pick id 2, or renumber the fretboard first.
+223	
+224	- One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
+225	  registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
+226	- A **second data ethertype** `0x88B7` carries the fauxmote (controller) channel — the
+227	  mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
+228	  as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
+229	  demultiplexes controller traffic apart from the detector/guitar bitmask.
+230	- A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
+231	  `detector_id` (and the actuator target for TX). The single fretboard keeps
+232	  `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
+233	  enumeration protocol — the table is compiled in.
+234	- The 17-byte fretboard→marvin frame and the 1-byte marvin→fretboard bitmask ride
+235	  inside the Ethernet payload unchanged; marvin demuxes incoming frames by src MAC
+236	  and addresses outgoing ones to a specific node.
+237	
+238	### 7.2 Presence heartbeat
+239	
+240	PLCA has **no node discovery**, so the coordinator can't enumerate who's on the
+241	bus. A lightweight application heartbeat fills that gap: each follower
+242	periodically (≈500 ms) sends a small frame to the coordinator
+243	(`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin routes it
+244	apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
+245	on receipt and reports it via the `nodes` console command (present = a heartbeat
+246	within ~2 s).
+247	
+248	Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller),
+249	`node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives the node
+250	from the src MAC; the payload is informational (seq enables drop detection).
+251	
+252	## 8. Transport coexistence
+253	
+254	The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved; the
+255	actuator command now targets the guitar node (`T1SLink_SendToGuitar`). UART and
+256	T1S transports live behind a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build flag**.
+257	The `t1s` branch builds **T1S by default**; UART stays one (commented) line away in
+258	`user.cmake` as a fallback during the fretboard's own transition.
+259	
+260	## 9. Decisions & open items
+261	
+262	**Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower
+263	over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on both
+264	ends. First brought up at guitar id 2; renumbered to the target **id 3** in source
+265	(2026-07-28, §7.1) — re-flash guitar + marvin for it to take effect. The earlier
+266	prerequisites (a FLEXCOM/SERCOM in SPI-master mode via MCC; the `oa-tc6-lib`
+267	submodule) are resolved.
+268	
+269	Open / future:
+270	
+271	- **Fretboard node (id 1) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
+272	  T1S-only). Sense+actuate: streams the 17-byte data frame to marvin (RX/detector path
+273	  + node-table slot already in place) **and** sends its model's inferred command
+274	  directly to the guitar (id 3). MCC config done. **Remaining:** build-wiring + on-
+275	  hardware bring-up (banner `LAN8651 up … PLCA follower id=1/8`; confirm the
+276	  `FRETBOARD_RAW` rate holds ≈240 Hz — data + command + heartbeat now share the node's
+277	  PLCA TX).
+278	- **Active-source arbitration.** Both marvin and the fretboard can address the guitar
+279	  (`02:..:02`); the guitar applies whoever transmitted last. Need marvin-side
+280	  active-detector/active-guitar selection so exactly one source drives at a time
+281	  (today: single guitar → `node_for_type(GUITAR)`; the fretboard's SW0 is an interim
+282	  manual arm).
+283	- **PoDL** supply voltage + PD-side regulator topology (BOM, not firmware) — not
+284	  built; the link is separately powered for now.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:29Z)**_
+
+All mapped. The `detector_id = 1` at line 231-232 is the bus detector-class code (like `node_type`), separate from the PLCA id — that stays. Now making the edits. Code first:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:30Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/t1s_detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:35Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/t1s_detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:41Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/t1s_detector.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:47Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/t1s_detector.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/fretboard_config.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:45:57Z)**_
+
+Now marvin's coordinator table:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:00Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:05Z)**_
+
+Code done. Now the fretboard SPEC:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:08Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:15Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:23Z)**_
+
+Let me check for stale guitar-target `:02` refs left in the fretboard SPEC/journal (should be `:03` after the guitar move):
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:23Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find stale guitar :02 refs in fretboard docs
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -rn "02:..:02\|:00:02\|02u\|(id 2)\|id 2\b\|node (id 2)" firmware/fretboard/SPEC.md firmware/fretboard/docs/journal.md
+```
+
+```text
+firmware/fretboard/SPEC.md:155:guitar (both target `02:..:02`). marvin-side active-detector/active-guitar selection
+firmware/fretboard/docs/journal.md:18:- **commands** the guitar node (id 2) directly with the inferred 1-byte bitmask (`0x88B5`,
+firmware/fretboard/docs/journal.md:27:caveat:** while the fretboard is armed, marvin must NOT also drive the guitar (both target `02:..:02`;
+firmware/fretboard/docs/journal.md:41:| 2026-07-28 | **Peer-to-peer guitar target renumbered id 2 → 3** (`t1s_detector.c` `T1S_GUITAR_ID`, dst MAC now `02:00:00:00:00:03`). The fretboard's **own** node id stays 1 (target 4 renumber still deferred). Part of the coordinated guitar-id move (guitar firmware + marvin table also go to 3). | The guitar node moved to its target id 3 (docs/t1s-podl-link.md §7.1); the fretboard drives the guitar directly (peer-to-peer), so its hardcoded destination has to follow the guitar or that command path misses the node. The fretboard's own 1→4 renumber is a separate coordinated step with marvin's table. |
+firmware/fretboard/docs/journal.md:43:| 2026-06-17 | **T1S-only sense+actuate node; the model drives the guitar over T1S.** Removed the UART path and the `FRETBOARD_LINK` + `FRETBOARD_MODE` build flags entirely — one behaviour. The on-device model is always on; its inferred bitmask is (a) streamed to marvin as the data frame's `applied_mask` and (b) sent **directly to the guitar node** over T1S (peer-to-peer, edge-triggered + 50 ms refresh). New `T1SDetector_SetCommand()` + a command TX path/buffer in `t1s_detector.c` (guitar MAC `02:..:02`); `data_stream_send(applied_mask)` takes the mask as a param; the 21-byte model frame is dropped (marvin parses the 17-byte layout). SW0 arms actuation (interim manual active gate); `TC6_TX_ETH_QSIZE` 2→4 (data + command + heartbeat concurrent). | Supersedes the 2026-06-16 "Stage 1 only / model stays UART-bench telemetry" call: per Greg, **inferring actuator commands from the phototransistor data is the entire purpose of this detector**, so it must drive the guitar — and with the outputs gone, that path is T1S. Collapsing to a single T1S behaviour (no UART/flags) matches "clean it all up for T1S." Direct peer-to-peer keeps latency low and the guitar dumb (applies the last `0x88B5` frame from anyone). **Caveat:** no active-source arbitration yet — while the fretboard is armed, marvin must not also command the guitar (both address `02:..:02`); marvin-side active-detector/active-guitar coordination is the follow-up. |
+firmware/fretboard/docs/journal.md:98:    triggered) + `flush_command()` with a 50 ms refresh, guitar MAC `02:..:02`, its own staging buffer +
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:34Z)**_
+
+These three are current-state prose carrying stale guitar id (the guitar is now id 3); the dated decision/session-log entries (41, 43, 98) are historical and stay. Fixing the current-state ones — SPEC caveat + fretboard journal current focus:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:35Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:47Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:51Z)**_
+
+Now the fretboard journal current-focus own-id line (line 23) and a new decision entry:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:46:55Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:09Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:14Z)**_
+
+Let me annotate the prior entry that said the fretboard renumber was "still deferred":
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fretboard/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:23Z)**_
+
+Now `docs/t1s-podl-link.md`. Let me update the transition note, the inline id-1 refs, and the stale guitar `:02`:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:30Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:34Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+17	frame to the coordinator (`0x88B5`, logging) **and** sends its on-device model's
+18	inferred 1-byte command **directly to the guitar node** (`0x88B5`, dst `02:..:02`) —
+19	peer-to-peer actuation — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
+20	SPI + CS/RST/IRQ_N, mirror of guitar G0); remaining is the build-wiring + on-hardware
+21	bring-up. marvin's RX side is already in place (node-table id 1 + `fretboard_link.c`
+22	T1S frame handler); marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag
+23	(§8). **PoDL is design-direction only** (not built) — the link is separately powered
+24	during bring-up. Addressing in §7.1; the scope widened from a 2-node UART swap to
+25	this multi-node PLCA bus on 2026-06-16.
+26
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:41Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:46Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:47:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:06Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:21Z)**_
+
+Now the top-level SPEC.md fretboard row, and the marvin journal note. Let me find the fretboard id reference in SPEC.md:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:21Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find fretboard id in top SPEC and marvin journal
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== SPEC.md fretboard/detector id ==="
+grep -n "fretboard\|detector\|follower id\|:00:0" SPEC.md | grep -i "fret\|follower id 1\|detector.*id\|id 1"
+echo "=== marvin journal current-focus fretboard/guitar id refs ==="
+grep -n "fretboard\|detector.*id\|id 1\|00:00:01\|node table\|s_nodes" firmware/marvin/docs/journal.md | head -20
+```
+
+```text
+<persisted-output>
+Output too large (31.7KB). Full output saved to: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/7c313450-d23f-4e40-b779-d8155d63eb74/tool-results/b9i56z4yc.txt
+
+Preview (first 2KB):
+=== SPEC.md fretboard/detector id ===
+9:Build an autonomous robot that plays Guitar Hero / Rock Band on a real Wii guitar controller by watching the game video, detecting notes in real time, and pressing physical buttons in sync with the music. The system must run end-to-end without a host PC in the runtime path, produce reference-quality detector output that lighter detectors can be trained against, and provide an on-device operator UI for calibration, mode control, and replay.
+30:   │   fretboard (PIC32CM6408)        │┘
+42:link](docs/t1s-podl-link.md)) — marvin the PLCA coordinator, the guitar/fretboard nodes
+44:below). A direct FLEXCOM1 UART wire between marvin and the fretboard remains as a build-time
+50:- **fretboard** — PIC32CM6408PL10048 MCU. A **T1S detector node** that also drives: it streams 5-channel phototransistor ADC (note brightness at the strike line) up to marvin, and its on-device model infers the button bitmask and sends it **directly to the `guitar` node over T1S** (peer-to-peer actuation). It has no local Wii-guitar outputs (the standalone open-drain GPIO path was removed when the actuator role moved to the `guitar` node). T1S-only as of 2026-06-17.
+51:- **guitar** — PIC32CM PL10 MCU. A **guitar (actuator) node**: receives marvin's button bitmask and drives a Wii guitar controller via open-drain GPIO. New subproject; the actuation half of today's fretboard firmware, on its own node. Multiple guitar variants may coexist on the bus.
+52:- **fret-tuner** — Off-band Python tool (FastAPI + browser UI, Linux/macOS PC). Used at the bench for sensor calibration, detector-algorithm tuning, and replay analysis of recordings produced by marvin. Not in the runtime path.
+58:| Detector | observe game state → stream to marvin | `fretboard` (photo-ADC); future variants | 1 / `02:…:01` | active detector (`Detector_SetActive`) |
+...
+</persisted-output>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:26Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./SPEC.md`
+
+```text
+54	**Node classes (T1S bus direction).** marvin is the PLCA coordinator (id 0); followers are typed, and marvin selects the active one of each class:
+55	
+56	| Class | Role | Node(s) | T1S id / MAC | marvin selection |
+57	|---|---|---|---|---|
+58	| Detector | observe game state → stream to marvin | `fretboard` (photo-ADC); future variants | 1 / `02:…:01` | active detector (`Detector_SetActive`) |
+59	| Guitar (actuator) | receive bitmask → drive a Wii guitar | `guitar` (new); future variants | 2 / `02:…:02` | active guitar (planned) |
+60	
+61	Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); guitar nodes are command TX targets. Both classes scale by adding a node-table row. marvin's own `cv_marvin_v1` is a detector too (internal, not a bus node).
+62	
+63	## 3. Subproject specs (where detail lives)
+64	
+65	| Subproject | Spec | Journal |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:36Z)**_
+
+SPEC.md line 58 (detector) needs 1→4, and line 59 (guitar) is stale from the guitar move — still says `2 / 02:…:02`, should be `3 / 02:…:03`. Fixing both:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:40Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:46Z)**_
+
+Now the marvin journal. Let me find current-state fretboard/detector id refs there:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:48:48Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find marvin journal fretboard id refs
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+grep -n "detector.*id 1\|id 1.*detector\|fretboard.*id\|node id 1\|00:00:01\|s_nodes\|node table\|detector (id" firmware/marvin/docs/journal.md | head -20
+echo "=== top of decision log ==="
+grep -n "^| 2026-07-28" firmware/marvin/docs/journal.md | head
+```
+
+```text
+90:- **Future:** SCORE/MULTIPLIER/STREAK event types + post fns exist; the gameplay engine will post them once it produces the values (dashboard widgets already present). Files: `ui/dashboard_feed.{c,h}` (new), `ui/screens/dashboard/screen_dashboard.{c,h}`, `actuator/fretboard_link.c`, `ui/ui_manager.c`, `cmake/.../user.cmake`. No MCC/Legato edits. **Pending Greg's MPLAB build + hardware validation** (frets track under timing + manual producers; selection still updates; idle consumer ~0 CPU).
+155:**2026-07-02 — fauxmote command link (marvin TX side): mirror the gameplay mask to the ESP32 Wiimote over FLEXCOM1.** New `net/fauxmote/fauxmote_link.{c,h}` transmits controller input to the fauxmote ESP32 over the **FLEXCOM1 USART (PA28/PA29)** — the fretboard UART-transport pins, which are **free while the guitar node rides T1S** (the current build, `MARVIN_FRETBOARD_TRANSPORT=1`). Wire protocol is the shared `net/fauxmote/mf_proto.h` (byte-for-byte identical to `firmware/fauxmote/main/mf_proto.h`): `SOF/TYPE/LEN/CRC8` framing, `GUITAR`/`WIIMOTE`/`LINK_CMD` out + `STATUS` in. A TX task re-sends the latched `GUITAR` slice on change (low latency, via a notify) and at a 50 ms floor (self-heals dropped frames + feeds fauxmote's 200 ms watchdog); an RX task parses the `STATUS` uplink. **Routing = mirror-to-both:** `FretboardLink_Send()` (the single choke point both producers — timing pipeline + manual_control — already call) now also calls `Fauxmote_SendGuitarMask(mask)`, so every gameplay mask drives the T1S guitar node **and** fauxmote in lock-step (`GUITAR` byte 0 == the T1S 7-bit mask). Init in `App_StartServices` (guarded to the T1S build; before the producers). `SerialSetup` bumps FLEXCOM1 to the link's 1 Mbaud at init (MCC default was 500000 for the guitar UART). New `fauxmote` console command drives it for bring-up (`status`/`pair`/`stop`/`reconnect`/`unlink`/`ext`/`btn <mask>`). **Constraint:** owns FLEXCOM1, so it's mutually exclusive with a `TRANSPORT=UART` guitar build (compile-guarded). **Code-complete; pending MPLAB build + on-hardware bring-up** with the ESP32 wired (marvin TX PA28→ESP RX GPIO7, ESP TX GPIO8→marvin RX PA29, common GND). Protocol spec: [`../../../docs/marvin-fauxmote-link.md`](../../../docs/marvin-fauxmote-link.md).
+203:**T1S inter-node link — built and working (marvin ↔ guitar).** marvin is the PLCA **coordinator** (node 0) on a 10BASE-T1S bus (LAN8651 over FLEXCOM4 SPI); hand-authored stack in `default/src/net/t1s/`. It sends the actuator command over T1S to the `guitar` follower node (id 3), which actuates the Wii GPIOs (guitar G1+G2 proven). Followers announce presence via a heartbeat (ethertype `0x88B6`); the `t1s` and `nodes` console commands report link/credits/per-node presence. Transport is behind `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` (T1S default on the `t1s` branch). The `fretboard` node (id 1) firmware is now **written, T1S-only** (fretboard journal 2026-06-17): it streams its 17-byte frame to marvin **and** drives the `guitar` node directly — its on-device model infers the bitmask and sends it peer-to-peer to `02:..:03`. marvin's RX side needed no changes — `fretboard_link.c`'s T1S frame handler already parses the frame from node id 1 (`DETECTOR_ADC_FRETBOARD`) and the node-table + heartbeat-presence demux already cover it. **Next (marvin side):** **active-source arbitration** — both marvin (timing pipeline) and the fretboard now address the guitar (`02:..:03`), so marvin needs active-detector/active-guitar selection to ensure exactly one source drives at a time (the fretboard's SW0 is an interim manual arm; until then, don't run marvin's timing pipeline to the guitar while the fretboard is armed). Then fretboard hardware bring-up. PoDL is design-direction only. Detail in [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); decision log entry 2026-06-17.
+226:| 2026-07-28 | **Coordinator node table: guitar entry renumbered id 2 → 3** (`net/t1s/t1s_link.c` `s_nodes[]`: `{ 3u, T1S_NO_DETECTOR, T1S_NODE_GUITAR }`). marvin now addresses its 1-byte command to `02:00:00:00:00:03`. Part of the coordinated guitar-id change (guitar `t1s_follower.c` + fretboard `t1s_detector.c` peer-to-peer target move to 3 in the same pass); re-flash marvin **and** the guitar together. fretboard node stays id 1 for now (target 4, deferred). | Adopting the target bus table (docs/t1s-podl-link.md §7.1): fauxmotes 1–2, guitar 3, fretboard 4. Non-promiscuous MAC filtering means the guitar only accepts frames to its own MAC, so marvin's TX target had to move in lockstep with the node's id. |
+229:| 2026-07-15 | **Timing pipeline is the "decide" layer, not part of the actuator — moved `timing_pipeline.{c,h}` `actuator/` → `game/`; and detector-source arbitration moved to the push side (`Detector_Publish`), so the bus carries only the active detector and the pipeline no longer filters.** Two structural cleanups after the P1/P2 re-layering made the layers explicit. **(Q1 placement)** The pipeline is a peer of detector and actuator (spec §4.4), and it's the sibling of `game_controller` — the two are the mutually-exclusive autonomous command producers (note-highway gameplay vs. menu nav, open Q11). So its home is the game-control subsystem (`game/`), leaving `actuator/` as the command **sink** (`fretboard_link` + mechanical advance). `manual_control` stays out of `game/` (operator override, not game logic). Include convention: cross-dir includes are path-qualified from `default/src`, so the move updated `#include` paths in 6 files + the `user.cmake` source list; no behavior change. **(Q2 arbitration)** Added `Detector_Publish(state)` in the detector module: it forwards to the bus only if `state->detector_id == active`, and `Detector_SetActive` drains the queue on switch. `cv_marvin_v1` publishes through it (dropped its raw `xQueueSend` + bus plumbing); the pipeline dropped `if (detector_id != Detector_GetActive()) continue`. Behavior-identical (the pipeline already acted only on the active source) but arbitration now has one home. | The `actuator/` dir had become "command producers + sink," a rule already broken by `game_controller` living in `game/`. Grouping the two autoplay producers together makes Q11 arbitration local instead of spanning dirs, and reduces `actuator/` to a clean transport sink — matching the three-layer split (detector = sense, game = decide, actuator = actuate). For Q2: the detector bus is pipeline-only (recording/UI use separate paths), so gating the push costs the recorder nothing and keeps "which source drives the robot" a single detector-module decision rather than a policy the consumer re-derives. **Follow-up smell (resolved same day):** `fretboard_link.c` had still included the scheduler header for the `TIMING_BIT_*` wire-mask layout. Extracted those defines to `actuator/guitar_cmd.h` as `GUITAR_BTN_*` and dropped the sink→scheduler include (see session log 2026-07-15). |
+231:| 2026-07-02 | **fauxmote link on marvin uses FLEXCOM1 (PA28/PA29) and mirrors the gameplay mask to both sinks.** New `net/fauxmote/fauxmote_link.c` reuses the fretboard UART-transport peripheral (free while the guitar rides T1S); `FretboardLink_Send()` taps `Fauxmote_SendGuitarMask()` so the T1S guitar node and the ESP32 Wiimote move in lock-step. Shared `mf_proto.h` (byte-identical both sides); 1 Mbaud via `SerialSetup`. Compile-guarded to the T1S build (owns FLEXCOM1). | Zero MCC work — FLEXCOM1's USART PLIB already exists and is idle in the T1S build, so no new peripheral/pin generation. "Mirror to both" (Greg's call) keeps the real guitar and the Wii driven by the one existing choke point without a runtime multi-sink layer, and matches the spec's bit-identical `GUITAR` byte 0 == T1S mask. Latched-state TX task with a 50 ms floor gives low-latency-on-change plus dropped-frame self-heal and keeps fauxmote's watchdog fed. |
+253:| 2026-06-17 | **T1S actuator command now targets the guitar node (id 2), not the fretboard (id 1).** `net/t1s/t1s_link.c`: added `T1S_NODE_GUITAR` (id 2, MAC `02:00:00:00:00:02`, `detector_id = T1S_NO_DETECTOR`) to the node table; the service-task command flush now sends to `node_for_type(T1S_NODE_GUITAR)`. Renamed `T1SLink_SendToFretboard` → `T1SLink_SendToGuitar` (one caller, `fretboard_link.c`). The fretboard node (id 1) stays in the table as the **detector/RX** source for when it moves to T1S; only the actuator TX target moved. | The actuation role split out to the dedicated `guitar` node, which is now proven on the bus (guitar G1: `LAN8651 up … PLCA follower id=2/8`). marvin was still addressing its 1-byte command to the fretboard node; with the guitar running non-promiscuous (MAC-filtered), commands had to be re-pointed at `02:..:02` to actuate it. Single guitar today, so the target is `node_for_type(T1S_NODE_GUITAR)`; an **active-guitar selector** (mirror of `Detector_SetActive`) is deferred until multiple guitar nodes share the bus. RX/ADC over T1S is unaffected (no T1S detector node exists yet — the real fretboard is still UART). The "FretboardLink" module keeps its name for now (broader rename deferred). |
+254:| 2026-06-16 | **T1S inter-node link — scope locked to *multi-node*, marvin-side first; gated on two prerequisites (held).** Multidrop is now a first-class requirement (several guitars + phototransistor fretboard-detector nodes sharing one PLCA pair), not just headroom: **design the node-ID / addressing / demux + PLCA-coordinator abstraction for N nodes now, physically bring up the single marvin↔fretboard link.** Addressing (static, no discovery — keeps the M0+ node dumb): marvin = PLCA **coordinator, ID 0**, MAC `02:00:00:00:00:00`; node *k* = PLCA **ID k**, MAC `02:00:00:00:00:0k`; one custom ethertype (~`0x88B5`, TBC); a static **node table** maps src MAC → `detector_id` (the single fretboard stays `detector_id = 1`); existing 17-byte/1-byte frames ride inside the payload unchanged. Driver: **adapt [`MicrochipTech/oa-tc6-lib`](https://github.com/MicrochipTech/oa-tc6-lib)** (Greg adding as a subproject) with thin Harmony FLEXCOM-SPI + FreeRTOS glue — **not** from-scratch. **Correction: marvin is FreeRTOS + Harmony, not "bare-metal"** as earlier notes said — but still has no netdev, so the own-TC6-driver conclusion stands; integration is a service task woken by an `IRQ_N` PIO interrupt (reuse `fretboard_link.c`'s `xSemaphoreGiveFromISR` pattern). Keep FLEXCOM1 UART **in parallel**, select via a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag (default UART; T1S opt-in for bring-up). `FretboardLink_{Initialize,Send,IsConnected}` stays public; `Send` gains a node target. Hand-authored code lands in `default/src/net/t1s/` (out of the MCC `config/` tree, added via `user.cmake`). **Two hard prereqs before any firmware code (both held):** (1) a free FLEXCOM regenerated in **SPI-master mode in MCC** wired to the LAN8651 EVB pins — *no SPI PLib exists today*, only USART/TWI; (2) `oa-tc6-lib` on disk as a subproject. Bring-up gate 1 = control-transaction read of the LAN8651 device-ID over SPI. Plan file: implementation phases + verification. | The link runs on a LAN8651 EVB/Click wired to the SAM9X75 Curiosity *now*, so target runnable code. Designing addressing for N up front (even with one physical node) means a second guitar/detector joins with only a node-table row, not a transport refactor — the whole point of choosing PLCA over point-to-point. `oa-tc6-lib` **adapted, not rewritten**, for proven chunk/credit logic and the "OA SPI driver scales across the family (Cortex-A5 + Cortex-M0+)" demo story. Build-flag parallelism keeps the working UART link alive while T1S is unproven, matching the cut-over-when-solid approach. `net/t1s/` outside the generated tree follows the same MCC-isolation discipline as `perf_log`/`console` (no re-apply patches). Resolves the topology open item (→ PLCA coordinator on marvin) and the driver/UART-fallback open items from the 2026-06-09 direction note. |
+256:| 2026-06-12 | **Serial operator console = in-tree module on FLEXCOM2 @ 115 200 using vendored embedded-cli; fretboard link moved FLEXCOM2 → FLEXCOM1 @ 500 000.** New `console/console.{h,c}` (spec §4.9) owns the FLEXCOM2 USART plib directly in ring-buffer mode (modeled on `fretboard_link.c`): a task drains the RX ring on a 1-byte read-threshold notification, feeds [embedded-cli](https://github.com/funbiscuit/embedded-cli) (vendored verbatim at `third_party/embedded-cli/`, MIT, pinned commit `8e796cb`), and dispatches a static binding table (`status`, `detect`, `active`, `timing`, `manual`, `fret`, `strum`) into the existing `Detector_*`/`TimingPipeline_SetEnabled`/`ManualControl_*` setters. embedded-cli runs in static-allocation mode (fixed `CLI_UINT` buffer → no malloc; `embeddedCliRequiredSize` asserted at init). Sources + include dir added via `user.cmake`; `Console_Initialize()` called from `APP_Initialize`. Fretboard link is a mechanical `FLEXCOM2_USART_*` → `FLEXCOM1_USART_*` rename in `fretboard_link.c` (the only non-generated consumer). | Rejected Harmony `SYS_CONSOLE`/`SYS_COMMAND`: MCC-config-coupled, lands in regenerated files (we already re-apply ~10 patches per regen — no 11th), heavy indirection for "read a line, split it, dispatch." The hand-rolled-module + small-lib path matches the repo ethos (`perf_log`, `log`, `fretboard_link` all own their transport directly, fully static, MCC kept out via `user.cmake`). Console deliberately on its **own channel** (FLEXCOM2), separate from DBGU log/printf chatter, so neither pollutes the other. Channel split decided by Greg's board mod: console = FLEXCOM2 @ 115 200, fretlink = FLEXCOM1 @ 500 000 (the FLEXCOM1 6 Mbps in commit `b236806` was only a bring-up test). **Prerequisite (Greg, in MCC):** regenerate FLEXCOM1 into ring-buffer mode @ 500 000 and FLEXCOM2 @ 115 200 (TX ring ≥ 512 B for `status` dumps); code references the ring-buffer plib API and won't build until then. Also corrected a stale spec row: the log channel is the dedicated **DBGU** peripheral, not "FLEXCOM4" (confirmed by `log.h`: `printf → xc32_monitor → DBGU`). |
+264:| 2026-06-08 | **Fretboard link moves USB CDC host → direct FLEXCOM2 USART** (`actuator/fretboard_link.c`). The SAM9X75 Curiosity *Hybrid* board (new target, MCC ported in `598d370`/`3af09bc`) has no host-capable USB port, so the EDBG-CDC-bridge transport is gone. marvin now talks UART directly to the fretboard's SERCOM1: `PA13` FLEXCOM2_IO0 (TX) / `PA14` FLEXCOM2_IO1 (RX) ↔ fretboard `PB01` RX / `PB00` TX, 500 000 Bd 8N1. FLEXCOM2 regenerated in **ring-buffer mode** (RX ring 512 B, TX ring 64 B). The public `FretboardLink_{Initialize,Send,IsConnected}` API and all perf-log records (FBL_SEND/CDC_WRITE_COMPLETE stamps, ACTUATOR, FRETBOARD_RAW) are unchanged, so `timing_pipeline`/`manual_control` and host `marvin-perf` need no edits. | The link is unchanged at the fretboard end (always SERCOM1 UART @ 500 000); only marvin's side was USB-bridged. Ring-buffer mode chosen over the basic single-transfer plib because the fretboard streams 17-byte frames continuously at 240 Hz: the basic plib disables RXRDY between a completed Read and the next arm, risking overrun, whereas the ring fills from its own ISR with no gap. RX is now a simple drain — a persistent read-threshold (`DS_FRAME_LEN`) notification wakes `fretboard_rx_task`, which pulls bytes off the ring and runs the same `0x03 … 0xFC` resync as before; the separate `s_rx_stream` stream buffer + ISR re-arm are deleted (the ring *is* the buffer). TX drops the USB Write/ack-semaphore dance: a ring-buffer `Write` copies the byte and returns, so "ack" is the enqueue instant. No enumeration/attach/detach → `s_connected` becomes a static `s_link_up`. The `CDC_WRITE_COMPLETE` perf-stage name is now historical (it's a UART enqueue) but kept to avoid a host-decoder schema change. |
+265:| 2026-06-03 | **Timing pipeline commands "released-style" play.** The release-suppression in `process_releases` ([timing_pipeline.c](../default/src/actuator/timing_pipeline.c)) was unbounded — it held a fret if *any* queued note/strum needed it, however far out, so across consecutive same-fret notes the fret stayed asserted the whole time. Bounded it: suppress the release only if the fret is re-needed at/before its own scheduled release time (`s_release_at_ms`), i.e. genuinely back-to-back; otherwise release for a clean per-note command. Helpers `note_q_any_needs`/`strum_q_any_needs` → `*_needs_by(bit, by_ms)`. Sustains are unaffected (continuous detector `pressed` → no release edge → never enters this path). | The legato hold was injecting marvin's note-queue lookahead into the emitted command, which polluted the edge-ai fret labels (the held fret reads `1` over a gap where the photosensor is bright). Proven by the detector-fb probe: clean per-note labels took overfit frets 0.94→0.99 (edge-ai journal 2026-06-03). Releasing per-note makes the command a function of the observable. Physical legato (avoiding release/repress churn on fast Expert runs) moves to a future fretboard *lazy actuator* layer; until then marvin's own play release-represses, which is fine at hard-mode note spacing. Validate marvin still plays hard cleanly after the change. |
+267:| 2026-06-02 | New `PERF_REC_FRETBOARD_RAW` record type (`0x0B`) + `PERF_TASK_FRETBOARD_RX` task slot (17). Default-disabled at boot like the other high-rate types; host enables via `PERF_CMD_SET_TYPE_MASK`. `fretboard_link` gains a continuously-rearming `USB_HOST_CDC_Read` plus a sibling `fretboard_rx_task` that pops bytes off a 512 B stream buffer and emits one record per valid 12-byte fretboard data frame at the fretboard's 240 Hz rate. No `PERF_LOG_SCHEMA_VERSION` bump — additive only. | Step 1 of the Edge-AI training-dataset workstream: `cv_marvin_v1` provides the reference label per video frame, fretboard ADC samples are the input the future Edge-AI MCU would see. Routing both signals through the perf log lets one offline tool join them on `frame_epoch` (~4 fretboard records per video frame) and `ts_counter` (sub-frame ordering), which is the cheapest path to a labelled dataset before the SD recorder (§4.6) exists. Sibling task instead of folding RX into `fretboard_link_task` keeps the existing TX path untouched (its `xQueueReceive` blocking shape doesn't compose with a stream buffer without bigger surgery). The downstream `adc_fretboard` detector (§4.2, M2) is the natural follow-up; the bus scaffold (`DETECTOR_ADC_FRETBOARD = 1`) is already reserved. |
+268:| 2026-06-02 | `FBL_BAUDRATE` raised 115200 → 500000 in `actuator/fretboard_link.c`, comment rewritten to reflect the EDBG-CDC-bridge reality. | The fretboard PIC32 SERCOM1 was retuned to 500 000 baud (firmware/fretboard, 2026-06-02). The link rides the on-board EDBG USB-UART bridge, so the CDC SET_LINE_CODING value is what EDBG clocks out to the PIC32 — must match exactly or every byte is corrupt. The previous comment ("fretboard side ignores baud over USB CDC") was wrong; only matters that the *application* on the PIC32 doesn't see the CDC line-coding fields, but the EDBG bridge in between very much does. `tools/fret-tuner/actuator.py` still hardcodes `ACTUATOR_BAUDRATE = 115200` for the same physical link — flagged as a follow-up; out of scope for this commit (different subproject). |
+275:| 2026-05-21 | `configMAX_PRIORITIES` bumped 5 → 8; tasks re-tiered into 4 active bands (UI=2, diagnostic+perf-wire=3, vision=4, strum-critical+host-wire=5) plus 3 reserve bands (1, 6, 7) and idle (0). MCC tasks re-prioritised via the per-component yml files so future regens preserve the layout. | Pre-change layout had 11 tasks bunched at priority 1 (9 MCC pollers + VideoTask + DetectorDrain) and 4 at priority 2, with no headroom. Two concrete problems: (a) VideoTask was *below* its consumer CvMarvinV1, a classic priority inversion that would bite during any priority-2 busy spell; (b) Legato (UI rendering) at the same priority as USB host driver tasks meant a heavy frame redraw could stall fretboard wire transit. The new layout puts strum-critical output above vision-real-time above diagnostic-I/O above UI, which matches the failure-cost ordering: a late strum is a missed note, a late detector tick recovers next frame, a late UI paint is jitter only. Reserve bands cost ~60 B BSS each, leave room for future watchdog or fault-recovery work to land without re-shuffling. Setting priorities in MCC yml (rather than patching `tasks.c` post-regen) avoids a re-apply patch — the source of truth and the emitted code now agree. |
+276:| 2026-05-21 | `manual_control` lands as the second producer of `fretboard_link`, alongside `timing_pipeline`. Mode-level arbitration is two-mode (`timing_pipeline` vs `manual_control`) and embedded in `ManualControl_SetEnabled`: entering manual mode calls `TimingPipeline_SetEnabled(false)` then takes the wire; exiting reverses. | First concrete validation of the 2026-05-20 multi-producer `fretboard_link` design — `FretboardLink_Send` stays the only entry point; arbitration lives one layer up. Embedded toggle is enough for two producers; refactor to a dedicated `actuator_mode` arbiter when a third producer (game-state controller §4.8) arrives. `timing_pipeline.publish_mask` keeps updating internal state when gated so the next ≤5 ms tick after re-enable republishes a correct mask without a stale frame. |
+280:| 2026-05-20 | Relax Microchip's host CDC-ACM Communications-interface protocol check to accept `bInterfaceProtocol == 0x00 (None)` in addition to `0x01 (AT_V250)` | The fretboard hardware exposes its UART to marvin via the on-board EDBG debugger's CDC ACM (composite VID=0x03EB PID=0x2175: HID + CDC ACM IAD + vendor + MSC). EDBG declares the comm interface with `bInterfaceProtocol=0x00` rather than the AT-command protocol Microchip hardcodes. The TPL/IAD match accepts the device (host stack does call `interfaceAssign`), but the per-interface check inside `F_USB_HOST_CDC_InterfaceAssign` then rejects the comm interface, the interrupt pipe never opens, the CDC instance flips to STATE_ERROR, and our attach handler never fires. Both are CDC ACM in practice and Linux/macOS accept either. Two-line OR per check in `usb_host_cdc.c`; logged as patch #7 in the re-apply list. |
+319:| 2026-05-20 | M2 fretboard link split into three layers — `detector → timing_pipeline → fretboard_link` — with the timing FIFO living on marvin and a 1-byte bitmask wire format | (a) Three-layer split keeps each concern small: detector emits state, timing_pipeline owns chord-window + strum scheduling, fretboard_link owns the USB CDC byte channel. Each can be replaced independently (different detector, different actuator transport) without touching the others. (b) Timing FIFO on marvin, not fretboard: marvin already runs the canonical detector and the recording pipeline, so co-locating timing keeps a single source of truth and avoids re-deriving state on the actuator side. Spec §4.4. The fretboard-takeover fallback (spec §6) is a separate mode where marvin disables its pipeline and fretboard runs `fret_button.c` standalone — that's the high-availability path, not the steady-state. (c) 1-byte bitmask matches `tools/fret-tuner/actuator.py` and `firmware/fretboard/cmd_receive.h` exactly (G/R/Y/B/O at bits 0..4, strum-down bit 5, strum-up bit 6) — no reason to invent a new framing while the protocol is this small. Latest-wins semantics on the marvin→fretboard queue (depth 1 + overwrite) so a stalled USB write can't accumulate stale chords. (d) **Actuator-latency compensation deferred until mechanical actuators arrive.** Today's actuator is direct GPIO assertion on the fretboard PCB — latency ≈ 0, so today's design is sound. Future paths considered: (1) marvin compensates by subtracting a fretboard-published latency from `assert_at`/`strum_at`; (2) fretboard compensates by accepting timestamped events and scheduling locally. Path 2 needs a richer wire format (event + abs-timestamp); path 1 keeps the byte protocol but pushes the timing math up. Pick when we know which actuator (voice coil / electromagnet / DIY solenoid) we're driving. |
+320:| 2026-05-20 | Game-state awareness & high-level game control is a marvin subsystem (spec §4.8). Distinct from the gameplay note-detection path: a video-frame consumer (not a detector) emits typed game-state events on `xGameStateQueue`, and a controller layer translates verbs ("start single-player song X") into fret/strum sequences sent over the same fretboard link | Want marvin to drive whole-session play, not just notes once gameplay starts. Game-state observation belongs on marvin because it's CV on the same captured frames. Separating its bus from `xDetectorStateQueue` keeps `detector_state_t` narrow per the 2026-05-20 multi-detector decision. Per-game catalog (menu graph + song list) is metadata kept on marvin. Default arbitration with timing pipeline: mutually exclusive — controller runs only outside `gameplay` state. Phasing: M9 observer-only, M10 control. Open: recognizer algorithm (Q10), arbitration boundary (Q11). |
+335:- **Timing re-layering — model decided (decision log 2026-07-15), implementation not started.** Three phases, each independently landable: **(P1 — DONE 2026-07-15, pending build; no bus change) actuator-advance seam.** `FRETBOARD_ACTUATOR_ADVANCE_MS` in `actuator/fretboard_link.h` (guitar node = 0); `timing_pipeline.c` emits its three strike-line deadlines that many ms early via `fire_now = s_now_ms + advance`, wire byte unchanged (Option A). Behavior-preserving at 0. See session log 2026-07-15. Per-bit / fret-vs-strum advances are not yet expressed (single scalar) — revisit when a real solenoid rig lands. **(P2 — DONE 2026-07-15, pending build) detector stamps strike time.** `detector_state_t.strike_at_ms` added (fills an alignment hole, struct size unchanged); CV detector owns `observation_lead_ms` (=250) per config; `timing_pipeline` dropped `TP_STRUM_DELAY_MS` and schedules off `s_strike_at_ms`. Behavior-preserving; no host breakage (perf record is separate, `state.bin` unbuilt). Spec §4.2.3/§4.4/§2.4 updated. See session log 2026-07-15. **Deferred follow-up:** surface `observation_lead_ms` to host tooling (`PERF_REC_DETECTOR_CONFIG` + `marvin-perf/records.py`) so offline replay/`state.bin` can reconstruct strike time; future `adc_fretboard` gets its own lead. **(P3, future / only if needed) Option B.** Timestamped `(mask, strike_time_T)` wire protocol + follower-side scheduling + marvin sync-frame broadcast; adopt only if link jitter or on-node multi-solenoid sequencing demands it. Interacts with **Q11** (command-path arbitration): the game-state controller (§4.8) is another producer that would need the same strike-time/advance semantics if it ever drives mechanical actuators. Resolved 2026-07-15: **`actuator_advance` is a static per-node constant on marvin for now** (guitar node = 0; a future solenoid rig gets its own constant). Node-declared capability exchange or a console/settings knob remain future options if advances need to vary at runtime.
+522:- **Q1 — moved `timing_pipeline.{c,h}` from `actuator/` to `game/`.** The pipeline is the "decide" layer, sibling to `game_controller` (the two mutually-exclusive autoplay producers, Q11), not a member of the actuator sink. `git mv` + include-path fixes in `app.c`, `console/console.c`, `ui/screens/dashboard/screen_dashboard.c`, `game/game_controller.c`, `actuator/fretboard_link.c`, `actuator/manual_control.c`, and the moved `timing_pipeline.c` (`fretboard_link.h` → `actuator/fretboard_link.h`); `user.cmake` source path updated. No behavior change. `actuator/` is now the command sink (`fretboard_link` + advance) + `manual_control` (operator override; a candidate to move to `ui/` later).
+=== top of decision log ===
+226:| 2026-07-28 | **Coordinator node table: guitar entry renumbered id 2 → 3** (`net/t1s/t1s_link.c` `s_nodes[]`: `{ 3u, T1S_NO_DETECTOR, T1S_NODE_GUITAR }`). marvin now addresses its 1-byte command to `02:00:00:00:00:03`. Part of the coordinated guitar-id change (guitar `t1s_follower.c` + fretboard `t1s_detector.c` peer-to-peer target move to 3 in the same pass); re-flash marvin **and** the guitar together. fretboard node stays id 1 for now (target 4, deferred). | Adopting the target bus table (docs/t1s-podl-link.md §7.1): fauxmotes 1–2, guitar 3, fretboard 4. Non-promiscuous MAC filtering means the guitar only accepts frames to its own MAC, so marvin's TX target had to move in lockstep with the node's id. |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:02Z)**_
+
+Marvin journal current-focus (line 203) has two current-state fretboard id-1 refs. Updating both, plus adding a decision entry and annotating the guitar entry's "deferred" note:
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:05Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:12Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:21Z)**_
+
+Now the new marvin decision entry (above the guitar one, newest-first):
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 00:49:35Z)**_
+
+Now a verification sweep for any remaining stale current-state ids across code and docs:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:03:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify no stale fretboard PLCA id-1 in code
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== fretboard own-id: any lingering 'id 1' / :01 in code ==="
+grep -rn "00:00:01\|follower id 1\|id 1\b\|(1u)" firmware/fretboard/t1s_detector.c firmware/fretboard/t1s_detector.h firmware/fretboard/fretboard_config.h
+echo "=== marvin table entry ==="
+grep -n "DETECTOR_ADC_FRETBOARD\|T1S_NODE_GUITAR" firmware/marvin/default/src/net/t1s/t1s_link.c | head -5
+echo "=== detector_id note (should still say detector_id = 1 — that's correct/unchanged) ==="
+grep -n "detector_id = 1\|detector_id` = 1\|keeps.*detector_id" docs/t1s-podl-link.md SPEC.md
+```
+
+```text
+(eval):7: unmatched "
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:03:25Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Verify fretboard code and marvin table
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== fretboard code own-id lingering refs ==="
+grep -rn "00:00:01" firmware/fretboard/t1s_detector.c firmware/fretboard/t1s_detector.h firmware/fretboard/fretboard_config.h
+grep -rn "follower id 1" firmware/fretboard/t1s_detector.c firmware/fretboard/t1s_detector.h firmware/fretboard/fretboard_config.h
+grep -n "T1S_NODE_ID" firmware/fretboard/t1s_detector.c
+echo "=== marvin table row ==="
+grep -n "4u.*DETECTOR_ADC_FRETBOARD\|3u.*T1S_NODE_GUITAR" firmware/marvin/default/src/net/t1s/t1s_link.c
+```
+
+```text
+=== fretboard code own-id lingering refs ===
+14:#define T1S_NODE_ID         (4u)
+39:static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+222:    s_hb_frame[16] = (uint8_t)T1S_NODE_ID;
+270:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+290:                       (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+361:uint8_t T1SDetector_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+=== marvin table row ===
+76:    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+77:    { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:03:32Z)**_
+
+Code clean. Final doc check for any remaining fretboard PLCA `(id 1)` (the `detector_id = 1` is correct and must stay):
+
+_**Agent (claude-opus-4-8 2026-07-29 01:03:35Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Final doc grep for stale fretboard ids
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+echo "=== fretboard PLCA id refs in docs (should all be id 4 now; detector_id=1 is a different thing) ==="
+grep -n "id 1\|:00:01\|id=1" docs/t1s-podl-link.md SPEC.md firmware/fretboard/SPEC.md | grep -iv "detector_id\|version\|bit\|>= 1\|at least"
+echo "--- context of any 'detector_id = 1' (expected to remain) ---"
+grep -n "detector_id.*= 1\|detector_id = 1\|stays .detector_id" docs/t1s-podl-link.md
+```
+
+```text
+=== fretboard PLCA id refs in docs (should all be id 4 now; detector_id=1 is a different thing) ===
+docs/t1s-podl-link.md:214:> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2), the **guitar**
+docs/t1s-podl-link.md:222:> at id 1, so hold off co-busing a default-id-1 fauxmote with a not-yet-reflashed fretboard.
+docs/t1s-podl-link.md:274:  directly to the guitar (id 3). MCC config done. First brought up at id 1; renumbered to
+--- context of any 'detector_id = 1' (expected to remain) ---
+232:  `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:03:56Z)**_
+
+All remaining "id 1" hits are correct in context: fauxmote id 1 (214), the not-yet-reflashed fretboard physically at id 1 + fauxmote (222), the historical "first brought up at id 1" (274), and `detector_id = 1` (232, the detector-class code — unchanged, not the PLCA id).
+
+Fretboard own-id renumber (1→4) is complete across code + docs. Summary of what changed:
+
+**Code (2 points, must re-flash together):**
+- [t1s_detector.c](firmware/fretboard/t1s_detector.c#L14) — `T1S_NODE_ID` 1→4 (MAC now `02:…:04`; comments + banner follow via the macro)
+- [t1s_link.c:76](firmware/marvin/default/src/net/t1s/t1s_link.c#L76) — marvin `s_nodes[]` detector entry 1→4 (`detector_id`/`node_type` unchanged)
+- header/config comments: [t1s_detector.h:9](firmware/fretboard/t1s_detector.h#L9), [fretboard_config.h:7](firmware/fretboard/fretboard_config.h#L7)
+
+**Docs/SPEC/journals:** fretboard SPEC (id 4, MAC :04), top-level [SPEC.md:58](SPEC.md#L58) node table, [t1s-podl-link.md](docs/t1s-podl-link.md) transition note + inline refs + bring-up banner, fretboard journal (current focus + new decision entry), marvin journal (current focus + new decision entry).
+
+**Coherence fixes swept in** (stale guitar `:02`→`:03` left over from the guitar move): fretboard SPEC caveat + journal current-focus (2 lines), `t1s-podl-link.md` lines 18/279, and SPEC.md line 59 (guitar row still said `2 / 02:…:02`).
+
+Two notes:
+- This is **source-only** — unlike the guitar (which you hardware-verified at id 3 before I committed), the fretboard hasn't been re-flashed. It'll come up at `PLCA follower id=4/8` after you flash fretboard + marvin together.
+- `detector_id`/`node_type` heartbeat codes deliberately stayed put — only the PLCA id/MAC moved.
+
+Nothing committed. Want me to commit now, or hold until you've flashed and confirmed the fretboard on the bus at id 4?
+
+---
+
+_**User (2026-07-29 01:14:02Z)**_
+
+reporting id 4. please commit
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:14:10Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Stage fretboard renumber files
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git add firmware/fretboard/t1s_detector.c firmware/fretboard/t1s_detector.h firmware/fretboard/fretboard_config.h \
+  firmware/fretboard/SPEC.md firmware/fretboard/docs/journal.md \
+  firmware/marvin/default/src/net/t1s/t1s_link.c firmware/marvin/docs/journal.md \
+  SPEC.md docs/t1s-podl-link.md
+git status --short
+```
+
+```text
+ M .claude/settings.local.json
+ M .specstory/history/2026-07-28_19-10-31Z-lets-work-on-getting.md
+ M .specstory/statistics.json
+M  SPEC.md
+M  docs/t1s-podl-link.md
+M  firmware/fretboard/SPEC.md
+M  firmware/fretboard/docs/journal.md
+M  firmware/fretboard/fretboard_config.h
+M  firmware/fretboard/t1s_detector.c
+M  firmware/fretboard/t1s_detector.h
+ M firmware/marvin/default/mcc/mcc-manifest-autosave.yml
+ M firmware/marvin/default/src/detector/cv_marvin_v1.c
+M  firmware/marvin/default/src/net/t1s/t1s_link.c
+M  firmware/marvin/docs/journal.md
+ M guitar-pic.code-workspace
+?? docs/export-compliance-functional-summary.md
+?? firmware/marvin/docs/sam9x75-chybrid/
+?? hardware/t1s-sink/
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:14:19Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Commit fretboard renumber
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic
+git commit -m "$(cat <<'EOF'
+t1s: renumber fretboard detector follower to PLCA id 4
+
+Complete the bus renumber to the canonical node table (fauxmotes 1-2,
+guitar 3, fretboard 4, future 5-7). Move the fretboard detector node
+from PLCA id 1 to id 4 at both points that address it:
+
+- fretboard firmware T1S_NODE_ID -> 4 (MAC 02:..:04)
+- marvin coordinator s_nodes[] detector entry -> 4 (marvin's RX/demux)
+
+detector_id (DETECTOR_ADC_FRETBOARD) and node_type (1 = detector) are
+unchanged -- only the PLCA id / MAC low byte moved. Verified on hardware:
+fretboard reports id 4. This frees ids 1-2 for the fauxmote controllers.
+
+Also sweeps up stale guitar :02 -> :03 references left in fretboard/docs
+current-state prose from the prior guitar renumber.
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+EOF
+)"
+```
+
+```text
+[gui 247fc01] t1s: renumber fretboard detector follower to PLCA id 4
+ 9 files changed, 39 insertions(+), 33 deletions(-)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:14:26Z)**_
+
+Committed (`247fc01`, 9 files). The whole bus is now on the canonical node table in source, hardware-verified end to end:
+
+- **0** marvin (coordinator) · **1–2** fauxmote(s) · **3** guitar ✓id 3 · **4** fretboard ✓id 4 · **5–7** reserved
+
+Both renumbers verified on hardware. Ids 1–2 are now free and collision-clear for the fauxmote controllers. Remaining T1S bus work stays as previously flagged (future sessions): marvin-coordinator `0x88B7` demux + controller node-table entry + STATUS RX, and physical on-bus bring-up of the fauxmote LAN8651.
+
+---
+
+_**User (2026-07-29 01:14:56Z)**_
+
+ok now marvin
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:10Z)**_
+
+Marvin coordinator side now — routing the fauxmote link over the T1S bus (0x88B7 demux, controller node-table entry, STATUS RX), the piece that's been flagged as future work. This is non-trivial and spans several marvin files, so let me read the current state first: the marvin journal + spec, the existing UART `fauxmote_link.c`, `t1s_link.c`, the shared protocol, and the fauxmote-side T1S transport I'm mirroring.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:10Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.c`
+
+```text
+1	#include "fauxmote_link.h"
+2	#include "mf_proto.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	#include "semphr.h"
+12	
+13	#include "definitions.h"
+14	#include "log.h"
+15	
+16	#define FX_TX_TASK_STACK_WORDS  512u
+17	#define FX_RX_TASK_STACK_WORDS  512u
+18	#define FX_TASK_PRIORITY        5u
+19	
+20	/* Floor re-send of the GUITAR slice: bounds latency of a dropped frame and keeps
+21	 * fauxmote's 200 ms link watchdog fed when gameplay is idle. Well under 200 ms. */
+22	#define FX_REFRESH_MS           50u
+23	
+24	#define FX_CMD_QUEUE_DEPTH      4u
+25	#define FX_RX_WAIT_MS           100u
+26	
+27	static bool s_ready;
+28	
+29	/* When set, the gameplay-mirror hook (Fauxmote_SendGuitarMask) is ignored so a
+30	 * higher-priority producer owns the GUITAR slice. The wiimotes manual-override
+31	 * screen engages it while shown. */
+32	static volatile bool s_override;
+33	
+34	/* Latched controller state (written by producers, read by the TX task). Guarded
+35	 * by a short critical section — a few-byte copy, never a blocking call. */
+36	static uint8_t s_g_mask;
+37	static uint8_t s_g_whammy = MF_WHAMMY_REST;
+38	static uint8_t s_g_aux;
+39	
+40	static uint8_t s_nav_core;
+41	static uint8_t s_nav_dpad;
+42	static uint8_t s_nav_sx = MF_STICK_CENTER;
+43	static uint8_t s_nav_sy = MF_STICK_CENTER;
+44	static bool    s_nav_dirty;
+45	
+46	static uint8_t s_ptr_x;
+47	static uint8_t s_ptr_y;
+48	static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
+49	static bool    s_ptr_dirty;
+50	
+51	/* Latest STATUS from fauxmote. */
+52	static bool       s_status_valid;
+53	static uint8_t    s_status[MF_LEN_STATUS];
+54	static TickType_t s_status_tick;
+55	
+56	static QueueHandle_t   s_cmd_queue;
+57	static StaticQueue_t   s_cmd_queue_buf;
+58	static uint8_t         s_cmd_queue_storage[FX_CMD_QUEUE_DEPTH];
+59	
+60	static SemaphoreHandle_t s_tx_notify;
+61	static StaticSemaphore_t s_tx_notify_buf;
+62	static SemaphoreHandle_t s_rx_notify;
+63	static StaticSemaphore_t s_rx_notify_buf;
+64	
+65	static StackType_t   s_tx_stack[FX_TX_TASK_STACK_WORDS];
+66	static StaticTask_t  s_tx_tcb;
+67	static StackType_t   s_rx_stack[FX_RX_TASK_STACK_WORDS];
+68	static StaticTask_t  s_rx_tcb;
+69	
+70	/* ---- TX (single writer: the TX task) ------------------------------------ */
+71	
+72	static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+73	{
+74	    uint8_t f[3u + MF_MAX_PAYLOAD + 1u];
+75	    f[0] = MF_SOF;
+76	    f[1] = type;
+77	    f[2] = len;
+78	    if (len != 0u) { memcpy(&f[3], payload, len); }
+79	    f[3u + len] = mf_crc8(&f[1], (size_t)(2u + len));   /* CRC over TYPE,LEN,payload */
+80	    (void)FLEXCOM5_USART_Write(f, (size_t)(4u + len));
+81	}
+82	
+83	static void fx_tx_task(void *param)
+84	{
+85	    (void)param;
+86	    LOG_INFO("FX: fauxmote link started (FLEXCOM5, %lu baud)\r\n",
+87	             (unsigned long)MF_UART_BAUD);
+88	
+89	    for (;;)
+90	    {
+91	        /* Wake on a producer change (low latency) or the floor refresh timeout. */
+92	        (void)xSemaphoreTake(s_tx_notify, pdMS_TO_TICKS(FX_REFRESH_MS));
+93	
+94	        uint8_t g[MF_LEN_GUITAR];
+95	        uint8_t nav[MF_LEN_WIIMOTE];
+96	        uint8_t ptr[MF_LEN_POINTER];
+97	        bool    nav_dirty;
+98	        bool    ptr_dirty;
+99	
+100	        taskENTER_CRITICAL();
+101	        g[0] = s_g_mask;
+102	        g[1] = s_g_whammy;
+103	        g[2] = s_g_aux;
+104	        nav[0] = s_nav_core;
+105	        nav[1] = s_nav_dpad;
+106	        nav[2] = s_nav_sx;
+107	        nav[3] = s_nav_sy;
+108	        nav_dirty = s_nav_dirty;
+109	        s_nav_dirty = false;
+110	        ptr[0] = s_ptr_x;
+111	        ptr[1] = s_ptr_y;
+112	        ptr[2] = s_ptr_flags;
+113	        ptr_dirty = s_ptr_dirty;
+114	        s_ptr_dirty = false;
+115	        taskEXIT_CRITICAL();
+116	
+117	        send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+118	        if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
+119	        if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
+120	
+121	        uint8_t op;
+122	        while (xQueueReceive(s_cmd_queue, &op, 0) == pdTRUE)
+123	        {
+124	            send_frame(MF_MSG_LINK_CMD, &op, MF_LEN_LINK_CMD);
+125	        }
+126	    }
+127	}
+128	
+129	/* ---- RX (STATUS uplink parser) ------------------------------------------ */
+130	
+131	typedef enum { P_SOF, P_TYPE, P_LEN, P_PAYLOAD, P_CRC } parse_state_t;
+132	
+133	static void parse_byte(uint8_t b)
+134	{
+135	    static parse_state_t state = P_SOF;
+136	    static uint8_t type, len, idx;
+137	    static uint8_t payload[MF_MAX_PAYLOAD];
+138	
+139	    switch (state)
+140	    {
+141	        case P_SOF:
+142	            if (b == MF_SOF) { state = P_TYPE; }
+143	            break;
+144	        case P_TYPE:
+145	            if (b == 0x00u) { state = P_SOF; break; }
+146	            type = b;
+147	            state = P_LEN;
+148	            break;
+149	        case P_LEN:
+150	            if (b > MF_MAX_PAYLOAD) { state = P_SOF; break; }
+151	            len = b;
+152	            idx = 0u;
+153	            state = (b == 0u) ? P_CRC : P_PAYLOAD;
+154	            break;
+155	        case P_PAYLOAD:
+156	            payload[idx++] = b;
+157	            if (idx >= len) { state = P_CRC; }
+158	            break;
+159	        case P_CRC:
+160	        {
+161	            uint8_t hdr[2u + MF_MAX_PAYLOAD];
+162	            hdr[0] = type;
+163	            hdr[1] = len;
+164	            memcpy(&hdr[2], payload, len);
+165	            state = P_SOF;
+166	            if (mf_crc8(hdr, (size_t)(2u + len)) != b) { break; }   /* bad CRC */
+167	
+168	            if (type == MF_MSG_STATUS && len == MF_LEN_STATUS)
+169	            {
+170	                bool changed = !s_status_valid ||
+171	                               memcmp(s_status, payload, MF_LEN_STATUS) != 0;
+172	                taskENTER_CRITICAL();
+173	                memcpy(s_status, payload, MF_LEN_STATUS);
+174	                s_status_valid = true;
+175	                s_status_tick  = xTaskGetTickCount();
+176	                taskEXIT_CRITICAL();
+177	                if (changed)
+178	                {
+179	                    LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
+180	                             payload[0], payload[1], payload[2], payload[3]);
+181	                }
+182	            }
+183	            break;
+184	        }
+185	        default:
+186	            state = P_SOF;
+187	            break;
+188	    }
+189	}
+190	
+191	static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
+192	{
+193	    (void)context;
+194	    BaseType_t hpw = pdFALSE;
+195	
+196	    switch (event)
+197	    {
+198	        case FLEXCOM_USART_EVENT_READ_THRESHOLD_REACHED:
+199	        case FLEXCOM_USART_EVENT_READ_BUFFER_FULL:
+200	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+201	            break;
+202	        case FLEXCOM_USART_EVENT_READ_ERROR:
+203	            (void)FLEXCOM5_USART_ErrorGet();
+204	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+205	            break;
+206	        default:
+207	            break;
+208	    }
+209	
+210	    portYIELD_FROM_ISR(hpw);
+211	}
+212	
+213	static void fx_rx_task(void *param)
+214	{
+215	    (void)param;
+216	
+217	    for (;;)
+218	    {
+219	        if (FLEXCOM5_USART_ReadCountGet() == 0u)
+220	        {
+221	            (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FX_RX_WAIT_MS));
+222	            continue;
+223	        }
+224	
+225	        uint8_t c;
+226	        while (FLEXCOM5_USART_Read(&c, 1u) == 1u)
+227	        {
+228	            parse_byte(c);
+229	        }
+230	    }
+231	}
+232	
+233	/* ---- public API --------------------------------------------------------- */
+234	
+235	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux)
+236	{
+237	    if (!s_ready) { return; }
+238	    taskENTER_CRITICAL();
+239	    s_g_mask   = (uint8_t)(mask & 0x7Fu);
+240	    s_g_whammy = (uint8_t)(whammy & MF_WHAMMY_MASK);
+241	    s_g_aux    = aux;
+242	    taskEXIT_CRITICAL();
+243	    (void)xSemaphoreGive(s_tx_notify);
+244	}
+245	
+246	void Fauxmote_SendGuitarMask(uint8_t mask)
+247	{
+248	    if (s_override) { return; }
+249	    Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+250	}
+251	
+252	void Fauxmote_SetOverride(bool on)
+253	{
+254	    s_override = on;
+255	}
+256	
+257	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y)
+258	{
+259	    if (!s_ready) { return; }
+260	    taskENTER_CRITICAL();
+261	    s_nav_core  = core;
+262	    s_nav_dpad  = dpad;
+263	    s_nav_sx    = (uint8_t)(stick_x & 0x3Fu);
+264	    s_nav_sy    = (uint8_t)(stick_y & 0x3Fu);
+265	    s_nav_dirty = true;
+266	    taskEXIT_CRITICAL();
+267	    (void)xSemaphoreGive(s_tx_notify);
+268	}
+269	
+270	void Fauxmote_SendCmd(uint8_t op)
+271	{
+272	    if (!s_ready) { return; }
+273	    (void)xQueueSend(s_cmd_queue, &op, 0);
+274	    (void)xSemaphoreGive(s_tx_notify);
+275	}
+276	
+277	void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible)
+278	{
+279	    if (!s_ready) { return; }
+280	    taskENTER_CRITICAL();
+281	    s_ptr_x     = x;
+282	    s_ptr_y     = y;
+283	    s_ptr_flags = visible ? MF_PTR_VISIBLE : 0u;
+284	    s_ptr_dirty = true;
+285	    taskEXIT_CRITICAL();
+286	    (void)xSemaphoreGive(s_tx_notify);
+287	}
+288	
+289	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+290	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms)
+291	{
+292	    uint8_t    snap[MF_LEN_STATUS];
+293	    bool       valid;
+294	    TickType_t tick;
+295	
+296	    taskENTER_CRITICAL();
+297	    valid = s_status_valid;
+298	    memcpy(snap, s_status, MF_LEN_STATUS);
+299	    tick = s_status_tick;
+300	    taskEXIT_CRITICAL();
+301	
+302	    if (!valid) { return false; }
+303	
+304	    if (flags)       { *flags       = snap[0]; }
+305	    if (player_slot) { *player_slot = snap[1]; }
+306	    if (report_mode) { *report_mode = snap[2]; }
+307	    if (last_result) { *last_result = snap[3]; }
+308	    if (age_ms)      { *age_ms = (uint32_t)(xTaskGetTickCount() - tick) * portTICK_PERIOD_MS; }
+309	    return true;
+310	}
+311	
+312	void Fauxmote_Initialize(void)
+313	{
+314	    s_cmd_queue = xQueueCreateStatic(FX_CMD_QUEUE_DEPTH, sizeof(uint8_t),
+315	                                     s_cmd_queue_storage, &s_cmd_queue_buf);
+316	    configASSERT(s_cmd_queue != NULL);
+317	    s_tx_notify = xSemaphoreCreateBinaryStatic(&s_tx_notify_buf);
+318	    s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
+319	    configASSERT(s_tx_notify != NULL && s_rx_notify != NULL);
+320	
+321	    /* Reconfigure FLEXCOM5 (MCC default 500000) to the link baud, 8-N-1. */
+322	    FLEXCOM_USART_SERIAL_SETUP setup = {
+323	        .baudRate = MF_UART_BAUD,
+324	        .dataWidth = FLEXCOM_USART_DATA_8_BIT,
+325	        .parity    = FLEXCOM_USART_PARITY_NONE,
+326	        .stopBits  = FLEXCOM_USART_STOP_1_BIT,
+327	    };
+328	    (void)FLEXCOM5_USART_SerialSetup(&setup, FLEXCOM5_USART_FrequencyGet());
+329	
+330	    /* Arm continuous RX for the STATUS uplink: wake the parser on each byte. */
+331	    FLEXCOM5_USART_ReadCallbackRegister(rx_event_handler, 0u);
+332	    FLEXCOM5_USART_ReadThresholdSet(1u);
+333	    (void)FLEXCOM5_USART_ReadNotificationEnable(true, true);
+334	
+335	    (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
+336	                            NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
+337	    (void)xTaskCreateStatic(fx_rx_task, "FxRx", FX_RX_TASK_STACK_WORDS,
+338	                            NULL, FX_TASK_PRIORITY, s_rx_stack, &s_rx_tcb);
+339	
+340	    s_ready = true;
+341	}
+342
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:16Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+1	#include "t1s_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "semphr.h"
+10	
+11	#include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
+12	#include "log.h"
+13	#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+14	
+15	#include "tc6.h"
+16	#include "tc6-regs.h"
+17	
+18	/* marvin is the PLCA coordinator. Node IDs and MACs follow the addressing
+19	 * scheme in docs/t1s-podl-link.md §7.1: coordinator = ID 0, MAC ...00. */
+20	#define T1S_NODE_ID         (0u)
+21	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length; headroom for nodes 1..7 */
+22	#define T1S_PLCA_ENABLE     (true)
+23	#define T1S_SPI_HZ          (15000000u)
+24	#define T1S_INSTANCE        (0u)
+25	
+26	#define T1S_TASK_STACK_WORDS (1024u)
+27	#define T1S_TASK_PRIORITY    (5u)
+28	
+29	/* Upper bound on TC6_Service calls per service_pump. The MAC-PHY can keep the
+30	 * "need service" flag asserted indefinitely (e.g. a persistent IRQ_N with no
+31	 * PLCA peer on the bus), which would spin this prio-5 task at 100% CPU and
+32	 * starve every lower task — the whole UI/console/detector stack. Cap the pump
+33	 * so it always returns to the task loop (which then blocks on s_svc_sem),
+34	 * yielding the CPU; any still-pending work is picked up on the next wake. */
+35	#define T1S_SERVICE_MAX_ITERS (8u)
+36	
+37	/* MAC-PHY bring-up bounds. If the LAN8651 isn't populated/responding, the task
+38	 * backs off and retries every T1S_ABSENT_RETRY_MS instead of servicing a dead
+39	 * SPI bus — ~0% CPU with no chip, and it self-heals if one is attached later. */
+40	#define T1S_BRINGUP_ACCEPT_MS   (500u)    /* deadline for TC6Regs_Init to be accepted */
+41	#define T1S_BRINGUP_INITDONE_MS (3000u)   /* deadline for the async reg writes to finish */
+42	#define T1S_ABSENT_RETRY_MS     (1000u)   /* backoff between bring-up attempts when absent */
+43	
+44	/* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
+45	 * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
+46	#define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
+47	#define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
+48	#define T1S_ETH_HDR_LEN      (14u)
+49	#define T1S_MAC_LEN          (6u)
+50	#define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
+51	#define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
+52	
+53	/* Locally administered coordinator MAC (02:00:00:00:00:00). */
+54	static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+55	
+56	/* Static node directory. No discovery — adding a node is a table entry.
+57	 * Detector nodes feed a detector-state bus id (RX source); guitar (actuator)
+58	 * nodes are command TX targets (detector_id unused, set to 0xFF). */
+59	#define T1S_NO_DETECTOR     (0xFFu)
+60	
+61	typedef enum
+62	{
+63	    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+64	    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
+65	    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+66	} t1s_node_type_t;
+67	
+68	typedef struct
+69	{
+70	    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+71	    uint8_t         detector_id;  /* detector_state_t.detector_id (T1S_NO_DETECTOR for actuators) */
+72	    t1s_node_type_t type;
+73	} t1s_node_t;
+74	
+75	static const t1s_node_t s_nodes[] = {
+76	    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+77	    { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+78	};
+79	
+80	#define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
+81	
+82	/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+83	static struct {
+84	    uint32_t last_seen_tick;
+85	    uint32_t last_seq;
+86	    bool     seen;
+87	} s_node_rt[T1S_NODE_TABLE_LEN];
+88	
+89	static const char *node_type_name(t1s_node_type_t t)
+90	{
+91	    switch (t) {
+92	        case T1S_NODE_FRETBOARD:     return "detector";
+93	        case T1S_NODE_PHOTODETECTOR: return "detector";
+94	        case T1S_NODE_GUITAR:        return "guitar";
+95	        default:                     return "?";
+96	    }
+97	}
+98	
+99	/* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
+100	static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+101	{
+102	    out[0] = 0x02u;
+103	    out[1] = 0x00u;
+104	    out[2] = 0x00u;
+105	    out[3] = 0x00u;
+106	    out[4] = 0x00u;
+107	    out[5] = node_id;
+108	}
+109	
+110	/* Look up a node by type (NULL if none of that type is configured). */
+111	static const t1s_node_t *node_for_type(t1s_node_type_t type)
+112	{
+113	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+114	        if (s_nodes[i].type == type) {
+115	            return &s_nodes[i];
+116	        }
+117	    }
+118	    return NULL;
+119	}
+120	
+121	/* Look up a node by its source MAC (NULL if unknown). */
+122	static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
+123	{
+124	    if ((mac[0] != 0x02u) || (mac[1] | mac[2] | mac[3] | mac[4])) {
+125	        return NULL;
+126	    }
+127	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+128	        if (s_nodes[i].node_id == mac[5]) {
+129	            return &s_nodes[i];
+130	        }
+131	    }
+132	    return NULL;
+133	}
+134	
+135	/* TX frame staging: TC6_SendRawEthernetPacket keeps a pointer to the buffer
+136	 * until its TX callback fires, so the buffer must stay valid meanwhile. One
+137	 * in-flight frame at a time (guarded by s_tx_busy) suffices for the link's
+138	 * rates. */
+139	static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
+140	static volatile bool s_tx_busy;
+141	
+142	/* Latest-wins outbound command to the guitar, flushed by the service task. */
+143	static volatile uint8_t s_cmd;
+144	static volatile bool    s_cmd_dirty;
+145	
+146	static T1SLink_FrameHandler s_frame_handler;
+147	
+148	/* Traffic counters (read by the console t1s/nodes commands). */
+149	static volatile uint32_t s_tx_count;   /* command frames sent */
+150	static volatile uint32_t s_rx_count;   /* frames received from a known node */
+151	static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
+152	
+153	static TC6_t            *s_tc6;
+154	static volatile bool     s_need_service;
+155	static volatile bool     s_link_up;
+156	
+157	static SemaphoreHandle_t s_svc_sem;
+158	static StaticSemaphore_t s_svc_sem_buf;
+159	
+160	static StackType_t       s_task_stack[T1S_TASK_STACK_WORDS];
+161	static StaticTask_t      s_task_tcb;
+162	
+163	/* RX reassembly: TC6 delivers an Ethernet frame as slices; collect them here
+164	 * and process on the OnRxEthernetPacket completion callback. */
+165	static uint8_t           s_rx_buf[1518];
+166	
+167	/* FLEXCOM3 SPI completion ISR callback: the chunk transfer is done, hand the
+168	 * buffer back to the TC6 driver and wake the service task. */
+169	static void spi_done_cb(uintptr_t context)
+170	{
+171	    (void)context;
+172	    BaseType_t hpw = pdFALSE;
+173	    TC6_SpiBufferDone(T1S_INSTANCE, true);
+174	    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+175	    portYIELD_FROM_ISR(hpw);
+176	}
+177	
+178	/* T1S_IRQ_N falling-edge PIO ISR callback: the MAC-PHY needs servicing. */
+179	static void irq_cb(PIO_PIN pin, uintptr_t context)
+180	{
+181	    (void)pin;
+182	    (void)context;
+183	    BaseType_t hpw = pdFALSE;
+184	    s_need_service = true;
+185	    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+186	    portYIELD_FROM_ISR(hpw);
+187	}
+188	
+189	/* TX completion: the staged frame buffer is free for reuse. */
+190	static void tx_done_cb(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+191	                       void *pTag, void *pGlobalTag)
+192	{
+193	    (void)pInst;
+194	    (void)pTx;
+195	    (void)len;
+196	    (void)pTag;
+197	    (void)pGlobalTag;
+198	    s_tx_busy = false;
+199	}
+200	
+201	/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) and queue it.
+202	 * Returns false if a TX is already in flight or the driver rejected it. */
+203	static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t payload_len)
+204	{
+205	    if (s_tx_busy || !s_link_up) {
+206	        return false;
+207	    }
+208	    if (payload_len > (sizeof(s_tx_frame) - T1S_ETH_HDR_LEN)) {
+209	        return false;
+210	    }
+211	    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+212	    memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
+213	    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE >> 8);
+214	    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE & 0xFFu);
+215	    memcpy(&s_tx_frame[T1S_ETH_HDR_LEN], payload, payload_len);
+216	
+217	    s_tx_busy = true;
+218	    bool ok = TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+219	                                        (uint16_t)(T1S_ETH_HDR_LEN + payload_len),
+220	                                        0u, tx_done_cb, NULL);
+221	    if (!ok) {
+222	        s_tx_busy = false;
+223	    }
+224	    return ok;
+225	}
+226	
+227	/* Run the protocol stack until it has no immediately pending work. IRQ_N is
+228	 * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
+229	/* Returns true if it bailed with work still pending (hit the iteration cap) —
+230	 * the caller must then yield so a stuck MAC-PHY can't starve other tasks. */
+231	static bool service_pump(void)
+232	{
+233	    unsigned iters = 0u;
+234	    do {
+235	        s_need_service = false;
+236	        bool no_int = (T1S_IRQ_N_Get() != 0u);
+237	        (void)TC6_Service(s_tc6, no_int);
+238	    } while (s_need_service && (++iters < T1S_SERVICE_MAX_ITERS));
+239	
+240	    TC6Regs_CheckTimers();
+241	
+242	    /* Persistent need-service = the MAC-PHY isn't quiescing (stuck IRQ / no
+243	     * peer). Don't spin on it; count it and tell the caller to yield. */
+244	    if (s_need_service) { s_service_overruns++; return true; }
+245	    return false;
+246	}
+247	
+248	/* One MAC-PHY bring-up attempt: reset pulse, push the register + PLCA config,
+249	 * and drive the async writes to completion within a deadline. Returns true only
+250	 * if the chip acked init done. False = absent/unresponsive → the caller backs
+251	 * off and retries (so an unpopulated LAN8651 never turns into a dead-bus spin).
+252	 * Re-pulsing reset each attempt also resets a chip attached after boot. */
+253	static bool t1s_try_bringup(void)
+254	{
+255	    /* Hardware reset pulse (T1S_RST is active-low, idle high). */
+256	    T1S_RST_Clear();
+257	    vTaskDelay(pdMS_TO_TICKS(10));
+258	    T1S_RST_Set();
+259	    vTaskDelay(pdMS_TO_TICKS(10));
+260	
+261	    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
+262	     * during bring-up so RX isn't filtered before the node table exists.
+263	     * TC6Regs_Init only queues the writes — bounded accept retry. */
+264	    TickType_t accept_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_ACCEPT_MS);
+265	    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+266	                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
+267	        if ((int32_t)(accept_dl - xTaskGetTickCount()) <= 0) { return false; }
+268	        vTaskDelay(pdMS_TO_TICKS(50));
+269	    }
+270	
+271	    /* Drive the async register writes to completion (bounded). */
+272	    TickType_t done_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_INITDONE_MS);
+273	    while (!TC6Regs_GetInitDone(s_tc6) &&
+274	           ((int32_t)(done_dl - xTaskGetTickCount()) > 0)) {
+275	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
+276	        (void)service_pump();
+277	    }
+278	    return TC6Regs_GetInitDone(s_tc6);
+279	}
+280	
+281	static void t1s_task(void *param)
+282	{
+283	    (void)param;
+284	
+285	    /* SPI: Mode 0 (CPOL=0 idle low, CPHA=0 leading edge), 8-bit, 15 MHz.
+286	     * Source clock 0 => PLib uses the FLEXCOM3 peripheral clock. One-time. */
+287	    FLEXCOM_SPI_TRANSFER_SETUP setup = {
+288	        .clockFrequency = T1S_SPI_HZ,
+289	        .clockPhase     = FLEXCOM_SPI_CLOCK_PHASE_LEADING_EDGE,
+290	        .clockPolarity  = FLEXCOM_SPI_CLOCK_POLARITY_IDLE_LOW,
+291	        .dataBits       = FLEXCOM_SPI_DATA_BITS_8,
+292	    };
+293	    (void)FLEXCOM3_SPI_TransferSetup(&setup, 0u);
+294	    FLEXCOM3_SPI_CallbackRegister(spi_done_cb, 0u);
+295	
+296	    s_tc6 = TC6_Init(NULL);
+297	    if (s_tc6 == NULL) {
+298	        LOG_ERROR("T1S: TC6_Init failed\r\n");
+299	        vTaskDelete(NULL);
+300	        return;
+301	    }
+302	
+303	    (void)PIO_PinInterruptCallbackRegister(T1S_IRQ_N_PIN, irq_cb, 0u);
+304	    PIO_PinInterruptEnable(T1S_IRQ_N_PIN);
+305	
+306	    bool warned_absent = false;
+307	
+308	    for (;;) {
+309	        /* Bring up (or re-bring-up) the MAC-PHY. Absent/unresponsive → warn once
+310	         * and retry with backoff instead of servicing a dead bus. */
+311	        if (!s_link_up) {
+312	            if (!t1s_try_bringup()) {
+313	                if (!warned_absent) {
+314	                    LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
+315	                             "retry every %ums\r\n", (unsigned)T1S_ABSENT_RETRY_MS);
+316	                    warned_absent = true;
+317	                }
+318	                vTaskDelay(pdMS_TO_TICKS(T1S_ABSENT_RETRY_MS));
+319	                continue;
+320	            }
+321	            s_link_up      = true;
+322	            warned_absent  = false;
+323	            TC6_EnableData(s_tc6, true);
+324	            LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+325	                     "PLCA coord id=%u/%u\r\n",
+326	                     (unsigned)TC6Regs_GetChipRevision(s_tc6),
+327	                     s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
+328	                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
+329	        }
+330	
+331	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
+332	        /* If the pump bailed with work still pending, force a yield so this
+333	         * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
+334	        if (service_pump()) { vTaskDelay(pdMS_TO_TICKS(1)); }
+335	
+336	        /* Flush the latest pending command to the active guitar (actuator)
+337	         * node. All TC6 access stays in this task; producers only stash via
+338	         * the API. (Single guitar today; an active-guitar selector goes here
+339	         * when multiple guitar nodes share the bus.) */
+340	        if (s_cmd_dirty && !s_tx_busy) {
+341	            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+342	            if (guitar != NULL) {
+343	                /* Clear before reading so a concurrent update re-arms dirty
+344	                 * rather than being dropped (latest-wins). */
+345	                s_cmd_dirty = false;
+346	                uint8_t mask = s_cmd;
+347	                if (send_to_node(guitar->node_id, &mask, 1u)) {
+348	                    s_tx_count++;
+349	                }
+350	            }
+351	        }
+352	    }
+353	}
+354	
+355	void T1SLink_Initialize(void)
+356	{
+357	    s_svc_sem = xSemaphoreCreateBinaryStatic(&s_svc_sem_buf);
+358	    configASSERT(s_svc_sem != NULL);
+359	
+360	    (void)xTaskCreateStatic(t1s_task, "T1SLink", T1S_TASK_STACK_WORDS, NULL,
+361	                            T1S_TASK_PRIORITY, s_task_stack, &s_task_tcb);
+362	}
+363	
+364	bool T1SLink_IsConnected(void)
+365	{
+366	    return s_link_up;
+367	}
+368	
+369	void T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
+370	{
+371	    uint8_t tx = 0u, rx = 0u;
+372	    bool    sy = false;
+373	    if (s_tc6 != NULL) {
+374	        TC6_GetState(s_tc6, &tx, &rx, &sy);
+375	    }
+376	    if (synced   != NULL) { *synced   = sy; }
+377	    if (txCredit != NULL) { *txCredit = tx; }
+378	    if (rxCredit != NULL) { *rxCredit = rx; }
+379	}
+380	
+381	uint8_t  T1SLink_ChipRev(void)   { return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u; }
+382	uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+383	uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
+384	uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
+385	uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
+386	uint32_t T1SLink_ServiceOverruns(void) { return s_service_overruns; }
+387	
+388	uint8_t T1SLink_NodeTableCount(void) { return (uint8_t)T1S_NODE_TABLE_LEN; }
+389	
+390	bool T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out)
+391	{
+392	    if ((idx >= T1S_NODE_TABLE_LEN) || (out == NULL)) {
+393	        return false;
+394	    }
+395	    out->node_id = s_nodes[idx].node_id;
+396	    out->type    = node_type_name(s_nodes[idx].type);
+397	    if (s_node_rt[idx].seen) {
+398	        uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
+399	        out->age_ms  = (uint32_t)(age * portTICK_PERIOD_MS);
+400	        out->present = (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+401	    } else {
+402	        out->age_ms  = 0u;
+403	        out->present = false;
+404	    }
+405	    return true;
+406	}
+407	
+408	bool T1SLink_SendToGuitar(uint8_t mask)
+409	{
+410	    if (!s_link_up) {
+411	        return false;
+412	    }
+413	    s_cmd = mask;
+414	    s_cmd_dirty = true;
+415	    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+416	    return true;
+417	}
+418	
+419	void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler)
+420	{
+421	    s_frame_handler = handler;
+422	}
+423	
+424	/*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
+425	
+426	bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
+427	                             uint16_t len, void *pGlobalTag)
+428	{
+429	    (void)tc6instance;
+430	    (void)pGlobalTag;
+431	    /* Non-blocking full-duplex transfer; spi_done_cb calls TC6_SpiBufferDone.
+432	     * Returns false if the PLib is busy — the driver retries. */
+433	    return FLEXCOM3_SPI_WriteRead(pTx, len, pRx, len);
+434	}
+435	
+436	void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
+437	{
+438	    (void)pInst;
+439	    (void)pGlobalTag;
+440	    /* May be called from task or ISR context; just flag. ISR sources also give
+441	     * the semaphore, so the service task always wakes. */
+442	    s_need_service = true;
+443	}
+444	
+445	void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
+446	                              uint16_t len, void *pGlobalTag)
+447	{
+448	    (void)pInst;
+449	    (void)pGlobalTag;
+450	    if (((uint32_t)offset + len) <= sizeof(s_rx_buf)) {
+451	        memcpy(&s_rx_buf[offset], pRx, len);
+452	    }
+453	}
+454	
+455	void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+456	                               uint64_t *rxTimestamp, void *pGlobalTag)
+457	{
+458	    (void)pInst;
+459	    (void)rxTimestamp;
+460	    (void)pGlobalTag;
+461	
+462	    if (!success || (len < T1S_ETH_HDR_LEN)) {
+463	        return;
+464	    }
+465	
+466	    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+467	    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)) {
+468	        return;  /* not ours (promiscuous RX during bring-up) */
+469	    }
+470	
+471	    const uint8_t *src = &s_rx_buf[6];
+472	    const t1s_node_t *node = node_for_mac(src);
+473	    if (node == NULL) {
+474	        LOG_DEBUG("T1S: rx from unknown node %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+475	                  src[0], src[1], src[2], src[3], src[4], src[5]);
+476	        return;
+477	    }
+478	    uint8_t idx = (uint8_t)(node - s_nodes);
+479	
+480	    const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
+481	    uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
+482	
+483	    if (ethertype == T1S_ETHERTYPE_HB) {
+484	        /* Presence heartbeat: stamp last-seen; capture the seq if present. */
+485	        s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+486	        s_node_rt[idx].seen = true;
+487	        if (payload_len >= T1S_HB_LEN) {
+488	            s_node_rt[idx].last_seq = (uint32_t)payload[4]
+489	                                    | ((uint32_t)payload[5] << 8)
+490	                                    | ((uint32_t)payload[6] << 16)
+491	                                    | ((uint32_t)payload[7] << 24);
+492	        }
+493	        return;
+494	    }
+495	
+496	    s_rx_count++;
+497	    if (s_frame_handler != NULL) {
+498	        s_frame_handler(node->detector_id, payload, payload_len);
+499	    }
+500	}
+501	
+502	void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+503	{
+504	    (void)pGlobalTag;
+505	    LOG_WARN("T1S: error: %s\r\n", TC6_GetErrorStr(err));
+506	    switch (err) {
+507	        case TC6Error_NoHardware:
+508	        case TC6Error_BadChecksum:
+509	        case TC6Error_UnexpectedCtrl:
+510	        case TC6Error_BadTxData:
+511	        case TC6Error_SyncLost:
+512	        case TC6Error_SpiError:
+513	            TC6Regs_Reinit(pInst);
+514	            break;
+515	        default:
+516	            break;
+517	    }
+518	}
+519	
+520	/*>>>>>>>>>>>>>>>>>>>>  TC6Regs callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>>>>*/
+521	
+522	uint32_t TC6Regs_CB_GetTicksMs(void)
+523	{
+524	    /* configTICK_RATE_HZ is 1000, so one tick is one millisecond. */
+525	    return (uint32_t)xTaskGetTickCount();
+526	}
+527	
+528	void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
+529	{
+530	    (void)pTag;
+531	//    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
+532	    switch (event) {
+533	        case TC6Regs_Event_Loss_of_Framing_Error:
+534	        case TC6Regs_Event_RX_Non_Recoverable_Error:
+535	        case TC6Regs_Event_TX_Non_Recoverable_Error:
+536	            TC6Regs_Reinit(pInst);
+537	            break;
+538	        default:
+539	            break;
+540	    }
+541	}
+542
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:22Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.h`
+
+```text
+1	#ifndef T1S_LINK_H
+2	#define T1S_LINK_H
+3	
+4	#include <stdbool.h>
+5	#include <stdint.h>
+6	
+7	/* 10BASE-T1S inter-node link (marvin side, LAN8651 MAC-PHY over FLEXCOM3 SPI).
+8	 *
+9	 * marvin is the PLCA coordinator (node ID 0). The transport is the vendored
+10	 * OPEN Alliance TC6 driver (third_party/oa-tc6-lib): SPI chunk protocol +
+11	 * register control, wrapped here with the FLEXCOM3 SPI PLib, the T1S_RST /
+12	 * T1S_IRQ_N GPIOs, and a FreeRTOS service task. See docs/t1s-podl-link.md.
+13	 *
+14	 * Phase 1/2 scope: bring the MAC-PHY up (reset, TC6_Init + TC6Regs_Init with
+15	 * PLCA enabled) and confirm the link by reading the chip revision. L2 framing,
+16	 * node-table demux, and the fretboard data path land in later phases.
+17	 *
+18	 * Initialize after SYS_Initialize (FLEXCOM3_SPI_Initialize must have run). The
+19	 * call only creates the service task + semaphore; the reset pulse and TC6 init
+20	 * run inside the task once the scheduler is up (TC6 init is asynchronous and
+21	 * needs the SPI ISR + service loop). */
+22	
+23	void T1SLink_Initialize(void);
+24	
+25	/* True once the MAC-PHY has been configured and data path enabled. */
+26	bool T1SLink_IsConnected(void);
+27	
+28	/* TC6 link state (sync flag + TX/RX credits) and diagnostics, for the console. */
+29	void     T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit);
+30	uint8_t  T1SLink_ChipRev(void);
+31	uint8_t  T1SLink_NodeId(void);    /* PLCA coordinator id (0) */
+32	uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
+33	uint32_t T1SLink_TxCount(void);   /* command frames sent */
+34	uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
+35	uint32_t T1SLink_ServiceOverruns(void); /* times service_pump hit its iter cap */
+36	
+37	/* Per-node presence (from follower heartbeats, ethertype 0x88B6). */
+38	typedef struct {
+39	    uint8_t     node_id;
+40	    const char *type;     /* "detector" / "guitar" / ... */
+41	    bool        present;  /* a heartbeat was seen within the presence window */
+42	    uint32_t    age_ms;   /* since the last heartbeat (0 if never seen) */
+43	} T1SLink_NodeInfo;
+44	
+45	uint8_t T1SLink_NodeTableCount(void);
+46	bool    T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out);
+47	
+48	/* Latest-wins 1-byte button command to the active guitar (actuator) node.
+49	 * Safe to call from any task; the value is flushed onto the bus by the T1S
+50	 * service task (TC6 access is single-threaded). Returns false if the link is
+51	 * not up. */
+52	bool T1SLink_SendToGuitar(uint8_t mask);
+53	
+54	/* Delivers a received node payload (already demuxed by src MAC) to a consumer.
+55	 * Called from the T1S service task. `detector_id` is the node's bus id. */
+56	typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,
+57	                                     uint16_t len);
+58	void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler);
+59	
+60	#endif /* T1S_LINK_H */
+61
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:28Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/mf_proto.h`
+
+```text
+1	#pragma once
+2	
+3	#include <stdint.h>
+4	#include <stddef.h>
+5	
+6	/* marvin <-> fauxmote command-link wire protocol (message + UART framing layers).
+7	 * Canonical spec: docs/marvin-fauxmote-link.md. This header is transport-neutral
+8	 * (pure C, no ESP/Harmony deps) and shared verbatim between the fauxmote firmware
+9	 * (firmware/fauxmote/main/mf_proto.h) and the marvin firmware
+10	 * (firmware/marvin/default/src/net/fauxmote/mf_proto.h) — keep the two byte-for-byte
+11	 * in sync. */
+12	
+13	#define MF_PROTO_VERSION   1u
+14	#define MF_UART_BAUD       1000000u   /* 1 Mbaud, 8-N-1 */
+15	
+16	/* --- UART framing: SOF | TYPE | LEN | payload[LEN] | CRC8 (over TYPE,LEN,payload) */
+17	#define MF_SOF             0x7Eu
+18	
+19	/* --- Message types (LEN is fixed per type in v1). 0x00 is never valid. */
+20	enum {
+21	    MF_MSG_GUITAR   = 0x01,   /* m->f, 3B: hot gameplay input */
+22	    MF_MSG_WIIMOTE  = 0x02,   /* m->f, 4B: menu-nav input */
+23	    MF_MSG_LINK_CMD = 0x03,   /* m->f, 1B: bluetooth link management */
+24	    MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (planned) */
+25	    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer (planned) */
+26	    MF_MSG_STATUS   = 0x81,   /* f->m, 4B: link/connection state */
+27	};
+28	
+29	#define MF_LEN_GUITAR    3u
+30	#define MF_LEN_WIIMOTE   4u
+31	#define MF_LEN_LINK_CMD  1u
+32	#define MF_LEN_ACCEL     3u
+33	#define MF_LEN_POINTER   3u
+34	#define MF_LEN_STATUS    4u
+35	#define MF_MAX_PAYLOAD   8u   /* largest LEN across all types */
+36	
+37	/* --- GUITAR (3B): [0] fret/strum mask, [1] whammy, [2] aux */
+38	#define MF_G_GREEN       (1u << 0)
+39	#define MF_G_RED         (1u << 1)
+40	#define MF_G_YELLOW      (1u << 2)
+41	#define MF_G_BLUE        (1u << 3)
+42	#define MF_G_ORANGE      (1u << 4)
+43	#define MF_G_STRUM_DOWN  (1u << 5)
+44	#define MF_G_STRUM_UP    (1u << 6)
+45	
+46	#define MF_WHAMMY_MASK   0x1Fu
+47	#define MF_WHAMMY_REST   0x10u   /* released/idle whammy value (safe default) */
+48	
+49	#define MF_AUX_PLUS       (1u << 0)   /* Start / pause */
+50	#define MF_AUX_MINUS      (1u << 1)   /* Select */
+51	#define MF_AUX_PEDAL      (1u << 2)
+52	#define MF_AUX_STARPOWER  (1u << 3)   /* planned: maps to a Wiimote tilt (no-op for now) */
+53	
+54	/* --- WIIMOTE (4B): [0] core buttons, [1] d-pad, [2] stick X, [3] stick Y */
+55	#define MF_W_A           (1u << 0)
+56	#define MF_W_B           (1u << 1)
+57	#define MF_W_ONE         (1u << 2)
+58	#define MF_W_TWO         (1u << 3)
+59	#define MF_W_PLUS        (1u << 4)
+60	#define MF_W_MINUS       (1u << 5)
+61	#define MF_W_HOME        (1u << 6)
+62	
+63	#define MF_W_UP          (1u << 0)
+64	#define MF_W_DOWN        (1u << 1)
+65	#define MF_W_LEFT        (1u << 2)
+66	#define MF_W_RIGHT       (1u << 3)
+67	
+68	#define MF_STICK_CENTER  0x20u   /* 6-bit stick 0..63, center (safe default) */
+69	
+70	/* --- POINTER (3B): [0] x, [1] y (0..255 -> 0..1, 0,0 = top-left), [2] flags */
+71	#define MF_PTR_VISIBLE   (1u << 0)   /* 0 = pointer off / hidden */
+72	
+73	/* --- LINK_CMD (1B): [0] opcode */
+74	enum {
+75	    MF_CMD_PAIR       = 0x01,
+76	    MF_CMD_STOP       = 0x02,
+77	    MF_CMD_RECONNECT  = 0x03,
+78	    MF_CMD_UNLINK     = 0x04,
+79	    MF_CMD_EXT_ATTACH = 0x05,
+80	    MF_CMD_EXT_DETACH = 0x06,
+81	    MF_CMD_STATUS_REQ = 0x07,
+82	};
+83	
+84	/* --- STATUS (4B): [0] flags, [1] player_slot, [2] report_mode, [3] last_result */
+85	#define MF_ST_DISCOVERABLE (1u << 0)
+86	#define MF_ST_CONNECTED    (1u << 1)
+87	#define MF_ST_ASSIGNED     (1u << 2)
+88	#define MF_ST_EXT_ATTACHED (1u << 3)
+89	#define MF_ST_PAIRING      (1u << 4)
+90	#define MF_ST_BONDED       (1u << 5)
+91	
+92	/* CRC-8/CCITT, poly 0x07, init 0x00, no reflection. Over TYPE, LEN, payload. */
+93	static inline uint8_t mf_crc8(const uint8_t *data, size_t len)
+94	{
+95	    uint8_t crc = 0x00;
+96	    for (size_t i = 0; i < len; i++) {
+97	        crc ^= data[i];
+98	        for (int b = 0; b < 8; b++) {
+99	            crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+100	        }
+101	    }
+102	    return crc;
+103	}
+104
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:28Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.h`
+
+```text
+1	#ifndef FAUXMOTE_LINK_H
+2	#define FAUXMOTE_LINK_H
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	
+7	/* marvin -> fauxmote command link: transmits controller input over the FLEXCOM5
+8	 * USART (PA16/PA15, dedicated fauxmote pins) to the ESP32 Wiimote emulator, and
+9	 * receives its STATUS uplink. Wire protocol in net/fauxmote/mf_proto.h /
+10	 * docs/marvin-fauxmote-link.md.
+11	 *
+12	 * Owns FLEXCOM5 exclusively (a peripheral dedicated to this link, independent of
+13	 * the guitar transport). A TX task sends the latched GUITAR state on change and at
+14	 * a floor rate (self-heals dropped frames + keeps fauxmote's link watchdog fed);
+15	 * WIIMOTE nav and LINK_CMD go out on demand. Send calls are non-blocking and safe
+16	 * from any producer context. Call Fauxmote_Initialize once after SYS_Initialize
+17	 * (FLEXCOM5 up) and before the mask producers start. */
+18	
+19	void Fauxmote_Initialize(void);
+20	
+21	/* GUITAR slice. SendGuitarMask is the gameplay mirror hook (whammy=rest, aux=0);
+22	 * SendGuitar exposes the full slice for future whammy/star-power producers. */
+23	void Fauxmote_SendGuitarMask(uint8_t mask);
+24	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux);
+25	
+26	/* WIIMOTE nav slice (core buttons, d-pad, 6-bit stick) and LINK_CMD opcode. */
+27	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y);
+28	void Fauxmote_SendCmd(uint8_t op);
+29	
+30	/* Priority gate. While on, SendGuitarMask (the gameplay-mirror hook) is ignored so
+31	 * a manual producer owns the GUITAR slice; SendGuitar/SendNav still apply. The
+32	 * wiimotes manual-override screen holds this while shown. */
+33	void Fauxmote_SetOverride(bool on);
+34	
+35	/* POINTER slice: IR pointer at (x,y), each 0..255 mapping to 0..1 of the screen
+36	 * (0,0 = top-left). visible=false hides the pointer (off-screen). */
+37	void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible);
+38	
+39	/* Latest STATUS from fauxmote. Returns false if none has ever been received.
+40	 * Any out pointer may be NULL. age_ms = ms since the last STATUS arrived. */
+41	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+42	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms);
+43	
+44	#endif
+45
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:15:34Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/main/mf_t1s.c`
+
+```text
+1	#include <string.h>
+2	
+3	#include "freertos/FreeRTOS.h"
+4	#include "freertos/task.h"
+5	#include "driver/spi_master.h"
+6	#include "driver/gpio.h"
+7	#include "esp_timer.h"
+8	#include "esp_log.h"
+9	
+10	#include "marvin_link.h"
+11	#include "mf_t1s.h"
+12	#include "mf_link.h"
+13	#include "mf_proto.h"
+14	
+15	#include "tc6.h"
+16	#include "tc6-regs.h"
+17	
+18	static const char *TAG = "mft1s";
+19	
+20	/* PLCA follower identity (docs/t1s-podl-link.md §7.1). The coordinator (marvin)
+21	 * is node id 0; controllers (fauxmotes) take ids 1-2, one PLCA node each (at
+22	 * most two). */
+23	#ifndef CONFIG_FAUXMOTE_T1S_NODE_ID
+24	#define CONFIG_FAUXMOTE_T1S_NODE_ID  1
+25	#endif
+26	#define T1S_NODE_ID         ((uint8_t)CONFIG_FAUXMOTE_T1S_NODE_ID)
+27	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+28	#define T1S_INSTANCE        (0u)
+29	
+30	#define T1S_ETHERTYPE_MF    (0x88B7u)  /* fauxmote command / STATUS channel */
+31	#define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+32	#define T1S_ETH_HDR_LEN     (14u)
+33	
+34	/* Heartbeat (docs/t1s-podl-link.md §7.2): ver, node_type, node_id, flags, seq_u32. */
+35	#define T1S_HB_INTERVAL_MS      (500u)
+36	#define T1S_HB_VERSION          (1u)
+37	#define T1S_HB_TYPE_CONTROLLER  (3u)   /* 1 = detector, 2 = guitar, 3 = controller */
+38	#define T1S_HB_LEN              (8u)
+39	
+40	/* LAN8651 wiring — Adafruit ESP32 Feather V2 defaults (overridable via Kconfig). */
+41	#ifndef CONFIG_FAUXMOTE_T1S_PIN_SCLK
+42	#define CONFIG_FAUXMOTE_T1S_PIN_SCLK  5
+43	#endif
+44	#ifndef CONFIG_FAUXMOTE_T1S_PIN_MOSI
+45	#define CONFIG_FAUXMOTE_T1S_PIN_MOSI  19
+46	#endif
+47	#ifndef CONFIG_FAUXMOTE_T1S_PIN_MISO
+48	#define CONFIG_FAUXMOTE_T1S_PIN_MISO  21
+49	#endif
+50	#ifndef CONFIG_FAUXMOTE_T1S_PIN_CS
+51	#define CONFIG_FAUXMOTE_T1S_PIN_CS    33
+52	#endif
+53	#ifndef CONFIG_FAUXMOTE_T1S_PIN_RST
+54	#define CONFIG_FAUXMOTE_T1S_PIN_RST   27
+55	#endif
+56	#ifndef CONFIG_FAUXMOTE_T1S_PIN_IRQ
+57	#define CONFIG_FAUXMOTE_T1S_PIN_IRQ   32
+58	#endif
+59	
+60	#define PIN_SCLK  ((gpio_num_t)CONFIG_FAUXMOTE_T1S_PIN_SCLK)
+61	#define PIN_MOSI  ((gpio_num_t)CONFIG_FAUXMOTE_T1S_PIN_MOSI)
+62	#define PIN_MISO  ((gpio_num_t)CONFIG_FAUXMOTE_T1S_PIN_MISO)
+63	#define PIN_CS    ((gpio_num_t)CONFIG_FAUXMOTE_T1S_PIN_CS)
+64	#define PIN_RST   ((gpio_num_t)CONFIG_FAUXMOTE_T1S_PIN_RST)
+65	#define PIN_IRQ   ((gpio_num_t)CONFIG_FAUXMOTE_T1S_PIN_IRQ)
+66	
+67	#define T1S_SPI_HOST   SPI2_HOST
+68	#define T1S_SPI_HZ     (15 * 1000 * 1000)
+69	#define T1S_SPI_MAX_XFER  (4096)     /* multi-chunk transactions concatenate chunks */
+70	
+71	#define T1S_POLL_MS  (2u)  /* re-service cadence; also catches level-latched IRQ_N */
+72	
+73	/* This node's MAC 02:00:00:00:00:<id>; coordinator MAC 02:00:00:00:00:00. */
+74	static uint8_t       s_mac[6]       = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, T1S_NODE_ID };
+75	static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+76	
+77	static TC6_t              *s_tc6;
+78	static spi_device_handle_t s_spi;
+79	static volatile bool       s_need_service;
+80	static volatile bool       s_link_up;
+81	
+82	/* Diagnostics. */
+83	static volatile uint32_t s_rx_count;
+84	static volatile uint32_t s_tx_count;
+85	static volatile uint32_t s_err_count;
+86	static uint32_t          s_last_diag_ms;
+87	
+88	static uint8_t s_rx_buf[64];
+89	
+90	/* TX staging (each buffer must stay valid until its TX callback fires). */
+91	static uint8_t       s_hb_frame[T1S_ETH_HDR_LEN + T1S_HB_LEN];
+92	static volatile bool s_hb_busy;
+93	static uint32_t      s_hb_seq;
+94	static uint32_t      s_hb_last_ms;
+95	
+96	static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + MF_MAX_PAYLOAD + 1];
+97	static volatile bool s_tx_busy;
+98	
+99	static StaticTask_t  s_task_tcb;
+100	static StackType_t   s_task_stack[4096];
+101	static TaskHandle_t  s_task_handle;
+102	
+103	static inline uint32_t now_ms(void)
+104	{
+105	    return (uint32_t)(esp_timer_get_time() / 1000);
+106	}
+107	
+108	static void diag_log(const char *msg)
+109	{
+110	    uint32_t now = now_ms();
+111	    if ((now - s_last_diag_ms) < 1000u) { return; }
+112	    s_last_diag_ms = now;
+113	    ESP_LOGW(TAG, "%s", msg);
+114	}
+115	
+116	/*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  SPI + IRQ  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+117	
+118	/* Deferred-interrupt handling: mask IRQ_N here and hand off to the task, which
+119	 * re-enables it after servicing. Without the mask a level-latched or chattering
+120	 * IRQ_N re-notifies faster than the task can consume it, so the task never
+121	 * blocks and starves the idle task (task watchdog). Not IRAM_ATTR: it calls
+122	 * gpio_intr_disable, and there is no flash-operation concurrency to guard. */
+123	static void irq_isr(void *arg)
+124	{
+125	    (void)arg;
+126	    gpio_intr_disable(PIN_IRQ);
+127	    s_need_service = true;
+128	    if (s_task_handle != NULL) {
+129	        BaseType_t hpw = pdFALSE;
+130	        vTaskNotifyGiveFromISR(s_task_handle, &hpw);
+131	        portYIELD_FROM_ISR(hpw);
+132	    }
+133	}
+134	
+135	/* One service pass, then check the library's timers. Never loop here on
+136	 * s_need_service: with a MAC-PHY that never syncs, the library re-requests
+137	 * service every pass (and the synchronous SPI completion re-arms it), so a loop
+138	 * would spin forever. The task paces repeated passes. IRQ_N is active-low;
+139	 * TC6_Service treats a false interruptLevel as "interrupt active". */
+140	static void service_pump(void)
+141	{
+142	    s_need_service = false;
+143	    bool no_int = (gpio_get_level(PIN_IRQ) != 0);
+144	    (void)TC6_Service(s_tc6, no_int);
+145	    TC6Regs_CheckTimers();
+146	}
+147	
+148	static void hb_tx_done(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+149	                       void *pTag, void *pGlobalTag)
+150	{
+151	    (void)pInst; (void)pTx; (void)len; (void)pTag; (void)pGlobalTag;
+152	    s_hb_busy = false;
+153	}
+154	
+155	static void send_heartbeat(void)
+156	{
+157	    if (s_hb_busy || !s_link_up) {
+158	        return;
+159	    }
+160	    bool synced = false;
+161	    TC6_GetState(s_tc6, NULL, NULL, &synced);
+162	
+163	    memcpy(&s_hb_frame[0], s_coord_mac, 6u);   /* dst = coordinator */
+164	    memcpy(&s_hb_frame[6], s_mac, 6u);         /* src = this node   */
+165	    s_hb_frame[12] = (uint8_t)(T1S_ETHERTYPE_HB >> 8);
+166	    s_hb_frame[13] = (uint8_t)(T1S_ETHERTYPE_HB & 0xFFu);
+167	    s_hb_frame[14] = T1S_HB_VERSION;
+168	    s_hb_frame[15] = T1S_HB_TYPE_CONTROLLER;
+169	    s_hb_frame[16] = T1S_NODE_ID;
+170	    s_hb_frame[17] = synced ? 0x01u : 0x00u;   /* flags: bit0 = synced */
+171	    s_hb_seq++;
+172	    s_hb_frame[18] = (uint8_t)(s_hb_seq);
+173	    s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
+174	    s_hb_frame[20] = (uint8_t)(s_hb_seq >> 16);
+175	    s_hb_frame[21] = (uint8_t)(s_hb_seq >> 24);
+176	
+177	    s_hb_busy = true;
+178	    if (!TC6_SendRawEthernetPacket(s_tc6, s_hb_frame, T1S_ETH_HDR_LEN + T1S_HB_LEN,
+179	                                   0u, hb_tx_done, NULL)) {
+180	        s_hb_busy = false;
+181	    } else {
+182	        s_tx_count++;
+183	    }
+184	}
+185	
+186	static void tx_done(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+187	                    void *pTag, void *pGlobalTag)
+188	{
+189	    (void)pInst; (void)pTx; (void)len; (void)pTag; (void)pGlobalTag;
+190	    s_tx_busy = false;
+191	}
+192	
+193	/* mf_send_fn: carry one f->m message (STATUS) as a frame to the coordinator on
+194	 * the mf ethertype. Payload is [TYPE][payload...]; the MAC-PHY pads short frames
+195	 * to the 46-byte minimum and appends the FCS. */
+196	static void mf_t1s_send(uint8_t type, const uint8_t *payload, uint8_t len)
+197	{
+198	    if (s_tx_busy || !s_link_up || len > MF_MAX_PAYLOAD) {
+199	        return;
+200	    }
+201	    memcpy(&s_tx_frame[0], s_coord_mac, 6u);
+202	    memcpy(&s_tx_frame[6], s_mac, 6u);
+203	    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE_MF >> 8);
+204	    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE_MF & 0xFFu);
+205	    s_tx_frame[14] = type;
+206	    memcpy(&s_tx_frame[15], payload, len);
+207	
+208	    s_tx_busy = true;
+209	    if (!TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+210	                                   (uint16_t)(T1S_ETH_HDR_LEN + 1u + len),
+211	                                   0u, tx_done, NULL)) {
+212	        s_tx_busy = false;
+213	    } else {
+214	        s_tx_count++;
+215	    }
+216	}
+217	
+218	/*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  Task + init  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+219	
+220	static void mf_t1s_task(void *arg)
+221	{
+222	    (void)arg;
+223	    /* At least one tick: pdMS_TO_TICKS truncates to 0 below one tick period
+224	     * (e.g. 2 ms at the default 100 Hz tick), which turns the wait into a
+225	     * non-blocking poll — the task would then never yield and starve the idle
+226	     * task. Real RX still wakes the task immediately via the IRQ notification. */
+227	    TickType_t poll_ticks = pdMS_TO_TICKS(T1S_POLL_MS);
+228	    if (poll_ticks == 0u) {
+229	        poll_ticks = 1u;
+230	    }
+231	    for (;;) {
+232	        /* Block until IRQ_N fires (masked in the ISR) or the poll tick elapses.
+233	         * Blocking here is what yields the CPU; the poll tick also re-services a
+234	         * level-latched IRQ_N that produced no fresh edge. */
+235	        (void)ulTaskNotifyTake(pdTRUE, poll_ticks);
+236	
+237	        service_pump();
+238	        gpio_intr_enable(PIN_IRQ);   /* re-arm after the deferred service pass */
+239	
+240	        if (!s_link_up && TC6Regs_GetInitDone(s_tc6)) {
+241	            s_link_up = true;
+242	            TC6_EnableData(s_tc6, true);
+243	            ESP_LOGI(TAG, "LAN8651 up - chipRev=%u, MAC=02:00:00:00:00:%02X, "
+244	                          "PLCA follower id=%u/%u",
+245	                     (unsigned)TC6Regs_GetChipRevision(s_tc6),
+246	                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+247	                     (unsigned)T1S_NODE_COUNT);
+248	        }
+249	
+250	        if (s_link_up) {
+251	            uint32_t now = now_ms();
+252	            if ((now - s_hb_last_ms) >= T1S_HB_INTERVAL_MS) {
+253	                s_hb_last_ms = now;
+254	                send_heartbeat();
+255	            }
+256	        }
+257	
+258	        MfLink_Service(now_ms());
+259	    }
+260	}
+261	
+262	static void spi_gpio_init(void)
+263	{
+264	    gpio_config_t out = {
+265	        .pin_bit_mask = (1ULL << PIN_CS) | (1ULL << PIN_RST),
+266	        .mode         = GPIO_MODE_OUTPUT,
+267	        .pull_up_en   = GPIO_PULLUP_DISABLE,
+268	        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+269	        .intr_type    = GPIO_INTR_DISABLE,
+270	    };
+271	    gpio_config(&out);
+272	    gpio_set_level(PIN_CS, 1);    /* CS idle high */
+273	
+274	    /* Hardware reset pulse (RST active-low, idle high). */
+275	    gpio_set_level(PIN_RST, 0);
+276	    vTaskDelay(pdMS_TO_TICKS(10));
+277	    gpio_set_level(PIN_RST, 1);
+278	    vTaskDelay(pdMS_TO_TICKS(10));
+279	
+280	    gpio_config_t in = {
+281	        .pin_bit_mask = (1ULL << PIN_IRQ),
+282	        .mode         = GPIO_MODE_INPUT,
+283	        .pull_up_en   = GPIO_PULLUP_ENABLE,
+284	        .pull_down_en = GPIO_PULLDOWN_DISABLE,
+285	        .intr_type    = GPIO_INTR_NEGEDGE,
+286	    };
+287	    gpio_config(&in);
+288	
+289	    const spi_bus_config_t bus = {
+290	        .mosi_io_num     = PIN_MOSI,
+291	        .miso_io_num     = PIN_MISO,
+292	        .sclk_io_num     = PIN_SCLK,
+293	        .quadwp_io_num   = -1,
+294	        .quadhd_io_num   = -1,
+295	        .max_transfer_sz = T1S_SPI_MAX_XFER,
+296	    };
+297	    ESP_ERROR_CHECK(spi_bus_initialize(T1S_SPI_HOST, &bus, SPI_DMA_CH_AUTO));
+298	
+299	    const spi_device_interface_config_t dev = {
+300	        .clock_speed_hz = T1S_SPI_HZ,
+301	        .mode           = 0,             /* CPOL=0, CPHA=0 */
+302	        .spics_io_num   = -1,            /* CS driven manually in OnSpiTransaction */
+303	        .queue_size     = 1,
+304	    };
+305	    ESP_ERROR_CHECK(spi_bus_add_device(T1S_SPI_HOST, &dev, &s_spi));
+306	
+307	    ESP_ERROR_CHECK(gpio_install_isr_service(0));
+308	    ESP_ERROR_CHECK(gpio_isr_handler_add(PIN_IRQ, irq_isr, NULL));
+309	}
+310	
+311	void MarvinLink_Start(void)
+312	{
+313	    spi_gpio_init();
+314	
+315	    s_tc6 = TC6_Init(NULL);
+316	    if (s_tc6 == NULL) {
+317	        ESP_LOGE(TAG, "TC6_Init failed");
+318	        return;
+319	    }
+320	
+321	    /* Configure the LAN8651 + PLCA as this follower id. Not promiscuous — the
+322	     * MAC-PHY filters to this node's MAC + broadcast. This runs the register
+323	     * sequence synchronously (each SPI transaction completes in-line in
+324	     * OnSpiTransaction); with no MAC-PHY responding it falls through cleanly
+325	     * rather than spinning, and GetInitDone stays false. */
+326	    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+327	                      0u, 0u, false, false, false)) {
+328	        ESP_LOGE(TAG, "TC6Regs_Init rejected");
+329	        return;
+330	    }
+331	
+332	    MfLink_Init(mf_t1s_send);
+333	    s_task_handle = xTaskCreateStatic(mf_t1s_task, "mft1s",
+334	                                      sizeof(s_task_stack) / sizeof(StackType_t),
+335	                                      NULL, 5, s_task_stack, &s_task_tcb);
+336	    ESP_LOGI(TAG, "marvin link up on T1S (PLCA follower id=%u, ethertype=0x%04X)",
+337	             (unsigned)T1S_NODE_ID, (unsigned)T1S_ETHERTYPE_MF);
+338	}
+339	
+340	/*>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>  Diagnostics  >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>*/
+341	
+342	bool     MfT1s_IsUp(void)      { return s_link_up; }
+343	uint8_t  MfT1s_NodeId(void)    { return T1S_NODE_ID; }
+344	uint8_t  MfT1s_ChipRev(void)   { return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u; }
+345	uint32_t MfT1s_RxCount(void)   { return s_rx_count; }
+346	uint32_t MfT1s_TxCount(void)   { return s_tx_count; }
+347	uint32_t MfT1s_ErrCount(void)  { return s_err_count; }
+348	uint32_t MfT1s_HbSeq(void)     { return s_hb_seq; }
+349	
+350	bool MfT1s_IsSynced(void)
+351	{
+352	    bool synced = false;
+353	    if (s_tc6 != NULL) {
+354	        TC6_GetState(s_tc6, NULL, NULL, &synced);
+355	    }
+356	    return synced;
+357	}
+358	
+359	/*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
+360	
+361	bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
+362	                             uint16_t len, void *pGlobalTag)
+363	{
+364	    (void)tc6instance;
+365	    (void)pGlobalTag;
+366	
+367	    spi_transaction_t t = {
+368	        .length    = (size_t)len * 8u,   /* bits */
+369	        .tx_buffer = pTx,
+370	        .rx_buffer = pRx,
+371	    };
+372	    gpio_set_level(PIN_CS, 0);           /* CS low — start of transaction */
+373	    esp_err_t err = spi_device_polling_transmit(s_spi, &t);
+374	    gpio_set_level(PIN_CS, 1);           /* CS high — end of transaction */
+375	
+376	    /* The transfer is blocking, so rx data is valid on return — report completion
+377	     * synchronously. tc6.h permits TC6_SpiBufferDone directly from this callback,
+378	     * and it is required here: TC6Regs_Init busy-loops on TC6_Service waiting for
+379	     * these completions before the service task exists, so a deferred model would
+380	     * never make progress during init. */
+381	    TC6_SpiBufferDone(tc6instance, err == ESP_OK);
+382	    return true;
+383	}
+384	
+385	void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
+386	{
+387	    (void)pInst;
+388	    (void)pGlobalTag;
+389	    s_need_service = true;
+390	}
+391	
+392	void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
+393	                              uint16_t len, void *pGlobalTag)
+394	{
+395	    (void)pInst;
+396	    (void)pGlobalTag;
+397	    if (((uint32_t)offset + len) <= sizeof(s_rx_buf)) {
+398	        memcpy(&s_rx_buf[offset], pRx, len);
+399	    }
+400	}
+401	
+402	void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+403	                               uint64_t *rxTimestamp, void *pGlobalTag)
+404	{
+405	    (void)pInst;
+406	    (void)rxTimestamp;
+407	    (void)pGlobalTag;
+408	
+409	    if (!success || (len < (T1S_ETH_HDR_LEN + 1u))) {
+410	        return;
+411	    }
+412	    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+413	    if (ethertype != T1S_ETHERTYPE_MF) {
+414	        return;
+415	    }
+416	    /* Payload is [TYPE][payload...]; trailing min-frame padding is ignored by
+417	     * the per-type length check in the message layer. */
+418	    uint8_t  type    = s_rx_buf[T1S_ETH_HDR_LEN];
+419	    uint16_t paylen  = (uint16_t)(len - (T1S_ETH_HDR_LEN + 1u));
+420	    if (paylen > MF_MAX_PAYLOAD) {
+421	        paylen = MF_MAX_PAYLOAD;
+422	    }
+423	    s_rx_count++;
+424	    (void)MfLink_HandleMessage(type, &s_rx_buf[T1S_ETH_HDR_LEN + 1u], (uint8_t)paylen);
+425	}
+426	
+427	void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+428	{
+429	    (void)pGlobalTag;
+430	    s_err_count++;
+431	    diag_log(TC6_GetErrorStr(err));
+432	    switch (err) {
+433	        case TC6Error_NoHardware:
+434	        case TC6Error_BadChecksum:
+435	        case TC6Error_UnexpectedCtrl:
+436	        case TC6Error_BadTxData:
+437	        case TC6Error_SyncLost:
+438	        case TC6Error_SpiError:
+439	            TC6Regs_Reinit(pInst);
+440	            break;
+441	        default:
+442	            break;
+443	    }
+444	}
+445	
+446	/*>>>>>>>>>>>>>>>>>>>>  TC6Regs callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>>>>*/
+447	
+448	uint32_t TC6Regs_CB_GetTicksMs(void)
+449	{
+450	    return now_ms();
+451	}
+452	
+453	void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
+454	{
+455	    (void)pTag;
+456	    diag_log(TC6Regs_GetEventStr(event));
+457	    switch (event) {
+458	        case TC6Regs_Event_Loss_of_Framing_Error:
+459	        case TC6Regs_Event_RX_Non_Recoverable_Error:
+460	        case TC6Regs_Event_TX_Non_Recoverable_Error:
+461	            TC6Regs_Reinit(pInst);
+462	            break;
+463	        default:
+464	            break;
+465	    }
+466	}
+467
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:16:13Z)**_
+
+Now let me see how marvin wires these links today — init sequence, the transport flag, and the build config — plus the protocol doc and the marvin journal's fauxmote/T1S sections.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:16:16Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find link init sites and transport flag wiring
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== where links are initialized ==="
+grep -rn "Fauxmote_Initialize\|T1SLink_Initialize\|FretboardLink_Init\|MARVIN_FRETBOARD_TRANSPORT\|MARVIN_FAUXMOTE\|Fauxmote_SendGuitarMask\|T1SLink_SetFrameHandler" default/src --include=*.c --include=*.h
+echo
+echo "=== transport flag definition / user.cmake ==="
+grep -rn "MARVIN_FRETBOARD_TRANSPORT\|fauxmote\|t1s_link\|fauxmote_link" default/*.cmake cmake/*.cmake 2>/dev/null | head -40
+```
+
+```text
+Exit code 1
+=== where links are initialized ===
+(eval):3: no matches found: --include=*.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:16:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find init and cmake wiring
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== init sites ==="
+grep -rn "Fauxmote_Initialize\|T1SLink_Initialize\|FretboardLink_Initialize\|MARVIN_FRETBOARD_TRANSPORT\|MARVIN_FAUXMOTE\|Fauxmote_SendGuitarMask\|T1SLink_SetFrameHandler\|FretboardLink_Send" default/src 2>/dev/null
+echo
+echo "=== cmake wiring ==="
+grep -rn "MARVIN_FRETBOARD_TRANSPORT\|fauxmote\|t1s_link\|fauxmote_link\|net/t1s\|net/fauxmote" default/*.cmake cmake 2>/dev/null | head -50
+```
+
+```text
+=== init sites ===
+default/src/app.c:190:    FretboardLink_Initialize();
+default/src/app.c:193:     * every gameplay mask (FretboardLink_Send taps Fauxmote_SendGuitarMask). Must
+default/src/app.c:195:    Fauxmote_Initialize();
+default/src/app.c:199:     * FretboardLink_Send. */
+default/src/net/t1s/t1s_link.h:23:void T1SLink_Initialize(void);
+default/src/net/t1s/t1s_link.h:58:void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler);
+default/src/net/fauxmote/fauxmote_link.c:29:/* When set, the gameplay-mirror hook (Fauxmote_SendGuitarMask) is ignored so a
+default/src/net/fauxmote/fauxmote_link.c:246:void Fauxmote_SendGuitarMask(uint8_t mask)
+default/src/net/fauxmote/fauxmote_link.c:312:void Fauxmote_Initialize(void)
+default/src/net/t1s/t1s_link.c:355:void T1SLink_Initialize(void)
+default/src/net/t1s/t1s_link.c:419:void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler)
+default/src/net/fauxmote/fauxmote_link.h:16: * from any producer context. Call Fauxmote_Initialize once after SYS_Initialize
+default/src/net/fauxmote/fauxmote_link.h:19:void Fauxmote_Initialize(void);
+default/src/net/fauxmote/fauxmote_link.h:23:void Fauxmote_SendGuitarMask(uint8_t mask);
+default/src/game/game_timing.c:163:    FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
+default/src/game/game_timing.c:460:        FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
+default/src/game/game_controller.c:112:    FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_GAMEPLAY);
+default/src/game/game_controller.c:114:    FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_GAMEPLAY);
+default/src/game/game_timing.h:11: * bitmask (actuator/guitar_cmd.h, GUITAR_BTN_*) via FretboardLink_Send. One of
+default/src/game/game_controller.h:15: * FretboardLink_Send, so they drive both the T1S guitar and fauxmote. See
+default/src/actuator/manual_control.c:31:    FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
+default/src/actuator/manual_control.c:56:        FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
+default/src/actuator/manual_control.c:67:        FretboardLink_Send(0u, (uint8_t)PERF_ACTUATOR_PRODUCER_MANUAL);
+default/src/actuator/fretboard_link.h:11: * -DMARVIN_FRETBOARD_TRANSPORT=FRETBOARD_TRANSPORT_T1S (see user.cmake).
+default/src/actuator/fretboard_link.h:15:#ifndef MARVIN_FRETBOARD_TRANSPORT
+default/src/actuator/fretboard_link.h:16:#define MARVIN_FRETBOARD_TRANSPORT FRETBOARD_TRANSPORT_UART
+default/src/actuator/fretboard_link.h:40: * FretboardLink_Send and tag themselves with a perf_actuator_producer_t
+default/src/actuator/fretboard_link.h:50:void FretboardLink_Initialize(void);
+default/src/actuator/fretboard_link.h:51:void FretboardLink_Send(uint8_t mask, uint8_t producer_id);
+default/src/perf_log/perf_log_records.h:321:/* PERF_REC_ACTUATOR — emitted on every FretboardLink_Send call (i.e. on
+default/src/actuator/fretboard_link.c:21:#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+default/src/actuator/fretboard_link.c:88:#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+default/src/actuator/fretboard_link.c:234:#endif  /* MARVIN_FRETBOARD_TRANSPORT */
+default/src/actuator/fretboard_link.c:260:void FretboardLink_Initialize(void)
+default/src/actuator/fretboard_link.c:268:#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+default/src/actuator/fretboard_link.c:271:    T1SLink_Initialize();
+default/src/actuator/fretboard_link.c:272:    T1SLink_SetFrameHandler(t1s_frame_handler);
+default/src/actuator/fretboard_link.c:295:#if (MARVIN_FRETBOARD_TRANSPORT != FRETBOARD_TRANSPORT_T1S)
+default/src/actuator/fretboard_link.c:309:#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+default/src/actuator/fretboard_link.c:316:void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
+default/src/actuator/fretboard_link.c:327:    Fauxmote_SendGuitarMask(v);
+
+=== cmake wiring ===
+(eval):6: no matches found: default/*.cmake
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-29 01:18:13Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   - **Overall context**: Renumbering the 10BASE-T1S PLCA bus to a canonical node table, then bringing the fauxmote (ESP32 Wiimote emulator) link onto that bus on the marvin coordinator side. Target node table: **0** marvin (coordinator), **1–2** fauxmote controller(s), **3** guitar (actuator), **4** fretboard (detector), **5** beatbox, **6** lemmy, **7** lightshow (5–7 future/reserved). MAC = `02:00:00:00:00:<id>`.
+   - **This session's explicit requests, in order:**
+     1. "can we delete sdconfig and sdkconfig.old to force regeneration? I'm worried something else stale in there" — delete the fauxmote generated config files to force clean regeneration.
+     2. "node id 1 now as it should be. so nothing to commit for this fauxmote fix, correct?" — confirm nothing needs committing for the fauxmote id fix.
+     3. "commit guitar changes. Then work on fretboard changes" — commit the guitar renumber (id 2→3), then execute the deferred fretboard own-id renumber (1→4).
+     4. "reporting id 4. please commit" — commit the fretboard renumber after hardware verification.
+     5. "ok now marvin" — work on the marvin coordinator side to route the fauxmote link over T1S (the flagged future work: 0x88B7 demux, controller node-table entry, STATUS RX, behind marvin's transport flag).
+
+2. Key Technical Concepts:
+   - 10BASE-T1S single-pair Ethernet + PLCA multidrop; marvin = PLCA coordinator (id 0), followers via LAN8651 MAC-PHYs over SPI + OPEN Alliance TC6 driver (`third_party/oa-tc6-lib`).
+   - **marvin has ONE LAN8651 MAC-PHY** (single PLCA coordinator on FLEXCOM3 SPI). Therefore the fauxmote-over-T1S channel MUST be integrated into the existing `t1s_link.c` (single TC6 instance) — marvin cannot spin up a second MAC-PHY the way the ESP32/fauxmote side does. `fauxmote_link.c` must call into `t1s_link` for TX and register an RX handler for STATUS.
+   - **Ethertypes**: `0x88B5` = detector/guitar bitmask data+command channel; `0x88B6` = presence heartbeat; `0x88B7` = fauxmote (controller) mf_proto channel.
+   - **node_type heartbeat codes are SEPARATE from PLCA ids** and do NOT change on renumber: 1=detector, 2=guitar, 3=controller. `detector_id` (e.g. `DETECTOR_ADC_FRETBOARD`) is also separate from PLCA id.
+   - **mf_proto message layer** (shared byte-for-byte between marvin `firmware/marvin/default/src/net/fauxmote/mf_proto.h` and fauxmote `firmware/fauxmote/main/mf_proto.h`): message types GUITAR(0x01,3B), WIIMOTE(0x02,4B), LINK_CMD(0x03,1B), ACCEL(0x04,3B), POINTER(0x05,3B), STATUS(0x81,4B). MAX_PAYLOAD=8. CRC-8/CCITT (poly 0x07). marvin SENDS GUITAR/WIIMOTE/POINTER/LINK_CMD (m→f) and RECEIVES STATUS (f→m).
+   - **T1S mf frame layout** (from fauxmote mf_t1s.c): `[dst MAC][src MAC][0x88B7][TYPE][payload...]`; MAC-PHY pads short frames to 46-byte minimum + appends FCS. Heartbeat: `[dst=coord][src][0x88B6][ver, node_type, node_id, flags, seq_u32]` (8-byte payload).
+   - **Transport coexistence pattern**: fretboard/guitar link uses `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag. The fauxmote link currently uses a DEDICATED FLEXCOM5 UART (PA16/PA15) — independent of the fretboard transport (an earlier journal note said FLEXCOM1, but current code = FLEXCOM5 dedicated). A likely design decision (needs confirmation): a new independent `MARVIN_FAUXMOTE_TRANSPORT={UART,T1S}` flag, but T1S requires the T1S bus (t1s_link) to be initialized.
+   - ESP-IDF Kconfig: existing `sdkconfig` value wins over `sdkconfig.defaults`; out-of-range values clamp on reconfigure. `sdkconfig`/`sdkconfig.old` are gitignored/generated; deleting them regenerates from `sdkconfig.defaults` + Kconfig defaults.
+   - Static allocation only (FreeRTOS static tasks/queues/semaphores).
+
+3. Files and Code Sections:
+   - **firmware/fauxmote/sdkconfig, sdkconfig.old** (gitignored/generated) — DELETED via `rm -f` to force clean regeneration from `sdkconfig.defaults`. Confirmed only `sdkconfig.defaults` remains.
+   - **firmware/fretboard/t1s_detector.c** — fretboard own-id renumber. Changed:
+     - Line 14: `#define T1S_NODE_ID (1u)` → `(4u)`
+     - Line 38 comment: MAC `02:00:00:00:00:01` → `02:00:00:00:00:04`
+     - Line 267 comment: "follower id 1" → "follower id 4"
+     - `T1S_GUITAR_ID` remains `(3u)` (from prior guitar renumber); MAC/banner derive from `T1S_NODE_ID` macro.
+   - **firmware/fretboard/t1s_detector.h** (line 9) & **fretboard_config.h** (line 7) — "PLCA follower id 1" → "id 4".
+   - **firmware/marvin/default/src/net/t1s/t1s_link.c** — the CENTRAL file for the marvin T1S work. Key structures:
+     - Coordinator: `T1S_NODE_ID (0u)`, `T1S_NODE_COUNT (8u)`, FLEXCOM3 SPI @ 15MHz, `T1S_INSTANCE (0u)`.
+     - Ethertypes: `T1S_ETHERTYPE (0x88B5u)`, `T1S_ETHERTYPE_HB (0x88B6u)`. `T1S_ETH_HDR_LEN (14u)`, `T1S_HB_LEN (8u)`.
+     - Node type enum: `T1S_NODE_FRETBOARD, T1S_NODE_PHOTODETECTOR, T1S_NODE_GUITAR` (no controller type yet — must add `T1S_NODE_CONTROLLER`).
+     - Node table (line 75-78): `s_nodes[] = { {4u, DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD}, {3u, T1S_NO_DETECTOR, T1S_NODE_GUITAR} }` (both renumbered this session). Must add fauxmote controller entry (id 1).
+     - Key funcs: `node_for_type()`, `node_for_mac()`, `send_to_node(node_id, payload, len)` (frames dst MAC + src + ethertype 0x88B5 hardcoded — TX path uses `T1S_ETHERTYPE`), `T1SLink_SendToGuitar(mask)`, `T1SLink_SetFrameHandler()`, `T1SLink_GetNodeInfo()`.
+     - RX demux `TC6_CB_OnRxEthernetPacket` (lines 455-500): checks ethertype == 0x88B5 or 0x88B6 (drops others); `node_for_mac(src)`; HB stamps presence; data frames call `s_frame_handler(node->detector_id, payload, len)`. Must extend to demux 0x88B7 → fauxmote STATUS handler.
+     - TX staging: single in-flight `s_tx_frame[T1S_ETH_HDR_LEN + 64u]` guarded by `s_tx_busy`; latest-wins `s_cmd`/`s_cmd_dirty` flushed in `t1s_task`.
+   - **firmware/marvin/default/src/net/t1s/t1s_link.h** — public API: `T1SLink_Initialize/IsConnected/GetState/ChipRev/NodeId/NodeCount/TxCount/RxCount/ServiceOverruns`, `T1SLink_NodeInfo` struct, `T1SLink_GetNodeInfo`, `T1SLink_SendToGuitar(mask)`, `T1SLink_FrameHandler` typedef `(uint8_t detector_id, const uint8_t *payload, uint16_t len)`, `T1SLink_SetFrameHandler()`. Will need new controller TX + RX-handler API.
+   - **firmware/marvin/default/src/net/fauxmote/fauxmote_link.c** — the marvin UART fauxmote link (full read). Structure: latched producer state (`s_g_mask/whammy/aux`, `s_nav_*`, `s_ptr_*`), `s_status[MF_LEN_STATUS]`, TX task `fx_tx_task` (wakes on `s_tx_notify` or 50ms `FX_REFRESH_MS`, sends GUITAR every wake + WIIMOTE/POINTER if dirty + drains LINK_CMD queue), `send_frame(type,payload,len)` builds SOF/TYPE/LEN/payload/CRC8 and calls `FLEXCOM5_USART_Write`. RX task `fx_rx_task` + `parse_byte` state machine (P_SOF/P_TYPE/P_LEN/P_PAYLOAD/P_CRC) → on valid STATUS latches `s_status`. Public API: `Fauxmote_SendGuitar/SendGuitarMask/SetOverride/SendNav/SendCmd/SendPointer/GetStatus/Initialize`. `Fauxmote_Initialize` reconfigures FLEXCOM5 to MF_UART_BAUD, arms RX callback, creates static TX+RX tasks. For T1S: the latching/producer/STATUS layer stays; the transport (send_frame framing + FLEXCOM5 RX parse) is what swaps to calling t1s_link.
+   - **firmware/marvin/default/src/net/fauxmote/fauxmote_link.h** — header says "Owns FLEXCOM5 exclusively (a peripheral dedicated to this link, independent of the guitar transport)."
+   - **firmware/marvin/default/src/net/fauxmote/mf_proto.h** — shared wire protocol (read in full; see Key Technical Concepts for message types/lens/CRC).
+   - **firmware/fauxmote/main/mf_t1s.c** — the ESP32-side T1S transport, the MIRROR/reference for marvin's frame layout. `mf_t1s_send(type, payload, len)` builds `[coord MAC][own MAC][0x88B7][TYPE][payload]`. RX `TC6_CB_OnRxEthernetPacket` filters 0x88B7, extracts `[TYPE][payload]`, calls `MfLink_HandleMessage`. Heartbeat node_type=3 (controller). `T1S_HB_TYPE_CONTROLLER (3u)`.
+   - **SPEC.md** — line 58 detector row `4 / 02:…:04`, line 59 guitar row `3 / 02:…:03` (both fixed this session).
+   - **firmware/fretboard/SPEC.md** — id 4 / MAC :04; guitar caveat target `:02`→`:03`.
+   - **firmware/fretboard/docs/journal.md** — current focus id 4 (with re-flash note); new 2026-07-28 decision entry (own id 1→4); annotated prior entry; guitar refs `(id 2)`→`(id 3)`, `:02`→`:03`.
+   - **firmware/marvin/docs/journal.md** — current-focus fretboard `(id 1)`→`(id 4)` (2 refs); new 2026-07-28 decision entry (coordinator table detector 1→4); annotated guitar entry's "deferred" note.
+   - **docs/t1s-podl-link.md** — transition note rewritten (fauxmote 1, guitar 3, fretboard 4 all on target in source); inline refs updated; bring-up banner `id=1/8`→`id=4/8`; guitar `:02`→`:03` (lines 18, 279); `detector_id = 1` at line 232 kept (detector-class code, not PLCA id).
+
+4. Errors and fixes:
+   - **Clean fauxmote build came up id 2 (prior session carryover)**: root cause was stale `sdkconfig` clamping an out-of-range value. Fixed by deleting `sdkconfig`/`sdkconfig.old` this session; user confirmed "node id 1 now as it should be."
+   - **Last Bash command failed**: `grep -rn "..." default/src --include=*.c --include=*.h` returned "Exit code 1 ... no matches found: --include=*.c" — the `--include=*.c` glob was mis-parsed by the shell/eval in the compound command (the unquoted `*.c` and command structure). NOT YET FIXED — needs re-run with quoted patterns or a different approach (e.g. `grep -rn --include='*.c' --include='*.h'` with quotes, or `git grep`).
+
+5. Problem Solving:
+   - Correctly scoped both commits (guitar a853e7c, fretboard 247fc01) to only renumber-related files, leaving unrelated modified/untracked files unstaged (cv_marvin_v1.c, mcc-manifest, .specstory/*, guitar-pic.code-workspace, hardware/, docs/export-compliance, sam9x75-chybrid/).
+   - Consistently distinguished current-state prose (updated to new ids) from historical dated journal/session-log entries (preserved, sometimes annotated with "(since done — see the id X→Y entry)").
+   - Reached the key architectural conclusion for the marvin fauxmote-over-T1S work: it must integrate into the single existing `t1s_link.c` (one MAC-PHY), not create a second interface.
+
+6. All user messages:
+   - "can we delete sdconfig and sdkconfig.old to force regeneration? I'm worries something else stale in there"
+   - "node id 1 now as it should be. so nothing to commit for this fauxmote fix, correct?"
+   - "guitar builds and runs as expected with node 3"
+   - "commit guitar changes. Then work on fretboard changes"
+   - "reporting id 4. please commit"
+   - "ok now marvin"
+   - (Standing constraints from CLAUDE.md/memory, still in effect): never `git commit` on own initiative — only on explicit ask; do NOT edit MCC/Legato files under `firmware/*/default/src/config/default/`; do NOT edit `third_party/`; do NOT use `.specstory/` as context; code comments describe current code only (no dev-diary narrative); static allocation only, no malloc; read the relevant subproject journal first and update it as decisions land; use uv for Python (set UV_CACHE_DIR to $TMPDIR/uv-cache in-sandbox).
+
+7. Pending Tasks:
+   - **Marvin coordinator side: route the fauxmote link over T1S** (the "ok now marvin" task). Concretely: (a) add a `T1S_NODE_CONTROLLER` node type + a fauxmote node-table entry (id 1) in `t1s_link.c`; (b) add a `0x88B7` TX path (e.g. `T1SLink_SendToController(type, payload, len)`) framing `[dst=fauxmote MAC][src=coord][0x88B7][TYPE][payload]`; (c) add `0x88B7` RX demux in `TC6_CB_OnRxEthernetPacket` → a registered fauxmote frame handler for STATUS; (d) presence heartbeat already works via node-table entry + src-MAC stamping (node_type=3 informational); (e) give `fauxmote_link.c` a transport seam (UART existing vs T1S) behind a build flag, keeping the producer/latching/STATUS layer identical; in T1S mode its TX task calls `T1SLink_SendToController` and it registers a STATUS handler with t1s_link; (f) update the `t1s`/`nodes` console diagnostics, docs (marvin-fauxmote-link.md §8, t1s-podl-link.md §7.1/§7.2), and marvin journal.
+   - This is non-trivial, multi-file work with real design decisions (single vs separate transport flag; whether fauxmote-T1S requires fretboard-T1S since they share the MAC-PHY) — likely warrants EnterPlanMode and/or an AskUserQuestion for the transport-flag approach before implementing.
+   - **Physical on-bus bring-up** of the fauxmote LAN8651 remains a separate future session.
+
+8. Current Work:
+   Immediately before this summary, I had just committed the fretboard renumber (247fc01) and the user said "ok now marvin". I began exploring the marvin coordinator side for the fauxmote-over-T1S routing by reading (in full): `fauxmote_link.c`, `t1s_link.c`, `t1s_link.h`, `mf_proto.h`, `fauxmote_link.h`, and the ESP-side reference `mf_t1s.c`. I built the architectural understanding that marvin has a single MAC-PHY so fauxmote-over-T1S must integrate into `t1s_link.c`. My last action was a Bash grep intended to find link initialization sites (`Fauxmote_Initialize`, `T1SLink_Initialize`, `FretboardLink_Init`), the `MARVIN_FRETBOARD_TRANSPORT` flag, and `user.cmake`/`*.cmake` wiring — to understand how links are initialized and gated. That command FAILED with a grep `--include` glob parse error ("no matches found: --include=*.c") and returned no useful output.
+
+9. Optional Next Step:
+   Re-run the failed exploration to find where the links are initialized and how the transport flag is wired, using correct grep syntax (quoted include patterns or `git grep`). Specifically I need: the init call sites for `Fauxmote_Initialize` and `T1SLink_Initialize` (likely in an `app.c`/`App_StartServices`), the definition/usage of `MARVIN_FRETBOARD_TRANSPORT`, and the `user.cmake` source-list/flag wiring — so I can determine the cleanest transport-seam design for `fauxmote_link.c` over T1S and whether a new `MARVIN_FAUXMOTE_TRANSPORT` flag is warranted. This is directly in line with the user's "ok now marvin" request. Given the scope and open design questions (transport-flag structure; MAC-PHY sharing implications), the appropriate next step after exploration is to formulate a plan (EnterPlanMode) and confirm the transport-flag approach with the user before editing code — consistent with the fact that no implementation edits have been made for the marvin task yet. Direct quote establishing the task: user said "ok now marvin" following the completed fretboard renumber.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/7c313450-d23f-4e40-b779-d8155d63eb74.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:22Z)**_
+
+Let me look at the key files to understand the current transport-seam pattern before planning the marvin-side work.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:22Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/actuator/fretboard_link.c`
+
+```text
+1	#include "fretboard_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "queue.h"
+10	#include "semphr.h"
+11	
+12	#include "definitions.h"
+13	#include "log.h"
+14	#include "guitar_cmd.h"
+15	#include "perf_log/perf_log.h"
+16	#include "video/video.h"
+17	#include "fret.h"
+18	#include "ui/dashboard_feed.h"  /* best-effort mirror of the mask to the dashboard */
+19	#include "net/fauxmote/fauxmote_link.h"  /* mirror the mask to the ESP32 Wiimote link */
+20	
+21	#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+22	#include "net/t1s/t1s_link.h"
+23	#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+24	#endif
+25	
+26	#define FBL_TASK_STACK_WORDS    768u
+27	#define FBL_TASK_PRIORITY       5u
+28	
+29	#define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
+30	
+31	#define DS_FRAME_LEN            17u
+32	#define DS_START_BYTE           0x03u
+33	#define DS_END_BYTE             0xFCu
+34	
+35	/* Idle heartbeat: re-send last mask if the timing pipeline goes quiet, so
+36	 * a stalled detector or paused game can't leave a stale frets-active
+37	 * pattern stuck on the wire. 50 ms is well below human-perceptible. */
+38	#define FBL_HEARTBEAT_MS        50u
+39	
+40	static QueueHandle_t s_cmd_queue;
+41	static StaticQueue_t s_cmd_queue_buf;
+42	static uint8_t       s_cmd_queue_storage[FBL_CMD_QUEUE_DEPTH * sizeof(uint8_t)];
+43	
+44	static StackType_t   s_task_stack[FBL_TASK_STACK_WORDS];
+45	static StaticTask_t  s_task_tcb;
+46	
+47	/* Asserted-mask snapshot + last send result, snapshotted into the
+48	 * PERF_REC_ACTUATOR record so the host can read which byte went out and when.
+49	 * Transport-independent. */
+50	static volatile uint8_t  s_last_sent_byte;
+51	static volatile int32_t  s_last_ack_result;
+52	static volatile uint64_t s_last_ack_ts_counter;
+53	
+54	/* Parse a validated 17-byte fretboard frame and emit a PERF_REC_FRETBOARD_RAW
+55	 * record. Shared by both transports; the caller guarantees the frame markers.
+56	 * Frame: [0x03, 5×ADC_u16 LE, seq_u32 LE, applied_mask_u8, 0xFC]. */
+57	static void emit_fretboard_frame(const uint8_t *frame)
+58	{
+59	    static uint32_t parsed;
+60	
+61	    uint16_t adc[FRET_COUNT];
+62	    for (uint8_t i = 0u; i < FRET_COUNT; i++)
+63	    {
+64	        adc[i] = (uint16_t)frame[1u + i * 2u]
+65	               | (uint16_t)((uint16_t)frame[2u + i * 2u] << 8);
+66	    }
+67	
+68	    uint32_t fb_seq = (uint32_t)frame[11]
+69	                    | ((uint32_t)frame[12] << 8)
+70	                    | ((uint32_t)frame[13] << 16)
+71	                    | ((uint32_t)frame[14] << 24);
+72	    uint8_t  applied_mask = frame[15];
+73	
+74	    Video_FrameInfo info;
+75	    Video_GetFrameInfo(&info);
+76	    PerfLog_EmitFretboardRaw(adc, info.frame_count, fb_seq, applied_mask);
+77	
+78	    parsed++;
+79	    if (parsed == 1u || (parsed % 240u) == 0u)
+80	    {
+81	        LOG_DEBUG("FBL: rx parsed=%u G=%u R=%u Y=%u B=%u O=%u\r\n",
+82	                  (unsigned)parsed,
+83	                  (unsigned)adc[0], (unsigned)adc[1], (unsigned)adc[2],
+84	                  (unsigned)adc[3], (unsigned)adc[4]);
+85	    }
+86	}
+87	
+88	#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+89	
+90	/* T1S RX: the fretboard's 17-byte frame arrives as the Ethernet payload,
+91	 * already deframed by the MAC-PHY + TC6, so only the markers are checked. */
+92	static void t1s_frame_handler(uint8_t detector_id, const uint8_t *payload, uint16_t len)
+93	{
+94	    if ((detector_id == (uint8_t)DETECTOR_ADC_FRETBOARD) &&
+95	        (len >= DS_FRAME_LEN) &&
+96	        (payload[0] == DS_START_BYTE) &&
+97	        (payload[DS_FRAME_LEN - 1u] == DS_END_BYTE))
+98	    {
+99	        emit_fretboard_frame(payload);
+100	    }
+101	}
+102	
+103	static bool send_one_byte(uint8_t mask)
+104	{
+105	    uint8_t tx_byte = (uint8_t)(mask & 0x7F);
+106	    if (!T1SLink_SendToGuitar(tx_byte))
+107	    {
+108	        return false;
+109	    }
+110	    PerfLog_EmitStamp(PERF_STAGE_FBL_SEND, 0u, (uint32_t)tx_byte);
+111	    s_last_sent_byte      = tx_byte;
+112	    s_last_ack_result     = 0;
+113	    s_last_ack_ts_counter = SYS_TIME_Counter64Get();
+114	    PerfLog_EmitStamp(PERF_STAGE_CDC_WRITE_COMPLETE, 0u, 0u);
+115	    return true;
+116	}
+117	
+118	#else  /* FRETBOARD_TRANSPORT_UART */
+119	
+120	#define FBL_RX_TASK_STACK_WORDS 512u
+121	
+122	/* RX notification threshold: wake the parse task once a full frame's worth of
+123	 * bytes has landed in the FLEXCOM1 RX ring. The ring (sized in MCC) keeps
+124	 * receiving continuously, so there is no per-read re-arm gap to lose bytes
+125	 * across. */
+126	#define FBL_RX_THRESHOLD        DS_FRAME_LEN
+127	
+128	/* Bound the RX wait so a missed notification can't wedge the parser; the
+129	 * stream is continuous at 240 Hz so a wake normally arrives every ~4 ms. */
+130	#define FBL_RX_WAIT_MS          100u
+131	
+132	/* Link runs at 500 000 baud, 8N1 — configured by the MCC FLEXCOM1 USART
+133	 * component (FLEXCOM1_USART_Initialize). Must match the fretboard SERCOM1
+134	 * setting or every byte arrives corrupt. */
+135	
+136	static StackType_t   s_rx_task_stack[FBL_RX_TASK_STACK_WORDS];
+137	static StaticTask_t  s_rx_task_tcb;
+138	
+139	/* Given from the FLEXCOM1 read callback (ISR) when the RX ring crosses the
+140	 * frame threshold; woken thread drains and parses. */
+141	static SemaphoreHandle_t s_rx_notify;
+142	static StaticSemaphore_t s_rx_notify_buf;
+143	
+144	/* A UART has no enumeration step — the link is up once Initialize has armed
+145	 * the peripheral. Kept so producers and the heartbeat path can gate sends. */
+146	static volatile bool s_link_up;
+147	
+148	static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
+149	{
+150	    (void)context;
+151	    BaseType_t hpw = pdFALSE;
+152	
+153	    switch (event)
+154	    {
+155	        case FLEXCOM_USART_EVENT_READ_THRESHOLD_REACHED:
+156	        case FLEXCOM_USART_EVENT_READ_BUFFER_FULL:
+157	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+158	            break;
+159	        case FLEXCOM_USART_EVENT_READ_ERROR:
+160	            /* Consume + clear the error status; the resync parser recovers
+161	             * frame alignment on the next valid start/end pair. */
+162	            (void)FLEXCOM1_USART_ErrorGet();
+163	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+164	            break;
+165	        default:
+166	            break;
+167	    }
+168	
+169	    portYIELD_FROM_ISR(hpw);
+170	}
+171	
+172	static bool send_one_byte(uint8_t mask)
+173	{
+174	    if (!s_link_up) { return false; }
+175	
+176	    uint8_t tx_byte = (uint8_t)(mask & 0x7F);
+177	
+178	    /* Ring-buffer Write copies the byte into the TX ring and returns the
+179	     * count accepted; for a single byte this only fails if the TX ring is
+180	     * full, which shouldn't happen at command rates. */
+181	    if (FLEXCOM1_USART_Write(&tx_byte, 1u) != 1u)
+182	    {
+183	        LOG_WARN("FBL: TX ring full, byte dropped\r\n");
+184	        return false;
+185	    }
+186	    PerfLog_EmitStamp(PERF_STAGE_FBL_SEND, 0u, (uint32_t)tx_byte);
+187	
+188	    s_last_sent_byte      = tx_byte;
+189	    s_last_ack_result     = 0;
+190	    s_last_ack_ts_counter = SYS_TIME_Counter64Get();
+191	    PerfLog_EmitStamp(PERF_STAGE_CDC_WRITE_COMPLETE, 0u, 0u);
+192	    return true;
+193	}
+194	
+195	/* Drain the FLEXCOM1 RX ring and emit one PERF_REC_FRETBOARD_RAW per parsed
+196	 * 17-byte frame. Resync: a frame is valid only when buf[0]==0x03 AND
+197	 * buf[16]==0xFC; otherwise drop the leading byte and retry alignment. */
+198	static void fretboard_rx_task(void *param)
+199	{
+200	    (void)param;
+201	
+202	    uint8_t  frame[DS_FRAME_LEN];
+203	    size_t   filled = 0u;
+204	    uint32_t skipped_bytes = 0u;
+205	
+206	    for (;;)
+207	    {
+208	        if (FLEXCOM1_USART_ReadCountGet() == 0u)
+209	        {
+210	            (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FBL_RX_WAIT_MS));
+211	            continue;
+212	        }
+213	
+214	        size_t want = DS_FRAME_LEN - filled;
+215	        size_t got  = FLEXCOM1_USART_Read(&frame[filled], want);
+216	        if (got == 0u) { continue; }
+217	        filled += got;
+218	        if (filled < DS_FRAME_LEN) { continue; }
+219	
+220	        if (frame[0] != DS_START_BYTE || frame[DS_FRAME_LEN - 1u] != DS_END_BYTE)
+221	        {
+222	            /* Misaligned: drop one byte and shift, then loop to refill. */
+223	            memmove(&frame[0], &frame[1], DS_FRAME_LEN - 1u);
+224	            filled = DS_FRAME_LEN - 1u;
+225	            skipped_bytes++;
+226	            continue;
+227	        }
+228	
+229	        emit_fretboard_frame(frame);
+230	        filled = 0u;
+231	    }
+232	}
+233	
+234	#endif  /* MARVIN_FRETBOARD_TRANSPORT */
+235	
+236	static void fretboard_link_task(void *param)
+237	{
+238	    (void)param;
+239	
+240	    LOG_INFO("FBL: fretboard link started\r\n");
+241	
+242	    uint8_t last_mask = 0u;
+243	
+244	    for (;;)
+245	    {
+246	        uint8_t mask;
+247	        if (xQueueReceive(s_cmd_queue, &mask, pdMS_TO_TICKS(FBL_HEARTBEAT_MS)) == pdTRUE)
+248	        {
+249	            last_mask = mask;
+250	        }
+251	        else
+252	        {
+253	            mask = last_mask;
+254	        }
+255	
+256	        (void)send_one_byte(mask);
+257	    }
+258	}
+259	
+260	void FretboardLink_Initialize(void)
+261	{
+262	    s_cmd_queue = xQueueCreateStatic(FBL_CMD_QUEUE_DEPTH,
+263	                                     sizeof(uint8_t),
+264	                                     s_cmd_queue_storage,
+265	                                     &s_cmd_queue_buf);
+266	    configASSERT(s_cmd_queue != NULL);
+267	
+268	#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+269	    /* T1S transport owns the MAC-PHY/service task; RX frames arrive via the
+270	     * registered handler, TX commands flow through T1SLink_SendToGuitar. */
+271	    T1SLink_Initialize();
+272	    T1SLink_SetFrameHandler(t1s_frame_handler);
+273	#else
+274	    s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
+275	    configASSERT(s_rx_notify != NULL);
+276	
+277	    /* Arm continuous RX: the ring fills from the FLEXCOM1 ISR; persistent
+278	     * threshold notification wakes fretboard_rx_task each frame's worth. */
+279	    FLEXCOM1_USART_ReadCallbackRegister(rx_event_handler, 0u);
+280	    FLEXCOM1_USART_ReadThresholdSet(FBL_RX_THRESHOLD);
+281	    (void)FLEXCOM1_USART_ReadNotificationEnable(true, true);
+282	
+283	    s_link_up = true;
+284	#endif
+285	
+286	    TaskHandle_t h = xTaskCreateStatic(fretboard_link_task,
+287	                                       "FretLink",
+288	                                       FBL_TASK_STACK_WORDS,
+289	                                       NULL,
+290	                                       FBL_TASK_PRIORITY,
+291	                                       s_task_stack,
+292	                                       &s_task_tcb);
+293	    PerfLog_RegisterTaskForHighwater(PERF_TASK_FRETBOARD_LINK, h);
+294	
+295	#if (MARVIN_FRETBOARD_TRANSPORT != FRETBOARD_TRANSPORT_T1S)
+296	    TaskHandle_t hr = xTaskCreateStatic(fretboard_rx_task,
+297	                                        "FretRx",
+298	                                        FBL_RX_TASK_STACK_WORDS,
+299	                                        NULL,
+300	                                        FBL_TASK_PRIORITY,
+301	                                        s_rx_task_stack,
+302	                                        &s_rx_task_tcb);
+303	    PerfLog_RegisterTaskForHighwater(PERF_TASK_FRETBOARD_RX, hr);
+304	#endif
+305	}
+306	
+307	bool FretboardLink_IsConnected(void)
+308	{
+309	#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+310	    return T1SLink_IsConnected();
+311	#else
+312	    return s_link_up;
+313	#endif
+314	}
+315	
+316	void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
+317	{
+318	    if (s_cmd_queue == NULL) { return; }
+319	    uint8_t v = (uint8_t)(mask & GUITAR_BTN_VALID_MASK);
+320	    /* Overwrite is strictly latest-wins: a newer producer's mask replaces
+321	     * any unsent older one — keeps a stalled write from accumulating
+322	     * stale chord state. */
+323	    (void)xQueueOverwrite(s_cmd_queue, &v);
+324	
+325	    /* Mirror the same mask to fauxmote (its own FLEXCOM5 link) so the Wii plays in
+326	     * lock-step with the guitar node, on either transport. GUITAR byte 0 == mask. */
+327	    Fauxmote_SendGuitarMask(v);
+328	
+329	    /* Mirror the mask to the dashboard fret display — a single non-blocking queue
+330	     * post (drop-on-full), so the actuation path is never delayed. */
+331	    DashboardFeed_PostFret(v);
+332	
+333	    uint8_t strum_dir = 0u;
+334	    if      (v & GUITAR_BTN_STRUM_DOWN) { strum_dir = 1u; }
+335	    else if (v & GUITAR_BTN_STRUM_UP)   { strum_dir = 2u; }
+336	
+337	    PerfLog_EmitActuator(v, s_last_sent_byte, strum_dir, producer_id,
+338	                         s_last_ack_result, s_last_ack_ts_counter);
+339	}
+340
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:22Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.c`
+
+```text
+1	#include "fauxmote_link.h"
+2	#include "mf_proto.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	#include "semphr.h"
+12	
+13	#include "definitions.h"
+14	#include "log.h"
+15	
+16	#define FX_TX_TASK_STACK_WORDS  512u
+17	#define FX_RX_TASK_STACK_WORDS  512u
+18	#define FX_TASK_PRIORITY        5u
+19	
+20	/* Floor re-send of the GUITAR slice: bounds latency of a dropped frame and keeps
+21	 * fauxmote's 200 ms link watchdog fed when gameplay is idle. Well under 200 ms. */
+22	#define FX_REFRESH_MS           50u
+23	
+24	#define FX_CMD_QUEUE_DEPTH      4u
+25	#define FX_RX_WAIT_MS           100u
+26	
+27	static bool s_ready;
+28	
+29	/* When set, the gameplay-mirror hook (Fauxmote_SendGuitarMask) is ignored so a
+30	 * higher-priority producer owns the GUITAR slice. The wiimotes manual-override
+31	 * screen engages it while shown. */
+32	static volatile bool s_override;
+33	
+34	/* Latched controller state (written by producers, read by the TX task). Guarded
+35	 * by a short critical section — a few-byte copy, never a blocking call. */
+36	static uint8_t s_g_mask;
+37	static uint8_t s_g_whammy = MF_WHAMMY_REST;
+38	static uint8_t s_g_aux;
+39	
+40	static uint8_t s_nav_core;
+41	static uint8_t s_nav_dpad;
+42	static uint8_t s_nav_sx = MF_STICK_CENTER;
+43	static uint8_t s_nav_sy = MF_STICK_CENTER;
+44	static bool    s_nav_dirty;
+45	
+46	static uint8_t s_ptr_x;
+47	static uint8_t s_ptr_y;
+48	static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
+49	static bool    s_ptr_dirty;
+50	
+51	/* Latest STATUS from fauxmote. */
+52	static bool       s_status_valid;
+53	static uint8_t    s_status[MF_LEN_STATUS];
+54	static TickType_t s_status_tick;
+55	
+56	static QueueHandle_t   s_cmd_queue;
+57	static StaticQueue_t   s_cmd_queue_buf;
+58	static uint8_t         s_cmd_queue_storage[FX_CMD_QUEUE_DEPTH];
+59	
+60	static SemaphoreHandle_t s_tx_notify;
+61	static StaticSemaphore_t s_tx_notify_buf;
+62	static SemaphoreHandle_t s_rx_notify;
+63	static StaticSemaphore_t s_rx_notify_buf;
+64	
+65	static StackType_t   s_tx_stack[FX_TX_TASK_STACK_WORDS];
+66	static StaticTask_t  s_tx_tcb;
+67	static StackType_t   s_rx_stack[FX_RX_TASK_STACK_WORDS];
+68	static StaticTask_t  s_rx_tcb;
+69	
+70	/* ---- TX (single writer: the TX task) ------------------------------------ */
+71	
+72	static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+73	{
+74	    uint8_t f[3u + MF_MAX_PAYLOAD + 1u];
+75	    f[0] = MF_SOF;
+76	    f[1] = type;
+77	    f[2] = len;
+78	    if (len != 0u) { memcpy(&f[3], payload, len); }
+79	    f[3u + len] = mf_crc8(&f[1], (size_t)(2u + len));   /* CRC over TYPE,LEN,payload */
+80	    (void)FLEXCOM5_USART_Write(f, (size_t)(4u + len));
+81	}
+82	
+83	static void fx_tx_task(void *param)
+84	{
+85	    (void)param;
+86	    LOG_INFO("FX: fauxmote link started (FLEXCOM5, %lu baud)\r\n",
+87	             (unsigned long)MF_UART_BAUD);
+88	
+89	    for (;;)
+90	    {
+91	        /* Wake on a producer change (low latency) or the floor refresh timeout. */
+92	        (void)xSemaphoreTake(s_tx_notify, pdMS_TO_TICKS(FX_REFRESH_MS));
+93	
+94	        uint8_t g[MF_LEN_GUITAR];
+95	        uint8_t nav[MF_LEN_WIIMOTE];
+96	        uint8_t ptr[MF_LEN_POINTER];
+97	        bool    nav_dirty;
+98	        bool    ptr_dirty;
+99	
+100	        taskENTER_CRITICAL();
+101	        g[0] = s_g_mask;
+102	        g[1] = s_g_whammy;
+103	        g[2] = s_g_aux;
+104	        nav[0] = s_nav_core;
+105	        nav[1] = s_nav_dpad;
+106	        nav[2] = s_nav_sx;
+107	        nav[3] = s_nav_sy;
+108	        nav_dirty = s_nav_dirty;
+109	        s_nav_dirty = false;
+110	        ptr[0] = s_ptr_x;
+111	        ptr[1] = s_ptr_y;
+112	        ptr[2] = s_ptr_flags;
+113	        ptr_dirty = s_ptr_dirty;
+114	        s_ptr_dirty = false;
+115	        taskEXIT_CRITICAL();
+116	
+117	        send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+118	        if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
+119	        if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
+120	
+121	        uint8_t op;
+122	        while (xQueueReceive(s_cmd_queue, &op, 0) == pdTRUE)
+123	        {
+124	            send_frame(MF_MSG_LINK_CMD, &op, MF_LEN_LINK_CMD);
+125	        }
+126	    }
+127	}
+128	
+129	/* ---- RX (STATUS uplink parser) ------------------------------------------ */
+130	
+131	typedef enum { P_SOF, P_TYPE, P_LEN, P_PAYLOAD, P_CRC } parse_state_t;
+132	
+133	static void parse_byte(uint8_t b)
+134	{
+135	    static parse_state_t state = P_SOF;
+136	    static uint8_t type, len, idx;
+137	    static uint8_t payload[MF_MAX_PAYLOAD];
+138	
+139	    switch (state)
+140	    {
+141	        case P_SOF:
+142	            if (b == MF_SOF) { state = P_TYPE; }
+143	            break;
+144	        case P_TYPE:
+145	            if (b == 0x00u) { state = P_SOF; break; }
+146	            type = b;
+147	            state = P_LEN;
+148	            break;
+149	        case P_LEN:
+150	            if (b > MF_MAX_PAYLOAD) { state = P_SOF; break; }
+151	            len = b;
+152	            idx = 0u;
+153	            state = (b == 0u) ? P_CRC : P_PAYLOAD;
+154	            break;
+155	        case P_PAYLOAD:
+156	            payload[idx++] = b;
+157	            if (idx >= len) { state = P_CRC; }
+158	            break;
+159	        case P_CRC:
+160	        {
+161	            uint8_t hdr[2u + MF_MAX_PAYLOAD];
+162	            hdr[0] = type;
+163	            hdr[1] = len;
+164	            memcpy(&hdr[2], payload, len);
+165	            state = P_SOF;
+166	            if (mf_crc8(hdr, (size_t)(2u + len)) != b) { break; }   /* bad CRC */
+167	
+168	            if (type == MF_MSG_STATUS && len == MF_LEN_STATUS)
+169	            {
+170	                bool changed = !s_status_valid ||
+171	                               memcmp(s_status, payload, MF_LEN_STATUS) != 0;
+172	                taskENTER_CRITICAL();
+173	                memcpy(s_status, payload, MF_LEN_STATUS);
+174	                s_status_valid = true;
+175	                s_status_tick  = xTaskGetTickCount();
+176	                taskEXIT_CRITICAL();
+177	                if (changed)
+178	                {
+179	                    LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
+180	                             payload[0], payload[1], payload[2], payload[3]);
+181	                }
+182	            }
+183	            break;
+184	        }
+185	        default:
+186	            state = P_SOF;
+187	            break;
+188	    }
+189	}
+190	
+191	static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
+192	{
+193	    (void)context;
+194	    BaseType_t hpw = pdFALSE;
+195	
+196	    switch (event)
+197	    {
+198	        case FLEXCOM_USART_EVENT_READ_THRESHOLD_REACHED:
+199	        case FLEXCOM_USART_EVENT_READ_BUFFER_FULL:
+200	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+201	            break;
+202	        case FLEXCOM_USART_EVENT_READ_ERROR:
+203	            (void)FLEXCOM5_USART_ErrorGet();
+204	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+205	            break;
+206	        default:
+207	            break;
+208	    }
+209	
+210	    portYIELD_FROM_ISR(hpw);
+211	}
+212	
+213	static void fx_rx_task(void *param)
+214	{
+215	    (void)param;
+216	
+217	    for (;;)
+218	    {
+219	        if (FLEXCOM5_USART_ReadCountGet() == 0u)
+220	        {
+221	            (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FX_RX_WAIT_MS));
+222	            continue;
+223	        }
+224	
+225	        uint8_t c;
+226	        while (FLEXCOM5_USART_Read(&c, 1u) == 1u)
+227	        {
+228	            parse_byte(c);
+229	        }
+230	    }
+231	}
+232	
+233	/* ---- public API --------------------------------------------------------- */
+234	
+235	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux)
+236	{
+237	    if (!s_ready) { return; }
+238	    taskENTER_CRITICAL();
+239	    s_g_mask   = (uint8_t)(mask & 0x7Fu);
+240	    s_g_whammy = (uint8_t)(whammy & MF_WHAMMY_MASK);
+241	    s_g_aux    = aux;
+242	    taskEXIT_CRITICAL();
+243	    (void)xSemaphoreGive(s_tx_notify);
+244	}
+245	
+246	void Fauxmote_SendGuitarMask(uint8_t mask)
+247	{
+248	    if (s_override) { return; }
+249	    Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+250	}
+251	
+252	void Fauxmote_SetOverride(bool on)
+253	{
+254	    s_override = on;
+255	}
+256	
+257	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y)
+258	{
+259	    if (!s_ready) { return; }
+260	    taskENTER_CRITICAL();
+261	    s_nav_core  = core;
+262	    s_nav_dpad  = dpad;
+263	    s_nav_sx    = (uint8_t)(stick_x & 0x3Fu);
+264	    s_nav_sy    = (uint8_t)(stick_y & 0x3Fu);
+265	    s_nav_dirty = true;
+266	    taskEXIT_CRITICAL();
+267	    (void)xSemaphoreGive(s_tx_notify);
+268	}
+269	
+270	void Fauxmote_SendCmd(uint8_t op)
+271	{
+272	    if (!s_ready) { return; }
+273	    (void)xQueueSend(s_cmd_queue, &op, 0);
+274	    (void)xSemaphoreGive(s_tx_notify);
+275	}
+276	
+277	void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible)
+278	{
+279	    if (!s_ready) { return; }
+280	    taskENTER_CRITICAL();
+281	    s_ptr_x     = x;
+282	    s_ptr_y     = y;
+283	    s_ptr_flags = visible ? MF_PTR_VISIBLE : 0u;
+284	    s_ptr_dirty = true;
+285	    taskEXIT_CRITICAL();
+286	    (void)xSemaphoreGive(s_tx_notify);
+287	}
+288	
+289	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+290	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms)
+291	{
+292	    uint8_t    snap[MF_LEN_STATUS];
+293	    bool       valid;
+294	    TickType_t tick;
+295	
+296	    taskENTER_CRITICAL();
+297	    valid = s_status_valid;
+298	    memcpy(snap, s_status, MF_LEN_STATUS);
+299	    tick = s_status_tick;
+300	    taskEXIT_CRITICAL();
+301	
+302	    if (!valid) { return false; }
+303	
+304	    if (flags)       { *flags       = snap[0]; }
+305	    if (player_slot) { *player_slot = snap[1]; }
+306	    if (report_mode) { *report_mode = snap[2]; }
+307	    if (last_result) { *last_result = snap[3]; }
+308	    if (age_ms)      { *age_ms = (uint32_t)(xTaskGetTickCount() - tick) * portTICK_PERIOD_MS; }
+309	    return true;
+310	}
+311	
+312	void Fauxmote_Initialize(void)
+313	{
+314	    s_cmd_queue = xQueueCreateStatic(FX_CMD_QUEUE_DEPTH, sizeof(uint8_t),
+315	                                     s_cmd_queue_storage, &s_cmd_queue_buf);
+316	    configASSERT(s_cmd_queue != NULL);
+317	    s_tx_notify = xSemaphoreCreateBinaryStatic(&s_tx_notify_buf);
+318	    s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
+319	    configASSERT(s_tx_notify != NULL && s_rx_notify != NULL);
+320	
+321	    /* Reconfigure FLEXCOM5 (MCC default 500000) to the link baud, 8-N-1. */
+322	    FLEXCOM_USART_SERIAL_SETUP setup = {
+323	        .baudRate = MF_UART_BAUD,
+324	        .dataWidth = FLEXCOM_USART_DATA_8_BIT,
+325	        .parity    = FLEXCOM_USART_PARITY_NONE,
+326	        .stopBits  = FLEXCOM_USART_STOP_1_BIT,
+327	    };
+328	    (void)FLEXCOM5_USART_SerialSetup(&setup, FLEXCOM5_USART_FrequencyGet());
+329	
+330	    /* Arm continuous RX for the STATUS uplink: wake the parser on each byte. */
+331	    FLEXCOM5_USART_ReadCallbackRegister(rx_event_handler, 0u);
+332	    FLEXCOM5_USART_ReadThresholdSet(1u);
+333	    (void)FLEXCOM5_USART_ReadNotificationEnable(true, true);
+334	
+335	    (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
+336	                            NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
+337	    (void)xTaskCreateStatic(fx_rx_task, "FxRx", FX_RX_TASK_STACK_WORDS,
+338	                            NULL, FX_TASK_PRIORITY, s_rx_stack, &s_rx_tcb);
+339	
+340	    s_ready = true;
+341	}
+342
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:29Z)**_
+
+Now let me read the current t1s_link.c and its header in full to design the T1S seam for fauxmote.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+1	#include "t1s_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "semphr.h"
+10	
+11	#include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
+12	#include "log.h"
+13	#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+14	
+15	#include "tc6.h"
+16	#include "tc6-regs.h"
+17	
+18	/* marvin is the PLCA coordinator. Node IDs and MACs follow the addressing
+19	 * scheme in docs/t1s-podl-link.md §7.1: coordinator = ID 0, MAC ...00. */
+20	#define T1S_NODE_ID         (0u)
+21	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length; headroom for nodes 1..7 */
+22	#define T1S_PLCA_ENABLE     (true)
+23	#define T1S_SPI_HZ          (15000000u)
+24	#define T1S_INSTANCE        (0u)
+25	
+26	#define T1S_TASK_STACK_WORDS (1024u)
+27	#define T1S_TASK_PRIORITY    (5u)
+28	
+29	/* Upper bound on TC6_Service calls per service_pump. The MAC-PHY can keep the
+30	 * "need service" flag asserted indefinitely (e.g. a persistent IRQ_N with no
+31	 * PLCA peer on the bus), which would spin this prio-5 task at 100% CPU and
+32	 * starve every lower task — the whole UI/console/detector stack. Cap the pump
+33	 * so it always returns to the task loop (which then blocks on s_svc_sem),
+34	 * yielding the CPU; any still-pending work is picked up on the next wake. */
+35	#define T1S_SERVICE_MAX_ITERS (8u)
+36	
+37	/* MAC-PHY bring-up bounds. If the LAN8651 isn't populated/responding, the task
+38	 * backs off and retries every T1S_ABSENT_RETRY_MS instead of servicing a dead
+39	 * SPI bus — ~0% CPU with no chip, and it self-heals if one is attached later. */
+40	#define T1S_BRINGUP_ACCEPT_MS   (500u)    /* deadline for TC6Regs_Init to be accepted */
+41	#define T1S_BRINGUP_INITDONE_MS (3000u)   /* deadline for the async reg writes to finish */
+42	#define T1S_ABSENT_RETRY_MS     (1000u)   /* backoff between bring-up attempts when absent */
+43	
+44	/* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
+45	 * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
+46	#define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
+47	#define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
+48	#define T1S_ETH_HDR_LEN      (14u)
+49	#define T1S_MAC_LEN          (6u)
+50	#define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
+51	#define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
+52	
+53	/* Locally administered coordinator MAC (02:00:00:00:00:00). */
+54	static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+55	
+56	/* Static node directory. No discovery — adding a node is a table entry.
+57	 * Detector nodes feed a detector-state bus id (RX source); guitar (actuator)
+58	 * nodes are command TX targets (detector_id unused, set to 0xFF). */
+59	#define T1S_NO_DETECTOR     (0xFFu)
+60	
+61	typedef enum
+62	{
+63	    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+64	    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
+65	    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+66	} t1s_node_type_t;
+67	
+68	typedef struct
+69	{
+70	    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+71	    uint8_t         detector_id;  /* detector_state_t.detector_id (T1S_NO_DETECTOR for actuators) */
+72	    t1s_node_type_t type;
+73	} t1s_node_t;
+74	
+75	static const t1s_node_t s_nodes[] = {
+76	    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+77	    { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+78	};
+79	
+80	#define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
+81	
+82	/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+83	static struct {
+84	    uint32_t last_seen_tick;
+85	    uint32_t last_seq;
+86	    bool     seen;
+87	} s_node_rt[T1S_NODE_TABLE_LEN];
+88	
+89	static const char *node_type_name(t1s_node_type_t t)
+90	{
+91	    switch (t) {
+92	        case T1S_NODE_FRETBOARD:     return "detector";
+93	        case T1S_NODE_PHOTODETECTOR: return "detector";
+94	        case T1S_NODE_GUITAR:        return "guitar";
+95	        default:                     return "?";
+96	    }
+97	}
+98	
+99	/* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
+100	static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+101	{
+102	    out[0] = 0x02u;
+103	    out[1] = 0x00u;
+104	    out[2] = 0x00u;
+105	    out[3] = 0x00u;
+106	    out[4] = 0x00u;
+107	    out[5] = node_id;
+108	}
+109	
+110	/* Look up a node by type (NULL if none of that type is configured). */
+111	static const t1s_node_t *node_for_type(t1s_node_type_t type)
+112	{
+113	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+114	        if (s_nodes[i].type == type) {
+115	            return &s_nodes[i];
+116	        }
+117	    }
+118	    return NULL;
+119	}
+120	
+121	/* Look up a node by its source MAC (NULL if unknown). */
+122	static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
+123	{
+124	    if ((mac[0] != 0x02u) || (mac[1] | mac[2] | mac[3] | mac[4])) {
+125	        return NULL;
+126	    }
+127	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+128	        if (s_nodes[i].node_id == mac[5]) {
+129	            return &s_nodes[i];
+130	        }
+131	    }
+132	    return NULL;
+133	}
+134	
+135	/* TX frame staging: TC6_SendRawEthernetPacket keeps a pointer to the buffer
+136	 * until its TX callback fires, so the buffer must stay valid meanwhile. One
+137	 * in-flight frame at a time (guarded by s_tx_busy) suffices for the link's
+138	 * rates. */
+139	static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
+140	static volatile bool s_tx_busy;
+141	
+142	/* Latest-wins outbound command to the guitar, flushed by the service task. */
+143	static volatile uint8_t s_cmd;
+144	static volatile bool    s_cmd_dirty;
+145	
+146	static T1SLink_FrameHandler s_frame_handler;
+147	
+148	/* Traffic counters (read by the console t1s/nodes commands). */
+149	static volatile uint32_t s_tx_count;   /* command frames sent */
+150	static volatile uint32_t s_rx_count;   /* frames received from a known node */
+151	static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
+152	
+153	static TC6_t            *s_tc6;
+154	static volatile bool     s_need_service;
+155	static volatile bool     s_link_up;
+156	
+157	static SemaphoreHandle_t s_svc_sem;
+158	static StaticSemaphore_t s_svc_sem_buf;
+159	
+160	static StackType_t       s_task_stack[T1S_TASK_STACK_WORDS];
+161	static StaticTask_t      s_task_tcb;
+162	
+163	/* RX reassembly: TC6 delivers an Ethernet frame as slices; collect them here
+164	 * and process on the OnRxEthernetPacket completion callback. */
+165	static uint8_t           s_rx_buf[1518];
+166	
+167	/* FLEXCOM3 SPI completion ISR callback: the chunk transfer is done, hand the
+168	 * buffer back to the TC6 driver and wake the service task. */
+169	static void spi_done_cb(uintptr_t context)
+170	{
+171	    (void)context;
+172	    BaseType_t hpw = pdFALSE;
+173	    TC6_SpiBufferDone(T1S_INSTANCE, true);
+174	    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+175	    portYIELD_FROM_ISR(hpw);
+176	}
+177	
+178	/* T1S_IRQ_N falling-edge PIO ISR callback: the MAC-PHY needs servicing. */
+179	static void irq_cb(PIO_PIN pin, uintptr_t context)
+180	{
+181	    (void)pin;
+182	    (void)context;
+183	    BaseType_t hpw = pdFALSE;
+184	    s_need_service = true;
+185	    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+186	    portYIELD_FROM_ISR(hpw);
+187	}
+188	
+189	/* TX completion: the staged frame buffer is free for reuse. */
+190	static void tx_done_cb(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+191	                       void *pTag, void *pGlobalTag)
+192	{
+193	    (void)pInst;
+194	    (void)pTx;
+195	    (void)len;
+196	    (void)pTag;
+197	    (void)pGlobalTag;
+198	    s_tx_busy = false;
+199	}
+200	
+201	/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) and queue it.
+202	 * Returns false if a TX is already in flight or the driver rejected it. */
+203	static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t payload_len)
+204	{
+205	    if (s_tx_busy || !s_link_up) {
+206	        return false;
+207	    }
+208	    if (payload_len > (sizeof(s_tx_frame) - T1S_ETH_HDR_LEN)) {
+209	        return false;
+210	    }
+211	    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+212	    memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
+213	    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE >> 8);
+214	    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE & 0xFFu);
+215	    memcpy(&s_tx_frame[T1S_ETH_HDR_LEN], payload, payload_len);
+216	
+217	    s_tx_busy = true;
+218	    bool ok = TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+219	                                        (uint16_t)(T1S_ETH_HDR_LEN + payload_len),
+220	                                        0u, tx_done_cb, NULL);
+221	    if (!ok) {
+222	        s_tx_busy = false;
+223	    }
+224	    return ok;
+225	}
+226	
+227	/* Run the protocol stack until it has no immediately pending work. IRQ_N is
+228	 * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
+229	/* Returns true if it bailed with work still pending (hit the iteration cap) —
+230	 * the caller must then yield so a stuck MAC-PHY can't starve other tasks. */
+231	static bool service_pump(void)
+232	{
+233	    unsigned iters = 0u;
+234	    do {
+235	        s_need_service = false;
+236	        bool no_int = (T1S_IRQ_N_Get() != 0u);
+237	        (void)TC6_Service(s_tc6, no_int);
+238	    } while (s_need_service && (++iters < T1S_SERVICE_MAX_ITERS));
+239	
+240	    TC6Regs_CheckTimers();
+241	
+242	    /* Persistent need-service = the MAC-PHY isn't quiescing (stuck IRQ / no
+243	     * peer). Don't spin on it; count it and tell the caller to yield. */
+244	    if (s_need_service) { s_service_overruns++; return true; }
+245	    return false;
+246	}
+247	
+248	/* One MAC-PHY bring-up attempt: reset pulse, push the register + PLCA config,
+249	 * and drive the async writes to completion within a deadline. Returns true only
+250	 * if the chip acked init done. False = absent/unresponsive → the caller backs
+251	 * off and retries (so an unpopulated LAN8651 never turns into a dead-bus spin).
+252	 * Re-pulsing reset each attempt also resets a chip attached after boot. */
+253	static bool t1s_try_bringup(void)
+254	{
+255	    /* Hardware reset pulse (T1S_RST is active-low, idle high). */
+256	    T1S_RST_Clear();
+257	    vTaskDelay(pdMS_TO_TICKS(10));
+258	    T1S_RST_Set();
+259	    vTaskDelay(pdMS_TO_TICKS(10));
+260	
+261	    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
+262	     * during bring-up so RX isn't filtered before the node table exists.
+263	     * TC6Regs_Init only queues the writes — bounded accept retry. */
+264	    TickType_t accept_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_ACCEPT_MS);
+265	    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+266	                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
+267	        if ((int32_t)(accept_dl - xTaskGetTickCount()) <= 0) { return false; }
+268	        vTaskDelay(pdMS_TO_TICKS(50));
+269	    }
+270	
+271	    /* Drive the async register writes to completion (bounded). */
+272	    TickType_t done_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_INITDONE_MS);
+273	    while (!TC6Regs_GetInitDone(s_tc6) &&
+274	           ((int32_t)(done_dl - xTaskGetTickCount()) > 0)) {
+275	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
+276	        (void)service_pump();
+277	    }
+278	    return TC6Regs_GetInitDone(s_tc6);
+279	}
+280	
+281	static void t1s_task(void *param)
+282	{
+283	    (void)param;
+284	
+285	    /* SPI: Mode 0 (CPOL=0 idle low, CPHA=0 leading edge), 8-bit, 15 MHz.
+286	     * Source clock 0 => PLib uses the FLEXCOM3 peripheral clock. One-time. */
+287	    FLEXCOM_SPI_TRANSFER_SETUP setup = {
+288	        .clockFrequency = T1S_SPI_HZ,
+289	        .clockPhase     = FLEXCOM_SPI_CLOCK_PHASE_LEADING_EDGE,
+290	        .clockPolarity  = FLEXCOM_SPI_CLOCK_POLARITY_IDLE_LOW,
+291	        .dataBits       = FLEXCOM_SPI_DATA_BITS_8,
+292	    };
+293	    (void)FLEXCOM3_SPI_TransferSetup(&setup, 0u);
+294	    FLEXCOM3_SPI_CallbackRegister(spi_done_cb, 0u);
+295	
+296	    s_tc6 = TC6_Init(NULL);
+297	    if (s_tc6 == NULL) {
+298	        LOG_ERROR("T1S: TC6_Init failed\r\n");
+299	        vTaskDelete(NULL);
+300	        return;
+301	    }
+302	
+303	    (void)PIO_PinInterruptCallbackRegister(T1S_IRQ_N_PIN, irq_cb, 0u);
+304	    PIO_PinInterruptEnable(T1S_IRQ_N_PIN);
+305	
+306	    bool warned_absent = false;
+307	
+308	    for (;;) {
+309	        /* Bring up (or re-bring-up) the MAC-PHY. Absent/unresponsive → warn once
+310	         * and retry with backoff instead of servicing a dead bus. */
+311	        if (!s_link_up) {
+312	            if (!t1s_try_bringup()) {
+313	                if (!warned_absent) {
+314	                    LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
+315	                             "retry every %ums\r\n", (unsigned)T1S_ABSENT_RETRY_MS);
+316	                    warned_absent = true;
+317	                }
+318	                vTaskDelay(pdMS_TO_TICKS(T1S_ABSENT_RETRY_MS));
+319	                continue;
+320	            }
+321	            s_link_up      = true;
+322	            warned_absent  = false;
+323	            TC6_EnableData(s_tc6, true);
+324	            LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+325	                     "PLCA coord id=%u/%u\r\n",
+326	                     (unsigned)TC6Regs_GetChipRevision(s_tc6),
+327	                     s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
+328	                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
+329	        }
+330	
+331	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
+332	        /* If the pump bailed with work still pending, force a yield so this
+333	         * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
+334	        if (service_pump()) { vTaskDelay(pdMS_TO_TICKS(1)); }
+335	
+336	        /* Flush the latest pending command to the active guitar (actuator)
+337	         * node. All TC6 access stays in this task; producers only stash via
+338	         * the API. (Single guitar today; an active-guitar selector goes here
+339	         * when multiple guitar nodes share the bus.) */
+340	        if (s_cmd_dirty && !s_tx_busy) {
+341	            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+342	            if (guitar != NULL) {
+343	                /* Clear before reading so a concurrent update re-arms dirty
+344	                 * rather than being dropped (latest-wins). */
+345	                s_cmd_dirty = false;
+346	                uint8_t mask = s_cmd;
+347	                if (send_to_node(guitar->node_id, &mask, 1u)) {
+348	                    s_tx_count++;
+349	                }
+350	            }
+351	        }
+352	    }
+353	}
+354	
+355	void T1SLink_Initialize(void)
+356	{
+357	    s_svc_sem = xSemaphoreCreateBinaryStatic(&s_svc_sem_buf);
+358	    configASSERT(s_svc_sem != NULL);
+359	
+360	    (void)xTaskCreateStatic(t1s_task, "T1SLink", T1S_TASK_STACK_WORDS, NULL,
+361	                            T1S_TASK_PRIORITY, s_task_stack, &s_task_tcb);
+362	}
+363	
+364	bool T1SLink_IsConnected(void)
+365	{
+366	    return s_link_up;
+367	}
+368	
+369	void T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
+370	{
+371	    uint8_t tx = 0u, rx = 0u;
+372	    bool    sy = false;
+373	    if (s_tc6 != NULL) {
+374	        TC6_GetState(s_tc6, &tx, &rx, &sy);
+375	    }
+376	    if (synced   != NULL) { *synced   = sy; }
+377	    if (txCredit != NULL) { *txCredit = tx; }
+378	    if (rxCredit != NULL) { *rxCredit = rx; }
+379	}
+380	
+381	uint8_t  T1SLink_ChipRev(void)   { return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u; }
+382	uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+383	uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
+384	uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
+385	uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
+386	uint32_t T1SLink_ServiceOverruns(void) { return s_service_overruns; }
+387	
+388	uint8_t T1SLink_NodeTableCount(void) { return (uint8_t)T1S_NODE_TABLE_LEN; }
+389	
+390	bool T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out)
+391	{
+392	    if ((idx >= T1S_NODE_TABLE_LEN) || (out == NULL)) {
+393	        return false;
+394	    }
+395	    out->node_id = s_nodes[idx].node_id;
+396	    out->type    = node_type_name(s_nodes[idx].type);
+397	    if (s_node_rt[idx].seen) {
+398	        uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
+399	        out->age_ms  = (uint32_t)(age * portTICK_PERIOD_MS);
+400	        out->present = (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+401	    } else {
+402	        out->age_ms  = 0u;
+403	        out->present = false;
+404	    }
+405	    return true;
+406	}
+407	
+408	bool T1SLink_SendToGuitar(uint8_t mask)
+409	{
+410	    if (!s_link_up) {
+411	        return false;
+412	    }
+413	    s_cmd = mask;
+414	    s_cmd_dirty = true;
+415	    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+416	    return true;
+417	}
+418	
+419	void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler)
+420	{
+421	    s_frame_handler = handler;
+422	}
+423	
+424	/*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
+425	
+426	bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
+427	                             uint16_t len, void *pGlobalTag)
+428	{
+429	    (void)tc6instance;
+430	    (void)pGlobalTag;
+431	    /* Non-blocking full-duplex transfer; spi_done_cb calls TC6_SpiBufferDone.
+432	     * Returns false if the PLib is busy — the driver retries. */
+433	    return FLEXCOM3_SPI_WriteRead(pTx, len, pRx, len);
+434	}
+435	
+436	void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
+437	{
+438	    (void)pInst;
+439	    (void)pGlobalTag;
+440	    /* May be called from task or ISR context; just flag. ISR sources also give
+441	     * the semaphore, so the service task always wakes. */
+442	    s_need_service = true;
+443	}
+444	
+445	void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
+446	                              uint16_t len, void *pGlobalTag)
+447	{
+448	    (void)pInst;
+449	    (void)pGlobalTag;
+450	    if (((uint32_t)offset + len) <= sizeof(s_rx_buf)) {
+451	        memcpy(&s_rx_buf[offset], pRx, len);
+452	    }
+453	}
+454	
+455	void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+456	                               uint64_t *rxTimestamp, void *pGlobalTag)
+457	{
+458	    (void)pInst;
+459	    (void)rxTimestamp;
+460	    (void)pGlobalTag;
+461	
+462	    if (!success || (len < T1S_ETH_HDR_LEN)) {
+463	        return;
+464	    }
+465	
+466	    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+467	    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)) {
+468	        return;  /* not ours (promiscuous RX during bring-up) */
+469	    }
+470	
+471	    const uint8_t *src = &s_rx_buf[6];
+472	    const t1s_node_t *node = node_for_mac(src);
+473	    if (node == NULL) {
+474	        LOG_DEBUG("T1S: rx from unknown node %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+475	                  src[0], src[1], src[2], src[3], src[4], src[5]);
+476	        return;
+477	    }
+478	    uint8_t idx = (uint8_t)(node - s_nodes);
+479	
+480	    const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
+481	    uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
+482	
+483	    if (ethertype == T1S_ETHERTYPE_HB) {
+484	        /* Presence heartbeat: stamp last-seen; capture the seq if present. */
+485	        s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+486	        s_node_rt[idx].seen = true;
+487	        if (payload_len >= T1S_HB_LEN) {
+488	            s_node_rt[idx].last_seq = (uint32_t)payload[4]
+489	                                    | ((uint32_t)payload[5] << 8)
+490	                                    | ((uint32_t)payload[6] << 16)
+491	                                    | ((uint32_t)payload[7] << 24);
+492	        }
+493	        return;
+494	    }
+495	
+496	    s_rx_count++;
+497	    if (s_frame_handler != NULL) {
+498	        s_frame_handler(node->detector_id, payload, payload_len);
+499	    }
+500	}
+501	
+502	void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+503	{
+504	    (void)pGlobalTag;
+505	    LOG_WARN("T1S: error: %s\r\n", TC6_GetErrorStr(err));
+506	    switch (err) {
+507	        case TC6Error_NoHardware:
+508	        case TC6Error_BadChecksum:
+509	        case TC6Error_UnexpectedCtrl:
+510	        case TC6Error_BadTxData:
+511	        case TC6Error_SyncLost:
+512	        case TC6Error_SpiError:
+513	            TC6Regs_Reinit(pInst);
+514	            break;
+515	        default:
+516	            break;
+517	    }
+518	}
+519	
+520	/*>>>>>>>>>>>>>>>>>>>>  TC6Regs callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>>>>*/
+521	
+522	uint32_t TC6Regs_CB_GetTicksMs(void)
+523	{
+524	    /* configTICK_RATE_HZ is 1000, so one tick is one millisecond. */
+525	    return (uint32_t)xTaskGetTickCount();
+526	}
+527	
+528	void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
+529	{
+530	    (void)pTag;
+531	//    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
+532	    switch (event) {
+533	        case TC6Regs_Event_Loss_of_Framing_Error:
+534	        case TC6Regs_Event_RX_Non_Recoverable_Error:
+535	        case TC6Regs_Event_TX_Non_Recoverable_Error:
+536	            TC6Regs_Reinit(pInst);
+537	            break;
+538	        default:
+539	            break;
+540	    }
+541	}
+542
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:29Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.h`
+
+```text
+1	#ifndef T1S_LINK_H
+2	#define T1S_LINK_H
+3	
+4	#include <stdbool.h>
+5	#include <stdint.h>
+6	
+7	/* 10BASE-T1S inter-node link (marvin side, LAN8651 MAC-PHY over FLEXCOM3 SPI).
+8	 *
+9	 * marvin is the PLCA coordinator (node ID 0). The transport is the vendored
+10	 * OPEN Alliance TC6 driver (third_party/oa-tc6-lib): SPI chunk protocol +
+11	 * register control, wrapped here with the FLEXCOM3 SPI PLib, the T1S_RST /
+12	 * T1S_IRQ_N GPIOs, and a FreeRTOS service task. See docs/t1s-podl-link.md.
+13	 *
+14	 * Phase 1/2 scope: bring the MAC-PHY up (reset, TC6_Init + TC6Regs_Init with
+15	 * PLCA enabled) and confirm the link by reading the chip revision. L2 framing,
+16	 * node-table demux, and the fretboard data path land in later phases.
+17	 *
+18	 * Initialize after SYS_Initialize (FLEXCOM3_SPI_Initialize must have run). The
+19	 * call only creates the service task + semaphore; the reset pulse and TC6 init
+20	 * run inside the task once the scheduler is up (TC6 init is asynchronous and
+21	 * needs the SPI ISR + service loop). */
+22	
+23	void T1SLink_Initialize(void);
+24	
+25	/* True once the MAC-PHY has been configured and data path enabled. */
+26	bool T1SLink_IsConnected(void);
+27	
+28	/* TC6 link state (sync flag + TX/RX credits) and diagnostics, for the console. */
+29	void     T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit);
+30	uint8_t  T1SLink_ChipRev(void);
+31	uint8_t  T1SLink_NodeId(void);    /* PLCA coordinator id (0) */
+32	uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
+33	uint32_t T1SLink_TxCount(void);   /* command frames sent */
+34	uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
+35	uint32_t T1SLink_ServiceOverruns(void); /* times service_pump hit its iter cap */
+36	
+37	/* Per-node presence (from follower heartbeats, ethertype 0x88B6). */
+38	typedef struct {
+39	    uint8_t     node_id;
+40	    const char *type;     /* "detector" / "guitar" / ... */
+41	    bool        present;  /* a heartbeat was seen within the presence window */
+42	    uint32_t    age_ms;   /* since the last heartbeat (0 if never seen) */
+43	} T1SLink_NodeInfo;
+44	
+45	uint8_t T1SLink_NodeTableCount(void);
+46	bool    T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out);
+47	
+48	/* Latest-wins 1-byte button command to the active guitar (actuator) node.
+49	 * Safe to call from any task; the value is flushed onto the bus by the T1S
+50	 * service task (TC6 access is single-threaded). Returns false if the link is
+51	 * not up. */
+52	bool T1SLink_SendToGuitar(uint8_t mask);
+53	
+54	/* Delivers a received node payload (already demuxed by src MAC) to a consumer.
+55	 * Called from the T1S service task. `detector_id` is the node's bus id. */
+56	typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,
+57	                                     uint16_t len);
+58	void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler);
+59	
+60	#endif /* T1S_LINK_H */
+61
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:36Z)**_
+
+Let me read the remaining pieces: marvin's mf_proto.h, fauxmote_link.h, app.c init, and the console diagnostics command.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:36Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/mf_proto.h`
+
+```text
+1	#pragma once
+2	
+3	#include <stdint.h>
+4	#include <stddef.h>
+5	
+6	/* marvin <-> fauxmote command-link wire protocol (message + UART framing layers).
+7	 * Canonical spec: docs/marvin-fauxmote-link.md. This header is transport-neutral
+8	 * (pure C, no ESP/Harmony deps) and shared verbatim between the fauxmote firmware
+9	 * (firmware/fauxmote/main/mf_proto.h) and the marvin firmware
+10	 * (firmware/marvin/default/src/net/fauxmote/mf_proto.h) — keep the two byte-for-byte
+11	 * in sync. */
+12	
+13	#define MF_PROTO_VERSION   1u
+14	#define MF_UART_BAUD       1000000u   /* 1 Mbaud, 8-N-1 */
+15	
+16	/* --- UART framing: SOF | TYPE | LEN | payload[LEN] | CRC8 (over TYPE,LEN,payload) */
+17	#define MF_SOF             0x7Eu
+18	
+19	/* --- Message types (LEN is fixed per type in v1). 0x00 is never valid. */
+20	enum {
+21	    MF_MSG_GUITAR   = 0x01,   /* m->f, 3B: hot gameplay input */
+22	    MF_MSG_WIIMOTE  = 0x02,   /* m->f, 4B: menu-nav input */
+23	    MF_MSG_LINK_CMD = 0x03,   /* m->f, 1B: bluetooth link management */
+24	    MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (planned) */
+25	    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer (planned) */
+26	    MF_MSG_STATUS   = 0x81,   /* f->m, 4B: link/connection state */
+27	};
+28	
+29	#define MF_LEN_GUITAR    3u
+30	#define MF_LEN_WIIMOTE   4u
+31	#define MF_LEN_LINK_CMD  1u
+32	#define MF_LEN_ACCEL     3u
+33	#define MF_LEN_POINTER   3u
+34	#define MF_LEN_STATUS    4u
+35	#define MF_MAX_PAYLOAD   8u   /* largest LEN across all types */
+36	
+37	/* --- GUITAR (3B): [0] fret/strum mask, [1] whammy, [2] aux */
+38	#define MF_G_GREEN       (1u << 0)
+39	#define MF_G_RED         (1u << 1)
+40	#define MF_G_YELLOW      (1u << 2)
+41	#define MF_G_BLUE        (1u << 3)
+42	#define MF_G_ORANGE      (1u << 4)
+43	#define MF_G_STRUM_DOWN  (1u << 5)
+44	#define MF_G_STRUM_UP    (1u << 6)
+45	
+46	#define MF_WHAMMY_MASK   0x1Fu
+47	#define MF_WHAMMY_REST   0x10u   /* released/idle whammy value (safe default) */
+48	
+49	#define MF_AUX_PLUS       (1u << 0)   /* Start / pause */
+50	#define MF_AUX_MINUS      (1u << 1)   /* Select */
+51	#define MF_AUX_PEDAL      (1u << 2)
+52	#define MF_AUX_STARPOWER  (1u << 3)   /* planned: maps to a Wiimote tilt (no-op for now) */
+53	
+54	/* --- WIIMOTE (4B): [0] core buttons, [1] d-pad, [2] stick X, [3] stick Y */
+55	#define MF_W_A           (1u << 0)
+56	#define MF_W_B           (1u << 1)
+57	#define MF_W_ONE         (1u << 2)
+58	#define MF_W_TWO         (1u << 3)
+59	#define MF_W_PLUS        (1u << 4)
+60	#define MF_W_MINUS       (1u << 5)
+61	#define MF_W_HOME        (1u << 6)
+62	
+63	#define MF_W_UP          (1u << 0)
+64	#define MF_W_DOWN        (1u << 1)
+65	#define MF_W_LEFT        (1u << 2)
+66	#define MF_W_RIGHT       (1u << 3)
+67	
+68	#define MF_STICK_CENTER  0x20u   /* 6-bit stick 0..63, center (safe default) */
+69	
+70	/* --- POINTER (3B): [0] x, [1] y (0..255 -> 0..1, 0,0 = top-left), [2] flags */
+71	#define MF_PTR_VISIBLE   (1u << 0)   /* 0 = pointer off / hidden */
+72	
+73	/* --- LINK_CMD (1B): [0] opcode */
+74	enum {
+75	    MF_CMD_PAIR       = 0x01,
+76	    MF_CMD_STOP       = 0x02,
+77	    MF_CMD_RECONNECT  = 0x03,
+78	    MF_CMD_UNLINK     = 0x04,
+79	    MF_CMD_EXT_ATTACH = 0x05,
+80	    MF_CMD_EXT_DETACH = 0x06,
+81	    MF_CMD_STATUS_REQ = 0x07,
+82	};
+83	
+84	/* --- STATUS (4B): [0] flags, [1] player_slot, [2] report_mode, [3] last_result */
+85	#define MF_ST_DISCOVERABLE (1u << 0)
+86	#define MF_ST_CONNECTED    (1u << 1)
+87	#define MF_ST_ASSIGNED     (1u << 2)
+88	#define MF_ST_EXT_ATTACHED (1u << 3)
+89	#define MF_ST_PAIRING      (1u << 4)
+90	#define MF_ST_BONDED       (1u << 5)
+91	
+92	/* CRC-8/CCITT, poly 0x07, init 0x00, no reflection. Over TYPE, LEN, payload. */
+93	static inline uint8_t mf_crc8(const uint8_t *data, size_t len)
+94	{
+95	    uint8_t crc = 0x00;
+96	    for (size_t i = 0; i < len; i++) {
+97	        crc ^= data[i];
+98	        for (int b = 0; b < 8; b++) {
+99	            crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+100	        }
+101	    }
+102	    return crc;
+103	}
+104
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:38Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.h`
+
+```text
+1	#ifndef FAUXMOTE_LINK_H
+2	#define FAUXMOTE_LINK_H
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	
+7	/* marvin -> fauxmote command link: transmits controller input over the FLEXCOM5
+8	 * USART (PA16/PA15, dedicated fauxmote pins) to the ESP32 Wiimote emulator, and
+9	 * receives its STATUS uplink. Wire protocol in net/fauxmote/mf_proto.h /
+10	 * docs/marvin-fauxmote-link.md.
+11	 *
+12	 * Owns FLEXCOM5 exclusively (a peripheral dedicated to this link, independent of
+13	 * the guitar transport). A TX task sends the latched GUITAR state on change and at
+14	 * a floor rate (self-heals dropped frames + keeps fauxmote's link watchdog fed);
+15	 * WIIMOTE nav and LINK_CMD go out on demand. Send calls are non-blocking and safe
+16	 * from any producer context. Call Fauxmote_Initialize once after SYS_Initialize
+17	 * (FLEXCOM5 up) and before the mask producers start. */
+18	
+19	void Fauxmote_Initialize(void);
+20	
+21	/* GUITAR slice. SendGuitarMask is the gameplay mirror hook (whammy=rest, aux=0);
+22	 * SendGuitar exposes the full slice for future whammy/star-power producers. */
+23	void Fauxmote_SendGuitarMask(uint8_t mask);
+24	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux);
+25	
+26	/* WIIMOTE nav slice (core buttons, d-pad, 6-bit stick) and LINK_CMD opcode. */
+27	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y);
+28	void Fauxmote_SendCmd(uint8_t op);
+29	
+30	/* Priority gate. While on, SendGuitarMask (the gameplay-mirror hook) is ignored so
+31	 * a manual producer owns the GUITAR slice; SendGuitar/SendNav still apply. The
+32	 * wiimotes manual-override screen holds this while shown. */
+33	void Fauxmote_SetOverride(bool on);
+34	
+35	/* POINTER slice: IR pointer at (x,y), each 0..255 mapping to 0..1 of the screen
+36	 * (0,0 = top-left). visible=false hides the pointer (off-screen). */
+37	void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible);
+38	
+39	/* Latest STATUS from fauxmote. Returns false if none has ever been received.
+40	 * Any out pointer may be NULL. age_ms = ms since the last STATUS arrived. */
+41	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+42	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms);
+43	
+44	#endif
+45
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:39Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/app.c`
+
+```text
+170	 * loader once the splash is up and the dashboard revealed, so none of these
+171	 * higher-priority tasks preempt the SDMMC/filesystem tasks during the card mount
+172	 * + splash render. Order honors the dependencies: Video first (it owns the frame
+173	 * queue the detector + gameplay observer subscribe to from their tasks). */
+174	void App_StartServices(void)
+175	{
+176	    /* Video capture pipeline (ISC, TC358743, HEO unbind) + capture/display
+177	     * state machine + bridge-status polling. Spawns VideoTask. */
+178	    Video_Initialize();
+179	
+180	    /* Reference detector (cv_marvin_v1) + detector-state bus. Must follow
+181	     * Video_Initialize since cv_marvin_v1 subscribes to the video frame queue
+182	     * from inside its task. Detectors default disabled; enable + select the
+183	     * active one for the timing pipeline. */
+184	    Detector_Initialize();
+185	    Detector_Enable(DETECTOR_CV_MARVIN_V1);
+186	    Detector_SetActive(DETECTOR_CV_MARVIN_V1);
+187	
+188	    /* M2 actuator path: fretboard_link owns the submit queue + FLEXCOM1 USART
+189	     * writer and the RX parse task (and brings up the T1S link). */
+190	    FretboardLink_Initialize();
+191	
+192	    /* fauxmote command link (ESP32 Wiimote emulator) on its own FLEXCOM5. Mirrors
+193	     * every gameplay mask (FretboardLink_Send taps Fauxmote_SendGuitarMask). Must
+194	     * precede the mask producers below. */
+195	    Fauxmote_Initialize();
+196	
+197	    /* timing_pipeline runs the chord-window + strum scheduler against the
+198	     * active detector and pushes the resulting 7-bit mask through
+199	     * FretboardLink_Send. */
+200	    GameTiming_Initialize();
+201	
+202	    /* manual_control is a peer producer for direct UI-driven actuation. UI
+203	     * buttons are authored in Microchip Graphics Composer; the generated
+204	     * screenShow registers the callbacks defined in ui/manual_input.c, so no
+205	     * explicit bind step is needed here. */
+206	    ManualControl_Initialize();
+207	
+208	    /* Game-state observer (spec §4.8, M9): a video-frame consumer that classifies
+209	     * the current GH3 screen. It subscribes to the video frame queue from its task
+210	     * (so it follows Video_Initialize) but observation is synchronous and on-demand —
+211	     * it does NOTHING until GameEngine_Observe() blocks for a fresh classification
+212	     * (called by the game controller). There is no free-running scan: the song_select
+213	     * match is ~tens of ms of soft-float on this FPU-less core, and running it unasked
+214	     * pegged prio-4 and froze the UI. The dashboard uses the touch Selection; the bus
+215	     * has no other consumer. */
+216	    GameEngine_Initialize();
+217	
+218	    /* M10 game-state controller: START (dashboard button / `play` console command)
+219	     * navigates GH3 to the selected song+difficulty, then hands off to the CV
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:48Z)**_
+
+Let me find the console command that reports T1S/nodes diagnostics, plus the fauxmote status command.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:49Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find diagnostics command and build flag wiring
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -rln "T1SLink_GetNodeInfo\|Fauxmote_GetStatus\|T1SLink_TxCount\|MARVIN_FRETBOARD_TRANSPORT" default/src --include='*.c' 2>/dev/null
+echo "=== cmake / build wiring for the flag ==="
+grep -rn "MARVIN_FRETBOARD_TRANSPORT\|FRETBOARD_TRANSPORT_T1S\|net/fauxmote\|net/t1s\|fauxmote_link" default/*.cmake Makefile* nbproject 2>/dev/null | head
+echo "=== find how the flag is defined at build time ==="
+grep -rn "MARVIN_FRETBOARD_TRANSPORT" default 2>/dev/null | grep -v "\.c:" | grep -v "\.h:" | head
+```
+
+```text
+default/src/net/t1s/t1s_link.c
+default/src/net/fauxmote/fauxmote_link.c
+default/src/game/game_controller.c
+default/src/actuator/fretboard_link.c
+default/src/console/console.c
+=== cmake / build wiring for the flag ===
+(eval):4: no matches found: default/*.cmake
+=== find how the flag is defined at build time ===
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:18:54Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate transport flag definition and enum
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+echo "=== where is MARVIN_FRETBOARD_TRANSPORT defined (search whole subproject) ==="
+grep -rn "MARVIN_FRETBOARD_TRANSPORT" . 2>/dev/null | grep -vi "\.md" | grep -v "default/src/actuator" | head -20
+echo
+echo "=== fretboard_link.h transport enum ==="
+sed -n '1,40p' default/src/actuator/fretboard_link.h
+```
+
+```text
+=== where is MARVIN_FRETBOARD_TRANSPORT defined (search whole subproject) ===
+cmake/marvin/default/user.cmake:80:    MARVIN_FRETBOARD_TRANSPORT=1
+
+=== fretboard_link.h transport enum ===
+#ifndef FRETBOARD_LINK_H
+#define FRETBOARD_LINK_H
+
+#include <stdint.h>
+#include <stdbool.h>
+
+#include "perf_log/perf_log_records.h"  /* perf_actuator_producer_t */
+
+/* Transport selection: the fretboard link rides either the FLEXCOM1 USART or
+ * the 10BASE-T1S link (LAN8651, net/t1s). Override at build time with
+ * -DMARVIN_FRETBOARD_TRANSPORT=FRETBOARD_TRANSPORT_T1S (see user.cmake).
+ * Producers and perf-log records are identical above the transport. */
+#define FRETBOARD_TRANSPORT_UART 0
+#define FRETBOARD_TRANSPORT_T1S  1
+#ifndef MARVIN_FRETBOARD_TRANSPORT
+#define MARVIN_FRETBOARD_TRANSPORT FRETBOARD_TRANSPORT_UART
+#endif
+
+/* Mechanical actuation advance (ms): how far ahead of the intended physical
+ * transition the active actuator node must be commanded so its own latency
+ * lands the effect on time. A property of the node marvin drives — the
+ * open-drain GPIO guitar node is effectively instant (0); a future solenoid
+ * rig would set its rise time here. Producers that schedule in strike-line
+ * time (timing_pipeline) subtract this when deciding when to emit; the wire
+ * byte stays a bare "assert now" mask. Static per-node constant for now. */
+#ifndef FRETBOARD_ACTUATOR_ADVANCE_MS
+#define FRETBOARD_ACTUATOR_ADVANCE_MS 0u
+#endif
+
+/* Fretboard link — FLEXCOM1 USART (ring-buffer) writer that ferries a 7-bit
+ * GPIO bitmask to the fretboard MCU as a stream of single-byte messages, and
+ * a parse task that drains the fretboard's 17-byte ADC frames off the RX ring
+ * into PERF_REC_FRETBOARD_RAW records. Spec §4.4 actuator transport.
+ * Initialize first among the actuator modules so the submit queue exists by
+ * the time any producer task starts running. Call after SYS_Initialize so the
+ * FLEXCOM1 peripheral is up.
+ *
+ * Producers — timing_pipeline today, manual_control during operator UI
+ * mode, future game menu controller (spec §4.8) — all submit through
+ * FretboardLink_Send and tag themselves with a perf_actuator_producer_t
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:19:00Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./cmake/marvin/default/user.cmake`
+
+```text
+File does not exist. Note: your current working directory is /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:19:05Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/cmake/marvin/default/user.cmake`
+
+```text
+55	target_include_directories(marvin_default_default_XC32_compile PRIVATE
+56	    # Compat shim root: provides a stub gfx/legato/generated/le_gen_init.h so the
+57	    # MGS-emitted `#include le_gen_init.h` in le_gen_harmony.h still resolves after
+58	    # "Generate Screen State Machine" is disabled (MGS deletes the header but keeps
+59	    # the include). Resolves only when the generated copy is absent. See the stub.
+60	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/compat"
+61	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli"
+62	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s"
+63	    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/fauxmote"
+64	    "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/inc"
+65	    "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src"
+66	)
+67	
+68	target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
+69	    CAMERA_ENABLE_DEBUG=0
+70	    # Place the Legato CPU-rendered scratch buffer in non-cached DDR (same section
+71	    # as the XLCDC framebuffer). Works around an MGS gen gap: with "Cacheable
+72	    # Frame Buffers" off, the framebuffer is non-cached but the Legato render
+73	    # buffer (LE_NO_CACHE_ATTR) is left empty/cacheable, so the 2D-engine blit
+74	    # reads stale CPU-cached pixels -> streaky bleed. The #ifndef guard in
+75	    # legato_renderer.c lets this -D win, surviving MGS regen.
+76	    "LE_NO_CACHE_ATTR=__attribute__((section(\".region_nocache\")))"
+77	    # Fretboard link transport: default is FLEXCOM1 UART. Uncomment to route
+78	    # the fretboard command/data over the 10BASE-T1S link (LAN8651) instead —
+79	    # flip this once the fretboard PIC32CM T1S side is up.
+80	    MARVIN_FRETBOARD_TRANSPORT=1
+81	)
+82
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:19:11Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate console command handlers
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -n "fauxmote\|Fauxmote\|nodes\|T1SLink\|controller\|0x88B7\|node_id\|cmd_t1s\|cmd_nodes\|cmd_fx" default/src/console/console.c | head -60
+```
+
+```text
+26:#include <stdlib.h>                      /* strtoul for the fauxmote btn mask */
+27:#include "net/fauxmote/fauxmote_link.h"
+28:#include "net/fauxmote/mf_proto.h"
+35:#include "game/game_controller.h"
+180:static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
+186:    T1SLink_GetState(&synced, &txc, &rxc);
+188:    console_printf("link:    %s", T1SLink_IsConnected() ? "up" : "down");
+190:    console_printf("chipRev: %u", (unsigned)T1SLink_ChipRev());
+192:                   (unsigned)T1SLink_NodeId(), (unsigned)T1SLink_NodeCount());
+194:    console_printf("tx cmds: %lu", (unsigned long)T1SLink_TxCount());
+195:    console_printf("rx frms: %lu", (unsigned long)T1SLink_RxCount());
+196:    console_printf("svc ovr: %lu", (unsigned long)T1SLink_ServiceOverruns());
+199:static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
+203:    uint8_t n = T1SLink_NodeTableCount();
+207:        T1SLink_NodeInfo ni;
+208:        if (T1SLink_GetNodeInfo(i, &ni))
+211:                           (unsigned)ni.node_id, ni.type,
+697:static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
+706:        if (!Fauxmote_GetStatus(&flags, &slot, &mode, &res, &age))
+708:            console_printf("fauxmote: no STATUS received yet");
+720:    if (strcmp(sub, "pair") == 0)      { Fauxmote_SendCmd(MF_CMD_PAIR);      console_printf("fauxmote: pair");      return; }
+721:    if (strcmp(sub, "stop") == 0)      { Fauxmote_SendCmd(MF_CMD_STOP);      console_printf("fauxmote: stop");      return; }
+722:    if (strcmp(sub, "reconnect") == 0) { Fauxmote_SendCmd(MF_CMD_RECONNECT); console_printf("fauxmote: reconnect"); return; }
+723:    if (strcmp(sub, "unlink") == 0)    { Fauxmote_SendCmd(MF_CMD_UNLINK);    console_printf("fauxmote: unlink");    return; }
+727:        if (v < 0) { console_printf("usage: fauxmote ext <on|off>"); return; }
+728:        Fauxmote_SendCmd(v ? MF_CMD_EXT_ATTACH : MF_CMD_EXT_DETACH);
+729:        console_printf("fauxmote: ext %s", v ? "on" : "off");
+735:        if (m == NULL) { console_printf("usage: fauxmote btn <mask>  (e.g. 0x21 = green+strumdown; 0 = release)"); return; }
+741:        Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+742:        console_printf("fauxmote: guitar mask=0x%02x", mask);
+750:            Fauxmote_SendPointer(0u, 0u, false);
+751:            console_printf("fauxmote: pointer off");
+757:            console_printf("usage: fauxmote pointer <x> <y> | off   (x,y 0..255, 0,0=top-left)");
+762:        Fauxmote_SendPointer(x, y, true);
+763:        console_printf("fauxmote: pointer %u,%u", (unsigned)x, (unsigned)y);
+766:    console_printf("usage: fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]");
+809:        { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
+810:        { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
+825:        { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:20:38Z)**_
+
+I now have the complete picture of both sides. Let me summarize the architecture before planning.
+
+**Key constraint:** marvin has a *single* LAN8651 MAC-PHY (one TC6 instance in [t1s_link.c](firmware/marvin/default/src/net/t1s/t1s_link.c)). So the fauxmote channel can't be a second interface — it must ride the existing `t1s_link` TX/RX path alongside the guitar command (0x88B5) and heartbeats (0x88B6), on its own ethertype **0x88B7**.
+
+The design splits cleanly:
+- **`t1s_link.c`** gains a generic *controller channel*: a `T1S_NODE_CONTROLLER` node-table row (id 1), a `T1SLink_SendToController(type, payload, len)` TX path that frames `[dst][src][0x88B7][TYPE][payload]`, and a `0x88B7` RX demux to a registered controller handler. Presence heartbeat (0x88B6) already works for free once id 1 is in the table.
+- **`fauxmote_link.c`** keeps its entire producer/latching/STATUS layer unchanged and just swaps its *transport seam*: in T1S mode `send_frame` → `T1SLink_SendToController`, and instead of the FLEXCOM5 RX parser it registers a controller handler that latches STATUS — mirroring the `MARVIN_FRETBOARD_TRANSPORT` pattern with a new `MARVIN_FAUXMOTE_TRANSPORT` flag.
+
+There's one real decision (the flag's default) plus init-ownership details worth pinning down before I edit. Let me formalize this as a plan.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:20:38Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="EnterPlanMode"><details>
+<summary>Tool use: **EnterPlanMode**</summary>
+
+```text
+Entered plan mode. You should now focus on exploring the codebase and designing an implementation approach.
+
+In plan mode, you should:
+1. Thoroughly explore the codebase to understand existing patterns
+2. Identify similar features and architectural approaches
+3. Consider multiple approaches and their trade-offs
+4. Use AskUserQuestion if you need to clarify the approach
+5. Design a concrete implementation strategy
+6. When ready, use ExitPlanMode to present your plan for approval
+
+Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:20:52Z)**_
+
+I've already read all the relevant files thoroughly (t1s_link.c/.h, fauxmote_link.c/.h, mf_proto.h, fretboard_link.c/.h, user.cmake, app.c, console.c), so the design is clear — it's a direct mirror of the established `MARVIN_FRETBOARD_TRANSPORT` pattern. There's one decision worth confirming before I finalize.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:21:36Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="AskUserQuestion"><details>
+<summary>Tool use: **AskUserQuestion**</summary>
+**How should the new MARVIN_FAUXMOTE_TRANSPORT build flag default, and what should user.cmake select now?**
+
+Options:
+- **Default UART, opt-in T1S** - Flag defaults to UART (current working FLEXCOM5 link). user.cmake stays UART for now; you flip it to T1S when the fauxmote LAN8651 is physically wired — exactly how fretboard was staged. Safest, keeps today's bench setup running.
+- **Default UART, set T1S in user.cmake now** - Flag defaults to UART, but user.cmake selects T1S immediately so marvin starts framing fauxmote on 0x88B7 over the existing bus — matches the ESP side's T1S default. Requires the fauxmote LAN8651 wired to actually work end-to-end.
+- **Default T1S** - Flag defaults to T1S (like the ESP side now does). UART becomes the explicit opt-in fallback. Any clean marvin build routes fauxmote over T1S by default.
+
+
+**Answer:** Default T1S
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:22:05Z)**_
+
+Decision captured: `MARVIN_FAUXMOTE_TRANSPORT` defaults to **T1S** (UART becomes the opt-in fallback), consistent with the ESP side. Let me write the final plan.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:22:50Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Marvin coordinator side: route the fauxmote link over T1S
+
+## Context
+
+The fauxmote (ESP32 Wiimote/guitar emulator) already talks to marvin, but over a
+dedicated point-to-point **FLEXCOM5 UART**. The ESP32 side has since been refactored to
+ride the shared 10BASE-T1S PLCA bus (its own LAN8651, ethertype `0x88B7`, controller
+node id 1, heartbeat node_type 3) — that work is done. This session brings the **marvin
+coordinator side** onto the same channel so the two ends match, mirroring exactly how the
+guitar/fretboard nodes were staged before their hardware existed.
+
+**Hard constraint:** marvin has a *single* LAN8651 MAC-PHY — one TC6 instance in
+[`t1s_link.c`](firmware/marvin/default/src/net/t1s/t1s_link.c). The fauxmote channel
+therefore cannot be a second interface; it must ride the existing `t1s_link` TX/RX path
+alongside the guitar command (`0x88B5`) and presence heartbeats (`0x88B6`), on its own
+ethertype `0x88B7`. `fauxmote_link.c` keeps its whole producer/latching/STATUS layer and
+only swaps its transport seam — the same shape as `MARVIN_FRETBOARD_TRANSPORT`.
+
+Decision (locked): the new `MARVIN_FAUXMOTE_TRANSPORT` flag **defaults to T1S**; UART is
+the explicit opt-in fallback. Node table target already renumbered this session:
+0 marvin, 1 controller/fauxmote, 3 guitar, 4 fretboard.
+
+## Approach
+
+### 1. `t1s_link.c` / `t1s_link.h` — add a generic "controller" channel
+
+The MAC-PHY infra stays owned by `t1s_link`; fauxmote becomes a second consumer beside
+the guitar/fretboard.
+
+- **Node type + table row.** Add `T1S_NODE_CONTROLLER` to `t1s_node_type_t`, a
+  `node_type_name` case ("controller"), and a table row `{ 1u, T1S_NO_DETECTOR,
+  T1S_NODE_CONTROLLER }` in `s_nodes[]`. Presence (0x88B6) then works for free via the
+  existing `node_for_mac` + `s_node_rt` stamping — the `nodes` CLI lists it automatically.
+  Gate the row with the fauxmote-T1S flag (below) so a UART build doesn't show a phantom
+  "controller not present" row.
+- **New ethertype.** `#define T1S_ETHERTYPE_CTRL (0x88B7u)`.
+- **TX path.** Generalize the existing static `send_to_node(node_id, payload, len)` to
+  take an ethertype (`send_to_node(node_id, ethertype, payload, len)`); update its one
+  call site (the guitar-command flush) to pass `T1S_ETHERTYPE`. Add a small static
+  controller TX FIFO (FreeRTOS static queue, depth 8, item = `type(1) + len(1) +
+  payload(≤8)` = 10 bytes) and a public
+  `bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)` that
+  enqueues one item and gives `s_svc_sem`. In `t1s_task`'s flush section, when
+  `!s_tx_busy`, drain one controller item (frame `[dst=ctrl MAC][src=coord][0x88B7]
+  [TYPE][payload]` via `send_to_node(..., T1S_ETHERTYPE_CTRL, ...)`) — interleaving with
+  the existing guitar-command flush across service wakes.
+- **RX demux.** In `TC6_CB_OnRxEthernetPacket`, accept `0x88B7` alongside `0x88B5`/`0x88B6`.
+  After `node_for_mac`, branch: HB → presence (unchanged); `0x88B7` → call a registered
+  controller handler with `(payload[0]=TYPE, &payload[1], payload_len-1)`; else (`0x88B5`)
+  → existing `s_frame_handler`. Add
+  `typedef void (*T1SLink_ControllerHandler)(uint8_t type, const uint8_t *payload,
+  uint16_t len)` + `T1SLink_SetControllerHandler(...)`.
+- **Init idempotency.** Guard `T1SLink_Initialize()` with a static `s_initialized` flag so
+  both `FretboardLink_Initialize` (T1S) and `Fauxmote_Initialize` (T1S) can call it; first
+  wins, second is a no-op. Create the controller queue here (gated by the flag).
+- **Counters (optional but cheap).** `s_ctrl_tx_count` / `s_ctrl_rx_count` + accessors for
+  the CLI.
+
+### 2. `fauxmote_link.c` / `fauxmote_link.h` — transport seam (mirror fretboard_link)
+
+Keep the entire producer/latching/STATUS layer (`Fauxmote_SendGuitar*`, `SendNav`,
+`SendCmd`, `SendPointer`, `s_status`, the TX task's latch snapshot). Only the byte
+transport swaps.
+
+- Add the flag to the header, defaulting to T1S:
+  \```c
+  #define FAUXMOTE_TRANSPORT_UART 0
+  #define FAUXMOTE_TRANSPORT_T1S  1
+  #ifndef MARVIN_FAUXMOTE_TRANSPORT
+  #define MARVIN_FAUXMOTE_TRANSPORT FAUXMOTE_TRANSPORT_T1S
+  #endif
+  \```
+- Refactor the STATUS latch out of `parse_byte`'s post-CRC branch into a shared
+  `static void latch_status(const uint8_t *payload, uint16_t len)`.
+- `#if T1S`: `send_frame(type,payload,len)` → `T1SLink_SendToController(type, payload,
+  len)` (the `fx_tx_task` body is unchanged — same GUITAR-every-wake + dirty WIIMOTE/
+  POINTER + drained LINK_CMD). No FLEXCOM5 anywhere; drop the RX task/parser and register
+  a controller handler (`ctrl_rx` → `latch_status` on `MF_MSG_STATUS`/`MF_LEN_STATUS`).
+  `Fauxmote_Initialize` calls `T1SLink_Initialize()` (idempotent) +
+  `T1SLink_SetControllerHandler(ctrl_rx)`, creates only the TX task, sets `s_ready`.
+- `#else` (UART): today's file verbatim (FLEXCOM5 setup, `send_frame` framing, RX
+  parser/task) — the fallback path.
+- Update the header comment (no longer "owns FLEXCOM5 exclusively" — transport-dependent).
+
+### 3. Build wiring — `cmake/marvin/default/user.cmake`
+
+Since the flag defaults to T1S, no define is strictly required, but add an explicit,
+documented line next to `MARVIN_FRETBOARD_TRANSPORT` so the choice is visible and the UART
+opt-out is discoverable (e.g. `MARVIN_FAUXMOTE_TRANSPORT=1` with a comment). `t1s_link.c`
+already compiles in the build (net/t1s on the include path); no new sources.
+
+### 4. Console diagnostics — `console/console.c`
+
+`nodes` already lists the new controller row automatically. `fauxmote status` still reads
+`Fauxmote_GetStatus` (works on either transport since STATUS latching is unchanged).
+Optional: append controller tx/rx frame counts to `cmd_fauxmote`'s status output and note
+the active transport.
+
+### 5. Docs + journal
+
+- `firmware/marvin/docs/journal.md`: decision-log entry (fauxmote routed over T1S on the
+  coordinator via the shared MAC-PHY; new `MARVIN_FAUXMOTE_TRANSPORT` flag default T1S;
+  `T1S_NODE_CONTROLLER` id 1 / `0x88B7`) + session-log entry; retire the "future work"
+  flag from the earlier fauxmote-link entry.
+- `docs/t1s-podl-link.md` §7.1/§7.2: controller node type is now handled on the marvin
+  side too (0x88B7 demux + TX, STATUS RX, node id 1).
+- `docs/marvin-fauxmote-link.md` §8: marvin side now speaks T1S (frame layout, STATUS as a
+  coordinator-directed uplink); UART retained as fallback.
+- Keep the `mf_proto.h` two-copy sync note accurate (wire content unchanged).
+
+## Files touched
+
+- `firmware/marvin/default/src/net/t1s/t1s_link.c` + `.h` (controller channel)
+- `firmware/marvin/default/src/net/fauxmote/fauxmote_link.c` + `.h` (transport seam + flag)
+- `firmware/marvin/cmake/marvin/default/user.cmake` (documented flag)
+- `firmware/marvin/default/src/console/console.c` (optional diag)
+- journal + 2–3 docs
+
+Not touched: `mf_proto.h` (wire unchanged), any `default/src/config/default/` MCC tree,
+`third_party/`.
+
+## Verification
+
+- **Builds both ways.** Default build (T1S) compiles the controller channel + fauxmote
+  T1S seam with no FLEXCOM5 references; flipping `MARVIN_FAUXMOTE_TRANSPORT=0` builds the
+  UART path with no `T1SLink_SendToController`/handler references. Confirm no unused-symbol
+  or missing-symbol errors either way, and that `T1SLink_Initialize` double-call (fretboard
+  T1S + fauxmote T1S) is a clean no-op.
+- **Refactor parity (UART build).** Existing behavior unchanged — a pure move of the STATUS
+  latch into `latch_status`.
+- **On-bus (once the fauxmote LAN8651 is wired — later session).** `nodes` shows the
+  controller (id 1) present via 0x88B6; marvin's gameplay masks reach the emulated
+  controller on 0x88B7 (GUITAR/WIIMOTE/POINTER/LINK_CMD); STATUS uplink latches and
+  `fauxmote status` reflects it; guitar (0x88B5) + fretboard traffic still flow on the
+  shared MAC-PHY without starvation (single in-flight TX interleaves correctly).
+
+```
+
+```text
+<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:22:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `/Users/gregmrozek/.claude/plans/valiant-watching-nest.md`
+
+```text
+1	# Fauxmote → T1S transport (ESP32 side)
+2	
+3	## Context
+4	
+5	Today the fauxmote (ESP32 Wiimote/guitar emulator) talks to marvin over a dedicated
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:23:37Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Write"><details>
+<summary>Tool use: **Write**</summary>
+
+```md
+# Marvin coordinator side: route the fauxmote link over T1S
+
+## Context
+
+The fauxmote (ESP32 Wiimote/guitar emulator) already talks to marvin, but over a
+dedicated point-to-point **FLEXCOM5 UART**. The ESP32 side has since been refactored to
+ride the shared 10BASE-T1S PLCA bus (its own LAN8651, ethertype `0x88B7`, controller
+node id 1, heartbeat node_type 3) — that work is done. This session brings the **marvin
+coordinator side** onto the same channel so the two ends match, mirroring exactly how the
+guitar/fretboard nodes were staged before their hardware existed.
+
+**Hard constraint:** marvin has a *single* LAN8651 MAC-PHY — one TC6 instance in
+`t1s_link.c`. The fauxmote channel therefore cannot be a second interface; it must ride
+the existing `t1s_link` TX/RX path alongside the guitar command (`0x88B5`) and presence
+heartbeats (`0x88B6`), on its own ethertype `0x88B7`. `fauxmote_link.c` keeps its whole
+producer/latching/STATUS layer and only swaps its transport seam — the same shape as
+`MARVIN_FRETBOARD_TRANSPORT`.
+
+Decision (locked): the new `MARVIN_FAUXMOTE_TRANSPORT` flag **defaults to T1S**; UART is
+the explicit opt-in fallback. Node table target already renumbered this session:
+0 marvin, 1 controller/fauxmote, 3 guitar, 4 fretboard.
+
+## Approach
+
+### 1. `t1s_link.c` / `t1s_link.h` — add a generic "controller" channel
+
+The MAC-PHY infra stays owned by `t1s_link`; fauxmote becomes a second consumer beside
+the guitar/fretboard.
+
+- **Node type + table row.** Add `T1S_NODE_CONTROLLER` to `t1s_node_type_t`, a
+  `node_type_name` case ("controller"), and a table row `{ 1u, T1S_NO_DETECTOR,
+  T1S_NODE_CONTROLLER }` in `s_nodes[]`. Presence (0x88B6) then works for free via the
+  existing `node_for_mac` + `s_node_rt` stamping — the `nodes` CLI lists it automatically.
+  Gate the row with the fauxmote-T1S flag (below) so a UART build doesn't show a phantom
+  "controller not present" row.
+- **New ethertype.** `#define T1S_ETHERTYPE_CTRL (0x88B7u)`.
+- **TX path.** Generalize the existing static `send_to_node(node_id, payload, len)` to
+  take an ethertype (`send_to_node(node_id, ethertype, payload, len)`); update its one
+  call site (the guitar-command flush) to pass `T1S_ETHERTYPE`. Add a small static
+  controller TX FIFO (FreeRTOS static queue, depth 8, item = `type(1) + len(1) +
+  payload(<=8)` = 10 bytes) and a public
+  `bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)` that
+  enqueues one item and gives `s_svc_sem`. In `t1s_task`'s flush section, when
+  `!s_tx_busy`, drain one controller item (frame `[dst=ctrl MAC][src=coord][0x88B7]
+  [TYPE][payload]` via `send_to_node(..., T1S_ETHERTYPE_CTRL, ...)`) — interleaving with
+  the existing guitar-command flush across service wakes.
+- **RX demux.** In `TC6_CB_OnRxEthernetPacket`, accept `0x88B7` alongside `0x88B5`/`0x88B6`.
+  After `node_for_mac`, branch: HB -> presence (unchanged); `0x88B7` -> call a registered
+  controller handler with `(payload[0]=TYPE, &payload[1], payload_len-1)`; else (`0x88B5`)
+  -> existing `s_frame_handler`. Add
+  `typedef void (*T1SLink_ControllerHandler)(uint8_t type, const uint8_t *payload,
+  uint16_t len)` + `T1SLink_SetControllerHandler(...)`.
+- **Init idempotency.** Guard `T1SLink_Initialize()` with a static `s_initialized` flag so
+  both `FretboardLink_Initialize` (T1S) and `Fauxmote_Initialize` (T1S) can call it; first
+  wins, second is a no-op. Create the controller queue here (gated by the flag).
+- **Counters (optional but cheap).** `s_ctrl_tx_count` / `s_ctrl_rx_count` + accessors for
+  the CLI.
+
+### 2. `fauxmote_link.c` / `fauxmote_link.h` — transport seam (mirror fretboard_link)
+
+Keep the entire producer/latching/STATUS layer (`Fauxmote_SendGuitar*`, `SendNav`,
+`SendCmd`, `SendPointer`, `s_status`, the TX task's latch snapshot). Only the byte
+transport swaps.
+
+- Add the flag to the header, defaulting to T1S:
+  \```c
+  #define FAUXMOTE_TRANSPORT_UART 0
+  #define FAUXMOTE_TRANSPORT_T1S  1
+  #ifndef MARVIN_FAUXMOTE_TRANSPORT
+  #define MARVIN_FAUXMOTE_TRANSPORT FAUXMOTE_TRANSPORT_T1S
+  #endif
+  \```
+- Refactor the STATUS latch out of `parse_byte`'s post-CRC branch into a shared
+  `static void latch_status(const uint8_t *payload, uint16_t len)`.
+- `#if T1S`: `send_frame(type,payload,len)` -> `T1SLink_SendToController(type, payload,
+  len)` (the `fx_tx_task` body is unchanged — same GUITAR-every-wake + dirty WIIMOTE/
+  POINTER + drained LINK_CMD). No FLEXCOM5 anywhere; drop the RX task/parser and register
+  a controller handler (`ctrl_rx` -> `latch_status` on `MF_MSG_STATUS`/`MF_LEN_STATUS`).
+  `Fauxmote_Initialize` calls `T1SLink_Initialize()` (idempotent) +
+  `T1SLink_SetControllerHandler(ctrl_rx)`, creates only the TX task, sets `s_ready`.
+- `#else` (UART): today's file verbatim (FLEXCOM5 setup, `send_frame` framing, RX
+  parser/task) — the fallback path.
+- Update the header comment (no longer "owns FLEXCOM5 exclusively" — transport-dependent).
+
+### 3. Build wiring — `cmake/marvin/default/user.cmake`
+
+Since the flag defaults to T1S, no define is strictly required, but add an explicit,
+documented line next to `MARVIN_FRETBOARD_TRANSPORT` so the choice is visible and the UART
+opt-out is discoverable (e.g. `MARVIN_FAUXMOTE_TRANSPORT=1` with a comment). `t1s_link.c`
+already compiles in the build (net/t1s on the include path); no new sources.
+
+### 4. Console diagnostics — `console/console.c`
+
+`nodes` already lists the new controller row automatically. `fauxmote status` still reads
+`Fauxmote_GetStatus` (works on either transport since STATUS latching is unchanged).
+Optional: append controller tx/rx frame counts to `cmd_fauxmote`'s status output and note
+the active transport.
+
+### 5. Docs + journal
+
+- `firmware/marvin/docs/journal.md`: decision-log entry (fauxmote routed over T1S on the
+  coordinator via the shared MAC-PHY; new `MARVIN_FAUXMOTE_TRANSPORT` flag default T1S;
+  `T1S_NODE_CONTROLLER` id 1 / `0x88B7`) + session-log entry; retire the "future work"
+  flag from the earlier fauxmote-link entry.
+- `docs/t1s-podl-link.md` §7.1/§7.2: controller node type is now handled on the marvin
+  side too (0x88B7 demux + TX, STATUS RX, node id 1).
+- `docs/marvin-fauxmote-link.md` §8: marvin side now speaks T1S (frame layout, STATUS as a
+  coordinator-directed uplink); UART retained as fallback.
+- Keep the `mf_proto.h` two-copy sync note accurate (wire content unchanged).
+
+## Files touched
+
+- `firmware/marvin/default/src/net/t1s/t1s_link.c` + `.h` (controller channel)
+- `firmware/marvin/default/src/net/fauxmote/fauxmote_link.c` + `.h` (transport seam + flag)
+- `firmware/marvin/cmake/marvin/default/user.cmake` (documented flag)
+- `firmware/marvin/default/src/console/console.c` (optional diag)
+- journal + 2-3 docs
+
+Not touched: `mf_proto.h` (wire unchanged), any `default/src/config/default/` MCC tree,
+`third_party/`.
+
+## Verification
+
+- **Builds both ways.** Default build (T1S) compiles the controller channel + fauxmote
+  T1S seam with no FLEXCOM5 references; flipping `MARVIN_FAUXMOTE_TRANSPORT=0` builds the
+  UART path with no `T1SLink_SendToController`/handler references. Confirm no unused-symbol
+  or missing-symbol errors either way, and that `T1SLink_Initialize` double-call (fretboard
+  T1S + fauxmote T1S) is a clean no-op.
+- **Refactor parity (UART build).** Existing behavior unchanged — a pure move of the STATUS
+  latch into `latch_status`.
+- **On-bus (once the fauxmote LAN8651 is wired — later session).** `nodes` shows the
+  controller (id 1) present via 0x88B6; marvin's gameplay masks reach the emulated
+  controller on 0x88B7 (GUITAR/WIIMOTE/POINTER/LINK_CMD); STATUS uplink latches and
+  `fauxmote status` reflects it; guitar (0x88B5) + fretboard traffic still flow on the
+  shared MAC-PHY without starvation (single in-flight TX interleaves correctly).
+
+```
+
+```text
+The file /Users/gregmrozek/.claude/plans/valiant-watching-nest.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:25:21Z)**_
+
+<tool-use data-tool-type="generic" data-tool-name="ExitPlanMode"><details>
+<summary>Tool use: **ExitPlanMode**</summary>
+
+```text
+User has approved your plan. You can now start coding. Start with updating your todo list if applicable
+
+Your plan has been saved to: /Users/gregmrozek/.claude/plans/valiant-watching-nest.md
+You can refer back to it if needed during implementation.
+
+## Approved Plan:
+# Marvin coordinator side: route the fauxmote link over T1S
+
+## Context
+
+The fauxmote (ESP32 Wiimote/guitar emulator) already talks to marvin, but over a
+dedicated point-to-point **FLEXCOM5 UART**. The ESP32 side has since been refactored to
+ride the shared 10BASE-T1S PLCA bus (its own LAN8651, ethertype `0x88B7`, controller
+node id 1, heartbeat node_type 3) — that work is done. This session brings the **marvin
+coordinator side** onto the same channel so the two ends match, mirroring exactly how the
+guitar/fretboard nodes were staged before their hardware existed.
+
+**Hard constraint:** marvin has a *single* LAN8651 MAC-PHY — one TC6 instance in
+`t1s_link.c`. The fauxmote channel therefore cannot be a second interface; it must ride
+the existing `t1s_link` TX/RX path alongside the guitar command (`0x88B5`) and presence
+heartbeats (`0x88B6`), on its own ethertype `0x88B7`. `fauxmote_link.c` keeps its whole
+producer/latching/STATUS layer and only swaps its transport seam — the same shape as
+`MARVIN_FRETBOARD_TRANSPORT`.
+
+Decision (locked): the new `MARVIN_FAUXMOTE_TRANSPORT` flag **defaults to T1S**; UART is
+the explicit opt-in fallback. Node table target already renumbered this session:
+0 marvin, 1 controller/fauxmote, 3 guitar, 4 fretboard.
+
+## Approach
+
+### 1. `t1s_link.c` / `t1s_link.h` — add a generic "controller" channel
+
+The MAC-PHY infra stays owned by `t1s_link`; fauxmote becomes a second consumer beside
+the guitar/fretboard.
+
+- **Node type + table row.** Add `T1S_NODE_CONTROLLER` to `t1s_node_type_t`, a
+  `node_type_name` case ("controller"), and a table row `{ 1u, T1S_NO_DETECTOR,
+  T1S_NODE_CONTROLLER }` in `s_nodes[]`. Presence (0x88B6) then works for free via the
+  existing `node_for_mac` + `s_node_rt` stamping — the `nodes` CLI lists it automatically.
+  Gate the row with the fauxmote-T1S flag (below) so a UART build doesn't show a phantom
+  "controller not present" row.
+- **New ethertype.** `#define T1S_ETHERTYPE_CTRL (0x88B7u)`.
+- **TX path.** Generalize the existing static `send_to_node(node_id, payload, len)` to
+  take an ethertype (`send_to_node(node_id, ethertype, payload, len)`); update its one
+  call site (the guitar-command flush) to pass `T1S_ETHERTYPE`. Add a small static
+  controller TX FIFO (FreeRTOS static queue, depth 8, item = `type(1) + len(1) +
+  payload(<=8)` = 10 bytes) and a public
+  `bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)` that
+  enqueues one item and gives `s_svc_sem`. In `t1s_task`'s flush section, when
+  `!s_tx_busy`, drain one controller item (frame `[dst=ctrl MAC][src=coord][0x88B7]
+  [TYPE][payload]` via `send_to_node(..., T1S_ETHERTYPE_CTRL, ...)`) — interleaving with
+  the existing guitar-command flush across service wakes.
+- **RX demux.** In `TC6_CB_OnRxEthernetPacket`, accept `0x88B7` alongside `0x88B5`/`0x88B6`.
+  After `node_for_mac`, branch: HB -> presence (unchanged); `0x88B7` -> call a registered
+  controller handler with `(payload[0]=TYPE, &payload[1], payload_len-1)`; else (`0x88B5`)
+  -> existing `s_frame_handler`. Add
+  `typedef void (*T1SLink_ControllerHandler)(uint8_t type, const uint8_t *payload,
+  uint16_t len)` + `T1SLink_SetControllerHandler(...)`.
+- **Init idempotency.** Guard `T1SLink_Initialize()` with a static `s_initialized` flag so
+  both `FretboardLink_Initialize` (T1S) and `Fauxmote_Initialize` (T1S) can call it; first
+  wins, second is a no-op. Create the controller queue here (gated by the flag).
+- **Counters (optional but cheap).** `s_ctrl_tx_count` / `s_ctrl_rx_count` + accessors for
+  the CLI.
+
+### 2. `fauxmote_link.c` / `fauxmote_link.h` — transport seam (mirror fretboard_link)
+
+Keep the entire producer/latching/STATUS layer (`Fauxmote_SendGuitar*`, `SendNav`,
+`SendCmd`, `SendPointer`, `s_status`, the TX task's latch snapshot). Only the byte
+transport swaps.
+
+- Add the flag to the header, defaulting to T1S:
+  ```c
+  #define FAUXMOTE_TRANSPORT_UART 0
+  #define FAUXMOTE_TRANSPORT_T1S  1
+  #ifndef MARVIN_FAUXMOTE_TRANSPORT
+  #define MARVIN_FAUXMOTE_TRANSPORT FAUXMOTE_TRANSPORT_T1S
+  #endif
+  ```
+- Refactor the STATUS latch out of `parse_byte`'s post-CRC branch into a shared
+  `static void latch_status(const uint8_t *payload, uint16_t len)`.
+- `#if T1S`: `send_frame(type,payload,len)` -> `T1SLink_SendToController(type, payload,
+  len)` (the `fx_tx_task` body is unchanged — same GUITAR-every-wake + dirty WIIMOTE/
+  POINTER + drained LINK_CMD). No FLEXCOM5 anywhere; drop the RX task/parser and register
+  a controller handler (`ctrl_rx` -> `latch_status` on `MF_MSG_STATUS`/`MF_LEN_STATUS`).
+  `Fauxmote_Initialize` calls `T1SLink_Initialize()` (idempotent) +
+  `T1SLink_SetControllerHandler(ctrl_rx)`, creates only the TX task, sets `s_ready`.
+- `#else` (UART): today's file verbatim (FLEXCOM5 setup, `send_frame` framing, RX
+  parser/task) — the fallback path.
+- Update the header comment (no longer "owns FLEXCOM5 exclusively" — transport-dependent).
+
+### 3. Build wiring — `cmake/marvin/default/user.cmake`
+
+Since the flag defaults to T1S, no define is strictly required, but add an explicit,
+documented line next to `MARVIN_FRETBOARD_TRANSPORT` so the choice is visible and the UART
+opt-out is discoverable (e.g. `MARVIN_FAUXMOTE_TRANSPORT=1` with a comment). `t1s_link.c`
+already compiles in the build (net/t1s on the include path); no new sources.
+
+### 4. Console diagnostics — `console/console.c`
+
+`nodes` already lists the new controller row automatically. `fauxmote status` still reads
+`Fauxmote_GetStatus` (works on either transport since STATUS latching is unchanged).
+Optional: append controller tx/rx frame counts to `cmd_fauxmote`'s status output and note
+the active transport.
+
+### 5. Docs + journal
+
+- `firmware/marvin/docs/journal.md`: decision-log entry (fauxmote routed over T1S on the
+  coordinator via the shared MAC-PHY; new `MARVIN_FAUXMOTE_TRANSPORT` flag default T1S;
+  `T1S_NODE_CONTROLLER` id 1 / `0x88B7`) + session-log entry; retire the "future work"
+  flag from the earlier fauxmote-link entry.
+- `docs/t1s-podl-link.md` §7.1/§7.2: controller node type is now handled on the marvin
+  side too (0x88B7 demux + TX, STATUS RX, node id 1).
+- `docs/marvin-fauxmote-link.md` §8: marvin side now speaks T1S (frame layout, STATUS as a
+  coordinator-directed uplink); UART retained as fallback.
+- Keep the `mf_proto.h` two-copy sync note accurate (wire content unchanged).
+
+## Files touched
+
+- `firmware/marvin/default/src/net/t1s/t1s_link.c` + `.h` (controller channel)
+- `firmware/marvin/default/src/net/fauxmote/fauxmote_link.c` + `.h` (transport seam + flag)
+- `firmware/marvin/cmake/marvin/default/user.cmake` (documented flag)
+- `firmware/marvin/default/src/console/console.c` (optional diag)
+- journal + 2-3 docs
+
+Not touched: `mf_proto.h` (wire unchanged), any `default/src/config/default/` MCC tree,
+`third_party/`.
+
+## Verification
+
+- **Builds both ways.** Default build (T1S) compiles the controller channel + fauxmote
+  T1S seam with no FLEXCOM5 references; flipping `MARVIN_FAUXMOTE_TRANSPORT=0` builds the
+  UART path with no `T1SLink_SendToController`/handler references. Confirm no unused-symbol
+  or missing-symbol errors either way, and that `T1SLink_Initialize` double-call (fretboard
+  T1S + fauxmote T1S) is a clean no-op.
+- **Refactor parity (UART build).** Existing behavior unchanged — a pure move of the STATUS
+  latch into `latch_status`.
+- **On-bus (once the fauxmote LAN8651 is wired — later session).** `nodes` shows the
+  controller (id 1) present via 0x88B6; marvin's gameplay masks reach the emulated
+  controller on 0x88B7 (GUITAR/WIIMOTE/POINTER/LINK_CMD); STATUS uplink latches and
+  `fauxmote status` reflects it; guitar (0x88B5) + fretboard traffic still flow on the
+  shared MAC-PHY without starvation (single in-flight TX interleaves correctly).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:25:32Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [ ] 🌡️ t1s_link.h: add controller channel API (SendToController, ControllerHandler typedef + setter, ethertype note, counters)
+- [ ] 🌡️ t1s_link.c: controller node type + table row, 0x88B7 ethertype, ethertype-param send_to_node, controller TX FIFO + flush, 0x88B7 RX demux, init idempotency, counters
+- [ ] 🌡️ fauxmote_link.h: add MARVIN_FAUXMOTE_TRANSPORT flag (default T1S), update header comment
+- [ ] 🌡️ fauxmote_link.c: transport seam (T1S vs UART), refactor STATUS latch, register controller handler, adjust Initialize
+- [ ] 🌡️ user.cmake: documented MARVIN_FAUXMOTE_TRANSPORT define
+- [ ] 🌡️ console.c: add controller tx/rx + transport to fauxmote status (optional diag)
+- [ ] 🌡️ Docs + journal: marvin journal, t1s-podl-link.md, marvin-fauxmote-link.md
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:25:37Z)**_
+
+Starting with the header.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:25:41Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [⚡] 🌡️ t1s_link.h: add controller channel API (SendToController, ControllerHandler typedef + setter, ethertype note, counters)
+- [ ] 🌡️ t1s_link.c: controller node type + table row, 0x88B7 ethertype, ethertype-param send_to_node, controller TX FIFO + flush, 0x88B7 RX demux, init idempotency, counters
+- [ ] 🌡️ fauxmote_link.h: add MARVIN_FAUXMOTE_TRANSPORT flag (default T1S), update header comment
+- [ ] 🌡️ fauxmote_link.c: transport seam (T1S vs UART), refactor STATUS latch, register controller handler, adjust Initialize
+- [ ] 🌡️ user.cmake: documented MARVIN_FAUXMOTE_TRANSPORT define
+- [ ] 🌡️ console.c: add controller tx/rx + transport to fauxmote status (optional diag)
+- [ ] 🌡️ Docs + journal: marvin journal, t1s-podl-link.md, marvin-fauxmote-link.md
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:25:51Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:07Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:22Z)**_
+
+Now t1s_link.c. First, the includes, ethertype, and controller-enable gating macro:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:28Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:38Z)**_
+
+Node type enum + name + table row:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:43Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:26:59Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:05Z)**_
+
+Now the controller state (TX FIFO, handler, counters) alongside the existing state:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:12Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:17Z)**_
+
+Now generalize `send_to_node` to take an ethertype and update the guitar call site:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:35Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:46Z)**_
+
+Init idempotency + controller queue creation:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:53Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:27:57Z)**_
+
+Counter accessors + SendToController + SetControllerHandler:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:01Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:16Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:20Z)**_
+
+Now the RX demux for 0x88B7:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:25Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:28Z)**_
+
+Now the RX branch that dispatches HB vs data vs controller:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:40Z)**_
+
+t1s_link.c uses queue APIs now — need to add the queue.h include:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:42Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:52Z)**_
+
+t1s_link core is done. Marking those todos complete and moving to the fauxmote side.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:28:56Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ t1s_link.h: add controller channel API (SendToController, ControllerHandler typedef + setter, ethertype note, counters)
+- [X] 🌡️ t1s_link.c: controller node type + table row, 0x88B7 ethertype, ethertype-param send_to_node, controller TX FIFO + flush, 0x88B7 RX demux, init idempotency, counters
+- [⚡] 🌡️ fauxmote_link.h: add MARVIN_FAUXMOTE_TRANSPORT flag (default T1S), update header comment
+- [ ] 🌡️ fauxmote_link.c: transport seam (T1S vs UART), refactor STATUS latch, register controller handler, adjust Initialize
+- [ ] 🌡️ user.cmake: documented MARVIN_FAUXMOTE_TRANSPORT define
+- [ ] 🌡️ console.c: add controller tx/rx + transport to fauxmote status (optional diag)
+- [ ] 🌡️ Docs + journal: marvin journal, t1s-podl-link.md, marvin-fauxmote-link.md
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:11Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.h has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:17Z)**_
+
+Now the fauxmote_link.c transport seam. First, includes and the transport gate:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:21Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:28Z)**_
+
+Gate the UART-only RX statics:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:34Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:38Z)**_
+
+Now `send_frame` — split into T1S and UART variants:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:29:47Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:30:04Z)**_
+
+Now the RX section — extract `latch_status`, add T1S `ctrl_rx`, keep UART parser under the fallback:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:30:29Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:30:36Z)**_
+
+Update the TX task startup banner (it names FLEXCOM5/baud, wrong under T1S):
+
+_**Agent (claude-opus-4-8 2026-07-29 01:30:40Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:30:46Z)**_
+
+Now `Fauxmote_Initialize` — split the transport-specific setup:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:03Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:18Z)**_
+
+fauxmote_link.c done. Now user.cmake:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:23Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ t1s_link.h: add controller channel API (SendToController, ControllerHandler typedef + setter, ethertype note, counters)
+- [X] 🌡️ t1s_link.c: controller node type + table row, 0x88B7 ethertype, ethertype-param send_to_node, controller TX FIFO + flush, 0x88B7 RX demux, init idempotency, counters
+- [X] 🌡️ fauxmote_link.h: add MARVIN_FAUXMOTE_TRANSPORT flag (default T1S), update header comment
+- [X] 🌡️ fauxmote_link.c: transport seam (T1S vs UART), refactor STATUS latch, register controller handler, adjust Initialize
+- [⚡] 🌡️ user.cmake: documented MARVIN_FAUXMOTE_TRANSPORT define
+- [ ] 🌡️ console.c: add controller tx/rx + transport to fauxmote status (optional diag)
+- [ ] 🌡️ Docs + journal: marvin journal, t1s-podl-link.md, marvin-fauxmote-link.md
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:32Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:38Z)**_
+
+Now the console diagnostics. Let me read the relevant sections:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:38Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/console/console.c`
+
+```text
+697	static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
+698	{
+699	    (void)cli; (void)ctx;
+700	    const char *sub = embeddedCliGetToken(args, 1);
+701	
+702	    if (sub == NULL || strcmp(sub, "status") == 0)
+703	    {
+704	        uint8_t flags, slot, mode, res;
+705	        uint32_t age;
+706	        if (!Fauxmote_GetStatus(&flags, &slot, &mode, &res, &age))
+707	        {
+708	            console_printf("fauxmote: no STATUS received yet");
+709	            return;
+710	        }
+711	        console_printf("age:       %lu ms", (unsigned long)age);
+712	        console_printf("connected: %s", (flags & MF_ST_CONNECTED) ? "yes" : "no");
+713	        console_printf("assigned:  %s (slot %u)", (flags & MF_ST_ASSIGNED) ? "yes" : "no", slot);
+714	        console_printf("ext:       %s", (flags & MF_ST_EXT_ATTACHED) ? "yes" : "no");
+715	        console_printf("pairing:   %s", (flags & MF_ST_PAIRING) ? "yes" : "no");
+716	        console_printf("bonded:    %s", (flags & MF_ST_BONDED) ? "yes" : "no");
+717	        console_printf("mode:      0x%02x  last_result=%u", mode, res);
+718	        return;
+719	    }
+720	    if (strcmp(sub, "pair") == 0)      { Fauxmote_SendCmd(MF_CMD_PAIR);      console_printf("fauxmote: pair");      return; }
+721	    if (strcmp(sub, "stop") == 0)      { Fauxmote_SendCmd(MF_CMD_STOP);      console_printf("fauxmote: stop");      return; }
+722	    if (strcmp(sub, "reconnect") == 0) { Fauxmote_SendCmd(MF_CMD_RECONNECT); console_printf("fauxmote: reconnect"); return; }
+723	    if (strcmp(sub, "unlink") == 0)    { Fauxmote_SendCmd(MF_CMD_UNLINK);    console_printf("fauxmote: unlink");    return; }
+724	    if (strcmp(sub, "ext") == 0)
+725	    {
+726	        int v = parse_onoff(embeddedCliGetToken(args, 2));
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:52Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:31:57Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Confirm console includes the needed headers
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+grep -n "t1s_link.h\|fauxmote_link.h" default/src/console/console.c
+```
+
+```text
+25:#include "net/t1s/t1s_link.h"
+27:#include "net/fauxmote/fauxmote_link.h"
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:32:01Z)**_
+
+Both headers are included. Now let me try to build to validate the T1S (default) configuration compiles. Let me check how this project builds.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:32:05Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Inspect build setup
+
+```bash
+cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin
+ls *.json *.mplab.json .vscode/*.json 2>/dev/null; echo "---"; ls cmake 2>/dev/null; echo "--- build dirs ---"; ls -d build* dist 2>/dev/null; echo "--- mplab? ---"; which xc32-gcc 2>/dev/null; ls ~/.mchp_packs 2>/dev/null | head
+```
+
+```text
+(eval):2: no matches found: *.json
+---
+marvin
+--- build dirs ---
+(eval):2: no matches found: build*
+--- mplab? ---
+xc32-gcc not found
+ARM
+Microchip
+index.idx
+index.idx.cache-control
+index.idx.etag
+metapm.xml
+temp_system_packpath
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:32:14Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Locate xc32 toolchain
+
+`ls /Applications/microchip/xc32 2>/dev/null; echo "---"; find /Applications/microchip -maxdepth 3 -name "xc32-gcc" 2>/dev/null | head`
+
+```text
+v4.60
+v5.10
+---
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:32:20Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+Find xc32 gcc binary
+
+`ls /Applications/microchip/xc32/v5.10/bin 2>/dev/null | grep -i gcc; echo "---maybe arm variant---"; ls /Applications/microchip/xc32/v5.10/bin 2>/dev/null | head -30`
+
+```text
+xc32-gcc
+---maybe arm variant---
+bin
+manifest
+roam.lic
+verifyinst
+xc32-addr2line
+xc32-ar
+xc32-as
+xc32-bin2hex
+xc32-c++
+xc32-clangd
+xc32-elfedit
+xc32-g++
+xc32-gcc
+xc32-ld
+xc32-nm
+xc32-objcopy
+xc32-objdump
+xc32-ranlib
+xc32-readelf
+xc32-size
+xc32-strings
+xc32-strip
+xclm
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-29 01:32:23Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-29 01:32:31Z)**_
+
+i will build just let me know when
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:32:51Z)**_
+
+Understood — I'll let you build. Let me do a careful self-review of the RX function region (the trickiest edit) and then finish the docs/journal while you build.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:32:51Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+497	
+498	#if T1S_CTRL_ENABLED
+499	
+500	bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)
+501	{
+502	    if (!s_link_up || (s_ctrl_queue == NULL) || (len > 8u)) {
+503	        return false;
+504	    }
+505	    uint8_t item[T1S_CTRL_ITEM_MAX];
+506	    item[0] = type;
+507	    item[1] = len;
+508	    if (len != 0u) { memcpy(&item[2], payload, len); }
+509	    if (xQueueSend(s_ctrl_queue, item, 0) != pdTRUE) {
+510	        return false;   /* FIFO full — drop (latest producer state re-sends) */
+511	    }
+512	    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+513	    return true;
+514	}
+515	
+516	void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler)
+517	{
+518	    s_ctrl_handler = handler;
+519	}
+520	
+521	#else  /* controller channel not compiled in (fauxmote not on T1S) */
+522	
+523	bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)
+524	{
+525	    (void)type; (void)payload; (void)len;
+526	    return false;
+527	}
+528	
+529	void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler)
+530	{
+531	    (void)handler;
+532	}
+533	
+534	#endif
+535	
+536	/*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
+537	
+538	bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
+539	                             uint16_t len, void *pGlobalTag)
+540	{
+541	    (void)tc6instance;
+542	    (void)pGlobalTag;
+543	    /* Non-blocking full-duplex transfer; spi_done_cb calls TC6_SpiBufferDone.
+544	     * Returns false if the PLib is busy — the driver retries. */
+545	    return FLEXCOM3_SPI_WriteRead(pTx, len, pRx, len);
+546	}
+547	
+548	void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
+549	{
+550	    (void)pInst;
+551	    (void)pGlobalTag;
+552	    /* May be called from task or ISR context; just flag. ISR sources also give
+553	     * the semaphore, so the service task always wakes. */
+554	    s_need_service = true;
+555	}
+556	
+557	void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
+558	                              uint16_t len, void *pGlobalTag)
+559	{
+560	    (void)pInst;
+561	    (void)pGlobalTag;
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-29 01:34:25Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   - **Overall task ("ok now marvin"):** Route the fauxmote (ESP32 Wiimote/guitar emulator) command link over 10BASE-T1S on the **marvin coordinator side**, mirroring how the guitar/fretboard nodes were staged before their hardware existed. The ESP32/fauxmote side was already done in a prior session (its own LAN8651, ethertype 0x88B7, controller node id 1, heartbeat node_type 3). This session brings the marvin end onto the same channel.
+   - **Locked design decision (via AskUserQuestion this session):** The new `MARVIN_FAUXMOTE_TRANSPORT` build flag **defaults to T1S**; UART is the explicit opt-in fallback (user selected "Default T1S").
+   - **Most recent user message:** "i will build just let me know when" — the user will run the firmware build themselves; I must NOT build, and should signal when the code is ready. (This interrupted my attempt to locate the xc32 toolchain.)
+   - **Standing constraints (from CLAUDE.md/memory, still in effect):** Never `git commit` on own initiative — only on explicit ask; do NOT edit MCC/Legato files under `firmware/*/default/src/config/default/`; do NOT edit `third_party/`; do NOT use `.specstory/` as context; code comments describe current code only (no dev-diary narrative); static allocation only, no malloc; read the relevant subproject journal first and update it as decisions land; use uv for Python (set UV_CACHE_DIR to $TMPDIR/uv-cache in-sandbox).
+
+2. Key Technical Concepts:
+   - **marvin has ONE LAN8651 MAC-PHY** (single TC6 instance, FLEXCOM3 SPI @ 15MHz, in `t1s_link.c`). The fauxmote channel therefore CANNOT be a second interface — it rides the existing `t1s_link` TX/RX path alongside guitar command (0x88B5) and presence heartbeats (0x88B6), on its own ethertype **0x88B7**.
+   - **Node table (PLCA ids):** 0 marvin (coordinator), 1 controller/fauxmote, 3 guitar (actuator), 4 fretboard (detector). MAC = `02:00:00:00:00:<id>`.
+   - **Ethertypes:** 0x88B5 = data/command, 0x88B6 = heartbeat/presence, 0x88B7 = controller (fauxmote mf_proto).
+   - **Heartbeat node_type codes** (informational, separate from PLCA id): 1=detector, 2=guitar, 3=controller. marvin uses src-MAC (not node_type) to identify a node, so presence works automatically once id 1 is in the node table.
+   - **mf_proto** (shared byte-for-byte between marvin and fauxmote): message types GUITAR(0x01,3B), WIIMOTE(0x02,4B), LINK_CMD(0x03,1B), ACCEL(0x04,3B), POINTER(0x05,3B), STATUS(0x81,4B). MAX_PAYLOAD=8. CRC-8/CCITT poly 0x07. marvin SENDS GUITAR/WIIMOTE/POINTER/LINK_CMD (m→f), RECEIVES STATUS (f→m).
+   - **T1S mf frame layout:** `[dst MAC][src MAC][0x88B7][TYPE][mf payload]`. Ethernet header = 14 bytes; MAC-PHY supplies FCS + pads short frames to 46-byte minimum.
+   - **Transport-seam pattern:** mirrors the existing `MARVIN_FRETBOARD_TRANSPORT={FRETBOARD_TRANSPORT_UART(0),FRETBOARD_TRANSPORT_T1S(1)}` in `fretboard_link.c/.h`, wired via `user.cmake` `-D`.
+   - **Init idempotency:** both fretboard(T1S) and fauxmote(T1S) call `T1SLink_Initialize()`; guarded by a static `s_initialized` flag (first wins). app.c order: `FretboardLink_Initialize()` then `Fauxmote_Initialize()`.
+   - **Build:** SAM9X75 (Cortex-A5) via MPLAB VS Code extension. xc32 at `/Applications/microchip/xc32/v5.10/bin/xc32-gcc` (not in PATH). User builds themselves.
+   - Static allocation only (FreeRTOS static tasks/queues/semaphores).
+
+3. Files and Code Sections:
+
+   - **firmware/marvin/default/src/net/t1s/t1s_link.h** — public API for the shared MAC-PHY link. Added:
+     - After `T1SLink_ServiceOverruns`: `uint32_t T1SLink_CtrlTxCount(void);` / `uint32_t T1SLink_CtrlRxCount(void);`
+     - After `T1SLink_SetFrameHandler`: controller channel doc comment + `bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len);`, `typedef void (*T1SLink_ControllerHandler)(uint8_t type, const uint8_t *payload, uint16_t len);`, `void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler);`
+
+   - **firmware/marvin/default/src/net/t1s/t1s_link.c** — central implementation. Edits:
+     - Added `#include "queue.h"` (after semphr.h) — required by new queue APIs.
+     - Added `#include "net/fauxmote/fauxmote_link.h"` (after detector.h) + `#define T1S_CTRL_ENABLED (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)`
+     - `#define T1S_ETHERTYPE_CTRL   (0x88B7u)` alongside existing ethertypes.
+     - Added `T1S_NODE_CONTROLLER` to `t1s_node_type_t` enum.
+     - Node table gained gated row: `#if T1S_CTRL_ENABLED { 1u, T1S_NO_DETECTOR, T1S_NODE_CONTROLLER }, #endif`
+     - `node_type_name` gained `case T1S_NODE_CONTROLLER: return "controller";`
+     - New gated state block:
+       ```c
+       #if T1S_CTRL_ENABLED
+       #define T1S_CTRL_ITEM_MAX   (2u + 8u)   /* type + len + max mf payload */
+       #define T1S_CTRL_QUEUE_DEPTH (8u)
+       static QueueHandle_t s_ctrl_queue;
+       static StaticQueue_t s_ctrl_queue_buf;
+       static uint8_t       s_ctrl_queue_storage[T1S_CTRL_QUEUE_DEPTH * T1S_CTRL_ITEM_MAX];
+       static T1SLink_ControllerHandler s_ctrl_handler;
+       static volatile uint32_t s_ctrl_tx_count;
+       static volatile uint32_t s_ctrl_rx_count;
+       #endif
+       ```
+     - `send_to_node` signature changed to `static bool send_to_node(uint8_t node_id, uint16_t ethertype, const uint8_t *payload, uint16_t payload_len)`; body writes `ethertype` into bytes 12/13. Guitar flush call site updated to `send_to_node(guitar->node_id, T1S_ETHERTYPE, &mask, 1u)`.
+     - Controller flush block added in `t1s_task` after the guitar-command flush:
+       ```c
+       #if T1S_CTRL_ENABLED
+       if (!s_tx_busy) {
+           uint8_t item[T1S_CTRL_ITEM_MAX];
+           if (xQueueReceive(s_ctrl_queue, item, 0) == pdTRUE) {
+               const t1s_node_t *ctrl = node_for_type(T1S_NODE_CONTROLLER);
+               uint8_t len = item[1];
+               if ((ctrl != NULL) && (len <= 8u)) {
+                   uint8_t body[1u + 8u];
+                   body[0] = item[0];
+                   if (len != 0u) { memcpy(&body[1], &item[2], len); }
+                   if (send_to_node(ctrl->node_id, T1S_ETHERTYPE_CTRL, body, (uint16_t)(1u + len))) {
+                       s_ctrl_tx_count++;
+                   }
+               }
+           }
+       }
+       #endif
+       ```
+     - `T1SLink_Initialize` gained: `static bool s_initialized; if (s_initialized) { return; } s_initialized = true;` at top, and gated `s_ctrl_queue = xQueueCreateStatic(...)` before task creation.
+     - Counter accessors: `#if T1S_CTRL_ENABLED` real getters `#else` stubs returning `0u` `#endif`.
+     - `T1SLink_SendToController` (gated real impl: validates link/queue/len≤8, builds `item[0]=type,item[1]=len,memcpy payload`, `xQueueSend(...,0)`, gives `s_svc_sem`; #else stub returns false) and `T1SLink_SetControllerHandler` (gated: sets `s_ctrl_handler`; #else stub).
+     - RX ethertype filter extended: `if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB) #if T1S_CTRL_ENABLED && (ethertype != T1S_ETHERTYPE_CTRL) #endif ) { return; }`
+     - RX demux branch added before the data-frame handler:
+       ```c
+       #if T1S_CTRL_ENABLED
+       if (ethertype == T1S_ETHERTYPE_CTRL) {
+           if (payload_len >= 1u) {
+               s_ctrl_rx_count++;
+               if (s_ctrl_handler != NULL) {
+                   s_ctrl_handler(payload[0], &payload[1], (uint16_t)(payload_len - 1u));
+               }
+           }
+           return;
+       }
+       #endif
+       ```
+
+   - **firmware/marvin/default/src/net/fauxmote/fauxmote_link.h** — rewrote the header comment (transport is now build-selectable, no longer "owns FLEXCOM5 exclusively"). Added:
+     ```c
+     #define FAUXMOTE_TRANSPORT_UART 0
+     #define FAUXMOTE_TRANSPORT_T1S  1
+     #ifndef MARVIN_FAUXMOTE_TRANSPORT
+     #define MARVIN_FAUXMOTE_TRANSPORT FAUXMOTE_TRANSPORT_T1S
+     #endif
+     ```
+
+   - **firmware/marvin/default/src/net/fauxmote/fauxmote_link.c** — transport seam. Producer/latching/STATUS layer unchanged. Edits:
+     - Added gated `#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S) #include "net/t1s/t1s_link.h" #endif`
+     - Gated the RX-only statics (`s_rx_notify`, `s_rx_notify_buf`, `s_rx_stack`, `s_rx_tcb`) under `#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_UART)`.
+     - `send_frame` split: T1S variant calls `(void)T1SLink_SendToController(type, payload, len);`; UART variant is the original SOF/LEN/CRC8 + FLEXCOM5_USART_Write.
+     - Extracted `static void latch_status(const uint8_t *payload, uint16_t len)` (checks `len != MF_LEN_STATUS`, critical-section memcpy into `s_status`, set valid/tick, LOG_INFO on change).
+     - T1S: `static void ctrl_rx(uint8_t type, const uint8_t *payload, uint16_t len) { if (type == MF_MSG_STATUS) { latch_status(payload, len); } }`
+     - UART (`#else`): kept `parse_byte` (post-CRC now calls `if (type == MF_MSG_STATUS) { latch_status(payload, len); }`), `rx_event_handler`, `fx_rx_task`, closed with `#endif`.
+     - `fx_tx_task` banner made transport-aware (T1S: "T1S controller channel, 0x88B7"; UART: FLEXCOM5 baud line).
+     - `Fauxmote_Initialize` split: common cmd_queue + tx_notify creation, then `#if T1S`: `T1SLink_Initialize(); T1SLink_SetControllerHandler(ctrl_rx);` + create only FxTx task; `#else`: create s_rx_notify, FLEXCOM5 SerialSetup + RX callback/threshold/notify, create FxTx + FxRx tasks. `s_ready = true;` at end.
+
+   - **firmware/marvin/cmake/marvin/default/user.cmake** — added after `MARVIN_FRETBOARD_TRANSPORT=1`:
+     ```
+     # Fauxmote link transport: default is the 10BASE-T1S controller channel
+     # (0x88B7, shares the MAC-PHY). Set to 0 to fall back to the dedicated
+     # FLEXCOM5 UART point-to-point link. Kept explicit so the choice is visible.
+     MARVIN_FAUXMOTE_TRANSPORT=1
+     ```
+
+   - **firmware/marvin/default/src/console/console.c** — already `#include`s both `net/t1s/t1s_link.h` (line 25) and `net/fauxmote/fauxmote_link.h` (line 27). Added to `cmd_fauxmote` status output (start of the status branch):
+     ```c
+     #if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+     console_printf("transport: T1S (0x88B7)  tx=%lu rx=%lu",
+                    (unsigned long)T1SLink_CtrlTxCount(),
+                    (unsigned long)T1SLink_CtrlRxCount());
+     #else
+     console_printf("transport: UART (FLEXCOM5)");
+     #endif
+     ```
+     `nodes` command lists the new controller row automatically (no change needed).
+
+   - **Reference-only files read (not modified):** fretboard_link.c/.h (transport-seam pattern), mf_proto.h (wire protocol, unchanged), app.c (init order in App_StartServices lines 174-216), SPEC.md, firmware/fretboard/SPEC.md.
+
+   - **/Users/gregmrozek/.claude/plans/valiant-watching-nest.md** — the approved plan file (rewritten from the ESP-side plan to the marvin-side plan). Contains full approach + verification.
+
+4. Errors and fixes:
+   - **Shell glob errors** (`no matches found: default/*.cmake`, `--include=*.c`): zsh mis-parsed unquoted globs. Worked around by quoting include patterns and using explicit paths; not blocking.
+   - **Write to plan file failed** ("File has not been read yet"): fixed by Read-ing the plan file first, then Write succeeded.
+   - **No build performed:** xc32-gcc not in PATH; located at `/Applications/microchip/xc32/v5.10/bin`. Before I could proceed, the user interrupted with "i will build just let me know when" — so I must not build; the user handles it.
+
+5. Problem Solving:
+   - Reached and implemented the key architecture: single MAC-PHY means the fauxmote channel is a *generic controller channel* inside `t1s_link.c` (node type + table row + TX FIFO + RX demux on 0x88B7), while `fauxmote_link.c` keeps its entire producer/latching/STATUS layer and only swaps the transport seam.
+   - Ensured init idempotency (both fretboard-T1S and fauxmote-T1S call `T1SLink_Initialize`).
+   - Ensured the controller TX FIFO decouples the multi-message-per-wake fauxmote producer from the single-in-flight TC6 TX, interleaving with the latest-wins guitar command across service wakes.
+   - Handled compile-out cleanliness: `T1S_CTRL_ENABLED` gates node-table row/state/TX/RX; header symbols always exist (stubs when disabled); UART-only statics gated so the T1S build has no FLEXCOM5 references and vice versa.
+
+6. All user messages:
+   - (Resumed task from prior summary; the driving request was "ok now marvin".)
+   - "i will build just let me know when" (with an appended CRITICAL instruction, which was part of the summarization request harness, not a separate user turn).
+
+7. Pending Tasks:
+   - **Docs + journal updates (todo #7, not yet started):**
+     - `firmware/marvin/docs/journal.md`: decision-log entry (fauxmote routed over T1S on the coordinator via the shared MAC-PHY; new `MARVIN_FAUXMOTE_TRANSPORT` flag default T1S; `T1S_NODE_CONTROLLER` id 1 / 0x88B7) + session-log entry; retire the "future work" note from the earlier fauxmote-link entry.
+     - `docs/t1s-podl-link.md` §7.1/§7.2: controller node type now handled on the marvin side too (0x88B7 demux + TX, STATUS RX, node id 1).
+     - `docs/marvin-fauxmote-link.md` §8: marvin side now speaks T1S (frame layout, STATUS as a coordinator-directed uplink); UART retained as fallback.
+     - Keep the mf_proto.h two-copy sync note accurate (wire content unchanged).
+   - **User will build** the firmware and report results; I should let them know when the code is ready for that build.
+   - **Later sessions (out of scope now):** physical LAN8651 bring-up on the fauxmote node; on-bus verification.
+
+8. Current Work:
+   Immediately before this summary, all code edits were complete (t1s_link.h/.c, fauxmote_link.h/.c, user.cmake, console.c — todos 1-6 marked completed). I was attempting to run a compile to validate the default (T1S) configuration and had just located the xc32 toolchain at `/Applications/microchip/xc32/v5.10/bin/xc32-gcc`. The user then interrupted with "i will build just let me know when," indicating they will perform the build. The only remaining implementation task is the docs + journal updates (todo #7).
+
+9. Optional Next Step:
+   Tell the user the code changes are complete and ready for their build (list the 6 files changed and note it's the T1S-default config), and then proceed with the pending docs + journal updates (todo #7: `firmware/marvin/docs/journal.md`, `docs/t1s-podl-link.md`, `docs/marvin-fauxmote-link.md`). This is directly in line with the plan the user approved and the standing CLAUDE.md rule to "Update the journal as you go." Per the user's "i will build just let me know when," I should signal build-readiness and not attempt to build myself.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/7c313450-d23f-4e40-b779-d8155d63eb74.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:34:37Z)**_
+
+Let me verify the RX demux region I was reviewing before finishing docs.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:34:38Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+561	    (void)pGlobalTag;
+562	    if (((uint32_t)offset + len) <= sizeof(s_rx_buf)) {
+563	        memcpy(&s_rx_buf[offset], pRx, len);
+564	    }
+565	}
+566	
+567	void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+568	                               uint64_t *rxTimestamp, void *pGlobalTag)
+569	{
+570	    (void)pInst;
+571	    (void)rxTimestamp;
+572	    (void)pGlobalTag;
+573	
+574	    if (!success || (len < T1S_ETH_HDR_LEN)) {
+575	        return;
+576	    }
+577	
+578	    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+579	    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)
+580	#if T1S_CTRL_ENABLED
+581	        && (ethertype != T1S_ETHERTYPE_CTRL)
+582	#endif
+583	       ) {
+584	        return;  /* not ours (promiscuous RX during bring-up) */
+585	    }
+586	
+587	    const uint8_t *src = &s_rx_buf[6];
+588	    const t1s_node_t *node = node_for_mac(src);
+589	    if (node == NULL) {
+590	        LOG_DEBUG("T1S: rx from unknown node %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+591	                  src[0], src[1], src[2], src[3], src[4], src[5]);
+592	        return;
+593	    }
+594	    uint8_t idx = (uint8_t)(node - s_nodes);
+595	
+596	    const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
+597	    uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
+598	
+599	    if (ethertype == T1S_ETHERTYPE_HB) {
+600	        /* Presence heartbeat: stamp last-seen; capture the seq if present. */
+601	        s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+602	        s_node_rt[idx].seen = true;
+603	        if (payload_len >= T1S_HB_LEN) {
+604	            s_node_rt[idx].last_seq = (uint32_t)payload[4]
+605	                                    | ((uint32_t)payload[5] << 8)
+606	                                    | ((uint32_t)payload[6] << 16)
+607	                                    | ((uint32_t)payload[7] << 24);
+608	        }
+609	        return;
+610	    }
+611	
+612	#if T1S_CTRL_ENABLED
+613	    if (ethertype == T1S_ETHERTYPE_CTRL) {
+614	        /* Controller (fauxmote) frame: payload is [TYPE][mf payload]. */
+615	        if (payload_len >= 1u) {
+616	            s_ctrl_rx_count++;
+617	            if (s_ctrl_handler != NULL) {
+618	                s_ctrl_handler(payload[0], &payload[1], (uint16_t)(payload_len - 1u));
+619	            }
+620	        }
+621	        return;
+622	    }
+623	#endif
+624	
+625	    s_rx_count++;
+626	    if (s_frame_handler != NULL) {
+627	        s_frame_handler(node->detector_id, payload, payload_len);
+628	    }
+629	}
+630	
+631	void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+632	{
+633	    (void)pGlobalTag;
+634	    LOG_WARN("T1S: error: %s\r\n", TC6_GetErrorStr(err));
+635	    switch (err) {
+636	        case TC6Error_NoHardware:
+637	        case TC6Error_BadChecksum:
+638	        case TC6Error_UnexpectedCtrl:
+639	        case TC6Error_BadTxData:
+640	        case TC6Error_SyncLost:
+641	        case TC6Error_SpiError:
+642	            TC6Regs_Reinit(pInst);
+643	            break;
+644	        default:
+645	            break;
+646	    }
+647	}
+648	
+649	/*>>>>>>>>>>>>>>>>>>>>  TC6Regs callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>>>>*/
+650
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:34:42Z)**_
+
+Code all looks correct and self-consistent. Todos 1-6 are done. Let me finish the docs/journal (todo #7).
+
+_**Agent (claude-opus-4-8 2026-07-29 01:34:46Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ t1s_link.h: controller channel API
+- [X] 🌡️ t1s_link.c: controller node type, ethertype, TX FIFO, RX demux, init idempotency, counters
+- [X] 🌡️ fauxmote_link.h: MARVIN_FAUXMOTE_TRANSPORT flag
+- [X] 🌡️ fauxmote_link.c: transport seam
+- [X] 🌡️ user.cmake: documented MARVIN_FAUXMOTE_TRANSPORT define
+- [X] 🌡️ console.c: controller tx/rx + transport in fauxmote status
+- [⚡] 🌡️ Docs + journal: marvin journal, t1s-podl-link.md, marvin-fauxmote-link.md
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:34:58Z)**_
+
+The code is complete and ready for your build. Six files changed, all in the default (T1S) config:
+
+- [t1s_link.h](firmware/marvin/default/src/net/t1s/t1s_link.h) / [t1s_link.c](firmware/marvin/default/src/net/t1s/t1s_link.c) — generic controller channel (node type + gated table row id 1, ethertype `0x88B7`, TX FIFO, RX demux, init idempotency, counters)
+- [fauxmote_link.h](firmware/marvin/default/src/net/fauxmote/fauxmote_link.h) / [fauxmote_link.c](firmware/marvin/default/src/net/fauxmote/fauxmote_link.c) — transport seam (T1S default, UART fallback)
+- [user.cmake](firmware/marvin/cmake/marvin/default/user.cmake) — documented `MARVIN_FAUXMOTE_TRANSPORT=1`
+- [console.c](firmware/marvin/default/src/console/console.c) — transport + ctrl tx/rx in `fauxmote status`
+
+Now finishing the docs/journal. Let me read them.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:00Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+1	# marvin — Working Journal
+2	
+3	Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+4	
+5	---
+6	
+7	**2026-07-23 — fauxmote link moved to a dedicated FLEXCOM5 USART; fauxmote is now transport-independent (runs on UART *and* T1S guitar builds).** fauxmote previously borrowed FLEXCOM1 — the fretboard/guitar UART-transport peripheral — which was only free in the T1S guitar build, so the whole fauxmote path was compile-guarded to `MARVIN_FRETBOARD_TRANSPORT == T1S`. A new FLEXCOM5 USART (added in MCC) gives fauxmote its own peripheral, dissolving the conflict.
+8	- **New peripheral (MCC).** FLEXCOM5 USART on `PA16`/`FLEXCOM5_IO0` (`FAUXMOTE_TX`) and `PA15`/`FLEXCOM5_IO1` (`FAUXMOTE_RX`), AIC source 14, ring-buffer mode. Static config (`FLEX_US_MR`/`FLEX_US_BRGR`, 8-N-1, MCK, OVER=1, CD=66/FP=5) is byte-identical to FLEXCOM1; fauxmote overrides baud to 1 Mbaud at runtime via `SerialSetup`, so the static CD/FP is non-binding. Commit `a36ccdd` (re-applied patch #11 after the regen).
+9	- **App migration.** `fauxmote_link.c/.h` is a mechanical `FLEXCOM1_USART_*` → `FLEXCOM5_USART_*` rename (transport comes via `definitions.h`; no include change). With FLEXCOM1 no longer contended, every `MARVIN_FRETBOARD_TRANSPORT`-guard that existed *only* to keep fauxmote off UART-guitar builds was dropped: `app.c` `Fauxmote_Initialize()`, the `Fauxmote_SendGuitarMask` mirror tap in `fretboard_link.c`, the `fauxmote` console command, and `game_controller.c`'s `ensure_wii_connected()` pre-flight (every build drives a Wii through fauxmote, so the Wii-connect check now always runs — the old `#else return true` stub is gone). The remaining `MARVIN_FRETBOARD_TRANSPORT` guards (all in `fretboard_link.c`) are the genuine guitar-actuator UART-vs-T1S split and are unchanged. Commit `1872a9c`; verified on hardware.
+10	
+11	---
+12	
+13	**2026-07-23 — T1S host SPI moved FLEXCOM4 → FLEXCOM3 (MCC regen + app rename); verified driving the guitar over T1S.** Board rework relocated the T1S link off FLEXCOM4. Regenerated MCC and renamed the app-side wrapper; the chip-select moved from CS0 to CS1 in the process.
+14	- **Pin map (new → old).** SPI: MOSI `PC22`/`FLEXCOM3_IO0` (was PA10), MISO `PC23`/`FLEXCOM3_IO1` (was PA9), nCS `PC24`/`FLEXCOM3_IO4` (was PA12), SCK `PC26`/`FLEXCOM3_IO2` (was PA11). GPIO: `T1S_IRQ_N` `PB18` (was PB25; falling-edge, internal pull-up carried over), `T1S_RST` `PA17` (was PB3; output, idle high). AIC source 13 (FLEXCOM4) → 8 (FLEXCOM3).
+15	- **Chip-select CS0 → CS1, transparent to app code.** `FLEXCOM3_SPI_Initialize` sets `FLEX_SPI_MR.PCS = NPCS1` and configures `CSR[1]`; nCS/PC24 is the peripheral-muxed `FLEXCOM3_IO4` line and `FLEXCOM3_SPI_WriteRead()` takes no CS argument, so hardware drives CS. `t1s_link.c` never references a CS index or the nCS pin → the CS0→CS1 move needed **zero** app change. App diff was a pure `FLEXCOM4_SPI_*` → `FLEXCOM3_SPI_*` rename (`TransferSetup`/`CallbackRegister`/`WriteRead`); the `T1S_RST`/`T1S_IRQ_N` GPIO macros resolve to the new pins through `definitions.h`.
+16	- **MISO pull-down re-created on PC23.** The absent-chip-determinism pull-down on MISO (added in the "absent-chip handling" work in the decision log) did not survive the FLEXCOM3 regen; re-added on `PC23` via MCC (`5faa2b7`) so a tristated/unpopulated LAN8651 reads a deterministic 0x00 rather than noise.
+17	- **Re-apply patch #11 (`plib_aic.c` UDPHS boot-storm mask) was reverted by the regen and re-applied** before commit (as always after MCC regen). Commits: `70b1fc7` (regen + patch #11), `9ce4fcf` (app rename), `5faa2b7` (MISO pull-down). Verified on hardware: marvin drives the guitar follower over T1S.
+18	
+19	---
+20	
+21	**2026-07-22 — marvin froze on boot whenever the USB-CDC (UDPHS) cable was attached at power-on; root cause = `AIC_INT_Initialize` unmasks CPU IRQs with UDPHS already AIC-enabled but its driver uninitialized → ENDRESET interrupt storm. Fixed on hardware (deterministic first-load boot across many power cycles). Local fix minimized to a single generated file.** Symptom: cable attached at boot → totally dead (no splash, no DBGU past the `bkptnone` bootstrap banner; marvin's own `printf` also targets DBGU, so "only the banner" = hang before marvin's first log); attach *after* boot → fine; a variable number of `load-ram.sh` (nSRST) reloads would eventually boot. Diagnosed by JTAG-halting the stalled core and reading PC + AIC/UDPHS registers.
+22	- **Root cause chain.** `AIC_INT_Initialize()` ([plib_aic.c](../default/src/config/default/peripheral/aic/plib_aic.c)) configures every tabled source, writes `AIC_IECR` to **enable** each (incl. UDPHS, source 23, level-sensitive), then calls `__enable_irq()` *before returning* — while `DRV_USB_UDPHS_Initialize` hasn't run (`gDrvUSBUDPHSObj[0].status == UNINITIALIZED`). `UDPHS_IEN` reset default is `0x10` (**ENDRESET enabled**); with the controller attached (D+ pull-up) a connected host drives bus resets → ENDRESET asserts. The instant `__enable_irq()` runs, the ISR fires with no client, can't clear the level-sensitive source → 100% CPU in the UDPHS ISR → `SYS_Initialize` never finishes, scheduler never starts. The variable "N loads" = a race on whether the host is mid-reset when `__enable_irq()` executes. Confirmed at the halt: `AIC_ISR`=23, `IPR0` bit23 pending, `IEN`=0x10, `CTRL`=0x100 (attached), `isOpened`=false, all PC samples in `FreeRTOS_IRQ_Handler`↔`DRV_USB_UDPHS_Tasks_ISR`. (`nSRST` does **not** reset UDPHS, so the attached/enabled state persists across the JTAG dev-loop's warm resets.)
+23	- **Fix (local, minimal footprint — one generated file).** In `AIC_INT_Initialize`, after the configure loop and **before `__enable_irq()`**, leave UDPHS (source 23) MASKED (`AIC_SSR`←23, `AIC_IDCR`) — handler/priority still configured. The perf-log CDC sink enables it via `SYS_INT_SourceEnable(UDPHS_IRQn)` in `PerfLogSinkCdc_Initialize` (our tree) *after* open+attach. A masked AIC source can't vector the CPU regardless of controller/host state, so boot always completes; enumeration works once the sink arms it. **Masking must be inside `AIC_INT_Initialize`** — any mask after it returns loses the race (an earlier `SYS_INT_SourceDisable` in `initialization.c` right after the call never executed). Verified on hardware: first-load boot every time, cable attached, across many cold power cycles; CDC enumerates after boot.
+24	- **Scope decision (w/ Greg): applied only the AIC mask locally.** Two *additional* real driver defects were found and are documented for upstream but **not applied locally** — once source 23 is masked until a client exists, neither can fire: (1) `F_DRV_USB_UDPHS_DEVICE_Tasks_ISR` no-client paths return without acknowledging the interrupt (storm on a level-sensitive controller); (2) `F_DRV_USB_UDPHS_DEVICE_Initialize` sets DETACH *before* a core-reset toggle that clears it, so init finishes *attached*. Keeping the local change to the single `plib_aic.c` patch minimizes the MCC re-apply surface. The full three-fix set + evidence lives on branch `fix/udphs-aic-boot-storm` and in [`udphs_aic_boot_storm_bug.md`](udphs_aic_boot_storm_bug.md) (for filing with Microchip).
+25	- **Filing framing.** Headline defect is the AIC PLIB pattern: `AIC_INT_Initialize` blanket-enables all sources and unmasks CPU IRQs while drivers are uninitialized, so any source that can assert from reset (UDPHS/ENDRESET with a host present) storms before `SYS_Initialize` completes. Sources shouldn't be AIC-enabled until their driver has a client. Driver is Harmony USB v3.16.0; AIC PLIB in `csp`.
+26	- **Re-apply after MCC regen: patch #11 (`plib_aic.c`) only.** The sink `SYS_INT_SourceEnable` is in our tree (no re-apply).
+27	
+28	---
+29	
+30	**2026-07-10 — streak: cleaned the training set + units-wrap tens carry (host + regen header; pending build).** Two linked changes after Greg reviewed the corpus. (1) **Audit:** the auto-selected units exemplars had let mid-roll samples in (a rolling wheel half-transitioned reads as a digit and smears the template); removed them / relabelled the rolling ones to units-`x`, corpus 76→65. Future policy: a digit is usable only if identical across neighbouring frames. (2) **Units-wrap tens carry** (`gp_streak_track`): cleaner data made units-9 read better, exposing the tens carry lag (49→40→50). Now a confident units read that drops ≥`GP_STREAK_WRAP_MIN`(5) steps the current (debounced) tens by one — applying the carry the instant the ones rolls (49→50). Works off the debounced digits and fires only on a genuine wrap, so it can't re-inflate a stale value: a wrong-high tens corrected downward stays corrected (guards the "stuck 30-high, can't recover" failure Greg flagged; regression-tested). Capture: carry-lag dips 30→0, anchors exact, 76 tests. Only `game/gameplay_score.c` (tracker) + regenerated `gameplay_metadata.h` (cleaned banks + WRAP_MIN) change. **Pending Greg's MPLAB build.** See gameplay journal 2026-07-10.
+31	
+32	**2026-07-10 — score + streak readers rewritten to integer math; fixed a coverage out-of-bounds bug (pending build).** Converted the shared coverage pipeline (luma → ink threshold → grid resize → per-cell coverage) in `gameplay_score.c` to pure integer so the firmware reproduces the host prototype **bit-for-bit**. This directly cuts hardware misreads: the device was extracting coverage in float32 while templates were built/validated in float64 (plus different rounding modes), so its reads diverged from what was validated. Now luma = `B*29+G*150+R*77` (no /256), ink threshold = rational `GP_{SCORE,STREAK}_INK_NUM/DEN` of the min..max range (`DEN*(luma-lo) ≷ NUM*(hi-lo)`), integer `gp_edge`, integer coverage; no float in the readers (ARM926 has no FPU). **Also fixed a real OOB bug**: when an ink bbox is smaller than the glyph grid, the last cell's block ran past the bbox and read the unused tail of the scratch buffer (stale data) → wrong coverage on short glyphs; clamped `yb→rh`/`xb→rw` to match the host (numpy) slice. Cross-check is now strict bit-exact (presence + every digit + every confidence flag). Digit banks in `gameplay_metadata.h` rebuilt with integer coverage. Files: `game/gameplay_score.c`, `game/gameplay_metadata.h` (regen). The multiplier (colour counts) was already integer. **Pending Greg's MPLAB build.** See gameplay journal 2026-07-10.
+33	
+34	**2026-07-10 — dashboard streak label wasn't clearing at song start / after a miss (fixed).** The streak label kept showing the pre-reset count. `ScreenDashboard_ApplyStreak` set an *empty* string for streak 0, and `lestring_set_utf8("")` doesn't repaint/clear the prior glyphs (the score/status labels never hit this — they always render non-empty). Fix: always render the number, so 0 shows "0" and repaints. Both reset paths already posted 0 (song start `run()` → `PostStreak(0)`; miss → tracker resets to 0 when the odometer isn't locked); only the label paint was the bug. File: `ui/screens/dashboard/screen_dashboard.c`. **Pending Greg's MPLAB build.**
+35	
+36	**2026-07-10 — streak reader: grew the units corpus to fix 9/0/6 detection (host-only; regenerated header).** The dark-on-light units wheel has a fat distance tail, so a correct digit from an under-sampled template exceeded the confidence gate and was dropped — most visibly units-9 (4 exemplars → real 9s at dist ~12300 > gate 9500, "rarely detects 9"). Mined the 6549-frame capture for 30 more **units-only** exemplars (10 each of 9/0/6, `streak__xx<u>__cap…` so they feed only the dark-on-light bank and leave the white-on-dark bank the clean original). units-9 median distance 12300→~5700 (clears the gate); capture confident units-9 reads 0→256; in-sample 154/154; tracker unchanged (0 big jumps, max 304, anchors exact). Only `gameplay_metadata.h` (regenerated digit banks) changes on the firmware side — no logic change. See gameplay journal 2026-07-10. **Pending Greg's MPLAB build.**
+37	
+38	**2026-07-10 — gameplay_engine: streak tracker debounce + plausibility clamp (pending build).** Fixed a reported streak **lock** and two failures it surfaced, all in `gp_streak_track` (host-proven, see gameplay journal 2026-07-10). The old monotonic forward window couldn't represent a value below `last`, so a tens misread locked the value high (11x→14x…); "confident read trumps" fixed that but unmasked a systematic **tens 0↔8 flicker** (the slashed zero's top loop closes under aliasing → reads 8 confidently, 100↔180) and a **carry-roll 900 blip** (mid-roll hundreds reads 9 for ~2 frames at 99→100). Fix, both symmetric so they never lock: **per-place debounce** (`GP_STREAK_DEBOUNCE {2,2,1}` — a changed digit commits after N consecutive confident reads; slow wheels 2, units immediate) + a **plausibility clamp** (`GP_STREAK_MAX_STEP 50` — reject a committed per-frame value jump a streak can't make; seed bypasses it). `gp_streak_state_t` gains `pend[3]`/`pend_n[3]`. Over the capture: 0 implausible jumps, max 304, anchors exact; host suite 74. Still open: units-9 detection (needs more units exemplars — corpus-growth pass next). Files: `game/gameplay_score.{c,h}`, `game/gameplay_metadata.h` (regen). **Pending Greg's MPLAB build.**
+39	
+40	**2026-07-10 — gameplay_engine: note-streak reader (odometer OCR + confident-read tracker) → dashboard STREAK label (pending build).** Last scoring-block value after score + multiplier. The streak is a 3-tumbler odometer (note icon + hundreds/tens/units) that only appears at ~25+ and whose wheels *roll* — the units constantly, tens/hundreds at carries — so any frame can show unreadable wheels. Proven host-side (`tools/gameplay`, see its journal 2026-07-10) then ported.
+41	- **Stateless read (`gp_read_streak`, `gameplay_score.c`, pure/cross-checked).** **Presence = the odometer is *locked at its final position*, detected from the note icon — not the digits** (Greg): the counter slides in from the bottom, overshoots, and bounces down to settle (`score-0335.png` = reference locked frame), and mid-slide the cells are misaligned → garbage. The fixed gold note glyph is a position fiducial — its coverage matches the locked template (L1 < `GP_STREAK_NOTE_MAX_SAD`) only when settled, cleanly rejecting both absent and slide/overshoot frames. When locked, three fixed cells (units dark-on-light, tens/hundreds white-on-dark) → 16×10 coverage → integer-L1 argmin over a **per-polarity 0-9 bank**; a wheel failing the gate is flagged unreadable. Fills `{present, digit[3], known[3]}`. Data frozen into `gameplay_metadata.h` (`GP_STREAK_*`: note template + two digit banks + ROIs + thresholds) by `gameplay export-c`. ROIs are absolute (fixed rig; chrome registration exists but is unused in v0).
+42	- **Stateful tracker (`gp_streak_track`/`gp_streak_reset`, state owned by the caller).** **Presence is binary — not present ⇒ streak reset ⇒ 0** (immediate; the sole reset path). While present, **a confident wheel read is authoritative for its place** (Greg: a clear digit read trumps the rollover logic) — it wins even if the value drops, so a misread is a self-correcting one-frame blip; an unreadable (rolling) wheel is filled (holds last, or resets to 0 when a higher place carried). ≥2 confident wheels seed. This replaced a monotonic forward window `[last, last+30]` whose forward-only search couldn't represent a value below `last` → a tens misread locked the value high (11x read as 14x…); confident-trumps fixes it. Host validation over the 6549-frame capture: hand-read anchors exact (100 % in-sample confident-digit accuracy with the refined 8×15 cells), 0 non-reset decreases, correct slide-gating, max 304.
+43	- **Engine + dashboard.** `game_state_t.streak` (new `uint16_t`); the observer holds one tracker (`s_streak`), advances it on `in_song` reads and resets it when gameplay is left; log adds `streak<s>`. Feed applies `DASH_EVT_STREAK` → `ScreenDashboard_ApplyStreak` → `Marvin_LABEL_DASHBOARD_ROBOT_Streak` via a fixed `leFixedString` (shows "0" at reset — see the 2026-07-10 label-clear fix).
+44	- **Reset behaviour (w/ Greg).** Score/multiplier/streak zero out **the instant a run is requested** (top of `run()`, before nav/connect), not on reaching gameplay. During the song a **broken streak** (odometer no longer locked) blanks immediately (→ 0). **After the song ends everything stays** (score/multiplier/streak persist on the end screen) — the next run's request is the only reset. `play_until_done` tracks **peak streak** (persists across misses) + **final score** and logs `GC: result score N, peak streak M` — the values `Results_Append` (spec §4.8.6) will persist once that path is wired.
+45	- **Known follow-ups (deferred, this commit lands the lock fix first):** (1) **Tens 0↔8 flicker** — the odometer's zero has a center slash; A2D aliasing closes its top loop on ~half the frames, so a tens "0" genuinely matches the **8** template better (4590 vs 6885) and reads 8 *confidently*, alternating frame-to-frame (100↔180, etc.; a hundreds variant flashes 900). Real per-frame ambiguity, not a template bug → fix with a **per-place debounce** (a changed confident digit must persist ≥2 reads before committing; can't lock since it follows reads up or down). (2) **Integer-coverage rewrite** — coverage is still float, so the per-wheel `known` flag can differ C-vs-Python on a borderline wheel (Python `np.round` half-to-even vs C half-up), benign for the tracker; going integer (midpoint threshold + integer grid edges) removes all FP (ARM926 has no FPU) and gives bit-exact parity.
+46	- Host cross-check (`test_firmware_classify` `streak`): C == Python on presence + confidence flags + every confident digit, all 47 corpus frames; `test_streak.py` covers the tracker logic. Full gameplay suite **71 passed**; `gameplay_score.c` compiles clean under `cc -Wall -Wextra` via the cross-check driver. Files: `game/gameplay_score.{h,c}`, `game/gameplay_metadata.h` (regen), `game/gameplay_engine.{c,h}`, `game/game_controller.c`, `ui/dashboard_feed.c`, `ui/screens/dashboard/screen_dashboard.{c,h}`. No MCC/Legato hand-edits. **Pending Greg's MPLAB build + hardware validation** (streak label tracks the odometer, holds through single rolls, jumps at carries, blanks at song start / on a miss). Career-font score mode is the only deferred scoring-block item.
+47	
+48	---
+49	
+50	**2026-07-14 — Wiimotes screen buttons wired to fauxmote (manual override).** The MGS regen that named the wiimotes control buttons (`BUTTON_WIIMOTES_ROBOT_{FRET_*,STRUM_UP/DOWN,GUITAR_PLUS/MINUS,UP/DOWN/LEFT/RIGHT,A/B/ONE/TWO,HOME}` — promoted from anonymous `panel_Button_N_0`/label placeholders) is now hooked up to drive the ESP32 Wiimote directly over the fauxmote link.
+51	- **Direct-to-fauxmote, momentary (w/ Greg).** `screen_wiimotes.c` runtime-registers press/release callbacks on every control button via a `{widget-slot, field, bit}` table. Frets/strum/± build the GUITAR slice → `Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, aux)` (whammy fixed at rest — the `WhammySlider`/`TiltControl` panels were **not** named/converted to interactive widgets by the regen, so they're not wired this pass); D-pad + A/B/1/2/Home build the WIIMOTE nav slice → `Fauxmote_SendNav(core, dpad, MF_STICK_CENTER, MF_STICK_CENTER)`. A bit is held only while its button is pressed.
+52	- **Priority override.** New `Fauxmote_SetOverride(bool)` in `net/fauxmote/fauxmote_link.{c,h}`: while on, `Fauxmote_SendGuitarMask()` (the gameplay-mirror hook the timing pipeline calls via `FretboardLink_Send`) is a no-op, so the screen's direct sends own fauxmote's GUITAR slice. The real T1S guitar keeps playing — only fauxmote's feed is commandeered.
+53	- **Show/hide seam.** New `ScreenWiimotes_SetShown(bool)`, called from `UiManager_ShowWiimotes`/`ShowDashboard` (distinct from `SetInput`, which the nav drawer also toggles for its modal). On show: zero state + `SetOverride(true)` + push neutral. On hide: push neutral guitar/nav *then* `SetOverride(false)` (never leave a note held; hand fauxmote back to the mirror).
+54	- `Fauxmote_*` are compiled unconditionally (not behind the `MARVIN_FRETBOARD_TRANSPORT` T1S guard that wraps the mirror tap + `Fauxmote_Initialize`), so the screen's calls always link. Files: `ui/screens/wiimotes/screen_wiimotes.{c,h}`, `net/fauxmote/fauxmote_link.{c,h}`, `ui/ui_manager.c`. No MCC/Legato hand-edits (MGS regen staged separately). **Verified working with Greg** on the wiimotes screen driving fauxmote; whammy/tilt deferred until those widgets are named in MGS.
+55	
+56	---
+57	
+58	**2026-07-08 — SONG card playtime bar wired; song-info widget rename sync.** An MGS regen renamed the SONG-info section and replaced the hand-built progress-bar hack (`panel_Container_63..66_0` / `panel_Text_15/16_0` / `label__0_00_0` / `label__7_22_0_0`) with three named widgets: `LABEL_DASHBOARD_SONG_START_TIME` (the "0:00" origin marker), `LABEL_DASHBOARD_SONG_STOP_TIME`, and a real `leProgressBarWidget` `PROGRESSBAR_DASHBOARD_SONG_PLAYTIME`. The renamed detail labels (Title/Artist/Album/Genre/Tier/Duration/Status) already used stable `LABEL_DASHBOARD_SONG_*` names, so only the new widgets needed wiring — dashboard code had no references to the removed decorative names.
+59	- **Both time markers are runtime `leFixedString`s** (set up in `song_detail_init` alongside the Status label). `STOP_TIME` tracks the committed selection: `ScreenDashboard_ApplySelection` rewrites it with the song's `m:ss` (same `SongDetail_Duration` string shown in the DURATION field), "-" when unknown. `START_TIME` counts up with elapsed play time (see below); it resets to "0:00" on a fresh selection.
+60	- **Bar fill + elapsed marker = playthrough time.** New feed event `DASH_EVT_PLAYTIME` (`u.play_ms`) + `DashboardFeed_PostPlaytime`. `game_controller.c` `play_until_done` posts `0` at play start (resets bar + marker) and elapsed ms each `GC_PLAY_POLL_MS` (~300 ms) poll. The dashboard consumer calls `ScreenDashboard_ApplyPlaytime`, which clamps elapsed to `s_song_len_s` (captured in ApplySelection), rewrites `START_TIME` as `m:ss` (formatted directly so 0 reads "0:00" — `SongDetail_Duration(0)` gives "-"), and drives the bar at **pixel resolution** via `ProgressBarAA_SetPermille` (0-1000) rather than the stock 0-100 `setValue` (unknown duration → empty bar, un-clamped marker). The 0-100 value quantized the 349px-wide bar to ~3.5px steps — for a long song it held still several seconds then hopped; permille advances it by single pixels.
+61	- **Rounded (pill) bar ends.** New custom widget `ui/widgets/progressbar_aa/` (`ProgressBarAA_EnableRoundImage`) mirrors `panel_aa`: copies the *full progressbar vtable* (so `setValue` etc. survive), overrides `_paint` to run `AaCorners_RenderRoundImage` after the normal draw — eating the four corners back to the card's `SCHEME_PANEL_GRAY_18181B` BASE (resolved at paint time in the active mode). Radius 4 = half the 8px height → full capsule; the fill's leading cap rounds with it (interior pixels preserved). **The radius is carried by the AA pass, not the widget `cornerRadius`:** the stock classic skin's `drawFill` is a plain square `RectFill`, but its `drawBackground` switches to `FillRoundCornerRect` (ArcFills that overshoot the rect — a track visibly taller than the 8px fill) as soon as the widget `cornerRadius` is nonzero. So the widget keeps `cornerRadius` 0 (stock draws a plain square 8px track) and the AA pass owns the rounding. `ScreenDashboard_Setup` also pins the height to 8 (`setSize`, width preserved via `getWidth`). Added to `cmake/marvin/default/user.cmake`.
+62	  - **Two-vtable gotcha (why the override first did nothing):** unlike a plain panel (where `panel->fn` *is* the base `widget.fn`), `leProgressBarWidget` holds two pointers to its vtable — its typed `bar->fn` and the base `bar->widget.fn`. The renderer dispatches paint via the *base* `widget.fn->_paint` (it works on a `leWidget*`), so `ProgressBarAA_EnableRoundImage` must repoint **both**; repointing only `bar->fn` leaves the stock paint running and the corners square.
+63	  - **Partial-repaint gotcha (fill-end artifacts):** `AaCorners_RenderRoundImage` re-blends existing pixels toward the backdrop and writes at full-rect coordinates via `_Unsafe` pixel ops (relative to the current frame/damage rect, no bounds check). `panel_aa` is safe because a panel repaints its whole rect. But the stock `setValue` damages only the delta strip between old/new value, so a mid-bar update leaves the frame rect a sliver — the corner writes land outside that tile (garbage) and, over many updates, erode the AA bands into the fill (visible in the first/last ~10%). Fix + smoothness in one: the bar is no longer driven by the stock value at all. `ProgressBarAA_SetPermille` stores a 0-1000 fill fraction and invalidates the *whole* widget; `aa_paint` lets the stock skin draw only the (square) track — the widget value stays 0 so the stock fill is skipped — then draws the fill itself as a `RectFill` of the exact pixel width, then rounds the corners. Full-widget repaint every change keeps the corner writes in-bounds and idempotent, and the pixel-width fill removes the 100-step quantization.
+64	- **Tier string is stars-only** (separate ask): `SongDetail_TierText` drops the " TIER n" suffix — main-setlist songs show just ★×tier, bonus still "BONUS". Shared helper, so song-select dialog and dashboard both change.
+65	- Rides the existing single-consumer/render-lock feed flow — no off-thread widget touch. Files: `ui/screens/dashboard/screen_dashboard.{c,h}`, `ui/dashboard_feed.{c,h}`, `game/game_controller.c`, `ui/widgets/progressbar_aa/*` (new), `ui/song_detail.{c,h}`, `cmake/marvin/default/user.cmake`. No MCC/Legato hand-edits (MGS regen staged separately). **Pending Greg's MPLAB build + hardware validation** (stop time matches the selected song; bar fills smoothly over a playthrough and resets on the next run/selection; rounded ends clean with no fill artifacts).
+66	
+67	---
+68	
+69	**2026-07-07 — Wiimotes screen is now a nav-selectable base view; nav widget rename sync.** An MGS regen renamed the navigation widgets (dropped the `_0` suffix; `BUTTON_NAV_HAMBURGER` → `BUTTON_DASHBOARD_TITLEBAR_NAVIGATION`), gave the wiimotes screen proper names (`Marvin_panel_Marvin` → `Marvin_PANEL_WIIMOTES`, + `PANEL_WIIMOTES_*`/`BUTTON_WIIMOTES_*`), and added a **Wiimotes** nav entry + a titlebar hamburger on the wiimotes screen. Updated code to match and wired the entry.
+70	- **Base-view swap (new compositor verb, first real use):** `UiManager_ShowDashboard()`/`UiManager_ShowWiimotes()` swap the BASE hw layer between `CANVAS_DASH` (layer 0) and `CANVAS_WIIMOTES` (layer 4). The outgoing canvas is **hidden first** (`gfxcSetLayer` requires the canvas inactive, and an active canvas drives its layer — two on BASE would fight), then the incoming one is bound. Showing wiimotes hides live video (HEO + OVR1 frame); returning restores it via `ScreenVideo_ShowWindowed()`. Mirrors the song-select open/close video handling.
+71	- **Picking across a swap:** Legato picks across *all* attached layers regardless of canvas visibility, so the hidden view's panel must be gated off or it still intercepts touches. `UiManager_SetBaseViewPickable(on)` routes to the active view (`ScreenWiimotes_SetInput` / `UiManager_SetDashboardPickable`). The nav drawer now gates the **active base view** (was dashboard-only) — and because wiimotes is layer 4 (above the drawer's layer 1), gating it off is also what lets the open drawer receive touches over the wiimotes view.
+72	- **Both titlebar hamburgers** (dashboard layer 0, wiimotes layer 4) wire to the same drawer toggle; the wiimotes one only picks while its view is shown (its subtree is gated otherwise).
+73	- **Wiimotes fret buttons are inputs, not indicators (decided w/ Greg):** the wiimotes screen is for manual / override control, so its `BUTTON_WIIMOTES_ROBOT_FRET_*` are *not* fed by the dashboard feed — they'll drive manual actuation, not mirror activity. Files: `ui/screens/navigation/screen_navigation.c`, `ui/screens/wiimotes/screen_wiimotes.{c,h}`, `ui/ui_manager.{c,h}`. No MCC/Legato hand-edits (MGS regen staged separately). **Pending Greg's MPLAB build + hardware validation** (nav → Wiimotes shows the screen; its hamburger opens the drawer; Dashboard returns; video returns with the dashboard; touch routes correctly in both views and with the drawer open).
+74	
+75	---
+76	
+77	**2026-07-05 — `detect_active` no longer burns CPU while the source is dark.** Follow-on to the `cpu%` work below: VideoTask's active-area detector re-scanned the frame border **every 20 ms tick** while unlatched, and each *failed* scan (dark border) walked the whole band on uncached DDR (~2.6 ms) → ~13% whenever the source was dark (notably: booting while the Wii is asleep). Two fixes, and crucially **it still never gives up** — abandoning detection would permanently mis-frame a source that starts dark and later brightens:
+78	- **Rate-limit:** `detect_active` self-caps to `VIDEO_ACTIVE_SCAN_MS` (100 ms, ~10 Hz) while unlatched instead of every tick. Trade-off: 16-frame accumulation now takes ~1.6 s after the source brightens (was ~0.3 s) — full-frame fallback shows briefly on wake, then snaps to the crop.
+79	- **Dark-gate:** a cheap `frame_has_light()` (coarse grid, stride 64, returns on first bright sample) runs before the heavy border scan; an all-dark frame skips it → ~0 cost. So an asleep/dimmed Wii = near-idle, and detection resumes automatically the instant it brightens. Files: `video/video.c`. Build clean.
+80	
+81	**2026-07-05 — Backed off the health monitor to a quiet safety net (freeze hunt done).** The supervisor + fault dump found & fixed all three freeze modes (T1S unbounded `service_pump`; uninitialized `SYS_FS_FSTAT.lfname` data abort; GameEngine song_select CPU peg — that last one since superseded by the synchronous-observe rework). Reverted the monitor out of investigation mode: heartbeat cadence 10 s → 60 s; all periodic telemetry (heartbeat line, `SUP:` summary, stack table, startup) → `LOG_DEBUG` (silent at the default INFO level); **`RUNAWAY` stays `LOG_ERROR`** as the always-on watch. The on-card log (`health/heartbeat.csv` + `stacks.txt`) is now behind a compile switch **`HM_SD_LOG_ENABLED` (default 0/off)**; build `-DHM_SD_LOG_ENABLED=1` to restore the crash-timing record (SD-only helpers gated too, so it's warning-clean either way). Re-investigate via `log_set_level(LOG_LEVEL_DEBUG)` and/or the `-D`. Build clean in both switch states. File: `health/health_monitor.c`.
+82	- **Follow-up — `health` now shows a recent-window `cpu%`, not cumulative-since-boot.** The old table used `ulRunTimeCounter / total_since_boot`, a lifetime average with no decay — it buried *current* load under startup (e.g. VideoTask's boot-time active-area scan reading as a steady "13%" long after it had latched). `HealthMonitor_Report` now snapshots, waits `HM_REPORT_WINDOW_MS` (500 ms), snapshots again, and reports each task's share of *that* window (the supervisor's delta math, on demand). `health` takes ~½ s to answer and shows what tasks are doing *now*. (Separately noted: `detect_active` has a silent, no-give-up failure path — `frame_edges`-false re-scans the border every tick forever with no log; a bounded/observable fix is still pending.)
+83	
+84	**2026-07-05 — Dashboard live-telemetry feed: fret activity → dashboard, single-consumer event flow.** The dashboard ROBOT fret buttons were static; wired them to track the actual guitar mask, structured as the general flow that score/multiplier/streak will also ride. New `ui/dashboard_feed.{c,h}`: a **single tagged event queue** (`dashboard_evt_t` = {type, union}) with **one consumer task** (prio 2, UI band) that blocks on the queue, coalesces last-per-type on drain, and applies to widgets. Design decided w/ Greg:
+85	- **Hard constraint honored:** the actuation path (timing/gameplay/fretboard link) must never be delayed. Producers post with `xQueueSend(…,0)` (non-blocking, drop-on-full) — `FretboardLink_Send` (the convergence point for all producers) gets one `DashboardFeed_PostFret(v)` line, mirroring its existing `Fauxmote_SendGuitarMask` fan-out. One store-class op, no lock, no Legato touch.
+86	- **Consumer is the sole dashboard widget writer, under a render lock.** Legato here is **single-threaded** — no `LEGATO_USE_OSAL`, no renderer lock, no `leTimer`; `_LEGATO_Tasks` runs `leUpdate` (events + one-pass paint) then `vTaskDelay(10ms)`. So *any* widget/damage edit from another task races the renderer. **First cut got this wrong** (consumer mutated widgets from its own prio-2 task): frets never showed and the SONG card updated one selection behind — the classic dropped-damage signature — and it likely contributed to a hard freeze. Fix: `UiManager_RenderLock()/Unlock()` — suspend `LEGATO_Tasks`+`SYS_INPUT_Tasks` and gate on `leRenderer_IsIdle()` (reliable now that scratch is sized to one full-screen pass, §13), so the edit can't corrupt an in-flight paint. The consumer wraps its coalesced apply in it. Held ~microseconds; never touches the actuation tasks (prio 4–5). Note this corrected a wrong assumption in an earlier draft of this entry that the old off-thread path was safe — the old `dash_selection_changed` actually ran **in-context** (from the SELECT button callback inside `leUpdate`), which is why it worked.
+87	- **Same-class pre-existing race also fixed:** `dash_game_status` wrote the Status label from the game-controller task (prio 4) via `lestring_set_utf8` → `setFromChar`, which **does** invalidate — an off-thread invalidate that fires during gameplay (NAVIGATING→PLAYING…) alongside the fret traffic. Routed it through the feed too (`DASH_EVT_STATUS`, string copied into the event; `ScreenDashboard_ApplyStatus`). No off-thread invalidate remains.
+88	- **Fret visual:** the classic skin fills a button with `LE_SCHM_BACKGROUND` when pressed (state ≠ UP) and `LE_SCHM_BASE` when up, so each fret scheme already encodes lit/unlit — no new schemes. Two non-obvious requirements to make it show (both needed): (1) the buttons must be **toggleable**, else `setPressed(TRUE)` just fires a click and leaves state UP; (2) **explicit `invalidate`** after `setPressed`, because `setPressed` only self-invalidates for image/bevel/pressed-offset buttons — for a plain scheme-filled button the UP↔TOGGLED colour swap wouldn't repaint. `ScreenDashboard_ApplyFret(mask)` does both, per bit (`TIMING_BIT_*`), touching only buttons whose state changed (cached `s_last_mask`); buttons also set `IGNOREEVENTS` (status display, not input).
+89	- **Lifecycle:** `DashboardFeed_Init()` (queue) pre-scheduler in `UiManager_Initialize` so producers can post immediately; `DashboardFeed_Start()` (task) at end of `ui_boot_task` (post-reveal), so the consumer never touches the widget tree during build/paint/reveal. Buffered events apply on first run.
+90	- **Future:** SCORE/MULTIPLIER/STREAK event types + post fns exist; the gameplay engine will post them once it produces the values (dashboard widgets already present). Files: `ui/dashboard_feed.{c,h}` (new), `ui/screens/dashboard/screen_dashboard.{c,h}`, `actuator/fretboard_link.c`, `ui/ui_manager.c`, `cmake/.../user.cmake`. No MCC/Legato edits. **Pending Greg's MPLAB build + hardware validation** (frets track under timing + manual producers; selection still updates; idle consumer ~0 CPU).
+91	
+92	---
+93	
+94	**2026-07-04 — Navigation is now fully closed-loop; observation made synchronous; timing pipeline no longer observes screens.** A real misfire (after the Wii remote woke, the exit from `practice_end_menu` strummed down 1 + GREEN → RESTART instead of down 4 → QUIT) traced to two gaps: (1) `observe()` was `RequestObservation()` + a fixed 140 ms delay + `GetLatest()`, which returned the last *retained* classification whether or not a fresh one had completed — so right after the remote woke, the "check" read stale screen/selection; (2) `select_to()` read the cursor once then strummed the delta and pressed GREEN with no re-check, so a stale/wrong read fired GREEN on the wrong row. The retained-`latest`/`GetLatest` design (and the dormant `SetObserveEnabled` master gate) were vestiges of the removed background scan.
+95	- **Fix (decided w/ Greg):**
+96	  - **Observation is synchronous request/response.** `GameplayEngine_Observe(out, timeout)` posts a request and blocks until the task classifies a frame *captured after the request* (the task keeps draining every frame at ~0 CPU, and skips the in-hand pre-request frame for a freshness guarantee), then returns the result via a depth-1 response queue. Deleted `RequestObservation`, `GetLatest`, `s_have_latest`/`s_latest`, `s_force_observe`, and the dead `SetObserveEnabled`/`ObserveEnabled`/`s_observe_enabled` master gate. A read can no longer return stale state; there is no ambient "current screen" to poll.
+97	  - **Confirm-before-GREEN, bail-to-recover.** `select_to` → `select_and_confirm(expect_screen, target)`: blind-strum the delta (allowed within a screen), then **re-observe**; only press GREEN once the observed cursor == target on the still-expected screen. If the screen isn't expected / selection unreadable / cursor won't settle in `GC_MAX_CONFIRM` tries, return false without pressing — the run loop re-observes and retries, then FAILs after `GC_MAX_CONFIRM_FAIL`. Same contract for `select_song` (fixed-slot ordinal). `nav_to_main_menu`'s overlay QUITs go through the same path — the most exposed spot no longer fires on one stale read. Never navigate *between* screens without a fresh check first.
+98	  - **`saturate_top` (FULL SONG / FULL SPEED = top item):** where the row is readable (`speed_select`) strum up until the selection reports index 0, then GREEN (up-strum can't overshoot — no wrap). Where it isn't readable (`section_select`), GREEN through, **assuming FULL SONG is already selected** — we only ever reach `section_select` with FULL SONG at the top. This is a deliberate stopgap: caught the controller stuck FAIL-looping on `section_select` (screen 8, no row reader → selection always -1 → could never confirm). **Missing piece to revisit (decided w/ Greg): a real `section_select` FULL SONG detector** — a top-slot highlight match (mirrors the `song_select` slot match) so we *confirm* rather than assume. Blocked on corpus data: only one `section_select` frame exists (FULL SONG selected); need a "non-top section selected" negative to build/validate the threshold (gameplay journal open question). Until then, assume + GREEN.
+99	  - **`CurrentScreen()` deleted; timing pipeline stops observing.** `timing_pipeline` had *pulled* `GameplayEngine_CurrentScreen()` to gate actuation on `in_song` — a layering inversion (a getter that also lied about freshness). Removed the gate, `s_gate_on_gameplay`, `SetGateOnGameplay`/`GateOnGameplay`, the `timing gate` console subcommand, and the gameplay_engine include. The actuation window is owned solely by `TimingPipeline_SetEnabled`, which the controller already brackets to the verified `in_song` window (the gate could never react faster than the controller's own poll anyway). Bench test = `timing 1` actuates immediately (former `gate off`).
+100	- Files: `game/gameplay_engine.{c,h}`, `game/game_controller.c`, `actuator/timing_pipeline.{c,h}`, `console/console.c`, `app.c`. No MCC/Legato edits. Firmware C written + syntax-reviewed; **pending Greg's MPLAB build + hardware validation** (START from an end-screen right after remote-wake; sticky-default landing; unmodeled-screen recovery; full run to `in_song`; idle ~0 CPU).
+101	
+102	**2026-07-03 — Third freeze mode: GameEngine pegged on song_select → observation is now purely request-triggered.** The supervisor caught `RUNAWAY 'GameEngine' cpu=99% isr=0%` right after landing on `song_select`. Root cause: the game-state observer ran a **free-running background scan** (was 5 Hz), and one `gp_read_song` on song_select is ~150–190 ms of soft-float (64 templates × 15 offsets × 192, no FPU on the ARM926). Since a single classify ≈ the 200 ms scan period, background observation of song_select alone pegged prio-4 GameEngine and starved everything at prio<4 (console/touch/UI) — same "task with no CPU bound monopolizes the core" shape as the T1S spin. (A first pass added a duty-cap to bound it to ~1/3 CPU, but that still bursts ~190 ms and re-matches an unchanged list — laggy and wasteful.)
+103	- **Fix (decided w/ Greg): no continuous scan at all — observation is purely request-triggered.** `game_task` now classifies *only* when `GameplayEngine_RequestObservation()` was called; otherwise it just drains the frame queue at ~0 CPU. Grounded in the code: the **only** consumer of the CV screen state is the game controller (menu nav + song-end polling) — the dashboard uses the touch `Selection`, and `xGameStateQueue` has no subscriber. So an idle marvin needs no screen scanning.
+104	- Removed the 5 Hz period + duty-cap machinery (`gameplay_engine.c`); master gate enabled once in `Initialize` (does nothing without a request). Dropped the boot `SetObserveEnabled(true)` (`app.c`) and the per-session enable (`game_controller.c`). `play_until_done` was *passive* (`GetLatest`, relying on the background scan); it now `observe()`s — forces its own cheap in_song classify each poll — to detect song-end and keep the timing pipeline's in_song gate (`GameplayEngine_CurrentScreen`) fresh. Nav already forced via `observe()`, unchanged. Result: idle (incl. sitting on song_select) = ~0 CV CPU, no lag; nav/play force reads as needed. Build clean (XC32 v5.10). Pending hardware validation of a full START→play→end run.
+105	
+106	**2026-07-03 — Investigating a several-hour freeze; built a health monitor + runaway-task supervisor.** Symptom: after a while (minutes to hours) marvin goes unresponsive — touch + FLEXCOM2 console dead — but the LVDS panel keeps showing *live* video. New `health/health_monitor.{c,h}` (in `user.cmake`, init last in `App_StartServices`, `health` console command) to characterize it:
+107	
+108	- **Heartbeat** (10 s debug cadence): one line to `/mnt/marvin/health/heartbeat.csv` (open→write→close each beat so the last line survives a hang) + mirrored to DBGU: `timestamp,uptime_s,tick,frames,free_heap,worst_task,worst_stk_free`. The final timestamp bounds when it died; `frames` shows if capture had already stalled.
+109	- **Stack dump** (10 min): full per-task table (state/prio/stack-HWM/run%) overwritten in `health/stacks.txt` + DBGU.
+110	- **Supervisor** (prio 6 — above every app task, which top out at 5): samples the run-time-stats counters every 1 s and logs `RUNAWAY '<task>'` when one task eats the CPU while idle ~0%. It runs at higher priority than any spinner and uses its **own lock-free snapshot buffer** (never shares the heartbeat's mutex — a starved health task holding that mutex would otherwise deadlock the reporter exactly when needed), so it can name the culprit *during* the wedge. Also emits a `SUP: idle/top/isr%` summary every 10 s.
+111	
+112	**First-run findings (froze at 140 s with a video signal present):**
+113	- **Not a stack overflow / malloc-fail / assert.** No such DBGU message, all stacks healthy (the alarming-looking `worststk=IDLE:424` is fine — IDLE only has a 128-word stack, 424 B is 83% free). Heap flat at 22312 B across beats → no leak. Capture healthy at ~60 fps right up to the freeze.
+114	- **Interrupts are still firing during the freeze** — decisive clue. The HEO framebuffer pointer is re-latched in the *ISC frame-done IRQ* (`ui_manager.c` `heo_frame_latch`), not a task, so "video still live" ⇒ the CPU is still taking IRQs. That **rules out** the FreeRTOS fault hooks (all `taskDISABLE_INTERRUPTS(); for(;;);`, which would freeze the image) and an IRQ-masking abort handler. Signature = **a task stuck in a non-blocking loop (or an all-task deadlock) while ISRs keep the panel alive** — console/touch (prio 2) starved, video (ISR-driven) survives.
+115	- **Correlation:** an earlier run with *no* video signal survived 2+ h without freezing → suspicion falls on the frame-driven tasks (CvMarvinV1 / GameEngine / timing) or per-frame ISR load. The supervisor's `RUNAWAY`/`isr%` output is meant to settle which.
+116	- **Fixed a self-inflicted hazard:** the monitor originally called `Storage_Mount()` itself, racing the boot mount (`STG: mount failed (fs err 20)` = `NOT_ENOUGH_FREE_VOLUME`, a stale/misleading latched error) — unsafe given `FF_FS_REENTRANT=0`. Now gated on `Storage_IsMounted()`, never self-mounts.
+117	
+118	Related prior work: the 2026-07-01 "video-collapse recovery watchdog" entry below.
+119	
+120	**Same day — the supervisor's boot-window activity wedged boot; gated it (and the health task) to post-reveal.** First flash of the supervisor build got stuck on the splash — the UI never revealed, and *even the prio-6 supervisor stopped printing*, which means the scheduler itself wedged (a prio-6 task only stops if the kernel stops, not merely if a lower task spins). Two findings:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:19Z)**_
+
+Let me find the decision-log section and any existing fauxmote-T1S entries in the journal.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:21Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -n -i "decision log\|## Open\|## Session\|fauxmote\|0x88B7\|controller node\|T1S_NODE" firmware/marvin/docs/journal.md | head -50`
+
+```text
+<persisted-output>
+Output too large (29.5KB). Full output saved to: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/7c313450-d23f-4e40-b779-d8155d63eb74/tool-results/bd55fyds2.txt
+
+Preview (first 2KB):
+7:**2026-07-23 — fauxmote link moved to a dedicated FLEXCOM5 USART; fauxmote is now transport-independent (runs on UART *and* T1S guitar builds).** fauxmote previously borrowed FLEXCOM1 — the fretboard/guitar UART-transport peripheral — which was only free in the T1S guitar build, so the whole fauxmote path was compile-guarded to `MARVIN_FRETBOARD_TRANSPORT == T1S`. A new FLEXCOM5 USART (added in MCC) gives fauxmote its own peripheral, dissolving the conflict.
+8:- **New peripheral (MCC).** FLEXCOM5 USART on `PA16`/`FLEXCOM5_IO0` (`FAUXMOTE_TX`) and `PA15`/`FLEXCOM5_IO1` (`FAUXMOTE_RX`), AIC source 14, ring-buffer mode. Static config (`FLEX_US_MR`/`FLEX_US_BRGR`, 8-N-1, MCK, OVER=1, CD=66/FP=5) is byte-identical to FLEXCOM1; fauxmote overrides baud to 1 Mbaud at runtime via `SerialSetup`, so the static CD/FP is non-binding. Commit `a36ccdd` (re-applied patch #11 after the regen).
+9:- **App migration.** `fauxmote_link.c/.h` is a mechanical `FLEXCOM1_USART_*` → `FLEXCOM5_USART_*` rename (transport comes via `definitions.h`; no include change). With FLEXCOM1 no longer contended, every `MARVIN_FRETBOARD_TRANSPORT`-guard that existed *only* to keep fauxmote off UART-guitar builds was dropped: `app.c` `Fauxmote_Initialize()`, the `Fauxmote_SendGuitarMask` mirror tap in `fretboard_link.c`, the `fauxmote` console command, and `game_controller.c`'s `ensure_wii_connected()` pre-flight (every build drives a Wii through fauxmote, so the Wii-connect check now always runs — the old `#else return true` stub is gone). The remaining `MARVIN_FRETBOARD_TRANSPORT` guards (all in `fretboard_link.c`) are the genuine guitar-actuator UART-vs-T1S split and are unchanged. Commit `1872a9c`; verified on hardware.
+...
+</persisted-output>
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:24Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -n -i "^## \|^# \|decision log\|open question" firmware/marvin/docs/journal.md`
+
+```text
+1:# marvin — Working Journal
+3:Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+16:- **MISO pull-down re-created on PC23.** The absent-chip-determinism pull-down on MISO (added in the "absent-chip handling" work in the decision log) did not survive the FLEXCOM3 regen; re-added on `PC23` via MCC (`5faa2b7`) so a tristated/unpopulated LAN8651 reads a deterministic 0x00 rather than noise.
+98:  - **`saturate_top` (FULL SONG / FULL SPEED = top item):** where the row is readable (`speed_select`) strum up until the selection reports index 0, then GREEN (up-strum can't overshoot — no wrap). Where it isn't readable (`section_select`), GREEN through, **assuming FULL SONG is already selected** — we only ever reach `section_select` with FULL SONG at the top. This is a deliberate stopgap: caught the controller stuck FAIL-looping on `section_select` (screen 8, no row reader → selection always -1 → could never confirm). **Missing piece to revisit (decided w/ Greg): a real `section_select` FULL SONG detector** — a top-slot highlight match (mirrors the `song_select` slot match) so we *confirm* rather than assume. Blocked on corpus data: only one `section_select` frame exists (FULL SONG selected); need a "non-top section selected" negative to build/validate the threshold (gameplay journal open question). Until then, assume + GREEN.
+199:**Song-select operator UI — scrollable list widget built & validated on hardware.** Custom Legato widget `ui/song_list.{h,c}` (a hand-written `leWidget` subclass) renders the SELECT SONG setlist (tier badge + bold title + dim artist + right-aligned duration), driven by a decoupled row-provider callback (no catalog dependency); drag-scroll with time-based kinetic inertia, tap-to-select. Bring-up via the `songlist` console command + a catalog-backed demo provider (`ui/song_list_demo.{c,h}`) — scroll/select/opaque-fill confirmed on hardware. **Bringing it up surfaced and fixed a real Legato/GFX2D cache-coherency bug** (see decision log 2026-06-24): the CPU-rendered scratch buffer was cacheable, so the 2D-engine blit leaked stale pixels through opaque widgets — fixed by placing the scratch in non-cached DDR. **Next:** author the full SELECT SONG screen in MGS (album art + catalog-fed metadata panel + difficulty/mode/Select), and the **tier / career-setlist data model** (the `tier` badge needs the deferred catalog tier column). Two upstream Microchip Legato/gfx bugs to file (decision log).
+201:**Song catalog loader — built and committed; exercised on hardware via the `catalog`/`songlist` console commands.** New `game/catalog.{h,c}` maps the recognizer's `(setlist, index)` → human labels (title/artist/bpm/length) from `<card>/games/gh3-wii/songs.csv`, so the UI/high-score display shows names instead of `#4`. Flat **CSV** (decided over the spec's JSON for the same reasons `results` is CSV — no on-device tokenizer, `FF_FS_MAX_FILES=1`, static buffers, pandas/Excel-editable). The two CSV helpers were extracted out of `results.c` into a shared `util/csv.{h,c}` and the catalog reuses them. Lazy-loads once into a fixed `[GP_N_SONGS]` static cache (file closed after load), so lookups are O(n) in RAM and don't fight `results.csv` for the single FatFs handle. `catalog` console command (`reload` / `ls` / `<main|bonus> <index>`) validates the path against a checked-in seed catalog (`data/games/gh3-wii/songs.csv`). Columns: `setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty`. `title`/`artist`/`album` are real, sourced from the `SONGS` table in `tools/fetch_gh3_cover_art.py` (incl. proper UTF-8 — *Héroes del Silencio*, *Mauvais Garçon*); that script gained a `--catalog` mode that also fills `year`/`genre` from MusicBrainz on a networked run. `bpm`/`length_s`/`difficulty` are reserved-but-blank (GH3 surfaces no per-song difficulty; the authentic signal is the career tier, deferred). Catalog is labels only: a missing/stale card degrades to "Unknown song" and never touches recognition (compile-time in flash). **Deferred:** the stale-catalog version warning — `export_c.py` doesn't emit `GP_METADATA_VERSION` yet (open item below). **Next SD consumer:** album-artwork pre-cache (spec §4.8.7) — directory structure is now locked (`art/{small,large}/<setlist>-<NN>.{jpg,png}`, one size-tier subdir per DDR cache). **Built 2026-06-30** (`game/art.{c,h}`, decision log): all covers decoded once into static RGB888 DDR caches during the splash, `(setlist,index)`→`leImage*` lookup, song-select strip wired; large tier is a 508×208 strip with a difficulty-colored fade baked offline. Dashboard small-thumbnail consumer still pending (no MGS slot yet).
+203:**T1S inter-node link — built and working (marvin ↔ guitar).** marvin is the PLCA **coordinator** (node 0) on a 10BASE-T1S bus (LAN8651 over FLEXCOM4 SPI); hand-authored stack in `default/src/net/t1s/`. It sends the actuator command over T1S to the `guitar` follower node (id 3), which actuates the Wii GPIOs (guitar G1+G2 proven). Followers announce presence via a heartbeat (ethertype `0x88B6`); the `t1s` and `nodes` console commands report link/credits/per-node presence. Transport is behind `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` (T1S default on the `t1s` branch). The `fretboard` node (id 4) firmware is now **written, T1S-only** (fretboard journal 2026-06-17): it streams its 17-byte frame to marvin **and** drives the `guitar` node directly — its on-device model infers the bitmask and sends it peer-to-peer to `02:..:03`. marvin's RX side needed no changes — `fretboard_link.c`'s T1S frame handler already parses the frame from node id 4 (`DETECTOR_ADC_FRETBOARD`) and the node-table + heartbeat-presence demux already cover it. **Next (marvin side):** **active-source arbitration** — both marvin (timing pipeline) and the fretboard now address the guitar (`02:..:03`), so marvin needs active-detector/active-guitar selection to ensure exactly one source drives at a time (the fretboard's SW0 is an interim manual arm; until then, don't run marvin's timing pipeline to the guitar while the fretboard is armed). Then fretboard hardware bring-up. PoDL is design-direction only. Detail in [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); decision log entry 2026-06-17.
+205:**Board port: SAM9X75 Curiosity → Curiosity Hybrid (in progress).** USB Host is gone on the Hybrid; the fretboard link was rewired from USB CDC host to a direct FLEXCOM2 USART on 2026-06-08 (see decision log + session log). Code-complete and syntax-checked; pending a full MPLAB build and on-hardware bring-up. Display/MIPI I²C (incl. TC358743 control) also moved off FLEXCOM6/PA24-PA25 to FLEXCOM8 TWI/PB4-PB5 during the port — `spec.md` §3.1/§3.2 reconciled on 2026-06-08. Dated 2026-05-01/05-20 journal entries and `journal-archive.md` keep their FLEXCOM6 references as historical record (true on the original Curiosity board).
+222:## Decision log
+243:| 2026-06-25 | **The GFX Canvas regen pushed FreeRTOS `heap_1` past 40 KB → silent boot hang (zero DBGU output); raised `configTOTAL_HEAP_SIZE` 40960 → 100000.** Symptom: after the canvas MCC commit (`ed54f37`), marvin produced no DBGU output at all — bisected to that commit (`8de7c64` working). Not the compositor (it was stashed), and not the XLCDC OVR setup (BASE/HEO use the identical `LCDC_ATTRE`/`WAIT_ATTRS_EQ(SIP)` pre-`Start` pattern that already works, so OVR is symmetric). Root cause: the canvas additions (the dynamic `GFX_CANVAS_Task` + extra OSAL/driver allocations on the 4-layer/canvas display path) tipped cumulative `pvPortMalloc` during `SYS_Initialize` past the 40 KB `heap_1`. Because `configUSE_MALLOC_FAILED_HOOK=1` and `vApplicationMallocFailedHook()` is the MCC default (`taskDISABLE_INTERRUPTS(); for(;;){}`), the failed alloc spun with IRQs off **before** `APP_Initialize`/`log_init` (initialization.c:499) ran → no banner, indistinguishable from a dead board. **Two durable follow-ups (both carried):** (1) the heap size is **not** in `FreeRTOS.yml` — it's a raw literal in the generated `FreeRTOSConfig.h`, so the bump is an **MCC re-apply patch** (joins patch #8, also a `FreeRTOSConfig.h` edit) and will silently revert on the next regen → hang returns; set it in the MCC FreeRTOS component if it exposes Total Heap Size, else keep it on the re-apply list. (2) Patch `vApplicationMallocFailedHook` **and** `vApplicationStackOverflowHook` to emit a marker before the spin — a one-line DBGU write would have turned this multi-step bisect into an instant diagnosis. | Same silent-spin footgun already flagged for `vApplicationStackOverflowHook` (Open questions), now confirmed to bite via the malloc path too — heap exhaustion and stack overflow both present as identical dead-board hangs with the stock hooks. `heap_1` (never frees) is correct for marvin's static-allocation discipline, but MCC tasks + Legato OSAL still need it, so its size is load-bearing and must be tracked. 100000 is generous (+60 KB) headroom for now; right-size later once boot logs `xPortGetFreeHeapSize()`. Found by Greg's heap hypothesis after the XLCDC poll-loop theory was ruled out by BASE/HEO symmetry. |
+245:| 2026-06-25 | **Operator-UI presentation layer = a marvin compositor over the GFX Canvas component: pre-render UI panels into static non-cached RAM surfaces, multiplex the two free LCDC overlay layers (`OVR1`/`OVR2`) across them. Design captured in [`ui_compositor.md`](ui_compositor.md).** The goal is to bring a panel up (or slide it in) instantly without re-rendering or redrawing what's behind it. Confirmed the enabling fact in code: Legato's only "where do I render" knob is the active layer's `pixelBuffer.pixels` (it paints a scratch buffer, then `DRV_XLCDC_BlitBuffer` copies into `drvLayer[activeLayer].pixelBuffer`); there is **no** stock Legato API to render a widget tree into an arbitrary off-screen buffer. **GFX Canvas is exactly that missing indirection** — `GFXC_GetPixelBuffer` hands Legato a canvas object's buffer and `gfxcSetBaseCanvasID` switches which canvas a layer renders into, with `gfxcSetLayer`/show/hide/position/alpha + fade/move on top. Layer budget: `BASE`=background, `OVR1`/`OVR2`=swappable overlays (to be enabled — `XLCDC_TOT_LAYERS` is 2 today), `HEO`=live camera (off-limits). Legato stays the **renderer** (fonts, `song_list`); a thin `ui/` compositor owns surface↔layer multiplexing. Touch handled by **reveal-then-promote** (parked surfaces are non-interactive; promote to a live Legato layer to interact). Phased plan P0–P5 + open questions in the doc. **Design only — no code/MCC yet.** | Reverses the earlier "back off canvas" — that call was made on the **wrong axis**: canvas was dismissed for the *slide animation* (which direct `XLCDC_SetLayerWindowXYPos` stepping handles fine, no framework needed), but the actual problem is the **off-screen surface pool** (render content decoupled from a hardware layer), and that is canvas's literal reason to exist. The two homegrown alternatives lose: DIY pixel-buffer retarget reimplements canvas's per-surface/scratch/binding bookkeeping (~half of canvas, growing once surfaces aren't full-screen); direct-layer-only can present/animate but can't get Legato content *into* a surface. Canvas's earlier objections are addressable, not fatal: it deletes the static `frame_buffer` array, but we *use* the canvas buffers as our surfaces (statically allocated, non-cached per the 2026-06-24 fix), so static-allocation holds; the dynamic `GFX_CANVAS_Task` converts to `xTaskCreateStatic` or rides alongside the existing MCC dynamic tasks. Binding constraint is **layers (2 free), not memory** (~21 MB free in the 32 MB `ram_nocache` after the ISC pool + scratch; full-screen RGB565 ≈ 2 MB, most overlays far less). Resolves spec Q5 for the *presentation* layer (Legato renderer + canvas compositor) without dictating per-screen authoring. |
+306:| 2026-05-01 | ISC Bayer blocks auto-bypass for RGB input (previously an open question) | `drv_isc.c:363-365` disables CFA/WB/Gamma/CSC/Sub422/Sub420 whenever `inputFormat == DRV_IMAGE_SENSOR_RGB` — no MCC config changes needed despite `ISC_ENABLE_DPC/GDC/WHITE_BALANCE/GAMMA` remaining `true` in `configuration.h`. Those flags are Bayer-path only and are ignored in the RGB branch. |
+325:## Open questions
+327:_(Questions we haven't answered yet. Move to decision log with rationale once resolved. System-level open questions are tracked in [`spec.md`](spec.md) §9 — anything tagged with `Q1..Q9` there.)_
+336:- **Timing re-layering — model decided (decision log 2026-07-15), implementation not started.** Three phases, each independently landable: **(P1 — DONE 2026-07-15, pending build; no bus change) actuator-advance seam.** `FRETBOARD_ACTUATOR_ADVANCE_MS` in `actuator/fretboard_link.h` (guitar node = 0); `timing_pipeline.c` emits its three strike-line deadlines that many ms early via `fire_now = s_now_ms + advance`, wire byte unchanged (Option A). Behavior-preserving at 0. See session log 2026-07-15. Per-bit / fret-vs-strum advances are not yet expressed (single scalar) — revisit when a real solenoid rig lands. **(P2 — DONE 2026-07-15, pending build) detector stamps strike time.** `detector_state_t.strike_at_ms` added (fills an alignment hole, struct size unchanged); CV detector owns `observation_lead_ms` (=250) per config; `timing_pipeline` dropped `TP_STRUM_DELAY_MS` and schedules off `s_strike_at_ms`. Behavior-preserving; no host breakage (perf record is separate, `state.bin` unbuilt). Spec §4.2.3/§4.4/§2.4 updated. See session log 2026-07-15. **Deferred follow-up:** surface `observation_lead_ms` to host tooling (`PERF_REC_DETECTOR_CONFIG` + `marvin-perf/records.py`) so offline replay/`state.bin` can reconstruct strike time; future `adc_fretboard` gets its own lead. **(P3, future / only if needed) Option B.** Timestamped `(mask, strike_time_T)` wire protocol + follower-side scheduling + marvin sync-frame broadcast; adopt only if link jitter or on-node multi-solenoid sequencing demands it. Interacts with **Q11** (command-path arbitration): the game-state controller (§4.8) is another producer that would need the same strike-time/advance semantics if it ever drives mechanical actuators. Resolved 2026-07-15: **`actuator_advance` is a static per-node constant on marvin for now** (guitar node = 0; a future solenoid rig gets its own constant). Node-declared capability exchange or a console/settings knob remain future options if advances need to vary at runtime.
+337:- **QSPI NOR (`SST26VF064BA`, 8 MB) storage tiering — driver bring-up DONE on hardware (2026-06-28), settings approach settled, splash + assets open.** QSPI PLIB + `DRV_SST26` (SQI) bring-up is **confirmed on hardware** via the `qspi` console smoke test (session log 2026-06-28): JEDEC `BF 26 43`, geometry 8 MiB (read 1×8388608, write page 256×32768, erase 4096×2048), and erase/page-program/read-back all verify clean. So these are now **answered**: the driver's `ResetFlash→EnableQuadIO→UnlockFlash` handles the global block-protection unlock automatically (erase/write work with no manual `ULBPR`), and `DRV_SST26_Tasks` pumping is a non-issue (no poll timeout). Settings → QSPI EEPROM-emulation is decided, and **read throughput is now characterized and integrity-verified** (2026-06-28 decision log + session log): GCLK=200 MHz → 100 MHz QSCK, **XDMAC mem2mem = 18.2 MB/s → ~225 ms for a 4 MB splash, ~3× faster than SD**; `qspi verify` clean at 1 MiB × 4 passes on both driver and XDMAC paths. So splash-on-QSPI is **viable and decided GO** via XDMAC ch1 mem2mem (cacheable-MMU and CRM ruled out; RX-triggered streaming → ~80 ms deferred as a mini-project). **Partition map is locked** (`flash/qspi_layout.h`, decision log 2026-06-28): splash `0x000000` (4 MiB) · assets `0x400000` (~3.98 MiB) · settings `0x7FC000` (16 KiB). **Both runtime consumers are built + confirmed on hardware (2026-06-28):** (1) the **settings ring-log** (`flash/settings.c`, EEPROM-emulation; backlight persists across power-cycle); (2) the **splash read** (`splash.c` reads `QSPI_SPLASH_OFFSET` via `DRV_SST26_Read` — **263 ms, splash shows with the SD card removed**). Host→QSPI **provisioning** is via u-boot `sf` over JTAG (`openocd/program-qspi.*` + `qspi_console.py`) — no SD card-swapping for assets. The splash read uses `DRV_SST26_Read` not XDMAC: at 263 ms it's already ~as fast as XDMAC (~225 ms), so XDMAC-for-splash isn't worth the ~40 ms. **Still open:** the **assets read-side** consumer (icons/fonts/album-art templates from `QSPI_ASSETS_OFFSET`) is unbuilt — the provisioning tool already writes that region. **at91bootstrap lives on NAND and does not touch the QSPI — we own the full 8 MB at the app level (QSPI splash is firmware-only, no bootstrap change).** NAND (`MX30LF4G28AD`, 512 MB) holds the app image (at91bootstrap copies it to DDR at boot); SD card stays for recordings/keyframes/results/bulk art. **Note:** the 200 MHz GCLK is an MCC clock-config change — verify it survives/needs-reapply on MCC regen, and re-run `qspi verify` after any QSPI MCC regen.
+340:- **UI compositor open questions ([`ui_compositor.md`](ui_compositor.md) §10).** Touch model (reveal-then-promote vs. a marvin-owned maxtouch dispatcher — decide at P4); `GFX_CANVAS_Task` static conversion vs. accepting an MCC dynamic task; final surface count/sizes vs. the shared `.region_nocache` budget; HEO ↔ canvas coexistence (canvas must never touch HEO and its init reorder must not disturb video's runtime HEO setup); which surfaces (if any) need ARGB8888 vs. layer global alpha.
+341:- **Upstream Microchip Legato/gfx bugs to file (found 2026-06-24, see decision log).** (1) With the graphics driver's "Cacheable Frame Buffers" *off* on a cached-DDR target, the generator places the framebuffer in `.region_nocache` but leaves the Legato render/scratch buffer cacheable (`LE_NO_CACHE_ATTR` emitted empty, `LE_COHERENT_ATTR=CACHE_ALIGN`) → 2D-engine blit reads stale CPU-cached pixels. (2) `DRV_GFX2D_Fill` lacks the `dcache_CleanInvalidateByAddr` that `DRV_GFX2D_Blit` has. We work around (1) with a `user.cmake` `-D`; both should be fixed in MGS/the gfx2d driver.
+342:- **Song-select screen + tier/career-setlist data model.** The list *widget*, the MGS SELECT SONG layout (album art + catalog-fed metadata panel + difficulty/mode/Select), and the detail labels are done. The **tier/difficulty** column is now **populated** in `songs.csv` (main = career tier `"1".."8"`, bonus = `"bonus"`) and drives both the `TIER n` detail label and the album-art fade color (an 8-tier palette green→red with blue/purple accents, gray for bonus; baked offline — decision log 2026-06-30). Remaining: the difficulty value is still a plain string the UI shows as-is; a `tier`-typed model + the widget tier *badge* (vs the detail label) are still open if wanted.
+412:- **T1S link transport — scoped + gated on prereqs, not yet built.** Scope/addressing/driver/UART-fallback decisions are settled (see 2026-06-16 decision log): multi-node design-for-N, PLCA coordinator on marvin, adapt `oa-tc6-lib`, FLEXCOM1 UART kept in parallel behind a build flag, code in `default/src/net/t1s/`. **Firmware coding is held on two prereqs Greg is handling:** (1) a free FLEXCOM regenerated in SPI-master mode in MCC, wired to the LAN8651 EVB pins (no SPI PLib exists yet — only USART/TWI); (2) `oa-tc6-lib` added on disk as a subproject. Remaining-open (non-blocking, settle during bring-up): final custom ethertype + MAC values, and the PoDL supply-voltage / PD-regulator BOM (not firmware). (FLEXCOM instance + pin map resolved — FLEXCOM3, see 2026-07-23 decision log.) Engineering detail: [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); system spec §6.
+416:## Session log
+500:Area review of the game-pipeline / detector / actuator turned up three fixable items (a fourth — multi-producer wire arbitration — deferred to Open questions).
+521:Two structural follow-ons to the P1/P2 re-layering (decision log 2026-07-15).
+544:Landed P1 of the timing re-layering (model + phases in the decision log / open questions, 2026-07-15). Goal: stop conflating the actuator's mechanical latency with the pipeline's scheduling clock, and put the mechanical-advance knowledge where it belongs — the actuator layer.
+551:**Pending Greg's MPLAB build.** Not yet exercised with a nonzero advance (no solenoid node exists). P2 (detector stamps strike time; move `STRUM_DELAY_MS` out of the pipeline; `detector_state_t` bus-record change) and P3 (Option B timestamped wire) remain in Open questions.
+691:- **Journal trimmed 1803 → ~800 lines.** Session-log entries for 2026-05-20 → 2026-06-16 (firmware bring-up: spec draft, M1 detector, perf-log channel, USB/UART link, JTAG/NAND, M9 observer, T1S Phases 1–4) moved to [`journal-archive-2026-q2.md`](journal-archive-2026-q2.md). June 17 onward stays here; Decision log + Open questions untouched. Archive chain preserved (active → Q2 → the May `journal-archive.md`).
+761:The song-select **TIER label** (`SONG_LEVEL`) now renders "★…★ TIER n" (n stars, career tier) / "BONUS", in DejaVuSansMonoBold 12pt (carries U+2605), colored by tier via MGS schemes `SCHEME_TEXT_TIER_1..8` (text color = the `TIER_COLORS` palette; bonus → existing `SCHEME_TEXT_GRAY_D4D4D8`). C side wired in `screen_song_select.c`; schemes created in MGS 2026-06-30. DejaVu-only font policy recorded (decision log + spec §4.5).
+1078:**Change 2 — tight SD mount poll (Lever B, part 1 + measurement).** Collapsed the double-retry (loader 5×300 ms wrapper removed; `Storage_Mount` 50×20 ms → **300×10 ms**) so we proceed the instant the card is ready instead of in coarse quanta, and `Storage_Mount` now logs **elapsed-at-mount** — the true card-ready latency from first attempt. Open question Greg raised: a seated card shouldn't need ~2 s; the next boot's `STG: mounted ... (N ms)` line tells us whether the ~1 s first-attempt failure was the card genuinely powering up, the driver's 10 ms-per-step pacing through CMD0/CMD8/ACMD41/CMD2/CMD3, or just our old quantization. Card-detect is POLLING method (skips the 250 ms SDCD debounce); the real delay is media init dominated by the ACMD41 power-up loop (2 s timeout, paced by `DRV_SDMMC_RTOS_DELAY_IDX0 = 10 ms`). If N is large, next lever is lowering that 10 ms in MCC.
+1165:Built the operator-UI presentation layer from the GFX Canvas component up to a complete, polished slide-out nav drawer. Arc of the session (decision log has the rationale for each; [`ui_compositor.md`](ui_compositor.md) is the authoritative design):
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:32Z)**_
+
+Now let me read the decision-log table header and the session-log header regions so I match the format.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:32Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+222	## Decision log
+223	
+224	| Date | Decision | Rationale |
+225	|------|----------|-----------|
+226	| 2026-07-28 | **Coordinator node table: fretboard/detector entry renumbered id 1 → 4** (`net/t1s/t1s_link.c` `s_nodes[]`: `{ 4u, DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD }`). `detector_id` (`DETECTOR_ADC_FRETBOARD`) is unchanged — only the PLCA id / MAC low byte moved. Coordinated with the fretboard firmware (`t1s_detector.c` `T1S_NODE_ID` → 4); re-flash marvin **and** the fretboard together. | Completes the bus renumber to the canonical table (docs/t1s-podl-link.md §7.1): detector = 4, freeing ids 1–2 for the fauxmote controllers. Non-promiscuous MAC filtering means marvin must recognize the node's src MAC, so its table entry moves in lockstep with the node's id. |
+227	| 2026-07-28 | **Coordinator node table: guitar entry renumbered id 2 → 3** (`net/t1s/t1s_link.c` `s_nodes[]`: `{ 3u, T1S_NO_DETECTOR, T1S_NODE_GUITAR }`). marvin now addresses its 1-byte command to `02:00:00:00:00:03`. Part of the coordinated guitar-id change (guitar `t1s_follower.c` + fretboard `t1s_detector.c` peer-to-peer target move to 3 in the same pass); re-flash marvin **and** the guitar together. fretboard node stays id 1 for now (target 4, deferred — since done, see the id 1→4 entry above). | Adopting the target bus table (docs/t1s-podl-link.md §7.1): fauxmotes 1–2, guitar 3, fretboard 4. Non-promiscuous MAC filtering means the guitar only accepts frames to its own MAC, so marvin's TX target had to move in lockstep with the node's id. |
+228	| 2026-07-23 | **fauxmote link moved to a dedicated FLEXCOM5 USART (PA16/PA15); fauxmote made transport-independent.** New FLEXCOM5 USART in MCC (AIC source 14, ring-buffer, config byte-identical to FLEXCOM1; baud→1 Mbaud at runtime via `SerialSetup`). `fauxmote_link.c/.h` is a mechanical `FLEXCOM1_USART_*`→`FLEXCOM5_USART_*` rename. Dropped every `MARVIN_FRETBOARD_TRANSPORT` guard that only existed to keep fauxmote off UART-guitar builds (`app.c` init, `fretboard_link.c` mirror tap, `console.c` `fauxmote` cmd, `game_controller.c` `ensure_wii_connected`). Commits `a36ccdd` (MCC) + `1872a9c` (app); verified on hardware. | fauxmote borrowing FLEXCOM1 tied it to the T1S guitar build (FLEXCOM1 was only free there). A dedicated peripheral removes the contention so fauxmote runs on every build — and since **every build drives a Wii through fauxmote** (Greg), the Wii-connect pre-flight should always run, not just on T1S. The remaining `MARVIN_FRETBOARD_TRANSPORT` guards are the real guitar UART-vs-T1S actuator split (unchanged). |
+229	| 2026-07-23 | **T1S host SPI moved FLEXCOM4 → FLEXCOM3 (board rework), CS0 → CS1.** New pin map: MOSI PC22, MISO PC23, nCS PC24, SCK PC26 (`FLEXCOM3_IO0/1/4/2`); `T1S_IRQ_N` PB18, `T1S_RST` PA17; AIC source 13→8. App change was a pure `FLEXCOM4_SPI_*`→`FLEXCOM3_SPI_*` rename in `t1s_link.c`; CS is hardware-driven (`FLEX_SPI_MR.PCS=NPCS1`/`CSR[1]`), so CS0→CS1 needed no app change. Re-applied patch #11 (`plib_aic.c`) after regen. Commits `70b1fc7` + `9ce4fcf` (+ `5faa2b7` MISO pull-down); verified driving the guitar on hardware. | Board rework freed the FLEXCOM4 pins for other use and put T1S on PORTC. Keeping the wrapper CS-agnostic (hardware PCS, no manual nCS toggling) is what made the CS0→CS1 move a non-event in firmware. The regen dropped the MISO absent-chip pull-down; re-created on PC23 (`5faa2b7`). |
+230	| 2026-07-15 | **Timing pipeline is the "decide" layer, not part of the actuator — moved `timing_pipeline.{c,h}` `actuator/` → `game/`; and detector-source arbitration moved to the push side (`Detector_Publish`), so the bus carries only the active detector and the pipeline no longer filters.** Two structural cleanups after the P1/P2 re-layering made the layers explicit. **(Q1 placement)** The pipeline is a peer of detector and actuator (spec §4.4), and it's the sibling of `game_controller` — the two are the mutually-exclusive autonomous command producers (note-highway gameplay vs. menu nav, open Q11). So its home is the game-control subsystem (`game/`), leaving `actuator/` as the command **sink** (`fretboard_link` + mechanical advance). `manual_control` stays out of `game/` (operator override, not game logic). Include convention: cross-dir includes are path-qualified from `default/src`, so the move updated `#include` paths in 6 files + the `user.cmake` source list; no behavior change. **(Q2 arbitration)** Added `Detector_Publish(state)` in the detector module: it forwards to the bus only if `state->detector_id == active`, and `Detector_SetActive` drains the queue on switch. `cv_marvin_v1` publishes through it (dropped its raw `xQueueSend` + bus plumbing); the pipeline dropped `if (detector_id != Detector_GetActive()) continue`. Behavior-identical (the pipeline already acted only on the active source) but arbitration now has one home. | The `actuator/` dir had become "command producers + sink," a rule already broken by `game_controller` living in `game/`. Grouping the two autoplay producers together makes Q11 arbitration local instead of spanning dirs, and reduces `actuator/` to a clean transport sink — matching the three-layer split (detector = sense, game = decide, actuator = actuate). For Q2: the detector bus is pipeline-only (recording/UI use separate paths), so gating the push costs the recorder nothing and keeps "which source drives the robot" a single detector-module decision rather than a policy the consumer re-derives. **Follow-up smell (resolved same day):** `fretboard_link.c` had still included the scheduler header for the `TIMING_BIT_*` wire-mask layout. Extracted those defines to `actuator/guitar_cmd.h` as `GUITAR_BTN_*` and dropped the sink→scheduler include (see session log 2026-07-15). |
+231	| 2026-07-15 | **Timing re-layered into three owners: observation-lead → detector, musical scheduling → timing pipeline, mechanical actuation-advance → actuator. Today's single `STRUM_DELAY_MS` conflates the first with the third.** The pipeline currently fuses three unrelated clocks into `STRUM_DELAY_MS` (400 ms) + friends, and the actuator (guitar T1S node, `t1s_follower.c` `buttons_apply_mask`) is a dumb "assert this mask *now*" GPIO sink with zero timing knowledge. Split them: **(1) observation lead** — the ROI sits above the strike line so a note is *seen* ~`STRUM_DELAY_MS` early; this is detector geometry, not a scheduling choice. **Decision: the detector stamps a strike-line-referenced time per pressed edge** (`strike_at ≈ timestamp_us + observation_lead`), so the pipeline schedules purely in strike-line time and carries no `STRUM_DELAY` of its own. Enables per-detector leads (CV ROI vs ADC differ). Requires adding a strike-time field to the `detector_state_t` bus record (spec §4.2.3) — a bus-record change to plan for. **(2) musical scheduling** — chord window, `FRET_EARLY_MS`, `STRUM_PULSE_MS`, release scheduling, strum-direction alternation, back-to-back hold: stays in the timing pipeline, correct where it is. **(3) mechanical actuation-advance** — solenoid rise time / GPIO propagation; 0 for the current open-drain guitar node, ~5–20 ms for a future solenoid rig. This is an actuator property, owned as declared config *by the actuator node* (may be per-bit / fret-vs-strum). **Decision: Option A now — marvin applies the node's declared advance and keeps emitting a bare "assert now" mask** (dumb wire, no shared clock, no node buffering; fits the single-emit-point + static-allocation discipline). **Option B recorded as the future escalation:** wire becomes `(mask, strike_time_T)`, node buffers and fires at `T − advance` off a shared clock — adopt only if link jitter or on-node multi-solenoid sequencing demands local scheduling; the Option-A `actuator_advance` config value *is* the number the node would apply under B, so nothing is wasted. | The muddle isn't that scheduling lives on marvin (it should) — it's that observation lead is mislabeled as a scheduler constant and mechanical advance has nowhere to live except smeared into `STRUM_DELAY_MS`, which couples marvin to one actuator's mechanics. Re-layering puts each constant with the thing that knows it: geometry with the detector, musicality with the scheduler, mechanics with the actuator. Option A over B for now because the precision budget is coarse (~±2–5 ms) and PLCA already bounds link jitter, so central application is adequate and far cheaper than a distributed clock. **T1S sync finding (for B):** PLCA (802.3cg) gives bounded latency/jitter (determinism) but **no** shared clock — it is not a time-sync protocol. Full IEEE 1588/gPTP is available in principle (the TC6 stack already surfaces a HW RX timestamp — `uint64_t *rxTimestamp` in the follower RX callback) but is overkill here. Recommended B-sync = marvin periodically broadcasts a sync frame with its `frame_epoch`/timestamp; each follower disciplines a free-running local timer to it (few-ms accuracy for near-zero infrastructure), with the LAN8651 HW timestamp as the escape hatch if tighter is ever needed. |
+232	| 2026-07-02 | **fauxmote link on marvin uses FLEXCOM1 (PA28/PA29) and mirrors the gameplay mask to both sinks.** New `net/fauxmote/fauxmote_link.c` reuses the fretboard UART-transport peripheral (free while the guitar rides T1S); `FretboardLink_Send()` taps `Fauxmote_SendGuitarMask()` so the T1S guitar node and the ESP32 Wiimote move in lock-step. Shared `mf_proto.h` (byte-identical both sides); 1 Mbaud via `SerialSetup`. Compile-guarded to the T1S build (owns FLEXCOM1). | Zero MCC work — FLEXCOM1's USART PLIB already exists and is idle in the T1S build, so no new peripheral/pin generation. "Mirror to both" (Greg's call) keeps the real guitar and the Wii driven by the one existing choke point without a runtime multi-sink layer, and matches the spec's bit-identical `GUITAR` byte 0 == T1S mask. Latched-state TX task with a 50 ms floor gives low-latency-on-change plus dropped-frame self-heal and keeps fauxmote's watchdog fed. |
+233	| 2026-07-01 | **UI: paint every screen canvas once at boot; show/hide is repaint-free. Fixes the ~0.5–1 s first-touch lag after opening/closing the nav drawer or song-select modal.** Root cause: Legato defers all touch input while its renderer is non-idle (`handleTouchDown`/up/move return `LE_EVENT_DEFERRED` when `leIsDrawing()`, `legato_input.c`), re-queuing the event every 10 ms `LEGATO_Tasks` tick. A screen transition kicked off a full repaint that held the renderer busy for many ticks, stranding the first tap behind it. The repaints were architecturally needless — each screen owns a RAM canvas surface and Legato renders into it regardless of the canvas's shown/bound state (`GFX_IOCTL_SET_ACTIVE_LAYER` succeeds for any canvas), so showing a screen should be a pure HW-layer bind. Three offenders removed: (1) `navigation_open()` explicit `PANEL_NAVIGATION->invalidate()` every open; (2) `songsel_set_input()` used `setEnabled()` for modal input-gating, and `_leWidget_SetEnabled` invalidates on state change → repainted the modal panels on open and the **dashboard** on close; (3) same `setEnabled(DASHBOARD)` in nav open/close. **Fix:** `panel_set_pickable()` in `ui_manager.c` toggles `LE_WIDGET_ENABLED` directly on `wgt->flags` (no invalidate — the renderer never reads ENABLED; `leUtils_PickFromWidget` descends only into ENABLED children, so clearing it gates the whole subtree). `UiManager_SetDashboardPickable(bool)` shares one dashboard gate between nav + song-select. New `paint_all_screens_once()` invalidates all four panels (dashboard/nav/song-select/album-art) behind the splash before `wait_render_idle()`, so every surface is complete before first show. Removed the now-redundant one-time invalidate in `ScreenSongSelect_Setup`. Content-change repaints (album-art swap on song tap, nav highlight scheme) are unchanged. Real reason the old startup paint "didn't fully land": MGS builds `PANEL_NAVIGATION` `setVisible(FALSE)`, so the boot root-damage painted nothing until `Setup` flipped it — the explicit boot paint makes it deterministic. Builds clean (XC32 v5.10); **pending on-hardware confirm** that first-tap lag is gone on nav open/close + song-select open/tap/close. `IGNOREPICK` was rejected for the gate: it stops a panel being the pick result but still lets its children be picked, so it wouldn't gate the subtree. The heavy 508×208 RGBA8888 album-art alpha blit remains a separate perf item. | Legato's input-while-drawing deferral is library behavior (can't edit vendor tree); the lever is to make transitions not repaint at all, which the canvas model already affords. Toggling ENABLED directly (vs `setEnabled`) drops only the invalidate side-effect while keeping identical pick semantics; it's an established idiom here (MGS sets IGNOREPICK/IGNOREEVENTS the same way) and needs no vendor edit. One-time boot paint honors the canvas model's whole point — "nothing changes while hidden, so nothing to repaint on show." Single-buffered surfaces (`bufferCount==1`, `LE_PREEMPTION_LEVEL==0`) mean one drained invalidate lands a surface completely, so the boot paint is reliable. |
+234	| 2026-06-30 | **UI fonts: DejaVu Sans Mono family only (licensing).** All new text uses `DejaVuSansMono_*` / `DejaVuSansMonoBold_*`; do not add other faces. The figma-imported Menlo / NotoSans faces still present in the generated font set are a known cleanup item to migrate to DejaVu over time. The song-select **tier label** uses **DejaVuSansMonoBold 12pt**, which already carries the `★` (U+2605) glyph (its subset is `0x20–0x7E`, `0xA0–0xFF`, `0x2605`), so the `★★★★★ TIER n` label needs no font change. Recorded in spec §4.5. | Licensing — DejaVu is the cleared family for this project. Keeping to one mono family also keeps the font asset set small and the look consistent. The star already being in the DejaVuSansMonoBold subset means the tier label gets the mock's stars for free. |  All covers decoded once into static RGB888 DDR caches during the splash; large tier = 508×208 strip with a difficulty-colored fade baked offline; song-select wired, dashboard pending.** Two fixed-size tiers in cached DDR (`.region_ram`): small 144×144 (3.8 MB) + large 508×208 (19.3 MB) + a shared 512 KB decode scratch ≈ **23 MB**. `Art_LoadAll()` (called from `ui_boot_task` after `init_screens()`, behind the splash) walks `art/{small,large}/` with `SYS_FS_DirOpen`/`DirRead`, reads each file into scratch, parses true dims from the JPEG SOF / PNG IHDR header, validates exact tier dims, and decodes into the slot via `leImage_Render` (the JPEG/PNG decoder's `render` writes RGB888 straight into the slot — no clip-rect/active-frame dependency). Each slot is wrapped as a RAW RGB888 `leImage`; lookup is `(setlist,index)` → `leImage*` or NULL. Missing/oversize/wrong-size/corrupt → empty slot → UI blank; never fails boot. Song-select sets the **MGS-provided** `Marvin_IMAGE_ALBUM_ART_0_0` widget per selection (the maroon overlay panel MGS built stays invisible — fade is baked). **Offline (`tools/gh3-cover-art/`):** `process_gh3_cover_art.py` reworked to center-crop the middle 508×208 band, look up each song's `difficulty` from `songs.csv`, and bake a fade colored by difficulty from an 8-tier palette — `"1".."8"` green→red with blue/purple accents (`TIER_COLORS`, shared with the TIER-label schemes), `"bonus"`/unknown = gray — saved as **PNG** (lossless gradient); small stays 144×144 JPEG. `install_art.py` installs large as `<setlist>-NN.png`. `art` console command reports cache fill. **Pending:** asset regen from `./data` originals; dashboard small-thumbnail slot (no MGS widget exists for it yet). | Spec §4.8.7 always called for pre-decode-once into a static DDR cache (runtime = O(1) pointer, no card I/O/decode/alloc — honors static-allocation). RGB888 chosen per Greg; the 508×208 display window (vs full 508×~508) shrinks the large cache from ~52 MB to ~19 MB, and offline crop+fade keeps the device module to "decode→store→display" with the cached array *being* the final image. Difficulty-colored fade baked offline (Greg's call) rather than a runtime overlay: difficulty is already in `songs.csv` and static per song, so baking keeps the device trivial; cost is a re-bake if a tier changes. PNG for large because the smooth baked gradient bands under JPEG; both decoders implement the offscreen `render` path. Caches in **cached** DDR (not the 32 MB `.region_nocache`): they're decoder source/staging Legato blits into the canvas, never LCDC-scanned directly, and the 224 MB cached region has ample room. Walk-the-dir (not catalog-driven) so a missing/stale catalog never affects art (spec §4.8.7). |
+235	| 2026-06-29 | **Migrate the operator UI to MGS's single-master-screen / layer-screen model: one master Legato screen `Marvin` whose *layers* are the panels (dashboard, nav, song-select, dialogs…), replacing the current "separate 1-layer MGS Screen per panel, manually re-hosted by `ui_manager`, `LE_LAYER_COUNT` pinned by a fake `LayerBudget` screen."** Per Microchip's GFX-canvas **layer-screen** guide, this is the framework's intended structure: MGS derives `LE_LAYER_COUNT` from the layer count and auto-associates each layer-screen with its own GFX canvas, so the `LayerBudget` pin, the `compat/le_gen_init.h` stub, and the `init_screens()` build-on-layer-0-then-disconnect + per-screen `*_OnShow` re-host dance all disappear. `ui_manager` shrinks to: assign each layer-screen's canvas buffer (content-sized, RGB565) + `show_layer(idx, hwLayer)` / `hide_layer(idx)` verbs (HW-layer binding stays a runtime `gfxcSetLayer` choice, never owned by a panel). Panel modules (`screen_nav.c`, `screen_song_select.c`, …) keep content + event wiring + interaction FX but drop all `leAddRootWidget`/canvas mechanics. **Splash stays separate/manual** (pre-Legato RGBA8888 scanout) on a canvas slot *outside* the layer-screen range 0..N-1 (e.g. top of the 8-slot pool). The three-concept model that drove this (Legato layer-screen ↔ canvas coupled 1:1; XLCDC HW layer independent/runtime) + the direction are now canonical in [`ui_compositor.md`](ui_compositor.md) §0. Open items before coding: final layer order/z-order + initial layer set; per-layer-screen canvas sizing/offset; MGS widget naming across layers (drives a rename sweep in the panel modules); confirm a hidden layer-screen's canvas suppresses touch picking. | The current approach hand-emulates layer-screens, which is what forced every recurring canvas-vs-layer confusion: with `LE_LAYER_COUNT`=3 only canvases 0/1/2 are real Legato render targets, so a 3rd live panel could not get its own slot without colliding with the splash's. Adopting the framework model makes "each panel owns its own canvas" literally true (define up to 8 layer-screens, composite any 3 onto the HW layers), aligns with the tooling instead of fighting it, deletes two standing hacks, and is purpose-built for marvin's need (multiple coexisting overlays with preserved widget state, no redraw on transition). Splash stays out of the master screen because it must paint before Legato/the master screen is built (fast-boot path). |  (`data/ui/make-splash.sh`), not by ad-hoc shell history; the raw byte order is `[A,B,G,R]` per pixel.** The XLCDC splash canvas is `GFX_COLOR_MODE_RGBA_8888` whose pixel word is `0xRRGGBBAA` (`splash.c` `SPLASH_FILL 0x000000FF` = opaque black confirms it), so little-endian memory bytes are `[A,B,G,R]` — **not** Pillow's default `R,G,B,A`. The script splits channels and `Image.merge("RGBA",(a,b,g,r))` to get that order, resizes to 1280×800, and asserts the 4,096,000-byte size `splash.c` requires. Uses `uv` + Pillow (no ImageMagick/ffmpeg — neither is installed on this host). Verified empirically against the committed `splash.raw`: first pixel matched to within JPEG-re-encode noise, while the naive `R,G,B,A` ordering was fully reversed. Regenerated `splash.raw` from the (newer) `splash.jpg`, which had drifted out of sync. Documented in `data/README.md`; flash with `openocd/program-qspi.sh splash`. | The conversion step previously lived only in someone's shell history — undocumented and reproducible only by guessing the byte order (easy to get reversed, since the framework name "RGBA_8888" reads like Pillow's `R,G,B,A` but the little-endian word layout inverts it). A checked-in script with the size assertion makes the splash pipeline self-serve and drift-proof, and pairs with the existing `program-qspi.sh splash` provisioning step. |
+236	| 2026-06-28 | **QSPI 8 MiB partition map locked — `flash/qspi_layout.h` is the single source of truth.** Splash blob `0x000000` (4 MiB) · UI assets `0x400000` (~3.98 MiB) · Settings ring `0x7FC000` (16 KiB / 4 sectors). All boundaries 4 KiB sector-aligned; contiguous, no gaps/overlaps. Splash at offset 0 (raw pre-decoded framebuffer; 4 MiB holds full-panel RGBA8888 = 3.91 MiB, or an RGB565 splash uses ~1.95 MiB — the reservation keeps both open, format decided when the loader is built). Read-mostly bulk grows upward; the small, frequently-erased settings ring sits at the very top as a stable anchor, **wear-isolated** from the bulk. Settings get 4 sectors (2× the 2-sector ping-pong minimum) for ring headroom. UI assets indexed by **compile-time offsets** for now (flashed with firmware); a manifest sector / littlefs can be carved from the front of the assets region later if assets must update independently. | One header (`qspi_layout.h`) means consumers and the `qspi` dev tools share offsets — no drift. Settings-at-top isolates erase wear and gives a fixed anchor independent of how the bulk grows. **Dev-tool caveat:** `qspi` smoke (last sector `0x7FF000`) and `qspi verify` (top-down) write into the settings region — destructive to it, but the ring-log's CRC-fallback-to-defaults makes that non-fatal (settings just reinitialize). Run heavy `qspi verify` before the settings store is populated, or accept a settings reset. | 
+237	| 2026-06-28 | **QSPI read throughput — the serial clock (GCLK = 2×QSCK) was the lever, not per-access overhead. At 200 MHz GCLK (MCC max → 100 MHz QSCK), XDMAC mem2mem reads hit 18.2 MB/s → ~225 ms for a 4 MB splash, ~3× faster than SD (~750 ms). Read integrity verified at volume. Splash → QSPI via XDMAC mem2mem is GO.** Bench (`qspi bench`, `flash/qspi_smoke.c`) at 50 MHz GCLK → 25 MHz QSCK showed ~5 MB/s and I wrongly concluded "overhead-bound, clock maxed." Greg caught the datasheet note **GCLK must = 2×QSCK** and raised GCLK 50→200 MHz; everything scaled ~linearly (DRV_SST26_Read 4.6→14.8, XDMAC mem2mem 4.9→18.2 MB/s; the raw libc `memcpy` path stays ~2.5 — it is just bad on this region, ignore it). Read path = **XDMAC channel 1 mem2mem from `QSPIMEM_ADDR` (0x60000000)** — ch0 is the ISC histogram DMA, and the PLIB only tracks ch0, so we program ch1's registers directly. Integrity confirmed by `qspi verify 1024 4`: 1 MiB × 4 passes via **both** the driver and XDMAC, **0 mismatches** at 100 MHz, with a position-dependent pattern (catches misaddressing, not just stuck bits). **Two dead ends ruled out:** (a) making the QSPI window **cacheable** in the MMU **hangs** — cache-linefill bursts aren't serviced by the SMM slave (back out; XDMAC bypasses the MMU so it's unaffected); (b) **continuous-read mode (CRM)** only trims the instruction byte on *non-sequential* access, so it does nothing for bulk sequential reads. SMM tops out ~36% of the 50 MB/s theoretical (re-frames per access); the only path to ~50 MB/s (~80 ms) is the QSPI's RX-triggered streaming read — deferred as a mini-project, not worth it over 225 ms. | The clock fix flipped the verdict: at 25 MHz QSCK QSPI-SMM (~5 MB/s, ~800 ms) was *worse* than SD's read; at 100 MHz QSCK (18.2 MB/s) it clearly wins. 100 MHz is within the SST26's 104 MHz rating and proved data-clean at volume, so no DLL/read-training needed at this rate. 200 MHz GCLK is an MCC clock-config change (lives in MCC config → survives regen). **Gotcha for any raw SMM read (memcpy/DMA, bypassing `DRV_SST26_Read`):** the read frame must be closed with `QSPI_CR.LASTXFER` + wait-CSRA or the next QSPI command hangs with CS still asserted — the driver does this internally; raw paths must call an equivalent (`qspi_end_smm_read()` in the bench). Splash framebuffer is in `.region_nocache` (strongly-ordered 0x20000000) but XDMAC writes bypass the MMU, so DMA→framebuffer is unaffected. | 
+238	| 2026-06-28 | **Config/operator settings (backlight %, mode toggles, calibration) persist to the onboard QSPI NOR (`SST26VF064BA`, 8 MB / 64 Mbit SQI) via flash EEPROM-emulation — a small wear-leveled ring-log, NOT a filesystem. No board EEPROM exists, so QSPI is the only non-volatile small-state store.** Reserve ≥2× 4 KB sectors as a ping-pong region: a save appends a `{seq, settings_t, CRC}` record to the next free slot in the active sector (page-program, *no erase*); when full, write the latest record into the pre-erased partner sector then erase the full one. Boot picks the highest-`seq` record with a valid CRC; a partial trailing record (power lost mid-write) fails CRC and falls back to the prior good record → **power-fail safe by construction**, no torn settings. This supersedes the spec §4.6.2/§4.7 plan to keep all config in `/marvin/config.json` on the SD card: operator/UI prefs must persist and load **even with no SD card inserted** (the SD is removable, QSPI is always present). Session/recording config that travels with the data can stay on SD. **Splash, when/if it moves to QSPI, is stored as a raw pre-decoded framebuffer blob at a fixed offset — also no filesystem.** | NOR semantics drive the design: bits only clear 1→0 on program; setting a bit back to 1 requires erasing the whole 4 KB sector, so "update a value" = erase+rewrite 4 KB. FAT makes that worse (every file write also rewrites FAT/dir sectors → write amplification) and FatFs is *not* power-loss-atomic → a mid-write power cut can corrupt the FAT itself, not just the value. The ring-log avoids both: erases are rare (~one per N saves, N = slots/sector) and alternate across sectors, giving effectively unlimited endurance for human-driven settings against the part's ~100k cycles/sector; atomicity is the seq+CRC scan. littlefs (Harmony File System can back it) is the fallback **only** if settings grow into many named, workstation-mountable keys — overkill for a handful of scalars. **Raw-only splash:** the seed `splash.jpg` carries ~2 s of on-target JPEG decode, which dwarfs any bringup savings, so a JPEG-on-QSPI splash would be *slower* than today's SD path — only a raw blob streamed straight to the framebuffer (no decode, no FS mount, no FTL — NOR has none) realizes QSPI's sub-ms bringup vs. SD's ~350 ms `ACMD41` power-up handshake. | 
+239	| 2026-06-26 | **Boot splash = full-screen SD JPEG shown on BASE before the backlight comes on; first real use of the compositor "replace" verb. Code-complete, pending hardware test.** The `Splash` MGS screen (`le_gen_screen_Splash.c`: full-screen solid-fill `Splash_Panel_0`) is the base — kept for the "every base view has an MGS component" convention; `ui/screens/splash/screen_splash.c` adds one `leImageWidget` onto that panel in code (the photo is a runtime SD asset, can't be an MGS asset). A new boot loader task (`ui/loader.c`) mounts the card, reads `/<card>/ui/splash.jpg` into a static buffer, builds a runtime `leImage` (format JPEG) + sets it on the widget, then `UiManager_EnableBacklight()` (backlight control moved out of `video` into `ui_manager` — the UI owns the display; it was only in `video` for historical reasons), and reveals the dashboard + brings video up. **Per-screen pre-rendered persistent canvases** (revised within-session — see bring-up #1/#2): every screen is MGS-**persistent** (built once, never torn down) and owns its own canvas/Legato-layer/HW-layer — Dashboard 0/0/BASE (RGB565), Nav 1/1/OVR1 (RGB565), Splash 2/2/OVR2 (RGBA8888, full-screen, topmost). The splash is drawn over the dashboard on OVR2; the heavy Dashboard paints **behind** it and is revealed (hide OVR2) already complete. **Off-screen paint:** all screens are built pre-scheduler (no concurrency); the normal Legato render task paints them once the scheduler is up, and the loader simply pends on the public `leRenderer_IsIdle()` before lighting the panel (no scheduler hacking — see bring-up #4/#5 for the suspend/pump dead-end). RGB888 splash via the canvas's own 32bpp mode (the canvas framework sets the HW-layer color mode from `pixelBuffer.mode`); the RGB565↔8888 BASE-swap of the first cut is gone. Missing/oversized/no-card → the panel's solid fill is the fallback. Seed `data/ui/splash.jpg` (placeholder). Design in [`ui_compositor.md`](ui_compositor.md) §12–§13. | "Turn on the display" = enable the backlight (XLCDC scans continuously from `SYS_Initialize`), so gating the backlight on splash-ready is the whole mechanism. First on-hardware run showed reveal-before-paint noise (screens shown mid-paint over uninitialized DRAM); the fix is to paint each screen to completion off-screen, then reveal — the §1 compositor ideal, enabled by persistent screens + pumping the renderer to idle off-screen. JPEG over BMP/RAW: BMP isn't Legato-decodable (only RAW/JPEG/PNG), so it would mean a custom parser + bypassing the `leImageWidget` path and would prove nothing reusable; JPEG reuses Legato's enabled decoder and **is** the album-art pre-load path. RGB888-without-hoops confirmed in `gfx_canvas.c` (per-canvas mode auto-configures the XLCDC layer), so the splash gets full color depth while the steady-state dashboard stays RGB565 to save DDR bandwidth; the 32bpp splash buffer doubles as future album-art decode scratch. Splash kept as an MGS shell (Greg's call) for base-view uniformity even though its only real content is the loaded image; the image widget is code-added since it's runtime data. Loader is a task (not `APP_Initialize`) because SD mount + FatFs + decode block on I/O and need the scheduler. Known one-time-boot roughness (hard splash→dashboard cut; fixed backlight settle vs a real paint-complete signal; baseline-JPEG-only) tracked in §10/§12. | 
+240	| 2026-06-26 | **Anti-aliased rounded button corners via a per-instance vtable re-point — no Legato/MCC edits (`ui/widgets/button_aa/widget_button_aa.c`).** The classic skin draws rounded corners with `leRenderer_ArcFill` (hard stepped edges). `ButtonAA_Enable(btn)` makes one shared writable copy of the button vtable, overrides only `_paint`, and points the button's `fn`/`widget.fn` at the copy; the wrapper runs the original paint then, on `DONE` at the supported radius, overdraws the four corners — sampling each corner's extreme (untouched) pixel as backdrop and blending a 1px band from a precomputed coverage mask (`leColorLerp` + `leRenderer_PutPixel`). Wired from `nav_buttons_init()` (nav-only for now; extend by adding call sites). Also added a CLAUDE.md rule: do not modify MCC-generated/Legato code under `config/default/`. Design in [`ui_compositor.md`](ui_compositor.md) §10a. | Editing the skin (the obvious spot) is forbidden — it's vendor/MCC code that regen silently overwrites. `LE_DYNAMIC_VTABLES` (the sanctioned global override) is **not** an MCC knob and is an unguarded `#define 0` in generated `legato_config.h` (can't flip via config, can't `-D`, can't hand-edit) — dead end. A post-render overdraw on the nav canvas has no vendor-legal post-paint hook and fights Legato's damage-repaint (1-frame hard-corner flash). The per-instance re-point exploits that `leWidget.fn` is a *writable* pointer to a const vtable: it needs no config flag, costs one vtable struct + one mask in BSS (static-allocation discipline holds), runs **in-pass** (repaint→AA same paint, no timing window), and is scoped to exactly the buttons we re-point. **Confirmed on hardware** — smooth corners across selected/unselected/pressed states and slide cycles. |
+241	| 2026-06-25 | **Re-enabled GFX Canvas Move FX to animate the nav drawer slide (reverses the earlier "FX off, do our own" call).** The nav drawer now slides in/out by animating its OVR1 canvas window position via `gfxcStartEffectMove` (DEC ease-out), rather than snapping. With a concrete slide need this is the textbook canvas-move case (the doc flagged it as where canvas FX earns its weight); rolling our own would just duplicate the FX timer + `GFX_CANVAS_Task` we already have, and the FX timer only ticks during an active move (no steady cost). Open slides −off→0; entry taps switch the highlight (Dashboard also closes); a move-done callback (`nav_fx_done`) disables OVR1 when a close finishes. **Window-clip gotcha (cost a few iterations):** a canvas layer can't sit truly off-screen — the clip emulates negative X by shifting the source pointer + shrinking the window, but it first aligns X *down* to a multiple of 4 (`x &= ~0x3`, non-32bpp) and wraps a row once \|X\| hits the surface width, briefly flashing the panel's left columns; and the layer update busy-waits for the vsync latch, so that bad frame displays before the hide. Fix: slide to the furthest 4-aligned X with \|X\| < NAV_W (`NAV_CLOSED_X`, derived from NAV_W — not a magic number) so the final shown frame is an in-bounds edge sliver, then `nav_fx_done` disables the layer to clear it. | Canvas Move FX over a hand-rolled stepper because the machinery already exists (just was disabled) and it's purpose-built for sliding a layer window with easing; the earlier FX-off decision was speculative (pre-slide). The off-screen constant is derived + documented (points at the exact clip line) rather than hard-coded, accepting a documented coupling to the generated canvas clip — same class as the cache/scratch and HEO-blender couplings. Full decoupling (own the slide via direct XLCDC position stepping) is the fallback if the clip bites again. |
+242	| 2026-06-25 | **UI architecture: disable the MGS screen state machine and let the app own screen orchestration, so panels coexist as live, independently-interactive LCDC layers — `ui_manager` + per-screen modules. Authoritative design in [`ui_compositor.md`](ui_compositor.md).** Confirmed in the Legato core that `_state.layerList` is global, `leUpdate` renders/updates **every** attached layer each frame, and `leInput` picks touch across **all** attached layers top-to-bottom — there is no "active screen" render/pick gate. The only thing enforcing one-screen-at-a-time was `le_gen_init.c`'s state machine (`legato_showScreen` tears down the outgoing tree). Turning it off (and working around the MGS dangling-`le_gen_init.h` bug with a `compat/` stub) means we attach multiple panels' roots to different layers and they're all live + interactive at once. **Model:** each panel is authored as its own MGS Screen used as a *widget-tree factory* (`screenInit_` builds, `screenShow_` attaches + raises its `OnShow` composition root); `leAddRootWidget`/`leRemoveRootWidget` re-host a root onto whatever layer we choose. Layers: dashboard=BASE/0, nav=OVR1/1 (resident → "same nav over every view" free), modal song/mode dialog=OVR2/2 (sized to the dialog so live dashboard telemetry shows around it); camera=HEO outside Legato. Two verbs — **coexist** (overlay-as-layer, background live) and **replace** (swap base view on layer 0) — chosen per interaction, both owned by `ui_manager`, so the choice is reversible. `compositor.c` is promoted to `ui_manager`; per-screen/overlay modules own only their widgets+wiring. **This supersedes the earlier "parked surfaces aren't pickable / reveal-then-promote" idea in the doc** — that was a symptom of the state machine, now removed. | Greg's call to author nav + dialogs as separate MGS Screens (cleaner than overlapping layers in one Screen) collided with Legato's one-active-screen model; the resolution was to drop that model entirely rather than fight it, which the global-layerList facts make safe. Disabling the state machine also removes MGS's per-screen switch baggage outright (deleted code, not dormant) and hands us `screenInit/Show` directly. Live-coexistence (vs. freeze) was required because some dashboard telemetry must keep updating under the nav/dialog (the camera already self-updates on HEO). Per-screen modules + a `ui_manager` orchestrator keep each panel's wiring local (composition-root-per-screen) while one top-level module owns the scarce layer budget — matching the MCC-isolation idiom (own files via `user.cmake`). 3 UI layers + camera is the hard ceiling. | 
+243	| 2026-06-25 | **The GFX Canvas regen pushed FreeRTOS `heap_1` past 40 KB → silent boot hang (zero DBGU output); raised `configTOTAL_HEAP_SIZE` 40960 → 100000.** Symptom: after the canvas MCC commit (`ed54f37`), marvin produced no DBGU output at all — bisected to that commit (`8de7c64` working). Not the compositor (it was stashed), and not the XLCDC OVR setup (BASE/HEO use the identical `LCDC_ATTRE`/`WAIT_ATTRS_EQ(SIP)` pre-`Start` pattern that already works, so OVR is symmetric). Root cause: the canvas additions (the dynamic `GFX_CANVAS_Task` + extra OSAL/driver allocations on the 4-layer/canvas display path) tipped cumulative `pvPortMalloc` during `SYS_Initialize` past the 40 KB `heap_1`. Because `configUSE_MALLOC_FAILED_HOOK=1` and `vApplicationMallocFailedHook()` is the MCC default (`taskDISABLE_INTERRUPTS(); for(;;){}`), the failed alloc spun with IRQs off **before** `APP_Initialize`/`log_init` (initialization.c:499) ran → no banner, indistinguishable from a dead board. **Two durable follow-ups (both carried):** (1) the heap size is **not** in `FreeRTOS.yml` — it's a raw literal in the generated `FreeRTOSConfig.h`, so the bump is an **MCC re-apply patch** (joins patch #8, also a `FreeRTOSConfig.h` edit) and will silently revert on the next regen → hang returns; set it in the MCC FreeRTOS component if it exposes Total Heap Size, else keep it on the re-apply list. (2) Patch `vApplicationMallocFailedHook` **and** `vApplicationStackOverflowHook` to emit a marker before the spin — a one-line DBGU write would have turned this multi-step bisect into an instant diagnosis. | Same silent-spin footgun already flagged for `vApplicationStackOverflowHook` (Open questions), now confirmed to bite via the malloc path too — heap exhaustion and stack overflow both present as identical dead-board hangs with the stock hooks. `heap_1` (never frees) is correct for marvin's static-allocation discipline, but MCC tasks + Legato OSAL still need it, so its size is load-bearing and must be tracked. 100000 is generous (+60 KB) headroom for now; right-size later once boot logs `xPortGetFreeHeapSize()`. Found by Greg's heap hypothesis after the XLCDC poll-loop theory was ruled out by BASE/HEO symmetry. |
+244	| 2026-06-25 | **`GFX_CANVAS_Task` runs at priority 2 (the UI band), set via the gfx_canvas component's Task Priority field — not the generated default of 1.** Band 2 is marvin's UI tier (`LEGATO`, `DRV_MAXTOUCH`, `XLCDC`, `SYS_INPUT`; see 2026-05-21 priority re-tiering); the canvas task joins it as a fifth member. Stack 1024 / 10 ms delay kept (matches the other MCC UI tasks; FX is off so it mostly idles between updates). | The canvas task commits Legato's rendered output to the hardware layers (`gfxcShowCanvas`/`CanvasUpdate`/bind) — it *is* a UI task, peer to `XLCDC_Tasks` and downstream of `LEGATO_Tasks`, so it belongs in the same band under the established rule "a late UI paint is jitter only → UI stays the lowest *active* band and yields to vision (4) and strum-critical (5)." The generated default of **1** is wrong twice over: band 1 is **reserved** (future housekeeping/watchdog), and it would sit an active critical-path task below its UI peers. Same band as Legato (not above) is correct — both are event/short-poll and mostly blocked, and canvas presentation operates on shared state asynchronously, so there's no producer/consumer inversion like the old VideoTask one. Set in the component yml (per the 2026-05-21 "MCC priorities live in yml" rule) so regen reproduces it with **no `tasks.c` re-apply patch**. The dynamic `xTaskCreate` (vs static) is unchanged — consistent with the other MCC tasks on heap_1; static conversion stays a separate carried item. |
+245	| 2026-06-25 | **Operator-UI presentation layer = a marvin compositor over the GFX Canvas component: pre-render UI panels into static non-cached RAM surfaces, multiplex the two free LCDC overlay layers (`OVR1`/`OVR2`) across them. Design captured in [`ui_compositor.md`](ui_compositor.md).** The goal is to bring a panel up (or slide it in) instantly without re-rendering or redrawing what's behind it. Confirmed the enabling fact in code: Legato's only "where do I render" knob is the active layer's `pixelBuffer.pixels` (it paints a scratch buffer, then `DRV_XLCDC_BlitBuffer` copies into `drvLayer[activeLayer].pixelBuffer`); there is **no** stock Legato API to render a widget tree into an arbitrary off-screen buffer. **GFX Canvas is exactly that missing indirection** — `GFXC_GetPixelBuffer` hands Legato a canvas object's buffer and `gfxcSetBaseCanvasID` switches which canvas a layer renders into, with `gfxcSetLayer`/show/hide/position/alpha + fade/move on top. Layer budget: `BASE`=background, `OVR1`/`OVR2`=swappable overlays (to be enabled — `XLCDC_TOT_LAYERS` is 2 today), `HEO`=live camera (off-limits). Legato stays the **renderer** (fonts, `song_list`); a thin `ui/` compositor owns surface↔layer multiplexing. Touch handled by **reveal-then-promote** (parked surfaces are non-interactive; promote to a live Legato layer to interact). Phased plan P0–P5 + open questions in the doc. **Design only — no code/MCC yet.** | Reverses the earlier "back off canvas" — that call was made on the **wrong axis**: canvas was dismissed for the *slide animation* (which direct `XLCDC_SetLayerWindowXYPos` stepping handles fine, no framework needed), but the actual problem is the **off-screen surface pool** (render content decoupled from a hardware layer), and that is canvas's literal reason to exist. The two homegrown alternatives lose: DIY pixel-buffer retarget reimplements canvas's per-surface/scratch/binding bookkeeping (~half of canvas, growing once surfaces aren't full-screen); direct-layer-only can present/animate but can't get Legato content *into* a surface. Canvas's earlier objections are addressable, not fatal: it deletes the static `frame_buffer` array, but we *use* the canvas buffers as our surfaces (statically allocated, non-cached per the 2026-06-24 fix), so static-allocation holds; the dynamic `GFX_CANVAS_Task` converts to `xTaskCreateStatic` or rides alongside the existing MCC dynamic tasks. Binding constraint is **layers (2 free), not memory** (~21 MB free in the 32 MB `ram_nocache` after the ISC pool + scratch; full-screen RGB565 ≈ 2 MB, most overlays far less). Resolves spec Q5 for the *presentation* layer (Legato renderer + canvas compositor) without dictating per-screen authoring. |
+246	| 2026-06-24 | **Legato CPU-render scratch buffer must live in non-cached DDR (`.region_nocache`) — fixed a GFX2D cache-coherency bleed; grew `ram_nocache` 16→32 MB.** Symptom (found during song-list bring-up): dashboard content streakily "bled through" an opaque overlay widget, intermittently, only where CPU-rendered text was. Active render path is **CPU software** (`leRenderer_FillArea` → `_RGBBlendFill`; glyphs too) into a **scratch buffer**, then **`DRV_GFX2D_Blit`** (the SAM9X75 2D engine) copies scratch→framebuffer. The framebuffer is non-cached (`FB_CACHE_NC` → `.region_nocache`) but the Legato scratch was **cacheable**: `LE_NO_CACHE_ATTR` was an empty no-op `#define` and `LE_COHERENT_ATTR = CACHE_ALIGN` (alignment only). The blit's `dcache_CleanInvalidateByAddr` of the cached scratch is insufficient on ARM926 → the 2D engine reads stale CPU-cached lines → streaky, cache-line-granularity bleed. **Fix:** define `LE_NO_CACHE_ATTR = __attribute__((section(".region_nocache")))` in **`user.cmake`** (the `#ifndef` guard in the generated `legato_renderer.c` lets the `-D` win → survives MGS regen, no generated-tree patch); MCC grew `ram_nocache` 16→32 MB to host it (ddram.ld + plib_mmu.c + `DDRAM_NO_CACHE_SIZE`). **Confirmed on hardware** (commits `d36640f` + `c0f316c`). **Two upstream Microchip Legato/gfx bugs to file:** (1) with "Cacheable Frame Buffers" **off**, the generator non-caches the framebuffer but leaves the Legato render scratch cacheable (`LE_NO_CACHE_ATTR` empty) — the gap that bit us; (2) `DRV_GFX2D_Fill` omits the `dcache_CleanInvalidateByAddr` that `DRV_GFX2D_Blit` has (latent — bites any GPU-fill config, e.g. `LE_WIDGET_BUFFER_ENABLE=1`). | Root-caused by elimination, not by reading (every software-logic path traced correct): a bare opaque magenta fill still bled, hiding the dashboard cleared it, and non-cached scratch fixed it → it's the cached-scratch ↔ 2D-engine coherency, below the software layer. Non-cached is the correct policy on this SoC — Microchip already chose it for the framebuffer (`FB_CACHE_NC`) rather than trusting cache maintenance for a DMA-/GPU-read buffer; the scratch is the same kind of buffer and should match. Adding cache maintenance to `DRV_GFX2D_Fill` would *not* fix this (Fill isn't on the path; the on-path `Blit` already invalidates and still leaked). System-wide rule for this board: any buffer the 2D engine or display DMA reads must be non-cached (or carry correct, sufficient maintenance — which the cacheable path here does not). |
+247	| 2026-06-24 | **Song-select setlist = a hand-written custom Legato widget (`leWidget` subclass), not the stock list widget.** `ui/song_list.{h,c}`: subclass with overridden `_paint`/`update`/touch handlers. Stock `leListWidget` is disabled **and** its item model (icon + one string) can't render the tier-badge + two-line + right-aligned-duration row. Design: **row-provider callback** `songlist_row_fn` (widget never includes `game/catalog.h`; the screen owns catalog→row mapping + future tier grouping); **drag + kinetic inertia** computed from the **FreeRTOS tick** (`leUpdate(0)` means the framework `dt` is always 0, so the widget measures real elapsed time itself for frame-rate-independent motion); **tap-to-select** (<10 px movement) with a selection callback; **virtualized software paint** (`leRenderer_RectFill` + `leStringRenderer_DrawCString`, visible rows only, no per-row child widgets); single **pool allocation** with the vtable built by **copying the base vtable at runtime** (project builds `LE_DYNAMIC_VTABLES=0`, so `_leWidget_FillVTable` isn't linkable and the GenerateVTable path is compiled out); declared **opaque** (`BACKGROUND_FILL`) so Legato composites it. Lives entirely in `ui/` (added via `user.cmake`) — zero edits to the generated `gfx/legato/` tree. Bring-up: `ui/song_list_demo.{c,h}` + a `songlist` console command (`attach`/`off`/`hide`/`show`/`solid`/`tree`/`stats`) with a catalog-backed provider; **validated on hardware**. | Matches the project's MCC-isolation idiom (own module + `user.cmake`, like `console`/`perf_log`); the widget is the primary, reusable piece, so it was built first, ahead of the MGS screen around it. Row-provider keeps the widget generic and testable and lets the screen map `Catalog_At(i)` → row (and supply tier badges once the tier column exists). Pool allocation (not static) because Legato recursively `LE_FREE`s the whole child tree on screen teardown (`legato_widget.c`) — a static widget attached to a screen would feed a static pointer to `LE_FREE`; the Legato widget pool is the accepted heap carve-out, and the widget is one self-contained allocation (fixed internal scratch, no secondary mallocs). Time-based inertia (vs per-tick) because the update cadence is render-bound (~55 Hz) and irregular under the priority-2 UI task. Tier badges blank until the deferred catalog `tier` column lands. |
+248	| 2026-06-24 | **Song catalog = flat CSV (`<card>/games/gh3-wii/songs.csv`); built `game/catalog.{h,c}` as a lazy static-cache loader on the SD layer. Album-art SD layout locked (two size-tier subdirs) — doc-only, no art code.** New `catalog_entry_t` + `Catalog_Lookup(setlist,index,…)` / `Catalog_LookupSong(gp_song_t*)` / `Catalog_Reload` / `Catalog_At`. On first lookup it mounts on demand, reads `songs.csv` (`setlist,index,title,artist,album,bpm,length_s,year,genre,difficulty`; `setlist`∈`main`/`bonus`), and fills a fixed `[GP_N_SONGS]` static cache, then closes the file — lookups are O(n) in RAM. The two CSV helpers (`csv_split`/`csv_quote`) were lifted from `results.c` into a shared **`util/csv.{h,c}`**; `results.c` now includes it (no behavior change). `catalog` console command (`reload`/`ls`/`<main\|bonus> <idx>`) + a checked-in seed `data/games/gh3-wii/songs.csv` (64 rows; real title/artist/album from the `SONGS` table in `tools/fetch_gh3_cover_art.py`; `bpm`/`length_s`/`difficulty` reserved-but-blank). That fetch script gained a `--catalog` mode to also source `year`/`genre` from MusicBrainz (run with `--contact`; verifiable, no hand-typed data) — `--no-enrich` reproduces the current seed byte-for-byte. Spec §4.8.3 reconciled JSON→CSV; §4.8.7 art path changed to `art/{small,large}/<setlist>-<NN>.{jpg,png}`. **Code-complete; pending Greg's MPLAB build + on-hardware test.** | Same substrate-before-consumer play as `storage`/`results`, and the *same* CSV-over-JSON call for the same reasons: on-device parse with comma-split + `atol` into static buffers (no malloc, no JSON tokenizer, fits `FF_FS_MAX_FILES=1`) while the card still opens in pandas/Excel. **Lazy static cache** (vs `results`' per-call streaming) because catalog lookups are frequent + read-mostly and shouldn't hold the single FatFs handle open against `results.csv`; 64×~120 B ≈ 8 KB BSS is cheap. Keying by the stable `(setlist,index)` the recognizer emits means a missing/stale catalog degrades to "Unknown song" and never affects recognition (templates stay compile-time in flash). Art deliberately **not** referenced from `songs.csv` — firmware derives the art path straight from `(setlist,index)`, so the two are independent (missing catalog still shows art, missing art still shows the title); size tiers as sibling subdirs map 1:1 to fixed-size DDR caches. Shared `util/csv` over duplicating the splitter is the right reuse now that two SD consumers parse CSV. |
+249	| 2026-06-24 | **Results stored as flat CSV (`<card>/players/results.csv`); built `results` module on the SD/RTC layer ahead of the gameplay write path.** New in-tree `results/results.{h,c}` (added via `user.cmake`): `Results_Append(record)` (mount-on-demand, header-if-new, RTC UTC timestamp, CSV-quoted song), `Results_TopN(setlist,index,difficulty,…)` (streaming line scan + quote-aware `csv_split` + bounded score-descending insert, all static buffers), and `Results_Set/GetPlayer` (operator string, default "p1"). Console gains `player`, `scores <set> <idx> [diff]`, and `results add …` (synthetic-row injection for testing). Paths build from `Storage_MountPoint()` so files land at the card root next to `sdtest.bin`. **Code-complete; pending Greg's MPLAB build + on-hardware test.** | Same substrate-before-consumer play as `storage`/`time`: the writer + on-device reader + display validate the CSV format decision (spec §4.8.6) against synthetic rows **now**, entirely on the proven SD/FatFs/RTC stack — no gameplay dependency. CSV chosen so on-device high-score display parses with comma-split + `atol` into static buffers (no malloc, no JSON tokenizer, fits `FF_FS_MAX_FILES=1`) while the card still opens in pandas/Excel. The gameplay engine wires in later as a one-line `Results_Append` once M9 Phase 3 score readers exist; player-id scheme (operator string vs profiles) is the remaining Q12 open item. |
+250	| 2026-06-23 | **RTC enabled in Gregorian mode, kept in UTC; FatFs file timestamps wired to it.** Added the SAM9X75 internal RTC via MCC (Gregorian/`struct tm` plib `RTC_TimeSet/Get`, `RTC_Initialize` in `SYS_Initialize`); `RTC_MR.UTC=0` (calendar register format) but the clock *value* is set in UTC. Console gains `time` / `time set YYYY-MM-DD HH:MM:SS` (prints ISO-8601 `…Z`, computes weekday). A strong `get_fattime()` in `storage.c` overrides the generated `__WEAK` stub (which hardcoded 2013-08-09) so files carry RTC time (year-1980, sec/2 DOS packing; <1980 falls back to the epoch). Resolves the timestamp half of Q12. **No backup cell populated yet** → RTC resets on power-off and must be re-set at boot (host via `time set`); persistent wall-clock needs VDDBU backup hardware. | "UTC mode" (the `RTC_MR.UTC` seconds-counter format) vs Gregorian is orthogonal to keeping a UTC *value* — Gregorian was chosen because FatFs `get_fattime` (mandatory, `FF_FS_NORTC=0`) wants broken-down fields, so calendar registers feed it directly with no epoch conversion, while a UTC value gives DST/timezone-proof timestamps matching the spec's `session_started_utc` `…Z` convention (§4.6.5). `get_fattime` as a `__WEAK` override keeps it out of the regenerated diskio.c. Player identity + whether to add VDDBU backup remain open under Q12. |
+251	| 2026-06-23 | **SD write buffers must be cache-line aligned (`__ALIGNED(CACHE_LINE_SIZE)`, 32 B) or writes drop to ~10x-slow single-sector transfers.** First `sd bench` on hardware: read 5.7 MB/s but write **0.4 MB/s** (verify ok). Root cause is in the generated FatFs diskio (`system/fs/fat_fs/hardware_access/diskio.c`): for a buffer not aligned to `CACHE_LINE_SIZE`, `disk_write` bounces through a `SYS_FS_FAT_ALIGNED_BUFFER_LEN`-sized (512 B = **one sector**) buffer in a loop → single-sector writes; `disk_read` for the same unaligned buffer still does a single multi-block transfer (reads sector 0 via the bounce buffer, the rest directly into the app buffer) → stays fast. Hence the write-slow / read-fast asymmetry with one shared buffer. Fix: aligned the bench scratch (`storage.c s_chunk`). **Confirmed on hardware: write 0.4 → 2.9 MB/s (7x), read 6.7 MB/s, verify ok.** 2.9 MB/s already clears the default recording load (§4.6.3: ~1.05 MB/s at 1 keyframe/s) with ~2.7x headroom; the §4.6.2 "≥5 MB/s" was a ceiling the format sits well under, not the workload. | The `sd bench` smoke test earned its keep on day one — caught a silent 14x write penalty before any recorder was built on top. **System-wide implication:** every buffer handed to `SYS_FS_FileWrite` for throughput (M4 keyframe DDR buffers, config/catalog/results writers) wants 32 B alignment, else it silently runs at single-sector speed. The ISC capture buffers are DMA-aligned already, but app-side staging buffers are the risk. Speed-mode-DEFAULT is *not* the bottleneck (reads prove the link); revisit High-Speed mode only if aligned writes still fall short of the §4.6.2 ≥5 MB/s target. |
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:35:41Z)**_
+
+I have the format. Let me add the journal entries. First, a top narrative entry (matching the 2026-07-23 style at the top):
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:00Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:06Z)**_
+
+Now the decision-log entry (after the table header):
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:18Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:26Z)**_
+
+Now the session-log entry. Let me read the top of the session log.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:26Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/docs/journal.md`
+
+```text
+420	- **T1S link transport — scoped + gated on prereqs, not yet built.** Scope/addressing/driver/UART-fallback decisions are settled (see 2026-06-16 decision log): multi-node design-for-N, PLCA coordinator on marvin, adapt `oa-tc6-lib`, FLEXCOM1 UART kept in parallel behind a build flag, code in `default/src/net/t1s/`. **Firmware coding is held on two prereqs Greg is handling:** (1) a free FLEXCOM regenerated in SPI-master mode in MCC, wired to the LAN8651 EVB pins (no SPI PLib exists yet — only USART/TWI); (2) `oa-tc6-lib` added on disk as a subproject. Remaining-open (non-blocking, settle during bring-up): final custom ethertype + MAC values, and the PoDL supply-voltage / PD-regulator BOM (not firmware). (FLEXCOM instance + pin map resolved — FLEXCOM3, see 2026-07-23 decision log.) Engineering detail: [`../../../docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md); system spec §6.
+421	
+422	---
+423	
+424	## Session log
+425	
+426	### 2026-07-15 — `game/` module naming cleanup + `fret.h` relocation (pending build)
+427	
+428	Made the `game/` module fully consistent — symbols, filenames, and header guards. Documented the
+429	full file inventory + external/internal split (see below). No behavior change — renames + one file
+430	move only.
+431	
+432	**Convention (decided w/ Greg):** two tiers keyed on visibility, and **the filename prefix mirrors
+433	the symbol tier**:
+434	- **Public API → `game_*.{c,h}` files, `Game<Area>_Verb` symbols** (types `game_*_t`). Every public
+435	  symbol starts with `Game`; every public file starts with `game_`:
+436	  - `art`→`game_art` (`Art_`→`GameArt_`), `catalog`→`game_catalog` (`Catalog_`→`GameCatalog_`,
+437	    `catalog_entry_t`→`game_catalog_entry_t`), `selection`→`game_selection` (`Selection_`→
+438	    `GameSelection_`, `selection_t`→`game_selection_t`, `sel_difficulty_t`/`sel_mode_t`→
+439	    `game_difficulty_t`/`game_mode_t`, `SEL_DIFF_*`/`SEL_MODE_*`→`GAME_DIFF_*`/`GAME_MODE_*`),
+440	    `timing_pipeline`→`game_timing` (`TimingPipeline_`→`GameTiming_`),
+441	    `gameplay_engine`→`game_engine` (`GameplayEngine_`→`GameEngine_`; `game_state_t` unchanged).
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:47Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:55Z)**_
+
+Journal done. Now the two docs. Let me read the relevant sections of `docs/t1s-podl-link.md` (§7.1/§7.2) and `docs/marvin-fauxmote-link.md` (§8).
+
+_**Agent (claude-opus-4-8 2026-07-29 01:36:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -n "0x88B\|controller\|node id\|## 7\|### 7\|## 8\|### 8\|node type\|ethertype\|Ethertype\|EtherType\|node_type\|fauxmote\|Node table\|node table" docs/t1s-podl-link.md | head -60`
+
+```text
+11:(ethertype `0x88B5`) carries the existing 1-byte command bitmask; a presence
+12:heartbeat (`0x88B6`, §7.2) plus link / `nodes` diagnostics run on both ends.
+17:frame to the coordinator (`0x88B5`, logging) **and** sends its on-device model's
+18:inferred 1-byte command **directly to the guitar node** (`0x88B5`, dst `02:..:03`) —
+19:peer-to-peer actuation — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
+99:   ethertype) to the payload. For this link the MACs are hardcoded and a custom
+100:   ethertype carries the existing frame formats verbatim:
+186:## 7. Topology — PLCA multidrop, marvin as coordinator
+196:### 7.1 Addressing (static — no discovery, keeps the M0+ node dumb)
+207:| fauxmote(s) | controller | 1–2 | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote, at most two (id build-configurable, default 1) |
+214:> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2), the **guitar**
+217:> node table, and the fretboard's peer-to-peer guitar target); the fretboard id 4 is set
+222:> at id 1, so hold off co-busing a default-id-1 fauxmote with a not-yet-reflashed fretboard.
+224:- One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
+226:- A **second data ethertype** `0x88B7` carries the fauxmote (controller) channel — the
+227:  mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
+228:  as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
+229:  demultiplexes controller traffic apart from the detector/guitar bitmask.
+230:- A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
+238:### 7.2 Presence heartbeat
+243:(`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin routes it
+244:apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
+248:Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller),
+252:## 8. Transport coexistence
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:04Z)**_
+
+The doc already describes the controller channel well. Let me read the transition-status note and §7.1/§7.2 fully to see what needs updating now the marvin side handles it.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:05Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/t1s-podl-link.md`
+
+```text
+196	### 7.1 Addressing (static — no discovery, keeps the M0+ node dumb)
+197	
+198	Followers are typed by **node class** (top-level [`SPEC.md`](../SPEC.md) §2): **detector**
+199	nodes are RX sources (each maps to a marvin `detector_id`); **guitar** (actuator) nodes are
+200	command TX targets. marvin selects the active node of each class.
+201	
+202	**Target id assignment** (canonical — the whole bus renumbers to this):
+203	
+204	| Node | Class | PLCA ID | MAC (locally administered) | Notes |
+205	|---|---|---|---|---|
+206	| marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
+207	| fauxmote(s) | controller | 1–2 | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote, at most two (id build-configurable, default 1) |
+208	| guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | receives the 1-byte command bitmask (from marvin or a detector) |
+209	| fretboard | detector | 4 | `02:00:00:00:00:04` | photo-ADC stream → `detector_id`; also commands the guitar directly |
+210	| beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved |
+211	| lemmy | (future) | 6 | `02:00:00:00:00:06` | reserved |
+212	| lightshow | (future) | 7 | `02:00:00:00:00:07` | reserved |
+213	
+214	> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2), the **guitar**
+215	> (id 3), and the **fretboard** (id 4) are all on the target scheme in source. The guitar
+216	> id 3 is set at all three points that address it (guitar firmware, marvin's coordinator
+217	> node table, and the fretboard's peer-to-peer guitar target); the fretboard id 4 is set
+218	> at its two points (its firmware `T1S_NODE_ID` + marvin's coordinator table entry). Each
+219	> node was last *flashed/verified* at its old id (guitar 2, fretboard 1), so re-flash each
+220	> node **together with marvin** for the new ids to take effect on the wire (marvin filters
+221	> by src MAC). Until the fretboard is re-flashed, a *running* fretboard is still physically
+222	> at id 1, so hold off co-busing a default-id-1 fauxmote with a not-yet-reflashed fretboard.
+223	
+224	- One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
+225	  registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
+226	- A **second data ethertype** `0x88B7` carries the fauxmote (controller) channel — the
+227	  mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
+228	  as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
+229	  demultiplexes controller traffic apart from the detector/guitar bitmask.
+230	- A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
+231	  `detector_id` (and the actuator target for TX). The single fretboard keeps
+232	  `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
+233	  enumeration protocol — the table is compiled in.
+234	- The 17-byte fretboard→marvin frame and the 1-byte marvin→fretboard bitmask ride
+235	  inside the Ethernet payload unchanged; marvin demuxes incoming frames by src MAC
+236	  and addresses outgoing ones to a specific node.
+237	
+238	### 7.2 Presence heartbeat
+239	
+240	PLCA has **no node discovery**, so the coordinator can't enumerate who's on the
+241	bus. A lightweight application heartbeat fills that gap: each follower
+242	periodically (≈500 ms) sends a small frame to the coordinator
+243	(`02:00:00:00:00:00`) under a **separate ethertype `0x88B6`** so marvin routes it
+244	apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
+245	on receipt and reports it via the `nodes` console command (present = a heartbeat
+246	within ~2 s).
+247	
+248	Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller),
+249	`node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives the node
+250	from the src MAC; the payload is informational (seq enables drop detection).
+251	
+252	## 8. Transport coexistence
+253	
+254	The marvin `FretboardLink_{Initialize,Send,IsConnected}` API is preserved; the
+255	actuator command now targets the guitar node (`T1SLink_SendToGuitar`). UART and
+256	T1S transports live behind a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build flag**.
+257	The `t1s` branch builds **T1S by default**; UART stays one (commented) line away in
+258	`user.cmake` as a fallback during the fretboard's own transition.
+259	
+260	## 9. Decisions & open items
+261	
+262	**Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower
+263	over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on both
+264	ends. First brought up at guitar id 2; renumbered to the target **id 3** in source
+265	(2026-07-28, §7.1) — re-flash guitar + marvin for it to take effect. The earlier
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:17Z)**_
+
+The doc already describes the controller channel in target voice. §8 (Transport coexistence) only covers the fretboard flag — I'll add the fauxmote flag there, since that's the newly-real thing on the marvin side.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:24Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/t1s-podl-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:28Z)**_
+
+Now the marvin-fauxmote-link doc. Let me check §8 and the transport-related sections.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:28Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -n "^## \|^### \|0x88B7\|T1S\|FLEXCOM5\|transport\|Transport\|UART" docs/marvin-fauxmote-link.md | head -60`
+
+```text
+5:> fauxmote reflects it to the real Wii. This is an alternative to the T1S
+11:> T1S bus link [`docs/t1s-podl-link.md`](t1s-podl-link.md) (the eventual second transport).
+19:## 1. Design goals
+29:3. **Transport-independent message layer.** The message bytes (§4) are identical
+30:   over any physical layer. UART is the first transport (§3); 10BASE-T1S is the
+35:## 2. Layering
+39:  │  L3  Message layer   TYPE + fixed payload     │  ← identical on every transport
+41:  │  L2  Framing layer   delimit + integrity      │  ← UART: SOF/LEN/CRC (§3.2)
+42:  │                                               │     T1S: none (Ethernet FCS) (§6)
+44:  │  L1  Physical        UART now / T1S later      │
+48:Both firmwares implement the message layer against a thin transport seam
+49:(`send(type, payload, len)` / `on_message(type, payload, len)`); UART and T1S are
+52:## 3. UART transport (transport #1)
+54:### 3.1 Physical
+60:| marvin port | **FLEXCOM5 USART** — `PA16` (`FAUXMOTE_TX`) / `PA15` (`FAUXMOTE_RX`); a dedicated peripheral, independent of the guitar transport |
+61:| fauxmote port | **UART1** on the Feather V2's broken-out RX=`GPIO7` / TX=`GPIO8` (the board's second hardware UART, `Serial1`) — **not** UART0, which is the USB-CDC console/CLI |
+68:### 3.2 Framing
+97:## 4. Message types
+113:### 4.1 State model — independent slices, latched with timeout
+132:## 5. Message payloads
+137:### 5.1 `GUITAR` (m→f, 3 bytes) — the hot path
+146:[`T1SLink_SendToGuitar`](../firmware/marvin/default/src/net/t1s/t1s_link.h) mask),
+155:### 5.2 `WIIMOTE` (m→f, 4 bytes) — menu navigation
+168:### 5.5 `ACCEL` (m→f, 3 bytes)
+193:### 5.6 `POINTER` (m→f, 3 bytes)
+210:### 5.3 `LINK_CMD` (m→f, 1 byte) — Bluetooth link management
+219:### 5.4 `STATUS` (f→m, 4 bytes) — the uplink
+231:## 6. Semantics & timing
+253:## 7. Implementation seam (both ends)
+255:Keep the message layer transport-agnostic so the T1S move (§8) is a transport swap,
+259:- Owns the second UART, the §3.2 framing/CRC, and message parse/dispatch (FreeRTOS
+268:**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02; moved to FLEXCOM5 2026-07-23):
+269:- Owns the **FLEXCOM5 USART (PA16/PA15)** — a dedicated peripheral, independent of
+270:  the guitar transport — and the framing. Exposes
+278:  `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build (FLEXCOM5 is
+281:## 8. T1S transport (transport #2)
+283:The fauxmote side of the T1S transport is **implemented** (`main/mf_t1s.c`, a LAN8651
+285:build; UART is retained as a Kconfig-selectable fallback (`FAUXMOTE_LINK_TRANSPORT_UART`).
+286:The **message layer (§4–§5) travels unchanged as the payload of a T1S Ethernet frame**:
+288:- The UART framing layer (§3.2) is dropped — the Ethernet frame provides delimiting
+290:- **Frame layout:** `[dst MAC][src MAC][ethertype 0x88B7][TYPE][payload…]`. dst is the
+294:- **`STATUS` is an uplink frame** on the same `0x88B7` ethertype, directed at the
+296:  cadence to the UART transport, just carried in a frame instead of a `SOF/LEN/CRC8`
+299:- Only the transport seam (§7) changes; message handling and semantics are identical.
+302:driven by marvin — the coordinator-side `0x88B7` demux + controller node-table entry are
+306:## 9. Open questions
+309:  **FLEXCOM5 / PA16 (`FAUXMOTE_TX`) / PA15 (`FAUXMOTE_RX`)** — a dedicated peripheral,
+310:  independent of the guitar transport; fauxmote = UART1 on Feather RX=`GPIO7` /
+312:  (Originally FLEXCOM1/PA28/PA29 on 2026-07-02; moved to a dedicated FLEXCOM5 so the
+313:  link no longer depends on the guitar being on T1S.)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:35Z)**_
+
+Let me read §8 fully — that's where the "marvin side not yet driven" note lives (line 302).
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:35Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/marvin-fauxmote-link.md`
+
+```text
+281	## 8. T1S transport (transport #2)
+282	
+283	The fauxmote side of the T1S transport is **implemented** (`main/mf_t1s.c`, a LAN8651
+284	MAC-PHY on SPI driven by the vendored OPEN Alliance TC6 library) and is the **default**
+285	build; UART is retained as a Kconfig-selectable fallback (`FAUXMOTE_LINK_TRANSPORT_UART`).
+286	The **message layer (§4–§5) travels unchanged as the payload of a T1S Ethernet frame**:
+287	
+288	- The UART framing layer (§3.2) is dropped — the Ethernet frame provides delimiting
+289	  and an FCS; `TYPE` + payload become the frame payload.
+290	- **Frame layout:** `[dst MAC][src MAC][ethertype 0x88B7][TYPE][payload…]`. dst is the
+291	  coordinator MAC `02:00:00:00:00:00`; src is this node's MAC `02:00:00:00:00:<id>`.
+292	  The MAC-PHY appends the FCS and pads short frames to the 46-byte minimum, so no manual
+293	  padding — the message layer's per-`TYPE` length check ignores the trailing pad.
+294	- **`STATUS` is an uplink frame** on the same `0x88B7` ethertype, directed at the
+295	  coordinator MAC, sent on change / on `STATUS_REQ` / as the 500 ms heartbeat — identical
+296	  cadence to the UART transport, just carried in a frame instead of a `SOF/LEN/CRC8`
+297	  packet. A separate `0x88B6` presence heartbeat (node_type 3 = controller) rides
+298	  alongside it; see [`docs/t1s-podl-link.md`](t1s-podl-link.md) §7.1/§7.2.
+299	- Only the transport seam (§7) changes; message handling and semantics are identical.
+300	
+301	**Status:** written ahead of hardware (no LAN8651 wired to the Feather yet) and not yet
+302	driven by marvin — the coordinator-side `0x88B7` demux + controller node-table entry are
+303	a later session. Feather V2 pin defaults are SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32,
+304	all Kconfig-overridable.
+305	
+306	## 9. Open questions
+307	
+308	- ~~Exact marvin FLEXCOM instance + pins~~ **settled 2026-07-23:** marvin =
+309	  **FLEXCOM5 / PA16 (`FAUXMOTE_TX`) / PA15 (`FAUXMOTE_RX`)** — a dedicated peripheral,
+310	  independent of the guitar transport; fauxmote = UART1 on Feather RX=`GPIO7` /
+311	  TX=`GPIO8`. Wiring: marvin PA16 → ESP `GPIO7`, ESP `GPIO8` → marvin PA15, common GND.
+312	  (Originally FLEXCOM1/PA28/PA29 on 2026-07-02; moved to a dedicated FLEXCOM5 so the
+313	  link no longer depends on the guitar being on T1S.)
+314	- ~~When to make the planned `ACCEL` slice live in fauxmote~~ **done (fauxmote side)
+315	  2026-07-24:** fauxmote drives the accel field from the `ACCEL` slice; encoding is
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:42Z)**_
+
+The "Status" note at line 301-304 is now stale — the marvin side is implemented. Let me update it.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:54Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:58Z)**_
+
+Let me also check §7's marvin seam description (lines 268-280) doesn't now contradict the transport flag.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:37:59Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./docs/marvin-fauxmote-link.md`
+
+```text
+266	- The CLI stays for manual bring-up/debug.
+267	
+268	**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02; moved to FLEXCOM5 2026-07-23):
+269	- Owns the **FLEXCOM5 USART (PA16/PA15)** — a dedicated peripheral, independent of
+270	  the guitar transport — and the framing. Exposes
+271	  `Fauxmote_SendGuitar(mask, whammy, aux)` / `SendGuitarMask(mask)`,
+272	  `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)`.
+273	- A TX task re-sends the latched `GUITAR` slice on change (low latency) and at a
+274	  50 ms floor; an RX task parses the `STATUS` uplink.
+275	- **Mirror-to-both** (not a switched sink): `FretboardLink_Send()` — the one choke
+276	  point both producers (timing pipeline + `manual_control`) call — also calls
+277	  `Fauxmote_SendGuitarMask()`, so the guitar node and fauxmote move in lock-step.
+278	  `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build (FLEXCOM5 is
+279	  dedicated), regardless of `MARVIN_FRETBOARD_TRANSPORT`.
+280	
+281	## 8. T1S transport (transport #2)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:38:14Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:38:24Z)**_
+
+All three docs updated. Marking the docs todo complete.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:38:27Z)**_
+
+<tool-use data-tool-type="task" data-tool-name="TodoWrite"><details>
+<summary>Tool use: **TodoWrite**</summary>
+**Agent task list:**
+- [X] 🌡️ t1s_link.h: controller channel API
+- [X] 🌡️ t1s_link.c: controller node type, ethertype, TX FIFO, RX demux, init idempotency, counters
+- [X] 🌡️ fauxmote_link.h: MARVIN_FAUXMOTE_TRANSPORT flag
+- [X] 🌡️ fauxmote_link.c: transport seam
+- [X] 🌡️ user.cmake: documented MARVIN_FAUXMOTE_TRANSPORT define
+- [X] 🌡️ console.c: controller tx/rx + transport in fauxmote status
+- [X] 🌡️ Docs + journal: marvin journal, t1s-podl-link.md, marvin-fauxmote-link.md
+
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:38:39Z)**_
+
+Everything's done — code and docs. Here's the final state, ready for your build.
+
+**Code (6 files, default config = T1S):**
+- [t1s_link.h](firmware/marvin/default/src/net/t1s/t1s_link.h) / [t1s_link.c](firmware/marvin/default/src/net/t1s/t1s_link.c) — generic controller channel: `T1S_NODE_CONTROLLER` (gated table row id 1), `0x88B7`, ethertype-param `send_to_node`, static ctrl TX FIFO drained in `t1s_task`, `0x88B7` RX demux → registered handler, idempotent `T1SLink_Initialize`, ctrl tx/rx counters
+- [fauxmote_link.h](firmware/marvin/default/src/net/fauxmote/fauxmote_link.h) / [fauxmote_link.c](firmware/marvin/default/src/net/fauxmote/fauxmote_link.c) — `MARVIN_FAUXMOTE_TRANSPORT` seam (T1S default, UART `#else`), shared `latch_status`
+- [user.cmake](firmware/marvin/cmake/marvin/default/user.cmake) — documented `MARVIN_FAUXMOTE_TRANSPORT=1`
+- [console.c](firmware/marvin/default/src/console/console.c) — transport + ctrl tx/rx in `fauxmote status`
+
+**Docs/journal:**
+- [journal.md](firmware/marvin/docs/journal.md) — top narrative entry + decision-log row + session-log entry
+- [t1s-podl-link.md](docs/t1s-podl-link.md) §8 — fauxmote transport flag + controller-channel description
+- [marvin-fauxmote-link.md](docs/marvin-fauxmote-link.md) §7/§8 — marvin now speaks T1S; stale "not yet driven by marvin" note retired
+
+`mf_proto.h` wire content is unchanged (still byte-identical to the fauxmote copy); no MCC/Legato edits. I self-reviewed both build configs (T1S and UART) for the RX demux placement and gated statics — no missing/unused-symbol issues either way.
+
+Build when ready — I'll wait on your results. Nothing here has been committed (per project rule).
+
+---
+
+_**User (2026-07-29 01:39:49Z)**_
+
+<ide_opened_file>The user opened the file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/lemmy/README.md in the IDE. This may or may not be related to the current task.</ide_opened_file>
+
+fauxmote shows up as node 1, but doesn't seem to be any communication. for example fauxmote status reports no status received yet. and commands to fauxmote don't result in anything
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:40:30Z)**_
+
+Presence working (heartbeat `0x88B6` from node 1 is received and the node-table row matches) tells us the MAC-PHY link, PLCA, and MAC filtering are all fine. The problem is isolated to the `0x88B7` controller channel — in *both* directions. Let me look at the actual TX/RX paths rather than theorize.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:40:32Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+1	#include "t1s_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "semphr.h"
+10	#include "queue.h"
+11	
+12	#include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
+13	#include "log.h"
+14	#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+15	#include "net/fauxmote/fauxmote_link.h"  /* MARVIN_FAUXMOTE_TRANSPORT */
+16	
+17	#include "tc6.h"
+18	#include "tc6-regs.h"
+19	
+20	/* The controller channel (fauxmote over 0x88B7) is compiled in only when the
+21	 * fauxmote link selects the T1S transport; otherwise there is no controller node
+22	 * on the bus and the channel would be dead weight (and a phantom `nodes` row). */
+23	#define T1S_CTRL_ENABLED (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+24	
+25	/* marvin is the PLCA coordinator. Node IDs and MACs follow the addressing
+26	 * scheme in docs/t1s-podl-link.md §7.1: coordinator = ID 0, MAC ...00. */
+27	#define T1S_NODE_ID         (0u)
+28	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length; headroom for nodes 1..7 */
+29	#define T1S_PLCA_ENABLE     (true)
+30	#define T1S_SPI_HZ          (15000000u)
+31	#define T1S_INSTANCE        (0u)
+32	
+33	#define T1S_TASK_STACK_WORDS (1024u)
+34	#define T1S_TASK_PRIORITY    (5u)
+35	
+36	/* Upper bound on TC6_Service calls per service_pump. The MAC-PHY can keep the
+37	 * "need service" flag asserted indefinitely (e.g. a persistent IRQ_N with no
+38	 * PLCA peer on the bus), which would spin this prio-5 task at 100% CPU and
+39	 * starve every lower task — the whole UI/console/detector stack. Cap the pump
+40	 * so it always returns to the task loop (which then blocks on s_svc_sem),
+41	 * yielding the CPU; any still-pending work is picked up on the next wake. */
+42	#define T1S_SERVICE_MAX_ITERS (8u)
+43	
+44	/* MAC-PHY bring-up bounds. If the LAN8651 isn't populated/responding, the task
+45	 * backs off and retries every T1S_ABSENT_RETRY_MS instead of servicing a dead
+46	 * SPI bus — ~0% CPU with no chip, and it self-heals if one is attached later. */
+47	#define T1S_BRINGUP_ACCEPT_MS   (500u)    /* deadline for TC6Regs_Init to be accepted */
+48	#define T1S_BRINGUP_INITDONE_MS (3000u)   /* deadline for the async reg writes to finish */
+49	#define T1S_ABSENT_RETRY_MS     (1000u)   /* backoff between bring-up attempts when absent */
+50	
+51	/* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
+52	 * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
+53	#define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
+54	#define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
+55	#define T1S_ETHERTYPE_CTRL   (0x88B7u)   /* controller (fauxmote mf_proto) frames */
+56	#define T1S_ETH_HDR_LEN      (14u)
+57	#define T1S_MAC_LEN          (6u)
+58	#define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
+59	#define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
+60	
+61	/* Locally administered coordinator MAC (02:00:00:00:00:00). */
+62	static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+63	
+64	/* Static node directory. No discovery — adding a node is a table entry.
+65	 * Detector nodes feed a detector-state bus id (RX source); guitar (actuator)
+66	 * nodes are command TX targets (detector_id unused, set to 0xFF). */
+67	#define T1S_NO_DETECTOR     (0xFFu)
+68	
+69	typedef enum
+70	{
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:40:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -n "send_to_node\|s_tx_busy\|node_for_type\|xQueueReceive\|s_ctrl_queue\|guitar_pending\|s_guitar\|flush\|static void t1s_task\|s_svc_sem\|TC6_SendEthernetPacket\|SendRawEthernetPacket\|TC6_SendRawEthernetSegments" firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+40: * so it always returns to the task loop (which then blocks on s_svc_sem),
+124:static const t1s_node_t *node_for_type(t1s_node_type_t type)
+148:/* TX frame staging: TC6_SendRawEthernetPacket keeps a pointer to the buffer
+150: * in-flight frame at a time (guarded by s_tx_busy) suffices for the link's
+153:static volatile bool s_tx_busy;
+155:/* Latest-wins outbound command to the guitar, flushed by the service task. */
+168: * at a time into a static FIFO; the service task frames + flushes them through
+173:static QueueHandle_t s_ctrl_queue;
+174:static StaticQueue_t s_ctrl_queue_buf;
+175:static uint8_t       s_ctrl_queue_storage[T1S_CTRL_QUEUE_DEPTH * T1S_CTRL_ITEM_MAX];
+186:static SemaphoreHandle_t s_svc_sem;
+187:static StaticSemaphore_t s_svc_sem_buf;
+203:    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+214:    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+227:    s_tx_busy = false;
+233:static bool send_to_node(uint8_t node_id, uint16_t ethertype,
+236:    if (s_tx_busy || !s_link_up) {
+248:    s_tx_busy = true;
+249:    bool ok = TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+253:        s_tx_busy = false;
+306:        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
+312:static void t1s_task(void *param)
+362:        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
+371:        if (s_cmd_dirty && !s_tx_busy) {
+372:            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+378:                if (send_to_node(guitar->node_id, T1S_ETHERTYPE, &mask, 1u)) {
+387:         * wakes (each TX-done gives s_svc_sem) both channels drain fairly. */
+388:        if (!s_tx_busy) {
+390:            if (xQueueReceive(s_ctrl_queue, item, 0) == pdTRUE) {
+391:                const t1s_node_t *ctrl = node_for_type(T1S_NODE_CONTROLLER);
+398:                    if (send_to_node(ctrl->node_id, T1S_ETHERTYPE_CTRL,
+417:    s_svc_sem = xSemaphoreCreateBinaryStatic(&s_svc_sem_buf);
+418:    configASSERT(s_svc_sem != NULL);
+421:    s_ctrl_queue = xQueueCreateStatic(T1S_CTRL_QUEUE_DEPTH, T1S_CTRL_ITEM_MAX,
+422:                                      s_ctrl_queue_storage, &s_ctrl_queue_buf);
+423:    configASSERT(s_ctrl_queue != NULL);
+489:    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+502:    if (!s_link_up || (s_ctrl_queue == NULL) || (len > 8u)) {
+509:    if (xQueueSend(s_ctrl_queue, item, 0) != pdTRUE) {
+512:    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:40:46Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+233	static bool send_to_node(uint8_t node_id, uint16_t ethertype,
+234	                         const uint8_t *payload, uint16_t payload_len)
+235	{
+236	    if (s_tx_busy || !s_link_up) {
+237	        return false;
+238	    }
+239	    if (payload_len > (sizeof(s_tx_frame) - T1S_ETH_HDR_LEN)) {
+240	        return false;
+241	    }
+242	    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+243	    memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
+244	    s_tx_frame[12] = (uint8_t)(ethertype >> 8);
+245	    s_tx_frame[13] = (uint8_t)(ethertype & 0xFFu);
+246	    memcpy(&s_tx_frame[T1S_ETH_HDR_LEN], payload, payload_len);
+247	
+248	    s_tx_busy = true;
+249	    bool ok = TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+250	                                        (uint16_t)(T1S_ETH_HDR_LEN + payload_len),
+251	                                        0u, tx_done_cb, NULL);
+252	    if (!ok) {
+253	        s_tx_busy = false;
+254	    }
+255	    return ok;
+256	}
+257	
+258	/* Run the protocol stack until it has no immediately pending work. IRQ_N is
+259	 * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
+260	/* Returns true if it bailed with work still pending (hit the iteration cap) —
+261	 * the caller must then yield so a stuck MAC-PHY can't starve other tasks. */
+262	static bool service_pump(void)
+263	{
+264	    unsigned iters = 0u;
+265	    do {
+266	        s_need_service = false;
+267	        bool no_int = (T1S_IRQ_N_Get() != 0u);
+268	        (void)TC6_Service(s_tc6, no_int);
+269	    } while (s_need_service && (++iters < T1S_SERVICE_MAX_ITERS));
+270	
+271	    TC6Regs_CheckTimers();
+272	
+273	    /* Persistent need-service = the MAC-PHY isn't quiescing (stuck IRQ / no
+274	     * peer). Don't spin on it; count it and tell the caller to yield. */
+275	    if (s_need_service) { s_service_overruns++; return true; }
+276	    return false;
+277	}
+278	
+279	/* One MAC-PHY bring-up attempt: reset pulse, push the register + PLCA config,
+280	 * and drive the async writes to completion within a deadline. Returns true only
+281	 * if the chip acked init done. False = absent/unresponsive → the caller backs
+282	 * off and retries (so an unpopulated LAN8651 never turns into a dead-bus spin).
+283	 * Re-pulsing reset each attempt also resets a chip attached after boot. */
+284	static bool t1s_try_bringup(void)
+285	{
+286	    /* Hardware reset pulse (T1S_RST is active-low, idle high). */
+287	    T1S_RST_Clear();
+288	    vTaskDelay(pdMS_TO_TICKS(10));
+289	    T1S_RST_Set();
+290	    vTaskDelay(pdMS_TO_TICKS(10));
+291	
+292	    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
+293	     * during bring-up so RX isn't filtered before the node table exists.
+294	     * TC6Regs_Init only queues the writes — bounded accept retry. */
+295	    TickType_t accept_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_ACCEPT_MS);
+296	    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+297	                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
+298	        if ((int32_t)(accept_dl - xTaskGetTickCount()) <= 0) { return false; }
+299	        vTaskDelay(pdMS_TO_TICKS(50));
+300	    }
+301	
+302	    /* Drive the async register writes to completion (bounded). */
+303	    TickType_t done_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_INITDONE_MS);
+304	    while (!TC6Regs_GetInitDone(s_tc6) &&
+305	           ((int32_t)(done_dl - xTaskGetTickCount()) > 0)) {
+306	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
+307	        (void)service_pump();
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:40:53Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+340	        /* Bring up (or re-bring-up) the MAC-PHY. Absent/unresponsive → warn once
+341	         * and retry with backoff instead of servicing a dead bus. */
+342	        if (!s_link_up) {
+343	            if (!t1s_try_bringup()) {
+344	                if (!warned_absent) {
+345	                    LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
+346	                             "retry every %ums\r\n", (unsigned)T1S_ABSENT_RETRY_MS);
+347	                    warned_absent = true;
+348	                }
+349	                vTaskDelay(pdMS_TO_TICKS(T1S_ABSENT_RETRY_MS));
+350	                continue;
+351	            }
+352	            s_link_up      = true;
+353	            warned_absent  = false;
+354	            TC6_EnableData(s_tc6, true);
+355	            LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+356	                     "PLCA coord id=%u/%u\r\n",
+357	                     (unsigned)TC6Regs_GetChipRevision(s_tc6),
+358	                     s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
+359	                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
+360	        }
+361	
+362	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
+363	        /* If the pump bailed with work still pending, force a yield so this
+364	         * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
+365	        if (service_pump()) { vTaskDelay(pdMS_TO_TICKS(1)); }
+366	
+367	        /* Flush the latest pending command to the active guitar (actuator)
+368	         * node. All TC6 access stays in this task; producers only stash via
+369	         * the API. (Single guitar today; an active-guitar selector goes here
+370	         * when multiple guitar nodes share the bus.) */
+371	        if (s_cmd_dirty && !s_tx_busy) {
+372	            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+373	            if (guitar != NULL) {
+374	                /* Clear before reading so a concurrent update re-arms dirty
+375	                 * rather than being dropped (latest-wins). */
+376	                s_cmd_dirty = false;
+377	                uint8_t mask = s_cmd;
+378	                if (send_to_node(guitar->node_id, T1S_ETHERTYPE, &mask, 1u)) {
+379	                    s_tx_count++;
+380	                }
+381	            }
+382	        }
+383	
+384	#if T1S_CTRL_ENABLED
+385	        /* Flush one staged controller (fauxmote) message onto the bus. Shares
+386	         * the single in-flight TX with the guitar command above; across service
+387	         * wakes (each TX-done gives s_svc_sem) both channels drain fairly. */
+388	        if (!s_tx_busy) {
+389	            uint8_t item[T1S_CTRL_ITEM_MAX];
+390	            if (xQueueReceive(s_ctrl_queue, item, 0) == pdTRUE) {
+391	                const t1s_node_t *ctrl = node_for_type(T1S_NODE_CONTROLLER);
+392	                uint8_t len = item[1];
+393	                if ((ctrl != NULL) && (len <= 8u)) {
+394	                    /* item = [TYPE][LEN][payload]; frame body is [TYPE][payload]. */
+395	                    uint8_t body[1u + 8u];
+396	                    body[0] = item[0];
+397	                    if (len != 0u) { memcpy(&body[1], &item[2], len); }
+398	                    if (send_to_node(ctrl->node_id, T1S_ETHERTYPE_CTRL,
+399	                                     body, (uint16_t)(1u + len))) {
+400	                        s_ctrl_tx_count++;
+401	                    }
+402	                }
+403	            }
+404	        }
+405	#endif
+406	    }
+407	}
+408	
+409	void T1SLink_Initialize(void)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:42:11Z)**_
+
+Presence uses `payload_len >= T1S_HB_LEN` (tolerant), but the controller path may not be. That difference is suspicious. Let me check the exact-length handling — 10BASE-T1S pads short frames to the 46-byte minimum, so a received `0x88B7` frame is *longer* than the mf payload.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:42:12Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`sed -n '1,60p' firmware/marvin/default/src/net/fauxmote/mf_proto.h | grep -n "MF_LEN\|define\|MF_MSG" `
+
+```text
+13:#define MF_PROTO_VERSION   1u
+14:#define MF_UART_BAUD       1000000u   /* 1 Mbaud, 8-N-1 */
+17:#define MF_SOF             0x7Eu
+21:    MF_MSG_GUITAR   = 0x01,   /* m->f, 3B: hot gameplay input */
+22:    MF_MSG_WIIMOTE  = 0x02,   /* m->f, 4B: menu-nav input */
+23:    MF_MSG_LINK_CMD = 0x03,   /* m->f, 1B: bluetooth link management */
+24:    MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (planned) */
+25:    MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer (planned) */
+26:    MF_MSG_STATUS   = 0x81,   /* f->m, 4B: link/connection state */
+29:#define MF_LEN_GUITAR    3u
+30:#define MF_LEN_WIIMOTE   4u
+31:#define MF_LEN_LINK_CMD  1u
+32:#define MF_LEN_ACCEL     3u
+33:#define MF_LEN_POINTER   3u
+34:#define MF_LEN_STATUS    4u
+35:#define MF_MAX_PAYLOAD   8u   /* largest LEN across all types */
+38:#define MF_G_GREEN       (1u << 0)
+39:#define MF_G_RED         (1u << 1)
+40:#define MF_G_YELLOW      (1u << 2)
+41:#define MF_G_BLUE        (1u << 3)
+42:#define MF_G_ORANGE      (1u << 4)
+43:#define MF_G_STRUM_DOWN  (1u << 5)
+44:#define MF_G_STRUM_UP    (1u << 6)
+46:#define MF_WHAMMY_MASK   0x1Fu
+47:#define MF_WHAMMY_REST   0x10u   /* released/idle whammy value (safe default) */
+49:#define MF_AUX_PLUS       (1u << 0)   /* Start / pause */
+50:#define MF_AUX_MINUS      (1u << 1)   /* Select */
+51:#define MF_AUX_PEDAL      (1u << 2)
+52:#define MF_AUX_STARPOWER  (1u << 3)   /* planned: maps to a Wiimote tilt (no-op for now) */
+55:#define MF_W_A           (1u << 0)
+56:#define MF_W_B           (1u << 1)
+57:#define MF_W_ONE         (1u << 2)
+58:#define MF_W_TWO         (1u << 3)
+59:#define MF_W_PLUS        (1u << 4)
+60:#define MF_W_MINUS       (1u << 5)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:42:22Z)**_
+
+Confirmed the shape. Now let me check both RX parsers for exact-length rejection of padded T1S frames — the marvin `ctrl_rx`/`latch_status` and the fauxmote T1S RX.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:42:22Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`ls firmware/fauxmote/main/ 2>/dev/null; echo "---"; grep -rn "MF_MAX_PAYLOAD\|MF_LEN\|len ==\|len !=\|payload_len\|expected\|on_message\|mf_dispatch\|dispatch\|ETHERTYPE\|0x88B7\|88b7" firmware/fauxmote/main/mf_t1s.c 2>/dev/null | head -50`
+
+```text
+CMakeLists.txt
+Kconfig.projbuild
+bt_hid_device.c
+bt_hid_device.h
+bt_role.c
+bt_role.h
+console_cli.c
+console_cli.h
+ext_crypto.c
+ext_crypto.h
+guitar.c
+guitar.h
+main.c
+marvin_link.c
+marvin_link.h
+mf_link.c
+mf_link.h
+mf_proto.h
+mf_t1s.c
+mf_t1s.h
+status_led.c
+status_led.h
+tc6-conf.h
+wiimote.c
+wiimote.h
+wiimote_ext.h
+wiimote_sdp.c
+wiimote_sdp.h
+---
+firmware/fauxmote/main/mf_t1s.c:30:#define T1S_ETHERTYPE_MF    (0x88B7u)  /* fauxmote command / STATUS channel */
+firmware/fauxmote/main/mf_t1s.c:31:#define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+firmware/fauxmote/main/mf_t1s.c:96:static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + MF_MAX_PAYLOAD + 1];
+firmware/fauxmote/main/mf_t1s.c:165:    s_hb_frame[12] = (uint8_t)(T1S_ETHERTYPE_HB >> 8);
+firmware/fauxmote/main/mf_t1s.c:166:    s_hb_frame[13] = (uint8_t)(T1S_ETHERTYPE_HB & 0xFFu);
+firmware/fauxmote/main/mf_t1s.c:198:    if (s_tx_busy || !s_link_up || len > MF_MAX_PAYLOAD) {
+firmware/fauxmote/main/mf_t1s.c:203:    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE_MF >> 8);
+firmware/fauxmote/main/mf_t1s.c:204:    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE_MF & 0xFFu);
+firmware/fauxmote/main/mf_t1s.c:337:             (unsigned)T1S_NODE_ID, (unsigned)T1S_ETHERTYPE_MF);
+firmware/fauxmote/main/mf_t1s.c:413:    if (ethertype != T1S_ETHERTYPE_MF) {
+firmware/fauxmote/main/mf_t1s.c:420:    if (paylen > MF_MAX_PAYLOAD) {
+firmware/fauxmote/main/mf_t1s.c:421:        paylen = MF_MAX_PAYLOAD;
+firmware/fauxmote/main/mf_t1s.c:435:        case TC6Error_UnexpectedCtrl:
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:42:31Z)**_
+
+The fauxmote RX clamps the padded length to `MF_MAX_PAYLOAD` (lines 420-421) — so it tolerates padding. Let me see how it dispatches and how marvin's side compares.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:42:31Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/main/mf_t1s.c`
+
+```text
+400	}
+401	
+402	void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+403	                               uint64_t *rxTimestamp, void *pGlobalTag)
+404	{
+405	    (void)pInst;
+406	    (void)rxTimestamp;
+407	    (void)pGlobalTag;
+408	
+409	    if (!success || (len < (T1S_ETH_HDR_LEN + 1u))) {
+410	        return;
+411	    }
+412	    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+413	    if (ethertype != T1S_ETHERTYPE_MF) {
+414	        return;
+415	    }
+416	    /* Payload is [TYPE][payload...]; trailing min-frame padding is ignored by
+417	     * the per-type length check in the message layer. */
+418	    uint8_t  type    = s_rx_buf[T1S_ETH_HDR_LEN];
+419	    uint16_t paylen  = (uint16_t)(len - (T1S_ETH_HDR_LEN + 1u));
+420	    if (paylen > MF_MAX_PAYLOAD) {
+421	        paylen = MF_MAX_PAYLOAD;
+422	    }
+423	    s_rx_count++;
+424	    (void)MfLink_HandleMessage(type, &s_rx_buf[T1S_ETH_HDR_LEN + 1u], (uint8_t)paylen);
+425	}
+426	
+427	void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+428	{
+429	    (void)pGlobalTag;
+```
+</details></tool-use>
+
+---
+
+_**User (2026-07-29 01:44:03Z)**_
+
+This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.
+
+Summary:
+1. Primary Request and Intent:
+   - **Completed earlier this session (docs phase of the T1S-fauxmote work):** Finish the documentation/journal updates (todo #7) for the just-implemented change that routes the fauxmote (ESP32 Wiimote/guitar emulator) command link over 10BASE-T1S on the **marvin coordinator side** (mirroring the already-migrated ESP32 side). The code (6 files) was complete before this session; the user had previously said "i will build just let me know when" (prior session), so I must NOT build — the user builds themselves.
+   - **Current active request (new debugging task):** The user built and tested. They report: "fauxmote shows up as node 1, but doesn't seem to be any communication. for example fauxmote status reports no status received yet. and commands to fauxmote don't result in anything." I must diagnose why the `0x88B7` controller channel fails in **both** directions (STATUS uplink f→m not received; marvin→fauxmote commands have no effect) while the `0x88B6` presence heartbeat works (node 1 shows up).
+   - **Standing constraints (CLAUDE.md / memory, still in effect):** Never `git commit` on own initiative — only on explicit ask. Do NOT edit MCC/Legato files under `firmware/*/default/src/config/default/`. Do NOT edit `third_party/`. Do NOT use `.specstory/` as context. Code comments describe current code only (no dev-diary narrative; default to no comment). Static allocation only, no malloc — ask before deviating. Read the relevant subproject journal first and update it as decisions land (prefer journal over restating plans in chat). Use uv for Python (set UV_CACHE_DIR to $TMPDIR/uv-cache in-sandbox).
+
+2. Key Technical Concepts:
+   - **Single LAN8651 MAC-PHY on marvin** (one TC6 instance, FLEXCOM3 SPI @15MHz in `t1s_link.c`); the fauxmote channel rides the existing `t1s_link` TX/RX path, not a second interface.
+   - **Ethertypes:** `0x88B5` = data/command (guitar bitmask), `0x88B6` = heartbeat/presence, `0x88B7` = controller (fauxmote mf_proto).
+   - **PLCA node table (ids):** 0 marvin (coordinator), 1 controller/fauxmote, 3 guitar (actuator), 4 fretboard (detector). MAC = `02:00:00:00:00:<id>`.
+   - **Heartbeat node_type codes:** 1=detector, 2=guitar, 3=controller. marvin identifies nodes by src MAC, not node_type.
+   - **mf_proto** (shared byte-for-byte marvin↔fauxmote): GUITAR(0x01,3B), WIIMOTE(0x02,4B), LINK_CMD(0x03,1B), ACCEL(0x04,3B), POINTER(0x05,3B), STATUS(0x81,4B). MF_MAX_PAYLOAD=8, MF_LEN_STATUS=4. CRC-8/CCITT poly 0x07 (UART framing only).
+   - **T1S frame layout:** `[dst MAC(6)][src MAC(6)][ethertype(2)=0x88B7][TYPE(1)][mf payload]`. T1S_ETH_HDR_LEN=14. **The MAC-PHY appends FCS and pads short frames to the 46-byte minimum** — so a received `0x88B7` STATUS frame arrives padded (payload_len >> 4).
+   - **`MARVIN_FAUXMOTE_TRANSPORT`** build flag: default T1S(1), UART(0) fallback (mirrors `MARVIN_FRETBOARD_TRANSPORT`). `T1S_CTRL_ENABLED = (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)`.
+   - **THE LEADING BUG HYPOTHESIS (confirmed on marvin RX):** Presence heartbeat uses a **tolerant** check `payload_len >= T1S_HB_LEN` so padding is ignored → works. But the STATUS path (`ctrl_rx` → `latch_status`) uses an **exact** check `if (len != MF_LEN_STATUS) return;` → the padded frame's `len` (~45) rejects → STATUS never latched. This precisely explains why `0x88B6` works but `0x88B7` STATUS fails. Fauxmote's own RX (mf_t1s.c line 420-421) CLAMPS `paylen` to MF_MAX_PAYLOAD, so it tolerates padding on its side.
+
+3. Files and Code Sections:
+   - **firmware/marvin/default/src/net/fauxmote/fauxmote_link.c** — contains the confirmed RX bug. `latch_status` (transport-independent, shared by UART parser and T1S handler) rejects padded frames:
+     ```c
+     static void latch_status(const uint8_t *payload, uint16_t len)
+     {
+         if (len != MF_LEN_STATUS) { return; }   /* <-- BUG: rejects T1S-padded STATUS */
+         bool changed = !s_status_valid || memcmp(s_status, payload, MF_LEN_STATUS) != 0;
+         taskENTER_CRITICAL();
+         memcpy(s_status, payload, MF_LEN_STATUS);
+         s_status_valid = true;
+         s_status_tick  = xTaskGetTickCount();
+         taskEXIT_CRITICAL();
+         if (changed) { LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
+                                 payload[0], payload[1], payload[2], payload[3]); }
+     }
+     ```
+     And the T1S handler that feeds it the (padded) length:
+     ```c
+     static void ctrl_rx(uint8_t type, const uint8_t *payload, uint16_t len)
+     {
+         if (type == MF_MSG_STATUS) { latch_status(payload, len); }
+     }
+     ```
+     Under UART, `len` is exactly 4 (explicit LEN framing, no padding) — that's why the `==` was correct there; T1S padding breaks it. Fix must accept `len >= MF_LEN_STATUS` on the T1S path (matching the documented design: "the message layer's per-TYPE length check ignores the trailing pad").
+
+   - **firmware/marvin/default/src/net/t1s/t1s_link.c** — RX demux (verified correct; passes padded length through):
+     ```c
+     if (ethertype == T1S_ETHERTYPE_HB) {
+         s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+         s_node_rt[idx].seen = true;
+         if (payload_len >= T1S_HB_LEN) { ... }   /* tolerant >= — works */
+         return;
+     }
+     #if T1S_CTRL_ENABLED
+     if (ethertype == T1S_ETHERTYPE_CTRL) {
+         if (payload_len >= 1u) {
+             s_ctrl_rx_count++;
+             if (s_ctrl_handler != NULL) {
+                 s_ctrl_handler(payload[0], &payload[1], (uint16_t)(payload_len - 1u));
+             }
+         }
+         return;
+     }
+     #endif
+     ```
+     TX flush (verified correct — sends unpadded frame; MAC-PHY pads on TX): `t1s_task` at ~line 384-405 drains `s_ctrl_queue` one item/wake and calls `send_to_node(ctrl->node_id, T1S_ETHERTYPE_CTRL, body, 1+len)`. `send_to_node` (line 233) writes dst/src MAC + ethertype + payload and calls `TC6_SendRawEthernetPacket`. `T1SLink_SendToController` (line 500) checks `!s_link_up || s_ctrl_queue==NULL || len>8`, enqueues, gives `s_svc_sem`. `T1S_CTRL_ENABLED` = `(MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)`; the controller node-table row and counters (`s_ctrl_tx_count`/`s_ctrl_rx_count`) are gated on it. Since node 1 shows up, T1S_CTRL_ENABLED is confirmed = 1.
+
+   - **firmware/marvin/default/src/net/fauxmote/mf_proto.h** — wire protocol (unchanged). Confirmed: `MF_MSG_GUITAR=0x01`(3B), `MF_MSG_WIIMOTE=0x02`(4B), `MF_MSG_LINK_CMD=0x03`(1B), `MF_MSG_STATUS=0x81`(4B), `MF_LEN_STATUS=4`, `MF_MAX_PAYLOAD=8`.
+
+   - **firmware/fauxmote/main/mf_t1s.c** — the ESP32/fauxmote T1S side. `T1S_ETHERTYPE_MF=0x88B7`. RX (line ~413-421): filters `ethertype != T1S_ETHERTYPE_MF`, then `if (paylen > MF_MAX_PAYLOAD) { paylen = MF_MAX_PAYLOAD; }` — **clamps** (tolerant of padding). This side handles padding; the mirror-image bug on marvin does not.
+
+   - **DOCS UPDATED THIS SESSION (todo #7, all complete):**
+     - **firmware/marvin/docs/journal.md** — added a top narrative entry (2026-07-28), a decision-log table row (2026-07-28), and a session-log entry (2026-07-28) describing the T1S controller channel + `MARVIN_FAUXMOTE_TRANSPORT` flag default T1S.
+     - **docs/t1s-podl-link.md** §8 — added the fauxmote transport-flag / controller-channel paragraph.
+     - **docs/marvin-fauxmote-link.md** §7 (marvin seam made transport-selectable) and §8 (added "marvin side (implemented 2026-07-28, default T1S)" subsection; retired the stale "not yet driven by marvin" status note).
+
+4. Errors and fixes:
+   - **Reported runtime bug (in progress, not yet fixed):** fauxmote node 1 presence works but `0x88B7` controller channel dead both ways. Root cause found for the RX/STATUS direction: `latch_status` in `fauxmote_link.c` uses `if (len != MF_LEN_STATUS) return;`, an exact-length check that rejects T1S-padded frames (padded to 46-byte minimum). The heartbeat path survives because it uses `>=`. Fix not yet applied. The marvin→fauxmote TX (commands) direction still needs confirmation — likely needs checking marvin's `s_ctrl_tx_count` (via `fauxmote status`) and the fauxmote-side dispatch, but fauxmote's RX clamps paylen so it tolerates padding.
+   - No tooling/build errors this session.
+
+5. Problem Solving:
+   - Completed the docs/journal portion of the T1S-fauxmote feature (todo #7).
+   - Diagnosed the reported communication failure: isolated it to the `0x88B7` channel (physical/PLCA/MAC layer proven healthy by working `0x88B6` presence). Identified the tolerant-vs-exact length-check asymmetry as the RX-side root cause (padded T1S frames rejected by `latch_status`'s `!=` check). Confirmed fauxmote's own RX clamps paylen (so fauxmote tolerates padding), and confirmed marvin's TX path and RX demux themselves look correct.
+
+6. All user messages:
+   - "fauxmote shows up as node 1, but doesn't seem to be any communication. for example fauxmote status reports no status received yet. and commands to fauxmote don't result in anything"
+   (Note: the "CRITICAL: Respond with TEXT ONLY..." message is the summarization-harness instruction, not a user task turn. The "i will build just let me know when" was from the prior session, carried in via the earlier summary.)
+
+7. Pending Tasks:
+   - **Fix the `0x88B7` controller-channel communication bug.** Confirmed sub-task: make marvin's STATUS RX tolerant of T1S padding (accept `len >= MF_LEN_STATUS` instead of `== `) so padded STATUS frames latch. Likely in `ctrl_rx` (T1S-specific) or by relaxing `latch_status` for the T1S path (without regressing the UART `==` semantics — the UART path relies on exact LEN framing).
+   - Confirm/diagnose the marvin→fauxmote command (TX) direction: verify `s_ctrl_tx_count` climbs (via the `fauxmote status` counters I added) and determine whether the remaining failure is fauxmote-side.
+   - After a fix, per CLAUDE.md: update the journal; the user builds. Do not commit without explicit approval.
+
+8. Current Work:
+   Immediately before this summary, I was investigating the user's reported bug ("fauxmote status reports no status received yet" and "commands to fauxmote don't result in anything"). I had:
+   - Read t1s_link.c defines (T1S_CTRL_ENABLED, ethertypes 0x88B5/6/7), `send_to_node`, and the `t1s_task` flush section — all correct.
+   - Formed the key hypothesis that the presence heartbeat's tolerant `payload_len >= T1S_HB_LEN` check works while a STATUS exact-length check fails on padded T1S frames.
+   - Read mf_proto.h (MF_LEN_STATUS=4, MF_MAX_PAYLOAD=8).
+   - Read/grepped fauxmote's mf_t1s.c and found its RX clamps paylen (`if (paylen > MF_MAX_PAYLOAD) paylen = MF_MAX_PAYLOAD;` at line 420-421) — i.e., fauxmote tolerates padding, marvin does not.
+   The confirmed marvin-side defect is in `firmware/marvin/default/src/net/fauxmote/fauxmote_link.c`'s `latch_status`: `if (len != MF_LEN_STATUS) { return; }` rejects the padded T1S STATUS frame (received `len` ~45 vs expected 4). I had not yet applied any fix — the harness then requested this summary with a text-only constraint.
+
+9. Optional Next Step:
+   Apply the RX padding-tolerance fix on the marvin side so STATUS latches. The user's report — "fauxmote status reports no status received yet" — combined with the confirmed asymmetry (heartbeat `>=` works, STATUS `!=` rejects padded frames) points directly at changing the T1S STATUS-reception path to accept `len >= MF_LEN_STATUS`. Concretely: relax the check so `ctrl_rx`/`latch_status` tolerate the T1S trailing pad (matching the documented design "the message layer's per-TYPE length check ignores the trailing pad"), without regressing the UART path's exact-LEN semantics. Before editing, I should confirm with the user by presenting the finding, and also ask them to check the `fauxmote status` tx/rx counters (which I added to console.c) to separately confirm the TX direction — since the user reported both directions failing, and the TX/command direction is not yet root-caused on the marvin side.
+
+If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /Users/gregmrozek/.claude/projects/-Users-gregmrozek-Projects-microchip-guitar-pic/7c313450-d23f-4e40-b779-d8155d63eb74.jsonl
+Continue the conversation from where it left off without asking the user any further questions. Resume directly — do not acknowledge the summary, do not recap what was happening, do not preface with "I'll continue" or similar. Pick up the last task as if the break never happened.
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:31Z)**_
+
+Let me look at the current state of the marvin-side `fauxmote_link.c` to confirm the RX bug and examine both directions.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:31Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/fauxmote/fauxmote_link.c`
+
+```text
+1	#include "fauxmote_link.h"
+2	#include "mf_proto.h"
+3	
+4	#include <stdint.h>
+5	#include <stdbool.h>
+6	#include <string.h>
+7	
+8	#include "FreeRTOS.h"
+9	#include "task.h"
+10	#include "queue.h"
+11	#include "semphr.h"
+12	
+13	#include "definitions.h"
+14	#include "log.h"
+15	
+16	#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+17	#include "net/t1s/t1s_link.h"
+18	#endif
+19	
+20	#define FX_TX_TASK_STACK_WORDS  512u
+21	#define FX_RX_TASK_STACK_WORDS  512u
+22	#define FX_TASK_PRIORITY        5u
+23	
+24	/* Floor re-send of the GUITAR slice: bounds latency of a dropped frame and keeps
+25	 * fauxmote's 200 ms link watchdog fed when gameplay is idle. Well under 200 ms. */
+26	#define FX_REFRESH_MS           50u
+27	
+28	#define FX_CMD_QUEUE_DEPTH      4u
+29	#define FX_RX_WAIT_MS           100u
+30	
+31	static bool s_ready;
+32	
+33	/* When set, the gameplay-mirror hook (Fauxmote_SendGuitarMask) is ignored so a
+34	 * higher-priority producer owns the GUITAR slice. The wiimotes manual-override
+35	 * screen engages it while shown. */
+36	static volatile bool s_override;
+37	
+38	/* Latched controller state (written by producers, read by the TX task). Guarded
+39	 * by a short critical section — a few-byte copy, never a blocking call. */
+40	static uint8_t s_g_mask;
+41	static uint8_t s_g_whammy = MF_WHAMMY_REST;
+42	static uint8_t s_g_aux;
+43	
+44	static uint8_t s_nav_core;
+45	static uint8_t s_nav_dpad;
+46	static uint8_t s_nav_sx = MF_STICK_CENTER;
+47	static uint8_t s_nav_sy = MF_STICK_CENTER;
+48	static bool    s_nav_dirty;
+49	
+50	static uint8_t s_ptr_x;
+51	static uint8_t s_ptr_y;
+52	static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
+53	static bool    s_ptr_dirty;
+54	
+55	/* Latest STATUS from fauxmote. */
+56	static bool       s_status_valid;
+57	static uint8_t    s_status[MF_LEN_STATUS];
+58	static TickType_t s_status_tick;
+59	
+60	static QueueHandle_t   s_cmd_queue;
+61	static StaticQueue_t   s_cmd_queue_buf;
+62	static uint8_t         s_cmd_queue_storage[FX_CMD_QUEUE_DEPTH];
+63	
+64	static SemaphoreHandle_t s_tx_notify;
+65	static StaticSemaphore_t s_tx_notify_buf;
+66	
+67	static StackType_t   s_tx_stack[FX_TX_TASK_STACK_WORDS];
+68	static StaticTask_t  s_tx_tcb;
+69	
+70	#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_UART)
+71	static SemaphoreHandle_t s_rx_notify;
+72	static StaticSemaphore_t s_rx_notify_buf;
+73	static StackType_t   s_rx_stack[FX_RX_TASK_STACK_WORDS];
+74	static StaticTask_t  s_rx_tcb;
+75	#endif
+76	
+77	/* ---- TX (single writer: the TX task) ------------------------------------ */
+78	
+79	#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+80	
+81	/* T1S: one mf_proto message per Ethernet frame. The MAC-PHY supplies framing
+82	 * (FCS) so the SOF/LEN/CRC8 wrapper is dropped; net/t1s stages + flushes it. */
+83	static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+84	{
+85	    (void)T1SLink_SendToController(type, payload, len);
+86	}
+87	
+88	#else  /* FAUXMOTE_TRANSPORT_UART */
+89	
+90	static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+91	{
+92	    uint8_t f[3u + MF_MAX_PAYLOAD + 1u];
+93	    f[0] = MF_SOF;
+94	    f[1] = type;
+95	    f[2] = len;
+96	    if (len != 0u) { memcpy(&f[3], payload, len); }
+97	    f[3u + len] = mf_crc8(&f[1], (size_t)(2u + len));   /* CRC over TYPE,LEN,payload */
+98	    (void)FLEXCOM5_USART_Write(f, (size_t)(4u + len));
+99	}
+100	
+101	#endif
+102	
+103	static void fx_tx_task(void *param)
+104	{
+105	    (void)param;
+106	#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+107	    LOG_INFO("FX: fauxmote link started (T1S controller channel, 0x88B7)\r\n");
+108	#else
+109	    LOG_INFO("FX: fauxmote link started (FLEXCOM5, %lu baud)\r\n",
+110	             (unsigned long)MF_UART_BAUD);
+111	#endif
+112	
+113	    for (;;)
+114	    {
+115	        /* Wake on a producer change (low latency) or the floor refresh timeout. */
+116	        (void)xSemaphoreTake(s_tx_notify, pdMS_TO_TICKS(FX_REFRESH_MS));
+117	
+118	        uint8_t g[MF_LEN_GUITAR];
+119	        uint8_t nav[MF_LEN_WIIMOTE];
+120	        uint8_t ptr[MF_LEN_POINTER];
+121	        bool    nav_dirty;
+122	        bool    ptr_dirty;
+123	
+124	        taskENTER_CRITICAL();
+125	        g[0] = s_g_mask;
+126	        g[1] = s_g_whammy;
+127	        g[2] = s_g_aux;
+128	        nav[0] = s_nav_core;
+129	        nav[1] = s_nav_dpad;
+130	        nav[2] = s_nav_sx;
+131	        nav[3] = s_nav_sy;
+132	        nav_dirty = s_nav_dirty;
+133	        s_nav_dirty = false;
+134	        ptr[0] = s_ptr_x;
+135	        ptr[1] = s_ptr_y;
+136	        ptr[2] = s_ptr_flags;
+137	        ptr_dirty = s_ptr_dirty;
+138	        s_ptr_dirty = false;
+139	        taskEXIT_CRITICAL();
+140	
+141	        send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+142	        if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
+143	        if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
+144	
+145	        uint8_t op;
+146	        while (xQueueReceive(s_cmd_queue, &op, 0) == pdTRUE)
+147	        {
+148	            send_frame(MF_MSG_LINK_CMD, &op, MF_LEN_LINK_CMD);
+149	        }
+150	    }
+151	}
+152	
+153	/* ---- RX (STATUS uplink) -------------------------------------------------- */
+154	
+155	/* Latch the latest STATUS from fauxmote. Transport-independent: fed by the UART
+156	 * byte parser or the T1S controller-channel handler. */
+157	static void latch_status(const uint8_t *payload, uint16_t len)
+158	{
+159	    if (len != MF_LEN_STATUS) { return; }
+160	
+161	    bool changed = !s_status_valid || memcmp(s_status, payload, MF_LEN_STATUS) != 0;
+162	    taskENTER_CRITICAL();
+163	    memcpy(s_status, payload, MF_LEN_STATUS);
+164	    s_status_valid = true;
+165	    s_status_tick  = xTaskGetTickCount();
+166	    taskEXIT_CRITICAL();
+167	    if (changed)
+168	    {
+169	        LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
+170	                 payload[0], payload[1], payload[2], payload[3]);
+171	    }
+172	}
+173	
+174	#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+175	
+176	/* Controller-channel RX (registered with net/t1s): one mf_proto message, already
+177	 * deframed by the MAC-PHY. Only STATUS is an uplink (f->m). */
+178	static void ctrl_rx(uint8_t type, const uint8_t *payload, uint16_t len)
+179	{
+180	    if (type == MF_MSG_STATUS) { latch_status(payload, len); }
+181	}
+182	
+183	#else  /* FAUXMOTE_TRANSPORT_UART */
+184	
+185	typedef enum { P_SOF, P_TYPE, P_LEN, P_PAYLOAD, P_CRC } parse_state_t;
+186	
+187	static void parse_byte(uint8_t b)
+188	{
+189	    static parse_state_t state = P_SOF;
+190	    static uint8_t type, len, idx;
+191	    static uint8_t payload[MF_MAX_PAYLOAD];
+192	
+193	    switch (state)
+194	    {
+195	        case P_SOF:
+196	            if (b == MF_SOF) { state = P_TYPE; }
+197	            break;
+198	        case P_TYPE:
+199	            if (b == 0x00u) { state = P_SOF; break; }
+200	            type = b;
+201	            state = P_LEN;
+202	            break;
+203	        case P_LEN:
+204	            if (b > MF_MAX_PAYLOAD) { state = P_SOF; break; }
+205	            len = b;
+206	            idx = 0u;
+207	            state = (b == 0u) ? P_CRC : P_PAYLOAD;
+208	            break;
+209	        case P_PAYLOAD:
+210	            payload[idx++] = b;
+211	            if (idx >= len) { state = P_CRC; }
+212	            break;
+213	        case P_CRC:
+214	        {
+215	            uint8_t hdr[2u + MF_MAX_PAYLOAD];
+216	            hdr[0] = type;
+217	            hdr[1] = len;
+218	            memcpy(&hdr[2], payload, len);
+219	            state = P_SOF;
+220	            if (mf_crc8(hdr, (size_t)(2u + len)) != b) { break; }   /* bad CRC */
+221	
+222	            if (type == MF_MSG_STATUS) { latch_status(payload, len); }
+223	            break;
+224	        }
+225	        default:
+226	            state = P_SOF;
+227	            break;
+228	    }
+229	}
+230	
+231	static void rx_event_handler(FLEXCOM_USART_EVENT event, uintptr_t context)
+232	{
+233	    (void)context;
+234	    BaseType_t hpw = pdFALSE;
+235	
+236	    switch (event)
+237	    {
+238	        case FLEXCOM_USART_EVENT_READ_THRESHOLD_REACHED:
+239	        case FLEXCOM_USART_EVENT_READ_BUFFER_FULL:
+240	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+241	            break;
+242	        case FLEXCOM_USART_EVENT_READ_ERROR:
+243	            (void)FLEXCOM5_USART_ErrorGet();
+244	            (void)xSemaphoreGiveFromISR(s_rx_notify, &hpw);
+245	            break;
+246	        default:
+247	            break;
+248	    }
+249	
+250	    portYIELD_FROM_ISR(hpw);
+251	}
+252	
+253	static void fx_rx_task(void *param)
+254	{
+255	    (void)param;
+256	
+257	    for (;;)
+258	    {
+259	        if (FLEXCOM5_USART_ReadCountGet() == 0u)
+260	        {
+261	            (void)xSemaphoreTake(s_rx_notify, pdMS_TO_TICKS(FX_RX_WAIT_MS));
+262	            continue;
+263	        }
+264	
+265	        uint8_t c;
+266	        while (FLEXCOM5_USART_Read(&c, 1u) == 1u)
+267	        {
+268	            parse_byte(c);
+269	        }
+270	    }
+271	}
+272	
+273	#endif  /* MARVIN_FAUXMOTE_TRANSPORT */
+274	
+275	/* ---- public API --------------------------------------------------------- */
+276	
+277	void Fauxmote_SendGuitar(uint8_t mask, uint8_t whammy, uint8_t aux)
+278	{
+279	    if (!s_ready) { return; }
+280	    taskENTER_CRITICAL();
+281	    s_g_mask   = (uint8_t)(mask & 0x7Fu);
+282	    s_g_whammy = (uint8_t)(whammy & MF_WHAMMY_MASK);
+283	    s_g_aux    = aux;
+284	    taskEXIT_CRITICAL();
+285	    (void)xSemaphoreGive(s_tx_notify);
+286	}
+287	
+288	void Fauxmote_SendGuitarMask(uint8_t mask)
+289	{
+290	    if (s_override) { return; }
+291	    Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+292	}
+293	
+294	void Fauxmote_SetOverride(bool on)
+295	{
+296	    s_override = on;
+297	}
+298	
+299	void Fauxmote_SendNav(uint8_t core, uint8_t dpad, uint8_t stick_x, uint8_t stick_y)
+300	{
+301	    if (!s_ready) { return; }
+302	    taskENTER_CRITICAL();
+303	    s_nav_core  = core;
+304	    s_nav_dpad  = dpad;
+305	    s_nav_sx    = (uint8_t)(stick_x & 0x3Fu);
+306	    s_nav_sy    = (uint8_t)(stick_y & 0x3Fu);
+307	    s_nav_dirty = true;
+308	    taskEXIT_CRITICAL();
+309	    (void)xSemaphoreGive(s_tx_notify);
+310	}
+311	
+312	void Fauxmote_SendCmd(uint8_t op)
+313	{
+314	    if (!s_ready) { return; }
+315	    (void)xQueueSend(s_cmd_queue, &op, 0);
+316	    (void)xSemaphoreGive(s_tx_notify);
+317	}
+318	
+319	void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible)
+320	{
+321	    if (!s_ready) { return; }
+322	    taskENTER_CRITICAL();
+323	    s_ptr_x     = x;
+324	    s_ptr_y     = y;
+325	    s_ptr_flags = visible ? MF_PTR_VISIBLE : 0u;
+326	    s_ptr_dirty = true;
+327	    taskEXIT_CRITICAL();
+328	    (void)xSemaphoreGive(s_tx_notify);
+329	}
+330	
+331	bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
+332	                        uint8_t *report_mode, uint8_t *last_result, uint32_t *age_ms)
+333	{
+334	    uint8_t    snap[MF_LEN_STATUS];
+335	    bool       valid;
+336	    TickType_t tick;
+337	
+338	    taskENTER_CRITICAL();
+339	    valid = s_status_valid;
+340	    memcpy(snap, s_status, MF_LEN_STATUS);
+341	    tick = s_status_tick;
+342	    taskEXIT_CRITICAL();
+343	
+344	    if (!valid) { return false; }
+345	
+346	    if (flags)       { *flags       = snap[0]; }
+347	    if (player_slot) { *player_slot = snap[1]; }
+348	    if (report_mode) { *report_mode = snap[2]; }
+349	    if (last_result) { *last_result = snap[3]; }
+350	    if (age_ms)      { *age_ms = (uint32_t)(xTaskGetTickCount() - tick) * portTICK_PERIOD_MS; }
+351	    return true;
+352	}
+353	
+354	void Fauxmote_Initialize(void)
+355	{
+356	    s_cmd_queue = xQueueCreateStatic(FX_CMD_QUEUE_DEPTH, sizeof(uint8_t),
+357	                                     s_cmd_queue_storage, &s_cmd_queue_buf);
+358	    configASSERT(s_cmd_queue != NULL);
+359	    s_tx_notify = xSemaphoreCreateBinaryStatic(&s_tx_notify_buf);
+360	    configASSERT(s_tx_notify != NULL);
+361	
+362	#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+363	    /* Ride the shared T1S bus: net/t1s owns the MAC-PHY/service task (idempotent
+364	     * Initialize — the fretboard link may have brought it up already). STATUS
+365	     * arrives via the registered controller handler; TX stages through
+366	     * T1SLink_SendToController. No dedicated peripheral, so no RX task. */
+367	    T1SLink_Initialize();
+368	    T1SLink_SetControllerHandler(ctrl_rx);
+369	
+370	    (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
+371	                            NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
+372	#else
+373	    s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
+374	    configASSERT(s_rx_notify != NULL);
+375	
+376	    /* Reconfigure FLEXCOM5 (MCC default 500000) to the link baud, 8-N-1. */
+377	    FLEXCOM_USART_SERIAL_SETUP setup = {
+378	        .baudRate = MF_UART_BAUD,
+379	        .dataWidth = FLEXCOM_USART_DATA_8_BIT,
+380	        .parity    = FLEXCOM_USART_PARITY_NONE,
+381	        .stopBits  = FLEXCOM_USART_STOP_1_BIT,
+382	    };
+383	    (void)FLEXCOM5_USART_SerialSetup(&setup, FLEXCOM5_USART_FrequencyGet());
+384	
+385	    /* Arm continuous RX for the STATUS uplink: wake the parser on each byte. */
+386	    FLEXCOM5_USART_ReadCallbackRegister(rx_event_handler, 0u);
+387	    FLEXCOM5_USART_ReadThresholdSet(1u);
+388	    (void)FLEXCOM5_USART_ReadNotificationEnable(true, true);
+389	
+390	    (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
+391	                            NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
+392	    (void)xTaskCreateStatic(fx_rx_task, "FxRx", FX_RX_TASK_STACK_WORDS,
+393	                            NULL, FX_TASK_PRIORITY, s_rx_stack, &s_rx_tcb);
+394	#endif
+395	
+396	    s_ready = true;
+397	}
+398
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:45Z)**_
+
+Confirmed the RX length-check bug at [fauxmote_link.c:159](firmware/marvin/default/src/net/fauxmote/fauxmote_link.c#L159). But the user reports **both** directions dead, and TX (commands) failing is separate. Let me verify the whole 0x88B7 path is actually wired up — first, is `Fauxmote_Initialize` even called, and does the TX actually reach the wire?
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:45Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && grep -rn "Fauxmote_Initialize\|T1SLink_Initialize\|FretboardLink_Initialize\|Fauxmote_SendGuitar\|Fauxmote_SendNav\|Fauxmote_SendCmd\|Fauxmote_SendPointer" default/src --include=*.c | grep -v "net/fauxmote/fauxmote_link.c"`
+
+```text
+(eval):1: no matches found: --include=*.c
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:50Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin && grep -rn "Fauxmote_Initialize\|T1SLink_Initialize\|FretboardLink_Initialize\|Fauxmote_SendGuitar\|Fauxmote_SendNav\|Fauxmote_SendCmd\|Fauxmote_SendPointer" default/src --include="*.c" | grep -v "fauxmote_link.c"`
+
+```text
+default/src/app.c:190:    FretboardLink_Initialize();
+default/src/app.c:193:     * every gameplay mask (FretboardLink_Send taps Fauxmote_SendGuitarMask). Must
+default/src/app.c:195:    Fauxmote_Initialize();
+default/src/ui/screens/wiimotes/screen_wiimotes.c:70:    Fauxmote_SendGuitar(s_g_mask, MF_WHAMMY_REST, s_g_aux);
+default/src/ui/screens/wiimotes/screen_wiimotes.c:75:    Fauxmote_SendNav(s_nav_core, s_nav_dpad, MF_STICK_CENTER, MF_STICK_CENTER);
+default/src/net/t1s/t1s_link.c:409:void T1SLink_Initialize(void)
+default/src/game/game_controller.c:390:    Fauxmote_SendCmd(MF_CMD_RECONNECT);
+default/src/actuator/fretboard_link.c:260:void FretboardLink_Initialize(void)
+default/src/actuator/fretboard_link.c:271:    T1SLink_Initialize();
+default/src/actuator/fretboard_link.c:327:    Fauxmote_SendGuitarMask(v);
+default/src/console/console.c:727:    if (strcmp(sub, "pair") == 0)      { Fauxmote_SendCmd(MF_CMD_PAIR);      console_printf("fauxmote: pair");      return; }
+default/src/console/console.c:728:    if (strcmp(sub, "stop") == 0)      { Fauxmote_SendCmd(MF_CMD_STOP);      console_printf("fauxmote: stop");      return; }
+default/src/console/console.c:729:    if (strcmp(sub, "reconnect") == 0) { Fauxmote_SendCmd(MF_CMD_RECONNECT); console_printf("fauxmote: reconnect"); return; }
+default/src/console/console.c:730:    if (strcmp(sub, "unlink") == 0)    { Fauxmote_SendCmd(MF_CMD_UNLINK);    console_printf("fauxmote: unlink");    return; }
+default/src/console/console.c:735:        Fauxmote_SendCmd(v ? MF_CMD_EXT_ATTACH : MF_CMD_EXT_DETACH);
+default/src/console/console.c:748:        Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, 0u);
+default/src/console/console.c:757:            Fauxmote_SendPointer(0u, 0u, false);
+default/src/console/console.c:769:        Fauxmote_SendPointer(x, y, true);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:57Z)**_
+
+`Fauxmote_Initialize()` is called at [app.c:195](firmware/marvin/default/src/app.c#L195), right after `FretboardLink_Initialize()`. Both call `T1SLink_Initialize()`. Let me examine the t1s_link.c controller channel end-to-end — init idempotency, queue creation, TX flush, and MAC addressing.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:44:58Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/marvin/default/src/net/t1s/t1s_link.c`
+
+```text
+1	#include "t1s_link.h"
+2	
+3	#include <stdint.h>
+4	#include <stdbool.h>
+5	#include <string.h>
+6	
+7	#include "FreeRTOS.h"
+8	#include "task.h"
+9	#include "semphr.h"
+10	#include "queue.h"
+11	
+12	#include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
+13	#include "log.h"
+14	#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+15	#include "net/fauxmote/fauxmote_link.h"  /* MARVIN_FAUXMOTE_TRANSPORT */
+16	
+17	#include "tc6.h"
+18	#include "tc6-regs.h"
+19	
+20	/* The controller channel (fauxmote over 0x88B7) is compiled in only when the
+21	 * fauxmote link selects the T1S transport; otherwise there is no controller node
+22	 * on the bus and the channel would be dead weight (and a phantom `nodes` row). */
+23	#define T1S_CTRL_ENABLED (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+24	
+25	/* marvin is the PLCA coordinator. Node IDs and MACs follow the addressing
+26	 * scheme in docs/t1s-podl-link.md §7.1: coordinator = ID 0, MAC ...00. */
+27	#define T1S_NODE_ID         (0u)
+28	#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length; headroom for nodes 1..7 */
+29	#define T1S_PLCA_ENABLE     (true)
+30	#define T1S_SPI_HZ          (15000000u)
+31	#define T1S_INSTANCE        (0u)
+32	
+33	#define T1S_TASK_STACK_WORDS (1024u)
+34	#define T1S_TASK_PRIORITY    (5u)
+35	
+36	/* Upper bound on TC6_Service calls per service_pump. The MAC-PHY can keep the
+37	 * "need service" flag asserted indefinitely (e.g. a persistent IRQ_N with no
+38	 * PLCA peer on the bus), which would spin this prio-5 task at 100% CPU and
+39	 * starve every lower task — the whole UI/console/detector stack. Cap the pump
+40	 * so it always returns to the task loop (which then blocks on s_svc_sem),
+41	 * yielding the CPU; any still-pending work is picked up on the next wake. */
+42	#define T1S_SERVICE_MAX_ITERS (8u)
+43	
+44	/* MAC-PHY bring-up bounds. If the LAN8651 isn't populated/responding, the task
+45	 * backs off and retries every T1S_ABSENT_RETRY_MS instead of servicing a dead
+46	 * SPI bus — ~0% CPU with no chip, and it self-heals if one is attached later. */
+47	#define T1S_BRINGUP_ACCEPT_MS   (500u)    /* deadline for TC6Regs_Init to be accepted */
+48	#define T1S_BRINGUP_INITDONE_MS (3000u)   /* deadline for the async reg writes to finish */
+49	#define T1S_ABSENT_RETRY_MS     (1000u)   /* backoff between bring-up attempts when absent */
+50	
+51	/* L2 framing (docs/t1s-podl-link.md §7.1): a custom ethertype carries the
+52	 * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
+53	#define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
+54	#define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
+55	#define T1S_ETHERTYPE_CTRL   (0x88B7u)   /* controller (fauxmote mf_proto) frames */
+56	#define T1S_ETH_HDR_LEN      (14u)
+57	#define T1S_MAC_LEN          (6u)
+58	#define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
+59	#define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
+60	
+61	/* Locally administered coordinator MAC (02:00:00:00:00:00). */
+62	static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
+63	
+64	/* Static node directory. No discovery — adding a node is a table entry.
+65	 * Detector nodes feed a detector-state bus id (RX source); guitar (actuator)
+66	 * nodes are command TX targets (detector_id unused, set to 0xFF). */
+67	#define T1S_NO_DETECTOR     (0xFFu)
+68	
+69	typedef enum
+70	{
+71	    T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
+72	    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
+73	    T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+74	    T1S_NODE_CONTROLLER,     /* controller: fauxmote mf_proto channel (0x88B7) */
+75	} t1s_node_type_t;
+76	
+77	typedef struct
+78	{
+79	    uint8_t         node_id;      /* PLCA id, also the MAC low byte */
+80	    uint8_t         detector_id;  /* detector_state_t.detector_id (T1S_NO_DETECTOR for actuators) */
+81	    t1s_node_type_t type;
+82	} t1s_node_t;
+83	
+84	static const t1s_node_t s_nodes[] = {
+85	    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+86	    { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+87	#if T1S_CTRL_ENABLED
+88	    { 1u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote (0x88B7) */
+89	#endif
+90	};
+91	
+92	#define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
+93	
+94	/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+95	static struct {
+96	    uint32_t last_seen_tick;
+97	    uint32_t last_seq;
+98	    bool     seen;
+99	} s_node_rt[T1S_NODE_TABLE_LEN];
+100	
+101	static const char *node_type_name(t1s_node_type_t t)
+102	{
+103	    switch (t) {
+104	        case T1S_NODE_FRETBOARD:     return "detector";
+105	        case T1S_NODE_PHOTODETECTOR: return "detector";
+106	        case T1S_NODE_GUITAR:        return "guitar";
+107	        case T1S_NODE_CONTROLLER:    return "controller";
+108	        default:                     return "?";
+109	    }
+110	}
+111	
+112	/* Fill a follower MAC for a node id: 02:00:00:00:00:<id>. */
+113	static void node_mac(uint8_t out[T1S_MAC_LEN], uint8_t node_id)
+114	{
+115	    out[0] = 0x02u;
+116	    out[1] = 0x00u;
+117	    out[2] = 0x00u;
+118	    out[3] = 0x00u;
+119	    out[4] = 0x00u;
+120	    out[5] = node_id;
+121	}
+122	
+123	/* Look up a node by type (NULL if none of that type is configured). */
+124	static const t1s_node_t *node_for_type(t1s_node_type_t type)
+125	{
+126	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+127	        if (s_nodes[i].type == type) {
+128	            return &s_nodes[i];
+129	        }
+130	    }
+131	    return NULL;
+132	}
+133	
+134	/* Look up a node by its source MAC (NULL if unknown). */
+135	static const t1s_node_t *node_for_mac(const uint8_t mac[T1S_MAC_LEN])
+136	{
+137	    if ((mac[0] != 0x02u) || (mac[1] | mac[2] | mac[3] | mac[4])) {
+138	        return NULL;
+139	    }
+140	    for (uint8_t i = 0u; i < (sizeof(s_nodes) / sizeof(s_nodes[0])); i++) {
+141	        if (s_nodes[i].node_id == mac[5]) {
+142	            return &s_nodes[i];
+143	        }
+144	    }
+145	    return NULL;
+146	}
+147	
+148	/* TX frame staging: TC6_SendRawEthernetPacket keeps a pointer to the buffer
+149	 * until its TX callback fires, so the buffer must stay valid meanwhile. One
+150	 * in-flight frame at a time (guarded by s_tx_busy) suffices for the link's
+151	 * rates. */
+152	static uint8_t       s_tx_frame[T1S_ETH_HDR_LEN + 64u];
+153	static volatile bool s_tx_busy;
+154	
+155	/* Latest-wins outbound command to the guitar, flushed by the service task. */
+156	static volatile uint8_t s_cmd;
+157	static volatile bool    s_cmd_dirty;
+158	
+159	static T1SLink_FrameHandler s_frame_handler;
+160	
+161	/* Traffic counters (read by the console t1s/nodes commands). */
+162	static volatile uint32_t s_tx_count;   /* command frames sent */
+163	static volatile uint32_t s_rx_count;   /* frames received from a known node */
+164	static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
+165	
+166	#if T1S_CTRL_ENABLED
+167	/* Controller channel (fauxmote, 0x88B7). Producers stage one mf_proto message
+168	 * at a time into a static FIFO; the service task frames + flushes them through
+169	 * the shared single-in-flight TX path, interleaved with the guitar command. */
+170	#define T1S_CTRL_ITEM_MAX   (2u + 8u)   /* type + len + max mf payload */
+171	#define T1S_CTRL_QUEUE_DEPTH (8u)
+172	
+173	static QueueHandle_t s_ctrl_queue;
+174	static StaticQueue_t s_ctrl_queue_buf;
+175	static uint8_t       s_ctrl_queue_storage[T1S_CTRL_QUEUE_DEPTH * T1S_CTRL_ITEM_MAX];
+176	
+177	static T1SLink_ControllerHandler s_ctrl_handler;
+178	static volatile uint32_t s_ctrl_tx_count;
+179	static volatile uint32_t s_ctrl_rx_count;
+180	#endif
+181	
+182	static TC6_t            *s_tc6;
+183	static volatile bool     s_need_service;
+184	static volatile bool     s_link_up;
+185	
+186	static SemaphoreHandle_t s_svc_sem;
+187	static StaticSemaphore_t s_svc_sem_buf;
+188	
+189	static StackType_t       s_task_stack[T1S_TASK_STACK_WORDS];
+190	static StaticTask_t      s_task_tcb;
+191	
+192	/* RX reassembly: TC6 delivers an Ethernet frame as slices; collect them here
+193	 * and process on the OnRxEthernetPacket completion callback. */
+194	static uint8_t           s_rx_buf[1518];
+195	
+196	/* FLEXCOM3 SPI completion ISR callback: the chunk transfer is done, hand the
+197	 * buffer back to the TC6 driver and wake the service task. */
+198	static void spi_done_cb(uintptr_t context)
+199	{
+200	    (void)context;
+201	    BaseType_t hpw = pdFALSE;
+202	    TC6_SpiBufferDone(T1S_INSTANCE, true);
+203	    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+204	    portYIELD_FROM_ISR(hpw);
+205	}
+206	
+207	/* T1S_IRQ_N falling-edge PIO ISR callback: the MAC-PHY needs servicing. */
+208	static void irq_cb(PIO_PIN pin, uintptr_t context)
+209	{
+210	    (void)pin;
+211	    (void)context;
+212	    BaseType_t hpw = pdFALSE;
+213	    s_need_service = true;
+214	    (void)xSemaphoreGiveFromISR(s_svc_sem, &hpw);
+215	    portYIELD_FROM_ISR(hpw);
+216	}
+217	
+218	/* TX completion: the staged frame buffer is free for reuse. */
+219	static void tx_done_cb(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+220	                       void *pTag, void *pGlobalTag)
+221	{
+222	    (void)pInst;
+223	    (void)pTx;
+224	    (void)len;
+225	    (void)pTag;
+226	    (void)pGlobalTag;
+227	    s_tx_busy = false;
+228	}
+229	
+230	/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) under `ethertype`
+231	 * and queue it. Returns false if a TX is already in flight or the driver
+232	 * rejected it. */
+233	static bool send_to_node(uint8_t node_id, uint16_t ethertype,
+234	                         const uint8_t *payload, uint16_t payload_len)
+235	{
+236	    if (s_tx_busy || !s_link_up) {
+237	        return false;
+238	    }
+239	    if (payload_len > (sizeof(s_tx_frame) - T1S_ETH_HDR_LEN)) {
+240	        return false;
+241	    }
+242	    node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
+243	    memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
+244	    s_tx_frame[12] = (uint8_t)(ethertype >> 8);
+245	    s_tx_frame[13] = (uint8_t)(ethertype & 0xFFu);
+246	    memcpy(&s_tx_frame[T1S_ETH_HDR_LEN], payload, payload_len);
+247	
+248	    s_tx_busy = true;
+249	    bool ok = TC6_SendRawEthernetPacket(s_tc6, s_tx_frame,
+250	                                        (uint16_t)(T1S_ETH_HDR_LEN + payload_len),
+251	                                        0u, tx_done_cb, NULL);
+252	    if (!ok) {
+253	        s_tx_busy = false;
+254	    }
+255	    return ok;
+256	}
+257	
+258	/* Run the protocol stack until it has no immediately pending work. IRQ_N is
+259	 * active-low; TC6_Service treats a false interruptLevel as "interrupt active". */
+260	/* Returns true if it bailed with work still pending (hit the iteration cap) —
+261	 * the caller must then yield so a stuck MAC-PHY can't starve other tasks. */
+262	static bool service_pump(void)
+263	{
+264	    unsigned iters = 0u;
+265	    do {
+266	        s_need_service = false;
+267	        bool no_int = (T1S_IRQ_N_Get() != 0u);
+268	        (void)TC6_Service(s_tc6, no_int);
+269	    } while (s_need_service && (++iters < T1S_SERVICE_MAX_ITERS));
+270	
+271	    TC6Regs_CheckTimers();
+272	
+273	    /* Persistent need-service = the MAC-PHY isn't quiescing (stuck IRQ / no
+274	     * peer). Don't spin on it; count it and tell the caller to yield. */
+275	    if (s_need_service) { s_service_overruns++; return true; }
+276	    return false;
+277	}
+278	
+279	/* One MAC-PHY bring-up attempt: reset pulse, push the register + PLCA config,
+280	 * and drive the async writes to completion within a deadline. Returns true only
+281	 * if the chip acked init done. False = absent/unresponsive → the caller backs
+282	 * off and retries (so an unpopulated LAN8651 never turns into a dead-bus spin).
+283	 * Re-pulsing reset each attempt also resets a chip attached after boot. */
+284	static bool t1s_try_bringup(void)
+285	{
+286	    /* Hardware reset pulse (T1S_RST is active-low, idle high). */
+287	    T1S_RST_Clear();
+288	    vTaskDelay(pdMS_TO_TICKS(10));
+289	    T1S_RST_Set();
+290	    vTaskDelay(pdMS_TO_TICKS(10));
+291	
+292	    /* Configure the LAN8651 registers + PLCA (coordinator, id 0). promiscuous
+293	     * during bring-up so RX isn't filtered before the node table exists.
+294	     * TC6Regs_Init only queues the writes — bounded accept retry. */
+295	    TickType_t accept_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_ACCEPT_MS);
+296	    while (!TC6Regs_Init(s_tc6, NULL, s_mac, T1S_PLCA_ENABLE, T1S_NODE_ID,
+297	                         T1S_NODE_COUNT, 0u, 0u, true, false, false)) {
+298	        if ((int32_t)(accept_dl - xTaskGetTickCount()) <= 0) { return false; }
+299	        vTaskDelay(pdMS_TO_TICKS(50));
+300	    }
+301	
+302	    /* Drive the async register writes to completion (bounded). */
+303	    TickType_t done_dl = xTaskGetTickCount() + pdMS_TO_TICKS(T1S_BRINGUP_INITDONE_MS);
+304	    while (!TC6Regs_GetInitDone(s_tc6) &&
+305	           ((int32_t)(done_dl - xTaskGetTickCount()) > 0)) {
+306	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(2));
+307	        (void)service_pump();
+308	    }
+309	    return TC6Regs_GetInitDone(s_tc6);
+310	}
+311	
+312	static void t1s_task(void *param)
+313	{
+314	    (void)param;
+315	
+316	    /* SPI: Mode 0 (CPOL=0 idle low, CPHA=0 leading edge), 8-bit, 15 MHz.
+317	     * Source clock 0 => PLib uses the FLEXCOM3 peripheral clock. One-time. */
+318	    FLEXCOM_SPI_TRANSFER_SETUP setup = {
+319	        .clockFrequency = T1S_SPI_HZ,
+320	        .clockPhase     = FLEXCOM_SPI_CLOCK_PHASE_LEADING_EDGE,
+321	        .clockPolarity  = FLEXCOM_SPI_CLOCK_POLARITY_IDLE_LOW,
+322	        .dataBits       = FLEXCOM_SPI_DATA_BITS_8,
+323	    };
+324	    (void)FLEXCOM3_SPI_TransferSetup(&setup, 0u);
+325	    FLEXCOM3_SPI_CallbackRegister(spi_done_cb, 0u);
+326	
+327	    s_tc6 = TC6_Init(NULL);
+328	    if (s_tc6 == NULL) {
+329	        LOG_ERROR("T1S: TC6_Init failed\r\n");
+330	        vTaskDelete(NULL);
+331	        return;
+332	    }
+333	
+334	    (void)PIO_PinInterruptCallbackRegister(T1S_IRQ_N_PIN, irq_cb, 0u);
+335	    PIO_PinInterruptEnable(T1S_IRQ_N_PIN);
+336	
+337	    bool warned_absent = false;
+338	
+339	    for (;;) {
+340	        /* Bring up (or re-bring-up) the MAC-PHY. Absent/unresponsive → warn once
+341	         * and retry with backoff instead of servicing a dead bus. */
+342	        if (!s_link_up) {
+343	            if (!t1s_try_bringup()) {
+344	                if (!warned_absent) {
+345	                    LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
+346	                             "retry every %ums\r\n", (unsigned)T1S_ABSENT_RETRY_MS);
+347	                    warned_absent = true;
+348	                }
+349	                vTaskDelay(pdMS_TO_TICKS(T1S_ABSENT_RETRY_MS));
+350	                continue;
+351	            }
+352	            s_link_up      = true;
+353	            warned_absent  = false;
+354	            TC6_EnableData(s_tc6, true);
+355	            LOG_INFO("T1S: LAN8651 up — chipRev=%u, MAC=%02X:%02X:%02X:%02X:%02X:%02X, "
+356	                     "PLCA coord id=%u/%u\r\n",
+357	                     (unsigned)TC6Regs_GetChipRevision(s_tc6),
+358	                     s_mac[0], s_mac[1], s_mac[2], s_mac[3], s_mac[4], s_mac[5],
+359	                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_COUNT);
+360	        }
+361	
+362	        (void)xSemaphoreTake(s_svc_sem, pdMS_TO_TICKS(1));
+363	        /* If the pump bailed with work still pending, force a yield so this
+364	         * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
+365	        if (service_pump()) { vTaskDelay(pdMS_TO_TICKS(1)); }
+366	
+367	        /* Flush the latest pending command to the active guitar (actuator)
+368	         * node. All TC6 access stays in this task; producers only stash via
+369	         * the API. (Single guitar today; an active-guitar selector goes here
+370	         * when multiple guitar nodes share the bus.) */
+371	        if (s_cmd_dirty && !s_tx_busy) {
+372	            const t1s_node_t *guitar = node_for_type(T1S_NODE_GUITAR);
+373	            if (guitar != NULL) {
+374	                /* Clear before reading so a concurrent update re-arms dirty
+375	                 * rather than being dropped (latest-wins). */
+376	                s_cmd_dirty = false;
+377	                uint8_t mask = s_cmd;
+378	                if (send_to_node(guitar->node_id, T1S_ETHERTYPE, &mask, 1u)) {
+379	                    s_tx_count++;
+380	                }
+381	            }
+382	        }
+383	
+384	#if T1S_CTRL_ENABLED
+385	        /* Flush one staged controller (fauxmote) message onto the bus. Shares
+386	         * the single in-flight TX with the guitar command above; across service
+387	         * wakes (each TX-done gives s_svc_sem) both channels drain fairly. */
+388	        if (!s_tx_busy) {
+389	            uint8_t item[T1S_CTRL_ITEM_MAX];
+390	            if (xQueueReceive(s_ctrl_queue, item, 0) == pdTRUE) {
+391	                const t1s_node_t *ctrl = node_for_type(T1S_NODE_CONTROLLER);
+392	                uint8_t len = item[1];
+393	                if ((ctrl != NULL) && (len <= 8u)) {
+394	                    /* item = [TYPE][LEN][payload]; frame body is [TYPE][payload]. */
+395	                    uint8_t body[1u + 8u];
+396	                    body[0] = item[0];
+397	                    if (len != 0u) { memcpy(&body[1], &item[2], len); }
+398	                    if (send_to_node(ctrl->node_id, T1S_ETHERTYPE_CTRL,
+399	                                     body, (uint16_t)(1u + len))) {
+400	                        s_ctrl_tx_count++;
+401	                    }
+402	                }
+403	            }
+404	        }
+405	#endif
+406	    }
+407	}
+408	
+409	void T1SLink_Initialize(void)
+410	{
+411	    /* Idempotent: both the fretboard (T1S) and fauxmote (T1S) links share this
+412	     * single MAC-PHY and each calls Initialize; the first wins. */
+413	    static bool s_initialized;
+414	    if (s_initialized) { return; }
+415	    s_initialized = true;
+416	
+417	    s_svc_sem = xSemaphoreCreateBinaryStatic(&s_svc_sem_buf);
+418	    configASSERT(s_svc_sem != NULL);
+419	
+420	#if T1S_CTRL_ENABLED
+421	    s_ctrl_queue = xQueueCreateStatic(T1S_CTRL_QUEUE_DEPTH, T1S_CTRL_ITEM_MAX,
+422	                                      s_ctrl_queue_storage, &s_ctrl_queue_buf);
+423	    configASSERT(s_ctrl_queue != NULL);
+424	#endif
+425	
+426	    (void)xTaskCreateStatic(t1s_task, "T1SLink", T1S_TASK_STACK_WORDS, NULL,
+427	                            T1S_TASK_PRIORITY, s_task_stack, &s_task_tcb);
+428	}
+429	
+430	bool T1SLink_IsConnected(void)
+431	{
+432	    return s_link_up;
+433	}
+434	
+435	void T1SLink_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
+436	{
+437	    uint8_t tx = 0u, rx = 0u;
+438	    bool    sy = false;
+439	    if (s_tc6 != NULL) {
+440	        TC6_GetState(s_tc6, &tx, &rx, &sy);
+441	    }
+442	    if (synced   != NULL) { *synced   = sy; }
+443	    if (txCredit != NULL) { *txCredit = tx; }
+444	    if (rxCredit != NULL) { *rxCredit = rx; }
+445	}
+446	
+447	uint8_t  T1SLink_ChipRev(void)   { return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u; }
+448	uint8_t  T1SLink_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
+449	uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
+450	uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
+451	uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
+452	uint32_t T1SLink_ServiceOverruns(void) { return s_service_overruns; }
+453	
+454	#if T1S_CTRL_ENABLED
+455	uint32_t T1SLink_CtrlTxCount(void) { return s_ctrl_tx_count; }
+456	uint32_t T1SLink_CtrlRxCount(void) { return s_ctrl_rx_count; }
+457	#else
+458	uint32_t T1SLink_CtrlTxCount(void) { return 0u; }
+459	uint32_t T1SLink_CtrlRxCount(void) { return 0u; }
+460	#endif
+461	
+462	uint8_t T1SLink_NodeTableCount(void) { return (uint8_t)T1S_NODE_TABLE_LEN; }
+463	
+464	bool T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out)
+465	{
+466	    if ((idx >= T1S_NODE_TABLE_LEN) || (out == NULL)) {
+467	        return false;
+468	    }
+469	    out->node_id = s_nodes[idx].node_id;
+470	    out->type    = node_type_name(s_nodes[idx].type);
+471	    if (s_node_rt[idx].seen) {
+472	        uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
+473	        out->age_ms  = (uint32_t)(age * portTICK_PERIOD_MS);
+474	        out->present = (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+475	    } else {
+476	        out->age_ms  = 0u;
+477	        out->present = false;
+478	    }
+479	    return true;
+480	}
+481	
+482	bool T1SLink_SendToGuitar(uint8_t mask)
+483	{
+484	    if (!s_link_up) {
+485	        return false;
+486	    }
+487	    s_cmd = mask;
+488	    s_cmd_dirty = true;
+489	    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+490	    return true;
+491	}
+492	
+493	void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler)
+494	{
+495	    s_frame_handler = handler;
+496	}
+497	
+498	#if T1S_CTRL_ENABLED
+499	
+500	bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)
+501	{
+502	    if (!s_link_up || (s_ctrl_queue == NULL) || (len > 8u)) {
+503	        return false;
+504	    }
+505	    uint8_t item[T1S_CTRL_ITEM_MAX];
+506	    item[0] = type;
+507	    item[1] = len;
+508	    if (len != 0u) { memcpy(&item[2], payload, len); }
+509	    if (xQueueSend(s_ctrl_queue, item, 0) != pdTRUE) {
+510	        return false;   /* FIFO full — drop (latest producer state re-sends) */
+511	    }
+512	    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+513	    return true;
+514	}
+515	
+516	void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler)
+517	{
+518	    s_ctrl_handler = handler;
+519	}
+520	
+521	#else  /* controller channel not compiled in (fauxmote not on T1S) */
+522	
+523	bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)
+524	{
+525	    (void)type; (void)payload; (void)len;
+526	    return false;
+527	}
+528	
+529	void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler)
+530	{
+531	    (void)handler;
+532	}
+533	
+534	#endif
+535	
+536	/*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
+537	
+538	bool TC6_CB_OnSpiTransaction(uint8_t tc6instance, uint8_t *pTx, uint8_t *pRx,
+539	                             uint16_t len, void *pGlobalTag)
+540	{
+541	    (void)tc6instance;
+542	    (void)pGlobalTag;
+543	    /* Non-blocking full-duplex transfer; spi_done_cb calls TC6_SpiBufferDone.
+544	     * Returns false if the PLib is busy — the driver retries. */
+545	    return FLEXCOM3_SPI_WriteRead(pTx, len, pRx, len);
+546	}
+547	
+548	void TC6_CB_OnNeedService(TC6_t *pInst, void *pGlobalTag)
+549	{
+550	    (void)pInst;
+551	    (void)pGlobalTag;
+552	    /* May be called from task or ISR context; just flag. ISR sources also give
+553	     * the semaphore, so the service task always wakes. */
+554	    s_need_service = true;
+555	}
+556	
+557	void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
+558	                              uint16_t len, void *pGlobalTag)
+559	{
+560	    (void)pInst;
+561	    (void)pGlobalTag;
+562	    if (((uint32_t)offset + len) <= sizeof(s_rx_buf)) {
+563	        memcpy(&s_rx_buf[offset], pRx, len);
+564	    }
+565	}
+566	
+567	void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
+568	                               uint64_t *rxTimestamp, void *pGlobalTag)
+569	{
+570	    (void)pInst;
+571	    (void)rxTimestamp;
+572	    (void)pGlobalTag;
+573	
+574	    if (!success || (len < T1S_ETH_HDR_LEN)) {
+575	        return;
+576	    }
+577	
+578	    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+579	    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)
+580	#if T1S_CTRL_ENABLED
+581	        && (ethertype != T1S_ETHERTYPE_CTRL)
+582	#endif
+583	       ) {
+584	        return;  /* not ours (promiscuous RX during bring-up) */
+585	    }
+586	
+587	    const uint8_t *src = &s_rx_buf[6];
+588	    const t1s_node_t *node = node_for_mac(src);
+589	    if (node == NULL) {
+590	        LOG_DEBUG("T1S: rx from unknown node %02X:%02X:%02X:%02X:%02X:%02X\r\n",
+591	                  src[0], src[1], src[2], src[3], src[4], src[5]);
+592	        return;
+593	    }
+594	    uint8_t idx = (uint8_t)(node - s_nodes);
+595	
+596	    const uint8_t *payload = &s_rx_buf[T1S_ETH_HDR_LEN];
+597	    uint16_t       payload_len = (uint16_t)(len - T1S_ETH_HDR_LEN);
+598	
+599	    if (ethertype == T1S_ETHERTYPE_HB) {
+600	        /* Presence heartbeat: stamp last-seen; capture the seq if present. */
+601	        s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
+602	        s_node_rt[idx].seen = true;
+603	        if (payload_len >= T1S_HB_LEN) {
+604	            s_node_rt[idx].last_seq = (uint32_t)payload[4]
+605	                                    | ((uint32_t)payload[5] << 8)
+606	                                    | ((uint32_t)payload[6] << 16)
+607	                                    | ((uint32_t)payload[7] << 24);
+608	        }
+609	        return;
+610	    }
+611	
+612	#if T1S_CTRL_ENABLED
+613	    if (ethertype == T1S_ETHERTYPE_CTRL) {
+614	        /* Controller (fauxmote) frame: payload is [TYPE][mf payload]. */
+615	        if (payload_len >= 1u) {
+616	            s_ctrl_rx_count++;
+617	            if (s_ctrl_handler != NULL) {
+618	                s_ctrl_handler(payload[0], &payload[1], (uint16_t)(payload_len - 1u));
+619	            }
+620	        }
+621	        return;
+622	    }
+623	#endif
+624	
+625	    s_rx_count++;
+626	    if (s_frame_handler != NULL) {
+627	        s_frame_handler(node->detector_id, payload, payload_len);
+628	    }
+629	}
+630	
+631	void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
+632	{
+633	    (void)pGlobalTag;
+634	    LOG_WARN("T1S: error: %s\r\n", TC6_GetErrorStr(err));
+635	    switch (err) {
+636	        case TC6Error_NoHardware:
+637	        case TC6Error_BadChecksum:
+638	        case TC6Error_UnexpectedCtrl:
+639	        case TC6Error_BadTxData:
+640	        case TC6Error_SyncLost:
+641	        case TC6Error_SpiError:
+642	            TC6Regs_Reinit(pInst);
+643	            break;
+644	        default:
+645	            break;
+646	    }
+647	}
+648	
+649	/*>>>>>>>>>>>>>>>>>>>>  TC6Regs callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>>>>*/
+650	
+651	uint32_t TC6Regs_CB_GetTicksMs(void)
+652	{
+653	    /* configTICK_RATE_HZ is 1000, so one tick is one millisecond. */
+654	    return (uint32_t)xTaskGetTickCount();
+655	}
+656	
+657	void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
+658	{
+659	    (void)pTag;
+660	//    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
+661	    switch (event) {
+662	        case TC6Regs_Event_Loss_of_Framing_Error:
+663	        case TC6Regs_Event_RX_Non_Recoverable_Error:
+664	        case TC6Regs_Event_TX_Non_Recoverable_Error:
+665	            TC6Regs_Reinit(pInst);
+666	            break;
+667	        default:
+668	            break;
+669	    }
+670	}
+671
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:45:38Z)**_
+
+The marvin TX and RX demux code both look correct. The only marvin-side defect is the STATUS length check. Since the user reports **both** directions dead, let me check the fauxmote side: its MAC/PLCA config (does marvin's dst MAC `...01` match?) and whether it acts on received commands.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:45:38Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`cd /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote && grep -rn "PLCA\|plca\|node_id\|NODE_ID\|mac\[\|MAC\|02, 0x\|0x02\|promisc\|MfLink_HandleMessage\|T1S_ETHERTYPE_MF\|node_type\|NODE_TYPE\|heartbeat\|HB_" main/mf_t1s.c | head -60`
+
+```text
+main/mf_t1s.c:20:/* PLCA follower identity (docs/t1s-podl-link.md §7.1). The coordinator (marvin)
+main/mf_t1s.c:21: * is node id 0; controllers (fauxmotes) take ids 1-2, one PLCA node each (at
+main/mf_t1s.c:23:#ifndef CONFIG_FAUXMOTE_T1S_NODE_ID
+main/mf_t1s.c:24:#define CONFIG_FAUXMOTE_T1S_NODE_ID  1
+main/mf_t1s.c:26:#define T1S_NODE_ID         ((uint8_t)CONFIG_FAUXMOTE_T1S_NODE_ID)
+main/mf_t1s.c:27:#define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
+main/mf_t1s.c:30:#define T1S_ETHERTYPE_MF    (0x88B7u)  /* fauxmote command / STATUS channel */
+main/mf_t1s.c:31:#define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+main/mf_t1s.c:34:/* Heartbeat (docs/t1s-podl-link.md §7.2): ver, node_type, node_id, flags, seq_u32. */
+main/mf_t1s.c:35:#define T1S_HB_INTERVAL_MS      (500u)
+main/mf_t1s.c:36:#define T1S_HB_VERSION          (1u)
+main/mf_t1s.c:37:#define T1S_HB_TYPE_CONTROLLER  (3u)   /* 1 = detector, 2 = guitar, 3 = controller */
+main/mf_t1s.c:38:#define T1S_HB_LEN              (8u)
+main/mf_t1s.c:73:/* This node's MAC 02:00:00:00:00:<id>; coordinator MAC 02:00:00:00:00:00. */
+main/mf_t1s.c:74:static uint8_t       s_mac[6]       = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, T1S_NODE_ID };
+main/mf_t1s.c:75:static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+main/mf_t1s.c:91:static uint8_t       s_hb_frame[T1S_ETH_HDR_LEN + T1S_HB_LEN];
+main/mf_t1s.c:136: * s_need_service: with a MAC-PHY that never syncs, the library re-requests
+main/mf_t1s.c:155:static void send_heartbeat(void)
+main/mf_t1s.c:167:    s_hb_frame[14] = T1S_HB_VERSION;
+main/mf_t1s.c:168:    s_hb_frame[15] = T1S_HB_TYPE_CONTROLLER;
+main/mf_t1s.c:169:    s_hb_frame[16] = T1S_NODE_ID;
+main/mf_t1s.c:178:    if (!TC6_SendRawEthernetPacket(s_tc6, s_hb_frame, T1S_ETH_HDR_LEN + T1S_HB_LEN,
+main/mf_t1s.c:194: * the mf ethertype. Payload is [TYPE][payload...]; the MAC-PHY pads short frames
+main/mf_t1s.c:203:    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE_MF >> 8);
+main/mf_t1s.c:204:    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE_MF & 0xFFu);
+main/mf_t1s.c:243:            ESP_LOGI(TAG, "LAN8651 up - chipRev=%u, MAC=02:00:00:00:00:%02X, "
+main/mf_t1s.c:244:                          "PLCA follower id=%u/%u",
+main/mf_t1s.c:246:                     (unsigned)T1S_NODE_ID, (unsigned)T1S_NODE_ID,
+main/mf_t1s.c:252:            if ((now - s_hb_last_ms) >= T1S_HB_INTERVAL_MS) {
+main/mf_t1s.c:254:                send_heartbeat();
+main/mf_t1s.c:321:    /* Configure the LAN8651 + PLCA as this follower id. Not promiscuous — the
+main/mf_t1s.c:322:     * MAC-PHY filters to this node's MAC + broadcast. This runs the register
+main/mf_t1s.c:324:     * OnSpiTransaction); with no MAC-PHY responding it falls through cleanly
+main/mf_t1s.c:326:    if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,
+main/mf_t1s.c:336:    ESP_LOGI(TAG, "marvin link up on T1S (PLCA follower id=%u, ethertype=0x%04X)",
+main/mf_t1s.c:337:             (unsigned)T1S_NODE_ID, (unsigned)T1S_ETHERTYPE_MF);
+main/mf_t1s.c:343:uint8_t  MfT1s_NodeId(void)    { return T1S_NODE_ID; }
+main/mf_t1s.c:413:    if (ethertype != T1S_ETHERTYPE_MF) {
+main/mf_t1s.c:424:    (void)MfLink_HandleMessage(type, &s_rx_buf[T1S_ETH_HDR_LEN + 1u], (uint8_t)paylen);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:46:01Z)**_
+
+Fauxmote is at MAC `02:00:00:00:00:01`, non-promiscuous (filters to its own MAC + broadcast). Marvin sends commands to dst `...01` — so the addressing matches in both directions. The MAC-level path is sound. Let me confirm fauxmote actually sends STATUS periodically (so the length-check fix genuinely explains "no status received"), and check how it acts on received commands.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:46:01Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`grep -rn "MF_MSG_STATUS\|send_status\|SendStatus\|STATUS\|mf_status\|MfLink_HandleMessage\|MF_MSG_GUITAR\|MF_MSG_WIIMOTE\|MF_MSG_LINK_CMD\|MfT1s_Send\|send_frame\|MfLink_Send" main/*.c | grep -iv "heartbeat" | head -50`
+
+```text
+main/bt_hid_device.c:62:        if (param->auth_cmpl.stat == ESP_BT_STATUS_SUCCESS) {
+main/bt_role.c:42:    tBTM_STATUS st = BTM_SwitchRole((UINT8 *)bda, want, role_switch_cmpl);
+main/mf_t1s.c:30:#define T1S_ETHERTYPE_MF    (0x88B7u)  /* fauxmote command / STATUS channel */
+main/mf_t1s.c:193:/* mf_send_fn: carry one f->m message (STATUS) as a frame to the coordinator on
+main/mf_t1s.c:424:    (void)MfLink_HandleMessage(type, &s_rx_buf[T1S_ETH_HDR_LEN + 1u], (uint8_t)paylen);
+main/marvin_link.c:24:/* --- STATUS uplink: build the SOF/TYPE/LEN/payload/CRC8 frame ------------------- */
+main/marvin_link.c:85:        (void)MfLink_HandleMessage(p->type, p->payload, p->len);
+main/mf_link.c:15:/* Watchdog / STATUS cadence state (owned by MfLink_Service). */
+main/mf_link.c:20:static bool     s_force_status;     /* a STATUS_REQ is pending */
+main/mf_link.c:21:static uint8_t  s_prev_status[MF_LEN_STATUS] = { 0xFF, 0xFF, 0xFF, 0xFF };
+main/mf_link.c:86:    case MF_CMD_STATUS_REQ: s_force_status = true;       break;
+main/mf_link.c:91:static void build_status(uint8_t out[MF_LEN_STATUS])
+main/mf_link.c:112:bool MfLink_HandleMessage(uint8_t type, const uint8_t *payload, uint8_t len)
+main/mf_link.c:115:    case MF_MSG_GUITAR:
+main/mf_link.c:120:    case MF_MSG_WIIMOTE:
+main/mf_link.c:135:    case MF_MSG_LINK_CMD:
+main/mf_link.c:160:    uint8_t status[MF_LEN_STATUS];
+main/mf_link.c:162:    bool changed = memcmp(status, s_prev_status, MF_LEN_STATUS) != 0;
+main/mf_link.c:164:        (now_ms - s_last_status) > MF_STATUS_PERIOD_MS) {
+main/mf_link.c:166:            s_send(MF_MSG_STATUS, status, MF_LEN_STATUS);
+main/mf_link.c:168:        memcpy(s_prev_status, status, MF_LEN_STATUS);
+main/wiimote.c:107:static void send_status(int fd)
+main/wiimote.c:241:        send_status(fd);
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:46:06Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/main/mf_link.c`
+
+```text
+108	{
+109	    s_send = send;
+110	}
+111	
+112	bool MfLink_HandleMessage(uint8_t type, const uint8_t *payload, uint8_t len)
+113	{
+114	    switch (type) {
+115	    case MF_MSG_GUITAR:
+116	        if (len != MF_LEN_GUITAR) break;
+117	        apply_guitar(payload[0], payload[1], payload[2]);
+118	        s_got_input = true;
+119	        return true;
+120	    case MF_MSG_WIIMOTE:
+121	        if (len != MF_LEN_WIIMOTE) break;
+122	        apply_wiimote(payload[0], payload[1], payload[2], payload[3]);
+123	        s_got_input = true;
+124	        return true;
+125	    case MF_MSG_POINTER:
+126	        if (len != MF_LEN_POINTER) break;
+127	        apply_pointer(payload[0], payload[1], payload[2]);
+128	        s_got_input = true;
+129	        return true;
+130	    case MF_MSG_ACCEL:
+131	        if (len != MF_LEN_ACCEL) break;
+132	        Wiimote_SetAccel((int8_t)payload[0], (int8_t)payload[1], (int8_t)payload[2]);
+133	        s_got_input = true;
+134	        return true;
+135	    case MF_MSG_LINK_CMD:
+136	        if (len != MF_LEN_LINK_CMD) break;
+137	        handle_link_cmd(payload[0]);
+138	        break;
+139	    default:
+140	        break;   /* unknown type: ignore */
+141	    }
+142	    return false;
+143	}
+144	
+145	void MfLink_Service(uint32_t now_ms)
+146	{
+147	    if (s_got_input) {
+148	        s_got_input  = false;
+149	        s_last_input = now_ms;
+150	        s_safed      = false;
+151	    }
+152	
+153	    /* Watchdog: if no input slice arrived within the timeout, release all. */
+154	    if (!s_safed && (now_ms - s_last_input) > MF_INPUT_TIMEOUT_MS) {
+155	        neutralize();
+156	        s_safed = true;
+157	    }
+158	
+159	    /* STATUS: on change, on request, or as a heartbeat. */
+160	    uint8_t status[MF_LEN_STATUS];
+161	    build_status(status);
+162	    bool changed = memcmp(status, s_prev_status, MF_LEN_STATUS) != 0;
+163	    if (s_force_status || changed ||
+164	        (now_ms - s_last_status) > MF_STATUS_PERIOD_MS) {
+165	        if (s_send != NULL) {
+166	            s_send(MF_MSG_STATUS, status, MF_LEN_STATUS);
+167	        }
+168	        memcpy(s_prev_status, status, MF_LEN_STATUS);
+169	        s_last_status  = now_ms;
+170	        s_force_status = false;
+171	    }
+172	}
+173
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:46:42Z)**_
+
+Found it — this is the **same
+
+---
+
+_**User (2026-07-29 01:46:42Z)**_
+
+[Request interrupted by user]
+
+_**User (2026-07-29 01:46:56Z)**_
+
+just little more info, fauxmote shows following after runnig a while. t1s link=up synced=1 node_id=1 chipRev=2
+    rx=11955 tx=7661 err=0 hb_seq=3862
+
+---
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:20Z)**_
+
+That confirms it completely. `rx=11955` means fauxmote's MAC-PHY **is receiving** marvin's `0x88B7` command frames (that counter only increments for `0x88B7` frames, after the ethertype filter). `tx=7661` means fauxmote **is sending** STATUS frames back. The bus is fully healthy in both directions (synced=1). So the frames arrive — they're just being **rejected after arrival** by exact-length checks that don't account for the MAC-PHY's min-frame padding.
+
+The root cause is symmetric on both ends. A T1S STATUS frame (4-byte payload) or GUITAR frame (3-byte) gets padded to the 60-byte Ethernet minimum, so the received payload length is ~45, not the exact 3/4. And both dispatchers reject it:
+
+- **fauxmote** [mf_link.c:112-142](firmware/fauxmote/main/mf_link.c#L112) — `MfLink_HandleMessage` uses `if (len != MF_LEN_GUITAR) break;` etc. The T1S RX clamps paylen to `MF_MAX_PAYLOAD` (8), not to the per-type length, so `8 != 3` → every GUITAR/WIIMOTE/LINK_CMD command is dropped. That's why "commands don't result in anything."
+- **marvin** [fauxmote_link.c:159](firmware/marvin/default/src/net/fauxmote/fauxmote_link.c#L159) — `latch_status` uses `if (len != MF_LEN_STATUS) return;`, so padded STATUS (len ~45) is dropped. That's why "no status received yet."
+
+The heartbeat path works on both ends precisely because it uses a tolerant `>=` check. The documented design contract already says "the per-type length check ignores the trailing pad" — the code just doesn't implement it. Fix: make the per-type checks `>=` (require *at least* the bytes, ignore trailing pad).
+
+Let me apply both fixes.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:21Z)**_
+
+<tool-use data-tool-type="read" data-tool-name="Read"><details>
+<summary>Tool use: **Read**</summary>
+ `./firmware/fauxmote/main/mf_link.c`
+
+```text
+112	bool MfLink_HandleMessage(uint8_t type, const uint8_t *payload, uint8_t len)
+113	{
+114	    switch (type) {
+115	    case MF_MSG_GUITAR:
+116	        if (len != MF_LEN_GUITAR) break;
+117	        apply_guitar(payload[0], payload[1], payload[2]);
+118	        s_got_input = true;
+119	        return true;
+120	    case MF_MSG_WIIMOTE:
+121	        if (len != MF_LEN_WIIMOTE) break;
+122	        apply_wiimote(payload[0], payload[1], payload[2], payload[3]);
+123	        s_got_input = true;
+124	        return true;
+125	    case MF_MSG_POINTER:
+126	        if (len != MF_LEN_POINTER) break;
+127	        apply_pointer(payload[0], payload[1], payload[2]);
+128	        s_got_input = true;
+129	        return true;
+130	    case MF_MSG_ACCEL:
+131	        if (len != MF_LEN_ACCEL) break;
+132	        Wiimote_SetAccel((int8_t)payload[0], (int8_t)payload[1], (int8_t)payload[2]);
+133	        s_got_input = true;
+134	        return true;
+135	    case MF_MSG_LINK_CMD:
+136	        if (len != MF_LEN_LINK_CMD) break;
+137	        handle_link_cmd(payload[0]);
+138	        break;
+139	    default:
+140	        break;   /* unknown type: ignore */
+141	    }
+142	    return false;
+143	}
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:36Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/mf_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:44Z)**_
+
+Now the marvin side:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:46Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:53Z)**_
+
+Both fixes applied. Now let me record this in the journals. Let me check the top of both.
+
+_**Agent (claude-opus-4-8 2026-07-29 01:47:55Z)**_
+
+<tool-use data-tool-type="shell" data-tool-name="Bash"><details>
+<summary>Tool use: **Bash**</summary>
+
+`echo "===== MARVIN journal (head) =====" && head -60 firmware/marvin/docs/journal.md && echo "" && echo "===== FAUXMOTE journal (head) =====" && head -60 firmware/fauxmote/docs/journal.md`
+
+```text
+===== MARVIN journal (head) =====
+# marvin — Working Journal
+
+Running log of planning, decisions, open questions, and work-in-progress for marvin. Newest entries at the top. For *what marvin is* (purpose, subsystems, interfaces, milestones), read [`spec.md`](spec.md) — this journal does not duplicate it.
+
+---
+
+**2026-07-28 — fauxmote link routed over 10BASE-T1S on the coordinator side (default); FLEXCOM5 UART kept as the opt-in fallback.** The ESP32/fauxmote end already rides the shared PLCA bus (its own LAN8651, ethertype `0x88B7`, controller node id 1, heartbeat node_type 3 — done in a prior session). This brings the marvin end onto the same channel, mirroring how the guitar/fretboard nodes were staged before their hardware existed. **marvin has a single LAN8651 MAC-PHY**, so the fauxmote channel is *not* a second interface — it rides the existing `net/t1s` TX/RX path alongside the guitar command (`0x88B5`) and presence heartbeats (`0x88B6`), on its own ethertype `0x88B7`.
+- **`net/t1s` gained a generic "controller" channel.** New `T1S_NODE_CONTROLLER` (node table row id 1, gated on the fauxmote-T1S build so a UART build shows no phantom "controller absent" row), ethertype `T1S_ETHERTYPE_CTRL 0x88B7`, a static TX FIFO (depth 8, item = `type + len + ≤8B payload`) drained one-per-service-wake in `t1s_task` (interleaves with the latest-wins guitar command), and an RX demux that hands `0x88B7` frames to a registered `T1SLink_ControllerHandler`. Public API: `T1SLink_SendToController(type,payload,len)` + `T1SLink_SetControllerHandler(...)` + ctrl tx/rx counters. `send_to_node` was generalized to take an ethertype. `T1SLink_Initialize` is now idempotent (static `s_initialized`, first wins) so both the fretboard-T1S and fauxmote-T1S paths can call it.
+- **`fauxmote_link` keeps its whole producer/latching/STATUS layer; only the transport seam swaps** (same shape as `MARVIN_FRETBOARD_TRANSPORT`). New `MARVIN_FAUXMOTE_TRANSPORT` flag **defaults to T1S**; `=0` selects the FLEXCOM5 UART point-to-point fallback. On T1S: `send_frame` → `T1SLink_SendToController` (MAC-PHY supplies FCS, so the SOF/LEN/CRC8 wrapper is dropped), STATUS uplink arrives via a registered `ctrl_rx` handler, no dedicated peripheral / no RX task. The STATUS latch was factored into a shared `latch_status()` used by both transports. Frame layout `[dst=ctrl][src=coord][0x88B7][TYPE][mf payload]`.
+- Files: `net/t1s/t1s_link.{c,h}`, `net/fauxmote/fauxmote_link.{c,h}`, `cmake/marvin/default/user.cmake` (documented `MARVIN_FAUXMOTE_TRANSPORT=1`), `console/console.c` (`fauxmote status` shows transport + ctrl tx/rx; `nodes` lists the controller row automatically). `mf_proto.h` wire content unchanged (still byte-identical to the fauxmote copy). No MCC/Legato edits. **Pending Greg's MPLAB build.** On-bus verification waits on the fauxmote LAN8651 bring-up (later session).
+
+---
+
+**2026-07-23 — fauxmote link moved to a dedicated FLEXCOM5 USART; fauxmote is now transport-independent (runs on UART *and* T1S guitar builds).** fauxmote previously borrowed FLEXCOM1 — the fretboard/guitar UART-transport peripheral — which was only free in the T1S guitar build, so the whole fauxmote path was compile-guarded to `MARVIN_FRETBOARD_TRANSPORT == T1S`. A new FLEXCOM5 USART (added in MCC) gives fauxmote its own peripheral, dissolving the conflict.
+- **New peripheral (MCC).** FLEXCOM5 USART on `PA16`/`FLEXCOM5_IO0` (`FAUXMOTE_TX`) and `PA15`/`FLEXCOM5_IO1` (`FAUXMOTE_RX`), AIC source 14, ring-buffer mode. Static config (`FLEX_US_MR`/`FLEX_US_BRGR`, 8-N-1, MCK, OVER=1, CD=66/FP=5) is byte-identical to FLEXCOM1; fauxmote overrides baud to 1 Mbaud at runtime via `SerialSetup`, so the static CD/FP is non-binding. Commit `a36ccdd` (re-applied patch #11 after the regen).
+- **App migration.** `fauxmote_link.c/.h` is a mechanical `FLEXCOM1_USART_*` → `FLEXCOM5_USART_*` rename (transport comes via `definitions.h`; no include change). With FLEXCOM1 no longer contended, every `MARVIN_FRETBOARD_TRANSPORT`-guard that existed *only* to keep fauxmote off UART-guitar builds was dropped: `app.c` `Fauxmote_Initialize()`, the `Fauxmote_SendGuitarMask` mirror tap in `fretboard_link.c`, the `fauxmote` console command, and `game_controller.c`'s `ensure_wii_connected()` pre-flight (every build drives a Wii through fauxmote, so the Wii-connect check now always runs — the old `#else return true` stub is gone). The remaining `MARVIN_FRETBOARD_TRANSPORT` guards (all in `fretboard_link.c`) are the genuine guitar-actuator UART-vs-T1S split and are unchanged. Commit `1872a9c`; verified on hardware.
+
+---
+
+**2026-07-23 — T1S host SPI moved FLEXCOM4 → FLEXCOM3 (MCC regen + app rename); verified driving the guitar over T1S.** Board rework relocated the T1S link off FLEXCOM4. Regenerated MCC and renamed the app-side wrapper; the chip-select moved from CS0 to CS1 in the process.
+- **Pin map (new → old).** SPI: MOSI `PC22`/`FLEXCOM3_IO0` (was PA10), MISO `PC23`/`FLEXCOM3_IO1` (was PA9), nCS `PC24`/`FLEXCOM3_IO4` (was PA12), SCK `PC26`/`FLEXCOM3_IO2` (was PA11). GPIO: `T1S_IRQ_N` `PB18` (was PB25; falling-edge, internal pull-up carried over), `T1S_RST` `PA17` (was PB3; output, idle high). AIC source 13 (FLEXCOM4) → 8 (FLEXCOM3).
+- **Chip-select CS0 → CS1, transparent to app code.** `FLEXCOM3_SPI_Initialize` sets `FLEX_SPI_MR.PCS = NPCS1` and configures `CSR[1]`; nCS/PC24 is the peripheral-muxed `FLEXCOM3_IO4` line and `FLEXCOM3_SPI_WriteRead()` takes no CS argument, so hardware drives CS. `t1s_link.c` never references a CS index or the nCS pin → the CS0→CS1 move needed **zero** app change. App diff was a pure `FLEXCOM4_SPI_*` → `FLEXCOM3_SPI_*` rename (`TransferSetup`/`CallbackRegister`/`WriteRead`); the `T1S_RST`/`T1S_IRQ_N` GPIO macros resolve to the new pins through `definitions.h`.
+- **MISO pull-down re-created on PC23.** The absent-chip-determinism pull-down on MISO (added in the "absent-chip handling" work in the decision log) did not survive the FLEXCOM3 regen; re-added on `PC23` via MCC (`5faa2b7`) so a tristated/unpopulated LAN8651 reads a deterministic 0x00 rather than noise.
+- **Re-apply patch #11 (`plib_aic.c` UDPHS boot-storm mask) was reverted by the regen and re-applied** before commit (as always after MCC regen). Commits: `70b1fc7` (regen + patch #11), `9ce4fcf` (app rename), `5faa2b7` (MISO pull-down). Verified on hardware: marvin drives the guitar follower over T1S.
+
+---
+
+**2026-07-22 — marvin froze on boot whenever the USB-CDC (UDPHS) cable was attached at power-on; root cause = `AIC_INT_Initialize` unmasks CPU IRQs with UDPHS already AIC-enabled but its driver uninitialized → ENDRESET interrupt storm. Fixed on hardware (deterministic first-load boot across many power cycles). Local fix minimized to a single generated file.** Symptom: cable attached at boot → totally dead (no splash, no DBGU past the `bkptnone` bootstrap banner; marvin's own `printf` also targets DBGU, so "only the banner" = hang before marvin's first log); attach *after* boot → fine; a variable number of `load-ram.sh` (nSRST) reloads would eventually boot. Diagnosed by JTAG-halting the stalled core and reading PC + AIC/UDPHS registers.
+- **Root cause chain.** `AIC_INT_Initialize()` ([plib_aic.c](../default/src/config/default/peripheral/aic/plib_aic.c)) configures every tabled source, writes `AIC_IECR` to **enable** each (incl. UDPHS, source 23, level-sensitive), then calls `__enable_irq()` *before returning* — while `DRV_USB_UDPHS_Initialize` hasn't run (`gDrvUSBUDPHSObj[0].status == UNINITIALIZED`). `UDPHS_IEN` reset default is `0x10` (**ENDRESET enabled**); with the controller attached (D+ pull-up) a connected host drives bus resets → ENDRESET asserts. The instant `__enable_irq()` runs, the ISR fires with no client, can't clear the level-sensitive source → 100% CPU in the UDPHS ISR → `SYS_Initialize` never finishes, scheduler never starts. The variable "N loads" = a race on whether the host is mid-reset when `__enable_irq()` executes. Confirmed at the halt: `AIC_ISR`=23, `IPR0` bit23 pending, `IEN`=0x10, `CTRL`=0x100 (attached), `isOpened`=false, all PC samples in `FreeRTOS_IRQ_Handler`↔`DRV_USB_UDPHS_Tasks_ISR`. (`nSRST` does **not** reset UDPHS, so the attached/enabled state persists across the JTAG dev-loop's warm resets.)
+- **Fix (local, minimal footprint — one generated file).** In `AIC_INT_Initialize`, after the configure loop and **before `__enable_irq()`**, leave UDPHS (source 23) MASKED (`AIC_SSR`←23, `AIC_IDCR`) — handler/priority still configured. The perf-log CDC sink enables it via `SYS_INT_SourceEnable(UDPHS_IRQn)` in `PerfLogSinkCdc_Initialize` (our tree) *after* open+attach. A masked AIC source can't vector the CPU regardless of controller/host state, so boot always completes; enumeration works once the sink arms it. **Masking must be inside `AIC_INT_Initialize`** — any mask after it returns loses the race (an earlier `SYS_INT_SourceDisable` in `initialization.c` right after the call never executed). Verified on hardware: first-load boot every time, cable attached, across many cold power cycles; CDC enumerates after boot.
+- **Scope decision (w/ Greg): applied only the AIC mask locally.** Two *additional* real driver defects were found and are documented for upstream but **not applied locally** — once source 23 is masked until a client exists, neither can fire: (1) `F_DRV_USB_UDPHS_DEVICE_Tasks_ISR` no-client paths return without acknowledging the interrupt (storm on a level-sensitive controller); (2) `F_DRV_USB_UDPHS_DEVICE_Initialize` sets DETACH *before* a core-reset toggle that clears it, so init finishes *attached*. Keeping the local change to the single `plib_aic.c` patch minimizes the MCC re-apply surface. The full three-fix set + evidence lives on branch `fix/udphs-aic-boot-storm` and in [`udphs_aic_boot_storm_bug.md`](udphs_aic_boot_storm_bug.md) (for filing with Microchip).
+- **Filing framing.** Headline defect is the AIC PLIB pattern: `AIC_INT_Initialize` blanket-enables all sources and unmasks CPU IRQs while drivers are uninitialized, so any source that can assert from reset (UDPHS/ENDRESET with a host present) storms before `SYS_Initialize` completes. Sources shouldn't be AIC-enabled until their driver has a client. Driver is Harmony USB v3.16.0; AIC PLIB in `csp`.
+- **Re-apply after MCC regen: patch #11 (`plib_aic.c`) only.** The sink `SYS_INT_SourceEnable` is in our tree (no re-apply).
+
+---
+
+**2026-07-10 — streak: cleaned the training set + units-wrap tens carry (host + regen header; pending build).** Two linked changes after Greg reviewed the corpus. (1) **Audit:** the auto-selected units exemplars had let mid-roll samples in (a rolling wheel half-transitioned reads as a digit and smears the template); removed them / relabelled the rolling ones to units-`x`, corpus 76→65. Future policy: a digit is usable only if identical across neighbouring frames. (2) **Units-wrap tens carry** (`gp_streak_track`): cleaner data made units-9 read better, exposing the tens carry lag (49→40→50). Now a confident units read that drops ≥`GP_STREAK_WRAP_MIN`(5) steps the current (debounced) tens by one — applying the carry the instant the ones rolls (49→50). Works off the debounced digits and fires only on a genuine wrap, so it can't re-inflate a stale value: a wrong-high tens corrected downward stays corrected (guards the "stuck 30-high, can't recover" failure Greg flagged; regression-tested). Capture: carry-lag dips 30→0, anchors exact, 76 tests. Only `game/gameplay_score.c` (tracker) + regenerated `gameplay_metadata.h` (cleaned banks + WRAP_MIN) change. **Pending Greg's MPLAB build.** See gameplay journal 2026-07-10.
+
+**2026-07-10 — score + streak readers rewritten to integer math; fixed a coverage out-of-bounds bug (pending build).** Converted the shared coverage pipeline (luma → ink threshold → grid resize → per-cell coverage) in `gameplay_score.c` to pure integer so the firmware reproduces the host prototype **bit-for-bit**. This directly cuts hardware misreads: the device was extracting coverage in float32 while templates were built/validated in float64 (plus different rounding modes), so its reads diverged from what was validated. Now luma = `B*29+G*150+R*77` (no /256), ink threshold = rational `GP_{SCORE,STREAK}_INK_NUM/DEN` of the min..max range (`DEN*(luma-lo) ≷ NUM*(hi-lo)`), integer `gp_edge`, integer coverage; no float in the readers (ARM926 has no FPU). **Also fixed a real OOB bug**: when an ink bbox is smaller than the glyph grid, the last cell's block ran past the bbox and read the unused tail of the scratch buffer (stale data) → wrong coverage on short glyphs; clamped `yb→rh`/`xb→rw` to match the host (numpy) slice. Cross-check is now strict bit-exact (presence + every digit + every confidence flag). Digit banks in `gameplay_metadata.h` rebuilt with integer coverage. Files: `game/gameplay_score.c`, `game/gameplay_metadata.h` (regen). The multiplier (colour counts) was already integer. **Pending Greg's MPLAB build.** See gameplay journal 2026-07-10.
+
+**2026-07-10 — dashboard streak label wasn't clearing at song start / after a miss (fixed).** The streak label kept showing the pre-reset count. `ScreenDashboard_ApplyStreak` set an *empty* string for streak 0, and `lestring_set_utf8("")` doesn't repaint/clear the prior glyphs (the score/status labels never hit this — they always render non-empty). Fix: always render the number, so 0 shows "0" and repaints. Both reset paths already posted 0 (song start `run()` → `PostStreak(0)`; miss → tracker resets to 0 when the odometer isn't locked); only the label paint was the bug. File: `ui/screens/dashboard/screen_dashboard.c`. **Pending Greg's MPLAB build.**
+
+**2026-07-10 — streak reader: grew the units corpus to fix 9/0/6 detection (host-only; regenerated header).** The dark-on-light units wheel has a fat distance tail, so a correct digit from an under-sampled template exceeded the confidence gate and was dropped — most visibly units-9 (4 exemplars → real 9s at dist ~12300 > gate 9500, "rarely detects 9"). Mined the 6549-frame capture for 30 more **units-only** exemplars (10 each of 9/0/6, `streak__xx<u>__cap…` so they feed only the dark-on-light bank and leave the white-on-dark bank the clean original). units-9 median distance 12300→~5700 (clears the gate); capture confident units-9 reads 0→256; in-sample 154/154; tracker unchanged (0 big jumps, max 304, anchors exact). Only `gameplay_metadata.h` (regenerated digit banks) changes on the firmware side — no logic change. See gameplay journal 2026-07-10. **Pending Greg's MPLAB build.**
+
+**2026-07-10 — gameplay_engine: streak tracker debounce + plausibility clamp (pending build).** Fixed a reported streak **lock** and two failures it surfaced, all in `gp_streak_track` (host-proven, see gameplay journal 2026-07-10). The old monotonic forward window couldn't represent a value below `last`, so a tens misread locked the value high (11x→14x…); "confident read trumps" fixed that but unmasked a systematic **tens 0↔8 flicker** (the slashed zero's top loop closes under aliasing → reads 8 confidently, 100↔180) and a **carry-roll 900 blip** (mid-roll hundreds reads 9 for ~2 frames at 99→100). Fix, both symmetric so they never lock: **per-place debounce** (`GP_STREAK_DEBOUNCE {2,2,1}` — a changed digit commits after N consecutive confident reads; slow wheels 2, units immediate) + a **plausibility clamp** (`GP_STREAK_MAX_STEP 50` — reject a committed per-frame value jump a streak can't make; seed bypasses it). `gp_streak_state_t` gains `pend[3]`/`pend_n[3]`. Over the capture: 0 implausible jumps, max 304, anchors exact; host suite 74. Still open: units-9 detection (needs more units exemplars — corpus-growth pass next). Files: `game/gameplay_score.{c,h}`, `game/gameplay_metadata.h` (regen). **Pending Greg's MPLAB build.**
+
+**2026-07-10 — gameplay_engine: note-streak reader (odometer OCR + confident-read tracker) → dashboard STREAK label (pending build).** Last scoring-block value after score + multiplier. The streak is a 3-tumbler odometer (note icon + hundreds/tens/units) that only appears at ~25+ and whose wheels *roll* — the units constantly, tens/hundreds at carries — so any frame can show unreadable wheels. Proven host-side (`tools/gameplay`, see its journal 2026-07-10) then ported.
+- **Stateless read (`gp_read_streak`, `gameplay_score.c`, pure/cross-checked).** **Presence = the odometer is *locked at its final position*, detected from the note icon — not the digits** (Greg): the counter slides in from the bottom, overshoots, and bounces down to settle (`score-0335.png` = reference locked frame), and mid-slide the cells are misaligned → garbage. The fixed gold note glyph is a position fiducial — its coverage matches the locked template (L1 < `GP_STREAK_NOTE_MAX_SAD`) only when settled, cleanly rejecting both absent and slide/overshoot frames. When locked, three fixed cells (units dark-on-light, tens/hundreds white-on-dark) → 16×10 coverage → integer-L1 argmin over a **per-polarity 0-9 bank**; a wheel failing the gate is flagged unreadable. Fills `{present, digit[3], known[3]}`. Data frozen into `gameplay_metadata.h` (`GP_STREAK_*`: note template + two digit banks + ROIs + thresholds) by `gameplay export-c`. ROIs are absolute (fixed rig; chrome registration exists but is unused in v0).
+- **Stateful tracker (`gp_streak_track`/`gp_streak_reset`, state owned by the caller).** **Presence is binary — not present ⇒ streak reset ⇒ 0** (immediate; the sole reset path). While present, **a confident wheel read is authoritative for its place** (Greg: a clear digit read trumps the rollover logic) — it wins even if the value drops, so a misread is a self-correcting one-frame blip; an unreadable (rolling) wheel is filled (holds last, or resets to 0 when a higher place carried). ≥2 confident wheels seed. This replaced a monotonic forward window `[last, last+30]` whose forward-only search couldn't represent a value below `last` → a tens misread locked the value high (11x read as 14x…); confident-trumps fixes it. Host validation over the 6549-frame capture: hand-read anchors exact (100 % in-sample confident-digit accuracy with the refined 8×15 cells), 0 non-reset decreases, correct slide-gating, max 304.
+- **Engine + dashboard.** `game_state_t.streak` (new `uint16_t`); the observer holds one tracker (`s_streak`), advances it on `in_song` reads and resets it when gameplay is left; log adds `streak<s>`. Feed applies `DASH_EVT_STREAK` → `ScreenDashboard_ApplyStreak` → `Marvin_LABEL_DASHBOARD_ROBOT_Streak` via a fixed `leFixedString` (shows "0" at reset — see the 2026-07-10 label-clear fix).
+- **Reset behaviour (w/ Greg).** Score/multiplier/streak zero out **the instant a run is requested** (top of `run()`, before nav/connect), not on reaching gameplay. During the song a **broken streak** (odometer no longer locked) blanks immediately (→ 0). **After the song ends everything stays** (score/multiplier/streak persist on the end screen) — the next run's request is the only reset. `play_until_done` tracks **peak streak** (persists across misses) + **final score** and logs `GC: result score N, peak streak M` — the values `Results_Append` (spec §4.8.6) will persist once that path is wired.
+- **Known follow-ups (deferred, this commit lands the lock fix first):** (1) **Tens 0↔8 flicker** — the odometer's zero has a center slash; A2D aliasing closes its top loop on ~half the frames, so a tens "0" genuinely matches the **8** template better (4590 vs 6885) and reads 8 *confidently*, alternating frame-to-frame (100↔180, etc.; a hundreds variant flashes 900). Real per-frame ambiguity, not a template bug → fix with a **per-place debounce** (a changed confident digit must persist ≥2 reads before committing; can't lock since it follows reads up or down). (2) **Integer-coverage rewrite** — coverage is still float, so the per-wheel `known` flag can differ C-vs-Python on a borderline wheel (Python `np.round` half-to-even vs C half-up), benign for the tracker; going integer (midpoint threshold + integer grid edges) removes all FP (ARM926 has no FPU) and gives bit-exact parity.
+- Host cross-check (`test_firmware_classify` `streak`): C == Python on presence + confidence flags + every confident digit, all 47 corpus frames; `test_streak.py` covers the tracker logic. Full gameplay suite **71 passed**; `gameplay_score.c` compiles clean under `cc -Wall -Wextra` via the cross-check driver. Files: `game/gameplay_score.{h,c}`, `game/gameplay_metadata.h` (regen), `game/gameplay_engine.{c,h}`, `game/game_controller.c`, `ui/dashboard_feed.c`, `ui/screens/dashboard/screen_dashboard.{c,h}`. No MCC/Legato hand-edits. **Pending Greg's MPLAB build + hardware validation** (streak label tracks the odometer, holds through single rolls, jumps at carries, blanks at song start / on a miss). Career-font score mode is the only deferred scoring-block item.
+
+---
+
+**2026-07-14 — Wiimotes screen buttons wired to fauxmote (manual override).** The MGS regen that named the wiimotes control buttons (`BUTTON_WIIMOTES_ROBOT_{FRET_*,STRUM_UP/DOWN,GUITAR_PLUS/MINUS,UP/DOWN/LEFT/RIGHT,A/B/ONE/TWO,HOME}` — promoted from anonymous `panel_Button_N_0`/label placeholders) is now hooked up to drive the ESP32 Wiimote directly over the fauxmote link.
+- **Direct-to-fauxmote, momentary (w/ Greg).** `screen_wiimotes.c` runtime-registers press/release callbacks on every control button via a `{widget-slot, field, bit}` table. Frets/strum/± build the GUITAR slice → `Fauxmote_SendGuitar(mask, MF_WHAMMY_REST, aux)` (whammy fixed at rest — the `WhammySlider`/`TiltControl` panels were **not** named/converted to interactive widgets by the regen, so they're not wired this pass); D-pad + A/B/1/2/Home build the WIIMOTE nav slice → `Fauxmote_SendNav(core, dpad, MF_STICK_CENTER, MF_STICK_CENTER)`. A bit is held only while its button is pressed.
+- **Priority override.** New `Fauxmote_SetOverride(bool)` in `net/fauxmote/fauxmote_link.{c,h}`: while on, `Fauxmote_SendGuitarMask()` (the gameplay-mirror hook the timing pipeline calls via `FretboardLink_Send`) is a no-op, so the screen's direct sends own fauxmote's GUITAR slice. The real T1S guitar keeps playing — only fauxmote's feed is commandeered.
+- **Show/hide seam.** New `ScreenWiimotes_SetShown(bool)`, called from `UiManager_ShowWiimotes`/`ShowDashboard` (distinct from `SetInput`, which the nav drawer also toggles for its modal). On show: zero state + `SetOverride(true)` + push neutral. On hide: push neutral guitar/nav *then* `SetOverride(false)` (never leave a note held; hand fauxmote back to the mirror).
+
+===== FAUXMOTE journal (head) =====
+# fauxmote — Working Journal
+
+Running log of planning, decisions, open questions, and work-in-progress for fauxmote. Newest entries at the top. For *what fauxmote is* (purpose, hardware, interfaces, milestones), read [`../SPEC.md`](../SPEC.md) — this journal does not duplicate it.
+
+---
+
+## Current focus
+
+**Phase 1 DONE — the Wii pairs with fauxmote and opens both HID channels.** Custom
+Wiimote SDP record (built via Bluedroid's internal `SDP_*` API in `wiimote_sdp.c`,
+with SDP buffers raised to 512/1024) + raw `esp_bt_l2cap` servers on PSM 0x11/0x13.
+On a red-SYNC press the Wii: accepts our SDP, completes legacy PIN pairing
+(`auth OK`), and opens both HID L2CAP channels (control CID 0x40 / interrupt CID 0x41,
+both `mtu 640`), then starts sending us data. Wii BD_ADDR `00:17:ab:07:2c:21`.
+
+**Phase 2 DONE — the Wii fully initializes fauxmote as an assigned Wiimote.**
+`wiimote.c` answers the Wii's output reports (`0x17` read→`0x21`, `0x15`→`0x20`
+status, `0x16` write→`0x22` ack, `0x11` LEDs, `0x12` reporting mode, `0x13`/`0x1a`
+IR-enable acks) and streams `0x30` core-button reports (~15 ms) for keep-alive.
+On hardware: clean full handshake, the Wii assigns a player slot (`0x11`), and the
+GPIO13 status LED (no real player LEDs on a Feather) goes **solid = assigned**
+(heartbeat=waiting, fast-blink=connected). IR is acked but not implemented (only
+needed for the pointer, not guitar gameplay).
+
+**Core-Wiimote + test-CLI workstream (before guitar).**
+
+- **Step A DONE — manual test CLI + connection management.** `esp_console` REPL
+  (`console_cli.c`): `pair`/`stop`/`reconnect`/`unlink`/`status`/`btn`/`tap` — all
+  thin pass-throughs over the module API (logic lives in `wiimote.c`/`bt_hid_device.c`,
+  so Marvin can drive the same API later). Boots idle; `pair` arms the HID listeners
+  for that sync window and `stop` tears them down; servers are **armed per pairing
+  window**, not at boot or auto-re-armed (re-arming leaked L2CAP slots, since
+  `reconnect` uses client connects). Honors the Wii's requested reporting mode
+  (`0x12` → builds that report ID; buttons populated, accel/IR/ext zeroed). Disconnect
+  fully resets state (`Wiimote_NotifyDisconnected`) and readers exit by L2CAP handle
+  (robust to fd reuse). Bond persists in NVS (recalled at boot via
+  `esp_bt_gap_get_bond_device_list`); `unlink` removes it. Status LED on GPIO13:
+  blip/~3 s = idle, fast blink = pairing/connecting, N flashes = assigned player N.
+- **Step B DONE — IR pointer.** Pointer `(x,y)` is a state variable in `wiimote.c`
+  (`Wiimote_SetPointer`/`ClearPointer`), CLI `point x y` / `point off`. `build_ir_extended`
+  synthesizes two sensor-bar dots into mode `0x33`'s 12-byte extended-IR field + a
+  level accel. **Verified on hardware** — navigated the Wii menu and launched GH3 with
+  it. Calibration constants (`IR_X/Y_CENTER/HALF`, from on-hardware edge measurement)
+  map pointer 0..1 to the full screen, (0,0)=top-left. Basic-IR modes `0x36`/`0x37`
+  are now filled too (`build_ir_basic` + shared `ir_dots`); the byte packing is
+  verified against Dolphin's `IRBasic` struct and the Linux `hid-wiimote` decoder.
+  Pointer tracks correctly on the main Wii screen and its Home overlay (basic `0x37`),
+  so one calibration covers both modes (see the GH3-pointer note under Phase 3).
+
+**Phase 3 DONE — guitar extension plays GH3 (detection + frets + strum + whammy).**
+On hardware: GH3 detects the guitar and frets/strum/whammy register in-game.
+
+- **Module split.** The guitar lives in its own `guitar.c` behind a small interface
+  (`wiimote_ext.h`: `wiimote_extension_t` = register bank + `build_report`/`set_button`/
+  `reset`; `Wiimote_RegisterExtension`). `wiimote.c` is now extension-agnostic (serves
+  the registered bank for `0xa4xxxx` reg I/O, calls `build_report` for the ext field,
+  delegates unknown button names to `set_button`). Buttons drive by name through
+  `Wiimote_SetButton`/`TapButton` (green/red/yellow/blue/orange/strumup/strumdown/
+  gplus/gminus/pedal); CLI `btn`/`tap`/`whammy`/`ext` are thin pass-throughs. Adding a
+  nunchuk/classic later is just another self-registering `*.c`.
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:48:02Z)**_
+
+Now let me add journal entries recording this fix. Marvin first:
+
+_**Agent (claude-opus-4-8 2026-07-29 01:48:12Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:48:23Z)**_
+
+<tool-use data-tool-type="write" data-tool-name="Edit"><details>
+<summary>Tool use: **Edit**</summary>
+
+```text
+The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
+```
+</details></tool-use>
+
+_**Agent (claude-opus-4-8 2026-07-29 01:48:38Z)**_
+
+Both fixes applied and journaled. Here's the diagnosis and fix.
+
+## Root cause — symmetric padding bug, confirmed by your counters
+
+Your `rx=11955 / tx=7661 / synced=1` numbers were the key: they prove the `0x88B7` channel is **fully alive on the wire in both directions**. Frames arrive at both ends — they were being rejected *after* arrival.
+
+The T1S MAC-PHY pads short frames up to the 60-byte Ethernet minimum. So an mf_proto payload arrives with trailing pad:
+- A 4-byte STATUS arrives as ~45 bytes at marvin.
+- A 3-byte GUITAR / 1-byte LINK_CMD arrives as ~8 bytes at fauxmote (its RX clamps to `MF_MAX_PAYLOAD`).
+
+Both message dispatchers used **exact** `!=` length checks, so every padded frame was dropped. Presence heartbeats survived only because their check is a tolerant `>=`. The design doc already said "the per-type length check ignores the trailing pad" — the code just never implemented it.
+
+## The fix (two ends, both `!=` → `>=`)
+
+- **marvin** [fauxmote_link.c:159](firmware/marvin/default/src/net/fauxmote/fauxmote_link.c#L159) — `latch_status` now accepts `len >= MF_LEN_STATUS`. Fixes "no status received."
+- **fauxmote** [mf_link.c:112](firmware/fauxmote/main/mf_link.c#L112) — `MfLink_HandleMessage` now accepts `len >= MF_LEN_*` for GUITAR/WIIMOTE/POINTER/ACCEL/LINK_CMD. Fixes "commands don't do anything."
+
+No wire/protocol change, and the UART transport is unaffected (its LEN framing already delivers exact lengths, which satisfy `>=`). Journals updated on both subprojects.
+
+**You'll need to rebuild both marvin and fauxmote** — the bug is on both ends. After flashing, expect `fauxmote status` to start latching STATUS and gameplay masks / `fauxmote` console commands to actuate.
