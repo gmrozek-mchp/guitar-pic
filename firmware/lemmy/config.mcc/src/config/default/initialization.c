@@ -153,7 +153,11 @@ void SYS_Initialize ( void* data )
 
     EVSYS_Initialize();
 
+    SERCOM0_SPI_Initialize();
+
 	SYSTICK_TimerInitialize();
+    EIC_Initialize();
+
 
     NVIC_Initialize();
 

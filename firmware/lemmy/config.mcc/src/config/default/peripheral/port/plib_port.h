@@ -65,6 +65,23 @@
 // *****************************************************************************
 // *****************************************************************************
 
+/*** Macros for T1S_SCK pin ***/
+#define T1S_SCK_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 5U)) & 0x01U)
+#define T1S_SCK_PIN                  PORT_PIN_PA05
+
+/*** Macros for T1S_CS pin ***/
+#define T1S_CS_Set()               (PORT_REGS->GROUP[0].PORT_OUTSET = ((uint32_t)1U << 6U))
+#define T1S_CS_Clear()             (PORT_REGS->GROUP[0].PORT_OUTCLR = ((uint32_t)1U << 6U))
+#define T1S_CS_Toggle()            (PORT_REGS->GROUP[0].PORT_OUTTGL = ((uint32_t)1U << 6U))
+#define T1S_CS_OutputEnable()      (PORT_REGS->GROUP[0].PORT_DIRSET = ((uint32_t)1U << 6U))
+#define T1S_CS_InputEnable()       (PORT_REGS->GROUP[0].PORT_DIRCLR = ((uint32_t)1U << 6U))
+#define T1S_CS_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 6U)) & 0x01U)
+#define T1S_CS_PIN                  PORT_PIN_PA06
+
+/*** Macros for T1S_MISO pin ***/
+#define T1S_MISO_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 7U)) & 0x01U)
+#define T1S_MISO_PIN                  PORT_PIN_PA07
+
 /*** Macros for CDC_TX pin ***/
 #define CDC_TX_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 0U)) & 0x01U)
 #define CDC_TX_PIN                  PORT_PIN_PB00
@@ -90,6 +107,23 @@
 #define SW0_InputEnable()       (PORT_REGS->GROUP[1].PORT_DIRCLR = ((uint32_t)1U << 3U))
 #define SW0_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 3U)) & 0x01U)
 #define SW0_PIN                  PORT_PIN_PB03
+
+/*** Macros for T1S_IRQ_N pin ***/
+#define T1S_IRQ_N_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 2U)) & 0x01U)
+#define T1S_IRQ_N_PIN                  PORT_PIN_PA02
+
+/*** Macros for T1S_RST pin ***/
+#define T1S_RST_Set()               (PORT_REGS->GROUP[0].PORT_OUTSET = ((uint32_t)1U << 3U))
+#define T1S_RST_Clear()             (PORT_REGS->GROUP[0].PORT_OUTCLR = ((uint32_t)1U << 3U))
+#define T1S_RST_Toggle()            (PORT_REGS->GROUP[0].PORT_OUTTGL = ((uint32_t)1U << 3U))
+#define T1S_RST_OutputEnable()      (PORT_REGS->GROUP[0].PORT_DIRSET = ((uint32_t)1U << 3U))
+#define T1S_RST_InputEnable()       (PORT_REGS->GROUP[0].PORT_DIRCLR = ((uint32_t)1U << 3U))
+#define T1S_RST_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 3U)) & 0x01U)
+#define T1S_RST_PIN                  PORT_PIN_PA03
+
+/*** Macros for T1S_MOSI pin ***/
+#define T1S_MOSI_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 4U)) & 0x01U)
+#define T1S_MOSI_PIN                  PORT_PIN_PA04
 
 // *****************************************************************************
 /* PORT Group
