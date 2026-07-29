@@ -3,10 +3,9 @@
 > What lemmy *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: bring-up.** Base MCC project scaffolded (PIC32CM6408PL10048). First goal is
-> the T1S PLCA follower on the bus (link sync + presence + CLI), mirroring the
-> [`guitar`](../guitar/SPEC.md) node; puppet motion comes after. See §6 and
-> [`docs/journal.md`](docs/journal.md).
+> **Status: on the bus, servos moving.** T1S PLCA follower (id 6, link + presence + CLI) and the raw
+> two-servo TCC0 PWM driver are up and verified on hardware. Next is puppet-relative positioning +
+> calibration and a motion envelope, then beat-driven nod. See §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -114,7 +113,7 @@ Static allocation only (no malloc), per project rule.
 |---|---|
 | ✅ | **L0a** — base MCC project scaffolded (PIC32CM6408PL10048): clock/EVSYS/NVIC/PORT, CMSIS+DFP, default main loop |
 | ✅ | **L0b** — T1S/CLI peripherals in MCC: SERCOM0 SPI (Mode 0), EIC EXTINT2 (falling) on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01) — mirror of `guitar` G0 (verified byte-identical) |
-| 🚧 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat, `t1s` CLI |
-| 🚧 | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI done in code (builds clean, not yet run against servos); puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next |
+| ✅ | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat (`node_type=4`), `t1s` CLI — verified on the bus |
+| ✅ | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI, verified driving real servos. Puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next (L3) |
 | 🔭 | **L3** — beat-driven head nod: consume beatbox (id 5) beat signals over T1S → nod envelope in time with the music |
 | 🔭 | **L4** (future) — jaw "talking" animation |

@@ -18,10 +18,9 @@ CMSIS+DFP, default `SYS_Initialize`/`SYS_Tasks` main loop). The immediate path m
 `t1s_follower` + `cli` glue for follower bring-up (L1). Servo motion (L2+) comes after the link is
 proven.
 
-**Next:** on-hardware bring-up (deferred to next session — no T1S board / servos wired yet). L1:
-confirm `LAN8651 up … PLCA follower id=6/8`, the `0x88B6` presence heartbeat (`node_type=4`), and
-`t1s`/`id`/`plca` CLI. L2: exercise the two servos via `servo <neck|jaw> <us>` and confirm the
-1.0–2.0 ms pulse sweeps the travel.
+**Next:** L3 — puppet-relative positioning + calibration on top of the raw servo driver (per-servo
+travel limits / neutral / direction), then a `nod`/`jaw` motion envelope, then beat-driven nod from
+beatbox (id 5). L1 (T1S follower) and L2 (raw servo PWM) are up and verified on hardware.
 
 ---
 
@@ -50,6 +49,15 @@ confirm `LAN8651 up … PLCA follower id=6/8`, the `0x88B6` presence heartbeat (
 ---
 
 ## Session log
+
+### 2026-07-29 — L1 + L2 verified on hardware
+
+- **lemmy is live on the T1S bus and the servos move.** With the T1S board and both servos wired,
+  the ported follower comes up (link + `0x88B6` presence heartbeat, `node_type=4`) and the raw servo
+  driver drives neck (PA16/WO0) + jaw (PA17/WO1) as expected via `servo <neck|jaw> <us>`. Confirms the
+  50 Hz / DIV16 TCC0 config and the µs→tick math against real servos.
+- L1 and L2 are done as far as bring-up goes. **Next:** L3 — puppet-relative positioning + calibration
+  (travel limits / neutral / direction per servo) and a nod/jaw motion envelope, then beat-driven nod.
 
 ### 2026-07-28 — L2 raw servo driver (TCC0)
 
