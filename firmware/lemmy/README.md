@@ -1,13 +1,18 @@
-
 # lemmy
+
+Animation node for the marvin T1S bus — an animated guitar-playing puppet driven by two R/C hobby
+servos (neck joint for head-nod / head-bang, bottom jaw for mouth). A PIC32CM6408PL10048 T1S PLCA
+follower (node id 6). Primary purpose: nod the head in time to the music from a future beatbox node.
+
+- **What lemmy is** (purpose, hardware, T1S link, firmware design, milestones): [`SPEC.md`](SPEC.md)
+- **Running diary** (decisions, open questions, progress): [`docs/journal.md`](docs/journal.md)
 
 ## Structure
 
-| Path                     | Purpose                                                                                                                             |
-|--------------------------|-------------------------------------------------------------------------------------------------------------------------------------|
-| _build                   | The [CMake build tree](https://cmake.org/cmake/help/latest/manual/cmake.1.html#introduction-to-cmake-buildsystems), can be deleted. |
-| cmake                    | Generated [CMake](https://cmake.org/) files. May be deleted if user.cmake has not been added                                        |
-| .vscode                  | See [VSCode](https://code.visualstudio.com/docs/getstarted/settings)                                                                |
-| .vscode/settings.json    | Workspace specific settings                                                                                                         |
-| .vscode/lemmy.mplab.json | The MPLAB project file, should not be deleted                                                                                       |
-| out                      | Final build artifacts                                                                                                               |
+| Path                     | Purpose                                                                          |
+|--------------------------|----------------------------------------------------------------------------------|
+| SPEC.md                  | Specification — what lemmy is                                                     |
+| docs/journal.md          | Working journal — planning and progress                                          |
+| config.mcc               | MPLAB Code Configurator project (device config + generated peripheral libraries) |
+| .vscode/settings.json    | Workspace-specific settings                                                      |
+| .vscode/lemmy.mplab.json | The MPLAB project file, should not be deleted                                    |

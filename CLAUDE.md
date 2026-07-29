@@ -25,6 +25,8 @@ Current journals:
   - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
 - `firmware/guitar/docs/journal.md` — guitar firmware (PIC32CM PL10 Wii-guitar **actuator** node: receives marvin's button bitmask over T1S → open-drain GPIO; T1S PLCA follower id 2. Working on hardware — follower up, marvin drives it over T1S, presence heartbeat + CLI)
   - Spec for guitar lives at `firmware/guitar/SPEC.md` — read it alongside the journal on any non-trivial guitar task.
+- `firmware/lemmy/docs/journal.md` — lemmy firmware (PIC32CM PL10 **animation** node: animated guitar-playing puppet, two R/C servos — neck nod + jaw; T1S PLCA follower id 6. Bring-up — base MCC project scaffolded; T1S follower first, motion second)
+  - Spec for lemmy lives at `firmware/lemmy/SPEC.md` — read it alongside the journal on any non-trivial lemmy task.
 - `tools/edge-ai/docs/journal.md` — edge-ai (distill marvin's gameplay commands into a small ML model for the fretboard MCU)
   - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
 - `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; parallel proof-of-concept)
