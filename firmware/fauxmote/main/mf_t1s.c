@@ -18,10 +18,10 @@
 static const char *TAG = "mft1s";
 
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). The coordinator (marvin)
- * is node id 0; detector=1, guitar=2. Controllers (fauxmotes) take ids 3+, one
- * PLCA node each, so several can share the bus. */
+ * is node id 0; controllers (fauxmotes) take ids 1-2, one PLCA node each (at
+ * most two). */
 #ifndef CONFIG_FAUXMOTE_T1S_NODE_ID
-#define CONFIG_FAUXMOTE_T1S_NODE_ID  3
+#define CONFIG_FAUXMOTE_T1S_NODE_ID  1
 #endif
 #define T1S_NODE_ID         ((uint8_t)CONFIG_FAUXMOTE_T1S_NODE_ID)
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */

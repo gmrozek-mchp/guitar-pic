@@ -18,11 +18,12 @@ menu "Fauxmote marvin link"
     config FAUXMOTE_T1S_NODE_ID
         int "T1S PLCA node id for this fauxmote"
         depends on FAUXMOTE_LINK_TRANSPORT_T1S
-        default 3
-        range 3 7
+        default 1
+        range 1 2
         help
             PLCA follower id / low MAC octet (02:00:00:00:00:<id>). Coordinator
-            is 0, detector 1, guitar 2; controllers take 3+, one per fauxmote.
+            is 0; controllers (fauxmotes) take 1-2, one per fauxmote (at most
+            two). See docs/t1s-podl-link.md §7.1 for the full node table.
 
     config FAUXMOTE_T1S_PIN_SCLK
         int "SCLK gpio"

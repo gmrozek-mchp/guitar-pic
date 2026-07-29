@@ -199,13 +199,25 @@ Followers are typed by **node class** (top-level [`SPEC.md`](../SPEC.md) §2): *
 nodes are RX sources (each maps to a marvin `detector_id`); **guitar** (actuator) nodes are
 command TX targets. marvin selects the active node of each class.
 
+**Target id assignment** (canonical — the whole bus renumbers to this):
+
 | Node | Class | PLCA ID | MAC (locally administered) | Notes |
 |---|---|---|---|---|
 | marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
-| fretboard | detector | 1 | `02:00:00:00:00:01` | photo-ADC stream → `detector_id` 1; also commands the guitar (id 2) directly |
-| guitar | guitar (actuator) | 2 | `02:00:00:00:00:02` | receives the 1-byte command bitmask (from marvin or a detector) |
-| fauxmote | controller | 3+ | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote (id build-configurable, default 3) |
-| node *k* | (any) | *k* | `02:00:00:00:00:0k` | future detector/guitar/controller variants |
+| fauxmote(s) | controller | 1–2 | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote, at most two (id build-configurable, default 1) |
+| guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | receives the 1-byte command bitmask (from marvin or a detector) |
+| fretboard | detector | 4 | `02:00:00:00:00:04` | photo-ADC stream → `detector_id`; also commands the guitar directly |
+| beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved |
+| lemmy | (future) | 6 | `02:00:00:00:00:06` | reserved |
+| lightshow | (future) | 7 | `02:00:00:00:00:07` | reserved |
+
+> **Transition status (2026-07-28).** Only **fauxmote** has been moved to the target
+> scheme (id 1, range 1–2). The already-flashed **guitar** and **fretboard** firmware —
+> plus marvin's coordinator node table — still run the *old* ids **guitar = 2, fretboard
+> = 1**. Renumbering those three to guitar 3 / fretboard 4 is a coordinated follow-up
+> (all must change and re-flash together, or the bus breaks). Until then a fauxmote at
+> the default id 1 **collides with the fretboard's current id 1**, so do not co-bus a
+> default-id fauxmote with the fretboard yet — pick id 2, or renumber the fretboard first.
 
 - One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
   registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
