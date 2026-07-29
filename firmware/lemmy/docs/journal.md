@@ -18,8 +18,10 @@ CMSIS+DFP, default `SYS_Initialize`/`SYS_Tasks` main loop). The immediate path m
 `t1s_follower` + `cli` glue for follower bring-up (L1). Servo motion (L2+) comes after the link is
 proven.
 
-**Next:** L1 — build + flash the ported follower; confirm `LAN8651 up … PLCA follower id=6/8`, the
-`0x88B6` presence heartbeat (`node_type=4`), and `t1s`/`id`/`plca` CLI status on hardware.
+**Next:** on-hardware bring-up (deferred to next session — no T1S board / servos wired yet). L1:
+confirm `LAN8651 up … PLCA follower id=6/8`, the `0x88B6` presence heartbeat (`node_type=4`), and
+`t1s`/`id`/`plca` CLI. L2: exercise the two servos via `servo <neck|jaw> <us>` and confirm the
+1.0–2.0 ms pulse sweeps the travel.
 
 ---
 
@@ -48,6 +50,24 @@ proven.
 ---
 
 ## Session log
+
+### 2026-07-28 — L2 raw servo driver (TCC0)
+
+- **TCC0 servo PWM added in MCC** (Greg ran the generator): NPWM single-slope, DIV16 (1.5 MHz) with
+  `PER = 29999` → exactly **50 Hz / 20 ms** frame, 0.667 µs/tick (1500 counts across the 1–2 ms pulse
+  window). `WO0=PA16` (SERVO_NECK), `WO1=PA17` (SERVO_JAW), duty via `CCBUF` (glitch-free). Reviewed +
+  committed as `1f8062d`. Resolved the "servo PWM peripheral + pins" open question. Started at 45.78 Hz
+  (DIV8, PER=65535 — the 16-bit floor); switched to DIV16 to hit an exact 50 Hz frame.
+- **Raw servo driver** (`servo.{c,h}`): `Servo_Initialize` starts TCC0 and parks both servos at
+  `SERVO_US_CENTER` (1500 µs); `Servo_SetPulseUs(id, us)` clamps to `[500, 2500]` µs, converts
+  µs→ticks (`us*3/2` at 1.5 MHz), writes `CCBUF`. Deliberately *raw* — puppet-relative positioning /
+  calibration layer on top comes next. Wired into `main.c` (after `SYS_Initialize`/`SYSTICK`, before
+  the follower); `servo.c` added to `user.cmake`.
+- **CLI gains `servo`**: `servo` prints both pulse widths + usage; `servo <neck|jaw|0|1> <us>` sets a
+  raw pulse (echoes applied value, flags `(clamped)`). `info` now reports live pulse widths. Added
+  `<stdlib.h>` for `strtoul`.
+- Builds clean; not yet run against servos (none wired). **Next:** wire T1S board + servos and bring
+  up L1 + L2 on hardware.
 
 ### 2026-07-28 — L0b complete; L1 follower port
 

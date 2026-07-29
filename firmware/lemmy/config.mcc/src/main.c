@@ -27,6 +27,7 @@
 #include <stdlib.h>                     // Defines EXIT_FAILURE
 #include "definitions.h"                // SYS function prototypes
 #include "t1s_follower.h"               // 10BASE-T1S PLCA follower (LAN8651)
+#include "servo.h"                      // TCC0 R/C servo PWM (neck + jaw)
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
 // *****************************************************************************
@@ -44,6 +45,7 @@ int main ( void )
      * SYSTICK_DelayMs works for every subsystem. */
     SYSTICK_TimerStart ( );
 
+    Servo_Initialize ( );
     T1SFollower_Initialize ( );
     CLI_Initialize ( );
 

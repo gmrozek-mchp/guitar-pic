@@ -49,13 +49,13 @@ and an EIC external-interrupt pin for `IRQ_N`:
 | `T1S_IRQ_N` | PA02 | EIC EXTINT2, falling edge |
 | `CDC_TX` / `CDC_RX` | PB00 / PB01 | SERCOM1 USART (debug console) |
 
-**Servo outputs** (provisional — fixed at L2/MCC): two PWM channels off a timer (TCC0 or TC),
-~50 Hz frame, 1.0–2.0 ms pulse for the ±90° travel:
+**Servo outputs** — two TCC0 PWM channels, NPWM single-slope, DIV16 (1.5 MHz) / `PER = 29999` →
+exactly **50 Hz / 20 ms** frame; 0.667 µs/tick gives 1500 counts across the 1.0–2.0 ms pulse window:
 
 | Servo | Pin | Function |
 |-------|-----|----------|
-| Neck joint (nod / head-bang) | TBD | timer PWM channel A |
-| Bottom jaw (mouth open/close) | TBD | timer PWM channel B |
+| Neck joint (nod / head-bang) | PA16 | TCC0_WO0 (CC0) |
+| Bottom jaw (mouth open/close) | PA17 | TCC0_WO1 (CC1) |
 
 Servos are powered from a separate rail (not the MCU 3V3) with a common ground; servo current must
 not sink through the logic supply. The T1S bus is serviced from the main loop, woken by `IRQ_N`.
@@ -115,6 +115,6 @@ Static allocation only (no malloc), per project rule.
 | ✅ | **L0a** — base MCC project scaffolded (PIC32CM6408PL10048): clock/EVSYS/NVIC/PORT, CMSIS+DFP, default main loop |
 | ✅ | **L0b** — T1S/CLI peripherals in MCC: SERCOM0 SPI (Mode 0), EIC EXTINT2 (falling) on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01) — mirror of `guitar` G0 (verified byte-identical) |
 | 🚧 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat, `t1s` CLI |
-| 🔭 | **L2** — servo motion: timer PWM for the 2 servos + CLI (`nod`/`jaw`/`pose`) to exercise the puppet manually |
+| 🚧 | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI done in code (builds clean, not yet run against servos); puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next |
 | 🔭 | **L3** — beat-driven head nod: consume beatbox (id 5) beat signals over T1S → nod envelope in time with the music |
 | 🔭 | **L4** (future) — jaw "talking" animation |

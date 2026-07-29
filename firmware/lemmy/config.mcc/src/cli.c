@@ -3,12 +3,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 
 #include "definitions.h"   /* SERCOM1_USART_*, SYSTICK_* */
 #include "embedded_cli.h"
 #include "t1s_follower.h"
+#include "servo.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
  * the small config below; the requirement is checked at init. */
@@ -54,7 +56,9 @@ static void cmd_info(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("mcu:   PIC32CM6408PL10048");
     cli_printf("role:  T1S PLCA follower id %u/%u", (unsigned)T1SFollower_NodeId(),
                (unsigned)T1SFollower_NodeCount());
-    cli_printf("state: t1s follower up; servos not yet wired");
+    cli_printf("state: t1s follower up; servos at neck=%u jaw=%u us",
+               (unsigned)Servo_GetPulseUs(SERVO_NECK),
+               (unsigned)Servo_GetPulseUs(SERVO_JAW));
 }
 
 static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
@@ -94,6 +98,39 @@ static void cmd_plca(EmbeddedCli *cli, char *args, void *ctx)
     T1SFollower_ReadPlca();   /* result logs asynchronously from the service loop */
 }
 
+static void cmd_servo(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL)
+    {
+        cli_printf("neck: %u us", (unsigned)Servo_GetPulseUs(SERVO_NECK));
+        cli_printf("jaw:  %u us", (unsigned)Servo_GetPulseUs(SERVO_JAW));
+        cli_printf("usage: servo <neck|jaw> <%u..%u us>",
+                   (unsigned)SERVO_US_MIN, (unsigned)SERVO_US_MAX);
+        return;
+    }
+
+    servo_id_t servo;
+    if ((strcmp(a, "neck") == 0) || (strcmp(a, "0") == 0))     { servo = SERVO_NECK; }
+    else if ((strcmp(a, "jaw") == 0) || (strcmp(a, "1") == 0)) { servo = SERVO_JAW; }
+    else { cli_printf("bad servo '%s' (neck|jaw)", a); return; }
+
+    const char *b = embeddedCliGetToken(args, 2);
+    if (b == NULL)
+    {
+        cli_printf("usage: servo <neck|jaw> <%u..%u us>",
+                   (unsigned)SERVO_US_MIN, (unsigned)SERVO_US_MAX);
+        return;
+    }
+
+    uint16_t req = (uint16_t)strtoul(b, NULL, 10);
+    uint16_t got = Servo_SetPulseUs(servo, req);
+    cli_printf("%s = %u us%s", (servo == SERVO_NECK) ? "neck" : "jaw",
+               (unsigned)got, (got != req) ? " (clamped)" : "");
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -114,6 +151,7 @@ static void register_commands(void)
         { "t1s",   "Print link / sync / chipRev / PLCA / counters",  false, NULL, cmd_t1s },
         { "id",    "Raw-read + log the MAC-PHY ID registers",        false, NULL, cmd_id },
         { "plca",  "Read + log the PLCA status register",            false, NULL, cmd_plca },
+        { "servo", "Raw servo pulse: servo <neck|jaw> <us>",         true,  NULL, cmd_servo },
         { "reset", "Reset the MCU (system reset)",                   false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
