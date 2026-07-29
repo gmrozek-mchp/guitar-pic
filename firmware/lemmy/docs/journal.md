@@ -18,8 +18,8 @@ CMSIS+DFP, default `SYS_Initialize`/`SYS_Tasks` main loop). The immediate path m
 `t1s_follower` + `cli` glue for follower bring-up (L1). Servo motion (L2+) comes after the link is
 proven.
 
-**Next:** L0b — SERCOM0 SPI (Mode 0), EIC EXTINT2 on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO,
-SERCOM1 debug UART (PB00/PB01), via the mplab-mcc MCP server (no hand-edited MCC files).
+**Next:** L1 — build + flash the ported follower; confirm `LAN8651 up … PLCA follower id=6/8`, the
+`0x88B6` presence heartbeat (`node_type=4`), and `t1s`/`id`/`plca` CLI status on hardware.
 
 ---
 
@@ -48,6 +48,23 @@ SERCOM1 debug UART (PB00/PB01), via the mplab-mcc MCP server (no hand-edited MCC
 ---
 
 ## Session log
+
+### 2026-07-28 — L0b complete; L1 follower port
+
+- **L0b done.** SERCOM0 SPI master + EIC EXTINT2 added in MCC (Greg ran the generator) and verified
+  against `guitar`: SPI/EIC/EVSYS plibs byte-identical, PA04/PA05/PA07 SPI mux + PA06=CS / PA03=RST
+  idle-high GPIO + PA02=IRQ_N (EIC_EXTINT2) all match guitar's ATE_2026 map, `EIC_Initialize()` wired,
+  NVIC `SERCOM0_IRQn`/`EIC_IRQn` prio 3. Benign extras vs guitar: on-board LED0 (PB02) / SW0 (PB03),
+  128 B UART TX ring. Committed as `02fc85a` (MCC regen).
+- **L1 — ported the `guitar` follower**, stripped of actuation (lemmy has no fret/strum GPIOs; servos
+  are L2, beat RX semantics are L3). `t1s_follower.{c,h}`: `TC6_Init` + `TC6Regs_Init(nodeId=6,
+  nodeCount=8)`, SERCOM0 SPI + GPIO CS + EIC IRQ_N glue, SysTick ms clock, presence heartbeat on
+  `0x88B6` with **`node_type=4` (animation)**. RX path only *counts* frames (last byte + rx count) —
+  no output driven. `tc6-conf.h` copied (PL10 8 KB tuning). CLI gains `t1s`/`id`/`plca` (dropped
+  guitar's `btn`/`tap`). Wired into `main.c` (`T1SFollower_Initialize`/`_Tasks`); build sources +
+  oa-tc6-lib added to `user.cmake`. SysTick is now started in `main.c` (not the follower).
+- **Next:** build + flash; expect `LAN8651 up … PLCA follower id=6/8` and marvin's `nodes` to show
+  lemmy present once marvin learns `node_type=4`.
 
 ### 2026-07-28 — CLI bring-up (L0b partial + first app code)
 

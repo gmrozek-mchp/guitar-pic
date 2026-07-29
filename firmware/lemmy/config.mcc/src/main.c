@@ -26,6 +26,7 @@
 #include <stdbool.h>                    // Defines true
 #include <stdlib.h>                     // Defines EXIT_FAILURE
 #include "definitions.h"                // SYS function prototypes
+#include "t1s_follower.h"               // 10BASE-T1S PLCA follower (LAN8651)
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
 // *****************************************************************************
@@ -43,6 +44,7 @@ int main ( void )
      * SYSTICK_DelayMs works for every subsystem. */
     SYSTICK_TimerStart ( );
 
+    T1SFollower_Initialize ( );
     CLI_Initialize ( );
 
     while ( true )
@@ -50,7 +52,10 @@ int main ( void )
         /* Maintain state machines of all polled MPLAB Harmony modules. */
         SYS_Tasks ( );
 
-        /* Operator CLI on the debug UART. */
+        /* Service the T1S link: sync the MAC-PHY and emit the presence heartbeat. */
+        T1SFollower_Tasks ( );
+
+        /* Operator CLI on the debug UART (t1s status / diagnostics). */
         CLI_Tasks ( );
     }
 

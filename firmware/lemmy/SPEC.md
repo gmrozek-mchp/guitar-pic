@@ -113,8 +113,8 @@ Static allocation only (no malloc), per project rule.
 | Status | Item |
 |---|---|
 | ✅ | **L0a** — base MCC project scaffolded (PIC32CM6408PL10048): clock/EVSYS/NVIC/PORT, CMSIS+DFP, default main loop |
-| 🚧 | **L0b** — T1S/CLI peripherals in MCC: SERCOM0 SPI (Mode 0), EIC EXTINT2 (falling) on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01) — mirror of `guitar` G0 |
-| 🔭 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat, `t1s` CLI |
+| ✅ | **L0b** — T1S/CLI peripherals in MCC: SERCOM0 SPI (Mode 0), EIC EXTINT2 (falling) on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01) — mirror of `guitar` G0 (verified byte-identical) |
+| 🚧 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat, `t1s` CLI |
 | 🔭 | **L2** — servo motion: timer PWM for the 2 servos + CLI (`nod`/`jaw`/`pose`) to exercise the puppet manually |
 | 🔭 | **L3** — beat-driven head nod: consume beatbox (id 5) beat signals over T1S → nod envelope in time with the music |
 | 🔭 | **L4** (future) — jaw "talking" animation |
