@@ -76,7 +76,9 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
                (unsigned)T1SFollower_NodeCount());
     cli_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
     cli_printf("rx:      %lu frames", (unsigned long)T1SFollower_RxCount());
-    cli_printf("last:    0x%02X", (unsigned)T1SFollower_LastByte());
+    int8_t neck = 0, jaw = 0;
+    T1SFollower_LastCmd(&neck, &jaw);
+    cli_printf("cmd:     neck=%d jaw=%d", (int)neck, (int)jaw);
     cli_printf("errors:  %lu", (unsigned long)T1SFollower_ErrCount());
 }
 

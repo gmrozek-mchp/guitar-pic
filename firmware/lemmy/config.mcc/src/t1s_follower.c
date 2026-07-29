@@ -9,6 +9,7 @@
 
 #include "tc6.h"
 #include "tc6-regs.h"
+#include "servo.h"
 
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
 #define T1S_NODE_ID         (6u)
@@ -18,6 +19,12 @@
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
 #define T1S_ETH_HDR_LEN     (14u)
+
+/* Command payload on 0x88B5: two signed position bytes, one per servo, applied
+ * latest-wins. int8_t matches Servo_SetPosition's -127..127 range 1:1. */
+#define T1S_CMD_NECK        (0u)     /* payload[0] = neck position (int8_t) */
+#define T1S_CMD_JAW         (1u)     /* payload[1] = jaw  position (int8_t) */
+#define T1S_CMD_LEN         (2u)
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
@@ -38,13 +45,14 @@ static volatile bool     s_link_up;
 static volatile bool     s_spi_busy;
 
 /* Diagnostics (read by the CLI). */
-static volatile uint8_t  s_last_byte;
+static volatile int8_t   s_last_neck;   /* last commanded neck position */
+static volatile int8_t   s_last_jaw;    /* last commanded jaw position  */
 static volatile uint32_t s_rx_count;
 static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
 static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
 
 /* Frames are ~60 B after min-frame padding; this only needs the header plus the
- * first payload byte, but size for a padded frame. */
+ * two command bytes, but size for a padded frame. */
 static uint8_t           s_rx_buf[64];
 
 /* Heartbeat TX staging (buffer must stay valid until the TX callback fires). */
@@ -222,9 +230,10 @@ uint8_t T1SFollower_ChipRev(void)
     return (s_tc6 != NULL) ? TC6Regs_GetChipRevision(s_tc6) : 0u;
 }
 
-uint8_t T1SFollower_LastByte(void)
+void T1SFollower_LastCmd(int8_t *neck, int8_t *jaw)
 {
-    return s_last_byte;
+    if (neck != NULL) { *neck = s_last_neck; }
+    if (jaw  != NULL) { *jaw  = s_last_jaw; }
 }
 
 uint32_t T1SFollower_RxCount(void)
@@ -363,16 +372,23 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     (void)rxTimestamp;
     (void)pGlobalTag;
 
-    if (!success || (len < (T1S_ETH_HDR_LEN + 1u))) {
+    if (!success || (len < (T1S_ETH_HDR_LEN + T1S_CMD_LEN))) {
         return;
     }
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
     if (ethertype != T1S_ETHERTYPE) {
         return;
     }
-    /* No output to drive yet (servos are L2, beat semantics L3): just record the
-     * first payload byte + count so the CLI can confirm RX works. */
-    s_last_byte = s_rx_buf[T1S_ETH_HDR_LEN];
+    /* Two signed position bytes at fixed offsets, applied latest-wins. The
+     * MAC-PHY pads short frames to the 60-byte Ethernet minimum, so `len` counts
+     * trailing pad — guard with `<` (enough bytes present), never `==`, and read
+     * fixed offsets. Servo_SetPosition clamps and maps through calibration; the
+     * CCBUF write is a cheap register store, safe from this service-context
+     * callback. */
+    int8_t neck = (int8_t)s_rx_buf[T1S_ETH_HDR_LEN + T1S_CMD_NECK];
+    int8_t jaw  = (int8_t)s_rx_buf[T1S_ETH_HDR_LEN + T1S_CMD_JAW];
+    s_last_neck = Servo_SetPosition(SERVO_NECK, neck);
+    s_last_jaw  = Servo_SetPosition(SERVO_JAW,  jaw);
     s_rx_count++;
 }
 

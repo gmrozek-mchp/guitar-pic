@@ -7,11 +7,10 @@
 /* 10BASE-T1S follower for the lemmy animation node (LAN8651 MAC-PHY on SERCOM0
  * SPI).
  *
- * marvin is the PLCA coordinator (node 0); this node is follower id 6. Bring-up
- * (L1) proves the link only: it syncs the MAC-PHY as PLCA follower id 6/8 and
- * announces presence to the coordinator (ethertype 0x88B6, node_type = 4
- * animation). It has no output to drive yet — the two R/C servos land at L2 and
- * the beat-driven command plane at L3 — so received frames are only counted.
+ * marvin is the PLCA coordinator (node 0); this node is follower id 6. It syncs
+ * the MAC-PHY as PLCA follower id 6/8, announces presence to the coordinator
+ * (ethertype 0x88B6, node_type = 4 animation), and drives the two servos from
+ * command frames (ethertype 0x88B5, payload = two int8 positions [neck, jaw]).
  * Transport is the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib)
  * wrapped with the SERCOM0 SPI PLib, a GPIO chip-select held across each
  * transfer, the T1S_RST / T1S_IRQ_N pins (EIC EXTINT2), and a SysTick-based
@@ -29,8 +28,8 @@ bool T1SFollower_IsConnected(void);
 
 /* Status accessors (for the CLI / diagnostics). */
 uint8_t  T1SFollower_ChipRev(void);   /* 0 if the link never came up */
-uint8_t  T1SFollower_LastByte(void);  /* first payload byte of the last RX frame */
-uint32_t T1SFollower_RxCount(void);   /* count of accepted data frames */
+void     T1SFollower_LastCmd(int8_t *neck, int8_t *jaw);  /* last commanded positions; NULL args skipped */
+uint32_t T1SFollower_RxCount(void);   /* count of accepted command frames */
 uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
 
 /* Diagnostic: raw-read the MAC-PHY ID registers and log the values (async). */
