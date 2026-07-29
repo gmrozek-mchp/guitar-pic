@@ -1,0 +1,996 @@
+configVersion: 1.0.0
+componentName: tcc0
+coreVersion: 5.9.0
+device: PIC32CM6408PL10048
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: tcc0
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: csp
+  type: package
+  version: v3.25.2
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments: {}
+  elementPosition: {}
+  symbols:
+    CALLBACK_API_NAME:
+      attributes:
+        id: CALLBACK_API_NAME
+        label: CALLBACK_API_NAME
+      type: String
+    COUNTER_GET_API_NAME:
+      attributes:
+        id: COUNTER_GET_API_NAME
+        label: COUNTER_GET_API_NAME
+      type: String
+    FREQUENCY_GET_API_NAME:
+      attributes:
+        id: FREQUENCY_GET_API_NAME
+        label: FREQUENCY_GET_API_NAME
+      type: String
+    INTR_PWM_FAULT:
+      attributes:
+        id: INTR_PWM_FAULT
+        label: INTR_PWM_FAULT
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_OTHER_IRQn
+          type: Dynamic
+        type: Values
+      type: String
+    IRQ_ENUM_NAME:
+      attributes:
+        id: IRQ_ENUM_NAME
+        label: IRQ_ENUM_NAME
+      type: String
+    PERIOD_SET_API_NAME:
+      attributes:
+        id: PERIOD_SET_API_NAME
+        label: PERIOD_SET_API_NAME
+      type: String
+    PWM_CALLBACK_API:
+      attributes:
+        id: PWM_CALLBACK_API
+        label: PWM_CALLBACK_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWMCallbackRegister
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_GET_PERIOD_API:
+      attributes:
+        id: PWM_GET_PERIOD_API
+        label: PWM_GET_PERIOD_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWM16bitPeriodGet
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_OUTPUT_DISABLE_API:
+      attributes:
+        id: PWM_OUTPUT_DISABLE_API
+        label: PWM_OUTPUT_DISABLE_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWMPatternSet
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_OUTPUT_ENABLE_API:
+      attributes:
+        id: PWM_OUTPUT_ENABLE_API
+        label: PWM_OUTPUT_ENABLE_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWMPatternSet
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_PATTERN_MASK:
+      attributes:
+        id: PWM_PATTERN_MASK
+        label: PWM_PATTERN_MASK
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '119'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PWM_PH_MASK:
+      attributes:
+        id: PWM_PH_MASK
+        label: PWM_PH_MASK
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '7'
+          type: Dynamic
+        type: Values
+      type: Hex
+    PWM_PH_U:
+      attributes:
+        id: PWM_PH_U
+        label: PWM_PH_U
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0CHANNEL0
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_PH_V:
+      attributes:
+        id: PWM_PH_V
+        label: PWM_PH_V
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0CHANNEL1
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_PH_W:
+      attributes:
+        id: PWM_PH_W
+        label: PWM_PH_W
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0CHANNEL2
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_SET_DUTY_API:
+      attributes:
+        id: PWM_SET_DUTY_API
+        label: PWM_SET_DUTY_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWM16bitDutySet
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_START_API:
+      attributes:
+        id: PWM_START_API
+        label: PWM_START_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWMStart
+          type: Dynamic
+        type: Values
+      type: String
+    PWM_STOP_API:
+      attributes:
+        id: PWM_STOP_API
+        label: PWM_STOP_API
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: TCC0_PWMStop
+          type: Dynamic
+        type: Values
+      type: String
+    SYS_TIME_COMPONENT_ID:
+      attributes:
+        id: SYS_TIME_COMPONENT_ID
+        label: Component id
+      type: String
+    SYS_TIME_PLIB_OPERATION_MODE:
+      attributes:
+        id: SYS_TIME_PLIB_OPERATION_MODE
+        label: SysTime PLIB Operation Mode
+      type: String
+    TCC_0PATT_PGE:
+      attributes:
+        id: TCC_0PATT_PGE
+        label: Enable for Output 0
+      type: Boolean
+    TCC_0PATT_PGV:
+      attributes:
+        id: TCC_0PATT_PGV
+        label: Select Pattern Level for Output 0
+      type: KeyValueSet
+    TCC_0_CC:
+      attributes:
+        id: TCC_0_CC
+        label: Duty Value
+      type: Integer
+    TCC_0_DRVCTRL_NRE_NRV:
+      attributes:
+        id: TCC_0_DRVCTRL_NRE_NRV
+        label: Select Level for Output 0
+      type: KeyValueSet
+    TCC_0_WAVE_CICCEN:
+      attributes:
+        id: TCC_0_WAVE_CICCEN
+        label: Enable Circular Buffer
+      type: Boolean
+    TCC_0_WAVE_POL:
+      attributes:
+        id: TCC_0_WAVE_POL
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_0_WAVE_POL_NPWM:
+      attributes:
+        id: TCC_0_WAVE_POL_NPWM
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_1PATT_PGE:
+      attributes:
+        id: TCC_1PATT_PGE
+        label: Enable for Output 1
+      type: Boolean
+    TCC_1PATT_PGV:
+      attributes:
+        id: TCC_1PATT_PGV
+        label: Select Pattern Level for Output 1
+      type: KeyValueSet
+    TCC_1_CC:
+      attributes:
+        id: TCC_1_CC
+        label: Duty Value
+      type: Integer
+    TCC_1_DRVCTRL_NRE_NRV:
+      attributes:
+        id: TCC_1_DRVCTRL_NRE_NRV
+        label: Select Level for Output 1
+      type: KeyValueSet
+    TCC_1_WAVE_CICCEN:
+      attributes:
+        id: TCC_1_WAVE_CICCEN
+        label: Enable Circular Buffer
+      type: Boolean
+    TCC_1_WAVE_POL:
+      attributes:
+        id: TCC_1_WAVE_POL
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_1_WAVE_POL_NPWM:
+      attributes:
+        id: TCC_1_WAVE_POL_NPWM
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_2PATT_PGE:
+      attributes:
+        id: TCC_2PATT_PGE
+        label: Enable for Output 2
+      type: Boolean
+    TCC_2PATT_PGV:
+      attributes:
+        id: TCC_2PATT_PGV
+        label: Select Pattern Level for Output 2
+      type: KeyValueSet
+    TCC_2_CC:
+      attributes:
+        id: TCC_2_CC
+        label: Duty Value
+      type: Integer
+    TCC_2_DRVCTRL_NRE_NRV:
+      attributes:
+        id: TCC_2_DRVCTRL_NRE_NRV
+        label: Select Level for Output 2
+      type: KeyValueSet
+    TCC_2_WAVE_POL:
+      attributes:
+        id: TCC_2_WAVE_POL
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_2_WAVE_POL_NPWM:
+      attributes:
+        id: TCC_2_WAVE_POL_NPWM
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_3PATT_PGE:
+      attributes:
+        id: TCC_3PATT_PGE
+        label: Enable for Output 3
+      type: Boolean
+    TCC_3PATT_PGV:
+      attributes:
+        id: TCC_3PATT_PGV
+        label: Select Pattern Level for Output 3
+      type: KeyValueSet
+    TCC_3_CC:
+      attributes:
+        id: TCC_3_CC
+        label: Duty Value
+      type: Integer
+    TCC_3_DRVCTRL_NRE_NRV:
+      attributes:
+        id: TCC_3_DRVCTRL_NRE_NRV
+        label: Select Level for Output 3
+      type: KeyValueSet
+    TCC_3_WAVE_POL:
+      attributes:
+        id: TCC_3_WAVE_POL
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_3_WAVE_POL_NPWM:
+      attributes:
+        id: TCC_3_WAVE_POL_NPWM
+        label: Output Polarity
+      type: KeyValueSet
+    TCC_CAPTURE_CTRLA_CAPTEN0:
+      attributes:
+        id: TCC_CAPTURE_CTRLA_CAPTEN0
+        label: Enable Capture Channel 0
+      type: Boolean
+    TCC_CAPTURE_CTRLA_CAPTEN1:
+      attributes:
+        id: TCC_CAPTURE_CTRLA_CAPTEN1
+        label: Enable Capture Channel 1
+      type: Boolean
+    TCC_CAPTURE_CTRLA_CAPTEN2:
+      attributes:
+        id: TCC_CAPTURE_CTRLA_CAPTEN2
+        label: Enable Capture Channel 2
+      type: Boolean
+    TCC_CAPTURE_CTRLA_CAPTEN3:
+      attributes:
+        id: TCC_CAPTURE_CTRLA_CAPTEN3
+        label: Enable Capture Channel 3
+      type: Boolean
+    TCC_CAPTURE_ERR_INTERRUPT_MODE:
+      attributes:
+        id: TCC_CAPTURE_ERR_INTERRUPT_MODE
+        label: Enable Capture Error Interrupt
+      type: Boolean
+    TCC_CAPTURE_EVCTRL_EVACT1:
+      attributes:
+        id: TCC_CAPTURE_EVCTRL_EVACT1
+        label: Select Input Event 1 Action
+      type: KeyValueSet
+    TCC_CAPTURE_EVCTRL_MCEO0:
+      attributes:
+        id: TCC_CAPTURE_EVCTRL_MCEO0
+        label: Enable Capture Event OUT
+      type: Boolean
+    TCC_CAPTURE_EVCTRL_MCEO1:
+      attributes:
+        id: TCC_CAPTURE_EVCTRL_MCEO1
+        label: Enable Capture Event OUT
+      type: Boolean
+    TCC_CAPTURE_EVCTRL_MCEO2:
+      attributes:
+        id: TCC_CAPTURE_EVCTRL_MCEO2
+        label: Enable Capture Event OUT
+      type: Boolean
+    TCC_CAPTURE_EVCTRL_MCEO3:
+      attributes:
+        id: TCC_CAPTURE_EVCTRL_MCEO3
+        label: Enable Capture Event OUT
+      type: Boolean
+    TCC_CAPTURE_EVCTRL_TCINV1:
+      attributes:
+        id: TCC_CAPTURE_EVCTRL_TCINV1
+        label: Invert Input Event 1
+      type: Boolean
+    TCC_CAPTURE_INTENSET_MC0:
+      attributes:
+        id: TCC_CAPTURE_INTENSET_MC0
+        label: Enable Capture Interrupt
+      type: Boolean
+    TCC_CAPTURE_INTENSET_MC1:
+      attributes:
+        id: TCC_CAPTURE_INTENSET_MC1
+        label: Enable Capture Interrupt
+      type: Boolean
+    TCC_CAPTURE_INTENSET_MC2:
+      attributes:
+        id: TCC_CAPTURE_INTENSET_MC2
+        label: Enable Capture Interrupt
+      type: Boolean
+    TCC_CAPTURE_INTENSET_MC3:
+      attributes:
+        id: TCC_CAPTURE_INTENSET_MC3
+        label: Enable Capture Interrupt
+      type: Boolean
+    TCC_CAPTURE_NUM_CHANNELS:
+      attributes:
+        id: TCC_CAPTURE_NUM_CHANNELS
+        label: Number of capture channels
+      type: Integer
+    TCC_CAPTURE_OVF_INTERRUPT_MODE:
+      attributes:
+        id: TCC_CAPTURE_OVF_INTERRUPT_MODE
+        label: Enable Capture Overflow Interrupt
+      type: Boolean
+    TCC_CBUF_REG_NAME:
+      attributes:
+        id: TCC_CBUF_REG_NAME
+        label: TCC_CBUF_REG_NAME
+      type: String
+    TCC_COMPARE_CC0:
+      attributes:
+        id: TCC_COMPARE_CC0
+        label: Compare Value
+      type: Long
+    TCC_COMPARE_CC1:
+      attributes:
+        id: TCC_COMPARE_CC1
+        label: Compare Value
+      type: Long
+    TCC_COMPARE_CC2:
+      attributes:
+        id: TCC_COMPARE_CC2
+        label: Compare Value
+      type: Long
+    TCC_COMPARE_CC3:
+      attributes:
+        id: TCC_COMPARE_CC3
+        label: Compare Value
+      type: Long
+    TCC_COMPARE_CTRLBSET_DIR:
+      attributes:
+        id: TCC_COMPARE_CTRLBSET_DIR
+        label: Counter Direction
+      type: KeyValueSet
+    TCC_COMPARE_CTRLBSET_LUPD:
+      attributes:
+        id: TCC_COMPARE_CTRLBSET_LUPD
+        label: Enable Double Buffering
+      type: Boolean
+    TCC_COMPARE_CTRLBSET_ONESHOT:
+      attributes:
+        id: TCC_COMPARE_CTRLBSET_ONESHOT
+        label: Enable One-Shot Mode
+      type: Boolean
+    TCC_COMPARE_DRVCTRL_INVEN0:
+      attributes:
+        id: TCC_COMPARE_DRVCTRL_INVEN0
+        label: Invert Output WO[0]
+      type: Boolean
+    TCC_COMPARE_DRVCTRL_INVEN1:
+      attributes:
+        id: TCC_COMPARE_DRVCTRL_INVEN1
+        label: Invert Output WO[1]
+      type: Boolean
+    TCC_COMPARE_DRVCTRL_INVEN2:
+      attributes:
+        id: TCC_COMPARE_DRVCTRL_INVEN2
+        label: Invert Output WO[2]
+      type: Boolean
+    TCC_COMPARE_DRVCTRL_INVEN3:
+      attributes:
+        id: TCC_COMPARE_DRVCTRL_INVEN3
+        label: Invert Output WO[3]
+      type: Boolean
+    TCC_COMPARE_EVCTRL_EVACT0:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_EVACT0
+        label: Select Input Event 0 Action
+      type: KeyValueSet
+    TCC_COMPARE_EVCTRL_EVACT1:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_EVACT1
+        label: Select Input Event 1 Action
+      type: KeyValueSet
+    TCC_COMPARE_EVCTRL_MCEO0:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_MCEO0
+        label: Enable Compare Match Output Event
+      type: Boolean
+    TCC_COMPARE_EVCTRL_MCEO1:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_MCEO1
+        label: Enable Compare Match Output Event
+      type: Boolean
+    TCC_COMPARE_EVCTRL_MCEO2:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_MCEO2
+        label: Enable Compare Match Output Event
+      type: Boolean
+    TCC_COMPARE_EVCTRL_MCEO3:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_MCEO3
+        label: Enable Compare Match Output Event
+      type: Boolean
+    TCC_COMPARE_EVCTRL_OVFEO:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_OVFEO
+        label: Enable Compare Period Overflow Event
+      type: Boolean
+    TCC_COMPARE_EVCTRL_TCINV0:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_TCINV0
+        label: Invert Input Event 0
+      type: Boolean
+    TCC_COMPARE_EVCTRL_TCINV1:
+      attributes:
+        id: TCC_COMPARE_EVCTRL_TCINV1
+        label: Invert Input Event 1
+      type: Boolean
+    TCC_COMPARE_INTENSET_MC0:
+      attributes:
+        id: TCC_COMPARE_INTENSET_MC0
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_COMPARE_INTENSET_MC1:
+      attributes:
+        id: TCC_COMPARE_INTENSET_MC1
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_COMPARE_INTENSET_MC2:
+      attributes:
+        id: TCC_COMPARE_INTENSET_MC2
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_COMPARE_INTENSET_MC3:
+      attributes:
+        id: TCC_COMPARE_INTENSET_MC3
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_COMPARE_INTENSET_OVF:
+      attributes:
+        id: TCC_COMPARE_INTENSET_OVF
+        label: Enable Period Interrupt
+      type: Boolean
+    TCC_COMPARE_PERIOD:
+      attributes:
+        id: TCC_COMPARE_PERIOD
+        label: Period Register
+      type: Long
+    TCC_COMPARE_WAVE_WAVEGEN:
+      attributes:
+        id: TCC_COMPARE_WAVE_WAVEGEN
+        label: Waveform Mode
+      type: KeyValueSet
+    TCC_COMPARE_WEXCTRL_OTMX:
+      attributes:
+        id: TCC_COMPARE_WEXCTRL_OTMX
+        label: Select Output Matrix
+      type: KeyValueSet
+    TCC_CTRLA_PRESCALER:
+      attributes:
+        id: TCC_CTRLA_PRESCALER
+        label: Select Prescaler
+      children:
+      - children:
+        - attributes:
+            value: '4'
+          type: User
+        type: Values
+      type: KeyValueSet
+    TCC_CTRLA_PRESCYNC:
+      attributes:
+        id: TCC_CTRLA_PRESCYNC
+        label: Prescaler and Counter Synchronization
+      type: KeyValueSet
+    TCC_CTRLA_RUNSTDBY:
+      attributes:
+        id: TCC_CTRLA_RUNSTDBY
+        label: Run during Standby
+      type: Boolean
+    TCC_CTRLBSET_DIR:
+      attributes:
+        id: TCC_CTRLBSET_DIR
+        label: PWM Direction - Count Down
+      type: Boolean
+    TCC_DRVCTRL_FILTERVAL:
+      attributes:
+        id: TCC_DRVCTRL_FILTERVAL
+        label: ' Fault 0 Filter Value'
+      type: Integer
+    TCC_DRVCTRL_FILTERVAL1:
+      attributes:
+        id: TCC_DRVCTRL_FILTERVAL1
+        label: ' Fault 1 Filter Value'
+      type: Integer
+    TCC_DRVCTRL_INVEN0:
+      attributes:
+        id: TCC_DRVCTRL_INVEN0
+        label: Invert Output 0
+      type: Boolean
+    TCC_DRVCTRL_INVEN1:
+      attributes:
+        id: TCC_DRVCTRL_INVEN1
+        label: Invert Output 1
+      type: Boolean
+    TCC_DRVCTRL_INVEN2:
+      attributes:
+        id: TCC_DRVCTRL_INVEN2
+        label: Invert Output 2
+      type: Boolean
+    TCC_DRVCTRL_INVEN3:
+      attributes:
+        id: TCC_DRVCTRL_INVEN3
+        label: Invert Output 3
+      type: Boolean
+    TCC_EVCTRL_EVACT0:
+      attributes:
+        id: TCC_EVCTRL_EVACT0
+        label: Select Input Event 0 Action
+      type: KeyValueSet
+    TCC_EVCTRL_EVACT1:
+      attributes:
+        id: TCC_EVCTRL_EVACT1
+        label: Select Input Event 1 Action
+      type: KeyValueSet
+    TCC_EVCTRL_MCEI_0:
+      attributes:
+        id: TCC_EVCTRL_MCEI_0
+        label: Enable Compare Match Event IN
+      type: Boolean
+    TCC_EVCTRL_MCEI_1:
+      attributes:
+        id: TCC_EVCTRL_MCEI_1
+        label: Enable Compare Match Event IN
+      type: Boolean
+    TCC_EVCTRL_MCEI_2:
+      attributes:
+        id: TCC_EVCTRL_MCEI_2
+        label: Enable Compare Match Event IN
+      type: Boolean
+    TCC_EVCTRL_MCEI_3:
+      attributes:
+        id: TCC_EVCTRL_MCEI_3
+        label: Enable Compare Match Event IN
+      type: Boolean
+    TCC_EVCTRL_MCEO_0:
+      attributes:
+        id: TCC_EVCTRL_MCEO_0
+        label: Enable Compare Match Event OUT
+      type: Boolean
+    TCC_EVCTRL_MCEO_1:
+      attributes:
+        id: TCC_EVCTRL_MCEO_1
+        label: Enable Compare Match Event OUT
+      type: Boolean
+    TCC_EVCTRL_MCEO_2:
+      attributes:
+        id: TCC_EVCTRL_MCEO_2
+        label: Enable Compare Match Event OUT
+      type: Boolean
+    TCC_EVCTRL_MCEO_3:
+      attributes:
+        id: TCC_EVCTRL_MCEO_3
+        label: Enable Compare Match Event OUT
+      type: Boolean
+    TCC_EVCTRL_OVFEO:
+      attributes:
+        id: TCC_EVCTRL_OVFEO
+        label: Enable Period Event Out
+      type: Boolean
+    TCC_EVCTRL_TCINV0:
+      attributes:
+        id: TCC_EVCTRL_TCINV0
+        label: Invert Input Event 0
+      type: Boolean
+    TCC_EVCTRL_TCINV1:
+      attributes:
+        id: TCC_EVCTRL_TCINV1
+        label: Invert Input Event 1
+      type: Boolean
+    TCC_INSTANCE_NAME:
+      attributes:
+        id: TCC_INSTANCE_NAME
+        label: TCC_INSTANCE_NAME
+      type: String
+    TCC_INTENSET_FAULT0:
+      attributes:
+        id: TCC_INTENSET_FAULT0
+        label: Enable Fault 0 Interrupt
+      type: Boolean
+    TCC_INTENSET_FAULT1:
+      attributes:
+        id: TCC_INTENSET_FAULT1
+        label: Enable Fault 1 Interrupt
+      type: Boolean
+    TCC_INTENSET_MC_0:
+      attributes:
+        id: TCC_INTENSET_MC_0
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_INTENSET_MC_1:
+      attributes:
+        id: TCC_INTENSET_MC_1
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_INTENSET_MC_2:
+      attributes:
+        id: TCC_INTENSET_MC_2
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_INTENSET_MC_3:
+      attributes:
+        id: TCC_INTENSET_MC_3
+        label: Enable Compare Match Interrupt
+      type: Boolean
+    TCC_INTENSET_OVF:
+      attributes:
+        id: TCC_INTENSET_OVF
+        label: Enable Period Interrupt
+      type: Boolean
+    TCC_IS_OTM:
+      attributes:
+        id: TCC_IS_OTM
+        label: TCC_IS_OTM
+      type: Integer
+    TCC_IS_PG:
+      attributes:
+        id: TCC_IS_PG
+        label: TCC_IS_PG
+      type: Integer
+    TCC_MCU_FAMILY:
+      attributes:
+        id: TCC_MCU_FAMILY
+        label: TCC_MCU_FAMILY
+      type: String
+    TCC_MODULE_FREQUENCY:
+      attributes:
+        id: TCC_MODULE_FREQUENCY
+        label: TCC_MODULE_FREQUENCY
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '1500000'
+          type: Dynamic
+        type: Values
+      type: Integer
+    TCC_NUM_CHANNELS:
+      attributes:
+        id: TCC_NUM_CHANNELS
+        label: TCC_NUM_CHANNELS
+      type: Integer
+    TCC_NUM_OUTPUTS:
+      attributes:
+        id: TCC_NUM_OUTPUTS
+        label: TCC_NUM_OUTPUTS
+      type: Integer
+    TCC_OPERATION_MODE:
+      attributes:
+        id: TCC_OPERATION_MODE
+        label: Operating Mode
+      type: Combo
+    TCC_PATBUF_REG_NAME:
+      attributes:
+        id: TCC_PATBUF_REG_NAME
+        label: TCC_PATBUF_REG_NAME
+      type: String
+    TCC_PBUF_REG_NAME:
+      attributes:
+        id: TCC_PBUF_REG_NAME
+        label: TCC_PBUF_REG_NAME
+      type: String
+    TCC_PER_PER:
+      attributes:
+        id: TCC_PER_PER
+        label: Period Value
+      children:
+      - children:
+        - attributes:
+            value: '29999'
+          type: User
+        type: Values
+      type: Integer
+    TCC_RAMP_CH1_DUTY:
+      attributes:
+        id: TCC_RAMP_CH1_DUTY
+        label: Cycle A Duty Value
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Integer
+    TCC_RAMP_CH2_DUTY:
+      attributes:
+        id: TCC_RAMP_CH2_DUTY
+        label: Cycle B Duty Value
+      type: Integer
+    TCC_RAMP_CYCLEA_PERIOD:
+      attributes:
+        id: TCC_RAMP_CYCLEA_PERIOD
+        label: Cycle A Period Value (PER)
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '2399'
+          type: Dynamic
+        type: Values
+      type: Integer
+    TCC_RAMP_CYCLEB_PERIOD:
+      attributes:
+        id: TCC_RAMP_CYCLEB_PERIOD
+        label: Cycle B Period Value (PER)
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '29999'
+          type: Dynamic
+        type: Values
+      type: Integer
+    TCC_SIZE:
+      attributes:
+        id: TCC_SIZE
+        label: TCC_SIZE
+      type: Integer
+    TCC_SLAVE_MODE:
+      attributes:
+        id: TCC_SLAVE_MODE
+        label: Enable Slave
+      type: Boolean
+    TCC_TIMER_CTRLBSET_ONESHOT:
+      attributes:
+        id: TCC_TIMER_CTRLBSET_ONESHOT
+        label: Enable One-Shot Mode
+      type: Boolean
+    TCC_TIMER_EVCTRL_EVACT0:
+      attributes:
+        id: TCC_TIMER_EVCTRL_EVACT0
+        label: Select Input Event 0 Action
+      type: KeyValueSet
+    TCC_TIMER_EVCTRL_EVACT1:
+      attributes:
+        id: TCC_TIMER_EVCTRL_EVACT1
+        label: Select Input Event 1 Action
+      type: KeyValueSet
+    TCC_TIMER_EVCTRL_OVFEO:
+      attributes:
+        id: TCC_TIMER_EVCTRL_OVFEO
+        label: Enable Timer Period Overflow Event
+      type: Boolean
+    TCC_TIMER_EVCTRL_TCINV0:
+      attributes:
+        id: TCC_TIMER_EVCTRL_TCINV0
+        label: Invert Input Event 0
+      type: Boolean
+    TCC_TIMER_EVCTRL_TCINV1:
+      attributes:
+        id: TCC_TIMER_EVCTRL_TCINV1
+        label: Invert Input Event 1
+      type: Boolean
+    TCC_TIMER_INTENSET_MC1:
+      attributes:
+        id: TCC_TIMER_INTENSET_MC1
+        label: Enable Timer Compare Interrupt
+      type: Boolean
+    TCC_TIMER_INTENSET_OVF:
+      attributes:
+        id: TCC_TIMER_INTENSET_OVF
+        label: Enable Timer Period Interrupt
+      type: Boolean
+    TCC_TIMER_PERIOD:
+      attributes:
+        id: TCC_TIMER_PERIOD
+        label: Period Register
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: '1499'
+          type: Dynamic
+        type: Values
+      type: Long
+    TCC_TIMER_TIME_MS:
+      attributes:
+        id: TCC_TIMER_TIME_MS
+        label: Time
+      children:
+      - children:
+        - attributes:
+            id: max
+          children:
+          - type: Value
+            value: '43.691334'
+          type: Float
+        type: Attributes
+      type: Float
+    TCC_TIMER_UNIT:
+      attributes:
+        id: TCC_TIMER_UNIT
+        label: Timer Period Unit
+      type: Combo
+    TCC_WAVE_CICCEN0:
+      attributes:
+        id: TCC_WAVE_CICCEN0
+        label: Enable CC0 Circular Buffer
+      type: Boolean
+    TCC_WAVE_CIPEREN:
+      attributes:
+        id: TCC_WAVE_CIPEREN
+        label: Enable Period Circular Buffer
+      type: Boolean
+    TCC_WAVE_DUALSLOPE:
+      attributes:
+        id: TCC_WAVE_DUALSLOPE
+        label: TCC_WAVE_DUALSLOPE
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TCC_WAVE_RAMP:
+      attributes:
+        id: TCC_WAVE_RAMP
+        label: Select Ramp
+      type: KeyValueSet
+    TCC_WAVE_SINGLESLOPE:
+      attributes:
+        id: TCC_WAVE_SINGLESLOPE
+        label: TCC_WAVE_SINGLESLOPE
+      children:
+      - children:
+        - attributes:
+            id: tcc0
+            value: 'true'
+          type: Dynamic
+        type: Values
+      type: Boolean
+    TCC_WAVE_WAVEGEN:
+      attributes:
+        id: TCC_WAVE_WAVEGEN
+        label: Select PWM Type
+      type: KeyValueSet
+    TCC_WEXCTRL_DTHS:
+      attributes:
+        id: TCC_WEXCTRL_DTHS
+        label: Dead Time for High Side Output
+      type: Integer
+    TCC_WEXCTRL_DTLS:
+      attributes:
+        id: TCC_WEXCTRL_DTLS
+        label: Dead Time for Low Side Output
+      type: Integer
+    TCC_WEXCTRL_OTMX:
+      attributes:
+        id: TCC_WEXCTRL_OTMX
+        label: Select Output Matrix
+      type: KeyValueSet
+    TIMER_PERIOD_MAX:
+      attributes:
+        id: TIMER_PERIOD_MAX
+        label: TIMER_PERIOD_MAX
+      type: String
+    TIMER_START_API_NAME:
+      attributes:
+        id: TIMER_START_API_NAME
+        label: TIMER_START_API_NAME
+      type: String
+    TIMER_STOP_API_NAME:
+      attributes:
+        id: TIMER_STOP_API_NAME
+        label: TIMER_STOP_API_NAME
+      type: String
+    TIMER_WIDTH:
+      attributes:
+        id: TIMER_WIDTH
+        label: TIMER_WIDTH
+      type: Integer
+  userData: {}

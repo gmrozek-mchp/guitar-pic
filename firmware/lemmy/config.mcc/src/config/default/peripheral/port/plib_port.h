@@ -108,6 +108,14 @@
 #define SW0_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 3U)) & 0x01U)
 #define SW0_PIN                  PORT_PIN_PB03
 
+/*** Macros for SERVO_NECK pin ***/
+#define SERVO_NECK_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 16U)) & 0x01U)
+#define SERVO_NECK_PIN                  PORT_PIN_PA16
+
+/*** Macros for SERVO_JAW pin ***/
+#define SERVO_JAW_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 17U)) & 0x01U)
+#define SERVO_JAW_PIN                  PORT_PIN_PA17
+
 /*** Macros for T1S_IRQ_N pin ***/
 #define T1S_IRQ_N_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 2U)) & 0x01U)
 #define T1S_IRQ_N_PIN                  PORT_PIN_PA02

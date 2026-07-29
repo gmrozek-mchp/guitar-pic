@@ -16,8 +16,8 @@ Pin Number,Pin ID,Custom Name,Function,Mode, Direction,Latch,Pull Up,Pull Down,S
 17,PA13,,Available,,,,,,DISABLED
 18,PA14,,Available,,,,,,DISABLED
 19,PA15,,Available,,,,,,DISABLED
-20,PA16,,Available,,,,,,DISABLED
-21,PA17,,Available,,,,,,DISABLED
+20,PA16,SERVO_NECK,TCC0_WO0,Digital,High Impedance,n/a,No,No,DISABLED
+21,PA17,SERVO_JAW,TCC0_WO1,Digital,High Impedance,n/a,No,No,DISABLED
 22,PA18,,Available,,,,,,DISABLED
 23,PA19,,Available,,,,,,DISABLED
 24,PA20,,Available,,,,,,DISABLED
