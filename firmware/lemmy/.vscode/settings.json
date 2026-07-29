@@ -1,0 +1,7 @@
+{
+    "mplab.clangd.arguments": [
+        "--header-insertion=never"
+    ],
+    "mplab.clangd.compileCommandsDir": "${workspaceFolder}/_build/lemmy/default",
+    "mplab.clangd.path": "/Applications/microchip/xc32/v5.10/bin/xc32-clangd"
+}

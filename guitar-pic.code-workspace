@@ -18,6 +18,10 @@
 		{
 			"name": "guitar",
 			"path": "firmware/guitar"
+		},
+		{
+			"name": "lemmy",
+			"path": "firmware/lemmy"
 		}
 	],
 	"settings": {
@@ -33,6 +37,9 @@
 		"mplab.clangd.path": "/Applications/microchip/xc32/v5.10/bin/xc32-clangd",
 		"files.watcherExclude": {
 		    "**/firmware/marvin/default/src/**": true
-		}
+		},
+		"mplab.clangd.arguments": [
+			"--header-insertion=never"
+		]
 	}
 }
