@@ -73,7 +73,7 @@ typedef struct
 } t1s_node_t;
 
 static const t1s_node_t s_nodes[] = {
-    { 1u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
     { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
 };
 

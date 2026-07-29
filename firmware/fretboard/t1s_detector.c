@@ -11,7 +11,7 @@
 #include "tc6-regs.h"
 
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
-#define T1S_NODE_ID         (1u)
+#define T1S_NODE_ID         (4u)
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
 #define T1S_INSTANCE        (0u)
 #define T1S_GUITAR_ID       (3u)     /* actuator node this detector drives */
@@ -35,7 +35,7 @@
 #define T1S_HB_TYPE_DETECTOR (1u)    /* 1 = detector, 2 = guitar (shared codes) */
 #define T1S_HB_LEN          (8u)
 
-/* Coordinator-assigned MAC for this node: 02:00:00:00:00:01. */
+/* Coordinator-assigned MAC for this node: 02:00:00:00:00:04. */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
 
 /* Coordinator (marvin) MAC: 02:00:00:00:00:00 — data + heartbeat destination. */
@@ -264,7 +264,7 @@ void T1SDetector_Initialize(void)
 
     EIC_CallbackRegister(T1S_IRQ_EIC_PIN, irq_cb, 0u);  /* enabled in EIC_Initialize */
 
-    /* Configure the LAN8651 + PLCA as follower id 1. Not promiscuous — the
+    /* Configure the LAN8651 + PLCA as follower id 4. Not promiscuous — the
      * MAC-PHY filters to this node's MAC + broadcast. Non-blocking: the
      * register sequence finishes in the background via T1SDetector_Tasks. */
     if (!TC6Regs_Init(s_tc6, NULL, s_mac, true, T1S_NODE_ID, T1S_NODE_COUNT,

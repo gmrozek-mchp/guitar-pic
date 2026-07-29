@@ -1,7 +1,7 @@
 # Fretboard Firmware Specification
 
 > **Re-scoped to a T1S sense+actuate node (2026-06-17):** the fretboard is a 10BASE-T1S
-> PLCA follower (id 1) that infers actuator commands from the phototransistor data and drives the
+> PLCA follower (id 4) that infers actuator commands from the phototransistor data and drives the
 > [`guitar`](../guitar/SPEC.md) node over T1S, while also streaming its data to marvin. The old UART
 > link, the standalone Wii-guitar GPIO outputs (`cmd_receive.c`), and the `FRETBOARD_LINK`/`FRETBOARD_MODE`
 > build flags are gone — one behaviour. Node-class model: top-level [`SPEC.md`](../../SPEC.md) §2; link
@@ -130,7 +130,7 @@ edge-ai training-data export. The marvin RX side keys on this 17-byte layout.
 
 ### T1S node ([t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h))
 
-PLCA follower **id 1**, MAC `02:00:00:00:00:01`, on the marvin-coordinated
+PLCA follower **id 4**, MAC `02:00:00:00:00:04`, on the marvin-coordinated
 (`02:..:00`) bus via a LAN8651 MAC-PHY over SERCOM0 SPI. Reuses the shared
 `third_party/oa-tc6-lib` (OPEN Alliance TC6) + a local `tc6-conf.h`. All TC6 access
 is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR.
@@ -152,7 +152,7 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
 
 **Coordination caveat:** there is no active-source arbitration yet — while the
 fretboard is armed (SW0) it drives the guitar, and marvin must not also command the
-guitar (both target `02:..:02`). marvin-side active-detector/active-guitar selection
+guitar (both target `02:..:03`). marvin-side active-detector/active-guitar selection
 is the follow-up. Link rationale, addressing, and the PoDL plan are in
 [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 

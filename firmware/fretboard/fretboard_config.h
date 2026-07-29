@@ -4,7 +4,7 @@
 /*
  * Build-time configuration.
  *
- * The fretboard is a 10BASE-T1S node (PLCA follower id 1) that both senses and
+ * The fretboard is a 10BASE-T1S node (PLCA follower id 4) that both senses and
  * drives. Each 240 Hz tick it scans the five phototransistors and runs an
  * on-device int8 model that infers the Wii-guitar button bitmask from the ADC
  * window; over T1S it then:

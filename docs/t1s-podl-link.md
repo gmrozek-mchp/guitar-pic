@@ -15,10 +15,10 @@ The [`fretboard`](../firmware/fretboard/SPEC.md) firmware to join as node 1 is
 **written** (2026-06-17, `t1s_detector.{c,h}`), **T1S-only** (the old UART path +
 build flags removed). It is a **sense+actuate** node: it streams its 17-byte data
 frame to the coordinator (`0x88B5`, logging) **and** sends its on-device model's
-inferred 1-byte command **directly to the guitar node** (`0x88B5`, dst `02:..:02`) —
+inferred 1-byte command **directly to the guitar node** (`0x88B5`, dst `02:..:03`) —
 peer-to-peer actuation — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
 SPI + CS/RST/IRQ_N, mirror of guitar G0); remaining is the build-wiring + on-hardware
-bring-up. marvin's RX side is already in place (node-table id 1 + `fretboard_link.c`
+bring-up. marvin's RX side is already in place (node-table id 4 + `fretboard_link.c`
 T1S frame handler); marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag
 (§8). **PoDL is design-direction only** (not built) — the link is separately powered
 during bring-up. Addressing in §7.1; the scope widened from a 2-node UART swap to
@@ -98,7 +98,7 @@ No TCP/IP, ARP, DHCP, or any IP stack. Three layers, none large:
    so the host prepends a fixed 14-byte Ethernet header (dest MAC, src MAC,
    ethertype) to the payload. For this link the MACs are hardcoded and a custom
    ethertype carries the existing frame formats verbatim:
-   - detector (fretboard, id 1) → marvin: the 17-byte data-stream frame (see fretboard SPEC).
+   - detector (fretboard, id 4) → marvin: the 17-byte data-stream frame (see fretboard SPEC).
    - command source → guitar (id 3): the 1-byte button bitmask — sent by marvin
      (timing pipeline) and/or directly by the active detector (fretboard's model,
      peer-to-peer).
@@ -211,15 +211,15 @@ command TX targets. marvin selects the active node of each class.
 | lemmy | (future) | 6 | `02:00:00:00:00:06` | reserved |
 | lightshow | (future) | 7 | `02:00:00:00:00:07` | reserved |
 
-> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2) and the **guitar**
-> (id 3) are on the target scheme in source — guitar id 3 is set at all three points that
-> address it (guitar firmware, marvin's coordinator node table, and the fretboard's
-> peer-to-peer guitar target). The guitar was last *flashed/verified* at its old id 2, so
-> re-flash it (and marvin) for id 3 to take effect on the wire. **Still on the old id:**
-> the **fretboard** node itself (firmware `T1S_NODE_ID = 1` + marvin's table entry) →
-> target 4, a coordinated follow-up (both re-flash together). Until then a fauxmote at the
-> default id 1 **collides with the fretboard's current id 1**, so don't co-bus a
-> default-id fauxmote with the fretboard yet — pick id 2, or renumber the fretboard first.
+> **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2), the **guitar**
+> (id 3), and the **fretboard** (id 4) are all on the target scheme in source. The guitar
+> id 3 is set at all three points that address it (guitar firmware, marvin's coordinator
+> node table, and the fretboard's peer-to-peer guitar target); the fretboard id 4 is set
+> at its two points (its firmware `T1S_NODE_ID` + marvin's coordinator table entry). Each
+> node was last *flashed/verified* at its old id (guitar 2, fretboard 1), so re-flash each
+> node **together with marvin** for the new ids to take effect on the wire (marvin filters
+> by src MAC). Until the fretboard is re-flashed, a *running* fretboard is still physically
+> at id 1, so hold off co-busing a default-id-1 fauxmote with a not-yet-reflashed fretboard.
 
 - One **custom ethertype** `0x88B5` (IEEE local/experimental range; no
   registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
@@ -268,15 +268,17 @@ submodule) are resolved.
 
 Open / future:
 
-- **Fretboard node (id 1) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
+- **Fretboard node (id 4) — firmware written 2026-06-17** (`t1s_detector.{c,h}`,
   T1S-only). Sense+actuate: streams the 17-byte data frame to marvin (RX/detector path
   + node-table slot already in place) **and** sends its model's inferred command
-  directly to the guitar (id 3). MCC config done. **Remaining:** build-wiring + on-
-  hardware bring-up (banner `LAN8651 up … PLCA follower id=1/8`; confirm the
+  directly to the guitar (id 3). MCC config done. First brought up at id 1; renumbered to
+  the target **id 4** in source (2026-07-28, §7.1) — re-flash fretboard + marvin for it to
+  take effect. **Remaining:** build-wiring + on-hardware bring-up (banner
+  `LAN8651 up … PLCA follower id=4/8`; confirm the
   `FRETBOARD_RAW` rate holds ≈240 Hz — data + command + heartbeat now share the node's
   PLCA TX).
 - **Active-source arbitration.** Both marvin and the fretboard can address the guitar
-  (`02:..:02`); the guitar applies whoever transmitted last. Need marvin-side
+  (`02:..:03`); the guitar applies whoever transmitted last. Need marvin-side
   active-detector/active-guitar selection so exactly one source drives at a time
   (today: single guitar → `node_for_type(GUITAR)`; the fretboard's SW0 is an interim
   manual arm).

@@ -55,8 +55,8 @@ fallback transport.
 
 | Class | Role | Node(s) | T1S id / MAC | marvin selection |
 |---|---|---|---|---|
-| Detector | observe game state → stream to marvin | `fretboard` (photo-ADC); future variants | 1 / `02:…:01` | active detector (`Detector_SetActive`) |
-| Guitar (actuator) | receive bitmask → drive a Wii guitar | `guitar` (new); future variants | 2 / `02:…:02` | active guitar (planned) |
+| Detector | observe game state → stream to marvin | `fretboard` (photo-ADC); future variants | 4 / `02:…:04` | active detector (`Detector_SetActive`) |
+| Guitar (actuator) | receive bitmask → drive a Wii guitar | `guitar` (new); future variants | 3 / `02:…:03` | active guitar (planned) |
 
 Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); guitar nodes are command TX targets. Both classes scale by adding a node-table row. marvin's own `cv_marvin_v1` is a detector too (internal, not a bus node).
 

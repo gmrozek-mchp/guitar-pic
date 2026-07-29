@@ -6,7 +6,7 @@
 
 /* 10BASE-T1S node for the fretboard (LAN8651 MAC-PHY on SERCOM0 SPI).
  *
- * marvin is the PLCA coordinator (node 0); this node is follower id 1. It both
+ * marvin is the PLCA coordinator (node 0); this node is follower id 4. It both
  * senses and drives: it streams the 17-byte phototransistor data frame up to the
  * coordinator (ethertype 0x88B5) for logging, and sends the model's inferred
  * 1-byte button bitmask directly to the guitar node (id 2, ethertype 0x88B5) to
