@@ -14,8 +14,6 @@ can you review marvin journal for issue we had with cache coherency and legato b
 
 _**Agent (claude-opus-4-8 2026-07-02 15:33:37Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 15:33:37Z)**_
-
 I'll search the marvin journal for the cache coherency / Legato buffer issue.
 
 _**Agent (claude-opus-4-8 2026-07-02 15:33:45Z)**_
@@ -36,8 +34,6 @@ Preview (first 2KB):
 </persisted-output>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 15:33:53Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:33:53Z)**_
 
@@ -74,8 +70,6 @@ Find the 2026-06-24 decision log line numbers
 1148:- **`display_path.md`** — Title, header, §1 overview diagram (OVR1 → HEO, ARGB_8888 → RGB_888_PACKED, `.region_cache_aligned` → `.region_nocache`), §2.1 (OVR1 → HEO with rationale), §2.2 (ARGB_8888 → RGB_888_PACKED), §2.5 (single-buffer limitation → per-frame pointer swap done), §3 cache coherency simplified (nocache = no maintenance needed), §4.2 call sequence updated, §5 limitations updated.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 15:33:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:34:14Z)**_
 
@@ -121,8 +115,6 @@ _**User (2026-07-02 15:37:34Z)**_
 please put this into .md document to be shared. Enough detail that developers can fix the issues.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 15:37:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:37:41Z)**_
 
@@ -463,8 +455,6 @@ void  DRV_GFX2D_Rop(
 
 _**Agent (claude-opus-4-8 2026-07-02 15:39:42Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 15:39:42Z)**_
-
 I have everything I need. Let me confirm the `CACHE_ALIGN` definition and then write the document.
 
 _**Agent (claude-opus-4-8 2026-07-02 15:39:51Z)**_
@@ -758,8 +748,6 @@ can you add this mcp server? https://ai.microchip.com/tools/mplabdocs/mcp
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 15:54:40Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 15:54:44Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -782,8 +770,6 @@ Checking MCP server health…
 microchip: https://api.microchip.com/mcp/resources (HTTP) - ✔ Connected
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 15:54:53Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:54:55Z)**_
 
@@ -830,8 +816,6 @@ microchip: https://api.microchip.com/mcp/resources (HTTP) - ✔ Connected
 
 _**Agent (claude-opus-4-8 2026-07-02 15:55:08Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 15:55:08Z)**_
-
 The new server didn't appear in the health check. Let me re-run and inspect the config.
 
 _**Agent (claude-opus-4-8 2026-07-02 15:55:11Z)**_
@@ -857,8 +841,6 @@ microchip: https://api.microchip.com/mcp/resources (HTTP) - ✔ Connected
 No MCP server named "mplabdocs". Configured servers: microchip
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 15:55:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:55:23Z)**_
 
@@ -887,8 +869,6 @@ top-level mcpServers: {
 }
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 15:55:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:55:40Z)**_
 
@@ -924,8 +904,6 @@ File modified: /Users/gregmrozek/.claude.json
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 15:56:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 15:56:03Z)**_
 
 Same clobber — the running session overwrites `.claude.json`. Let me test whether it's truly a race by reading in the same breath as the write.
@@ -949,8 +927,6 @@ print('immediately after write:', list(d.get('mcpServers',{}).keys()))
 immediately after write: ['microchip']
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 15:56:27Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 15:56:28Z)**_
 

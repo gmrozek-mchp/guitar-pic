@@ -10,8 +10,6 @@ speed question, qspi nand flash vs. sd card. On project marvin, we have about a 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 13:33:30Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 13:33:32Z)**_
 
 Good question — and the answer is fairly clear-cut on the bringup side, but the filesystem assumption is where it gets interesting. Let me ground myself in marvin's current storage setup first.
@@ -58,8 +56,6 @@ firmware/marvin/docs/journal.md:9:**Song-select operator UI — scrollable list 
 </persisted-output>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 13:33:37Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 13:34:04Z)**_
 
@@ -119,8 +115,6 @@ running on eval board that already has NAND flash (MX30LF4G28AD-XKI ) so NOT not
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 13:37:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 13:38:03Z)**_
 
 That part changes the mechanics but not the conclusion. The MX30LF4G28AD-XKI is a **4Gbit (512 MB) 3V SLC parallel x8 NAND** — Macronix MX30**LF** series, so it's on the SAM9X75's EBI/SMC + NFC path with hardware **PMECC** (BCH ECC), not QSPI. NOR being off the table just means you're committed to managing raw NAND yourself.
@@ -167,8 +161,6 @@ wait wait wait, I'm confused. NAND Flash is for storing the application image. Q
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 13:39:19Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 13:39:33Z)**_
 
 Ah — my mistake, I conflated the two. Let me reset with your actual board layout:
@@ -213,8 +205,6 @@ no it was my mistake. But yes, that's the picture. 4GB NAND flash for applicatio
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 13:42:14Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 13:42:15Z)**_
 
 Your instinct to reach for a filesystem is reasonable, but for tiny state like a backlight setting it's actually the wrong tool — and the reason is specific to how NOR flash works. Let me verify the part's erase/endurance specs since they drive the design, then give you the recommendation.
@@ -228,8 +218,6 @@ _**Agent (claude-opus-4-8 2026-06-28 13:42:20Z)**_
 {"success":true,"data":{"partNumber":"SST26VF064BA","product":{"success":true,"data":{"searchTerm":"SST26VF064BA","pagination":{"total":9,"limit":20,"offset":0,"hasMore":false},"summary":{"totalFound":9,"returned":9,"outOfStockCount":5},"products":[{"partNumber":"SST26VF064BA-104I/S70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","packageType":"DICE","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/a/b/2/e/020a656a8aca6bca67d635331fae.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BA-104I/S70S","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"31","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BAT-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIJ","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/1/c/d/1/9ac85672ee0478bd4a1a9541c5b1.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BAT-104I/SM","inStock":44100,"stockStatus":"IN_STOCK","leadTimeInWeeks":"5","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BA-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIJ","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/1/c/d/1/9ac85672ee0478bd4a1a9541c5b1.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BA-104I/SM","inStock":90,"stockStatus":"IN_STOCK","leadTimeInWeeks":"5","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BAT-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"WSON","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/3/9/8/8e8fa3dffcd4e782c27d79a7d8c7.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BAT-104I/MF","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"6","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BA-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"WSON","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/3/9/8/8e8fa3dffcd4e782c27d79a7d8c7.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BA-104I/MF","inStock":29988,"stockStatus":"IN_STOCK","leadTimeInWeeks":"6","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BA-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIC","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/e/5/0/73bd87841518dadb661651a46dac.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BA-104I/SO","inStock":517,"stockStatus":"IN_STOCK","leadTimeInWeeks":"33","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BAT-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIC","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/e/5/0/73bd87841518dadb661651a46dac.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BAT-104I/SO","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"33","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BA-104I/W70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","packageType":"WAFER","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/a/b/2/e/020a656a8aca6bca67d635331fae.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BA-104I/W70S","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"31","lifecycleStatus":"Active"},{"partNumber":"SST26VF064BA-104I/WF70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","packageType":"WAFER","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/a/b/2/e/020a656a8aca6bca67d635331fae.m.png","productUrl":"https://www.microchipdirect.com/product/SST26VF064BA-104I/WF70S","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"31","lifecycleStatus":"Active"}]},"timestamp":"2026-06-28T13:42:20Z"},"physicalSpecs":{"success":true,"message":"Found 9 products matching \u0027SST26VF064BA\u0027","data":{"products":[{"partNumber":"SST26VF064BA-104I/S70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","leadCount":null,"packageType":"DICE","packageWidthOrSize":"Varies","deviceWeight":"0.015290","shippingWeight":"50.000000","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/a/b/2/e/020a656a8aca6bca67d635331fae.m.png","solderComposition":"NotApplicable","msl":null},{"partNumber":"SST26VF064BAT-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","leadCount":"8","packageType":"SOIJ","packageWidthOrSize":".208in","deviceWeight":"0.124400","shippingWeight":"0.379048","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/1/c/d/1/9ac85672ee0478bd4a1a9541c5b1.m.png","solderComposition":"MatteTin","msl":"MSL-1"},{"partNumber":"SST26VF064BA-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","leadCount":"8","packageType":"SOIJ","packageWidthOrSize":".208in","deviceWeight":"0.124400","shippingWeight":"0.266667","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/1/c/d/1/9ac85672ee0478bd4a1a9541c5b1.m.png","solderComposition":"MatteTin","msl":"MSL-1"},{"partNumber":"SST26VF064BAT-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","leadCount":"8","packageType":"WSON","packageWidthOrSize":"6x5x0.8mm","deviceWeight":"0.073800","shippingWeight":"0.200000","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/3/9/8/8e8fa3dffcd4e782c27d79a7d8c7.m.png","solderComposition":"MatteTin","msl":"MSL-1"},{"partNumber":"SST26VF064BA-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","leadCount":"8","packageType":"WSON","packageWidthOrSize":"6x5x0.8mm","deviceWeight":"0.073800","shippingWeight":"0.163265","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/3/9/8/8e8fa3dffcd4e782c27d79a7d8c7.m.png","solderComposition":"MatteTin","msl":"MSL-1"},{"partNumber":"SST26VF064BA-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","leadCount":"16","packageType":"SOIC","packageWidthOrSize":".300In","deviceWeight":"0.438000","shippingWeight":"0.765957","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/e/5/0/73bd87841518dadb661651a46dac.m.png","solderComposition":"MatteTin","msl":"MSL-3"},{"partNumber":"SST26VF064BAT-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","leadCount":"16","packageType":"SOIC","packageWidthOrSize":".300In","deviceWeight":"0.438000","shippingWeight":"0.800000","parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/f/e/5/0/73bd87841518dadb661651a46dac.m.png","solderComposition":"MatteTin","msl":"MSL-3"},{"partNumber":"SST26VF064BA-104I/W70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","leadCount":null,"packageType":"WAFER","packageWidthOrSize":"Varies","deviceWeight":"0.015290","shippingWeight":null,"parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/a/b/2/e/020a656a8aca6bca67d635331fae.m.png","solderComposition":"NotApplicable","msl":null},{"partNumber":"SST26VF064BA-104I/WF70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","leadCount":null,"packageType":"WAFER","packageWidthOrSize":"Varies","deviceWeight":"0.015290","shippingWeight":null,"parametricData":"https://www.microchipdirect.com/feed/json/SST26VF064BA.json","datasheetUrl":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf","imageUrl":"https://media.microchip.com/assets/a/b/2/e/020a656a8aca6bca67d635331fae.m.png","solderComposition":"NotApplicable","msl":null}]},"timestamp":"2026-06-28T13:42:19Z"},"compliance":{"success":true,"message":"Found 9 products matching \u0027SST26VF064BA\u0027","data":{"products":[{"partNumber":"SST26VF064BA-104I/S70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":null,"msl":null,"solderComposition":"NotApplicable","jedecIndicator":"-","ncnr":true,"countryOfDiffusion":"China","countryOfAssembly":null,"countryOfOrigin":"China","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BAT-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":"https://ww1.microchip.com/downloads/aemDocuments/documents/corporate-responsibilty/environmental/material-compliance-documents/Track-1-MCD/C3X-SOIJ-8-.208in-MatteTin.pdf","msl":"MSL-1","solderComposition":"MatteTin","jedecIndicator":"e3","ncnr":false,"countryOfDiffusion":"China","countryOfAssembly":"Thailand","countryOfOrigin":"Thailand","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BA-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":"https://ww1.microchip.com/downloads/aemDocuments/documents/corporate-responsibilty/environmental/material-compliance-documents/Track-1-MCD/C3X-SOIJ-8-.208in-MatteTin.pdf","msl":"MSL-1","solderComposition":"MatteTin","jedecIndicator":"e3","ncnr":false,"countryOfDiffusion":"China","countryOfAssembly":"Thailand","countryOfOrigin":"Thailand","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BAT-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":"https://ww1.microchip.com/downloads/aemDocuments/documents/corporate-responsibilty/environmental/material-compliance-documents/U3X_008_TDFN-S6x5x08_MatteTin.pdf","msl":"MSL-1","solderComposition":"MatteTin","jedecIndicator":"e3","ncnr":false,"countryOfDiffusion":"China","countryOfAssembly":"Thailand","countryOfOrigin":"Thailand","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BA-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":"https://ww1.microchip.com/downloads/aemDocuments/documents/corporate-responsibilty/environmental/material-compliance-documents/U3X_008_TDFN-S6x5x08_MatteTin.pdf","msl":"MSL-1","solderComposition":"MatteTin","jedecIndicator":"e3","ncnr":false,"countryOfDiffusion":"China","countryOfAssembly":"Taiwan, Thailand","countryOfOrigin":"Taiwan, Thailand","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BA-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":"https://ww1.microchip.com/downloads/aemDocuments/documents/corporate-responsibilty/environmental/material-compliance-documents/D9X_016_SOIC300in_MatteTin.pdf","msl":"MSL-3","solderComposition":"MatteTin","jedecIndicator":"e3","ncnr":false,"countryOfDiffusion":"China","countryOfAssembly":"Taiwan, Thailand","countryOfOrigin":"Taiwan, Thailand","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BAT-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":"https://ww1.microchip.com/downloads/aemDocuments/documents/corporate-responsibilty/environmental/material-compliance-documents/D9X_016_SOIC300in_MatteTin.pdf","msl":"MSL-3","solderComposition":"MatteTin","jedecIndicator":"e3","ncnr":false,"countryOfDiffusion":"China","countryOfAssembly":"Taiwan, Thailand","countryOfOrigin":"Taiwan, Thailand","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BA-104I/W70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":null,"msl":null,"solderComposition":"NotApplicable","jedecIndicator":"-","ncnr":true,"countryOfDiffusion":"China","countryOfAssembly":null,"countryOfOrigin":"China","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null},{"partNumber":"SST26VF064BA-104I/WF70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","rohs":"RoHS","chinaEfup":"China-efup","materialDeclaration":null,"msl":null,"solderComposition":"NotApplicable","jedecIndicator":"-","ncnr":true,"countryOfDiffusion":"China","countryOfAssembly":null,"countryOfOrigin":"China","htsus":"8542.32.0051","ccde":"85423261","eccn":"3A991.b.1.a","ccat":null,"uels":"NLR","encl":null,"cjur":"EAR","catg":null}]},"timestamp":"2026-06-28T13:42:19Z"},"inventory":{"success":true,"message":"Found 9 products matching \u0027SST26VF064BA\u0027","data":{"products":[{"partNumber":"SST26VF064BA-104I/S70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","packageType":"DICE","packingMedia":"WPAC","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"31","fullManufacturingCycleTimeInWeeks":"32","baseQtyMultiple":"1","minOrderQty":"1","deviceWeight":"0.015290","shippingWeight":"50.000000","ncnr":true,"msl":null,"countryOfAssembly":null,"countryOfOrigin":"China"},{"partNumber":"SST26VF064BAT-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIJ","packingMedia":"T/R","inStock":44100,"stockStatus":"IN_STOCK","leadTimeInWeeks":"5","fullManufacturingCycleTimeInWeeks":"29","baseQtyMultiple":"2100","minOrderQty":"1","deviceWeight":"0.124400","shippingWeight":"0.379048","ncnr":false,"msl":"MSL-1","countryOfAssembly":"Thailand","countryOfOrigin":"Thailand"},{"partNumber":"SST26VF064BA-104I/SM","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIJ","packingMedia":"TUBE","inStock":90,"stockStatus":"IN_STOCK","leadTimeInWeeks":"5","fullManufacturingCycleTimeInWeeks":"29","baseQtyMultiple":"90","minOrderQty":"1","deviceWeight":"0.124400","shippingWeight":"0.266667","ncnr":false,"msl":"MSL-1","countryOfAssembly":"Thailand","countryOfOrigin":"Thailand"},{"partNumber":"SST26VF064BAT-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"WSON","packingMedia":"T/R","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"6","fullManufacturingCycleTimeInWeeks":"30","baseQtyMultiple":"2000","minOrderQty":"1","deviceWeight":"0.073800","shippingWeight":"0.200000","ncnr":false,"msl":"MSL-1","countryOfAssembly":"Thailand","countryOfOrigin":"Thailand"},{"partNumber":"SST26VF064BA-104I/MF","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"WSON","packingMedia":"TUBE","inStock":29988,"stockStatus":"IN_STOCK","leadTimeInWeeks":"6","fullManufacturingCycleTimeInWeeks":"30","baseQtyMultiple":"98","minOrderQty":"1","deviceWeight":"0.073800","shippingWeight":"0.163265","ncnr":false,"msl":"MSL-1","countryOfAssembly":"Taiwan, Thailand","countryOfOrigin":"Taiwan, Thailand"},{"partNumber":"SST26VF064BA-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIC","packingMedia":"TUBE","inStock":517,"stockStatus":"IN_STOCK","leadTimeInWeeks":"33","fullManufacturingCycleTimeInWeeks":"34","baseQtyMultiple":"47","minOrderQty":"1","deviceWeight":"0.438000","shippingWeight":"0.765957","ncnr":false,"msl":"MSL-3","countryOfAssembly":"Taiwan, Thailand","countryOfOrigin":"Taiwan, Thailand"},{"partNumber":"SST26VF064BAT-104I/SO","basePartNumber":"SST26VF064BA","description":"64Mb 2.3V To 3.6V Sqi Flash Memory","packageType":"SOIC","packingMedia":"T/R","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"33","fullManufacturingCycleTimeInWeeks":"34","baseQtyMultiple":"1000","minOrderQty":"1","deviceWeight":"0.438000","shippingWeight":"0.800000","ncnr":false,"msl":"MSL-3","countryOfAssembly":"Taiwan, Thailand","countryOfOrigin":"Taiwan, Thailand"},{"partNumber":"SST26VF064BA-104I/W70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","packageType":"WAFER","packingMedia":"WCAS","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"31","fullManufacturingCycleTimeInWeeks":"32","baseQtyMultiple":"1","minOrderQty":"1","deviceWeight":"0.015290","shippingWeight":null,"ncnr":true,"msl":null,"countryOfAssembly":null,"countryOfOrigin":"China"},{"partNumber":"SST26VF064BA-104I/WF70S","basePartNumber":"SST26VF064BA","description":"64Mb Serial Quad I/O Flash Memory","packageType":"WAFER","packingMedia":"WFRAME","inStock":0,"stockStatus":"OUT_OF_STOCK","leadTimeInWeeks":"31","fullManufacturingCycleTimeInWeeks":"32","baseQtyMultiple":"1","minOrderQty":"1","deviceWeight":"0.015290","shippingWeight":null,"ncnr":true,"msl":null,"countryOfAssembly":null,"countryOfOrigin":"China"}]},"timestamp":"2026-06-28T13:42:19Z"}},"timestamp":"2026-06-28T13:42:20Z"}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 13:42:26Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 13:42:48Z)**_
 
@@ -284,8 +272,6 @@ _**User (2026-06-28 13:47:53Z)**_
 yes, let's track this. I think we definitely want config settings on QSPI flash. EEPROM emulation is the right answer here. For the splash image, jpg carries almost 2 seconds decode processing, so would need to store raw to be of benefit. Not sure about splash on QSPI yet, but I agree we should just put it on without file system.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 13:47:57Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 13:47:57Z)**_
 
@@ -376,8 +362,6 @@ Find journal section headers
 
 _**Agent (claude-opus-4-8 2026-06-28 13:48:05Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 13:48:05Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/docs/journal.md`
@@ -425,8 +409,6 @@ _**Agent (claude-opus-4-8 2026-06-28 13:48:05Z)**_
 40	| 2026-06-25 | **The GFX Canvas regen pushed FreeRTOS `heap_1` past 40 KB → silent boot hang (zero DBGU output); raised `configTOTAL_HEAP_SIZE` 40960 → 100000.** Symptom: after the canvas MCC commit (`ed54f37`), marvin produced no DBGU output at all — bisected to that commit (`8de7c64` working). Not the compositor (it was stashed), and not the XLCDC OVR setup (BASE/HEO use the identical `LCDC_ATTRE`/`WAIT_ATTRS_EQ(SIP)` pre-`Start` pattern that already works, so OVR is symmetric). Root cause: the canvas additions (the dynamic `GFX_CANVAS_Task` + extra OSAL/driver allocations on the 4-layer/canvas display path) tipped cumulative `pvPortMalloc` during `SYS_Initialize` past the 40 KB `heap_1`. Because `configUSE_MALLOC_FAILED_HOOK=1` and `vApplicationMallocFailedHook()` is the MCC default (`taskDISABLE_INTERRUPTS(); for(;;){}`), the failed alloc spun with IRQs off **before** `APP_Initialize`/`log_init` (initialization.c:499) ran → no banner, indistinguishable from a dead board. **Two durable follow-ups (both carried):** (1) the heap size is **not** in `FreeRTOS.yml` — it's a raw literal in the generated `FreeRTOSConfig.h`, so the bump is an **MCC re-apply patch** (joins patch #8, also a `FreeRTOSConfig.h` edit) and will silently revert on the next regen → hang returns; set it in the MCC FreeRTOS component if it exposes Total Heap Size, else keep it on the re-apply list. (2) Patch `vApplicationMallocFailedHook` **and** `vApplicationStackOverflowHook` to emit a marker before the spin — a one-line DBGU write would have turned this multi-step bisect into an instant diagnosis. | Same silent-spin footgun already flagged for `vApplicationStackOverflowHook` (Open questions), now confirmed to bite via the malloc path too — heap exhaustion and stack overflow both present as identical dead-board hangs with the stock hooks. `heap_1` (never frees) is correct for marvin's static-allocation discipline, but MCC tasks + Legato OSAL still need it, so its size is load-bearing and must be tracked. 100000 is generous (+60 KB) headroom for now; right-size later once boot logs `xPortGetFreeHeapSize()`. Found by Greg's heap hypothesis after the XLCDC poll-loop theory was ruled out by BASE/HEO symmetry. |
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 13:48:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 13:48:10Z)**_
 
@@ -523,8 +505,6 @@ _**Agent (claude-opus-4-8 2026-06-28 13:48:10Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 13:48:21Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 13:48:23Z)**_
 
 This is settled enough to record. I'll add a decision-log entry for what's decided (settings → QSPI EEPROM-emulation, no FAT; splash stored raw if it moves to QSPI) and an open-questions entry for what's still undecided (whether the splash actually moves to QSPI, and the broader 8 MB QSPI tiering).
@@ -577,8 +557,6 @@ one more question sd card vs qspi flash. Can you estimate loading timein to fram
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 13:50:29Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 13:50:35Z)**_
 
 Good question — and the key insight is that your ~450 ms on SD is almost entirely **bringup, not transfer**, so QSPI attacks exactly the part that's slow.
@@ -619,8 +597,6 @@ _**User (2026-06-28 13:50:55Z)**_
 no. 300mS is bring up. 450mS is read of 4MB raw image
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 13:51:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 13:51:24Z)**_
 
@@ -701,8 +677,6 @@ I'm going to work on bringing up QSPI flash in MCC. Any settings I should look f
 
 _**Agent (claude-opus-4-8 2026-06-28 13:54:26Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 13:54:26Z)**_
-
 Let me ground the Harmony/MCC component names against Microchip's docs rather than guess, then give you a focused checklist.
 
 _**Agent (claude-opus-4-8 2026-06-28 13:54:27Z)**_
@@ -724,8 +698,6 @@ _**Agent (claude-opus-4-8 2026-06-28 13:54:27Z)**_
 {"success":true,"data":{"query":"SST26VF064BA global block protection unlock quad enable power-up write protected","totalResults":6,"limit":6,"hasMore":true,"documents":[{"title":" SST26VF064B / SST26VF064BA 2.5V/3.0V 64 Mbit Serial Quad I/O (SQI) Flash Memory","content":"The factory default setting at power-up of the WPEN bit is \u20180\u2019, allowing Write Protection function of the WP# pin after power-up. WPEN is a non-volatile bit; once the bit is set to \u20181\u2019, the Write Protect function of the WP# pin continues to be enabled after power-up. The WP# pin only protects the Block-Protection Register and Configuration Register from changes. Therefore, if the WP# pin is set to low before or after a Program or Erase command, or while an internal Write is in progress, it will have no effect on the Write command.\nThe IOC bit takes priority over the WPEN bit in the configuration register. When the IOC bit is \u20181\u2019, the function of the WP# pin is disabled and the WPEN bit serves no function. When the IOC bit is \u20180\u2019 and WPEN is \u20181\u2019, setting the WP# pin active low prohibits Write operations to the Block Protection Register.\r\n4.0 DEVICE OPERATION\nSST26VF064B/064BA support both Serial Peripheral Interface (SPI) bus protocol and a 4-bit multiplexed SQI bus protocol. To provide backward compatibility to traditional SPI Serial Flash devices, the device\u2019s initial state after a power-on reset is SPI mode which supports multi-I/O (x1/x2/x4) Read/Write commands. A command instruction configures the device to SQI mode. The dataflow in the SQI mode is similar to the SPI mode, except it uses four multiplexed I/O signals for command, address, and data sequence.\nSQI Flash Memory supports both Mode 0 (0,0) and Mode 3 (1,1) bus operations. The difference between the two modes is the state of the SCK signal when the bus master is in stand-by mode and no data is being transferred. The SCK signal is low for Mode 0 and SCK signal is high for Mode 3. For both modes, the Serial Data I/O (SI/Q[3:0]) is sampled at the rising edge of the SCK clock signal for input, and driven after the falling edge of the SCK clock signal for output. The traditional SPI protocol uses separate input (SI) and output (SO) data signals as shown in Figure 4-1. The SQI protocol uses four multiplexed signals, SI/Q[3:0], for both data in and data out, as shown in Figure 4-2. This means the SQI protocol quadruples the traditional bus transfer speed at the same clock frequency, without the need for more pins on the package.\nFIGURE 4-1: SPI PROTOCOL (TRADITIONAL 25 SERIES SPI DEVICE)\nCE#\r\nSCK\r\nMODE 3\r\nMODE 0\r\nSI\r\nMSB\r\nBit 7\r\nBit 6\r\nBit 5\r\nBit 4\r\nBit 3\r\nBit 2\r\nBit 1\r\nBit 0\r\nDON\u2019T CARE\r\nSO\r\nHIGH IMPEDANCE\r\nMSB\r\nBit 7\r\nBit 6\r\nBit 5\r\nBit 4\r\nBit 3\r\nBit 2\r\nBit 1\r\nBit 0\nFIGURE 4-2: SQI SERIAL QUAD I/O PROTOCOL\nCE#\r\nCLK\r\nMODE 3\r\nMODE 0\r\nSI/Q[3:0]\r\nC1\r\nC0\r\nA5\r\nA4\r\nA3\r\nA2\r\nA1\r\nA0\r\n\r\n\r\nH0\r\nL0\r\nH1\r\nL1\r\nH2\r\nL2\r\nH3\r\nL3\r\nMSB\n4.1 Device Protection\nSST26VF064B/064BA offer a flexible memory protection scheme that allows the protection state of each individual block to be controlled separately. In addition, the Write-Protection Lock-Down register prevents any change of the lock status during device operation. To avoid inadvertent writes during power-up, the device is write-protected by default after a power-on reset cycle. A Global Block-Protection Unlock command offers a single command cycle that unlocks the entire memory array for faster manufacturing throughput.\nFor extra protection, there is an additional non-volatile register that can permanently write-protect the Block-Protection register bits for each individual block. Each of the corresponding lock-down bits are one time programmable (OTP)\u2014once written, they cannot be erased. Data that had been previously programmed into these blocks cannot be altered by programming or erase and is not reversible\n4.1.1 INDIVIDUAL BLOCK PROTECTION\nSST26VF064B/064BA have a Block-Protection register which provides a software mechanism to write-lock the individual memory blocks and write-lock, and/or read-lock, the individual parameter blocks. The Block-Protection register is 144 bits wide: two bits each for the eight 8 KByte parameter blocks (write-lock and read-lock), and one bit each for the remaining 32 KByte and 64 KByte overlay blocks (write-lock). See Table 5-6 for address range protected per register bit.\nEach bit in the Block-Protection register (BPR) can be written to a \u20181\u2019 (protected) or \u20180\u2019 (unprotected). For the parameter blocks, the most significant bit is for read-lock, and the least significant bit is for write-lock. Read-locking the parameter blocks provides additional security for sensitive data after retrieval (e.g., after initial boot). If a block is read-locked all reads to the block return data 00H.\nDS20005119J-page 7","keywords":["lock","Protection","register","Block","blocks","data","write","Write","command","power","mode","protocol","signal","WPEN","bits","block","device","function","individual","Mode","MODE","parameter","read","064BA","SST26VF064B","DS20005119J","parseddocuments","13d3629c-f547-4de8-895a-7ef015aa9713","13d3629c-f547-4de8-895a-7ef015aa9713.pdf"],"relevancyScore":51.656845},{"title":"SST26VF064B/SST26VF064BA 2.5V/3.0V 64-Mbit Serial Quad I/O\u2122 (SQI\u2122) Flash Memory - page40.md","content":"SST26VF064B/SST26VF064BA\n\n5.37\tGlobal Block Protection Unlock (ULBPR)\nThe Global Block Protection Unlock (ULBPR) instruction clears all write protection bits in the Block Protection register, except for those bits that have been locked down with the NVWLDR command. Execute WREN before initiating the ULBPR instruction.\nTo execute a ULBPR instruction, the host drives CE# low, then sends the ULBPR command cycle (98H) and then drives CE# high.\n\nFIGURE 5-44:\tGLOBAL BLOCK PROTECTION UNLOCK (SQI)\nCE#\nSCK\nMODE 3\nMODE 0\n0\t1\n0\t1\nSIO[3:0]\nC1\nC0\nNote:\tC[1:0]=98H\n\nFIGURE 5-45:\tGLOBAL BLOCK PROTECTION UNLOCK (SPI)\nCE#\nSCK\nMODE 3\nMODE 0\n0\t1\t2\t3\t4\t5\t6\t7\nSIO0\n98\nSIO[3:1]\nXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX\n\nDS20005119K-page 40\t\u00A9 2012-2022 Microchip Technology Inc. and its subsidiaries","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf?utm_source=mchpmcp#page=40","keywords":["SST26VF064B/SST26VF064BA 2.5V/3.0V 64-Mbit Serial Quad I/O\u2122 (SQI\u2122) Flash Memory","SST26VF064B","SST26VF064BA","page40.md"],"relevancyScore":78.90039},{"title":" SST26VF064B / SST26VF064BA 2.5V/3.0V 64 Mbit Serial Quad I/O (SQI) Flash Memory","content":"Data Byte 0 Data Byte 1 Data Byte 2 Data Byte N\nDS20005119J-page 35\r\nSST26VF064B / SST26VF064BA\n5.37 Global Block-Protection Unlock (ULBPR)\nThe Global Block-Protection Unlock (ULBPR) instruction clears all write-protection bits in the Block-Protection register, except for those bits that have been locked down with the nVWLDR command. Execute WREN before initiating the ULBPR instruction.\nTo execute a ULBPR instruction, the host drives CE# low, then sends the ULBPR command cycle (98H), and then drives CE# high.\nFIGURE 5-44: GLOBAL BLOCK-PROTECTION UNLOCK (SQI)\nCE#\r\nSCK\r\nSIO(3:0)\r\nC1/C0\nNote: C1[1:0]=98H\nFIGURE 5-45: GLOBAL BLOCK-PROTECTION UNLOCK (SPI)\nCE#\r\nSCK\r\nSIO0\r\nSIO[3:1]","keywords":["ULBPR","Byte","Data","DS20005119J","SIO0","SST26VF064B","SST26VF064BA","parseddocuments","13d3629c-f547-4de8-895a-7ef015aa9713","13d3629c-f547-4de8-895a-7ef015aa9713.pdf"],"relevancyScore":57.4751},{"title":"SST26VF064B/SST26VF064BA 2.5V/3.0V 64-Mbit Serial Quad I/O\u2122 (SQI\u2122) Flash Memory - page83.md","content":"TABLE 11-1:\tSERIAL FLASH DISCOVERABLE PARAMETER (SFDP) (CONTINUED) (13 OF 16)\nAddress\tBit Address\tData\tComments\n219H\tA31:A24\tFFH\tMaximum time to Deep Power-Down 0FFH = Reserved\n21AH\tA23:A16\tFFH\tMaximum time out from Deep Power-Down mode to Standby mode 0FFH = Reserved\n21BH\tA31:A24\tFFH\tReserved. Bits default to all 1\u2019s.\n21CH\tA23:A16\tFFH\tReserved. Bits default to all 1\u2019s.\n21DH\tA31:A24\tFFH\tReserved. Bits default to all 1\u2019s.\n21EH\tA23:A16\tFFH\tReserved. Bits default to all 1\u2019s.\n21FH\tA31:A24\tFFH\tReserved. Bits default to all 1\u2019s.\nSupported Instructions\n220H\tA7:A0\t00H\tNo Operation\n221H\tA15:A8\t66H\tReset Enable\n222H\tA23:A16\t99H\tReset Memory\n223H\tA31:A24\t38H\tEnable Quad I/O\n224H\tA7:A0\tFFH\tReset Quad I/O\n225H\tA15:A8\t05H\tRead STATUS Register\n226H\tA23:A16\t01H\tWrite STATUS Register\n227H\tA31:A24\t35H\tRead Configuration Register\n228H\tA7:A0\t06H\tWrite Enable\n229H\tA15:A8\t04H\tWrite Disable\n22AH\tA23:A16\t02H\tByte Program or Page Program\n22BH\tA31:A24\t32H\tSPI Quad Page Program\n22CH\tA7:A0\tB0H\tSuspends Program/Erase\n22DH\tA15:A8\t30H\tResumes Program/Erase\n22EH\tA23:A16\t72H\tRead Block Protection Register\n22FH\tA31:A24\t42H\tWrite Block Protection Register\n230H\tA7:A0\t8DH\tLock-Down Block Protection Register\n231H\tA15:A8\tE8H\tNonvolatile Write-Lock Down Register\n232H\tA23:A16\t98H\tGlobal Block Protection Unlock\n233H\tA31:A24\t88H\tRead Security ID\n234H\tA7:A0\tA5H\tProgram User Security ID Area\n235H\tA15:A8\t85H\tLockout Security ID Programming\n236H\tA23:A16\tC0H\tSet Burst Length\n237H\tA31:A24\t9FH\tJEDEC-ID\n238H\tA7:A0\tAFH\tQuad J-ID\n239H\tA15:A8\t5AH\tSFDP\n23AH\tA23:A16\tFFH\tDeep Power-Down Mode FFH = Reserved\n23BH\tA31:A24\tFFH\tRelease Deep Power-Down Mode FFH = Reserved\n23CH\tA4:A0\t06H\t(1-4-4) SPI nB Burst with Wrap Number of Wait states (dummy clocks) needed before valid output 0011b: 6 clocks of dummy cycle\tA7:A5 (1-4-4) SPI nB Burst with Wrap Number of Mode Bits 000b: Set Mode bits are not supported\n23DH\tA15:A8\tECH\t(1-4-4) SPI nB Burst with Wrap Opcode\n\u00A9 2012-2022 Microchip Technology Inc. and its subsidiaries\tDS20005119K-page 83","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPD/ProductDocuments/DataSheets/SST26VF064B-SST26VF064BA-2-5V-3-0V-64-Mbit-Serial-Quad-IO--SQI--Flash-Memory-20005119K.pdf?utm_source=mchpmcp#page=83","keywords":["SST26VF064B/SST26VF064BA 2.5V/3.0V 64-Mbit Serial Quad I/O\u2122 (SQI\u2122) Flash Memory","SST26VF064B","SST26VF064BA","page83.md"],"relevancyScore":67.14618},{"title":" SST26VF064B / SST26VF064BA 2.5V/3.0V 64 Mbit Serial Quad I/O (SQI) Flash Memory","content":"HIGH IMPEDANCE\nDS20005119J-page 34\r\nSST26VF064B / SST26VF064BA\n5.34 Write Block-Protection Register (WBPR)\r\nThe Write Block-Protection Register (WBPR) command changes the Block-Protection register data to indicate the protection status. Execute WREN before executing WBPR.\nTo execute a Write Block-Protection Register operation the host drives CE# low, sends the Write Block-Protection Register command cycle (42H), sends 1B cycles of data, and finally drives CE# high. Data input must be most significant bit(s) first. See Table 5-6 for definitions of each bit in the Block-Protection register. See Figures 5-38 and 5-39.\nFIGURE 5-38: WRITE BLOCK-PROTECTION REGISTER SEQUENCE (SQI)\nCE#\r\nMODE 3\r\nMODE 0,1\r\nSCK\r\nSIO(3:0)\r\nC1 C0 H0 L0 H1 L1 H2 L2 H3 L3 H4 L4 H5 L5 HN LN\r\nMSN LSN\r\nBPR[143:136] BPR[7:0]\r\nNote: MS\r\nN = Most Significant Nibble, LSN = Least Significant Nibble\r\nBlock-Protection Register (BPR) C1[1:0]=42H\nFIGURE 5-39: WRITE BLOCK-PROTECTION REGISTER SEQUENCE (SPI).\nCE#\r\nMODE 3\r\nMODE 0,1\r\nSCK\r\n0 1 2 3 4 5 6 7 8 15 16 23 24 31 32\r\nOP Code\r\nSI\r\n42H Data Byte0 Data Byte1 Data Byte2 Data ByteN\r\nSO\r\nNote: C1[1:0]=42H\nDS20005119J-page 36","keywords":["Block","Protection","Data","Register","MODE","Write","DS20005119J","Byte0","Byte1","Byte2","SST26VF064B","SST26VF064BA","parseddocuments","13d3629c-f547-4de8-895a-7ef015aa9713","13d3629c-f547-4de8-895a-7ef015aa9713.pdf"],"relevancyScore":53.241894},{"title":" SST26VF064B / SST26VF064BA 2.5V/3.0V 64 Mbit Serial Quad I/O (SQI) Flash Memory","content":"7  BUSY  Write operation status 1 = Internal Write operation is in progress 0 = No internal Write operation is in progress  0  R\n1. The Security ID status will always be \u20181\u2019 at power-up after a successful execution of the Lockout Security ID instruction, otherwise default at power-up is \u20180\u2019.\r\n4.5.8      I/O CONFIGURATION (IOC)\r\nThe I/O Configuration (IOC) bit re-configures the I/O pins. The IOC bit is set by writing a \u20181\u2019 to Bit 1 of the Configuration register. When IOC bit is \u20180\u2019 the WP# pin and HOLD# pin are enabled (SPI or Dual Configuration setup). When IOC bit is set to \u20181\u2019 the SIO2 pin and SIO3 pin are enabled (SPI Quad I/O Configuration setup). The IOC bit must be set to \u20181\u2019 before issuing the following SPI commands: SQOR (6BH), SQIOR (EBH), RBSPI (ECh), and SPI Quad page program (32H). Without setting the IOC bit to \u20181\u2019, those SPI commands are not valid. The I/O configuration bit does not apply when in SQI mode. The default at power-up for SST26VF064B is \u20180\u2019 and for SST26VF064BA is \u20181\u2019.\n4.5.9      BLOCK-PROTECTION VOLATILITY STATE (BPVN)\r\nThe Block-Protection Volatility State bit indicates whether any block has been permanently locked with the nVWLDR. When no bits in the nVWLDR have been set, the BPVN is \u20181\u2019; this is the default state from the factory. When one or more bits in the nVWLDR are set to \u20181\u2019, the BPVN bit will also be \u20180\u2019 from that point forward, even after power-up.\n4.5.10    WRITE-PROTECT ENABLE (WPEN)\r\nThe Write-Protect Enable (WPEN) bit is a non-volatile bit that enables the WP# pin.\nThe Write-Protect (WP#) pin and the Write-Protect Enable (WPEN) bit control the programmable hardware write-protect feature. Setting the WP# pin to low, and the WPEN bit to \u20181\u2019, enables Hardware write-protection. To disable Hardware write protection, set either the WP# pin to high or the WPEN bit to \u20180\u2019. There is latency associated with writing to the WPEN bit. Poll the BUSY bit in the Status register, or wait TWPEN, for the completion of the internal, self-timed Write operation. When the chip is hardware write protected, only Write operations to Block-Protection and Configuration registers are disabled. See \u201CHardware Write Protection\u201D on page 8 and Table 4-1 on page 9 for more information about the functionality of the WPEN bit.","keywords":["Write","WPEN","Configuration","When","operation","power","write","SIO2","SIO3","SST26VF064B","SST26VF064BA","parseddocuments","13d3629c-f547-4de8-895a-7ef015aa9713","13d3629c-f547-4de8-895a-7ef015aa9713.pdf"],"relevancyScore":59.302822}]},"timestamp":"2026-06-28T13:54:27Z"}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 13:55:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 13:55:35Z)**_
 
@@ -842,8 +814,6 @@ Untracked files:
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 14:03:43Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 14:03:44Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -870,8 +840,6 @@ Grep QSPI/SST26/MEMORY config defines
 (eval):cd:1: no such file or directory: firmware/marvin
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:03:52Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:03:54Z)**_
 
@@ -1353,8 +1321,6 @@ Grep QSPI/SST26/MEMORY config defines
 
 _**Agent (claude-opus-4-8 2026-06-28 14:04:15Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 14:04:15Z)**_
-
 Let me check whether the driver is actually initialized at boot, whether the pins are muxed, and the DMA/clock settings.
 
 _**Agent (claude-opus-4-8 2026-06-28 14:04:20Z)**_
@@ -1611,8 +1577,6 @@ typedef struct
 
 _**Agent (claude-opus-4-8 2026-06-28 14:04:46Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 14:04:46Z)**_
-
 Let me confirm the one thing that silently bites — whether the driver issues the block-protection unlock — plus the clock mode.
 
 _**Agent (claude-opus-4-8 2026-06-28 14:04:52Z)**_
@@ -1680,8 +1644,6 @@ default/src/config/default/peripheral/qspi/plib_qspi.c:62:    /* CSMODE = 0x0 */
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 14:05:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 14:05:37Z)**_
 
 Reviewed the staged tree. **Good news: your stack is actually complete — you don't need to add anything else to talk to the flash.** Here's what's there and what's worth deciding.
@@ -1728,8 +1690,6 @@ can you whip up a quick smoke test on the QSPI flash with output to log?
 
 _**Agent (claude-opus-4-8 2026-06-28 14:14:32Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 14:14:32Z)**_
-
 Let me look at how logging and console commands work here, plus the exact SST26 API signatures, so the smoke test matches your existing patterns.
 
 _**Agent (claude-opus-4-8 2026-06-28 14:14:35Z)**_
@@ -1757,8 +1717,6 @@ bfs: error: default/src: No such file or directory.
 (eval):5: no matches found: --include=*.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:14:40Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:14:41Z)**_
 
@@ -1851,8 +1809,6 @@ _**Agent (claude-opus-4-8 2026-06-28 14:14:44Z)**_
 43
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:14:48Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:14:48Z)**_
 
@@ -1964,8 +1920,6 @@ echo "===== TransferStatus enum =====" && grep -nE "DRV_SST26_TRANSFER_(BUSY|COM
 535:    while(DRV_SST26_TRANSFER_BUSY == DRV_SST26_TransferStatusGet(handle));
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:15:22Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:15:23Z)**_
 
@@ -2079,8 +2033,6 @@ target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 14:15:31Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 14:15:34Z)**_
 
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
@@ -2146,8 +2098,6 @@ _**Agent (claude-opus-4-8 2026-06-28 14:15:34Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 14:15:38Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 14:15:40Z)**_
 
 Now let me check the geometry struct fields so I print the right members:
@@ -2184,8 +2134,6 @@ echo "===== DRV_SST26_GEOMETRY struct =====" && grep -nE "DRV_SST26_GEOMETRY|rea
 889:bool DRV_SST26_GeometryGet( const DRV_HANDLE handle, DRV_SST26_GEOMETRY *geometry );
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:16:50Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:16:51Z)**_
 
@@ -2228,8 +2176,6 @@ default/src/config/default/configuration.h:163:#define DRV_SST26_PAGE_SIZE      
 226-    qspi_register_xfer.width = QUAD_CMD;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:16:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:16:59Z)**_
 
@@ -2527,8 +2473,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/m
 
 _**Agent (claude-opus-4-8 2026-06-28 14:18:08Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 14:18:08Z)**_
-
 Let me sanity-check that the symbols I reference resolve in this tree (include root + driver enums):
 
 _**Agent (claude-opus-4-8 2026-06-28 14:18:10Z)**_
@@ -2609,8 +2553,6 @@ qspi smoke test: PASS
 on DBGU, QSPI: open okQSPI: JEDEC ID = BF 26 43  (expect BF 26 43)QSPI: read=1x8388608 write=256x32768 erase=4096x2048 total=8388608 (8192 KiB)QSPI: scratch sector @ 0x7FF000QSPI: erase ok (blank read-back: yes)QSPI: wrote 256-byte patternQSPI: read-back PASS (256/256 match) -- smoke test PASS
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 14:19:25Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 14:19:27Z)**_
 
@@ -2697,8 +2639,6 @@ going to see if I can find an example project. Start thinking of speed test and 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 14:22:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 14:22:10Z)**_
 
 Good plan — finding a reference project is the fastest way to get the DMA/XIP MCC knobs right (look for the SAMA5D2 "Memory Driver SST26 QSPI" example; same QSPI IP). While you do that, let me design the speed test. First let me pin down the two things the bench depends on: the timing source this project uses, and the QSPI memory-mapped base (for the XIP path).
@@ -2754,8 +2694,6 @@ default/src/video/isc_capture.c:34:static __attribute__((__section__(".region_no
 
 _**Agent (claude-opus-4-8 2026-06-28 14:29:03Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 14:29:03Z)**_
-
 Both dependencies resolved, and one is a pleasant surprise. Let me confirm the XIP base is reachable from app code and grab its value:
 
 _**Agent (claude-opus-4-8 2026-06-28 14:34:31Z)**_
@@ -2790,8 +2728,6 @@ grep -nA40 "Storage_DiagBench" default/src/storage/storage.c | grep -iE "MB/s|el
 272-                (unsigned long)(total_bytes / 1024u), (unsigned long)wms,
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 14:34:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:12:38Z)**_
 
@@ -2838,8 +2774,6 @@ sed -n '271,285p' default/src/storage/storage.c
     for (uint32_t c = 0u; c < chunks; c++)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:12:54Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:12:55Z)**_
 
@@ -2908,8 +2842,6 @@ Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:14:51Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:14:52Z)**_
 
 Found the key reference: **`apps/fs/sqi_flash_fat`** — a SAM9X75-Curiosity QSPI SST26 example (same part, same board). Let me compare its QSPI config to yours to spot the DMA/clock deltas:
@@ -2958,8 +2890,6 @@ grep -rn "define QSPIMEM_ADDR" ../../packs/SAM9X75D2G_DFP/ 2>/dev/null | head
 Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:17:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:17:17Z)**_
 
@@ -3033,8 +2963,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:18:08Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:18:11Z)**_
 
 Let me confirm the two app-reachable symbols (`QSPIMEM_ADDR`, `SYS_TIME_*`) exist in marvin's tree so this compiles:
@@ -3065,8 +2993,6 @@ default/src/config/default/system/time/src/sys_time.c
 177:    r.timer_freq_hz  = SYS_TIME_FrequencyGet();
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:18:21Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:18:33Z)**_
 
@@ -3110,8 +3036,6 @@ unknown type name 'uint32_t' in qspi_smoke.h
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 15:19:03Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:19:04Z)**_
 
 Right — the header uses `uint32_t` but only includes `<stdbool.h>`. Adding `<stdint.h>`:
@@ -3139,8 +3063,6 @@ _**User (2026-06-28 15:20:04Z)**_
 can you add cr/lf as needed to qspi smoke log output?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 15:20:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:20:14Z)**_
 
@@ -3172,8 +3094,6 @@ default/src/video/video.c:243:    LOG_INFO("VIDEO: capture ARMED %ux%u\r\n", w, 
 default/src/video/video.c:251:    LOG_INFO("VIDEO: capture IDLE\r\n");
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:20:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:20:20Z)**_
 
@@ -3398,8 +3318,6 @@ _**Agent (claude-opus-4-8 2026-06-28 15:20:20Z)**_
 210
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:20:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:20:34Z)**_
 
@@ -3643,8 +3561,6 @@ QSPI bench: done (full 4.10 MB RGBA8888 splash scales from the above)
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 15:22:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:22:57Z)**_
 
 Those numbers are diagnostic — and they tell us something important: **the bottleneck isn't clock speed, it's per-access command overhead.** At 50 MHz quad you'd expect ~25 MB/s; you're getting 0.6-4.6. And the XIP memcpy being *8× slower* than the driver is the tell. Let me confirm the root cause in the MMU config:
@@ -3706,8 +3622,6 @@ grep -nE "0x6|0x60000000|QSPI|EBI|STRONGLY|DEVICE|CACHE|WRITE_BACK|WRITEBACK|WT|
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:24:19Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:24:35Z)**_
 
 Root cause confirmed — and it's not the clock. [plib_mmu.c:371-377](firmware/marvin/default/src/config/default/peripheral/mmu/plib_mmu.c#L371):
@@ -3756,8 +3670,6 @@ _**User (2026-06-28 15:30:18Z)**_
 I;m not seeing any knobs in MCC for option A. This is something we can do outside of MCC generated?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 15:30:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:30:37Z)**_
 
@@ -4251,8 +4163,6 @@ _**Agent (claude-opus-4-8 2026-06-28 15:30:38Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:31:18Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:31:24Z)**_
 
 The table is a file-static `trns_tbl[4096]` flat-mapped, and the cache helpers (`dcache_*`) are public in `plib_mmu.h`. So from our own file I can: read TTBR0 to find the live table, rewrite the QSPI section descriptors' C/B bits to cacheable-WB, clean those table words, invalidate the TLB, and barrier. Let me check what CP15 accessors are exposed so I don't hand-roll asm unnecessarily:
@@ -4335,8 +4245,6 @@ sed -n '40,75p' default/src/config/default/peripheral/mmu/cp15.h
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:32:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:32:23Z)**_
 
 Confirmed — fully doable from our own code, no MCC edit. The table is flat-mapped, I can find it via TTBR0, and the cache-maintenance functions (`dcache_CleanByAddr`) are public in `plib_mmu.h`. I'll add a remap helper plus a `qspi cache` subcommand so you can flip it and re-bench.
@@ -4395,8 +4303,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:33:13Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:33:24Z)**_
 
 Wired and ready. The remap is a runtime operation in our own code — so it's rule-compliant (no MCC edit) **and** survives MCC regen, unlike patching `plib_mmu.c` would.
@@ -4432,8 +4338,6 @@ _**User (2026-06-28 15:35:17Z)**_
 clean build power cycle, same numbers
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 15:36:25Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:36:31Z)**_
 
@@ -4477,8 +4381,6 @@ find . -name '*.ld' -not -path '*/.git/*' | head
 ./default/src/config/default/ddram.ld
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:37:45Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:37:52Z)**_
 
@@ -4543,8 +4445,6 @@ _**Agent (claude-opus-4-8 2026-06-28 15:38:23Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/flash/qspi_smoke.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:38:30Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:38:31Z)**_
 
@@ -4643,8 +4543,6 @@ QSPI bench: reading 4 MiB from offset 0 (64 x 64 KiB chunks); XIP source = CACHE
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 15:43:12Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:43:26Z)**_
 
 The remap itself worked perfectly — `60000DF2 → 60000DFE` flips bits [3:2] from `00` (strongly-ordered) to `11` (cacheable write-back). That's exactly right. So `qspi cache` does what it should, and the bench confirms "XIP source = CACHEABLE". The problem is what happens *next*.
@@ -4685,8 +4583,6 @@ _**User (2026-06-28 15:44:19Z)**_
 qspi bench without cache enable works and same number
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 15:44:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:44:58Z)**_
 
@@ -4732,8 +4628,6 @@ default/src/config/default/peripheral/xdmac/plib_xdmac.h:91:XDMAC_TRANSFER_EVENT
 (eval):10: no matches found: --include=*.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:45:45Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:45:47Z)**_
 
@@ -5009,8 +4903,6 @@ _**Agent (claude-opus-4-8 2026-06-28 15:45:48Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:46:25Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:46:28Z)**_
 
 Big finding: the XDMAC PLIB **already has channel 0 pre-configured as memory-to-memory** ([plib_xdmac.c:128-134](firmware/marvin/default/src/config/default/peripheral/xdmac/plib_xdmac.c#L128)) — `TYPE_MEM_TRAN`, incrementing src/dst, 16-beat bursts. So a mem2mem transfer may need **zero MCC changes** — just `XDMAC_ChannelTransfer(0, src, dst, len)`. I need to confirm channel 0 is actually free (not the ISC's) and that the engine is initialized:
@@ -5072,8 +4964,6 @@ void DRV_ISC_AWB_Algo(void) {
 ===== XDMAC channel count / config in configuration.h =====
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:49:37Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:49:44Z)**_
 
@@ -5295,8 +5185,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:50:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:50:59Z)**_
 
 Let me verify no dangling references to the removed cache code remain:
@@ -5379,8 +5267,6 @@ QSPI bench: done (full 4.10 MB RGBA8888 splash scales from the above)
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 15:52:55Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:53:07Z)**_
 
 Definitive result: **XDMAC mem2mem (4.9 MB/s) is essentially identical to the CPU word-copy (4.6).** It didn't stall, but it didn't burst either. That tells us something concrete:
@@ -5417,8 +5303,6 @@ Options:
 
 **Answer:** Investigate streaming-read feasibility
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:54:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:54:39Z)**_
 
@@ -5557,8 +5441,6 @@ _**Agent (claude-opus-4-8 2026-06-28 15:54:41Z)**_
 {"success":true,"data":{"query":"SAM9X75 QSPI serial memory mode continuous read DMA throughput read transfer maximum frequency DLL","totalResults":6,"limit":6,"hasMore":true,"documents":[{"title":"34.6.6.7 Continuous Read Mode - High-Performance Secure MCUs for Industrial IoT and Metering Applications, Up to 2MB Flash, 512K Dual-Port SRAM, Advanced Crypto and Security Features","content":"# 34.6.6.7 Continuous Read Mode The QSPI is compatible with the Continuous Read mode which is implemented in some serial Flash memories. In Continuous Read mode, the instruction overhead is reduced by excluding the instruction code from the instruction frame. When the Continuous Read mode is activated in a serial Flash memory by a specific option code, the instruction code is stored in the memory. For the next instruction frames, the instruction code is not required as the memory uses the stored one. In the QSPI, Continuous Read mode is used when reading data from the memory (QSPI\\_IFR.TFRTYP = 1). The addresses of the system bus read accesses are often nonsequential and this leads to many instruction frames that have the same instruction code. By disabling the send of the instruction code, the Continuous Read mode reduces the access time of the data. To be functional, this mode must be enabled in both the QSPI and the serial Flash memory. The Continuous Read mode is enabled in the QSPI by writing CRM to \u20181\u2019 in the QSPI\\_IFR (TFRTYP must equal 1). The Continuous Read mode is enabled in the serial Flash memory by sending a specific option code. CAUTION: If the Continuous Read mode is not supported by the serial Flash memory or disabled, CRM bit must not be written to \u20181\u2019, otherwise data read out of the serial Flash memory is unpredictable.\\n\\n Images: https://onlinedocs.microchip.com/oxy/GUID-D66D5975-7307-4F73-B6BE-948F23183301-en-US-3/GUID-B826A7CE-565E-44E0-A8EB-571325F2B767-low.png\\nhttps://onlinedocs.microchip.com/oxy/GUID-D66D5975-7307-4F73-B6BE-948F23183301-en-US-3/GUID-B826A7CE-565E-44E0-A8EB-571325F2B767-high.pdf#navpanes=0\u0026amp;toolbar=1\u0026amp;view=FitH","url":"https://onlinedocs.microchip.com/oxy/GUID-D66D5975-7307-4F73-B6BE-948F23183301-en-US-3/GUID-786B4BEE-3BF4-408E-82ED-D8FC236C1250.html?utm_source=mchpmcp","keywords":["34.6.6.7 Continuous Read Mode - High-Performance Secure MCUs for Industrial IoT and Metering Applications, Up to 2MB Flash, 512K Dual-Port SRAM, Advanced Crypto and Security Features","High-Performance Secure MCUs for Industrial IoT and Metering Applications, Up to 2MB Flash, 512K Dual-Port SRAM, Advanced Crypto and Security Features"],"relevancyScore":60.706463},{"title":"35.6.6.7 Continuous Read Mode - Second-Generation Smart Energy Solution with Dual Arm\u00AE Cortex\u00AE-M4F Cores, Security and LCD Controller Supporting External Metrology Implementation","content":"# 35.6.6.7 Continuous Read Mode The QSPI is compatible with the Continuous Read mode which is implemented in some serial Flash memories. In Continuous Read mode, the instruction overhead is reduced by excluding the instruction code from the instruction frame. When the Continuous Read mode is activated in a serial Flash memory by a specific option code, the instruction code is stored in the memory. For the next instruction frames, the instruction code is not required as the memory uses the stored one. In the QSPI, Continuous Read mode is used when reading data from the memory (QSPI\\_IFR.TFRTYP = 1). The addresses of the system bus read accesses are often nonsequential and this leads to many instruction frames that have the same instruction code. By disabling the send of the instruction code, the Continuous Read mode reduces the access time of the data. To be functional, this mode must be enabled in both the QSPI and the serial Flash memory. The Continuous Read mode is enabled in the QSPI by writing CRM to \u20181\u2019 in the QSPI\\_IFR (TFRTYP must equal 1). The Continuous Read mode is enabled in the serial Flash memory by sending a specific option code. CAUTION: If the Continuous Read mode is not supported by the serial Flash memory or disabled, CRM bit must not be written to \u20181\u2019, otherwise data read out of the serial Flash memory is unpredictable.\\n\\n Images: https://onlinedocs.microchip.com/oxy/GUID-FE7C04FE-3F77-40DF-9EBC-0B59D367E555-en-US-3/GUID-B826A7CE-565E-44E0-A8EB-571325F2B767-low.png\\nhttps://onlinedocs.microchip.com/oxy/GUID-FE7C04FE-3F77-40DF-9EBC-0B59D367E555-en-US-3/GUID-B826A7CE-565E-44E0-A8EB-571325F2B767-high.pdf#navpanes=0\u0026amp;toolbar=1\u0026amp;view=FitH","url":"https://onlinedocs.microchip.com/oxy/GUID-FE7C04FE-3F77-40DF-9EBC-0B59D367E555-en-US-3/GUID-786B4BEE-3BF4-408E-82ED-D8FC236C1250.html?utm_source=mchpmcp","keywords":["35.6.6.7 Continuous Read Mode - Second-Generation Smart Energy Solution with Dual Arm\u00AE Cortex\u00AE-M4F Cores, Security and LCD Controller Supporting External Metrology Implementation","Second-Generation Smart Energy Solution with Dual Arm\u00AE Cortex\u00AE-M4F Cores, Security and LCD Controller Supporting External Metrology Implementation"],"relevancyScore":59.93309},{"title":"9.4.6.9.10 Continuous Read Mode - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","content":"# 9.4.6.9.10 Continuous Read Mode The QSPI is compatible with the Continuous Read mode which is implemented in some serial Flash memories. In Continuous Read mode, the instruction overhead is reduced by excluding the instruction code from the instruction frame. When the Continuous Read mode is activated in a serial Flash memory by a specific option code, the instruction code is stored in the memory. For the next instruction frames, the instruction code is not required as the memory uses the stored one. In the QSPI, Continuous Read mode is used when reading data from the memory (QSPI\\_IFR.TFRTYP=1). The addresses of the system bus read accesses are often nonsequential and this may lead to many instruction frames that have the same instruction code. By disabling the send of the instruction code, the Continuous Read mode reduces the access time of the data. To be functional, this mode must be enabled in both the QSPI and the serial Flash memory. The Continuous Read mode is enabled in the QSPI by writing CRM to 1 in the QSPI\\_IFR (TFRTYP set to 1). The Continuous Read mode is enabled in the serial Flash memory by sending a specific option code. CAUTION: Check the connected Memory Continuous read mode compatibility before enabling.\\n\\n Images: https://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-4/GUID-026EF7F9-8652-4F3F-8264-0CF83B11DDE9-high.pdf#toolbar=1","url":"https://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-4/GUID-8358D54A-618D-46DB-8987-B57AD3B99724.html?utm_source=mchpmcp","keywords":["9.4.6.9.10 Continuous Read Mode - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security"],"relevancyScore":67.13026},{"title":"9.4.6.9.10 Continuous Read Mode - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","content":"# 9.4.6.9.10 Continuous Read Mode The QSPI is compatible with the Continuous Read mode which is implemented in some serial Flash memories. In Continuous Read mode, the instruction overhead is reduced by excluding the instruction code from the instruction frame. When the Continuous Read mode is activated in a serial Flash memory by a specific option code, the instruction code is stored in the memory. For the next instruction frames, the instruction code is not required as the memory uses the stored one. In the QSPI, Continuous Read mode is used when reading data from the memory (QSPI\\_IFR.TFRTYP=1). The addresses of the system bus read accesses are often nonsequential and this may lead to many instruction frames that have the same instruction code. By disabling the send of the instruction code, the Continuous Read mode reduces the access time of the data. To be functional, this mode must be enabled in both the QSPI and the serial Flash memory. The Continuous Read mode is enabled in the QSPI by writing CRM to 1 in the QSPI\\_IFR (TFRTYP set to 1). The Continuous Read mode is enabled in the serial Flash memory by sending a specific option code. CAUTION: Check the connected Memory Continuous read mode compatibility before enabling.\\n\\n Images: https://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-5/GUID-026EF7F9-8652-4F3F-8264-0CF83B11DDE9-low.png\\nhttps://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-5/GUID-026EF7F9-8652-4F3F-8264-0CF83B11DDE9-high.pdf#navpanes=0\u0026amp;toolbar=1\u0026amp;view=FitH","url":"https://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-5/GUID-8358D54A-618D-46DB-8987-B57AD3B99724.html?utm_source=mchpmcp","keywords":["9.4.6.9.10 Continuous Read Mode - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security"],"relevancyScore":66.17542},{"title":"SAM9X7 Series Data Sheet","content":"Write HyperFlash\u2122 \u201CProgram Buffer to Flash (confirm)\u201D command\nEND\r\n64.6.8.8. Write Memory Transfer  \r\nMany QSPI Flash memories impose a sequential write of their data buffer. When using this type of memory, the access to the memory must be performed in a strongly ordered way.\n64.6.8.9. Read Memory Transfer  \r\nThe user can access the data of the serial memory by sending an instruction with QSPI_IFR.DATAEN=1 and QSPI_IFR.TFRTYP=1.\nIn this mode, the QSPI is able to read data at a random address into the serial Flash memory, allowing the CPU to execute code directly from it (XiP, or Execute In Place).\nIn order to read data, the user must first configure the instruction frame by writing the QSPI_IFR. Then data can be read at any address in the QSPI address space mapping. The address of the system bus read accesses matches the address of the data inside the serial Flash memory.\nWhen the Read mode is used, several instruction frames can be sent before writing QSPI_CR.LASTXFR. Each time the system bus read accesses become non-sequential (addresses are not consecutive), a new instruction frame may be sent (depending on optimization) with the corresponding address.\n64.6.8.10. Continuous Read Mode  \r\nThe QSPI is compatible with the Continuous Read mode which is implemented in some serial Flash memories.\nIn Continuous Read mode, the instruction overhead is reduced by excluding the instruction code from the instruction frame. When the Continuous Read mode is activated in a serial Flash memory by a specific option code, the instruction code is stored in the memory. For the next instruction frames, the instruction code is not required as the memory uses the stored one.\nIn QSPI, Continuous Read mode is used when reading data from the memory (QSPI_IFR.TFRTYP=1). The addresses of the system bus read accesses are often nonsequential and this may lead to many instruction frames that have the same instruction code. By disabling the send of the instruction code, the Continuous Read mode reduces the access time of the data.\nTo be functional, this mode must be enabled in both the QSPI and the serial Flash memory. The Continuous Read mode is enabled in the QSPI by writing CRM to 1 in the QSPI_IFR (TFRTYP set to 1). The Continuous Read mode is enabled in the serial Flash memory by sending a specific option code.\nCAUTION  \r\nCheck the connected Memory Continuous read mode compatibility before enabling.\nFigure 64.25. Continuous Read Mode\nInstruction\nAddress\nOption to activate Continuous Read mode in the serial Flash memory\nData\nAddress\nOption\nData\nInstruction code is not required\n64.6.8.11. Instruction Frame Transmission Examples  \r\nAll waveforms in the following examples describe SPI transfers in SPI Clock mode 0 (QSPI_SCR.CPOL = 0 and QSPI_SCR.CPHA = 0. See Serial Clock Phase and Polarity.\nMICROCHIP  \r\nData Sheet  \r\nDS60001813D - 2538","keywords":["instruction","mode","memory","Read","Continuous","code","Flash","data","serial","QSPI","read","address","QSPI_IFR","QSPI_SCR","DS60001813D","QSPI_CR","parseddocuments","3221013e-124b-4b0e-a665-474f3a83df83","3221013e-124b-4b0e-a665-474f3a83df83.pdf"],"relevancyScore":69.90972},{"title":"36.6.8.4 Continuous Read Mode - Highly Integrated Wireless MCU with CAN FD, Ethernet, USB, Motor Control, Graphics, Touch and Enhanced Security","content":"# 36.6.8.4 Continuous Read Mode The QSPI is compatible with Continuous Read Mode (CRM), which is implemented in some Serial Flash memories. The CRM provides reduction in instruction overhead by excluding the instruction code from the instruction frame. When CRM is activated in a Serial Flash memory (by a specific option code), the instruction code is stored in the memory. For the next instruction frames, the instruction code is not required, as the memory uses the stored one. In the QSPI, CRM is used when reading data from the memory (INSTFRAME.TFRTYPE = 0x1). The addresses of the system bus read accesses are often non-sequential; this leads to many instruction frames with the same instruction code. By disabling the sending of the instruction code, the CRM reduces the access time of the data. To be functional, this mode must be enabled in both the QSPI and the Serial Flash memory. The CRM is enabled in the QSPI by setting the CRM bit in the INSTRFRAME register (INSTFRAME.CRMODE = 1, INSTFRAME.TFRTYPE must be 0x1). The CRM is enabled in the Serial Flash memory by sending a specific option code. CAUTION: If the CRM is not supported by the Serial Flash memory or disabled, the CRMODE bit must not be set. Otherwise, data read out from the Serial Flash memory is not valid.\\n\\n Images: https://onlinedocs.microchip.com/oxy/GUID-D1D9CFB7-99CD-47B6-A15F-EF7DD17F80A7-en-US-5/GUID-522E9FB4-3DD8-4872-926E-32C13C50139D-high.svg","url":"https://onlinedocs.microchip.com/oxy/GUID-D1D9CFB7-99CD-47B6-A15F-EF7DD17F80A7-en-US-5/GUID-9593A52F-4D84-472E-A2E6-54CCBB5D942D.html?utm_source=mchpmcp","keywords":["36.6.8.4 Continuous Read Mode - Highly Integrated Wireless MCU with CAN FD, Ethernet, USB, Motor Control, Graphics, Touch and Enhanced Security","Highly Integrated Wireless MCU with CAN FD, Ethernet, USB, Motor Control, Graphics, Touch and Enhanced Security"],"relevancyScore":63.638496}]},"timestamp":"2026-06-28T15:54:41Z"}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 15:55:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 15:55:37Z)**_
 
@@ -5710,8 +5592,6 @@ default/src/config/default/peripheral/qspi/plib_qspi_common.h:130:    QSPI_CLOCK
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 15:58:11Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 15:58:26Z)**_
 
 ## Feasibility verdict
@@ -5751,8 +5631,6 @@ QSPI bench: XDMAC mem2mem  4096 KiB in 230.168 ms = 18.2 MB/s
 QSPI bench: done (full 4.10 MB RGBA8888 splash scales from the above)
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:01:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:01:51Z)**_
 
@@ -5808,8 +5686,6 @@ QSPI bench: XDMAC mem2mem  4096 KiB in 230.132 ms = 18.2 MB/s
 QSPI bench: done (full 4.10 MB RGBA8888 splash scales from the above)
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:04:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:04:43Z)**_
 
@@ -5913,8 +5789,6 @@ grep -nE "LASTXFER|INSTRE|QSPI_CR_|CSR|SYNCBSY|__DMB" default/src/config/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:05:35Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:05:37Z)**_
 
 Confirmed the root cause. The driver's `QSPI_MemoryRead` ends every read with a proper termination ([plib_qspi.c:621-636](firmware/marvin/default/src/config/default/peripheral/qspi/plib_qspi.c#L621)): wait `RBUSY`/`SYNCBSY` → `LASTXFER` → wait chip-select-rise (`CSRA`). My raw paths (B memcpy, C XDMAC) skip all that, so they leave the QSPI mid-frame with CS still asserted — and the next driver command blocks forever.
@@ -5951,8 +5825,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:06:06Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:06:12Z)**_
 
 That should clear the freeze — the bench now closes the memory-mapped read frame after each raw path, leaving the QSPI in the same clean state the driver expects. (All four register masks I used are already used by the driver, so no new symbols.)
@@ -5980,8 +5852,6 @@ _**User (2026-06-28 16:07:21Z)**_
 looks good. qspi passes every time so far. Worth it to have bigger stress test of read integrity?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:09:57Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:10:01Z)**_
 
@@ -6161,8 +6031,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:11:38Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:11:41Z)**_
 
 Let me do a final consistency check on the module:
@@ -6255,8 +6123,6 @@ QSPI verify: PASS (1024 KiB x 4 passes; DRV mism=0, XDMAC mism=0)
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 16:13:16Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:13:21Z)**_
 
 PASS — 1 MiB × 4 passes, both paths, zero mismatches. That fully validates it:
@@ -6308,8 +6174,6 @@ grep -nE "^### 2026-06-2" journal.md | head -5
 
 _**Agent (claude-opus-4-8 2026-06-28 16:13:49Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 16:13:49Z)**_
-
 Let me record this properly — a decision-log row, a session-log entry, and an update to the open-questions bullet.
 
 _**Agent (claude-opus-4-8 2026-06-28 16:14:08Z)**_
@@ -6350,8 +6214,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/jo
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:14:49Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:14:57Z)**_
 
 Journaled — decision-log row, session-log entry, and the open-questions bullet all updated to reflect the validated outcome.
@@ -6386,8 +6248,6 @@ _**User (2026-06-28 16:14:58Z)**_
 Let's commit this as working. MCC generated changes already staged. Next quesion, should MCC own XDMAC initialization for this channel? That way we'll know both 0 and 1 in use based on MCC config.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:15:42Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:15:42Z)**_
 
@@ -6477,8 +6337,6 @@ Untracked files:
  24 files changed, 3644 insertions(+), 15 deletions(-)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:15:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:16:01Z)**_
 
@@ -6580,8 +6438,6 @@ exit: 0
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:16:42Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:16:54Z)**_
 
 Committed as `3bf917d` — 29 files, QSPI work only; the `t1s_link.c`/specstory/hardware changes were left untouched.
@@ -6623,8 +6479,6 @@ Data Transfers Per DMA Request? Burst Size for Memory To Memory Transfer?
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 16:19:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:19:28Z)**_
 
 Those are two different XDMAC channel-config fields, and only one matters for mem2mem:
@@ -6657,8 +6511,6 @@ _**User (2026-06-28 16:20:36Z)**_
 generated and staged. Let me know if anything needs to change
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:20:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:20:46Z)**_
 
@@ -6731,8 +6583,6 @@ void XDMAC_Initialize( void )
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:21:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:22:01Z)**_
 
 MCC generated it exactly right:
@@ -6786,8 +6636,6 @@ _**Agent (claude-opus-4-8 2026-06-28 16:22:40Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/flash/qspi_smoke.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:22:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:22:45Z)**_
 
@@ -6879,8 +6727,6 @@ QSPI: read-back PASS (256/256 match) -- smoke test PASS
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 16:24:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:24:11Z)**_
 
 All green — smoke PASS, 18.1 MB/s, verify clean, and the smoke-after-bench passes (no freeze). The MCC-owned channel behaves identically. Let me check what's staged and commit the follow-up:
@@ -6913,8 +6759,6 @@ M  firmware/marvin/default/src/config/default/peripheral/xdmac/plib_xdmac.h
 ?? hardware/t1s-sink/
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:24:17Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:24:19Z)**_
 
@@ -7029,8 +6873,6 @@ partition map go
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 16:26:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:26:28Z)**_
 
 On it. Here's the map — 8 MiB, everything sector-aligned, no gaps or overlaps:
@@ -7105,8 +6947,6 @@ File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/fi
 
 _**Agent (claude-opus-4-8 2026-06-28 16:26:50Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 16:26:50Z)**_
-
 Now journal the decision and update the open-questions bullet:
 
 _**Agent (claude-opus-4-8 2026-06-28 16:26:59Z)**_
@@ -7128,8 +6968,6 @@ _**Agent (claude-opus-4-8 2026-06-28 16:27:09Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:27:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:27:27Z)**_
 
@@ -7166,8 +7004,6 @@ _**User (2026-06-28 16:29:16Z)**_
 commit the map then settings
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:30:39Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:30:39Z)**_
 
@@ -7251,8 +7087,6 @@ default/src/ui/ui_manager.c:143:    UiManager_SetBacklight(BACKLIGHT_DEFAULT_PCT
 889:bool DRV_SST26_GeometryGet( const DRV_HANDLE handle, DRV_SST26_GEOMETRY *geometry );
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:32:08Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:32:12Z)**_
 
@@ -7576,8 +7410,6 @@ File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/fi
 
 _**Agent (claude-opus-4-8 2026-06-28 16:33:23Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 16:33:23Z)**_
-
 Now wire it into the console and build:
 
 _**Agent (claude-opus-4-8 2026-06-28 16:33:24Z)**_
@@ -7619,8 +7451,6 @@ _**Agent (claude-opus-4-8 2026-06-28 16:33:47Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:34:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:34:02Z)**_
 
@@ -7723,8 +7553,6 @@ looks good. stress probably wouldn't hurt to confirm logic.
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 16:41:04Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:41:06Z)**_
 
 Good call — the wrap/erase path is the part that can't be exercised by hand. Adding `settings stress [n]`: wipes, does N saves (default 200 → wraps the 64-slot ring 3× and forces sector erases), then **reloads from flash** and verifies the highest-`seq` record matches the last write. The reload is the real proof — if the erase ever clobbered the live record or the scan picked wrong, it'd fail.
@@ -7768,8 +7596,6 @@ _**Agent (claude-opus-4-8 2026-06-28 16:41:41Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:41:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:41:45Z)**_
 
@@ -7846,8 +7672,6 @@ _**User (2026-06-28 16:44:00Z)**_
 stress passed at 200 and 1000. please commit. Then wire into boot.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:44:16Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:44:17Z)**_
 
@@ -7948,8 +7772,6 @@ e63b890 marvin: lock QSPI 8 MiB partition map (flash/qspi_layout.h)
 
 _**Agent (claude-opus-4-8 2026-06-28 16:45:35Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-28 16:45:35Z)**_
-
 Committed as `fc40739`. Now wiring into boot. Let me read the `ui_manager` backlight path to wire correctly:
 
 _**Agent (claude-opus-4-8 2026-06-28 16:45:35Z)**_
@@ -8013,8 +7835,6 @@ _**Agent (claude-opus-4-8 2026-06-28 16:45:35Z)**_
 155	static TaskHandle_t s_legato_task;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:46:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:46:13Z)**_
 
@@ -8132,8 +7952,6 @@ _**Agent (claude-opus-4-8 2026-06-28 16:46:17Z)**_
 284	     * to RUNNING so a blit isn't dropped by the RUNNING gate, then set the Legato
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 16:46:37Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:46:39Z)**_
 
@@ -8279,8 +8097,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 16:47:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 16:47:47Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -8360,8 +8176,6 @@ _**User (2026-06-28 16:51:43Z)**_
 works perfectly. commit.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-28 16:51:56Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 16:51:56Z)**_
 
@@ -8462,8 +8276,6 @@ Let's work on method to load splash screen and assets (seperate, not both at onc
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 18:13:31Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 18:13:32Z)**_
 
 Good question, and the answer steers the whole design. Let me ground it in how you currently program NAND and what the splash path looks like, then lay out the options.
@@ -8528,8 +8340,6 @@ firmware/marvin/docs/journal.md
 60:    int32_t sz = SYS_FS_FileSize(h);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 18:14:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 18:14:08Z)**_
 
@@ -8687,8 +8497,6 @@ line clobbers the bundled-dtc include path); adjust the OpenSSL prefix for your 
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 18:15:11Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 18:15:30Z)**_
 
 Now I have the full picture. Here's the honest feasibility answer, then the two real methods.
@@ -8738,8 +8546,6 @@ Options:
 
 **Answer:** u-boot sf over jtag. SD might be find for one time load of splash screen but is painful path for develoment with assets. I don't want to have to load assets onto SD card every time they change.
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 18:17:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 18:17:33Z)**_
 
@@ -8966,8 +8772,6 @@ proc marvin_load_ram {bootstrap_elf boot_entry marvin_elf marvin_entry} {
 }
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 18:18:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 18:18:02Z)**_
 
@@ -9209,8 +9013,6 @@ If a future board ever fails to boot from a freshly programmed NAND, capture
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 18:20:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 18:20:58Z)**_
 
 I have the full pattern. Your NAND flow = JTAG-load an init-and-stop at91bootstrap (brings up DDR) + u-boot to DDR, stage blobs in DDR, then drive u-boot's console (`nand_console.py`) to `nand write`/verify. The QSPI version is the same shape with `sf` instead of `nand` — and **simpler**, since NOR needs no PMECC/ECC/header: just `sf probe` → `sf erase` → `sf write` → verify.
@@ -9415,8 +9217,6 @@ File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/fi
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 18:21:42Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 18:22:11Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Write"><details>
@@ -9532,8 +9332,6 @@ File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/fi
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 18:22:40Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 18:22:41Z)**_
 
 Two bash issues to fix in `program-qspi.sh`: the settings-region guard compares a decimal against hex strings (`[ -gt ]` won't parse `0x...`), and the `READELF` resolution is fragile. Let me clean both up:
@@ -9547,8 +9345,6 @@ _**Agent (claude-opus-4-8 2026-06-28 18:22:53Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/openocd/program-qspi.sh has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 18:22:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 18:23:00Z)**_
 
@@ -9687,8 +9483,6 @@ File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/fi
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 18:23:42Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 18:23:45Z)**_
 
 Let me syntax-check both scripts:
@@ -9720,8 +9514,6 @@ flash size dec: 8388608
 assets+almost-full end=0x7fd000 > settings(0x7fc000)? REFUSE
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 18:59:42Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 18:59:56Z)**_
 
@@ -9772,8 +9564,6 @@ how do I stage the nand flasher? the script just loads nand all the way through?
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:01:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:01:28Z)**_
 
 Good catch — `program-nand.sh` runs the **whole** flow (stage → erase → `nand write` → verify) in one shot; there's no "just get me to the u-boot prompt" mode. So to test `sf probe` you need to stage u-boot *without* the programming step. Let me add that — a `shell` mode that stages only the bootstrap + u-boot and drops you at the console.
@@ -9803,8 +9593,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:01:57Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/openocd/program-qspi.sh has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:02:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:02:21Z)**_
 
@@ -9882,8 +9670,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/openocd
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 19:02:44Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:02:45Z)**_
 
 Now remove the duplicated `boot_entry`/`common` lines left in the full-flow section:
@@ -9925,8 +9711,6 @@ program-qspi.sh OK
 18:# Usage:
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:03:04Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:03:05Z)**_
 
@@ -9999,8 +9783,6 @@ but attempt to load splash says missing: /Users/gregmrozek/Projects/microchip/gu
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:06:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:06:59Z)**_
 
 `sf probe` works on the NAND flasher — so no u-boot build needed at all. The error is just that the script *defaults* `UBOOT_BIN` to the (nonexistent) qspiflash binary. Since your NAND flasher already has SF, let me make it the default so it works out of the box:
@@ -10025,8 +9807,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/openocd
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 19:07:16Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:07:18Z)**_
 
 Now reflect that in the docs — the NAND flasher is confirmed-with-SF and the default, so no build is needed:
@@ -10040,8 +9820,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:07:23Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/openocd/program-qspi.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:07:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:07:36Z)**_
 
@@ -10096,8 +9874,6 @@ splash is in data/ui
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:34:34Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:34:35Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -10114,8 +9890,6 @@ ls -la data/ui/splash.* 2>&1 | sed 's/  */ /g'
 -rw-r--r--@ 1 gregmrozek staff 4096000 Jun 27 10:19 data/ui/splash.raw
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:34:39Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:34:40Z)**_
 
@@ -10150,8 +9924,6 @@ OK
 48:    splash) QOFF=$QSPI_SPLASH_OFFSET; BLOB="${1:-$root/data/ui/splash.raw}" ;;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:34:53Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:34:53Z)**_
 
@@ -10192,8 +9964,6 @@ done. Let's do the marvin app work as well so we can commit confirmed working fl
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:39:36Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:39:37Z)**_
 
 Done provisioning. Now the firmware read-side: point `Splash_Load()` at QSPI instead of SD. Let me read the rest of `splash.c` to convert it cleanly:
@@ -10215,8 +9985,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:39:38Z)**_
 95
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:40:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:40:20Z)**_
 
@@ -10305,8 +10073,6 @@ String: bool Splash_Load(void)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 19:40:52Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:40:53Z)**_
 
 Let me re-read the current state of the function (line numbers shifted after the include edit):
@@ -10373,8 +10139,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:40:55Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 19:41:00Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:41:01Z)**_
 
 The file has a single blank line where my match expected two. Let me match the exact current text:
@@ -10388,8 +10152,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:41:14Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/splash/splash.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:41:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:41:19Z)**_
 
@@ -10426,8 +10188,6 @@ grep -nE "DRV_SST26_|QSPI_SPLASH_OFFSET|qspi_layout.h" default/src/ui/screens/sp
 61:    DRV_SST26_Close(h);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:41:42Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:41:53Z)**_
 
@@ -10530,8 +10290,6 @@ U-Boot>
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:43:34Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:43:38Z)**_
 
 Three real bugs, all now visible in that output — good that the verify *almost* hid them. Let me walk through and fix each:
@@ -10575,8 +10333,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:44:05Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/openocd/qspi_console.py has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:44:13Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:44:14Z)**_
 
@@ -10666,8 +10422,6 @@ That did it and confirmed splash screen load from QSPI (SD card removed) Thought
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:47:38Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:47:42Z)**_
 
 That's the full chain working — host→QSPI provisioning + firmware QSPI read, splash with **no SD card**. 
@@ -10703,8 +10457,6 @@ python3 -m py_compile qspi_console.py && echo "py OK"
 py OK
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:48:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:48:20Z)**_
 
@@ -10744,8 +10496,6 @@ SPLASH: 4096000 B from QSPI in 263 ms
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:49:31Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:49:40Z)**_
 
 Those `NAND:` lines are **at91bootstrap doing its normal job — loading the marvin app from NAND** — not leftover, and not the splash. They're printed by the second-stage bootloader *before* marvin starts, and they're exactly the boot chain from `program-nand.md`:
@@ -10782,8 +10532,6 @@ oh yeah, never mind. please make sure all comments / journal / documentation up 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-28 19:50:23Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:50:24Z)**_
 
 On it — let me review the docs/comments, update the journal, then commit. First, current state and the journal bullet that needs updating:
@@ -10816,8 +10564,6 @@ grep -niE "sd |fatfs|jpeg|sys_fs|decode|loader" firmware/marvin/default/src/ui/s
 40:     * layer scans out — no SD mount, no decode (the blob is provisioned via
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:50:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:50:38Z)**_
 
@@ -10880,8 +10626,6 @@ uint32_t Splash_CanvasId(void);
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-28 19:51:05Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-28 19:51:07Z)**_
 
 `splash.h`'s header comment is stale (still says SD card / file read). Let me fix it, then the journal. First `splash.h`:
@@ -10895,8 +10639,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:51:12Z)**_
 <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:51:17Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:51:17Z)**_
 
@@ -10985,8 +10727,6 @@ _**Agent (claude-opus-4-8 2026-06-28 19:52:16Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-28 19:52:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-28 19:52:33Z)**_
 

@@ -12,8 +12,6 @@ please parse default/src/config/default/gfx/legato/generated/le_gen_stringtable.
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-30 14:52:12Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 14:52:13Z)**_
 
 I'll scan the file for characters outside Basic Latin (0x20–0x7E) and Latin-1 (0xA0–0xFF).
@@ -62,8 +60,6 @@ SyntaxError: unexpected character after line continuation character
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 14:52:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 14:53:41Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -102,8 +98,6 @@ Distinct out-of-range code points: 0
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 14:53:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 14:53:50Z)**_
 
 No characters outside those ranges. The file decoded cleanly as UTF-8 and every character falls within Basic Latin (0x20–0x7E) or Latin-1 (0xA0–0xFF) — **0 distinct out-of-range code points** (tabs/newlines/CR excluded).
@@ -117,8 +111,6 @@ _**User (2026-06-30 14:58:54Z)**_
 can you check legato library for utf8 support for strings / labels? Characters above 0x7F are displaying as 2 other characters.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-30 14:59:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 14:59:03Z)**_
 
@@ -146,8 +138,6 @@ echo; echo "=== config defs ==="; grep -rniE "LE_CONFIG.*(STRING|UTF|ASCII|ENCOD
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 14:59:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 14:59:12Z)**_
 
 Found it — the stringtable is generated with `LE_STRING_ENCODING_ASCII`. Let me confirm what encodings Legato supports and how the encoding drives glyph lookup.
@@ -170,8 +160,6 @@ grep -rniE "LE_STRING_ENCODING|UTF8|UTF16|utf8|nextCodePoint|_decode|codepoint" 
 (eval):3: no matches found: --include=*.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 14:59:18Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 14:59:18Z)**_
 
@@ -352,8 +340,6 @@ legato_stringutils.c:760:        &decodeUTF8,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 14:59:31Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 14:59:34Z)**_
 
 Confirmed — Legato has full UTF-8 support; it's just not enabled. Let me confirm the ASCII decoder is what splits your byte into two glyphs, and where the mode is set.
@@ -480,8 +466,6 @@ static leResult decodeUTF8(uint8_t* val,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 14:59:53Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:00:00Z)**_
 
 Diagnosis confirmed. Here's what's happening and how to fix it.
@@ -569,8 +553,6 @@ awk: calling undefined function strtonum
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:00:17Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:00:35Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -603,8 +585,6 @@ plausible 2-byte UTF-8 lead+continuation pairs: 2
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:00:41Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:00:51Z)**_
 
 The data confirms it: the table contains genuine 2‑byte UTF‑8 sequences (`0xC3 0xA9`‑style lead+continuation pairs) that ASCII mode is splitting into pairs of glyphs.
@@ -632,8 +612,6 @@ _**User (2026-06-30 15:06:45Z)**_
 ok, found the MGS setting to change to UTF-8. fonts contain necessary characters. still showing up as 2 characters on song select screen. these are strings that we load dynamically. are we doing something wrong?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-06-30 15:06:50Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:06:54Z)**_
 
@@ -707,8 +685,6 @@ grep -niE "leResult|void|uint32_t|leDynamicString" default/src/config/default/gf
 
 _**Agent (claude-opus-4-8 2026-06-30 15:07:05Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-30 15:07:05Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 Find string population calls in song_select
@@ -737,8 +713,6 @@ grep -niE "setFromCStr|fromCStr|setText|leString|DynamicString|encod|setFromChar
 304:    list->fn->setScheme(list, &SCHEME_PANEL_GRAY_18181B);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:07:08Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:07:10Z)**_
 
@@ -890,8 +864,6 @@ int32_t _leFixedString_Compare(const leFixedString* _this,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:07:23Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:07:24Z)**_
 
 `setFromCStr` copies the input **byte-for-byte** into `leChar` slots — no UTF‑8 decoding at all. That's the bug. Let me confirm `leChar` width and whether any code-point-aware setter exists.
@@ -950,8 +922,6 @@ leResult leDecodeCodePoint(uint32_t encoding,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:07:44Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:07:45Z)**_
 
 Now I have the full picture. Let me confirm the `leFixedString` struct exposes `data`/`length` so a wrapper can write decoded code points.
@@ -990,8 +960,6 @@ typedef struct leFixedString
  * uint32_t size;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:07:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:08:14Z)**_
 
@@ -1057,8 +1025,6 @@ yes, please create this function for dynamic strings. It will be used across mul
 
 ---
 
-_**Agent (claude-opus-4-8 2026-06-30 15:12:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:13:00Z)**_
 
 I'll create a shared helper and wire it into both the song-select screen and the songlist widget. Let me first survey the UI source layout and find all the `setFromCStr` usages.
@@ -1112,8 +1078,6 @@ default/src/ui/widgets/song_list/widget_song_list.c
 default/src/ui/widgets/song_list/widget_song_list.h
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:13:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:13:06Z)**_
 
@@ -1180,8 +1144,6 @@ default/src/video
 123:    leStringRenderer_DrawCString(&req);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:13:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:13:13Z)**_
 
@@ -1275,8 +1237,6 @@ default/src/config/default/gfx/legato/string/legato_string_renderer.h:166:leResu
 default/src/config/default/gfx/legato/string/legato_string_renderer.h:174: * leResult res = leStringRenderer_DrawCString(req);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:13:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:13:21Z)**_
 
@@ -1393,8 +1353,6 @@ leResult leStringRenderer_DrawCString(leCStringRenderRequest* req)
 #if LE_STREAMING_ENABLED == 1
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:13:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:13:35Z)**_
 
@@ -1533,8 +1491,6 @@ typedef struct leCStringRenderRequest
 
 _**Agent (claude-opus-4-8 2026-06-30 15:13:50Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-30 15:13:50Z)**_
-
 There's a `leUStringRenderRequest` that takes a pre-decoded `leChar*` buffer — ideal for the widget. Let me check the base `leString` vtable for a code-point-level mutator (so one helper works for both fixed and dynamic), and whether `DrawUString` is public.
 
 _**Agent (claude-opus-4-8 2026-06-30 15:13:52Z)**_
@@ -1602,8 +1558,6 @@ default/src/config/default/gfx/legato/string/legato_string_renderer.c:255:leResu
 default/src/config/default/gfx/legato/string/legato_string_renderer.c:272:        return drawUString(req);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:14:08Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:14:10Z)**_
 
@@ -1745,8 +1699,6 @@ void SongList_SetDebugFill(leWidget *w, bool on);
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:14:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:14:34Z)**_
 
 I have everything I need. Let me check the existing `util/csv.h` for naming/style conventions, and read the songlist `draw_str` callers to map fields.
@@ -1829,8 +1781,6 @@ int csv_split(char *line, char *fields[], int maxf);
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:14:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:14:55Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -1874,8 +1824,6 @@ leResult leStringUtils_KerningRect(const leRasterFont* fnt,
 }
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:15:01Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:15:03Z)**_
 
@@ -1986,8 +1934,6 @@ leResult lestring_set_utf8(leString *str, const char *utf8)
 File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/util/legato_utf8.c (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:15:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:15:24Z)**_
 
@@ -2153,8 +2099,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-06-30 15:16:15Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-30 15:16:15Z)**_
-
 Now I need to ensure the new `.c` file is in the build. Let me check how source files are registered (whether `csv.c` is listed explicitly somewhere):
 
 _**Agent (claude-opus-4-8 2026-06-30 15:16:17Z)**_
@@ -2265,8 +2209,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/m
 
 _**Agent (claude-opus-4-8 2026-06-30 15:16:39Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-30 15:16:39Z)**_
-
 Let me verify `drawUString` handles alignment (the widget uses RIGHT/CENTER), so behavior matches the old C-string path:
 
 _**Agent (claude-opus-4-8 2026-06-30 15:16:39Z)**_
@@ -2352,8 +2294,6 @@ leResult leStringRenderer_DrawUString(leUStringRenderRequest* req)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:16:56Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:17:01Z)**_
 
 `drawUString` is structurally identical to `drawCString` (same CENTER/RIGHT/LEFT logic) — alignment behavior is preserved. Let me confirm the fixed-string vtable actually implements `setFromChar` (so `lestring_set_utf8` works on it):
@@ -2423,8 +2363,6 @@ leResult _leFixedString_SetFromChar(leFixedString* _this,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-06-30 15:17:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-06-30 15:17:21Z)**_
 
 `setFromChar` is implemented and wired into the fixed-string vtable — `lestring_set_utf8` works on the detail labels. Everything is consistent. Let me add a brief journal entry per the project rules.
@@ -2456,8 +2394,6 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 </persisted-output>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:17:25Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:17:25Z)**_
 
@@ -2572,8 +2508,6 @@ good. please comment and commit staged files
 
 _**Agent (claude-opus-4-8 2026-06-30 15:23:05Z)**_
 
-_**Agent (claude-opus-4-8 2026-06-30 15:23:05Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 Show git status and staged files
@@ -2633,8 +2567,6 @@ Untracked files:
  15 files changed, 119 insertions(+), 22 deletions(-)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-06-30 15:23:18Z)**_
 
 _**Agent (claude-opus-4-8 2026-06-30 15:23:18Z)**_
 

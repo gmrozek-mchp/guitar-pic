@@ -12,8 +12,6 @@ see marvin journal line 220. lets work on recovery mechanism for the video colla
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 10:55:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 10:55:58Z)**_
 
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
@@ -123,8 +121,6 @@ _**Agent (claude-opus-4-8 2026-07-01 10:55:58Z)**_
 279	static-allocation rule). Legato strings carry their own font, so `song_detail_init`
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 10:56:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 10:56:03Z)**_
 
@@ -421,8 +417,6 @@ _**Agent (claude-opus-4-8 2026-07-01 10:56:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 10:56:13Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 10:56:13Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/video/isc_capture.h`
@@ -469,8 +463,6 @@ _**Agent (claude-opus-4-8 2026-07-01 10:56:13Z)**_
 39
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 10:56:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 10:56:28Z)**_
 
@@ -531,8 +523,6 @@ _**Agent (claude-opus-4-8 2026-07-01 10:56:32Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 10:56:40Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 10:56:41Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -568,8 +558,6 @@ _**Agent (claude-opus-4-8 2026-07-01 10:56:43Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 10:57:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 10:57:06Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -587,8 +575,6 @@ Check available log macros
 ./log.h:39:#define LOG_INFO(...)  log_printf(LOG_LEVEL_INFO,  __VA_ARGS__)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 10:57:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 10:57:13Z)**_
 
@@ -623,8 +609,6 @@ _**Agent (claude-opus-4-8 2026-07-01 10:57:32Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 10:57:43Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 10:57:44Z)**_
 
@@ -713,8 +697,6 @@ recovery appears working, but there's common screen glitches when navigating the
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:04:44Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:04:45Z)**_
 
 This is Phase 2 from the journal. Let me
@@ -751,8 +733,6 @@ ISC_Capture: capture started
 VIDEO: capture ARMED 720x480
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-01 11:05:15Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:05:17Z)**_
 
@@ -1307,8 +1287,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:05:19Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:05:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:05:38Z)**_
 
 Let me check the panel dimensions and the dialog geometry.
@@ -1410,8 +1388,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:05:44Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:05:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:05:49Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -1427,8 +1403,6 @@ default/src/ui/ui_manager.h:33:#define BASE_H    800u
 ugrep: warning: default/src/gfx/canvas/gfx_canvas_api.h: No such file or directory
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:07:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:07:24Z)**_
 
@@ -1463,8 +1437,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:07:24Z)**_
 24
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:08:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:08:36Z)**_
 
@@ -1552,8 +1524,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:09:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:09:46Z)**_
 
 Now update the boot `heo_unbind` comment since it no longer clears the discard:
@@ -1611,8 +1581,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:09:56Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:10:00Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:10:01Z)**_
 
@@ -1698,8 +1666,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:10:01Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:10:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:10:21Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -1736,8 +1702,6 @@ Verify DISCEN writes are centralized
 552:    UiManager_VideoShow(VIDEO_WIN_X, VIDEO_WIN_Y, VIDEO_WIN_W, VIDEO_WIN_H);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:10:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:10:34Z)**_
 
@@ -1834,8 +1798,6 @@ working as expected now. should we also consider ability to disable the capture 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:13:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:14:02Z)**_
 
 Agreed — a note is the right call, not code. Here's the reasoning, then I'll record it.
@@ -1870,8 +1832,6 @@ let's commit this and look at phy rate next. linux4sam repo is here /Users/gregm
 
 _**Agent (claude-opus-4-8 2026-07-01 11:17:47Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 11:17:47Z)**_
-
 Greg approved the commit. Let me review exactly what's changed before committing.
 
 _**Agent (claude-opus-4-8 2026-07-01 11:17:48Z)**_
@@ -1898,8 +1858,6 @@ Check git status and diffstat
  3 files changed, 147 insertions(+), 16 deletions(-)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:17:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:17:52Z)**_
 
@@ -1936,8 +1894,6 @@ EOF
  3 files changed, 147 insertions(+), 16 deletions(-)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:18:05Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:18:06Z)**_
 
@@ -2111,8 +2067,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:18:10Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:18:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:18:43Z)**_
 
 The current source is **720×480** (from your log), but HSFREQRANGE is set to `0x0A` — the band for ~972 Mbps/lane. That's a big clue: 720×480p60 needs only a fraction of that, so the PHY may be running a band far from the actual rate. Let me confirm both sides — what the TC358743 actually transmits, and how Linux picks the band.
@@ -2191,8 +2145,6 @@ Find CSI clock/lane config in firmware tc358743
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:18:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:18:58Z)**_
 
 Key finding: the firmware runs a **fixed 972 Mbps/lane** PLL (FBD=144, PRD=4) regardless of resolution — the "picked high for convenience" the journal flagged. 720×480p60 RGB888 needs only ~324 Mbps/lane. Now let me see how Linux picks the rate dynamically.
@@ -2246,8 +2198,6 @@ Locate relevant Linux drivers
 Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:19:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:19:13Z)**_
 
@@ -2318,8 +2268,6 @@ Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:19:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:19:23Z)**_
 
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
@@ -2389,8 +2337,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:19:23Z)**_
 727				MASK_PHY_SYSCLK_IND : 0x0);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:19:30Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:19:33Z)**_
 
@@ -2562,8 +2508,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:19:33Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:20:06Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:20:07Z)**_
 
 Now the DW D-PHY RX HSFREQRANGE table — to find the band for the lower rate:
@@ -2629,8 +2573,6 @@ Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:22:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:22:28Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -2681,8 +2623,6 @@ Find range table in dw-dphy-rx.c
 Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:22:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:22:38Z)**_
 
@@ -2760,8 +2700,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:22:38Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:23:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:23:24Z)**_
 
 Now I have the mechanism. Let me confirm what the firmware currently writes for the TX-side D-PHY timing and PLL, so a proposal is precise.
@@ -2816,8 +2754,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:23:24Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:23:53Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:24:10Z)**_
 
 I've traced both sides. Here's what I found — and it points at a likely **root cause**, not just a robustness tweak.
@@ -2859,8 +2795,6 @@ Options:
 **Answer:** Static 594 Mbps (Recommended)
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:27:38Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:27:39Z)**_
 
 Static 594 it is. Let me make the edits.
@@ -2884,8 +2818,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:28:01Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:28:05Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:28:06Z)**_
 
@@ -2917,8 +2849,6 @@ Check for rate-dependent logic
 
 _**Agent (claude-opus-4-8 2026-07-01 11:28:13Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 11:28:13Z)**_
-
 Good — `pll_frs` is already derived from `CSI_BPS_PER_LANE` (line 379-385), so at 594 Mbps it correctly stays `FRS=0` and the diagnostic at line 768 will now report 594. No other rate-dependent logic. Let me update the journal.
 
 _**Agent (claude-opus-4-8 2026-07-01 11:28:20Z)**_
@@ -2940,8 +2870,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:28:35Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:28:42Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:28:44Z)**_
 
@@ -3054,8 +2982,6 @@ UI: HEO bound src 720x480 -> dst 720x480 @(280,76) 1:1
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:36:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:36:15Z)**_
 
 That's a clear result — and it points the other way from my theory. At 972 (before these changes) boot was rock-solid and only the *dialog* stalled; at 594 the **boot itself** can't hold lock and re-arms 5–6 times before it catches. So on this board 972 locks *more* robustly than 594, not less. My FIFO-underrun hypothesis was wrong (or at least not the dominant effect) — the boot-time D-PHY lock margin matters more, and it's better at 972.
@@ -3096,8 +3022,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/jo
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:37:04Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:37:08Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -3107,8 +3031,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:37:08Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:37:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:37:12Z)**_
 
@@ -3129,8 +3051,6 @@ Confirm source files reverted to committed state
 exit: tc/isc diff above (empty = identical to HEAD)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:37:17Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:37:18Z)**_
 
@@ -3200,8 +3120,6 @@ I want to understand this. it should work at slower phy clock. don't just hand w
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:39:21Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:39:27Z)**_
 
 You're right — that's a fair challenge, and "594 just locks worse" is not an explanation. A slower D-PHY clock has *more* timing margin and should lock more easily, not less. Let me actually look at the evidence properly and stop hand-waving.
@@ -3235,8 +3153,6 @@ Find how csiBitRate maps to hardware
 ./config/default/vision/drivers/csi/drv_csi.c:165:    csiObj.csiBitRate = 0x16;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:39:37Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:39:37Z)**_
 
@@ -3405,8 +3321,6 @@ to be clear, it's not just losing lock and recovering. it never gives clean vide
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:43:18Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:43:27Z)**_
 
 That table is the key — let me stop guessing and read how the value is actually consumed. Note line 147: `csiBitRate` is passed straight into `CSI_Analog_Init` as the D-PHY analog config. And I need to see `CSI_Analog_Init`.
@@ -3473,8 +3387,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:43:39Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:43:44Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 11:43:44Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 Find csi_phy_hs_rx_init
@@ -3526,8 +3438,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:43:48Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:44:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:45:08Z)**_
 
 Now I have the full RX path, and it sharpens the diagnosis. `csi_phy_hs_rx_init` (plib_csi.c:113) does, per lane: select the lane's HS-RX test register → write **`0x94` (offset-calibration + termination-enable, fixed)** → write **`bit_rate` (the hsfreqrange code)**. So on the RX side there is exactly **one** rate-dependent knob — the hsfreqrange code — plus that *fixed* `0x94` offset-cal that was validated at 972. Everything else (clock-lane cal 0x34/0x94) is rate-independent.
@@ -3560,8 +3470,6 @@ Options:
 **Answer:** Quick-try 0x17 first
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:46:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:46:04Z)**_
 
 Greg chose **quick-try 0x17**. Re-applying the 594 config, but with hsfreqrange `0x17` (the vendor table's 550–599 value) instead of `0x07`. (I'll leave your `VIDEO_STALL_TIMEOUT_MS = 100` change alone.)
@@ -3585,8 +3493,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:46:28Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/isc_capture.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:46:36Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:46:37Z)**_
 
@@ -4019,8 +3925,6 @@ but again, once it finally locks clean, it remains stable. There are no further 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:51:13Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:51:29Z)**_
 
 That result is actually decisive — it **falsifies** the RX-band hypothesis. `0x17` vs `0x07` made no difference; both are equally flaky. So the hsfreqrange code is *not* the cause. Combined with your key observation (it always reaches a clean lock eventually and then never drops), the picture is now much clearer:
@@ -4049,8 +3953,6 @@ Options:
 
 **Answer:** do not give up. do not revert to 972. figure this out!
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:52:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:52:36Z)**_
 
@@ -4143,8 +4045,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:52:36Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:53:05Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:53:09Z)**_
 
 `diag_dump_rx` is gated behind `LOG_LEVEL_DEBUG`. Let me check where it's called so I don't disturb hot paths, then expose an unconditional variant for the collapse capture.
@@ -4166,8 +4066,6 @@ Find diag_dump_rx call sites and CSI bit masks
 (eval):1: no matches found: ../../packs/*/component/
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:53:27Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:53:28Z)**_
 
@@ -4227,8 +4125,6 @@ void log_printf(log_level_t lvl, const char *fmt, ...)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:53:36Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:53:37Z)**_
 
 The plan is clear. I'll refactor the dumper to be level-parameterized and expose an unconditional variant, then fire it at the moment of collapse in the watchdog. This gives us the RX error class at the exact failure.
@@ -4267,8 +4163,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:54:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:54:27Z)**_
 
 To avoid flooding the UART (a stall every ~100 ms × a dozen lines each), let me cap the diagnostic to the first several collapses — enough samples to see whether the error class is consistent.
@@ -4282,8 +4176,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:54:30Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/video/video.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 11:54:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 11:54:35Z)**_
 
@@ -4329,8 +4221,6 @@ do you still have good access to sam9x75 datasheet? table in section 48.6.1.3 ha
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 11:56:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:56:33Z)**_
 
 That's a key confirmation — the SAM9X75 datasheet (48.6.1.3) says **`0x17` = 550–599 Mbps**, so `0x17` is the *correct* RX band code for 594, and it matches the vendor `CSI_BitRateLookUp`. Which means:
@@ -4350,8 +4240,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:56:34Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 11:57:25Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 11:57:31Z)**_
 
 This is very useful. The datasheet confirms the D-PHY defaults to the **80–110 Mbps** range and `hsfreqrange` must be set for higher rates — which we do. But note the framing: setting `RSTZ`/`SHUTDOWNZ` high "**starts an initialization procedure**." That init has timing requirements, and the bimodal lock smells like the init/calibration procedure not being given proper conditions. Let me pull the full analog-init + "General D-PHY Control Operation" steps (48.6.1.3–48.6.1.4) to check for a rate-sensitive step or a required wait/poll the vendor driver may be skipping.
@@ -4365,8 +4253,6 @@ _**Agent (claude-opus-4-8 2026-07-01 11:57:32Z)**_
 {"success":true,"data":{"query":"SAM9X75 CSI D-PHY General Control Operation analog initialization test code 0x44 settle time deskew wait stopstate control mode procedure steps","totalResults":6,"limit":6,"hasMore":true,"documents":[{"title":"SAM9X7 Series Data Sheet","content":"Microchip\r\nData Sheet\r\nDS60001813D - 1078\r\nFigure 47.6. Turnaround Sequence State Diagram\nInitial Tx Side -\u003E Final Rx Side\nSTOPSTATE\r\nLP-11\r\nLP Driver enabled\r\nLP receiver disabled\nTurnaround Sequence\r\nLP-11, LP-10, LP-00, LP-10, LP-00\r\nLP receiver enabled\nLP-00\r\n(drive overlap)\nLP Driver Disabled\r\nChange D-PHY direction to Rx\nSTOPSTATE\r\nLP-11\nInitial Rx Side -\u003E Final Tx Side\nSTOPSTATE\r\nLP-11\r\nLP Driver disabled\r\nLP receiver enabled\nReceiving\r\nTurnaround Sequence\r\nChange D-PHY direction to Tx\nLP driver enabled\r\nLP-00 (drive overlap)\nMark-1\r\nLP-10\nSTOPSTATE\r\nLP-11\r\nLP receiver disabled\n47.6.2. D-PHY Control Operation\n47.6.2.1. General D-PHY Control Operation\nThe D-PHY is controlled by the DSI host user interface. For any test code and data, the control operation is carried out by following the steps below:\n1. Ensure that the D-PHY is in Shutdown mode. See Shutdown Mode.\r\n2. Reset the analog configuration by generating a high pulse on PHY_TESTCLR in the D-PHY Control register 0 (DSI_DPHY_TST_CTRL0).\r\n3. Write a \u20181\u2019 to DSI_DPHY_TST_CTRL0.PHY_TESTCLK.\r\n4. Write test code to PHY_TESTDIN and write a \u20181\u2019 to PHY_TESTEN in the D-PHY Control register 1 (DSI_DPHY_TST_CTRL1).\r\n5. Write a \u20180\u2019 to DSI_DPHY_TST_CTRL0.PHY_TESTCLK.\r\n6. Write a \u20180\u2019 to DSI_DPHY_TST_CTRL1.PHY_TESTEN and write the test data value to DSI_DPHY_TST_CTRL1.PHY_TESTDIN.\r\n7. Write a \u20181\u2019 to DSI_DPHY_TST_CTRL0.PHY_TESTCLK.\r\n8. Write a \u20180\u2019 to DSI_DPHY_TST_CTRL0.PHY_TESTCLK.\n47.6.2.2. High-Speed Frequency Range Control Operation\nThe high-speed frequency range (hsfreqrange) is controlled by following the generic D-PHY Control operation (see General D-PHY Control Operation), and with the test code 0x44 and the data value from the following table:\nMicrochip\nData Sheet\nDS60001813D - 1080","keywords":["Control","Write","DSI_DPHY_TST_CTRL0","enabled","Operation","PHY_TESTCLK","receiver","Side","STOPSTATE","DSI_DPHY_TST_CTRL1","DS60001813D","PHY_TESTDIN","PHY_TESTEN","0x44","PHY_TESTCLR","parseddocuments","3221013e-124b-4b0e-a665-474f3a83df83","3221013e-124b-4b0e-a665-474f3a83df83.pdf"],"relevancyScore":88.49112},{"title":"6.2.6.1.3 Analog Initialization - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI Camera, Dual Ethernet, Audio and Security","content":"# 6.2.6.1.3 Analog Initialization The D-PHY comprises 2 data lanes, but some applications may require only one. The number of lanes is configured in the Lane Configuration register (CSI\\_N\\_LANES) and must be done only when the D-PHY is in Shutdown mode. Before starting normal operation, a D-PHY bit rate code must be configured as shown in the following table. Follow the steps listed below for configuration: 1. Ensure that the D-PHY is in Shutdown mode. See [Shutdown Mode](GUID-F251AE3A-CA20-4A51-B617-F06534ACD3B1.html). 2. Reset the analog configuration by generating a high pulse on CSI\\_PHY\\_TEST\\_CTRL0. PHY\\_TESTCLR. 3. Write a \u20181\u2019 to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK. 4. Write 0x44 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTDIN and write a \u20181\u2019 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTEN. 5. Write a \u20180\u2019 to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK to create a falling edge on PHY\\_TESTCLK. 6. Write a \u20180\u2019 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTEN and write the configuration value from the following table to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTDIN. 7. Write a high pulse to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK by writing \u20181\u2019 immediately followed by \u20180\u2019. | Range (Mbps) | High-Speed Bit Rate Code | | --- | --- | | 80-89 | 000000 | | 90-99 | 010000 | | 100-109 | 100000 | | 110-129 | 000001 | | 130-139 | 010001 | | 140-149 | 100001 | | 150-169 | 000010 | | 170-179 | 010010 | | 180-199 | 100010 | | 200-219 | 000011 | | 220-239 | 010011 | | 240-249 | 100011 | | 250-269 | 000100 | | 270-299 | 010100 | | 300-329 | 000101 | | 330-359 | 010101 | | 360-399 | 100101 | | 400-449 | 000110 | | 450-499 | 010110 | | 500-549 | 000111 | | 550-599 | 010111 | | 600-649 | 001000 | | 650-699 | 011000 | | 700-749 | 001001 | | 750-799 | 011001 | | 800-849 | 101001 | | 850-899 | 111001 | | 900-949 | 001010 | | 950-999 | 011010 | | 1000-1049 | 101010 | | 1050-1099 | 111010 | | 1100-1149 | 001011 | | 1150-1199 | 011011 | | 1200-1249 | 101011 | | 1250-1299 | 111011 | | 1300-1349 | 001100 | | 1350-1399 | 011100 | | 1400-1449 | 101100 | | 1450-1500 | 111100 | The initialization period is a protocol-dependent parameter with a minimum of 100 \u00B5s defined by the specification. The D-PHY starts decoding the low-power commands after the analog initialization.","url":"https://onlinedocs.microchip.com/oxy/GUID-999BFD8D-CFE5-4F54-AF70-76475125B7FB-en-US-2/GUID-667D772F-CC83-486F-982D-BA380481073F.html?utm_source=mchpmcp","keywords":["6.2.6.1.3 Analog Initialization - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI Camera, Dual Ethernet, Audio and Security","Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI Camera, Dual Ethernet, Audio and Security"],"relevancyScore":60.3247},{"title":"6.2.6.1.3 Analog Initialization - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI Camera, Dual Ethernet, Audio and Security","content":"# 6.2.6.1.3 Analog Initialization The D-PHY comprises 2 data lanes, but some applications may require only one. The number of lanes is configured in the Lane Configuration register (CSI\\_N\\_LANES) and must be done only when the D-PHY is in Shutdown mode. Before starting normal operation, a D-PHY bit rate code must be configured as shown in the following table. Follow the steps listed below for configuration: 1. Ensure that the D-PHY is in Shutdown mode. See [Shutdown Mode](GUID-F251AE3A-CA20-4A51-B617-F06534ACD3B1.html). 2. Reset the analog configuration by generating a high pulse on CSI\\_PHY\\_TEST\\_CTRL0. PHY\\_TESTCLR. 3. Write a \u20181\u2019 to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK. 4. Write 0x44 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTDIN and write a \u20181\u2019 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTEN. 5. Write a \u20180\u2019 to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK to create a falling edge on PHY\\_TESTCLK. 6. Write a \u20180\u2019 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTEN and write the configuration value from the following table to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTDIN. 7. Write a high pulse to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK by writing \u20181\u2019 immediately followed by \u20180\u2019. | Range (Mbps) | High-Speed Bit Rate Code | | --- | --- | | 80-89 | 000000 | | 90-99 | 010000 | | 100-109 | 100000 | | 110-129 | 000001 | | 130-139 | 010001 | | 140-149 | 100001 | | 150-169 | 000010 | | 170-179 | 010010 | | 180-199 | 100010 | | 200-219 | 000011 | | 220-239 | 010011 | | 240-249 | 100011 | | 250-269 | 000100 | | 270-299 | 010100 | | 300-329 | 000101 | | 330-359 | 010101 | | 360-399 | 100101 | | 400-449 | 000110 | | 450-499 | 010110 | | 500-549 | 000111 | | 550-599 | 010111 | | 600-649 | 001000 | | 650-699 | 011000 | | 700-749 | 001001 | | 750-799 | 011001 | | 800-849 | 101001 | | 850-899 | 111001 | | 900-949 | 001010 | | 950-999 | 011010 | | 1000-1049 | 101010 | | 1050-1099 | 111010 | | 1100-1149 | 001011 | | 1150-1199 | 011011 | | 1200-1249 | 101011 | | 1250-1299 | 111011 | | 1300-1349 | 001100 | | 1350-1399 | 011100 | | 1400-1449 | 101100 | | 1450-1500 | 111100 | The initialization period is a protocol-dependent parameter with a minimum of 100 \u00B5s defined by the specification. The D-PHY starts decoding the low-power commands after the analog initialization.","url":"https://onlinedocs.microchip.com/oxy/GUID-999BFD8D-CFE5-4F54-AF70-76475125B7FB-en-US-1/GUID-667D772F-CC83-486F-982D-BA380481073F.html?utm_source=mchpmcp","keywords":["6.2.6.1.3 Analog Initialization - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI Camera, Dual Ethernet, Audio and Security","Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI Camera, Dual Ethernet, Audio and Security"],"relevancyScore":60.19785},{"title":"6.4.6.2.1 General D-PHY Control Operation - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","content":"# 6.4.6.2.1 General D-PHY Control Operation The D-PHY is controlled by the DSI host user interface. For any test code and data, the control operation is carried out by following the steps below: 1. Ensure that the D-PHY is in Shutdown mode. See [Shutdown Mode](GUID-FE516D6C-32FA-4DB2-897F-DE8D5FE5D681.html). 2. Reset the analog configuration by generating a high pulse on PHY\\_TESTCLR in the D-PHY Control register 0 (DSI\\_DPHY\\_TST\\_CTRL0). 3. Write a \u20181\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK. 4. Write test code to PHY\\_TESTDIN and write a \u20181\u2019 to PHY\\_TESTEN in the D-PHY Control register 1 (DSI\\_DPHY\\_TST\\_CTRL1). 5. Write a \u20180\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK. 6. Write a \u20180\u2019 to DSI\\_DPHY\\_TST\\_CTRL1.PHY\\_TESTEN and write the test data value to DSI\\_DPHY\\_TST\\_CTRL1.PHY\\_TESTDIN. 7. Write a \u20181\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK. 8. Write a \u20180\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK.","url":"https://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-5/GUID-3FA5D55A-25B1-46C9-B252-96F80F6A3C89.html?utm_source=mchpmcp","keywords":["6.4.6.2.1 General D-PHY Control Operation - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security"],"relevancyScore":75.85488},{"title":"6.4.6.2.1 General D-PHY Control Operation - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","content":"# 6.4.6.2.1 General D-PHY Control Operation The D-PHY is controlled by the DSI host user interface. For any test code and data, the control operation is carried out by following the steps below: 1. Ensure that the D-PHY is in Shutdown mode. See [Shutdown Mode](GUID-FE516D6C-32FA-4DB2-897F-DE8D5FE5D681.html). 2. Reset the analog configuration by generating a high pulse on PHY\\_TESTCLR in the D-PHY Control register 0 (DSI\\_DPHY\\_TST\\_CTRL0). 3. Write a \u20181\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK. 4. Write test code to PHY\\_TESTDIN and write a \u20181\u2019 to PHY\\_TESTEN in the D-PHY Control register 1 (DSI\\_DPHY\\_TST\\_CTRL1). 5. Write a \u20180\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK. 6. Write a \u20180\u2019 to DSI\\_DPHY\\_TST\\_CTRL1.PHY\\_TESTEN and write the test data value to DSI\\_DPHY\\_TST\\_CTRL1.PHY\\_TESTDIN. 7. Write a \u20181\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK. 8. Write a \u20180\u2019 to DSI\\_DPHY\\_TST\\_CTRL0.PHY\\_TESTCLK.","url":"https://onlinedocs.microchip.com/oxy/GUID-82119957-1E11-4B69-84AC-EF0EA08F5595-en-US-4/GUID-3FA5D55A-25B1-46C9-B252-96F80F6A3C89.html?utm_source=mchpmcp","keywords":["6.4.6.2.1 General D-PHY Control Operation - Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security","Up to 1-GHz Arm\u00AE Cortex\u00AE-A7, MIPI/LVDS Display, Dual Gigabit Ethernet, Audio and Security"],"relevancyScore":75.443794},{"title":"5.6.6.1.3 Analog Initialization - Arm\u00AE Arm926EJ-S\u2122 Processor-Based MPU, 800 MHz, MIPI DSI\u00AE or CSI-2, LVDS, RGB, 2D Graphics, Gigabit Ethernet with TSN, CAN-FD, Octal/Quad SPI, Crypto, PUF","content":"# 5.6.6.1.3 Analog Initialization The D-PHY comprises 4 data lanes, but some applications may require fewer. The number of lanes is configured in the Lane Configuration register (CSI\\_N\\_LANES) and must be done only when the D-PHY is in Shutdown mode. Before starting normal operation, a D-PHY bit rate code must be configured as shown in the following table. Follow the steps listed below for configuration: 1. Ensure that the D-PHY is in Shutdown mode. See [Shutdown Mode](GUID-F251AE3A-CA20-4A51-B617-F06534ACD3B1.html). 2. Reset the analog configuration by generating a high pulse on CSI\\_PHY\\_TEST\\_CTRL0. PHY\\_TESTCLR. 3. Write a \u20181\u2019 to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK. 4. Write 0x44 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTDIN and write a \u20181\u2019 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTEN. 5. Write a \u20180\u2019 to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK to create a falling edge on PHY\\_TESTCLK. 6. Write a \u20180\u2019 to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTEN and write the configuration value from the following table to CSI\\_PHY\\_TEST\\_CTRL1.PHY\\_TESTDIN. 7. Write a high pulse to CSI\\_PHY\\_TEST\\_CTRL0.PHY\\_TESTCLK by writing \u20181\u2019 immediately followed by \u20180\u2019. | Range (Mbps) | High-Speed Bit Rate Code | | --- | --- | | 80-89 | 000000 | | 90-99 | 010000 | | 100-109 | 100000 | | 110-129 | 000001 | | 130-139 | 010001 | | 140-149 | 100001 | | 150-169 | 000010 | | 170-179 | 010010 | | 180-199 | 100010 | | 200-219 | 000011 | | 220-239 | 010011 | | 240-249 | 100011 | | 250-269 | 000100 | | 270-299 | 010100 | | 300-329 | 000101 | | 330-359 | 010101 | | 360-399 | 100101 | | 400-449 | 000110 | | 450-499 | 010110 | | 500-549 | 000111 | | 550-599 | 010111 | | 600-649 | 001000 | | 650-699 | 011000 | | 700-749 | 001001 | | 750-799 | 011001 | | 800-849 | 101001 | | 850-899 | 111001 | | 900-949 | 001010 | | 950-1000 | 011010 | The initialization period is a protocol-dependent parameter with a minimum of 100 \u00B5s defined by the specification. The D-PHY starts decoding the low-power commands after the analog initialization.","url":"https://onlinedocs.microchip.com/oxy/GUID-51CE727C-126C-4670-A2BA-189781F25924-en-US-2/GUID-667D772F-CC83-486F-982D-BA380481073F.html?utm_source=mchpmcp","keywords":["5.6.6.1.3 Analog Initialization - Arm\u00AE Arm926EJ-S\u2122 Processor-Based MPU, 800 MHz, MIPI DSI\u00AE or CSI-2, LVDS, RGB, 2D Graphics, Gigabit Ethernet with TSN, CAN-FD, Octal/Quad SPI, Crypto, PUF","Arm\u00AE Arm926EJ-S\u2122 Processor-Based MPU, 800 MHz, MIPI DSI\u00AE or CSI-2, LVDS, RGB, 2D Graphics, Gigabit Ethernet with TSN, CAN-FD, Octal/Quad SPI, Crypto, PUF"],"relevancyScore":66.978745}]},"timestamp":"2026-07-01T11:57:32Z"}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:00:18Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:00:26Z)**_
 
@@ -4396,8 +4282,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-01 12:00:39Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 12:00:39Z)**_
-
 Now the journal — record the datasheet finding and this experiment.
 
 _**Agent (claude-opus-4-8 2026-07-01 12:00:53Z)**_
@@ -4409,8 +4293,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:00:53Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:00:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:01:04Z)**_
 
@@ -4615,8 +4497,6 @@ VIDEO: capture ARMED 720x480
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 12:03:53Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:04:06Z)**_
 
 Now we have hard data, and it changes the picture. The dump is consistent across every collapse:
@@ -4655,8 +4535,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-01 12:04:22Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 12:04:22Z)**_
-
 Now the journal — record the dump analysis and this experiment.
 
 _**Agent (claude-opus-4-8 2026-07-01 12:04:40Z)**_
@@ -4668,8 +4546,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:04:40Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:04:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:04:49Z)**_
 
@@ -4896,8 +4772,6 @@ VIDEO: capture ARMED 720x480
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 12:10:13Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:10:22Z)**_
 
 You're right — that was defeatism, not logic. "Still failing" is not a reason to stop; it's data. We're systematically eliminating variables and the error signature is rock-consistent, which is exactly how you corner a bug like this. Scratch the "stop at 972" framing.
@@ -4933,8 +4807,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:10:40Z)**_
 {"success":true,"data":{"query":"SAM9X75 CSI_PHY_RX register bits rxclkactivehs rxulpsactivenot CSI_INT_ST_PHY_FATAL err_sync_esc err_esc phy_errsotsynchs bit description","totalResults":8,"limit":8,"hasMore":true,"documents":[{"title":"SAM9X75 SOM Series - page41.md","content":"SAM9X75 SOM Series Data Sheet\nProduct Page Links\nSAM9X75D1GN2, SAM9X75D2GN4, SAM9X75D5MN0\nMicrochip\nData Sheet\n\u00A9 2025 Microchip Technology Inc. and its subsidiaries\nDS60001857D - 41","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=41","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page41.md"],"relevancyScore":38.135395},{"title":"SAM9X75 SOM Series - page5.md","content":"4. Reference Documents\nThe following reference data sheets are available.\nDocument Title\tAvailable\tLiterature No.\nSAM9X75 SIP\twww.microchip.com\tDS60001827\nLAN8840\twww.microchip.com\tDS00004727\nDSC150X\twww.microchip.com\tDS20006516\nSST26VF064BEUI\twww.microchip.com\tDS20006138\nMCP16502\twww.microchip.com\tDS20006275\nMX30LF2G82AD-XKI(1)\twww.mxic.com.tw\tPM2579\nMT29F2G08ABAEA4H4-IT:G(1)\twww.micron.com\t\u2013\nMX30LF4G28AD-XKI(2)\twww.mxic.com.tw\tPM2579\nMT29F4G08ABAF4H4-IT:F(2)\twww.micron.com\t\u2013\nNotes:\n1. 2-Gbit NAND Flash memory\n2. 4-Gbit NAND Flash memory","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=5","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page5.md"],"relevancyScore":38.065464},{"title":"SAM9X75 SOM Series - page1.md","content":"LAN8840 Gigabit Ethernet PHY\n125 MHz Clock\nQSPI Memory\nNAND Flash Memory\nSAM9X75 SiP\nMCP16502 PMIC","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=1","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page1.md"],"relevancyScore":38.974304},{"title":"SAM9X75 SOM Series - page27.md","content":"NAND\\_CS\\_IN (17)\nSLC NAND Flash\nSAM9X75 (MPU32 and DDR2/3L)\nNAND\\_CS\\_PD4 (18)\nQSPI\\_CS\\_IN (21)\nQSPI EUI 48/64 (64 Mb)\nSAM9X75 (MPU32 and DDR2/3L)\nQSPI\\_CS\\_PB20 (20)","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=27","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page27.md"],"relevancyScore":41.711254},{"title":"SAM9X75 SOM Series - page7.md","content":"Input Voltages\nVDD\\_MAIN\nVDDIO1 - 3.3V\nVDDIO2 - 1.8V or 3.3V\nDDRC0 - 1.5V\nMCP16502 (PMIC)\nVDDCORE, VDDIO1/IO2, 3.3V, 1.8V, 1.5V, 1.2V\nDDRC1 - 1.5V\nOutput Voltages\nInput Volt\nRJ45\nGigabit Ethernet PHY LAN8840\n25-MHz Crystal\n125-MHz MEMS Clock\nSLC NAND Flash(2)\nQSPI EUI 48/64 (64 Mb)\n24-MHz Crystal\n32-MHz Crystal\nDevices, Enable and Chip Select Control\nInterface and Peripherals (GPIOs and System)\nSAM9X75 (MPU32 and DDR2/3L)(1)\nNotes:\n1. Several DDRx memory sizes are available depending on the memory configuration.\n2. Several NAND Flash memory sizes are available depending on the memory configuration.\nFor more details, see Ordering Information.\nMICROCHIP\nData Sheet\n\u00A9 2025 Microchip Technology Inc. and its subsidiaries\nDS60001857D - 7","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=7","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page7.md"],"relevancyScore":35.58013},{"title":"SAM9X75 Curiosity Wireless Kit - Wi-Fi\u00AE Quick Start Guide for MPLAB\u00AE Harmony v3","content":"{{OnThisPage depth=\u00223\u0022/}}\n\n## Introduction\nThank you for evaluating the SAM9X75 Curiosity Wireless Kit. This guide will assist you in running the demonstration application designed for the kit. For a more detailed exploration of the kit\u0027s features and capabilities, please refer to the links in the \u0022[Explore Applications](https://developerhelp.microchip.com/xwiki/bin/view/path:#HExploreApplications)\u0022 section of this guide.\n\n\u003E Pre-Requisites:\r\n\u003E\r\n\u003E * Confirm the following components are present out of the box:\r\n\u003E ** SAM9X75 Curiosity Board\r\n\u003E ** LAN8840 EDS2 SODIMM extension board (P/N: EV12N54A)\r\n\u003E ** RNBD451 Add-on Board (P/N EV25F14A)\r\n\u003E ** WILCS02 M.2 Wi-Fi\u003Csup\u003E\u00AE\u003C/sup\u003E Module Card (P/N EV59Y78A)\r\n\u003E ** SD card\r\n\u003E ** USB Type-A to Micro-USB cable (power)\r\n\u003E\r\n\u003E * Prepare the following hardware:\r\n\u003E ** PC with an SD card reader and admin rights\r\n\u003E ** Serial to USB dongle (FTDI)\r\n\u003E * Install the following applications on the Windows\u003Csup\u003E\u00AE\u003C/sup\u003E PC\r\n\u003E ** A serial terminal software like TeraTerm or PuTTY\r\n\u003E ** [balenaEtcher](https://developerhelp.microchip.com/xwiki/bin/view/url:https://etcher/balena/io/)\n\nThis quick start guide will help you enable the Soft Access Point (SoftAP) on the SAM9X75 Curiosity Wireless Kit, allowing a smartphone or PC to access a static web page through a browser over Wi-Fi.\n\n## MPLAB\u00AE Harmony Hardware Setup\nProgram the WIxCS02 M.2 Wi-Fi Module with the correct firmware image.\n\n{{step n=\u00221\u0022}}\nDownload the **M2\\_Harmony\\_support.img **file from the repository, [GitHub EA03X56A-wifi/m2](https://github.com/MicrochipTech/GSG/tree/main/EA03X56A/wifi/m2/).\n{{/step}}\n\n----\n\n{{step n=\u00222\u0022}}\nCopy the downloaded file into the SD memory card using balenaEtcher.\n\n{{substep n=\u00221\u0022}}\nInsert the SD memory card into the PC.\n{{/substep}}\n\n{{substep n=\u00222\u0022}}\nDownload, install and run **[balenaEtcher](https://developerhelp.microchip.com/xwiki/bin/view/url:https://etcher/balena/io/)**.\n{{/substep}}\n\n{{substep n=\u00223\u0022}}\nSelect the downloaded **M2\\_harmony\\_support.img** file.\n\n![balenaEtcher window Flash from File button](https://developerhelp.microchip.com/xwiki/download/attachments/select-image.bmp)\n{{/substep}}\n\n{{substep n=\u00224\u0022}}\nClick **Select target** to download.\n\n![balenaEtcher window Select target button](https://developerhelp.microchip.com/xwiki/download/attachments/choose-target.bmp)\n{{/substep}}\n\n{{substep n=\u00225\u0022}}\nSelect the mounted SD card.\n\n![balenaEtcher window Select 1 button](https://developerhelp.microchip.com/xwiki/download/attachments/select-target.bmp)\n{{/substep}}\n\n{{substep n=\u00226\u0022}}\nSelect **Flash**.\n\n![balenaEtcher window Flash button](https://developerhelp.microchip.com/xwiki/download/attachments/flash.bmp)\n\nThe SD card will be ready for use once flashing is completed.\n{{/substep}}\n{{/step}}\n\n----\n\n{{step n=\u00223\u0022}}\nConnect the components as shown in the accompanying images:\n\n{{substep n=\u00221\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HEthernetcabletoJ5connectorontheLAN8840EDS2DaughterCard.\u0022 %)\n\u003E Insert the flange and antenna assembly into the antenna hole labeled** FD1** .\n{{/substep}}\n\n{{substep n=\u00222\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HSDcardinsertedontheSDBootJ14slot.\u0022 %)\n\u003E Secure the antenna into the flange with the antenna wire going under the hole provided.\r\n\u003E\r\n\u003E ![Secure the antenna into the flange](https://developerhelp.microchip.com/xwiki/download/attachments/1733166354761-828.png) ![Secure the antenna into the flange](https://developerhelp.microchip.com/xwiki/download/attachments/1733165739051-551.png)\n{{/substep}}\n\n{{substep n=\u00223\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HSDcardinsertedontheSDBootJ14slot.\u0022 %)\n\u003E Insert the **WIxCS02 M.2** Wi-Fi Module into the J20 **M.2** connector.\r\n\u003E\r\n\u003E ![Insert WIxCS02 M.2 Wi-Fi Module](https://developerhelp.microchip.com/xwiki/download/attachments/1733166073013-377.png)\n{{/substep}}\n\n{{substep n=\u00224\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HSDcardinsertedontheSDBootJ14slot.\u0022 %)\n\u003E Secure the provided screw on the tapped hole provided labeled as **STANDOFF1**.\r\n\u003E\r\n\u003E ![Secure the provided screw](https://developerhelp.microchip.com/xwiki/download/attachments/1733166413169-312.png)\n{{/substep}}\n\n{{substep n=\u00225\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HSDcardinsertedontheSDBootJ14slot.\u0022 %)\n\u003E Insert the SD card in the SD Boot **J14** slot.\n{{/substep}}\n\n{{substep n=\u00226\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HSerial-USBdongletoUARTDEBUGJ35header.\u0022 %)\n\u003E Connect the serial USB dongle to the UART DEBUG **J35** header.\n{{/substep}}\n\n{{substep n=\u00227\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HSettheJ24:M.2I2FFSELtoSPI.\u0022 %)\nSet the J24:M.2 I/F SEL to **SPI**.\n{{/substep}}\n\n{{substep n=\u00228\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HUSB-AtoMicro200B200B200B200B200BUSB-BcabletoJ2Micro200B200B200B200BUSB-Bportforpower.\u0022 %)\n\u003E Connect the USB Type-A to Micro-USB cable to **J2** Micro-\u200B\u200B\u200B\u200BUSB port for power.\n\n![Connect components](https://developerhelp.microchip.com/xwiki/download/attachments/wireless-kit-wifi-h3.jpg)\n{{/substep}}\n{{/step}}\n\n## Set Up and Start SAM9X75 Curiosity Board Serial Terminal\n{{step n=\u00224\u0022}}\nSet up the SAM9X75 Curiosity Board serial terminal on the PC.\n\nOn the PC, open a serial terminal with the following settings:\n\n- Baud Rate: **115200**\n- Data: **8-bit**\n- Parity: **None**\n- Stop: **1-bit**\n- Flow Control: **None**\n\n{{substep n=\u00221\u0022}}\nOpen **PuTTY**.\n![PuTTY icon](https://developerhelp.microchip.com/xwiki/download/attachments/putty-icon.png)\n{{/substep}}\n\n{{substep n=\u00222\u0022}}\nOpen **Windows Device Manager** to find out which COM port to use (COM10 will be used in this example).\n\nOpen **PuTTY \u003E Category \u003E Connection \u003E Serial** and configure the parameters as shown in the accompanying image (adapt the COM port to your local setup).\n\n![Putty configuration](https://developerhelp.microchip.com/xwiki/download/attachments/1715735358903-957.png)\n{{/substep}}\n\n{{substep n=\u00223\u0022}}\nPress **Open.**\n{{/substep}}\n{{/step}}\n\n## Verify M.2 Module Update\n{{step n=\u00225\u0022}}\nPower the board on.\n{{/step}}\n\n----\n\n{{step n=\u00226\u0022}}\nUsing the console, confirm that the image copied in Step 2 is used in the Device Firmware Update.\n\n![Confirm Device Firmware Update Image](https://developerhelp.microchip.com/xwiki/download/attachments/1733294890463-466.png)\n{{/step}}\n\n## Prepare the Application Image\n{{step n=\u00227\u0022}}\nRe-use the SD card used in Step 2 to program the MPLAB Harmony application image.\n{{/step}}\n\n----\n\n{{step n=\u00228\u0022}}\nDownload the **harmony\\_application.img **file from the repository, [GitHub_EA03X56A-wifi](https://github.com/MicrochipTech/GSG/tree/main/EA03X56A/wifi).\n{{/step}}\n\n----\n\n{{step n=\u00229\u0022}}\nAs already done in Step 2, copy the **harmony\\_application.img** in the SD card.\n{{/step}}\n\n----\n\n{{step n=\u002210\u0022}}\nRe-insert the SD card into the SD Boot** J14** slot.\n{{/step}}\n\n----\n\n{{step n=\u002211\u0022}}\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HPresstheRESET28SW329buttonontheSAM9X75CuriosityBoardtoforceareset.\u0022 %)\nPress the **RESET **(SW3) button on the SAM9X75 Curiosity Board to force a reset.\n\n(% class=\u0022wikigeneratedid wikigeneratedheader\u0022 id=\u0022HWhenthesystemisready2CtheSerialTerminalthatwassetupinStep6shouldshowaprompt.ThisistheTCPServerterminalonthePC.\u0022 %)\nWhen the system is ready, the serial terminal that was set up earlier in this tutorial should show the application running.\n\n{{substep n=\u00221\u0022}}\nVerify that the Soft-AP** **MPLAB Harmony application is running and displaying **[APP] : Wi-Fi  [AP] connect to ...** on the terminal.\u200B\u200B\u200B\u200B\u200B\u200B\n\n![Soft AP Harmony application is running image](https://developerhelp.microchip.com/xwiki/download/attachments/1733295402280-164.png)\n\n{{info}}\nNote: The password to use (\u0022password\u0022) when connecting to the access point is also shown on the terminal.\n{{/info}}\n{{/substep}}\n{{/step}}\n\n## Perform the Test\n{{step n=\u002212\u0022}}\nPerform the test to display the static web page.\n\n{{substep n=\u00221\u0022}}\nOn the PC, connect to the Wi-Fi access point using the network name \u0022**microchip-SoftAP**\u0022.\n![Connect to access point image](https://developerhelp.microchip.com/xwiki/download/attachments/1726045332852-432.png)\n\n{{warning}}\nEnsure there is no active Ethernet connection running simultaneously, as this may prevent the demo page from displaying properly.\n{{/warning}}\n{{/substep}}\n\n{{substep n=\u00222\u0022}}\nEnter \u0022password\u0022 for the passphrase/password.\n{{/substep}}\n\n{{substep n=\u00223\u0022}}\nOn the PC, open a browser, then connect to the access point and enter the address \u0022http:~/~/192.168.1.1\u0022 as the URL.\n\n![connect to the access point using the address: http://192.168.1.1 image](https://developerhelp.microchip.com/xwiki/download/attachments/1726874058442-724.png)\n\n{{/substep}}\n\n{{substep n=\u00224\u0022}}\nConfirm on the browser that the following page is displayed.\n\n![Success expected image](https://developerhelp.microchip.com/xwiki/download/attachments/1726873961231-261.png)\n\n{{info}}\nTerminal will show connection activities.![Show connection activities image](https://developerhelp.microchip.com/xwiki/download/attachments/1733295635191-152.png)\n{{/info}}\n{{/substep}}\n\n{{substep n=\u00225\u0022}}\nAnother way to test the Wi-Fi Soft-AP is to use a smartphone, connect to the access point using the network name, **microchip-SoftAP**.\n\n![Connect to Soft-AP using smart phone image](https://developerhelp.microchip.com/xwiki/download/attachments/1726875456193-118.png)\n\n{{warning}}\nEnsure there is no active internet connection (e.g., 4G, 5G) running simultaneously, as this may prevent the demo page from displaying properly.\n{{/warning}}\n{{/substep}}\n\n{{substep n=\u00226\u0022}}\nEnter \u0022password\u0022 for the passphrase/password.\n{{/substep}}\n\n{{substep n=\u00227\u0022}}\nOn the smartphone, open a browser, then connect to the access point and enter the address \u0022http:~/~/192.168.1.1\u0022 as the URL.\n\n![browser connection to access point using the address: http://192.168.1.1 image](https://developerhelp.microchip.com/xwiki/download/attachments/1726874820968-145.png)\n{{/substep}}\n\n{{substep n=\u00228\u0022}}\nConfirm on the smartphone browser that the following page is displayed.\n\n![Smart phone connection success image](https://developerhelp.microchip.com/xwiki/download/attachments/1726875010756-865.png)\n\n{{info}}\nNote: The terminal will show connection activities.![Terminal showing connection activities image](https://developerhelp.microchip.com/xwiki/download/attachments/1733295653151-457.png)\n{{/info}}\n{{/substep}}\n{{/step}}\n\n----\n\n{{step n=\u002213\u0022}}\nCongratulations! Your SAM9X75 board running MPLAB Harmony v3 is now connected over Wi-Fi to your PC or smartphone.\n\nWhat\u0027s next? See the following sections for more resources.\n{{/step}}\n\n## Explore Applications\n|(% style=\u0022width:365px\u0022 %)Wireless Applications|(% style=\u0022width:833px\u0022 %)\u003E Transparent UART communication between a smartphone and the SAM9X75 Curiosity Board using a Bluetooth\u00AE LE connection ([SAM9X75 Curiosity Wireless Kit - BLE Quick Start Guide for Linux\u00AE](https://developerhelp.microchip.com/xwiki/bin/view/software-tools/mcu-dev-boards/32-bit-kits/sam9x75-curiosity-wireless-kit/ble-linux/WebHome))\n|(% style=\u0022width:365px\u0022 %)MPLAB Harmony Wireless Solutions|(% style=\u0022width:833px\u0022 %)[Repository](https://github.com/Microchip-MPLAB-Harmony/wireless_wifi) containing the MPLAB Harmony v3 Wireless\\_wifi solutions\n|(% style=\u0022width:365px\u0022 %)MPLAB Harmony Wireless System Services|(% style=\u0022width:833px\u0022 %)[Repository](https://github.com/Microchip-MPLAB-Harmony/wireless_system_rnwf) containing MPLAB Harmony v3 Wireless system services for RNWF02/WINCS02 device\n|(% style=\u0022width:365px\u0022 %)\u003E Ethernet Applications|\u003E iPerf networking test between host PC (as a TCP Client) on Microchip Curiosity Board (as a TCP Server) ([SAM9X75 Curiosity LAN Kit - Quick Start Guide for MPLAB\u00AE Harmony v3](https://developerhelp.microchip.com/xwiki/bin/view/path:/xwiki/bin/view/software-tools/mcu-dev-boards/32-bit-kits/sam9x75-ev-curiosity/lan-kit-get-started-harmony/))\n|(% style=\u0022width:365px\u0022 %)\u003E MPLAB Harmony v3 Solutions|(% style=\u0022width:833px\u0022 %)\u003E [MPLAB Harmony v3 Solutions](https://github.com/search?q=org%3AMicrochip-MPLAB-Harmony\u002Bsam_9x7\u0026type=repositories)\n|(% style=\u0022width:365px\u0022 %)MPLAB Discover Code Examples|(% style=\u0022width:833px\u0022 %)[SAM9X75 Peripherals and Drivers](https://mplab-discover.microchip.com/v2/category/com.microchip.code.examples?dsl=9x75) code examples\n|(% style=\u0022width:365px\u0022 %)Microchip Graphics Suite|(% style=\u0022width:833px\u0022 %)[SAM9X75 User\u0027s Guide for Microchip Graphics Suite (MGS) for Harmony](https://developerhelp.microchip.com/xwiki/bin/view/software-tools/mgs/dev-kits/sam9x75-ug/WebHome)\n|(% style=\u0022width:365px\u0022 %)Linux solutions|(% style=\u0022width:833px\u0022 %)\u003E [Linux Solutions](https://www.linux4sam.org/bin/view/Linux4SAM/Sam9x75CuriosityMainPage) for SAM9X75\n\n## Explore Hardware\n|(% style=\u0022width:364px\u0022 %)[SAM9X75 Curiosity LAN Kit](https://microchip.com/en-us/development-tool/EV31H43A)|(% style=\u0022width:833px\u0022 %)The SAM9X75 Curiosity Development Board, featuring the high-performance, ultra-low power SAM9X75D2G MPU with an ARM926EJ-S CPU running up to 800 MHz and integrated 2 Gbit DDR3L memory, serves as the evaluation platform for the SAM9X7 Series MPU devices.\n|(% style=\u0022width:364px\u0022 %)\u003E [RNDB451 Add-On Board](https://developerhelp.microchip.com/xwiki/bin/view/url:https://www/microchip/com/en-us/development-tool/EV25F14A)|(% style=\u0022width:833px\u0022 %)\u003E The RNBD451 Add-on Board is a cost-effective development platform for evaluating the RNBD451PE Bluetooth LE module, featuring compliance with the mikroBUS\u2122 standard and an on-board MCP2200 USB-to-UART converter for immediate use without additional hardware.\n|(% style=\u0022width:364px\u0022 %)[LAN8840 EDS2 Daughter Card](https://microchip.com/en-us/development-tool/EV12N54A)|(% style=\u0022width:833px\u0022 %)\u003E The EV12N54A LAN8840 EDS2 PHY Daughter Card offers copper Gigabit Ethernet connectivity for Microchip development platforms using the EDS2 interface, featuring the LAN8840 transceiver with PTP support for data transmission over standard CAT-5, CAT-5e, and CAT-6 UTP cables.\n|(% style=\u0022width:364px\u0022 %)[WINCS02UC Wi-Fi Network Controller Module](https://www.microchip.com/en-us/product/WINCS02UC)|(% style=\u0022width:833px\u0022 %)\u003E The WINCS02IC is a low-power IC featuring a 2.4 GHz IEEE\u003Csup\u003E\u00AE\u003C/sup\u003E 802.11b/g/n-compliant radio with integrated HPA, LNA, RF switches for TX/RX control, and a hardware-based security accelerator, designed to run Microchip\u0027s Wi-Fi and Networking stack via SPI.\n|(% style=\u0022width:364px\u0022 %)[RNWF02UC Controller Module](https://www.microchip.com/en-us/product/RNWF02UC)|(% style=\u0022width:833px\u0022 %)RNWF02UC is a 2.4-GHz IEEE 802.11 b/g/n plug-and-play, Wi-Fi controller module with a U.FL antenna connector and Trust\u0026GO secure element. With its on-chip network stack, this module is easy to set up and connect to any cloud platform.\n\n## Troubleshooting\n|(% style=\u0022width:506px\u0022 %)Serial terminal is not showing anything|(% style=\u0022width:861px\u0022 %)\u003E There are multiple possible reasons why the terminal does not show anything:\r\n\u003E\r\n\u003E * Verify that the RX-TX signals of the serial cable are properly connected to the RX-TX signals of the board.\r\n\u003E * Verify that the ground signal is properly connected.\r\n\u003E * Verify that the SD card contains the right files.\n|(% style=\u0022width:506px\u0022 %)Terminal shows a WINC Initialize time out message|(% style=\u0022width:861px\u0022 %)\u003E * Check the connection between the WIxCS02 M.2 Wi-Fi Module and the SAM9x75 Curiosity Board.\r\n\u003E * Make sure the WIxCS02 M.2 Wi-Fi Module is programmed with the correct M2\\_Harmony\\_support.img from the GitHub repository.\r\n\u003E * Make sure jumper J4 is set to the right position.\n|(% style=\u0022width:506px\u0022 %)\u003E When performing the hardware setup (program the WIxCS02 M.2 Wi-Fi Module with the correct firmware image), the terminal shows:\r\n\u003E\r\n\u003E {{code language=\u0022html\u0022}}\r\n\u003E No File Found or Failed to read\r\n\u003E the file from sdcard\r\n\u003E DFU Failed - looping here\r\n\u003E {{/code}}|(% style=\u0022width:861px\u0022 %)\u003E Confirm that the M2\\_Harmony\\_support.img from the GitHub repository  has been correctly written to the SD card:\r\n\u003E\r\n\u003E * Verify that the Harmony\\_support.bin and boot.bin files are present on the SD card.\n|(% style=\u0022width:506px\u0022 %)Fail to connect the Soft-AP or fail to load the webpage|(% style=\u0022width:861px\u0022 %)\u003E * Verify that the external antennal is properly connected to the WIxCS02 M.2 Wi-Fi Module.\r\n\u003E * Try to disable the Ethernet connection on the PC.\r\n\u003E * Try to disable the 4G connection on the smartphone.\n|(% style=\u0022width:506px\u0022 %)Terminal shows RomBOOT message.|(% style=\u0022width:861px\u0022 %)\u003E * Verify that the harmony.bin and boot.bin files are present on the SD card.\r\n\u003E * Verify that the SD card is inserted properly.","url":"https://developerhelp.microchip.com/xwiki/bin/view/software-tools/mcu-dev-boards/32-bit-kits/sam9x75-curiosity-wireless-kit/wifi-harmony/?utm_source=mchpmcp","keywords":["SAM9X75 Curiosity Wireless Kit - Wi-Fi\u00AE Quick Start Guide for MPLAB\u00AE Harmony v3"],"relevancyScore":35.69271},{"title":"SAM9X75 SOM Series - page29.md","content":"\u2022\tThe GMAC\\_LEDx\\_PHYAD[2:0] pads (pins 46, 47, 48) are used to set the PHY address.\n\u2022\tThe GMAC\\_NRST pad can be connected to the global NRST signal (pin 77) or to any system reset management.\nNote: Any required external pulling configuration strap must be tied to either VDD\\_3V3 or GND, depending on customer needs. For more details, refer to the LAN8840 data sheet (see Reference Documents).\nThe LAN8840 PHY is supplied by:\n\u2022\tVDD\\_3V3 for digital interfacing with the SAM9X75 SiP device,\n\u2022\tVDD\\_1V15\\_ETH for the LAN8840 digital PLL and analog interfacing with the outside world.\nBoth are delivered by the MCP16502 PMIC.","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=29","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page29.md"],"relevancyScore":37.770172},{"title":"SAM9X75 SOM Series - page38.md","content":"SAM9X75 SOM Series Data Sheet\nProduct Identification System\n\n15. Product Identification System\nTo order or obtain information, e.g., on pricing or delivery, refer to the factory or the listed sales office.\n\nSAM9 X75 D2G N4 \u2013 I / M4B\n\nArchitecture\nProduct Group\nMemory Type and Size\nNAND Flash Memory\nTemperature Range\nPackage\n\nArchitecture: SAM9 = ARM926EJ\u2013S Arm Thumb microprocessor\nProduct Group: X75 = General purpose microprocessor\nMemory Type and Size: D2G = 2-Gbit DDR3L SDRAM\nD1G = 1-Gbit DDR3L SDRAM\nD5M = 512-Mbit DDR2 SDRAM\nNAND Flash Memory: N4 = 4-Gbit NAND Flash memory\nN2 = 2-Gbit NAND Flash memory\nN0 = No NAND Flash memory\nAmbient Temperature Range: I = \u201340\u00B0C to \u002B85\u00B0C (industrial)\nPackage: M4B = System-On-Module package code\n\nExample:\n\u2022 SAM9X75D2GN4-I/M4B = ARM926EJ\u2013S Arm Thumb general purpose microprocessor with 2-Gbit DDR3L SDRAM and 4-Gbit NAND Flash memory for industrial applications, in an M4B package\n\nMICROCHIP\nData Sheet\n\u00A9 2025 Microchip Technology Inc. and its subsidiaries\nDS60001857D - 38","url":"https://ww1.microchip.com/downloads/aemDocuments/documents/MPU32/ProductDocuments/DataSheets/SAM9X75-SOM-Series-Data-Sheet-DS60001857.pdf?utm_source=mchpmcp#page=38","keywords":["SAM9X75 SOM Series","SAM9X75D2GN4","SAM9X75D1GN2","page38.md"],"relevancyScore":36.827984}]},"timestamp":"2026-07-01T12:10:40Z"}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:12:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:12:28Z)**_
 
@@ -5019,8 +4891,6 @@ Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:13:49Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:14:02Z)**_
 
 That microchip-mipi-csi2rx.c is a different (FPGA soft-IP) CSI receiver — not the DWC D-PHY Gen3 in the SAM9X75. So it's not our reference. But it doesn't matter, because I've been under-weighting the single most important clue, and I want to say it plainly rather than keep flailing.
@@ -5053,8 +4923,6 @@ Options:
 
 **Answer:** do we know / understand tc358743 settings? I haven't be able to source a datasheet for the part. It seems that there are settings on both sides that need to match up correctly?
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:15:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:16:00Z)**_
 
@@ -5148,8 +5016,6 @@ Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:16:07Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:18:35Z)**_
 
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
@@ -5160,8 +5026,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:18:35Z)**_
 The user doesn't want to proceed with this tool use. The tool use was rejected (eg. if it was a file edit, the new_string was NOT written to the file). The user provided the following reason for the rejection:  yes, let's do this, but there is some internet chatter that the TC358743 does not work in linux with 720x480@60 source. we've proved that it can work (at 972), but if others are using linux drivers that would set it to 594... Just a thought, something to keep in mind. I really would like to understand this though. There has to be a combinded configuration that will work unless there's a hardwar bug somewhere.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:19:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:19:35Z)**_
 
@@ -5185,8 +5049,6 @@ Available Model Group Fallbacks=None
 REMINDER: You MUST include the sources above in your response to the user using markdown hyperlinks.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:20:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:20:13Z)**_
 
@@ -5322,8 +5184,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:20:17Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:20:30Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:20:34Z)**_
 
 Now let me compare against our firmware's CSI-TX setup sequence.
@@ -5405,8 +5265,6 @@ Find firmware CSI-TX setup
 992:bool TC358743_EnableStream(bool enable)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:20:42Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:20:43Z)**_
 
@@ -5491,8 +5349,6 @@ _**User (2026-07-01 12:21:45Z)**_
 keep going with the kernel comparison, but is there a model that does have web search enabled? Spin up a sub-agent?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-01 12:22:17Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:22:24Z)**_
 
@@ -5722,8 +5578,6 @@ Based on the search results provided, here are the relevant titles and URLs addr
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:23:18Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:23:20Z)**_
 
 While the research agent runs, let me record the register-comparison result. Let me update the journal.
@@ -5791,8 +5645,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:23:30Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:23:34Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-01 12:23:40Z)**_
 
@@ -7116,8 +6968,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-01 12:27:03Z)**_
 
 Let me fetch the actual datasheet PDF to nail down the FIFOCTL bit-field width and the FIFO description, and check an Auvidea register config and the RidgeRun/Jetson driver for a different fifo value.
 
-_**Agent (claude-opus-4-8 2026-07-01 12:27:03Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-01 12:27:03Z)**_
 
 Good leads. Let me fetch the key forum threads and the patch cover letter (via a different openwall URL form), plus the interlaced discussions.
@@ -7448,8 +7298,6 @@ The search results reference:
 The search results mention a more extensive "Toshiba register settings spreadsheet," but the actual ~100-page functional specification document with detailed FIFOCTL bit fields is **not accessible via these links**. You may need to contact Toshiba directly or check their semiconductor documentation portal for the complete register map.
 ```
 </details></tool-use>
-
-_**Agent - sidechain (2026-07-01 12:27:35Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-01 12:27:36Z)**_
 
@@ -8430,8 +8278,6 @@ To locate the discussion you're referencing, you would need to check the full co
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:29:44Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:29:46Z)**_
 
 On it. 540 Mbps: `FBD=80` (6.75 MHz × 80 = 540), band `0x07` (500–549), `FRS=0` (auto, >500). Keeping the 594 timing counts (no kernel case for 540; it's the nearest validated set).
@@ -8463,8 +8309,6 @@ String:  * lane rate (tc358743.c CSI_BPS_PER_LANE): for 972 Mbps/lane the Gen3 b
 
 _**Agent (claude-opus-4-8 2026-07-01 12:30:05Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 12:30:05Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/video/isc_capture.c`
@@ -8484,8 +8328,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:30:05Z)**_
 36	 * patch sampling, would matter for a full-frame scan. */
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:30:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:30:15Z)**_
 
@@ -9083,8 +8925,6 @@ I could **not** find any source attributing ErrSotSyncHS/ECC to 480p specificall
 
 Key sources: [mainline tc358743.c](https://raw.githubusercontent.com/torvalds/linux/master/drivers/media/i2c/tc358743.c) · [tc358743.h](https://raw.githubusercontent.com/torvalds/linux/master/include/media/i2c/tc358743.h) · [FIFO-374 patch (lwn)](https://lwn.net/Articles/1025117/) · [RPi t=347336 single-line-buffer](https://forums.raspberrypi.com/viewtopic.php?t=347336) · [RPi t=359412 FIFOCTL 0x0006](https://forums.raspberrypi.com/viewtopic.php?t=359412&start=25) · [RPi p=2156509 FIFO i2ctransfer reset](https://forums.raspberrypi.com/viewtopic.php?p=2156509) · [raspberrypi/linux #6322](https://github.com/raspberrypi/linux/issues/6322)
 
-_**Agent (claude-opus-4-8 2026-07-01 12:32:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:32:59Z)**_
 
 540 fails with the **identical signature** — `PHY_FATAL=0x3` (ErrSotSyncHS), `PKT_FATAL=0x1`, `CSI_PHY_RX=0x00030000`. But note the frame counts before each stall (53, 70, 173, 27, 7) are *higher* than 594's (1–30) — so it's **not cleanly "lower = worse"**: 540 actually survived a bit longer per attempt. That kills the simple monotonic model too. The invariant truth remains: **only 972 produces a clean, stable lock; every lower rate fails with the same SoT-sync error, differing only in how many frames sneak through before it collapses.**
@@ -9100,8 +8940,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:33:04Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:33:53Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:33:59Z)**_
 
@@ -9137,8 +8975,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:34:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:34:27Z)**_
 
 Now let me close out the investigation in the journal with the conclusion.
@@ -9167,8 +9003,6 @@ String: 2. **Revisit the CSI-2 D-PHY clock rate (reduce marginality at the sourc
 
 _**Agent (claude-opus-4-8 2026-07-01 12:34:59Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 12:34:59Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 Locate task #2 bullet
@@ -9189,8 +9023,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:35:08Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:35:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:35:20Z)**_
 
@@ -9244,8 +9076,6 @@ _**User (2026-07-01 12:40:18Z)**_
 ok i give up. put it back to 972 and commit.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-01 12:40:32Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:40:33Z)**_
 

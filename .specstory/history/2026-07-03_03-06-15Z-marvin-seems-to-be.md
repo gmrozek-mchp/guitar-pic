@@ -10,8 +10,6 @@ marvin seems to be freezing up after a couple hours of no activity. The display 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 03:06:23Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 03:06:24Z)**_
 
 I'll start by reading marvin's spec and journal (project rules require this for non-trivial marvin work), and explore the task/RTOS structure in parallel.
@@ -666,8 +664,6 @@ _**Agent (claude-opus-4-8 2026-07-03 03:06:26Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 03:06:33Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 03:06:35Z)**_
 
 Spec read. The journal is 429KB — too large to read whole. Let me explore the firmware structure to understand the FreeRTOS task layout, idle hook config, and existing SD/FatFs write paths.
@@ -964,8 +960,6 @@ default/src/config/default/freertos_hooks.c:172:    important that vApplicationI
 default/src/config/default/freertos_hooks.c:185:    configUSE_TICK_HOOK is set to 1 in FreeRTOSConfig.h.  User code can be
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 03:06:49Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 03:06:50Z)**_
 
@@ -1291,8 +1285,6 @@ _**Agent (claude-opus-4-8 2026-07-03 03:06:51Z)**_
 260
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 03:06:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 03:06:59Z)**_
 
@@ -2196,8 +2188,6 @@ _**Agent (claude-opus-4-8 2026-07-03 03:07:00Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 03:07:08Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 03:07:08Z)**_
-
 Now let me check FreeRTOS trace/stats config (to know if I can enumerate tasks) and the results.c SD write pattern I should mirror.
 
 _**Agent (claude-opus-4-8 2026-07-03 03:07:12Z)**_
@@ -2351,8 +2341,6 @@ void vAssertCalled( const char * pcFile, unsigned long ulLine )
    volatile unsigned long ul = 0;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 03:07:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 03:07:22Z)**_
 
@@ -2560,8 +2548,6 @@ _**Agent (claude-opus-4-8 2026-07-03 03:07:25Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 03:08:15Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 03:08:18Z)**_
 
 I have the full pattern now. Let me confirm a couple of constraints before proposing: the FatFs concurrent-open limit, the LOG API, and how tasks/priorities are laid out.
@@ -2659,8 +2645,6 @@ _**Agent (claude-opus-4-8 2026-07-03 03:08:22Z)**_
 (eval):1: no matches found: --include=*.cmake
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 03:08:27Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 03:08:33Z)**_
 
@@ -2797,8 +2781,6 @@ target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 03:09:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 03:09:29Z)**_
 
 I've got the full picture now. Here's what I found and what I propose.
@@ -2855,8 +2837,6 @@ Options:
 
 **Answer:** 60s / 10min, always-on, both. just want to add another piece of information. nothing definitive, keep on with this path. but with no video signal, it did just go over 2 hours without freeze. Going to run another test with video signal to see if it seems to make a difference.
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 14:39:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:39:49Z)**_
 
@@ -2948,8 +2928,6 @@ default/src/third_party/rtos/FreeRTOS/Source/include/task.h:2112: * FreeRTOSConf
 
 _**Agent (claude-opus-4-8 2026-07-03 14:39:57Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 14:39:57Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 
@@ -2998,8 +2976,6 @@ typedef struct
  * Video_FrameInfo from the ISC frame-done IRQ via xQueueSendFromISR
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 14:41:14Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:41:18Z)**_
 
@@ -3057,8 +3033,6 @@ _**Agent (claude-opus-4-8 2026-07-03 14:41:24Z)**_
 122:        LOG_INFO("STG: unmounted %s\r\n", STG_MOUNT);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 14:41:36Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:41:39Z)**_
 
@@ -3420,8 +3394,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:42:46Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:42:47Z)**_
 
 Those warnings are pre-existing in app.c, unrelated to my one-line include. Now add the init call as the last service.
@@ -3460,8 +3432,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:43:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:43:13Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -3481,8 +3451,6 @@ _**Agent (claude-opus-4-8 2026-07-03 14:43:21Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 14:43:32Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:43:32Z)**_
 
@@ -3605,8 +3573,6 @@ The user doesn't want to proceed with this tool use. The tool use was rejected (
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:47:04Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:47:08Z)**_
 
 Got it — I'll hold. All the code is written and wired (health_monitor.{c,h}, app.c, user.cmake, console.c `health` command); I haven't touched git and I'll leave the working tree as-is so I don't interfere with your history cleanup. I'll skip the build and the journal update until you're back.
@@ -3622,8 +3588,6 @@ _**User (2026-07-03 14:54:19Z)**_
 /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/health/health_monitor.c:104:(.text.HealthMonitor_Report+0xec): undefined reference to `xPortGetMinimumEverFreeHeapSize'
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 14:54:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:54:31Z)**_
 
@@ -3751,8 +3715,6 @@ HM: 2026-07-03T15:09:08Z up=140s frames=7369 heap=22312 worststk=IDLE:424
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 15:26:08Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:26:09Z)**_
 
 Good — the monitor is doing its job. Let me read the data before answering, and check a few things that determine what the freeze *is*.
@@ -3863,8 +3825,6 @@ default/src/ui/ui_manager.c:742:     * task then drives heo_reconcile each tick 
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:28:42Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:28:46Z)**_
 
 Important corrections from the data:
@@ -3904,8 +3864,6 @@ default/src/packs/SAM9X75D2G_DFP/component/rstc.h
 default/src/packs/SAM9X75D2G_DFP/component/gpbr.h
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:29:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:29:42Z)**_
 
@@ -3954,8 +3912,6 @@ Options:
 
 **Answer:** Supervisor + mount-gate
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:31:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:31:52Z)**_
 
@@ -4028,8 +3984,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:32:59Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/health/health_monitor.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:33:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:33:05Z)**_
 
@@ -4455,8 +4409,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:33:05Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:33:19Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 15:33:19Z)**_
-
 The module looks consistent — `Supervisor` (10 chars) fits `configMAX_TASK_NAME_LEN=16`, formats are correct. Let me compile-check.
 
 _**Agent (claude-opus-4-8 2026-07-03 15:33:49Z)**_
@@ -4471,8 +4423,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:33:49Z)**_
 [2/2] Running utility command for marvin_default_Bin2Hex
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:34:16Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:34:18Z)**_
 
@@ -4502,8 +4452,6 @@ _build/marvin/default/.ninja_log
 _build/marvin/default/compile_commands.json
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:35:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:35:05Z)**_
 
@@ -4551,8 +4499,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:35:25Z)**_
 - [⚡] 🌡️ Journal: record freeze-diagnosis findings + health-monitor instrumentation
 
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:35:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:35:31Z)**_
 
@@ -4674,8 +4620,6 @@ Also **hardened `program-nand.cfg` + `program-qspi.cfg`**: their guard only bail
 923:### 2026-06-10 — Boot binaries rebuilt with clean version banner (4.0.13, no git-describe suffix)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:35:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:35:45Z)**_
 
@@ -4836,8 +4780,6 @@ HM: 2026-07-03T15:36:35Z up=17s frames=0 heap=22312 worststk=IDLE:424
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 15:38:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:38:38Z)**_
 
 That RUNAWAY on `UiBoot` at 98% is a **false positive** — UiBoot decoding 128 cover-art images (`ART: small/large 64`) is legitimately CPU-bound, exactly the threshold caveat I flagged. That's a detector-tuning bug, not the freeze. But the "stuck on splash" is the real concern, and I need to see whether my change caused it. Let me read the boot/reveal sequence.
@@ -4933,8 +4875,6 @@ I would say your change definitely caused it, but could help reveal cause... The
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 15:41:43Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:41:47Z)**_
 
 You're right, and that's a sharp catch — if the prio-6 supervisor also stops, the **scheduler tick itself has died** (a prio-6 task only stops getting scheduled if the tick isn't advancing / the kernel is wedged, not merely if a lower task spins). So my supervisor isn't just a witness; something it does is wedging the kernel during the reveal window. Let me look at the exact code in that window.
@@ -4983,8 +4923,6 @@ default/src/config/default/FreeRTOSConfig.h:349:/* Set to 1 to include the vTask
 default/src/config/default/FreeRTOSConfig.h:423:#define portGET_RUN_TIME_COUNTER_VALUE()        SYS_TIME_Counter64Get()
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:42:37Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:42:39Z)**_
 
@@ -5039,8 +4977,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:42:39Z)**_
 635	                return;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:44:00Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:44:02Z)**_
 
@@ -5120,8 +5056,6 @@ awk '/UBaseType_t uxTaskGetSystemState/,/^}/' default/src/third_party/rtos/FreeR
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:45:07Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:45:11Z)**_
 
 `uxTaskGetSystemState` uses `vTaskSuspendAll()`/`xTaskResumeAll()` (suspends the scheduler, then on resume processes pended ticks). My supervisor invokes that **every second — including all through the reveal window**, and I also dropped the heartbeat to 10 s so its first SD write + `uxTaskGetSystemState` now lands at ~17 s, right in that window. In the previous run (that booted fine) the monitor's first such activity was at 80 s — well *after* reveal.
@@ -5162,8 +5096,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:45:36Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:45:41Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -5173,8 +5105,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:45:41Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/health/health_monitor.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:45:47Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:45:48Z)**_
 
@@ -5227,8 +5157,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:46:22Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:46:26Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:46:26Z)**_
 
@@ -5298,8 +5226,6 @@ echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:47:05Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:47:06Z)**_
 
 Clean build, both objects compiled, hex produced. Let me update the journal entry with this finding and fix.
@@ -5357,8 +5283,6 @@ made it past splash. running one. question related to this, why is boot / splash
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 15:49:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:49:11Z)**_
 
 Good — glad it's past splash. Let me answer this accurately by checking what recovery machinery already exists (there's a "video-collapse watchdog" in the journal) rather than reasoning in the abstract.
@@ -5393,8 +5317,6 @@ echo "=== video watchdog / recovery / re-arm ==="; grep -niE "watchdog|recover|r
 396:void Video_CaptureDisable(void) { s_capture_enabled = false; }
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:49:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:49:19Z)**_
 
@@ -5502,8 +5424,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:49:19Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:49:55Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:50:11Z)**_
 
 Good question — and the answer is reassuring. I dug into the video path; the "fragility" is narrower and better-handled than the scary comments suggest.
@@ -5554,8 +5474,6 @@ _**User (2026-07-03 15:51:58Z)**_
 In other words, why did the boot / splash screen freeze after assets were loaded?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 15:53:17Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:53:19Z)**_
 
@@ -5624,8 +5542,6 @@ default/src/game/catalog.c
 default/src/results/results.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:54:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:54:37Z)**_
 
@@ -5701,8 +5617,6 @@ void vApplicationGetIdleTaskMemory( StaticTask_t ** ppxIdleTaskTCBBuffer,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:55:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:55:29Z)**_
 
 That's the key piece. Look at what `vAssertCalled` actually does ([freertos_hooks.c:198](firmware/marvin/default/src/config/default/freertos_hooks.c#L198)):
@@ -5746,8 +5660,6 @@ default/src/config/default/freertos_hooks.c:197:void vAssertCalled( const char *
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:55:42Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:55:49Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -5776,8 +5688,6 @@ echo "=== is vAssertCalled actually called from anywhere? ==="; grep -rn "vAsser
 === is vAssertCalled actually called from anywhere? ===
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:56:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:56:32Z)**_
 
@@ -5816,8 +5726,6 @@ default/src/config/default/system/fs/fat_fs/file_system/ff.c
 default/src/config/default/peripheral/flexcom/twi/master/plib_flexcom8_twi_master.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:57:25Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:57:25Z)**_
 
@@ -5895,8 +5803,6 @@ _**Agent (claude-opus-4-8 2026-07-03 15:57:25Z)**_
 63
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:58:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:58:27Z)**_
 
@@ -5981,8 +5887,6 @@ SUP: idle=79% top=Health:10% isr=0%
 HM: 2026-07-03T15:58:07Z up=627s frames=36574 heap=22312 worststk=IDLE:424
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 16:02:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:02:11Z)**_
 
@@ -6280,8 +6184,6 @@ on additional piece of information regarding the 79%. it was steadily reporting 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 16:05:04Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:05:10Z)**_
 
 Got it — and that 79% is benign: it's the interval where the 10-minute stack dump ran (note `top=Health:10%` — the Health task doing the dump), so idle dipped from 88→79 purely from my own logging. Not a new CPU consumer. Every sample says the system was **idle and healthy** right up to the instant it died. That's the fingerprint of a **sudden data abort**, not a spin.
@@ -6381,8 +6283,6 @@ static void hook_put_u32( uint32_t v )
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:05:16Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:05:19Z)**_
 
 `DBGU_WriteByte()` — a polled, fault-safe DBGU write (the MCC hooks already use it with interrupts off). That's my primitive. Let me confirm its signature/behavior.
@@ -6415,8 +6315,6 @@ void DBGU_WriteByte(uint8_t data)
 }
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:06:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:06:47Z)**_
 
@@ -6547,8 +6445,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/m
 
 _**Agent (claude-opus-4-8 2026-07-03 16:07:21Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 16:07:21Z)**_
-
 Now build — cmake will reconfigure to pick up the new source, and my strong symbols override the weak MCC ones.
 
 _**Agent (claude-opus-4-8 2026-07-03 16:07:25Z)**_
@@ -6571,8 +6467,6 @@ echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -4
 [2/2] Running utility command for marvin_default_Bin2Hex
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:07:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:07:35Z)**_
 
@@ -6602,8 +6496,6 @@ elf: out/marvin/default.elf
 23f5202c:	eaffffbb 	b	23f51f20 <fault_report_dabt>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:07:50Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:07:52Z)**_
 
@@ -6683,8 +6575,6 @@ HM: RUNAWAY 'T1SLink' cpu=99% idle=0% isr=0%
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 16:11:56Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:11:58Z)**_
 
 Now *that's* a real lead — and a genuine task spin this time (prio-6 supervisor stays alive and keeps printing, so it's not the silent-abort mode). **`T1SLink` pinned at 99% CPU with no T1S peer connected.** That matches the original symptom perfectly: T1SLink is prio 5, so when it spins it starves everything ≤4 — console, touch, Legato, health, idle all die — while the ISC frame-latch ISR keeps the panel live. Let me find the busy-loop.
@@ -6742,8 +6632,6 @@ echo "=== t1s_task loop + any while/for spins, delays, blocking ==="; grep -nE "
 483:void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:12:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:12:09Z)**_
 
@@ -6855,8 +6743,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:12:09Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:12:32Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:12:35Z)**_
 
 The main loop blocks on the semaphore with a 1 ms timeout — fine. But `service_pump()` (line 213) is the smoking gun:
@@ -6966,8 +6852,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:12:36Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:13:30Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:13:34Z)**_
 
 Confirmed. `TC6_CB_OnNeedService` (line 391) just sets `s_need_service = true`, and the TC6 lib re-invokes it on every `TC6_Service` call when the LAN8651 has a persistent condition it can't clear. With no T1S peer, some status latches after a few minutes (stuck `IRQ_N` / buffer condition), so `service_pump()`'s `do { ... } while(s_need_service)` **never terminates** — a tight busy-loop in task context. And `isr=0%` in your trace proves it: it's not an interrupt storm, it's the task itself spinning in that loop. Everything ≤ prio-4 starves; the panel stays live via the ISC ISR. That's your original freeze.
@@ -7013,8 +6897,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:13:53Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:14:01Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:14:01Z)**_
 
@@ -7068,8 +6950,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:14:15Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:14:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:14:25Z)**_
 
@@ -7181,8 +7061,6 @@ echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:15:56Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:15:57Z)**_
 
 Clean build. But let me reconsider one robustness gap: capping `service_pump` bounds each call, but the outer `for(;;)` only yields to lower-priority tasks when it *blocks* on the semaphore. If the stuck condition kept the semaphore signaled, the task could still spin without yielding. Your `isr=0%` says that's not happening here (no SPI-completion storm), but I'll make it bulletproof regardless — force a yield whenever the pump overruns.
@@ -7206,8 +7084,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:16:12Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/t1s/t1s_link.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:16:18Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:16:25Z)**_
 
@@ -7291,8 +7167,6 @@ bounded t1s service pump is great, but why are we getting IRQ when LAN8651 not c
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 16:18:13Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:18:20Z)**_
 
 Good instinct to check the pin. First, let me clarify the setup and then look at the actual IRQ_N pin config — you opened the right file.
@@ -7349,8 +7223,6 @@ default/src/config/default/peripheral/pio/plib_pio.h:197:#define T1S_IRQ_N_Inter
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:18:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:18:59Z)**_
 
 Key facts from the pin config: `T1S_IRQ_N` = **PB25**, `GPIO, In, … Falling Edge, …`. Two things jump out — the interrupt is **falling-edge** (but OA-TC6 `IRQ_N` is a *level* signal), and I need to confirm the pull-up column. Let me read the header row to map the columns exactly.
@@ -7388,8 +7260,6 @@ _**User (2026-07-03 16:19:27Z)**_
 stop. LAN8651 chip is NOT connected to marvin. It's not just lacking a peer.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 16:20:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:20:55Z)**_
 
@@ -7460,8 +7330,6 @@ HM: 2026-07-03T16:22:30Z up=627s frames=36574 heap=22312 worststk=IDLE:424
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 16:25:44Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:25:52Z)**_
 
 **The fault handler worked — that's the payoff.** We now have a real dump instead of a silent hang. Let me decode it:
@@ -7502,8 +7370,6 @@ FATFS_stat
 23f3b650 <FATFS_stat>:
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:27:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:27:30Z)**_
 
@@ -7574,8 +7440,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:27:30Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:28:12Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:28:16Z)**_
 
 Found it — and it's my bug. Look at line 308:
@@ -7640,8 +7504,6 @@ found at 685
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 16:28:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:28:50Z)**_
 
 Confirmed by the SYS_FS docs themselves (sys_fs.h:1374): *"The lfname member … has to be initialized to NULL before calling the API. If lfname is not NULL, then first byte of lfname will be set to zero."* So the contract is **caller must set `lfname = NULL`**, and I (and two pre-existing sites) declared `SYS_FS_FSTAT st;` uninitialized. Four sites do this: `health_monitor.c:194` (the crash), `results.c:80`, `art.c:316`, `storage.c:211`. Let me look at the two I haven't seen, then fix all four.
@@ -7673,8 +7535,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:28:53Z)**_
 329	        if (parse_name(st.fname, &s_scan[n].setlist, &s_scan[n].index, &s_scan[n].fmt))
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:29:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:29:03Z)**_
 
@@ -7714,8 +7574,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:29:03Z)**_
 229	    diag_printf(out, ctx, "(%lu entries)", (unsigned long)n);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:29:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:29:34Z)**_
 
@@ -7823,8 +7681,6 @@ _**User (2026-07-03 16:33:23Z)**_
 added IRQ pullup and MISO pulldown to MCC configuration. Please add the absent-chip guard as well.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 16:34:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:34:12Z)**_
 
@@ -7942,8 +7798,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:34:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:35:23Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 16:35:23Z)**_
-
 Now I understand the full flow. Let me read the rest of the loop (the TX block) so I preserve it, then restructure.
 
 _**Agent (claude-opus-4-8 2026-07-03 16:35:25Z)**_
@@ -7985,8 +7839,6 @@ _**Agent (claude-opus-4-8 2026-07-03 16:35:25Z)**_
 340	bool T1SLink_IsConnected(void)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:36:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:36:32Z)**_
 
@@ -8032,8 +7884,6 @@ echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
 [2/2] Running utility command for marvin_default_Bin2Hex
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:38:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:38:12Z)**_
 
@@ -8099,8 +7949,6 @@ running now. I'll let it run all day, hopefully no more freezeups. Please commit
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 16:41:33Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 16:41:34Z)**_
 
 The user explicitly asked me to commit and split per fix — I'll do that. Let me first see the exact git state (what's staged vs. modified vs. untracked) to plan the split.
@@ -8154,8 +8002,6 @@ hardware/t1s-sink/t1s-sink.kicad_pro
 hardware/t1s-sink/t1s-sink.kicad_sch
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 16:43:30Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 16:43:35Z)**_
 
@@ -8308,8 +8154,6 @@ git commit \
 
 _**Agent (claude-opus-4-8 2026-07-03 16:45:50Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 16:45:50Z)**_
-
 All six committed. Let me verify the log and confirm nothing of mine is left dangling.
 
 _**Agent (claude-opus-4-8 2026-07-03 16:45:51Z)**_
@@ -8383,8 +8227,6 @@ HM: RUNAWAY 'GameEngine' cpu=98% idle=0% isr=0%
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 17:16:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:16:39Z)**_
 
 The supervisor nailed a third one — `GameEngine` at 98–99%, and the last state before it spun was `song_select / main #2`. So the gameplay engine has a busy-loop in the song-select classify/read path. (Noted on the parallel doc-cleanup agents — I'll stay in code, won't touch docs/journal, and won't commit until you're clear of them.)
@@ -8434,8 +8276,6 @@ echo "=== game_task loop + delays/blocking ==="; grep -nE "game_task|for *\(|whi
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:16:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:16:49Z)**_
 
 The task blocks per-frame (`xQueueReceive`), so the spin is inside `gp_classify` or the song-select reader. Let me look at `read_selection` and the song-select code for an unbounded inner loop.
@@ -8479,8 +8319,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:16:50Z)**_
 84	{
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 17:16:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:17:00Z)**_
 
@@ -8534,8 +8372,6 @@ echo "===== gameplay_classify.c loops ====="; grep -nE "while *\(|for *\(|do *\{
 129:        for (int i = 0; i < GP_FP_LEN; i++)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 17:17:46Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:17:47Z)**_
 
@@ -8639,8 +8475,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:17:47Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:18:49Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:18:51Z)**_
 
 The task *does* block on `xQueueReceive` every iteration and rate-limits to ~5 Hz — that's why it normally sits at 7%. The only way it processes *every* frame (and pins the CPU on the heavy song_select float-matching) is if **`s_force_observe` stays set** — which `GameplayEngine_RequestObservation()` does, called by the game controller. Let me check how the controller polls.
@@ -8703,8 +8537,6 @@ echo "=== GameCtl: RequestObservation / GetLatest / vTaskDelay cadence ==="; gre
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:20:08Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:20:09Z)**_
 
 Two key facts: the frame queue is depth-1 (can't back up), and the loop rate-limits to 5 Hz (200 ms) — *unless* `s_force_observe` is set, which bypasses the rate limit. During a playthrough the controller polls song_select by forcing observations. So the question is how heavy `gp_read_song` is. Let me look at it and its dimensions.
@@ -8759,8 +8591,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:20:10Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:20:47Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:20:48Z)**_
 
 `gp_read_song` is `GP_N_SONGS × noff × GP_SONG_LEN` of `fabsf(float subtract)` — plus grid extraction. That's the heavy path, and it only runs on song_select. Let me quantify it (dimensions + whether there's hardware float).
@@ -8794,8 +8624,6 @@ default/src/game/gameplay_metadata.h:110:#define GP_SONG_NDY 3
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:21:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:22:01Z)**_
 
 Quantified — and it's not an infinite loop, it's a genuinely heavy computation:
@@ -8824,8 +8652,6 @@ Options:
 
 **Answer:** rate cap only. but why is it stuck with s_force_observe set?
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 17:24:08Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:24:10Z)**_
 
@@ -8860,8 +8686,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:24:10Z)**_
 43	#define GC_OBS_WAIT_MS      140u
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 17:24:15Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:24:15Z)**_
 
@@ -8927,8 +8751,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:24:15Z)**_
 98	    *screen = gs.screen;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 17:26:14Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:26:24Z)**_
 
@@ -8998,8 +8820,6 @@ echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:27:12Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:27:22Z)**_
 
 Clean build. Applied the duty-cap only (no algorithm change), and **did not commit** — holding off while your parallel doc agents are working, and I left the journal untouched for the same reason.
@@ -9025,8 +8845,6 @@ _**User (2026-07-03 17:28:20Z)**_
 but... I'm not in game play / navigation. Why is the controller continuously requesting observation?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 17:28:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:29:01Z)**_
 
@@ -9109,8 +8927,6 @@ FYI, events leading up to this, start game, marvin navigates through screens to 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 17:31:27Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:31:29Z)**_
 
 Let me trace the controller's end-of-song path and idle state to answer this precisely.
@@ -9172,8 +8988,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:31:29Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:31:58Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 17:31:58Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/game/game_controller.c`
@@ -9191,8 +9005,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:31:58Z)**_
 241	/* Return to main_menu from wherever we are. RED backs up the forward-nav menus,
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 17:32:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:32:21Z)**_
 
@@ -9219,8 +9031,6 @@ _**User (2026-07-03 17:33:17Z)**_
 we need to limit the observation more. marvin is very laggy on song select screen. 42% idle.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 17:36:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 17:36:12Z)**_
 
@@ -9284,8 +9094,6 @@ _**Agent (claude-opus-4-8 2026-07-03 17:36:12Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 17:36:50Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 17:36:53Z)**_
 
 The 190 ms bursts are the lag, and re-matching every ~570 ms while you sit there is wasteful. The cleanest fix is to skip the expensive match in passive observation and only run it when something actually needs it (the controller during nav). Let me verify nothing passive consumes the CV-read song id before I gate it that way.
@@ -9323,8 +9131,6 @@ _**User (2026-07-03 18:39:46Z)**_
 we don't really need to know the screen state at all unless we're actively navigating. Even then, could be request triggered vs. continuous scan.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 18:41:40Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:41:43Z)**_
 
@@ -9374,8 +9180,6 @@ default/src/game/game_controller.c:356:    GameplayEngine_SetObserveEnabled(true
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 18:42:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 18:42:31Z)**_
 
 `gp_classify` is cheap (13×288 ≈ 3.7K float ops vs the song-match's 184K) — but I don't even need to touch the play path. The cleanest fix matching your call: the controller **already enables observation at run start** (game_controller.c:356) — it's the boot-time enable (app.c:215) and a missing *disable* that leave it scanning forever. So: gate observation on the controller session (on for a run, off when idle). Let me read the run boundaries to place the on/off pair correctly.
@@ -9420,8 +9224,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:42:31Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 18:43:13Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 18:43:15Z)**_
 
 Perfect — this is clean. The controller *already* enables observation at run start ([game_controller.c:356](firmware/marvin/default/src/game/game_controller.c#L356)); the bug is the **boot-time enable** (app.c:215) plus a **missing disable**, so it scans forever. Fix: gate observation on the controller session — on for a run, off when idle. Idle marvin then does zero screen-scanning.
@@ -9447,8 +9249,6 @@ _**User (2026-07-03 18:43:50Z)**_
 Let me make myself clear. I don't want continuous game state scan. Observation should always be triggered by something else.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 18:45:57Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:45:58Z)**_
 
@@ -9509,8 +9309,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:45:59Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 18:46:07Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 18:46:08Z)**_
 
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
@@ -9568,8 +9366,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:46:08Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:46:16Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 18:46:16Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/game/gameplay_engine.c`
@@ -9592,8 +9388,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:46:16Z)**_
 154	        s_latest.margin       = margin;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 18:46:48Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:46:48Z)**_
 
@@ -9655,8 +9449,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:46:48Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:46:58Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 18:46:58Z)**_
-
 Now I have the full picture. Making the edits — pure request-triggered.
 
 _**Agent (claude-opus-4-8 2026-07-03 18:47:08Z)**_
@@ -9707,8 +9499,6 @@ String:     GameplayEngine_Initialize();
 
 _**Agent (claude-opus-4-8 2026-07-03 18:47:53Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 18:47:53Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 
@@ -9721,8 +9511,6 @@ grep -n "GameplayEngine_SetObserveEnabled\|GameplayEngine_Initialize\|SetObserve
 214:    GameplayEngine_Initialize();
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 18:48:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:48:03Z)**_
 
@@ -9748,8 +9536,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:48:03Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 18:48:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 18:48:21Z)**_
 
 My earlier app.c edit had actually landed (the `SetObserveEnabled(true)` is already gone) but its comment describes the session-gated design, not request-triggered. Let me correct it.
@@ -9763,8 +9549,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:48:27Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 18:49:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:49:03Z)**_
 
@@ -9789,8 +9573,6 @@ _**Agent (claude-opus-4-8 2026-07-03 18:49:19Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/game_controller.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 18:49:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 18:49:35Z)**_
 
@@ -9820,8 +9602,6 @@ echo "=== tail ==="; cmake --build _build/marvin/default 2>&1 | tail -3
 [2/2] Running utility command for marvin_default_Bin2Hex
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 19:18:57Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 19:19:08Z)**_
 
@@ -9861,8 +9641,6 @@ _**User (2026-07-03 22:55:36Z)**_
 doc work done. please update docs and commit
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 22:55:54Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 22:55:56Z)**_
 
@@ -9907,8 +9685,6 @@ warning: in the working copy of '.specstory/history/2026-07-03_03-06-15Z-marvin-
  M firmware/marvin/default/src/game/gameplay_engine.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 22:56:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 22:56:14Z)**_
 
@@ -9964,8 +9740,6 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 22:56:24Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 22:56:26Z)**_
 
 Confirmed — the `timing_pipeline.c` change (`STRUM_DELAY 300→220`, `TICK 5→2`) is your own tuning, not mine; leaving it untouched. My recent journal entries survived the archival. Adding the GameEngine entry at the top.
@@ -9979,8 +9753,6 @@ _**Agent (claude-opus-4-8 2026-07-03 22:56:38Z)**_
 <tool_use_error>File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.</tool_use_error>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 22:56:43Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 22:56:44Z)**_
 
@@ -10005,8 +9777,6 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 **2026-07-03 — Investigating a several-hour freeze; built a health monitor + runaway-task supervisor.** Symptom: after a while (minutes to hours) marvin goes unresponsive — touch + FLEXCOM2 console dead — but the LVDS panel keeps showing *live* video. New `health/health_monitor.{c,h}` (in `user.cmake`, init last in `App_StartServices`, `health` console command) to characterize it:
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 22:56:50Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 22:56:50Z)**_
 
@@ -10085,8 +9855,6 @@ git commit \
 
 _**Agent (claude-opus-4-8 2026-07-03 22:58:06Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-03 22:58:06Z)**_
-
 Committed. Let me verify the result and confirm your `timing_pipeline.c` edit is left intact.
 
 _**Agent (claude-opus-4-8 2026-07-03 22:58:07Z)**_
@@ -10148,8 +9916,6 @@ _**User (2026-07-05 17:31:15Z)**_
 now that we're past the investigation, let's back off health monitor output to log and sd card. the log outputs could maybe switch to error and/or debug level as appropriate. maybe add compile time switch for the sd card log.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 17:31:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 17:32:00Z)**_
 
@@ -10594,8 +10360,6 @@ _**Agent (claude-opus-4-8 2026-07-05 17:32:00Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 17:33:25Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 17:33:26Z)**_
 
 Clear. Plan: heartbeat back to 60 s, all periodic/telemetry logging → `LOG_DEBUG` (silent at the default INFO level), keep `RUNAWAY` at `LOG_ERROR` as the always-on watch, and gate the SD writes behind a compile switch (default off, `-DHM_SD_LOG_ENABLED=1` to restore). Making the edits.
@@ -10620,8 +10384,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 17:33:49Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 17:33:51Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -10645,8 +10407,6 @@ _**Agent (claude-opus-4-8 2026-07-05 17:34:19Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/health/health_monitor.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 17:35:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 17:35:34Z)**_
 
@@ -10696,8 +10456,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 17:36:19Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 17:36:20Z)**_
 
 Build with the default (SD off), then a quick check that the `HM_SD_LOG_ENABLED=1` path still compiles.
@@ -10723,8 +10481,6 @@ cmake --build _build/marvin/default 2>&1 | tail -2
 [2/2] Running utility command for marvin_default_Bin2Hex
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 18:36:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 18:37:00Z)**_
 
@@ -10757,8 +10513,6 @@ exit:  (empty above = clean)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 18:37:31Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 18:37:32Z)**_
 
 Both paths compile clean — SD off (default) and `-DHM_SD_LOG_ENABLED=1`. Let me add a brief journal note, then I'll ask before committing (you didn't say commit this time, and I don't commit on my own).
@@ -10786,8 +10540,6 @@ _**Agent (claude-opus-4-8 2026-07-05 18:37:32Z)**_
 24
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 18:38:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 18:38:31Z)**_
 
@@ -10826,8 +10578,6 @@ f283733 marvin: add wiimotes (layer 4) screen module + MGS regen
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 19:17:15Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 19:17:18Z)**_
 
 This is a different branch state than my earlier commits — the git history here (branch tip `9afb83b`, the `humanplayer-regen` merge, and a `7f7ee0f` synchronous-observe refactor) doesn't contain the `gameplay`-branch commits I made earlier this session. Let me get my bearings before committing anything.
@@ -10862,8 +10612,6 @@ health_monitor supervisor: PRESENT
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 19:17:43Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 19:17:51Z)**_
 
 Now it's clear — no work was lost. All my earlier fixes (T1S bound pump, fault_report.c, FSTAT memset, health-monitor supervisor) are **integrated into `gui`**, and the gameplay observer was further reworked into the synchronous `GameplayEngine_Observe()` (commit `7f7ee0f`) — a cleaner successor to my request-triggered version. The **only pending change is my `health_monitor.c` edit**, which builds clean on top of this tree.
@@ -10894,8 +10642,6 @@ _**User (2026-07-05 19:18:16Z)**_
 update journal and commit to gui
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 19:18:23Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 19:18:24Z)**_
 
@@ -10935,8 +10681,6 @@ grep -n "health monitor\|health_monitor\|Heartbeat\|heartbeat\|RUNAWAY\|supervis
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 19:19:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 19:19:04Z)**_
 
 My journal entries survived and are integrated in `gui`. The journal is newest-at-top; let me read the current top to insert the back-off note correctly (it's been changing).
@@ -10959,8 +10703,6 @@ _**Agent (claude-opus-4-8 2026-07-05 19:19:05Z)**_
 9	- **Consumer is the sole dashboard widget writer, under a render lock.** Legato here is **single-threaded** — no `LEGATO_USE_OSAL`, no renderer lock, no `leTimer`; `_LEGATO_Tasks` runs `leUpdate` (events + one-pass paint) then `vTaskDelay(10ms)`. So *any* widget/damage edit from another task races the renderer. **First cut got this wrong** (consumer mutated widgets from its own prio-2 task): frets never showed and the SONG card updated one selection behind — the classic dropped-damage signature — and it likely contributed to a hard freeze. Fix: `UiManager_RenderLock()/Unlock()` — suspend `LEGATO_Tasks`+`SYS_INPUT_Tasks` and gate on `leRenderer_IsIdle()` (reliable now that scratch is sized to one full-screen pass, §13), so the edit can't corrupt an in-flight paint. The consumer wraps its coalesced apply in it. Held ~microseconds; never touches the actuation tasks (prio 4–5). Note this corrected a wrong assumption in an earlier draft of this entry that the old off-thread path was safe — the old `dash_selection_changed` actually ran **in-context** (from the SELECT button callback inside `leUpdate`), which is why it worked.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 19:19:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 19:19:24Z)**_
 
@@ -11054,8 +10796,6 @@ not sure what changed if anything, but VideoTask now reporting at 13% utilizatio
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-05 20:15:34Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:15:36Z)**_
 
 Let me look at what `VideoTask` actually does per iteration and how often — that'll tell us where 13% goes.
@@ -11121,8 +10861,6 @@ echo "=== what TC358743_Tasks does per poll (I2C reads?) ==="; grep -nE "TC35874
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:16:06Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:16:07Z)**_
 
 Two things stand out: `VIDEO_POLL_MS = 20` (VideoTask wakes 50×/s), and each wake runs `reconcile()` (→ the compositor's `heo_reconcile`). Let me look at what runs every tick and the status-poll rate.
@@ -11161,8 +10899,6 @@ _**Agent (claude-opus-4-8 2026-07-05 20:16:07Z)**_
 303	}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 20:16:16Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:16:16Z)**_
 
@@ -11231,8 +10967,6 @@ static void detect_active(void)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:26:05Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:26:07Z)**_
 
 `detect_active()` early-outs once the area is found (`s_active_valid`), so it's a one-time startup cost, not steady-state. The remaining per-tick work is `heo_reconcile` (the compositor callback, called every 20 ms). Let me look at it and the status-poll rate.
@@ -11287,8 +11021,6 @@ static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
 }
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 20:27:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:27:04Z)**_
 
@@ -11365,8 +11097,6 @@ static bool frame_edges(const uint8_t *buf, uint16_t w, uint16_t h,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:28:39Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:28:44Z)**_
 
 Let me check two more things that determine whether real per-tick work is happening: what `Video_GetActiveRect` returns before detection latches (could make `heo_reconcile` re-bind every tick), and the scan step.
@@ -11423,8 +11153,6 @@ uint32_t ISC_Capture_FrameCount(void)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:29:46Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:30:02Z)**_
 
 Good news: I can point at the likely culprit, and it's not something my recent changes touched. It's **`detect_active()`** — the active-picture-rect (letterbox/pillarbox) detector that `reconcile()` runs every VideoTask tick.
@@ -11467,8 +11195,6 @@ _**User (2026-07-05 20:37:57Z)**_
 So I restarted and it latched onto 716x448 this time with VIDEO: active area 716x448 @(0,15) in 720x480 frame. Previous time with 13% load, the dbgu output didn't have either message related to this - neither the good message or the bad. Can you see if there's a path where it doesn't output or gets stuck if it fails?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 20:38:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:39:11Z)**_
 
@@ -11521,8 +11247,6 @@ _**User (2026-07-05 20:42:38Z)**_
 this makes me think it can get into a state that is stuck
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 20:43:22Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:43:25Z)**_
 
@@ -11593,8 +11317,6 @@ static void on_frame_done(uint32_t frame_count,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:44:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:45:06Z)**_
 
 `s_latest_buffer` tracks the just-completed frame every ISR, so `detect_active` scans live content — which is why the *silent* stuck state is puzzling on bright content. Two structural flaws are now clear, and both are "silent + no give-up":
@@ -11636,8 +11358,6 @@ echo "=== any cache invalidate anywhere in video path before CPU reads frame? ==
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:47:24Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:47:40Z)**_
 
 Good — that rules out my stale-cache theory: `g_framebuffer` is in **`.region_nocache`** ([isc_capture.c:34](firmware/marvin/default/src/video/isc_capture.c#L34)), so `detect_active` reads coherent live frame data, no cache maintenance needed. So when it's stuck, it is genuinely reading a frame whose search band (rows 0–60 / 419–479, cols 0–20 / 699–719) is below the luma threshold.
@@ -11677,8 +11397,6 @@ wait, over what time period is health run% calculated?
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-05 20:50:18Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:50:30Z)**_
 
 Good question — and it materially changes how to read that 13%. There are **two different** run% numbers with **different time bases**:
@@ -11716,8 +11434,6 @@ _**User (2026-07-05 20:51:04Z)**_
 % since start is not helpful
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 20:52:52Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:52:55Z)**_
 
@@ -11765,8 +11481,6 @@ _**Agent (claude-opus-4-8 2026-07-05 20:52:55Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:53:10Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-05 20:53:10Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/health/health_monitor.c`
@@ -11811,8 +11525,6 @@ _**Agent (claude-opus-4-8 2026-07-05 20:53:10Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 20:53:18Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 20:53:21Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -11832,8 +11544,6 @@ _**Agent (claude-opus-4-8 2026-07-05 20:53:42Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/health/health_monitor.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 20:53:52Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 20:53:53Z)**_
 
@@ -11892,8 +11602,6 @@ yes please commit this health change to gui with note
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-05 21:37:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 21:37:23Z)**_
 
 Let me check the working tree and the current journal top before editing.
@@ -11931,8 +11639,6 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 **2026-07-05 — Dashboard live-telemetry feed: fret activity → dashboard, single-consumer event flow.** The dashboard ROBOT fret buttons were static; wired them to track the actual guitar mask, structured as the general flow that score/multiplier/streak will also ride. New `ui/dashboard_feed.{c,h}`: a **single tagged event queue** (`dashboard_evt_t` = {type, union}) with **one consumer task** (prio 2, UI band) that blocks on the queue, coalesces last-per-type on drain, and applies to widgets. Design decided w/ Greg:
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 21:37:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 21:37:33Z)**_
 
@@ -11997,8 +11703,6 @@ explain the give up to me. not sure I want that. Sometimes the wii has dimmed sc
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-05 21:40:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 21:41:00Z)**_
 
 Good catch — and you're right to push back. Let me explain exactly what "give up" would have done, because your sleeping-Wii case is precisely where it's wrong.
@@ -12031,8 +11735,6 @@ _**User (2026-07-05 21:41:54Z)**_
 1 yes, no need for 50Hz scan. 2. yes, sounds promising. 3. no
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 21:43:53Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 21:43:54Z)**_
 
@@ -12095,8 +11797,6 @@ cmake --build _build/marvin/default 2>&1 | tail -2
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-06 02:00:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-06 02:00:34Z)**_
 
 Clean build. Here's what I implemented (no give-up — it keeps trying forever, just cheaply):
@@ -12129,8 +11829,6 @@ _**User (2026-07-06 02:03:12Z)**_
 looks good. please commit.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-06 02:03:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-06 02:03:31Z)**_
 
@@ -12180,8 +11878,6 @@ git commit \
  2 files changed, 34 insertions(+), 1 deletion(-)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-06 02:04:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-06 02:04:17Z)**_
 

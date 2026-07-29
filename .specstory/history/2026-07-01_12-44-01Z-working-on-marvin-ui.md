@@ -12,8 +12,6 @@ working on marvin ui, I notice that there is a lag to touch response after we ch
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 12:44:15Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:44:16Z)**_
 
 I'll dig into this. Let me read the marvin journal/spec and explore the touch + layer-change code paths first.
@@ -4233,8 +4231,6 @@ The **0.5–1s lag on first touch after modal close** stems from a cascade:
 | BASE discard + HEO rebind | `ui_manager.c` | 233–274 |
 | ISC capture re-arm | `isc_capture.c` | 182–271 |
 
-_**Agent (claude-opus-4-8 2026-07-01 12:47:14Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:47:15Z)**_
 
 The Explore agent's report is thorough on the code map but its "root cause" is speculative (it hand-waves timings). The symptom you describe — *first* touch after a transition is laggy, then everything is snappy — is a very specific fingerprint, and I want to verify the actual mechanism in the code rather than guess. Let me read the key paths directly.
@@ -4846,8 +4842,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:47:15Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:47:41Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 12:47:41Z)**_
-
 Now the key question: how does Legato dispatch queued touch input relative to rendering. Let me read the Legato core update/event/input path.
 
 _**Agent (claude-opus-4-8 2026-07-01 12:47:42Z)**_
@@ -4865,8 +4859,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:47:42Z)**_
 ./default/src/config/default/gfx/legato/widget/legato_widget.c
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:47:46Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:47:46Z)**_
 
@@ -5392,8 +5384,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:47:46Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:47:54Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:47:55Z)**_
 
 This is the smoking gun. Note `handleTouchDown` at line 396–397: **if `leIsDrawing()` is true, the touch event is `DEFERRED`** — not dispatched. Same for up/move. So input is blocked while the renderer is painting. Let me confirm how deferred events + the draw loop interact in `leUpdate`.
@@ -5595,8 +5585,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:47:55Z)**_
 188	}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:48:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:48:26Z)**_
 
@@ -6554,8 +6542,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:48:26Z)**_
 943
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:48:55Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:48:57Z)**_
 
@@ -7993,8 +7979,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:48:58Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:49:14Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:49:16Z)**_
 
 Now I need the decisive config value: `LE_PREEMPTION_LEVEL`. With level 0 the whole frame paints in one `leUpdate` call; with level ≥1 it paints **one widget per `leUpdate` tick** — spanning many 10 ms ticks, keeping `leIsDrawing()` true the whole time. Let me check that plus the LEGATO_Tasks tick period and the nav animation.
@@ -8050,8 +8034,6 @@ void touchDownHandler(const SYS_INP_TouchStateEvent* const evt)
 === scratch buffer / widget buffer / render config ===
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:50:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:50:25Z)**_
 
@@ -8278,8 +8260,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:50:26Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:50:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:50:46Z)**_
 
 The nav slide is a canvas-window effect (gfx_canvas), but `navigation_open` also does a **full-panel Legato `invalidate`** (line 135) that "lands over the next frames as it slides." Let me confirm the song-select open path and the LEGATO_Tasks tick delay to quantify.
@@ -8315,8 +8295,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:50:53Z)**_
 261:        "SYS_INPUT_Tasks",
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:51:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:51:34Z)**_
 
@@ -8359,8 +8337,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:51:38Z)**_
 36:    gfxcSetWindowPosition(CANVAS_ALBUM_ART, ART_X, ART_Y);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:52:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:52:28Z)**_
 
@@ -8411,8 +8387,6 @@ _**User (2026-07-01 12:55:15Z)**_
 it seems #2 is the big one? The entire point of canvas is so that we don't have to repaint on show. When not shown, nothing about state of the screen could have changed, so nothing to invalidate. I think we need to rework screens so that the initialization forces full initial draw behind the splash screen. After that, every screen should be event driven - not needed anything when reshown later.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-01 12:55:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:55:42Z)**_
 
@@ -8500,8 +8474,6 @@ default/src/config/default/gfx/canvas/gfx_canvas.c:836:    return GFX_IOCTL_UNSU
 
 _**Agent (claude-opus-4-8 2026-07-01 12:55:49Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 12:55:49Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/config/default/gfx/canvas/gfx_canvas.c`
@@ -8549,8 +8521,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:55:49Z)**_
 777	            val = (gfxIOCTLArg_Value*)arg;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:56:47Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 12:56:51Z)**_
 
@@ -8944,8 +8914,6 @@ _**Agent (claude-opus-4-8 2026-07-01 12:56:51Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 12:58:06Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 12:58:11Z)**_
 
 The picture's complete, and your instinct is right. Confirming the model: Legato renders into a canvas's RAM surface **regardless of its show/hide (`active`) state** — `SET_ACTIVE_LAYER` succeeds for any canvas ([gfx_canvas.c:746-759](firmware/marvin/default/src/config/default/gfx/canvas/gfx_canvas.c#L746-L759)), and blits go straight to the surface. So once a canvas is fully painted, showing it later is a pure layer bind — zero repaint needed. The `invalidate()` on every nav open throws that away and eats a full 320×800 repaint each time, which is what strands your first tap behind `leIsDrawing()`.
@@ -8986,8 +8954,6 @@ default/src/ui/screens/song_select/screen_song_select.c:216: * string's invalida
 default/src/ui/screens/song_select/screen_song_select.c:437:    Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 12:58:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:00:00Z)**_
 
@@ -9049,8 +9015,6 @@ leResult _leWidget_SetVisible(leWidget* _this, leBool visible)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 13:01:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 13:01:16Z)**_
 
 Found the other half of it — and it's important. The song-select modal doesn't use an explicit `invalidate()`; instead `songsel_set_input()` toggles `setEnabled()` on the panels ([ui_manager.c:324-329](firmware/marvin/default/src/ui/ui_manager.c#L324-L329)), and `_leWidget_SetEnabled` **calls `invalidate()` whenever the enabled state actually changes** ([legato_widget.c:1753](firmware/marvin/default/src/config/default/gfx/legato/widget/legato_widget.c) impl). So:
@@ -9082,8 +9046,6 @@ In plan mode, you should:
 Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 13:01:22Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:01:25Z)**_
 
@@ -9182,48 +9144,9 @@ leWidget* leUtils_PickFromWidget(const leWidget* parent,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 13:02:03Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 13:02:06Z)**_
 
 Picking is gated by `LE_WIDGET_ENABLED` (checked as the parent descends into children) — which is exactly why `setEnabled(FALSE)` works as a modal gate, and exactly why it invalidates. The lever is to toggle pickability **without** the invalidate side-effect. Let me hand my findings to a Plan agent to design and validate the implementation, including the boot-paint-landing question and the pick-gating mechanism.
-
-_**Agent - sidechain (2026-07-01 13:02:45Z)**_
-
-Design an implementation plan for a Marvin firmware (SAM9X75, Legato/LibAria GFX UI) rework. I've already done deep investigation — your job is to validate the approach, catch pitfalls, and produce a concrete step-by-step plan. Do NOT edit anything (read-only). All paths are under /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/.
-
-## Problem (confirmed by code reading)
-After a UI "screen change" (opening/closing the nav drawer or the song-select modal), the FIRST touch lags ~0.5-1s, then touch is snappy. Root cause chain:
-1. Legato defers ALL touch input while its renderer is non-idle: `handleTouchDown` returns `LE_EVENT_DEFERRED` when `leIsDrawing()` is true (default/src/config/default/gfx/legato/core/legato_input.c:396-397; same for up/move at :436,:462). `leIsDrawing()` == `!leRenderer_IsIdle()` == renderer frameState != LE_FRAME_READY.
-2. Deferred events stay queued and retry every LEGATO_Tasks tick (10ms; tasks.c:124-129 → leUpdate).
-3. A screen transition kicks off a large repaint that keeps the renderer non-idle for many ticks → the tap during that window is repeatedly deferred → the lag.
-
-The transitions trigger repaints that are ARCHITECTURALLY UNNECESSARY. The canvas model gives each screen its own RAM surface; Legato renders into a canvas surface regardless of its show/hide (`active`) state (GFX_IOCTL_SET_ACTIVE_LAYER succeeds for any canvas — default/src/config/default/gfx/canvas/gfx_canvas.c:746-759). So once a canvas is painted, showing it later should be a pure hardware-layer bind with ZERO repaint. The current code violates this in three places:
-
-- `firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c` `navigation_open()` (~line 135): explicit `Marvin_PANEL_NAVIGATION->fn->invalidate(...)` on every open → full 320x800 repaint. Code comment claims the startup paint "doesn't fully land" for the off-screen-parked drawer, hence the workaround.
-- `firmware/marvin/default/src/ui/ui_manager.c` `songsel_set_input()` (lines 324-329): toggles `setEnabled()` on PANEL_DASHBOARD / PANEL_SONG_SELECT / PANEL_SONG_SELECT_ALBUM_ART for MODAL INPUT GATING. But `_leWidget_SetEnabled` (default/src/config/default/gfx/legato/widget/legato_widget.c:706) calls `_this->fn->invalidate(_this)` whenever the enabled state changes. So opening song-select repaints the modal panels, and closing (re-enabling dashboard) repaints the whole dashboard. `navigation_open/close` also toggles `setEnabled(PANEL_DASHBOARD,...)` → dashboard repaint on nav close too.
-
-## Key mechanism facts
-- Picking (legato_utils.c `leUtils_PickFromWidget`): a parent only descends into a child if the child has LE_WIDGET_ENABLED and LE_WIDGET_VISIBLE set and the point is in its rect; a widget with LE_WIDGET_IGNOREPICK is never returned as the pick result (but its children can still be picked). So disabling a background PANEL gates its whole subtree from picking — that's what setEnabled(FALSE) is being used for.
-- Layer roots are created with LE_WIDGET_IGNOREPICK|IGNOREEVENTS (legato_state.c leAddLayer). The screens use a "background panel" as the first pickable widget on each IGNOREPICK root.
-- Flags (LE_WIDGET_ENABLED etc.) set DIRECTLY on `wgt->flags` do NOT invalidate; only the setEnabled/setVisible vtable methods invalidate. invalidateWidget (renderer) and paintWidget gate on VISIBLE and dirtyState, NOT on ENABLED — so clearing/setting ENABLED directly gates picking without affecting rendering.
-- LE_PREEMPTION_LEVEL == 0 (legato_config.h:81): leRenderer_Paint renders the whole frame per call but can span ticks when a widget paints incrementally (e.g. the RGBA8888 album-art image blit) or a scratch buffer is locked.
-- Boot sequence (ui_manager.c `ui_boot_task`): splash up → Art_LoadAll → scene_edit_begin/init_screens/scene_edit_end (builds all layer-screens; each panel's *_Setup runs) → bind dashboard to BASE → heo_unbind → `wait_render_idle()` (polls leRenderer_IsIdle, requires 120ms continuous idle, 8s cap) → hold splash min 5s → reveal (hide splash) → show video → arm capture. So there is ALREADY a wait_render_idle behind the splash.
-- Song-select: `Marvin_IMAGE_ALBUM_ART->fn->setImage(...)` on song tap swaps a 508x208 RGBA8888 cover (screen_song_select.c ~227-228, screen_album_art.c). That is a LEGITIMATE content-change repaint (different song → different cover) and must stay event-driven — NOT part of this rework except to note it's a separate perf item (heavy alpha blit).
-- `ScreenSongSelect_Setup` does a one-time `Marvin_PANEL_SONG_SELECT->fn->invalidate(...)` at line ~437 (init only — fine, or fold into a unified boot redraw).
-
-## Desired end state (user's words)
-"The entire point of canvas is so that we don't have to repaint on show. When not shown, nothing about the state of the screen could have changed, so nothing to invalidate. Rework so that initialization forces a full initial draw of every screen behind the splash. After that, every screen is event-driven — nothing needed when re-shown later."
-
-## What I need from you
-Produce a concrete implementation plan covering:
-1. **Guarantee full initial paint of every canvas at boot.** Investigate WHY the current startup paint "doesn't fully land" for the nav drawer (read screen_navigation.c Setup, ui_manager.c init_screens/ui_boot_task, gfx_canvas.c GET_LAYER_RECT + the LE_DRIVER_LAYER_MODE root-resize in legato_state.c leUpdate:387-418, and how canvas window size/position interact with the layer root rect and damage). Determine the minimal reliable way to force+confirm a complete one-time paint of all three canvases (dashboard, navigation, song-select + album-art) behind the splash before reveal. Consider whether an explicit `leRedrawAll()` (legato_state.c:737) or per-panel invalidate immediately before `wait_render_idle()` is sufficient, and whether canvas window SIZE (not position) must equal the full surface at paint time.
-2. **Remove the repaint-on-show.** Drop the `invalidate()` in navigation_open. 
-3. **Replace setEnabled-based modal gating with a NON-invalidating pick gate.** Design a small helper (in the ui tree, not vendor code) that toggles pickability without invalidate — e.g. directly setting/clearing LE_WIDGET_ENABLED on the background panel(s), or LE_WIDGET_IGNOREPICK where appropriate. Verify against leUtils_PickFromWidget semantics that this actually gates the intended subtrees (dashboard subtree while a modal is open; the hidden song-select overlays while closed). Confirm the widget hierarchy (layer root → background panel → buttons) by reading the generated screen code (default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.* and the panel widget pointers used in screen_song_select.c / screen_navigation.c). Note whether directly touching wgt->flags is acceptable style here or if a cleaner accessor exists.
-4. Confirm content-change repaints (album-art swap on song tap, nav highlight scheme change) remain and are correct.
-5. A verification section: how to build (MPLAB), flash, and manually confirm the first-tap latency is gone on nav open/close and song-select open + song tap.
-
-Read the actual files to validate every claim above. Point out any pitfall I've missed (e.g. does clearing ENABLED on a panel change its visual via a disabled-state skin? does the nav slide animation re-damage Legato? does LE_DRIVER_LAYER_MODE's per-tick setSize re-invalidate when window size is constant?). Return a detailed, ordered implementation plan with specific file paths and function names.
 
 _**Agent (claude-opus-4-8 2026-07-01 13:09:29Z)**_
 
@@ -9389,6 +9312,43 @@ Expected result: first-tap latency after every screen change (nav open, nav clos
 - /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c (reference only — MGS-generated visible/enabled flags and hierarchy; do not hand-edit)
 ```
 </details></tool-use>
+
+_**Agent - sidechain (2026-07-01 13:02:45Z)**_
+
+Design an implementation plan for a Marvin firmware (SAM9X75, Legato/LibAria GFX UI) rework. I've already done deep investigation — your job is to validate the approach, catch pitfalls, and produce a concrete step-by-step plan. Do NOT edit anything (read-only). All paths are under /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/.
+
+## Problem (confirmed by code reading)
+After a UI "screen change" (opening/closing the nav drawer or the song-select modal), the FIRST touch lags ~0.5-1s, then touch is snappy. Root cause chain:
+1. Legato defers ALL touch input while its renderer is non-idle: `handleTouchDown` returns `LE_EVENT_DEFERRED` when `leIsDrawing()` is true (default/src/config/default/gfx/legato/core/legato_input.c:396-397; same for up/move at :436,:462). `leIsDrawing()` == `!leRenderer_IsIdle()` == renderer frameState != LE_FRAME_READY.
+2. Deferred events stay queued and retry every LEGATO_Tasks tick (10ms; tasks.c:124-129 → leUpdate).
+3. A screen transition kicks off a large repaint that keeps the renderer non-idle for many ticks → the tap during that window is repeatedly deferred → the lag.
+
+The transitions trigger repaints that are ARCHITECTURALLY UNNECESSARY. The canvas model gives each screen its own RAM surface; Legato renders into a canvas surface regardless of its show/hide (`active`) state (GFX_IOCTL_SET_ACTIVE_LAYER succeeds for any canvas — default/src/config/default/gfx/canvas/gfx_canvas.c:746-759). So once a canvas is painted, showing it later should be a pure hardware-layer bind with ZERO repaint. The current code violates this in three places:
+
+- `firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c` `navigation_open()` (~line 135): explicit `Marvin_PANEL_NAVIGATION->fn->invalidate(...)` on every open → full 320x800 repaint. Code comment claims the startup paint "doesn't fully land" for the off-screen-parked drawer, hence the workaround.
+- `firmware/marvin/default/src/ui/ui_manager.c` `songsel_set_input()` (lines 324-329): toggles `setEnabled()` on PANEL_DASHBOARD / PANEL_SONG_SELECT / PANEL_SONG_SELECT_ALBUM_ART for MODAL INPUT GATING. But `_leWidget_SetEnabled` (default/src/config/default/gfx/legato/widget/legato_widget.c:706) calls `_this->fn->invalidate(_this)` whenever the enabled state changes. So opening song-select repaints the modal panels, and closing (re-enabling dashboard) repaints the whole dashboard. `navigation_open/close` also toggles `setEnabled(PANEL_DASHBOARD,...)` → dashboard repaint on nav close too.
+
+## Key mechanism facts
+- Picking (legato_utils.c `leUtils_PickFromWidget`): a parent only descends into a child if the child has LE_WIDGET_ENABLED and LE_WIDGET_VISIBLE set and the point is in its rect; a widget with LE_WIDGET_IGNOREPICK is never returned as the pick result (but its children can still be picked). So disabling a background PANEL gates its whole subtree from picking — that's what setEnabled(FALSE) is being used for.
+- Layer roots are created with LE_WIDGET_IGNOREPICK|IGNOREEVENTS (legato_state.c leAddLayer). The screens use a "background panel" as the first pickable widget on each IGNOREPICK root.
+- Flags (LE_WIDGET_ENABLED etc.) set DIRECTLY on `wgt->flags` do NOT invalidate; only the setEnabled/setVisible vtable methods invalidate. invalidateWidget (renderer) and paintWidget gate on VISIBLE and dirtyState, NOT on ENABLED — so clearing/setting ENABLED directly gates picking without affecting rendering.
+- LE_PREEMPTION_LEVEL == 0 (legato_config.h:81): leRenderer_Paint renders the whole frame per call but can span ticks when a widget paints incrementally (e.g. the RGBA8888 album-art image blit) or a scratch buffer is locked.
+- Boot sequence (ui_manager.c `ui_boot_task`): splash up → Art_LoadAll → scene_edit_begin/init_screens/scene_edit_end (builds all layer-screens; each panel's *_Setup runs) → bind dashboard to BASE → heo_unbind → `wait_render_idle()` (polls leRenderer_IsIdle, requires 120ms continuous idle, 8s cap) → hold splash min 5s → reveal (hide splash) → show video → arm capture. So there is ALREADY a wait_render_idle behind the splash.
+- Song-select: `Marvin_IMAGE_ALBUM_ART->fn->setImage(...)` on song tap swaps a 508x208 RGBA8888 cover (screen_song_select.c ~227-228, screen_album_art.c). That is a LEGITIMATE content-change repaint (different song → different cover) and must stay event-driven — NOT part of this rework except to note it's a separate perf item (heavy alpha blit).
+- `ScreenSongSelect_Setup` does a one-time `Marvin_PANEL_SONG_SELECT->fn->invalidate(...)` at line ~437 (init only — fine, or fold into a unified boot redraw).
+
+## Desired end state (user's words)
+"The entire point of canvas is so that we don't have to repaint on show. When not shown, nothing about the state of the screen could have changed, so nothing to invalidate. Rework so that initialization forces a full initial draw of every screen behind the splash. After that, every screen is event-driven — nothing needed when re-shown later."
+
+## What I need from you
+Produce a concrete implementation plan covering:
+1. **Guarantee full initial paint of every canvas at boot.** Investigate WHY the current startup paint "doesn't fully land" for the nav drawer (read screen_navigation.c Setup, ui_manager.c init_screens/ui_boot_task, gfx_canvas.c GET_LAYER_RECT + the LE_DRIVER_LAYER_MODE root-resize in legato_state.c leUpdate:387-418, and how canvas window size/position interact with the layer root rect and damage). Determine the minimal reliable way to force+confirm a complete one-time paint of all three canvases (dashboard, navigation, song-select + album-art) behind the splash before reveal. Consider whether an explicit `leRedrawAll()` (legato_state.c:737) or per-panel invalidate immediately before `wait_render_idle()` is sufficient, and whether canvas window SIZE (not position) must equal the full surface at paint time.
+2. **Remove the repaint-on-show.** Drop the `invalidate()` in navigation_open. 
+3. **Replace setEnabled-based modal gating with a NON-invalidating pick gate.** Design a small helper (in the ui tree, not vendor code) that toggles pickability without invalidate — e.g. directly setting/clearing LE_WIDGET_ENABLED on the background panel(s), or LE_WIDGET_IGNOREPICK where appropriate. Verify against leUtils_PickFromWidget semantics that this actually gates the intended subtrees (dashboard subtree while a modal is open; the hidden song-select overlays while closed). Confirm the widget hierarchy (layer root → background panel → buttons) by reading the generated screen code (default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.* and the panel widget pointers used in screen_song_select.c / screen_navigation.c). Note whether directly touching wgt->flags is acceptable style here or if a cleaner accessor exists.
+4. Confirm content-change repaints (album-art swap on song tap, nav highlight scheme change) remain and are correct.
+5. A verification section: how to build (MPLAB), flash, and manually confirm the first-tap latency is gone on nav open/close and song-select open + song tap.
+
+Read the actual files to validate every claim above. Point out any pitfall I've missed (e.g. does clearing ENABLED on a panel change its visual via a disabled-state skin? does the nav slide animation re-damage Legato? does LE_DRIVER_LAYER_MODE's per-tick setSize re-invalidate when window size is constant?). Return a detailed, ordered implementation plan with specific file paths and function names.
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-01 13:02:50Z)**_
 
@@ -13981,8 +13941,6 @@ Expected result: first-tap latency after every screen change (nav open, nav clos
 - /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.h
 - /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c (reference only — MGS-generated visible/enabled flags and hierarchy; do not hand-edit)
 
-_**Agent (claude-opus-4-8 2026-07-01 13:09:35Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 13:09:38Z)**_
 
 The Plan agent validated the approach and pinned the true root cause of the "doesn't fully land" issue: MGS builds `PANEL_NAVIGATION` with `setVisible(FALSE)`, so the boot-time root damage paints nothing inside the drawer — the surface only gets filled incidentally by `Setup`'s `setVisible(TRUE)` invalidate, which is fragile. An explicit, confirmed boot paint fixes it cleanly. Let me write the plan.
@@ -14264,8 +14222,6 @@ _**Agent (claude-opus-4-8 2026-07-01 13:10:45Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:10:48Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 13:10:48Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/ui/ui_manager.h`
@@ -14353,8 +14309,6 @@ _**Agent (claude-opus-4-8 2026-07-01 13:10:48Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 13:10:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 13:11:01Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -14364,8 +14318,6 @@ _**Agent (claude-opus-4-8 2026-07-01 13:11:01Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.h has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 13:11:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:11:07Z)**_
 
@@ -14395,8 +14347,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 13:11:33Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 13:11:35Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -14418,8 +14368,6 @@ default/src/config/default/gfx/legato/widget/legato_widget.h:574:    LE_WIDGET_E
 
 _**Agent (claude-opus-4-8 2026-07-01 13:11:41Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 13:11:41Z)**_
-
 Panels are already `leWidget*` — the casts are unnecessary noise. Let me remove them to match surrounding style.
 
 _**Agent (claude-opus-4-8 2026-07-01 13:11:46Z)**_
@@ -14431,8 +14379,6 @@ _**Agent (claude-opus-4-8 2026-07-01 13:11:46Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/ui_manager.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 13:11:57Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:11:58Z)**_
 
@@ -14499,8 +14445,6 @@ _**Agent (claude-opus-4-8 2026-07-01 13:12:51Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/ui/screens/navigation/screen_navigation.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 13:12:54Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:12:55Z)**_
 
@@ -14618,8 +14562,6 @@ default/src/ui/ui_manager.c:572:    paint_all_screens_once();
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 13:13:49Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 13:13:52Z)**_
 
 Two grep results to note: `screen_navigation.c:190` is the one-time boot `setEnabled(NAVIGATION, TRUE)` in `ScreenNavigation_Setup` (legit init, subsumed by the boot paint — not a per-open toggle), and `ui_manager.c:325` is just my comment. Both fine. The song-select `invalidate` hits are both comments. Clean.
@@ -14644,8 +14586,6 @@ arm-none-eabi-gcc not found
 done
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 13:14:00Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:14:01Z)**_
 
@@ -14676,8 +14616,6 @@ drwxr-xr-x@  4 gregmrozek  staff    128 Jul  1 08:09 out
 === any Makefile/CMake/nbproject anywhere ===
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 13:14:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 13:14:09Z)**_
 
@@ -14818,8 +14756,6 @@ ninja: Entering directory `_build/marvin/default'
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 14:21:01Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 14:21:02Z)**_
 
 All three changed files compile cleanly and the build links + produces the hex. Let me mark the build done and update the marvin journal per project rules.
@@ -14886,8 +14822,6 @@ _**Agent (claude-opus-4-8 2026-07-01 14:21:16Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 14:21:22Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 14:21:22Z)**_
-
 Now I'll add a decision-log entry (newest at top) and a session-log entry. Let me insert the decision row before the 2026-06-30 entry:
 
 _**Agent (claude-opus-4-8 2026-07-01 14:21:25Z)**_
@@ -14911,8 +14845,6 @@ _**Agent (claude-opus-4-8 2026-07-01 14:21:25Z)**_
 225
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 14:21:39Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 14:22:30Z)**_
 
@@ -14981,8 +14913,6 @@ working. One hole. I can click to open song select while nav is still sliding cl
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-01 14:27:03Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 14:27:08Z)**_
 
 Good catch — that's a real race. `navigation_close()` re-enables the dashboard immediately, but the drawer is still sliding and still owns OVR1. A header tap during the slide opens song-select (binds OVR1), then `navigation_fx_done` fires and hides OVR1 — killing the dialog. The fix is exactly what you said: defer re-enabling the dashboard until the close animation completes. Let me look at the current code.
@@ -15049,8 +14979,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-01 14:27:39Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-01 14:27:42Z)**_
 
 Now the dashboard only becomes pickable after the drawer's canvas is hidden and OVR1 is freed. On a re-open mid-close, `navigation_open()` already re-gates the dashboard and the abandoned close's `fx_done` won't fire, so state stays consistent. Let me rebuild.
@@ -15068,8 +14996,6 @@ ninja: Entering directory `_build/marvin/default'
 ninja: fatal: chdir to '_build/marvin/default' - No such file or directory
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 14:27:52Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 14:27:53Z)**_
 
@@ -15104,8 +15030,6 @@ _**User (2026-07-01 14:31:05Z)**_
 one more thing to think about. The current dashboard is a mess of a AI generated mockup with way too many objects. It seems this was a bit part of the screen switching delay. As a test, I commented out line 326 of the previous code and it eliminated the lag. This means that our latest changes might not technically be needed once dashboard is cleaned up. But I think there's still value in these changes so long as we're not hacking Legato in some way to acheive it. We shouldn't need to invalidate / redraw on canvas show / hide... thoughts?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-01 14:32:26Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 14:32:43Z)**_
 
@@ -15142,8 +15066,6 @@ tested ok. please commit.
 
 _**Agent (claude-opus-4-8 2026-07-01 14:35:47Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-01 14:35:47Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 
@@ -15163,8 +15085,6 @@ _**Agent (claude-opus-4-8 2026-07-01 14:35:47Z)**_
 gui
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 14:35:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 14:35:53Z)**_
 
@@ -15375,8 +15295,6 @@ index 3492d9c..903007e 100644
  void UiManager_SetBacklight(uint32_t pct);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-01 14:36:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-01 14:36:14Z)**_
 

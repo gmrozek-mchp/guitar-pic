@@ -14,8 +14,6 @@ lets work on connection between marvin and the fauxmote. Let's work up protocol 
 
 _**Agent (claude-opus-4-8 2026-07-02 14:26:39Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 14:26:39Z)**_
-
 I'll start by reading the relevant specs and journals to understand the current state of both sides and check whether any protocol spec already exists.
 
 _**Agent (claude-opus-4-8 2026-07-02 14:26:49Z)**_
@@ -437,8 +435,6 @@ _**Agent (claude-opus-4-8 2026-07-02 14:26:41Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 14:26:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 14:26:58Z)**_
 
 Let me look at the existing command models — the fauxmote Wiimote API surface, the marvin→guitar T1S protocol (the closest analog), and marvin's gameplay command model.
@@ -589,8 +585,6 @@ wiimote_sdp.c
 wiimote_sdp.h
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 14:27:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 14:27:07Z)**_
 
@@ -853,8 +847,6 @@ _**Agent (claude-opus-4-8 2026-07-02 14:27:07Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 14:27:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 14:27:29Z)**_
 
 Let me check the existing marvin→guitar command wire format and marvin's gameplay command output, so the new protocol stays consistent with the established bitmask.
@@ -1045,8 +1037,6 @@ _**Agent (claude-opus-4-8 2026-07-02 14:27:44Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 14:28:51Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 14:28:52Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -1124,8 +1114,6 @@ Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); 
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 14:29:39Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 14:29:49Z)**_
 
 I've got the full picture now. Key facts I'm designing against:
@@ -1162,8 +1150,6 @@ Options:
 
 **Answer:** Split: lean hot msg + nav msg, Include nav now, yes status. we also need all of the bluetooth link, unlink, pair, reconnect, etc. available over this link
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 14:42:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 14:42:09Z)**_
 
@@ -1476,8 +1462,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/SPEC.
 
 _**Agent (claude-opus-4-8 2026-07-02 14:44:26Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 14:44:26Z)**_
-
 Fixing the now-stale "out of scope" line in the fauxmote SPEC:
 
 _**Agent (claude-opus-4-8 2026-07-02 14:44:28Z)**_
@@ -1489,8 +1473,6 @@ _**Agent (claude-opus-4-8 2026-07-02 14:44:28Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/SPEC.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 14:44:43Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 14:44:56Z)**_
 
@@ -1535,8 +1517,6 @@ _**User (2026-07-02 14:50:21Z)**_
 make a note that we will also want a message for send accelerometer data and one for pointing. I these can all be independent messages? And the fauxmote will keep state (with timeout) of all the pieces to send over to wii in bluetooth packet.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 14:50:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 14:51:02Z)**_
 
@@ -1589,8 +1569,6 @@ _**Agent (claude-opus-4-8 2026-07-02 14:52:19Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 14:52:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 14:52:28Z)**_
 
@@ -1654,8 +1632,6 @@ I think just one overall timeout. we don't need a seperate timeout per message t
 
 _**Agent (claude-opus-4-8 2026-07-02 14:53:05Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 14:53:05Z)**_
-
 Simpler — one link watchdog. Let me update the spec.
 
 _**Agent (claude-opus-4-8 2026-07-02 14:53:08Z)**_
@@ -1699,8 +1675,6 @@ _**User (2026-07-02 14:57:35Z)**_
 please commit this.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 14:57:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 14:57:42Z)**_
 
@@ -1795,8 +1769,6 @@ _**User (2026-07-02 16:16:39Z)**_
 ok let's start working on it. which side first?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 16:17:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:17:10Z)**_
 
@@ -1895,8 +1867,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:17:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:17:47Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 16:17:47Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/fauxmote/main/guitar.c`
@@ -1984,8 +1954,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:17:47Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 16:18:40Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:18:41Z)**_
 
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
@@ -2010,8 +1978,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:18:41Z)**_
 15
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:19:30Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:19:32Z)**_
 
@@ -2071,8 +2037,6 @@ Find extension-attached state in wiimote.c
 
 _**Agent (claude-opus-4-8 2026-07-02 16:19:47Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 16:19:47Z)**_
-
 I'll add a `Wiimote_ExtAttached()` getter. Let me find where `Wiimote_SetExtension` lives:
 
 _**Agent (claude-opus-4-8 2026-07-02 16:19:54Z)**_
@@ -2101,8 +2065,6 @@ Exit code 2
 ugrep: warning: firmware/fauxmote/main/wiimote.c: No such file or directory
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:20:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:20:13Z)**_
 
@@ -2170,8 +2132,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:20:21Z)**_
 433	}
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:20:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:20:31Z)**_
 
@@ -2389,8 +2349,6 @@ void MarvinLink_Start(void);
 File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/marvin_link.h (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:22:55Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:24:37Z)**_
 
@@ -2709,8 +2667,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/
 
 _**Agent (claude-opus-4-8 2026-07-02 16:25:15Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 16:25:15Z)**_
-
 Now reconcile the whammy encoding in the spec to match the extension's actual rest value:
 
 _**Agent (claude-opus-4-8 2026-07-02 16:25:18Z)**_
@@ -2848,8 +2804,6 @@ v6.0.1
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 16:31:52Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:31:59Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -2892,8 +2846,6 @@ Source ESP-IDF and build fauxmote
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 16:32:27Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:32:30Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -2911,8 +2863,6 @@ ERROR: ESP-IDF Python virtual environment "/Users/gregmrozek/.espressif/python_e
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 16:32:38Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:33:30Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -2925,8 +2875,6 @@ Check for existing IDF python envs
 exit=1
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:33:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:33:48Z)**_
 
@@ -2984,8 +2932,6 @@ Wait, I think we need to switch to different VS Code profile. HAve some other th
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 16:36:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:36:46Z)**_
 
 Understood — I'll pause the build/flash side; that needs your environment and profile anyway. No rush.
@@ -3026,8 +2972,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:36:52Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 16:36:56Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:36:57Z)**_
 
 Confirmed — stray `</content>` on line 99. Removing it:
@@ -3041,8 +2985,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:36:58Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/mf_proto.h has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:37:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:37:03Z)**_
 
@@ -3063,8 +3005,6 @@ max payload=8 status len=4
 Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:37:18Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:37:19Z)**_
 
@@ -3113,8 +3053,6 @@ For RX TX pinout, I am using ESP32 Feather v2 board. pinout here - https://learn
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 16:42:35Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:42:37Z)**_
 
 Let me verify against the actual Feather V2 pinout rather than trust the labels — IO7/IO8 are in the range that's SPI-flash on many ESP32s, so I want to confirm they're genuinely free on the PICO-MINI module.
@@ -3150,8 +3088,6 @@ GPIO7 and GPIO8 are already dedicated to UART. For alternative serial communicat
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 16:42:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 16:43:01Z)**_
 
 Confirmed — and it resolves the fauxmote half of the open pin question. The Feather V2 uses the PICO-MINI-02 module, whose flash/PSRAM is internal, so GPIO7/GPIO8 are genuinely free and Adafruit dedicates them as the *second* hardware UART (`Serial1`), separate from the USB debug UART. Exactly what we want — the CLI keeps UART0/USB, the marvin link takes UART1 on IO7/IO8.
@@ -3181,8 +3117,6 @@ _**Agent (claude-opus-4-8 2026-07-02 16:43:14Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 16:43:22Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 16:43:22Z)**_
 
@@ -3221,8 +3155,6 @@ some build errors. can you build now to see for yourself? Or should I share?
 
 _**Agent (claude-opus-4-8 2026-07-02 17:42:14Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 17:42:14Z)**_
-
 Let me try — the venv may exist now that you've been working in your env.
 
 _**Agent (claude-opus-4-8 2026-07-02 17:42:14Z)**_
@@ -3237,8 +3169,6 @@ Check whether IDF python venv now exists
 venv still missing
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 17:42:32Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 17:42:33Z)**_
 
@@ -3260,8 +3190,6 @@ Check pointer/button API signatures in wiimote.h
 30: * via Wiimote_SetButton/TapButton. SetExtension reports it attached/detached. */
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 17:42:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 17:42:46Z)**_
 
@@ -3357,8 +3285,6 @@ _**User (2026-07-02 17:45:13Z)**_
 }]
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 17:45:42Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 17:45:45Z)**_
 
@@ -3477,8 +3403,6 @@ _**Agent (claude-opus-4-8 2026-07-02 17:45:48Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 17:46:01Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 17:46:04Z)**_
 
 Root cause found: the stray `</content>` trailer landed in **three** files I created with `Write` — `mf_proto.h` (already fixed), `marvin_link.c` (line 268), and `marvin_link.h` (line 8). main.c itself is clean — its `TAG undeclared` error is a cascade from including the corrupted `marvin_link.h`, and the `MF_MSG_*` errors in marvin_link.c are the same (that header is included before mf_proto.h). Fixing both remaining files:
@@ -3522,8 +3446,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 17:46:49Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 17:46:50Z)**_
 
 Now let me sweep the whole fauxmote source tree to be certain no other stray tags remain:
@@ -3540,8 +3462,6 @@ Sweep for any stray XML trailer tags in fauxmote sources
 exit=1 (1 = none found, good)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 17:48:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 17:48:14Z)**_
 
@@ -3560,8 +3480,6 @@ _**User (2026-07-02 17:53:45Z)**_
 fauxmote is up and running and successfully connected to wii. time for marvin? commit first?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 17:54:20Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 17:54:22Z)**_
 
@@ -3895,8 +3813,6 @@ _**Agent (claude-opus-4-8 2026-07-02 17:54:32Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 17:54:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 17:54:59Z)**_
 
 fauxmote's up and connected — I'll log the session and update the open questions, then commit.
@@ -4063,8 +3979,6 @@ EOF
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 17:58:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 17:58:27Z)**_
 
 Committed as `cd555fd` (fauxmote link receiver + spec + journal). Left `.specstory/`, `.vscode/`, `.mcp.json`, and the unrelated marvin/hardware items untouched.
@@ -4215,8 +4129,6 @@ _**Agent (claude-opus-4-8 2026-07-02 17:59:04Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 17:59:39Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 17:59:42Z)**_
 
 This is a big subproject and the marvin side has real dependencies (an existing T1S guitar sink to mirror, a command source to tap, and a FLEXCOM USART that needs MCC config). Before I plan, let me map exactly where to hook in. I'll kick that off as a background exploration while I lay out the decision I'll need from you.
@@ -4255,13 +4167,9 @@ Report concise findings (with file:line references) on each of these:
 
 Do NOT modify anything. Return a structured summary I can use to write an implementation plan.
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:00:01Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:00:04Z)**_
 
 I'll explore the marvin firmware thoroughly. Let me start by understanding the directory structure and locating key files.
-
-_**Agent (claude-opus-4-8 2026-07-02 18:00:07Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:00:08Z)**_
 
@@ -4337,8 +4245,6 @@ While that maps the code, here's the shape of the marvin side and the one decisi
 **The decision I'll need:** which **FLEXCOM instance and pins** to dedicate to the fauxmote UART on the Curiosity Hybrid. Known-used: FLEXCOM4 (SPI/LAN8651), FLEXCOM2 (USART/fretboard), FLEXCOM8 (TWI/display). I'm having the explorer confirm which instances are free and their pin options so I can give you grounded choices rather than guessing. This also means an **MCC config pass** (I won't hand-edit the generated tree per repo rules) — so part of the plan will be "configure FLEXCOMn USART in MCC, regenerate" which is a step you'd drive in MPLAB.
 
 I'll come back with a concrete plan + the FLEXCOM options once the exploration lands. Nothing changed on disk yet.
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:00:40Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:00:50Z)**_
 
@@ -4437,8 +4343,6 @@ ui_compositor.md
 yellow_tinge.md
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:01:09Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:01:16Z)**_
 
@@ -4737,8 +4641,6 @@ plib_flexcom_usart_local.h
 flexcom
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:01:51Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:01:52Z)**_
 
@@ -5208,8 +5110,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:01:54Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:09Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:11Z)**_
 
 Note: code uses FLEXCOM1_USART for fretboard, but there's also a FLEXCOM2 USART plib. Let me read the t1s send path, the callers, console, app init, and the FLEXCOM setup.
@@ -5306,8 +5206,6 @@ Enumerate FLEXCOM instance usage in app code
    1 default/src/actuator/fretboard_link.c:131: * component (FLEXCOM1_USART_Initialize). Must match the fretboard SERCOM1
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:33Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:37Z)**_
 
@@ -5573,8 +5471,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:39Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:44Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:02:45Z)**_
 
 Now let me read the bitmask layout (timing_pipeline.h, fret.h), the callers (manual_input.c, timing_pipeline.c, gameplay_engine), and app.c init.
@@ -5794,8 +5690,6 @@ default/src/console/console.h:20:void Console_Initialize(void);
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:05:49Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:05:51Z)**_
 
 Let me read app.c init region, the console CLI registration pattern, timing_pipeline.c producer, gameplay_engine, and the FLEXCOM USART plib API.
@@ -6011,8 +5905,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:05:52Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:05:58Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:06:00Z)**_
 
 Let me check the console CLI command registration pattern, timing_pipeline producer liveness, gameplay engine, and the journal's FLEXCOM notes + pin config.
@@ -6193,8 +6085,6 @@ Journal FLEXCOM/fauxmote mentions
 1703:3. **USB CDC host MCC regen.** Decided on USB CDC (marvin host, fretboard device) for the actuator/detector link instead of FLEXCOM UART — single cable, auto-enumeration, host-PC-debuggable. MCC regenerated with EHCI+OHCI host drivers and CDC host class. VBUS power-enable pins on PC27+PC31 (one per port). Hand-edit needed in `initialization.c` `DRV_USB_VBUSPowerEnable` because MCC assumes a single VBUS pin named `VBUS_AH` and emits one Set/Clear call; with two pins we need both per-pin macros explicitly. Logged as patch #5 in the MCC re-apply list.
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:06:12Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:06:13Z)**_
 
@@ -6425,8 +6315,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:06:17Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:06:23Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:06:29Z)**_
 
 Let me check the FLEXCOM instance init/pin configuration and confirm gameplay_engine is observe-only (not a live sender), plus the perf producer enum.
@@ -6482,8 +6370,6 @@ Perf producer enum, gameplay engine send check, pin peripheral fn
 455:    FLEXCOM4_SPI_Initialize();
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:07:23Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:07:25Z)**_
 
@@ -6589,8 +6475,6 @@ Baud configs and named pins
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:08:11Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:08:22Z)**_
 
 Let me confirm the PA28/PA29 FLEXCOM mapping and check how the build wires in the net modules (user.cmake).
@@ -6632,8 +6516,6 @@ PIO mux for PA28/29 and user.cmake module wiring
 69:    # flip this once the fretboard PIC32CM T1S side is up.
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:08:38Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:08:40Z)**_
 
@@ -6716,8 +6598,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:08:40Z)**_
 72
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 18:09:12Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 18:11:21Z)**_
 
@@ -6988,8 +6868,6 @@ FLEXCOM0, FLEXCOM3, FLEXCOM6, FLEXCOM7, FLEXCOM9, FLEXCOM10, FLEXCOM11, FLEXCOM1
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 18:14:16Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:14:34Z)**_
 
 Great map — that clarifies the integration substantially. A few important reality-corrections from the code (vs. the journal/spec assumptions):
@@ -7017,8 +6895,6 @@ REQUIREMENTS FOR SUMMARIZATION/ANALYSIS/REVIEW:
 - If after a few attempts you cannot read the file (file not found, lines too long for Read's offset/limit, no shell access), STOP retrying. Summarize what you were able to read, explicitly state which portion you could not read and why, and proceed.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:15:57Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:15:58Z)**_
 
@@ -7066,8 +6942,6 @@ in the Receive FIFO.,8.3.10.2 FLEXCOM Receive Holding Register Bits
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:17:35Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:17:38Z)**_
 
 The datasheet dump confirms the FLEXCOM IO mapping generically (IO0 = TXD, IO1 = RXD) but doesn't contain the PA/PB pin-mux table, so exact pins for a free instance get chosen when you generate the PLIB in MCC. The instance choice is really driven by which pins are broken out on your Hybrid headers — your call. Two decisions gate the plan:
@@ -7093,8 +6967,6 @@ Options:
 
 **Answer:** We're going to use FLEXCOM1 for this on PA28/PA29, Mirror to both
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:21:08Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:21:25Z)**_
 
@@ -7130,8 +7002,6 @@ _**User (2026-07-02 18:32:26Z)**_
 let's try it. ready to build and connect and test?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 18:32:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:32:45Z)**_
 
@@ -7657,8 +7527,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:32:48Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:33:25Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:33:27Z)**_
 
 Now the serial-setup struct/enums, the app init sequence, and the CLI binding pattern:
@@ -8015,8 +7883,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:33:30Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:33:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:34:00Z)**_
 
 Now the CLI binding pattern in console.c:
@@ -8151,8 +8017,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:34:01Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:34:38Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:34:49Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -8194,8 +8058,6 @@ Find handler signatures + helpers in console.c
 268:static void cmd_player(EmbeddedCli *cli, char *args, void *ctx)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:36:14Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:36:16Z)**_
 
@@ -8280,8 +8142,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:36:39Z)**_
 72
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:36:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:36:46Z)**_
 
@@ -8465,8 +8325,6 @@ bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
 File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/net/fauxmote/fauxmote_link.h (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:39:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:40:23Z)**_
 
@@ -8822,8 +8680,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:41:11Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:41:12Z)**_
 
 app.c needs the fauxmote include (and the transport macro comes from fretboard_link.h). Let me check its includes:
@@ -8876,8 +8732,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:41:57Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/cmake/marvin/default/user.cmake has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:42:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:42:04Z)**_
 
@@ -8978,8 +8832,6 @@ awk '/static void cmd_manual|static void cmd_fret|static void cmd_strum/{p=1} p{
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:44:29Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:44:30Z)**_
 
 Adding the `fauxmote` CLI command (guarded to the T1S build, since the module only exists then). First the includes:
@@ -9004,8 +8856,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:45:31Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:45:35Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -9015,8 +8865,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:45:35Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:46:14Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:46:15Z)**_
 
@@ -9056,8 +8904,6 @@ Shell cwd was reset to /Users/gregmrozek/Projects/microchip/guitar-pic
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:46:40Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:46:45Z)**_
 
 Clean sweep, header host-compiles. (The CRC differs from the earlier fauxmote test only because that used whammy `0x1F` vs rest `0x10` here — different payload byte.) Let me confirm the two `mf_proto.h` copies are byte-identical, then update the journal + spec.
@@ -9094,8 +8940,6 @@ Show the difference between the two proto headers
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:47:25Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:47:27Z)**_
 
 Only the header *comment* differs; the protocol definitions are byte-identical. Since I claimed byte-for-byte sync, let me align the comment in the fauxmote copy too so a future `diff` stays clean:
@@ -9109,8 +8953,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:47:31Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/mf_proto.h has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:47:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:47:43Z)**_
 
@@ -9173,8 +9015,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:48:32Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:48:42Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:48:58Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -9198,8 +9038,6 @@ String: | Date | Decision | Rationale |
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 18:49:56Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 18:50:05Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -9209,8 +9047,6 @@ _**Agent (claude-opus-4-8 2026-07-02 18:50:05Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 18:50:24Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 18:50:27Z)**_
 
@@ -9302,8 +9138,6 @@ _**User (2026-07-02 19:02:18Z)**_
 I think buttons are being held down or something. isn't there positive / negative logic difference between some of the wiimote buttons? When reconnecting, the menu always goes down one step, so I think lots of buttons being held at same time
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 19:05:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:05:11Z)**_
 
@@ -9489,8 +9323,6 @@ _**Agent (claude-opus-4-8 2026-07-02 19:05:13Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 19:07:08Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:07:11Z)**_
 
 apply logic looks correct, and `mask=0` cleanly releases everything. The "one step down per reconnect" (a single edge, not continuous chaos) plus "btn doesn't work" makes me suspect **marvin is streaming a nonzero mask from an active producer** rather than a polarity bug. Let me verify what marvin actually sends at idle — check the producer defaults and re-read my TX path.
@@ -9538,8 +9370,6 @@ grep -n "s_enabled\|FretboardLink_Send\|SetEnabled\|SetFret\|SetStrum" actuator/
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 19:07:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:07:47Z)**_
 
 That's the smoking gun — no polarity bug. `timing_pipeline.c:72` has **`s_pipeline_enabled = true` by default**, and the CV detector is enabled+active at boot too. So marvin's gameplay scheduler is *already running* against the Wii's menu screen, the detector emits spurious frets/strum from non-gameplay video, and the mirror I added now faithfully forwards all of that to the Wii. Let me confirm the publish path:
@@ -9575,8 +9405,6 @@ _**Agent (claude-opus-4-8 2026-07-02 19:07:48Z)**_
 291	/* Build the per-frame TIMING snapshot from current pipeline state. Called
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:08:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:08:20Z)**_
 
@@ -9620,8 +9448,6 @@ _**User (2026-07-02 19:10:38Z)**_
 that did it. timing should be off to start. 1 warning would be good. 2. sure. in the end we will want explicit control of what is sending wiimote commands. gameplay engine when navigating. cv detector (or other) whhen playing song.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 19:12:14Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:12:24Z)**_
 
@@ -9728,8 +9554,6 @@ uint8_t GameplayEngine_CurrentScreen(void);
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 19:14:08Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:14:12Z)**_
 
 `GameplayEngine_CurrentScreen()` is exactly the hook needed to gate actuation on "are we in a song." Let me find the screen enum, then wire the three changes.
@@ -9770,8 +9594,6 @@ game/gameplay_metadata.h:90:  {GP_SCREEN_training_menu, GP_AXIS_H, 2, {285,154,4
 game/gameplay_metadata.h:91:  {GP_SCREEN_part_select, GP_AXIS_V, 2, {377,185,563,249}, gp_menu_part_select_items, gp_menu_part_select_baseline},
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:16:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:16:39Z)**_
 
@@ -9874,8 +9696,6 @@ static void cmd_manual(EmbeddedCli *cli, char *args, void *ctx)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 19:17:05Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:17:06Z)**_
 
 Clear. Implementing all three. First the timing pipeline — default off, plus the `in_song` gate and the accessors:
@@ -9935,8 +9755,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 19:17:46Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:17:51Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -9946,8 +9764,6 @@ _**Agent (claude-opus-4-8 2026-07-02 19:17:51Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/actuator/timing_pipeline.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:17:56Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:17:56Z)**_
 
@@ -9962,8 +9778,6 @@ _**Agent (claude-opus-4-8 2026-07-02 19:18:03Z)**_
 <tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:18:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:18:12Z)**_
 
@@ -10021,8 +9835,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-02 19:18:52Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 19:18:52Z)**_
-
 Now surface timing/gate state in `status` and update the `timing` help text:
 
 _**Agent (claude-opus-4-8 2026-07-02 19:18:52Z)**_
@@ -10077,8 +9889,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 19:19:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:19:39Z)**_
 
 Now the docs — record the default-off + gate + the arbitration direction. Let me sweep for stray tags first, then journal it:
@@ -10108,8 +9918,6 @@ _**Agent (claude-opus-4-8 2026-07-02 19:20:09Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:20:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:20:35Z)**_
 
@@ -10167,8 +9975,6 @@ commit.
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 19:22:29Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:22:31Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -10201,8 +10007,6 @@ firmware/marvin/default/src/game/gameplay_metadata.h
  M firmware/marvin/docs/journal.md
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:22:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:22:47Z)**_
 
@@ -10323,8 +10127,6 @@ time for the last bit of the heavy lift. Shall we play a game? Hook up the start
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 19:24:51Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:24:54Z)**_
 
 "Shall we play a game?" — GH3, Expert, no less. This is the M10 capstone: the closed-loop game-state **controller** that navigates GH3's menus to launch a training playthrough of the selected song/difficulty, then hands the wheel to the CV detector to actually play it — with a Start button to kick it off. That's a meaningful multi-file feature with real design decisions (menu-nav via guitar strum/green vs Wiimote, closed-loop settle/retry policy, the nav↔detector arbiter, the UI trigger), and it builds directly on the offline gameplay prototype and `gh3_navigation.md`.
@@ -10350,8 +10152,6 @@ In plan mode, you should:
 Remember: DO NOT write or edit any files yet. This is a read-only exploration and planning phase.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 19:25:19Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:25:20Z)**_
 
@@ -10388,8 +10188,6 @@ Explore these areas and report concise findings with file:line references:
 4. **Training-mode specifics.** How does one reach a "training" or "practice" full-song playthrough in GH3 (vs quickplay/career)? Which screens/menu items are involved (training_menu, section_select, speed_select, difficulty_select, part_select)? What is the exact sequence for "full song, selected difficulty, training"?
 
 Return a structured summary I can use to design the on-device controller. Do NOT modify anything.
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:01Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:02Z)**_
 
@@ -10983,8 +10781,6 @@ Return a structured summary for designing the controller. Do NOT modify anything
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:16Z)**_
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:16Z)**_
-
 Let me continue reading the metadata file and explore the gameplay prototype.
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:18Z)**_
@@ -11065,8 +10861,6 @@ List gameplay package and test files
 /Users/gregmrozek/Projects/microchip/guitar-pic/tools/gameplay/tests/test_songselect.py
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:19Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:21Z)**_
 
@@ -11445,8 +11239,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:24Z)**_
 49
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:24Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:26Z)**_
 
@@ -11939,8 +11731,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:27Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:29Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:30Z)**_
 
 I'll explore the marvin firmware structure and read the relevant files in parallel.
@@ -12399,8 +12189,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:32Z)**_
 158
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:33Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:51Z)**_
 
@@ -13561,8 +13349,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:38Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:38Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:39Z)**_
 
 Let me check the CLI, the firmware-side metadata structs, and the journal for timing constraints.
@@ -13648,8 +13434,6 @@ Grep CLI for commands and emit logic
 175:    if args.command is None:
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:46Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:47Z)**_
 
@@ -13921,8 +13705,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:50Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:50Z)**_
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:50Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/game/gameplay_select.h`
@@ -13992,8 +13774,6 @@ firmware/marvin/default/src/actuator/manual_control.h:10: * ui/manual_input.c). 
 firmware/marvin/default/src/actuator/manual_control.h:16: * and menu navigation doesn't need them.
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:55Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:26:56Z)**_
 
@@ -14472,11 +14252,7 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:03Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:05Z)**_
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:05Z)**_
-
 Let me read the metadata, classify, and manual_control (the input-sending side) headers.
-
-_**Agent (claude-opus-4-8 2026-07-02 19:27:06Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:07Z)**_
 
@@ -14655,8 +14431,6 @@ Extract screen/setlist/menu definitions from metadata
 218:  {GP_SETLIST_MAIN, 33, GP_SONG_ROI_SLOT, "knights_of_cydonia", gp_song_vec_33},
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 19:27:11Z)**_
 
@@ -15057,13 +14831,9 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:13Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:15Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:16Z)**_
 
 Let me get the song ROI defs / classify section from metadata.h and check the journal for timing constraints.
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:18Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:18Z)**_
 
@@ -15199,8 +14969,6 @@ Search candidate widget names in generated header
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:26Z)**_
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:26Z)**_
-
 Let me read the key journal sections on the bitmask mapping and settle policy.
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:26Z)**_
@@ -15242,8 +15010,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:26Z)**_
 73
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:26Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:51Z)**_
 
@@ -15320,8 +15086,6 @@ selection.h
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:27Z)**_
 
 Let me confirm the module inventory and how the console currently drives these setters.
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:32Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:40Z)**_
 
@@ -15415,8 +15179,6 @@ selection.h
 586:    ManualControl_SetStrum(down, false);
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:51Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:53Z)**_
 
@@ -15520,13 +15282,9 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:53Z)**_
 ```
 </details></tool-use>
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:56Z)**_
-
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:57Z)**_
 
 Let me read the START button's generated definition, the song_select SELECT handler, and confirm whether any status label exists on the SONG card.
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:27:58Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:28:02Z)**_
 
@@ -15608,8 +15366,6 @@ _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:28:02Z)**_
 414	    song_detail_show(0);   /* mirror the default (first-song) selection */
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:28:26Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:28:28Z)**_
 
@@ -15981,8 +15737,6 @@ SONG labels and selection API
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:29:06Z)**_
 
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:29:06Z)**_
-
 I have everything needed. Let me confirm whether the `_Status` label is currently used anywhere.
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:29:11Z)**_
@@ -16016,10 +15770,6 @@ Recheck Status label usage without bad glob
 (Bash completed with no output)
 ```
 </details></tool-use>
-
-_**Agent - sidechain (claude-opus-4-8 2026-07-02 19:29:27Z)**_
-
-_**Agent (claude-opus-4-8 2026-07-02 19:29:59Z)**_
 
 _**Agent - sidechain (claude-opus-4-8 2026-07-02 19:30:02Z)**_
 
@@ -16251,8 +16001,6 @@ No files were modified.</result>
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 19:30:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:31:00Z)**_
 
 Agent 1 gives me the exact state machine to port — the offline `NavController` in `tools/gameplay/gameplay/navigator.py` is observation-driven and clean:
@@ -16334,8 +16082,6 @@ I did not modify anything.</result>
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 19:33:05Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 19:33:17Z)**_
 
 All three maps are in, and the picture is complete — this is a **port of the proven offline `NavController`**, not new algorithm design:
@@ -16367,8 +16113,6 @@ Options:
 **Answer:** START button + console command, Stop → release + status READY/FAILED
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 21:36:51Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 21:36:52Z)**_
 
 Both confirmed: **START button + console `play`**, and **stop → release + READY/FAILED** on end/failure. That settles the design. Writing the plan.
@@ -16384,8 +16128,6 @@ _**User (2026-07-02 21:46:11Z)**_
 continue
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 21:46:25Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 21:50:34Z)**_
 
@@ -16683,8 +16425,6 @@ then poll the latest observed state until the expected screen appears or a timeo
 5. Song end → `practice_end_menu` → CV disabled, guitar released, Status `READY`.
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 21:52:27Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 21:52:32Z)**_
 
@@ -17096,8 +16836,6 @@ _**Agent (claude-opus-4-8 2026-07-02 21:52:40Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 21:53:36Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 21:53:36Z)**_
-
 The prototype ports cleanly. Now the exact on-device structs I'll touch:
 
 _**Agent (claude-opus-4-8 2026-07-02 21:53:38Z)**_
@@ -17304,8 +17042,6 @@ _**Agent (claude-opus-4-8 2026-07-02 21:53:38Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 21:53:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 21:55:57Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -17377,8 +17113,6 @@ game/gameplay_select.h:33:int gp_read_song(const uint8_t *frame, int width, int 
 349:    uint8_t    producer_id;          /* perf_actuator_producer_t */
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 21:56:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 21:56:08Z)**_
 
@@ -17505,8 +17239,6 @@ _**Agent (claude-opus-4-8 2026-07-02 21:56:08Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 21:58:08Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 21:58:09Z)**_
 
 I have everything needed. Implementing now, starting with the `GetLatest` snapshot in the gameplay engine.
@@ -17580,8 +17312,6 @@ _**Agent (claude-opus-4-8 2026-07-02 21:59:14Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 21:59:25Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 21:59:25Z)**_
-
 <tool-use data-tool-type="read" data-tool-name="Read"><details>
 <summary>Tool use: **Read**</summary>
  `./firmware/marvin/default/src/game/gameplay_engine.h`
@@ -17647,8 +17377,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:00:16Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/perf_log/perf_log_records.h has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:02:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:02:07Z)**_
 
@@ -18086,8 +17814,6 @@ File created successfully at: /Users/gregmrozek/Projects/microchip/guitar-pic/fi
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 22:04:14Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:04:16Z)**_
 
 Now wire into `app.c`:
@@ -18104,8 +17830,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-02 22:04:32Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 22:04:32Z)**_
-
 Those warnings are pre-existing (unrelated to my one-line include). Now the init call:
 
 _**Agent (claude-opus-4-8 2026-07-02 22:04:40Z)**_
@@ -18117,8 +17841,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:04:40Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/app.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:04:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:04:51Z)**_
 
@@ -18172,8 +17894,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:04:52Z)**_
 248
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:05:32Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:05:32Z)**_
 
@@ -18245,8 +17965,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-02 22:07:15Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 22:07:15Z)**_
-
 Now the console `play` command:
 
 _**Agent (claude-opus-4-8 2026-07-02 22:07:17Z)**_
@@ -18278,8 +17996,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:07:57Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:08:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:08:10Z)**_
 
@@ -18330,8 +18046,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:08:39Z)**_
 
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 22:08:47Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:08:51Z)**_
 
 All code in. Let me sweep for stray `Write`-tool artifacts across the new/edited files before journaling:
@@ -18351,8 +18065,6 @@ grep -rn "</content>\|</parameter>\|</antml" game/game_controller.c game/game_co
 sweep exit=1 (1=clean)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:11:12Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:11:12Z)**_
 
@@ -18381,8 +18093,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:12:05Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/gh3_navigation.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:14:29Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:14:37Z)**_
 
@@ -18459,8 +18169,6 @@ M  firmware/marvin/default/src/config/default/harmony-manifest-success.yml
 ?? hardware/t1s-sink/t1s-sink.kicad_sch
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:15:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:15:24Z)**_
 
@@ -18541,8 +18249,6 @@ CAT: loaded 64 song(s)
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 22:19:40Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:19:46Z)**_
 
 The board initializes fully (all `App_StartServices` modules log, then SD mount, video detect, ART/CAT load) and then stops right after `CAT: loaded`. Since every init clearly completed and the controller task just blocks idle on its start signal, this isn't obviously my navigator logic — but I want to isolate it rather than guess. Let me look at exactly what runs right after the catalog load (the dashboard reveal), and reconcile it against my dashboard changes + the MGS regen that's also in the tree.
@@ -18589,8 +18295,6 @@ ui/ui_manager.c:750:    (void)xTaskCreateStatic(ui_boot_task, "UiBoot", BOOT_TAS
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 22:21:13Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:21:31Z)**_
 
 Good log — it actually tells me a lot. Every `App_StartServices` module initialized (including `GameController_Initialize`, which is silent), and the hang is right after `CAT: loaded`. Tracing the boot path, that pins *where* it stops:
@@ -18630,8 +18334,6 @@ I did add things to MGS including a new "screen", I don't think this would be it
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 22:25:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:25:33Z)**_
 
 No console = a hard fault or spin (not a UI-only stall), and it dies at the first full paint/reveal. A **new MGS screen** is a very strong suspect: marvin's UI runs a deliberately hand-managed layer model — `LE_LAYER_COUNT` is pinned, the MGS screen state machine is disabled, and there's a `compat/le_gen_init.h` stub standing in for the generated one. Adding a screen in MGS can move all of those out from under `ui_manager`. Let me look at what the regen actually changed rather than speculate.
@@ -18656,8 +18358,6 @@ let me stash your changes, back out the previous commit and we'll try again.
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 22:28:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:28:56Z)**_
 
 Good — backing out the new screen and still stalling rules the new screen out, and "no console response" means a hard fault or spin, not a UI stall. Your bisection plan is exactly right: get to a known-good boot first, then re-apply in layers.
@@ -18679,8 +18379,6 @@ _**User (2026-07-02 22:29:46Z)**_
 working now. We'll get this to good working state and I'll save screen changes for later.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 22:30:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:30:38Z)**_
 
@@ -18730,8 +18428,6 @@ GC: PLAYING
 GC: READY
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 22:34:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:34:37Z)**_
 
@@ -18787,8 +18483,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-02 22:36:06Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 22:36:06Z)**_
-
 Let me sweep the edited file for stray artifacts:
 
 _**Agent (claude-opus-4-8 2026-07-02 22:36:11Z)**_
@@ -18811,8 +18505,6 @@ Verify edits + no stray tags
 332:            (void)wait_screen_change(sc, GC_STEP_TIMEOUT_MS);
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:36:26Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:36:30Z)**_
 
@@ -18857,8 +18549,6 @@ is navigation logic runing closed loop now? soundsl like it was running open loo
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 22:38:09Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:38:16Z)**_
 
 Good questions — let me be precise, because "open loop" isn't quite what was happening.
@@ -18891,8 +18581,6 @@ _**User (2026-07-02 22:38:40Z)**_
 do have any logic to get ouut of the screens after song complete? I'm stuck at end of song now.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 22:40:00Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:40:02Z)**_
 
@@ -18948,8 +18636,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-02 22:41:07Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 22:41:07Z)**_
-
 Let me verify no lingering `anchor_to_main_menu` references and no stray tags:
 
 _**Agent (claude-opus-4-8 2026-07-02 22:41:30Z)**_
@@ -18978,8 +18664,6 @@ echo "=== stray tags (expect none) ==="; grep -n "</content>\|</antml\|</paramet
 exit=1
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:41:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:41:42Z)**_
 
@@ -19025,8 +18709,6 @@ I would like it to stay on the end screen after play. It should only navigate aw
 
 _**Agent (claude-opus-4-8 2026-07-02 22:43:40Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 22:43:40Z)**_
-
 Got it — stay put on the end screen, and only clean up when the *next* run starts. That's actually simpler and it's what the anchor already handles. Reverting the auto-exit:
 
 _**Agent (claude-opus-4-8 2026-07-02 22:43:44Z)**_
@@ -19049,8 +18731,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/docs/jo
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 22:44:03Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 22:44:06Z)**_
 
 Done. Now:
@@ -19068,8 +18748,6 @@ _**User (2026-07-02 22:57:05Z)**_
 do you reconnect fauxmote to wii if necessary?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-02 22:58:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:58:35Z)**_
 
@@ -19110,8 +18788,6 @@ _**Agent (claude-opus-4-8 2026-07-02 22:59:13Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/game/game_controller.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 22:59:29Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 22:59:29Z)**_
 
@@ -19178,8 +18854,6 @@ mostly working as it should. lets wrap up we have and commit.
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-02 23:07:01Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 23:07:02Z)**_
 
 On it. Let me check the current git state first — the bisection (stash / revert / re-apply) may have shifted what's committed vs. working.
@@ -19231,8 +18905,6 @@ f099978 marvin: album-art overlay for large cover art; Tailwind 8-tier palette
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 23:07:27Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 23:07:29Z)**_
 
 Two things before I commit — let me verify the branch state, because the tree looks detached:
@@ -19263,8 +18935,6 @@ gameplay c5be6f66f930a715cea104ffbfa68aa5a082ed49
   gameplay
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 23:08:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 23:08:44Z)**_
 
@@ -19316,8 +18986,6 @@ c5be6f6 marvin: add HumanPlayer art + MGS/Legato asset regen
 
 _**Agent (claude-opus-4-8 2026-07-02 23:10:06Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-02 23:10:06Z)**_
-
 Here's the situation: **HEAD is detached at `73027d2`**, and your **`gameplay` branch is one commit ahead** — `c5be6f6` (the HumanPlayer art + MGS/Legato asset regen). Committing M10 right here would create a dangling commit off `73027d2`, not on your branch and missing that regen.
 
 The good news: `c5be6f6` only touches generated/asset files — **zero overlap** with my M10 source. So the clean landing is to reattach to `gameplay` (my uncommitted changes carry over safely) and commit there, on top of the regen. Doing that:
@@ -19366,8 +19034,6 @@ gameplay
 ?? firmware/marvin/default/src/game/game_controller.h
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-02 23:10:33Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-02 23:10:34Z)**_
 
@@ -19457,8 +19123,6 @@ EOF
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-02 23:11:35Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-02 23:11:37Z)**_
 
 Committed as **`6fa0936`** on `gameplay` (on top of the HumanPlayer regen). M10 is landed.
@@ -19504,8 +19168,6 @@ _**User (2026-07-03 14:48:58Z)**_
 So, i didn't want you to roll c5be6f66f930a715cea104ffbfa68aa5a082ed49 into the change. it was stashed for a reason. I have a bit of a mess right now. I backed off gameplay to before c5be6f66f930a715cea104ffbfa68aa5a082ed49 but had another agent start doing work on 6fa093681eaf41b46cd56fadf63a1476fc99bc63. now I'm not sure how to reconcile. We need 6fa093681eaf41b46cd56fadf63a1476fc99bc63  but I don't want to lose work of c5be6f66f930a715cea104ffbfa68aa5a082ed49
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 14:49:35Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:49:36Z)**_
 
@@ -19600,8 +19262,6 @@ f099978 marvin: album-art overlay for large cover art; Tailwind 8-tier palette
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:51:02Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:51:07Z)**_
 
 Good news up front: **nothing is lost.** Both commits are safe — here's the actual shape:
@@ -19688,8 +19348,6 @@ f099978 HEAD@{13}: commit: marvin: album-art overlay for large cover art; Tailwi
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:51:59Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:52:00Z)**_
 
 The reflog clarifies it: `gameplay` was `--mixed` reset from `6fa0936` down to `73027d2`, so your **working tree currently holds the full combined state** (regen + M10) as uncommitted changes on `gameplay`. Nothing was hard-reset away. Let me confirm whether the working tree has anything *beyond* `6fa0936` (i.e., the other agent's new work) — that's the one thing I can't infer:
@@ -19745,8 +19403,6 @@ exit: if empty above, working tree tracked-content == 6fa0936
   gui-wiimote
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 14:54:26Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 14:54:31Z)**_
 
@@ -19841,8 +19497,6 @@ no changes added to commit (use "git add" and/or "git commit -a")
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:57:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:57:38Z)**_
 
 The snapshot hit a snag — `hardware/t1s-sink/.history/` is a **nested git repo**, which made `git add -A` bail (nothing committed yet; the branch exists at 73027d2 but the commit didn't land). The fragile `health` work is all under `firmware/`, so let me snapshot just that — cleaner and avoids the nested-repo issue:
@@ -19882,8 +19536,6 @@ SNAPSHOT COMMITTED ✓
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 14:58:15Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 14:58:19Z)**_
 
 Secured — snapshot `deb682e` on `wip-snapshot-m10-health` captures **everything** (regen + M10 + the agent's new `health_monitor.c/.h`). Nothing can be lost now. Working tree is clean; `gameplay` and `gui-wiimote` untouched.
@@ -19918,8 +19570,6 @@ git show c5be6f6:$H 2>/dev/null | grep -nE "BUTTON_DASHBOARD_GAMEPLAY_START|LABE
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:00:09Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:00:16Z)**_
 
 **Everything is now safe** and I understand the tangle. Status:
@@ -19951,8 +19601,6 @@ Options:
 
 **Answer:** Done / stopped, Park it separately
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:01:45Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:01:52Z)**_
 
@@ -20015,8 +19663,6 @@ M	.specstory/statistics.json
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:02:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:02:28Z)**_
 
 M10 replayed cleanly onto the base (`gameplay-clean` = `73027d2` + M10). Now apply just the **health work** — excluding the unrelated datasheet PDFs/`gfx2d` doc that were pre-existing untracked files my snapshot happened to sweep in:
@@ -20065,8 +19711,6 @@ A  firmware/marvin/default/src/health/health_monitor.c
 A  firmware/marvin/default/src/health/health_monitor.h
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:03:00Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:03:01Z)**_
 
@@ -20175,8 +19819,6 @@ the mcc edits are not critical and we'll recover next time mcc is started. choos
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-03 15:04:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:04:36Z)**_
 
 MCC diff is just hash-map bookkeeping and `health_monitor.c` only uses `SYS_FS`/FreeRTOS (no new peripheral), so it'll build fine — and MCC will regenerate those on next start. Taking the newest (snapshot) versions and committing the health work:
@@ -20225,8 +19867,6 @@ f7e9ff7 marvin: health monitor — SD heartbeat + crash/stack dump
 bb62697 marvin: M10 game-state controller — START auto-plays the selected song
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-03 15:04:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:05:00Z)**_
 
@@ -20280,8 +19920,6 @@ Deleted branch gameplay-clean (was f7e9ff7).
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-03 15:05:35Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-03 15:05:45Z)**_
 
 Reconciled and clean. Here's the final state:
@@ -20317,8 +19955,6 @@ _**User (2026-07-03 15:07:41Z)**_
 looks good. please clean up, keeping humanplayer-regen for later
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-03 15:07:56Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-03 15:18:45Z)**_
 
@@ -20376,8 +20012,6 @@ _**User (2026-07-05 14:59:45Z)**_
 need to add fauxmote commant for the IR pointer.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-05 15:00:27Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 15:00:29Z)**_
 
@@ -20489,8 +20123,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:00:29Z)**_
 84	#define MF_ST_ASSIGNED     (1u << 2)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 15:00:40Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 15:00:41Z)**_
 
@@ -20809,8 +20441,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:00:41Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 15:01:30Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 15:01:31Z)**_
 
 Clear — the fauxmote side already applies `POINTER`; I just need the marvin-side sender + a console command, plus a named flag in the shared proto. Adding `MF_PTR_VISIBLE` to both `mf_proto.h` copies (keeping them byte-identical), then the sender.
@@ -20894,8 +20524,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default
 
 _**Agent (claude-opus-4-8 2026-07-05 15:02:41Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-05 15:02:41Z)**_
-
 Now the console `pointer` subcommand. Let me read the current `cmd_fauxmote`:
 
 _**Agent (claude-opus-4-8 2026-07-05 15:02:43Z)**_
@@ -20965,8 +20593,6 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 15:02:52Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 15:02:57Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -20976,8 +20602,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:02:57Z)**_
 <tool_use_error>File has been modified since read, either by the user or by a linter. Read it again before attempting to write it.</tool_use_error>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 15:03:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 15:03:03Z)**_
 
@@ -21005,8 +20629,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:03:03Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 15:03:09Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 15:03:15Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -21016,8 +20638,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:03:15Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/src/console/console.c has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 15:03:22Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 15:03:24Z)**_
 
@@ -21081,8 +20701,6 @@ The file /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/fauxmote/main/
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 15:03:59Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 15:04:00Z)**_
 
 Now update the protocol doc to reflect POINTER is implemented:
@@ -21144,8 +20762,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:04:13Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 15:04:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 15:04:29Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -21155,8 +20771,6 @@ _**Agent (claude-opus-4-8 2026-07-05 15:04:29Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/docs/marvin-fauxmote-link.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 15:04:37Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 15:04:42Z)**_
 
@@ -21206,8 +20820,6 @@ firmware/marvin/default/src/console/console.c:749:        console_printf("fauxmo
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-05 15:05:09Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-05 15:05:16Z)**_
 
 Done — the marvin-side `POINTER` sender is wired end-to-end and everything checks clean (proto copies byte-identical, no stray artifacts).
@@ -21244,8 +20856,6 @@ please commit both in one
 
 _**Agent (claude-opus-4-8 2026-07-05 15:14:59Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-05 15:14:59Z)**_
-
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
 <summary>Tool use: **Bash**</summary>
 Check branch + modified files before staging
@@ -21277,8 +20887,6 @@ gameplay
  1 file changed, 9 insertions(+), 6 deletions(-)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-05 15:15:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-05 15:15:11Z)**_
 

@@ -12,8 +12,6 @@ song list detector is having some issues on certain songs. I'd like to consider 
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-07 23:49:22Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-07 23:49:23Z)**_
 
 I'll read the songs list and analyze the character set needed to disambiguate them.
@@ -93,8 +91,6 @@ _**Agent (claude-opus-4-8 2026-07-07 23:49:23Z)**_
 66
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-07 23:49:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-07 23:49:47Z)**_
 
@@ -207,8 +203,6 @@ distinct first chars: 20
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-07 23:49:55Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-07 23:50:02Z)**_
 
 Let me dig into the cheaper feature combinations, since those determine how minimal the OCR can be.
@@ -283,8 +277,6 @@ songs sharing a length with another: 55 of 64
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-07 23:50:18Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-07 23:50:26Z)**_
 
 Let me verify the minimal claim — that a length + first-two-characters key fully separates all 64.
@@ -325,8 +317,6 @@ first3 CI alone: {'roc': ['Rock and Roll All Nite', 'Rock You Like a Hurricane']
 glyphs needed to read first-3-CI: 26 " '.3abcdefghiklmnoprstuvwy"
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-07 23:50:39Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-07 23:50:52Z)**_
 
@@ -376,8 +366,6 @@ _**User (2026-07-07 23:58:30Z)**_
 let's prototype the length + prefix. Create a new file / function - leave the original method in place for now.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-07 23:58:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-07 23:58:34Z)**_
 
@@ -503,8 +491,6 @@ Related prior work: the 2026-07-01 "video-collapse recovery watchdog" entry belo
 
 _**Agent (claude-opus-4-8 2026-07-07 23:58:45Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-07 23:58:45Z)**_
-
 Now let me find the actual song-detection code (the `gp_read_song` / template-matching mentioned in the journal).
 
 _**Agent (claude-opus-4-8 2026-07-07 23:58:46Z)**_
@@ -582,8 +568,6 @@ tools/gameplay/.venv/bin/activate_this.py
 tools/gameplay/.venv/lib/python3.12/site-packages/_virtualenv.py
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-07 23:58:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-07 23:58:52Z)**_
 
@@ -778,8 +762,6 @@ _**Agent (claude-opus-4-8 2026-07-07 23:58:52Z)**_
 180
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-07 23:58:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-07 23:59:00Z)**_
 
@@ -1030,8 +1012,6 @@ _**Agent (claude-opus-4-8 2026-07-07 23:59:00Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-07 23:59:59Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 00:00:00Z)**_
 
 Let me look at how the current song reader is tested/evaluated, plus the corpus and perturbation helpers, so the prototype is comparable.
@@ -1163,8 +1143,6 @@ _**Agent (claude-opus-4-8 2026-07-08 00:00:03Z)**_
 60
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:00:10Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:00:11Z)**_
 
@@ -1808,8 +1786,6 @@ _**Agent (claude-opus-4-8 2026-07-08 00:00:11Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 00:00:33Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 00:00:35Z)**_
 
 Let me look at the actual song_select frames to understand the title-line layout within the slot ROI.
@@ -1867,8 +1843,6 @@ count:
 64
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:00:41Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:00:41Z)**_
 
@@ -1950,8 +1924,6 @@ Traceback (most recent call last):
 AttributeError: 'numpy.ndarray' object has no attribute 'ptp'
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:02:38Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:02:47Z)**_
 
@@ -2038,8 +2010,6 @@ slot ROI height: 47
 46  17.67 ##################
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:03:16Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:03:19Z)**_
 
@@ -2353,8 +2323,6 @@ Exit code 1
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 00:04:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 00:05:31Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -2425,8 +2393,6 @@ PREFIX prototype sweep:
   lw=240 frac=0.4                        64/64 618/704 (87.8%)      0.62
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:05:59Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:06:08Z)**_
 
@@ -2504,8 +2470,6 @@ median adjacent length gap: 0.0030 (ROI-frac); ~1.0 px on 330px ROI
 min adjacent length gap: 0.0000 (~0.0 px)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:07:15Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:07:21Z)**_
 
@@ -2631,8 +2595,6 @@ _**Agent (claude-opus-4-8 2026-07-08 00:07:30Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 00:07:37Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 00:07:59Z)**_
 
 <tool-use data-tool-type="write" data-tool-name="Edit"><details>
@@ -2642,8 +2604,6 @@ _**Agent (claude-opus-4-8 2026-07-08 00:07:59Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/gameplay/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:08:04Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:08:15Z)**_
 
@@ -2689,8 +2649,6 @@ _**User (2026-07-08 00:09:48Z)**_
 here are issues that I've seen so far with existing algorithm. Paint it black shows as cult of personality. Same old song and dance reads as my name is jonas. Cult of Personality reads as kool thing. Raining blood reads as before i forget
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 00:10:18Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:10:18Z)**_
 
@@ -2754,8 +2712,6 @@ ModuleNotFoundError: No module named 'numpy'
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 00:10:47Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 00:11:03Z)**_
 
 <tool-use data-tool-type="shell" data-tool-name="Bash"><details>
@@ -2802,8 +2758,6 @@ cult_of_personality        nearest=cult_of_personality    true_rank=0 d_true=   
 raining_blood              nearest=raining_blood          true_rank=0 d_true=   0.0 d_wrong=  15.4 margin=13.14
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:11:29Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:11:32Z)**_
 
@@ -2879,8 +2833,6 @@ _**User (2026-07-08 00:12:17Z)**_
 other question is if it got translated accurately to marvin
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 00:12:30Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:12:30Z)**_
 
@@ -3097,8 +3049,6 @@ _**Agent (claude-opus-4-8 2026-07-08 00:12:31Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 00:12:58Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 00:13:00Z)**_
 
 The C algorithm looks faithful. The likely divergence is in the **data** (exported templates) or the **integration** (what frame geometry marvin actually feeds it). Let me check the cross-check test, the exporter, and how marvin calls `gp_read_song`.
@@ -3136,8 +3086,6 @@ echo; echo "=== how marvin calls gp_read_song (frame dims) ==="; grep -n "gp_rea
 119:        int w = (int)frame.width, h = (int)frame.height;
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 00:13:09Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:13:10Z)**_
 
@@ -3200,8 +3148,6 @@ _**User (2026-07-08 00:13:55Z)**_
 note that our example screens are exported directly from marvin on the same system that we're runing on. The exact same data that marvin is expected to see.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 00:14:11Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 00:14:13Z)**_
 
@@ -3450,8 +3396,6 @@ C vs Python over all 64 songs: 0 mismatches
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:11:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:11:30Z)**_
 
 The port is **faithful** — but that itself is the key finding. Let me verify one integration detail that the corpus test can't catch: pixel format. The corpus is packed 3-byte BGR, but marvin's framebuffer is BGRX32 (4 bytes). If the live frame is 4 BPP and the reader strides by 3, that's a bug the cross-check can't see.
@@ -3497,8 +3441,6 @@ firmware/marvin/default/src/video/video.c:146:    const uint32_t stride = (uint3
 firmware/marvin/default/src/video/video.c:156:            if (luma3(row + (uint32_t)x * VIDEO_BYTES_PER_PIXEL) > VIDEO_ACTIVE_LUMA_THR)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:11:56Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:11:57Z)**_
 
@@ -3600,8 +3542,6 @@ static bool frame_edges(const uint8_t *buf, uint16_t w, uint16_t h,
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:12:16Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:12:20Z)**_
 
 `.width = s_src_w` — the game path gets the **raw full-source frame**, and `gp_read_song` uses **fixed ROIs** in that space with only a ±6px offset search. But marvin runs active-area detection precisely because the game content *drifts* within the frame. Let me confirm the game readers don't apply that active-area offset, and check the source resolution.
@@ -3694,8 +3634,6 @@ firmware/marvin/default/src/video/video.c:256:        s_active_valid = true;
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:12:57Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:12:59Z)**_
 
 I now have a definitive answer to your question. Let me record it, then walk you through it.
@@ -3710,8 +3648,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:13:22Z)**_
 String:   the synthetic slop envelope is only a proxy. Files: `gameplay/songselect_prefix.py` (new).</tool_use_error>
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:13:26Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:13:27Z)**_
 
@@ -3747,8 +3683,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:13:47Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/gameplay/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:13:52Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:14:05Z)**_
 
@@ -3789,8 +3723,6 @@ _**User (2026-07-08 01:20:15Z)**_
 what region are we looking at? Have we accounted for the fact that song 00_slow_ride and bonus_00_avalancha show up at different y position than everything else?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 01:21:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:21:05Z)**_
 
@@ -3880,8 +3812,6 @@ idx  song                         peak_y  (SLOT_ROI y=145..192, FIRST y=178..225
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:21:29Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:21:36Z)**_
 
 My crude highlight detector is too noisy to trust. Let me just draw the ROI boxes on the actual frames and look at them directly.
@@ -3937,8 +3867,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:21:45Z)**_
 <summary>Tool use: **Read**</summary>
  `/private/tmp/claude-501/roi/montage.png`
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:22:50Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:22:53Z)**_
 
@@ -4032,8 +3960,6 @@ idx  song                          gold_title_y   SLOT_center=168
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:24:34Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:24:44Z)**_
 
 Now it's unambiguous. **The selected (gold) title sits at y≈246 for every song 1–38** (rock-steady), and **slow_ride sits at y≈291** — the *only* two positions in the whole list. But the ROIs are:
@@ -4098,8 +4024,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:34:00Z)**_
 <summary>Tool use: **Read**</summary>
  `/private/tmp/claude-501/roi/slot_content.png`
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:34:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:35:11Z)**_
 
@@ -4171,8 +4095,6 @@ RE-REGISTERED onto selected title (gold at y~246; first song y~291):
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:36:14Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:36:18Z)**_
 
 Conclusive. Re-registering the ROI onto the actual selected title:
@@ -4195,8 +4117,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:36:39Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/gameplay/docs/journal.md has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:36:47Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:37:00Z)**_
 
@@ -4231,8 +4151,6 @@ _**User (2026-07-08 01:39:07Z)**_
 1. let me help you position the bands. 2. the last songs do sit at the same place as everything else. the first row is the only exception. 3. yes, seems inexpensive check to do to do offline
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 01:39:25Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:39:31Z)**_
 
@@ -4300,8 +4218,6 @@ bonus setlist gold-title y:
 
 _**Agent (claude-opus-4-8 2026-07-08 01:39:49Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-08 01:39:49Z)**_
-
 Bonus confirms the same pattern — normal songs at y≈246, avalancha (first) at y≈296. So it's universal: **first song +~50px, everyone else identical.**
 
 Here's a ruler-annotated view with candidate bands drawn. Green = proposed SLOT band (y 238–285), cyan = proposed FIRST band (y 283–330). Tell me which way to nudge.
@@ -4366,8 +4282,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:40:54Z)**_
  `/private/tmp/claude-501/roi/bands.png`
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:41:10Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:41:17Z)**_
 
 The bands are landing well — each brackets the selected **title + artist** cleanly:
@@ -4392,8 +4306,6 @@ _**User (2026-07-08 01:44:09Z)**_
 1 slot is slightly too low by at least 5 pixels. first is about right. 2. try without artist line. 3. start to the right of the art
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 01:44:23Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:44:24Z)**_
 
@@ -4437,8 +4349,6 @@ normal songs (n=62): title top median=241 (min 241), bottom median=255 (max 255)
 first songs  (n=2): title top median=294, bottom median=305
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:44:48Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:44:49Z)**_
 
@@ -4488,8 +4398,6 @@ D y238-270 / 291-323 (h32)       clean 64/64  slop 703/704 (99.9%)  worst-margin
 A+art x55                        clean 64/64  slop 700/704 (99.4%)  worst-margin 28.93
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:46:06Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:46:16Z)**_
 
@@ -4542,8 +4450,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:46:56Z)**_
  `/private/tmp/claude-501/roi/bands2.png`
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:47:09Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:47:15Z)**_
 
 The title-only SLOT band (green, 233–266) now sits cleanly on each title with headroom above and the baseline at the bottom; FIRST (cyan, 286–319) brackets *Slow Ride* / *Avalancha* with no artist clipping; and both start right of the album art.
@@ -4565,8 +4471,6 @@ _**User (2026-07-08 01:47:29Z)**_
 slot is perfect vertical. first is about 5 pixels low. move left edge 2 pixels left
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 01:47:51Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:48:02Z)**_
 
@@ -4631,8 +4535,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:48:44Z)**_
  `/private/tmp/claude-501/roi/bands3.png`
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:48:55Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:48:58Z)**_
 
 Applied all three: SLOT vertical unchanged (233–266), FIRST moved up 5px (now 281–314), left edge at 183. *Slow Ride* and *Avalancha* now sit centered in the FIRST band.
@@ -4653,8 +4555,6 @@ _**User (2026-07-08 01:49:20Z)**_
 first down 1 pixel
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 01:49:32Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:49:45Z)**_
 
@@ -4692,8 +4592,6 @@ SLOT(183, 233, 385, 266) FIRST(183, 282, 385, 315): clean 64/64  slop 692/704 (9
 
 _**Agent (claude-opus-4-8 2026-07-08 01:49:57Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-08 01:49:57Z)**_
-
 Locked: `SONG_SLOT_ROI = (183, 233, 385, 266)`, `SONG_FIRST_ROI = (183, 282, 385, 315)` → clean **64/64**, slop **98.3%**, worst margin **33.7**.
 
 Ready to make the edits (metadata.py constants + comment, re-export the header with a diff for you, widen the cross-check to all 64, run the suite). Say go and I'll proceed.
@@ -4705,8 +4603,6 @@ _**User (2026-07-08 01:50:32Z)**_
 this will still allow for some slop on position if there's variation per hardware?
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 01:51:02Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:51:15Z)**_
 
@@ -4787,8 +4683,6 @@ dy_search=±9:
   dx= +6:   95  100  100  100  100  100  100  100   80
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:53:28Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:53:36Z)**_
 
@@ -4877,8 +4771,6 @@ _**Agent (claude-opus-4-8 2026-07-08 01:54:27Z)**_
 The file /Users/gregmrozek/Projects/microchip/guitar-pic/tools/gameplay/gameplay/songselect.py has been updated successfully. (file state is current in your context — no need to Read it back)
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:54:34Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:54:36Z)**_
 
@@ -4999,8 +4891,6 @@ wrote /Users/gregmrozek/Projects/microchip/guitar-pic/firmware/marvin/default/sr
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:55:30Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:55:31Z)**_
 
 Header updated exactly as intended (ROIs, `gp_song_dy` widened to 5, NDY 3→5, templates regenerated). Now run the full suite + song_eval:
@@ -5018,8 +4908,6 @@ Run full gameplay test suite
 51 passed in 24.55s
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:56:22Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:56:25Z)**_
 
@@ -5061,8 +4949,6 @@ originally-failing songs now:
   raining_blood              -> main:raining_blood            margin=44.5  [OK]
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:56:49Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:56:50Z)**_
 
@@ -5106,8 +4992,6 @@ first test on hardware works (paint it black). Please commit all work related to
 
 ---
 
-_**Agent (claude-opus-4-8 2026-07-08 01:58:26Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:58:28Z)**_
 
 Thanks — glad it's confirmed on hardware. I have explicit approval to commit. Let me check the state and stage only the files related to this change.
@@ -5141,8 +5025,6 @@ Check git status and branch
 gui
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 01:58:44Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 01:58:46Z)**_
 
@@ -5230,8 +5112,6 @@ EOF
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 01:59:20Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 01:59:26Z)**_
 
 Committed to `gui` as `6c8f9ed`.
@@ -5254,8 +5134,6 @@ _**User (2026-07-08 15:12:53Z)**_
 can you show me where you're sampling for all of the other menus? Let's make sure they are all accurately positioned
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 15:13:16Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:13:21Z)**_
 
@@ -5357,8 +5235,6 @@ _**Agent (claude-opus-4-8 2026-07-08 15:13:33Z)**_
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:13:50Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:13:51Z)**_
 
 Here's the geometry for all 8 static-list menus. Let me overlay each menu's band + per-item sampling cells on a real frame, and mark which cell the reader picks vs. the labeled selection.
@@ -5435,8 +5311,6 @@ _**Agent (claude-opus-4-8 2026-07-08 15:20:40Z)**_
 <summary>Tool use: **Read**</summary>
  `/private/tmp/claude-501/roi/menus.png`
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 15:22:03Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:22:06Z)**_
 
@@ -5517,8 +5391,6 @@ overall: clean 33/33 (100.0%)  slop 99.4%
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:23:01Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:23:08Z)**_
 
 Here's the picture for all menus:
@@ -5575,8 +5447,6 @@ pause_menu           fails at dy=-11 (up) and dy=8 (down)  band=(277, 156, 433, 
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:23:48Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:23:50Z)**_
 
 **difficulty_select is off-center** — it tolerates content shifting up ±22px but down only +5px, i.e. the highlight sits low in its cells. `main_menu` (−7/+6) is well-centered, just inherently tight (7 items in 195px). Let me find the band offset that re-centers difficulty_select.
@@ -5628,8 +5498,6 @@ difficulty_select band y-offset sweep (symmetric vertical budget):
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:24:28Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:24:40Z)**_
 
 Moving difficulty_select's band **down 8px** re-centers it: **±4 → ±12px** vertical budget. Let me verify properly with the calibration rebuilt at the new band (baselines are learned per-cell, so they must be re-derived), and confirm clean/slop h
@@ -5645,8 +5513,6 @@ _**User (2026-07-08 15:24:40Z)**_
 difficulty menu regions are significantly off. others look good.
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 15:24:54Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:24:55Z)**_
 
@@ -5707,8 +5573,6 @@ _**Agent (claude-opus-4-8 2026-07-08 15:25:20Z)**_
 <summary>Tool use: **Read**</summary>
  `/private/tmp/claude-501/roi/difficulty.png`
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 15:25:58Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:26:03Z)**_
 
@@ -5776,8 +5640,6 @@ x extent of highlights: 123..314
 
 _**Agent (claude-opus-4-8 2026-07-08 15:26:29Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-08 15:26:29Z)**_
-
 My orange threshold caught the whole tan panel (x123–314, y133–328) — useful for the x-extent, but not the per-item rows. Let me find the item rows from the dark text glyphs instead.
 
 _**Agent (claude-opus-4-8 2026-07-08 15:26:38Z)**_
@@ -5823,8 +5685,6 @@ dark-text row bands (using EASY frame):
   y 298..320  center 309  height 23
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 15:26:55Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:26:58Z)**_
 
@@ -5879,8 +5739,6 @@ NEW tight (123,156,310,331)        clean=OK  vbudget=+/-17 hbudget=+/-24  slop 4
 ```
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:27:32Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:27:47Z)**_
 
 Big improvement: **±4 → ±17px** vertical budget, and the slop miss is fixed (44/44). Let me render the new band so you can confirm placement before I land it.
@@ -5931,8 +5789,6 @@ _**Agent (claude-opus-4-8 2026-07-08 15:28:13Z)**_
  `/private/tmp/claude-501/roi/difficulty_new.png`
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:28:45Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:28:55Z)**_
 
 Now each word sits centered in its cell, with the orange highlight bar captured across the full width. Before/after for difficulty_select:
@@ -5955,8 +5811,6 @@ _**User (2026-07-08 15:29:56Z)**_
 much better. boxes should end at column 280 (~160 wide).
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 15:30:07Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:30:20Z)**_
 
@@ -6020,8 +5874,6 @@ _**Agent (claude-opus-4-8 2026-07-08 15:30:41Z)**_
  `/private/tmp/claude-501/roi/difficulty_final.png`
 </details></tool-use>
 
-_**Agent (claude-opus-4-8 2026-07-08 15:31:17Z)**_
-
 _**Agent (claude-opus-4-8 2026-07-08 15:31:21Z)**_
 
 Locked: **(120, 156, 280, 331)** — clean OK, vertical budget **±18** (was ±4), horizontal ±24, slop **44/44**. Each word centered, right edge clear of the side art. Landing it now.
@@ -6070,8 +5922,6 @@ PY
 
 _**Agent (claude-opus-4-8 2026-07-08 15:31:54Z)**_
 
-_**Agent (claude-opus-4-8 2026-07-08 15:31:54Z)**_
-
 Clean, localized diff — only difficulty_select's band + baseline changed. Now the full suite:
 
 _**Agent (claude-opus-4-8 2026-07-08 15:32:24Z)**_
@@ -6087,8 +5937,6 @@ Run full suite after difficulty fix
 51 passed in 24.17s
 ```
 </details></tool-use>
-
-_**Agent (claude-opus-4-8 2026-07-08 15:32:31Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:32:31Z)**_
 
@@ -6168,8 +6016,6 @@ _**User (2026-07-08 15:34:33Z)**_
 please commit
 
 ---
-
-_**Agent (claude-opus-4-8 2026-07-08 15:34:45Z)**_
 
 _**Agent (claude-opus-4-8 2026-07-08 15:34:46Z)**_
 
