@@ -66,7 +66,7 @@ Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); 
 |---|---|---|
 | marvin | [`firmware/marvin/docs/spec.md`](firmware/marvin/docs/spec.md) | [`firmware/marvin/docs/journal.md`](firmware/marvin/docs/journal.md) |
 | fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) — phototransistor **detector** node (re-scoping from sensor/actuator; actuator role moving to `guitar`). | [`firmware/fretboard/docs/journal.md`](firmware/fretboard/docs/journal.md) |
-| guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower id 2). Working: receives marvin's command over T1S and actuates. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
+| guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower id 3). Working: receives marvin's command over T1S and actuates. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 | edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; Phase 1 data pipeline in progress. | [`tools/edge-ai/docs/journal.md`](tools/edge-ai/docs/journal.md) |

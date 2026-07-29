@@ -17,7 +17,7 @@ button bitmask from the ADC window. Over T1S it then:
 
 - **streams** the 17-byte data frame (ADC scan + the driven bitmask) to the marvin
   coordinator — logging / edge-ai training; and
-- **commands** the [`guitar`](../guitar/SPEC.md) node (id 2) directly with the
+- **commands** the [`guitar`](../guitar/SPEC.md) node (id 3) directly with the
   inferred bitmask — peer-to-peer actuation; marvin coordinates/logs but is out of
   the command path.
 
@@ -140,7 +140,7 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   (`T1SDetector_SendFrame()`, latest-wins); the main loop flushes it, one TX in
   flight. A frame dropped while busy shows as a `sample_seq` gap.
 - **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
-  1-byte bitmask to the **guitar node** (id 2, MAC `02:..:02`, ethertype `0x88B5`).
+  1-byte bitmask to the **guitar node** (id 3, MAC `02:..:03`, ethertype `0x88B5`).
   Sent edge-triggered + re-sent every 50 ms so a dropped command self-heals; the
   guitar applies latest-wins. Peer-to-peer — marvin is not in the command path.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so

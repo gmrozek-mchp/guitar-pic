@@ -14,7 +14,7 @@
 #define T1S_NODE_ID         (1u)
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
 #define T1S_INSTANCE        (0u)
-#define T1S_GUITAR_ID       (2u)     /* actuator node this detector drives */
+#define T1S_GUITAR_ID       (3u)     /* actuator node this detector drives */
 
 /* IRQ_N external-interrupt line. Must match the MCC EIC pin wired to T1S_IRQ_N. */
 #define T1S_IRQ_EIC_PIN     EIC_PIN_13
@@ -41,7 +41,7 @@ static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE
 /* Coordinator (marvin) MAC: 02:00:00:00:00:00 — data + heartbeat destination. */
 static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
 
-/* Guitar (actuator) node MAC: 02:00:00:00:00:02 — command destination. */
+/* Guitar (actuator) node MAC: 02:00:00:00:00:03 — command destination. */
 static const uint8_t s_guitar_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_GUITAR_ID };
 
 static TC6_t            *s_tc6;

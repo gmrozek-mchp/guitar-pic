@@ -7,12 +7,13 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 ## Current focus
 
 **G1 + G2 done — the node is proven end-to-end on hardware.** guitar is the **Wii-guitar actuator node**:
-a PIC32CM PL10 T1S PLCA *follower* (node id 2, MAC `02:00:00:00:00:02`) that receives marvin's 1-byte
+a PIC32CM PL10 T1S PLCA *follower* (node id 3, MAC `02:00:00:00:00:03`) that receives marvin's 1-byte
 button bitmask over ethertype `0x88B5` and drives a Wii guitar controller via open-drain GPIO — the
 actuation half of today's [fretboard](../../fretboard/SPEC.md) firmware, on its own node. Firmware
 (`config.mcc/src/t1s_follower.{c,h}` + `cli.{c,h}`, reusing `third_party/oa-tc6-lib`, wired via
-`user.cmake` + `main.c`) brings the LAN8651 up — bench reports `LAN8651 up - chipRev=2,
-MAC=02:00:00:00:00:02, PLCA follower id=2/8` — and **marvin's command over T1S drives the addressed Wii
+`user.cmake` + `main.c`) brings the LAN8651 up — G1/G2 were bench-proven at the old id 2
+(`LAN8651 up - chipRev=2, MAC=02:00:00:00:00:02, PLCA follower id=2/8`); renumbered to id 3 in source
+2026-07-28 (re-flash reproduces at `id=3/8`) — and **marvin's command over T1S drives the addressed Wii
 button**. The node sends a 500 ms presence heartbeat (ethertype `0x88B6`) so marvin's `nodes` shows it
 present, and an embedded-cli console on the SERCOM1 debug UART (`t1s`/`btn`/`tap`/`id`/`plca`) drives the
 GPIOs and reads link/sync/PLCA diagnostics.
@@ -35,6 +36,7 @@ the marvin side.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-28 | **T1S PLCA node id renumbered 2 → 3** (`t1s_follower.c` `T1S_NODE_ID`, MAC now `02:00:00:00:00:03`). Node_type heartbeat code stays 2 (guitar). This is the coordinated guitar-id change: marvin's coordinator node table (`net/t1s/t1s_link.c` `s_nodes[]`) and the fretboard's peer-to-peer guitar target (`t1s_detector.c` `T1S_GUITAR_ID`) both move to 3 in the same pass. Last on-hardware bring-up (G1/G2) was at id 2; re-flash guitar **and** marvin together for id 3 to take effect on the wire. | Adopting the target bus table (docs/t1s-podl-link.md §7.1): controllers/fauxmotes take 1–2, guitar 3, fretboard 4. The guitar's id is set at three points that all address it — the node itself, marvin (TX target), and the fretboard (peer-to-peer) — so all three change together or commands miss the node. |
 | 2026-07-23 | **Port to the ATE_2026 board: active-high LED indicators, not open-drain Wii actuators.** Output stage flips from software open-drain (`Clear`+`OutputEnable` assert / `InputEnable` release) to **active-high push-pull** (`Set` = lit / `Clear` = off) in the `BTN_APPLY` macro; strum up/down (bits 5, 6) collapse to a single **STRUM** indicator. Pins remapped (see session log): control `CS`=PA06, `RST`=PA03, `IRQ_N`=PA02 on **EIC EXTINT2** (falling); LEDs `FRET_GREEN`=PA12, `FRET_RED`=PA11, `FRET_YELLOW`=PA10, `FRET_BLUE`=PA09, `FRET_ORANGE`=PA08, `STRUM`=PA13. The `BTN_APPLY` / `buttons_*` "button" naming is kept intentionally. | The new board only exposes status LEDs (no Wiimote), and the doc specifies active-high drive. Keeping the button naming leaves room for a future board that carries both Wii actuators and LEDs, so the command → output mapping code stays shared. Done via the mplab-mcc MCP server (no hand-edited MCC/generated files). |
 | 2026-06-16 | **Wii-guitar actuation becomes its own subproject (`guitar`), split out of fretboard.** PIC32CM PL10, T1S PLCA **follower** node id 2 (MAC `02:00:00:00:00:02`), receives a 1-byte bitmask over ethertype `0x88B5` and drives 7 open-drain Wii-guitar GPIOs. Sensing stays on `fretboard` (detector node). Actuation logic is a verbatim port of fretboard's `cmd_receive.c`. The link reuses `oa-tc6-lib` + the shared L2 framing as the mirror of marvin's coordinator glue. **Bare-metal** (no FreeRTOS on PL10): TC6 serviced from the main loop / tick; `IRQ_N` on a SERCOM-EIC pin. | The T1S bus was built for multiple node classes; separating detector from actuator lets multiple guitar/detector variants coexist on one PLCA pair with marvin selecting the active of each. Same MCU family as fretboard keeps the "OA SPI driver scales across the family" demo and minimizes bring-up. Greg spins up a *fresh* guitar MCC project (not a fork of fretboard). |
 | 2026-06-16 | **Edge-ai / on-device model is out of scope; fretboard keeps actuating until guitar is proven.** This subproject covers only the marvin-driven actuation path. fretboard's MODEL_DRIVEN/standalone modes stay untouched; re-homing the model (detector infers → T1S → guitar) and the `applied_mask` training-label coupling are deferred. marvin flips its command target from the fretboard node to the guitar node only once G3 passes. | Contains the blast radius — the playing system stays up throughout, mirroring the UART/T1S parallel-coexistence approach. |
