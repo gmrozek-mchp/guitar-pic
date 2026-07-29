@@ -2,8 +2,8 @@ Pin Number,Pin ID,Custom Name,Function,Mode, Direction,Latch,Pull Up,Pull Down,S
 1,PA05,,Available,,,,,,DISABLED
 2,PA06,,Available,,,,,,DISABLED
 3,PA07,,Available,,,,,,DISABLED
-4,PB00,,Available,,,,,,DISABLED
-5,PB01,,Available,,,,,,DISABLED
+4,PB00,CDC_TX,SERCOM1_PAD0,Digital,High Impedance,n/a,No,No,DISABLED
+5,PB01,CDC_RX,SERCOM1_PAD1,Digital,High Impedance,n/a,No,No,DISABLED
 6,PB02,LED0,GPIO,Digital,Out,High,,,DISABLED
 7,PB03,SW0,GPIO,Digital,In,n/a,Yes,No,DISABLED
 8,PB04,,Available,,,,,,DISABLED

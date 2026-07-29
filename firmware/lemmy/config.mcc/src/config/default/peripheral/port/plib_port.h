@@ -65,6 +65,14 @@
 // *****************************************************************************
 // *****************************************************************************
 
+/*** Macros for CDC_TX pin ***/
+#define CDC_TX_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 0U)) & 0x01U)
+#define CDC_TX_PIN                  PORT_PIN_PB00
+
+/*** Macros for CDC_RX pin ***/
+#define CDC_RX_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 1U)) & 0x01U)
+#define CDC_RX_PIN                  PORT_PIN_PB01
+
 /*** Macros for LED0 pin ***/
 #define LED0_Set()               (PORT_REGS->GROUP[1].PORT_OUTSET = ((uint32_t)1U << 2U))
 #define LED0_Clear()             (PORT_REGS->GROUP[1].PORT_OUTCLR = ((uint32_t)1U << 2U))
