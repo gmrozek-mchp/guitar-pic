@@ -78,4 +78,8 @@ target_compile_definitions(marvin_default_default_XC32_compile PRIVATE
     # the fretboard command/data over the 10BASE-T1S link (LAN8651) instead —
     # flip this once the fretboard PIC32CM T1S side is up.
     MARVIN_FRETBOARD_TRANSPORT=1
+    # Fauxmote link transport: default is the 10BASE-T1S controller channel
+    # (0x88B7, shares the MAC-PHY). Set to 0 to fall back to the dedicated
+    # FLEXCOM5 UART point-to-point link. Kept explicit so the choice is visible.
+    MARVIN_FAUXMOTE_TRANSPORT=1
 )

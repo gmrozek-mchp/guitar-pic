@@ -111,29 +111,31 @@ void MfLink_Init(mf_send_fn send)
 
 bool MfLink_HandleMessage(uint8_t type, const uint8_t *payload, uint8_t len)
 {
+    /* Accept len >= the per-type size: the T1S MAC-PHY pads short frames to the
+     * 60-byte Ethernet minimum, so a received payload carries trailing pad. */
     switch (type) {
     case MF_MSG_GUITAR:
-        if (len != MF_LEN_GUITAR) break;
+        if (len < MF_LEN_GUITAR) break;
         apply_guitar(payload[0], payload[1], payload[2]);
         s_got_input = true;
         return true;
     case MF_MSG_WIIMOTE:
-        if (len != MF_LEN_WIIMOTE) break;
+        if (len < MF_LEN_WIIMOTE) break;
         apply_wiimote(payload[0], payload[1], payload[2], payload[3]);
         s_got_input = true;
         return true;
     case MF_MSG_POINTER:
-        if (len != MF_LEN_POINTER) break;
+        if (len < MF_LEN_POINTER) break;
         apply_pointer(payload[0], payload[1], payload[2]);
         s_got_input = true;
         return true;
     case MF_MSG_ACCEL:
-        if (len != MF_LEN_ACCEL) break;
+        if (len < MF_LEN_ACCEL) break;
         Wiimote_SetAccel((int8_t)payload[0], (int8_t)payload[1], (int8_t)payload[2]);
         s_got_input = true;
         return true;
     case MF_MSG_LINK_CMD:
-        if (len != MF_LEN_LINK_CMD) break;
+        if (len < MF_LEN_LINK_CMD) break;
         handle_link_cmd(payload[0]);
         break;
     default:

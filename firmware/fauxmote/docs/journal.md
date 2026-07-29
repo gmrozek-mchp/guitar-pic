@@ -4,6 +4,10 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-07-28 — fixed T1S command RX: min-frame padding was rejected by exact-length checks.** With the marvin link on the `0x88B7` T1S controller channel, `rx` climbed steadily (marvin's GUITAR floor-refresh + commands were arriving and passing the MAC filter) but nothing actuated. The T1S MAC-PHY pads short frames to the 60-byte Ethernet minimum, and `mf_t1s.c` clamps the received payload to `MF_MAX_PAYLOAD` (8), not the per-type length — so `MfLink_HandleMessage` saw len 8 for a 3-byte GUITAR / 1-byte LINK_CMD and its `!=` checks dropped everything. Changed those per-type checks to `>=` (`len < MF_LEN_*` rejects), matching the design note that the message layer ignores trailing pad. UART path unaffected (LEN framing gives exact lengths). Mirror of the same fix on marvin's `latch_status` (STATUS uplink). File: `main/mf_link.c`. **Pending Greg's build.**
+
+---
+
 ## Current focus
 
 **Phase 1 DONE — the Wii pairs with fauxmote and opens both HID channels.** Custom

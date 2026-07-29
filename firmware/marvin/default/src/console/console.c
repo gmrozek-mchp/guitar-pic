@@ -701,6 +701,13 @@ static void cmd_fauxmote(EmbeddedCli *cli, char *args, void *ctx)
 
     if (sub == NULL || strcmp(sub, "status") == 0)
     {
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+        console_printf("transport: T1S (0x88B7)  tx=%lu rx=%lu",
+                       (unsigned long)T1SLink_CtrlTxCount(),
+                       (unsigned long)T1SLink_CtrlRxCount());
+#else
+        console_printf("transport: UART (FLEXCOM5)");
+#endif
         uint8_t flags, slot, mode, res;
         uint32_t age;
         if (!Fauxmote_GetStatus(&flags, &slot, &mode, &res, &age))

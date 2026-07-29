@@ -4,17 +4,29 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-/* marvin -> fauxmote command link: transmits controller input over the FLEXCOM5
- * USART (PA16/PA15, dedicated fauxmote pins) to the ESP32 Wiimote emulator, and
- * receives its STATUS uplink. Wire protocol in net/fauxmote/mf_proto.h /
- * docs/marvin-fauxmote-link.md.
+/* marvin -> fauxmote command link: transmits controller input to the ESP32
+ * Wiimote emulator and receives its STATUS uplink. Wire protocol in
+ * net/fauxmote/mf_proto.h / docs/marvin-fauxmote-link.md.
  *
- * Owns FLEXCOM5 exclusively (a peripheral dedicated to this link, independent of
- * the guitar transport). A TX task sends the latched GUITAR state on change and at
- * a floor rate (self-heals dropped frames + keeps fauxmote's link watchdog fed);
- * WIIMOTE nav and LINK_CMD go out on demand. Send calls are non-blocking and safe
- * from any producer context. Call Fauxmote_Initialize once after SYS_Initialize
- * (FLEXCOM5 up) and before the mask producers start. */
+ * Transport is build-selectable (mirrors MARVIN_FRETBOARD_TRANSPORT):
+ *   T1S  (default) — rides the shared 10BASE-T1S bus via net/t1s (ethertype
+ *                    0x88B7 to the controller node); no dedicated peripheral.
+ *   UART (fallback) — a dedicated FLEXCOM5 USART (PA16/PA15) point-to-point.
+ * The producer/latching/STATUS layer below is identical on either transport.
+ *
+ * A TX task sends the latched GUITAR state on change and at a floor rate
+ * (self-heals dropped frames + keeps fauxmote's link watchdog fed); WIIMOTE nav
+ * and LINK_CMD go out on demand. Send calls are non-blocking and safe from any
+ * producer context. Call Fauxmote_Initialize once after SYS_Initialize and
+ * before the mask producers start. */
+
+/* Transport selection: override at build time with
+ * -DMARVIN_FAUXMOTE_TRANSPORT=FAUXMOTE_TRANSPORT_UART (see user.cmake). */
+#define FAUXMOTE_TRANSPORT_UART 0
+#define FAUXMOTE_TRANSPORT_T1S  1
+#ifndef MARVIN_FAUXMOTE_TRANSPORT
+#define MARVIN_FAUXMOTE_TRANSPORT FAUXMOTE_TRANSPORT_T1S
+#endif
 
 void Fauxmote_Initialize(void);
 

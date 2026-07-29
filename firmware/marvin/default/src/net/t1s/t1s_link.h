@@ -33,6 +33,8 @@ uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
 uint32_t T1SLink_TxCount(void);   /* command frames sent */
 uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
 uint32_t T1SLink_ServiceOverruns(void); /* times service_pump hit its iter cap */
+uint32_t T1SLink_CtrlTxCount(void); /* controller (0x88B7) frames sent */
+uint32_t T1SLink_CtrlRxCount(void); /* controller (0x88B7) frames received */
 
 /* Per-node presence (from follower heartbeats, ethertype 0x88B6). */
 typedef struct {
@@ -56,5 +58,21 @@ bool T1SLink_SendToGuitar(uint8_t mask);
 typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,
                                      uint16_t len);
 void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler);
+
+/* Controller channel (ethertype 0x88B7): carries the marvin<->fauxmote mf_proto
+ * messages over the shared MAC-PHY. Each frame payload is [TYPE][mf payload].
+ *
+ * TX: stage one mf_proto message to the controller node; the T1S service task
+ * frames it ([dst=controller][src=coord][0x88B7][TYPE][payload]) and puts it on
+ * the bus. Safe from any task (a static FIFO decouples the producer from the
+ * single-threaded TC6 access). Returns false if the link is down or the FIFO is
+ * full. Available only when a controller node is configured (fauxmote T1S build). */
+bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len);
+
+/* Delivers a received controller-channel message to a consumer. Called from the
+ * T1S service task with the mf_proto TYPE and its payload (header stripped). */
+typedef void (*T1SLink_ControllerHandler)(uint8_t type, const uint8_t *payload,
+                                          uint16_t len);
+void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler);
 
 #endif /* T1S_LINK_H */

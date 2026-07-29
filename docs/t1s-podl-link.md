@@ -257,6 +257,17 @@ T1S transports live behind a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` **build fla
 The `t1s` branch builds **T1S by default**; UART stays one (commented) line away in
 `user.cmake` as a fallback during the fretboard's own transition.
 
+The **fauxmote (controller) link** is behind the same kind of seam:
+`MARVIN_FAUXMOTE_TRANSPORT={UART,T1S}` in `net/fauxmote/fauxmote_link.h`, **default T1S**.
+On T1S the fauxmote channel is not a second interface — marvin has a single LAN8651, so
+`fauxmote_link` rides the shared `net/t1s` MAC-PHY as a *controller channel*: TX stages
+through `T1SLink_SendToController` (framed `[dst=ctrl][src=coord][0x88B7][TYPE][payload]`
+and flushed by the T1S service task from a small static FIFO, interleaved with the
+`0x88B5` guitar command), and the `STATUS` uplink arrives via a registered
+`T1SLink_ControllerHandler`. `T1SLink_Initialize` is idempotent so the fretboard-T1S and
+fauxmote-T1S paths can both call it. `MARVIN_FAUXMOTE_TRANSPORT=0` selects the dedicated
+FLEXCOM5 UART point-to-point path instead (§ [`marvin-fauxmote-link.md`](marvin-fauxmote-link.md)).
+
 ## 9. Decisions & open items
 
 **Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower

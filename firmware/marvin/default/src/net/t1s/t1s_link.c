@@ -7,13 +7,20 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "semphr.h"
+#include "queue.h"
 
 #include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
 #include "log.h"
 #include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+#include "net/fauxmote/fauxmote_link.h"  /* MARVIN_FAUXMOTE_TRANSPORT */
 
 #include "tc6.h"
 #include "tc6-regs.h"
+
+/* The controller channel (fauxmote over 0x88B7) is compiled in only when the
+ * fauxmote link selects the T1S transport; otherwise there is no controller node
+ * on the bus and the channel would be dead weight (and a phantom `nodes` row). */
+#define T1S_CTRL_ENABLED (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
 
 /* marvin is the PLCA coordinator. Node IDs and MACs follow the addressing
  * scheme in docs/t1s-podl-link.md §7.1: coordinator = ID 0, MAC ...00. */
@@ -45,6 +52,7 @@
  * existing fretboard payloads verbatim inside a 14-byte Ethernet header. */
 #define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
 #define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_CTRL   (0x88B7u)   /* controller (fauxmote mf_proto) frames */
 #define T1S_ETH_HDR_LEN      (14u)
 #define T1S_MAC_LEN          (6u)
 #define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
@@ -63,6 +71,7 @@ typedef enum
     T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
     T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
     T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
+    T1S_NODE_CONTROLLER,     /* controller: fauxmote mf_proto channel (0x88B7) */
 } t1s_node_type_t;
 
 typedef struct
@@ -75,6 +84,9 @@ typedef struct
 static const t1s_node_t s_nodes[] = {
     { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
     { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+#if T1S_CTRL_ENABLED
+    { 1u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote (0x88B7) */
+#endif
 };
 
 #define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
@@ -92,6 +104,7 @@ static const char *node_type_name(t1s_node_type_t t)
         case T1S_NODE_FRETBOARD:     return "detector";
         case T1S_NODE_PHOTODETECTOR: return "detector";
         case T1S_NODE_GUITAR:        return "guitar";
+        case T1S_NODE_CONTROLLER:    return "controller";
         default:                     return "?";
     }
 }
@@ -150,6 +163,22 @@ static volatile uint32_t s_tx_count;   /* command frames sent */
 static volatile uint32_t s_rx_count;   /* frames received from a known node */
 static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
 
+#if T1S_CTRL_ENABLED
+/* Controller channel (fauxmote, 0x88B7). Producers stage one mf_proto message
+ * at a time into a static FIFO; the service task frames + flushes them through
+ * the shared single-in-flight TX path, interleaved with the guitar command. */
+#define T1S_CTRL_ITEM_MAX   (2u + 8u)   /* type + len + max mf payload */
+#define T1S_CTRL_QUEUE_DEPTH (8u)
+
+static QueueHandle_t s_ctrl_queue;
+static StaticQueue_t s_ctrl_queue_buf;
+static uint8_t       s_ctrl_queue_storage[T1S_CTRL_QUEUE_DEPTH * T1S_CTRL_ITEM_MAX];
+
+static T1SLink_ControllerHandler s_ctrl_handler;
+static volatile uint32_t s_ctrl_tx_count;
+static volatile uint32_t s_ctrl_rx_count;
+#endif
+
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
 static volatile bool     s_link_up;
@@ -198,9 +227,11 @@ static void tx_done_cb(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
     s_tx_busy = false;
 }
 
-/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) and queue it.
- * Returns false if a TX is already in flight or the driver rejected it. */
-static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t payload_len)
+/* Frame a payload to a node (dst = 02:00:00:00:00:<node_id>) under `ethertype`
+ * and queue it. Returns false if a TX is already in flight or the driver
+ * rejected it. */
+static bool send_to_node(uint8_t node_id, uint16_t ethertype,
+                         const uint8_t *payload, uint16_t payload_len)
 {
     if (s_tx_busy || !s_link_up) {
         return false;
@@ -210,8 +241,8 @@ static bool send_to_node(uint8_t node_id, const uint8_t *payload, uint16_t paylo
     }
     node_mac(&s_tx_frame[0], node_id);          /* dest MAC */
     memcpy(&s_tx_frame[6], s_mac, T1S_MAC_LEN);  /* src MAC  */
-    s_tx_frame[12] = (uint8_t)(T1S_ETHERTYPE >> 8);
-    s_tx_frame[13] = (uint8_t)(T1S_ETHERTYPE & 0xFFu);
+    s_tx_frame[12] = (uint8_t)(ethertype >> 8);
+    s_tx_frame[13] = (uint8_t)(ethertype & 0xFFu);
     memcpy(&s_tx_frame[T1S_ETH_HDR_LEN], payload, payload_len);
 
     s_tx_busy = true;
@@ -344,18 +375,53 @@ static void t1s_task(void *param)
                  * rather than being dropped (latest-wins). */
                 s_cmd_dirty = false;
                 uint8_t mask = s_cmd;
-                if (send_to_node(guitar->node_id, &mask, 1u)) {
+                if (send_to_node(guitar->node_id, T1S_ETHERTYPE, &mask, 1u)) {
                     s_tx_count++;
                 }
             }
         }
+
+#if T1S_CTRL_ENABLED
+        /* Flush one staged controller (fauxmote) message onto the bus. Shares
+         * the single in-flight TX with the guitar command above; across service
+         * wakes (each TX-done gives s_svc_sem) both channels drain fairly. */
+        if (!s_tx_busy) {
+            uint8_t item[T1S_CTRL_ITEM_MAX];
+            if (xQueueReceive(s_ctrl_queue, item, 0) == pdTRUE) {
+                const t1s_node_t *ctrl = node_for_type(T1S_NODE_CONTROLLER);
+                uint8_t len = item[1];
+                if ((ctrl != NULL) && (len <= 8u)) {
+                    /* item = [TYPE][LEN][payload]; frame body is [TYPE][payload]. */
+                    uint8_t body[1u + 8u];
+                    body[0] = item[0];
+                    if (len != 0u) { memcpy(&body[1], &item[2], len); }
+                    if (send_to_node(ctrl->node_id, T1S_ETHERTYPE_CTRL,
+                                     body, (uint16_t)(1u + len))) {
+                        s_ctrl_tx_count++;
+                    }
+                }
+            }
+        }
+#endif
     }
 }
 
 void T1SLink_Initialize(void)
 {
+    /* Idempotent: both the fretboard (T1S) and fauxmote (T1S) links share this
+     * single MAC-PHY and each calls Initialize; the first wins. */
+    static bool s_initialized;
+    if (s_initialized) { return; }
+    s_initialized = true;
+
     s_svc_sem = xSemaphoreCreateBinaryStatic(&s_svc_sem_buf);
     configASSERT(s_svc_sem != NULL);
+
+#if T1S_CTRL_ENABLED
+    s_ctrl_queue = xQueueCreateStatic(T1S_CTRL_QUEUE_DEPTH, T1S_CTRL_ITEM_MAX,
+                                      s_ctrl_queue_storage, &s_ctrl_queue_buf);
+    configASSERT(s_ctrl_queue != NULL);
+#endif
 
     (void)xTaskCreateStatic(t1s_task, "T1SLink", T1S_TASK_STACK_WORDS, NULL,
                             T1S_TASK_PRIORITY, s_task_stack, &s_task_tcb);
@@ -384,6 +450,14 @@ uint8_t  T1SLink_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
 uint32_t T1SLink_TxCount(void)   { return s_tx_count; }
 uint32_t T1SLink_RxCount(void)   { return s_rx_count; }
 uint32_t T1SLink_ServiceOverruns(void) { return s_service_overruns; }
+
+#if T1S_CTRL_ENABLED
+uint32_t T1SLink_CtrlTxCount(void) { return s_ctrl_tx_count; }
+uint32_t T1SLink_CtrlRxCount(void) { return s_ctrl_rx_count; }
+#else
+uint32_t T1SLink_CtrlTxCount(void) { return 0u; }
+uint32_t T1SLink_CtrlRxCount(void) { return 0u; }
+#endif
 
 uint8_t T1SLink_NodeTableCount(void) { return (uint8_t)T1S_NODE_TABLE_LEN; }
 
@@ -420,6 +494,44 @@ void T1SLink_SetFrameHandler(T1SLink_FrameHandler handler)
 {
     s_frame_handler = handler;
 }
+
+#if T1S_CTRL_ENABLED
+
+bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+    if (!s_link_up || (s_ctrl_queue == NULL) || (len > 8u)) {
+        return false;
+    }
+    uint8_t item[T1S_CTRL_ITEM_MAX];
+    item[0] = type;
+    item[1] = len;
+    if (len != 0u) { memcpy(&item[2], payload, len); }
+    if (xQueueSend(s_ctrl_queue, item, 0) != pdTRUE) {
+        return false;   /* FIFO full — drop (latest producer state re-sends) */
+    }
+    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    return true;
+}
+
+void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler)
+{
+    s_ctrl_handler = handler;
+}
+
+#else  /* controller channel not compiled in (fauxmote not on T1S) */
+
+bool T1SLink_SendToController(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+    (void)type; (void)payload; (void)len;
+    return false;
+}
+
+void T1SLink_SetControllerHandler(T1SLink_ControllerHandler handler)
+{
+    (void)handler;
+}
+
+#endif
 
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
 
@@ -464,7 +576,11 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     }
 
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
-    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)) {
+    if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)
+#if T1S_CTRL_ENABLED
+        && (ethertype != T1S_ETHERTYPE_CTRL)
+#endif
+       ) {
         return;  /* not ours (promiscuous RX during bring-up) */
     }
 
@@ -492,6 +608,19 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         }
         return;
     }
+
+#if T1S_CTRL_ENABLED
+    if (ethertype == T1S_ETHERTYPE_CTRL) {
+        /* Controller (fauxmote) frame: payload is [TYPE][mf payload]. */
+        if (payload_len >= 1u) {
+            s_ctrl_rx_count++;
+            if (s_ctrl_handler != NULL) {
+                s_ctrl_handler(payload[0], &payload[1], (uint16_t)(payload_len - 1u));
+            }
+        }
+        return;
+    }
+#endif
 
     s_rx_count++;
     if (s_frame_handler != NULL) {

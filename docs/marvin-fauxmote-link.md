@@ -265,18 +265,22 @@ not a rewrite.
 - Emits `STATUS` from the existing `Wiimote_Is*` / `Fauxmote_*` state.
 - The CLI stays for manual bring-up/debug.
 
-**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02; moved to FLEXCOM5 2026-07-23):
-- Owns the **FLEXCOM5 USART (PA16/PA15)** — a dedicated peripheral, independent of
-  the guitar transport — and the framing. Exposes
+**marvin** — `net/fauxmote/fauxmote_link.c` (implemented 2026-07-02; FLEXCOM5 2026-07-23;
+transport made selectable 2026-07-28):
+- The producer/latching layer is transport-independent. Exposes
   `Fauxmote_SendGuitar(mask, whammy, aux)` / `SendGuitarMask(mask)`,
-  `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)`.
-- A TX task re-sends the latched `GUITAR` slice on change (low latency) and at a
-  50 ms floor; an RX task parses the `STATUS` uplink.
+  `Fauxmote_SendNav(...)`, `Fauxmote_SendCmd(op)`, and `Fauxmote_GetStatus(...)`. A TX task
+  re-sends the latched `GUITAR` slice on change (low latency) and at a 50 ms floor; the
+  `STATUS` uplink is latched into the same state on either transport.
+- **Transport seam** behind `MARVIN_FAUXMOTE_TRANSPORT` (default **T1S**, §8): T1S rides
+  the shared `net/t1s` controller channel (`0x88B7`, no dedicated peripheral, no RX task —
+  a registered handler latches `STATUS`); `=0` owns the **FLEXCOM5 USART (PA16/PA15)** and
+  the §3.2 framing with a dedicated RX task parsing the uplink.
 - **Mirror-to-both** (not a switched sink): `FretboardLink_Send()` — the one choke
   point both producers (timing pipeline + `manual_control`) call — also calls
   `Fauxmote_SendGuitarMask()`, so the guitar node and fauxmote move in lock-step.
-  `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build (FLEXCOM5 is
-  dedicated), regardless of `MARVIN_FRETBOARD_TRANSPORT`.
+  `GUITAR` byte 0 == the 7-bit guitar mask. Runs on every build, regardless of
+  `MARVIN_FRETBOARD_TRANSPORT`.
 
 ## 8. T1S transport (transport #2)
 
@@ -298,10 +302,25 @@ The **message layer (§4–§5) travels unchanged as the payload of a T1S Ethern
   alongside it; see [`docs/t1s-podl-link.md`](t1s-podl-link.md) §7.1/§7.2.
 - Only the transport seam (§7) changes; message handling and semantics are identical.
 
-**Status:** written ahead of hardware (no LAN8651 wired to the Feather yet) and not yet
-driven by marvin — the coordinator-side `0x88B7` demux + controller node-table entry are
-a later session. Feather V2 pin defaults are SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32,
-all Kconfig-overridable.
+**marvin side (implemented 2026-07-28, default T1S).** marvin has a *single* LAN8651, so
+the controller channel is not a second interface — `fauxmote_link` rides the shared
+`net/t1s` MAC-PHY. Behind `MARVIN_FAUXMOTE_TRANSPORT={UART,T1S}` (default T1S):
+- **TX:** `send_frame` → `T1SLink_SendToController(type, payload, len)`, which stages the
+  message into a small static FIFO. The T1S service task frames it
+  `[dst=controller][src=coord][0x88B7][TYPE][payload]` and puts it on the bus, interleaved
+  with the `0x88B5` guitar command (single in-flight TC6 TX). The MAC-PHY appends the FCS
+  and pads to the 46-byte minimum.
+- **RX (`STATUS` uplink):** `net/t1s` demuxes `0x88B7` frames from the controller node and
+  calls a registered `T1SLink_ControllerHandler`; `fauxmote_link`'s handler latches
+  `STATUS` exactly as the UART parser did (shared `latch_status`).
+- **Node table:** the controller (id 1) is a gated row in marvin's `s_nodes[]`, so its
+  `0x88B6` presence heartbeat lights the `nodes` CLI for free.
+- `T1SLink_Initialize` is idempotent, so the fretboard-T1S and fauxmote-T1S paths can both
+  call it. `MARVIN_FAUXMOTE_TRANSPORT=0` restores the dedicated FLEXCOM5 UART path (§3).
+
+**Status:** both ends now speak T1S in source; the fauxmote side still awaits its LAN8651
+being wired to the Feather (Feather V2 pin defaults SCK=5/MO=19/MI=21/CS=33/RST=27/IRQ=32,
+all Kconfig-overridable), so on-bus verification is a later session.
 
 ## 9. Open questions
 

@@ -13,6 +13,10 @@
 #include "definitions.h"
 #include "log.h"
 
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+#include "net/t1s/t1s_link.h"
+#endif
+
 #define FX_TX_TASK_STACK_WORDS  512u
 #define FX_RX_TASK_STACK_WORDS  512u
 #define FX_TASK_PRIORITY        5u
@@ -59,15 +63,29 @@ static uint8_t         s_cmd_queue_storage[FX_CMD_QUEUE_DEPTH];
 
 static SemaphoreHandle_t s_tx_notify;
 static StaticSemaphore_t s_tx_notify_buf;
-static SemaphoreHandle_t s_rx_notify;
-static StaticSemaphore_t s_rx_notify_buf;
 
 static StackType_t   s_tx_stack[FX_TX_TASK_STACK_WORDS];
 static StaticTask_t  s_tx_tcb;
+
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_UART)
+static SemaphoreHandle_t s_rx_notify;
+static StaticSemaphore_t s_rx_notify_buf;
 static StackType_t   s_rx_stack[FX_RX_TASK_STACK_WORDS];
 static StaticTask_t  s_rx_tcb;
+#endif
 
 /* ---- TX (single writer: the TX task) ------------------------------------ */
+
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+
+/* T1S: one mf_proto message per Ethernet frame. The MAC-PHY supplies framing
+ * (FCS) so the SOF/LEN/CRC8 wrapper is dropped; net/t1s stages + flushes it. */
+static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+    (void)T1SLink_SendToController(type, payload, len);
+}
+
+#else  /* FAUXMOTE_TRANSPORT_UART */
 
 static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
 {
@@ -80,11 +98,17 @@ static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
     (void)FLEXCOM5_USART_Write(f, (size_t)(4u + len));
 }
 
+#endif
+
 static void fx_tx_task(void *param)
 {
     (void)param;
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+    LOG_INFO("FX: fauxmote link started (T1S controller channel, 0x88B7)\r\n");
+#else
     LOG_INFO("FX: fauxmote link started (FLEXCOM5, %lu baud)\r\n",
              (unsigned long)MF_UART_BAUD);
+#endif
 
     for (;;)
     {
@@ -126,7 +150,39 @@ static void fx_tx_task(void *param)
     }
 }
 
-/* ---- RX (STATUS uplink parser) ------------------------------------------ */
+/* ---- RX (STATUS uplink) -------------------------------------------------- */
+
+/* Latch the latest STATUS from fauxmote. Transport-independent: fed by the UART
+ * byte parser or the T1S controller-channel handler. */
+static void latch_status(const uint8_t *payload, uint16_t len)
+{
+    /* Accept len >= the STATUS size: over T1S the MAC-PHY pads short frames to
+     * the 60-byte Ethernet minimum, so the payload carries trailing pad. */
+    if (len < MF_LEN_STATUS) { return; }
+
+    bool changed = !s_status_valid || memcmp(s_status, payload, MF_LEN_STATUS) != 0;
+    taskENTER_CRITICAL();
+    memcpy(s_status, payload, MF_LEN_STATUS);
+    s_status_valid = true;
+    s_status_tick  = xTaskGetTickCount();
+    taskEXIT_CRITICAL();
+    if (changed)
+    {
+        LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
+                 payload[0], payload[1], payload[2], payload[3]);
+    }
+}
+
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+
+/* Controller-channel RX (registered with net/t1s): one mf_proto message, already
+ * deframed by the MAC-PHY. Only STATUS is an uplink (f->m). */
+static void ctrl_rx(uint8_t type, const uint8_t *payload, uint16_t len)
+{
+    if (type == MF_MSG_STATUS) { latch_status(payload, len); }
+}
+
+#else  /* FAUXMOTE_TRANSPORT_UART */
 
 typedef enum { P_SOF, P_TYPE, P_LEN, P_PAYLOAD, P_CRC } parse_state_t;
 
@@ -165,21 +221,7 @@ static void parse_byte(uint8_t b)
             state = P_SOF;
             if (mf_crc8(hdr, (size_t)(2u + len)) != b) { break; }   /* bad CRC */
 
-            if (type == MF_MSG_STATUS && len == MF_LEN_STATUS)
-            {
-                bool changed = !s_status_valid ||
-                               memcmp(s_status, payload, MF_LEN_STATUS) != 0;
-                taskENTER_CRITICAL();
-                memcpy(s_status, payload, MF_LEN_STATUS);
-                s_status_valid = true;
-                s_status_tick  = xTaskGetTickCount();
-                taskEXIT_CRITICAL();
-                if (changed)
-                {
-                    LOG_INFO("FX: status flags=0x%02x slot=%u mode=0x%02x res=%u\r\n",
-                             payload[0], payload[1], payload[2], payload[3]);
-                }
-            }
+            if (type == MF_MSG_STATUS) { latch_status(payload, len); }
             break;
         }
         default:
@@ -229,6 +271,8 @@ static void fx_rx_task(void *param)
         }
     }
 }
+
+#endif  /* MARVIN_FAUXMOTE_TRANSPORT */
 
 /* ---- public API --------------------------------------------------------- */
 
@@ -315,8 +359,21 @@ void Fauxmote_Initialize(void)
                                      s_cmd_queue_storage, &s_cmd_queue_buf);
     configASSERT(s_cmd_queue != NULL);
     s_tx_notify = xSemaphoreCreateBinaryStatic(&s_tx_notify_buf);
+    configASSERT(s_tx_notify != NULL);
+
+#if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
+    /* Ride the shared T1S bus: net/t1s owns the MAC-PHY/service task (idempotent
+     * Initialize — the fretboard link may have brought it up already). STATUS
+     * arrives via the registered controller handler; TX stages through
+     * T1SLink_SendToController. No dedicated peripheral, so no RX task. */
+    T1SLink_Initialize();
+    T1SLink_SetControllerHandler(ctrl_rx);
+
+    (void)xTaskCreateStatic(fx_tx_task, "FxTx", FX_TX_TASK_STACK_WORDS,
+                            NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
+#else
     s_rx_notify = xSemaphoreCreateBinaryStatic(&s_rx_notify_buf);
-    configASSERT(s_tx_notify != NULL && s_rx_notify != NULL);
+    configASSERT(s_rx_notify != NULL);
 
     /* Reconfigure FLEXCOM5 (MCC default 500000) to the link baud, 8-N-1. */
     FLEXCOM_USART_SERIAL_SETUP setup = {
@@ -336,6 +393,7 @@ void Fauxmote_Initialize(void)
                             NULL, FX_TASK_PRIORITY, s_tx_stack, &s_tx_tcb);
     (void)xTaskCreateStatic(fx_rx_task, "FxRx", FX_RX_TASK_STACK_WORDS,
                             NULL, FX_TASK_PRIORITY, s_rx_stack, &s_rx_tcb);
+#endif
 
     s_ready = true;
 }
