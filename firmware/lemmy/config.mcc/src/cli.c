@@ -98,6 +98,18 @@ static void cmd_plca(EmbeddedCli *cli, char *args, void *ctx)
     T1SFollower_ReadPlca();   /* result logs asynchronously from the service loop */
 }
 
+static const char *servo_name(servo_id_t s)
+{
+    return (s == SERVO_NECK) ? "neck" : "jaw";
+}
+
+static bool parse_servo(const char *a, servo_id_t *out)
+{
+    if ((strcmp(a, "neck") == 0) || (strcmp(a, "0") == 0)) { *out = SERVO_NECK; return true; }
+    if ((strcmp(a, "jaw")  == 0) || (strcmp(a, "1") == 0)) { *out = SERVO_JAW;  return true; }
+    return false;
+}
+
 static void cmd_servo(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -113,9 +125,7 @@ static void cmd_servo(EmbeddedCli *cli, char *args, void *ctx)
     }
 
     servo_id_t servo;
-    if ((strcmp(a, "neck") == 0) || (strcmp(a, "0") == 0))     { servo = SERVO_NECK; }
-    else if ((strcmp(a, "jaw") == 0) || (strcmp(a, "1") == 0)) { servo = SERVO_JAW; }
-    else { cli_printf("bad servo '%s' (neck|jaw)", a); return; }
+    if (!parse_servo(a, &servo)) { cli_printf("bad servo '%s' (neck|jaw)", a); return; }
 
     const char *b = embeddedCliGetToken(args, 2);
     if (b == NULL)
@@ -127,8 +137,90 @@ static void cmd_servo(EmbeddedCli *cli, char *args, void *ctx)
 
     uint16_t req = (uint16_t)strtoul(b, NULL, 10);
     uint16_t got = Servo_SetPulseUs(servo, req);
-    cli_printf("%s = %u us%s", (servo == SERVO_NECK) ? "neck" : "jaw",
+    cli_printf("%s = %u us%s", servo_name(servo),
                (unsigned)got, (got != req) ? " (clamped)" : "");
+}
+
+static void cmd_pos(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL)
+    {
+        cli_printf("neck: %d  jaw: %d  (range %d..%d, 0 = neutral)",
+                   (int)Servo_GetPosition(SERVO_NECK), (int)Servo_GetPosition(SERVO_JAW),
+                   SERVO_POS_MIN, SERVO_POS_MAX);
+        cli_printf("usage: pos <neck|jaw> <%d..%d>", SERVO_POS_MIN, SERVO_POS_MAX);
+        return;
+    }
+
+    servo_id_t servo;
+    if (!parse_servo(a, &servo)) { cli_printf("bad servo '%s' (neck|jaw)", a); return; }
+
+    const char *b = embeddedCliGetToken(args, 2);
+    if (b == NULL)
+    {
+        cli_printf("usage: pos <neck|jaw> <%d..%d>", SERVO_POS_MIN, SERVO_POS_MAX);
+        return;
+    }
+
+    long req = strtol(b, NULL, 10);
+    if (req > SERVO_POS_MAX) { req = SERVO_POS_MAX; }
+    if (req < SERVO_POS_MIN) { req = SERVO_POS_MIN; }
+    int8_t got = Servo_SetPosition(servo, (int8_t)req);
+    cli_printf("%s pos=%d -> %u us", servo_name(servo),
+               (int)got, (unsigned)Servo_GetPulseUs(servo));
+}
+
+/* Print one servo's calibration as a paste-ready C initializer for servo.c. */
+static void print_cal(servo_id_t servo)
+{
+    servo_cal_t c = Servo_GetCal(servo);
+    cli_printf("[SERVO_%s] = { .min_us = %uu, .neutral_us = %uu, .max_us = %uu, .invert = %s },",
+               (servo == SERVO_NECK) ? "NECK" : "JAW",
+               (unsigned)c.min_us, (unsigned)c.neutral_us, (unsigned)c.max_us,
+               c.invert ? "true" : "false");
+}
+
+static void cmd_cal(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if ((a == NULL) || (strcmp(a, "show") == 0))
+    {
+        print_cal(SERVO_NECK);
+        print_cal(SERVO_JAW);
+        return;
+    }
+
+    servo_id_t servo;
+    if (!parse_servo(a, &servo))
+    {
+        cli_printf("usage: cal [show] | cal <neck|jaw> <min|neutral|max|invert> <val>");
+        return;
+    }
+
+    const char *field = embeddedCliGetToken(args, 2);
+    const char *val   = embeddedCliGetToken(args, 3);
+    if ((field == NULL) || (val == NULL))
+    {
+        print_cal(servo);
+        cli_printf("usage: cal <neck|jaw> <min|neutral|max|invert> <val>");
+        return;
+    }
+
+    servo_cal_t c = Servo_GetCal(servo);
+    uint32_t    v = (uint32_t)strtoul(val, NULL, 10);
+    if      (strcmp(field, "min")     == 0) { c.min_us     = (uint16_t)v; }
+    else if (strcmp(field, "neutral") == 0) { c.neutral_us = (uint16_t)v; }
+    else if (strcmp(field, "max")     == 0) { c.max_us     = (uint16_t)v; }
+    else if (strcmp(field, "invert")  == 0) { c.invert     = (v != 0u); }
+    else { cli_printf("bad field '%s' (min|neutral|max|invert)", field); return; }
+
+    Servo_SetCal(servo, c);   /* re-applies current position under new cal */
+    print_cal(servo);         /* echo applied values (post guard-rail clamp) */
 }
 
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
@@ -152,6 +244,8 @@ static void register_commands(void)
         { "id",    "Raw-read + log the MAC-PHY ID registers",        false, NULL, cmd_id },
         { "plca",  "Read + log the PLCA status register",            false, NULL, cmd_plca },
         { "servo", "Raw servo pulse: servo <neck|jaw> <us>",         true,  NULL, cmd_servo },
+        { "pos",   "Position via cal: pos <neck|jaw> <-127..127>",    true,  NULL, cmd_pos },
+        { "cal",   "Servo cal: cal [show] | cal <s> <field> <val>",   true,  NULL, cmd_cal },
         { "reset", "Reset the MCU (system reset)",                   false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
@@ -167,7 +261,7 @@ void CLI_Initialize(void)
     cfg->rxBufferSize       = 32u;
     cfg->cmdBufferSize      = 32u;
     cfg->historyBufferSize  = 64u;
-    cfg->maxBindingCount    = 8u;
+    cfg->maxBindingCount    = 12u;
     cfg->enableAutoComplete = true;
     cfg->cliBuffer          = s_cli_buf;
     cfg->cliBufferSize      = sizeof(s_cli_buf);

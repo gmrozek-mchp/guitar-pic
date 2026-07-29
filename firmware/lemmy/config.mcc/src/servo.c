@@ -13,7 +13,17 @@ static const TCC0_CHANNEL_NUM s_channel[SERVO_COUNT] =
     [SERVO_JAW]  = TCC0_CHANNEL1,
 };
 
-static uint16_t s_pulse_us[SERVO_COUNT];
+/* Compiled-in calibration defaults. Tune live with the `cal` CLI, then paste
+ * the printed values back here and reflash. */
+static const servo_cal_t s_cal_default[SERVO_COUNT] =
+{
+    [SERVO_NECK] = { .min_us = 1000u, .neutral_us = 1450u, .max_us = 2000u, .invert = true },
+    [SERVO_JAW]  = { .min_us = 1000u, .neutral_us = 1600u, .max_us = 1600u, .invert = false },
+};
+
+static servo_cal_t s_cal[SERVO_COUNT];       /* RAM working copy */
+static uint16_t    s_pulse_us[SERVO_COUNT];
+static int8_t      s_position[SERVO_COUNT];
 
 static uint16_t us_to_ticks(uint16_t us)
 {
@@ -25,7 +35,8 @@ void Servo_Initialize(void)
     TCC0_PWMStart();
     for (servo_id_t s = 0; s < SERVO_COUNT; s++)
     {
-        (void)Servo_SetPulseUs(s, SERVO_US_CENTER);
+        s_cal[s] = s_cal_default[s];
+        (void)Servo_SetPosition(s, SERVO_POS_NEUTRAL);
     }
 }
 
@@ -46,4 +57,66 @@ uint16_t Servo_SetPulseUs(servo_id_t servo, uint16_t us)
 uint16_t Servo_GetPulseUs(servo_id_t servo)
 {
     return (servo < SERVO_COUNT) ? s_pulse_us[servo] : 0u;
+}
+
+int8_t Servo_SetPosition(servo_id_t servo, int8_t pos)
+{
+    if (servo >= SERVO_COUNT)
+    {
+        return 0;
+    }
+    if (pos > SERVO_POS_MAX) { pos = SERVO_POS_MAX; }
+    if (pos < SERVO_POS_MIN) { pos = SERVO_POS_MIN; }
+    s_position[servo] = pos;
+
+    const servo_cal_t *c = &s_cal[servo];
+    int32_t mapped = c->invert ? -(int32_t)pos : (int32_t)pos;
+
+    int32_t us;
+    if (mapped >= 0)
+    {
+        us = (int32_t)c->neutral_us
+           + (((int32_t)c->max_us - (int32_t)c->neutral_us) * mapped) / SERVO_POS_MAX;
+    }
+    else
+    {
+        us = (int32_t)c->neutral_us
+           - (((int32_t)c->neutral_us - (int32_t)c->min_us) * (-mapped)) / (-SERVO_POS_MIN);
+    }
+
+    (void)Servo_SetPulseUs(servo, (uint16_t)us);
+    return pos;
+}
+
+int8_t Servo_GetPosition(servo_id_t servo)
+{
+    return (servo < SERVO_COUNT) ? s_position[servo] : 0;
+}
+
+servo_cal_t Servo_GetCal(servo_id_t servo)
+{
+    if (servo >= SERVO_COUNT)
+    {
+        servo_cal_t empty = { 0u, 0u, 0u, false };
+        return empty;
+    }
+    return s_cal[servo];
+}
+
+void Servo_SetCal(servo_id_t servo, servo_cal_t cal)
+{
+    if (servo >= SERVO_COUNT)
+    {
+        return;
+    }
+    /* Keep every endpoint inside the hardware guard rails. */
+    if (cal.min_us     < SERVO_US_MIN) { cal.min_us     = SERVO_US_MIN; }
+    if (cal.min_us     > SERVO_US_MAX) { cal.min_us     = SERVO_US_MAX; }
+    if (cal.max_us     < SERVO_US_MIN) { cal.max_us     = SERVO_US_MIN; }
+    if (cal.max_us     > SERVO_US_MAX) { cal.max_us     = SERVO_US_MAX; }
+    if (cal.neutral_us < SERVO_US_MIN) { cal.neutral_us = SERVO_US_MIN; }
+    if (cal.neutral_us > SERVO_US_MAX) { cal.neutral_us = SERVO_US_MAX; }
+
+    s_cal[servo] = cal;
+    (void)Servo_SetPosition(servo, s_position[servo]);   /* re-apply under new cal */
 }

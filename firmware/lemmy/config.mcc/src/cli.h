@@ -4,8 +4,8 @@
 /* Operator CLI on the SERCOM1 debug UART (embedded-cli, static allocation).
  * Bare-metal: CLI_Tasks() polls the RX ring each main-loop pass — no task.
  * Commands: info, t1s / id / plca (T1S link + MAC-PHY diagnostics), servo (raw
- * pulse-width servo control), reset. Puppet-relative pose commands are added
- * when that layer lands.
+ * pulse-width), pos (calibrated position), cal (servo calibration), reset. The
+ * nod/jaw motion-envelope commands are added when that layer lands.
  *
  * Call CLI_Initialize() after SYS_Initialize (SERCOM1 brought up by MCC), then
  * CLI_Tasks() repeatedly from the main loop. */
