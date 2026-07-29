@@ -49,6 +49,25 @@ SERCOM1 debug UART (PB00/PB01), via the mplab-mcc MCP server (no hand-edited MCC
 
 ## Session log
 
+### 2026-07-28 — CLI bring-up (L0b partial + first app code)
+
+- **SERCOM1 USART + SysTick added in MCC** (Greg ran the generator): SERCOM1 ring-buffer USART
+  @115200 on PB00=TX/PB01=RX, SysTick 1 ms. Verified the console path matches `guitar`'s config (baud,
+  mode, pins, ISR/NVIC wiring, `definitions.h` includes) — only benign diff is lemmy's 128 B TX ring
+  vs guitar's 512 B.
+- **First application code: operator CLI** (`config.mcc/src/cli.{c,h}`) on the SERCOM1 debug UART,
+  embedded-cli vendored under `config.mcc/src/third_party/embedded-cli/` (static-allocation, no malloc).
+  Wired into `main.c` (`CLI_Initialize` + `CLI_Tasks`); build sources added via hand-authored
+  `cmake/lemmy/default/user.cmake` (kept out of the MCC tree). Commands: `info`, `reset`.
+- **`reset`** uses `NVIC_SystemReset()`. Two bring-up bugs found and fixed: (1) MCC only *initializes*
+  SysTick (leaves `ENABLE` clear), so `SYSTICK_DelayMs` returned instantly — added `SYSTICK_TimerStart()`
+  in `main.c` after `SYS_Initialize` (guitar enables it in `t1s_follower`; lemmy has no follower yet).
+  (2) the "resetting..." notice went through embedded-cli's deferred print, which only flushes on the
+  next process pass we never reach before the reset — switched to a direct `uart_str()` into the TX ring
+  so the 20 ms drain delay gets it to the wire.
+- **Next:** rest of L0b — SERCOM0 SPI + EIC EXTINT2 (`IRQ_N`=PA02), `CS`=PA06 / `RST`=PA03 GPIO for the
+  LAN8651, then L1 (port the `t1s_follower` glue, follower id 6 + heartbeat).
+
 ### 2026-07-28 — subproject created (scaffold + plan)
 
 - Greg set up the base lemmy MPLAB/MCC project (PIC32CM6408PL10048) in `firmware/lemmy/`; committed as

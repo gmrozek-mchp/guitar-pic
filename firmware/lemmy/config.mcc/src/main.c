@@ -26,6 +26,7 @@
 #include <stdbool.h>                    // Defines true
 #include <stdlib.h>                     // Defines EXIT_FAILURE
 #include "definitions.h"                // SYS function prototypes
+#include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
 // *****************************************************************************
 // *****************************************************************************
@@ -38,10 +39,19 @@ int main ( void )
     /* Initialize all modules */
     SYS_Initialize ( NULL );
 
+    /* MCC only initializes SysTick; the app enables it. Started here so
+     * SYSTICK_DelayMs works for every subsystem. */
+    SYSTICK_TimerStart ( );
+
+    CLI_Initialize ( );
+
     while ( true )
     {
         /* Maintain state machines of all polled MPLAB Harmony modules. */
         SYS_Tasks ( );
+
+        /* Operator CLI on the debug UART. */
+        CLI_Tasks ( );
     }
 
     /* Execution should not come here during normal operation */
