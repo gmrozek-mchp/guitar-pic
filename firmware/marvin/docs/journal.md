@@ -427,6 +427,19 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-29 — lemmy heartbeat awareness (node table entry)
+
+- **marvin now recognizes lemmy (animation node, id 6) on the bus.** Added `T1S_NODE_ANIMATION` to the
+  node-type enum, a `{ 6u, T1S_NO_DETECTOR, T1S_NODE_ANIMATION }` row to the static node table, and a
+  `"lemmy"` display name (`net/t1s/t1s_link.c`). Presence tracking, seq capture, and the `nodes`
+  display are all table-driven off the source MAC, so lemmy's `0x88B6` heartbeat now marks it present and
+  `nodes` lists it — no other change needed.
+- **marvin identifies nodes by id via the static table, not by decoding the heartbeat `node_type` byte.**
+  lemmy advertises `node_type = 4` in its payload (as guitar/fretboard/fauxmote advertise their own), but
+  marvin doesn't cross-check it; the id→type mapping is the table. So the earlier "marvin's §7.2 decode
+  must learn value 4" follow-up is really just this table row. First step only — awareness, no command TX
+  to lemmy yet (that's the next step: `send_to_node(6, 0x88B5, [neck,jaw], 2)`).
+
 ### 2026-07-28 — fauxmote link onto the shared T1S bus (coordinator side); default T1S (pending build)
 
 Brought the marvin end of the fauxmote command link onto 10BASE-T1S, matching the already-migrated

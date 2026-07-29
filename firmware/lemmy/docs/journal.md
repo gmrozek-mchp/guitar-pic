@@ -32,6 +32,7 @@ hardware.
 | 2026-07-29 | **Servo position is `int8_t` -127..127** (0 = neutral), matching the planned T1S command byte 1:1 — one signed byte per servo, applied on RX with no scaling. Calibration (min/neutral/max µs + invert per servo) is a **compiled-in default copied to a RAM working copy**; tuned live via the `cal` CLI which prints paste-ready initializers to fold back into the default and reflash. **Not persisted on-device** — the PL10 has no EEPROM/RWW (datasheet §5/§26); flash-emulated EEPROM (NVMCTRL self-program, page erase / word write) would stall the single flash array during writes, not worth it for set-once cal. | ±127 gives ~4 µs/step (~6 TCC ticks) — far under servo deadband, so no resolution lost vs a wider internal range, and it avoids scaling the wire byte. Hardcoded cal keeps bring-up simple; live `cal` tuning + reflash is the workflow until (if ever) persistence is needed. |
 | 2026-07-28 | **lemmy created as the *animation* node class; T1S bring-up before motion.** PIC32CM6408PL10048, PLCA follower **id 6** / MAC `02:00:00:00:00:06` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Two R/C hobby servos: neck joint (nod) + bottom jaw. Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 servo motion → L3 beat-driven nod from beatbox (id 5). | Greg's call: prove the node on the bus first, reusing the `guitar` follower glue + `oa-tc6-lib` (same MCU family — keeps the "OA SPI driver scales across the family" demo and minimizes bring-up), then layer motion. The puppet's animation source is a beat feed, not the guitar button bitmask, so it's a distinct node class. |
 | 2026-07-28 | **T1S control pinout reuses `guitar`'s ATE_2026 map** (`CS`=PA06, `RST`=PA03, `IRQ_N`=PA02/EXTINT2; SPI SCK=PA05/MISO=PA07/MOSI=PA04; debug UART PB00/PB01). | Same MCU and same LAN8651 wiring lets the `t1s_follower` glue port over near-verbatim (only `T1S_NODE_ID` = 6 changes). Servo PWM pins are separate and fixed at L2. |
+| 2026-07-29 | **marvin recognizes lemmy's heartbeat** — added an animation node row (id 6) to marvin's `net/t1s` node table + a `"lemmy"` display name, so `nodes` lists lemmy present. marvin maps id→type via its static table (it does not decode the payload `node_type` byte), so lemmy's advertised `node_type=4` is informational. | Closes the "confirm node_type=4 with marvin" question: awareness is a table row keyed by node id, matching how guitar/fretboard are recognized. |
 | 2026-07-28 | **Heartbeat `node_type = 4` (*animation*) proposed** for lemmy's `0x88B6` presence frame. | Existing enum is 1=detector, 2=guitar, 3=controller; lemmy is a new class. marvin's §7.2 decode + `nodes` display need to learn value 4 (marvin-side follow-up). |
 
 ---
@@ -46,7 +47,6 @@ hardware.
   Confirm 50 Hz / 1–2 ms pulse resolution off the 24 MHz clock is adequate.
 - **Servo power / drive.** Separate servo rail + common ground; brown-out / inrush handling so servo
   current doesn't disturb the LAN8651 or MCU supply. Hardware, not firmware — flag at L2 bring-up.
-- **Heartbeat node_type = 4** — confirm with the marvin side before it's baked into lemmy's payload.
 
 ---
 
