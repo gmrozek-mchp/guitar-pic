@@ -73,6 +73,7 @@ typedef enum
     T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
     T1S_NODE_CONTROLLER,     /* controller: fauxmote mf_proto channel (0x88B7) */
     T1S_NODE_ANIMATION,      /* animation: lemmy puppet (heartbeat-only for now) */
+    T1S_NODE_LIGHTSHOW,      /* lightshow: LED lighting node (heartbeat-only for now) */
 } t1s_node_type_t;
 
 typedef struct
@@ -86,6 +87,7 @@ static const t1s_node_t s_nodes[] = {
     { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
     { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
     { 6u, T1S_NO_DETECTOR,                 T1S_NODE_ANIMATION },  /* lemmy (heartbeat) */
+    { 7u, T1S_NO_DETECTOR,                 T1S_NODE_LIGHTSHOW },  /* lightshow (heartbeat) */
 #if T1S_CTRL_ENABLED
     { 1u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote (0x88B7) */
 #endif
@@ -108,6 +110,7 @@ static const char *node_type_name(t1s_node_type_t t)
         case T1S_NODE_GUITAR:        return "guitar";
         case T1S_NODE_CONTROLLER:    return "controller";
         case T1S_NODE_ANIMATION:     return "lemmy";
+        case T1S_NODE_LIGHTSHOW:     return "lightshow";
         default:                     return "?";
     }
 }

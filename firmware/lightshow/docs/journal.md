@@ -28,14 +28,12 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 - **Command/beat-signal plane.** What drives the light patterns — a future **beatbox** node (id 5),
   marvin's timing pipeline, or both? Over which ethertype and payload? Shared open question with
   `lemmy`; deferred until L3.
-- **Heartbeat `node_type = 5`** — confirm with the marvin side before it's baked in: marvin's §7.2
-  decode + `nodes` display need to learn value 5 (marvin-side follow-up). The top-level
-  [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1 reserves lightshow at **id 7**.
 
 ## Decision log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-29 | **marvin recognizes lightshow's heartbeat** — added a lightshow node row (id 7) to marvin's `net/t1s` node table + a `"lightshow"` display name, so `nodes` lists lightshow present. marvin maps id→type via its static table (it does not decode the payload `node_type` byte), so lightshow's advertised `node_type=5` is informational. | Closes the "confirm node_type=5 with marvin" question: awareness is a table row keyed by node id, matching how guitar / fretboard / lemmy are recognized. |
 | 2026-07-29 | **lightshow created as the *lighting* node class (`node_type = 5`); T1S bring-up before LED output.** PIC32CM6408PL10048, PLCA follower **id 7** / MAC `02:00:00:00:00:07` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 beat-driven light show. | Prove the node on the bus first, reusing the `lemmy` / `guitar` follower glue + `oa-tc6-lib` (same MCU family — minimizes bring-up), then layer the LED output. The lighting output and its command source differ from the puppet, so it is a distinct node class from `lemmy` (animation). |
 
 ## Session log

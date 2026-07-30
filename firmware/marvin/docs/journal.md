@@ -427,6 +427,17 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-29 — lightshow heartbeat awareness (node table entry)
+
+- **marvin now recognizes lightshow (LED lighting node, id 7) on the bus.** Added `T1S_NODE_LIGHTSHOW`
+  to the node-type enum, a `{ 7u, T1S_NO_DETECTOR, T1S_NODE_LIGHTSHOW }` row to the static node table,
+  and a `"lightshow"` display name (`net/t1s/t1s_link.c`). Same table-driven pattern as the lemmy row:
+  presence, seq capture, and the `nodes` display key off the source MAC, so lightshow's `0x88B6`
+  heartbeat now marks it present and `nodes` lists it — no other change needed.
+- lightshow advertises `node_type = 5` in its payload; as with the other nodes marvin maps id→type via
+  its static table and does not cross-check the byte, so `node_type=5` is informational. Awareness only;
+  no command TX to lightshow yet.
+
 ### 2026-07-29 — lemmy exercise command (`lemmy` console cmd)
 
 - **marvin can now drive lemmy's servos over T1S.** `T1SLink_SendToLemmy(neck, jaw)` stages a combined
