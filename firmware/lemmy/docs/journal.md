@@ -68,9 +68,10 @@ hardware.
   Ethernet minimum, so `len` includes trailing pad — the guard is `len < (HDR + 2)` (enough bytes present)
   and reads fixed offsets, never an exact-length `==`. This is the same trap fauxmote hit (exact-length
   checks dropped padded frames; see fauxmote journal 2026-07-28).
-- **Not yet driven end-to-end:** nothing sends position frames to id 6 yet — marvin only sends `0x88B5`
-  to guitar and mf_proto to the controller. **Next:** teach marvin to `send_to_node(6, 0x88B5, [neck,jaw],
-  2)` (a CLI + timing-pipeline hook), then the `nod`/`jaw` motion envelope, then beat-driven nod.
+- **Driven end-to-end from marvin.** marvin's `lemmy <neck> <jaw>` / `lemmy center` console command sends
+  `send_to_node(6, 0x88B5, [neck,jaw], 2)` via `T1SLink_SendToLemmy` (latest-wins staging flushed by the
+  T1S service task). Manual exercise hook for now. **Next:** the `nod`/`jaw` motion envelope, then
+  beat-driven nod from a timing-pipeline / beatbox feed.
 
 ### 2026-07-29 — L3 position + calibration layer
 

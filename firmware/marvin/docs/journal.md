@@ -427,6 +427,15 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-29 — lemmy exercise command (`lemmy` console cmd)
+
+- **marvin can now drive lemmy's servos over T1S.** `T1SLink_SendToLemmy(neck, jaw)` stages a combined
+  `[neck, jaw]` int8 position command (latest-wins + dirty flag), flushed by the `t1s_task` alongside the
+  guitar command via `send_to_node(6, 0x88B5, cmd, 2)` — same single-in-flight TX discipline. Console
+  gains `lemmy <neck> <jaw>` and `lemmy center`, clamping each to -127..127 before the int8 cast.
+- Closes the "next: `send_to_node(6, 0x88B5, [neck,jaw], 2)`" follow-up from the awareness entry. This is
+  a manual exercise hook; a timing-pipeline / beat-driven feed is the later step.
+
 ### 2026-07-29 — lemmy heartbeat awareness (node table entry)
 
 - **marvin now recognizes lemmy (animation node, id 6) on the bus.** Added `T1S_NODE_ANIMATION` to the

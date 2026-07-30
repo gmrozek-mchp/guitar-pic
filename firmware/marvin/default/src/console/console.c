@@ -809,6 +809,37 @@ static void cmd_play(EmbeddedCli *cli, char *args, void *ctx)
                    (unsigned)s->setlist, (unsigned)s->index, (unsigned)s->difficulty);
 }
 
+static int8_t parse_pos_i8(const char *s)
+{
+    long v = strtol(s, NULL, 0);
+    if (v >  127) { v =  127; }
+    if (v < -127) { v = -127; }
+    return (int8_t)v;
+}
+
+static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+
+    if (a != NULL && strcmp(a, "center") == 0)
+    {
+        if (!T1SLink_SendToLemmy(0, 0)) { console_printf("lemmy: link down"); return; }
+        console_printf("lemmy: neck=0 jaw=0");
+        return;
+    }
+    const char *b = embeddedCliGetToken(args, 2);
+    if (a == NULL || b == NULL)
+    {
+        console_printf("usage: lemmy <neck> <jaw> | center   (neck,jaw -127..127, 0=neutral)");
+        return;
+    }
+    int8_t neck = parse_pos_i8(a);
+    int8_t jaw  = parse_pos_i8(b);
+    if (!T1SLink_SendToLemmy(neck, jaw)) { console_printf("lemmy: link down"); return; }
+    console_printf("lemmy: neck=%d jaw=%d", (int)neck, (int)jaw);
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -830,6 +861,7 @@ static void register_commands(void)
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
+        { "lemmy",  "lemmy <neck> <jaw> | center: send servo positions (-127..127) to lemmy", true, NULL, cmd_lemmy },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },

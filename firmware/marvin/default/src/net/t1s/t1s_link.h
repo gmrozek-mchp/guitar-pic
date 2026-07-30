@@ -53,6 +53,11 @@ bool    T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out);
  * not up. */
 bool T1SLink_SendToGuitar(uint8_t mask);
 
+/* Latest-wins combined [neck, jaw] position command to lemmy (animation node),
+ * each a signed -127..127 (0 = neutral). Same threading contract as
+ * T1SLink_SendToGuitar; returns false if the link is not up. */
+bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw);
+
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.
  * Called from the T1S service task. `detector_id` is the node's bus id. */
 typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,

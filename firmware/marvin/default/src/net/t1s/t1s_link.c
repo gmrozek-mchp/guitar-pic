@@ -159,6 +159,11 @@ static volatile bool s_tx_busy;
 static volatile uint8_t s_cmd;
 static volatile bool    s_cmd_dirty;
 
+/* Latest-wins outbound position command to lemmy (animation): [neck, jaw] as
+ * int8 bit patterns, flushed by the service task alongside the guitar command. */
+static volatile uint8_t s_lemmy_cmd[2];
+static volatile bool    s_lemmy_dirty;
+
 static T1SLink_FrameHandler s_frame_handler;
 
 /* Traffic counters (read by the console t1s/nodes commands). */
@@ -384,6 +389,20 @@ static void t1s_task(void *param)
             }
         }
 
+        /* Flush the latest pending position command to lemmy (animation node).
+         * Combined [neck, jaw] int8 payload, one frame; shares the single
+         * in-flight TX with the guitar command above. */
+        if (s_lemmy_dirty && !s_tx_busy) {
+            const t1s_node_t *lemmy = node_for_type(T1S_NODE_ANIMATION);
+            if (lemmy != NULL) {
+                s_lemmy_dirty = false;
+                uint8_t cmd[2] = { s_lemmy_cmd[0], s_lemmy_cmd[1] };
+                if (send_to_node(lemmy->node_id, T1S_ETHERTYPE, cmd, 2u)) {
+                    s_tx_count++;
+                }
+            }
+        }
+
 #if T1S_CTRL_ENABLED
         /* Flush one staged controller (fauxmote) message onto the bus. Shares
          * the single in-flight TX with the guitar command above; across service
@@ -489,6 +508,18 @@ bool T1SLink_SendToGuitar(uint8_t mask)
     }
     s_cmd = mask;
     s_cmd_dirty = true;
+    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    return true;
+}
+
+bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw)
+{
+    if (!s_link_up) {
+        return false;
+    }
+    s_lemmy_cmd[0] = (uint8_t)neck;
+    s_lemmy_cmd[1] = (uint8_t)jaw;
+    s_lemmy_dirty  = true;
     (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
     return true;
 }
