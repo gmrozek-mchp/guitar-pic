@@ -9,7 +9,7 @@
  *
  * @version   PLIB Version 1.1.3
  *
- * @skipline  Device : dsPIC33AK256MPS306
+ * @skipline  Device : dsPIC33AK512MPS512
 */
 
 /*
@@ -47,15 +47,12 @@
 // FDEVOPT
 #pragma config FDEVOPT_ALTI2C1 = OFF    //Alternate I2C1 pins selection bit.->Primary I2C1 pins are used.
 #pragma config FDEVOPT_ALTI2C2 = OFF    //Alternate I2C2 pins selection bit.->Primary I2C2 pins are used.
+#pragma config FDEVOPT_ALTI2C3 = OFF    //Alternate I2C3 pins selection bit.->Primary I2C3 pins are used.
 #pragma config FDEVOPT_BISTDIS = OFF    //Hardware RAM test disable bit.->RAM test is disabled
 #pragma config FDEVOPT_SPI2PIN = OFF    //SPI2 peripheral pin selection disable bit.->SPI2 pins are selected by peripheral pin selection feature.
-#pragma config FDEVOPT_ODPUR0 = ON    //I3C SCL1 Open Drain Enable Bit->OD pull-up Resistance enabled for I3CSCL1
-#pragma config FDEVOPT_ODPUR1 = ON    //I3C SDA1 Open Drain Enable Bit->OD pull-up Resistance enabled for I3CSDA1
-#pragma config FDEVOPT_ODPUR2 = ON    //I3C Alternate SCL1 Open Drain Enable Bit->OD pull-up Resistance enabled for I3CASCL1
-#pragma config FDEVOPT_ODPUR3 = ON    //I3C Alternate SDA1 Open Drain Enable Bit->OD pull-up Resistance enabled for I3CASDA1
 
 // FWDT
-#pragma config FWDT_WINDIS = ON    //Watchdog Timer Window Disable bit->Non-Window mode
+#pragma config FWDT_WINDIS = ON    //Watchdog Timer Window Disable bit->Watchdog Timer operates in Non-Window mode
 #pragma config FWDT_SWDTMPS = PS2147483648    //Sleep Mode Watchdog Timer Post Scaler select bits->1:2147483648
 #pragma config FWDT_RCLKSEL = BFRC244    //Watchdog Timer Clock Select bits->WDT Run Mode uses 32.78kHz clock from BFRC/244
 #pragma config FWDT_RWDTPS = PS2147483648    //Run Mode Watchdog Timer Post Scaler select bits->1:2147483648
@@ -63,9 +60,6 @@
 #pragma config FWDT_WDTEN = SW    //Watchdog Timer Enable bit->WDT is controlled by software, use WDTCON.ON bit
 #pragma config FWDT_WDTRSTEN = ON    //Watchdog Timer Reset Enable bit->WDT Event Generates a Reset
 #pragma config FWDT_WDTNVMSTL = ON    //WDT Stall During NVM Operation->Stall WDT During NVM Operation
-
-// FPWRM
-#pragma config FPWRM_PWRM = OFF    //Core Voltage Monitor Enable Bits->Core Voltage Monitor is Disabled
 
 // FPR0CTRL
 #pragma config FPR0CTRL_RDIS = ON    //Region protection disable bit->Protection is disabled
@@ -202,13 +196,13 @@
 #pragma config FSECDBG_SECDBG = OFF    //Secure Debug Enable bit->Secure Debug is Disabled
 
 // FPED
-#pragma config FPED_ICSPPED = OFF    //ICSP Program and Erase Disable bit->ICSP can program and erase
+#pragma config FPED_ICSPPED = OFF    //ICSP Program and Erase disable bit->ICSP can program and erase
 
 // FEPUCB
-#pragma config FEPUCB_EPUCB = OFF    //User Config B Page Erase Protect bits->UCB Erase Protection Disabled
+#pragma config FEPUCB_EPUCB = 0xffffffff    //User Config B Page Erase Protect bits
 
 // FWPUCB
-#pragma config FWPUCB_WPUCB = OFF    //UCB Write Protection bits->UCB Write Protection Disabled
+#pragma config FWPUCB_WPUCB = 0xffffffff    //UCB Write Protection bits
 
 // FBOOT
 #pragma config FBOOT_BTMODE = SINGLE    //Device Boot Mode Configuration bits->Device is in Single Boot mode

@@ -72,7 +72,7 @@ Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); 
 | guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower id 3). Working: receives marvin's command over T1S and actuates. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
 | lemmy | [`firmware/lemmy/SPEC.md`](firmware/lemmy/SPEC.md) — **animation** node: animated guitar-playing puppet, 2 R/C servos (neck nod + jaw), driven by position commands from `beatbox` (PIC32CM PL10, T1S PLCA follower id 6). On the bus; servos moving. | [`firmware/lemmy/docs/journal.md`](firmware/lemmy/docs/journal.md) |
 | lightshow | [`firmware/lightshow/SPEC.md`](firmware/lightshow/SPEC.md) — **lighting** node: drives LEDs/lamps in time to the music from a beat frame (PIC32CM PL10, T1S PLCA follower id 7, `node_type = 5`). Bring-up: T1S follower up; WS2812 output in progress. | [`firmware/lightshow/docs/journal.md`](firmware/lightshow/docs/journal.md) |
-| beatbox | [`firmware/beatbox/SPEC.md`](firmware/beatbox/SPEC.md) — **beat-source** node: dsPIC33AK256MPS306 that listens to audio, runs FFT beat detection, and publishes position commands → `lemmy` + a beat frame → `lightshow` (T1S PLCA follower id 5, planned). Imported from `dspicguitarhero`; runs autonomously today, not yet on the bus. | [`firmware/beatbox/docs/journal.md`](firmware/beatbox/docs/journal.md) |
+| beatbox | [`firmware/beatbox/SPEC.md`](firmware/beatbox/SPEC.md) — **beat-source** node: dsPIC33AK512MPS512 that listens to audio, runs FFT beat detection, and publishes position commands → `lemmy` + a beat frame → `lightshow` (T1S PLCA follower id 5, planned). Imported from `dspicguitarhero`; runs autonomously today, not yet on the bus. | [`firmware/beatbox/docs/journal.md`](firmware/beatbox/docs/journal.md) |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 | edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; Phase 1 data pipeline in progress. | [`tools/edge-ai/docs/journal.md`](tools/edge-ai/docs/journal.md) |
@@ -123,7 +123,7 @@ guitar-pic/
 | PIC32CM PL10 | guitar (actuator) node MCU | [guitar spec](firmware/guitar/SPEC.md) |
 | PIC32CM PL10 + 2× R/C servos | lemmy (animation) node MCU + puppet drive | [lemmy spec](firmware/lemmy/SPEC.md) |
 | PIC32CM PL10 + WS2812 strips | lightshow (lighting) node MCU + LED drive | [lightshow spec](firmware/lightshow/SPEC.md) |
-| dsPIC33AK256MPS306 (Curiosity GP DIM) | beatbox (beat-source) node MCU — audio ADC + FFT | [beatbox spec](firmware/beatbox/SPEC.md) |
+| dsPIC33AK512MPS512 (EV80L65A GP DIM on EV74H48A) | beatbox (beat-source) node MCU — audio ADC + FFT | [beatbox spec](firmware/beatbox/SPEC.md) |
 | LAN8651B1 (10BASE-T1S MAC-PHY) | T1S bus link, one per node (marvin coordinator + each follower) over single-pair Ethernet + PoDL | [T1S/PoDL link](docs/t1s-podl-link.md) |
 | Actuator mechanism (TBD: voice coil / electromagnet / DIY solenoid) | physical fret + strum drive | [`hardware/actuators/`](hardware/actuators/) and [`hardware/3d-models/`](hardware/3d-models/) |
 | ElectronWarp | component → HDMI converter for Wii | external commercial part |

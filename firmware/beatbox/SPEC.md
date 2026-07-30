@@ -34,11 +34,11 @@ RGB, WS2812) so it runs as a self-contained demo — the actuation that will mov
 
 | Spec | Value |
 |------|-------|
-| Device | Microchip **dsPIC33AK256MPS306** (DSC — hardware suited to real-time FFT) |
-| Board | dsPIC33AK256MPS306 GP DIM on the Curiosity Platform Development Board |
+| Device | Microchip **dsPIC33AK512MPS512** (DSC — hardware suited to real-time FFT) |
+| Board | **dsPIC33AK512MPS512 GP DIM (EV80L65A)** on the Curiosity Platform Development Board (**EV74H48A**) |
 | Toolchain | **XC-DSC v3.31** (distinct from the PIC32CM nodes' XC32) |
 | Build | CMake → Ninja; artifacts under `out/beatbox/` |
-| DFP | `dsPIC33AK-MP_DFP` |
+| DFP | `dsPIC33AK-MP_DFP` (version pinned by MCC on regen — must include MPS512) |
 | MAC-PHY | LAN8651 (10BASE-T1S) — **not yet wired** (see §6, the porting milestone) |
 
 **Note on identity.** The MPLAB project is named `beatbox` — the descriptor is
@@ -47,6 +47,12 @@ RGB, WS2812) so it runs as a self-contained demo — the actuation that will mov
 `config.mcc/mcc/mcc.vscode` updated to match.)
 
 ### Pin map (autonomous baseline, from the source project)
+
+> **These pins are the MPS306-era baseline and must be re-derived for the MPS512.** The
+> PPS-remappable outputs (SCCP servo/RGB, SDO3, UART1, RD1) re-route freely; the fixed-function
+> pins — the two audio-in ADC channels, the speed pot, and the two PWM-DAC outputs — must be
+> re-picked against the MPS512 datasheet pin table and the EV80L65A GP DIM / EV74H48A pinout. See
+> the journal.
 
 | Pin | Direction | Function |
 |---|---|---|

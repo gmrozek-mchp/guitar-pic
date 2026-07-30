@@ -2,7 +2,7 @@
 
 configName: config
 fileVersion: 1.0.0
-device: dsPIC33AK256MPS306
+device: dsPIC33AK512MPS512
 associatedIDEProjects:
   MPLAB:
     - name: beatbox

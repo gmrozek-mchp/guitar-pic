@@ -1,6 +1,6 @@
 # beatbox
 
-The **beat-source node** for the Guitar Hero Bot system — a Microchip **dsPIC33AK256MPS306** (DSC)
+The **beat-source node** for the Guitar Hero Bot system — a Microchip **dsPIC33AK512MPS512** (DSC)
 that listens to line-level audio, runs real-time FFT beat/tempo detection, and (once on the bus)
 publishes the result to the animation and lighting nodes: **position commands → [`lemmy`](../lemmy)**
 and a **~5-parameter beat frame → [`lightshow`](../lightshow)**.

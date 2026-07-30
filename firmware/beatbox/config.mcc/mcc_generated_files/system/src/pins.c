@@ -9,11 +9,11 @@
  *
  * @skipline @version   PLIB Version 1.0.5
  *
- * @skipline  Device : dsPIC33AK256MPS306
+ * @skipline  Device : dsPIC33AK512MPS512
 */
 
 /*
-ï¿½ [2026] Microchip Technology Inc. and its subsidiaries.
+© [2026] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -41,10 +41,6 @@
 // Section: File specific functions
 
 // Section: Driver Interface Function Definitions
-// PPS unlock/lock macros
-#define PINS_PPSLock()       (RPCONbits.IOLOCK = 1)
-#define PINS_PPSUnlock()     (RPCONbits.IOLOCK = 0)
-
 void PINS_Initialize(void)
 {
     /****************************************************************************
@@ -54,21 +50,23 @@ void PINS_Initialize(void)
     LATB = 0x0000UL;
     LATC = 0x0000UL;
     LATD = 0x0000UL;
+    LATE = 0x0000UL;
+    LATF = 0x0000UL;
+    LATG = 0x0000UL;
+    LATH = 0x0000UL;
 
     /****************************************************************************
      * Setting the GPIO Direction SFR(s)
-     * RA2=output (Red LED), RA10=output (Green LED)
-     * RB8=output (PWM4H left audio), RB9=output (PWM3H right audio)
-     * RC0=output (Blue LED), RC10=output (UART1 TX)
-     * RD1=output (beat LED)
      ***************************************************************************/
-    TRISA = 0x0FFFUL;
-    TRISAbits.TRISA2 = 0;      // RA2 output (Red LED)
-    TRISAbits.TRISA9 = 0;      // RA9 output (Servo PWM)
-    TRISAbits.TRISA10 = 0;     // RA10 output (Green LED)
-    TRISB = 0xFCFFUL;          // bits 8,9 cleared (PWM outputs)
-    TRISC = 0xFBFEUL;          // bit 0 cleared (Blue LED), bit 10 cleared (UART TX)
-    TRISD = 0x01FDUL;          // bit 1 cleared (LED on RD1)
+    TRISA = 0xFFFFUL;
+    TRISB = 0xFFFFUL;
+    TRISC = 0xFFFFUL;
+    TRISD = 0xFFFFUL;
+    TRISE = 0x07FFUL;
+    TRISF = 0x0FEFUL;
+    TRISG = 0x03F7UL;
+    TRISH = 0x0007UL;
+
 
     /****************************************************************************
      * Setting the Weak Pull Up and Weak Pull Down SFR(s)
@@ -77,10 +75,19 @@ void PINS_Initialize(void)
     CNPUB = 0x0000UL;
     CNPUC = 0x0000UL;
     CNPUD = 0x0000UL;
+    CNPUE = 0x0000UL;
+    CNPUF = 0x0000UL;
+    CNPUG = 0x0000UL;
+    CNPUH = 0x0000UL;
     CNPDA = 0x0000UL;
     CNPDB = 0x0000UL;
     CNPDC = 0x0000UL;
     CNPDD = 0x0000UL;
+    CNPDE = 0x0000UL;
+    CNPDF = 0x0000UL;
+    CNPDG = 0x0000UL;
+    CNPDH = 0x0000UL;
+
 
     /****************************************************************************
      * Setting the Open Drain SFR(s)
@@ -89,46 +96,19 @@ void PINS_Initialize(void)
     ODCB = 0x0000UL;
     ODCC = 0x0000UL;
     ODCD = 0x0000UL;
+    ODCE = 0x0000UL;
+    ODCF = 0x0000UL;
+    ODCG = 0x0000UL;
+    ODCH = 0x0000UL;
+
 
     /****************************************************************************
      * Setting the Analog/Digital Configuration SFR(s)
-     * RB3=analog (AD2AN3, audio left), RB4=analog (AD2AN4, audio right)
-     * RB8,RB9=digital (PWM outputs), RB2,RB12,RB13=digital
      ***************************************************************************/
-    ANSELA = 0x0FFFUL;
-    ANSELAbits.ANSELA2 = 0;    // RA2 digital (Red LED)
-    ANSELAbits.ANSELA9 = 0;    // RA9 digital (Servo PWM)
-    ANSELAbits.ANSELA10 = 0;   // RA10 digital (Green LED)
-    ANSELB = 0x0CFBUL;         // RB3,RB4 analog; RB2,RB8,RB9,RB12,RB13 digital
-    ANSELC = 0x00C0UL;
-    ANSELD = 0x0060UL;
+    ANSELA = 0xFFFFUL;
+    ANSELB = 0xFFFFUL;
+    ANSELE = 0x0003UL;
+    ANSELF = 0x0001UL;
 
-    /****************************************************************************
-     * PPS Configuration
-     ***************************************************************************/
-    PINS_PPSUnlock();
-
-    // UART1 TX on RC10/RP43 (PPS code 10 = U1TX on 306)
-    RPOR10bits.RP43R = 0x000AUL;
-    // UART1 RX on RC4/RP37
-    RPINR13bits.U1RXR = 37;
-
-    // PWM4H (left audio) on RB8/RP25 (PPS code 7)
-    RPOR6bits.RP25R = 7;
-    // PWM3H (right audio) on RB9/RP26 (PPS code 5)
-    RPOR6bits.RP26R = 5;
-
-    // RGB LED: SCCP OCM outputs
-    // Green = SCCP1/OCM1 -> RA10/RP11, PPS code 29
-    RPOR2bits.RP11R = 29;
-    // Red = SCCP2/OCM2 -> RA2/RP3, PPS code 30
-    RPOR0bits.RP3R = 30;
-    // Blue = SCCP3/OCM3 -> RC0/RP33, PPS code 31
-    RPOR8bits.RP33R = 31;
-
-    // Servo: SCCP4/OCM4 -> RA9/RP10, PPS code 32
-    RPOR2bits.RP10R = 32;
-
-    //PINS_PPSLock();
 }
 

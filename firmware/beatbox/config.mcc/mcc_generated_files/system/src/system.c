@@ -7,10 +7,10 @@
  *            
  * @brief     This is the generated driver header file for the System driver
  *            
- * @skipline  Device : dsPIC33AK256MPS306
+ * @skipline  Device : dsPIC33AK512MPS512
 */
 /*
-ï¿½ [2026] Microchip Technology Inc. and its subsidiaries.
+© [2026] Microchip Technology Inc. and its subsidiaries.
 
     Subject to your compliance with these terms, you may use Microchip 
     software and any derivatives exclusively with Microchip products. 
@@ -31,17 +31,11 @@
 */
 
 #include "../system.h"
+#include "../system_types.h"
 #include "../clock.h"
 #include "../pins.h"
 #include "../dmt.h"
 #include "../interrupt.h"
-#include "../../../pwm_audio.h"
-#include "../../../adc_audio.h"
-#include "../../../uart_debug.h"
-#include "../../../beat_detect.h"
-#include "../../../rgb_led.h"
-#include "../../../servo.h"
-#include "../../../nod_engine.h"
 
 
 void SYSTEM_Initialize(void)
@@ -49,16 +43,8 @@ void SYSTEM_Initialize(void)
     CLOCK_Initialize();
     PINS_Initialize();
     DMT_Initialize();
-    UART_Debug_Initialize();
-    RGB_LED_Initialize();
-    RGB_LED_BootTest();
-    Servo_Initialize();
-    NodEngine_Init();
-    BeatDetect_Init();
     INTERRUPT_GlobalEnable();
     INTERRUPT_Initialize();
-    PWM_Audio_Initialize();
-    ADC_Audio_Initialize();
 }
 
 /**

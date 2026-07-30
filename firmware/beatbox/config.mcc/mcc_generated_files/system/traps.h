@@ -9,7 +9,7 @@
  *
  * @skipline @version   PLIB Version 1.1.5
  *            
- * @skipline  Device : dsPIC33AK256MPS306
+ * @skipline  Device : dsPIC33AK512MPS512
 */
 
 /*
@@ -54,27 +54,27 @@ extern "C" {
 enum TRAPS_ERROR_CODE 
 {
 // Traps
-    TRAPS_DMA_BUS_ERR = 0, /**< Bus error. */
-    TRAPS_XRAM_BUS_ERR = 1, /**< Bus error. */
-    TRAPS_YRAM_BUS_ERR = 2, /**< Bus error. */
-    TRAPS_CPU_BUS_ERR = 3, /**< Bus error. */
-    TRAPS_ILLEGALINSTRUCTION = 5, /**< Illegal instruction. */
-    TRAPS_ADDRESS_ERR = 6, /**< Address error. */
-    TRAPS_STACK_ERR = 7, /**< Stack error. */
-    TRAPS_DIV0_ERR = 8, /**< Math error. */
-    TRAPS_SFTAC_ERR = 9, /**< Math error. */
-    TRAPS_COVB_ERR = 10, /**< Math error. */
-    TRAPS_COVA_ERR = 11, /**< Math error. */
-    TRAPS_OVB_ERR = 12, /**< Math error. */
-    TRAPS_OVA_ERR = 13, /**< Math error. */
-    TRAPS_COVT_ERR = 14, /**< Math error. */
-    TRAPS_OVBT_ERR = 15, /**< Math error. */
-    TRAPS_OVAT_ERR = 16, /**< Math error. */
-    TRAPS_DMT_ERR = 17, /**< General error. */
-    TRAPS_WDT_ERR = 18, /**< General error. */
-    TRAPS_XPWBDED_ERR = 19, /**< General error. */
-    TRAPS_YPWBDED_ERR = 20, /**< General error. */
-    TRAPS_GEN_ERR = 21, /**< General error. */
+    TRAPS_DMA_BUS_ERR = 0, /**< Bus error trap */
+    TRAPS_XRAM_BUS_ERR = 1, /**< Bus error trap */
+    TRAPS_YRAM_BUS_ERR = 2, /**< Bus error trap */
+    TRAPS_CPU_BUS_ERR = 3, /**< Bus error trap */
+    TRAPS_ILLEGALINSTRUCTION = 5, /**< Illegal instruction trap */
+    TRAPS_ADDRESS_ERR = 6, /**< Address error trap */
+    TRAPS_STACK_ERR = 7, /**< Stack error trap */
+    TRAPS_DIV0_ERR = 8, /**< Math error trap */
+    TRAPS_SFTAC_ERR = 9, /**< Math error trap */
+    TRAPS_COVB_ERR = 10, /**< Math error trap */
+    TRAPS_COVA_ERR = 11, /**< Math error trap */
+    TRAPS_OVB_ERR = 12, /**< Math error trap */
+    TRAPS_OVA_ERR = 13, /**< Math error trap */
+    TRAPS_COVT_ERR = 14, /**< Math error trap */
+    TRAPS_OVBT_ERR = 15, /**< Math error trap */
+    TRAPS_OVAT_ERR = 16, /**< Math error trap */
+    TRAPS_DMT_ERR = 17, /**< General error trap */
+    TRAPS_WDT_ERR = 18, /**< General error trap */
+    TRAPS_XPWBDED_ERR = 19, /**< General error trap */
+    TRAPS_YPWBDED_ERR = 20, /**< General error trap */
+    TRAPS_GEN_ERR = 21, /**< General error trap */
 };
 
 // Section: Driver Interface Function

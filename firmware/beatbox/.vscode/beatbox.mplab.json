@@ -4,7 +4,7 @@
         {
             "name": "default",
             "id": "",
-            "device": "dsPIC33AK256MPS306",
+            "device": "dsPIC33AK512MPS512",
             "imagePath": "./out/beatbox/default.elf",
             "tool": "Curiosity/Starter Kits (PKOB4)",
             "packs": [
@@ -30,16 +30,12 @@
         {
             "name": "default",
             "files": [
-                {
-                    "include": "**/*",
-                    "exclude": "**/@(build|_build|out|cmake|.vscode)/**/*"
-                },
+                "config.mcc/main.c",
                 "config.mcc/mcc_generated_files/system/src/clock.c",
                 "config.mcc/mcc_generated_files/system/src/config_bits.c",
-                "config.mcc/mcc_generated_files/system/src/where_was_i.s",
-                "config.mcc/mcc_generated_files/system/src/traps.c",
                 "config.mcc/mcc_generated_files/system/src/interrupt.c",
-                "config.mcc/main.c",
+                "config.mcc/mcc_generated_files/system/src/traps.c",
+                "config.mcc/mcc_generated_files/system/src/where_was_i.s",
                 "config.mcc/mcc_generated_files/system/src/system.c",
                 "config.mcc/mcc_generated_files/system/src/pins.c",
                 "config.mcc/mcc_generated_files/system/src/dmt_asm.s",

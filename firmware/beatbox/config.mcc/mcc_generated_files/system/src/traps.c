@@ -9,7 +9,7 @@
  *
  * @skipline @version   PLIB Version 1.1.5
  *
- * @skipline  Device : dsPIC33AK256MPS306
+ * @skipline  Device : dsPIC33AK512MPS512
 */
 
 /*
@@ -108,7 +108,47 @@ inline static void use_failsafe_stack(void)
     SPLIM = (uint32_t)(((uint8_t *)failsafe_stack) + sizeof(failsafe_stack) - (uint32_t) FAILSAFE_STACK_GUARDSIZE);
 }
 
-/** Math error.**/
+/** Bus error trap**/
+/* cppcheck-suppress misra-c2012-8.4
+*
+* (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
+* function with external linkage is defined
+*
+* Reasoning: Interrupt declaration are provided by compiler and are available
+* outside the driver folder
+*/
+void ERROR_HANDLER _BusErrorTrap(void)
+{
+    if(INTCON3bits.CPUBET == 1)
+    {
+      INTCON3bits.CPUBET = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_CPU_BUS_ERR);
+    }
+
+    if(INTCON3bits.XRAMBET == 1)
+    {
+      INTCON3bits.XRAMBET = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_XRAM_BUS_ERR);
+    }
+
+    if(INTCON3bits.DMABET == 1)
+    {
+      INTCON3bits.DMABET = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_DMA_BUS_ERR);
+    }
+
+    if(INTCON3bits.YRAMBET == 1)
+    {
+      INTCON3bits.YRAMBET = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_YRAM_BUS_ERR);
+    }
+
+    while(1)
+    {
+    }
+}
+
+/** Math error trap**/
 /* cppcheck-suppress misra-c2012-8.4
 *
 * (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
@@ -119,18 +159,6 @@ inline static void use_failsafe_stack(void)
 */
 void ERROR_HANDLER _MathErrorTrap(void)
 {
-    if(INTCON4bits.COVTE == 1)
-    {
-      INTCON4bits.COVTE = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_COVT_ERR);
-    }
-
-    if(INTCON4bits.OVBTE == 1)
-    {
-      INTCON4bits.OVBTE = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_OVBT_ERR);
-    }
-
     if(INTCON4bits.OVATE == 1)
     {
       INTCON4bits.OVATE = 0;  //Clear the trap flag
@@ -141,18 +169,6 @@ void ERROR_HANDLER _MathErrorTrap(void)
     {
       INTCON4bits.SFTACERR = 0;  //Clear the trap flag
       TRAPS_halt_on_error(TRAPS_SFTAC_ERR);
-    }
-
-    if(INTCON4bits.OVAERR == 1)
-    {
-      INTCON4bits.OVAERR = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_OVA_ERR);
-    }
-
-    if(INTCON4bits.COVAERR == 1)
-    {
-      INTCON4bits.COVAERR = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_COVA_ERR);
     }
 
     if(INTCON4bits.OVBERR == 1)
@@ -173,12 +189,51 @@ void ERROR_HANDLER _MathErrorTrap(void)
       TRAPS_halt_on_error(TRAPS_COVB_ERR);
     }
 
+    if(INTCON4bits.COVTE == 1)
+    {
+      INTCON4bits.COVTE = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_COVT_ERR);
+    }
+
+    if(INTCON4bits.OVBTE == 1)
+    {
+      INTCON4bits.OVBTE = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_OVBT_ERR);
+    }
+
+    if(INTCON4bits.OVAERR == 1)
+    {
+      INTCON4bits.OVAERR = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_OVA_ERR);
+    }
+
+    if(INTCON4bits.COVAERR == 1)
+    {
+      INTCON4bits.COVAERR = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_COVA_ERR);
+    }
+
     while(1)
     {
     }
 }
 
-/** General error.**/
+/** Address error trap**/
+/* cppcheck-suppress misra-c2012-8.4
+*
+* (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
+* function with external linkage is defined
+*
+* Reasoning: Interrupt declaration are provided by compiler and are available
+* outside the driver folder
+*/
+void ERROR_HANDLER _AddressErrorTrap(void)
+{
+    INTCON1bits.ADDRERR = 0;  //Clear the trap flag
+    TRAPS_halt_on_error(TRAPS_ADDRESS_ERR);
+}
+
+/** General error trap**/
 /* cppcheck-suppress misra-c2012-8.4
 *
 * (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
@@ -189,12 +244,6 @@ void ERROR_HANDLER _MathErrorTrap(void)
 */
 void ERROR_HANDLER _GeneralTrap(void)
 {
-    if(INTCON5bits.WDTE == 1)
-    {
-      INTCON5bits.WDTE = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_WDT_ERR);
-    }
-
     if(INTCON5bits.XPWBDED == 1)
     {
       INTCON5bits.XPWBDED = 0;  //Clear the trap flag
@@ -219,44 +268,10 @@ void ERROR_HANDLER _GeneralTrap(void)
       TRAPS_halt_on_error(TRAPS_YPWBDED_ERR);
     }
 
-    while(1)
+    if(INTCON5bits.WDTE == 1)
     {
-    }
-}
-
-/** Bus error.**/
-/* cppcheck-suppress misra-c2012-8.4
-*
-* (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
-* function with external linkage is defined
-*
-* Reasoning: Interrupt declaration are provided by compiler and are available
-* outside the driver folder
-*/
-void ERROR_HANDLER _BusErrorTrap(void)
-{
-    if(INTCON3bits.CPUBET == 1)
-    {
-      INTCON3bits.CPUBET = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_CPU_BUS_ERR);
-    }
-
-    if(INTCON3bits.DMABET == 1)
-    {
-      INTCON3bits.DMABET = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_DMA_BUS_ERR);
-    }
-
-    if(INTCON3bits.XRAMBET == 1)
-    {
-      INTCON3bits.XRAMBET = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_XRAM_BUS_ERR);
-    }
-
-    if(INTCON3bits.YRAMBET == 1)
-    {
-      INTCON3bits.YRAMBET = 0;  //Clear the trap flag
-      TRAPS_halt_on_error(TRAPS_YRAM_BUS_ERR);
+      INTCON5bits.WDTE = 0;  //Clear the trap flag
+      TRAPS_halt_on_error(TRAPS_WDT_ERR);
     }
 
     while(1)
@@ -264,37 +279,7 @@ void ERROR_HANDLER _BusErrorTrap(void)
     }
 }
 
-/** Address error.**/
-/* cppcheck-suppress misra-c2012-8.4
-*
-* (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
-* function with external linkage is defined
-*
-* Reasoning: Interrupt declaration are provided by compiler and are available
-* outside the driver folder
-*/
-void ERROR_HANDLER _AddressErrorTrap(void)
-{
-    INTCON1bits.ADDRERR = 0;  //Clear the trap flag
-    TRAPS_halt_on_error(TRAPS_ADDRESS_ERR);
-}
-
-/** Illegal instruction.**/
-/* cppcheck-suppress misra-c2012-8.4
-*
-* (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
-* function with external linkage is defined
-*
-* Reasoning: Interrupt declaration are provided by compiler and are available
-* outside the driver folder
-*/
-void ERROR_HANDLER _IllegalInstructionTrap(void)
-{
-    INTCON1bits.BADOPERR = 0;  //Clear the trap flag
-    TRAPS_halt_on_error(TRAPS_ILLEGALINSTRUCTION);
-}
-
-/** Stack error.**/
+/** Stack error trap**/
 /* cppcheck-suppress misra-c2012-8.4
 *
 * (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
@@ -313,6 +298,21 @@ void ERROR_HANDLER _StackErrorTrap(void)
 
     INTCON1bits.STKERR = 0;  //Clear the trap flag
     TRAPS_halt_on_error(TRAPS_STACK_ERR);
+}
+
+/** Illegal instruction trap**/
+/* cppcheck-suppress misra-c2012-8.4
+*
+* (Rule 8.4) REQUIRED: A compatible declaration shall be visible when an object or 
+* function with external linkage is defined
+*
+* Reasoning: Interrupt declaration are provided by compiler and are available
+* outside the driver folder
+*/
+void ERROR_HANDLER _IllegalInstructionTrap(void)
+{
+    INTCON1bits.BADOPERR = 0;  //Clear the trap flag
+    TRAPS_halt_on_error(TRAPS_ILLEGALINSTRUCTION);
 }
 
 #endif
