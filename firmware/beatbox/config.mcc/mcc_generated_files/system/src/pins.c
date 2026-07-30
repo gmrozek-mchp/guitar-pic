@@ -60,8 +60,8 @@ void PINS_Initialize(void)
      ***************************************************************************/
     TRISA = 0xFFFFUL;
     TRISB = 0xFFFFUL;
-    TRISC = 0xFFFFUL;
-    TRISD = 0xFFFFUL;
+    TRISC = 0x00FFUL;
+    TRISD = 0xFDFAUL;
     TRISE = 0x07FFUL;
     TRISF = 0x0FEFUL;
     TRISG = 0x03F7UL;
@@ -106,9 +106,9 @@ void PINS_Initialize(void)
      * Setting the Analog/Digital Configuration SFR(s)
      ***************************************************************************/
     ANSELA = 0xFFFFUL;
-    ANSELB = 0xFFFFUL;
+    ANSELB = 0xFFFBUL;
     ANSELE = 0x0003UL;
-    ANSELF = 0x0001UL;
+    ANSELF = 0x0000UL;
 
 }
 

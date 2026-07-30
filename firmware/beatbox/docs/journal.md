@@ -94,7 +94,24 @@ rather than a changelog.
 - Source `dspicguitarhero` commits: `e3d01e4` added Microchip MCP server; `f0bfa54` "Working Single
   String of LEDs"; `e9b0d54` "Claude's Summary"; `519571d` "First Commit."
 
+## Board GPIO (EV74H48A dev-board LEDs + switches)
+
+Added to the MCC pin manager for bring-up. **LEDs active-high, switches active-low** (polarity is not
+captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macros accordingly).
+
+| Signal | Pin | Kind | Assert |
+|---|---|---|---|
+| `LED0`..`LED7` | RC8..RC15 | output | high = on |
+| `LED_R` / `LED_G` / `LED_B` | RD9 / RD0 / RD2 | output | high = on |
+| `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
+
 ## Session log
+
+### 2026-07-30 — Dev-board LEDs + switches into the pin manager
+
+- Added the EV74H48A dev-board GPIO to MCC: 8 discrete LEDs (RC8–RC15), an RGB LED (RD9/RD0/RD2),
+  and 3 pushbuttons (RF3/RF0/RB2). LEDs active-high, switches active-low — see the Board GPIO table.
+- GPIO-only change (`pins.c`/`pins.h`); gives us blink/button hooks for peripheral bring-up.
 
 ### 2026-07-30 — Clock tree (external 8 MHz → PLL 200 MHz)
 
