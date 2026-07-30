@@ -40,6 +40,10 @@
 
 void INTERRUPT_Initialize(void)
 {
+    // AD4CH1: ADC 4 data channel 1 interrupt
+    // Priority: 6
+    IPC27bits.AD4CH1IP = 6;
+    
     // CNE: Change Notice E interrupt
     // Priority: 1
     IPC39bits.CNEIP = 1;
@@ -65,6 +69,7 @@ void INTERRUPT_Initialize(void)
 void INTERRUPT_Deinitialize(void)
 {
     //POR default value of priority
+    IPC27bits.AD4CH1IP = 4;
     IPC39bits.CNEIP = 4;
     IPC13bits.U2EVTIP = 4;
     IPC13bits.U2EIP = 4;

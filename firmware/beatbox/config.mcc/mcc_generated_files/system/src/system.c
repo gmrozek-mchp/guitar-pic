@@ -34,6 +34,7 @@
 #include "../system_types.h"
 #include "../clock.h"
 #include "../pins.h"
+#include "../../adc/adc4.h"
 #include "../../adc/adc5.h"
 #include "../dmt.h"
 #include "../../pwm_hs/pwm.h"
@@ -47,6 +48,7 @@ void SYSTEM_Initialize(void)
 {
     CLOCK_Initialize();
     PINS_Initialize();
+    ADC4_Initialize();
     ADC5_Initialize();
     DMT_Initialize();
     PWM_Initialize();

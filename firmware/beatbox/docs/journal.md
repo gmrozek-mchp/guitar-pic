@@ -45,13 +45,13 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
         `UART1_*` API; must delete the module's hand-rolled `write()` to avoid a duplicate symbol).
   - [ ] **ADC1 pot** (inline in `main.c`): CH0 on RA3/AD1AN2, SW-triggered single 12-bit sample.
         Move the inline setup into MCC; read via the generated API.
-  - [ ] **PWM audio (PG3/PG4)** (`pwm_audio.c`): high-res (16× HREN) 192 kHz, PG4 SOC-triggered
-        from PG3, **PG3 EVT postscale ÷4 → 48 kHz ADC trigger**. The hard one — the ADC trigger
-        must be reproduced in the MCC PWM config (it's what clocks the audio ADC).
-  - [ ] **ADC2 audio** (`adc_audio.c`): CH6 (AD2AN3/RB3 L) + CH7 (AD2AN4/RB4 R), 256× oversample,
-        `TRG1SRC`=PG3, complete-interrupt on CH7. Use **MCC's generated interrupt + registered
-        callback** (decided) for the 48 kHz complete event; the DC-blocking HPF + passthrough +
-        `BeatDetect_Process` move into the callback. Depends on the PWM trigger being in place.
+  - [x] **PWM audio** (`pwm_audio.c`): high-res (16× HREN) 192 kHz on **PG1/PG2** (was PG3/PG4 in
+        the `.bak`), PG2 SOC-triggered from PG1, **PG1 EVT postscale ÷4 → 48 kHz ADC trigger**
+        (`PG1EVT1` `ADTR1EN1`+`ADTR1PS=1:4`+`PGTRGSEL=TRIGA`, `PG1TRIGA=0`). MCC config done.
+  - [x] **ADC2 audio → ADC4** (`adc_audio.c`): built on **ADC4 CH0 (`ADC_AUDIO_L`/AD4AN0) + CH1
+        (`ADC_AUDIO_R`/AD4AN1)** (was ADC2 CH6/CH7), 256× oversample, `TRG1SRC`=PWM1 (PG1),
+        complete-interrupt on CH1 (higher channel) at priority 6. MCC config done. App port
+        (HPF + passthrough + `BeatDetect_Process` into the CH1 callback) deferred.
 
 ## Open questions
 
@@ -110,13 +110,41 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 
 ## Session log
 
+### 2026-07-30 — Audio ADC (ADC4) + PWM→ADC trigger MCC config (config only, no app port)
+
+- **Audio ADC on ADC4 CH0/CH1** (`.bak` used ADC2 CH6/CH7): `ADC_AUDIO_L` = CH0/AD4AN0,
+  `ADC_AUDIO_R` = CH1/AD4AN1 (`AD4CH0CON1=0x20C2C4`, `AD4CH1CON1=0x120C2C4` — differ only in PINSEL).
+  Both on the ADC4 shared core, **256× oversampling → 16-bit result** (`MODE`=oversample, `ACCNUM`=3),
+  `TRG1SRC`=PWM1 (PG1) Trigger1, `SAMC`=0.5 TAD, `IRQSEL`=1.
+- **Oversampling requires the retrigger:** in `MODE=11` the first conversion comes from `TRG1SRC`
+  and conversions 2..256 from `TRG2SRC` — so `TRG2SRC`=2 (immediate re-trigger) is mandatory or the
+  accumulation never completes and the interrupt never fires. MCC's first pass left it 0 (broken);
+  fixed to 2, matching the `.bak`.
+- **Interrupt on the higher channel.** By fixed channel-priority the shared core converts CH0 (L)
+  before CH1 (R), so the CH1 complete-interrupt = both-done. Only `AD4CH1IE` is enabled;
+  `AD4CH1IP=6` (high-priority 48 kHz path, matching the `.bak`'s `AD2CH7IP=6`). MCC's first pass
+  generated priority 1; raised to 6. This is the datasheet's canonical multi-channel-scan idiom.
+- **PWM→ADC trigger on PG1** (`PG1EVT1=0x10019`): `ADTR1EN1` enabled (PGxTRIGA compare = ADC Trigger 1
+  source), `ADTR1PS=1:4` (192 kHz ÷ 4 = **48 kHz** sample rate), `PGTRGSEL=Trigger A compare`,
+  `PG1TRIGA=0` (sample at cycle start). PG2 has no ADC trigger. This is a **bit-for-bit match to the
+  `.bak` PG3** (`ADTR1EN1=1`, `ADTR1PS=3`, `PGTRGSEL=1`, `TRIGA=0`) — including the slave-sync edge,
+  since PG2 SOCs off PG1's TRIGA-compare output just as `.bak` PG4 did off PG3.
+- **Full register review vs `.bak`** (accounting for the channel/generator renumber): audio ADC and
+  PWM are functionally equivalent. All deltas explained — ADC pins (CH0/CH1 = AN0/AN1 choice), the
+  PG3/PG4→PG1/PG2 renumber carried consistently through `TRG1SRC` and `SOCS`, a slightly more accurate
+  `MPER` (66651 vs 66649), and UPDMOD (settled to **SOC**, matching the `.bak`). No blocking issues.
+- **This completes B0.6** — the last keep-set peripheral (audio ADC + the PWM sample trigger) is now
+  in MCC. Remaining beatbox work is the app-level ports (see the deferred notes per peripheral) and
+  the B1 pure-publisher rework.
+
 ### 2026-07-30 — PWM_HS audio + sample-clock MCC config (config only, no app port)
 
 - Added the high-speed PWM (`PGx`) for the audio path, on **PG1 (left → RB8/PWM1H)** and
   **PG2 (right → RB9/PWM2H)** via PPS. Independent Edge, HREN high-resolution, MPERSEL, high-side
-  output only (PENH; single-ended into an RC reconstruction filter). `PGxCON=0x41000088/0x41010088`.
+  output only (PENH; single-ended into an RC reconstruction filter). `PGxCON=0x40000088/0x40010088`
+  (UPDMOD **SOC** — L/R duty latch together at start-of-cycle via `UPDREQ`, matching the `.bak`).
   Ported from the `.bak`, which used PG3/PG4 — no functional reason for 3/4 (outputs are PPS-routed),
-  moved to the lowest generators; the ADC2 audio trigger will point at PG1.
+  moved to the lowest generators; the ADC2 audio trigger points at PG1.
 - **Master clock CLK5 = PLL1 VCO Divider = 800 MHz** (`CLK5CON=0x29700`, `CLOCK_GENERATOR_5`), selected
   via `PCLKCON` MCLKSEL. **MPER 66651 → 192.000 kHz** carrier (matches the `.bak`).
 - **Verified HRPWM frequency formula.** In High-Resolution mode (HREN=1) the module's internal PLL
@@ -130,9 +158,7 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
   191.95 kHz.)
 - **Phase-lock:** PG1 free-runs (SOCS self-trigger); **PG2 is SOC-triggered from PG1** (SOCS=PG1) so
   L/R stay aligned — same topology as the `.bak` (PG4 slaved to PG3).
-- **Deferred (ADC2 step):** the ÷4 ADC sample trigger (`.bak` PG3 `PGTRGSEL=1`, `ADTR1PS=3`,
-  `ADTR1EN1=1` → 48 kHz) — `PGxEVT1`/`TRIGA` still 0; gets wired when ADC2's trigger source is set to
-  the PWM.
+- **ADC sample trigger:** wired in the audio-ADC step below (`PG1EVT1` ÷4 → 48 kHz).
 - **App role (in scope, deferred port):** audio **output** is wanted — real-time **pass-through** of
   the sampled input to the PWM duty, with optional **overlay/mixing** (e.g. beat clicks off the beat
   frame, or stored PCM). Mix must **saturate** (not wrap) into the 20-bit duty; overlay buffers are
