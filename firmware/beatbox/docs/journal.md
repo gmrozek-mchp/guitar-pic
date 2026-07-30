@@ -118,7 +118,16 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
   Ported from the `.bak`, which used PG3/PG4 — no functional reason for 3/4 (outputs are PPS-routed),
   moved to the lowest generators; the ADC2 audio trigger will point at PG1.
 - **Master clock CLK5 = PLL1 VCO Divider = 800 MHz** (`CLK5CON=0x29700`, `CLOCK_GENERATOR_5`), selected
-  via `PCLKCON` MCLKSEL. **MPER 66651 → 192.04 kHz** carrier (matches the `.bak`'s 192 kHz).
+  via `PCLKCON` MCLKSEL. **MPER 66651 → 192.000 kHz** carrier (matches the `.bak`).
+- **Verified HRPWM frequency formula.** In High-Resolution mode (HREN=1) the module's internal PLL
+  locks to `pwm_master_clk` (CLK5 = 800 MHz) and **slices it into 16** (datasheet §16.2 → 78.125 ps
+  LSB, 12.8 GHz effective). The clock divider (`PCLKCON` DIVSEL) does **not** apply in HREN mode. Like
+  any PWM period register, the counter adds one period tick — but in the **coarse** (800 MHz) domain,
+  i.e. **+16 fine counts**:
+  `F_pwm = 12.8 GHz / (MPER + 16)`. Check: `12.8e9 / (66651 + 16) = 191,999 Hz` = MCC's reported
+  191.999 kHz. So MCC is exact — enter 192000 Hz and it back-solves `MPER = round(12.8e9/192000) − 16
+  = 66651`. (Earlier "66667 is closer" was wrong: it dropped the +1 coarse-count term and would give
+  191.95 kHz.)
 - **Phase-lock:** PG1 free-runs (SOCS self-trigger); **PG2 is SOC-triggered from PG1** (SOCS=PG1) so
   L/R stay aligned — same topology as the `.bak` (PG4 slaved to PG3).
 - **Deferred (ADC2 step):** the ÷4 ADC sample trigger (`.bak` PG3 `PGTRGSEL=1`, `ADTR1PS=3`,
