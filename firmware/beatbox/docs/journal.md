@@ -24,6 +24,14 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
       not a device-swap: the old `config.mcc/` was backed out to `config.mcc.bak/` and a new Melody
       config generated from scratch on the 512MPS512 (`system` module only). Fixed-function pin re-pick
       (2 audio-in ADC channels, speed pot, 2 PWM-DAC outs) happens as each peripheral is re-added in B0.6.
+- [x] **B0.5.5 — Clock tree.** System clock = **PLL1 Out 200 MHz** from the board's **external 8 MHz
+      clock** (Primary Oscillator, EC mode: `POSCMD=0`, `POSCEN`, wait `POSCRDY`). PLL: 8 MHz → PLLPRE 1
+      → ×100 = 800 MHz VCO → ÷4 = 200 MHz; peripheral bus = Fosc/2 = **100 MHz** (keeps all parked
+      module timing constants valid — UART `BRG=868`, servo 1:64, WS2812 `SPI3BRG=0x14`). The two `.bak`
+      hand-edits are resolved by config, not poking: `POSCMD` is MCC-generated, and the 306-only
+      `POSCIOFNC` OSCO-release is dropped (re-derive any OSC-pin GPIO on the 512/EV80L65A map). **CLK5
+      (800 MHz VCO-divider tap for the high-res PWM) deferred to the PWM step** — the 800 MHz VCO already
+      exists, so that step only enables the generator.
 - [ ] **B0.6 — Re-integrate the keep-set peripherals into the fresh MCC config.** Starting point is now
       a bare `system`-only Melody config; the app modules live in `config.mcc.bak/`. Bring back only
       what beatbox *keeps*; do **not** re-add `servo`/`rgb_led`/`ws2812` (slated for removal at B1).
@@ -87,6 +95,17 @@ rather than a changelog.
   String of LEDs"; `e9b0d54` "Claude's Summary"; `519571d` "First Commit."
 
 ## Session log
+
+### 2026-07-30 — Clock tree (external 8 MHz → PLL 200 MHz)
+
+- Configured the fresh MCC clock: **Primary Oscillator (external 8 MHz clock, EC mode)** → **PLL1 Out
+  200 MHz**. Verified `clock.c` (`POSCMD=0`/`POSCEN`/`POSCRDY`, PLL 8→800 VCO→200), `clock.h`
+  (`CLOCK_SystemFrequencyGet()=200000000`, standard peripheral = 100 MHz).
+- Reproduces the `.bak` 200 MHz / 100 MHz-peripheral exactly, so the parked modules' baud/timer
+  constants stay valid on migration. Both `.bak` clock hand-edits eliminated (POSCMD now generated;
+  306-only OSCO release dropped).
+- **CLK5 (800 MHz PWM clock) intentionally not enabled yet** — deferred to the PWM migration step; the
+  800 MHz VCO is already produced by PLL1. See plan item B0.5.5.
 
 ### 2026-07-30 — MCC backed out; fresh config on the 512MPS512
 
