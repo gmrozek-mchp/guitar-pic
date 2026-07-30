@@ -36,6 +36,7 @@
 #include "../pins.h"
 #include "../../adc/adc5.h"
 #include "../dmt.h"
+#include "../../pwm_hs/pwm.h"
 #include "../../spi_host/spi1.h"
 #include "../../uart/uart1.h"
 #include "../../uart/uart2.h"
@@ -48,6 +49,7 @@ void SYSTEM_Initialize(void)
     PINS_Initialize();
     ADC5_Initialize();
     DMT_Initialize();
+    PWM_Initialize();
     SPI1_Initialize();
     UART1_Initialize();
     UART2_Initialize();

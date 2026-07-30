@@ -110,6 +110,27 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 
 ## Session log
 
+### 2026-07-30 — PWM_HS audio + sample-clock MCC config (config only, no app port)
+
+- Added the high-speed PWM (`PGx`) for the audio path, on **PG1 (left → RB8/PWM1H)** and
+  **PG2 (right → RB9/PWM2H)** via PPS. Independent Edge, HREN high-resolution, MPERSEL, high-side
+  output only (PENH; single-ended into an RC reconstruction filter). `PGxCON=0x41000088/0x41010088`.
+  Ported from the `.bak`, which used PG3/PG4 — no functional reason for 3/4 (outputs are PPS-routed),
+  moved to the lowest generators; the ADC2 audio trigger will point at PG1.
+- **Master clock CLK5 = PLL1 VCO Divider = 800 MHz** (`CLK5CON=0x29700`, `CLOCK_GENERATOR_5`), selected
+  via `PCLKCON` MCLKSEL. **MPER 66651 → 192.04 kHz** carrier (matches the `.bak`'s 192 kHz).
+- **Phase-lock:** PG1 free-runs (SOCS self-trigger); **PG2 is SOC-triggered from PG1** (SOCS=PG1) so
+  L/R stay aligned — same topology as the `.bak` (PG4 slaved to PG3).
+- **Deferred (ADC2 step):** the ÷4 ADC sample trigger (`.bak` PG3 `PGTRGSEL=1`, `ADTR1PS=3`,
+  `ADTR1EN1=1` → 48 kHz) — `PGxEVT1`/`TRIGA` still 0; gets wired when ADC2's trigger source is set to
+  the PWM.
+- **App role (in scope, deferred port):** audio **output** is wanted — real-time **pass-through** of
+  the sampled input to the PWM duty, with optional **overlay/mixing** (e.g. beat clicks off the beat
+  frame, or stored PCM). Mix must **saturate** (not wrap) into the 20-bit duty; overlay buffers are
+  fixed-size in flash / static RAM (no malloc). FFT beat detection shares the 48 kHz budget but runs
+  per-frame, so there's headroom — confirm timing at port. Port must also call `PWM_HS.Enable()`
+  (generators init with `ON=0`).
+
 ### 2026-07-30 — ADC5 pot MCC config (config only, no app read port)
 
 - Added the sensitivity pot on the shared ADC core: **ADC5, channel `ADC_POT` on AD5AN0**,

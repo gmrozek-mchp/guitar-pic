@@ -60,7 +60,7 @@ void PINS_Initialize(void)
      * Setting the GPIO Direction SFR(s)
      ***************************************************************************/
     TRISA = 0x7FFFUL;
-    TRISB = 0xFFFFUL;
+    TRISB = 0xFCFFUL;
     TRISC = 0x00FFUL;
     TRISD = 0xFDFAUL;
     TRISE = 0x07DFUL;
@@ -107,7 +107,7 @@ void PINS_Initialize(void)
      * Setting the Analog/Digital Configuration SFR(s)
      ***************************************************************************/
     ANSELA = 0x7FFFUL;
-    ANSELB = 0xFFFBUL;
+    ANSELB = 0xFCFBUL;
     ANSELE = 0x0003UL;
     ANSELF = 0x0000UL;
 
@@ -121,6 +121,8 @@ void PINS_Initialize(void)
         RPINR14bits.SDI1R = 0x006AUL; //RG9->SPI1:SDI1;
         RPOR28bits.RP113R = 0x0015UL;  //RH0->UART2:U2TX;
         RPOR28bits.RP114R = 0x0013UL;  //RH1->UART1:U1TX;
+        RPOR6bits.RP25R = 0x0001UL;  //RB8->PWM:PWM1H;
+        RPOR6bits.RP26R = 0x0003UL;  //RB9->PWM:PWM2H;
         RPOR25bits.RP101R = 0x0019UL;  //RG4->SPI1:SDO1;
         RPINR14bits.SCK1R = 0x004BUL;  //RE10->SPI1:SCK1IN;
         RPOR18bits.RP75R = 0x001AUL;  //RE10->SPI1:SCK1OUT;
