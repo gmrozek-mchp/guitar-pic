@@ -110,6 +110,20 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 
 ## Session log
 
+### 2026-07-30 — UART2 MCC config for CLI (transport only, no app port)
+
+- Added UART2 for the shared CLI (same `embedded-cli` core as guitar/lemmy/lightshow, which all run
+  115200 8N1). MCC settings: async **8N1**, **115200** (fractional BRG 868 @ 100 MHz — matches UART1),
+  TX+RX, **interrupt-driven with ring buffers** (TX 256 B, RX 128 B). printf redirect left **off** so
+  it doesn't collide with UART1's generated `write()`.
+- Pins (512 map): **U2TX → RH0** (RP113, TRISH output, LATH0 idles high), **U2RX → RD10**
+  (RPINR13.U2RXR=0x3B). No conflict with UART1 (RH1/RD1), LEDs, or switches.
+- Interrupts: `interrupt.c` sets U2 RX/TX/error/event priority 1; all four ISRs are defined in
+  `uart2.c`; `UART2_Initialize()` wired into `SYSTEM_Initialize()`.
+- **App port deferred.** When `cli.c` + `embedded-cli` come over from the SAMD nodes, shim the
+  transport: `writeChar` → `UART2_Write(c)` (queues to TX ring), service loop →
+  `while(UART2_IsRxReady()){ UART2_Read(); }`. Note `UART2_Write` busy-waits if the TX ring fills.
+
 ### 2026-07-30 — UART1 MCC config (transport only, no app port)
 
 - Added UART1 in MCC: async 8N1, **115200** (fractional BRG 868 @ 100 MHz peripheral, 115207 actual —

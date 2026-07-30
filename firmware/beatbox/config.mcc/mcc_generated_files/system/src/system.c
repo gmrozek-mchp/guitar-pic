@@ -36,6 +36,7 @@
 #include "../pins.h"
 #include "../dmt.h"
 #include "../../uart/uart1.h"
+#include "../../uart/uart2.h"
 #include "../interrupt.h"
 
 
@@ -45,6 +46,7 @@ void SYSTEM_Initialize(void)
     PINS_Initialize();
     DMT_Initialize();
     UART1_Initialize();
+    UART2_Initialize();
     INTERRUPT_GlobalEnable();
     INTERRUPT_Initialize();
 }

@@ -40,9 +40,29 @@
 
 void INTERRUPT_Initialize(void)
 {
+    // U2EVT: UART 2 event interrupt
+    // Priority: 1
+    IPC13bits.U2EVTIP = 1;
+    
+    // U2E: UART 2 error interrupt
+    // Priority: 1
+    IPC13bits.U2EIP = 1;
+    
+    // U2TX: UART 2 TX interrupt
+    // Priority: 1
+    IPC12bits.U2TXIP = 1;
+    
+    // U2RX: UART 2 RX interrupt
+    // Priority: 1
+    IPC12bits.U2RXIP = 1;
+    
 }
 
 void INTERRUPT_Deinitialize(void)
 {
     //POR default value of priority
+    IPC13bits.U2EVTIP = 4;
+    IPC13bits.U2EIP = 4;
+    IPC12bits.U2TXIP = 4;
+    IPC12bits.U2RXIP = 4;
 }
