@@ -17,15 +17,21 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
   - LED0 (PB02) liveness heartbeat ported from `lemmy` (`status_led.{c,h}`): non-blocking, off the
     SysTick clock, lub-dub double pulse when on the bus / single blip when link down.
 - [ ] **L2 — LED output.** Drive method chosen (see decision log): **TC0 8-bit NPWM + 1 DMA
-      channel** for 2× WS2812 strands (33 px each). Remaining L2 work:
-  - Confirm pinmux: land both strand data pins on `TC0/WO0` + `TC0/WO1` (both must be timer
-    waveform outputs; the pattern-generator method also needs `TCC0/WOx` pins).
-  - Add DMAC to the MCC config (not currently generated) + TC0 in 8-bit NPWM.
-  - LED driver: 198-byte GRB framebuffer → expand to the 1584-byte interleaved per-bit duty buffer
-    → arm the DMA block transfer; enforce the ≥300 µs reset/latch gap between frames off SysTick.
-  - `led`/pattern CLI to exercise the strands manually.
-  - Hardware: 3.3 V→5 V data level shift (74AHCT125-class) and a 5 V rail sized for ~4 A worst case
-    (66 px × 60 mA); confirm on the board.
+      channel** for 2× WS2812 strands (33 px each). Progress:
+  - [x] Pins: `PA10 = TC0/WO0` (NEOPIXEL_LEFT / strand 0), `PA11 = TC0/WO1` (NEOPIXEL_RIGHT /
+        strand 1), mux E.
+  - [x] MCC config: DMAC ch0 (`TRIGSRC=TC0_OVF`, `TRIGACT=BEAT`, HWORD beats, source-increment,
+        dest fixed) + TC0 in `COUNT8`/`NPWM`/`DIV1`, `PER=29` → 800 kHz. Committed `f59e63c`.
+  - [x] Driver `neopixel.{c,h}`: 198-byte R/G/B framebuffer → 1586-byte interleaved duty buffer
+        (792 bits + 1 drain entry). `NeoPixel_Show()` arms `DMAC_ChannelTransfer` at
+        `&TC0.CCBUF[0]`; one HWORD/overflow writes CCBUF0/CCBUF1 (WO0 low byte, WO1 high byte).
+        Driver owns `PER`; timing `T0H=8`/`T1H=19` ticks (tune on scope). Reset/latch: the trailing
+        `0` duty holds both lines low after the frame; `Show()` gates on `DMAC_ChannelIsBusy()`.
+  - [ ] `led`/pattern CLI to exercise the strands manually (next step — nothing calls `Show()` yet).
+  - [ ] Hardware: 3.3 V→5 V data level shift (74AHCT125-class) and a 5 V rail sized for ~4 A worst
+        case (66 px × 60 mA); confirm on the board.
+  - [ ] Bring-up check: verify a single HWORD write to `CCBUF[0]` sets **both** buffer-valid flags
+        so both strands update from one beat (the crux of the single-channel trick).
 - [ ] **L3 — beat-driven light show.** Consume the music/beat signal over T1S → light patterns in
       time with the music.
 
@@ -49,6 +55,15 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 | 2026-07-29 | **lightshow created as the *lighting* node class (`node_type = 5`); T1S bring-up before LED output.** PIC32CM6408PL10048, PLCA follower **id 7** / MAC `02:00:00:00:00:07` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 beat-driven light show. | Prove the node on the bus first, reusing the `lemmy` / `guitar` follower glue + `oa-tc6-lib` (same MCU family — minimizes bring-up), then layer the LED output. The lighting output and its command source differ from the puppet, so it is a distinct node class from `lemmy` (animation). |
 
 ## Session log
+
+### 2026-07-29 — WS2812 drive: MCC config + driver
+
+- MCC: added TC0 (`COUNT8`/`NPWM`/`DIV1`, `PER=29`), DMAC ch0 (`TC0_OVF`/`BEAT`/HWORD/src-inc),
+  and pins `PA10=TC0/WO0`, `PA11=TC0/WO1`. Committed `f59e63c`. Confirmed the overflow DMA request
+  drives the channel directly — no EVSYS/`EVCTRL` event needed.
+- Wrote `neopixel.{c,h}` (single DMA channel, interleaved CCBUF0/CCBUF1 HWORD writes) and wired
+  `NeoPixel_Initialize()` into `main.c` + `user.cmake`. Nothing calls `NeoPixel_Show()` yet; TC0
+  idles both WO pins low. Next: a `led`/pattern CLI command to exercise the strands.
 
 ### 2026-07-29 — bootstrap from lemmy
 

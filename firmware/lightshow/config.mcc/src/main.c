@@ -28,6 +28,7 @@
 #include "definitions.h"                // SYS function prototypes
 #include "t1s_follower.h"               // 10BASE-T1S PLCA follower (LAN8651)
 #include "status_led.h"                 // LED0 liveness heartbeat
+#include "neopixel.h"                   // WS2812 strands on TC0/WO0,WO1 via DMAC
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
 // *****************************************************************************
@@ -47,6 +48,7 @@ int main ( void )
 
     T1SFollower_Initialize ( );
     StatusLed_Initialize ( );
+    NeoPixel_Initialize ( );
     CLI_Initialize ( );
 
     while ( true )
