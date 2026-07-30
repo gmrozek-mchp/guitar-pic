@@ -3,12 +3,14 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 
 #include "definitions.h"   /* SERCOM1_USART_*, SYSTICK_* */
 #include "embedded_cli.h"
 #include "t1s_follower.h"
+#include "neopixel.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
  * the small config below; the requirement is checked at init. */
@@ -54,7 +56,7 @@ static void cmd_info(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("mcu:   PIC32CM6408PL10048");
     cli_printf("role:  T1S PLCA follower id %u/%u", (unsigned)T1SFollower_NodeId(),
                (unsigned)T1SFollower_NodeCount());
-    cli_printf("state: t1s follower up; LEDs not yet wired");
+    cli_printf("state: t1s follower up; WS2812 driver ready (see 'led')");
 }
 
 static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
@@ -94,6 +96,113 @@ static void cmd_plca(EmbeddedCli *cli, char *args, void *ctx)
     T1SFollower_ReadPlca();   /* result logs asynchronously from the service loop */
 }
 
+static bool parse_u8(const char *s, uint8_t *out)
+{
+    if (s == NULL)
+    {
+        return false;
+    }
+    char *end;
+    unsigned long v = strtoul(s, &end, 0);
+    if ((*end != '\0') || (v > 255ul))
+    {
+        return false;
+    }
+    *out = (uint8_t)v;
+    return true;
+}
+
+static void cmd_led(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+
+    uint16_t n = embeddedCliGetTokenCount(args);
+    if (n == 0u)
+    {
+        cli_printf("usage:");
+        cli_printf("  led off");
+        cli_printf("  led fill <r> <g> <b>");
+        cli_printf("  led set <strand> <idx> <r> <g> <b>");
+        cli_printf("  led test");
+        return;
+    }
+
+    const char *sub = embeddedCliGetToken(args, 1u);
+
+    if (strcmp(sub, "off") == 0)
+    {
+        NeoPixel_Clear();
+    }
+    else if (strcmp(sub, "fill") == 0)
+    {
+        uint8_t r, g, b;
+        if ((n != 4u) || !parse_u8(embeddedCliGetToken(args, 2u), &r)
+                      || !parse_u8(embeddedCliGetToken(args, 3u), &g)
+                      || !parse_u8(embeddedCliGetToken(args, 4u), &b))
+        {
+            cli_printf("usage: led fill <r> <g> <b>");
+            return;
+        }
+        for (uint8_t s = 0u; s < NEOPIXEL_STRANDS; s++)
+        {
+            for (uint16_t i = 0u; i < NEOPIXEL_COUNT; i++)
+            {
+                NeoPixel_SetPixel(s, i, r, g, b);
+            }
+        }
+    }
+    else if (strcmp(sub, "set") == 0)
+    {
+        uint8_t st, idx, r, g, b;
+        if ((n != 6u) || !parse_u8(embeddedCliGetToken(args, 2u), &st)
+                      || !parse_u8(embeddedCliGetToken(args, 3u), &idx)
+                      || !parse_u8(embeddedCliGetToken(args, 4u), &r)
+                      || !parse_u8(embeddedCliGetToken(args, 5u), &g)
+                      || !parse_u8(embeddedCliGetToken(args, 6u), &b))
+        {
+            cli_printf("usage: led set <strand> <idx> <r> <g> <b>");
+            return;
+        }
+        if ((st >= NEOPIXEL_STRANDS) || (idx >= NEOPIXEL_COUNT))
+        {
+            cli_printf("led: strand 0-%u, idx 0-%u", (unsigned)(NEOPIXEL_STRANDS - 1u),
+                       (unsigned)(NEOPIXEL_COUNT - 1u));
+            return;
+        }
+        NeoPixel_SetPixel(st, idx, r, g, b);
+    }
+    else if (strcmp(sub, "test") == 0)
+    {
+        /* R/G/B march on strand 0, a dim white every 4th pixel on strand 1.
+         * Low levels keep the bring-up current modest. */
+        NeoPixel_Clear();
+        for (uint16_t i = 0u; i < NEOPIXEL_COUNT; i++)
+        {
+            uint8_t phase = (uint8_t)(i % 3u);
+            NeoPixel_SetPixel(0u, i, (phase == 0u) ? 32u : 0u,
+                                     (phase == 1u) ? 32u : 0u,
+                                     (phase == 2u) ? 32u : 0u);
+            uint8_t w = ((i % 4u) == 0u) ? 16u : 0u;
+            NeoPixel_SetPixel(1u, i, w, w, w);
+        }
+    }
+    else
+    {
+        cli_printf("led: unknown '%s'", sub);
+        return;
+    }
+
+    if (NeoPixel_Show())
+    {
+        cli_printf("led: %u px/strand shown", (unsigned)NEOPIXEL_COUNT);
+    }
+    else
+    {
+        cli_printf("led: busy, try again");
+    }
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -114,6 +223,7 @@ static void register_commands(void)
         { "t1s",   "Print link / sync / chipRev / PLCA / counters",  false, NULL, cmd_t1s },
         { "id",    "Raw-read + log the MAC-PHY ID registers",        false, NULL, cmd_id },
         { "plca",  "Read + log the PLCA status register",            false, NULL, cmd_plca },
+        { "led",   "Drive the WS2812 strands (off/fill/set/test)",   true,  NULL, cmd_led },
         { "reset", "Reset the MCU (system reset)",                   false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)

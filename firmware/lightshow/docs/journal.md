@@ -27,7 +27,8 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
         `&TC0.CCBUF[0]`; one HWORD/overflow writes CCBUF0/CCBUF1 (WO0 low byte, WO1 high byte).
         Driver owns `PER`; timing `T0H=8`/`T1H=19` ticks (tune on scope). Reset/latch: the trailing
         `0` duty holds both lines low after the frame; `Show()` gates on `DMAC_ChannelIsBusy()`.
-  - [ ] `led`/pattern CLI to exercise the strands manually (next step — nothing calls `Show()` yet).
+  - [x] `led` CLI command (`off` / `fill <r> <g> <b>` / `set <strand> <idx> <r> <g> <b>` / `test`)
+        to stage the framebuffer and call `NeoPixel_Show()` manually.
   - [ ] Hardware: 3.3 V→5 V data level shift (74AHCT125-class) and a 5 V rail sized for ~4 A worst
         case (66 px × 60 mA); confirm on the board.
   - [ ] Bring-up check: verify a single HWORD write to `CCBUF[0]` sets **both** buffer-valid flags
@@ -62,8 +63,10 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
   and pins `PA10=TC0/WO0`, `PA11=TC0/WO1`. Committed `f59e63c`. Confirmed the overflow DMA request
   drives the channel directly — no EVSYS/`EVCTRL` event needed.
 - Wrote `neopixel.{c,h}` (single DMA channel, interleaved CCBUF0/CCBUF1 HWORD writes) and wired
-  `NeoPixel_Initialize()` into `main.c` + `user.cmake`. Nothing calls `NeoPixel_Show()` yet; TC0
-  idles both WO pins low. Next: a `led`/pattern CLI command to exercise the strands.
+  `NeoPixel_Initialize()` into `main.c` + `user.cmake`. Committed `bbb59e1`.
+- Added the `led` CLI command (`off` / `fill` / `set` / `test`) so the strands can be exercised
+  from the debug UART. `test` marches R/G/B on strand 0 and a dim white every 4th px on strand 1 at
+  low levels (modest bring-up current). Ready for hardware/scope verification.
 
 ### 2026-07-29 — bootstrap from lemmy
 
