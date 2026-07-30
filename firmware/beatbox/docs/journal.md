@@ -38,8 +38,11 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
       Workflow per peripheral: add + configure in Melody → regenerate → port the `.bak` module's logic
       onto the generated API → copy the file into `config.mcc/` and add it to the descriptor fileset.
       Order (independent → coupled):
-  - [ ] **UART1** (`uart_debug.c`): async 8N1, 115200 (BRG 868 @ 100 MHz), TX+RX. Keep the
-        `printf`→`write()` redirect but target the MCC UART1 API. Proves the flow.
+  - [~] **UART1** (`uart_debug.c`): async 8N1, 115200 (BRG 868 @ 100 MHz), TX+RX. **MCC config done**
+        — module added, `U1TX→RH1` (RP114), `U1RX→RD1` (RPINR13=0x32), fractional BRG 868 (115207
+        actual), polled, printf-redirect `write()` generated in `uart1.c`, wired into
+        `SYSTEM_Initialize()`. **App port deferred** (bring `uart_debug.c` back from `.bak` onto the
+        `UART1_*` API; must delete the module's hand-rolled `write()` to avoid a duplicate symbol).
   - [ ] **ADC1 pot** (inline in `main.c`): CH0 on RA3/AD1AN2, SW-triggered single 12-bit sample.
         Move the inline setup into MCC; read via the generated API.
   - [ ] **PWM audio (PG3/PG4)** (`pwm_audio.c`): high-res (16× HREN) 192 kHz, PG4 SOC-triggered
@@ -106,6 +109,17 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-30 — UART1 MCC config (transport only, no app port)
+
+- Added UART1 in MCC: async 8N1, **115200** (fractional BRG 868 @ 100 MHz peripheral, 115207 actual —
+  matches `.bak`), TX+RX, polled (no interrupts). printf-redirect enabled → `write()` generated in
+  `uart1.c`. Wired into `SYSTEM_Initialize()`; `uart1.c` added to the descriptor fileset.
+- Pins (512 map, MCC-computed codes): **U1TX → RH1** (RP114, TRISH output, LATH1 idles high),
+  **U1RX → RD1** (RPINR13=0x32, TRISD input). No conflict with the LEDs/switches.
+- **App-level port deferred** — staying MCC-config-only for now. When we port `uart_debug.c` from
+  `.bak`, delete its hand-rolled `write()` (duplicate of the generated one) and retarget `ProcessRx`
+  onto `UART1_IsRxReady()`/`UART1_Read()`.
 
 ### 2026-07-30 — Dev-board LEDs + switches into the pin manager
 

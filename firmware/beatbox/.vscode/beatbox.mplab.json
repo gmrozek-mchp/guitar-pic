@@ -40,7 +40,8 @@
                 "config.mcc/mcc_generated_files/system/src/pins.c",
                 "config.mcc/mcc_generated_files/system/src/dmt_asm.s",
                 "config.mcc/mcc_generated_files/system/src/dmt.c",
-                "config.mcc/mcc_generated_files/system/src/reset.c"
+                "config.mcc/mcc_generated_files/system/src/reset.c",
+                "config.mcc/mcc_generated_files/uart/src/uart1.c"
             ]
         }
     ]

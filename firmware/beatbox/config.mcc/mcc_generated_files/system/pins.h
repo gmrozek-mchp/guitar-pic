@@ -39,6 +39,19 @@
 // Section: Includes
 #include <xc.h>
 
+/**
+ * @ingroup  pinsdriver
+ * @brief    Locks all the Peripheral Remapping registers and cannot be written.
+ * @return   none  
+ */
+#define PINS_PPSLock()           (RPCONbits.IOLOCK = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Unlocks all the Peripheral Remapping registers and can be written.
+ * @return   none  
+ */
+#define PINS_PPSUnlock()         (RPCONbits.IOLOCK = 0)
 
 // Section: Device Pin Macros
 /**
