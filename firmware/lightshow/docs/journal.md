@@ -14,6 +14,8 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 
 - [ ] **L1 — T1S follower bring-up on hardware.** Link sync as PLCA follower id 7/8, presence
       heartbeat (`0x88B6`, `node_type = 5`), `t1s` CLI. Ported wholesale from `lemmy` / `guitar`.
+  - LED0 (PB02) liveness heartbeat ported from `lemmy` (`status_led.{c,h}`): non-blocking, off the
+    SysTick clock, lub-dub double pulse when on the bus / single blip when link down.
 - [ ] **L2 — LED output.** Pick the drive method + pin/peripheral, add the LED driver and a
       `led`/pattern CLI to exercise the lights manually.
 - [ ] **L3 — beat-driven light show.** Consume the music/beat signal over T1S → light patterns in

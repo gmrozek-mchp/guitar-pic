@@ -27,6 +27,7 @@
 #include <stdlib.h>                     // Defines EXIT_FAILURE
 #include "definitions.h"                // SYS function prototypes
 #include "t1s_follower.h"               // 10BASE-T1S PLCA follower (LAN8651)
+#include "status_led.h"                 // LED0 liveness heartbeat
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
 // *****************************************************************************
@@ -45,6 +46,7 @@ int main ( void )
     SYSTICK_TimerStart ( );
 
     T1SFollower_Initialize ( );
+    StatusLed_Initialize ( );
     CLI_Initialize ( );
 
     while ( true )
@@ -57,6 +59,9 @@ int main ( void )
 
         /* Operator CLI on the debug UART (t1s status / diagnostics). */
         CLI_Tasks ( );
+
+        /* LED0 heartbeat: alive + T1S link state at a glance. */
+        StatusLed_Tasks ( );
     }
 
     /* Execution should not come here during normal operation */
