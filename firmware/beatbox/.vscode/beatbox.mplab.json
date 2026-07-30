@@ -42,7 +42,8 @@
                 "config.mcc/mcc_generated_files/system/src/dmt.c",
                 "config.mcc/mcc_generated_files/system/src/reset.c",
                 "config.mcc/mcc_generated_files/uart/src/uart1.c",
-                "config.mcc/mcc_generated_files/uart/src/uart2.c"
+                "config.mcc/mcc_generated_files/uart/src/uart2.c",
+                "config.mcc/mcc_generated_files/spi_host/src/spi1.c"
             ]
         }
     ]

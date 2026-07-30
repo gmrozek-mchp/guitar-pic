@@ -110,6 +110,20 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 
 ## Session log
 
+### 2026-07-30 — SPI1 + T1S control pins MCC config (transport only, no driver port)
+
+- Added SPI1 as the T1S MAC-PHY host link. `config[0]` (`T1S_CONFIG`): **12.5 MHz** (`SPI1BRG=3`,
+  100 MHz std peripheral ÷ 2·(3+1) — closest to the 12 MHz the SAMD nodes use, under the LAN865x
+  25 MHz cap), **mode 0** (CKP=0/CKE=1 → CPOL0/CPHA0), 8-bit, MSB-first, master.
+- Multi-config host driver: `SPI1_Initialize()` leaves the module **OFF**; the driver must call
+  `SPI1_Open(0)` to apply `config[0]` and set `ON=1` before transfers.
+- T1S control pins generated alongside: SCK1→RE10 (RP75), SDO1/MOSI→RG4 (RP101), SDI1/MISO→RG9;
+  **T1S_CS**→RE5 (manual GPIO, idles high / deasserted), **T1S_RST**→RA15 (GPIO out, held low = in
+  reset at init), **T1S_IRQ_N**→RE2 (change-notice **falling-edge** IRQ, weak callback stub;
+  `interrupt.c` CNEI priority 1). `SPI1_Initialize()` wired into `SYSTEM_Initialize()`.
+- Driver port deferred. **Watch on port:** IRQ_N is level-low on the MAC-PHY but wired as edge CN —
+  keep the OA TC6 "service until IRQ deasserts" loop so a held-low line can't stall on a missed edge.
+
 ### 2026-07-30 — UART2 MCC config for CLI (transport only, no app port)
 
 - Added UART2 for the shared CLI (same `embedded-cli` core as guitar/lemmy/lightshow, which all run

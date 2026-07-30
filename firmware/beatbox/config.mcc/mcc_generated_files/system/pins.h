@@ -56,6 +56,57 @@
 // Section: Device Pin Macros
 /**
  * @ingroup  pinsdriver
+ * @brief    Sets the RA15 GPIO Pin which has a custom name of T1S_RST to High
+ * @pre      The RA15 must be set as Output Pin             
+ * @param    none
+ * @return   none  
+ */
+#define T1S_RST_SetHigh()          (_LATA15 = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Sets the RA15 GPIO Pin which has a custom name of T1S_RST to Low
+ * @pre      The RA15 must be set as Output Pin
+ * @param    none
+ * @return   none  
+ */
+#define T1S_RST_SetLow()           (_LATA15 = 0)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Toggles the RA15 GPIO Pin which has a custom name of T1S_RST
+ * @pre      The RA15 must be set as Output Pin
+ * @param    none
+ * @return   none  
+ */
+#define T1S_RST_Toggle()           (_LATA15 ^= 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Reads the value of the RA15 GPIO Pin which has a custom name of T1S_RST
+ * @param    none
+ * @return   none  
+ */
+#define T1S_RST_GetValue()         _RA15
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Configures the RA15 GPIO Pin which has a custom name of T1S_RST as Input
+ * @param    none
+ * @return   none  
+ */
+#define T1S_RST_SetDigitalInput()  (_TRISA15 = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Configures the RA15 GPIO Pin which has a custom name of T1S_RST as Output
+ * @param    none
+ * @return   none  
+ */
+#define T1S_RST_SetDigitalOutput() (_TRISA15 = 0)
+
+/**
+ * @ingroup  pinsdriver
  * @brief    Sets the RB2 GPIO Pin which has a custom name of SW3 to High
  * @pre      The RB2 must be set as Output Pin             
  * @param    none
@@ -668,6 +719,108 @@
 
 /**
  * @ingroup  pinsdriver
+ * @brief    Sets the RE2 GPIO Pin which has a custom name of T1S_IRQ_N to High
+ * @pre      The RE2 must be set as Output Pin             
+ * @param    none
+ * @return   none  
+ */
+#define T1S_IRQ_N_SetHigh()          (_LATE2 = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Sets the RE2 GPIO Pin which has a custom name of T1S_IRQ_N to Low
+ * @pre      The RE2 must be set as Output Pin
+ * @param    none
+ * @return   none  
+ */
+#define T1S_IRQ_N_SetLow()           (_LATE2 = 0)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Toggles the RE2 GPIO Pin which has a custom name of T1S_IRQ_N
+ * @pre      The RE2 must be set as Output Pin
+ * @param    none
+ * @return   none  
+ */
+#define T1S_IRQ_N_Toggle()           (_LATE2 ^= 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Reads the value of the RE2 GPIO Pin which has a custom name of T1S_IRQ_N
+ * @param    none
+ * @return   none  
+ */
+#define T1S_IRQ_N_GetValue()         _RE2
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Configures the RE2 GPIO Pin which has a custom name of T1S_IRQ_N as Input
+ * @param    none
+ * @return   none  
+ */
+#define T1S_IRQ_N_SetDigitalInput()  (_TRISE2 = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Configures the RE2 GPIO Pin which has a custom name of T1S_IRQ_N as Output
+ * @param    none
+ * @return   none  
+ */
+#define T1S_IRQ_N_SetDigitalOutput() (_TRISE2 = 0)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Sets the RE5 GPIO Pin which has a custom name of T1S_CS to High
+ * @pre      The RE5 must be set as Output Pin             
+ * @param    none
+ * @return   none  
+ */
+#define T1S_CS_SetHigh()          (_LATE5 = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Sets the RE5 GPIO Pin which has a custom name of T1S_CS to Low
+ * @pre      The RE5 must be set as Output Pin
+ * @param    none
+ * @return   none  
+ */
+#define T1S_CS_SetLow()           (_LATE5 = 0)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Toggles the RE5 GPIO Pin which has a custom name of T1S_CS
+ * @pre      The RE5 must be set as Output Pin
+ * @param    none
+ * @return   none  
+ */
+#define T1S_CS_Toggle()           (_LATE5 ^= 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Reads the value of the RE5 GPIO Pin which has a custom name of T1S_CS
+ * @param    none
+ * @return   none  
+ */
+#define T1S_CS_GetValue()         _RE5
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Configures the RE5 GPIO Pin which has a custom name of T1S_CS as Input
+ * @param    none
+ * @return   none  
+ */
+#define T1S_CS_SetDigitalInput()  (_TRISE5 = 1)
+
+/**
+ * @ingroup  pinsdriver
+ * @brief    Configures the RE5 GPIO Pin which has a custom name of T1S_CS as Output
+ * @param    none
+ * @return   none  
+ */
+#define T1S_CS_SetDigitalOutput() (_TRISE5 = 0)
+
+/**
+ * @ingroup  pinsdriver
  * @brief    Sets the RF0 GPIO Pin which has a custom name of SW2 to High
  * @pre      The RF0 must be set as Output Pin             
  * @param    none
@@ -776,6 +929,22 @@
  */
 void PINS_Initialize(void);
 
+/**
+ * @ingroup  pinsdriver
+ * @brief    This function is callback for T1S_IRQ_N Pin
+ * @param    none
+ * @return   none   
+ */
+void T1S_IRQ_N_CallBack(void);
+
+
+/**
+ * @ingroup    pinsdriver
+ * @brief      This function assigns a function pointer with a callback address
+ * @param[in]  InterruptHandler - Address of the callback function 
+ * @return     none  
+ */
+void T1S_IRQ_N_SetInterruptHandler(void (* InterruptHandler)(void));
 
 
 #endif

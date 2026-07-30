@@ -35,6 +35,7 @@
 #include "../clock.h"
 #include "../pins.h"
 #include "../dmt.h"
+#include "../../spi_host/spi1.h"
 #include "../../uart/uart1.h"
 #include "../../uart/uart2.h"
 #include "../interrupt.h"
@@ -45,6 +46,7 @@ void SYSTEM_Initialize(void)
     CLOCK_Initialize();
     PINS_Initialize();
     DMT_Initialize();
+    SPI1_Initialize();
     UART1_Initialize();
     UART2_Initialize();
     INTERRUPT_GlobalEnable();
