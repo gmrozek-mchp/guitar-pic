@@ -1,0 +1,589 @@
+configVersion: 1.0.0
+componentName: eic
+coreVersion: 5.9.0
+device: PIC32CM6408PL10048
+library: []
+dependency:
+- dependencyPackage: class com.microchip.mcc.harmony.HarmonyModule
+  name: eic
+  type: module
+  version: ''
+- dependencyPackage: ''
+  name: csp
+  type: package
+  version: v3.25.2
+customDataClassName: com.microchip.utils_mh3.utils.persistence.CustomModuleData
+data:
+  attachments: {}
+  elementPosition: {}
+  symbols:
+    EIC_ASYNCH:
+      attributes:
+        id: EIC_ASYNCH
+        label: EIC_ASYNCH
+      children:
+      - children:
+        - attributes:
+            id: eic
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    EIC_ASYNCH_0:
+      attributes:
+        id: EIC_ASYNCH_0
+        label: External Interrupt0 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_1:
+      attributes:
+        id: EIC_ASYNCH_1
+        label: External Interrupt1 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_10:
+      attributes:
+        id: EIC_ASYNCH_10
+        label: External Interrupt10 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_11:
+      attributes:
+        id: EIC_ASYNCH_11
+        label: External Interrupt11 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_12:
+      attributes:
+        id: EIC_ASYNCH_12
+        label: External Interrupt12 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_13:
+      attributes:
+        id: EIC_ASYNCH_13
+        label: External Interrupt13 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_14:
+      attributes:
+        id: EIC_ASYNCH_14
+        label: External Interrupt14 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_15:
+      attributes:
+        id: EIC_ASYNCH_15
+        label: External Interrupt15 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_2:
+      attributes:
+        id: EIC_ASYNCH_2
+        label: External Interrupt2 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_3:
+      attributes:
+        id: EIC_ASYNCH_3
+        label: External Interrupt3 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_4:
+      attributes:
+        id: EIC_ASYNCH_4
+        label: External Interrupt4 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_5:
+      attributes:
+        id: EIC_ASYNCH_5
+        label: External Interrupt5 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_6:
+      attributes:
+        id: EIC_ASYNCH_6
+        label: External Interrupt6 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_7:
+      attributes:
+        id: EIC_ASYNCH_7
+        label: External Interrupt7 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_8:
+      attributes:
+        id: EIC_ASYNCH_8
+        label: External Interrupt8 Detection Clock
+      type: KeyValueSet
+    EIC_ASYNCH_9:
+      attributes:
+        id: EIC_ASYNCH_9
+        label: External Interrupt9 Detection Clock
+      type: KeyValueSet
+    EIC_CHAN_0:
+      attributes:
+        id: EIC_CHAN_0
+        label: Enable EIC Channel0
+      type: Boolean
+    EIC_CHAN_1:
+      attributes:
+        id: EIC_CHAN_1
+        label: Enable EIC Channel1
+      type: Boolean
+    EIC_CHAN_10:
+      attributes:
+        id: EIC_CHAN_10
+        label: Enable EIC Channel10
+      type: Boolean
+    EIC_CHAN_11:
+      attributes:
+        id: EIC_CHAN_11
+        label: Enable EIC Channel11
+      type: Boolean
+    EIC_CHAN_12:
+      attributes:
+        id: EIC_CHAN_12
+        label: Enable EIC Channel12
+      type: Boolean
+    EIC_CHAN_13:
+      attributes:
+        id: EIC_CHAN_13
+        label: Enable EIC Channel13
+      type: Boolean
+    EIC_CHAN_14:
+      attributes:
+        id: EIC_CHAN_14
+        label: Enable EIC Channel14
+      type: Boolean
+    EIC_CHAN_15:
+      attributes:
+        id: EIC_CHAN_15
+        label: Enable EIC Channel15
+      type: Boolean
+    EIC_CHAN_2:
+      attributes:
+        id: EIC_CHAN_2
+        label: Enable EIC Channel2
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    EIC_CHAN_3:
+      attributes:
+        id: EIC_CHAN_3
+        label: Enable EIC Channel3
+      type: Boolean
+    EIC_CHAN_4:
+      attributes:
+        id: EIC_CHAN_4
+        label: Enable EIC Channel4
+      type: Boolean
+    EIC_CHAN_5:
+      attributes:
+        id: EIC_CHAN_5
+        label: Enable EIC Channel5
+      type: Boolean
+    EIC_CHAN_6:
+      attributes:
+        id: EIC_CHAN_6
+        label: Enable EIC Channel6
+      type: Boolean
+    EIC_CHAN_7:
+      attributes:
+        id: EIC_CHAN_7
+        label: Enable EIC Channel7
+      type: Boolean
+    EIC_CHAN_8:
+      attributes:
+        id: EIC_CHAN_8
+        label: Enable EIC Channel8
+      type: Boolean
+    EIC_CHAN_9:
+      attributes:
+        id: EIC_CHAN_9
+        label: Enable EIC Channel9
+      type: Boolean
+    EIC_CLKSEL:
+      attributes:
+        id: EIC_CLKSEL
+        label: EIC Clock Source Selection
+      type: KeyValueSet
+    EIC_CONFIG_FILTEN_0:
+      attributes:
+        id: EIC_CONFIG_FILTEN_0
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_1:
+      attributes:
+        id: EIC_CONFIG_FILTEN_1
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_10:
+      attributes:
+        id: EIC_CONFIG_FILTEN_10
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_11:
+      attributes:
+        id: EIC_CONFIG_FILTEN_11
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_12:
+      attributes:
+        id: EIC_CONFIG_FILTEN_12
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_13:
+      attributes:
+        id: EIC_CONFIG_FILTEN_13
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_14:
+      attributes:
+        id: EIC_CONFIG_FILTEN_14
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_15:
+      attributes:
+        id: EIC_CONFIG_FILTEN_15
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_2:
+      attributes:
+        id: EIC_CONFIG_FILTEN_2
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_3:
+      attributes:
+        id: EIC_CONFIG_FILTEN_3
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_4:
+      attributes:
+        id: EIC_CONFIG_FILTEN_4
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_5:
+      attributes:
+        id: EIC_CONFIG_FILTEN_5
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_6:
+      attributes:
+        id: EIC_CONFIG_FILTEN_6
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_7:
+      attributes:
+        id: EIC_CONFIG_FILTEN_7
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_8:
+      attributes:
+        id: EIC_CONFIG_FILTEN_8
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_FILTEN_9:
+      attributes:
+        id: EIC_CONFIG_FILTEN_9
+        label: Enable filter
+      type: Boolean
+    EIC_CONFIG_SENSE_0:
+      attributes:
+        id: EIC_CONFIG_SENSE_0
+        label: External Interrupt0 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_1:
+      attributes:
+        id: EIC_CONFIG_SENSE_1
+        label: External Interrupt1 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_10:
+      attributes:
+        id: EIC_CONFIG_SENSE_10
+        label: External Interrupt10 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_11:
+      attributes:
+        id: EIC_CONFIG_SENSE_11
+        label: External Interrupt11 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_12:
+      attributes:
+        id: EIC_CONFIG_SENSE_12
+        label: External Interrupt12 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_13:
+      attributes:
+        id: EIC_CONFIG_SENSE_13
+        label: External Interrupt13 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_14:
+      attributes:
+        id: EIC_CONFIG_SENSE_14
+        label: External Interrupt14 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_15:
+      attributes:
+        id: EIC_CONFIG_SENSE_15
+        label: External Interrupt15 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_2:
+      attributes:
+        id: EIC_CONFIG_SENSE_2
+        label: External Interrupt2 Edge Selection
+      children:
+      - children:
+        - attributes:
+            value: '2'
+          type: User
+        type: Values
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_3:
+      attributes:
+        id: EIC_CONFIG_SENSE_3
+        label: External Interrupt3 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_4:
+      attributes:
+        id: EIC_CONFIG_SENSE_4
+        label: External Interrupt4 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_5:
+      attributes:
+        id: EIC_CONFIG_SENSE_5
+        label: External Interrupt5 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_6:
+      attributes:
+        id: EIC_CONFIG_SENSE_6
+        label: External Interrupt6 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_7:
+      attributes:
+        id: EIC_CONFIG_SENSE_7
+        label: External Interrupt7 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_8:
+      attributes:
+        id: EIC_CONFIG_SENSE_8
+        label: External Interrupt8 Edge Selection
+      type: KeyValueSet
+    EIC_CONFIG_SENSE_9:
+      attributes:
+        id: EIC_CONFIG_SENSE_9
+        label: External Interrupt9 Edge Selection
+      type: KeyValueSet
+    EIC_EXTINTEO:
+      attributes:
+        id: EIC_EXTINTEO
+        label: EIC_EXTINTEO
+      children:
+      - children:
+        - attributes:
+            id: eic
+            value: '0'
+          type: Dynamic
+        type: Values
+      type: Hex
+    EIC_EXTINTEO_0:
+      attributes:
+        id: EIC_EXTINTEO_0
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_1:
+      attributes:
+        id: EIC_EXTINTEO_1
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_10:
+      attributes:
+        id: EIC_EXTINTEO_10
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_11:
+      attributes:
+        id: EIC_EXTINTEO_11
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_12:
+      attributes:
+        id: EIC_EXTINTEO_12
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_13:
+      attributes:
+        id: EIC_EXTINTEO_13
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_14:
+      attributes:
+        id: EIC_EXTINTEO_14
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_15:
+      attributes:
+        id: EIC_EXTINTEO_15
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_2:
+      attributes:
+        id: EIC_EXTINTEO_2
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_3:
+      attributes:
+        id: EIC_EXTINTEO_3
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_4:
+      attributes:
+        id: EIC_EXTINTEO_4
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_5:
+      attributes:
+        id: EIC_EXTINTEO_5
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_6:
+      attributes:
+        id: EIC_EXTINTEO_6
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_7:
+      attributes:
+        id: EIC_EXTINTEO_7
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_8:
+      attributes:
+        id: EIC_EXTINTEO_8
+        label: Enable Event Output
+      type: Boolean
+    EIC_EXTINTEO_9:
+      attributes:
+        id: EIC_EXTINTEO_9
+        label: Enable Event Output
+      type: Boolean
+    EIC_INSTANCE_NAME:
+      attributes:
+        id: EIC_INSTANCE_NAME
+        label: EIC_INSTANCE_NAME
+      type: String
+    EIC_INT:
+      attributes:
+        id: EIC_INT
+        label: EIC_INT
+      children:
+      - children:
+        - attributes:
+            id: eic
+            value: '4'
+          type: Dynamic
+        type: Values
+      type: Hex
+    EIC_INT_0:
+      attributes:
+        id: EIC_INT_0
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_1:
+      attributes:
+        id: EIC_INT_1
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_10:
+      attributes:
+        id: EIC_INT_10
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_11:
+      attributes:
+        id: EIC_INT_11
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_12:
+      attributes:
+        id: EIC_INT_12
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_13:
+      attributes:
+        id: EIC_INT_13
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_14:
+      attributes:
+        id: EIC_INT_14
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_15:
+      attributes:
+        id: EIC_INT_15
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_2:
+      attributes:
+        id: EIC_INT_2
+        label: Enable Interrupt
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
+    EIC_INT_3:
+      attributes:
+        id: EIC_INT_3
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_4:
+      attributes:
+        id: EIC_INT_4
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_5:
+      attributes:
+        id: EIC_INT_5
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_6:
+      attributes:
+        id: EIC_INT_6
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_7:
+      attributes:
+        id: EIC_INT_7
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_8:
+      attributes:
+        id: EIC_INT_8
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_9:
+      attributes:
+        id: EIC_INT_9
+        label: Enable Interrupt
+      type: Boolean
+    EIC_INT_COUNT:
+      attributes:
+        id: EIC_INT_COUNT
+        label: EIC_INT_COUNT
+      type: Integer
+    NMI_ASYNCH:
+      attributes:
+        id: NMI_ASYNCH
+        label: NMI Detection Clock
+      type: KeyValueSet
+    NMI_CTRL:
+      attributes:
+        id: NMI_CTRL
+        label: Non Maskable Interrupt Control
+      type: Boolean
+    NMI_FILTEN:
+      attributes:
+        id: NMI_FILTEN
+        label: Enable filter
+      type: Boolean
+    NMI_SENSE:
+      attributes:
+        id: NMI_SENSE
+        label: NMI Interrupt Edge Selection
+      type: KeyValueSet
+  userData: {}

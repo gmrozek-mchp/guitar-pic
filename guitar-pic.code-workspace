@@ -22,6 +22,10 @@
 		{
 			"name": "lemmy",
 			"path": "firmware/lemmy"
+		},
+		{
+			"name": "lightshow",
+			"path": "firmware/lightshow"
 		}
 	],
 	"settings": {

@@ -207,9 +207,9 @@ command TX targets. marvin selects the active node of each class.
 | fauxmote(s) | controller | 1–2 | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote, at most two (id build-configurable, default 1) |
 | guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | receives the 1-byte command bitmask (from marvin or a detector) |
 | fretboard | detector | 4 | `02:00:00:00:00:04` | photo-ADC stream → `detector_id`; also commands the guitar directly |
-| beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved — beat-signal source for lemmy |
+| beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved — beat-signal source for lemmy / lightshow |
 | lemmy | animation | 6 | `02:00:00:00:00:06` | animated guitar puppet, 2 R/C servos (neck nod + jaw); **bring-up** (base MCC scaffolded, T1S follower next) |
-| lightshow | (future) | 7 | `02:00:00:00:00:07` | reserved |
+| lightshow | lightshow | 7 | `02:00:00:00:00:07` | LED lighting node — drives LEDs / lamps in time to the music; **bring-up** (bootstrapped from lemmy's T1S follower, LED output next) |
 
 > **Transition status (2026-07-28).** **fauxmote** (id 1, range 1–2), the **guitar**
 > (id 3), and the **fretboard** (id 4) are all on the target scheme in source. The guitar
@@ -246,10 +246,10 @@ on receipt and reports it via the `nodes` console command (present = a heartbeat
 within ~2 s).
 
 Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller,
-4=animation), `node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin derives
-the node from the src MAC; the payload is informational (seq enables drop detection).
-(`node_type=4` for `lemmy` is proposed with its bring-up; marvin's decode + `nodes` display
-learn it as a marvin-side follow-up.)
+4=animation, 5=lightshow), `node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin
+derives the node from the src MAC; the payload is informational (seq enables drop detection).
+(`node_type=4` for `lemmy` and `node_type=5` for `lightshow` are proposed with their bring-up;
+marvin's decode + `nodes` display learn them as a marvin-side follow-up.)
 
 ## 8. Transport coexistence
 
