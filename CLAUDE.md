@@ -29,6 +29,8 @@ Current journals:
   - Spec for lemmy lives at `firmware/lemmy/SPEC.md` — read it alongside the journal on any non-trivial lemmy task.
 - `firmware/lightshow/docs/journal.md` — lightshow firmware (PIC32CM PL10 **lighting** node: drives LEDs/lamps in time to the music; T1S PLCA follower id 7, `node_type = 5`. Bring-up — bootstrapped from lemmy's T1S follower; T1S follower first, LED output second)
   - Spec for lightshow lives at `firmware/lightshow/SPEC.md` — read it alongside the journal on any non-trivial lightshow task.
+- `firmware/beatbox/docs/journal.md` — beatbox firmware (dsPIC33AK256MPS306 **beat-source** node: listens to audio, runs FFT beat detection, and publishes position commands → lemmy + a beat frame → lightshow; T1S PLCA follower id 5, planned. Imported from the standalone `dspicguitarhero` project; runs autonomously today (local servo/RGB/WS2812), not yet on the bus)
+  - Spec for beatbox lives at `firmware/beatbox/SPEC.md` — read it alongside the journal on any non-trivial beatbox task. **XC-DSC toolchain** (not XC32).
 - `tools/edge-ai/docs/journal.md` — edge-ai (distill marvin's gameplay commands into a small ML model for the fretboard MCU)
   - Specs for edge-ai live under `tools/edge-ai/docs/` (`SPEC.md` + the doc map there) — read them alongside the journal on any non-trivial edge-ai task.
 - `firmware/fauxmote/docs/journal.md` — fauxmote (ESP32 firmware emulating a Wiimote + guitar extension to a real Wii; parallel proof-of-concept)

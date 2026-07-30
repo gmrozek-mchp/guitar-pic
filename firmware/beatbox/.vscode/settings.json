@@ -1,0 +1,7 @@
+{
+    "mplab.clangd.arguments": [
+        "--header-insertion=never"
+    ],
+    "mplab.clangd.compileCommandsDir": "${workspaceFolder}/_build/beatbox/default",
+    "mplab.clangd.path": "/Applications/microchip/xc-dsc/v3.31/bin/xc-dsc-clangd"
+}

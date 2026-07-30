@@ -26,6 +26,10 @@
 		{
 			"name": "lightshow",
 			"path": "firmware/lightshow"
+		},
+		{
+			"name": "beatbox",
+			"path": "firmware/beatbox"
 		}
 	],
 	"settings": {

@@ -57,7 +57,9 @@ fallback transport.
 |---|---|---|---|---|
 | Detector | observe game state → stream to marvin | `fretboard` (photo-ADC); future variants | 4 / `02:…:04` | active detector (`Detector_SetActive`) |
 | Guitar (actuator) | receive bitmask → drive a Wii guitar | `guitar` (new); future variants | 3 / `02:…:03` | active guitar (planned) |
-| Animation | receive beat signals → animate a puppet | `lemmy` (new; bring-up) | 6 / `02:…:06` | — |
+| Animation | receive position commands → animate a puppet | `lemmy` (servos moving) | 6 / `02:…:06` | — |
+| Lighting | receive beat frame → run a light show | `lightshow` (bring-up) | 7 / `02:…:07` | — |
+| Beat source | listen to audio → publish beat/position to peers | `beatbox` (imported; autonomous) | 5 / `02:…:05` | — |
 
 Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); guitar nodes are command TX targets. Both classes scale by adding a node-table row. marvin's own `cv_marvin_v1` is a detector too (internal, not a bus node).
 
@@ -68,7 +70,9 @@ Detector nodes feed marvin's detector-state bus (each maps to a `detector_id`); 
 | marvin | [`firmware/marvin/docs/spec.md`](firmware/marvin/docs/spec.md) | [`firmware/marvin/docs/journal.md`](firmware/marvin/docs/journal.md) |
 | fretboard | [`firmware/fretboard/SPEC.md`](firmware/fretboard/SPEC.md) — phototransistor **detector** node (re-scoping from sensor/actuator; actuator role moving to `guitar`). | [`firmware/fretboard/docs/journal.md`](firmware/fretboard/docs/journal.md) |
 | guitar | [`firmware/guitar/SPEC.md`](firmware/guitar/SPEC.md) — Wii-guitar **actuator** node (PIC32CM PL10, T1S PLCA follower id 3). Working: receives marvin's command over T1S and actuates. | [`firmware/guitar/docs/journal.md`](firmware/guitar/docs/journal.md) |
-| lemmy | [`firmware/lemmy/SPEC.md`](firmware/lemmy/SPEC.md) — **animation** node: animated guitar-playing puppet, 2 R/C servos (neck nod + jaw), driven by beat signals (PIC32CM PL10, T1S PLCA follower id 6). Bring-up: base MCC project scaffolded; T1S follower first, motion second. | [`firmware/lemmy/docs/journal.md`](firmware/lemmy/docs/journal.md) |
+| lemmy | [`firmware/lemmy/SPEC.md`](firmware/lemmy/SPEC.md) — **animation** node: animated guitar-playing puppet, 2 R/C servos (neck nod + jaw), driven by position commands from `beatbox` (PIC32CM PL10, T1S PLCA follower id 6). On the bus; servos moving. | [`firmware/lemmy/docs/journal.md`](firmware/lemmy/docs/journal.md) |
+| lightshow | [`firmware/lightshow/SPEC.md`](firmware/lightshow/SPEC.md) — **lighting** node: drives LEDs/lamps in time to the music from a beat frame (PIC32CM PL10, T1S PLCA follower id 7, `node_type = 5`). Bring-up: T1S follower up; WS2812 output in progress. | [`firmware/lightshow/docs/journal.md`](firmware/lightshow/docs/journal.md) |
+| beatbox | [`firmware/beatbox/SPEC.md`](firmware/beatbox/SPEC.md) — **beat-source** node: dsPIC33AK256MPS306 that listens to audio, runs FFT beat detection, and publishes position commands → `lemmy` + a beat frame → `lightshow` (T1S PLCA follower id 5, planned). Imported from `dspicguitarhero`; runs autonomously today, not yet on the bus. | [`firmware/beatbox/docs/journal.md`](firmware/beatbox/docs/journal.md) |
 | fret-tuner | [`tools/fret-tuner/SPEC.md`](tools/fret-tuner/SPEC.md) | — |
 | marvin-perf | [`tools/marvin-perf/`](tools/marvin-perf/) — perf-log decoder + live/offline web viewer | — |
 | edge-ai | [`tools/edge-ai/docs/SPEC.md`](tools/edge-ai/docs/SPEC.md) — design proposal: distill marvin's gameplay commands into a small ML model running on fretboard. Offline development first; Phase 1 data pipeline in progress. | [`tools/edge-ai/docs/journal.md`](tools/edge-ai/docs/journal.md) |
@@ -88,7 +92,9 @@ guitar-pic/
 │   ├── marvin/                  # SAM9X75 host firmware
 │   ├── fretboard/               # PIC32CM6408 phototransistor detector node (re-scoping)
 │   ├── guitar/                  # PIC32CM PL10 Wii-guitar actuator node (new)
-│   ├── lemmy/                   # PIC32CM PL10 puppet animation node (2 servos; bring-up)
+│   ├── lemmy/                   # PIC32CM PL10 puppet animation node (2 servos; on the bus)
+│   ├── lightshow/               # PIC32CM PL10 lighting node (WS2812; bring-up)
+│   ├── beatbox/                 # dsPIC33AK beat-source node (audio FFT → bus; imported)
 │   ├── fauxmote/                # ESP32 Wiimote emulator (proof-of-concept)
 │   └── sam9x75_curiosity_emirror/   # Microchip reference project (template only)
 ├── tools/
@@ -116,6 +122,8 @@ guitar-pic/
 | PIC32CM6408PL10048 | fretboard detector MCU | [fretboard spec](firmware/fretboard/SPEC.md) |
 | PIC32CM PL10 | guitar (actuator) node MCU | [guitar spec](firmware/guitar/SPEC.md) |
 | PIC32CM PL10 + 2× R/C servos | lemmy (animation) node MCU + puppet drive | [lemmy spec](firmware/lemmy/SPEC.md) |
+| PIC32CM PL10 + WS2812 strips | lightshow (lighting) node MCU + LED drive | [lightshow spec](firmware/lightshow/SPEC.md) |
+| dsPIC33AK256MPS306 (Curiosity GP DIM) | beatbox (beat-source) node MCU — audio ADC + FFT | [beatbox spec](firmware/beatbox/SPEC.md) |
 | LAN8651B1 (10BASE-T1S MAC-PHY) | T1S bus link, one per node (marvin coordinator + each follower) over single-pair Ethernet + PoDL | [T1S/PoDL link](docs/t1s-podl-link.md) |
 | Actuator mechanism (TBD: voice coil / electromagnet / DIY solenoid) | physical fret + strum drive | [`hardware/actuators/`](hardware/actuators/) and [`hardware/3d-models/`](hardware/3d-models/) |
 | ElectronWarp | component → HDMI converter for Wii | external commercial part |

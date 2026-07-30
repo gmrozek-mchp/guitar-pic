@@ -1,0 +1,51 @@
+{
+    "version": "1.9",
+    "configurations": [
+        {
+            "name": "default",
+            "id": "",
+            "device": "dsPIC33AK256MPS306",
+            "imagePath": "./out/beatbox/default.elf",
+            "tool": "Curiosity/Starter Kits (PKOB4)",
+            "packs": [
+                {
+                    "name": "dsPIC33AK-MP_DFP",
+                    "version": "1.4.260",
+                    "vendor": "Microchip"
+                }
+            ],
+            "fileSet": "default",
+            "toolchain": "default-XC-DSC"
+        }
+    ],
+    "propertyGroups": [
+        {
+            "name": "default-XC-DSC",
+            "type": "toolchain",
+            "provider": "microchip.toolchains:xc-dsc@3.31.01",
+            "properties": {}
+        }
+    ],
+    "fileSets": [
+        {
+            "name": "default",
+            "files": [
+                {
+                    "include": "**/*",
+                    "exclude": "**/@(build|_build|out|cmake|.vscode)/**/*"
+                },
+                "config.mcc/mcc_generated_files/system/src/clock.c",
+                "config.mcc/mcc_generated_files/system/src/config_bits.c",
+                "config.mcc/mcc_generated_files/system/src/where_was_i.s",
+                "config.mcc/mcc_generated_files/system/src/traps.c",
+                "config.mcc/mcc_generated_files/system/src/interrupt.c",
+                "config.mcc/main.c",
+                "config.mcc/mcc_generated_files/system/src/system.c",
+                "config.mcc/mcc_generated_files/system/src/pins.c",
+                "config.mcc/mcc_generated_files/system/src/dmt_asm.s",
+                "config.mcc/mcc_generated_files/system/src/dmt.c",
+                "config.mcc/mcc_generated_files/system/src/reset.c"
+            ]
+        }
+    ]
+}
