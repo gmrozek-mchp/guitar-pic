@@ -16,15 +16,25 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
       heartbeat (`0x88B6`, `node_type = 5`), `t1s` CLI. Ported wholesale from `lemmy` / `guitar`.
   - LED0 (PB02) liveness heartbeat ported from `lemmy` (`status_led.{c,h}`): non-blocking, off the
     SysTick clock, lub-dub double pulse when on the bus / single blip when link down.
-- [ ] **L2 — LED output.** Pick the drive method + pin/peripheral, add the LED driver and a
-      `led`/pattern CLI to exercise the lights manually.
+- [ ] **L2 — LED output.** Drive method chosen (see decision log): **TC0 8-bit NPWM + 1 DMA
+      channel** for 2× WS2812 strands (33 px each). Remaining L2 work:
+  - Confirm pinmux: land both strand data pins on `TC0/WO0` + `TC0/WO1` (both must be timer
+    waveform outputs; the pattern-generator method also needs `TCC0/WOx` pins).
+  - Add DMAC to the MCC config (not currently generated) + TC0 in 8-bit NPWM.
+  - LED driver: 198-byte GRB framebuffer → expand to the 1584-byte interleaved per-bit duty buffer
+    → arm the DMA block transfer; enforce the ≥300 µs reset/latch gap between frames off SysTick.
+  - `led`/pattern CLI to exercise the strands manually.
+  - Hardware: 3.3 V→5 V data level shift (74AHCT125-class) and a 5 V rail sized for ~4 A worst case
+    (66 px × 60 mA); confirm on the board.
 - [ ] **L3 — beat-driven light show.** Consume the music/beat signal over T1S → light patterns in
       time with the music.
 
 ## Open questions
 
-- **LED output hardware.** Addressable LED string (WS2812-class, serial protocol) vs. PWM-dimmed
-  lamp channels? Which pin/peripheral, and which power rail? Deferred until L2.
+- **LED output hardware — pins + power.** Drive method + peripheral are settled (TC0 8-bit NPWM +
+  1 DMA channel; see decision log). Still open: which two GPIOs carry the strand data (must be
+  `TC0/WO0` + `WO1`), the 5 V power rail sizing, and the 3.3→5 V data
+  level shift. Resolve against the actual board at L2.
 - **Command/beat-signal plane.** What drives the light patterns — a future **beatbox** node (id 5),
   marvin's timing pipeline, or both? Over which ethertype and payload? Shared open question with
   `lemmy`; deferred until L3.
@@ -33,6 +43,8 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-29 | **WS2812 drive = TC0 8-bit NPWM + 1 DMA channel (CCBUF-PWM)** (2 strands × 33 px on `TC0/WO0`+`WO1`). One DMA channel, `TRIGACT=BLOCK`, TC0-overflow-triggered, writes CCBUF0+CCBUF1 (2 BYTE beats) per bit; PER≈29 → 800 kHz bit clock at 24 MHz (T0H≈8 / T1H≈17 ticks, inside WS2812 ±150 ns). Buffer = 2×(33×24) = 1584 B interleaved per-bit duty (+198 B GRB framebuffer), fits 8 KB. Timer DMA trigger paces it directly (no EVSYS). | Confirmed on the DFP for *this* part: only **2 DMA channels**, **4 EVSYS**, **24 MHz**, **8 KB SRAM**. SPI+DMA is ruled out (both SERCOMs used: T1S + debug UART), but T1S SPI is **interrupt-driven, not DMA**, so both DMA channels are free. CCBUF-PWM modulates the fall time *within* each bit period via one CC/strand → one DMA update per bit (800 kHz, ~30 cyc/beat) and the smallest buffer. Leaves a spare DMA channel + TCC0 + TC1/2. |
+| 2026-07-29 | **Parallel WS2812 via DMA→TCC0 `PATTBUF` (pattern generator) is the multi-strand fallback, *not* used for 2 strands.** This is the faithful SAMD21-style trick (SAMD21 DMAC can't reach PORT — it's on the single-cycle IOBUS — so the real method forces the WOx pin levels per sub-slot via the pattern generator, not DMA-to-PORT). Verified TCC0 here has it: `PATT`/`PATTBUF` with `PGE0–3`/`PGV0–3`, 4 WO, output matrix. 3 sub-slots/bit (all-high → data → all-low), DMA streams `PATTBUF` HWORDs on TCC0 overflow, double-buffered. | Its payoff is up to **4 bit-parallel strands** from one DMA stream (why NeoPXL8 uses a parallel scheme). Costs 3 DMA updates/bit (2.4 MHz beat, ~10 cyc/beat — tightest path at 24 MHz) and ~4.75 KB buffer — worse than CCBUF-PWM on both axes for only 2 strands. Reach for it only if strand count outgrows the CC channels or truly bit-parallel output is wanted. Both methods write only timer (APB) registers, so neither depends on DMA-to-PORT. |
 | 2026-07-29 | **marvin recognizes lightshow's heartbeat** — added a lightshow node row (id 7) to marvin's `net/t1s` node table + a `"lightshow"` display name, so `nodes` lists lightshow present. marvin maps id→type via its static table (it does not decode the payload `node_type` byte), so lightshow's advertised `node_type=5` is informational. | Closes the "confirm node_type=5 with marvin" question: awareness is a table row keyed by node id, matching how guitar / fretboard / lemmy are recognized. |
 | 2026-07-29 | **lightshow created as the *lighting* node class (`node_type = 5`); T1S bring-up before LED output.** PIC32CM6408PL10048, PLCA follower **id 7** / MAC `02:00:00:00:00:07` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 beat-driven light show. | Prove the node on the bus first, reusing the `lemmy` / `guitar` follower glue + `oa-tc6-lib` (same MCU family — minimizes bring-up), then layer the LED output. The lighting output and its command source differ from the puppet, so it is a distinct node class from `lemmy` (animation). |
 

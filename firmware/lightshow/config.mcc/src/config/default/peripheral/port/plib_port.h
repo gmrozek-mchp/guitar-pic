@@ -108,6 +108,14 @@
 #define SW0_Get()               (((PORT_REGS->GROUP[1].PORT_IN >> 3U)) & 0x01U)
 #define SW0_PIN                  PORT_PIN_PB03
 
+/*** Macros for NEOPIXEL_LEFT pin ***/
+#define NEOPIXEL_LEFT_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 10U)) & 0x01U)
+#define NEOPIXEL_LEFT_PIN                  PORT_PIN_PA10
+
+/*** Macros for NEOPIXEL_RIGHT pin ***/
+#define NEOPIXEL_RIGHT_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 11U)) & 0x01U)
+#define NEOPIXEL_RIGHT_PIN                  PORT_PIN_PA11
+
 /*** Macros for T1S_IRQ_N pin ***/
 #define T1S_IRQ_N_Get()               (((PORT_REGS->GROUP[0].PORT_IN >> 2U)) & 0x01U)
 #define T1S_IRQ_N_PIN                  PORT_PIN_PA02

@@ -10,8 +10,8 @@ Pin Number,Pin ID,Custom Name,Function,Mode, Direction,Latch,Pull Up,Pull Down,S
 9,PB05,,Available,,,,,,DISABLED
 10,PA08,,Available,,,,,,DISABLED
 11,PA09,,Available,,,,,,DISABLED
-12,PA10,,Available,,,,,,DISABLED
-13,PA11,,Available,,,,,,DISABLED
+12,PA10,NEOPIXEL_LEFT,TC0_WO0,Digital,High Impedance,n/a,No,No,DISABLED
+13,PA11,NEOPIXEL_RIGHT,TC0_WO1,Digital,High Impedance,n/a,No,No,DISABLED
 16,PA12,,Available,,,,,,DISABLED
 17,PA13,,Available,,,,,,DISABLED
 18,PA14,,Available,,,,,,DISABLED

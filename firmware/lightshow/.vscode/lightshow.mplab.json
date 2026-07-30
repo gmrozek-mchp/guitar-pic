@@ -73,7 +73,9 @@
                 "config.mcc/src/config/default/peripheral/sercom/usart/plib_sercom1_usart.c",
                 "config.mcc/src/config/default/peripheral/systick/plib_systick.c",
                 "config.mcc/src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c",
-                "config.mcc/src/config/default/peripheral/eic/plib_eic.c"
+                "config.mcc/src/config/default/peripheral/eic/plib_eic.c",
+                "config.mcc/src/config/default/peripheral/dmac/plib_dmac.c",
+                "config.mcc/src/config/default/peripheral/tc/plib_tc0.c"
             ]
         }
     ]

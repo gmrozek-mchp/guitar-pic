@@ -151,12 +151,16 @@ void SYS_Initialize ( void* data )
 
     SERCOM1_USART_Initialize();
 
-    EVSYS_Initialize();
-
     SERCOM0_SPI_Initialize();
 
+    EVSYS_Initialize();
+
 	SYSTICK_TimerInitialize();
+    DMAC_Initialize();
+
     EIC_Initialize();
+
+    TC0_CompareInitialize();
 
 
     NVIC_Initialize();
