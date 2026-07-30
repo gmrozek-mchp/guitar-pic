@@ -34,6 +34,7 @@
 #include "../system_types.h"
 #include "../clock.h"
 #include "../pins.h"
+#include "../../adc/adc5.h"
 #include "../dmt.h"
 #include "../../spi_host/spi1.h"
 #include "../../uart/uart1.h"
@@ -45,6 +46,7 @@ void SYSTEM_Initialize(void)
 {
     CLOCK_Initialize();
     PINS_Initialize();
+    ADC5_Initialize();
     DMT_Initialize();
     SPI1_Initialize();
     UART1_Initialize();

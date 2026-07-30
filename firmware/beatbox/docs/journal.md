@@ -110,6 +110,24 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 
 ## Session log
 
+### 2026-07-30 — ADC5 pot MCC config (config only, no app read port)
+
+- Added the sensitivity pot on the shared ADC core: **ADC5, channel `ADC_POT` on AD5AN0**,
+  software-triggered, single-sample, single-ended, 12-bit integer (`AD5CH0CON1=0x3F0001`). Polled
+  (IRQSEL set but IEC left disabled). `ADC5_Initialize()` powers the shared core and waits `ADRDY`;
+  wired into `SYSTEM_Initialize()`. AD5AN0 is fixed-function analog, so no PPS/TRIS — `pins.c` untouched.
+- **ADC clock on the external tree, not FRC.** MCC's first pass regressed **CLK6 (the ADC clock,
+  `CLOCK_GENERATOR_6`) to 8 MHz FRC**; restored it to **PLL1 Out = 200 MHz** (`CLK6CON=0x29500`,
+  `CLK6DIV=0`) to match the pre-MCC `.bak` baseline and the "everything off the external POSC→PLL"
+  intent. TAD = 5 ns. This also settles the audio-ADC-clock question ahead of time: ADC2 (audio) rides
+  the same CLK6, so it inherits the fast clock the `.bak` used for oversampling throughput — no clock
+  rework at the ADC2 step.
+- **Sample time:** `.bak` used SAMC 15 (~75 ns @ 200 MHz); MCC only offers half-TAD steps, so picked
+  **SAMC 62.5 TAD ≈ 312.5 ns** — no reason to sample the high-impedance pot fast, longer window is
+  strictly better for settling. Functionally equivalent read to the `.bak`.
+- **App read port deferred.** When the pot read comes over: `ADC5_SoftwareTriggerEnable()` →
+  `while(!ADC5_IsConversionComplete(ADC_POT)){}` → `ADC5_ConversionResultGet(ADC_POT) & 0x0FFF`.
+
 ### 2026-07-30 — SPI1 + T1S control pins MCC config (transport only, no driver port)
 
 - Added SPI1 as the T1S MAC-PHY host link. `config[0]` (`T1S_CONFIG`): **12.5 MHz** (`SPI1BRG=3`,
