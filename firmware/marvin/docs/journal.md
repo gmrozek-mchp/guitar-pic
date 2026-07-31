@@ -427,6 +427,26 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-07-31 — beatbox heartbeat awareness (node table entry) + broadcast-tolerance check
+
+- **marvin now recognizes beatbox (beat-source node, id 5) on the bus.** Added `T1S_NODE_BEATSOURCE`
+  to the node-type enum, a `{ 5u, T1S_NO_DETECTOR, T1S_NODE_BEATSOURCE }` row to the static node table,
+  and a `"beatbox"` display name (`net/t1s/t1s_link.c`). Same table-driven pattern as the lemmy/lightshow
+  rows: presence, seq capture, and the `nodes` display key off the source MAC, so beatbox's `0x88B6`
+  heartbeat now marks it present and `nodes` lists it — no other change needed. beatbox advertises
+  `node_type = 6` (beat source) in its payload; as with the other nodes marvin maps id→type via its
+  static table and does not decode the byte. Awareness only; beatbox is a producer, so marvin sends it
+  nothing.
+- **Broadcast messages need no change on marvin or any other node.** beatbox's planned bus output splits
+  into a broadcast beat frame (ethertype `0x88B8`, dst `FF:FF:FF:FF:FF:FF`, for lightshow + any future
+  consumer) and a unicast lemmy position command (`0x88B9`). Checked the whole bus for broadcast
+  tolerance: followers filter at the MAC layer to self-MAC + broadcast (not promiscuous), so a broadcast
+  frame is *received* by every node; each then filters by ethertype and drops what isn't its type. marvin
+  runs promiscuous during bring-up and drops any ethertype not in {`0x88B5`,`0x88B6`,`0x88B7`} at
+  `TC6_CB_OnRxEthernetPacket`. So a `0x88B8`/`0x88B9` frame is harmlessly received-and-dropped everywhere
+  until a consumer opts in (lightshow at beatbox B4). No node needs a change to *tolerate* the new
+  broadcast traffic — only the eventual consumer needs new code.
+
 ### 2026-07-29 — lightshow heartbeat awareness (node table entry)
 
 - **marvin now recognizes lightshow (LED lighting node, id 7) on the bus.** Added `T1S_NODE_LIGHTSHOW`

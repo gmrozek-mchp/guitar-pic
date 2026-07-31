@@ -262,10 +262,11 @@ on receipt and reports it via the `nodes` console command (present = a heartbeat
 within ~2 s).
 
 Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller,
-4=animation, 5=lightshow), `node_id(1)`, `flags(1)` (bit0 = follower synced), `seq(u32 LE)`. marvin
-derives the node from the src MAC; the payload is informational (seq enables drop detection).
-(`node_type=4` for `lemmy` and `node_type=5` for `lightshow` are proposed with their bring-up;
-marvin's decode + `nodes` display learn them as a marvin-side follow-up.)
+4=animation, 5=lightshow, 6=beat source), `node_id(1)`, `flags(1)` (bit0 = follower synced),
+`seq(u32 LE)`. marvin derives the node from the **src MAC** via its static node table, not by
+decoding the `node_type` byte — so the payload type is informational (seq enables drop detection).
+marvin's `nodes` display recognizes `lemmy` (id 6), `lightshow` (id 7), and `beatbox` (id 5) as
+table entries; decoding the payload `node_type` byte remains an unneeded marvin-side follow-up.
 
 ## 8. Transport coexistence
 
