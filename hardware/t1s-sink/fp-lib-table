@@ -1,0 +1,4 @@
+(fp_lib_table
+	(version 7)
+	(lib (name "t1s-sink") (type "KiCad") (uri "${KIPRJMOD}/t1s-sink.pretty") (options "") (descr ""))
+)

@@ -1,0 +1,169 @@
+(footprint "LPD4012"
+	(version 20260206)
+	(generator "pcbnew")
+	(generator_version "10.0")
+	(layer "F.Cu")
+	(property "Reference" "REF**"
+		(at 0 -3 0)
+		(unlocked yes)
+		(layer "F.SilkS")
+		(uuid "de291d88-3c60-4f8f-aba8-1be54e4cfd92")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.1)
+			)
+		)
+	)
+	(property "Value" "LPD4012"
+		(at 0 3.25 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "b035a41b-9aea-4107-8e10-2e53f723dd6d")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Datasheet" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "1df1a694-05d1-44bf-b5aa-93c36437561c")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(property "Description" ""
+		(at 0 0 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(hide yes)
+		(uuid "17fff137-7a4b-4cb6-83b2-112ab73ad916")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(attr smd)
+	(duplicate_pad_numbers_are_jumpers no)
+	(fp_line
+		(start -2 0.4)
+		(end -2 -0.4)
+		(stroke
+			(width 0.2032)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "3722e493-256e-409c-ab86-5b259c807ebd")
+	)
+	(fp_line
+		(start 0.4 -2)
+		(end -0.4 -2)
+		(stroke
+			(width 0.2032)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "d581ceac-6107-436d-a040-c74f4d824a43")
+	)
+	(fp_line
+		(start 0.4 2)
+		(end -0.4 2)
+		(stroke
+			(width 0.2032)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "11a930be-d422-4a67-ad18-ecf46599761f")
+	)
+	(fp_line
+		(start 2 0.4)
+		(end 2 -0.4)
+		(stroke
+			(width 0.2032)
+			(type solid)
+		)
+		(layer "F.SilkS")
+		(uuid "ecfda7aa-567b-4766-a109-d07897aab724")
+	)
+	(fp_circle
+		(center -2.2 -2.2)
+		(end -2.1 -2.2)
+		(stroke
+			(width 0.2)
+			(type solid)
+		)
+		(fill no)
+		(layer "F.SilkS")
+		(uuid "5cd62eca-ee2f-4aac-b106-58483f64bf4f")
+	)
+	(fp_text user "${REFERENCE}"
+		(at 0 4.75 0)
+		(unlocked yes)
+		(layer "F.Fab")
+		(uuid "f7f963da-578b-4e1e-97b0-40e4daf15736")
+		(effects
+			(font
+				(size 1 1)
+				(thickness 0.15)
+			)
+		)
+	)
+	(pad "1" smd roundrect
+		(at -1.4125 -1.4125 45)
+		(size 2.227 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0)
+		(chamfer_ratio 0.5)
+		(chamfer top_left top_right bottom_left bottom_right)
+		(uuid "937b9b92-3c41-4b64-8344-1f8256e66698")
+	)
+	(pad "2" smd roundrect
+		(at -1.4125 1.4125 135)
+		(size 2.227 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0)
+		(chamfer_ratio 0.5)
+		(chamfer top_left top_right bottom_left bottom_right)
+		(uuid "5a391082-4362-4ab0-9505-12e6ef3d65b5")
+	)
+	(pad "3" smd roundrect
+		(at 1.4125 1.4125 225)
+		(size 2.227 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0)
+		(chamfer_ratio 0.5)
+		(chamfer top_left top_right bottom_left bottom_right)
+		(uuid "d1857c3a-50c3-4c7e-996f-25cf740bcf59")
+	)
+	(pad "4" smd roundrect
+		(at 1.4125 -1.4125 315)
+		(size 2.227 1.1)
+		(layers "F.Cu" "F.Mask" "F.Paste")
+		(roundrect_rratio 0)
+		(chamfer_ratio 0.5)
+		(chamfer top_left top_right bottom_left bottom_right)
+		(uuid "7e7586a2-e483-4cb0-8671-ec7c59b302c3")
+	)
+	(embedded_fonts no)
+	(model "${KIPRJMOD}/Coilcraft-LPD4012.STEP"
+		(offset
+			(xyz 0 0 0)
+		)
+		(scale
+			(xyz 1 1 1)
+		)
+		(rotate
+			(xyz -90 -0 90)
+		)
+	)
+)
