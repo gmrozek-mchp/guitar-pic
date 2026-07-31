@@ -3,11 +3,16 @@
 > What beatbox *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: imported, autonomous baseline.** The firmware was brought in from the standalone
-> `dspicguitarhero` project (a self-contained head-banging animatronic) and currently runs
-> **autonomously** — audio in → FFT beat detection → local servo + RGB + WS2812 outputs, UART
-> telemetry. It is **not yet on the T1S bus**. The re-scoping to a **pure T1S beat-source
-> publisher** (below) is the work ahead. See §6 and [`docs/journal.md`](docs/journal.md).
+> **Status: on the bench — beat detection + T1S follower up.** The peripheral config was
+> regenerated from scratch on the MPS512 (fresh MCC/Melody baseline). Running today: stereo audio
+> in (ADC4, 48 kHz) → 512-pt FFT beat detection → discrete beat events; an onboard RGB beat
+> indicator; an audio passthrough to the PWM DACs (monitor quality); a UART2 CLI; and a
+> **10BASE-T1S PLCA follower (id 5)** that brings up the LAN8651 MAC-PHY, syncs PLCA, and heartbeats
+> presence. Still ahead: **publishing on the bus** (position commands → lemmy, beat frame →
+> lightshow — milestone B4) and the **tempo/BPM + phase** layer those need. The imported
+> puppet-motion + WS2812 effects remain parked in `config.mcc.bak/`. See §6 and
+> [`docs/journal.md`](docs/journal.md); the signal chain is documented in
+> [`docs/beat-detection.md`](docs/beat-detection.md).
 
 ## 1. Purpose
 
@@ -27,8 +32,10 @@ lighting followers it is primarily a **producer** of bus traffic for its peers, 
 how `fretboard` streams ADC to marvin. It does **no game logic**; it is an audio-domain sensor +
 animation director. lemmy's spec already anticipates it as **T1S id 5**.
 
-Until the bus work lands, beatbox also retains its original **standalone** outputs (local servo,
-RGB, WS2812) so it runs as a self-contained demo — the actuation that will move to lemmy/lightshow.
+Today beatbox detects beats and shows them locally (the onboard RGB indicator + the `beat` CLI) and
+passes audio through to the PWM DACs; it is not yet on the bus. The imported puppet-motion (`servo`,
+`nod_engine`) and WS2812 strip effects — the actuation destined for lemmy/lightshow — are parked in
+`config.mcc.bak/` pending the pure-publisher rework.
 
 ## 2. Hardware
 
@@ -39,100 +46,140 @@ RGB, WS2812) so it runs as a self-contained demo — the actuation that will mov
 | Toolchain | **XC-DSC v3.31** (distinct from the PIC32CM nodes' XC32) |
 | Build | CMake → Ninja; artifacts under `out/beatbox/` |
 | DFP | `dsPIC33AK-MP_DFP` (version pinned by MCC on regen — must include MPS512) |
-| MAC-PHY | LAN8651 (10BASE-T1S) — **not yet wired** (see §6, the porting milestone) |
+| MAC-PHY | LAN8651 (10BASE-T1S), SPI1 — **up**: PLCA follower id 5, presence heartbeat, `t1s` CLI |
 
 **Note on identity.** The MPLAB project is named `beatbox` — the descriptor is
 `.vscode/beatbox.mplab.json`, and the `cmake/`, `_build/`, and `out/` trees regenerate under
 `beatbox/`. (Renamed from the source project's `Beat_Detection`; MCC↔project association in
 `config.mcc/mcc/mcc.vscode` updated to match.)
 
-### Pin map (autonomous baseline, from the source project)
+### Pin map (MPS512, current MCC config)
 
-> **These pins are the MPS306-era baseline and must be re-derived for the MPS512.** The
-> PPS-remappable outputs (SCCP servo/RGB, SDO3, UART1, RD1) re-route freely; the fixed-function
-> pins — the two audio-in ADC channels, the speed pot, and the two PWM-DAC outputs — must be
-> re-picked against the MPS512 datasheet pin table and the EV80L65A GP DIM / EV74H48A pinout. See
-> the journal.
+Pins as assigned in the regenerated MCC config (`mcc_generated_files/system/pins.{h,c}`). Audio-in
+uses the dedicated ADC4 analog channels (AN0/AN1 — package pins per the EV80L65A GP DIM pinout); all
+other peripheral routes are PPS.
 
-| Pin | Direction | Function |
+| Pin | Dir | Function |
 |---|---|---|
-| RB3 (AD2AN3) | In | Left audio |
-| RB4 (AD2AN4) | In | Right audio |
-| RA3 (AD1AN2) | In | Speed-trim potentiometer |
-| RB8 (PWM4H) | Out | Left audio out (PWM DAC) |
-| RB9 (PWM3H) | Out | Right audio out (PWM DAC) + ADC trigger source |
-| RA9 (SCCP4) | Out | Servo PWM (head nod) — *moves to lemmy* |
-| RA10 (SCCP1) | Out | LED green — *moves to lightshow* |
-| RA2 (SCCP2) | Out | LED red — *moves to lightshow* |
-| RC0 (SCCP3) | Out | LED blue — *moves to lightshow* |
-| RA11 (SDO3) | Out | WS2812 strip data (SPI3 + DMA0) — *moves to lightshow* |
-| RD1 | Out | Digital beat indicator |
-| UART1 | Bi | Debug / telemetry @ 115200 |
+| ADC4 AN0 | In | Left audio in (`ADC_AUDIO_L`) |
+| ADC4 AN1 | In | Right audio in (`ADC_AUDIO_R`) |
+| RB8 (PWM1H) | Out | Left audio out (PWM DAC) |
+| RB9 (PWM2H) | Out | Right audio out (PWM DAC) |
+| RD9 (SCCP1/OCM1) | Out | Onboard RGB LED — red |
+| RD0 (SCCP2/OCM2) | Out | Onboard RGB LED — green |
+| RD2 (SCCP3/OCM3) | Out | Onboard RGB LED — blue |
+| RA15 | Out | T1S MAC-PHY reset (`T1S_RST`) |
+| RE5 | Out | T1S SPI chip-select (`T1S_CS`) |
+| RE2 | In | T1S IRQ (`T1S_IRQ_N`, active-low, change-notice) |
+| RG4 (SDO1) | Out | T1S SPI MOSI |
+| RG9 (SDI1) | In | T1S SPI MISO |
+| RE10 (SCK1) | Out | T1S SPI clock |
+| RH0 (U2TX) / RD10 (U2RX) | Bi | UART2 — CLI @ 115200 8N1 |
+| RH1 (U1TX) / RD1 (U1RX) | Bi | UART1 — debug/telemetry @ 115200 (configured; app port pending) |
+| RC8–RC15 | Out | Board LED0–LED7 (active-high) |
+| RF3 / RF0 / RB2 | In | Board SW1 / SW2 / SW3 (active-low) |
+
+*Not yet re-added from the `.bak` baseline:* the speed-trim potentiometer (ADC1) and the WS2812
+strip (moves to lightshow). See the journal's B0.6 plan.
 
 ## 3. Signal chain
 
+Layered `audio → beat_detect → beat_engine`, decoupled by a stereo sample callback. The 48 kHz ADC
+ISR does only the cheap per-sample work; the FFT runs in the main loop. Full detail — the DSP, the
+tuning constants, and the no-RTOS cooperation model — is in
+[`docs/beat-detection.md`](docs/beat-detection.md).
+
 ```
-Line-in (stereo, 3.3V, RB3/RB4)
-  → ADC2 @ 192 kHz, 256× oversample → effective 48 kHz  (adc_audio.c, ADC ISR)
-  → DC-blocking HPF (~20 Hz)
-  → PWM audio passthrough @ 192 kHz (pwm_audio.c) — also generates the 48 kHz ADC trigger
-  → BeatDetect_Process(mono)                              [ADC ISR, 48 kHz]
+Line-in (stereo) → ADC4 @ 48 kHz, 256× oversample, PG1-triggered      (audio.c)   [ISR]
+  → DC-block HPF (~20 Hz) → PWM-DAC passthrough (RB8/RB9, monitor only)
+  → Audio_SampleCallbackRegister → BeatDetect_Process(L+R → mono)
 
-  → 4× downsample → 512-pt Hanning FFT (radix-2 DIT, float) (beat_detect.c)  [main loop, ~23.4 Hz]
-  → spectral flux: bass bins 1–10 / mid+high bins 11–255
-  → kick detector: fast-attack/slow-release envelope on bins 2–4
-  → auto-ranged 0–1000 flux + audio envelope
+  → downsample ÷4 → 512-pt Hanning FFT (radix-2 DIT, float)          (beat_detect.c) [main loop, ~23.4 Hz]
+  → spectral flux: bass bins 1–10 / mid+high bins 11–255; kick detector on bins 2–4
+  → auto-ranged flux + envelope + bass-dominance
 
-  → beat decision + tempo tracking (main.c, ~23.4 Hz)
-     two detectors (bass, mid+high), 4-frame rolling threshold, phase oscillator,
-     median-filtered interval history, pot speed-trim
-  → nod_engine.c: band selection, adaptive oscillator, beat snaps, comeback bang, idle drift
+  → onset decision: two bands, 4-frame rolling-average threshold + cooldown (beat_engine.c)
+  → BeatFrame {bass/full/kick beats, flux, envelope, bass_dominant}
 
-  Outputs today (autonomous):     audio out (PWM DAC), servo angle, RGB pulse, WS2812 effects, UART telemetry
-  Outputs planned (pure publisher): audio out (PWM DAC, retained);  T1S position cmds → lemmy;  T1S beat frame → lightshow
+  Consumers today:   onboard RGB indicator (main.c), `beat` CLI (cli.c)
+  Consumers planned: T1S position cmds → lemmy;  T1S beat frame → lightshow   (needs tempo/phase)
 ```
 
-## 4. Source modules (`config.mcc/`)
+## 4. Source modules (`config.mcc/src/`)
 
-| File | Role | Fate under pure-publisher |
-|------|------|---------------------------|
-| `adc_audio.c/h` | 48 kHz stereo ADC ISR, DC-blocking HPF, calls `BeatDetect_Process` | keep |
-| `beat_detect.c/h` | 512-pt FFT, spectral flux, kick detector, auto-ranging | keep |
-| `main.c` | Orchestration: beat decision, tempo tracking, phase oscillator, pot, WS2812 effects, telemetry dispatch | keep (WS2812 effect code retires with the strip) |
-| `nod_engine.c/h` | Puppet choreography — becomes the **lemmy command source** (compute position, send over bus) instead of driving a local servo | keep, retarget output |
-| `pwm_audio.c/h` | PWM DAC @ 192 kHz **and the 48 kHz ADC trigger (PG3 postscale)** | keep — retained audio output (line-in → line-out pass-through today; a candidate path for voicing lemmy onto the output), and the ADC trigger depends on it |
-| `uart_debug.c/h` | UART1 telemetry (CSV `D`/`S` rows) + RX command parser | keep — likely the first publish transport before T1S |
-| `servo.c/h` | Local RC-servo PWM (SCCP4) | **drop** at strip-out (role → lemmy) |
-| `rgb_led.c/h` | Local RGB PWM (SCCP1/2/3) | **drop** at strip-out (role → lightshow); beat→color mapping is a reference for the lightshow beat frame |
-| `ws2812.c/h` | Local WS2812 strip driver (SPI3 + DMA0) | **drop** at strip-out (role → lightshow) |
+Current app modules on the fresh MCC config:
+
+| File | Role |
+|------|------|
+| `audio.c/h` | 48 kHz stereo ADC4 ISR, DC-block HPF, PWM-DAC passthrough, `Audio_SampleCallbackRegister` |
+| `beat_detect.c/h` | downsample + 512-pt FFT, spectral flux, kick detector, auto-ranging (features) |
+| `beat_engine.c/h` | onset decision over the features; publishes a `BeatFrame` |
+| `t1s_follower.c/h` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower (SPI1) + `tc6-conf.h` |
+| `rgb_led.c/h` | onboard RGB LED (three SCCP PWM channels) |
+| `cli.c/h` | UART2 command line (embedded-cli), `main.c` glues it all together |
 
 MCC-generated files under `config.mcc/mcc_generated_files/` — **do not edit** (project rule).
 
-## 5. Interfaces (planned)
+### Parked in `config.mcc.bak/`
 
-- **lemmy position commands** — beatbox computes neck/jaw targets in `nod_engine` and sends them to
-  lemmy over the bus. Payload/ethertype TBD; shared design with lemmy (which drops its own
-  beat-driven nod logic and becomes a position follower).
-- **lightshow beat frame** — ~5 parameters per frame (candidates: beat pulse, bass energy,
-  mid+high energy, tempo/phase, big-beat flag). Payload/ethertype TBD; shared design with lightshow.
-- **UART telemetry** — retained from the source: `D,` data rows (~23.4 Hz), `S,` spectrum rows
-  (~8 Hz); RX commands `F` (band), `V` (servo test), `O` (oscillator), `M`/`B`/`T`.
+The pre-migration tree (imported `dspicguitarhero` modules) is retained for re-integration or
+retirement: `nod_engine` (puppet choreography → the future **lemmy command source**), `servo`
+(local RC-servo, role → lemmy), `ws2812` (strip, role → lightshow), `uart_debug` (UART1 CSV
+telemetry + RX commands, app port pending — see B0.6), and the original `main.c` (tempo tracking +
+phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
+
+## 5. Interfaces
+
+### Present
+
+- **`BeatFrame` (internal contract)** — `beat_engine` publishes one per frame (~23.4 Hz): bass/full/
+  kick beat flags, kick strength, bass/mid+high flux, absolute envelope, bass-dominance. This is the
+  data the on-bus formats are derived from. Field table in
+  [`docs/beat-detection.md`](docs/beat-detection.md) §6.
+- **UART2 CLI @ 115200** — `info`, `beat` (latest frame), `audio` (raw/filtered levels + peaks),
+  `rgb`, `t1s` (+ `t1s id` / `t1s plca`), `reset`.
+- **T1S presence heartbeat** — ethertype `0x88B6`, `node_type = 6` (beat source), so marvin's node
+  table sees beatbox once a coordinator is on the wire. (marvin-side decode of `node_type = 6` is a
+  follow-up; until then it lists beatbox by src-MAC / id 5.)
+
+### Planned (B4)
+
+- **lemmy position commands** — beatbox computes neck/jaw targets (the ported `nod_engine`
+  choreography) and sends them to lemmy over the bus. Payload/ethertype TBD; shared design with
+  lemmy (which drops its own beat-driven nod and becomes a position follower).
+- **lightshow beat frame** — ~5 parameters per frame (candidates: beat pulse, bass energy, mid+high
+  energy, tempo/phase, big-beat flag) derived from the `BeatFrame`. Payload/ethertype TBD; shared
+  design with lightshow.
+
+Both bus formats depend on the **tempo/BPM + phase** layer, which is a downstream consumer of the
+beat events and not yet ported.
 
 ## 6. Milestones
 
+T1S was brought up ahead of the pure-publisher rework (B3 before B1/B2), so the transport
+foundation exists while the local actuation is simply left parked rather than formally stripped.
+The journal's [Plan](docs/journal.md) tracks the fine-grained sub-steps (B0.5 device retarget,
+B0.5.5 clock tree, B0.6 per-peripheral MCC re-integration).
+
 - [x] **B0 — Import.** Firmware brought into `firmware/beatbox/`, cruft dropped, docs written.
-      Autonomous baseline preserved (builds + runs standalone).
-- [ ] **B1 — Pure-publisher rework.** Strip the on-node actuation (`servo`, `rgb_led`, `ws2812`).
-      **Keep the PWM audio output** (`pwm_audio`) — it stays a retained output (pass-through, and a
-      candidate for voicing lemmy) and the 48 kHz ADC trigger depends on it. Define the beat/command
-      data model `nod_engine` and the lightshow frame will carry.
-- [ ] **B2 — Publish over UART fallback.** Emit position commands + beat frame over UART first, to
-      prove the data model against lemmy/lightshow before the T1S port.
-- [ ] **B3 — T1S on dsPIC33AK.** Port the T1S/PLCA follower + LAN8651 MAC-PHY glue (today shared by
-      the PIC32CM `guitar`/`lemmy`/`lightshow` nodes, XC32) to dsPIC33AK + XC-DSC. First non-PIC32CM
-      node and first bus *talker*. Join as PLCA follower **id 5**, presence heartbeat, `t1s` CLI.
-- [ ] **B4 — Live show.** Drive lemmy (position cmds) and lightshow (beat frame) from live audio
-      over T1S; marvin recognizes beatbox's heartbeat (node table row, as for the other nodes).
+- [x] **B0.5 — Retarget to MPS512** (EV80L65A DIM on EV74H48A) via a **fresh MCC config** (not a
+      device-swap): old tree → `config.mcc.bak/`, new Melody baseline generated; clock tree =
+      PLL1 200 MHz / 100 MHz Fcy.
+- [~] **B0.6 — Re-integrate keep-set peripherals onto the fresh config.** Done: PWM audio + 48 kHz
+      ADC trigger, ADC4 stereo audio, RGB LED, UART2 CLI. Pending: UART1 app port (`uart_debug`),
+      ADC1 pot read.
+- [x] **Beat detection ported.** Audio passthrough (`audio.c`) → FFT feature extraction
+      (`beat_detect.c`) → onset decision (`beat_engine.c`) → `BeatFrame`; `beat` CLI + onboard RGB
+      indicator. Tempo/BPM + phase deferred (downstream of the beat events).
+- [x] **B3 — T1S on dsPIC33AK.** OA-TC6 follower + LAN8651 glue ported to dsPIC33A / XC-DSC (first
+      non-PIC32CM node, first bus *talker*). PLCA follower **id 5**, presence heartbeat, `t1s` CLI.
+- [ ] **B1 — Pure-publisher rework.** Formalize dropping the parked on-node actuation
+      (`servo`/`nod_engine` → lemmy, `ws2812` → lightshow). Keep the PWM audio output and the RGB
+      indicator. Define the beat/command data model the bus will carry.
+- [ ] **B2 — Publish over UART fallback.** *(optional, now that T1S is up)* Emit position commands +
+      beat frame over UART1 first to prove the data model against lemmy/lightshow.
+- [ ] **B4 — Live show.** Drive lemmy (position cmds) and lightshow (beat frame) from live audio over
+      T1S; marvin recognizes beatbox's heartbeat. Requires the tempo/phase layer.
 
 ## 7. Provenance
 

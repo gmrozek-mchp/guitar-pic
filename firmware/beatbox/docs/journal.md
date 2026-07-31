@@ -163,6 +163,27 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
   The `.bak` drove RGB mostly off the phase oscillator (deferred) + a big-beat green flash; this
   reuses only the events we have now, as a visual check of beat detection. Note it continuously
   drives the LED, so the `rgb` CLI command is overwritten each frame while beats run.
+- **Committed the port** as `411b3e0` (beatbox files only; unrelated marvin/docs/hardware changes
+  left out of scope).
+- **Documentation.** Wrote `docs/beat-detection.md` — the durable "how the signal chain works"
+  reference: the layered pipeline, the **no-RTOS cooperation model** (ISR vs super-loop, the
+  `volatile` consume-once handshakes, why no locks are needed, the single-buffer main-loop-latency
+  constraint), the DSP (downsample/FFT/flux/envelope/kick with a bin→frequency table + tuning
+  constants), the beat decision, the `BeatFrame` interface, and the planned B4 bus mapping.
+  Rewrote `README.md` into a real project README (was stale — claimed audio/beat were parked in
+  `.bak`); added the CLI table + module map + signal-chain link.
+- **Found while documenting (verbatim-ported quirk):** `beat_engine`'s envelope noise gate is
+  currently **inert** — `NOISE_GATE_BYPASS_DELTA` (250) equals `BEAT_DELTA_THR` (250), so any delta
+  large enough to fire already bypasses the gate; the flux-delta threshold alone gates. Documented
+  as-is (not silently changed). To make the envelope gate active, lower the bypass delta or raise
+  the fire threshold. **Follow-up:** decide whether the gate should do anything, now that the input
+  noise floor is characterized.
+- **Refreshed `SPEC.md`** to current reality: status header (beat detect + T1S up), MAC-PHY row,
+  the pin map (rewritten to the actual MPS512/MCC pins from `pins.{h,c}` — audio ADC4 AN0/AN1, PWM
+  RB8/RB9, RGB RD9/RD0/RD2, T1S RA15/RE5/RE2 + SPI1 RG4/RG9/RE10, UART2 RH0/RD10 @115200), the
+  signal chain (current modules, delegating depth to `beat-detection.md`), the module table (current
+  set + a parked-`.bak` note), interfaces (present `BeatFrame`/CLI/heartbeat vs planned bus), and
+  the milestones (B3 done ahead of B1/B2; B0.5/B0.6 sub-steps; beat-detect port).
 - **Scope:** events + features only. Tempo/BPM and phase are deferred as downstream consumers of
   these events (confirmed cleanly additive), then B4 T1S publish.
 - **Build watch-item:** confirm XC-DSC cmake links libm for `beat_detect.c` (`sqrtf`/`cosf`/`sinf`);
