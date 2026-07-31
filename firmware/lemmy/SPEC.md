@@ -76,12 +76,16 @@ to `guitar`'s:
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lemmy
   present. A new `node_type = 4` (*animation*) is proposed for the heartbeat payload — marvin's §7.2
   decode + `nodes` display learn it (marvin-side follow-up).
-- **Command planes:** two coexist, routed by ethertype. (1) **beat frame** — [`beatbox`](../beatbox/SPEC.md)
+- **Command planes:** three coexist, routed by ethertype. (1) **beat frame** — [`beatbox`](../beatbox/SPEC.md)
   (id 5) **broadcasts** an 8-byte `LightshowFrame` under **ethertype `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`)
   at ~23.4 Hz; lemmy consumes it locally and runs the nod engine to drive the neck (see §4). (2) **direct
   servo command** — a `0x88B5` unicast frame carrying `[neck_i8, jaw_i8]` still drives both servos
   latest-wins (marvin's `lemmy <neck> <jaw>`), the manual/override seam when the nod is disabled or
-  beatbox is quiet.
+  beatbox is quiet. (3) **control channel** — a `0x88B9` unicast frame carrying a typed `[opcode, arg]`
+  tunes the nod remotely: `0x01` enable/disable, `0x02` trim, `0x03` oscillator (marvin's
+  `lemmy nod|trim|osc`), mapping onto the same `BeatNod`/`NodEngine` setters as lemmy's local `nod` CLI.
+  `nod off` here is what frees the neck for the `0x88B5` manual path. Opcode space is left open for
+  future scripted gestures / jaw talking (L4).
 
 The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator); the follower reference is [`guitar`](../guitar/config.mcc/src/t1s_follower.c).
@@ -128,4 +132,5 @@ Static allocation only (no malloc), per project rule.
 | ✅ | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat (`node_type=4`), `t1s` CLI — verified on the bus |
 | ✅ | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI, verified driving real servos. Puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next (L3) |
 | 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI (status / `on\|off` / `trim` / `osc`). Wired; pending on-hardware verification against a live beatbox |
-| 🔭 | **L4** (future) — jaw "talking" animation; `0x88B9` scripted-gesture / override channel |
+| ✅ | **L3.5** — `0x88B9` control channel: remote nod enable/disable + trim + osc (`[opcode, arg]`), driven by marvin's `lemmy nod\|trim\|osc`. `nod off` frees the neck for the `0x88B5` manual path. Wired; pending on-hardware verification |
+| 🔭 | **L4** (future) — jaw "talking" animation; scripted gestures on the `0x88B9` channel (new opcodes) |

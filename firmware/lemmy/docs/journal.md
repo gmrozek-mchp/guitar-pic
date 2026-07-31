@@ -23,9 +23,15 @@ hardware. L3 beat-driven nod is now **wired**: lemmy consumes beatbox's `0x88B8`
 runs a ported nod engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck — pending
 on-hardware verification against a live beatbox.
 
+The `0x88B9` control channel is now defined and wired: marvin can enable/disable the nod, set its trim,
+and toggle the oscillator over T1S (`lemmy nod on|off` / `trim <n>` / `osc <0|1>`) — the same tunables as
+lemmy's local `nod` CLI. `nod off` is also the enabler for remote manual neck control: it frees the neck
+so a `0x88B5` `lemmy <neck> <jaw>` command sticks instead of being overwritten each beat frame.
+
 **Next:** verify the nod on hardware with beatbox live on the bus (frame counter advances, locked BPM
-tracks the music, neck head-bangs / snaps on strong beats / comeback-slams / parks on silence). Then
-jaw "talking" (L4) and the `0x88B9` scripted-gesture / override channel.
+tracks the music, neck head-bangs / snaps on strong beats / comeback-slams / parks on silence), and
+exercise the `0x88B9` control channel from marvin (nod off frees the neck for `lemmy <neck> <jaw>`; trim/
+osc shift the motion). Then jaw "talking" (L4) and scripted gestures on the same `0x88B9` channel.
 
 ---
 
@@ -33,6 +39,7 @@ jaw "talking" (L4) and the `0x88B9` scripted-gesture / override channel.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-31 | **`0x88B9` becomes lemmy's typed control channel** — unicast to `02:..:06`, payload `[opcode, arg]`: `0x01` nod enable (arg 0\|1), `0x02` nod trim (arg int8), `0x03` osc (arg 0\|1). marvin stages these per-opcode (indexed by `opcode-1`, one frame flushed per service pass, so distinct commands can't drop each other) and drives them from `lemmy nod\|trim\|osc`. lemmy decodes in the RX path → `BeatNod_SetEnabled` / `NodEngine_SetPotOffset` / `NodEngine_SetOscEnabled` (the setters already exposed for the local `nod` CLI). Manual neck control stays on `0x88B5`; `nod off` frees the neck so it sticks. | A typed opcode command is a **different grammar** than `0x88B5`'s fixed `[neck, jaw]` servo positions, which is exactly when a new ethertype earns its keep (per the 2026-07-29 ethertype rule) — and `0x88B9` was already reserved for lemmy's control/override seam ([`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) §7.1). One opcode per frame keeps lemmy's decode a trivial switch and never clobbers an untouched field (vs. a full-config snapshot, which would force marvin to mirror all of lemmy's defaults). Reuses the existing nod-engine setters and marvin's per-node staging pattern; leaves opcode space for future scripted gestures / jaw talking on the same channel. |
 | 2026-07-31 | **Make lemmy smart via a local nod engine off the shared `0x88B8` broadcast**, not a dumb-puppet per-frame command stream. lemmy consumes beatbox's (id 5) 8-byte `LightshowFrame` broadcast (ethertype `0x88B8`, dst `FF:…`, ~23.4 Hz) and runs the ported `nod_engine` to head-bang the neck; jaw stays neutral. The `0x88B5` unicast servo path stays as a manual/override seam. | Reuses the proven integer nod engine from the source project verbatim (its only hardware coupling was three `Servo_SetAngle` calls; the angle is already stored and read via `NodEngine_GetTargetAngle`), needs **zero beatbox-side changes** (the engine tracks tempo/phase itself, so no BPM/phase wire layer), and is symmetric with lightshow's `0x88B8` consumer. beatbox's ~23.4 Hz broadcast equals the engine's design frame rate, so every frame-counted constant (osc period, silence window) holds by ticking once per RX frame. A `0x88B9` position/override channel remains the future seam for scripted gestures + jaw talking. |
 | 2026-07-29 | **Servo position is `int8_t` -127..127** (0 = neutral), matching the planned T1S command byte 1:1 — one signed byte per servo, applied on RX with no scaling. Calibration (min/neutral/max µs + invert per servo) is a **compiled-in default copied to a RAM working copy**; tuned live via the `cal` CLI which prints paste-ready initializers to fold back into the default and reflash. **Not persisted on-device** — the PL10 has no EEPROM/RWW (datasheet §5/§26); flash-emulated EEPROM (NVMCTRL self-program, page erase / word write) would stall the single flash array during writes, not worth it for set-once cal. | ±127 gives ~4 µs/step (~6 TCC ticks) — far under servo deadband, so no resolution lost vs a wider internal range, and it avoids scaling the wire byte. Hardcoded cal keeps bring-up simple; live `cal` tuning + reflash is the workflow until (if ever) persistence is needed. |
 | 2026-07-28 | **lemmy created as the *animation* node class; T1S bring-up before motion.** PIC32CM6408PL10048, PLCA follower **id 6** / MAC `02:00:00:00:00:06` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Two R/C hobby servos: neck joint (nod) + bottom jaw. Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 servo motion → L3 beat-driven nod from beatbox (id 5). | Greg's call: prove the node on the bus first, reusing the `guitar` follower glue + `oa-tc6-lib` (same MCU family — keeps the "OA SPI driver scales across the family" demo and minimizes bring-up), then layer motion. The puppet's animation source is a beat feed, not the guitar button bitmask, so it's a distinct node class. |
@@ -52,6 +59,29 @@ jaw "talking" (L4) and the `0x88B9` scripted-gesture / override channel.
 ---
 
 ## Session log
+
+### 2026-07-31 — `0x88B9` remote nod control + tuning
+
+- **New control channel** (ethertype `0x88B9`, unicast to lemmy). Typed 2-byte payload
+  `[opcode, arg]` applied on RX. Opcodes: `0x01` nod enable (arg 0|1), `0x02` nod trim (arg int8),
+  `0x03` osc (arg 0|1). Gives marvin the same three tunables as lemmy's local `nod` CLI.
+- **lemmy** ([`t1s_follower.c`](../config.mcc/src/t1s_follower.c)): added the `0x88B9` branch to
+  `TC6_CB_OnRxEthernetPacket` (guarded `len >= HDR + 2`, fixed offsets, switch → `BeatNod_SetEnabled`
+  / `NodEngine_SetPotOffset` / `NodEngine_SetOscEnabled`; `#include "nod_engine.h"`). Diagnostics:
+  last opcode/arg + a control-frame counter via `T1SFollower_LastCtrl(...)`, surfaced as a `ctrl:`
+  line in the `nod` CLI status. No change to `beat_nod`/`nod_engine` — the setters already existed.
+- **marvin** ([`t1s_link.c`](../../marvin/default/src/net/t1s/t1s_link.c)/`.h`): `T1SLink_SendLemmyCtrl(opcode, arg)`;
+  per-opcode staging (`s_lemmy_ctrl_arg[3]`/`_dirty[3]`, indexed `opcode-1`) flushed one frame per
+  service pass alongside the guitar/lemmy `0x88B5` flush (shares the single in-flight TX). Console
+  ([`console.c`](../../marvin/default/src/console/console.c)): `cmd_lemmy` gains `nod <on|off>`,
+  `trim <n>`, `osc <0|1>` (keeps `<neck> <jaw>` and `center`); reuses `parse_pos_i8` for trim.
+- **Manual servo control over T1S already existed** (`0x88B5` `lemmy <neck> <jaw>`); the real gap was
+  that the nod overwrites the neck every frame. `lemmy nod off` now frees the neck remotely so a manual
+  command sticks — closing all three of Greg's asks (enable/disable, tuning, manual servos).
+- **Nod now defaults OFF** (`s_enabled` in [`beat_nod.c`](../config.mcc/src/beat_nod.c) unset at boot;
+  supersedes the "default on" in the earlier L3 entry). The neck stays free for manual `0x88B5`/`pos`
+  control until explicitly enabled via `lemmy nod on` (or lemmy's local `nod on`).
+- **Not yet built/flashed** — pending on-hardware verification against a live beatbox + marvin.
 
 ### 2026-07-31 — L3 beat-driven nod wired (make lemmy smart)
 

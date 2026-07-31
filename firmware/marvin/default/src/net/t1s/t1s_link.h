@@ -58,6 +58,16 @@ bool T1SLink_SendToGuitar(uint8_t mask);
  * T1SLink_SendToGuitar; returns false if the link is not up. */
 bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw);
 
+/* Lemmy control channel (ethertype 0x88B9): typed [opcode, arg] commands that
+ * tune the beat nod remotely. Staged per-opcode and flushed by the T1S service
+ * task; same threading contract as T1SLink_SendToLemmy. Returns false if the
+ * link is not up or the opcode is unknown. */
+#define T1S_ANIM_CTRL_NOD_EN     (1u)  /* arg 0|1  : enable/disable the nod        */
+#define T1S_ANIM_CTRL_NOD_TRIM   (2u)  /* arg int8 : nod trim / pot offset         */
+#define T1S_ANIM_CTRL_NOD_OSC    (3u)  /* arg 0|1  : oscillator (beat-only vs osc) */
+#define T1S_ANIM_CTRL_OP_COUNT   (3u)
+bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg);
+
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.
  * Called from the T1S service task. `detector_id` is the node's bus id. */
 typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,

@@ -11,6 +11,7 @@
 #include "tc6-regs.h"
 #include "servo.h"
 #include "beat_nod.h"
+#include "nod_engine.h"
 
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
 #define T1S_NODE_ID         (6u)
@@ -20,6 +21,7 @@
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
 #define T1S_ETHERTYPE_BEAT  (0x88B8u)  /* beatbox beat frame (broadcast) */
+#define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* lemmy control channel (unicast) */
 #define T1S_ETH_HDR_LEN     (14u)
 
 /* Command payload on 0x88B5: two signed position bytes, one per servo, applied
@@ -27,6 +29,15 @@
 #define T1S_CMD_NECK        (0u)     /* payload[0] = neck position (int8_t) */
 #define T1S_CMD_JAW         (1u)     /* payload[1] = jaw  position (int8_t) */
 #define T1S_CMD_LEN         (2u)
+
+/* Control payload on 0x88B9: a typed 2-byte command [opcode, arg], applied on
+ * RX. Tunes the beat nod remotely (marvin's `lemmy nod|trim|osc` console). */
+#define T1S_CTRL_OP         (0u)     /* payload[0] = opcode */
+#define T1S_CTRL_ARG        (1u)     /* payload[1] = argument */
+#define T1S_CTRL_LEN        (2u)
+#define T1S_CTRL_NOD_EN     (0x01u)  /* arg 0|1        -> BeatNod_SetEnabled     */
+#define T1S_CTRL_NOD_TRIM   (0x02u)  /* arg int8       -> NodEngine_SetPotOffset */
+#define T1S_CTRL_NOD_OSC    (0x03u)  /* arg 0|1        -> NodEngine_SetOscEnabled */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
@@ -49,6 +60,9 @@ static volatile bool     s_spi_busy;
 /* Diagnostics (read by the CLI). */
 static volatile int8_t   s_last_neck;   /* last commanded neck position */
 static volatile int8_t   s_last_jaw;    /* last commanded jaw position  */
+static volatile uint8_t  s_last_ctrl_op;   /* last 0x88B9 control opcode  */
+static volatile uint8_t  s_last_ctrl_arg;  /* last 0x88B9 control argument */
+static volatile uint32_t s_ctrl_count;  /* count of accepted control frames */
 static volatile uint32_t s_rx_count;
 static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
 static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
@@ -238,6 +252,13 @@ void T1SFollower_LastCmd(int8_t *neck, int8_t *jaw)
     if (jaw  != NULL) { *jaw  = s_last_jaw; }
 }
 
+void T1SFollower_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
+{
+    if (op    != NULL) { *op    = s_last_ctrl_op; }
+    if (arg   != NULL) { *arg   = s_last_ctrl_arg; }
+    if (count != NULL) { *count = s_ctrl_count; }
+}
+
 uint32_t T1SFollower_RxCount(void)
 {
     return s_rx_count;
@@ -382,6 +403,26 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         /* beatbox's broadcast beat frame drives the local nod engine. */
         BeatNod_OnFrame(&s_rx_buf[T1S_ETH_HDR_LEN], (uint16_t)(len - T1S_ETH_HDR_LEN));
         s_rx_count++;
+        return;
+    }
+    if (ethertype == T1S_ETHERTYPE_CTRL) {
+        /* Typed control command [opcode, arg]. Guard with `<` (min-frame pad, as
+         * above), read fixed offsets, dispatch. Setters are cheap stores/flag
+         * updates, safe from this service-context callback. */
+        if (len < (T1S_ETH_HDR_LEN + T1S_CTRL_LEN)) {
+            return;
+        }
+        uint8_t op  = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_OP];
+        uint8_t arg = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_ARG];
+        switch (op) {
+            case T1S_CTRL_NOD_EN:   BeatNod_SetEnabled(arg != 0u);              break;
+            case T1S_CTRL_NOD_TRIM: NodEngine_SetPotOffset((int8_t)arg);        break;
+            case T1S_CTRL_NOD_OSC:  NodEngine_SetOscEnabled((arg != 0u) ? 1u : 0u); break;
+            default: return;   /* unknown opcode: ignore, don't count */
+        }
+        s_last_ctrl_op  = op;
+        s_last_ctrl_arg = arg;
+        s_ctrl_count++;
         return;
     }
     if (ethertype != T1S_ETHERTYPE) {

@@ -288,6 +288,11 @@ static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
                (unsigned)(NodEngine_GetTargetAngle() / 10u),
                (unsigned)(NodEngine_GetTargetAngle() % 10u),
                (int)BeatNod_NeckPosition(), (int)NodEngine_GetPotOffset());
+    uint8_t cop = 0u, carg = 0u;
+    uint32_t ccount = 0u;
+    T1SFollower_LastCtrl(&cop, &carg, &ccount);
+    cli_printf("ctrl:    rx=%lu last op=0x%02X arg=%d",
+               (unsigned long)ccount, (unsigned)cop, (int)(int8_t)carg);
 }
 
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)

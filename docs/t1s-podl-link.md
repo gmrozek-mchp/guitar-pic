@@ -227,13 +227,19 @@ command TX targets. marvin selects the active node of each class.
   mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
   as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
   demultiplexes controller traffic apart from the detector/guitar bitmask.
-- A **beat-frame ethertype** `0x88B8` (planned) carries beatbox's (id 5) compact beat
+- A **beat-frame ethertype** `0x88B8` carries beatbox's (id 5) compact beat
   frame to the lighting/animation nodes. Unlike the point-to-point traffic above this is a
   **one-to-many broadcast** (see the addressing note below): beatbox sends one frame to
-  `FF:FF:FF:FF:FF:FF`, and every interested node (lightshow now, lemmy/marvin later) accepts
-  it and dispatches on the ethertype. beatbox's puppet **position commands** to lemmy are the
-  opposite — one consumer — so those stay **unicast** to `02:..:06` under their own ethertype
-  (`0x88B9`, planned). Both formats are shared design with the consuming node (B4).
+  `FF:FF:FF:FF:FF:FF`, and every interested node (lightshow, lemmy) accepts
+  it and dispatches on the ethertype.
+- A **lemmy control ethertype** `0x88B9` carries typed commands **unicast** to lemmy
+  (`02:..:06`) that tune its local beat nod. Payload is `[opcode, arg]`: `0x01` nod enable
+  (arg 0|1), `0x02` nod trim (arg int8), `0x03` oscillator (arg 0|1) — the same tunables as
+  lemmy's local `nod` CLI, driven from marvin's `lemmy nod|trim|osc`. marvin stages these
+  per-opcode and flushes one frame per service pass; lemmy applies each on RX. Distinct from
+  `0x88B5`'s fixed `[neck, jaw]` servo-position grammar, so it earns its own ethertype. Opcode
+  space is reserved for future scripted-gesture / jaw commands on the same channel. (Manual
+  servo positioning stays on `0x88B5`; `nod off` frees the neck so that path takes effect.)
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /

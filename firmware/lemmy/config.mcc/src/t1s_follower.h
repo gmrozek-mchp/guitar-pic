@@ -29,6 +29,7 @@ bool T1SFollower_IsConnected(void);
 /* Status accessors (for the CLI / diagnostics). */
 uint8_t  T1SFollower_ChipRev(void);   /* 0 if the link never came up */
 void     T1SFollower_LastCmd(int8_t *neck, int8_t *jaw);  /* last commanded positions; NULL args skipped */
+void     T1SFollower_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count); /* last 0x88B9 control cmd + count; NULL args skipped */
 uint32_t T1SFollower_RxCount(void);   /* count of accepted command frames */
 uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
 

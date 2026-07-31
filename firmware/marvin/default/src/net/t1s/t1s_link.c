@@ -53,6 +53,7 @@
 #define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
 #define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
 #define T1S_ETHERTYPE_CTRL   (0x88B7u)   /* controller (fauxmote mf_proto) frames */
+#define T1S_ETHERTYPE_ANIM_CTRL (0x88B9u) /* lemmy (animation) control channel */
 #define T1S_ETH_HDR_LEN      (14u)
 #define T1S_MAC_LEN          (6u)
 #define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
@@ -169,6 +170,12 @@ static volatile bool    s_cmd_dirty;
  * int8 bit patterns, flushed by the service task alongside the guitar command. */
 static volatile uint8_t s_lemmy_cmd[2];
 static volatile bool    s_lemmy_dirty;
+
+/* Lemmy control channel (0x88B9): typed [opcode, arg] commands that tune the
+ * beat nod. Staged per-opcode (indexed by opcode-1) rather than latest-wins so
+ * distinct commands can't drop each other; one frame flushed per service pass. */
+static volatile uint8_t s_lemmy_ctrl_arg[T1S_ANIM_CTRL_OP_COUNT];
+static volatile bool    s_lemmy_ctrl_dirty[T1S_ANIM_CTRL_OP_COUNT];
 
 static T1SLink_FrameHandler s_frame_handler;
 
@@ -409,6 +416,22 @@ static void t1s_task(void *param)
             }
         }
 
+        /* Flush one staged lemmy control command (0x88B9). One opcode per pass;
+         * the rest drain on the next service wake. Shares the single in-flight TX. */
+        if (!s_tx_busy) {
+            for (uint8_t i = 0u; i < T1S_ANIM_CTRL_OP_COUNT; i++) {
+                if (!s_lemmy_ctrl_dirty[i]) { continue; }
+                const t1s_node_t *lemmy = node_for_type(T1S_NODE_ANIMATION);
+                if (lemmy == NULL) { break; }
+                s_lemmy_ctrl_dirty[i] = false;
+                uint8_t frame[2] = { (uint8_t)(i + 1u), s_lemmy_ctrl_arg[i] };
+                if (send_to_node(lemmy->node_id, T1S_ETHERTYPE_ANIM_CTRL, frame, 2u)) {
+                    s_tx_count++;
+                }
+                break;   /* one frame per pass (send_to_node set s_tx_busy) */
+            }
+        }
+
 #if T1S_CTRL_ENABLED
         /* Flush one staged controller (fauxmote) message onto the bus. Shares
          * the single in-flight TX with the guitar command above; across service
@@ -526,6 +549,20 @@ bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw)
     s_lemmy_cmd[0] = (uint8_t)neck;
     s_lemmy_cmd[1] = (uint8_t)jaw;
     s_lemmy_dirty  = true;
+    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    return true;
+}
+
+bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg)
+{
+    if (!s_link_up) {
+        return false;
+    }
+    if ((opcode < 1u) || (opcode > T1S_ANIM_CTRL_OP_COUNT)) {
+        return false;
+    }
+    s_lemmy_ctrl_arg[opcode - 1u]   = arg;
+    s_lemmy_ctrl_dirty[opcode - 1u] = true;
     (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
     return true;
 }

@@ -21,7 +21,7 @@ static uint8_t          s_seq, s_energy, s_bass, s_treble, s_kick, s_flags;
 static uint32_t         s_frame_count;
 static uint32_t         s_last_frame_ms;
 static bool             s_parked;       /* neck currently held at neutral */
-static bool             s_enabled = true;
+static bool             s_enabled;      /* default off; enabled via CLI / 0x88B9 */
 static int8_t           s_neck_pos;     /* last neck position applied */
 
 static int8_t angle_to_pos(uint16_t angle)
