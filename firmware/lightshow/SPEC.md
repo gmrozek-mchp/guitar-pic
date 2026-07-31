@@ -6,8 +6,10 @@
 > **Status: bring-up.** Project bootstrapped from the [`lemmy`](../lemmy/SPEC.md) node's
 > T1S follower (PIC32CM6408PL10048), mirroring the [`guitar`](../guitar/SPEC.md) node.
 > The LED output stage (2× WS2812-class strands via TC0 NPWM + DMA) is implemented and
-> driving on hardware via the `led` CLI; the beat-driven command plane (L3) comes next.
-> See §6 and [`docs/journal.md`](docs/journal.md).
+> driving on hardware via the `led` CLI. The beat-driven light show (L3) is now wired:
+> lightshow consumes [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and
+> renders three effects to the strands (`beat_show.{c,h}`), pending on-hardware verification
+> against a live beatbox. See §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -72,9 +74,10 @@ to `guitar`'s:
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lightshow
   present. A new `node_type = 5` (*lightshow*) is used for the heartbeat payload — marvin's §7.2
   decode + `nodes` display learn it (marvin-side follow-up).
-- **Command plane (post-bring-up):** the music/beat signal source is **open** — a future **beatbox**
-  node (id 5) and/or marvin's timing pipeline; the ethertype and payload are TBD (see journal).
-  Bring-up (L1) needs no RX command semantics — link + presence + CLI only.
+- **Command plane:** [`beatbox`](../beatbox/SPEC.md) (id 5) **broadcasts** an 8-byte `LightshowFrame`
+  under **ethertype `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at ~23.4 Hz — fields `seq`, `energy`, `bass`,
+  `treble`, `kick`, `flags`, and reserved `tempo`/`phase`, all 0-255. lightshow's RX accepts `0x88B8`
+  and renders the show locally (`beat_show.{c,h}`); bring-up (L1) needs no RX command semantics.
 
 The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator); the follower reference is [`guitar`](../guitar/config.mcc/src/t1s_follower.c).
@@ -91,8 +94,14 @@ Mirrors `guitar`'s `t1s_follower.{c,h}` + `cli.{c,h}` (reused, retargeted), then
    chipRev / PLCA / counters), plus `led` (`off` / `fill <r> <g> <b>` / `set <strand> <idx> <r> <g> <b>`
    / `test`) to stage the framebuffer and drive the strands before the command plane exists.
 5. **LED layer** (`neopixel.{c,h}`, implemented): R/G/B framebuffer → interleaved per-bit duty buffer
-   streamed to `TC0.CCBUF` over DMA (see §2). An effect/pattern engine and beat-driven effects that map
-   the music/beat signal → light patterns come later (L3).
+   streamed to `TC0.CCBUF` over DMA (see §2).
+6. **Beat show** (`beat_show.{c,h}`, implemented): the `0x88B8` consumer. Decodes the `LightshowFrame`
+   and renders one of three effects — *beat flash* (whole-strip pulse + hue drift), *dual comet*
+   (phase-driven warm/cool comets, one per strand), *split energy* (bass fills strand 0 warm, treble
+   fills strand 1 cool) — ported from the source project's WS2812 show and adapted to 2×33 strands +
+   0-255 fields. Auto-cycles ~20 s; the `show` CLI reports/locks the effect. The RX callback only
+   stashes the frame; `BeatShow_Tasks` renders from the main loop. Comet phase uses a local
+   restart-on-beat oscillator until beatbox sends a non-zero wire `phase`.
 
 Static allocation only (no malloc), per project rule.
 
@@ -104,7 +113,8 @@ Static allocation only (no malloc), per project rule.
 - **Not a Wii actuator.** It does not touch a Wii guitar / Wiimote — it drives lights. (`guitar` is
   the Wii/LED actuator node.)
 - **Not a puppet.** It drives no servos — that is the [`lemmy`](../lemmy/SPEC.md) animation node.
-- **Not (yet) beat-driven.** The command source is future; L1 is link + presence + CLI only.
+- **Not the beat detector.** lightshow does no audio/FFT — [`beatbox`](../beatbox/SPEC.md) detects
+  and normalizes; lightshow only renders the received frame.
 
 ## 6. Milestones
 
@@ -113,4 +123,4 @@ Static allocation only (no malloc), per project rule.
 | ✅ | **L0** — project bootstrapped from `lemmy`'s T1S follower (PIC32CM6408PL10048): clock/EVSYS/NVIC/PORT, SERCOM0 SPI (Mode 0), EIC EXTINT2 on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01), follower glue + CLI — retargeted to id 7 / `node_type = 5` |
 | 🚧 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=7/8`, presence heartbeat, `t1s` CLI |
 | ✅ | **L2** — LED output: `neopixel.{c,h}` driver (TC0 NPWM + DMA, 2× WS2812-class strands, RGB wire order) + `led` CLI drive the strands manually; remaining hardware validation (rail sizing, VDDIO2, scope timing) tracked in §2 / journal |
-| 🔭 | **L3** — beat-driven light show: consume the music/beat signal over T1S → light patterns in time with the music |
+| 🚧 | **L3** — beat-driven light show: consumes beatbox's `0x88B8` beat frame (`beat_show.{c,h}`) and renders three effects to the strands; `show` CLI. Pending on-hardware verification against a live beatbox |

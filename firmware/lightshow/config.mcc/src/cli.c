@@ -11,6 +11,7 @@
 #include "embedded_cli.h"
 #include "t1s_follower.h"
 #include "neopixel.h"
+#include "beat_show.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
  * the small config below; the requirement is checked at init. */
@@ -203,6 +204,56 @@ static void cmd_led(EmbeddedCli *cli, char *args, void *ctx)
     }
 }
 
+static const char *effect_name(uint8_t idx)
+{
+    switch (idx) {
+        case 0u:  return "beat flash";
+        case 1u:  return "dual comet";
+        default:  return "split energy";
+    }
+}
+
+static void cmd_show(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+
+    const char *sub = embeddedCliGetToken(args, 1u);
+    if (sub != NULL)
+    {
+        if (strcmp(sub, "auto") == 0)
+        {
+            BeatShow_SetAuto();
+        }
+        else
+        {
+            uint8_t idx;
+            if (!parse_u8(sub, &idx) || (idx >= BEAT_SHOW_EFFECTS))
+            {
+                cli_printf("usage: show [0..%u | auto]", (unsigned)(BEAT_SHOW_EFFECTS - 1u));
+                return;
+            }
+            BeatShow_SetEffect(idx);
+        }
+    }
+
+    uint8_t seq, energy, bass, treble, kick, flags;
+    BeatShow_GetLast(&seq, &energy, &bass, &treble, &kick, &flags);
+    cli_printf("effect:  %u (%s)%s", (unsigned)BeatShow_Effect(),
+               effect_name(BeatShow_Effect()), BeatShow_IsAuto() ? " auto" : " locked");
+    cli_printf("frames:  %lu", (unsigned long)BeatShow_FrameCount());
+    cli_printf("last:    seq=%u energy=%u bass=%u treble=%u kick=%u",
+               (unsigned)seq, (unsigned)energy, (unsigned)bass,
+               (unsigned)treble, (unsigned)kick);
+    cli_printf("flags:   %s%s%s%s%s(0x%02X)",
+               (flags & BEAT_FLAG_BASS)     ? "bass " : "",
+               (flags & BEAT_FLAG_MID)      ? "mid "  : "",
+               (flags & BEAT_FLAG_KICK)     ? "kick " : "",
+               (flags & BEAT_FLAG_BIG)      ? "BIG "  : "",
+               (flags & BEAT_FLAG_BASS_DOM) ? "dom "  : "",
+               (unsigned)flags);
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -224,6 +275,7 @@ static void register_commands(void)
         { "id",    "Raw-read + log the MAC-PHY ID registers",        false, NULL, cmd_id },
         { "plca",  "Read + log the PLCA status register",            false, NULL, cmd_plca },
         { "led",   "Drive the WS2812 strands (off/fill/set/test)",   true,  NULL, cmd_led },
+        { "show",  "Beat show: status; 'show <0-2>'/'show auto'",    true,  NULL, cmd_show },
         { "reset", "Reset the MCU (system reset)",                   false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)

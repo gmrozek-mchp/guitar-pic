@@ -29,6 +29,7 @@
 #include "t1s_follower.h"               // 10BASE-T1S PLCA follower (LAN8651)
 #include "status_led.h"                 // LED0 liveness heartbeat
 #include "neopixel.h"                   // WS2812 strands on TC0/WO0,WO1 via DMAC
+#include "beat_show.h"                  // beatbox beat-frame -> WS2812 light show
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
 // *****************************************************************************
@@ -49,6 +50,7 @@ int main ( void )
     T1SFollower_Initialize ( );
     StatusLed_Initialize ( );
     NeoPixel_Initialize ( );
+    BeatShow_Initialize ( );
     CLI_Initialize ( );
 
     while ( true )
@@ -58,6 +60,9 @@ int main ( void )
 
         /* Service the T1S link: sync the MAC-PHY and emit the presence heartbeat. */
         T1SFollower_Tasks ( );
+
+        /* Render the beat-driven light show from beatbox's frames. */
+        BeatShow_Tasks ( );
 
         /* Operator CLI on the debug UART (t1s status / diagnostics). */
         CLI_Tasks ( );

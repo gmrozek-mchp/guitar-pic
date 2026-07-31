@@ -36,8 +36,20 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
         VDDIO2 is actually powered/in-range or SUPC tri-states PA10/PA11 (MVIO power sequencing).
   - [ ] Bring-up check: verify a single HWORD write to `CCBUF[0]` sets **both** buffer-valid flags
         so both strands update from one beat (the crux of the single-channel trick).
-- [ ] **L3 — beat-driven light show.** Consume the music/beat signal over T1S → light patterns in
+- [~] **L3 — beat-driven light show.** Consume the music/beat signal over T1S → light patterns in
       time with the music.
+  - [x] Command plane resolved: **beatbox** (id 5) broadcasts an 8-byte `LightshowFrame` under
+        **ethertype `0x88B8`** at ~23.4 Hz (dst `FF:FF:FF:FF:FF:FF`). `t1s_follower` RX accepts it
+        and hands the payload to a new `beat_show.{c,h}` consumer.
+  - [x] `beat_show.{c,h}`: decodes the frame (energy/bass/treble/kick/flags), renders one of three
+        effects — **beat flash** (whole-strip pulse + hue drift), **dual comet** (phase-driven warm/
+        cool comets, one per strand), **split energy** (bass fills strand 0 warm, treble fills strand
+        1 cool) — ported from `firmware/beatbox/config.mcc.bak/main.c` and adapted to 2×33 strands +
+        the 0-255 frame fields. Auto-cycles every ~20 s; `show` CLI reports/locks the effect.
+  - [x] Comet phase runs off a local oscillator (restart-on-bass-beat) until beatbox sends a non-zero
+        wire `phase` — the frame's `tempo`/`phase` bytes are reserved until beatbox's tempo layer lands.
+  - [ ] Verify on hardware with beatbox live on the bus: `show` frame counter advances, effects react
+        to the music, strip idle-clears when the audio stops.
 
 ## Open questions
 
@@ -46,14 +58,14 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
   `TC0/WO0` + `WO1` → `PA10`/`PA11`, chosen) and the 5 V power rail sizing. The 3.3→5 V data level
   shift is resolved: `PA10`/`PA11` are MVIO/VDDIO2 pins, so tying VDDIO2 to 5 V drives the strands
   at 5 V logic with no external shifter. Resolve rail sizing against the actual board at L2.
-- **Command/beat-signal plane.** What drives the light patterns — a future **beatbox** node (id 5),
-  marvin's timing pipeline, or both? Over which ethertype and payload? Shared open question with
-  `lemmy`; deferred until L3.
+- *(resolved 2026-07-31)* **Command/beat-signal plane** — beatbox (id 5) broadcasts an 8-byte
+  `LightshowFrame` under ethertype `0x88B8`; lightshow consumes it. See the decision log.
 
 ## Decision log
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-31 | **Beat-signal plane = beatbox's `0x88B8` broadcast; consumer is `beat_show.{c,h}`.** lightshow's RX path accepts ethertype `0x88B8` and hands the 8-byte `LightshowFrame` to a `beat_show` module that renders three ported WS2812 effects (beat flash / dual comet / split energy) to the 2×33 strands, driven from the main loop (not the RX callback). Effects auto-cycle ~20 s; a `show` CLI reports/locks them. Comet phase uses a local restart-on-beat oscillator until beatbox sends a non-zero wire `phase`. | Closes the command-plane open question. beatbox (the beat-source node) owns detection and normalizes to 0-255 fields; lightshow "runs its own show locally from those parameters" (SPEC §1) rather than being told exact pixels — keeps the wire payload tiny and the two nodes decoupled. Effects ported from the source project (`config.mcc.bak/main.c`) preserve the proven look; adapting from one 70-px strip to two 33-px strands maps naturally to the warm/cool split. |
 | 2026-07-30 | **Strands are RGB-ordered on the wire, not GRB.** Red and green showed swapped; `neopixel.c` now maps the framebuffer identity to the wire (`WIRE_ORDER = {0,1,2}`) instead of the GRB permutation. Framebuffer + `led` CLI already stored channels as R,G,B — only the on-wire byte order was wrong. Committed `39c3358`. | The parts on the board interpret the first wire byte as red, so the standard WS2812 GRB permutation lit the wrong channel. Sending R,G,B directly matches these strands; blue was always correct. |
 | 2026-07-30 | **No 3.3→5 V level shifter for the WS2812 data lines — drive them directly from the MVIO/VDDIO2 pins.** `PA10` (`TC0/WO0`) and `PA11` (`TC0/WO1`) both carry pinout footnote 3 ("on the VDDIO2 power domain"). Tie VDDIO2 to the 5 V LED rail → WO0/WO1 output push-pull 0–5 V, clearing the WS2812 data-in high threshold (~0.7·VDD) with no external part. | This is what MVIO is for: per-pin voltage domain integrated into SUPC, "eliminates the need for external level shifters." Removes the 74AHCT125 from the BOM. Caveat: VDDIO2 must be powered and in-range or SUPC tri-states these pins (MVIO power-sequencing); it reloads PORT config when VDDIO2 returns. |
 | 2026-07-29 | **WS2812 drive = TC0 8-bit NPWM + 1 DMA channel (CCBUF-PWM)** (2 strands × 33 px on `TC0/WO0`+`WO1`). One DMA channel, `TRIGACT=BLOCK`, TC0-overflow-triggered, writes CCBUF0+CCBUF1 (2 BYTE beats) per bit; PER≈29 → 800 kHz bit clock at 24 MHz (T0H≈8 / T1H≈17 ticks, inside WS2812 ±150 ns). Buffer = 2×(33×24) = 1584 B interleaved per-bit duty (+198 B GRB framebuffer), fits 8 KB. Timer DMA trigger paces it directly (no EVSYS). | Confirmed on the DFP for *this* part: only **2 DMA channels**, **4 EVSYS**, **24 MHz**, **8 KB SRAM**. SPI+DMA is ruled out (both SERCOMs used: T1S + debug UART), but T1S SPI is **interrupt-driven, not DMA**, so both DMA channels are free. CCBUF-PWM modulates the fall time *within* each bit period via one CC/strand → one DMA update per bit (800 kHz, ~30 cyc/beat) and the smallest buffer. Leaves a spare DMA channel + TCC0 + TC1/2. |
@@ -62,6 +74,21 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 | 2026-07-29 | **lightshow created as the *lighting* node class (`node_type = 5`); T1S bring-up before LED output.** PIC32CM6408PL10048, PLCA follower **id 7** / MAC `02:00:00:00:00:07` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 beat-driven light show. | Prove the node on the bus first, reusing the `lemmy` / `guitar` follower glue + `oa-tc6-lib` (same MCU family — minimizes bring-up), then layer the LED output. The lighting output and its command source differ from the puppet, so it is a distinct node class from `lemmy` (animation). |
 
 ## Session log
+
+### 2026-07-31 — L3 beat-driven show: beatbox consumer
+
+- Added `beat_show.{c,h}`: consumes beatbox's `0x88B8` beat frame (8-byte `LightshowFrame`) and
+  renders three WS2812 effects to the 2×33 strands — beat flash, dual comet, split energy — ported
+  from `firmware/beatbox/config.mcc.bak/main.c` and rescaled from the source's 70-px / 0-1000 domain
+  to 2 strands / 0-255 fields. Auto-cycles every ~470 frames (~20 s). Idle-clears the strip after
+  750 ms with no frame so it doesn't freeze when the music stops.
+- Extended `t1s_follower.c` RX to accept ethertype `0x88B8` and hand the payload to
+  `BeatShow_OnFrame` (stash + flag); the render runs from the main loop in `BeatShow_Tasks`, wired
+  into `main.c` after `T1SFollower_Tasks`. Data frames (`0x88B5`) unchanged.
+- Added a `show` CLI command (status / `show <0-2>` lock / `show auto`) and registered
+  `beat_show.c` in `user.cmake`.
+- Comet phase runs off a local restart-on-beat oscillator; the frame's reserved `phase` byte takes
+  over once beatbox's tempo layer produces it. Not yet verified on hardware against a live beatbox.
 
 ### 2026-07-29 — WS2812 drive: MCC config + driver
 

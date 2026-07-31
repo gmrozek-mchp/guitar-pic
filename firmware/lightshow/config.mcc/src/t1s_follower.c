@@ -10,6 +10,8 @@
 #include "tc6.h"
 #include "tc6-regs.h"
 
+#include "beat_show.h"     /* beatbox beat-frame consumer (ethertype 0x88B8) */
+
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
 #define T1S_NODE_ID         (7u)
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
@@ -17,6 +19,7 @@
 
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_BEAT  (0x88B8u)  /* beatbox beat frame (broadcast) */
 #define T1S_ETH_HDR_LEN     (14u)
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
@@ -367,11 +370,16 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         return;
     }
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+    if (ethertype == T1S_ETHERTYPE_BEAT) {
+        /* beatbox beat frame: drive the light show from the payload. */
+        BeatShow_OnFrame(&s_rx_buf[T1S_ETH_HDR_LEN],
+                         (uint16_t)(len - T1S_ETH_HDR_LEN));
+        return;
+    }
     if (ethertype != T1S_ETHERTYPE) {
         return;
     }
-    /* No output to drive yet (servos are L2, beat semantics L3): just record the
-     * first payload byte + count so the CLI can confirm RX works. */
+    /* Record the first payload byte + count so the CLI can confirm data RX. */
     s_last_byte = s_rx_buf[T1S_ETH_HDR_LEN];
     s_rx_count++;
 }
