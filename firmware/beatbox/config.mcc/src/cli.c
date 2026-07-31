@@ -12,6 +12,7 @@
 #include "embedded_cli.h"
 #include "t1s_follower.h"
 #include "rgb_led.h"
+#include "audio.h"
 #include "../mcc_generated_files/uart/uart2.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
@@ -146,6 +147,21 @@ static void cmd_rgb(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("rgb: r=%u g=%u b=%u", (unsigned)r, (unsigned)g, (unsigned)b);
 }
 
+static void cmd_audio(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)args;
+    (void)ctx;
+    uint16_t l = 0u, r = 0u;
+    uint16_t lmin = 0u, lmax = 0u, rmin = 0u, rmax = 0u;
+    Audio_GetLevels(&l, &r);
+    Audio_GetPeaks(&lmin, &lmax, &rmin, &rmax);
+    cli_printf("audio now:  L=%u R=%u (raw 0-65535, mid 32768)", (unsigned)l, (unsigned)r);
+    cli_printf("audio peak: L=%u..%u pp=%u  R=%u..%u pp=%u",
+               (unsigned)lmin, (unsigned)lmax, (unsigned)(lmax - lmin),
+               (unsigned)rmin, (unsigned)rmax, (unsigned)(rmax - rmin));
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -167,6 +183,7 @@ static void register_commands(void)
         { "info",  "Print node identity / bring-up state",              false, NULL, cmd_info },
         { "t1s",   "T1S link status; 't1s id'/'t1s plca' run diagnostics", true,  NULL, cmd_t1s },
         { "rgb",   "Set RGB LED: 'rgb <r> <g> <b>' (0-255) or 'rgb off'",   true,  NULL, cmd_rgb },
+        { "audio", "Print latest L/R sample + peak envelope since last call", false, NULL, cmd_audio },
         { "reset", "Reset the MCU (software reset)",                     false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)

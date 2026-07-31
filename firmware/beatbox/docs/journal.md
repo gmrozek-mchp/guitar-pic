@@ -46,13 +46,18 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
         `UART1_*` API; must delete the module's hand-rolled `write()` to avoid a duplicate symbol).
   - [ ] **ADC1 pot** (inline in `main.c`): CH0 on RA3/AD1AN2, SW-triggered single 12-bit sample.
         Move the inline setup into MCC; read via the generated API.
-  - [x] **PWM audio** (`pwm_audio.c`): high-res (16× HREN) 192 kHz on **PG1/PG2** (was PG3/PG4 in
-        the `.bak`), PG2 SOC-triggered from PG1, **PG1 EVT postscale ÷4 → 48 kHz ADC trigger**
-        (`PG1EVT1` `ADTR1EN1`+`ADTR1PS=1:4`+`PGTRGSEL=TRIGA`, `PG1TRIGA=0`). MCC config done.
-  - [x] **ADC2 audio → ADC4** (`adc_audio.c`): built on **ADC4 CH0 (`ADC_AUDIO_L`/AD4AN0) + CH1
-        (`ADC_AUDIO_R`/AD4AN1)** (was ADC2 CH6/CH7), 256× oversample, `TRG1SRC`=PWM1 (PG1),
-        complete-interrupt on CH1 (higher channel) at priority 6. MCC config done. App port
-        (HPF + passthrough + `BeatDetect_Process` into the CH1 callback) deferred.
+  - [x] **PWM audio** (folded into `config.mcc/src/audio.c`): high-res (16× HREN) 192 kHz on
+        **PG1/PG2** (was PG3/PG4 in the `.bak`), PG2 SOC-triggered from PG1, **PG1 EVT postscale
+        ÷4 → 48 kHz ADC trigger** (`PG1EVT1` `ADTR1EN1`+`ADTR1PS=1:4`+`PGTRGSEL=TRIGA`, `PG1TRIGA=0`).
+        MCC config done; **app port landed** — audio-out is the passthrough half of `audio.c` (idle
+        both channels mid-scale, `PWM_Enable()` to start PG1's ADC trigger, per-sample
+        `PWM_DutyCycleSet` + `PWM_SoftwareUpdateRequest`).
+  - [x] **ADC2 audio → ADC4** (folded into `config.mcc/src/audio.c`): built on **ADC4 CH0
+        (`ADC_AUDIO_L`/AD4AN0) + CH1 (`ADC_AUDIO_R`/AD4AN1)** (was ADC2 CH6/CH7), 256× oversample,
+        `TRG1SRC`=PWM1 (PG1), complete-interrupt on CH1 (higher channel) at priority 6. MCC config
+        done; **app port landed as a passthrough** — `ADC4_ChannelCallbackRegister` callback reads
+        L (`ADC4_ConversionResultGet`) + R (callback arg), normalizes, mirrors to the PWM DACs.
+        HPF + `BeatDetect_Process` deferred to the beat-detect port (kept out to prove I/O first).
   - [x] **RGB LED** (`config.mcc/src/rgb_led.{c,h}`): three SCCP in edge-aligned buffered PWM —
         **SCCP1→RD9 (R), SCCP2→RD0 (G), SCCP3→RD2 (B)** via PPS (OCM1/2/3), R/G confirmed on the
         bench (the `.bak`'s G=SCCP1/R=SCCP2 was backwards for the EV74H48A). App keeps MCC's
@@ -86,6 +91,7 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-30 | **Audio app port: passthrough first, one `audio.c` module, beat detect later.** The `.bak` split the audio path across three modules that cross-called each other (`adc_audio.c`'s `_AD2CH7Interrupt` normalized/HPF'd, then reached into `pwm_audio.c` to output *and* into `beat_detect.c` to analyze). First step re-integrates only the input→output half, in a single `config.mcc/src/audio.{c,h}`: `Audio_Initialize()` idles PG1/PG2 mid-scale, `PWM_Enable()`s them (MCC leaves generators `ON=0`), and registers an ADC4 channel callback; the callback fires on CH1 (right), reads CH0 (left, already latched) via `ADC4_ConversionResultGet`, normalizes both about 32768, and mirrors straight to the PWM DACs (`PWM_DutyCycleSet` + `PWM_SoftwareUpdateRequest`, PG1=L/RB8, PG2=R/RB9). No HPF, no FFT yet. A `audio` CLI command reports the latest raw L/R sample for bench diagnosis. | Proving the ADC-in → PWM-out path in isolation removes the biggest unknowns (MCC ADC4 callback wiring, PG1-triggered 48 kHz clocking, DAC output) before layering DSP on top, and collapsing the parked three-module tangle into one owner is exactly the "muddled interaction" cleanup wanted. HPF/`BeatDetect_Process` slot back into the same callback once I/O is confirmed. |
 | 2026-07-30 | **Core OA-TC6 lib ports as-is; only the per-node glue is dsPIC-specific.** Answers the "T1S on dsPIC33AK" open question. `tc6.c`/`tc6-regs.c` compile under XC-DSC unchanged (the vendor ships a dsPIC33AK example), same vendored files the SAMD nodes build. beatbox's `t1s_follower.c` mirrors guitar's structure/public API and swaps the platform layer: blocking SPI1 byte-loop (vs guitar's async SERCOM), CN IRQ on `T1S_IRQ_N` (vs EIC), TMR1 ms tick (vs SYSTICK), MCC pin macros (`T1S_RST`/`T1S_CS`), UART2 logging (vs SERCOM1), and **no actuator GPIO** (beatbox publishes, doesn't actuate — guitar's `FRET_*`/`STRUM`/button API dropped). | Keeps beatbox on the exact same proven TC6 transport as guitar/lemmy/lightshow with zero lib divergence, so protocol fixes stay shared. Pins were already assigned in the SPI1/T1S MCC step; the only real porting surface was the ~5 platform primitives above. |
 | 2026-07-30 | **`t1s` CLI reports real on-bus state, not just local init.** The MAC-PHY bring-up completes purely over SPI with nothing on the wire, so `initDone` and the OA-TC6 config-sync footer bit (`TC6_GetState` `synced`) both assert with no cable/coordinator — the old `link: up` / `synced: yes` lines lied. Split the state: `T1SFollower_IsInitialized()` = local config done; `T1SFollower_IsConnected()` now = **PLCA operating** (PLCA_STATUS bit 15), refreshed by a 250 ms background register read cached in `s_plca_op`. The presence heartbeat is gated on PLCA-operating (a follower has no transmit slot without the coordinator beacon; sending earlier queues a frame that never drains and stalls `s_hb_busy`). CLI now shows `chip` (rev / absent), `init`, `plca` (operating / idle-no-coordinator), `cfgsync` (relabeled so it stops masquerading as connectivity), credits, rx, errors. | PLCA_STATUS is the only field that requires a beacon on the wire, so it's the honest connectivity signal. Same trap exists in the guitar/lemmy/lightshow followers (they mirror this code) — carry this fix to them when each is next touched. |
 | 2026-07-30 | **Blocking SPI: settle `TC6_SpiBufferDone` inline in `TC6_CB_OnSpiTransaction`, not deferred to the service pump.** SPI1 is a blocking 8-bit driver, so `TC6_CB_OnSpiTransaction` runs the whole transfer inline (`T1S_CS_SetLow` → byte-loop `SPI1_ByteExchange` bridging TC6's separate pTx/pRx → `T1S_CS_SetHigh`), then calls `TC6_SpiBufferDone(tc6instance, true)` before returning. **A first cut deferred that call to `service_pump()` (after `TC6_Service()` returned) — it deadlocked at boot:** `TC6Regs_Init`→`DoInitialization` drives the LAN8651 bring-up by pumping `TC6_Service()` in its *own* `while` loops (tc6-regs.c:325–414), spinning until read results (e.g. `chipRev`) post — but those only post via `TC6_SpiBufferDone`, which never ran because `service_pump` isn't reached during init. Freeze right after the `TC6_Init` log; `chipRev` stuck at `0xFF`. Completing inline lets those internal spins make progress. | Verified reentrancy-safe: `TC6_SpiBufferDone` only advances the op queue, resets `currentOp`, and flags need-service (guards with `intContext`, no re-entry into `serviceControl`/`serviceData`, no nested transaction); the library advances the send-stage *before* invoking `OnSpiTransaction` (tc6.c:718/735), so inline completion is functionally identical to the async DMA-done callback firing — just synchronous, which is exactly right for a blocking driver. Confirmed on hardware: link syncs, 0 errors. |
@@ -130,6 +136,38 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-30 — Audio passthrough app port (ADC4-in → PWM-out)
+
+- **Scoped the audio port to a passthrough proof first.** Rather than porting the parked
+  `adc_audio.c` + `pwm_audio.c` + `beat_detect.c` tangle in one go, landed just the input→output
+  path to prove the ADC-in / PWM-out hardware works on the fresh MCC config. See decision log.
+- **One module, `config.mcc/src/audio.{c,h}`.** `Audio_Initialize()`: idle PG1/PG2 at mid-scale
+  (`AUDIO_PWM_CENTER=33325`, MPER/2), register the ADC4 channel callback, then `PWM_Enable()` —
+  MCC's `PWM_Initialize()` configures the generators but leaves them `ON=0`, and PG1's enable is
+  what starts the 48 kHz ADC trigger. The callback fires on CH1 (`ADC_AUDIO_R`, the only enabled
+  IRQ, at priority 6), reads CH0 (`ADC_AUDIO_L`, already latched from the same trigger) via
+  `ADC4_ConversionResultGet`, normalizes both about 32768, and mirrors to the DACs via
+  `PWM_DutyCycleSet` + `PWM_SoftwareUpdateRequest` (PG1=L/RB8, PG2=R/RB9). No HPF, no FFT.
+- **Cleanups over the `.bak`:** duty write drops the manual `& 0x000FFFFF` (generated
+  `PWM_DutyCycleSet` masks); ADC/PWM register poking is gone (MCC owns config); the ISR is a
+  registered callback, not a hand-written `_AD4CH1Interrupt`.
+- **CLI:** `audio` prints the latest raw L/R sample (0–65535, mid 32768) **and** a peak envelope
+  (min/max/peak-to-peak per channel) tracked in the ISR since the last call. Instantaneous samples
+  read at CLI speed badly undersample the waveform, so peak-to-peak is the honest swing measure.
+- **Wiring:** `main.c` calls `Audio_Initialize()` after `RGB_LED_Initialize()`; `audio.c` added to
+  `cmake/beatbox/default/user.cmake`. Loop unchanged (path is fully ISR-driven).
+- **Confirmed on hardware — passthrough works** (output on headphones). Bench findings:
+  - **Range is healthy:** full-volume input reaches **~30000 peak-to-peak** (~46% of full scale) —
+    the earlier "27000–29000" impression was just instantaneous CLI reads undersampling the
+    waveform, not a small signal. The DC bias idles near ~28000 (≈1.4 V), not the 32768 mid-rail —
+    a front-end biasing property; the deferred DC-block HPF is what recenters it.
+  - **Background noise:** up to **~100 pp** with nothing connected / nothing playing (noise floor
+    ≈0.15% FS). Address if practical (candidates: DC-block HPF, noise gate, front-end review).
+  - **Power-on pop:** a loud **pop after programming** (PWM enable / output transient at
+    `Audio_Initialize`). **Must address** — likely a soft-start (ramp duty from rail to center, or
+    mute the output until the path is settled) rather than snapping PG1/PG2 on at mid-scale.
+- Next: DC-block HPF + `BeatDetect` port once these are handled. Pop fix is the priority.
 
 ### 2026-07-30 — RGB LED app port (B0.6 rgb_led done)
 

@@ -19,6 +19,7 @@
     THIS SOFTWARE.
 */
 #include "mcc_generated_files/system/system.h"
+#include "src/audio.h"
 #include "src/cli.h"
 #include "src/rgb_led.h"
 #include "src/t1s_follower.h"
@@ -30,6 +31,7 @@ int main(void)
 {
     SYSTEM_Initialize();
     RGB_LED_Initialize();
+    Audio_Initialize();
     CLI_Initialize();
     T1SFollower_Initialize();
 
