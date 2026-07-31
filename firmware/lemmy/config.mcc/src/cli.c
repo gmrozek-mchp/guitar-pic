@@ -11,6 +11,8 @@
 #include "embedded_cli.h"
 #include "t1s_follower.h"
 #include "servo.h"
+#include "beat_nod.h"
+#include "nod_engine.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
  * the small config below; the requirement is checked at init. */
@@ -225,6 +227,69 @@ static void cmd_cal(EmbeddedCli *cli, char *args, void *ctx)
     print_cal(servo);         /* echo applied values (post guard-rail clamp) */
 }
 
+static const char *band_name(uint8_t b)
+{
+    switch (b) {
+        case NOD_BAND_BASS: return "bass";
+        case NOD_BAND_FULL: return "full";
+        default:            return "undecided";
+    }
+}
+
+static void cmd_nod(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+
+    const char *sub = embeddedCliGetToken(args, 1);
+    if (sub != NULL)
+    {
+        const char *val = embeddedCliGetToken(args, 2);
+        if (strcmp(sub, "on") == 0)       { BeatNod_SetEnabled(true); }
+        else if (strcmp(sub, "off") == 0) { BeatNod_SetEnabled(false); }
+        else if (strcmp(sub, "trim") == 0)
+        {
+            if (val == NULL) { cli_printf("usage: nod trim <-127..127>"); return; }
+            long t = strtol(val, NULL, 10);
+            if (t > 127) { t = 127; }
+            if (t < -127) { t = -127; }
+            NodEngine_SetPotOffset((int8_t)t);
+        }
+        else if (strcmp(sub, "osc") == 0)
+        {
+            if (val == NULL) { cli_printf("usage: nod osc <0|1>"); return; }
+            NodEngine_SetOscEnabled((strtoul(val, NULL, 10) != 0u) ? 1u : 0u);
+        }
+        else
+        {
+            cli_printf("usage: nod | nod on|off | nod trim <n> | nod osc <0|1>");
+            return;
+        }
+    }
+
+    uint8_t seq, energy, bass, treble, kick, flags;
+    BeatNod_GetLast(&seq, &energy, &bass, &treble, &kick, &flags);
+    cli_printf("state:   %s", BeatNod_IsEnabled() ? "on" : "off (neck free)");
+    cli_printf("frames:  %lu", (unsigned long)BeatNod_FrameCount());
+    cli_printf("last:    seq=%u energy=%u bass=%u treble=%u kick=%u",
+               (unsigned)seq, (unsigned)energy, (unsigned)bass,
+               (unsigned)treble, (unsigned)kick);
+    cli_printf("flags:   %s%s%s%s%s(0x%02X)",
+               (flags & BEAT_FLAG_BASS)     ? "bass " : "",
+               (flags & BEAT_FLAG_MID)      ? "mid "  : "",
+               (flags & BEAT_FLAG_KICK)     ? "kick " : "",
+               (flags & BEAT_FLAG_BIG)      ? "BIG "  : "",
+               (flags & BEAT_FLAG_BASS_DOM) ? "dom "  : "",
+               (unsigned)flags);
+    cli_printf("tempo:   bpm=%u conf=%u band=%s",
+               (unsigned)NodEngine_GetLockedBPM(), (unsigned)NodEngine_GetConfidence(),
+               band_name(NodEngine_GetWinningBand()));
+    cli_printf("nod:     angle=%u.%u deg  neck=%d  trim=%d",
+               (unsigned)(NodEngine_GetTargetAngle() / 10u),
+               (unsigned)(NodEngine_GetTargetAngle() % 10u),
+               (int)BeatNod_NeckPosition(), (int)NodEngine_GetPotOffset());
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -248,6 +313,7 @@ static void register_commands(void)
         { "servo", "Raw servo pulse: servo <neck|jaw> <us>",         true,  NULL, cmd_servo },
         { "pos",   "Position via cal: pos <neck|jaw> <-127..127>",    true,  NULL, cmd_pos },
         { "cal",   "Servo cal: cal [show] | cal <s> <field> <val>",   true,  NULL, cmd_cal },
+        { "nod",   "Beat nod: status; on|off / trim <n> / osc <0|1>", true,  NULL, cmd_nod },
         { "reset", "Reset the MCU (system reset)",                   false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)

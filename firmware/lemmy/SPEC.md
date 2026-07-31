@@ -3,9 +3,11 @@
 > What lemmy *is* (purpose, hardware, interfaces, firmware design, milestones).
 > The running diary of decisions and progress lives in [`docs/journal.md`](docs/journal.md) — read it alongside this on any non-trivial task.
 
-> **Status: on the bus, servos moving.** T1S PLCA follower (id 6, link + presence + CLI) and the raw
-> two-servo TCC0 PWM driver are up and verified on hardware. Next is puppet-relative positioning +
-> calibration and a motion envelope, then beat-driven nod. See §6 and [`docs/journal.md`](docs/journal.md).
+> **Status: smart — beat-driven nod wired.** T1S PLCA follower (id 6, link + presence + CLI), the
+> two-servo TCC0 PWM driver + position/calibration layer are up and verified on hardware. lemmy now
+> consumes [`beatbox`](../beatbox/SPEC.md)'s beat frame (ethertype `0x88B8`) and runs a local nod
+> engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck servo in time to the music,
+> pending on-hardware verification against a live beatbox. See §6 and [`docs/journal.md`](docs/journal.md).
 
 ## 1. Purpose
 
@@ -74,9 +76,12 @@ to `guitar`'s:
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lemmy
   present. A new `node_type = 4` (*animation*) is proposed for the heartbeat payload — marvin's §7.2
   decode + `nodes` display learn it (marvin-side follow-up).
-- **Command plane (post-bring-up):** the beat/animation signal source is the future **beatbox** node
-  (id 5); the ethertype and payload for that are **open** (see journal). marvin may also drive lemmy
-  from its timing pipeline. Bring-up (L1) needs no RX command semantics — link + presence + CLI only.
+- **Command planes:** two coexist, routed by ethertype. (1) **beat frame** — [`beatbox`](../beatbox/SPEC.md)
+  (id 5) **broadcasts** an 8-byte `LightshowFrame` under **ethertype `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`)
+  at ~23.4 Hz; lemmy consumes it locally and runs the nod engine to drive the neck (see §4). (2) **direct
+  servo command** — a `0x88B5` unicast frame carrying `[neck_i8, jaw_i8]` still drives both servos
+  latest-wins (marvin's `lemmy <neck> <jaw>`), the manual/override seam when the nod is disabled or
+  beatbox is quiet.
 
 The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator); the follower reference is [`guitar`](../guitar/config.mcc/src/t1s_follower.c).
@@ -91,10 +96,16 @@ layer:
 2. **Service:** call `TC6_Service` from the main loop / tick, woken by `IRQ_N`.
 3. **Heartbeat:** periodic (≈500 ms) `0x88B6` presence frame to the coordinator.
 4. **CLI** (debug aid, SERCOM1 UART via embedded-cli, static allocation): `t1s` (link / sync /
-   chipRev / PLCA / counters), plus servo commands (`nod`, `jaw`, `pose <deg> <deg>`) to exercise the
-   mechanism before the beat-signal plane exists.
-5. **Servo layer** (L2): timer PWM for the two servos; a small pose/animation driver (nod envelope,
-   jaw open/close). Beat-driven animation (L3) maps beatbox signals → a head-nod cadence.
+   chipRev / PLCA / counters), `servo`/`pos`/`cal` (exercise + calibrate the mechanism), and `nod`
+   (beat-nod status; `on|off` / `trim <n>` / `osc <0|1>`).
+5. **Servo layer** (L2): TCC0 PWM for the two servos + a position/calibration layer (`servo.{c,h}`).
+6. **Beat-driven nod** (L3, `nod_engine.{c,h}` + `beat_nod.{c,h}`): the `0x88B8` consumer. `beat_nod`
+   stashes each beat frame from the RX path; `BeatNod_Tasks()` (main loop) reconstructs per-band beat
+   onsets from the frame flags, lifts `energy` into the engine's loudness domain, ticks the pure
+   integer `nod_engine` once per frame (its tempo/oscillator tracking is self-contained), then maps
+   the engine's target angle onto the neck servo position. The head parks at neutral when frames stop.
+   The nod engine ports from the source project (`config.mcc.bak/nod_engine.c`), decoupled from its
+   servo so the caller reads the angle out. jaw stays neutral (L4).
 
 Static allocation only (no malloc), per project rule.
 
@@ -105,7 +116,8 @@ Static allocation only (no malloc), per project rule.
 - **Not the PLCA coordinator.** marvin (node 0) beacons the cycle; lemmy is a follower.
 - **Not a Wii actuator.** It does not touch a Wii guitar / Wiimote — it animates a puppet. (`guitar`
   is the Wii/LED actuator node.)
-- **Not (yet) beat-driven.** The beatbox source is future; L1 is link + presence + CLI only.
+- **Not choreographed by another node.** The nod is derived locally from beatbox's beat frame; no
+  node sends lemmy a per-frame neck angle. The `0x88B5` direct-servo path is a manual override only.
 
 ## 6. Milestones
 
@@ -115,5 +127,5 @@ Static allocation only (no malloc), per project rule.
 | ✅ | **L0b** — T1S/CLI peripherals in MCC: SERCOM0 SPI (Mode 0), EIC EXTINT2 (falling) on `IRQ_N`=PA02, `CS`=PA06 / `RST`=PA03 GPIO, SERCOM1 debug UART (PB00/PB01) — mirror of `guitar` G0 (verified byte-identical) |
 | ✅ | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=6/8`, presence heartbeat (`node_type=4`), `t1s` CLI — verified on the bus |
 | ✅ | **L2** — servo motion: TCC0 PWM for the 2 servos. Raw driver (`servo.{c,h}`) + `servo <neck\|jaw> <us>` CLI, verified driving real servos. Puppet-relative pose + calibration and a `nod`/`jaw` envelope layer come next (L3) |
-| 🔭 | **L3** — beat-driven head nod: consume beatbox (id 5) beat signals over T1S → nod envelope in time with the music |
-| 🔭 | **L4** (future) — jaw "talking" animation |
+| 🚧 | **L3** — beat-driven head nod: `nod_engine.{c,h}` (ported, decoupled integer DSP) + `beat_nod.{c,h}` consume beatbox's `0x88B8` beat frame → neck head-bang; `nod` CLI (status / `on\|off` / `trim` / `osc`). Wired; pending on-hardware verification against a live beatbox |
+| 🔭 | **L4** (future) — jaw "talking" animation; `0x88B9` scripted-gesture / override channel |

@@ -28,6 +28,7 @@
 #include "definitions.h"                // SYS function prototypes
 #include "t1s_follower.h"               // 10BASE-T1S PLCA follower (LAN8651)
 #include "servo.h"                      // TCC0 R/C servo PWM (neck + jaw)
+#include "beat_nod.h"                   // beatbox beat-frame -> neck head nod
 #include "status_led.h"                 // LED0 liveness heartbeat
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
 
@@ -47,6 +48,7 @@ int main ( void )
     SYSTICK_TimerStart ( );
 
     Servo_Initialize ( );
+    BeatNod_Initialize ( );
     T1SFollower_Initialize ( );
     StatusLed_Initialize ( );
     CLI_Initialize ( );
@@ -58,6 +60,9 @@ int main ( void )
 
         /* Service the T1S link: sync the MAC-PHY and emit the presence heartbeat. */
         T1SFollower_Tasks ( );
+
+        /* Drive the neck head-nod from beatbox's beat frames. */
+        BeatNod_Tasks ( );
 
         /* Operator CLI on the debug UART (t1s status / diagnostics). */
         CLI_Tasks ( );

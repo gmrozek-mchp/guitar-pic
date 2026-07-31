@@ -10,6 +10,7 @@
 #include "tc6.h"
 #include "tc6-regs.h"
 #include "servo.h"
+#include "beat_nod.h"
 
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
 #define T1S_NODE_ID         (6u)
@@ -18,6 +19,7 @@
 
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_BEAT  (0x88B8u)  /* beatbox beat frame (broadcast) */
 #define T1S_ETH_HDR_LEN     (14u)
 
 /* Command payload on 0x88B5: two signed position bytes, one per servo, applied
@@ -376,6 +378,12 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         return;
     }
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+    if (ethertype == T1S_ETHERTYPE_BEAT) {
+        /* beatbox's broadcast beat frame drives the local nod engine. */
+        BeatNod_OnFrame(&s_rx_buf[T1S_ETH_HDR_LEN], (uint16_t)(len - T1S_ETH_HDR_LEN));
+        s_rx_count++;
+        return;
+    }
     if (ethertype != T1S_ETHERTYPE) {
         return;
     }

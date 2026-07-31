@@ -18,10 +18,14 @@ CMSIS+DFP, default `SYS_Initialize`/`SYS_Tasks` main loop). The immediate path m
 `t1s_follower` + `cli` glue for follower bring-up (L1). Servo motion (L2+) comes after the link is
 proven.
 
-**Next:** wire the T1S RX path to the position layer (int8-per-servo command byte, ethertype TBD with
-the beatbox design), then a `nod`/`jaw` motion envelope, then beat-driven nod from beatbox (id 5).
 L1 (T1S follower), L2 (raw servo PWM), and the L3 position + calibration layer are up and verified on
-hardware.
+hardware. L3 beat-driven nod is now **wired**: lemmy consumes beatbox's `0x88B8` beat frame locally and
+runs a ported nod engine (`nod_engine.{c,h}` + `beat_nod.{c,h}`) to head-bang the neck — pending
+on-hardware verification against a live beatbox.
+
+**Next:** verify the nod on hardware with beatbox live on the bus (frame counter advances, locked BPM
+tracks the music, neck head-bangs / snaps on strong beats / comeback-slams / parks on silence). Then
+jaw "talking" (L4) and the `0x88B9` scripted-gesture / override channel.
 
 ---
 
@@ -29,6 +33,7 @@ hardware.
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-31 | **Make lemmy smart via a local nod engine off the shared `0x88B8` broadcast**, not a dumb-puppet per-frame command stream. lemmy consumes beatbox's (id 5) 8-byte `LightshowFrame` broadcast (ethertype `0x88B8`, dst `FF:…`, ~23.4 Hz) and runs the ported `nod_engine` to head-bang the neck; jaw stays neutral. The `0x88B5` unicast servo path stays as a manual/override seam. | Reuses the proven integer nod engine from the source project verbatim (its only hardware coupling was three `Servo_SetAngle` calls; the angle is already stored and read via `NodEngine_GetTargetAngle`), needs **zero beatbox-side changes** (the engine tracks tempo/phase itself, so no BPM/phase wire layer), and is symmetric with lightshow's `0x88B8` consumer. beatbox's ~23.4 Hz broadcast equals the engine's design frame rate, so every frame-counted constant (osc period, silence window) holds by ticking once per RX frame. A `0x88B9` position/override channel remains the future seam for scripted gestures + jaw talking. |
 | 2026-07-29 | **Servo position is `int8_t` -127..127** (0 = neutral), matching the planned T1S command byte 1:1 — one signed byte per servo, applied on RX with no scaling. Calibration (min/neutral/max µs + invert per servo) is a **compiled-in default copied to a RAM working copy**; tuned live via the `cal` CLI which prints paste-ready initializers to fold back into the default and reflash. **Not persisted on-device** — the PL10 has no EEPROM/RWW (datasheet §5/§26); flash-emulated EEPROM (NVMCTRL self-program, page erase / word write) would stall the single flash array during writes, not worth it for set-once cal. | ±127 gives ~4 µs/step (~6 TCC ticks) — far under servo deadband, so no resolution lost vs a wider internal range, and it avoids scaling the wire byte. Hardcoded cal keeps bring-up simple; live `cal` tuning + reflash is the workflow until (if ever) persistence is needed. |
 | 2026-07-28 | **lemmy created as the *animation* node class; T1S bring-up before motion.** PIC32CM6408PL10048, PLCA follower **id 6** / MAC `02:00:00:00:00:06` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Two R/C hobby servos: neck joint (nod) + bottom jaw. Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 servo motion → L3 beat-driven nod from beatbox (id 5). | Greg's call: prove the node on the bus first, reusing the `guitar` follower glue + `oa-tc6-lib` (same MCU family — keeps the "OA SPI driver scales across the family" demo and minimizes bring-up), then layer motion. The puppet's animation source is a beat feed, not the guitar button bitmask, so it's a distinct node class. |
 | 2026-07-28 | **T1S control pinout reuses `guitar`'s ATE_2026 map** (`CS`=PA06, `RST`=PA03, `IRQ_N`=PA02/EXTINT2; SPI SCK=PA05/MISO=PA07/MOSI=PA04; debug UART PB00/PB01). | Same MCU and same LAN8651 wiring lets the `t1s_follower` glue port over near-verbatim (only `T1S_NODE_ID` = 6 changes). Servo PWM pins are separate and fixed at L2. |
@@ -39,10 +44,6 @@ hardware.
 
 ## Open questions
 
-- **Beat-signal command plane.** What does beatbox (id 5) send lemmy, and over which ethertype? A beat
-  tick / tempo / phase? A new ethertype vs. reusing an existing one? Coupled to the (not-yet-existing)
-  beatbox node's design — deferred until L3. marvin may also want to drive lemmy from its timing
-  pipeline.
 - **Servo PWM peripheral + pins.** TCC0 (two channels) vs. two TCs; which pins. Fixed at L2/MCC.
   Confirm 50 Hz / 1–2 ms pulse resolution off the 24 MHz clock is adequate.
 - **Servo power / drive.** Separate servo rail + common ground; brown-out / inrush handling so servo
@@ -51,6 +52,35 @@ hardware.
 ---
 
 ## Session log
+
+### 2026-07-31 — L3 beat-driven nod wired (make lemmy smart)
+
+- **Ported the nod engine, decoupled from the servo** (`config.mcc/src/nod_engine.{c,h}`): a verbatim
+  copy of the source project's (`../../beatbox/config.mcc.bak/nod_engine.c`) integer DSP state machine —
+  per-band tempo trackers, tempo-adaptive oscillator, beat-snap with LFSR jitter, comeback bang, silence
+  gate. Only change: dropped `#include "servo.h"` and the three `Servo_SetAngle(...)` calls; each path
+  already stored `nod_current_angle`, so the caller reads the target angle via `NodEngine_GetTargetAngle()`
+  (tenths-of-degree: 170 head-up … 400 osc peak … 650 beat snap … 800 comeback).
+- **Thin consumer glue** (`config.mcc/src/beat_nod.{c,h}`), mirroring lightshow's `beat_show`: RX path
+  calls `BeatNod_OnFrame(payload, len)` (guard `len >= 8`, stash `seq/energy/bass/treble/kick/flags`, set
+  a `s_new_frame` flag, bump count — no compute in the callback). `BeatNod_Tasks()` (main loop) on a new
+  frame reconstructs per-band beat onsets from the flags (`bass_beat = BASS ? (BIG?2:1) : 0`, `full_beat`
+  from `MID`), lifts `raw_env = energy * 39u` into the engine's 0-10000 loudness domain, ticks
+  `NodEngine_Frame(...)` once, maps the target angle onto the neck (`pos = -(angle-170)*127/630`, clamped
+  — negated so the nod drives the head *down* toward `SERVO_POS_MIN`), and `Servo_SetPosition(SERVO_NECK,
+  pos)`. The map is negated (rather than flipping the neck `cal invert`) so the manual `pos`/`0x88B5`
+  override path keeps its hand-tuned calibration. Parks the neck at neutral after ~750 ms with no frame (bus/
+  music quiet) — frees the servo for a marvin `0x88B5` override. An enable flag (default on) gates the
+  servo writes so `servo`/`pos`/`cal` manual testing isn't fought by the nod; jaw is never touched (L4).
+- **RX accepts `0x88B8`** (`t1s_follower.c`): after reading the ethertype, a `0x88B8` frame goes to
+  `BeatNod_OnFrame` and returns; the existing `0x88B5` neck/jaw command path is unchanged.
+- **`nod` CLI** (`cli.c`): status (frame count, last `seq/energy/bass/treble/kick/flags`, locked BPM +
+  confidence + winning band, current angle / mapped neck position / trim), plus `nod on|off`,
+  `nod trim <-127..127>` (`NodEngine_SetPotOffset` — CLI stand-in for the source project's hardware pot,
+  which lemmy has no pin for), `nod osc <0|1>` (`NodEngine_SetOscEnabled`).
+- `nod_engine.c` + `beat_nod.c` added to `user.cmake`; `BeatNod_Initialize`/`BeatNod_Tasks` wired into
+  `main.c`. **Not yet built/flashed** — pending on-hardware verification against a live beatbox (frame
+  counter advancing, BPM tracking, neck head-banging / snapping / comeback / parking on silence).
 
 ### 2026-07-29 — T1S command RX → servos
 
