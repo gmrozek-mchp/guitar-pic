@@ -20,6 +20,7 @@
 */
 #include "mcc_generated_files/system/system.h"
 #include "src/cli.h"
+#include "src/rgb_led.h"
 #include "src/t1s_follower.h"
 /*
     Main application
@@ -28,6 +29,7 @@
 int main(void)
 {
     SYSTEM_Initialize();
+    RGB_LED_Initialize();
     CLI_Initialize();
     T1SFollower_Initialize();
 

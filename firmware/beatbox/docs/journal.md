@@ -53,11 +53,15 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
         (`ADC_AUDIO_R`/AD4AN1)** (was ADC2 CH6/CH7), 256× oversample, `TRG1SRC`=PWM1 (PG1),
         complete-interrupt on CH1 (higher channel) at priority 6. MCC config done. App port
         (HPF + passthrough + `BeatDetect_Process` into the CH1 callback) deferred.
-  - [~] **RGB LED** (`rgb_led.c`): three SCCP in edge-aligned buffered PWM — **SCCP1→RD9 (G),
-        SCCP2→RD0 (R), SCCP3→RD2 (B)** via PPS (OCM1/2/3). **MCC config kept for mode + `OCAEN` +
-        PPS routing only** — MCC can't derive period/prescale from a frequency on this 100 MHz tree
-        (it emitted `TMRPS=1:1`, `CCPxPR=0xFFFF`), so **period/prescale/duty-scaling move to the app
-        driver** (see decision log). App port deferred.
+  - [x] **RGB LED** (`config.mcc/src/rgb_led.{c,h}`): three SCCP in edge-aligned buffered PWM —
+        **SCCP1→RD9 (R), SCCP2→RD0 (G), SCCP3→RD2 (B)** via PPS (OCM1/2/3), R/G confirmed on the
+        bench (the `.bak`'s G=SCCP1/R=SCCP2 was backwards for the EV74H48A). App keeps MCC's
+        `SCCPn_PWM_Initialize` (mode + `OCAEN` + PPS + enable, from `SYSTEM_Initialize`) and
+        `RGB_LED_Initialize()` overrides only the prescale + period MCC leaves wrong (`TMRPS=1:1`,
+        `CCPxPR=0xFFFF`): `Disable → CCPxCON1bits.TMRPS=1:16 → PeriodSet(6250) → Enable` = exactly
+        1 kHz at Fcy/16. `RGB_LED_Set(r,g,b)` takes **8-bit** levels, scaled `level*PERIOD/255` into
+        `SCCPn_PWM_DutyCycleSet` (CCPxRB, buffered). Exercised over the CLI: `rgb <r> <g> <b>` /
+        `rgb off`. Called from `main()` after `SYSTEM_Initialize`.
 - [x] **B3 — T1S-on-dsPIC follower port.** Up on hardware: EV74H48A syncs as PLCA follower **id 5**
       against marvin, `t1s` reports `link: up`, `synced: yes`, `chipRev: 2`, 0 errors. Ported the SAMD
       nodes' OA-TC6 follower to dsPIC/XC-DSC + MCC: new `config.mcc/src/{tc6-conf.h,
@@ -126,6 +130,22 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-30 — RGB LED app port (B0.6 rgb_led done)
+
+- **Ported `rgb_led` onto the generated SCCP PWM API.** New `config.mcc/src/rgb_led.{c,h}` +
+  `RGB_LED_Initialize()` call in `main.c`, added to `cmake/.../user.cmake`. Build clean (`.elf`/`.hex`
+  produced), no warnings on the new files. Not yet run on hardware (user builds/flashes).
+- **Kept MCC's `SCCPn_PWM_Initialize`, overrode only what it got wrong.** MCC's generated init
+  isn't a working PWM setup on this clock tree (1:1 prescale, `CCPxPR=0xFFFF`). Rather than re-init
+  the channels from the app, `RGB_LED_Initialize()` does the minimal fix: `SCCPn_PWM_Disable()` →
+  poke `CCPxCON1bits.TMRPS = 1:16` (no generated setter) → `SCCPn_PWM_PeriodSet(6250)` →
+  `SCCPn_PWM_Enable()`, giving exactly 1 kHz at Fcy/16. Everything else (mode, `OCAEN`, PPS) stays
+  MCC's. Matches the RGB decision-log row's app-owns-timing plan.
+- **8-bit RGB API.** `RGB_LED_Set(r,g,b)` takes 0–255 per channel, scaled `level*RGB_PWM_PERIOD/255`
+  into `SCCPn_PWM_DutyCycleSet` (buffered CCPxRB). Colour→channel map corrected against the bench:
+  **R=SCCP1, G=SCCP2, B=SCCP3** (the `.bak`'s G=SCCP1/R=SCCP2 was swapped for the EV74H48A wiring).
+- **CLI:** added `rgb <r> <g> <b>` / `rgb off` (with a `parse_u8` helper mirroring lightshow's `led`).
 
 ### 2026-07-30 — T1S follower up on hardware (B3 done); boot-freeze fix
 

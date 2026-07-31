@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
 
@@ -10,6 +11,7 @@
 
 #include "embedded_cli.h"
 #include "t1s_follower.h"
+#include "rgb_led.h"
 #include "../mcc_generated_files/uart/uart2.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
@@ -42,6 +44,22 @@ static void cli_printf(const char *fmt, ...)
     (void)vsnprintf(buf, sizeof(buf), fmt, ap);
     va_end(ap);
     embeddedCliPrint(s_cli, buf);   /* appends newline */
+}
+
+static bool parse_u8(const char *s, uint8_t *out)
+{
+    if (s == NULL)
+    {
+        return false;
+    }
+    char *end;
+    unsigned long v = strtoul(s, &end, 0);
+    if ((*end != '\0') || (v > 255ul))
+    {
+        return false;
+    }
+    *out = (uint8_t)v;
+    return true;
 }
 
 /* ---- commands ----------------------------------------------------------- */
@@ -104,6 +122,30 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("errors:  %lu", (unsigned long)T1SFollower_ErrCount());
 }
 
+static void cmd_rgb(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1u);
+    if ((sub != NULL) && (strcmp(sub, "off") == 0))
+    {
+        RGB_LED_Off();
+        cli_printf("rgb: off");
+        return;
+    }
+    uint8_t r = 0u, g = 0u, b = 0u;
+    if ((embeddedCliGetTokenCount(args) != 3u)
+        || !parse_u8(embeddedCliGetToken(args, 1u), &r)
+        || !parse_u8(embeddedCliGetToken(args, 2u), &g)
+        || !parse_u8(embeddedCliGetToken(args, 3u), &b))
+    {
+        cli_printf("usage: rgb <r> <g> <b>  (0-255) | rgb off");
+        return;
+    }
+    RGB_LED_Set(r, g, b);
+    cli_printf("rgb: r=%u g=%u b=%u", (unsigned)r, (unsigned)g, (unsigned)b);
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -124,6 +166,7 @@ static void register_commands(void)
     static const CliCommandBinding bindings[] = {
         { "info",  "Print node identity / bring-up state",              false, NULL, cmd_info },
         { "t1s",   "T1S link status; 't1s id'/'t1s plca' run diagnostics", true,  NULL, cmd_t1s },
+        { "rgb",   "Set RGB LED: 'rgb <r> <g> <b>' (0-255) or 'rgb off'",   true,  NULL, cmd_rgb },
         { "reset", "Reset the MCU (software reset)",                     false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
