@@ -122,6 +122,7 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
     cli_printf("rx:      %lu frames", (unsigned long)T1SFollower_RxCount());
     cli_printf("last:    0x%02X", (unsigned)T1SFollower_LastCmd());
+    cli_printf("beat tx: %lu frames", (unsigned long)T1SFollower_BeatTxCount());
     cli_printf("errors:  %lu", (unsigned long)T1SFollower_ErrCount());
 }
 

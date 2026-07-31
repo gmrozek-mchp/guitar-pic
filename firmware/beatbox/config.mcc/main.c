@@ -77,6 +77,14 @@ int main(void)
             beat_indicator(&f);
             Publish_Update(&f);
         }
+        if (Publish_HasLightshowFrame())
+        {
+            LightshowFrame lf;
+            uint8_t payload[LIGHTSHOW_FRAME_LEN];
+            Publish_GetLightshowFrame(&lf);
+            Publish_SerializeLightshow(&lf, payload);
+            (void)T1SFollower_SendBeatFrame(payload, sizeof(payload));
+        }
         T1SFollower_Tasks();
     }
 }

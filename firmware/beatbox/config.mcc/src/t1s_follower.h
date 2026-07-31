@@ -39,6 +39,16 @@ uint8_t  T1SFollower_LastCmd(void);   /* first payload byte of the last accepted
 uint32_t T1SFollower_RxCount(void);   /* count of accepted data frames */
 uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
 
+/* Publish the compact lightshow beat frame as a broadcast (ethertype 0x88B8,
+ * dst FF:FF:FF:FF:FF:FF) so lightshow — and any later consumer — receives it in
+ * one transmit opportunity. payload is the serialized frame (see publish.h).
+ * Returns true if it was queued; false if the bus isn't operating or a prior
+ * beat frame is still in flight (the frame is dropped — its seq lets the
+ * consumer spot the gap). Safe to call at the ~23 Hz frame rate. */
+bool T1SFollower_SendBeatFrame(const uint8_t *payload, uint16_t len);
+
+uint32_t T1SFollower_BeatTxCount(void); /* count of beat frames queued to the bus */
+
 /* Diagnostic: raw-read the MAC-PHY ID registers and log the values (async). */
 void T1SFollower_ReadId(void);
 

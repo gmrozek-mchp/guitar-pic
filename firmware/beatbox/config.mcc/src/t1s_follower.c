@@ -25,7 +25,9 @@
 
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_BEAT  (0x88B8u)  /* beat frame → lightshow (broadcast) */
 #define T1S_ETH_HDR_LEN     (14u)
+#define T1S_TX_PAYLOAD_MAX  (16u)      /* upper bound on an app TX payload */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
@@ -44,6 +46,9 @@ static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE
 
 /* Coordinator (marvin) MAC: 02:00:00:00:00:00 — heartbeat destination. */
 static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u };
+
+/* Broadcast MAC — beat-frame destination (one TX reaches every consumer). */
+static const uint8_t s_bcast_mac[6] = { 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu, 0xFFu };
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -72,6 +77,12 @@ static uint8_t           s_hb_frame[T1S_ETH_HDR_LEN + T1S_HB_LEN];
 static volatile bool     s_hb_busy;
 static uint32_t          s_hb_seq;
 static uint32_t          s_hb_last_ms;
+
+/* Beat-frame TX staging (separate buffer/flag — a beat frame and a heartbeat can
+ * be in flight independently). Buffer must stay valid until the TX callback. */
+static uint8_t           s_beat_frame[T1S_ETH_HDR_LEN + T1S_TX_PAYLOAD_MAX];
+static volatile bool     s_beat_busy;
+static uint32_t          s_beat_tx_count;
 
 /* Millisecond time base: TMR1 fires every 1 ms (MCC config) and dispatches to
  * tick_cb via the registered timeout callback. */
@@ -181,6 +192,18 @@ static void send_heartbeat(void)
                                    0u, hb_tx_done, NULL)) {
         s_hb_busy = false;
     }
+}
+
+/* Beat-frame TX completion: free the staging buffer. */
+static void beat_tx_done(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
+                         void *pTag, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)pTx;
+    (void)len;
+    (void)pTag;
+    (void)pGlobalTag;
+    s_beat_busy = false;
 }
 
 /* Background PLCA_STATUS poll result: cache the operating bit for the CLI. */
@@ -299,6 +322,44 @@ uint32_t T1SFollower_RxCount(void)
 uint32_t T1SFollower_ErrCount(void)
 {
     return s_err_count;
+}
+
+bool T1SFollower_SendBeatFrame(const uint8_t *payload, uint16_t len)
+{
+    if ((s_tc6 == NULL) || !s_plca_op || (payload == NULL))
+    {
+        return false;   /* no bus / not up — nothing to transmit onto */
+    }
+    if (s_beat_busy)
+    {
+        return false;   /* prior beat frame still draining — drop this one */
+    }
+    if (len > T1S_TX_PAYLOAD_MAX)
+    {
+        len = T1S_TX_PAYLOAD_MAX;
+    }
+
+    memcpy(&s_beat_frame[0], s_bcast_mac, 6u);   /* dst = broadcast */
+    memcpy(&s_beat_frame[6], s_mac, 6u);         /* src = this node */
+    s_beat_frame[12] = (uint8_t)(T1S_ETHERTYPE_BEAT >> 8);
+    s_beat_frame[13] = (uint8_t)(T1S_ETHERTYPE_BEAT & 0xFFu);
+    memcpy(&s_beat_frame[T1S_ETH_HDR_LEN], payload, len);
+
+    s_beat_busy = true;
+    if (!TC6_SendRawEthernetPacket(s_tc6, s_beat_frame,
+                                   (uint16_t)(T1S_ETH_HDR_LEN + len),
+                                   0u, beat_tx_done, NULL))
+    {
+        s_beat_busy = false;
+        return false;
+    }
+    s_beat_tx_count++;
+    return true;
+}
+
+uint32_t T1SFollower_BeatTxCount(void)
+{
+    return s_beat_tx_count;
 }
 
 /* Diagnostic: log the raw value of a control register (async — the result

@@ -73,6 +73,22 @@ void Publish_GetLightshowFrame(LightshowFrame *out)
     }
 }
 
+void Publish_SerializeLightshow(const LightshowFrame *f, uint8_t *out)
+{
+    if ((f == NULL) || (out == NULL))
+    {
+        return;
+    }
+    out[0] = f->seq;
+    out[1] = f->energy;
+    out[2] = f->bass;
+    out[3] = f->treble;
+    out[4] = f->kick;
+    out[5] = f->flags;
+    out[6] = f->tempo;
+    out[7] = f->phase;
+}
+
 bool Publish_HasLightshowFrame(void)
 {
     if (s_show_ready)

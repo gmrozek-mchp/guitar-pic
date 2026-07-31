@@ -35,6 +35,9 @@ typedef struct
 #define PUB_FLAG_BIG_BEAT    (1u << 3) /* any of the above fired "strong" */
 #define PUB_FLAG_BASS_DOM    (1u << 4) /* bass energy dominates the spectrum */
 
+/* Bytes the frame occupies on the bus (ethertype 0x88B8 payload). */
+#define LIGHTSHOW_FRAME_LEN  (8u)
+
 void Publish_Initialize(void);
 
 /* Build the outbound payloads from one BeatFrame. Call once per new frame. */
@@ -42,6 +45,11 @@ void Publish_Update(const BeatFrame *f);
 
 /* Snapshot the latest lightshow frame (CLI now, T1S sender later). */
 void Publish_GetLightshowFrame(LightshowFrame *out);
+
+/* Serialize a frame to out[LIGHTSHOW_FRAME_LEN] in wire order (field order
+ * above). Keeps the on-bus byte layout owned here rather than relying on the
+ * struct's memory layout. */
+void Publish_SerializeLightshow(const LightshowFrame *f, uint8_t *out);
 
 /* True once per newly built frame (consumes); for the future T1S sender. */
 bool Publish_HasLightshowFrame(void);

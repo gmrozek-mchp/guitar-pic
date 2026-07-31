@@ -7,10 +7,11 @@
 > regenerated from scratch on the MPS512 (fresh MCC/Melody baseline). Running today: stereo audio
 > in (ADC4, 48 kHz) → 512-pt FFT beat detection → discrete beat events; an onboard RGB beat
 > indicator; an audio passthrough to the PWM DACs (monitor quality); a UART2 CLI; and a
-> **10BASE-T1S PLCA follower (id 5)** that brings up the LAN8651 MAC-PHY, syncs PLCA, and heartbeats
-> presence. Still ahead: **publishing on the bus** (position commands → lemmy, beat frame →
-> lightshow — milestone B4) and the **tempo/BPM + phase** layer those need. The imported
-> puppet-motion + WS2812 effects remain parked in `config.mcc.bak/`. See §6 and
+> **10BASE-T1S PLCA follower (id 5)** that brings up the LAN8651 MAC-PHY, syncs PLCA, heartbeats
+> presence, and **broadcasts the beat frame** to lightshow (ethertype `0x88B8`, ~23.4 Hz). Still
+> ahead: the **lightshow consumer** (decode + drive LEDs), **position commands → lemmy** (B4), and
+> the **tempo/BPM + phase** layer those need. The imported puppet-motion + WS2812 effects remain
+> parked in `config.mcc.bak/`. See §6 and
 > [`docs/journal.md`](docs/journal.md); the signal chain is documented in
 > [`docs/beat-detection.md`](docs/beat-detection.md).
 
@@ -103,9 +104,11 @@ Line-in (stereo) → ADC4 @ 48 kHz, 256× oversample, PG1-triggered      (audio.
 
   → LightshowFrame (compact 8-byte bus payload for lightshow)          (publish.c)
 
-  Consumers today:   onboard RGB indicator (main.c), `beat` + `show` CLI (cli.c)
-  Consumers planned: T1S beat frame → lightshow (payload built, transport TBD);
-                     T1S position cmds → lemmy   (needs tempo/phase + choreography)
+  → T1S broadcast (ethertype 0x88B8, ~23.4 Hz)                        (t1s_follower.c)
+
+  Consumers today:   onboard RGB indicator (main.c), `beat` + `show` CLI (cli.c),
+                     T1S beat frame → lightshow (broadcast on the wire; consumer TBD)
+  Consumers planned: T1S position cmds → lemmy   (needs tempo/phase + choreography)
 ```
 
 ## 4. Source modules (`config.mcc/src/`)
@@ -118,7 +121,7 @@ Current app modules on the fresh MCC config:
 | `beat_detect.c/h` | downsample + 512-pt FFT, spectral flux, kick detector, auto-ranging (features) |
 | `beat_engine.c/h` | onset decision over the features; publishes a `BeatFrame` |
 | `publish.c/h` | outbound-payload layer: maps `BeatFrame` → the compact `LightshowFrame` bus payload (lemmy position commands join here later) |
-| `t1s_follower.c/h` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower (SPI1) + `tc6-conf.h` |
+| `t1s_follower.c/h` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower (SPI1) + `tc6-conf.h`; presence heartbeat + beat-frame broadcast (`0x88B8`) |
 | `rgb_led.c/h` | onboard RGB LED (three SCCP PWM channels) |
 | `cli.c/h` | UART2 command line (embedded-cli), `main.c` glues it all together |
 
@@ -140,13 +143,14 @@ phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
   kick beat flags, kick strength, bass/mid+high flux, absolute envelope, bass-dominance. This is the
   data the on-bus formats are derived from. Field table in
   [`docs/beat-detection.md`](docs/beat-detection.md) §6.
-- **`LightshowFrame` (lightshow bus payload, producer present)** — `publish` builds one per
+- **`LightshowFrame` (lightshow bus payload, on the wire)** — `publish` builds one per
   `BeatFrame` (~23.4 Hz): an 8-byte frame (`seq`, `energy`, `bass`, `treble`, `kick`, `flags`, and
-  reserved `tempo`/`phase`), all normalized to 0–255. This is the beatbox-side data model for the
-  lightshow beat frame; only its **transport** (ethertype + send) is still pending (B4). Field detail
-  in the journal's decision log.
+  reserved `tempo`/`phase`), all normalized to 0–255. `t1s_follower` broadcasts it under **ethertype
+  `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at the frame rate. The **lightshow consumer** (decode + LED
+  drive) is the remaining B4 piece. Field detail in the journal's decision log.
 - **UART2 CLI @ 115200** — `info`, `beat` (latest detection frame), `show` (latest `LightshowFrame`),
-  `audio` (raw/filtered levels + peaks), `rgb`, `t1s` (+ `t1s id` / `t1s plca`), `reset`.
+  `audio` (raw/filtered levels + peaks), `rgb`, `t1s` (status incl. a `beat tx` counter; + `t1s id` /
+  `t1s plca`), `reset`.
 - **T1S presence heartbeat** — ethertype `0x88B6`, `node_type = 6` (beat source), so marvin's node
   table sees beatbox once a coordinator is on the wire. (marvin-side decode of `node_type = 6` is a
   follow-up; until then it lists beatbox by src-MAC / id 5.)
@@ -156,10 +160,10 @@ phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
 - **lemmy position commands** — beatbox computes neck/jaw targets (the ported `nod_engine`
   choreography) and sends them to lemmy over the bus. Payload/ethertype TBD; shared design with
   lemmy (which drops its own beat-driven nod and becomes a position follower).
-- **lightshow beat frame** — the `LightshowFrame` payload (above) is already produced on the beatbox
-  side; what remains for B4 is the **transport**: ethertype + marshalling + T1S send, shared with
-  lightshow. The `tempo`/`phase` bytes stay reserved until that layer lands (the frame's reactive
-  fields work without it).
+- **lightshow beat frame** — the `LightshowFrame` is now produced *and* broadcast on the bus
+  (ethertype `0x88B8`, `t1s_follower.c`); what remains for B4 is the **lightshow consumer** — accept
+  `0x88B8`, decode the 8 bytes, and drive its LEDs. The `tempo`/`phase` bytes stay reserved until the
+  tempo layer lands (the frame's reactive fields work without it).
 
 The **lemmy** position-command format still depends on the **tempo/BPM + phase** layer (a downstream
 consumer of the beat events) and the ported choreography, neither yet done. lightshow's reactive
@@ -189,8 +193,10 @@ B0.5.5 clock tree, B0.6 per-peripheral MCC re-integration).
       indicator. Define the beat/command data model the bus will carry.
 - [ ] **B2 — Publish over UART fallback.** *(optional, now that T1S is up)* Emit position commands +
       beat frame over UART1 first to prove the data model against lemmy/lightshow.
-- [ ] **B4 — Live show.** Drive lemmy (position cmds) and lightshow (beat frame) from live audio over
-      T1S; marvin recognizes beatbox's heartbeat. Requires the tempo/phase layer.
+- [~] **B4 — Live show.** Beatbox side of the lightshow path is live: the beat frame broadcasts over
+      T1S (`0x88B8`) at the frame rate, and marvin recognizes beatbox's heartbeat (id 5). Remaining:
+      the lightshow consumer (decode `0x88B8` → LEDs), then lemmy position commands (`0x88B9` unicast,
+      needs the tempo/phase + choreography layer).
 
 ## 7. Provenance
 
