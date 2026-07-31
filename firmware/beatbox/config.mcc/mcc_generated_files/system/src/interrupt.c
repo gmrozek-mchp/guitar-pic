@@ -48,6 +48,10 @@ void INTERRUPT_Initialize(void)
     // Priority: 1
     IPC39bits.CNEIP = 1;
     
+    // T1: Timer 1 interrupt
+    // Priority: 1
+    IPC6bits.T1IP = 1;
+    
     // U2EVT: UART 2 event interrupt
     // Priority: 1
     IPC13bits.U2EVTIP = 1;
@@ -71,6 +75,7 @@ void INTERRUPT_Deinitialize(void)
     //POR default value of priority
     IPC27bits.AD4CH1IP = 4;
     IPC39bits.CNEIP = 4;
+    IPC6bits.T1IP = 4;
     IPC13bits.U2EVTIP = 4;
     IPC13bits.U2EIP = 4;
     IPC12bits.U2TXIP = 4;

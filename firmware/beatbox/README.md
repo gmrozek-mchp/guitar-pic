@@ -5,9 +5,12 @@ that listens to line-level audio, runs real-time FFT beat/tempo detection, and (
 publishes the result to the animation and lighting nodes: **position commands → [`lemmy`](../lemmy)**
 and a **~5-parameter beat frame → [`lightshow`](../lightshow)**.
 
-Imported from the standalone `dspicguitarhero` project. It currently runs **autonomously** (audio →
-beat detect → local servo + RGB + WS2812 + UART telemetry) and is **not yet on the T1S bus**; the
-re-scoping to a pure publisher is the work ahead.
+Imported from the standalone `dspicguitarhero` project and being rebuilt on a fresh MCC config for
+the MPS512. On the bench today it brings up a **UART2 CLI** and a **10BASE-T1S PLCA follower**
+(id 5) — the bus transport foundation: it configures the LAN8651 MAC-PHY, and syncs + announces
+presence (heartbeat) once a coordinator is on the wire. The imported autonomous audio/beat/actuation
+logic (servo + RGB + WS2812) is parked in `config.mcc.bak/` pending re-integration; the re-scope to
+a pure beat-source publisher is the work ahead.
 
 - **What it is / design / milestones:** [`SPEC.md`](SPEC.md)
 - **Decisions & progress:** [`docs/journal.md`](docs/journal.md)

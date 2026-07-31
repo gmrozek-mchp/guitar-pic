@@ -20,6 +20,7 @@
 */
 #include "mcc_generated_files/system/system.h"
 #include "src/cli.h"
+#include "src/t1s_follower.h"
 /*
     Main application
 */
@@ -28,9 +29,11 @@ int main(void)
 {
     SYSTEM_Initialize();
     CLI_Initialize();
+    T1SFollower_Initialize();
 
     while(1)
     {
         CLI_Tasks();
+        T1SFollower_Tasks();
     }
 }

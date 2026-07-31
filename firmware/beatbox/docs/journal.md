@@ -58,6 +58,13 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
         PPS routing only** — MCC can't derive period/prescale from a frequency on this 100 MHz tree
         (it emitted `TMRPS=1:1`, `CCPxPR=0xFFFF`), so **period/prescale/duty-scaling move to the app
         driver** (see decision log). App port deferred.
+- [x] **B3 — T1S-on-dsPIC follower port.** Up on hardware: EV74H48A syncs as PLCA follower **id 5**
+      against marvin, `t1s` reports `link: up`, `synced: yes`, `chipRev: 2`, 0 errors. Ported the SAMD
+      nodes' OA-TC6 follower to dsPIC/XC-DSC + MCC: new `config.mcc/src/{tc6-conf.h,
+      t1s_follower.{c,h}}`, wired into `main.c`, `t1s` CLI command (+ `t1s id`/`t1s plca` diagnostics),
+      and `cmake/beatbox/default/user.cmake` picking up the follower + vendored `tc6.c`/`tc6-regs.c`.
+      Blocking SPI1 + GPIO CS + `T1S_RST`/`T1S_IRQ_N` (CN IRQ) + TMR1 ms clock; 500 ms presence
+      heartbeat (node_type 6). Publish path to lemmy/lightshow is B4.
 
 ## Open questions
 
@@ -67,8 +74,6 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
 - **lightshow beat frame.** Which ~5 parameters (candidates: beat pulse, bass energy, mid+high
   energy, tempo/phase, big-beat flag)? Fixed-rate frames or event-driven? Shared design with
   lightshow (its journal has the mirror question). Resolve at B1/B2.
-- **T1S on dsPIC33AK.** The PIC32CM nodes share XC32 T1S/PLCA + LAN8651 glue. How much ports vs.
-  needs a dsPIC/XC-DSC rewrite? Which SERCOM/SPI + IRQ pins on the DIM board? Resolve at B3.
 - **XC-DSC path on macOS.** `.vscode/settings.json` clangd path was set to
   `/Applications/microchip/xc-dsc/v3.31/bin/xc-dsc-clangd` (Mac analogue of the source's Windows
   path); verify against the actual install.
@@ -77,6 +82,11 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-30 | **Core OA-TC6 lib ports as-is; only the per-node glue is dsPIC-specific.** Answers the "T1S on dsPIC33AK" open question. `tc6.c`/`tc6-regs.c` compile under XC-DSC unchanged (the vendor ships a dsPIC33AK example), same vendored files the SAMD nodes build. beatbox's `t1s_follower.c` mirrors guitar's structure/public API and swaps the platform layer: blocking SPI1 byte-loop (vs guitar's async SERCOM), CN IRQ on `T1S_IRQ_N` (vs EIC), TMR1 ms tick (vs SYSTICK), MCC pin macros (`T1S_RST`/`T1S_CS`), UART2 logging (vs SERCOM1), and **no actuator GPIO** (beatbox publishes, doesn't actuate — guitar's `FRET_*`/`STRUM`/button API dropped). | Keeps beatbox on the exact same proven TC6 transport as guitar/lemmy/lightshow with zero lib divergence, so protocol fixes stay shared. Pins were already assigned in the SPI1/T1S MCC step; the only real porting surface was the ~5 platform primitives above. |
+| 2026-07-30 | **`t1s` CLI reports real on-bus state, not just local init.** The MAC-PHY bring-up completes purely over SPI with nothing on the wire, so `initDone` and the OA-TC6 config-sync footer bit (`TC6_GetState` `synced`) both assert with no cable/coordinator — the old `link: up` / `synced: yes` lines lied. Split the state: `T1SFollower_IsInitialized()` = local config done; `T1SFollower_IsConnected()` now = **PLCA operating** (PLCA_STATUS bit 15), refreshed by a 250 ms background register read cached in `s_plca_op`. The presence heartbeat is gated on PLCA-operating (a follower has no transmit slot without the coordinator beacon; sending earlier queues a frame that never drains and stalls `s_hb_busy`). CLI now shows `chip` (rev / absent), `init`, `plca` (operating / idle-no-coordinator), `cfgsync` (relabeled so it stops masquerading as connectivity), credits, rx, errors. | PLCA_STATUS is the only field that requires a beacon on the wire, so it's the honest connectivity signal. Same trap exists in the guitar/lemmy/lightshow followers (they mirror this code) — carry this fix to them when each is next touched. |
+| 2026-07-30 | **Blocking SPI: settle `TC6_SpiBufferDone` inline in `TC6_CB_OnSpiTransaction`, not deferred to the service pump.** SPI1 is a blocking 8-bit driver, so `TC6_CB_OnSpiTransaction` runs the whole transfer inline (`T1S_CS_SetLow` → byte-loop `SPI1_ByteExchange` bridging TC6's separate pTx/pRx → `T1S_CS_SetHigh`), then calls `TC6_SpiBufferDone(tc6instance, true)` before returning. **A first cut deferred that call to `service_pump()` (after `TC6_Service()` returned) — it deadlocked at boot:** `TC6Regs_Init`→`DoInitialization` drives the LAN8651 bring-up by pumping `TC6_Service()` in its *own* `while` loops (tc6-regs.c:325–414), spinning until read results (e.g. `chipRev`) post — but those only post via `TC6_SpiBufferDone`, which never ran because `service_pump` isn't reached during init. Freeze right after the `TC6_Init` log; `chipRev` stuck at `0xFF`. Completing inline lets those internal spins make progress. | Verified reentrancy-safe: `TC6_SpiBufferDone` only advances the op queue, resets `currentOp`, and flags need-service (guards with `intContext`, no re-entry into `serviceControl`/`serviceData`, no nested transaction); the library advances the send-stage *before* invoking `OnSpiTransaction` (tc6.c:718/735), so inline completion is functionally identical to the async DMA-done callback firing — just synchronous, which is exactly right for a blocking driver. Confirmed on hardware: link syncs, 0 errors. |
+| 2026-07-30 | **TMR1 1 ms tick is the follower time base** (via MCC). `TMR1_TimeoutCallbackRegister(tick_cb)` increments a `volatile uint32_t s_ticks_ms`; `TC6Regs_CB_GetTicksMs()`/reset-pulse delays read it. 32-bit reads aren't atomic on this core, so `now_ms()` double-reads until two samples agree (avoids a torn read at the low/high-word carry every ~49 days — cheap insurance). Timer is already started by `SYSTEM_Initialize`, so the follower only registers its callback. | The lib needs a monotonic ms clock for its timeout logic + the heartbeat cadence; TMR1 was the MCC-idiomatic choice (user added it) vs. a free-running SCCP or CPU-cycle counter. |
+| 2026-07-30 | **beatbox heartbeat `node_type = 6` (beat source).** New code, next free after 1=detector, 2=guitar, 3=controller, 4=animation(lemmy), 5=lightshow (`docs/t1s-podl-link.md` §7.2). **Follow-up:** marvin's heartbeat decode + `docs/t1s-podl-link.md` §7.2 table need the code 6 label added (same follow-up lemmy=4/lightshow=5 carried); until then marvin still lists beatbox via src-MAC (id 5). Note: node **id** 5 and node **type** 6 differ — id is the PLCA slot, type is the role. | Keeps the presence protocol's role enum contiguous and lets marvin's `nodes` view label beatbox once decode lands. |
 | 2026-07-30 | **Keep the board's RGB LED as a driven output (rgb_led → keep-set), but let the app own period/prescale/duty.** The EV74H48A has an RGB LED (RD9/RD0/RD2); drive it with the three SCCP in edge-aligned buffered PWM (OCM1/2/3), matching the `.bak` color→module map (G=SCCP1, R=SCCP2, B=SCCP3). MCC's generated config is kept only for **mode + `OCAEN` + PPS pin routing** — the parts it got right. **Period, prescale, and duty-scaling are set from the app driver**, not MCC. | MCC can't back-solve period+prescale from a requested frequency for the SCCP on this clock tree: at Fcy 100 MHz with the 2-bit prescaler (1:1/4/16/64, no 1:32) it emitted `TMRPS=1:1`, `CCPxPR=0xFFFF` (~1526 Hz, wrong). The `.bak`'s clean 1 kHz relied on Fcy=200 MHz (`200e6/64/3125`); at 100 MHz you can't hit exactly 1 kHz *and* a 3125 full-scale. Resolved by **decoupling app duty from the raw compare value** — `RGB_LED_Set` takes abstract brightness and scales to whatever period the driver picks (e.g. 1:16 + `PR=6250` = exactly 1 kHz), so the period stops being an app constant. App overrides at init while the module is off (`Disable` → set `TMRPS` → `PeriodSet` → `Enable`); no generated files edited (repo rule), no fighting the MCC frequency field. |
 | 2026-07-30 | **Backed out MCC and regenerated a fresh minimal config on the 512MPS512.** Old `config.mcc/` (hand-rolled app modules + the half-migrated MCC tree) renamed to `config.mcc.bak/` (git-ignored via `*.bak*`); a new Melody config was generated from scratch containing only the `system` module (clock, config_bits, dmt, interrupt, pins, reset, traps, watchdog). `main.c` is the pristine MCC skeleton (`SYSTEM_Initialize()` + empty loop). The 9 app modules (`adc_audio`, `beat_detect`, `nod_engine`, `pwm_audio`, `rgb_led`, `servo`, `uart_debug`, `ws2812`, old `main.c`) stay parked in `config.mcc.bak/` for re-integration (B0.6). | The prior tree was mid-migration and inconsistent (hand-written inits not called, a stub CH0 ADC2, device still 306 internally). A clean Melody baseline on the confirmed 512MPS512 is a firmer foundation than device-swapping a stale config — which the earlier note already flagged as unreliable. Supersedes the device-swap approach in the row below. |
 | 2026-07-30 | **Pull peripheral config into MCC, keep-set only; audio ADC via MCC callback.** The imported firmware is almost all hand-rolled SFR writes (MCC does only system + pins + a stub ADC2). Migrate just what beatbox keeps — ADC2 (audio), PWM (audio-out + ADC trigger), ADC1 (pot), UART1 — and leave `servo`/`rgb_led`/`ws2812` hand-rolled since they're slated for deletion at B1. The 48 kHz audio-ADC complete event moves to MCC's generated interrupt + registered callback (not the hand-written `_AD2CH7Interrupt`). See plan item B0.6. | MCC-ifying peripherals we're about to remove is wasted work. Pins are already fully in MCC, so migration is module-level and low-risk. The callback model keeps the ADC path idiomatic MCC even though it adds indirection in the tight loop — accepted for maintainability now that the config is regenerated for MPS512. Watch the PG3-postscale→ADC-trigger coupling: it must be reproduced in the MCC PWM config or the audio pipeline stops clocking. |
@@ -116,6 +126,60 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-30 — T1S follower up on hardware (B3 done); boot-freeze fix
+
+- **On the wire.** EV74H48A syncs as PLCA follower **id 5** against marvin: `t1s` reports
+  `link: up`, `synced: yes`, `chipRev: 2`, `plca: follower id=5/8`, tx credits present, 0 errors.
+  B3 complete.
+- **Diagnosed + fixed a boot freeze.** First build froze right after the `TC6_Init` log. Root
+  cause: the blocking-SPI completion (`TC6_SpiBufferDone`) was deferred to `service_pump`, but
+  `TC6Regs_Init`→`DoInitialization` runs the LAN8651 bring-up by pumping `TC6_Service()` in its own
+  `while` loops (tc6-regs.c:325–414), spinning on read results (e.g. `chipRev`) that only post via
+  `TC6_SpiBufferDone` — which never ran during init, so `chipRev` stuck at `0xFF` forever. Fix:
+  call `TC6_SpiBufferDone(tc6instance, true)` **inline** at the end of `TC6_CB_OnSpiTransaction`
+  (safe — it only advances the op queue + flags need-service, guarded by `intContext`; the library
+  stages the send before the callback, so inline completion == the async DMA-done callback firing).
+  Dropped the `s_spi_done_pending` flag and the deferred settle in `service_pump`. See decision log.
+- **Init is synchronous now.** `TC6Regs_Init` completes the whole register sequence before it
+  returns, so init is done on the first `T1SFollower_Tasks` pass (the "LAN8651 configured …" line
+  prints immediately). Removed the temporary bring-up instrumentation (per-stage boot logs +
+  iteration-gated liveness probe) added while localizing the freeze.
+- **Made `t1s` state honest.** Caught that `link: up` / `synced: yes` asserted with nothing
+  connected — both are local (init-done + config-sync footer bit) and don't need a wire. Added a
+  250 ms background poll of PLCA_STATUS (bit 15 = operating) cached in `s_plca_op`; `IsConnected()`
+  now means PLCA-operating and `IsInitialized()` covers the local state. Heartbeat gated on
+  PLCA-operating. CLI reworked to `chip / init / plca / cfgsync / credits / rx / errors`. See
+  decision log (same trap lives in the sibling followers). Not yet built/re-flashed with this change.
+
+### 2026-07-30 — T1S follower bring-up (B3), code landed
+
+- **Ported the OA-TC6 follower to dsPIC/XC-DSC + MCC** as PLCA follower **id 5**, mirroring
+  guitar's `t1s_follower.{c,h}` with the platform glue swapped (see decision log). New app files
+  under `config.mcc/src/`: `tc6-conf.h` (single-chunk config, copy of guitar's), `t1s_follower.h`
+  (public API, guitar's minus the actuator/button calls), `t1s_follower.c`.
+- **Platform layer:** `TC6_CB_OnSpiTransaction` = blocking `T1S_CS_SetLow` → byte-loop
+  `SPI1_ByteExchange` (bridges TC6's separate pTx/pRx) → `T1S_CS_SetHigh`, then
+  `TC6_SpiBufferDone` from `service_pump` after `TC6_Service` returns; `T1S_IRQ_N` CN handler sets
+  need-service and `service_pump` passes `T1S_IRQ_N_GetValue()` as `no_int` (held-low guard, per the
+  SPI1/T1S config watch-item); TMR1 ms tick; `SPI1_Open(0)` + `T1S_RST` reset pulse; UART2 logging;
+  500 ms presence heartbeat (node_type 6). RX frames are counted for diagnostics only — no bus
+  actuator.
+- **Integration:** `main.c` calls `T1SFollower_Initialize()` after `CLI_Initialize()` and
+  `T1SFollower_Tasks()` in the loop; `cli.c` gains a `t1s` command (status) with `t1s id` / `t1s plca`
+  diagnostic subcommands and drops the stale "(planned)" role text; `cmake/beatbox/default/user.cmake`
+  adds `t1s_follower.c` + vendored `tc6.c`/`tc6-regs.c` sources and the `oa-tc6-lib/libtc6/{inc,src}`
+  include dirs.
+- **Verified statically:** all MCC APIs referenced exist with the expected signatures (`T1S_*` pin
+  macros, `SPI1_Open`/`SPI1_ByteExchange`, `UART2_Write`/`_Read`/`_IsRxReady`/`_IsTxDone`,
+  `TMR1_TimeoutCallbackRegister`); all TC6 callback/API signatures match guitar's compiling source
+  1:1 (incl. `TC6Regs_Init` arg list).
+- **Not yet built or on hardware.** Next: MPLAB build of `beatbox_default_default_XC_DSC_compile`
+  (watch for XC-DSC warnings in the vendored lib — none expected), then bench bring-up: `t1s` shows
+  link up / `synced=1` once PLCA locks / plausible chipRev; `t1s id` logs OA IDVER + PHY id (lib
+  wants oui 0x1F0 / model 0x1B); `t1s plca` shows `plca_status=1`; with marvin coordinating, its
+  `nodes` view lists id 5 (heartbeat within ~2 s); errors don't flood (diag rate-limited) and the
+  link recovers after a cable pull (`TC6Regs_Reinit`).
 
 ### 2026-07-30 — CLI on UART2 (first app-level port)
 

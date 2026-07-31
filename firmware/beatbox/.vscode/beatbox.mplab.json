@@ -49,7 +49,8 @@
                 "config.mcc/mcc_generated_files/adc/src/adc4.c",
                 "config.mcc/mcc_generated_files/pwm/src/sccp3.c",
                 "config.mcc/mcc_generated_files/pwm/src/sccp1.c",
-                "config.mcc/mcc_generated_files/pwm/src/sccp2.c"
+                "config.mcc/mcc_generated_files/pwm/src/sccp2.c",
+                "config.mcc/mcc_generated_files/timer/src/tmr1.c"
             ]
         }
     ]
