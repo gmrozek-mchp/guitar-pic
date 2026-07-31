@@ -117,6 +117,29 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 
 ## Session log
 
+### 2026-07-30 — CLI on UART2 (first app-level port)
+
+- **First app-level port** — peripheral MCC config (B0.6) is done; started wiring app code onto the
+  generated drivers, beginning with the operator CLI. Lives in a new app tree `config.mcc/src/`
+  (mirrors the SAMD nodes' layout).
+- **Pulled `embedded-cli` verbatim** from lightshow (`third_party/embedded-cli/embedded_cli.{c,h}`,
+  md5-identical across guitar/lemmy/lightshow) — static-allocation mode, no malloc. Wrote
+  `cli.{c,h}` modeled on lightshow's, with a **starter command set (`info`, `reset`)**; peripheral
+  commands (rgb/pot/t1s/beat) get added as those ports land.
+- **Transport shimmed to the dsPIC UART2 driver** (single-byte API vs the SAMD nodes' buffer API):
+  `cli_write_char` → `UART2_Write(c)` (queues to the interrupt TX ring, busy-waits only on a full
+  ring), RX loop → `while(UART2_IsRxReady()){ UART2_Read(); }`. `reset` drains with
+  `while(!UART2_IsTxDone()){}` then `__asm__ volatile("reset")` (dsPIC software reset — MCC's
+  `reset.h` only exposes cause helpers, no SW-reset trigger).
+- **Wired into `main.c`:** `CLI_Initialize()` after `SYSTEM_Initialize()`, `CLI_Tasks()` polled in
+  the main loop.
+- **Build:** app sources + include dirs added via a new **`cmake/beatbox/default/user.cmake`** (the
+  MPLAB user-maintained cmake, included by `CMakeLists.txt` if present — same mechanism guitar uses;
+  keeps app files out of the MCC-owned `.generated/` tree and the `.mplab.json` fileset). Targets
+  `beatbox_default_default_XC_DSC_compile`.
+- **Not yet built on hardware** — needs an MPLAB build + console check on the EV74H48A (`info`,
+  autocomplete, `reset`).
+
 ### 2026-07-30 — RGB LED (SCCP1/2/3) MCC config (mode + pins only; app owns timing)
 
 - **Reopened `rgb_led` as a keep-set peripheral** — the EV74H48A board's RGB LED (RD9/RD0/RD2) stays
