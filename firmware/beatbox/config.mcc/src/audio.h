@@ -24,4 +24,9 @@ void Audio_GetPeaks(uint16_t *lmin, uint16_t *lmax, uint16_t *rmin, uint16_t *rm
 void Audio_GetFiltered(uint16_t *left, uint16_t *right);
 void Audio_GetFilteredPeaks(uint16_t *lmin, uint16_t *lmax, uint16_t *rmin, uint16_t *rmax);
 
+/* Register a consumer fed the post-HPF, normalized (+/-1) L/R pair every ADC
+ * frame (48 kHz, from the ADC completion interrupt). Pass NULL to detach. A
+ * single consumer; a later registration replaces the earlier one. */
+void Audio_SampleCallbackRegister(void (*callback)(float left, float right));
+
 #endif /* AUDIO_H */

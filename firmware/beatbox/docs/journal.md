@@ -91,6 +91,7 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-31 | **Beat-detect port: decouple via a stereo audio sample callback, split feature extraction from beat decision, scope to events+features only.** `audio.c` gains `Audio_SampleCallbackRegister(void(*)(float left, float right))` (mirrors MCC's `ADC4_ChannelCallbackRegister` idiom); the 48 kHz ISR feeds the post-HPF normalized L/R pair to a single registered consumer (NULL detaches; aligned function-pointer store is atomic on this 32-bit core so the ISR-read vs registration-write race is a non-issue). Two new modules: `beat_detect.{c,h}` holds the DSP **verbatim** from `.bak` (512-pt radix-2 FFT, DS_RATE=4 → 12 kHz → ~23.4 Hz frames, peak envelope, bass/mid-high spectral flux, bass-dominance, kick detector, 64-bin display spectrum) — every constant preserved (BASS_BIN 1–10, KICK_BIN 2–4, KICK_ATTACK 0.7, etc.); `beat_engine.{c,h}` lifts the beat *decision* out of `.bak/main.c` (per-band running-average delta threshold + cooldown + envelope noise gate) and publishes a `BeatFrame`. `beat_engine`'s `on_samples` sums L+R to mono for analysis (per user: audio callback stays stereo, the beat detector decides mono). Dropped the GUI-only frame-timing plumbing (`sample_counter`/`out_frame_us`/`GetFrameTime`) and all "keep build happy" stubs. `main.c` reduced to `Beat_Initialize()` + `Beat_Tasks()`; `beat` CLI command prints the latest frame. **Scope deliberately limited to events + features — tempo/BPM/phase deferred** (they are downstream consumers of these events, so additive later). | Unwinds the `.bak` three-module cross-call tangle (`adc_audio`→`pwm_audio`+`beat_detect`) into a clean layered dependency: `audio` (I/O) → `beat_detect` (features) → `beat_engine` (decision) → tempo → phase, each additive. Preserving the DSP byte-for-byte keeps the proven detection behavior unchanged while the structure improves; the callback breaks the audio↔analysis coupling the same idiomatic way MCC exposes the ADC event. Stereo-in/mono-in-detector keeps the option open to use per-channel info later without touching `audio.c`. Watch-item: confirm XC-DSC cmake links libm (`sqrtf`/`cosf`/`sinf` in `beat_detect.c`) — add `target_link_libraries(... m)` only if undefined-reference errors appear. |
 | 2026-07-30 | **Audio app port: passthrough first, one `audio.c` module, beat detect later.** The `.bak` split the audio path across three modules that cross-called each other (`adc_audio.c`'s `_AD2CH7Interrupt` normalized/HPF'd, then reached into `pwm_audio.c` to output *and* into `beat_detect.c` to analyze). First step re-integrates only the input→output half, in a single `config.mcc/src/audio.{c,h}`: `Audio_Initialize()` idles PG1/PG2 mid-scale, `PWM_Enable()`s them (MCC leaves generators `ON=0`), and registers an ADC4 channel callback; the callback fires on CH1 (right), reads CH0 (left, already latched) via `ADC4_ConversionResultGet`, normalizes both about 32768, and mirrors straight to the PWM DACs (`PWM_DutyCycleSet` + `PWM_SoftwareUpdateRequest`, PG1=L/RB8, PG2=R/RB9). No HPF, no FFT yet. A `audio` CLI command reports the latest raw L/R sample for bench diagnosis. | Proving the ADC-in → PWM-out path in isolation removes the biggest unknowns (MCC ADC4 callback wiring, PG1-triggered 48 kHz clocking, DAC output) before layering DSP on top, and collapsing the parked three-module tangle into one owner is exactly the "muddled interaction" cleanup wanted. HPF/`BeatDetect_Process` slot back into the same callback once I/O is confirmed. |
 | 2026-07-30 | **Core OA-TC6 lib ports as-is; only the per-node glue is dsPIC-specific.** Answers the "T1S on dsPIC33AK" open question. `tc6.c`/`tc6-regs.c` compile under XC-DSC unchanged (the vendor ships a dsPIC33AK example), same vendored files the SAMD nodes build. beatbox's `t1s_follower.c` mirrors guitar's structure/public API and swaps the platform layer: blocking SPI1 byte-loop (vs guitar's async SERCOM), CN IRQ on `T1S_IRQ_N` (vs EIC), TMR1 ms tick (vs SYSTICK), MCC pin macros (`T1S_RST`/`T1S_CS`), UART2 logging (vs SERCOM1), and **no actuator GPIO** (beatbox publishes, doesn't actuate — guitar's `FRET_*`/`STRUM`/button API dropped). | Keeps beatbox on the exact same proven TC6 transport as guitar/lemmy/lightshow with zero lib divergence, so protocol fixes stay shared. Pins were already assigned in the SPI1/T1S MCC step; the only real porting surface was the ~5 platform primitives above. |
 | 2026-07-30 | **`t1s` CLI reports real on-bus state, not just local init.** The MAC-PHY bring-up completes purely over SPI with nothing on the wire, so `initDone` and the OA-TC6 config-sync footer bit (`TC6_GetState` `synced`) both assert with no cable/coordinator — the old `link: up` / `synced: yes` lines lied. Split the state: `T1SFollower_IsInitialized()` = local config done; `T1SFollower_IsConnected()` now = **PLCA operating** (PLCA_STATUS bit 15), refreshed by a 250 ms background register read cached in `s_plca_op`. The presence heartbeat is gated on PLCA-operating (a follower has no transmit slot without the coordinator beacon; sending earlier queues a frame that never drains and stalls `s_hb_busy`). CLI now shows `chip` (rev / absent), `init`, `plca` (operating / idle-no-coordinator), `cfgsync` (relabeled so it stops masquerading as connectivity), credits, rx, errors. | PLCA_STATUS is the only field that requires a beacon on the wire, so it's the honest connectivity signal. Same trap exists in the guitar/lemmy/lightshow followers (they mirror this code) — carry this fix to them when each is next touched. |
@@ -136,6 +137,37 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-31 — Beat-detection port (features + events)
+
+- **Dropped the noise gate tried the prior session.** Too sensitive (cut real audio) and it
+  didn't kill the hiss anyway — the background noise is in *both* the ADC front-end (~60–100pp,
+  source-independent) *and* the PWM output stage (hiss persists with the DAC held at mid-scale,
+  MCP662 op-amps, no mute pin). Passthrough is monitor/scratch quality only, not clean enough to
+  feed the main speakers without a hardware redesign. See the audio decision-log rows.
+- **No LPF added.** 48 kHz + the ADC's 256× oversampling decimation handles anti-aliasing; beat
+  detection needs only ~1–4 kHz. Any band-limiting belongs inside the FFT stage later, not in the
+  analog/ISR path.
+- **Ported beat detection as two modules, DSP verbatim.** `audio.c` now offers a stereo
+  `Audio_SampleCallbackRegister` fed the post-HPF ±1 L/R pair from the ISR. `beat_detect.{c,h}` =
+  the `.bak` FFT/feature DSP unchanged (512-pt radix-2, DS_RATE 4, envelope, bass/mid-high flux,
+  bass-dominance, kick detector, 64-bin spectrum); `beat_engine.{c,h}` = the beat *decision* lifted
+  out of `.bak/main.c` (per-band delta-over-average threshold + cooldown + envelope gate), summing
+  L+R to mono in `on_samples`, publishing a `BeatFrame`. `main.c` calls `Beat_Initialize()` /
+  `Beat_Tasks()`; dropped the GUI-only frame-timing plumbing and the old build-happy stubs. See
+  decision log.
+- **CLI:** added `beat` — prints the latest frame (env, bass/full flux, bass-vs-treble, the three
+  beat/kick flags + kick strength) for bench verification.
+- **Onboard RGB LED = live beat indicator.** `main` consumes each published `BeatFrame` and drives
+  the LED: kick=white, bass=red, mid/high=blue, strong beats full brightness, decaying ~0.75/frame.
+  The `.bak` drove RGB mostly off the phase oscillator (deferred) + a big-beat green flash; this
+  reuses only the events we have now, as a visual check of beat detection. Note it continuously
+  drives the LED, so the `rgb` CLI command is overwritten each frame while beats run.
+- **Scope:** events + features only. Tempo/BPM and phase are deferred as downstream consumers of
+  these events (confirmed cleanly additive), then B4 T1S publish.
+- **Build watch-item:** confirm XC-DSC cmake links libm for `beat_detect.c` (`sqrtf`/`cosf`/`sinf`);
+  add `target_link_libraries(... m)` only if undefined-reference errors surface. Awaiting user
+  build/flash + bench check that env/flux track live audio.
 
 ### 2026-07-30 — Audio passthrough app port (ADC4-in → PWM-out)
 

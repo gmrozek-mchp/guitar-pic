@@ -62,6 +62,9 @@ static volatile uint16_t s_fmax_left   = 0u;
 static volatile uint16_t s_fmin_right  = 0xFFFFu;
 static volatile uint16_t s_fmax_right  = 0u;
 
+/* Optional analysis consumer, fed the post-HPF L/R pair from the ISR. */
+static void (*s_sample_cb)(float left, float right) = NULL;
+
 /* 256x oversampled result is unsigned 0..65535 centred on 32768. */
 static inline float normalize(uint16_t raw)
 {
@@ -126,6 +129,11 @@ static void audio_on_sample(const enum ADC4_CHANNEL channel, uint16_t adc_val)
     PWM_DutyCycleSet(PWM_GENERATOR_2, to_duty(right));   /* RB9 */
     PWM_SoftwareUpdateRequest(PWM_GENERATOR_1);
     PWM_SoftwareUpdateRequest(PWM_GENERATOR_2);
+
+    if (s_sample_cb != NULL)
+    {
+        s_sample_cb(left, right);
+    }
 }
 
 void Audio_Initialize(void)
@@ -185,4 +193,9 @@ void Audio_GetFilteredPeaks(uint16_t *lmin, uint16_t *lmax, uint16_t *rmin, uint
     s_fmax_left  = 0u;
     s_fmin_right = 0xFFFFu;
     s_fmax_right = 0u;
+}
+
+void Audio_SampleCallbackRegister(void (*callback)(float left, float right))
+{
+    s_sample_cb = callback;
 }

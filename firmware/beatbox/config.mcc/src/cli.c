@@ -13,6 +13,7 @@
 #include "t1s_follower.h"
 #include "rgb_led.h"
 #include "audio.h"
+#include "beat_engine.h"
 #include "../mcc_generated_files/uart/uart2.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
@@ -168,6 +169,21 @@ static void cmd_audio(EmbeddedCli *cli, char *args, void *ctx)
                (unsigned)frmin, (unsigned)frmax, (unsigned)(frmax - frmin));
 }
 
+static void cmd_beat(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)args;
+    (void)ctx;
+    BeatFrame f;
+    Beat_GetFrame(&f);
+    cli_printf("env=%u  flux b=%u f=%u  %s",
+               (unsigned)f.raw_env, (unsigned)f.flux_bass, (unsigned)f.flux_full,
+               f.bass_dominant ? "bass" : "treble");
+    cli_printf("beat b=%u f=%u  kick=%u str=%u  (beats are momentary)",
+               (unsigned)f.bass_beat, (unsigned)f.full_beat,
+               (unsigned)f.kick_beat, (unsigned)f.kick_strength);
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -190,6 +206,7 @@ static void register_commands(void)
         { "t1s",   "T1S link status; 't1s id'/'t1s plca' run diagnostics", true,  NULL, cmd_t1s },
         { "rgb",   "Set RGB LED: 'rgb <r> <g> <b>' (0-255) or 'rgb off'",   true,  NULL, cmd_rgb },
         { "audio", "Print raw + filtered L/R sample and peak envelope since last call", false, NULL, cmd_audio },
+        { "beat",  "Print latest beat-detection frame (envelope/flux/kick)", false, NULL, cmd_beat },
         { "reset", "Reset the MCU (software reset)",                     false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
