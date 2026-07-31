@@ -179,7 +179,18 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
     DC term at the DAC; the HPF removes it adaptively so the **output** idles at true mid-scale
     whatever the input bias is, and strips sub-audible rumble. Runs on every sample (even during the
     soft-start ramp) so its state is settled before passthrough uses it — no handover transient.
-    Peak/`audio`-CLI reporting stays on the **raw** ADC values (input diagnostic, pre-filter).
+    Peak/`audio`-CLI reporting now shows **both** raw and filtered (post-HPF, re-expressed in
+    count units, mid 32768) sample + peak-envelope lines.
+  - **Background noise is in both stages, not just the input.** Raw and filtered pp are the same
+    (~60–70, up to ~100) whether or not a source is connected, so part of it is the ADC/front-end
+    floor. But hiss persists audibly even with the output frozen at mid-scale (gate closed → PWM
+    duty constant), so the PWM output stage adds noise of its own.
+  - **Noise gate tried and dropped.** A hysteresis gate (envelope-driven, smooth attack/release)
+    was too sensitive — it dropped real audio — and, because output-stage hiss survives with the
+    DAC held constant, it couldn't clean up idle noise either. Removed; passthrough is back to
+    HPF-only. Verdict: the passthrough isn't clean enough to drive the main speakers (the original
+    hope: passthrough + overlay audio on demand) without a hardware redesign of the output stage.
+    Treat the audio path as beat-detect input + a scratch/monitor output, not a speaker feed.
 - Next: `BeatDetect` port (FFT) onto the filtered mono sum.
 
 ### 2026-07-30 — RGB LED app port (B0.6 rgb_led done)

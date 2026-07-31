@@ -5,12 +5,10 @@
 
 /* Stereo audio passthrough. ADC4 samples line-in at 48 kHz (PG1-triggered,
  * 256x oversampled) and this module mirrors each L/R pair straight back out on
- * the PWM_HS audio DACs: PWM1H (RB8) = left, PWM2H (RB9) = right. Call
- * Audio_Initialize once after SYSTEM_Initialize; the path then runs entirely
- * from the ADC completion interrupt. The output soft-starts (a 200 ms DC ramp
- * to mid-scale before audio passes) so enabling the DACs doesn't pop.
- * Audio_GetLevels reports the most recent raw sample pair for bench
- * diagnostics. */
+ * the PWM_HS audio DACs: PWM1H (RB8) = left, PWM2H (RB9) = right, via a DC-block
+ * high-pass. Call Audio_Initialize once after SYSTEM_Initialize; the path then
+ * runs entirely from the ADC completion interrupt. Audio_GetLevels reports the
+ * most recent raw sample pair for bench diagnostics. */
 
 void Audio_Initialize(void);
 void Audio_GetLevels(uint16_t *left, uint16_t *right);
