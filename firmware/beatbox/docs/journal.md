@@ -34,7 +34,8 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
       exists, so that step only enables the generator.
 - [ ] **B0.6 — Re-integrate the keep-set peripherals into the fresh MCC config.** Starting point is now
       a bare `system`-only Melody config; the app modules live in `config.mcc.bak/`. Bring back only
-      what beatbox *keeps*; do **not** re-add `servo`/`rgb_led`/`ws2812` (slated for removal at B1).
+      what beatbox *keeps*; do **not** re-add `servo`/`ws2812` (slated for removal at B1). `rgb_led`
+      **is kept** — the EV74H48A board's RGB LED stays a driven output (see decision log).
       Workflow per peripheral: add + configure in Melody → regenerate → port the `.bak` module's logic
       onto the generated API → copy the file into `config.mcc/` and add it to the descriptor fileset.
       Order (independent → coupled):
@@ -52,6 +53,11 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
         (`ADC_AUDIO_R`/AD4AN1)** (was ADC2 CH6/CH7), 256× oversample, `TRG1SRC`=PWM1 (PG1),
         complete-interrupt on CH1 (higher channel) at priority 6. MCC config done. App port
         (HPF + passthrough + `BeatDetect_Process` into the CH1 callback) deferred.
+  - [~] **RGB LED** (`rgb_led.c`): three SCCP in edge-aligned buffered PWM — **SCCP1→RD9 (G),
+        SCCP2→RD0 (R), SCCP3→RD2 (B)** via PPS (OCM1/2/3). **MCC config kept for mode + `OCAEN` +
+        PPS routing only** — MCC can't derive period/prescale from a frequency on this 100 MHz tree
+        (it emitted `TMRPS=1:1`, `CCPxPR=0xFFFF`), so **period/prescale/duty-scaling move to the app
+        driver** (see decision log). App port deferred.
 
 ## Open questions
 
@@ -71,6 +77,7 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-30 | **Keep the board's RGB LED as a driven output (rgb_led → keep-set), but let the app own period/prescale/duty.** The EV74H48A has an RGB LED (RD9/RD0/RD2); drive it with the three SCCP in edge-aligned buffered PWM (OCM1/2/3), matching the `.bak` color→module map (G=SCCP1, R=SCCP2, B=SCCP3). MCC's generated config is kept only for **mode + `OCAEN` + PPS pin routing** — the parts it got right. **Period, prescale, and duty-scaling are set from the app driver**, not MCC. | MCC can't back-solve period+prescale from a requested frequency for the SCCP on this clock tree: at Fcy 100 MHz with the 2-bit prescaler (1:1/4/16/64, no 1:32) it emitted `TMRPS=1:1`, `CCPxPR=0xFFFF` (~1526 Hz, wrong). The `.bak`'s clean 1 kHz relied on Fcy=200 MHz (`200e6/64/3125`); at 100 MHz you can't hit exactly 1 kHz *and* a 3125 full-scale. Resolved by **decoupling app duty from the raw compare value** — `RGB_LED_Set` takes abstract brightness and scales to whatever period the driver picks (e.g. 1:16 + `PR=6250` = exactly 1 kHz), so the period stops being an app constant. App overrides at init while the module is off (`Disable` → set `TMRPS` → `PeriodSet` → `Enable`); no generated files edited (repo rule), no fighting the MCC frequency field. |
 | 2026-07-30 | **Backed out MCC and regenerated a fresh minimal config on the 512MPS512.** Old `config.mcc/` (hand-rolled app modules + the half-migrated MCC tree) renamed to `config.mcc.bak/` (git-ignored via `*.bak*`); a new Melody config was generated from scratch containing only the `system` module (clock, config_bits, dmt, interrupt, pins, reset, traps, watchdog). `main.c` is the pristine MCC skeleton (`SYSTEM_Initialize()` + empty loop). The 9 app modules (`adc_audio`, `beat_detect`, `nod_engine`, `pwm_audio`, `rgb_led`, `servo`, `uart_debug`, `ws2812`, old `main.c`) stay parked in `config.mcc.bak/` for re-integration (B0.6). | The prior tree was mid-migration and inconsistent (hand-written inits not called, a stub CH0 ADC2, device still 306 internally). A clean Melody baseline on the confirmed 512MPS512 is a firmer foundation than device-swapping a stale config — which the earlier note already flagged as unreliable. Supersedes the device-swap approach in the row below. |
 | 2026-07-30 | **Pull peripheral config into MCC, keep-set only; audio ADC via MCC callback.** The imported firmware is almost all hand-rolled SFR writes (MCC does only system + pins + a stub ADC2). Migrate just what beatbox keeps — ADC2 (audio), PWM (audio-out + ADC trigger), ADC1 (pot), UART1 — and leave `servo`/`rgb_led`/`ws2812` hand-rolled since they're slated for deletion at B1. The 48 kHz audio-ADC complete event moves to MCC's generated interrupt + registered callback (not the hand-written `_AD2CH7Interrupt`). See plan item B0.6. | MCC-ifying peripherals we're about to remove is wasted work. Pins are already fully in MCC, so migration is module-level and low-risk. The callback model keeps the ADC path idiomatic MCC even though it adds indirection in the tight loop — accepted for maintainability now that the config is regenerated for MPS512. Watch the PG3-postscale→ADC-trigger coupling: it must be reproduced in the MCC PWM config or the audio pipeline stops clocking. |
 | 2026-07-30 | **Target device changed dsPIC33AK256MPS306 → dsPIC33AK512MPS512** (EV80L65A GP DIM on the EV74H48A Curiosity Platform board). Same dsPIC33A MPS line, 200 MHz core, XC-DSC v3.31, same peripheral classes — MPS512 is the larger sibling (512 KB flash, more RAM/pins). Descriptor + docs updated (step 1); MCC device swap + full `mcc_generated_files/` regen + fixed-function pin re-map are the user's MCC-GUI steps. | Bigger part is pure headroom for the FFT/publisher work and matches the hardware on hand. Low risk: the DSP/beat code is pin-agnostic. The only real work is re-deriving the **fixed-function** pins (2 audio-in ADC channels, speed pot, 2 PWM-DAC outputs) against the MPS512 datasheet + EV80L65A DIM/EV74H48A pinout; PPS outputs (SCCP servo/RGB, SDO3, UART1, RD1) re-route freely. DFP stays `dsPIC33AK-MP_DFP` (verify the version includes MPS512; MCC pins it on regen). Melody caveat: device-change on an existing config is unreliable — likely cleaner to build a fresh MCC config for MPS512 re-adding the same module set. |
@@ -109,6 +116,24 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-30 — RGB LED (SCCP1/2/3) MCC config (mode + pins only; app owns timing)
+
+- **Reopened `rgb_led` as a keep-set peripheral** — the EV74H48A board's RGB LED (RD9/RD0/RD2) stays
+  a driven output, so it needs config after all (earlier it sat in the B0.6 drop-set with servo/WS2812).
+- **Three SCCP in PWM added and pin-routed correctly:** `CCPxCON1=0x5` (MOD = dual-edge buffered PWM),
+  `CCPxCON2=0x1000000` (`OCAEN`), `ON=1`; PPS `RD9→OCM1` (G), `RD0→OCM2` (R), `RD2→OCM3` (B) in
+  `pins.c` — matching the `.bak` color→module map. These parts of the generated config are correct
+  and kept.
+- **MCC can't compute the timing here.** It emitted `TMRPS=1:1`, `CCPxPR=0xFFFF` (~1526 Hz) instead of
+  the requested 1 kHz — at Fcy 100 MHz with the 2-bit prescaler (1:1/4/16/64) it doesn't auto-select a
+  prescale, and 1 kHz at 1:1 overflows the 16-bit period. **Decision:** app driver owns
+  period/prescale/duty-scaling; `RGB_LED_Set` takes abstract brightness and scales to the driver's
+  period (e.g. 1:16 + `PR=6250` = exactly 1 kHz), so the `.bak`'s 3125 magic number goes away. See
+  decision log. Config left as generated; overrides happen in the deferred app port
+  (`Disable` → `TMRPS` → `PeriodSet` → `Enable`).
+- **B0.6 status:** all keep-set peripherals now have MCC config (audio ADC/PWM, pot, UART1/2, SPI1,
+  and now RGB). Remaining beatbox work is the app-level ports + the B1 pure-publisher rework.
 
 ### 2026-07-30 — Audio ADC (ADC4) + PWM→ADC trigger MCC config (config only, no app port)
 
