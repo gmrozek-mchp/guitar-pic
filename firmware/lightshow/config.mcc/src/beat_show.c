@@ -82,11 +82,12 @@ static void ef_pulse(uint8_t bass_beat, uint8_t full_beat, uint8_t bass)
 }
 
 /* Effect 1 - Dual Comet: two comets driven by the phase oscillator, warm on
- * strand 0 and cool on strand 1 (mirrored); beats flash the dim background. */
+ * strand 0 and cool on strand 1, both sweeping the same direction; beats flash
+ * the dim background. */
 static void ef_comet(uint16_t phase, uint8_t bass_beat, uint8_t energy)
 {
     static uint16_t beat_flash;
-    uint16_t i, pos, posb;
+    uint16_t i, pos;
     uint8_t t, bg;
 
     if (bass_beat > 0u)        { beat_flash = 200u; }
@@ -103,18 +104,11 @@ static void ef_comet(uint16_t phase, uint8_t bass_beat, uint8_t energy)
         if (pos >= i) {
             t = (uint8_t)(200u * (8u - i) / 8u);
             NeoPixel_SetPixel(0u, pos - i, t, (uint8_t)(t * 3u / 4u), (uint8_t)(t / 4u));
+            NeoPixel_SetPixel(1u, pos - i, (uint8_t)(t / 4u), (uint8_t)(t * 3u / 4u), t);
         }
     }
     NeoPixel_SetPixel(0u, pos, 255u, 220u, 80u);   /* warm yellow-white head */
-
-    posb = (uint16_t)((NUM - 1u) - pos);
-    for (i = 0u; i < 8u; i++) {
-        if ((posb + i) < NUM) {
-            t = (uint8_t)(200u * (8u - i) / 8u);
-            NeoPixel_SetPixel(1u, posb + i, (uint8_t)(t / 4u), (uint8_t)(t * 3u / 4u), t);
-        }
-    }
-    NeoPixel_SetPixel(1u, posb, 80u, 220u, 255u);  /* cool blue-white head */
+    NeoPixel_SetPixel(1u, pos, 80u, 220u, 255u);   /* cool blue-white head */
 }
 
 /* Effect 2 - Split Energy: strand 0 fills warm amber with bass, strand 1 fills

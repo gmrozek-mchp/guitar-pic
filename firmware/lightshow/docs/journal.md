@@ -48,8 +48,12 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
         the 0-255 frame fields. Auto-cycles every ~20 s; `show` CLI reports/locks the effect.
   - [x] Comet phase runs off a local oscillator (restart-on-bass-beat) until beatbox sends a non-zero
         wire `phase` — the frame's `tempo`/`phase` bytes are reserved until beatbox's tempo layer lands.
-  - [ ] Verify on hardware with beatbox live on the bus: `show` frame counter advances, effects react
-        to the music, strip idle-clears when the audio stops.
+  - [x] Verified on hardware with beatbox live: frames advance, effects react to the music.
+  - [x] Dual comet: dropped the center-out mirror (`posb = (NUM-1) - pos`) inherited from the source
+        single-strip show — strand 1 now shares strand 0's `pos`/trail so both comets sweep the same
+        direction (were opposite: left bottom→top, right top→bottom). `ef_pulse` (uniform) and
+        `ef_split` (both strands fill from index 0) were already same-direction.
+  - [ ] Verify strip idle-clears when the audio stops.
 
 ## Open questions
 
