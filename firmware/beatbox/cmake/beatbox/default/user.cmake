@@ -3,6 +3,7 @@ target_sources(beatbox_default_default_XC_DSC_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/beat_detect.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/beat_engine.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/cli.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/publish.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/rgb_led.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/t1s_follower.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../config.mcc/src/third_party/embedded-cli/embedded_cli.c"

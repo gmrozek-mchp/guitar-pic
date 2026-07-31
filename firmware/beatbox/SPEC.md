@@ -101,8 +101,11 @@ Line-in (stereo) → ADC4 @ 48 kHz, 256× oversample, PG1-triggered      (audio.
   → onset decision: two bands, 4-frame rolling-average threshold + cooldown (beat_engine.c)
   → BeatFrame {bass/full/kick beats, flux, envelope, bass_dominant}
 
-  Consumers today:   onboard RGB indicator (main.c), `beat` CLI (cli.c)
-  Consumers planned: T1S position cmds → lemmy;  T1S beat frame → lightshow   (needs tempo/phase)
+  → LightshowFrame (compact 8-byte bus payload for lightshow)          (publish.c)
+
+  Consumers today:   onboard RGB indicator (main.c), `beat` + `show` CLI (cli.c)
+  Consumers planned: T1S beat frame → lightshow (payload built, transport TBD);
+                     T1S position cmds → lemmy   (needs tempo/phase + choreography)
 ```
 
 ## 4. Source modules (`config.mcc/src/`)
@@ -114,6 +117,7 @@ Current app modules on the fresh MCC config:
 | `audio.c/h` | 48 kHz stereo ADC4 ISR, DC-block HPF, PWM-DAC passthrough, `Audio_SampleCallbackRegister` |
 | `beat_detect.c/h` | downsample + 512-pt FFT, spectral flux, kick detector, auto-ranging (features) |
 | `beat_engine.c/h` | onset decision over the features; publishes a `BeatFrame` |
+| `publish.c/h` | outbound-payload layer: maps `BeatFrame` → the compact `LightshowFrame` bus payload (lemmy position commands join here later) |
 | `t1s_follower.c/h` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower (SPI1) + `tc6-conf.h` |
 | `rgb_led.c/h` | onboard RGB LED (three SCCP PWM channels) |
 | `cli.c/h` | UART2 command line (embedded-cli), `main.c` glues it all together |
@@ -136,8 +140,13 @@ phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
   kick beat flags, kick strength, bass/mid+high flux, absolute envelope, bass-dominance. This is the
   data the on-bus formats are derived from. Field table in
   [`docs/beat-detection.md`](docs/beat-detection.md) §6.
-- **UART2 CLI @ 115200** — `info`, `beat` (latest frame), `audio` (raw/filtered levels + peaks),
-  `rgb`, `t1s` (+ `t1s id` / `t1s plca`), `reset`.
+- **`LightshowFrame` (lightshow bus payload, producer present)** — `publish` builds one per
+  `BeatFrame` (~23.4 Hz): an 8-byte frame (`seq`, `energy`, `bass`, `treble`, `kick`, `flags`, and
+  reserved `tempo`/`phase`), all normalized to 0–255. This is the beatbox-side data model for the
+  lightshow beat frame; only its **transport** (ethertype + send) is still pending (B4). Field detail
+  in the journal's decision log.
+- **UART2 CLI @ 115200** — `info`, `beat` (latest detection frame), `show` (latest `LightshowFrame`),
+  `audio` (raw/filtered levels + peaks), `rgb`, `t1s` (+ `t1s id` / `t1s plca`), `reset`.
 - **T1S presence heartbeat** — ethertype `0x88B6`, `node_type = 6` (beat source), so marvin's node
   table sees beatbox once a coordinator is on the wire. (marvin-side decode of `node_type = 6` is a
   follow-up; until then it lists beatbox by src-MAC / id 5.)
@@ -147,12 +156,14 @@ phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
 - **lemmy position commands** — beatbox computes neck/jaw targets (the ported `nod_engine`
   choreography) and sends them to lemmy over the bus. Payload/ethertype TBD; shared design with
   lemmy (which drops its own beat-driven nod and becomes a position follower).
-- **lightshow beat frame** — ~5 parameters per frame (candidates: beat pulse, bass energy, mid+high
-  energy, tempo/phase, big-beat flag) derived from the `BeatFrame`. Payload/ethertype TBD; shared
-  design with lightshow.
+- **lightshow beat frame** — the `LightshowFrame` payload (above) is already produced on the beatbox
+  side; what remains for B4 is the **transport**: ethertype + marshalling + T1S send, shared with
+  lightshow. The `tempo`/`phase` bytes stay reserved until that layer lands (the frame's reactive
+  fields work without it).
 
-Both bus formats depend on the **tempo/BPM + phase** layer, which is a downstream consumer of the
-beat events and not yet ported.
+The **lemmy** position-command format still depends on the **tempo/BPM + phase** layer (a downstream
+consumer of the beat events) and the ported choreography, neither yet done. lightshow's reactive
+frame does not.
 
 ## 6. Milestones
 

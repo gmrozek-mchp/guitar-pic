@@ -22,6 +22,7 @@
 #include "src/audio.h"
 #include "src/beat_engine.h"
 #include "src/cli.h"
+#include "src/publish.h"
 #include "src/rgb_led.h"
 #include "src/t1s_follower.h"
 /*
@@ -61,6 +62,7 @@ int main(void)
     RGB_LED_Initialize();
     Audio_Initialize();
     Beat_Initialize();
+    Publish_Initialize();
     CLI_Initialize();
     T1SFollower_Initialize();
 
@@ -73,6 +75,7 @@ int main(void)
             BeatFrame f;
             Beat_GetFrame(&f);
             beat_indicator(&f);
+            Publish_Update(&f);
         }
         T1SFollower_Tasks();
     }

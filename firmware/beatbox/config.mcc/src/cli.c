@@ -14,6 +14,7 @@
 #include "rgb_led.h"
 #include "audio.h"
 #include "beat_engine.h"
+#include "publish.h"
 #include "../mcc_generated_files/uart/uart2.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
@@ -184,6 +185,25 @@ static void cmd_beat(EmbeddedCli *cli, char *args, void *ctx)
                (unsigned)f.kick_beat, (unsigned)f.kick_strength);
 }
 
+static void cmd_show(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)args;
+    (void)ctx;
+    LightshowFrame s;
+    Publish_GetLightshowFrame(&s);
+    cli_printf("seq=%u  energy=%u bass=%u treble=%u kick=%u",
+               (unsigned)s.seq, (unsigned)s.energy, (unsigned)s.bass,
+               (unsigned)s.treble, (unsigned)s.kick);
+    cli_printf("flags: %s%s%s%s%s(0x%02X)  tempo=%u phase=%u",
+               (s.flags & PUB_FLAG_BASS_BEAT) ? "bass " : "",
+               (s.flags & PUB_FLAG_MID_BEAT)  ? "mid "  : "",
+               (s.flags & PUB_FLAG_KICK)      ? "kick " : "",
+               (s.flags & PUB_FLAG_BIG_BEAT)  ? "BIG "  : "",
+               (s.flags & PUB_FLAG_BASS_DOM)  ? "dom "  : "",
+               (unsigned)s.flags, (unsigned)s.tempo, (unsigned)s.phase);
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -207,6 +227,7 @@ static void register_commands(void)
         { "rgb",   "Set RGB LED: 'rgb <r> <g> <b>' (0-255) or 'rgb off'",   true,  NULL, cmd_rgb },
         { "audio", "Print raw + filtered L/R sample and peak envelope since last call", false, NULL, cmd_audio },
         { "beat",  "Print latest beat-detection frame (envelope/flux/kick)", false, NULL, cmd_beat },
+        { "show",  "Print latest lightshow frame (bus payload to lightshow)", false, NULL, cmd_show },
         { "reset", "Reset the MCU (software reset)",                     false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
