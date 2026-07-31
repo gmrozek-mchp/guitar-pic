@@ -25,6 +25,7 @@
 #include "src/publish.h"
 #include "src/rgb_led.h"
 #include "src/t1s_follower.h"
+#include "src/uart_debug.h"
 /*
     Main application
 */
@@ -63,6 +64,7 @@ int main(void)
     Audio_Initialize();
     Beat_Initialize();
     Publish_Initialize();
+    UART_Debug_Initialize();
     CLI_Initialize();
     T1SFollower_Initialize();
 
@@ -76,6 +78,7 @@ int main(void)
             Beat_GetFrame(&f);
             beat_indicator(&f);
             Publish_Update(&f);
+            UART_Debug_Publish(&f);
         }
         if (Publish_HasLightshowFrame())
         {
@@ -86,5 +89,6 @@ int main(void)
             (void)T1SFollower_SendBeatFrame(payload, sizeof(payload));
         }
         T1SFollower_Tasks();
+        UART_Debug_Tasks();
     }
 }

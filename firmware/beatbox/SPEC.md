@@ -76,7 +76,7 @@ other peripheral routes are PPS.
 | RG9 (SDI1) | In | T1S SPI MISO |
 | RE10 (SCK1) | Out | T1S SPI clock |
 | RH0 (U2TX) / RD10 (U2RX) | Bi | UART2 — CLI @ 115200 8N1 |
-| RH1 (U1TX) / RD1 (U1RX) | Bi | UART1 — debug/telemetry @ 115200 (configured; app port pending) |
+| RH1 (U1TX) / RD1 (U1RX) | Bi | UART1 — GUI telemetry @ 115200 8N1 (`D,`/`S,` lines → PC visualizer) |
 | RC8–RC15 | Out | Board LED0–LED7 (active-high) |
 | RF3 / RF0 / RB2 | In | Board SW1 / SW2 / SW3 (active-low) |
 
@@ -123,6 +123,7 @@ Current app modules on the fresh MCC config:
 | `publish.c/h` | outbound-payload layer: maps `BeatFrame` → the compact `LightshowFrame` bus payload (lemmy position commands join here later) |
 | `t1s_follower.c/h` | OA-TC6 / LAN8651 10BASE-T1S PLCA follower (SPI1) + `tc6-conf.h`; presence heartbeat + beat-frame broadcast (`0x88B8`) |
 | `rgb_led.c/h` | onboard RGB LED (three SCCP PWM channels) |
+| `uart_debug.c/h` | UART1 GUI telemetry: `D,`/`S,` lines → PC visualizer (`tools/gui/puppet.py`), non-blocking TX ring |
 | `cli.c/h` | UART2 command line (embedded-cli), `main.c` glues it all together |
 
 MCC-generated files under `config.mcc/mcc_generated_files/` — **do not edit** (project rule).
@@ -131,9 +132,10 @@ MCC-generated files under `config.mcc/mcc_generated_files/` — **do not edit** 
 
 The pre-migration tree (imported `dspicguitarhero` modules) is retained for re-integration or
 retirement: `nod_engine` (puppet choreography → the future **lemmy command source**), `servo`
-(local RC-servo, role → lemmy), `ws2812` (strip, role → lightshow), `uart_debug` (UART1 CSV
-telemetry + RX commands, app port pending — see B0.6), and the original `main.c` (tempo tracking +
-phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
+(local RC-servo, role → lemmy), `ws2812` (strip, role → lightshow), and the original `main.c`
+(tempo tracking + phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
+(The parked `uart_debug` was superseded — the UART1 app port landed as a re-scoped GUI telemetry
+emitter, `config.mcc/src/uart_debug.{c,h}`; its `NodEngine_*`/frame-timing fields no longer exist.)
 
 ## 5. Interfaces
 
@@ -150,7 +152,12 @@ phase oscillator + WS2812 effects, the source of the deferred tempo/phase work).
   drive) is the remaining B4 piece. Field detail in the journal's decision log.
 - **UART2 CLI @ 115200** — `info`, `beat` (latest detection frame), `show` (latest `LightshowFrame`),
   `audio` (raw/filtered levels + peaks), `rgb`, `t1s` (status incl. a `beat tx` counter; + `t1s id` /
-  `t1s plca`), `reset`.
+  `t1s plca`), `gui` (GUI telemetry on/off + band), `reset`.
+- **UART1 GUI telemetry @ 115200 8N1** — `uart_debug` emits a `D,` line per beat frame (env, flux,
+  bass/full beats, bass-flux, bass/full peak bins) and an `S,` 64-bin spectrum line every third frame,
+  for the PC visualizer `tools/gui/puppet.py`. `phase`/`bpm` are 0 (no tempo/phase layer yet) and the
+  reported frame period is the constant 23.4375 Hz. Toggle with the `gui` CLI command. Separate from
+  the UART2 CLI — this is a machine-readable stream, not an interactive console.
 - **T1S presence heartbeat** — ethertype `0x88B6`, `node_type = 6` (beat source), so marvin's node
   table sees beatbox once a coordinator is on the wire. (marvin-side decode of `node_type = 6` is a
   follow-up; until then it lists beatbox by src-MAC / id 5.)
@@ -181,8 +188,8 @@ B0.5.5 clock tree, B0.6 per-peripheral MCC re-integration).
       device-swap): old tree → `config.mcc.bak/`, new Melody baseline generated; clock tree =
       PLL1 200 MHz / 100 MHz Fcy.
 - [~] **B0.6 — Re-integrate keep-set peripherals onto the fresh config.** Done: PWM audio + 48 kHz
-      ADC trigger, ADC4 stereo audio, RGB LED, UART2 CLI. Pending: UART1 app port (`uart_debug`),
-      ADC1 pot read.
+      ADC trigger, ADC4 stereo audio, RGB LED, UART2 CLI, UART1 GUI telemetry (`uart_debug`).
+      Pending: ADC1 pot read.
 - [x] **Beat detection ported.** Audio passthrough (`audio.c`) → FFT feature extraction
       (`beat_detect.c`) → onset decision (`beat_engine.c`) → `BeatFrame`; `beat` CLI + onboard RGB
       indicator. Tempo/BPM + phase deferred (downstream of the beat events).

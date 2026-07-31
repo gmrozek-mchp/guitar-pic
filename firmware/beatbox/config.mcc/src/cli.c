@@ -15,6 +15,7 @@
 #include "audio.h"
 #include "beat_engine.h"
 #include "publish.h"
+#include "uart_debug.h"
 #include "../mcc_generated_files/uart/uart2.h"
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
@@ -205,6 +206,32 @@ static void cmd_show(EmbeddedCli *cli, char *args, void *ctx)
                (unsigned)s.flags, (unsigned)s.tempo, (unsigned)s.phase);
 }
 
+static void cmd_gui(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *sub = embeddedCliGetToken(args, 1u);
+    if (sub != NULL)
+    {
+        if (strcmp(sub, "on") == 0)
+        {
+            UART_Debug_SetEnabled(true);
+        }
+        else if (strcmp(sub, "off") == 0)
+        {
+            UART_Debug_SetEnabled(false);
+        }
+        else
+        {
+            cli_printf("usage: gui [on|off]");
+            return;
+        }
+    }
+    cli_printf("gui telemetry (UART1): %s  band=%u",
+               UART_Debug_IsEnabled() ? "on" : "off",
+               (unsigned)UART_Debug_BandSelect());
+}
+
 static void cmd_reset(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -229,6 +256,7 @@ static void register_commands(void)
         { "audio", "Print raw + filtered L/R sample and peak envelope since last call", false, NULL, cmd_audio },
         { "beat",  "Print latest beat-detection frame (envelope/flux/kick)", false, NULL, cmd_beat },
         { "show",  "Print latest lightshow frame (bus payload to lightshow)", false, NULL, cmd_show },
+        { "gui",   "GUI telemetry on UART1: 'gui [on|off]' (PC visualizer)",  true,  NULL, cmd_gui },
         { "reset", "Reset the MCU (software reset)",                     false, NULL, cmd_reset },
     };
     for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)

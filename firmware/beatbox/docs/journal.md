@@ -39,11 +39,12 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
       Workflow per peripheral: add + configure in Melody → regenerate → port the `.bak` module's logic
       onto the generated API → copy the file into `config.mcc/` and add it to the descriptor fileset.
       Order (independent → coupled):
-  - [~] **UART1** (`uart_debug.c`): async 8N1, 115200 (BRG 868 @ 100 MHz), TX+RX. **MCC config done**
-        — module added, `U1TX→RH1` (RP114), `U1RX→RD1` (RPINR13=0x32), fractional BRG 868 (115207
-        actual), polled, printf-redirect `write()` generated in `uart1.c`, wired into
-        `SYSTEM_Initialize()`. **App port deferred** (bring `uart_debug.c` back from `.bak` onto the
-        `UART1_*` API; must delete the module's hand-rolled `write()` to avoid a duplicate symbol).
+  - [x] **UART1** (`uart_debug.c`): async 8N1, 115200 (BRG 868 @ 100 MHz), TX+RX. MCC config done
+        (`U1TX→RH1` RP114, `U1RX→RD1` RPINR13=0x32, fractional BRG 868, polled, wired into
+        `SYSTEM_Initialize()`). **App port landed** as a re-scoped GUI telemetry emitter — not the
+        `.bak` verbatim (its `NodEngine_*`/`GetFrameTime` fields are gone). Emits the `D,`/`S,` lines
+        the PC visualizer (`tools/gui/puppet.py`) reads over a non-blocking TX ring; `gui [on|off]`
+        CLI toggle. No printf redirect (uses `UART1_Write`/`_Read` directly; no hand-rolled `write()`).
   - [ ] **ADC1 pot** (inline in `main.c`): CH0 on RA3/AD1AN2, SW-triggered single 12-bit sample.
         Move the inline setup into MCC; read via the generated API.
   - [x] **PWM audio** (folded into `config.mcc/src/audio.c`): high-res (16× HREN) 192 kHz on
@@ -98,6 +99,7 @@ B2 UART-fallback publish → B3 T1S-on-dsPIC port → B4 live show). Notes as wo
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-31 | **UART1 app port = GUI telemetry emitter for the PC visualizer, not a verbatim `.bak` port.** New `config.mcc/src/uart_debug.{c,h}` on UART1 (UART2 stays the CLI). Emits one `D,env,flux,bass_beat,full_beat,phase,frame_time,bpm,bass_flux,bass_peak_bin,full_peak_bin\n` line per beat frame and an `S,b0..b63\n` spectrum line every third frame (gated by the consume-once `BeatDetect_HasSpectrumFrame()`). Live fields come from `BeatDetect_*` (env/flux/bass-flux/peak-bins) + the `BeatFrame` beats; `phase`/`bpm` are sent **0** (no tempo/phase layer yet — the GUI hides a 0 BPM and parks the head) and `frame_time` is the constant **4267** (10 µs units = 42.67 ms, the fixed 23.4375 Hz frame period the GUI flags green at 40–46 ms). Output is queued to a 1 KB static ring drained ≤48 bytes/`Tasks` pass gated by `UART1_IsTxReady()`, dropping a whole line if it won't fit; RX consumes the visualizer's `F,n` band-select (0–2) for CLI readout only. `gui [on|off]` CLI toggle. Uses `UART1_Write`/`_Read` directly — **no** printf `write()` redirect. | The `.bak` `uart_debug.c` referenced `NodEngine_*` and `BeatDetect_GetFrameTime()`, both removed in the beat-detect refactor, so a verbatim port was impossible; the PC tool (`tools/gui/puppet.py`, added this session) reads only `D,` fields 0–9 and sends only the cosmetic `F,n`, so telemetry-only fully drives it with no `beat_engine` setters. Non-blocking ring keeps the fixed-rate T1S transmit path from stalling behind a ~260-byte blocking spectrum write; dropping (not queuing) on a full ring suits a lossy fixed-rate stream. Constant `frame_time` + `phase=0`/`bpm=0` keep the wire contract stable so the tool renders without a tempo/phase layer beatbox doesn't have yet. |
 | 2026-07-31 | **beatbox transmits the lightshow beat frame over T1S — broadcast `0x88B8`, ~23.4 Hz (beatbox side of B4; consumer still pending).** `publish.c` gains `Publish_SerializeLightshow` (writes the 8 `LightshowFrame` bytes in field order, so the wire layout is owned by the payload module rather than struct packing); `t1s_follower.c` gains `T1SFollower_SendBeatFrame(payload,len)` which frames `[FF:FF:FF:FF:FF:FF][src 02:..:05][0x88B8][payload]` into a dedicated staging buffer and calls `TC6_SendRawEthernetPacket` (separate `s_beat_busy`/`beat_tx_done` from the heartbeat so both can be in flight). `main.c` drains the consume-once `Publish_HasLightshowFrame` into it each loop; the send drops the frame (returns false) when PLCA isn't operating or a prior frame is still draining. `t1s` CLI adds a `beat tx` counter. | Implements the transmit half of the broadcast/ethertype addressing decided in the row below. One staging buffer per channel keeps heartbeat and beat frame independent (no shared-buffer stall). Dropping — not queuing — on no-credit/no-bus suits a fixed-rate lossy stream: the next frame is ~43 ms away and `seq` already carries drop detection, so buffering would only add latency. |
 | 2026-07-31 | **Beat frame goes out as a one-to-many broadcast under a dedicated ethertype `0x88B8`; lemmy position commands stay unicast under `0x88B9`.** Transport design for B4 (no code yet). The beat frame is consumed by multiple nodes (lightshow now, lemmy/marvin later), so beatbox sends **one** frame to `FF:FF:FF:FF:FF:FF` rather than a unicast copy per consumer — the shared 10BASE-T1S bus delivers it to every node, and the follower MAC filter already passes broadcast (not promiscuous: self-MAC + broadcast), so consumers need no filter change and select on ethertype. Position commands target only lemmy, so those are unicast to `02:..:06` under their own ethertype. Recorded the broadcast convention in [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md) §7.1 (new pattern for this bus — prior traffic is all unicast/src-MAC-demux). Ethertype numbers follow the existing `0x88B5` data / `0x88B6` heartbeat / `0x88B7` controller sequence. | Broadcast is the right tool for a producer stream with several consumers: one transmit opportunity (no PLCA penalty vs unicast), and adding a consumer is a change on *its* side, not another TX here. A distinct ethertype lets each node classify-and-drop in a 2-byte compare before parsing the body (matches how the bus already demuxes `0x88B5`/`0x88B6`/`0x88B7`), and keeps marvin free to ignore beat traffic. Multicast was rejected — more selective than broadcast but the driver only exposes promiscuous on/off, so the multicast filter/hash isn't set up; no benefit for this bus. |
 | 2026-07-31 | **lightshow beat frame = fixed-rate 8-byte `LightshowFrame`, produced by a new `publish.{c,h}` outbound-payload layer.** Resolves the "lightshow beat frame" open question (both parts: field set + cadence). Fields, all normalized so the consumer drives LEDs directly: `seq` (frame counter, wrap-at-256 drop detection), `energy` (raw_env 0–10000 → 0–255), `bass` (flux_bass 0–1000 → 0–255), `treble` (flux_full 0–1000 → 0–255), `kick` (kick_strength → 0–255, 0 when no kick), `flags` (bit0 bass onset · bit1 mid/high onset · bit2 kick · bit3 big-beat=any-strong · bit4 bass-dominant), and **reserved** `tempo`/`phase` (0 until the tempo/BPM+phase layer lands). Cadence = one frame per `BeatFrame` (~23.4 Hz), i.e. fixed-rate, not event-only. `Publish_Update(&f)` runs in `main.c`'s existing `Beat_HasFrame()` block; `Publish_GetLightshowFrame` snapshots (a `show` CLI command dumps it), `Publish_HasLightshowFrame` is a consume-once hook for the future T1S sender. Scaling uses explicit `uint32_t` casts (`int` is 16-bit on dsPIC33A). **T1S transport (ethertype + marshalling + send) deferred** — this is the producer only. | Splits the wire payload from the internal `BeatFrame` (12 B of mixed-range features): lightshow gets a few 0–255 bytes it can use as brightness/color/pulse without re-scaling, and beatbox's detection internals stay private. A reactive frame (band energy + beat pulses) needs no tempo/phase, so a first show ships now; reserving the two phase bytes keeps the wire size stable when the predictive layer lands (additive, no re-cut). A dedicated `publish` module is the B1 "data model the bus carries" — lemmy position commands join it later, keeping all outbound-payload mapping in one place. `seq` lets the consumer detect drops once it's on the lossy bus. |
@@ -147,6 +149,32 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
 | `SW1` / `SW2` / `SW3` | RF3 / RF0 / RB2 | input | low = pressed |
 
 ## Session log
+
+### 2026-07-31 — UART1 GUI telemetry (PC visualizer support)
+
+- **Brought the debug UART back as a GUI telemetry emitter.** New `config.mcc/src/uart_debug.{c,h}`
+  on UART1 feeds the PC visualizer `tools/gui/puppet.py`. Per beat frame it emits a `D,` line
+  (env, flux, bass/full beats, bass-flux, bass/full peak bins) and every third frame an `S,` line
+  of the 64-bin display spectrum. `phase`/`bpm` sent 0 (no tempo/phase layer), `frame_time` a
+  constant 4267 (42.67 ms). Not a verbatim `.bak` port — its `NodEngine_*`/`GetFrameTime` fields
+  are gone; the tool reads only `D,` fields 0–9 and sends only the cosmetic `F,n`, so telemetry
+  alone drives it. See decision log.
+- **Non-blocking TX.** Lines go into a 1 KB static ring drained ≤48 bytes per `UART_Debug_Tasks()`
+  pass, gated by `UART1_IsTxReady()`; a line that won't fit is dropped whole. Keeps the fixed-rate
+  T1S transmit path from stalling behind a ~260-byte spectrum write. RX consumes the visualizer's
+  `F,n` band-select for CLI readout only.
+- **Wiring:** `main.c` — `UART_Debug_Initialize()` after `Publish_Initialize()`,
+  `UART_Debug_Publish(&f)` in the `Beat_HasFrame()` block, `UART_Debug_Tasks()` once per loop;
+  `uart_debug.c` added to `cmake/beatbox/default/user.cmake`; `gui [on|off]` CLI command (8th
+  binding, at the max 8). UART1 is already opened by `SYSTEM_Initialize()`, so the module only
+  resets ring state.
+- **Tool:** `tools/gui/{puppet.py,requirements.txt,run.bat}` (added this session); wrote
+  `tools/gui/README.md` documenting the port, wire protocol, and run steps. Closes the B0.6 UART1
+  "app port deferred" item.
+- **Not yet built or on hardware** (user builds/flashes). Bench check: `puppet.py` on the UART1 COM
+  port shows the spectrum, envelope, and both flux graphs moving with live audio; beat markers land
+  on onsets; `Frame:` reads ~42.7 ms green; BPM hidden (0). `gui off` stops the stream, `gui on`
+  resumes.
 
 ### 2026-07-31 — lightshow beat frame on the wire (B4, beatbox side)
 
