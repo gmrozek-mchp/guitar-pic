@@ -164,10 +164,23 @@ captured in the generated code — use these `_SetHigh/_SetLow`/`_GetValue` macr
     a front-end biasing property; the deferred DC-block HPF is what recenters it.
   - **Background noise:** up to **~100 pp** with nothing connected / nothing playing (noise floor
     ≈0.15% FS). Address if practical (candidates: DC-block HPF, noise gate, front-end review).
-  - **Power-on pop:** a loud **pop after programming** (PWM enable / output transient at
-    `Audio_Initialize`). **Must address** — likely a soft-start (ramp duty from rail to center, or
-    mute the output until the path is settled) rather than snapping PG1/PG2 on at mid-scale.
-- Next: DC-block HPF + `BeatDetect` port once these are handled. Pop fix is the priority.
+  - **Output pop — accepted (no firmware fix possible).** A 200 ms DC soft-start (and a symmetric
+    soft-stop before CLI reset) were both tried and **removed** — neither meaningfully reduced the
+    pop. The output stage is **MCP662 op-amps** (plain dual op-amp, no `SHUTDOWN`/enable pin) with no
+    muting switch on the board, so there's no hardware hook to sequence. The dominant transient is
+    the analog turn-on (supply ramp + op-amp bias settling to its operating point), which happens as
+    power comes up — before firmware runs and outside the digital sample path — so ramping the duty
+    can't reach it. Conclusion: without added mute hardware (a shunt FET / analog switch on the
+    output, one GPIO, released after settle) the power-on pop can't be cleanly fixed; it's a one-time
+    cosmetic tick on a node that boots once and stays on. Accepted as-is; audio path keeps no ramp.
+  - **DC-block HPF landed** (first-order, ~20 Hz @ 48 kHz, ported from the parked `adc_audio.c`).
+    The line-in idles ~29000 (front-end bias, not the 32768 mid-rail) — expected for an AC-coupled
+    input, not a fault. `normalize()` assumes 32768, so that offset was riding through as a constant
+    DC term at the DAC; the HPF removes it adaptively so the **output** idles at true mid-scale
+    whatever the input bias is, and strips sub-audible rumble. Runs on every sample (even during the
+    soft-start ramp) so its state is settled before passthrough uses it — no handover transient.
+    Peak/`audio`-CLI reporting stays on the **raw** ADC values (input diagnostic, pre-filter).
+- Next: `BeatDetect` port (FFT) onto the filtered mono sum.
 
 ### 2026-07-30 — RGB LED app port (B0.6 rgb_led done)
 
