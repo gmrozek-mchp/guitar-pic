@@ -227,6 +227,13 @@ command TX targets. marvin selects the active node of each class.
   mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
   as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
   demultiplexes controller traffic apart from the detector/guitar bitmask.
+- A **beat-frame ethertype** `0x88B8` (planned) carries beatbox's (id 5) compact beat
+  frame to the lighting/animation nodes. Unlike the point-to-point traffic above this is a
+  **one-to-many broadcast** (see the addressing note below): beatbox sends one frame to
+  `FF:FF:FF:FF:FF:FF`, and every interested node (lightshow now, lemmy/marvin later) accepts
+  it and dispatches on the ethertype. beatbox's puppet **position commands** to lemmy are the
+  opposite — one consumer — so those stay **unicast** to `02:..:06` under their own ethertype
+  (`0x88B9`, planned). Both formats are shared design with the consuming node (B4).
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /
@@ -234,6 +241,15 @@ command TX targets. marvin selects the active node of each class.
 - The 17-byte fretboard→marvin frame and the 1-byte marvin→fretboard bitmask ride
   inside the Ethernet payload unchanged; marvin demuxes incoming frames by src MAC
   and addresses outgoing ones to a specific node.
+- **Unicast is the default; broadcast is for one-to-many producer streams.** The
+  detector/guitar/controller traffic is all point-to-point (unicast, src-MAC demux). A
+  producer whose stream is consumed by several nodes at once — beatbox's beat frame being the
+  first — sends **once to broadcast** (`FF:FF:FF:FF:FF:FF`) rather than N unicast copies; the
+  shared bus delivers the single frame to every node and the follower MAC filter already
+  accepts broadcast (it is not promiscuous — self-MAC + broadcast only), so consumers need no
+  filter change and select by ethertype. Broadcast uses one PLCA transmit opportunity, same as
+  a unicast frame. Adding a consumer is then a change on *its* side, not another TX on the
+  producer's.
 
 ### 7.2 Presence heartbeat
 
