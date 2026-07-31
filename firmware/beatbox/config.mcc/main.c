@@ -26,6 +26,7 @@
 #include "src/rgb_led.h"
 #include "src/t1s_follower.h"
 #include "src/uart_debug.h"
+#include "src/vu_meter.h"
 /*
     Main application
 */
@@ -65,6 +66,7 @@ int main(void)
     Beat_Initialize();
     Publish_Initialize();
     UART_Debug_Initialize();
+    VU_Initialize();
     CLI_Initialize();
     T1SFollower_Initialize();
 
@@ -77,6 +79,7 @@ int main(void)
             BeatFrame f;
             Beat_GetFrame(&f);
             beat_indicator(&f);
+            VU_Update(&f);
             Publish_Update(&f);
             UART_Debug_Publish(&f);
         }
