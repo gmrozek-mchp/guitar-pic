@@ -876,6 +876,24 @@ static void cmd_lemmy(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("lemmy: neck=%d jaw=%d", (int)neck, (int)jaw);
 }
 
+static void cmd_lightshow(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+
+    if (a == NULL || (strcmp(a, "on") != 0 && strcmp(a, "off") != 0))
+    {
+        console_printf("usage: lightshow <on|off>");
+        return;
+    }
+    uint8_t on = (strcmp(a, "on") == 0) ? 1u : 0u;
+    if (!T1SLink_SendLightshowCtrl(T1S_LIGHT_CTRL_OUTPUT_EN, on)) {
+        console_printf("lightshow: link down");
+        return;
+    }
+    console_printf("lightshow: output %s", on ? "on" : "off");
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -898,6 +916,7 @@ static void register_commands(void)
         { "play",   "play [attach|stop|status]: auto-navigate + CV-play the selected song; 'attach' = play a manually-started game (e.g. 2p)", true, NULL, cmd_play },
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
         { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
+        { "lightshow","lightshow <on|off>: enable/disable the LED output",   true, NULL, cmd_lightshow },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
@@ -965,7 +984,7 @@ void Console_Initialize(void)
     cfg->rxBufferSize      = 64u;
     cfg->cmdBufferSize     = 64u;
     cfg->historyBufferSize = 128u;
-    cfg->maxBindingCount   = 24u;
+    cfg->maxBindingCount   = 26u;
     cfg->enableAutoComplete = true;
     cfg->cliBuffer         = s_cli_buf;
     cfg->cliBufferSize     = sizeof(s_cli_buf);

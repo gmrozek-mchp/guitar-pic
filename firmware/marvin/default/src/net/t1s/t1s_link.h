@@ -68,6 +68,14 @@ bool T1SLink_SendToLemmy(int8_t neck, int8_t jaw);
 #define T1S_ANIM_CTRL_OP_COUNT   (3u)
 bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg);
 
+/* Lightshow control channel — same 0x88B9 transport + [opcode, arg] grammar as
+ * the lemmy control channel, routed to the lightshow node with its own opcode
+ * namespace. Same threading contract; returns false if the link is down or the
+ * opcode is unknown. */
+#define T1S_LIGHT_CTRL_OUTPUT_EN (1u)  /* arg 0|1  : enable/disable the LED output */
+#define T1S_LIGHT_CTRL_OP_COUNT  (1u)
+bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg);
+
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.
  * Called from the T1S service task. `detector_id` is the node's bus id. */
 typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,

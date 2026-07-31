@@ -53,7 +53,7 @@
 #define T1S_ETHERTYPE        (0x88B5u)   /* data / command frames */
 #define T1S_ETHERTYPE_HB     (0x88B6u)   /* heartbeat / presence frames */
 #define T1S_ETHERTYPE_CTRL   (0x88B7u)   /* controller (fauxmote mf_proto) frames */
-#define T1S_ETHERTYPE_ANIM_CTRL (0x88B9u) /* lemmy (animation) control channel */
+#define T1S_ETHERTYPE_NODE_CTRL (0x88B9u) /* per-node typed [opcode,arg] control (lemmy, lightshow) */
 #define T1S_ETH_HDR_LEN      (14u)
 #define T1S_MAC_LEN          (6u)
 #define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
@@ -171,11 +171,14 @@ static volatile bool    s_cmd_dirty;
 static volatile uint8_t s_lemmy_cmd[2];
 static volatile bool    s_lemmy_dirty;
 
-/* Lemmy control channel (0x88B9): typed [opcode, arg] commands that tune the
- * beat nod. Staged per-opcode (indexed by opcode-1) rather than latest-wins so
- * distinct commands can't drop each other; one frame flushed per service pass. */
+/* Node control channel (0x88B9): typed [opcode, arg] commands, one per-node
+ * opcode namespace. Staged per-opcode (indexed by opcode-1) rather than
+ * latest-wins so distinct commands can't drop each other; one frame flushed per
+ * service pass. lemmy = beat-nod tuning; lightshow = LED output enable. */
 static volatile uint8_t s_lemmy_ctrl_arg[T1S_ANIM_CTRL_OP_COUNT];
 static volatile bool    s_lemmy_ctrl_dirty[T1S_ANIM_CTRL_OP_COUNT];
+static volatile uint8_t s_light_ctrl_arg[T1S_LIGHT_CTRL_OP_COUNT];
+static volatile bool    s_light_ctrl_dirty[T1S_LIGHT_CTRL_OP_COUNT];
 
 static T1SLink_FrameHandler s_frame_handler;
 
@@ -425,7 +428,23 @@ static void t1s_task(void *param)
                 if (lemmy == NULL) { break; }
                 s_lemmy_ctrl_dirty[i] = false;
                 uint8_t frame[2] = { (uint8_t)(i + 1u), s_lemmy_ctrl_arg[i] };
-                if (send_to_node(lemmy->node_id, T1S_ETHERTYPE_ANIM_CTRL, frame, 2u)) {
+                if (send_to_node(lemmy->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
+                    s_tx_count++;
+                }
+                break;   /* one frame per pass (send_to_node set s_tx_busy) */
+            }
+        }
+
+        /* Flush one staged lightshow control command (0x88B9, lightshow opcode
+         * namespace). Same one-per-pass drain as the lemmy control channel. */
+        if (!s_tx_busy) {
+            for (uint8_t i = 0u; i < T1S_LIGHT_CTRL_OP_COUNT; i++) {
+                if (!s_light_ctrl_dirty[i]) { continue; }
+                const t1s_node_t *light = node_for_type(T1S_NODE_LIGHTSHOW);
+                if (light == NULL) { break; }
+                s_light_ctrl_dirty[i] = false;
+                uint8_t frame[2] = { (uint8_t)(i + 1u), s_light_ctrl_arg[i] };
+                if (send_to_node(light->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
                     s_tx_count++;
                 }
                 break;   /* one frame per pass (send_to_node set s_tx_busy) */
@@ -563,6 +582,20 @@ bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg)
     }
     s_lemmy_ctrl_arg[opcode - 1u]   = arg;
     s_lemmy_ctrl_dirty[opcode - 1u] = true;
+    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    return true;
+}
+
+bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg)
+{
+    if (!s_link_up) {
+        return false;
+    }
+    if ((opcode < 1u) || (opcode > T1S_LIGHT_CTRL_OP_COUNT)) {
+        return false;
+    }
+    s_light_ctrl_arg[opcode - 1u]   = arg;
+    s_light_ctrl_dirty[opcode - 1u] = true;
     (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
     return true;
 }

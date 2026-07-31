@@ -33,6 +33,7 @@ static uint8_t          s_wire_phase;
 static uint32_t         s_frame_count;
 static uint32_t         s_last_frame_ms;
 static bool             s_idle;         /* strip currently blanked */
+static bool             s_enabled = true;   /* output on unless disabled via 0x88B9 */
 
 /* Effect state. */
 static uint8_t          s_effect;       /* 0..BEAT_SHOW_EFFECTS-1 */
@@ -168,6 +169,12 @@ void BeatShow_OnFrame(const uint8_t *payload, uint16_t len)
 
 void BeatShow_Tasks(void)
 {
+    if (!s_enabled) {
+        /* Output disabled over T1S: drop frames without rendering. The strands
+         * were blanked once when disabled and stay dark (and free for `led`). */
+        s_new_frame = false;
+        return;
+    }
     if (!s_new_frame) {
         /* No frames for a while: blank the strip once so it doesn't freeze on
          * the last lit frame when the music/bus goes quiet. */
@@ -229,6 +236,18 @@ void BeatShow_SetAuto(void)
 
 uint8_t BeatShow_Effect(void)   { return s_effect; }
 bool    BeatShow_IsAuto(void)   { return s_auto; }
+
+void BeatShow_SetEnabled(bool en)
+{
+    s_enabled = en;
+    if (!en) {
+        NeoPixel_Clear();
+        (void)NeoPixel_Show();
+        s_idle = true;
+    }
+}
+
+bool BeatShow_IsEnabled(void) { return s_enabled; }
 
 uint32_t BeatShow_FrameCount(void) { return s_frame_count; }
 

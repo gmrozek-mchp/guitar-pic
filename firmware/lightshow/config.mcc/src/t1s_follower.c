@@ -20,7 +20,15 @@
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
 #define T1S_ETHERTYPE_BEAT  (0x88B8u)  /* beatbox beat frame (broadcast) */
+#define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* per-node control channel (unicast) */
 #define T1S_ETH_HDR_LEN     (14u)
+
+/* Control channel (0x88B9): typed [opcode, arg]. Opcode namespace is per-node
+ * (routed by dst MAC); lightshow's own opcode(s) below. */
+#define T1S_CTRL_OP          (0u)     /* payload offset: opcode */
+#define T1S_CTRL_ARG         (1u)     /* payload offset: arg    */
+#define T1S_CTRL_LEN         (2u)     /* min control payload length */
+#define T1S_CTRL_OUTPUT_EN   (0x01u)  /* arg 0|1: enable/disable the LED show */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
  * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
@@ -44,6 +52,9 @@ static volatile bool     s_spi_busy;
 static volatile uint8_t  s_last_byte;
 static volatile uint32_t s_rx_count;
 static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
+static volatile uint8_t  s_last_ctrl_op;   /* last 0x88B9 control opcode applied */
+static volatile uint8_t  s_last_ctrl_arg;
+static volatile uint32_t s_ctrl_count;     /* accepted control frames */
 static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
 
 /* Frames are ~60 B after min-frame padding; this only needs the header plus the
@@ -240,6 +251,13 @@ uint32_t T1SFollower_ErrCount(void)
     return s_err_count;
 }
 
+void T1SFollower_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
+{
+    if (op    != NULL) { *op    = s_last_ctrl_op; }
+    if (arg   != NULL) { *arg   = s_last_ctrl_arg; }
+    if (count != NULL) { *count = s_ctrl_count; }
+}
+
 /* Diagnostic: log the raw value of a control register (async — the result
  * prints from the service loop a moment later). */
 static void on_id_read(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
@@ -374,6 +392,21 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         /* beatbox beat frame: drive the light show from the payload. */
         BeatShow_OnFrame(&s_rx_buf[T1S_ETH_HDR_LEN],
                          (uint16_t)(len - T1S_ETH_HDR_LEN));
+        return;
+    }
+    if (ethertype == T1S_ETHERTYPE_CTRL) {
+        /* Control channel: typed [opcode, arg]. Guard on >= (never ==: a
+         * min-frame is zero-padded past the payload). */
+        if (len < (T1S_ETH_HDR_LEN + T1S_CTRL_LEN)) { return; }
+        uint8_t op  = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_OP];
+        uint8_t arg = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_ARG];
+        switch (op) {
+            case T1S_CTRL_OUTPUT_EN:  BeatShow_SetEnabled(arg != 0u);  break;
+            default: return;   /* unknown opcode: ignore, don't count */
+        }
+        s_last_ctrl_op  = op;
+        s_last_ctrl_arg = arg;
+        s_ctrl_count++;
         return;
     }
     if (ethertype != T1S_ETHERTYPE) {

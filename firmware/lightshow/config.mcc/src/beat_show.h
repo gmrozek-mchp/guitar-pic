@@ -45,6 +45,13 @@ void    BeatShow_SetAuto(void);
 uint8_t BeatShow_Effect(void);
 bool    BeatShow_IsAuto(void);
 
+/* Output enable. Disabling blanks the strands and drops incoming beat frames
+ * without rendering (freeing the WS2812 output for the `led` CLI); re-enabling
+ * resumes the show on the next frame. Driven remotely by the 0x88B9 control
+ * channel (marvin's `lightshow on|off`). Defaults on. */
+void    BeatShow_SetEnabled(bool en);
+bool    BeatShow_IsEnabled(void);
+
 /* Diagnostics for the CLI. */
 uint32_t BeatShow_FrameCount(void);
 void     BeatShow_GetLast(uint8_t *seq, uint8_t *energy, uint8_t *bass,

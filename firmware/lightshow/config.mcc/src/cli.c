@@ -239,8 +239,14 @@ static void cmd_show(EmbeddedCli *cli, char *args, void *ctx)
 
     uint8_t seq, energy, bass, treble, kick, flags;
     BeatShow_GetLast(&seq, &energy, &bass, &treble, &kick, &flags);
+    uint8_t cop, carg;
+    uint32_t ccount;
+    T1SFollower_LastCtrl(&cop, &carg, &ccount);
+    cli_printf("output:  %s", BeatShow_IsEnabled() ? "on" : "off");
     cli_printf("effect:  %u (%s)%s", (unsigned)BeatShow_Effect(),
                effect_name(BeatShow_Effect()), BeatShow_IsAuto() ? " auto" : " locked");
+    cli_printf("ctrl:    op=0x%02X arg=%u (%lu rx)", (unsigned)cop, (unsigned)carg,
+               (unsigned long)ccount);
     cli_printf("frames:  %lu", (unsigned long)BeatShow_FrameCount());
     cli_printf("last:    seq=%u energy=%u bass=%u treble=%u kick=%u",
                (unsigned)seq, (unsigned)energy, (unsigned)bass,

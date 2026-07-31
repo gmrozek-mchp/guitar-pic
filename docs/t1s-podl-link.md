@@ -232,14 +232,21 @@ command TX targets. marvin selects the active node of each class.
   **one-to-many broadcast** (see the addressing note below): beatbox sends one frame to
   `FF:FF:FF:FF:FF:FF`, and every interested node (lightshow, lemmy) accepts
   it and dispatches on the ethertype.
-- A **lemmy control ethertype** `0x88B9` carries typed commands **unicast** to lemmy
-  (`02:..:06`) that tune its local beat nod. Payload is `[opcode, arg]`: `0x01` nod enable
-  (arg 0|1), `0x02` nod trim (arg int8), `0x03` oscillator (arg 0|1) — the same tunables as
-  lemmy's local `nod` CLI, driven from marvin's `lemmy nod|trim|osc`. marvin stages these
-  per-opcode and flushes one frame per service pass; lemmy applies each on RX. Distinct from
-  `0x88B5`'s fixed `[neck, jaw]` servo-position grammar, so it earns its own ethertype. Opcode
-  space is reserved for future scripted-gesture / jaw commands on the same channel. (Manual
-  servo positioning stays on `0x88B5`; `nod off` frees the neck so that path takes effect.)
+- A **node-control ethertype** `0x88B9` carries typed commands **unicast** to a follower
+  to tune its local behavior. Payload is `[opcode, arg]`; the opcode namespace is **per-node,
+  disambiguated by destination MAC** (like `0x88B5`'s data grammar differing per node), so one
+  ethertype serves every node's control channel and a new node reuses it rather than minting a
+  fresh ethertype — the typed-control *grammar* is what earns `0x88B9` over `0x88B5`'s fixed
+  positional payloads, not the node. marvin stages commands per-opcode and flushes one frame per
+  service pass; the follower applies each on RX. Defined namespaces:
+    - **lemmy** (`02:..:06`) — beat-nod tuning: `0x01` nod enable (arg 0|1), `0x02` nod trim
+      (arg int8), `0x03` oscillator (arg 0|1); the same tunables as lemmy's local `nod` CLI,
+      driven from marvin's `lemmy nod|trim|osc`. (Manual servo positioning stays on `0x88B5`;
+      `nod off` frees the neck so that path takes effect.)
+    - **lightshow** (`02:..:07`) — LED output: `0x01` output enable (arg 0|1), driven from
+      marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
+  Opcode space in each namespace is left open for future control (scripted gestures / jaw for
+  lemmy; scenes / brightness for lightshow).
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /

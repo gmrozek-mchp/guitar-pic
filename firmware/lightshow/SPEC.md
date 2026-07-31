@@ -74,10 +74,16 @@ to `guitar`'s:
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lightshow
   present. A new `node_type = 5` (*lightshow*) is used for the heartbeat payload — marvin's §7.2
   decode + `nodes` display learn it (marvin-side follow-up).
-- **Command plane:** [`beatbox`](../beatbox/SPEC.md) (id 5) **broadcasts** an 8-byte `LightshowFrame`
-  under **ethertype `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at ~23.4 Hz — fields `seq`, `energy`, `bass`,
-  `treble`, `kick`, `flags`, and reserved `tempo`/`phase`, all 0-255. lightshow's RX accepts `0x88B8`
-  and renders the show locally (`beat_show.{c,h}`); bring-up (L1) needs no RX command semantics.
+- **Command planes:** two coexist, routed by ethertype. (1) **beat frame** —
+  [`beatbox`](../beatbox/SPEC.md) (id 5) **broadcasts** an 8-byte `LightshowFrame` under **ethertype
+  `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at ~23.4 Hz — fields `seq`, `energy`, `bass`, `treble`, `kick`,
+  `flags`, and reserved `tempo`/`phase`, all 0-255. lightshow's RX accepts `0x88B8` and renders the
+  show locally (`beat_show.{c,h}`). (2) **control channel** — a `0x88B9` unicast frame carrying a
+  typed `[opcode, arg]` (marvin's `lightshow on|off`): `0x01` enables/disables the LED output,
+  calling `BeatShow_SetEnabled`. This is the same transport + grammar as [`lemmy`](../lemmy/SPEC.md)'s
+  `0x88B9` control channel, routed by destination MAC with lightshow's own opcode namespace; opcode
+  space is left open for future scene / brightness control. Disabling blanks the strands and frees
+  the WS2812 output for the `led` CLI.
 
 The marvin-side reference is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator); the follower reference is [`guitar`](../guitar/config.mcc/src/t1s_follower.c).
@@ -124,3 +130,4 @@ Static allocation only (no malloc), per project rule.
 | 🚧 | **L1** — T1S follower bring-up on hardware: `LAN8651 up … PLCA follower id=7/8`, presence heartbeat, `t1s` CLI |
 | ✅ | **L2** — LED output: `neopixel.{c,h}` driver (TC0 NPWM + DMA, 2× WS2812-class strands, RGB wire order) + `led` CLI drive the strands manually; remaining hardware validation (rail sizing, VDDIO2, scope timing) tracked in §2 / journal |
 | 🚧 | **L3** — beat-driven light show: consumes beatbox's `0x88B8` beat frame (`beat_show.{c,h}`) and renders three effects to the strands; `show` CLI. Pending on-hardware verification against a live beatbox |
+| ✅ | **L3.5** — `0x88B9` control channel: remote LED-output enable/disable (`[opcode, arg]`, `0x01` = output enable), driven by marvin's `lightshow on\|off` → `BeatShow_SetEnabled`. Shares lemmy's `0x88B9` transport/grammar (per-node opcode namespace, routed by dst MAC). Wired; pending on-hardware verification |

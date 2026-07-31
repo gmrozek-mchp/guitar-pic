@@ -33,6 +33,10 @@ uint8_t  T1SFollower_LastByte(void);  /* first payload byte of the last RX frame
 uint32_t T1SFollower_RxCount(void);   /* count of accepted data frames */
 uint32_t T1SFollower_ErrCount(void);  /* count of TC6 errors since boot */
 
+/* Last control-channel (0x88B9) opcode/arg applied + accepted-frame count, for
+ * the CLI. NULL args skipped. */
+void T1SFollower_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count);
+
 /* Diagnostic: raw-read the MAC-PHY ID registers and log the values (async). */
 void T1SFollower_ReadId(void);
 

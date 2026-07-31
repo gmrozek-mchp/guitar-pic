@@ -54,6 +54,11 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
         direction (were opposite: left bottom→top, right top→bottom). `ef_pulse` (uniform) and
         `ef_split` (both strands fill from index 0) were already same-direction.
   - [ ] Verify strip idle-clears when the audio stops.
+- [x] **L3.5 — `0x88B9` control channel.** Remote LED-output enable/disable over T1S, driven by
+      marvin's `lightshow on|off`. Shares lemmy's `0x88B9` transport + `[opcode, arg]` grammar
+      (per-node opcode namespace, routed by dst MAC); lightshow opcode `0x01` = output enable →
+      `BeatShow_SetEnabled`. `show` CLI reports the output state + last remote ctrl op. Wired;
+      pending on-hardware verification.
 
 ## Open questions
 
@@ -69,6 +74,7 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-07-31 | **Remote LED-output enable/disable reuses lemmy's `0x88B9` control channel — no new ethertype.** A `0x88B9` unicast frame to lightshow (`02:..:07`) carries a typed `[opcode, arg]`; lightshow opcode `0x01` = output enable (arg 0|1) → `BeatShow_SetEnabled`. marvin exposes `lightshow on|off` (`T1SLink_SendLightshowCtrl`, per-opcode staging + one-frame-per-pass flush, mirroring the lemmy control path); its `0x88B9` constant was generalized `ANIM_CTRL` → `NODE_CTRL`. `beat_show.c` gained `s_enabled` (default **on** — preserves today's behavior); disabling blanks the strands and drops frames without rendering, freeing the WS2812 output for the `led` CLI. lightshow's `show` CLI shows `output:` + last ctrl op/arg. | The control payload is the same typed `[opcode, arg]` *grammar* as lemmy's `0x88B9` channel, and the journal's rule is that a new ethertype is earned by a different grammar, not a different node (frames route by dst MAC) — so lightshow reuses `0x88B9` with its own opcode namespace, exactly as `0x88B5` is shared by guitar + lemmy. Default-on because a lighting node should light up when music plays; the ask was only the *ability* to disable. Opcode space left open for scenes / brightness. |
 | 2026-07-31 | **Beat-signal plane = beatbox's `0x88B8` broadcast; consumer is `beat_show.{c,h}`.** lightshow's RX path accepts ethertype `0x88B8` and hands the 8-byte `LightshowFrame` to a `beat_show` module that renders three ported WS2812 effects (beat flash / dual comet / split energy) to the 2×33 strands, driven from the main loop (not the RX callback). Effects auto-cycle ~20 s; a `show` CLI reports/locks them. Comet phase uses a local restart-on-beat oscillator until beatbox sends a non-zero wire `phase`. | Closes the command-plane open question. beatbox (the beat-source node) owns detection and normalizes to 0-255 fields; lightshow "runs its own show locally from those parameters" (SPEC §1) rather than being told exact pixels — keeps the wire payload tiny and the two nodes decoupled. Effects ported from the source project (`config.mcc.bak/main.c`) preserve the proven look; adapting from one 70-px strip to two 33-px strands maps naturally to the warm/cool split. |
 | 2026-07-30 | **Strands are RGB-ordered on the wire, not GRB.** Red and green showed swapped; `neopixel.c` now maps the framebuffer identity to the wire (`WIRE_ORDER = {0,1,2}`) instead of the GRB permutation. Framebuffer + `led` CLI already stored channels as R,G,B — only the on-wire byte order was wrong. Committed `39c3358`. | The parts on the board interpret the first wire byte as red, so the standard WS2812 GRB permutation lit the wrong channel. Sending R,G,B directly matches these strands; blue was always correct. |
 | 2026-07-30 | **No 3.3→5 V level shifter for the WS2812 data lines — drive them directly from the MVIO/VDDIO2 pins.** `PA10` (`TC0/WO0`) and `PA11` (`TC0/WO1`) both carry pinout footnote 3 ("on the VDDIO2 power domain"). Tie VDDIO2 to the 5 V LED rail → WO0/WO1 output push-pull 0–5 V, clearing the WS2812 data-in high threshold (~0.7·VDD) with no external part. | This is what MVIO is for: per-pin voltage domain integrated into SUPC, "eliminates the need for external level shifters." Removes the 74AHCT125 from the BOM. Caveat: VDDIO2 must be powered and in-range or SUPC tri-states these pins (MVIO power-sequencing); it reloads PORT config when VDDIO2 returns. |
@@ -78,6 +84,23 @@ Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 b
 | 2026-07-29 | **lightshow created as the *lighting* node class (`node_type = 5`); T1S bring-up before LED output.** PIC32CM6408PL10048, PLCA follower **id 7** / MAC `02:00:00:00:00:07` (the slot reserved in [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md) §7.1). Phase order: L1 T1S follower (link + heartbeat + CLI) → L2 LED output → L3 beat-driven light show. | Prove the node on the bus first, reusing the `lemmy` / `guitar` follower glue + `oa-tc6-lib` (same MCU family — minimizes bring-up), then layer the LED output. The lighting output and its command source differ from the puppet, so it is a distinct node class from `lemmy` (animation). |
 
 ## Session log
+
+### 2026-07-31 — L3.5 remote output enable/disable (`0x88B9`)
+
+- Added a `0x88B9` control channel so marvin can enable/disable lightshow's LED output over T1S,
+  mirroring lemmy's just-landed nod-control channel. `beat_show.{c,h}` gained `BeatShow_SetEnabled` /
+  `BeatShow_IsEnabled` (`s_enabled`, default **on**); disabling blanks the strands once and makes
+  `BeatShow_Tasks` drop incoming frames without rendering (leaving the output free for the `led` CLI).
+- `t1s_follower.c` RX now accepts ethertype `0x88B9`: guards `len >= HDR+2`, reads `[opcode, arg]`,
+  dispatches opcode `0x01` (output enable) → `BeatShow_SetEnabled`, and stashes last op/arg + a count
+  (`T1SFollower_LastCtrl`). `show` CLI prints `output:` + a `ctrl:` line.
+- marvin side: generalized the `0x88B9` constant `T1S_ETHERTYPE_ANIM_CTRL` → `T1S_ETHERTYPE_NODE_CTRL`
+  (now shared by lemmy + lightshow), added per-opcode staging + a flush block for lightshow, and
+  `T1SLink_SendLightshowCtrl`. New console command `lightshow <on|off>`; bumped the console
+  `maxBindingCount` (was exactly full at 24 → 26).
+- Docs: SPEC §3 (two command planes) + L3.5 milestone row; `docs/t1s-podl-link.md` §7.1 recast
+  `0x88B9` as a shared per-node control ethertype with lemmy + lightshow opcode namespaces.
+- Not yet verified on hardware.
 
 ### 2026-07-31 — L3 beat-driven show: beatbox consumer
 
