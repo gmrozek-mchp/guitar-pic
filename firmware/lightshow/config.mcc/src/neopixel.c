@@ -17,10 +17,10 @@
  * WS2812 reset/latch) once the transfer completes. */
 static uint16_t s_duty[FRAME_BITS + 1u];
 
-/* Framebuffer, R/G/B per pixel per strand. WS2812 wants G,R,B on the wire. */
+/* Framebuffer, R/G/B per pixel per strand. These strands take R,G,B on the wire. */
 static uint8_t s_fb[NEOPIXEL_STRANDS][NEOPIXEL_COUNT][3];
 
-static const uint8_t GRB_ORDER[3] = { 1u, 0u, 2u };   /* fb index -> wire order */
+static const uint8_t WIRE_ORDER[3] = { 0u, 1u, 2u };   /* fb index -> wire order */
 
 void NeoPixel_Initialize(void)
 {
@@ -60,8 +60,8 @@ static void build_duty(void)
     {
         for (uint8_t c = 0u; c < 3u; c++)
         {
-            uint8_t b0 = s_fb[0][p][GRB_ORDER[c]];
-            uint8_t b1 = s_fb[1][p][GRB_ORDER[c]];
+            uint8_t b0 = s_fb[0][p][WIRE_ORDER[c]];
+            uint8_t b1 = s_fb[1][p][WIRE_ORDER[c]];
 
             for (uint8_t mask = 0x80u; mask != 0u; mask >>= 1)
             {
