@@ -46,6 +46,12 @@
 #define T1S_HB_TYPE_ANIM    (4u)     /* 4 = animation (lemmy) */
 #define T1S_HB_LEN          (8u)
 
+/* PLCA_STATUS register: bit 15 (plca_status) = PLCA operating (coordinator beacon
+ * on the wire). Polled in the background so IsConnected / the CLI report real
+ * on-bus state, not just local MAC-PHY init. */
+#define T1S_PLCA_STATUS_REG (0x0004CA03u)
+#define T1S_PLCA_POLL_MS    (250u)
+
 /* Coordinator-assigned MAC for this node: 02:00:00:00:00:06. */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
 
@@ -54,8 +60,16 @@ static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
-static volatile bool     s_link_up;
+static volatile bool     s_initialized;  /* MAC-PHY register bring-up done + data path enabled */
 static volatile bool     s_spi_busy;
+
+/* Cached PLCA operating status (PLCA_STATUS bit 15), refreshed by a periodic
+ * background register read. Unlike s_initialized (local MAC-PHY config done), this
+ * only asserts when a coordinator beacon is on the wire — the real "on the bus"
+ * signal. Gates heartbeat TX: a follower has no transmit opportunity without the
+ * beacon, so sending earlier just queues a frame that never drains. */
+static volatile bool     s_plca_op;
+static uint32_t          s_plca_poll_ms;
 
 /* Diagnostics (read by the CLI). */
 static volatile int8_t   s_last_neck;   /* last commanded neck position */
@@ -147,7 +161,7 @@ static void hb_tx_done(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
 /* Announce presence to the coordinator (ethertype 0x88B6). */
 static void send_heartbeat(void)
 {
-    if (s_hb_busy || !s_link_up) {
+    if (s_hb_busy || !s_plca_op) {
         return;
     }
     bool synced = false;
@@ -207,14 +221,17 @@ void T1SFollower_Initialize(void)
     }
 }
 
+static void on_plca_status(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
+                           void *pTag, void *pGlobalTag);
+
 void T1SFollower_Tasks(void)
 {
     if (s_tc6 == NULL) {
         return;
     }
     service_pump();
-    if (!s_link_up && TC6Regs_GetInitDone(s_tc6)) {
-        s_link_up = true;
+    if (!s_initialized && TC6Regs_GetInitDone(s_tc6)) {
+        s_initialized = true;
         TC6_EnableData(s_tc6, true);
         char buf[80];
         (void)snprintf(buf, sizeof(buf),
@@ -226,8 +243,20 @@ void T1SFollower_Tasks(void)
         log_str(buf);
     }
 
-    /* Periodic presence heartbeat to the coordinator. */
-    if (s_link_up) {
+    /* Refresh cached PLCA operating status in the background so IsConnected / the
+     * CLI report real on-bus state, not just init-done. */
+    if (s_initialized) {
+        uint32_t now = SYSTICK_GetTickCounter();
+        if ((now - s_plca_poll_ms) >= T1S_PLCA_POLL_MS) {
+            s_plca_poll_ms = now;
+            (void)TC6_ReadRegister(s_tc6, T1S_PLCA_STATUS_REG, true, on_plca_status, NULL);
+        }
+    }
+
+    /* Presence heartbeat — only once PLCA is operating: a follower has no transmit
+     * opportunity without the coordinator's beacon, so sending earlier queues a
+     * frame that never drains (and stalls s_hb_busy). */
+    if (s_plca_op) {
         uint32_t now = SYSTICK_GetTickCounter();
         if ((now - s_hb_last_ms) >= T1S_HB_INTERVAL_MS) {
             s_hb_last_ms = now;
@@ -238,7 +267,7 @@ void T1SFollower_Tasks(void)
 
 bool T1SFollower_IsConnected(void)
 {
-    return s_link_up;
+    return s_plca_op;
 }
 
 uint8_t T1SFollower_ChipRev(void)
@@ -324,6 +353,18 @@ void T1SFollower_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
 uint8_t T1SFollower_NodeId(void)    { return (uint8_t)T1S_NODE_ID; }
 uint8_t T1SFollower_NodeCount(void) { return (uint8_t)T1S_NODE_COUNT; }
 
+/* Background PLCA_STATUS poll result: cache the operating bit (bit 15) for
+ * IsConnected / the CLI. Scheduled from T1SFollower_Tasks every T1S_PLCA_POLL_MS. */
+static void on_plca_status(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
+                           void *pTag, void *pGlobalTag)
+{
+    (void)pInst;
+    (void)addr;
+    (void)pTag;
+    (void)pGlobalTag;
+    s_plca_op = success && ((value & (1uL << 15)) != 0u);
+}
+
 /* Async read of the PLCA status register (bit 15 = plca_status). Result logs
  * from the service loop a moment later. */
 static void on_plca_read(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
@@ -348,7 +389,7 @@ void T1SFollower_ReadPlca(void)
         return;
     }
     /* Enqueue only; the main service loop completes it (see T1SFollower_ReadId). */
-    (void)TC6_ReadRegister(s_tc6, 0x0004CA03u, true, on_plca_read, NULL);
+    (void)TC6_ReadRegister(s_tc6, T1S_PLCA_STATUS_REG, true, on_plca_read, NULL);
 }
 
 /*>>>>>>>>>>>>>>>>>>>>  TC6 driver callbacks (integrator)  >>>>>>>>>>>>>>>>>>>>*/
