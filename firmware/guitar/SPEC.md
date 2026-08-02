@@ -55,6 +55,7 @@ EIC external-interrupt pin for `IRQ_N`:
 | `T1S_RST` | PA03 | GPIO, idle high |
 | `T1S_IRQ_N` | PA02 | EIC EXTINT2, falling edge |
 | `CDC_TX` / `CDC_RX` | PB00 / PB01 | SERCOM1 USART (debug console) |
+| `LED0` | PB02 | GPIO, active-low — liveness / link-state heartbeat |
 
 Output GPIOs — **active-high status LEDs** (`Set` = lit, `Clear` = off; all outputs, init low),
 bit layout matching the wire command:
@@ -88,6 +89,11 @@ A **PLCA follower** — the mirror of marvin's coordinator glue, reusing the sha
   Ethernet header. The guitar accepts frames addressed to its MAC from the coordinator.
 - **Bare-metal** (no FreeRTOS on PL10): the TC6 service loop runs from the main loop / timer
   tick, not a task; `IRQ_N` is wired to a SERCOM-EIC pin (not a PIO controller as on marvin).
+- **Presence heartbeat** (ethertype `0x88B6`, `node_type = 2`) to the coordinator so marvin's
+  `nodes` shows guitar present. Heartbeat TX is gated on PLCA actually operating (`PLCA_STATUS`
+  bit 15, polled every 250 ms) — not just local MAC-PHY init — so a follower never queues a frame
+  before the coordinator's beacon exists; `T1SFollower_IsConnected()` reports this real on-bus
+  state, and the `LED0` heartbeat encodes it (lub-dub on the bus, single blip when down).
 
 The marvin-side reference for all of this is [`firmware/marvin/default/src/net/t1s/t1s_link.c`](../marvin/default/src/net/t1s/t1s_link.c)
 (coordinator) — the follower inverts the roles: RX the command, no detector-stream TX.
@@ -126,6 +132,7 @@ Implemented in [`t1s_follower.c`](config.mcc/src/t1s_follower.c):
 | ✅ | **G1** — T1S follower bring-up on hardware: `LAN8651 up - chipRev=2 … PLCA follower id=2/8` (node renumbered to id 3 in source 2026-07-28; re-flash reproduces at `id=3/8`) |
 | ✅ | **G2** — end-to-end: marvin's command over T1S → the addressed Wii GPIO asserts |
 | ✅ | **CLI** — `t1s`/`btn`/`tap`/`id`/`plca` on the debug UART (embedded-cli). Drives the Wii-guitar GPIOs locally and reports T1S link/sync/PLCA status. |
-| ✅ | **Heartbeat** — periodic presence frame (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows this node present |
+| ✅ | **Heartbeat** — periodic presence frame (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows this node present. TX gated on `PLCA_STATUS` bit 15 (polled 250 ms), so `IsConnected` / heartbeat reflect real on-bus state, not just local init |
+| ✅ | **Status LED** — `status_led.{c,h}` drives `LED0` (PB02, active-low) as a non-blocking SysTick heartbeat: lub-dub when on the bus, single blip when down; decoupled from any command state |
 | ✅ | **ATE_2026 port** — control + output pins remapped (`CS`=PA06, `RST`=PA03, `IRQ_N`=PA02/EXTINT2; LEDs PA08–PA13), output stage flipped to active-high status LEDs, strum collapsed to one STRUM. Builds; not yet exercised on the physical board. |
 | 🔭 | **G3** — full system: `fretboard` (detector) + `guitar` (actuator) both on the bus with marvin selecting the active of each (marvin already targets the guitar; needs the fretboard moved to T1S) |

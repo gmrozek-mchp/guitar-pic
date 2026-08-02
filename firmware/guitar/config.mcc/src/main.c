@@ -28,6 +28,7 @@
 #include "definitions.h"                // SYS function prototypes
 #include "t1s_follower.h"               // 10BASE-T1S follower (LAN8651 over SERCOM0 SPI)
 #include "cli.h"                        // operator CLI on the SERCOM1 debug UART
+#include "status_led.h"                 // LED0 liveness / link-state heartbeat
 
 
 // *****************************************************************************
@@ -42,6 +43,7 @@ int main ( void )
     SYS_Initialize ( NULL );
 
     T1SFollower_Initialize ( );
+    StatusLed_Initialize ( );
     CLI_Initialize ( );
 
     while ( true )
@@ -52,6 +54,9 @@ int main ( void )
         /* Service the T1S link: receive marvin's command frames and drive
          * the Wii-guitar GPIOs. */
         T1SFollower_Tasks ( );
+
+        /* Non-blocking LED0 heartbeat encoding liveness + on-bus state. */
+        StatusLed_Tasks ( );
 
         /* Operator CLI on the debug UART (status / manual btn / tap). */
         CLI_Tasks ( );
