@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: eic
-coreVersion: 5.9.1-tc.c
+coreVersion: 5.9.0
 device: PIC32CM6408PL10048
 library: []
 dependency:

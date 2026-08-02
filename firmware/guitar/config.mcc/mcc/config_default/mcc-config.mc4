@@ -1,5 +1,5 @@
 configVersion: 1.0.0
-coreVersion: 5.9.1-tc.c
+coreVersion: 5.9.0
 spaHostVersion: 1.3.0
 device: PIC32CM6408PL10048
 deviceLibrary: {}
@@ -16,7 +16,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/PIC32CM6408PL10048.ld
   hash: 1be83a2de4596f61ef9a0a0cda41503b2d2f00e87036363eaff5607db25fadb4
 - file: ../src/config/default/definitions.h
-  hash: e176dd53dedf1f6a400ca6e3f157398fe546ef815645168397fd466e20cb25cf
+  hash: 48c9e57d692b9cb756f506fecf81bcb7337af90ae7232c726060c314c87c9da1
 - file: ../src/config/default/device.h
   hash: cbe5a5f60fcaf3cb182092323aa3c71cf2414fed36e66337f5827197fd2e2325
 - file: ../src/config/default/device_cache.h
@@ -26,7 +26,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/exceptions.c
   hash: d1567a190561858cc1cb7e796cf1a29720e52b9799bbd88b087993d8539e137f
 - file: ../src/config/default/initialization.c
-  hash: 4b664d857260c01f352aca7e7bf78b0a0c851f2d53841e9f24c38e0e051c6399
+  hash: 1d47c91ef7ab95946a03ba9b019474af49e9cabd3de6a31aa148297d58bf0352
 - file: ../src/config/default/interrupts.c
   hash: c737e5fa3d79bbf431e009861a6d78afa0f7040b3aa13347b531855bb7f42a87
 - file: ../src/config/default/interrupts.h
@@ -50,9 +50,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/nvic/plib_nvic.h
   hash: 9936ac782115af41003255283fa2f603f4ff2212d16275b7c80ea8d067a9e208
 - file: ../src/config/default/peripheral/port/plib_port.c
-  hash: 1a143f50520002a1387d8e31072702622851e528068a94d89d9379e3957c15ef
+  hash: 21c8c70bd0d75d6180ab284cdf22865afc0ea74cf034d013229fdd4a9c42423a
 - file: ../src/config/default/peripheral/port/plib_port.h
-  hash: 137f28a98bc79bdaaaf894e7d43526159c03a3384cc65f05c789c0f6af889d64
+  hash: e8b77881a51ce4138f61e1816b4033960cc982f55be37a3e53fdbd44646ca850
 - file: ../src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.c
   hash: 9a6e484b535d693fd98188be852a47ffe3080b0f773ffe9f75d872167f809f88
 - file: ../src/config/default/peripheral/sercom/spi_master/plib_sercom0_spi_master.h
@@ -70,7 +70,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/peripheral/systick/plib_systick.h
   hash: a504ea50ca4b8e056e3016362039038bbe10dffb71a89bd78c9a72d6e28e4c15
 - file: ../src/config/default/pin_configurations.csv
-  hash: 85544b7b84e6e9e83631c2a241ddc01ab11d1e0effb14bebd20d2ea72f0d8533
+  hash: 7625dc804fadbbe9711450f142eb82f7595cd51d0b9f9ad7ec28754c862243c6
 - file: ../src/config/default/startup_xc32.c
   hash: 3aa1360f333b564211c35f641c7327c2111e11aa633bd02ec5a0be9466b1df04
 - file: ../src/config/default/stdio/xc32_monitor.c

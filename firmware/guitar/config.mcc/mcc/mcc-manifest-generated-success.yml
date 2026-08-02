@@ -2,14 +2,14 @@
 
 manifest_file_version: 1.0.0
 project: config_default
-creation_date: 2026-07-23T12:41:41.975-05:00[America/Chicago]
+creation_date: 2026-08-02T12:17:12.384-05:00[America/Chicago]
 operating_system: Mac OS X
 mcc_mode: VSCodePlugin
 mcc_mode_version: Unknown
 device_name: PIC32CM6408PL10048
 compiler: N/A
-mcc_version: 5.7.1-tc.c
-mcc_core_version: 5.9.1-tc.c
+mcc_version: 5.7.0
+mcc_core_version: 5.9.0
 content_manager_version: 7.0.0
 is_mcc_offline: false
 is_using_prerelease_versions: false

@@ -1,6 +1,6 @@
 configVersion: 1.0.0
 componentName: core
-coreVersion: 5.9.1-tc.c
+coreVersion: 5.9.0
 device: PIC32CM6408PL10048
 library: []
 dependency:
@@ -1200,16 +1200,34 @@ data:
       attributes:
         id: PIN_6_DIR
         label: Direction
+      children:
+      - children:
+        - attributes:
+            value: Out
+          type: User
+        type: Values
       type: String
     PIN_6_FUNCTION_NAME:
       attributes:
         id: PIN_6_FUNCTION_NAME
         label: Name
+      children:
+      - children:
+        - attributes:
+            value: LED0
+          type: User
+        type: Values
       type: String
     PIN_6_FUNCTION_TYPE:
       attributes:
         id: PIN_6_FUNCTION_TYPE
         label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
       type: String
     PIN_6_INEN:
       attributes:
@@ -1248,16 +1266,34 @@ data:
       attributes:
         id: PIN_7_DIR
         label: Direction
+      children:
+      - children:
+        - attributes:
+            value: ''
+          type: User
+        type: Values
       type: String
     PIN_7_FUNCTION_NAME:
       attributes:
         id: PIN_7_FUNCTION_NAME
         label: Name
+      children:
+      - children:
+        - attributes:
+            value: SW0
+          type: User
+        type: Values
       type: String
     PIN_7_FUNCTION_TYPE:
       attributes:
         id: PIN_7_FUNCTION_TYPE
         label: Type
+      children:
+      - children:
+        - attributes:
+            value: GPIO
+          type: User
+        type: Values
       type: String
     PIN_7_INEN:
       attributes:
@@ -1266,7 +1302,7 @@ data:
       children:
       - children:
         - attributes:
-            value: ''
+            value: 'True'
           type: User
         type: Values
       type: String
@@ -1948,7 +1984,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x0'
+            value: '0x4'
           type: Dynamic
         type: Values
       type: String
@@ -2044,7 +2080,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x0'
+            value: '0x6'
           type: Dynamic
         type: Values
       type: String
@@ -2889,6 +2925,51 @@ data:
       attributes:
         id: PIN_46_PULLEN
         label: Pull Enable
+      type: String
+    PORT_GROUP_1_OUT:
+      attributes:
+        id: PORT_GROUP_1_OUT
+        label: Port Pin Output Value
+      children:
+      - children:
+        - attributes:
+            id: core
+            value: '0xc'
+          type: Dynamic
+        type: Values
+      type: String
+    PIN_6_LAT:
+      attributes:
+        id: PIN_6_LAT
+        label: Initial Latch Value
+      children:
+      - children:
+        - attributes:
+            value: High
+          type: User
+        type: Values
+      type: String
+    PIN_7_PULLEN:
+      attributes:
+        id: PIN_7_PULLEN
+        label: Pull Enable
+      children:
+      - children:
+        - attributes:
+            value: 'True'
+          type: User
+        type: Values
+      type: String
+    PIN_7_LAT:
+      attributes:
+        id: PIN_7_LAT
+        label: Initial Latch Value
+      children:
+      - children:
+        - attributes:
+            value: High
+          type: User
+        type: Values
       type: String
   userData:
     children:
