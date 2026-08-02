@@ -23,9 +23,10 @@ button bitmask from the ADC window. Over T1S it then:
 
 Inference runs in the main loop (it overruns the 240 Hz tick in the ISR); the ISR
 only scans + stages the data frame. Actuation is armed via the `arm` CLI command or
-marvin's control channel (last writer wins); LED0 shows armed (boots disarmed →
-command path silent). It has **no local Wii-guitar outputs** — those pins are the
-LAN8651 SPI. See [`docs/journal.md`](docs/journal.md), edge-ai
+marvin's control channel (last writer wins); boots disarmed → command path silent.
+LED0 is the T1S liveness heartbeat (independent of arm state). It has **no local
+Wii-guitar outputs** — those pins are the LAN8651 SPI. See
+[`docs/journal.md`](docs/journal.md), edge-ai
 [`runtime.md`](../../tools/edge-ai/docs/runtime.md), and
 [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
@@ -158,11 +159,24 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   `stream` CLI commands — last writer wins, no lockout.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
+- **On-bus gate:** all TX (data, command, heartbeat) is gated on PLCA actually
+  operating — `PLCA_STATUS` bit 15, polled every 250 ms in the background — not just
+  local MAC-PHY init. A follower has no transmit slot until the coordinator's beacon
+  is present, and `T1SDetector_IsConnected()` reports this real on-bus state (drives
+  the LED heartbeat + CLI `link:` line).
 - **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
   `third_party/embedded-cli/`): `t1s` (link / sync / chipRev / PLCA / data+command tx
   counts + arm/stream state), `arm [on|off]` (gate actuation), `stream [on|off]`
   (gate the data feed to marvin), `adc` (latest scan), `id` / `plca` (MAC-PHY
   register diagnostics). Bare-metal — `CLI_Tasks()` drains the RX ring each main-loop pass.
+
+### status_led ([status_led.c](status_led.c) / [.h](status_led.h))
+
+Non-blocking liveness heartbeat on **LED0** (PB02, active-low), driven from the main
+loop off the SysTick millisecond clock — 1 Hz. The pattern also encodes T1S link
+state: a "lub-dub" double pulse when on the bus (`T1SDetector_IsConnected()`), a
+single short blip when the bus is down. A dark or steady LED means the firmware is
+stuck. Decoupled from the arm state.
 
 **Coordination caveat:** the guitar applies whoever transmitted last (both marvin and
 the fretboard target `02:..:03`), so only one source may be armed at a time. marvin
@@ -197,6 +211,7 @@ MPLAB Extensions for VS Code. Project config is in
 | [fret_scan.c](fret_scan.c) / [.h](fret_scan.h) | ADC channel scanning |
 | [data_stream.c](data_stream.c) / [.h](data_stream.h) | 17-byte data frame builder (→ T1S) |
 | [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→guitar, heartbeat |
+| [status_led.c](status_led.c) / [.h](status_led.h) | LED0 liveness heartbeat (encodes T1S link state) |
 | [cli.c](cli.c) / [.h](cli.h) | Operator CLI on SERCOM1 (t1s/adc/id/plca) |
 | [model_infer.c](model_infer.c) / [model_infer_stream.c](model_infer_stream.c) | On-device int8 model (ADC window → bitmask) |
 | [tc6-conf.h](tc6-conf.h) | OA TC6 driver build config |

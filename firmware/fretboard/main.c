@@ -7,6 +7,7 @@
 #include "data_stream.h"
 #include "fretboard_config.h"
 #include "t1s_detector.h"
+#include "status_led.h"
 #include "cli.h"
 #include "model_infer.h"
 
@@ -16,22 +17,11 @@
 #endif
 
 /* Guitar actuation is armed via the `arm on|off` CLI command or marvin's control
- * channel (0x88B9 opcode 0x01) — last writer wins, no lockout. LED0 (PB02) is lit
- * while armed. Boots disarmed: silent on the guitar command channel (LED off) until
- * armed; disarming sends one final release then goes silent again. (Interim manual
- * "active detector" gate until marvin coordinates active-detector/guitar selection.)
- *
- * Board polarity: the MCC pin config (PB02 boots high) implies LED0 is active-low.
- * If LED0 is inverted, set LED0_ACTIVE_LOW to 0. */
-#define LED0_ACTIVE_LOW         1
-
-#if LED0_ACTIVE_LOW
-#define LED0_ON()       LED0_Clear()
-#define LED0_OFF()      LED0_Set()
-#else
-#define LED0_ON()       LED0_Set()
-#define LED0_OFF()      LED0_Clear()
-#endif
+ * channel (0x88B9 opcode 0x01) — last writer wins, no lockout. Boots disarmed:
+ * silent on the guitar command channel until armed; disarming sends one final
+ * release then goes silent again. (Interim manual "active detector" gate until
+ * marvin coordinates active-detector/guitar selection.) LED0 is the T1S liveness
+ * heartbeat (status_led.c), independent of the arm state. */
 
 /* Latest inference (main loop writes, ISR reads). Single byte → atomic on M0+. */
 static volatile uint8_t s_latest_cmd;
@@ -56,10 +46,8 @@ static volatile uint16_t s_q_rd;      /* main-advanced read index */
 static bool actuation_armed(void)
 {
     /* Arm state is owned by t1s_detector — set by the `arm` CLI command or marvin's
-     * control channel (last writer wins). Mirror it to LED0 each tick. */
-    bool eff = T1SDetector_Armed();
-    if (eff) { LED0_ON(); } else { LED0_OFF(); }
-    return eff;
+     * control channel (last writer wins). */
+    return T1SDetector_Armed();
 }
 
 void Callback_TC0 (TC_TIMER_STATUS status, uintptr_t context)
@@ -101,13 +89,13 @@ int main(void)
     fret_scan_init();
     data_stream_init();
     T1SDetector_Initialize();
+    StatusLed_Initialize();
     CLI_Initialize();
 #if MODEL_INFER_STREAMING
     model_infer_stream_init();
 #else
     model_infer_init();
 #endif
-    LED0_OFF();   /* boot disarmed: LED off */
 
     TC0_TimerCallbackRegister( Callback_TC0, NULL );
     TC0_TimerStart();
@@ -127,9 +115,11 @@ int main(void)
         s_latest_cmd = model_infer_run();
 #endif
         /* Forward the gated command to the guitar (edge-triggered + refreshed) and
-         * service the MAC-PHY / data-frame flush / heartbeat, then the CLI. */
+         * service the MAC-PHY / data-frame flush / presence heartbeat, then the
+         * LED heartbeat and the CLI. */
         T1SDetector_SetCommand(s_current_cmd, s_actuation_active);
         T1SDetector_Tasks();
+        StatusLed_Tasks();
         CLI_Tasks();
     }
 

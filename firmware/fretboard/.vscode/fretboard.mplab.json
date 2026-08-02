@@ -76,6 +76,8 @@
                 "model_weights.h",
                 "t1s_detector.c",
                 "t1s_detector.h",
+                "status_led.c",
+                "status_led.h",
                 "tc6-conf.h",
                 "third_party/embedded-cli/embedded_cli.h",
                 "third_party/embedded-cli/embedded_cli.c",
