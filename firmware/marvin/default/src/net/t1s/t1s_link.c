@@ -86,14 +86,16 @@ typedef struct
 } t1s_node_t;
 
 static const t1s_node_t s_nodes[] = {
-    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* detector (RX) */
+    /* Ordered by node id (docs/t1s-podl-link.md §7.1). */
+#if T1S_CTRL_ENABLED
+    { 1u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote1 (0x88B7) */
+    { 2u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote2 (0x88B7) */
+#endif
     { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
+    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* fretboard (RX) */
+    { 5u, T1S_NO_DETECTOR,                 T1S_NODE_BEATSOURCE }, /* beatbox (heartbeat) */
     { 6u, T1S_NO_DETECTOR,                 T1S_NODE_ANIMATION },  /* lemmy (heartbeat) */
     { 7u, T1S_NO_DETECTOR,                 T1S_NODE_LIGHTSHOW },  /* lightshow (heartbeat) */
-    { 5u, T1S_NO_DETECTOR,                 T1S_NODE_BEATSOURCE }, /* beatbox (heartbeat) */
-#if T1S_CTRL_ENABLED
-    { 1u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote (0x88B7) */
-#endif
 };
 
 #define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
@@ -105,13 +107,19 @@ static struct {
     bool     seen;
 } s_node_rt[T1S_NODE_TABLE_LEN];
 
-static const char *node_type_name(t1s_node_type_t t)
+static const char *node_type_name(t1s_node_type_t t, uint8_t node_id)
 {
     switch (t) {
-        case T1S_NODE_FRETBOARD:     return "detector";
+        case T1S_NODE_FRETBOARD:     return "fretboard";
         case T1S_NODE_PHOTODETECTOR: return "detector";
         case T1S_NODE_GUITAR:        return "guitar";
-        case T1S_NODE_CONTROLLER:    return "controller";
+        case T1S_NODE_CONTROLLER:
+            /* fauxmote controllers take ids 1..2 (docs/t1s-podl-link.md §7.1). */
+            switch (node_id) {
+                case 1u:  return "fauxmote1";
+                case 2u:  return "fauxmote2";
+                default:  return "fauxmote";
+            }
         case T1S_NODE_ANIMATION:     return "lemmy";
         case T1S_NODE_LIGHTSHOW:     return "lightshow";
         case T1S_NODE_BEATSOURCE:    return "beatbox";
@@ -555,7 +563,7 @@ bool T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out)
         return false;
     }
     out->node_id = s_nodes[idx].node_id;
-    out->type    = node_type_name(s_nodes[idx].type);
+    out->type    = node_type_name(s_nodes[idx].type, s_nodes[idx].node_id);
     if (s_node_rt[idx].seen) {
         uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
         out->age_ms  = (uint32_t)(age * portTICK_PERIOD_MS);

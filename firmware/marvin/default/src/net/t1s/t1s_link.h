@@ -39,7 +39,7 @@ uint32_t T1SLink_CtrlRxCount(void); /* controller (0x88B7) frames received */
 /* Per-node presence (from follower heartbeats, ethertype 0x88B6). */
 typedef struct {
     uint8_t     node_id;
-    const char *type;     /* "detector" / "guitar" / ... */
+    const char *type;     /* "fretboard" / "guitar" / "fauxmote1" / ... */
     bool        present;  /* a heartbeat was seen within the presence window */
     uint32_t    age_ms;   /* since the last heartbeat (0 if never seen) */
 } T1SLink_NodeInfo;
