@@ -73,7 +73,10 @@ to `guitar`'s:
   `IRQ_N` is wired to a SERCOM-EIC pin.
 - **Presence heartbeat** (ethertype `0x88B6`) to the coordinator so marvin's `nodes` shows lightshow
   present. A new `node_type = 5` (*lightshow*) is used for the heartbeat payload — marvin's §7.2
-  decode + `nodes` display learn it (marvin-side follow-up).
+  decode + `nodes` display learn it (marvin-side follow-up). Heartbeat TX is gated on PLCA actually
+  operating (`PLCA_STATUS` bit 15, polled every 250 ms) — not just local MAC-PHY init — so a follower
+  never queues a frame before the coordinator's beacon exists; `T1SFollower_IsConnected()` reports this
+  real on-bus state.
 - **Command planes:** two coexist, routed by ethertype. (1) **beat frame** —
   [`beatbox`](../beatbox/SPEC.md) (id 5) **broadcasts** an 8-byte `LightshowFrame` under **ethertype
   `0x88B8`** (dst `FF:FF:FF:FF:FF:FF`) at ~23.4 Hz — fields `seq`, `energy`, `bass`, `treble`, `kick`,
