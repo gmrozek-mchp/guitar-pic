@@ -5,7 +5,7 @@
 #if !MODEL_INFER_STREAMING
 
 #include "model_infer.h"
-#include "model_weights.h"
+#include "models.h"
 
 #include <stddef.h>
 #include <string.h>
@@ -21,6 +21,11 @@
 /* The active model. Swappable at runtime (e.g. per difficulty); all candidate
  * models share the compile-time dims used to size the scratch below. */
 static const model_def_t *s_model;
+
+/* Current selection index (MODEL_SEL_*) and the concrete difficulty it resolves
+ * to (differs from s_sel only for AUTO). */
+static uint8_t s_sel = MODEL_SEL_DEFAULT;
+static uint8_t s_eff = MODEL_SEL_HARD;
 
 /* Input ring: WINDOW newest scans, oldest at window position 0. */
 static uint16_t s_ring[MODEL_WINDOW][MODEL_N_IN];
@@ -73,6 +78,27 @@ void model_infer_set_model(const model_def_t *m)
     }
 }
 
+void model_infer_set_sel(uint8_t sel)
+{
+    s_sel = sel;
+    model_infer_set_model(model_resolve(sel, &s_eff));
+}
+
+uint8_t model_infer_get_sel(void)   { return s_sel; }
+uint8_t model_infer_effective(void) { return s_eff; }
+
+const char *model_infer_sel_name(uint8_t sel)
+{
+    return (sel < MODEL_SEL_COUNT) ? MODEL_SEL_NAMES[sel] : NULL;
+}
+
+bool model_infer_sel_trained(uint8_t sel)
+{
+    uint8_t eff;
+    (void)model_resolve(sel, &eff);
+    return MODEL_DIFFICULTY_TRAINED[eff];
+}
+
 void model_infer_init(void)
 {
     s_pos = 0;
@@ -81,7 +107,7 @@ void model_infer_init(void)
     s_hold_until = 0;
     s_block_until = 0;
     s_prev_strum = 0;
-    model_infer_set_model(MODEL_DEFAULT);
+    model_infer_set_sel(MODEL_SEL_DEFAULT);
 }
 
 void model_infer_push(const uint16_t adc[5])

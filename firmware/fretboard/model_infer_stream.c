@@ -4,7 +4,8 @@
 #if MODEL_INFER_STREAMING
 
 #include "model_infer_stream.h"
-#include "model_weights.h"
+#include "model_infer.h"
+#include "models.h"
 
 #include <string.h>
 
@@ -33,6 +34,11 @@ static const model_def_t *s_model;
 static uint32_t s_rf;       /* receptive field; output valid once s_count >= s_rf */
 static uint32_t s_count;    /* samples processed (for warm-up tap zeroing) */
 
+/* Current selection index (MODEL_SEL_*) and the concrete difficulty it resolves
+ * to (differs from s_sel only for AUTO). */
+static uint8_t s_sel = MODEL_SEL_DEFAULT;
+static uint8_t s_eff = MODEL_SEL_HARD;
+
 static int8_t s_qin[Q_RING][MODEL_N_IN];
 static int8_t s_l0[L0_RING][MODEL_CHANNELS];
 static int8_t s_l1[L1_RING][MODEL_CHANNELS];
@@ -53,6 +59,27 @@ void model_infer_stream_set_model(const model_def_t *m)
     }
 }
 
+void model_infer_set_sel(uint8_t sel)
+{
+    s_sel = sel;
+    model_infer_stream_set_model(model_resolve(sel, &s_eff));
+}
+
+uint8_t model_infer_get_sel(void)   { return s_sel; }
+uint8_t model_infer_effective(void) { return s_eff; }
+
+const char *model_infer_sel_name(uint8_t sel)
+{
+    return (sel < MODEL_SEL_COUNT) ? MODEL_SEL_NAMES[sel] : NULL;
+}
+
+bool model_infer_sel_trained(uint8_t sel)
+{
+    uint8_t eff;
+    (void)model_resolve(sel, &eff);
+    return MODEL_DIFFICULTY_TRAINED[eff];
+}
+
 void model_infer_stream_init(void)
 {
     s_count = 0;
@@ -64,7 +91,7 @@ void model_infer_stream_init(void)
     memset(s_qin, 0, sizeof(s_qin));
     memset(s_l0, 0, sizeof(s_l0));
     memset(s_l1, 0, sizeof(s_l1));
-    model_infer_stream_set_model(MODEL_DEFAULT);
+    model_infer_set_sel(MODEL_SEL_DEFAULT);
 }
 
 /* One output column (all MODEL_CHANNELS) at the newest position, reading the

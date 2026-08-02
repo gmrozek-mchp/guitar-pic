@@ -74,6 +74,7 @@
                 "model_infer_stream.c",
                 "model_infer_stream.h",
                 "model_weights.h",
+                "models.h",
                 "t1s_detector.c",
                 "t1s_detector.h",
                 "status_led.c",

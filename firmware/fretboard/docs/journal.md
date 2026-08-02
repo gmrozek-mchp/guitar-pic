@@ -46,6 +46,7 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-02 | **Added 5 selectable inference-model slots (per-difficulty easy/medium/hard/expert + reserved `auto`), runtime-selectable over CLI and T1S — plumbing only.** New firmware-owned (not generated) `models.h` holds the difficulty→`model_def_t*` registry + a `static inline model_resolve()` (bounds-checks, `auto`→hard stub, reports the effective difficulty); it's `#include`d only by the active engine TU so weights instantiate once. `model_infer.h` gains the `MODEL_SEL_*` enum (`MODEL_SEL_DEFAULT = HARD`) + selection API (`model_infer_set_sel`/`_get_sel`/`_effective`/`_sel_name`/`_sel_trained`), implemented as a small wrapper in **both** `model_infer.c` + `model_infer_stream.c` (one public name each, only the compiled engine defines it). `t1s_detector` holds an `s_model_sel` byte written by the local `model` CLI command or new control opcode `0x03` (`T1S_CTRL_MODEL`, arg 0..4) — last writer wins; `main.c` applies changes to the engine on-change (cold path, no ISR cost). marvin: `T1S_DET_CTRL_MODEL (3)` + `OP_COUNT` 2→3 and a `fretboard model <difficulty>` console command. Only `hard` is trained; the other slots **alias to `&model_hard`** via `#ifdef MODEL_HAVE_*` and `auto` resolves to hard, so all five are selectable and drive identically today. | Per Greg: one model per GH difficulty (same NN arch, only weights/thresholds differ) plus a 5th `auto` slot to experiment with an adaptive policy later. Scope is **plumbing only** — per-difficulty corpora aren't captured yet, so real weights for easy/medium/expert are future edge-ai work (needs Greg in the loop). Building the full selection path now (registry + enum + CLI + T1S + marvin) means dropping a trained difficulty later is just: generate `model_weights_<diff>.h`, `#include` + `#define MODEL_HAVE_<DIFF>` in `models.h`, register in the fileSet — no wiring changes. The registry lives in firmware-owned `models.h` (not the generated `model_weights.h`) so hand-editing to add a model is legitimate; keeping it in a header included only by the active engine preserves single weight instantiation (the inactive engine TU stays empty). `auto` is modeled as a policy slot (not a static model) so the adaptive logic has a single documented hook (`model_resolve`), and `model_infer_effective()` lets the CLI show `auto (→hard)`. |
 | 2026-08-02 | **`T1SDetector_IsConnected()` now reflects real on-bus state (PLCA_STATUS bit 15), not just MAC-PHY init — adopted beatbox's pattern.** Renamed `s_link_up` → `s_initialized` (local MAC-PHY bring-up done + data path enabled); added `s_plca_op`, polled every 250 ms from `T1SDetector_Tasks` via a background `TC6_ReadRegister(PLCA_STATUS)` → `on_plca_status` callback (caches bit 15 = "coordinator beacon on the wire"). `IsConnected()` now returns `s_plca_op`; **all TX (data flush, guitar command, heartbeat) and `SendFrame` are gated on `s_plca_op`** instead of init-done. The existing on-demand `plca` CLI read (`on_plca_read`) is unchanged. | Per Greg: "connected" should mean *actually on the bus and communicating*, not just that the LAN8651 finished its register sequence — the old init-done flag went true (and stayed true) even with no coordinator present, so the LED heartbeat / CLI `link:` line lied. PLCA_STATUS bit 15 is the real signal (asserts only when the coordinator's beacon is seen). Gating TX on it also fixes a latent hang: a follower has no transmit opportunity without the beacon, so sending earlier queued a frame that never drained and stalled the `*_busy` guards. First of the follower nodes to get this cleanup; lemmy + lightshow to follow (same edit). |
 | 2026-08-02 | **LED0 decoupled from arm state → T1S liveness heartbeat (`status_led.c`/`.h`, mirror of lemmy/lightshow).** New `status_led` module: non-blocking 1 Hz heartbeat off the SysTick ms clock — lub-dub double pulse when `T1SDetector_IsConnected()`, single blip when the bus is down. `main.c` drops the `LED0_ON/OFF` macros and the arm→LED mirroring in `actuation_armed()` (now just returns `T1SDetector_Armed()`), calls `StatusLed_Initialize()` after `T1SDetector_Initialize()` and `StatusLed_Tasks()` in the main loop. Sources added to the mplab.json fileSet. | Per Greg: LED0-as-arm-indicator gave no liveness signal (a dark LED could mean disarmed *or* hung firmware). The heartbeat pattern used on lemmy/lightshow always shows the firmware is alive and encodes bus link-state at a glance; arm state is observable over the CLI/`t1s` line and marvin instead. Keeps the three follower nodes' status LEDs consistent. |
 | 2026-08-02 | **Added a local `stream [on|off]` CLI command for the data stream (parallel to the T1S control).** `T1SDetector_SetStream()` added alongside the existing `T1SDetector_StreamEnabled()`; the CLI command and the control-channel RX (opcode 0x02) write the same `s_stream_enabled` flag — last writer wins, no lockout. Same shape as the `arm` command. | Mirrors the arm-command change so the data feed can be toggled from the bench console as well as from marvin, with neither locking out the other. |
@@ -83,6 +84,35 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 ---
 
 ## Session log
+
+### 2026-08-02 — 5 selectable inference models (per-difficulty + auto), plumbing only
+
+- Built the full runtime model-selection path so the fretboard can carry one model per Guitar Hero
+  difficulty (`easy`/`medium`/`hard`/`expert`) plus a reserved `auto` slot for a future adaptive mode.
+  Same NN arch for all; only weights/thresholds differ. Selectable over the local CLI **and** T1S (marvin).
+- **Scope: plumbing only.** Per-difficulty corpora aren't captured, so real easy/medium/expert weights
+  don't exist. The untrained slots alias to `&model_hard` (`#ifdef MODEL_HAVE_*`) and `auto` resolves to
+  hard — all five are selectable and drive the guitar identically today. Training the real models is
+  separate future edge-ai work (corpora + Greg in the loop; see `feedback_training_involvement`).
+- **New `models.h`** (firmware-owned, not generated): difficulty→`model_def_t*` registry + `model_resolve()`
+  (bounds-check, `auto`→hard stub, effective-difficulty out-param). Included only by the active engine TU,
+  so weights still instantiate exactly once.
+- **`model_infer.h`**: `MODEL_SEL_*` enum (`MODEL_SEL_DEFAULT = HARD`) + selection API; implemented as a
+  wrapper in both `model_infer.c` and `model_infer_stream.c` (one public name each, only the compiled
+  engine defines it — the other TU is empty under its `#if [!]MODEL_INFER_STREAMING` guard).
+- **`t1s_detector.c/.h`**: control opcode `0x03` (`T1S_CTRL_MODEL`, arg 0..4) + `s_model_sel` byte +
+  `T1SDetector_SetModelSel`/`_ModelSel` accessors. The module only holds the byte; **`main.c` applies it
+  to the engine on change** (mirrors how `actuation_armed()` reads `T1SDetector_Armed()`).
+- **`cli.c`**: `model [easy|medium|hard|expert|auto]` — no-arg lists all slots with placeholder / `auto`
+  markers + the effective difficulty; a name selects it. 7th binding (cap is 8).
+- **marvin**: `T1S_DET_CTRL_MODEL (3)` + `T1S_DET_CTRL_OP_COUNT` 2→3 (staging arrays auto-resize); a
+  `fretboard model <difficulty>` console subcommand with a local name→index table (marvin doesn't share
+  the fretboard enum).
+- **Build/docs**: added `models.h` to the mplab fileSet; updated `SPEC.md` (control-channel opcode table,
+  CLI list, new `model_infer` module section + File Map) and this journal. No edge-ai code change — the
+  `emit_c_header(--name <diff>)` exporter already emits correctly-prefixed per-model headers.
+- **Not built/flashed yet** — needs an MPLAB build in both `MODEL_INFER_STREAMING` 0 and 1 + a marvin
+  build, then CLI/T1S smoke tests (all five select; behaviour parity since all → hard).
 
 ### 2026-08-02 — Sync pass: node id confirmed + `0x88B9` control channel (remote arm)
 

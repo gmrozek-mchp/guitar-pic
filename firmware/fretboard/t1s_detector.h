@@ -69,6 +69,14 @@ void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count);
 void T1SDetector_SetStream(bool enabled);
 bool T1SDetector_StreamEnabled(void);
 
+/* Inference model selection (MODEL_SEL_* index). Set by the local CLI
+ * (T1SDetector_SetModelSel) or marvin's control channel (0x88B9 opcode 0x03) —
+ * last writer wins. Out-of-range sets are ignored. This module only holds the
+ * byte; main.c reads it each pass and applies changes to the active engine.
+ * Boots MODEL_SEL_DEFAULT. */
+void    T1SDetector_SetModelSel(uint8_t sel);
+uint8_t T1SDetector_ModelSel(void);
+
 /* Diagnostics (boot banner / CLI). */
 uint8_t  T1SDetector_ChipRev(void);   /* 0 if the link never came up */
 uint32_t T1SDetector_TxCount(void);   /* data frames sent to the coordinator */

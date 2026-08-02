@@ -130,6 +130,33 @@ coordinator over T1S (via `T1SDetector_SendFrame`):
 the node drove to the guitar this scan, paired atomically with the ADC scan for
 edge-ai training-data export. The marvin RX side keys on this 17-byte layout.
 
+#### model_infer ([model_infer.c](model_infer.c) / [model_infer_stream.c](model_infer_stream.c) / [model_infer.h](model_infer.h) / [models.h](models.h))
+
+On-device int8 inference: the 5-channel ADC window → the 7-bit command bitmask. Two
+interchangeable engines selected at compile time by `MODEL_INFER_STREAMING` — a
+recompute engine ([model_infer.c](model_infer.c)) and a streaming cascade
+([model_infer_stream.c](model_infer_stream.c)); only the active one compiles, so
+only it instantiates weights. Both are bit-exact with the host reference
+`edge_ai.quantize.int8_sim`.
+
+**Selectable models (plumbing).** Five runtime slots map to the Guitar Hero
+difficulties (`easy`/`medium`/`hard`/`expert`) plus a reserved `auto` slot for a
+future adaptive policy. The selection enum + API (`model_infer_set_sel` /
+`_get_sel` / `_effective` / `_sel_name` / `_sel_trained`) live in
+[model_infer.h](model_infer.h); the difficulty→`model_def_t*` registry and the
+`auto` resolve hook live in the firmware-owned (non-generated) [models.h](models.h),
+included only by the active engine TU.
+
+Only **hard** is trained today. The other difficulties **alias to `&model_hard`** via
+`#ifdef MODEL_HAVE_*` placeholders in [models.h](models.h), and `auto` currently
+resolves to hard (documented stub) — so all five are selectable and drive the guitar
+identically until real per-difficulty weights are distilled (edge-ai `runtime.md`).
+To add a trained difficulty: generate `model_weights_<diff>.h`
+(`edge-ai quantize --name <diff>`), then `#include` it + `#define MODEL_HAVE_<DIFF>` in
+[models.h](models.h) and register the header in the mplab fileSet. Selection is a
+cold-path byte (held in `t1s_detector`, written by the CLI `model` command or T1S
+opcode `0x03`, applied by `main.c` on change) — no ISR/240 Hz cost.
+
 ### T1S node ([t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h))
 
 PLCA follower **id 4**, MAC `02:00:00:00:00:04`, on the marvin-coordinated
@@ -153,10 +180,13 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   command path.
 - **Control ← marvin:** a per-node control channel (ethertype `0x88B9`, unicast
   `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation (marvin's
-  active-detector selection over the bus) and opcode `0x02` **stream** (arg 0|1)
-  gates the `0x88B5` data feed. Driven from marvin's `fretboard arm|disarm` /
-  `fretboard stream on|off`. Both gates are shared with the node's local `arm` /
-  `stream` CLI commands — last writer wins, no lockout.
+  active-detector selection over the bus), opcode `0x02` **stream** (arg 0|1)
+  gates the `0x88B5` data feed, and opcode `0x03` **model** (arg 0..4) selects the
+  inference model (per-difficulty easy/medium/hard/expert + a reserved auto slot;
+  see the `model_infer` module below). Driven from marvin's `fretboard arm|disarm` /
+  `fretboard stream on|off` / `fretboard model <difficulty>`. All three are shared
+  with the node's local `arm` / `stream` / `model` CLI commands — last writer wins,
+  no lockout.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
 - **On-bus gate:** all TX (data, command, heartbeat) is gated on PLCA actually
@@ -167,8 +197,10 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
 - **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
   `third_party/embedded-cli/`): `t1s` (link / sync / chipRev / PLCA / data+command tx
   counts + arm/stream state), `arm [on|off]` (gate actuation), `stream [on|off]`
-  (gate the data feed to marvin), `adc` (latest scan), `id` / `plca` (MAC-PHY
-  register diagnostics). Bare-metal — `CLI_Tasks()` drains the RX ring each main-loop pass.
+  (gate the data feed to marvin), `model [easy|medium|hard|expert|auto]` (select the
+  inference model; no arg lists all slots + placeholder markers), `adc` (latest scan),
+  `id` / `plca` (MAC-PHY register diagnostics). Bare-metal — `CLI_Tasks()` drains the
+  RX ring each main-loop pass.
 
 ### status_led ([status_led.c](status_led.c) / [.h](status_led.h))
 
@@ -212,8 +244,9 @@ MPLAB Extensions for VS Code. Project config is in
 | [data_stream.c](data_stream.c) / [.h](data_stream.h) | 17-byte data frame builder (→ T1S) |
 | [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→guitar, heartbeat |
 | [status_led.c](status_led.c) / [.h](status_led.h) | LED0 liveness heartbeat (encodes T1S link state) |
-| [cli.c](cli.c) / [.h](cli.h) | Operator CLI on SERCOM1 (t1s/adc/id/plca) |
+| [cli.c](cli.c) / [.h](cli.h) | Operator CLI on SERCOM1 (t1s/arm/stream/model/adc/id/plca) |
 | [model_infer.c](model_infer.c) / [model_infer_stream.c](model_infer_stream.c) | On-device int8 model (ADC window → bitmask) |
+| [models.h](models.h) | Difficulty→model registry + `auto` resolve (firmware-owned, not generated) |
 | [tc6-conf.h](tc6-conf.h) | OA TC6 driver build config |
 | `third_party/embedded-cli/` | Vendored embedded-cli (CLI engine, static-alloc) |
 | `fretboard-mcc/` | MCC Harmony peripheral libraries (generated) |

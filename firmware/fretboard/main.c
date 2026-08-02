@@ -97,10 +97,20 @@ int main(void)
     model_infer_init();
 #endif
 
-    TC0_TimerCallbackRegister( Callback_TC0, NULL );
+    TC0_TimerCallbackRegister( Callback_TC0, (uintptr_t)NULL );
     TC0_TimerStart();
 
+    /* Model selection lives as a byte in t1s_detector (written by the CLI or
+     * marvin's 0x88B9 opcode 0x03); this loop applies changes to the active
+     * engine. Both boot MODEL_SEL_DEFAULT so the first pass is a no-op. */
+    uint8_t applied_sel = MODEL_SEL_DEFAULT;
+
     while (true) {
+        uint8_t sel = T1SDetector_ModelSel();
+        if (sel != applied_sel) {
+            model_infer_set_sel(sel);   /* recomputes the need-table; keeps the ring */
+            applied_sel = sel;
+        }
 #if MODEL_INFER_STREAMING
         /* Drain the sample queue: one streaming step per sample, in order. */
         while (s_q_rd != s_q_wr)

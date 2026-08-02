@@ -11,6 +11,7 @@
 #include "embedded_cli.h"
 #include "t1s_detector.h"
 #include "fret_scan.h"
+#include "model_infer.h"   /* MODEL_SEL_*, name/effective/trained helpers */
 
 /* embedded-cli working buffer (static-allocation mode → no malloc). Sized for
  * the small config below; the requirement is checked at init. */
@@ -126,6 +127,37 @@ static void cmd_stream(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("stream: %s", T1SDetector_StreamEnabled() ? "on" : "off");
 }
 
+static void cmd_model(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL)
+    {
+        uint8_t cur = T1SDetector_ModelSel();
+        cli_printf("model: %s (effective: %s)", model_infer_sel_name(cur),
+                   model_infer_sel_name(model_infer_effective()));
+        for (uint8_t i = 0u; i < MODEL_SEL_COUNT; i++)
+        {
+            const char *mark = "";
+            if (i == MODEL_SEL_AUTO)              { mark = " (adaptive stub -> hard)"; }
+            else if (!model_infer_sel_trained(i)) { mark = " (placeholder -> hard)"; }
+            cli_printf("  %c %s%s", (i == cur) ? '*' : ' ', model_infer_sel_name(i), mark);
+        }
+        return;
+    }
+    for (uint8_t i = 0u; i < MODEL_SEL_COUNT; i++)
+    {
+        if (strcmp(a, model_infer_sel_name(i)) == 0)
+        {
+            T1SDetector_SetModelSel(i);   /* main.c applies to the engine next pass */
+            cli_printf("model: %s", model_infer_sel_name(i));
+            return;
+        }
+    }
+    cli_printf("usage: model [easy|medium|hard|expert|auto]");
+}
+
 static void cmd_adc(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -164,6 +196,7 @@ static void register_commands(void)
         { "t1s",  "Print link / sync / chipRev / PLCA / counters",  false, NULL, cmd_t1s },
         { "arm",  "arm [on|off]: gate guitar actuation (no arg = show state)", true, NULL, cmd_arm },
         { "stream", "stream [on|off]: gate the data stream to marvin (no arg = show state)", true, NULL, cmd_stream },
+        { "model", "model [easy|medium|hard|expert|auto]: select inference model (no arg = list)", true, NULL, cmd_model },
         { "adc",  "Print the latest 5-channel phototransistor scan", false, NULL, cmd_adc },
         { "id",   "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)", false, NULL, cmd_id },
         { "plca", "Read + log the PLCA status register",            false, NULL, cmd_plca },

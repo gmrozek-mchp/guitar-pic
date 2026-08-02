@@ -10,6 +10,8 @@
 #include "tc6.h"
 #include "tc6-regs.h"
 
+#include "model_infer.h"   /* MODEL_SEL_* enum: selection index range + default (constants only) */
+
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
 #define T1S_NODE_ID         (4u)
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
@@ -32,6 +34,7 @@
 #define T1S_CTRL_LEN         (2u)     /* min control payload length */
 #define T1S_CTRL_ARM         (0x01u)  /* arg 0|1: gate actuation (marvin selects) */
 #define T1S_CTRL_STREAM      (0x02u)  /* arg 0|1: gate the data stream to marvin */
+#define T1S_CTRL_MODEL       (0x03u)  /* arg: inference model selection (MODEL_SEL_*) */
 
 /* Re-send the current guitar command this often even if unchanged, so a dropped
  * command frame self-heals (the guitar applies latest-wins, holds otherwise). */
@@ -106,6 +109,12 @@ static volatile bool     s_tx_busy;
  * sample_seq keeps advancing while disabled, so the first frame after re-enable
  * shows the true gap. */
 static volatile bool     s_stream_enabled;
+
+/* Inference model selection (MODEL_SEL_*). Written by either the local CLI
+ * (T1SDetector_SetModelSel) or marvin's control channel (0x88B9 opcode 0x03) —
+ * last writer wins, no lockout. main.c reads it each pass and applies changes to
+ * the active engine (this module holds the byte, doesn't touch inference). */
+static volatile uint8_t  s_model_sel = MODEL_SEL_DEFAULT;
 
 /* Command TX (to guitar). Set from the main loop (T1SDetector_SetCommand); flushed
  * by T1SDetector_Tasks on change + every T1S_CMD_REFRESH_MS while enabled. When the
@@ -435,6 +444,9 @@ void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
 void T1SDetector_SetStream(bool enabled) { s_stream_enabled = enabled; }
 bool T1SDetector_StreamEnabled(void)     { return s_stream_enabled; }
 
+void    T1SDetector_SetModelSel(uint8_t sel) { if (sel < MODEL_SEL_COUNT) { s_model_sel = sel; } }
+uint8_t T1SDetector_ModelSel(void)           { return s_model_sel; }
+
 void T1SDetector_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
 {
     uint8_t tx = 0u, rx = 0u;
@@ -579,6 +591,10 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
             break;
         case T1S_CTRL_STREAM:
             s_stream_enabled = (arg != 0u);
+            break;
+        case T1S_CTRL_MODEL:
+            if (arg >= MODEL_SEL_COUNT) { return; }   /* out of range: ignore */
+            s_model_sel = arg;
             break;
         default:
             return;   /* unknown opcode: ignore, don't count */

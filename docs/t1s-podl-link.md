@@ -247,14 +247,17 @@ command TX targets. marvin selects the active node of each class.
       `nod off` frees the neck so that path takes effect.)
     - **lightshow** (`02:..:07`) — LED output: `0x01` output enable (arg 0|1), driven from
       marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
-    - **fretboard** (`02:..:04`) — `0x01` arm (arg 0|1) + `0x02` stream (arg 0|1), driven from
-      marvin's `fretboard arm|disarm` / `fretboard stream on|off`. Arm is the **active-detector
-      selection** over the bus — marvin decides whether the detector drives the guitar; the arm
-      state is shared with the node's local `arm` CLI command (last writer wins, no lockout).
-      (Disarming sends one final all-released frame then goes silent on the command path, so the
-      fretboard never contends for the guitar with marvin.) Stream gates the `0x88B5` data feed
-      to marvin and **boots disabled** — marvin turns it on when it wants the logging / edge-ai
-      capture.
+    - **fretboard** (`02:..:04`) — `0x01` arm (arg 0|1) + `0x02` stream (arg 0|1) + `0x03` model
+      (arg 0..4), driven from marvin's `fretboard arm|disarm` / `fretboard stream on|off` /
+      `fretboard model <difficulty>`. Arm is the **active-detector selection** over the bus —
+      marvin decides whether the detector drives the guitar; the arm state is shared with the
+      node's local `arm` CLI command (last writer wins, no lockout). (Disarming sends one final
+      all-released frame then goes silent on the command path, so the fretboard never contends for
+      the guitar with marvin.) Stream gates the `0x88B5` data feed to marvin and **boots disabled**
+      — marvin turns it on when it wants the logging / edge-ai capture. Model selects the on-device
+      inference model — one per Guitar Hero difficulty (`easy`/`medium`/`hard`/`expert`, indices
+      0..3) plus a reserved `auto` slot (index 4); shared with the node's local `model` CLI command.
+      Plumbing today: only `hard` is trained, so all slots currently resolve to the hard model.
   Opcode space in each namespace is left open for future control (scripted gestures / jaw for
   lemmy; scenes / brightness for lightshow; per-fret sensitivity for the detector).
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus

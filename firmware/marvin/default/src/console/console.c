@@ -924,7 +924,29 @@ static void cmd_fretboard(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
 
-    console_printf("usage: fretboard <arm|disarm|stream on|off>");
+    if (a != NULL && strcmp(a, "model") == 0) {
+        /* Selection index must match the fretboard's MODEL_SEL_* enum
+         * (easy/medium/hard/expert/auto). marvin doesn't share that header, so
+         * the mapping is duplicated here. */
+        static const char *const names[] = { "easy", "medium", "hard", "expert", "auto" };
+        const char *b = embeddedCliGetToken(args, 2);
+        if (b != NULL) {
+            for (uint8_t i = 0u; i < (sizeof(names) / sizeof(names[0])); i++) {
+                if (strcmp(b, names[i]) == 0) {
+                    if (!T1SLink_SendFretboardCtrl(T1S_DET_CTRL_MODEL, i)) {
+                        console_printf("fretboard: link down");
+                        return;
+                    }
+                    console_printf("fretboard: model %s", names[i]);
+                    return;
+                }
+            }
+        }
+        console_printf("usage: fretboard model <easy|medium|hard|expert|auto>");
+        return;
+    }
+
+    console_printf("usage: fretboard <arm|disarm|stream on|off|model <difficulty>>");
 }
 
 static void register_commands(void)
@@ -950,7 +972,7 @@ static void register_commands(void)
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
         { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
         { "lightshow","lightshow <on|off>: enable/disable the LED output",   true, NULL, cmd_lightshow },
-        { "fretboard","fretboard <arm|disarm|stream on|off>: gate the detector's actuation / data stream", true, NULL, cmd_fretboard },
+        { "fretboard","fretboard <arm|disarm|stream on|off|model <difficulty>>: gate actuation / data stream, select inference model", true, NULL, cmd_fretboard },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
