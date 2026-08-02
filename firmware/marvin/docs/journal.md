@@ -427,19 +427,26 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
-### 2026-08-02 — `nodes` list naming cleanup + id-2 controller row
+### 2026-08-02 — `nodes` list naming cleanup + id-2 controller row + detector rename
 
 - `node_type_name()` in `net/t1s/t1s_link.c` now labels the detector node **`fretboard`** (was `detector`)
   and the controller node **`fauxmote1`/`fauxmote2`** by node id (was a flat `controller`; ids 1..2 per
   docs/t1s-podl-link.md §7.1, falling back to `fauxmote`). Signature gained a `node_id` param so the
-  controller case can split by id; caller passes `s_nodes[idx].node_id`. The future
-  `T1S_NODE_PHOTODETECTOR` variant still maps to `detector` (not in the node table).
+  controller case can split by id; caller passes `s_nodes[idx].node_id`.
 - Added a second controller row `{ 2u, …, T1S_NODE_CONTROLLER }` (fauxmote2) and **reordered `s_nodes[]`
   by node id** (1,2 controllers under `T1S_CTRL_ENABLED`, then 3 guitar / 4 fretboard / 5 beatbox / 6 lemmy
   / 7 lightshow) so the `nodes` list reads in id order. Both fauxmote rows are permanent (present yes/no
   from heartbeat). **mf_proto TX target unchanged:** `node_for_type(T1S_NODE_CONTROLLER)` returns the first
   match (id 1), so commands still go to fauxmote1 — the id-2 row is display/heartbeat-only. Cosmetic + one
   passive table entry; no wire/behavior change to existing traffic.
+- **Removed the unused `T1S_NODE_PHOTODETECTOR` enum value** (+ its `node_type_name` case). It was a
+  never-populated "future detector variant" placeholder — no table row used it.
+- **Renamed the fretboard detector id `DETECTOR_ADC_FRETBOARD` → `DETECTOR_FRETBOARD`** (`detector.h` +
+  refs in `t1s_link.c`, `actuator/fretboard_link.c`, `console.c`) — fretboard is a photodetector, so the
+  `ADC` tech tag was misleading; naming the detector by its node is clearer. The **console token/labels
+  followed**: `detect <cv|fretboard> <on|off>`, `active <cv|fretboard>`, and the `status`/`detect`/`active`
+  output now print `cv`/`fretboard` (was `cv`/`adc`). `DETECTOR_CV_MARVIN_V1` (the marvin computer-vision
+  detector) is untouched. Pure rename — no behavior change.
 
 ### 2026-08-02 — fretboard control channel: added `stream on|off` (data-stream gate)
 

@@ -20,7 +20,7 @@
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/t1s/t1s_link.h"
-#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+#include "detector/detector.h"  /* DETECTOR_FRETBOARD */
 #endif
 
 #define FBL_TASK_STACK_WORDS    768u
@@ -91,7 +91,7 @@ static void emit_fretboard_frame(const uint8_t *frame)
  * already deframed by the MAC-PHY + TC6, so only the markers are checked. */
 static void t1s_frame_handler(uint8_t detector_id, const uint8_t *payload, uint16_t len)
 {
-    if ((detector_id == (uint8_t)DETECTOR_ADC_FRETBOARD) &&
+    if ((detector_id == (uint8_t)DETECTOR_FRETBOARD) &&
         (len >= DS_FRAME_LEN) &&
         (payload[0] == DS_START_BYTE) &&
         (payload[DS_FRAME_LEN - 1u] == DS_END_BYTE))

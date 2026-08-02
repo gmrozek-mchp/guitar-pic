@@ -11,7 +11,7 @@
 
 #include "definitions.h"   /* FLEXCOM3_SPI_*, PIO_*, T1S_* pin macros */
 #include "log.h"
-#include "detector/detector.h"  /* DETECTOR_ADC_FRETBOARD */
+#include "detector/detector.h"  /* DETECTOR_FRETBOARD */
 #include "net/fauxmote/fauxmote_link.h"  /* MARVIN_FAUXMOTE_TRANSPORT */
 
 #include "tc6.h"
@@ -70,7 +70,6 @@ static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE
 typedef enum
 {
     T1S_NODE_FRETBOARD,      /* detector: photo-ADC stream -> detector bus */
-    T1S_NODE_PHOTODETECTOR,  /* detector (future variants) */
     T1S_NODE_GUITAR,         /* actuator: receives the button bitmask */
     T1S_NODE_CONTROLLER,     /* controller: fauxmote mf_proto channel (0x88B7) */
     T1S_NODE_ANIMATION,      /* animation: lemmy puppet (heartbeat-only for now) */
@@ -92,7 +91,7 @@ static const t1s_node_t s_nodes[] = {
     { 2u, T1S_NO_DETECTOR,                 T1S_NODE_CONTROLLER }, /* fauxmote2 (0x88B7) */
 #endif
     { 3u, T1S_NO_DETECTOR,                 T1S_NODE_GUITAR },     /* actuator (TX target) */
-    { 4u, (uint8_t)DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD },  /* fretboard (RX) */
+    { 4u, (uint8_t)DETECTOR_FRETBOARD, T1S_NODE_FRETBOARD },  /* fretboard (RX) */
     { 5u, T1S_NO_DETECTOR,                 T1S_NODE_BEATSOURCE }, /* beatbox (heartbeat) */
     { 6u, T1S_NO_DETECTOR,                 T1S_NODE_ANIMATION },  /* lemmy (heartbeat) */
     { 7u, T1S_NO_DETECTOR,                 T1S_NODE_LIGHTSHOW },  /* lightshow (heartbeat) */
@@ -111,7 +110,6 @@ static const char *node_type_name(t1s_node_type_t t, uint8_t node_id)
 {
     switch (t) {
         case T1S_NODE_FRETBOARD:     return "fretboard";
-        case T1S_NODE_PHOTODETECTOR: return "detector";
         case T1S_NODE_GUITAR:        return "guitar";
         case T1S_NODE_CONTROLLER:
             /* fauxmote controllers take ids 1..2 (docs/t1s-podl-link.md §7.1). */

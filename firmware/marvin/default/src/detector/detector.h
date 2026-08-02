@@ -23,8 +23,8 @@
 
 typedef enum
 {
-    DETECTOR_CV_MARVIN_V1  = 0,
-    DETECTOR_ADC_FRETBOARD = 1,
+    DETECTOR_CV_MARVIN_V1 = 0,
+    DETECTOR_FRETBOARD    = 1,
 } detector_id_t;
 
 /* Canonical record. Layout is fixed-width / naturally aligned / little-endian
