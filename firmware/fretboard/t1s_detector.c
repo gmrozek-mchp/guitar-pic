@@ -31,6 +31,7 @@
 #define T1S_CTRL_ARG         (1u)     /* payload offset: arg    */
 #define T1S_CTRL_LEN         (2u)     /* min control payload length */
 #define T1S_CTRL_ARM         (0x01u)  /* arg 0|1: gate actuation (marvin selects) */
+#define T1S_CTRL_STREAM      (0x02u)  /* arg 0|1: gate the data stream to marvin */
 
 /* Re-send the current guitar command this often even if unchanged, so a dropped
  * command frame self-heals (the guitar applies latest-wins, holds otherwise). */
@@ -86,6 +87,12 @@ static volatile uint8_t  s_pending[32];
 static volatile uint16_t s_pending_len;
 static volatile bool     s_frame_ready;
 static volatile bool     s_tx_busy;
+
+/* Data stream to marvin (0x88B5) gate. Boots disabled — marvin turns it on over
+ * the control channel (opcode 0x02) when it wants the logging / edge-ai feed.
+ * sample_seq keeps advancing while disabled, so the first frame after re-enable
+ * shows the true gap. */
+static volatile bool     s_stream_enabled;
 
 /* Command TX (to guitar). Set from the main loop (T1SDetector_SetCommand); flushed
  * by T1SDetector_Tasks on change + every T1S_CMD_REFRESH_MS while enabled. When the
@@ -187,7 +194,7 @@ static void hb_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
 /* Flush the most recent staged data frame to the coordinator. Main loop only. */
 static void flush_data_frame(void)
 {
-    if (!s_frame_ready || s_tx_busy) {
+    if (!s_frame_ready || s_tx_busy || !s_stream_enabled) {
         return;
     }
     /* Snapshot the ISR-staged payload (the scan tick may overwrite s_pending). */
@@ -399,6 +406,8 @@ void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
     if (count != NULL) { *count = s_ctrl_count; }
 }
 
+bool T1SDetector_StreamEnabled(void) { return s_stream_enabled; }
+
 void T1SDetector_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
 {
     uint8_t tx = 0u, rx = 0u;
@@ -532,6 +541,9 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         case T1S_CTRL_ARM:
             s_ctrl_armed     = (arg != 0u);
             s_ctrl_arm_valid = true;
+            break;
+        case T1S_CTRL_STREAM:
+            s_stream_enabled = (arg != 0u);
             break;
         default:
             return;   /* unknown opcode: ignore, don't count */

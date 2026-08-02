@@ -13,10 +13,11 @@
  * actuate — peer-to-peer, marvin coordinates/logs but is out of the command path.
  * Presence is announced with a heartbeat (0x88B6, node_type 1 = detector).
  *
- * marvin can gate this node's actuation remotely over the per-node control
- * channel (ethertype 0x88B9, unicast [opcode, arg]): opcode 0x01 arm (arg 0|1).
- * Once a control frame is received the remote arm state is authoritative over the
- * local SW0 gate — this is marvin's active-detector selection over the bus.
+ * marvin can gate this node remotely over the per-node control channel (ethertype
+ * 0x88B9, unicast [opcode, arg]): opcode 0x01 arm (arg 0|1) — once a control frame
+ * is received the remote arm state is authoritative over the local SW0 gate (this
+ * is marvin's active-detector selection over the bus); opcode 0x02 stream (arg 0|1)
+ * gates the 0x88B5 data feed to marvin, which boots disabled.
  *
  * Transport is the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib)
  * wrapped with the SERCOM0 SPI PLib, a GPIO chip-select held across each transfer,
@@ -60,6 +61,10 @@ bool T1SDetector_RemoteArm(bool *valid);
 /* Last control frame applied (op/arg) + accepted-control count, for the CLI.
  * NULL args are skipped. */
 void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count);
+
+/* Data-stream gate (control channel 0x88B9, opcode 0x02). Boots disabled; while
+ * false no 0x88B5 data frames are sent to marvin. */
+bool T1SDetector_StreamEnabled(void);
 
 /* Diagnostics (boot banner / CLI). */
 uint8_t  T1SDetector_ChipRev(void);   /* 0 if the link never came up */

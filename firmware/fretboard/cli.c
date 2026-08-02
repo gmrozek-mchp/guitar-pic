@@ -61,7 +61,8 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("plca:    follower id=%u/%u", (unsigned)T1SDetector_NodeId(),
                (unsigned)T1SDetector_NodeCount());
     cli_printf("credits: tx=%u rx=%u", (unsigned)txc, (unsigned)rxc);
-    cli_printf("data tx: %lu (-> coordinator)", (unsigned long)T1SDetector_TxCount());
+    cli_printf("data tx: %lu (-> coordinator) stream=%s", (unsigned long)T1SDetector_TxCount(),
+               T1SDetector_StreamEnabled() ? "on" : "off");
     cli_printf("cmd tx:  %lu (-> guitar) last=0x%02X", (unsigned long)T1SDetector_CmdCount(),
                (unsigned)T1SDetector_LastCmd());
     bool arm_valid = false;

@@ -82,7 +82,8 @@ bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg);
  * once received it is authoritative over the node's local SW0. Same threading
  * contract; returns false if the link is down or the opcode is unknown. */
 #define T1S_DET_CTRL_ARM         (1u)  /* arg 0|1  : arm/disarm the actuation gate */
-#define T1S_DET_CTRL_OP_COUNT    (1u)
+#define T1S_DET_CTRL_STREAM      (2u)  /* arg 0|1  : gate the data stream to marvin */
+#define T1S_DET_CTRL_OP_COUNT    (2u)
 bool T1SLink_SendFretboardCtrl(uint8_t opcode, uint8_t arg);
 
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.

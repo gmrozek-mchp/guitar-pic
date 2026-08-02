@@ -427,6 +427,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-02 — fretboard control channel: added `stream on|off` (data-stream gate)
+
+- Extended the fretboard control channel with opcode `T1S_DET_CTRL_STREAM (2)` (`T1S_DET_CTRL_OP_COUNT`
+  1→2 — the staging/flush loop is generic, so no `t1s_link.c` change beyond the header) and a
+  `fretboard stream <on|off>` console command. The fretboard's `0x88B5` data feed (17-byte ADC+`applied_mask`
+  frame) now boots **disabled** and only flows when marvin turns it on — marvin owns when the logging /
+  edge-ai capture streams onto the bus. See the fretboard journal (2026-08-02). Not built/flashed.
+
 ### 2026-08-02 — fretboard control channel (`fretboard arm|disarm`)
 
 - Added a fretboard (detector) control channel over `0x88B9`, mirroring the lemmy/lightshow control TX

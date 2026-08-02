@@ -138,7 +138,10 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
 - **Data → coordinator:** the 17-byte frame rides the Ethernet payload under
   ethertype `0x88B5`, dst = coordinator MAC. The ISR stages it
   (`T1SDetector_SendFrame()`, latest-wins); the main loop flushes it, one TX in
-  flight. A frame dropped while busy shows as a `sample_seq` gap.
+  flight. A frame dropped while busy shows as a `sample_seq` gap. **The stream boots
+  disabled** — marvin enables it over the control channel (opcode `0x02`) when it
+  wants the logging / edge-ai feed; `sample_seq` advances while disabled so the
+  first frame after re-enable shows the true gap.
 - **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
   1-byte bitmask to the **guitar node** (id 3, MAC `02:..:03`, ethertype `0x88B5`).
   Gated by the arm state: while armed it's sent edge-triggered + re-sent every 50 ms
@@ -147,10 +150,11 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   for the guitar with another command source. Peer-to-peer — marvin is not in the
   command path.
 - **Control ← marvin:** a per-node control channel (ethertype `0x88B9`, unicast
-  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation remotely. Once
+  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation remotely (once
   the node receives one control frame the remote arm is authoritative over the local
-  SW0 gate (marvin's active-detector selection over the bus); driven from marvin's
-  `fretboard arm|disarm`.
+  SW0 gate — marvin's active-detector selection over the bus), and opcode `0x02`
+  **stream** (arg 0|1) gates the `0x88B5` data feed. Driven from marvin's
+  `fretboard arm|disarm` / `fretboard stream on|off`.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
 - **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
