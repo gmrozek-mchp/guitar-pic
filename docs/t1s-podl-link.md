@@ -14,9 +14,11 @@ heartbeat (`0x88B6`, §7.2) plus link / `nodes` diagnostics run on both ends.
 The [`fretboard`](../firmware/fretboard/SPEC.md) firmware to join as node 1 is
 **written** (2026-06-17, `t1s_detector.{c,h}`), **T1S-only** (the old UART path +
 build flags removed). It is a **sense+actuate** node: it streams its 17-byte data
-frame to the coordinator (`0x88B5`, logging) **and** sends its on-device model's
-inferred 1-byte command **directly to the guitar node** (`0x88B5`, dst `02:..:03`) —
-peer-to-peer actuation — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
+frame to the coordinator (`0x88B5`, logging), drives **fauxmote** (the controller node,
+dst `02:..:01`) directly with an mf_proto GUITAR message on `0x88B7` — the game-critical
+path — **and** sends its on-device model's inferred 1-byte command **directly to the
+guitar node** (`0x88B5`, dst `02:..:03`) as an indicator — both peer-to-peer actuation,
+gated by the arm state — plus a `0x88B6` heartbeat. Its MCC config is done (SERCOM0
 SPI + CS/RST/IRQ_N, mirror of guitar G0); remaining is the build-wiring + on-hardware
 bring-up. marvin's RX side is already in place (node-table id 4 + `fretboard_link.c`
 T1S frame handler); marvin keeps a `MARVIN_FRETBOARD_TRANSPORT={UART,T1S}` build flag
@@ -227,8 +229,15 @@ command TX targets. marvin selects the active node of each class.
   registration needed for a private bus) carries the fretboard/guitar payloads verbatim.
 - A **second data ethertype** `0x88B7` carries the fauxmote (controller) channel — the
   mf_proto message layer ([`docs/marvin-fauxmote-link.md`](marvin-fauxmote-link.md) §4–§5)
-  as `[TYPE][payload…]` in the frame body. Kept distinct from `0x88B5` so the coordinator
-  demultiplexes controller traffic apart from the detector/guitar bitmask.
+  as `[TYPE][payload…]` in the frame body (no SOF/LEN/CRC — the MAC-PHY FCS covers integrity).
+  Kept distinct from `0x88B5` so the coordinator demultiplexes controller traffic apart from the
+  detector/guitar bitmask. **Two senders** address fauxmote (id 1) on this channel: marvin's CV
+  pipeline (`net/fauxmote/fauxmote_link.c`) and the **fretboard detector** (`02:..:04`), which
+  drives a `MF_MSG_GUITAR` message peer-to-peer directly to fauxmote whenever it is armed — this is
+  the game-critical path (fauxmote is what plays the Wii). fauxmote does not filter by source MAC;
+  `active <cv|fretboard>` on marvin ensures exactly one sender is live (see the `0x88B9` fretboard
+  arm bullet). The fretboard pins whammy to `MF_WHAMMY_REST` / aux 0 today (both reserved for a
+  future whammy/IMU source via a generic `(type, payload, len)` sender).
 - A **beat-frame ethertype** `0x88B8` carries beatbox's (id 5) compact beat
   frame to the lighting/animation nodes. Unlike the point-to-point traffic above this is a
   **one-to-many broadcast** (see the addressing note below): beatbox sends one frame to
@@ -249,11 +258,20 @@ command TX targets. marvin selects the active node of each class.
       marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
     - **fretboard** (`02:..:04`) — `0x01` arm (arg 0|1) + `0x02` stream (arg 0|1) + `0x03` model
       (arg 0..4), driven from marvin's `fretboard arm|disarm` / `fretboard stream on|off` /
-      `fretboard model <difficulty>`. Arm is the **active-detector selection** over the bus —
-      marvin decides whether the detector drives the guitar; the arm state is shared with the
-      node's local `arm` CLI command (last writer wins, no lockout). (Disarming sends one final
-      all-released frame then goes silent on the command path, so the fretboard never contends for
-      the guitar with marvin.) Stream gates the `0x88B5` data feed to marvin and **boots disabled**
+      `fretboard model <difficulty>`. Arm tracks marvin's **per-song gameplay window** —
+      marvin asserts it only while a song is actually playing *and* the fretboard is the selected
+      detector, disasserts it when the song ends or `active cv` is chosen; **it gates both of the
+      fretboard's outputs** — the `0x88B7` GUITAR message to fauxmote (game-critical) and the `0x88B5`
+      bitmask to the guitar node (indicator). `active <cv|fretboard>` *selects* the detector;
+      `GameTiming_SetEnabled` (marvin's in-song choke point) is what arms/disarms the fretboard here
+      **and** gates marvin's own CV output off/on (`Detector_FretboardDriving()` — the shared predicate
+      `in-song && active==fretboard` — drives `FretboardLink`'s guitar-node output + `fx_tx_task`), so
+      exactly one detector drives fauxmote and only inside a song (outside a song marvin owns the
+      controller for menu nav / manual control). The arm state is shared with the node's local `arm` CLI command
+      (last writer wins, no lockout — arming locally while `active==cv` can double-drive fauxmote, a
+      documented manual-override hazard). (Disarming sends one final all-released frame on each output
+      then goes silent, so the fretboard never contends for the guitar or fauxmote with marvin; marvin
+      emits one release frame to fauxmote on the cv→fretboard handoff so no note sticks.) Stream gates the `0x88B5` data feed to marvin and **boots disabled**
       — marvin turns it on when it wants the logging / edge-ai capture. Model selects the on-device
       inference model — one per Guitar Hero difficulty (`easy`/`medium`/`hard`/`expert`, indices
       0..3) plus a reserved `auto` slot (index 4); shared with the node's local `model` CLI command.

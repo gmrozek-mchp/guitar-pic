@@ -453,6 +453,14 @@ void GameTiming_SetEnabled(bool enabled)
         return;
     }
     s_pipeline_enabled = enabled;
+
+    /* The gameplay window opening/closing is what gates the fretboard: it may
+     * drive the game only inside a song, never during menu nav or manual
+     * control. Update the shared window state, then re-evaluate the fretboard's
+     * arm bit so the node arms when a song starts and disarms when it ends. */
+    Detector_SetGameActive(enabled);
+    FretboardLink_UpdateArm();
+
     if (!enabled)
     {
         /* Release the wire on disable so no frets stay held (the actuator's own

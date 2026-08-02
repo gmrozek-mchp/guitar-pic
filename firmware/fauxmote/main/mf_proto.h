@@ -6,9 +6,10 @@
 /* marvin <-> fauxmote command-link wire protocol (message + UART framing layers).
  * Canonical spec: docs/marvin-fauxmote-link.md. This header is transport-neutral
  * (pure C, no ESP/Harmony deps) and shared verbatim between the fauxmote firmware
- * (firmware/fauxmote/main/mf_proto.h) and the marvin firmware
- * (firmware/marvin/default/src/net/fauxmote/mf_proto.h) — keep the two byte-for-byte
- * in sync. */
+ * (firmware/fauxmote/main/mf_proto.h), the marvin firmware
+ * (firmware/marvin/default/src/net/fauxmote/mf_proto.h) and the fretboard firmware
+ * (firmware/fretboard/mf_proto.h, which drives fauxmote directly over T1S when it
+ * is the active detector) — keep the three byte-for-byte in sync. */
 
 #define MF_PROTO_VERSION   1u
 #define MF_UART_BAUD       1000000u   /* 1 Mbaud, 8-N-1 */

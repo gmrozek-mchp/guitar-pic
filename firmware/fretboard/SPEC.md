@@ -1,8 +1,9 @@
 # Fretboard Firmware Specification
 
 > **Re-scoped to a T1S sense+actuate node (2026-06-17):** the fretboard is a 10BASE-T1S
-> PLCA follower (id 4) that infers actuator commands from the phototransistor data and drives the
-> [`guitar`](../guitar/SPEC.md) node over T1S, while also streaming its data to marvin. The old UART
+> PLCA follower (id 4) that infers actuator commands from the phototransistor data and — while armed —
+> drives fauxmote directly over T1S (the game-critical path) plus the [`guitar`](../guitar/SPEC.md)
+> node as an indicator, while also streaming its data to marvin. The old UART
 > link, the standalone Wii-guitar GPIO outputs (`cmd_receive.c`), and the `FRETBOARD_LINK`/`FRETBOARD_MODE`
 > build flags are gone — one behaviour. Node-class model: top-level [`SPEC.md`](../../SPEC.md) §2; link
 > detail: [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
@@ -16,14 +17,22 @@ phototransistors above the TV strike line; an on-device int8 neural net
 button bitmask from the ADC window. Over T1S it then:
 
 - **streams** the 17-byte data frame (ADC scan + the driven bitmask) to the marvin
-  coordinator — logging / edge-ai training; and
+  coordinator — logging / edge-ai training;
+- **drives fauxmote** (the ESP32 Wiimote+guitar emulator, controller node id 1)
+  directly with an mf_proto GUITAR message on the controller channel (`0x88B7`) —
+  this is the game-critical path (fauxmote is what actually controls the Wii); and
 - **commands** the [`guitar`](../guitar/SPEC.md) node (id 3) directly with the
-  inferred bitmask — peer-to-peer actuation; marvin coordinates/logs but is out of
-  the command path.
+  inferred bitmask — a peer-to-peer *indicator* (open-drain presser); marvin
+  coordinates/logs but is out of the command path.
 
-Inference runs in the main loop (it overruns the 240 Hz tick in the ISR); the ISR
-only scans + stages the data frame. Actuation is armed via the `arm` CLI command or
-marvin's control channel (last writer wins); boots disarmed → command path silent.
+Both outputs are gated by the arm state. marvin arms this node only while a song is
+actually being played *and* the fretboard is the selected detector (`active fretboard`);
+outside a song — menus, navigation, manual control — marvin keeps the controller and this
+node stays disarmed/silent. So selecting `active fretboard` hands the in-song game to the
+fretboard, but it only drives once a song starts. Inference runs in the main loop (it
+overruns the 240 Hz tick in the ISR); the ISR only scans + stages the data frame.
+Actuation is armed via the `arm` CLI command or marvin's control channel (last writer
+wins); boots disarmed → both command paths silent.
 LED0 is the T1S liveness heartbeat (independent of arm state). It has **no local
 Wii-guitar outputs** — those pins are the LAN8651 SPI. See
 [`docs/journal.md`](docs/journal.md), edge-ai
@@ -171,16 +180,30 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   disabled** — enabled over the control channel (opcode `0x02`) or the local `stream`
   CLI command when the logging / edge-ai feed is wanted; `sample_seq` advances while
   disabled so the first frame after re-enable shows the true gap.
-- **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
-  1-byte bitmask to the **guitar node** (id 3, MAC `02:..:03`, ethertype `0x88B5`).
-  Gated by the arm state: while armed it's sent edge-triggered + re-sent every 50 ms
-  so a dropped command self-heals; the guitar applies latest-wins. **Disarming sends
-  one final all-released frame then goes silent** — a disarmed node never contends
-  for the guitar with another command source. Peer-to-peer — marvin is not in the
-  command path.
+- **Command → fauxmote (game-critical):** `T1SDetector_SetCommand()` (main loop) also
+  drives the **fauxmote controller node** (id 1, MAC `02:..:01`) with an mf_proto
+  GUITAR message `[MF_MSG_GUITAR, mask & 0x7F, whammy, aux]` on the controller channel
+  (ethertype `0x88B7`, body `[TYPE][payload…]` — no SOF/LEN/CRC, the MAC-PHY FCS
+  covers integrity). Whammy is pinned to `MF_WHAMMY_REST` and aux to 0 today (no
+  whammy/IMU source yet — both bytes reserved so a future fretboard whammy/accelerometer
+  is a new *call*, not a new mechanism; the send path is a generic `(type, payload, len)`
+  sender). The fret bitmask maps 1:1 to the `MF_G_*` bits, so fauxmote plays the Wii
+  directly. Same arm-gate + 50 ms self-heal + release-on-disarm as the guitar command.
+  fauxmote accepts any-source `0x88B7` frame (no MAC filter). Peer-to-peer — marvin is
+  out of this path; while this node is armed marvin gates its own CV output off, so
+  exactly one detector drives fauxmote. marvin arms it only during an active song with
+  the fretboard selected (`active fretboard`), never in menus/manual control.
+- **Command → guitar (indicator):** `T1SDetector_SetCommand()` (main loop) hands the
+  inferred 1-byte bitmask to the **guitar node** (id 3, MAC `02:..:03`, ethertype
+  `0x88B5`). Gated by the arm state: while armed it's sent edge-triggered + re-sent
+  every 50 ms so a dropped command self-heals; the guitar applies latest-wins.
+  **Disarming sends one final all-released frame then goes silent** — a disarmed node
+  never contends for the guitar with another command source. Peer-to-peer — marvin is
+  not in the command path.
 - **Control ← marvin:** a per-node control channel (ethertype `0x88B9`, unicast
-  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation (marvin's
-  active-detector selection over the bus), opcode `0x02` **stream** (arg 0|1)
+  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation (marvin asserts it
+  only for the duration of a song with the fretboard as the selected detector; disasserts
+  it when the song ends or `active cv` is chosen), opcode `0x02` **stream** (arg 0|1)
   gates the `0x88B5` data feed, and opcode `0x03` **model** (arg 0..4) selects the
   inference model (per-difficulty easy/medium/hard/expert + a reserved auto slot;
   see the `model_infer` module below). Driven from marvin's `fretboard arm|disarm` /
@@ -189,7 +212,7 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   no lockout.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
-- **On-bus gate:** all TX (data, command, heartbeat) is gated on PLCA actually
+- **On-bus gate:** all TX (data, fauxmote + guitar command, heartbeat) is gated on PLCA actually
   operating — `PLCA_STATUS` bit 15, polled every 250 ms in the background — not just
   local MAC-PHY init. A follower has no transmit slot until the coordinator's beacon
   is present, and `T1SDetector_IsConnected()` reports this real on-bus state (drives
@@ -242,7 +265,8 @@ MPLAB Extensions for VS Code. Project config is in
 | [main.c](main.c) | Init + TC0 scan/stage ISR + service loop (infer, drive guitar) |
 | [fret_scan.c](fret_scan.c) / [.h](fret_scan.h) | ADC channel scanning |
 | [data_stream.c](data_stream.c) / [.h](data_stream.h) | 17-byte data frame builder (→ T1S) |
-| [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→guitar, heartbeat |
+| [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→fauxmote (game) + guitar (indicator), heartbeat |
+| [mf_proto.h](mf_proto.h) | Shared marvin↔fauxmote controller-channel message vocabulary (byte-for-byte synced with the marvin + fauxmote copies) |
 | [status_led.c](status_led.c) / [.h](status_led.h) | LED0 liveness heartbeat (encodes T1S link state) |
 | [cli.c](cli.c) / [.h](cli.h) | Operator CLI on SERCOM1 (t1s/arm/stream/model/adc/id/plca) |
 | [model_infer.c](model_infer.c) / [model_infer_stream.c](model_infer_stream.c) | On-device int8 model (ADC window → bitmask) |

@@ -17,6 +17,12 @@ static uint8_t         s_bus_queue_storage[DETECTOR_BUS_DEPTH * sizeof(detector_
 static volatile uint32_t s_enabled_mask;
 static volatile uint8_t  s_active_id = (uint8_t)DETECTOR_CV_MARVIN_V1;
 
+/* True only while marvin is inside an active song (gameplay window open).
+ * The fretboard may drive the game only in this window; outside it marvin
+ * owns the controller for menu navigation and manual control. Set by the
+ * game timing pipeline (GameTiming_SetEnabled). Boots false. */
+static volatile bool     s_game_active;
+
 void Detector_Initialize(void)
 {
     s_bus_queue = xQueueCreateStatic(DETECTOR_BUS_DEPTH,
@@ -75,4 +81,14 @@ void Detector_SetActive(detector_id_t id)
 detector_id_t Detector_GetActive(void)
 {
     return (detector_id_t)s_active_id;
+}
+
+void Detector_SetGameActive(bool active)
+{
+    s_game_active = active;
+}
+
+bool Detector_FretboardDriving(void)
+{
+    return s_game_active && (s_active_id == (uint8_t)DETECTOR_FRETBOARD);
 }

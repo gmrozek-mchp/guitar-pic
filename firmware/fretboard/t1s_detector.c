@@ -11,18 +11,21 @@
 #include "tc6-regs.h"
 
 #include "model_infer.h"   /* MODEL_SEL_* enum: selection index range + default (constants only) */
+#include "mf_proto.h"      /* mf_proto message vocabulary for driving fauxmote directly */
 
 /* PLCA follower identity (docs/t1s-podl-link.md §7.1). */
 #define T1S_NODE_ID         (4u)
 #define T1S_NODE_COUNT      (8u)     /* PLCA cycle length (must match the coordinator) */
 #define T1S_INSTANCE        (0u)
 #define T1S_GUITAR_ID       (3u)     /* actuator node this detector drives */
+#define T1S_FAUXMOTE_ID     (1u)     /* controller node driven directly while active */
 
 /* IRQ_N external-interrupt line. Must match the MCC EIC pin wired to T1S_IRQ_N. */
 #define T1S_IRQ_EIC_PIN     EIC_PIN_13
 
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_FX    (0x88B7u)  /* controller channel to fauxmote (mf_proto) */
 #define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* per-node control channel (unicast) */
 #define T1S_ETH_HDR_LEN     (14u)
 #define T1S_CMD_BIT_MASK    (0x7Fu)    /* 5 frets + 2 strum */
@@ -61,6 +64,11 @@ static const uint8_t s_coord_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, 0x00u
 
 /* Guitar (actuator) node MAC: 02:00:00:00:00:03 — command destination. */
 static const uint8_t s_guitar_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_GUITAR_ID };
+
+/* Fauxmote (controller) node MAC: 02:00:00:00:00:01 — driven directly on the
+ * controller channel (0x88B7) while this detector is active, so the fretboard is
+ * the sole game input (marvin gates its own CV output off). */
+static const uint8_t s_fauxmote_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_FAUXMOTE_ID };
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -127,6 +135,16 @@ static uint8_t           s_cmd;          /* latest commanded bitmask */
 static bool              s_cmd_dirty;    /* a (re)send is pending */
 static bool              s_cmd_enabled;  /* actuation gate open: refresh + send */
 static uint32_t          s_cmd_refresh_ms;
+
+/* Fauxmote controller TX (to the controller node, 0x88B7). Driven from the same
+ * gated command state as the guitar node: while armed the fretboard sends an
+ * mf_proto GUITAR message so it drives the game directly (fauxmote emulates the
+ * Wii guitar), tracking s_cmd/s_cmd_enabled in lockstep with the guitar-node send.
+ * The frame body is [TYPE][payload] (no SOF/LEN/CRC — the MAC-PHY FCS covers
+ * integrity), matching marvin's controller sender and fauxmote's RX. */
+static uint8_t           s_fx_frame[T1S_ETH_HDR_LEN + 1u + MF_MAX_PAYLOAD];
+static volatile bool     s_fx_busy;
+static bool              s_fx_dirty;     /* a (re)send is pending */
 
 /* Heartbeat TX staging. */
 static uint8_t           s_hb_frame[T1S_ETH_HDR_LEN + T1S_HB_LEN];
@@ -207,6 +225,11 @@ static void cmd_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b
     (void)p; (void)t; (void)l; (void)a; (void)b;
     s_cmd_busy = false;
 }
+static void fx_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
+{
+    (void)p; (void)t; (void)l; (void)a; (void)b;
+    s_fx_busy = false;
+}
 static void hb_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
 {
     (void)p; (void)t; (void)l; (void)a; (void)b;
@@ -258,6 +281,49 @@ static void flush_command(void)
     }
 }
 
+/* Send an mf_proto message to the controller (fauxmote) node on the controller
+ * channel (0x88B7). Body is [TYPE][payload] — no SOF/LEN/CRC (the MAC-PHY FCS
+ * covers integrity), matching marvin's controller sender and fauxmote's RX. One
+ * in-flight controller frame at a time (s_fx_busy). Generic over the message type
+ * so a future whammy/accel source is a new call, not a new frame path. */
+static bool send_fauxmote(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+    if (s_fx_busy || (len > MF_MAX_PAYLOAD)) {
+        return false;
+    }
+    s_fx_frame[T1S_ETH_HDR_LEN] = type;
+    if (len != 0u) {
+        memcpy(&s_fx_frame[T1S_ETH_HDR_LEN + 1u], payload, len);
+    }
+    s_fx_busy = true;
+    if (!TC6_SendRawEthernetPacket(s_tc6, s_fx_frame,
+                                   (uint16_t)(T1S_ETH_HDR_LEN + 1u + len),
+                                   0u, fx_tx_done, NULL)) {
+        s_fx_busy = false;
+        return false;
+    }
+    return true;
+}
+
+/* Flush the latest guitar state to fauxmote as an mf_proto GUITAR message if a
+ * (re)send is pending. Mirrors flush_command — the fret/strum bitmask maps 1:1 to
+ * the mf_proto MF_G_* bits. Whammy/aux pinned to rest (no whammy/IMU source yet;
+ * both are reserved for a future fretboard source). */
+static void flush_fauxmote(void)
+{
+    if (!s_fx_dirty || s_fx_busy) {
+        return;
+    }
+    uint8_t payload[MF_LEN_GUITAR] = {
+        (uint8_t)(s_cmd & T1S_CMD_BIT_MASK),   /* fret/strum mask (1:1 with MF_G_*) */
+        MF_WHAMMY_REST,                        /* whammy idle (reserved) */
+        0u,                                    /* aux (reserved) */
+    };
+    if (send_fauxmote(MF_MSG_GUITAR, payload, MF_LEN_GUITAR)) {
+        s_fx_dirty = false;
+    }
+}
+
 /* Announce presence to the coordinator (ethertype 0x88B6). */
 static void send_heartbeat(void)
 {
@@ -293,9 +359,10 @@ void T1SDetector_Initialize(void)
     log_str("fretboard: boot - t1s detector + actuator\r\n");  /* one-time banner */
 
     /* Prebuild the constant Ethernet headers (payload filled per send). */
-    fill_eth_header(s_tx_frame,  s_coord_mac,  T1S_ETHERTYPE);
-    fill_eth_header(s_cmd_frame, s_guitar_mac, T1S_ETHERTYPE);
-    fill_eth_header(s_hb_frame,  s_coord_mac,  T1S_ETHERTYPE_HB);
+    fill_eth_header(s_tx_frame,  s_coord_mac,    T1S_ETHERTYPE);
+    fill_eth_header(s_cmd_frame, s_guitar_mac,   T1S_ETHERTYPE);
+    fill_eth_header(s_fx_frame,  s_fauxmote_mac, T1S_ETHERTYPE_FX);
+    fill_eth_header(s_hb_frame,  s_coord_mac,    T1S_ETHERTYPE_HB);
 
     /* Hardware reset pulse (T1S_RST active-low, idle high). */
     T1S_CS_Set();
@@ -368,8 +435,10 @@ void T1SDetector_Tasks(void)
         if (s_cmd_enabled && (now - s_cmd_refresh_ms) >= T1S_CMD_REFRESH_MS) {
             s_cmd_refresh_ms = now;
             s_cmd_dirty = true;
+            s_fx_dirty  = true;
         }
         flush_command();
+        flush_fauxmote();
 
         if ((now - s_hb_last_ms) >= T1S_HB_INTERVAL_MS) {
             s_hb_last_ms = now;
@@ -405,12 +474,14 @@ void T1SDetector_SetCommand(uint8_t mask, bool active)
 
     if (!active) {
         /* Gate closed. On the arm->disarm edge, queue one final all-released
-         * frame so the guitar clears any held note, then go silent (no refresh,
-         * no further sends) so we don't contend with another command source. */
+         * frame to both the guitar node and fauxmote so any held note clears,
+         * then go silent (no refresh, no further sends) so we don't contend with
+         * another command source. */
         if (s_cmd_enabled) {
             s_cmd_enabled = false;
             s_cmd = 0u;
             s_cmd_dirty = true;
+            s_fx_dirty  = true;
         }
         return;
     }
@@ -418,10 +489,12 @@ void T1SDetector_SetCommand(uint8_t mask, bool active)
     if (!s_cmd_enabled) {
         s_cmd_enabled = true;   /* gate opened: resume sending */
         s_cmd_dirty = true;     /* push the current mask promptly */
+        s_fx_dirty  = true;
     }
     if (mask != s_cmd) {
         s_cmd = mask;
         s_cmd_dirty = true;     /* send the edge promptly */
+        s_fx_dirty  = true;
     }
 }
 

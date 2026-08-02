@@ -168,8 +168,7 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
 
     console_printf("link:       %s", FretboardLink_IsConnected() ? "up" : "down");
     console_printf("active:     %s", (act == DETECTOR_CV_MARVIN_V1) ? "cv" : "fretboard");
-    console_printf("detect cv:        %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1) ? "on" : "off");
-    console_printf("detect fretboard: %s", Detector_IsEnabled(DETECTOR_FRETBOARD)   ? "on" : "off");
+    console_printf("detect cv:  %s", Detector_IsEnabled(DETECTOR_CV_MARVIN_V1) ? "on" : "off");
     console_printf("manual:     %s", ManualControl_IsEnabled() ? "on" : "off");
     console_printf("timing:     %s", GameTiming_IsEnabled() ? "on" : "off");
     console_printf("video:      %ux%u frame=%lu",
@@ -492,15 +491,17 @@ static void cmd_detect(EmbeddedCli *cli, char *args, void *ctx)
     (void)cli; (void)ctx;
     int id  = parse_detector(embeddedCliGetToken(args, 1));
     int val = parse_onoff(embeddedCliGetToken(args, 2));
-    if (id < 0 || val < 0)
+    /* Only the CV detector has a publish enable that anything reads; the
+     * fretboard variant was a dead no-op. Handing the game to the fretboard is
+     * `active fretboard` (arms it over T1S), not a `detect` toggle. */
+    if (id != DETECTOR_CV_MARVIN_V1 || val < 0)
     {
-        console_printf("usage: detect <cv|fretboard> <on|off>");
+        console_printf("usage: detect cv <on|off>");
         return;
     }
     if (val) { Detector_Enable((detector_id_t)id); }
     else     { Detector_Disable((detector_id_t)id); }
-    console_printf("detect %s = %s", (id == DETECTOR_CV_MARVIN_V1) ? "cv" : "fretboard",
-                   val ? "on" : "off");
+    console_printf("detect cv = %s", val ? "on" : "off");
 }
 
 static void cmd_active(EmbeddedCli *cli, char *args, void *ctx)
@@ -513,7 +514,24 @@ static void cmd_active(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
     Detector_SetActive((detector_id_t)id);
-    console_printf("active = %s", (id == DETECTOR_CV_MARVIN_V1) ? "cv" : "fretboard");
+
+    /* Select which detector owns the game. Arming the fretboard is gated on the
+     * gameplay window (GameTiming), not on this selection: outside a song marvin
+     * keeps the controller for menu nav / manual control, so the fretboard only
+     * arms once a song starts. Re-evaluate the arm bit now so selecting it
+     * mid-song takes effect immediately, and selecting cv disarms it at once. */
+    FretboardLink_UpdateArm();
+
+    if (id == DETECTOR_FRETBOARD)
+    {
+        console_printf("active = fretboard (%s)",
+                       Detector_FretboardDriving() ? "armed — song active"
+                                                    : "armed when a song starts");
+    }
+    else
+    {
+        console_printf("active = cv");
+    }
 }
 
 static void cmd_cvcfg(EmbeddedCli *cli, char *args, void *ctx)
@@ -963,8 +981,8 @@ static void register_commands(void)
         { "results","results add <set> <idx> <diff> <part> <score>: test row", true, NULL, cmd_results },
         { "catalog","catalog <reload|ls|<main|bonus> <index>>: song labels",    true, NULL, cmd_catalog },
         { "art",    "art [ls | <main|bonus> <index>]: album-art cache status",  true, NULL, cmd_art },
-        { "detect", "detect <cv|fretboard> <on|off>: enable/disable a detector", true, NULL, cmd_detect },
-        { "active", "active <cv|fretboard>: select the actuated detector",       true, NULL, cmd_active },
+        { "detect", "detect cv <on|off>: enable/disable the CV detector",        true, NULL, cmd_detect },
+        { "active", "active <cv|fretboard>: hand game control to a detector",     true, NULL, cmd_active },
         { "cvcfg",  "cvcfg <1p|2pl>: select CV detector highway geometry",  true, NULL, cmd_cvcfg },
         { "timing", "timing <on|off>: chord/strum scheduler output enable", true, NULL, cmd_timing },
         { "manual", "manual <on|off>: manual-control actuation mode",      true, NULL, cmd_manual },

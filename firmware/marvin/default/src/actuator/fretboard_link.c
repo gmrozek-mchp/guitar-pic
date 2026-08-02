@@ -17,10 +17,10 @@
 #include "fret.h"
 #include "ui/dashboard_feed.h"  /* best-effort mirror of the mask to the dashboard */
 #include "net/fauxmote/fauxmote_link.h"  /* mirror the mask to the ESP32 Wiimote link */
+#include "detector/detector.h"  /* active-detector arbitration (DETECTOR_*) */
 
 #if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
 #include "net/t1s/t1s_link.h"
-#include "detector/detector.h"  /* DETECTOR_FRETBOARD */
 #endif
 
 #define FBL_TASK_STACK_WORDS    768u
@@ -240,6 +240,7 @@ static void fretboard_link_task(void *param)
     LOG_INFO("FBL: fretboard link started\r\n");
 
     uint8_t last_mask = 0u;
+    bool    was_driving = false;
 
     for (;;)
     {
@@ -252,6 +253,21 @@ static void fretboard_link_task(void *param)
         {
             mask = last_mask;
         }
+
+        /* While the fretboard owns the game (in-song + active), it drives the
+         * guitar node directly peer-to-peer; marvin releases the wire once and
+         * stays silent so the two sources never contend. Outside that window
+         * (menus, manual control, CV gameplay) marvin drives normally. */
+        if (Detector_FretboardDriving())
+        {
+            if (!was_driving)
+            {
+                (void)send_one_byte(0u);
+                was_driving = true;
+            }
+            continue;
+        }
+        was_driving = false;
 
         (void)send_one_byte(mask);
     }
@@ -313,9 +329,31 @@ bool FretboardLink_IsConnected(void)
 #endif
 }
 
+void FretboardLink_UpdateArm(void)
+{
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+    /* Push the fretboard's arm bit to match whether it currently owns the game
+     * (Detector_FretboardDriving): armed only inside a song with the fretboard
+     * selected, disarmed otherwise. Edge-triggered — one control frame per
+     * change — retried on TX failure by not latching until the send succeeds. */
+    static bool s_arm_valid = false;
+    static bool s_armed     = false;
+
+    bool armed = Detector_FretboardDriving();
+    if (s_arm_valid && (armed == s_armed)) { return; }
+
+    if (T1SLink_SendFretboardCtrl(T1S_DET_CTRL_ARM, armed ? 1u : 0u))
+    {
+        s_arm_valid = true;
+        s_armed     = armed;
+    }
+#endif
+}
+
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 {
     if (s_cmd_queue == NULL) { return; }
+
     uint8_t v = (uint8_t)(mask & GUITAR_BTN_VALID_MASK);
     /* Overwrite is strictly latest-wins: a newer producer's mask replaces
      * any unsent older one — keeps a stalled write from accumulating

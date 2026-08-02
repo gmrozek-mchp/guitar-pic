@@ -12,6 +12,7 @@
 
 #include "definitions.h"
 #include "log.h"
+#include "detector/detector.h"  /* active-detector arbitration (DETECTOR_*) */
 
 #if (MARVIN_FAUXMOTE_TRANSPORT == FAUXMOTE_TRANSPORT_T1S)
 #include "net/t1s/t1s_link.h"
@@ -110,6 +111,11 @@ static void fx_tx_task(void *param)
              (unsigned long)MF_UART_BAUD);
 #endif
 
+    /* Whether marvin drove the GUITAR slice last wake. Tracks the handoff so
+     * exactly one all-release frame is emitted when the fretboard takes the game
+     * over. Starts true: boots outside a song, so marvin owns the controller. */
+    bool driving = true;
+
     for (;;)
     {
         /* Wake on a producer change (low latency) or the floor refresh timeout. */
@@ -138,7 +144,25 @@ static void fx_tx_task(void *param)
         s_ptr_dirty = false;
         taskEXIT_CRITICAL();
 
-        send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+        /* GUITAR slice: marvin drives it except while the fretboard owns the
+         * game (in a song AND the selected detector), when the fretboard drives
+         * fauxmote directly peer-to-peer over T1S and marvin goes silent here to
+         * avoid double-driving. On the handoff into that window, emit one
+         * all-release frame so no held note sticks. Outside a song — menus,
+         * manual control, CV gameplay — marvin drives, so navigation is always
+         * marvin's. Nav / pointer / link_cmd stay marvin's job regardless. */
+        bool suppress = Detector_FretboardDriving();
+        if (!suppress)
+        {
+            send_frame(MF_MSG_GUITAR, g, MF_LEN_GUITAR);   /* every wake: change + floor refresh */
+        }
+        else if (driving)
+        {
+            uint8_t rel[MF_LEN_GUITAR] = { 0u, MF_WHAMMY_REST, 0u };
+            send_frame(MF_MSG_GUITAR, rel, MF_LEN_GUITAR);   /* release once on handoff */
+        }
+        driving = !suppress;
+
         if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
         if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
 

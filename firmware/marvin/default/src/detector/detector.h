@@ -85,4 +85,17 @@ bool Detector_IsEnabled(detector_id_t id);
 void          Detector_SetActive(detector_id_t id);
 detector_id_t Detector_GetActive(void);
 
+/* Gameplay window: set true only while marvin is inside an active song, false
+ * during menus / navigation / manual control. Driven by the game timing
+ * pipeline (GameTiming_SetEnabled). The fretboard is allowed to drive the game
+ * only inside this window — outside it marvin owns the controller. */
+void Detector_SetGameActive(bool active);
+
+/* True when the fretboard node currently owns the game-critical path: the
+ * gameplay window is open AND the fretboard is the active detector. This is
+ * both the fretboard's arm predicate and the gate that makes marvin cede
+ * fauxmote + the guitar node. False during menus/manual control regardless of
+ * the active-detector selection, so marvin always drives navigation. */
+bool Detector_FretboardDriving(void);
+
 #endif

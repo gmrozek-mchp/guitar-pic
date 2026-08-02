@@ -17,9 +17,16 @@ ISR; see decision log + edge-ai `runtime.md` §3). Over T1S the node then:
   coordinator (`0x88B5`, logging / edge-ai training) — **boots disabled**, enabled over the control
   channel (opcode `0x02`, `fretboard stream on|off`) or the local `stream [on|off]` CLI command (shared
   flag, last writer wins); `sample_seq` advances while off, and
+- **drives fauxmote** (ESP32 Wiimote+guitar emulator, controller node id 1) directly with an
+  mf_proto GUITAR message on the controller channel (`0x88B7`, peer-to-peer) — this is the
+  game-critical path (fauxmote controls the Wii); armed + edge-triggered + 50 ms refresh +
+  release-on-disarm, same as the guitar command; whammy/aux reserved (generic sender), and
 - **commands** the guitar node (id 3) directly with the inferred 1-byte bitmask (`0x88B5`,
-  peer-to-peer) — while armed, edge-triggered + a 50 ms refresh so a dropped frame self-heals;
-  **disarming sends one final all-released frame then goes silent** (no contention for the guitar).
+  peer-to-peer) — an *indicator* (open-drain presser); while armed, edge-triggered + a 50 ms
+  refresh so a dropped frame self-heals; **disarming sends one final all-released frame then goes
+  silent** (no contention for the guitar). While armed marvin gates its own CV output off, so exactly
+  one detector drives fauxmote. marvin asserts arm only during an active song with the fretboard
+  selected (`active fretboard`) — not in menus/manual control (see marvin journal 2026-08-02 later).
 
 Plus a 500 ms presence heartbeat (`0x88B6`, node_type 1 = detector). All TC6 TX/service is in the main
 loop ([`T1SDetector_Tasks`](../t1s_detector.c)); the ISR only scans + stages the data frame. It has **no
@@ -29,8 +36,9 @@ together for id 4 to take effect).
 
 Actuation is armed via the local **`arm [on|off]` CLI command** or marvin's **control channel** (ethertype
 `0x88B9`, opcode `0x01` arm, arg 0|1 → `fretboard arm|disarm`) — a single shared arm flag, last writer wins,
-no lockout. Boots disarmed (silent on the command channel until armed). Arm over the bus is marvin's
-active-detector selection. **LED0 (PB02)** is the T1S liveness heartbeat ([`status_led.c`](../status_led.c),
+no lockout. Boots disarmed (silent on the command channel until armed). Arm over the bus tracks marvin's
+per-song gameplay window (asserted only while a song is playing with the fretboard as the selected
+detector; disasserted when the song ends or `active cv` is chosen). **LED0 (PB02)** is the T1S liveness heartbeat ([`status_led.c`](../status_led.c),
 lub-dub on the bus / single blip when down), decoupled from the arm state. **Coordination caveat:** the guitar applies whoever
 transmitted last (both marvin and the fretboard target `02:..:03`), so only one source may be armed at a time;
 **automatic** active-detector/active-guitar coordination is still the follow-up.
@@ -46,6 +54,7 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-02 | **Fretboard now drives fauxmote directly (controller channel `0x88B7`) so it is the real game input; `active` on marvin is the switch.** New firmware-owned `mf_proto.h` (third byte-for-byte-synced copy of the marvin/fauxmote header — full vocabulary, not just GUITAR). `t1s_detector.c` gains a generic `send_fauxmote(type, payload, len)` + `flush_fauxmote()` mirror of the guitar-command path (dst `02:..:01`, ethertype `0x88B7`, body `[TYPE][payload…]` — no SOF/LEN/CRC, MAC-PHY FCS covers it). `flush_fauxmote` emits `[MF_MSG_GUITAR, mask&0x7F, MF_WHAMMY_REST, 0]`; `s_fx_dirty` set alongside `s_cmd_dirty` at every `SetCommand` edge, flushed at the same `T1S_CMD_REFRESH_MS`. Both gated on the existing ARM flag (`s_cmd_enabled`) — no new opcode; disarm sends one release then silence. marvin: `FretboardLink_Send` and `fx_tx_task`'s GUITAR slice both early-return unless `Detector_GetActive()==DETECTOR_CV_MARVIN_V1` (one release frame on the cv→fretboard handoff so no note sticks); `active <cv\|fretboard>` calls `Detector_SetActive` **and** `T1SLink_SendFretboardCtrl(ARM, id==fretboard)`. `detect` trimmed to `cv` only (the `fretboard` variant was a dead no-op). `mf_proto.h` added to the fretboard fileSet. | Per Greg: fauxmote is what actually controls the game, so the active detector must drive it — "no reason for marvin to be middleman." Before, the fretboard's mask reached fauxmote only by marvin re-mirroring it, and `active` set only marvin's internal `s_active_id` (no T1S frame) so it changed nothing on the node. Making `active` arm/disarm the fretboard **and** gate marvin's own CV output makes it the single arbiter — exactly one detector drives fauxmote at a time, clean handoff both directions. Copying the **full** mf_proto vocabulary + a generic `(type,payload,len)` sender (whammy pinned to rest, aux 0, both reserved) means a future fretboard whammy/accelerometer (`MF_MSG_ACCEL`) is a new call, not a new mechanism — nothing here precludes them (fauxmote already decodes whammy). Reused the ARM gate (not a new opcode) since arm already *is* marvin's active-detector selection over the bus. Guitar node stays as an indicator. **Manual-override hazard** left documented, not solved: arming locally via CLI/SW0 while `active==cv` can double-drive fauxmote — the node's `arm` is last-writer-wins with `active`. |
 | 2026-08-02 | **Added 5 selectable inference-model slots (per-difficulty easy/medium/hard/expert + reserved `auto`), runtime-selectable over CLI and T1S — plumbing only.** New firmware-owned (not generated) `models.h` holds the difficulty→`model_def_t*` registry + a `static inline model_resolve()` (bounds-checks, `auto`→hard stub, reports the effective difficulty); it's `#include`d only by the active engine TU so weights instantiate once. `model_infer.h` gains the `MODEL_SEL_*` enum (`MODEL_SEL_DEFAULT = HARD`) + selection API (`model_infer_set_sel`/`_get_sel`/`_effective`/`_sel_name`/`_sel_trained`), implemented as a small wrapper in **both** `model_infer.c` + `model_infer_stream.c` (one public name each, only the compiled engine defines it). `t1s_detector` holds an `s_model_sel` byte written by the local `model` CLI command or new control opcode `0x03` (`T1S_CTRL_MODEL`, arg 0..4) — last writer wins; `main.c` applies changes to the engine on-change (cold path, no ISR cost). marvin: `T1S_DET_CTRL_MODEL (3)` + `OP_COUNT` 2→3 and a `fretboard model <difficulty>` console command. Only `hard` is trained; the other slots **alias to `&model_hard`** via `#ifdef MODEL_HAVE_*` and `auto` resolves to hard, so all five are selectable and drive identically today. | Per Greg: one model per GH difficulty (same NN arch, only weights/thresholds differ) plus a 5th `auto` slot to experiment with an adaptive policy later. Scope is **plumbing only** — per-difficulty corpora aren't captured yet, so real weights for easy/medium/expert are future edge-ai work (needs Greg in the loop). Building the full selection path now (registry + enum + CLI + T1S + marvin) means dropping a trained difficulty later is just: generate `model_weights_<diff>.h`, `#include` + `#define MODEL_HAVE_<DIFF>` in `models.h`, register in the fileSet — no wiring changes. The registry lives in firmware-owned `models.h` (not the generated `model_weights.h`) so hand-editing to add a model is legitimate; keeping it in a header included only by the active engine preserves single weight instantiation (the inactive engine TU stays empty). `auto` is modeled as a policy slot (not a static model) so the adaptive logic has a single documented hook (`model_resolve`), and `model_infer_effective()` lets the CLI show `auto (→hard)`. |
 | 2026-08-02 | **`T1SDetector_IsConnected()` now reflects real on-bus state (PLCA_STATUS bit 15), not just MAC-PHY init — adopted beatbox's pattern.** Renamed `s_link_up` → `s_initialized` (local MAC-PHY bring-up done + data path enabled); added `s_plca_op`, polled every 250 ms from `T1SDetector_Tasks` via a background `TC6_ReadRegister(PLCA_STATUS)` → `on_plca_status` callback (caches bit 15 = "coordinator beacon on the wire"). `IsConnected()` now returns `s_plca_op`; **all TX (data flush, guitar command, heartbeat) and `SendFrame` are gated on `s_plca_op`** instead of init-done. The existing on-demand `plca` CLI read (`on_plca_read`) is unchanged. | Per Greg: "connected" should mean *actually on the bus and communicating*, not just that the LAN8651 finished its register sequence — the old init-done flag went true (and stayed true) even with no coordinator present, so the LED heartbeat / CLI `link:` line lied. PLCA_STATUS bit 15 is the real signal (asserts only when the coordinator's beacon is seen). Gating TX on it also fixes a latent hang: a follower has no transmit opportunity without the beacon, so sending earlier queued a frame that never drained and stalled the `*_busy` guards. First of the follower nodes to get this cleanup; lemmy + lightshow to follow (same edit). |
 | 2026-08-02 | **LED0 decoupled from arm state → T1S liveness heartbeat (`status_led.c`/`.h`, mirror of lemmy/lightshow).** New `status_led` module: non-blocking 1 Hz heartbeat off the SysTick ms clock — lub-dub double pulse when `T1SDetector_IsConnected()`, single blip when the bus is down. `main.c` drops the `LED0_ON/OFF` macros and the arm→LED mirroring in `actuation_armed()` (now just returns `T1SDetector_Armed()`), calls `StatusLed_Initialize()` after `T1SDetector_Initialize()` and `StatusLed_Tasks()` in the main loop. Sources added to the mplab.json fileSet. | Per Greg: LED0-as-arm-indicator gave no liveness signal (a dark LED could mean disarmed *or* hung firmware). The heartbeat pattern used on lemmy/lightshow always shows the firmware is alive and encodes bus link-state at a glance; arm state is observable over the CLI/`t1s` line and marvin instead. Keeps the three follower nodes' status LEDs consistent. |
@@ -84,6 +93,29 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 ---
 
 ## Session log
+
+### 2026-08-02 — Fretboard drives fauxmote directly; `active` is the arbiter
+
+- Made the fretboard the real game input: it now drives **fauxmote** (controller node id 1) directly
+  over the `0x88B7` controller channel with an mf_proto GUITAR message, in addition to the guitar-node
+  indicator. Verified the wire format first — the `0x88B7` body is `[TYPE][payload…]` with no
+  SOF/LEN/CRC (MAC-PHY FCS covers integrity), and fauxmote's RX does not filter by source MAC — so no
+  fauxmote firmware change was needed and the sender is a plain 4-byte frame.
+- Copied the **full** shared `mf_proto.h` into the fretboard tree (third byte-for-byte-synced copy) and
+  built a generic `send_fauxmote(type, payload, len)` + `flush_fauxmote()` mirroring the existing
+  guitar-command path, so future whammy/accel are new calls (whammy pinned to `MF_WHAMMY_REST`, aux 0,
+  both reserved). Reused the existing ARM gate (opcode `0x01`) for the new send — no new opcode; disarm
+  emits one release then goes silent.
+- marvin side: both `FretboardLink_Send` and `fx_tx_task`'s GUITAR slice now gate on
+  `Detector_GetActive()==DETECTOR_CV_MARVIN_V1` (one all-release GUITAR frame on the cv→fretboard
+  handoff). `active <cv|fretboard>` now calls `Detector_SetActive` **and**
+  `T1SLink_SendFretboardCtrl(ARM, …)` — it is the single switch. `detect` trimmed to `cv` (dropped the
+  dead `fretboard` variant); help/status strings updated. Registered `mf_proto.h` in the fretboard
+  fileSet.
+- Open follow-up unchanged: the local `arm`/SW0 override can still double-drive fauxmote if armed while
+  `active==cv` (last-writer-wins with `active`) — documented manual-override hazard, not yet solved.
+- **Not yet built/flashed** — MPLAB build of fretboard (both `MODEL_INFER_STREAMING` 0/1) + marvin and
+  on-hardware handoff verification are the next step.
 
 ### 2026-08-02 — 5 selectable inference models (per-difficulty + auto), plumbing only
 

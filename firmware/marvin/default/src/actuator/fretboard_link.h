@@ -51,4 +51,13 @@ void FretboardLink_Initialize(void);
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id);
 bool FretboardLink_IsConnected(void);
 
+/* Re-evaluate the fretboard node's arm bit against Detector_FretboardDriving()
+ * and push it over the T1S control channel when it changes. The fretboard is
+ * armed only while a song is active AND it is the selected detector, so it
+ * drives the game solely inside a gameplay window — never during menus or
+ * manual control. Call whenever the gameplay window (GameTiming_SetEnabled) or
+ * the active-detector selection (console `active`) changes. No-op on the UART
+ * transport (no control channel). */
+void FretboardLink_UpdateArm(void);
+
 #endif

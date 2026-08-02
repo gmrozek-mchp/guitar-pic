@@ -8,9 +8,12 @@
  *
  * marvin is the PLCA coordinator (node 0); this node is follower id 4. It both
  * senses and drives: it streams the 17-byte phototransistor data frame up to the
- * coordinator (ethertype 0x88B5) for logging, and sends the model's inferred
- * 1-byte button bitmask directly to the guitar node (id 3, ethertype 0x88B5) to
- * actuate — peer-to-peer, marvin coordinates/logs but is out of the command path.
+ * coordinator (ethertype 0x88B5) for logging, sends the model's inferred 1-byte
+ * button bitmask directly to the guitar node (id 3, ethertype 0x88B5) to actuate,
+ * and — while armed — drives fauxmote (the controller node, id 1) directly with an
+ * mf_proto GUITAR message on the controller channel (0x88B7) so it is the sole game
+ * input. All peer-to-peer: marvin coordinates/logs but is out of the command path
+ * (when the fretboard is the active detector, marvin gates its own CV output off).
  * Presence is announced with a heartbeat (0x88B6, node_type 1 = detector).
  *
  * marvin can gate this node remotely over the per-node control channel (ethertype
