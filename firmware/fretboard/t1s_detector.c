@@ -65,11 +65,10 @@ static volatile uint8_t  s_last_cmd;    /* most recent command bitmask sent */
 static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
 static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
 
-/* Remote arm state from the control channel (0x88B9). Once s_ctrl_arm_valid is
- * set, this is authoritative over the local SW0 gate (marvin's active-detector
- * selection). Set on RX, read by the main-loop actuation gate. */
-static volatile bool     s_ctrl_armed;
-static volatile bool     s_ctrl_arm_valid;
+/* Actuation-armed state. Written by either the local CLI (T1SDetector_SetArmed)
+ * or marvin's control channel (0x88B9 opcode 0x01) — last writer wins, no lockout.
+ * Read by the main-loop actuation gate. Boots disarmed. */
+static volatile bool     s_armed;
 static volatile uint8_t  s_last_ctrl_op;   /* last 0x88B9 opcode applied */
 static volatile uint8_t  s_last_ctrl_arg;
 static volatile uint32_t s_ctrl_count;     /* accepted control frames */
@@ -393,11 +392,8 @@ uint32_t T1SDetector_CmdCount(void) { return s_cmd_count; }
 uint8_t  T1SDetector_LastCmd(void)  { return s_last_cmd; }
 uint32_t T1SDetector_ErrCount(void) { return s_err_count; }
 
-bool T1SDetector_RemoteArm(bool *valid)
-{
-    if (valid != NULL) { *valid = s_ctrl_arm_valid; }
-    return s_ctrl_armed;
-}
+void T1SDetector_SetArmed(bool armed) { s_armed = armed; }
+bool T1SDetector_Armed(void)          { return s_armed; }
 
 void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
 {
@@ -539,8 +535,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     uint8_t arg = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_ARG];
     switch (op) {
         case T1S_CTRL_ARM:
-            s_ctrl_armed     = (arg != 0u);
-            s_ctrl_arm_valid = true;
+            s_armed = (arg != 0u);
             break;
         case T1S_CTRL_STREAM:
             s_stream_enabled = (arg != 0u);

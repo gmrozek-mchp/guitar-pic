@@ -249,12 +249,12 @@ command TX targets. marvin selects the active node of each class.
       marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
     - **fretboard** (`02:..:04`) — `0x01` arm (arg 0|1) + `0x02` stream (arg 0|1), driven from
       marvin's `fretboard arm|disarm` / `fretboard stream on|off`. Arm is the **active-detector
-      selection** over the bus: once the fretboard receives one control frame the remote arm
-      state is authoritative over its local SW0 gate, so marvin decides whether the detector
-      drives the guitar. (Disarming sends one final all-released frame then goes silent on the
-      command path, so the fretboard never contends for the guitar with marvin.) Stream gates
-      the `0x88B5` data feed to marvin and **boots disabled** — marvin turns it on when it wants
-      the logging / edge-ai capture.
+      selection** over the bus — marvin decides whether the detector drives the guitar; the arm
+      state is shared with the node's local `arm` CLI command (last writer wins, no lockout).
+      (Disarming sends one final all-released frame then goes silent on the command path, so the
+      fretboard never contends for the guitar with marvin.) Stream gates the `0x88B5` data feed
+      to marvin and **boots disabled** — marvin turns it on when it wants the logging / edge-ai
+      capture.
   Opcode space in each namespace is left open for future control (scripted gestures / jaw for
   lemmy; scenes / brightness for lightshow; per-fret sensitivity for the detector).
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus

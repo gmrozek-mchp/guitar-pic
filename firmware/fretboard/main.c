@@ -15,23 +15,16 @@
 #define ADC_Q_LEN 16   /* ISR->main sample queue; streaming must consume every sample */
 #endif
 
-/* SW0 (PB03) momentary button arms guitar actuation on each press; LED0 (PB02)
- * lit while armed. Boots disarmed: silent on the guitar command channel (LED off)
- * until armed; disarming sends one final release then goes silent again.
- * (Interim manual "active detector" gate until marvin coordinates
- * active-detector/active-guitar selection.)
+/* Guitar actuation is armed via the `arm on|off` CLI command or marvin's control
+ * channel (0x88B9 opcode 0x01) — last writer wins, no lockout. LED0 (PB02) is lit
+ * while armed. Boots disarmed: silent on the guitar command channel (LED off) until
+ * armed; disarming sends one final release then goes silent again. (Interim manual
+ * "active detector" gate until marvin coordinates active-detector/guitar selection.)
  *
- * Board polarity: the MCC pin config (PB03 pull-up, PB02 boots high) implies SW0
- * and LED0 are both active-low. If LED0 is inverted, set LED0_ACTIVE_LOW to 0. */
-#define SW0_ACTIVE_LOW          1
+ * Board polarity: the MCC pin config (PB02 boots high) implies LED0 is active-low.
+ * If LED0 is inverted, set LED0_ACTIVE_LOW to 0. */
 #define LED0_ACTIVE_LOW         1
-#define ENABLE_DEBOUNCE_TICKS   12u   /* ~50 ms at 240 Hz */
 
-#if SW0_ACTIVE_LOW
-#define SW0_PRESSED()   (SW0_Get() == 0U)
-#else
-#define SW0_PRESSED()   (SW0_Get() != 0U)
-#endif
 #if LED0_ACTIVE_LOW
 #define LED0_ON()       LED0_Clear()
 #define LED0_OFF()      LED0_Set()
@@ -51,10 +44,6 @@ static volatile uint8_t s_current_cmd;
  * detector gates the guitar command path — disarmed goes silent). */
 static volatile bool s_actuation_active;
 
-static bool    s_armed;               /* actuation enabled (SW0 toggle) */
-static bool    s_sw_pressed;          /* debounced button state */
-static uint8_t s_sw_stable;           /* consecutive reads pushing toward a flip */
-
 #if MODEL_INFER_STREAMING
 /* SPSC sample queue: the ISR pushes one scan/tick, the main loop steps the
  * stateful streaming model once per sample (it must consume every sample in
@@ -66,27 +55,9 @@ static volatile uint16_t s_q_rd;      /* main-advanced read index */
 
 static bool actuation_armed(void)
 {
-    bool raw = SW0_PRESSED();
-    if (raw == s_sw_pressed)
-    {
-        s_sw_stable = 0u;
-    }
-    else if (++s_sw_stable >= ENABLE_DEBOUNCE_TICKS)
-    {
-        s_sw_pressed = raw;
-        s_sw_stable = 0u;
-        if (s_sw_pressed)             /* toggle on a confirmed press edge */
-        {
-            s_armed = !s_armed;
-        }
-    }
-
-    /* marvin's remote arm (control channel 0x88B9) is authoritative once it has
-     * sent one command — that is the bus-level active-detector selection. Until
-     * then the local SW0 toggle governs (bench use). */
-    bool remote_valid = false;
-    bool remote = T1SDetector_RemoteArm(&remote_valid);
-    bool eff = remote_valid ? remote : s_armed;
+    /* Arm state is owned by t1s_detector — set by the `arm` CLI command or marvin's
+     * control channel (last writer wins). Mirror it to LED0 each tick. */
+    bool eff = T1SDetector_Armed();
     if (eff) { LED0_ON(); } else { LED0_OFF(); }
     return eff;
 }

@@ -65,16 +65,39 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
                T1SDetector_StreamEnabled() ? "on" : "off");
     cli_printf("cmd tx:  %lu (-> guitar) last=0x%02X", (unsigned long)T1SDetector_CmdCount(),
                (unsigned)T1SDetector_LastCmd());
-    bool arm_valid = false;
-    bool armed = T1SDetector_RemoteArm(&arm_valid);
     uint8_t cop = 0u, carg = 0u;
     uint32_t ccnt = 0u;
     T1SDetector_LastCtrl(&cop, &carg, &ccnt);
     cli_printf("ctrl rx: %lu last op=0x%02X arg=%u", (unsigned long)ccnt,
                (unsigned)cop, (unsigned)carg);
-    cli_printf("arm:     %s (%s)", arm_valid ? (armed ? "on" : "off") : "sw0",
-               arm_valid ? "remote" : "local");
+    cli_printf("arm:     %s", T1SDetector_Armed() ? "on" : "off");
     cli_printf("errors:  %lu", (unsigned long)T1SDetector_ErrCount());
+}
+
+static void cmd_arm(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL)
+    {
+        cli_printf("arm: %s", T1SDetector_Armed() ? "on" : "off");
+        return;
+    }
+    if (strcmp(a, "on") == 0)
+    {
+        T1SDetector_SetArmed(true);
+    }
+    else if (strcmp(a, "off") == 0)
+    {
+        T1SDetector_SetArmed(false);
+    }
+    else
+    {
+        cli_printf("usage: arm [on|off]");
+        return;
+    }
+    cli_printf("arm: %s", T1SDetector_Armed() ? "on" : "off");
 }
 
 static void cmd_adc(EmbeddedCli *cli, char *args, void *ctx)
@@ -113,6 +136,7 @@ static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
         { "t1s",  "Print link / sync / chipRev / PLCA / counters",  false, NULL, cmd_t1s },
+        { "arm",  "arm [on|off]: gate guitar actuation (no arg = show state)", true, NULL, cmd_arm },
         { "adc",  "Print the latest 5-channel phototransistor scan", false, NULL, cmd_adc },
         { "id",   "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)", false, NULL, cmd_id },
         { "plca", "Read + log the PLCA status register",            false, NULL, cmd_plca },

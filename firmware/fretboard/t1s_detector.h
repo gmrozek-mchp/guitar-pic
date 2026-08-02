@@ -14,10 +14,10 @@
  * Presence is announced with a heartbeat (0x88B6, node_type 1 = detector).
  *
  * marvin can gate this node remotely over the per-node control channel (ethertype
- * 0x88B9, unicast [opcode, arg]): opcode 0x01 arm (arg 0|1) — once a control frame
- * is received the remote arm state is authoritative over the local SW0 gate (this
- * is marvin's active-detector selection over the bus); opcode 0x02 stream (arg 0|1)
- * gates the 0x88B5 data feed to marvin, which boots disabled.
+ * 0x88B9, unicast [opcode, arg]): opcode 0x01 arm (arg 0|1) gates actuation (marvin's
+ * active-detector selection over the bus), opcode 0x02 stream (arg 0|1) gates the
+ * 0x88B5 data feed to marvin (boots disabled). The arm state is also settable from
+ * the node's local CLI (T1SDetector_SetArmed) — last writer wins, no lockout.
  *
  * Transport is the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib)
  * wrapped with the SERCOM0 SPI PLib, a GPIO chip-select held across each transfer,
@@ -52,11 +52,11 @@ bool T1SDetector_SendFrame(const uint8_t *payload, uint16_t len);
  * with another command source (e.g. marvin). */
 void T1SDetector_SetCommand(uint8_t mask, bool active);
 
-/* Remote arm state from the control channel (0x88B9, opcode 0x01). *valid is set
- * false until the first control frame arrives; while false the local SW0 gate
- * governs actuation, and once true the returned remote state is authoritative.
- * Read from the main loop (the actuation gate). */
-bool T1SDetector_RemoteArm(bool *valid);
+/* Actuation-armed state. Set by the local CLI (T1SDetector_SetArmed) or marvin's
+ * control channel (0x88B9 opcode 0x01) — last writer wins, no lockout. Read from
+ * the main loop (the actuation gate). Boots disarmed. */
+void T1SDetector_SetArmed(bool armed);
+bool T1SDetector_Armed(void);
 
 /* Last control frame applied (op/arg) + accepted-control count, for the CLI.
  * NULL args are skipped. */

@@ -22,9 +22,10 @@ button bitmask from the ADC window. Over T1S it then:
   the command path.
 
 Inference runs in the main loop (it overruns the 240 Hz tick in the ISR); the ISR
-only scans + stages the data frame. SW0 arms actuation, LED0 shows armed (boots
-disarmed → commands 0/released). It has **no local Wii-guitar outputs** — those pins
-are the LAN8651 SPI. See [`docs/journal.md`](docs/journal.md), edge-ai
+only scans + stages the data frame. Actuation is armed via the `arm` CLI command or
+marvin's control channel (last writer wins); LED0 shows armed (boots disarmed →
+command path silent). It has **no local Wii-guitar outputs** — those pins are the
+LAN8651 SPI. See [`docs/journal.md`](docs/journal.md), edge-ai
 [`runtime.md`](../../tools/edge-ai/docs/runtime.md), and
 [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
@@ -150,24 +151,26 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   for the guitar with another command source. Peer-to-peer — marvin is not in the
   command path.
 - **Control ← marvin:** a per-node control channel (ethertype `0x88B9`, unicast
-  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation remotely (once
-  the node receives one control frame the remote arm is authoritative over the local
-  SW0 gate — marvin's active-detector selection over the bus), and opcode `0x02`
-  **stream** (arg 0|1) gates the `0x88B5` data feed. Driven from marvin's
-  `fretboard arm|disarm` / `fretboard stream on|off`.
+  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation (marvin's
+  active-detector selection over the bus) and opcode `0x02` **stream** (arg 0|1)
+  gates the `0x88B5` data feed. Driven from marvin's `fretboard arm|disarm` /
+  `fretboard stream on|off`. The arm state is shared with the node's local `arm`
+  CLI command — last writer wins, no lockout.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
 - **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
   `third_party/embedded-cli/`): `t1s` (link / sync / chipRev / PLCA / data+command tx
-  counts), `adc` (latest scan), `id` / `plca` (MAC-PHY register diagnostics).
-  Bare-metal — `CLI_Tasks()` drains the RX ring each main-loop pass.
+  counts + arm/stream state), `arm [on|off]` (gate actuation), `adc` (latest scan),
+  `id` / `plca` (MAC-PHY register diagnostics). Bare-metal — `CLI_Tasks()` drains the
+  RX ring each main-loop pass.
 
 **Coordination caveat:** the guitar applies whoever transmitted last (both marvin and
 the fretboard target `02:..:03`), so only one source may be armed at a time. marvin
-gates this node manually over the control channel (`fretboard arm|disarm`); a remote
-arm overrides the local SW0. **Automatic** active-detector/active-guitar selection
-(marvin arming the chosen detector and silencing its own command path) is still the
-follow-up. Link rationale, addressing, and the PoDL plan are in
+gates this node manually over the control channel (`fretboard arm|disarm`), or an
+operator does so from the node's local `arm` CLI command (shared state, last writer
+wins). **Automatic** active-detector/active-guitar selection (marvin arming the chosen
+detector and silencing its own command path) is still the follow-up. Link rationale,
+addressing, and the PoDL plan are in
 [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
 ## Observability
