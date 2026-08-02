@@ -100,6 +100,32 @@ static void cmd_arm(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("arm: %s", T1SDetector_Armed() ? "on" : "off");
 }
 
+static void cmd_stream(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli;
+    (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+    if (a == NULL)
+    {
+        cli_printf("stream: %s", T1SDetector_StreamEnabled() ? "on" : "off");
+        return;
+    }
+    if (strcmp(a, "on") == 0)
+    {
+        T1SDetector_SetStream(true);
+    }
+    else if (strcmp(a, "off") == 0)
+    {
+        T1SDetector_SetStream(false);
+    }
+    else
+    {
+        cli_printf("usage: stream [on|off]");
+        return;
+    }
+    cli_printf("stream: %s", T1SDetector_StreamEnabled() ? "on" : "off");
+}
+
 static void cmd_adc(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli;
@@ -137,6 +163,7 @@ static void register_commands(void)
     static const CliCommandBinding bindings[] = {
         { "t1s",  "Print link / sync / chipRev / PLCA / counters",  false, NULL, cmd_t1s },
         { "arm",  "arm [on|off]: gate guitar actuation (no arg = show state)", true, NULL, cmd_arm },
+        { "stream", "stream [on|off]: gate the data stream to marvin (no arg = show state)", true, NULL, cmd_stream },
         { "adc",  "Print the latest 5-channel phototransistor scan", false, NULL, cmd_adc },
         { "id",   "Raw-read + log the MAC-PHY ID registers (SPI diagnostic)", false, NULL, cmd_id },
         { "plca", "Read + log the PLCA status register",            false, NULL, cmd_plca },

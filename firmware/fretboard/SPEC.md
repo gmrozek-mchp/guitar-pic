@@ -140,9 +140,9 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   ethertype `0x88B5`, dst = coordinator MAC. The ISR stages it
   (`T1SDetector_SendFrame()`, latest-wins); the main loop flushes it, one TX in
   flight. A frame dropped while busy shows as a `sample_seq` gap. **The stream boots
-  disabled** — marvin enables it over the control channel (opcode `0x02`) when it
-  wants the logging / edge-ai feed; `sample_seq` advances while disabled so the
-  first frame after re-enable shows the true gap.
+  disabled** — enabled over the control channel (opcode `0x02`) or the local `stream`
+  CLI command when the logging / edge-ai feed is wanted; `sample_seq` advances while
+  disabled so the first frame after re-enable shows the true gap.
 - **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
   1-byte bitmask to the **guitar node** (id 3, MAC `02:..:03`, ethertype `0x88B5`).
   Gated by the arm state: while armed it's sent edge-triggered + re-sent every 50 ms
@@ -154,15 +154,15 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation (marvin's
   active-detector selection over the bus) and opcode `0x02` **stream** (arg 0|1)
   gates the `0x88B5` data feed. Driven from marvin's `fretboard arm|disarm` /
-  `fretboard stream on|off`. The arm state is shared with the node's local `arm`
-  CLI command — last writer wins, no lockout.
+  `fretboard stream on|off`. Both gates are shared with the node's local `arm` /
+  `stream` CLI commands — last writer wins, no lockout.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
 - **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
   `third_party/embedded-cli/`): `t1s` (link / sync / chipRev / PLCA / data+command tx
-  counts + arm/stream state), `arm [on|off]` (gate actuation), `adc` (latest scan),
-  `id` / `plca` (MAC-PHY register diagnostics). Bare-metal — `CLI_Tasks()` drains the
-  RX ring each main-loop pass.
+  counts + arm/stream state), `arm [on|off]` (gate actuation), `stream [on|off]`
+  (gate the data feed to marvin), `adc` (latest scan), `id` / `plca` (MAC-PHY
+  register diagnostics). Bare-metal — `CLI_Tasks()` drains the RX ring each main-loop pass.
 
 **Coordination caveat:** the guitar applies whoever transmitted last (both marvin and
 the fretboard target `02:..:03`), so only one source may be armed at a time. marvin

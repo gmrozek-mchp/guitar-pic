@@ -402,7 +402,8 @@ void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
     if (count != NULL) { *count = s_ctrl_count; }
 }
 
-bool T1SDetector_StreamEnabled(void) { return s_stream_enabled; }
+void T1SDetector_SetStream(bool enabled) { s_stream_enabled = enabled; }
+bool T1SDetector_StreamEnabled(void)     { return s_stream_enabled; }
 
 void T1SDetector_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
 {
