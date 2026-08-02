@@ -25,10 +25,12 @@ during bring-up. Addressing in §7.1; the scope widened from a 2-node UART swap 
 this multi-node PLCA bus on 2026-06-16.
 
 > **Command-plane note:** with the fretboard driving the guitar directly, two nodes
-> can address the guitar (marvin and the fretboard). There is no active-source
-> arbitration yet — the guitar applies whoever transmitted last, so only one should
-> be armed at a time. marvin-side active-detector/active-guitar selection is the
-> follow-up (it currently picks `node_for_type(GUITAR)`).
+> can address the guitar (marvin and the fretboard). The guitar applies whoever
+> transmitted last, so only one source should be armed at a time. marvin gates the
+> fretboard's actuation manually over the control channel (`fretboard arm|disarm`,
+> §7.1) — a remote arm is authoritative over the detector's local SW0. Automatic
+> active-detector/active-guitar coordination (marvin arming the selected detector and
+> silencing itself) is still the follow-up; it currently picks `node_for_type(GUITAR)`.
 
 ---
 
@@ -245,8 +247,14 @@ command TX targets. marvin selects the active node of each class.
       `nod off` frees the neck so that path takes effect.)
     - **lightshow** (`02:..:07`) — LED output: `0x01` output enable (arg 0|1), driven from
       marvin's `lightshow on|off` → `BeatShow_SetEnabled`. Disabling blanks the strands.
+    - **fretboard** (`02:..:04`) — actuation gate: `0x01` arm (arg 0|1), driven from marvin's
+      `fretboard arm|disarm`. This is the **active-detector selection** over the bus: once the
+      fretboard receives one control frame the remote arm state is authoritative over its local
+      SW0 gate, so marvin decides whether the detector drives the guitar. (Disarming sends
+      one final all-released frame then goes silent on the command path, so the fretboard
+      never contends for the guitar with marvin; the data stream keeps flowing.)
   Opcode space in each namespace is left open for future control (scripted gestures / jaw for
-  lemmy; scenes / brightness for lightshow).
+  lemmy; scenes / brightness for lightshow; per-fret sensitivity for the detector).
 - A static **node table** on marvin maps `{PLCA ID, MAC, node_type}` → the bus
   `detector_id` (and the actuator target for TX). The single fretboard keeps
   `detector_id = 1`, matching today's `adc_fretboard` bus slot. No discovery /

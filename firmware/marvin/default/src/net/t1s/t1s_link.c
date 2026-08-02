@@ -179,6 +179,8 @@ static volatile uint8_t s_lemmy_ctrl_arg[T1S_ANIM_CTRL_OP_COUNT];
 static volatile bool    s_lemmy_ctrl_dirty[T1S_ANIM_CTRL_OP_COUNT];
 static volatile uint8_t s_light_ctrl_arg[T1S_LIGHT_CTRL_OP_COUNT];
 static volatile bool    s_light_ctrl_dirty[T1S_LIGHT_CTRL_OP_COUNT];
+static volatile uint8_t s_fret_ctrl_arg[T1S_DET_CTRL_OP_COUNT];
+static volatile bool    s_fret_ctrl_dirty[T1S_DET_CTRL_OP_COUNT];
 
 static T1SLink_FrameHandler s_frame_handler;
 
@@ -451,6 +453,22 @@ static void t1s_task(void *param)
             }
         }
 
+        /* Flush one staged fretboard (detector) control command (0x88B9, detector
+         * opcode namespace). Same one-per-pass drain as the channels above. */
+        if (!s_tx_busy) {
+            for (uint8_t i = 0u; i < T1S_DET_CTRL_OP_COUNT; i++) {
+                if (!s_fret_ctrl_dirty[i]) { continue; }
+                const t1s_node_t *fret = node_for_type(T1S_NODE_FRETBOARD);
+                if (fret == NULL) { break; }
+                s_fret_ctrl_dirty[i] = false;
+                uint8_t frame[2] = { (uint8_t)(i + 1u), s_fret_ctrl_arg[i] };
+                if (send_to_node(fret->node_id, T1S_ETHERTYPE_NODE_CTRL, frame, 2u)) {
+                    s_tx_count++;
+                }
+                break;   /* one frame per pass (send_to_node set s_tx_busy) */
+            }
+        }
+
 #if T1S_CTRL_ENABLED
         /* Flush one staged controller (fauxmote) message onto the bus. Shares
          * the single in-flight TX with the guitar command above; across service
@@ -596,6 +614,20 @@ bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg)
     }
     s_light_ctrl_arg[opcode - 1u]   = arg;
     s_light_ctrl_dirty[opcode - 1u] = true;
+    (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
+    return true;
+}
+
+bool T1SLink_SendFretboardCtrl(uint8_t opcode, uint8_t arg)
+{
+    if (!s_link_up) {
+        return false;
+    }
+    if ((opcode < 1u) || (opcode > T1S_DET_CTRL_OP_COUNT)) {
+        return false;
+    }
+    s_fret_ctrl_arg[opcode - 1u]   = arg;
+    s_fret_ctrl_dirty[opcode - 1u] = true;
     (void)xSemaphoreGive(s_svc_sem);  /* wake the service task to flush */
     return true;
 }

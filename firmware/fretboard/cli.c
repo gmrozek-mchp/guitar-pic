@@ -64,6 +64,15 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     cli_printf("data tx: %lu (-> coordinator)", (unsigned long)T1SDetector_TxCount());
     cli_printf("cmd tx:  %lu (-> guitar) last=0x%02X", (unsigned long)T1SDetector_CmdCount(),
                (unsigned)T1SDetector_LastCmd());
+    bool arm_valid = false;
+    bool armed = T1SDetector_RemoteArm(&arm_valid);
+    uint8_t cop = 0u, carg = 0u;
+    uint32_t ccnt = 0u;
+    T1SDetector_LastCtrl(&cop, &carg, &ccnt);
+    cli_printf("ctrl rx: %lu last op=0x%02X arg=%u", (unsigned long)ccnt,
+               (unsigned)cop, (unsigned)carg);
+    cli_printf("arm:     %s (%s)", arm_valid ? (armed ? "on" : "off") : "sw0",
+               arm_valid ? "remote" : "local");
     cli_printf("errors:  %lu", (unsigned long)T1SDetector_ErrCount());
 }
 

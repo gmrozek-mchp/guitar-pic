@@ -16,9 +16,10 @@
 #endif
 
 /* SW0 (PB03) momentary button arms guitar actuation on each press; LED0 (PB02)
- * lit while armed. Boots disarmed: the command sent to the guitar is 0 (released),
- * LED off, until pressed. (Interim manual "active detector" gate until marvin
- * coordinates active-detector/active-guitar selection.)
+ * lit while armed. Boots disarmed: silent on the guitar command channel (LED off)
+ * until armed; disarming sends one final release then goes silent again.
+ * (Interim manual "active detector" gate until marvin coordinates
+ * active-detector/active-guitar selection.)
  *
  * Board polarity: the MCC pin config (PB03 pull-up, PB02 boots high) implies SW0
  * and LED0 are both active-low. If LED0 is inverted, set LED0_ACTIVE_LOW to 0. */
@@ -45,6 +46,10 @@ static volatile uint8_t s_latest_cmd;
 /* Gated command driven this tick (ISR writes, main loop forwards to the guitar).
  * Also the applied_mask reported in the data frame. */
 static volatile uint8_t s_current_cmd;
+
+/* Effective actuation-armed state this tick (ISR writes, main loop forwards so the
+ * detector gates the guitar command path — disarmed goes silent). */
+static volatile bool s_actuation_active;
 
 static bool    s_armed;               /* actuation enabled (SW0 toggle) */
 static bool    s_sw_pressed;          /* debounced button state */
@@ -73,10 +78,17 @@ static bool actuation_armed(void)
         if (s_sw_pressed)             /* toggle on a confirmed press edge */
         {
             s_armed = !s_armed;
-            if (s_armed) { LED0_ON(); } else { LED0_OFF(); }
         }
     }
-    return s_armed;
+
+    /* marvin's remote arm (control channel 0x88B9) is authoritative once it has
+     * sent one command — that is the bus-level active-detector selection. Until
+     * then the local SW0 toggle governs (bench use). */
+    bool remote_valid = false;
+    bool remote = T1SDetector_RemoteArm(&remote_valid);
+    bool eff = remote_valid ? remote : s_armed;
+    if (eff) { LED0_ON(); } else { LED0_OFF(); }
+    return eff;
 }
 
 void Callback_TC0 (TC_TIMER_STATUS status, uintptr_t context)
@@ -104,8 +116,10 @@ void Callback_TC0 (TC_TIMER_STATUS status, uintptr_t context)
     /* The heavy inference runs in the main loop; here we just gate the most
      * recent result and stream the (ADC + driven mask) frame to the coordinator.
      * The main loop forwards s_current_cmd to the guitar. */
-    uint8_t cmd = actuation_armed() ? s_latest_cmd : 0u;
+    bool armed = actuation_armed();
+    uint8_t cmd = armed ? s_latest_cmd : 0u;
     s_current_cmd = cmd;
+    s_actuation_active = armed;
     data_stream_send(cmd);
 }
 
@@ -143,7 +157,7 @@ int main(void)
 #endif
         /* Forward the gated command to the guitar (edge-triggered + refreshed) and
          * service the MAC-PHY / data-frame flush / heartbeat, then the CLI. */
-        T1SDetector_SetCommand(s_current_cmd);
+        T1SDetector_SetCommand(s_current_cmd, s_actuation_active);
         T1SDetector_Tasks();
         CLI_Tasks();
     }

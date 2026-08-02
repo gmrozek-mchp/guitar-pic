@@ -21,8 +21,16 @@
 
 #define T1S_ETHERTYPE       (0x88B5u)  /* data / command frames */
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
+#define T1S_ETHERTYPE_CTRL  (0x88B9u)  /* per-node control channel (unicast) */
 #define T1S_ETH_HDR_LEN     (14u)
 #define T1S_CMD_BIT_MASK    (0x7Fu)    /* 5 frets + 2 strum */
+
+/* Control channel (0x88B9): typed [opcode, arg]. Opcode namespace is per-node
+ * (routed by dst MAC); the detector's own opcode(s) below. */
+#define T1S_CTRL_OP          (0u)     /* payload offset: opcode */
+#define T1S_CTRL_ARG         (1u)     /* payload offset: arg    */
+#define T1S_CTRL_LEN         (2u)     /* min control payload length */
+#define T1S_CTRL_ARM         (0x01u)  /* arg 0|1: gate actuation (marvin selects) */
 
 /* Re-send the current guitar command this often even if unchanged, so a dropped
  * command frame self-heals (the guitar applies latest-wins, holds otherwise). */
@@ -56,6 +64,15 @@ static volatile uint8_t  s_last_cmd;    /* most recent command bitmask sent */
 static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
 static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
 
+/* Remote arm state from the control channel (0x88B9). Once s_ctrl_arm_valid is
+ * set, this is authoritative over the local SW0 gate (marvin's active-detector
+ * selection). Set on RX, read by the main-loop actuation gate. */
+static volatile bool     s_ctrl_armed;
+static volatile bool     s_ctrl_arm_valid;
+static volatile uint8_t  s_last_ctrl_op;   /* last 0x88B9 opcode applied */
+static volatile uint8_t  s_last_ctrl_arg;
+static volatile uint32_t s_ctrl_count;     /* accepted control frames */
+
 /* RX is unused on this node (non-promiscuous), but the integrator callbacks must
  * exist; a small buffer absorbs any slice the MAC-PHY delivers. */
 static uint8_t           s_rx_buf[64];
@@ -71,11 +88,15 @@ static volatile bool     s_frame_ready;
 static volatile bool     s_tx_busy;
 
 /* Command TX (to guitar). Set from the main loop (T1SDetector_SetCommand); flushed
- * by T1SDetector_Tasks on change + every T1S_CMD_REFRESH_MS. */
+ * by T1SDetector_Tasks on change + every T1S_CMD_REFRESH_MS while enabled. When the
+ * actuation gate opens/closes the enable follows: disarming emits one final
+ * all-released frame then goes silent, so a disarmed node never contends for the
+ * guitar with another command source (e.g. marvin). */
 static uint8_t           s_cmd_frame[T1S_ETH_HDR_LEN + 8u];
 static volatile bool     s_cmd_busy;
 static uint8_t           s_cmd;          /* latest commanded bitmask */
 static bool              s_cmd_dirty;    /* a (re)send is pending */
+static bool              s_cmd_enabled;  /* actuation gate open: refresh + send */
 static uint32_t          s_cmd_refresh_ms;
 
 /* Heartbeat TX staging. */
@@ -295,9 +316,11 @@ void T1SDetector_Tasks(void)
     if (s_link_up) {
         flush_data_frame();
 
-        /* Periodic command refresh so a dropped command frame self-heals. */
+        /* Periodic command refresh so a dropped command frame self-heals — only
+         * while the gate is open. A pending final release (queued on disarm) still
+         * flushes below even after the gate closes. */
         uint32_t now = SYSTICK_GetTickCounter();
-        if ((now - s_cmd_refresh_ms) >= T1S_CMD_REFRESH_MS) {
+        if (s_cmd_enabled && (now - s_cmd_refresh_ms) >= T1S_CMD_REFRESH_MS) {
             s_cmd_refresh_ms = now;
             s_cmd_dirty = true;
         }
@@ -331,12 +354,29 @@ bool T1SDetector_SendFrame(const uint8_t *payload, uint16_t len)
     return true;
 }
 
-void T1SDetector_SetCommand(uint8_t mask)
+void T1SDetector_SetCommand(uint8_t mask, bool active)
 {
     mask = (uint8_t)(mask & T1S_CMD_BIT_MASK);
+
+    if (!active) {
+        /* Gate closed. On the arm->disarm edge, queue one final all-released
+         * frame so the guitar clears any held note, then go silent (no refresh,
+         * no further sends) so we don't contend with another command source. */
+        if (s_cmd_enabled) {
+            s_cmd_enabled = false;
+            s_cmd = 0u;
+            s_cmd_dirty = true;
+        }
+        return;
+    }
+
+    if (!s_cmd_enabled) {
+        s_cmd_enabled = true;   /* gate opened: resume sending */
+        s_cmd_dirty = true;     /* push the current mask promptly */
+    }
     if (mask != s_cmd) {
         s_cmd = mask;
-        s_cmd_dirty = true;   /* send the edge promptly */
+        s_cmd_dirty = true;     /* send the edge promptly */
     }
 }
 
@@ -345,6 +385,19 @@ uint32_t T1SDetector_TxCount(void)  { return s_tx_count; }
 uint32_t T1SDetector_CmdCount(void) { return s_cmd_count; }
 uint8_t  T1SDetector_LastCmd(void)  { return s_last_cmd; }
 uint32_t T1SDetector_ErrCount(void) { return s_err_count; }
+
+bool T1SDetector_RemoteArm(bool *valid)
+{
+    if (valid != NULL) { *valid = s_ctrl_arm_valid; }
+    return s_ctrl_armed;
+}
+
+void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count)
+{
+    if (op    != NULL) { *op    = s_last_ctrl_op; }
+    if (arg   != NULL) { *arg   = s_last_ctrl_arg; }
+    if (count != NULL) { *count = s_ctrl_count; }
+}
 
 void T1SDetector_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
 {
@@ -462,8 +515,30 @@ void TC6_CB_OnRxEthernetSlice(TC6_t *pInst, const uint8_t *pRx, uint16_t offset,
 void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
                                uint64_t *rxTimestamp, void *pGlobalTag)
 {
-    (void)pInst; (void)success; (void)len; (void)rxTimestamp; (void)pGlobalTag;
-    /* No RX processing on this node. */
+    (void)pInst; (void)rxTimestamp; (void)pGlobalTag;
+
+    if (!success || (len < (T1S_ETH_HDR_LEN + T1S_CTRL_LEN))) {
+        return;
+    }
+    uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
+    if (ethertype != T1S_ETHERTYPE_CTRL) {
+        return;   /* this node only consumes the control channel */
+    }
+    /* Typed control [opcode, arg]. Guard with `<` (never ==: a min-frame is
+     * zero-padded past the payload). */
+    uint8_t op  = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_OP];
+    uint8_t arg = s_rx_buf[T1S_ETH_HDR_LEN + T1S_CTRL_ARG];
+    switch (op) {
+        case T1S_CTRL_ARM:
+            s_ctrl_armed     = (arg != 0u);
+            s_ctrl_arm_valid = true;
+            break;
+        default:
+            return;   /* unknown opcode: ignore, don't count */
+    }
+    s_last_ctrl_op  = op;
+    s_last_ctrl_arg = arg;
+    s_ctrl_count++;
 }
 
 void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)

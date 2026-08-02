@@ -16,7 +16,8 @@ ISR; see decision log + edge-ai `runtime.md` §3). Over T1S the node then:
 - **streams** the 17-byte data frame (ADC scan + the driven bitmask as `applied_mask`) to the marvin
   coordinator (`0x88B5`, logging / edge-ai training), and
 - **commands** the guitar node (id 3) directly with the inferred 1-byte bitmask (`0x88B5`,
-  peer-to-peer) — edge-triggered + a 50 ms refresh so a dropped frame self-heals.
+  peer-to-peer) — while armed, edge-triggered + a 50 ms refresh so a dropped frame self-heals;
+  **disarming sends one final all-released frame then goes silent** (no contention for the guitar).
 
 Plus a 500 ms presence heartbeat (`0x88B6`, node_type 1 = detector). All TC6 TX/service is in the main
 loop ([`T1SDetector_Tasks`](../t1s_detector.c)); the ISR only scans + stages the data frame. It has **no
@@ -24,10 +25,13 @@ local Wii-guitar outputs** (those pins are the LAN8651 SPI). PLCA follower id 4,
 (renumbered from id 1 in source 2026-07-28; last flashed/verified at id 1 — re-flash fretboard + marvin
 together for id 4 to take effect).
 
-**SW0 (PB03)** arms actuation (a manual "active detector" gate until marvin coordinates active-detector/
-active-guitar selection); **LED0 (PB02)** shows armed; boots disarmed (sends 0 = released). **Coordination
-caveat:** while the fretboard is armed, marvin must NOT also drive the guitar (both target `02:..:03`;
-no arbitration yet — the guitar applies whoever transmitted last).
+**SW0 (PB03)** arms actuation locally; **LED0 (PB02)** shows the effective armed state; boots disarmed
+(silent on the command channel until armed). marvin can also gate actuation remotely over the **control channel** (ethertype
+`0x88B9`, opcode `0x01` arm, arg 0|1 → `fretboard arm|disarm`); once one control frame arrives the remote
+arm is **authoritative over SW0** — this is marvin's active-detector selection over the bus. **Coordination
+caveat:** the guitar applies whoever transmitted last (both marvin and the fretboard target `02:..:03`), so
+only one source may be armed at a time; **automatic** active-detector/active-guitar coordination is still
+the follow-up.
 
 **MCC done** (SERCOM0 SPI Mode 0 on PA04/05/07; T1S_CS PA15 / T1S_RST PA14 / T1S_IRQ_N PA13 EXTINT13
 falling; SysTick 1 ms; SERCOM1 ring-buffer TX 512). **Operator CLI** on SERCOM1 ([`cli.c`](../cli.c),
@@ -40,6 +44,8 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-02 | **Disarmed = silent on the guitar command channel (was: kept sending `0x00` at ~20 Hz).** `T1SDetector_SetCommand()` gained an `active` flag (`t1s_detector.c`/`.h`); the 50 ms refresh only fires while armed, and the arm→disarm edge queues one final all-released frame then stops. `main.c` captures the effective armed state per tick (`s_actuation_active`) and passes it. Doc/SPEC/link-doc wording updated to match. | The 50 ms self-heal refresh re-sent the current mask continuously whenever the link was up — so a *disarmed* node still transmitted `0x00` at ~20 Hz to the guitar MAC, stomping on any other command source (marvin). That defeated the purpose of `fretboard disarm`, which exists precisely so marvin can take the guitar. Now disarm truly hands the guitar over: one clean release (so no note sticks) then silence. The guitar is last-writer-wins, so a silent node cannot contend. |
+| 2026-08-02 | **Added the `0x88B9` control channel (remote arm/disarm) — fretboard now in sync with lemmy/lightshow.** Fretboard: `T1S_ETHERTYPE_CTRL` + opcode `T1S_CTRL_ARM (0x01)` in `t1s_detector.c`, RX dispatch implemented in `TC6_CB_OnRxEthernetPacket` (was a no-op — this node now consumes RX), new `T1SDetector_RemoteArm()`/`T1SDetector_LastCtrl()` accessors. `main.c` `actuation_armed()` makes the remote arm authoritative once seen (SW0 governs until then). `cli.c` `t1s` now shows ctrl rx count + arm source. marvin: `T1SLink_SendFretboardCtrl()` + per-opcode staging/flush (mirror of the lightshow channel) and a `fretboard arm|disarm` console command. Also fixed a stale "guitar id 2" comment in `t1s_detector.h` (code was already id 3). | Brings fretboard onto the same per-node control-channel pattern the animation/lighting nodes gained, and closes the long-standing coordination gap: marvin can now gate the detector's actuation from the bus (manual active-detector selection) instead of relying only on the node's local SW0. Remote-authoritative-once-seen keeps SW0 as a bench fallback while making marvin the source of truth in the integrated system. Automatic active-detector/guitar arbitration (marvin arming the chosen detector and silencing its own command path) remains the follow-up. |
 | 2026-07-28 | **Fretboard's own node id renumbered id 1 → 4** (`t1s_detector.c` `T1S_NODE_ID`, MAC now `02:00:00:00:00:04`; marvin's `s_nodes[]` detector entry also → 4). `detector_id` (`DETECTOR_ADC_FRETBOARD`) and heartbeat `node_type` (1 = detector) are unchanged — only the PLCA id/MAC moved. Re-flash fretboard **and** marvin together (marvin filters by src MAC). | Completes the bus renumber to the canonical table (docs/t1s-podl-link.md §7.1): detector = 4. Frees ids 1–2 for the fauxmote controllers so a default-id-1 fauxmote no longer collides with the fretboard. The fretboard id lives at two coordinated points (its firmware + marvin's coordinator table); both must move together or marvin won't recognize the node's frames/heartbeat. |
 | 2026-07-28 | **Peer-to-peer guitar target renumbered id 2 → 3** (`t1s_detector.c` `T1S_GUITAR_ID`, dst MAC now `02:00:00:00:00:03`). The fretboard's **own** node id stays 1 (target 4 renumber deferred — since done, see the 1 → 4 entry above). Part of the coordinated guitar-id move (guitar firmware + marvin table also go to 3). | The guitar node moved to its target id 3 (docs/t1s-podl-link.md §7.1); the fretboard drives the guitar directly (peer-to-peer), so its hardcoded destination has to follow the guitar or that command path misses the node. The fretboard's own 1→4 renumber is a separate coordinated step with marvin's table. |
 | 2026-06-17 | **Keep the command path on the 240 Hz tick cadence (do NOT decouple it to immediate main-loop send).** The model emits one bitmask per 240 Hz sample; the ISR gates it into `s_current_cmd` each tick and the main loop sends that, so actuation is quantized to the ~4.2 ms grid. Leave it. To reduce the *new* T1S transport delay instead, raise the host SPI clock (1 MHz → ~12 MHz, both fretboard and guitar; SERCOM `BAUD=0` = GCLK/2 = 12 MHz) and/or fold a constant offset into the training labels — **not** by changing the command-to-tick coupling. | The model's timing was characterized against this inference→tick→actuate pipeline (the photo-dip→strum delay is baked into the distillation labels, so its output index is fit to *this* cadence). Decoupling would shift every actuation earlier by up to a tick **and** replace the deterministic 240 Hz grid with main-loop jitter — for a model trained on 240 Hz-sampled data, consistent grid-aligned latency beats lower-but-variable latency. Separately, the T1S move already changed timing vs. the old `MODEL_DRIVEN` *local-GPIO* standalone: actuation is now ~1.5–2 ms **later** (host-SPI chunk each end @ 1 MHz dominates; PLCA media access is sub-ms). That transport delta — not the tick — is the real new variable, so the knob is SPI speed (12 MHz removes ~1 ms) + re-validating gameplay timing on the T1S rig (scope fretboard `SetCommand`→guitar apply, check hit rate). Worst-case command latency today ≈ 6–7 ms (≈4.2 ms tick + ~1.5–2 ms transport); ~2–3 ms typical. See edge-ai journal + [`docs/t1s-podl-link.md`](../../../docs/t1s-podl-link.md). |
@@ -70,6 +76,28 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 ---
 
 ## Session log
+
+### 2026-08-02 — Sync pass: node id confirmed + `0x88B9` control channel (remote arm)
+
+- Returned to fretboard to finalize the design; confirmed T1S was already brought up (link was UP on
+  hardware 2026-06-17). This was a **sync/cleanup pass**, not a bring-up.
+- **Node id already done in source, both trees:** fretboard `T1S_NODE_ID = 4` / guitar target 3, and
+  marvin's node table already has `{ 4u, DETECTOR_ADC_FRETBOARD, T1S_NODE_FRETBOARD }`. The only remaining
+  node-id action is a **coordinated re-flash** (fretboard + marvin together) — a hardware step. Fixed one
+  stale "guitar id 2" comment in `t1s_detector.h`; no `FRETBOARD_LINK`/`cmd_receive` leftovers; `tc6-conf.h`
+  diffs vs lightshow are legit (bigger TX queue for 3 concurrent streams).
+- **Control channel added (the real divergence):** lemmy + lightshow had gained a per-node `0x88B9`
+  control channel; fretboard hadn't. Added it with a **remote arm/disarm** opcode (fretboard side + marvin
+  side + `fretboard arm|disarm` console command — see decision log). Fretboard now consumes RX for the
+  first time (`TC6_CB_OnRxEthernetPacket` was a stub); the MAC filter already accepts unicast to its own
+  MAC, same as lightshow's control RX, so no MCC/init change was needed.
+- **Layout divergence noted, not changed:** fretboard keeps app sources at the top level + module named
+  `t1s_detector.c`, whereas guitar/lemmy/lightshow use `config.mcc/src/` + `t1s_follower.c`. The name is
+  semantically correct (it *is* a detector, not a plain follower) and the layout move is a bigger MCC
+  refactor — left as-is.
+- **Not built/flashed** — needs MPLAB build (the `0x88B9` RX path is new on this node) + on-hardware
+  bring-up. Watch: `fretboard arm|disarm` from marvin flips the node's `arm:` line in the `t1s` CLI to
+  `remote`, and the guitar responds; confirm the 240 Hz data rate holds with the extra RX traffic.
 
 ### 2026-06-17 — Link UP on hardware (detector heartbeat seen on marvin)
 

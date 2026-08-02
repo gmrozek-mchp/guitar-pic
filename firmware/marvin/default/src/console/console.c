@@ -894,6 +894,24 @@ static void cmd_lightshow(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("lightshow: output %s", on ? "on" : "off");
 }
 
+static void cmd_fretboard(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *a = embeddedCliGetToken(args, 1);
+
+    if (a == NULL || (strcmp(a, "arm") != 0 && strcmp(a, "disarm") != 0))
+    {
+        console_printf("usage: fretboard <arm|disarm>");
+        return;
+    }
+    uint8_t on = (strcmp(a, "arm") == 0) ? 1u : 0u;
+    if (!T1SLink_SendFretboardCtrl(T1S_DET_CTRL_ARM, on)) {
+        console_printf("fretboard: link down");
+        return;
+    }
+    console_printf("fretboard: actuation %s", on ? "armed" : "disarmed");
+}
+
 static void register_commands(void)
 {
     static const CliCommandBinding bindings[] = {
@@ -917,6 +935,7 @@ static void register_commands(void)
         { "fauxmote","fauxmote [status|pair|stop|reconnect|unlink|ext <on|off>|btn <mask>|pointer <x> <y>|off]", true, NULL, cmd_fauxmote },
         { "lemmy",  "lemmy <neck> <jaw>|center: servo pos; nod <on|off>|trim <n>|osc <0|1>: nod control", true, NULL, cmd_lemmy },
         { "lightshow","lightshow <on|off>: enable/disable the LED output",   true, NULL, cmd_lightshow },
+        { "fretboard","fretboard <arm|disarm>: remotely gate the detector's actuation", true, NULL, cmd_fretboard },
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },

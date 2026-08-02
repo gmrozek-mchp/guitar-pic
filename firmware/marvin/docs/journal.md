@@ -427,6 +427,16 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-02 — fretboard control channel (`fretboard arm|disarm`)
+
+- Added a fretboard (detector) control channel over `0x88B9`, mirroring the lemmy/lightshow control TX
+  already in `t1s_link.c`: `T1SLink_SendFretboardCtrl(opcode, arg)` + per-opcode staging/flush targeting
+  `node_for_type(T1S_NODE_FRETBOARD)` (id 4), opcode `T1S_DET_CTRL_ARM (0x01)`, and a `fretboard <arm|disarm>`
+  console command. Lets marvin remotely gate the detector's actuation over the bus — manual active-detector
+  selection; the fretboard treats a received arm as authoritative over its local SW0. See the fretboard
+  journal (2026-08-02) and `docs/t1s-podl-link.md` §7.1 for the node side and the addressing note. Automatic
+  active-detector/guitar arbitration is still the follow-up. Not built/flashed.
+
 ### 2026-07-31 — beatbox heartbeat awareness (node table entry) + broadcast-tolerance check
 
 - **marvin now recognizes beatbox (beat-source node, id 5) on the bus.** Added `T1S_NODE_BEATSOURCE`

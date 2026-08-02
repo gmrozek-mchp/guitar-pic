@@ -76,6 +76,15 @@ bool T1SLink_SendLemmyCtrl(uint8_t opcode, uint8_t arg);
 #define T1S_LIGHT_CTRL_OP_COUNT  (1u)
 bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg);
 
+/* Fretboard (detector) control channel — same 0x88B9 transport + [opcode, arg]
+ * grammar, routed to the detector node with its own opcode namespace. Arm gates
+ * the detector's actuation remotely (active-detector selection over the bus);
+ * once received it is authoritative over the node's local SW0. Same threading
+ * contract; returns false if the link is down or the opcode is unknown. */
+#define T1S_DET_CTRL_ARM         (1u)  /* arg 0|1  : arm/disarm the actuation gate */
+#define T1S_DET_CTRL_OP_COUNT    (1u)
+bool T1SLink_SendFretboardCtrl(uint8_t opcode, uint8_t arg);
+
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.
  * Called from the T1S service task. `detector_id` is the node's bus id. */
 typedef void (*T1SLink_FrameHandler)(uint8_t detector_id, const uint8_t *payload,

@@ -141,8 +141,16 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   flight. A frame dropped while busy shows as a `sample_seq` gap.
 - **Command → guitar:** `T1SDetector_SetCommand()` (main loop) hands the inferred
   1-byte bitmask to the **guitar node** (id 3, MAC `02:..:03`, ethertype `0x88B5`).
-  Sent edge-triggered + re-sent every 50 ms so a dropped command self-heals; the
-  guitar applies latest-wins. Peer-to-peer — marvin is not in the command path.
+  Gated by the arm state: while armed it's sent edge-triggered + re-sent every 50 ms
+  so a dropped command self-heals; the guitar applies latest-wins. **Disarming sends
+  one final all-released frame then goes silent** — a disarmed node never contends
+  for the guitar with another command source. Peer-to-peer — marvin is not in the
+  command path.
+- **Control ← marvin:** a per-node control channel (ethertype `0x88B9`, unicast
+  `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation remotely. Once
+  the node receives one control frame the remote arm is authoritative over the local
+  SW0 gate (marvin's active-detector selection over the bus); driven from marvin's
+  `fretboard arm|disarm`.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
 - **Operator CLI:** SERCOM1 hosts an embedded-cli console ([cli.c](cli.c), vendored
@@ -150,10 +158,12 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   counts), `adc` (latest scan), `id` / `plca` (MAC-PHY register diagnostics).
   Bare-metal — `CLI_Tasks()` drains the RX ring each main-loop pass.
 
-**Coordination caveat:** there is no active-source arbitration yet — while the
-fretboard is armed (SW0) it drives the guitar, and marvin must not also command the
-guitar (both target `02:..:03`). marvin-side active-detector/active-guitar selection
-is the follow-up. Link rationale, addressing, and the PoDL plan are in
+**Coordination caveat:** the guitar applies whoever transmitted last (both marvin and
+the fretboard target `02:..:03`), so only one source may be armed at a time. marvin
+gates this node manually over the control channel (`fretboard arm|disarm`); a remote
+arm overrides the local SW0. **Automatic** active-detector/active-guitar selection
+(marvin arming the chosen detector and silencing its own command path) is still the
+follow-up. Link rationale, addressing, and the PoDL plan are in
 [`docs/t1s-podl-link.md`](../../docs/t1s-podl-link.md).
 
 ## Observability

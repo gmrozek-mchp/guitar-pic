@@ -9,9 +9,14 @@
  * marvin is the PLCA coordinator (node 0); this node is follower id 4. It both
  * senses and drives: it streams the 17-byte phototransistor data frame up to the
  * coordinator (ethertype 0x88B5) for logging, and sends the model's inferred
- * 1-byte button bitmask directly to the guitar node (id 2, ethertype 0x88B5) to
+ * 1-byte button bitmask directly to the guitar node (id 3, ethertype 0x88B5) to
  * actuate — peer-to-peer, marvin coordinates/logs but is out of the command path.
  * Presence is announced with a heartbeat (0x88B6, node_type 1 = detector).
+ *
+ * marvin can gate this node's actuation remotely over the per-node control
+ * channel (ethertype 0x88B9, unicast [opcode, arg]): opcode 0x01 arm (arg 0|1).
+ * Once a control frame is received the remote arm state is authoritative over the
+ * local SW0 gate — this is marvin's active-detector selection over the bus.
  *
  * Transport is the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib)
  * wrapped with the SERCOM0 SPI PLib, a GPIO chip-select held across each transfer,
@@ -37,11 +42,24 @@ bool T1SDetector_IsConnected(void);
  * which the host detects as a sample_seq gap). Returns false if the link is down. */
 bool T1SDetector_SendFrame(const uint8_t *payload, uint16_t len);
 
-/* Set the latest 1-byte button command to drive the guitar node. Call from the
- * main loop (not the ISR). Edge-triggered + periodically refreshed: the command
- * is (re)sent to the guitar by T1SDetector_Tasks() on change and every ~50 ms so a
- * dropped frame self-heals. */
-void T1SDetector_SetCommand(uint8_t mask);
+/* Set the latest 1-byte button command to drive the guitar node, gated by the
+ * actuation-armed state. Call from the main loop (not the ISR). While `active`,
+ * the command is (re)sent to the guitar by T1SDetector_Tasks() on change and every
+ * ~50 ms so a dropped frame self-heals. When `active` goes false, one final
+ * all-released frame is queued (clearing any held note) and the node then stays
+ * silent on the command channel — so a disarmed node never contends for the guitar
+ * with another command source (e.g. marvin). */
+void T1SDetector_SetCommand(uint8_t mask, bool active);
+
+/* Remote arm state from the control channel (0x88B9, opcode 0x01). *valid is set
+ * false until the first control frame arrives; while false the local SW0 gate
+ * governs actuation, and once true the returned remote state is authoritative.
+ * Read from the main loop (the actuation gate). */
+bool T1SDetector_RemoteArm(bool *valid);
+
+/* Last control frame applied (op/arg) + accepted-control count, for the CLI.
+ * NULL args are skipped. */
+void T1SDetector_LastCtrl(uint8_t *op, uint8_t *arg, uint32_t *count);
 
 /* Diagnostics (boot banner / CLI). */
 uint8_t  T1SDetector_ChipRev(void);   /* 0 if the link never came up */
