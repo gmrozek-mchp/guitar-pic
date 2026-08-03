@@ -74,8 +74,9 @@ def test_c_matches_int8_sim(tmp_path):
     # shadow it with the committed firmware header).
     shutil.copy(FW_DIR / "model_infer.c", tmp_path / "model_infer.c")
     shutil.copy(FW_DIR / "model_infer.h", tmp_path / "model_infer.h")
+    shutil.copy(FW_DIR / "models.h", tmp_path / "models.h")
     shutil.copy(FW_DIR / "fretboard_config.h", tmp_path / "fretboard_config.h")
-    (tmp_path / "model_weights.h").write_text(emit_c_header(qp))
+    (tmp_path / "model_weights.h").write_text(emit_c_header(qp, "hard"))
 
     exe = tmp_path / "infer_host"
     subprocess.run(

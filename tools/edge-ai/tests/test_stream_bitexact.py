@@ -51,9 +51,9 @@ def test_stream_matches_int8_sim(tmp_path):
     # compile the streaming module from tmp so its quoted #include "model_weights.h"
     # resolves to the generated (window-85) header
     for f in ("model_infer.h", "model_infer_stream.h", "model_infer_stream.c",
-              "fretboard_config.h"):
+              "models.h", "fretboard_config.h"):
         shutil.copy(FW_DIR / f, tmp_path / f)
-    (tmp_path / "model_weights.h").write_text(emit_c_header(qp))
+    (tmp_path / "model_weights.h").write_text(emit_c_header(qp, "hard"))
     exe = tmp_path / "stream_host"
     subprocess.run(
         [CC, "-O2", "-std=c11", "-DMODEL_INFER_STREAMING=1", "-I", str(tmp_path),
