@@ -79,12 +79,16 @@ bool T1SLink_SendLightshowCtrl(uint8_t opcode, uint8_t arg);
 /* Fretboard (detector) control channel — same 0x88B9 transport + [opcode, arg]
  * grammar, routed to the detector node with its own opcode namespace. Arm gates
  * the detector's actuation remotely (active-detector selection over the bus);
- * once received it is authoritative over the node's local SW0. Same threading
- * contract; returns false if the link is down or the opcode is unknown. */
+ * once received it is authoritative over the node's local SW0. Teacher pushes
+ * marvin's CV command so the detector can stamp it into its data frames as the
+ * atomic edge-ai training label (commanded_mask) — sent while marvin is the CV
+ * teacher during a capture. Same threading contract; returns false if the link
+ * is down or the opcode is unknown. */
 #define T1S_DET_CTRL_ARM         (1u)  /* arg 0|1  : arm/disarm the actuation gate */
 #define T1S_DET_CTRL_STREAM      (2u)  /* arg 0|1  : gate the data stream to marvin */
 #define T1S_DET_CTRL_MODEL       (3u)  /* arg 0..4 : inference model select (per difficulty + auto) */
-#define T1S_DET_CTRL_OP_COUNT    (3u)
+#define T1S_DET_CTRL_TEACHER     (4u)  /* arg mask : CV teacher command, latched as the edge-ai label */
+#define T1S_DET_CTRL_OP_COUNT    (4u)
 bool T1SLink_SendFretboardCtrl(uint8_t opcode, uint8_t arg);
 
 /* Delivers a received node payload (already demuxed by src MAC) to a consumer.

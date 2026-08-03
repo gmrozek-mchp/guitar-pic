@@ -13,7 +13,7 @@
  * are framed on the wire by the drain task (SOF magic + length + CRC);
  * the structs below are the framed payload only. */
 
-#define PERF_LOG_SCHEMA_VERSION   5u
+#define PERF_LOG_SCHEMA_VERSION   6u
 
 #define PERF_LOG_HDR_MAGIC        0x4D56u   /* 'M','V' little-endian */
 
@@ -360,11 +360,13 @@ typedef struct __attribute__((packed))
  * value tags ~4 consecutive records — ts_counter (stamped by hdr_fill at
  * record-emit time) disambiguates within the frame.
  *
- * fb_sample_seq and applied_mask are stamped by the fretboard itself and
- * carried on the wire: the sequence counter (one per fretboard tick) lets the
- * host reconstruct true sample order and detect frames dropped in transit,
- * and applied_mask is the actuator bitmask the fretboard was driving during
- * this very scan — so sensor and actuator state are paired atomically at the
+ * fb_sample_seq, applied_mask, and commanded_mask are stamped by the fretboard
+ * itself and carried on the wire: the sequence counter (one per fretboard tick)
+ * lets the host reconstruct true sample order and detect frames dropped in
+ * transit, applied_mask is the actuator bitmask the fretboard was driving during
+ * this very scan (its own model, or 0 when disarmed), and commanded_mask is
+ * marvin's CV teacher command latched during this scan (0 when marvin isn't
+ * teaching) — the atomic edge-ai training label, paired with the ADC at the
  * source instead of joined across marvin's TX/RX clocks. Default-disabled at
  * boot like the other high-rate types. */
 typedef struct __attribute__((packed))
@@ -372,8 +374,8 @@ typedef struct __attribute__((packed))
     perf_hdr_t hdr;
     uint16_t   adc[FRET_COUNT];      /* 5 × 2 = 10 B */
     uint32_t   fb_sample_seq;        /* fretboard tick counter (monotonic) */
-    uint8_t    applied_mask;         /* actuator bitmask driven this scan */
-    uint8_t    reserved;
+    uint8_t    applied_mask;         /* actuator bitmask this node drove this scan */
+    uint8_t    commanded_mask;       /* marvin's CV teacher command (edge-ai label) */
 } perf_rec_fretboard_raw_t;
 
 /* ─── Host→device commands ───────────────────────────────────────────────────

@@ -49,6 +49,16 @@
 
 void FretboardLink_Initialize(void);
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id);
+
+/* As FretboardLink_Send, but with a distinct teacher label for the edge-ai
+ * capture: `mask` is driven to the wire (guitar/fauxmote) unchanged, while
+ * `teacher_mask` is what the fretboard latches into each frame's commanded_mask
+ * (T1S transport only). The timing pipeline uses this to keep playing with the
+ * back-to-back fret hold on the wire while logging the released-style per-note
+ * command as the training target. FretboardLink_Send forwards mask==teacher. */
+void FretboardLink_SendWithTeacher(uint8_t mask, uint8_t teacher_mask,
+                                   uint8_t producer_id);
+
 bool FretboardLink_IsConnected(void);
 
 /* Re-evaluate the fretboard node's arm bit against Detector_FretboardDriving()

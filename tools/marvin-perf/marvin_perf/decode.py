@@ -161,12 +161,13 @@ def _decode_actuator(hdr: Header, payload: bytes) -> Actuator:
 def _decode_fretboard_raw(hdr: Header, payload: bytes) -> FretboardRaw:
     _check(payload, FretboardRaw.SIZE, "FretboardRaw")
     fields = FretboardRaw._BODY.unpack_from(payload, HDR_SIZE)
-    # fields: adc[0..4], fb_sample_seq, applied_mask, reserved
+    # fields: adc[0..4], fb_sample_seq, applied_mask, commanded_mask
     return FretboardRaw(
         hdr=hdr,
         adc=tuple(fields[:FRET_COUNT]),
         fb_sample_seq=fields[FRET_COUNT],
         applied_mask=fields[FRET_COUNT + 1],
+        commanded_mask=fields[FRET_COUNT + 2],
     )
 
 

@@ -16,7 +16,7 @@ phototransistors above the TV strike line; an on-device int8 neural net
 (`model_infer.c`, weights in the generated `model_weights.h`) infers the Wii-guitar
 button bitmask from the ADC window. Over T1S it then:
 
-- **streams** the 17-byte data frame (ADC scan + the driven bitmask) to the marvin
+- **streams** the 18-byte data frame (ADC scan + the driven bitmask + marvin's teacher command) to the marvin
   coordinator — logging / edge-ai training;
 - **drives fauxmote** (the ESP32 Wiimote+guitar emulator, controller node id 1)
   directly with an mf_proto GUITAR message on the controller channel (`0x88B7`) —
@@ -119,7 +119,7 @@ FRET_GREEN = 0, FRET_RED = 1, FRET_YELLOW = 2, FRET_BLUE = 3, FRET_ORANGE = 4
 
 #### data_stream ([data_stream.c](data_stream.c) / [data_stream.h](data_stream.h))
 
-Builds one 17-byte little-endian frame per tick and stages it for TX to the marvin
+Builds one 18-byte little-endian frame per tick and stages it for TX to the marvin
 coordinator over T1S (via `T1SDetector_SendFrame`):
 
 | Offset | Size | Field |
@@ -132,12 +132,17 @@ coordinator over T1S (via `T1SDetector_SendFrame`):
 | 9 | 2 | orange |
 | 11 | 4 | sample_seq (uint32) — monotonic, one per tick |
 | 15 | 1 | applied_mask — the bitmask driven to the guitar this scan |
-| 16 | 1 | end = `0xFC` (`~start`) |
+| 16 | 1 | commanded_mask — marvin's CV teacher command latched this scan |
+| 17 | 1 | end = `0xFC` (`~start`) |
 
 `sample_seq` lets the host reconstruct true sample order and detect dropped frames
 (it advances per tick even when a send is skipped). `applied_mask` is the command
-the node drove to the guitar this scan, paired atomically with the ADC scan for
-edge-ai training-data export. The marvin RX side keys on this 17-byte layout.
+the node drove to the guitar this scan (its own model output, or 0 when disarmed);
+`commanded_mask` is marvin's CV teacher command, latched from the `0x88B9` teacher
+opcode (`0x04`) into every frame regardless of arm/stream state. Both are paired
+atomically with the ADC scan — `commanded_mask` is the atomic teacher label for
+edge-ai distillation (no cross-stream skew). The marvin RX side keys on this
+18-byte layout.
 
 #### model_infer ([model_infer.c](model_infer.c) / [model_infer_stream.c](model_infer_stream.c) / [model_infer.h](model_infer.h) / [models.h](models.h))
 
@@ -173,7 +178,7 @@ PLCA follower **id 4**, MAC `02:00:00:00:00:04`, on the marvin-coordinated
 `third_party/oa-tc6-lib` (OPEN Alliance TC6) + a local `tc6-conf.h`. All TC6 access
 is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR.
 
-- **Data → coordinator:** the 17-byte frame rides the Ethernet payload under
+- **Data → coordinator:** the 18-byte frame rides the Ethernet payload under
   ethertype `0x88B5`, dst = coordinator MAC. The ISR stages it
   (`T1SDetector_SendFrame()`, latest-wins); the main loop flushes it, one TX in
   flight. A frame dropped while busy shows as a `sample_seq` gap. **The stream boots
@@ -204,12 +209,16 @@ is serviced from the **main loop** (`T1SDetector_Tasks()`), never the 240 Hz ISR
   `[opcode, arg]`) — opcode `0x01` **arm** (arg 0|1) gates actuation (marvin asserts it
   only for the duration of a song with the fretboard as the selected detector; disasserts
   it when the song ends or `active cv` is chosen), opcode `0x02` **stream** (arg 0|1)
-  gates the `0x88B5` data feed, and opcode `0x03` **model** (arg 0..4) selects the
+  gates the `0x88B5` data feed, opcode `0x03` **model** (arg 0..4) selects the
   inference model (per-difficulty easy/medium/hard/expert + a reserved auto slot;
-  see the `model_infer` module below). Driven from marvin's `fretboard arm|disarm` /
-  `fretboard stream on|off` / `fretboard model <difficulty>`. All three are shared
-  with the node's local `arm` / `stream` / `model` CLI commands — last writer wins,
-  no lockout.
+  see the `model_infer` module below), and opcode `0x04` **teacher** (arg = 7-bit
+  bitmask) latches marvin's CV teacher command into every data frame's
+  `commanded_mask` (the atomic edge-ai training label; not gated by arm/stream).
+  The arm/stream/model opcodes are driven from marvin's `fretboard arm|disarm` /
+  `fretboard stream on|off` / `fretboard model <difficulty>` and are shared with the
+  node's local `arm` / `stream` / `model` CLI commands — last writer wins, no
+  lockout. The teacher opcode is driven automatically (edge-triggered) whenever
+  marvin is the active CV teacher; it has no local CLI equivalent.
 - **Presence:** a 500 ms heartbeat (ethertype `0x88B6`, `node_type = 1` detector) so
   marvin's `nodes` command shows the node present.
 - **On-bus gate:** all TX (data, fauxmote + guitar command, heartbeat) is gated on PLCA actually
@@ -264,7 +273,7 @@ MPLAB Extensions for VS Code. Project config is in
 |------|---------|
 | [main.c](main.c) | Init + TC0 scan/stage ISR + service loop (infer, drive guitar) |
 | [fret_scan.c](fret_scan.c) / [.h](fret_scan.h) | ADC channel scanning |
-| [data_stream.c](data_stream.c) / [.h](data_stream.h) | 17-byte data frame builder (→ T1S) |
+| [data_stream.c](data_stream.c) / [.h](data_stream.h) | 18-byte data frame builder (→ T1S) |
 | [t1s_detector.c](t1s_detector.c) / [.h](t1s_detector.h) | T1S node: data→coordinator, command→fauxmote (game) + guitar (indicator), heartbeat |
 | [mf_proto.h](mf_proto.h) | Shared marvin↔fauxmote controller-channel message vocabulary (byte-for-byte synced with the marvin + fauxmote copies) |
 | [status_led.c](status_led.c) / [.h](status_led.h) | LED0 liveness heartbeat (encodes T1S link state) |

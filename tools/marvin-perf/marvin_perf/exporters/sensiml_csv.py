@@ -16,12 +16,25 @@ ADC values plus a set of binary labels whose meaning depends on `labels`:
       timestamp,ph_green,...,ph_orange,
       fret_green,fret_red,fret_yellow,fret_blue,fret_orange,strum
 
-- `labels="actuator-fb"` (preferred edge-ai target, schema v4+): same six
-  labels, but sourced from the actuator bitmask the fretboard reports *inside*
-  each FRETBOARD_RAW frame (`applied_mask`) — paired with the ADC atomically on
-  the device, with no cross-stream forward-fill. Adds an `fb_seq` column (the
-  fretboard's monotonic sample counter) so downstream can detect dropped frames.
-  Columns:
+- `labels="actuator-fb"` (schema v4+): same six labels, but sourced from the
+  actuator bitmask the fretboard reports *inside* each FRETBOARD_RAW frame
+  (`applied_mask`) — paired with the ADC atomically on the device, with no
+  cross-stream forward-fill. In detector-only firmware `applied_mask` is the
+  fretboard's *own* model output (or 0 when disarmed), so this is a model
+  self-label, not the teacher — use `commanded-fb` for distillation. Adds an
+  `fb_seq` column (the fretboard's monotonic sample counter) so downstream can
+  detect dropped frames. Columns:
+      timestamp,fb_seq,ph_green,...,ph_orange,
+      fret_green,fret_red,fret_yellow,fret_blue,fret_orange,strum
+
+- `labels="commanded-fb"` (preferred edge-ai distillation target, schema v6+):
+  identical columns to `actuator-fb`, but the labels come from `commanded_mask`
+  — marvin's CV teacher command latched inside each FRETBOARD_RAW frame. This is
+  the atomic teacher label for training the on-device model: the marvin CV
+  decision paired with the ADC scan at the source, no ~12 ms cross-stream skew.
+  marvin must be the active CV teacher during the capture (its command is fed to
+  the fretboard over the 0x88B9 teacher opcode); frames where marvin wasn't
+  teaching carry commanded_mask=0. Columns:
       timestamp,fb_seq,ph_green,...,ph_orange,
       fret_green,fret_red,fret_yellow,fret_blue,fret_orange,strum
 
@@ -74,11 +87,11 @@ _HEADER_ACTUATOR_FB = (
     "strum",
 )
 
-LABEL_MODES = ("detector", "actuator", "actuator-fb", "detector-fb")
+LABEL_MODES = ("detector", "actuator", "actuator-fb", "detector-fb", "commanded-fb")
 
 # Modes that clock row timestamps off the fretboard's own fb_sample_seq (no
 # SESSION/ts_counter needed) and prepend an fb_seq column.
-_FB_CLOCK_MODES = ("actuator-fb", "detector-fb")
+_FB_CLOCK_MODES = ("actuator-fb", "detector-fb", "commanded-fb")
 
 # Fretboard tick rate — actuator-fb derives row timestamps from fb_sample_seq
 # at this rate (fb_seq is the clock; no SESSION/ts_counter needed).
@@ -133,10 +146,13 @@ def export_sensiml_csv(
     `labels` selects the label source: "detector" (per-fret pressed_mask,
     default, back-compat), "actuator" (5 frets + collapsed strum from
     Actuator.intended_mask, cross-stream), "actuator-fb" (same from the
-    fretboard's in-frame applied_mask + fb_seq column), or "detector-fb" (a
-    diagnostic probe: detector pressed_mask frets — clean per-note structure
-    without the pipeline's legato hold — plus the in-frame applied strum and
-    fb_seq). The fb modes clock off fb_seq and need no SESSION.
+    fretboard's in-frame applied_mask + fb_seq column), "commanded-fb" (the
+    preferred distillation target: 5 frets + collapsed strum from the in-frame
+    commanded_mask — marvin's CV teacher command paired with the ADC at the
+    source — + fb_seq), or "detector-fb" (a diagnostic probe: detector
+    pressed_mask frets — clean per-note structure without the pipeline's legato
+    hold — plus the in-frame applied strum and fb_seq). The fb modes clock off
+    fb_seq and need no SESSION.
 
     `strict=True` drops FretboardRaw rows that arrive before the first
     label-source record (so every emitted row has a real label). Default is
@@ -169,7 +185,8 @@ def export_sensiml_csv(
     header = {
         "actuator": _HEADER_ACTUATOR,
         "actuator-fb": _HEADER_ACTUATOR_FB,
-        "detector-fb": _HEADER_ACTUATOR_FB,  # same schema, detector-sourced frets
+        "detector-fb": _HEADER_ACTUATOR_FB,   # same schema, detector-sourced frets
+        "commanded-fb": _HEADER_ACTUATOR_FB,  # same schema, teacher-sourced labels
     }.get(labels, _HEADER_DETECTOR)
 
     out_path = Path(out_path)
@@ -215,11 +232,11 @@ def export_sensiml_csv(
                     n_skipped_unlabeled += 1
                     continue
 
-                # actuator-fb labels live inside the frame → always present;
-                # other modes need their forward-filled source record.
+                # fb modes with in-frame labels (actuator-fb, commanded-fb) are
+                # always present; other modes need their forward-filled source.
                 if labels == "actuator":
                     have_label = last_actuator is not None
-                elif labels == "actuator-fb":
+                elif labels in ("actuator-fb", "commanded-fb"):
                     have_label = True
                 else:  # detector, detector-fb
                     have_label = last_detector is not None
@@ -254,6 +271,9 @@ def export_sensiml_csv(
                     elif labels == "actuator-fb":
                         fret_src = rec.applied_mask
                         strum_src = rec.applied_mask
+                    elif labels == "commanded-fb":
+                        fret_src = rec.commanded_mask
+                        strum_src = rec.commanded_mask
                     else:  # detector-fb: detector frets + in-frame applied strum
                         fret_src = last_detector.pressed_mask if last_detector else 0
                         strum_src = rec.applied_mask

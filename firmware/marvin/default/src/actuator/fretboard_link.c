@@ -28,7 +28,7 @@
 
 #define FBL_CMD_QUEUE_DEPTH     1u   /* latest-wins via xQueueOverwrite */
 
-#define DS_FRAME_LEN            17u
+#define DS_FRAME_LEN            18u
 #define DS_START_BYTE           0x03u
 #define DS_END_BYTE             0xFCu
 
@@ -51,9 +51,9 @@ static volatile uint8_t  s_last_sent_byte;
 static volatile int32_t  s_last_ack_result;
 static volatile uint64_t s_last_ack_ts_counter;
 
-/* Parse a validated 17-byte fretboard frame and emit a PERF_REC_FRETBOARD_RAW
+/* Parse a validated 18-byte fretboard frame and emit a PERF_REC_FRETBOARD_RAW
  * record. Shared by both transports; the caller guarantees the frame markers.
- * Frame: [0x03, 5×ADC_u16 LE, seq_u32 LE, applied_mask_u8, 0xFC]. */
+ * Frame: [0x03, 5×ADC_u16 LE, seq_u32 LE, applied_mask_u8, commanded_mask_u8, 0xFC]. */
 static void emit_fretboard_frame(const uint8_t *frame)
 {
     static uint32_t parsed;
@@ -69,11 +69,12 @@ static void emit_fretboard_frame(const uint8_t *frame)
                     | ((uint32_t)frame[12] << 8)
                     | ((uint32_t)frame[13] << 16)
                     | ((uint32_t)frame[14] << 24);
-    uint8_t  applied_mask = frame[15];
+    uint8_t  applied_mask   = frame[15];
+    uint8_t  commanded_mask = frame[16];
 
     Video_FrameInfo info;
     Video_GetFrameInfo(&info);
-    PerfLog_EmitFretboardRaw(adc, info.frame_count, fb_seq, applied_mask);
+    PerfLog_EmitFretboardRaw(adc, info.frame_count, fb_seq, applied_mask, commanded_mask);
 
     parsed++;
     if (parsed == 1u || (parsed % 240u) == 0u)
@@ -352,6 +353,15 @@ void FretboardLink_UpdateArm(void)
 
 void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 {
+    /* No released/held distinction for this producer — the teacher label is the
+     * driven mask (only the timing pipeline holds frets across back-to-back
+     * notes, and it uses FretboardLink_SendWithTeacher). */
+    FretboardLink_SendWithTeacher(mask, mask, producer_id);
+}
+
+void FretboardLink_SendWithTeacher(uint8_t mask, uint8_t teacher_mask,
+                                   uint8_t producer_id)
+{
     if (s_cmd_queue == NULL) { return; }
 
     uint8_t v = (uint8_t)(mask & GUITAR_BTN_VALID_MASK);
@@ -374,4 +384,27 @@ void FretboardLink_Send(uint8_t mask, uint8_t producer_id)
 
     PerfLog_EmitActuator(v, s_last_sent_byte, strum_dir, producer_id,
                          s_last_ack_result, s_last_ack_ts_counter);
+
+#if (MARVIN_FRETBOARD_TRANSPORT == FRETBOARD_TRANSPORT_T1S)
+    /* Feed marvin's CV command to the fretboard as the teacher label: the node
+     * stamps it into every data frame as commanded_mask, pairing the edge-ai
+     * training label with the ADC scan atomically at the source (no cross-stream
+     * join). The label is the released-style command (teacher_mask), which drops
+     * the timing pipeline's back-to-back fret hold so the training target is the
+     * clean per-note command even while the driven mask (v) holds the fret.
+     * Edge-triggered — one control frame per label change — retried on TX failure
+     * by not latching until the send succeeds. Harmless outside a capture (only
+     * surfaces in streamed frames). */
+    uint8_t        teach         = (uint8_t)(teacher_mask & GUITAR_BTN_VALID_MASK);
+    static bool    s_teach_valid = false;
+    static uint8_t s_teach_mask  = 0u;
+    if (!s_teach_valid || (teach != s_teach_mask))
+    {
+        if (T1SLink_SendFretboardCtrl(T1S_DET_CTRL_TEACHER, teach))
+        {
+            s_teach_valid = true;
+            s_teach_mask  = teach;
+        }
+    }
+#endif
 }

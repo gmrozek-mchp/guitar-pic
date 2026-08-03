@@ -13,10 +13,11 @@ typedef struct __attribute__((packed)) {
     uint16_t orange;
     uint32_t sample_seq;    /* monotonic, one per tick — host detects gaps */
     uint8_t  applied_mask;  /* bitmask driven to the guitar during this scan */
+    uint8_t  commanded_mask;/* marvin's teacher command latched this scan (0 if none) */
     uint8_t  end;
 } ds_frame_t;
 
-_Static_assert(sizeof(ds_frame_t) == 17, "frame must be 17 bytes");
+_Static_assert(sizeof(ds_frame_t) == 18, "frame must be 18 bytes");
 
 static uint32_t s_sample_seq;
 
@@ -24,7 +25,7 @@ void data_stream_init(void)
 {
 }
 
-bool data_stream_send(uint8_t applied_mask)
+bool data_stream_send(uint8_t applied_mask, uint8_t commanded_mask)
 {
     /* Advance per tick (even if the send is dropped) so a gap is visible to the
      * host as a sample_seq discontinuity. */
@@ -39,6 +40,7 @@ bool data_stream_send(uint8_t applied_mask)
         .orange         = fret_scan_result(FRET_ORANGE),
         .sample_seq     = seq,
         .applied_mask   = applied_mask,
+        .commanded_mask = commanded_mask,
         .end            = DS_END_BYTE,
     };
 

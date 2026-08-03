@@ -78,15 +78,17 @@ void PerfLog_EmitActuator(uint8_t  intended_mask,
                           int32_t  last_ack_result,
                           uint64_t last_ack_ts_counter);
 
-/* FRETBOARD_RAW: one record per parsed 17-byte fretboard data frame.
- * Producer (fretboard_link RX task) supplies the 5×u16 ADC values, the
- * fretboard's own sample-sequence counter and applied actuator bitmask
- * (both carried on the wire), and the most recent video frame_epoch from
+/* FRETBOARD_RAW: one record per parsed 18-byte fretboard data frame.
+ * Producer (fretboard_link RX) supplies the 5×u16 ADC values, the fretboard's
+ * own sample-sequence counter, the applied actuator bitmask, and marvin's CV
+ * teacher command latched in that frame (commanded_mask — the atomic edge-ai
+ * label; all carried on the wire), plus the most recent video frame_epoch from
  * Video_GetFrameInfo; perf_log fills the header. Default-disabled at boot. */
 void PerfLog_EmitFretboardRaw(const uint16_t adc[FRET_COUNT],
                               uint32_t frame_epoch,
                               uint32_t fb_sample_seq,
-                              uint8_t  applied_mask);
+                              uint8_t  applied_mask,
+                              uint8_t  commanded_mask);
 
 void PerfLog_EmitStripFromFrame(uint32_t frame_epoch,
                                 perf_strip_kind_t kind,

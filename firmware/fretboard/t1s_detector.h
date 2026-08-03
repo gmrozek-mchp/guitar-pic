@@ -19,9 +19,11 @@
  * marvin can gate this node remotely over the per-node control channel (ethertype
  * 0x88B9, unicast [opcode, arg]): opcode 0x01 arm (arg 0|1) gates actuation (marvin's
  * active-detector selection over the bus), opcode 0x02 stream (arg 0|1) gates the
- * 0x88B5 data feed to marvin (boots disabled). Both gates are also settable from
- * the node's local CLI (T1SDetector_SetArmed / T1SDetector_SetStream) — last writer
- * wins, no lockout.
+ * 0x88B5 data feed to marvin (boots disabled), opcode 0x03 model selects the
+ * inference model, and opcode 0x04 teacher carries marvin's CV command — latched
+ * into each data frame as the atomic edge-ai training label. The arm/stream gates
+ * are also settable from the node's local CLI (T1SDetector_SetArmed /
+ * T1SDetector_SetStream) — last writer wins, no lockout.
  *
  * Transport is the vendored OPEN Alliance TC6 driver (third_party/oa-tc6-lib)
  * wrapped with the SERCOM0 SPI PLib, a GPIO chip-select held across each transfer,
@@ -79,6 +81,14 @@ bool T1SDetector_StreamEnabled(void);
  * Boots MODEL_SEL_DEFAULT. */
 void    T1SDetector_SetModelSel(uint8_t sel);
 uint8_t T1SDetector_ModelSel(void);
+
+/* marvin's CV teacher command (0x88B9 opcode 0x04), latched here and stamped
+ * into every data frame as commanded_mask — the atomic edge-ai training label.
+ * marvin pushes this over the control channel while teaching during a capture;
+ * holds its last value otherwise. Not gated by arm/stream (it's a label, not
+ * actuation). main.c reads it each tick and passes it to data_stream_send.
+ * Boots 0. */
+uint8_t T1SDetector_TeacherMask(void);
 
 /* Diagnostics (boot banner / CLI). */
 uint8_t  T1SDetector_ChipRev(void);   /* 0 if the link never came up */

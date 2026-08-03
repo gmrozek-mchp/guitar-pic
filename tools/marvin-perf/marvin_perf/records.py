@@ -14,7 +14,7 @@ from enum import IntEnum
 from typing import ClassVar
 
 
-EXPECTED_SCHEMA_VERSION = 5
+EXPECTED_SCHEMA_VERSION = 6
 
 PERF_LOG_HDR_MAGIC = 0x4D56  # 'M','V' little-endian
 PERF_CMD_HDR_MAGIC = 0x4D43  # 'M','C' little-endian — host→device commands
@@ -350,17 +350,19 @@ class Actuator:
 
 @dataclass(frozen=True)
 class FretboardRaw:
-    """One parsed 17-byte fretboard data frame (firmware/fretboard).
+    """One parsed 18-byte fretboard data frame (firmware/fretboard).
 
     `adc` is a 5-tuple of 12-bit unsigned ADC samples (0–4095, lower means
     a brighter sensor) ordered by `fret_t`: green, red, yellow, blue, orange.
 
-    `fb_sample_seq` and `applied_mask` are stamped by the fretboard itself
-    and carried on the wire (schema v4+): the sequence counter (one per
-    fretboard tick, monotonic) reconstructs true sample order and exposes
-    frames dropped in transit, and `applied_mask` is the 7-bit actuator
-    bitmask the fretboard was driving during this scan — sensor and actuator
-    paired atomically at the source, not joined across marvin's TX/RX clocks.
+    `fb_sample_seq`, `applied_mask`, and `commanded_mask` are stamped by the
+    fretboard itself and carried on the wire (schema v6+): the sequence counter
+    (one per fretboard tick, monotonic) reconstructs true sample order and
+    exposes frames dropped in transit, `applied_mask` is the 7-bit actuator
+    bitmask this node drove during the scan (its own model, or 0 when disarmed),
+    and `commanded_mask` is marvin's CV teacher command latched during the scan
+    (0 when marvin isn't teaching) — the atomic edge-ai training label, paired
+    with the ADC at the source, not joined across marvin's TX/RX clocks.
 
     At ~240 Hz fretboard rate against 60 Hz video, the same `frame_epoch`
     tags ~4 consecutive records — `fb_sample_seq` (or `hdr.ts_counter`)
@@ -371,8 +373,9 @@ class FretboardRaw:
     adc: tuple[int, ...]   # length FRET_COUNT, indexed by fret_t
     fb_sample_seq: int
     applied_mask: int
+    commanded_mask: int
 
-    # 5×u16 adc + u32 seq + u8 applied_mask + u8 reserved
+    # 5×u16 adc + u32 seq + u8 applied_mask + u8 commanded_mask
     _BODY: ClassVar[struct.Struct] = struct.Struct("<5H I B B")
     SIZE: ClassVar[int] = HDR_SIZE + _BODY.size  # 16 + 16 = 32
 

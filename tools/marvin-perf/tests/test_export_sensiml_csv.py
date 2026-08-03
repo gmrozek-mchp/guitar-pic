@@ -537,6 +537,41 @@ def test_detector_fb_frets_from_detector_strum_from_frame(tmp_path):
     assert stats.n_strum_events == 1
 
 
+# ─── labels="commanded-fb" path (in-frame commanded_mask + fb_seq) ────────────
+
+
+def test_commanded_fb_labels_from_teacher_mask(tmp_path):
+    """commanded-fb: labels come from the in-frame commanded_mask (marvin's CV
+    teacher command), independent of applied_mask; fb_seq present, no SESSION."""
+    adc = (1234, 2345, 3456, 1500, 2500)
+    payloads = [
+        # commanded_mask (teacher) and applied_mask (own model) deliberately
+        # disagree — the export must follow commanded_mask.
+        build_fretboard_raw_payload(
+            frame_epoch=1, adc=adc, fb_sample_seq=0,
+            applied_mask=0x02, commanded_mask=0x01),
+        build_fretboard_raw_payload(
+            frame_epoch=1, adc=adc, fb_sample_seq=1,
+            applied_mask=0x00, commanded_mask=0x01 | _STRUM_DOWN),
+        build_fretboard_raw_payload(
+            frame_epoch=1, adc=adc, fb_sample_seq=2,
+            applied_mask=0x1F, commanded_mask=0x00),
+    ]
+    cap = _write_capture(tmp_path, payloads)
+    out = tmp_path / "out.csv"
+    stats = export_sensiml_csv(cap, out, labels="commanded-fb")
+    header, rows = _read_csv(out)
+    assert header[1] == "fb_seq"
+    assert len(rows) == 3
+    # frets+strum follow commanded_mask, NOT applied_mask
+    assert rows[0][7:13] == ["1", "0", "0", "0", "0", "0"]
+    assert rows[1][7:13] == ["1", "0", "0", "0", "0", "1"]  # strum-down collapses
+    assert rows[2][7:13] == ["0", "0", "0", "0", "0", "0"]
+    assert stats.labels == "commanded-fb"
+    assert stats.n_strum_events == 1
+    assert stats.n_seq_gaps == 0
+
+
 def test_actuator_fb_no_actuator_records_needed(tmp_path):
     """actuator-fb sources labels from the frame, so it works with zero
     ACTUATOR records (unlike the cross-stream actuator mode)."""

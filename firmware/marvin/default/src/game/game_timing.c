@@ -153,14 +153,15 @@ static bool strum_q_needs_by(uint8_t bit, uint32_t by_ms)
     return false;
 }
 
-static void publish_mask(uint8_t mask)
+static void publish_mask(uint8_t mask, uint8_t teacher_mask)
 {
     s_output_mask = mask;
     if (!s_pipeline_enabled)
     {
         return;
     }
-    FretboardLink_Send(mask, (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
+    FretboardLink_SendWithTeacher(mask, teacher_mask,
+                                  (uint8_t)PERF_ACTUATOR_PRODUCER_TIMING);
 }
 
 /* Edge derivation:
@@ -256,8 +257,12 @@ static void process_strums(uint32_t fire_now)
     }
 }
 
-static void process_releases(uint8_t live_pressed_mask, uint32_t fire_now)
+/* Returns the frets held past their release solely by the back-to-back
+ * lookahead — the only bits by which the live (held) mask and the released-style
+ * teacher label differ this frame. */
+static uint8_t process_releases(uint8_t live_pressed_mask, uint32_t fire_now)
 {
+    uint8_t lookahead_held = 0u;
     for (uint8_t i = 0u; i < FRET_COUNT; i++)
     {
         uint8_t bit = s_fret_bit[i];
@@ -267,11 +272,16 @@ static void process_releases(uint8_t live_pressed_mask, uint32_t fire_now)
         /* Hold only if re-needed at/before this release (back-to-back); a need
          * further out releases now for a clean per-note command. */
         if (note_q_needs_by(bit, s_release_at_ms[i]) ||
-            strum_q_needs_by(bit, s_release_at_ms[i])) { continue; }
+            strum_q_needs_by(bit, s_release_at_ms[i]))
+        {
+            lookahead_held |= bit;
+            continue;
+        }
 
         s_frets_active        &= (uint8_t)~bit;
         s_release_pending_mask &= (uint8_t)~bit;
     }
+    return lookahead_held;
 }
 
 static void advance(uint8_t live_pressed_mask)
@@ -295,14 +305,21 @@ static void advance(uint8_t live_pressed_mask)
 
     process_notes(fire_now);
     process_strums(fire_now);
-    process_releases(live_pressed_mask, fire_now);
+    uint8_t lookahead_held = process_releases(live_pressed_mask, fire_now);
 
-    uint8_t mask = s_frets_active;
+    /* Live mask holds a fret across back-to-back notes (no release/repress
+     * churn on the wire); the teacher label drops the lookahead hold so the
+     * edge-ai training command is the clean released-style per-note command. */
+    uint8_t mask  = s_frets_active;
+    uint8_t teach = (uint8_t)(s_frets_active & ~lookahead_held);
     if (s_strum_active)
     {
-        mask |= s_strum_direction ? GUITAR_BTN_STRUM_UP : GUITAR_BTN_STRUM_DOWN;
+        uint8_t strum_bit = s_strum_direction ? GUITAR_BTN_STRUM_UP
+                                              : GUITAR_BTN_STRUM_DOWN;
+        mask  |= strum_bit;
+        teach |= strum_bit;
     }
-    publish_mask(mask);
+    publish_mask(mask, teach);
 }
 
 /* Build the per-frame TIMING snapshot from current pipeline state. Called

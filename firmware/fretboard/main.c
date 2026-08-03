@@ -79,7 +79,9 @@ void Callback_TC0 (TC_TIMER_STATUS status, uintptr_t context)
     uint8_t cmd = armed ? s_latest_cmd : 0u;
     s_current_cmd = cmd;
     s_actuation_active = armed;
-    data_stream_send(cmd);
+    /* commanded_mask carries marvin's teacher command (0 unless it's teaching) —
+     * paired atomically with this scan as the edge-ai training label. */
+    data_stream_send(cmd, T1SDetector_TeacherMask());
 }
 
 int main(void)

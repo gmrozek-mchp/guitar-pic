@@ -1,18 +1,21 @@
-"""Load actuator-fb SensiML CSVs and build causal training windows.
+"""Load fretboard SensiML CSVs and build causal training windows.
 
-The CSV is produced by `marvin-perf export-ml --labels=actuator-fb`:
+The CSV is produced by `marvin-perf export-ml`. The distillation target is
+`--labels=commanded-fb` (marvin's CV teacher command); `--labels=actuator-fb`
+(the fretboard's own driven bitmask) has an identical schema and is accepted
+verbatim, useful for validation:
 
     timestamp, fb_seq,
     ph_green,ph_red,ph_yellow,ph_blue,ph_orange,
     fret_green,fret_red,fret_yellow,fret_blue,fret_orange,
     strum
 
-Each row is one true 240 Hz fretboard sample with its label (the actuator
-bitmask the fretboard was driving during the scan) paired atomically at the
-source — no cross-stream join, so timing is clean. `fb_seq` is the fretboard's
-monotonic sample counter; gaps mean frames dropped in transit. Windows are
-sliced **by row index** and never span a `fb_seq` gap (see `contiguous_runs`),
-so a dropped frame can't silently stitch two non-adjacent samples together.
+Each row is one true 240 Hz fretboard sample with its label (the button bitmask
+for that scan) paired atomically at the source — no cross-stream join, so timing
+is clean. `fb_seq` is the fretboard's monotonic sample counter; gaps mean frames
+dropped in transit. Windows are sliced **by row index** and never span a
+`fb_seq` gap (see `contiguous_runs`), so a dropped frame can't silently stitch
+two non-adjacent samples together.
 
 CSV parsing, the window-index logic, and label/feature extraction are
 stdlib-only. `build_arrays` materialises numpy tensors and imports numpy
@@ -81,7 +84,7 @@ class Capture:
 
 
 def load_capture(path: str | Path) -> Capture:
-    """Read one actuator-fb CSV into a Capture (stdlib only)."""
+    """Read one fretboard (commanded-fb / actuator-fb) CSV into a Capture."""
     path = Path(path)
     with path.open(newline="") as fh:
         reader = csv.reader(fh)
@@ -91,10 +94,10 @@ def load_capture(path: str | Path) -> Capture:
             raise DataError(f"{path}: empty file")
         if header != EXPECTED_HEADER:
             raise DataError(
-                f"{path}: header is not the actuator-fb schema.\n"
+                f"{path}: header is not the fretboard fb schema.\n"
                 f"  expected: {EXPECTED_HEADER}\n"
                 f"  got:      {header}\n"
-                "Export with `marvin-perf export-ml --labels=actuator-fb`."
+                "Export with `marvin-perf export-ml --labels=commanded-fb`."
             )
         timestamps: list[float] = []
         fb_seq: list[int] = []

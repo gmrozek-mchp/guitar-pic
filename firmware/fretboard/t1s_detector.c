@@ -38,6 +38,7 @@
 #define T1S_CTRL_ARM         (0x01u)  /* arg 0|1: gate actuation (marvin selects) */
 #define T1S_CTRL_STREAM      (0x02u)  /* arg 0|1: gate the data stream to marvin */
 #define T1S_CTRL_MODEL       (0x03u)  /* arg: inference model selection (MODEL_SEL_*) */
+#define T1S_CTRL_TEACHER     (0x04u)  /* arg: marvin's CV teacher command (edge-ai label) */
 
 /* Re-send the current guitar command this often even if unchanged, so a dropped
  * command frame self-heals (the guitar applies latest-wins, holds otherwise). */
@@ -123,6 +124,13 @@ static volatile bool     s_stream_enabled;
  * last writer wins, no lockout. main.c reads it each pass and applies changes to
  * the active engine (this module holds the byte, doesn't touch inference). */
 static volatile uint8_t  s_model_sel = MODEL_SEL_DEFAULT;
+
+/* marvin's CV teacher command (0x88B9 opcode 0x04), latched into every data
+ * frame as commanded_mask so the edge-ai corpus pairs the label with the ADC
+ * scan atomically at the source. Only meaningful while marvin is teaching (it
+ * pushes its command over the control channel during a capture); stays at its
+ * last value otherwise. Not gated by arm/stream — it is a label, not actuation. */
+static volatile uint8_t  s_teacher_mask;
 
 /* Command TX (to guitar). Set from the main loop (T1SDetector_SetCommand); flushed
  * by T1SDetector_Tasks on change + every T1S_CMD_REFRESH_MS while enabled. When the
@@ -520,6 +528,8 @@ bool T1SDetector_StreamEnabled(void)     { return s_stream_enabled; }
 void    T1SDetector_SetModelSel(uint8_t sel) { if (sel < MODEL_SEL_COUNT) { s_model_sel = sel; } }
 uint8_t T1SDetector_ModelSel(void)           { return s_model_sel; }
 
+uint8_t T1SDetector_TeacherMask(void)        { return s_teacher_mask; }
+
 void T1SDetector_GetState(bool *synced, uint8_t *txCredit, uint8_t *rxCredit)
 {
     uint8_t tx = 0u, rx = 0u;
@@ -668,6 +678,9 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         case T1S_CTRL_MODEL:
             if (arg >= MODEL_SEL_COUNT) { return; }   /* out of range: ignore */
             s_model_sel = arg;
+            break;
+        case T1S_CTRL_TEACHER:
+            s_teacher_mask = (uint8_t)(arg & T1S_CMD_BIT_MASK);
             break;
         default:
             return;   /* unknown opcode: ignore, don't count */
