@@ -439,6 +439,22 @@ void SYS_Initialize ( void* data )
 
     MMU_Initialize();
 
+    /* Quiesce UDPHS before the AIC unmasks its source. CLK_Initialize() above
+     * has already clocked UDPHS; AIC_INT_Initialize() below enables every AIC
+     * source and does __enable_irq() long before DRV_USB_UDPHS_Initialize runs.
+     * With a USB host attached at power-on (or UDPHS state persisted across a
+     * warm reset), the controller has ENDRESET pending (IEN reset default 0x10)
+     * with no driver/client -> the ISR storms the CPU and the scheduler never
+     * starts. Masking the controller's own IEN (and detaching + clearing the
+     * pending requests) removes the condition so the AIC unmask is safe;
+     * DRV_USB_UDPHS_Initialize's Reset-IP toggle later restores IEN. This
+     * leaves the AIC/interrupt-enable path untouched (unlike the reverted
+     * 8d55533), so the marv-perf connect path is unchanged. See
+     * firmware/marvin/docs/udphs_aic_boot_storm_bug.md. */
+    UDPHS_REGS->UDPHS_CTRL  |= UDPHS_CTRL_DETACH_Msk;
+    UDPHS_REGS->UDPHS_IEN    = 0U;
+    UDPHS_REGS->UDPHS_CLRINT = UDPHS_CLRINT_Msk;
+
     AIC_INT_Initialize();
 
     /* Disable WDT   */
