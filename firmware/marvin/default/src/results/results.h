@@ -46,7 +46,7 @@ bool Results_Append(const results_record_t *rec);
 /* One high-score line for display. */
 typedef struct
 {
-    char     player[24];
+    char     player[33];
     char     timestamp[24];
     uint32_t score;
 } results_score_t;

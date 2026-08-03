@@ -15,6 +15,7 @@
 #include "game/game_art.h"
 #include "game/game_selection.h"
 #include "game/game_controller.h"
+#include "results/results.h"   /* Results_Set/GetPlayer — 2P player-name prompt */
 #include "util/legato_utf8.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
@@ -42,11 +43,30 @@ static void select_song_on_release(leButtonWidget *btn)
     UiManager_OpenSongSelect();
 }
 
+/* Commit callback from the on-screen keyboard: record the entered name as the
+ * current player, then start the run. Empty input leaves the player unchanged. */
+static void player_name_committed(const char *name)
+{
+    if (name != NULL && name[0] != '\0') { Results_SetPlayer(name); }
+    GameController_Start();
+}
+
 /* The gameplay card's START button kicks off the game-state controller: navigate
- * GH3 to the committed selection and hand off to the CV detector. */
+ * GH3 to the committed selection and hand off to the CV detector. A 2-player match
+ * has a human competitor, so first prompt for their name via the on-screen keyboard
+ * and start on OK; 1P-robot starts immediately. */
 static void start_on_release(leButtonWidget *btn)
 {
+    const game_selection_t *sel = GameSelection_Get();
+
     (void)btn;
+
+    if (sel->valid && sel->mode == GAME_MODE_2P)
+    {
+        UiManager_OpenKeyboard("ENTER PLAYER NAME", Results_GetPlayer(), 32,
+                               player_name_committed);
+        return;
+    }
     GameController_Start();
 }
 

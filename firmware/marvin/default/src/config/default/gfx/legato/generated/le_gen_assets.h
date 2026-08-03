@@ -1055,6 +1055,20 @@ extern leRasterFont figmaFont_Inter_13;
  * Glyph Ranges: ***********************************/
 extern leRasterFont DejaVuSansMonoBoldOblique_40;
 
+/*********************************
+ * Legato Font Asset
+ * Name:         DejaVuSansMonoBold_40
+ * Height:       37
+ * Baseline:     33
+ * Style:        Antialias
+ * Glyph Count:  97
+ * Range Count:  3
+ * Glyph Ranges: 0x20-0x7E
+                 0x232B
+                 0x2713
+***********************************/
+extern leRasterFont DejaVuSansMonoBold_40;
+
 /*****************************************************************************
  * Legato String Table
  * Encoding        UTF8

@@ -21,6 +21,7 @@ extern "C" {
 #define CANVAS_SONGSEL     2u   /* Marvin layer 2 — song/mode-select dialog  */
 #define CANVAS_ALBUM_ART   3u   /* Marvin layer 3 — song-select cover (RGB888) */
 #define CANVAS_WIIMOTES    4u   /* Marvin layer 4 — wiimotes / manual-override */
+#define CANVAS_KEYBOARD    5u   /* Marvin layer 5 — on-screen keyboard modal   */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
@@ -85,6 +86,17 @@ void UiManager_HideNavLayer(void);
  * requested state. The dialog starts closed at boot. */
 void UiManager_OpenSongSelect(void);
 void UiManager_CloseSongSelect(void);
+
+/* Show / hide the on-screen keyboard as a full modal over the current base view.
+ * Open seeds the session (title, initial text, max length, commit callback), binds
+ * the keyboard canvas to OVR1, and hides the live video for a clean modal; the
+ * keyboard's OK invokes `commit` with the entered text and Close is called
+ * automatically, while its X closes without committing. No-ops if already in the
+ * requested state. The commit callback runs in the Legato input/render context (the
+ * same context dashboard button handlers run in). */
+void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t maxlen,
+                            void (*commit)(const char *text));
+void UiManager_CloseKeyboard(void);
 
 /* Gate the dashboard's touch pickability without repainting it. Called by the
  * modal screens (nav drawer, song-select) to make the dashboard a true modal

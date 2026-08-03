@@ -6,6 +6,7 @@ static leWidget* root1;
 static leWidget* root2;
 static leWidget* root3;
 static leWidget* root4;
+static leWidget* root5;
 
 leWidget* Marvin_PANEL_DASHBOARD;
 leWidget* Marvin_PANEL_DASHBOARD_TITLEBAR;
@@ -239,6 +240,7 @@ leButtonWidget* Marvin_BUTTON_WIIMOTES_ROBOT_TWO;
 leWidget* Marvin_panel_TiltControl_1;
 leImageWidget* Marvin_image_TiltControl_1;
 leLabelWidget* Marvin_label_TILT_1;
+leWidget* Marvin_PANEL_KEYBOARD;
 
 static leBool initialized = LE_FALSE;
 static leBool showing = LE_FALSE;
@@ -2306,6 +2308,23 @@ leResult screenShow_Marvin(void)
     leAddRootWidget(root4, 4);
     leSetLayerColorMode(4, LE_COLOR_MODE_RGB_565);
 
+    // layer 5
+    root5 = leWidget_New();
+    root5->fn->setSize(root5, 1060, 560);
+    root5->fn->setBackgroundType(root5, LE_WIDGET_BACKGROUND_NONE);
+    root5->fn->setMargins(root5, 0, 0, 0, 0);
+    root5->flags |= LE_WIDGET_IGNOREEVENTS;
+    root5->flags |= LE_WIDGET_IGNOREPICK;
+
+    Marvin_PANEL_KEYBOARD = leWidget_New();
+    Marvin_PANEL_KEYBOARD->fn->setPosition(Marvin_PANEL_KEYBOARD, 0, 0);
+    Marvin_PANEL_KEYBOARD->fn->setSize(Marvin_PANEL_KEYBOARD, 1060, 560);
+    Marvin_PANEL_KEYBOARD->fn->setScheme(Marvin_PANEL_KEYBOARD, &SCHEME_PANEL_GRAY_18181B);
+    root5->fn->addChild(root5, (leWidget*)Marvin_PANEL_KEYBOARD);
+
+    leAddRootWidget(root5, 5);
+    leSetLayerColorMode(5, LE_COLOR_MODE_RGB_565);
+
     showing = LE_TRUE;
 
     return LE_SUCCESS;
@@ -2318,6 +2337,7 @@ void screenUpdate_Marvin(void)
     root2->fn->setSize(root2, root2->rect.width, root2->rect.height);
     root3->fn->setSize(root3, root3->rect.width, root3->rect.height);
     root4->fn->setSize(root4, root4->rect.width, root4->rect.height);
+    root5->fn->setSize(root5, root5->rect.width, root5->rect.height);
 }
 
 void screenHide_Marvin(void)
@@ -2580,6 +2600,12 @@ void screenHide_Marvin(void)
     Marvin_image_TiltControl_1 = NULL;
     Marvin_label_TILT_1 = NULL;
 
+    leRemoveRootWidget(root5, 5);
+    leWidget_Delete(root5);
+    root5 = NULL;
+
+    Marvin_PANEL_KEYBOARD = NULL;
+
 
     showing = LE_FALSE;
 }
@@ -2618,6 +2644,10 @@ leWidget* screenGetRoot_Marvin(uint32_t lyrIdx)
         case 4:
         {
             return root4;
+        }
+        case 5:
+        {
+            return root5;
         }
         default:
         {

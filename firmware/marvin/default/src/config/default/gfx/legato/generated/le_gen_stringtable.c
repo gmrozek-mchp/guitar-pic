@@ -228,7 +228,7 @@ const uint8_t stringTable_data[3088] =
 };
 
 /* font asset pointer list */
-leFont* fontList[44] =
+leFont* fontList[45] =
 {
     (leFont*)&NotoSans_Regular_28,
     (leFont*)&figmaFont_Menlo_20,
@@ -274,6 +274,7 @@ leFont* fontList[44] =
     (leFont*)&figmaFont_Cousine_13,
     (leFont*)&figmaFont_Menlo_24_2,
     (leFont*)&figmaFont_Inter_13,
+    (leFont*)&DejaVuSansMonoBold_40,
 };
 
 const leStringTable stringTable =

@@ -6,6 +6,7 @@
 #include "ui/screens/splash/screen_splash.h"
 #include "ui/screens/video/screen_video.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
+#include "ui/screens/keyboard/screen_keyboard.h"
 #include "ui/dashboard_feed.h"
 
 #include <stdbool.h>
@@ -503,6 +504,45 @@ void UiManager_CloseSongSelect(void)
     s_songsel_open = false;
 }
 
+/* ── on-screen keyboard modal (OVR1) ──────────────────────────────────────────
+ * A full modal over whichever base view is showing. Like the song-select dialog it
+ * takes OVR1 (dropping the video-frame overlay first) and hides the live video for a
+ * clean backdrop; unlike it there's no album-art layer and no BASE discard (the
+ * dialog does no bandwidth-heavy work, so the dashboard stays fully painted around
+ * it). The keyboard canvas paints continuously into its surface; open is a pure
+ * layer bind, close hides it and restores the windowed video. */
+static bool s_keyboard_open = false;
+
+void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t maxlen,
+                            void (*commit)(const char *text))
+{
+    if (s_keyboard_open) { return; }
+
+    ScreenKeyboard_Prepare(title, initial, maxlen, commit);
+    ScreenKeyboard_SetInput(true);
+    UiManager_SetBaseViewPickable(false);   /* modal: nothing behind reacts */
+
+    /* Take OVR1 from the video frame overlay, then hide the live video. */
+    UiManager_VideoOverlayHide();
+    bind_canvas(CANVAS_KEYBOARD, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    UiManager_VideoHide();
+
+    s_keyboard_open = true;
+}
+
+void UiManager_CloseKeyboard(void)
+{
+    if (!s_keyboard_open) { return; }
+
+    gfxcHideCanvas(CANVAS_KEYBOARD); gfxcCanvasUpdate(CANVAS_KEYBOARD);
+    ScreenKeyboard_SetInput(false);
+    UiManager_SetBaseViewPickable(true);
+
+    ScreenVideo_ShowWindowed();   /* restores HEO windowed + its OVR1 frame */
+
+    s_keyboard_open = false;
+}
+
 /* ── Base view (BASE hardware layer) ──────────────────────────────────────────
  * The BASE layer shows one full-screen view at a time. Boot reveals the dashboard;
  * the nav drawer swaps it. The dashboard (CANVAS_DASH, layer 0) and wiimotes
@@ -685,6 +725,7 @@ static void init_screens(void)
     ScreenSongSelect_Setup();
     ScreenAlbumArt_Setup();
     ScreenWiimotes_Setup();
+    ScreenKeyboard_Setup();
 
     /* Song-select starts closed: disable its layer-screens' background panels so
      * those (hidden) overlays don't capture touches meant for the dashboard.
@@ -707,6 +748,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_SONG_SELECT->fn->invalidate(Marvin_PANEL_SONG_SELECT);
     Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->invalidate(Marvin_PANEL_SONG_SELECT_ALBUM_ART);
     Marvin_PANEL_WIIMOTES->fn->invalidate(Marvin_PANEL_WIIMOTES);
+    Marvin_PANEL_KEYBOARD->fn->invalidate(Marvin_PANEL_KEYBOARD);
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -840,6 +882,7 @@ void UiManager_Initialize(void)
     ScreenSongSelect_InitSurface();
     ScreenAlbumArt_InitSurface();
     ScreenWiimotes_InitSurface();
+    ScreenKeyboard_InitSurface();
     GFX_CANVAS_Task();
 
     /* Dashboard telemetry feed: create the event queue now so producers (fret

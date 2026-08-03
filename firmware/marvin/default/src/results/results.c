@@ -20,7 +20,7 @@
 #define RES_LINE_MAX  256
 #define RES_FIELDS    12
 
-static char s_player[24] = "p1";
+static char s_player[33] = "p1";
 
 /* ---- helpers ------------------------------------------------------------ */
 

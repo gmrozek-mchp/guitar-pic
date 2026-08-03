@@ -47,7 +47,7 @@ void ScreenSongSelect_InitSurface(void)
  * (Easy→green … Expert→red); mode uses one shared selected scheme. The selection
  * persists in s_difficulty / s_mode — the source of truth the repaint reads. */
 #define DIFFICULTY_COUNT    4u
-#define MODE_COUNT          3u
+#define MODE_COUNT          2u   /* 1P robot, 2P robot-vs-human (1P-human dropped) */
 #define DIFFICULTY_DEFAULT  0u   /* Easy      */
 #define MODE_DEFAULT        0u   /* 1P robot  */
 
@@ -90,9 +90,16 @@ static leButtonWidget *mode_button(unsigned int i)
     switch (i)
     {
         case 0:  return Marvin_BUTTON_SONG_SELECT_1P_ROBOT;
-        case 1:  return Marvin_BUTTON_SONG_SELECT_1P_HUMAN;
         default: return Marvin_BUTTON_SONG_SELECT_2P_ROBOT_vs_HUMAN;
     }
+}
+
+/* Map a mode-radio index to the game_mode_t committed into the selection. Index 1
+ * is 2P (GAME_MODE_1P_HUMAN is retired but its enum value is left defined so any
+ * persisted selection keeps its meaning). */
+static uint8_t mode_value(unsigned int i)
+{
+    return (i == 0u) ? (uint8_t)GAME_MODE_1P_ROBOT : (uint8_t)GAME_MODE_2P;
 }
 
 /* Paint the active button in each group with its selected scheme, the rest with
@@ -164,6 +171,10 @@ static void radio_groups_init(void)
         b->fn->setReleasedEventCallback(b, mode_on_release);
         round_button(b, MODE_RADIUS);
     }
+
+    /* 1P-Human is retired: hide its MGS button (delete it in the composer to
+     * reclaim the layout gap). */
+    Marvin_BUTTON_SONG_SELECT_1P_HUMAN->fn->setVisible(Marvin_BUTTON_SONG_SELECT_1P_HUMAN, LE_FALSE);
 
     difficulty_repaint();   /* apply the default selections */
     mode_repaint();
@@ -333,7 +344,7 @@ static void songsel_commit(void)
 {
     const game_catalog_entry_t *e = GameCatalog_At(s_sel_index);
     if (e == NULL) { return; }
-    GameSelection_Set(e->setlist, e->index, (uint8_t)s_difficulty, (uint8_t)s_mode);
+    GameSelection_Set(e->setlist, e->index, (uint8_t)s_difficulty, mode_value(s_mode));
 }
 
 /* Build the song list into the LEFT panel. DejaVu Mono 12 — bold title over
