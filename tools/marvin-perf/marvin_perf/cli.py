@@ -324,7 +324,7 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
     except ExportError as e:
         print(f"export-ml: {e}", file=sys.stderr)
         return 1
-    if args.labels == "actuator-fb":
+    if args.labels in ("actuator-fb", "commanded-fb"):
         print(
             f"wrote {args.out}: {stats.n_rows} rows over {stats.duration_s:.2f} s "
             f"({stats.n_strum_events} strum events, "
@@ -382,11 +382,19 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
             file=sys.stderr,
         )
         return 2
-    if args.labels == "actuator-fb" and stats.n_rows > 0 and stats.n_strum_events == 0:
+    if args.labels in ("actuator-fb", "commanded-fb") and stats.n_rows > 0 and stats.n_strum_events == 0:
+        src = ("marvin's teacher command (commanded_mask)"
+               if args.labels == "commanded-fb"
+               else "the in-frame actuator bitmask (applied_mask)")
+        hint = ("marvin wasn't the active CV teacher during the capture "
+                "(need `active cv` + a song playing), or the firmware predates "
+                "schema v6 (frames carry no commanded_mask)."
+                if args.labels == "commanded-fb"
+                else "this isn't gameplay, or the firmware predates schema v4 "
+                     "(frames carry no applied_mask).")
         print(
-            "WARNING: no strum events in the in-frame actuator bitmask — the "
-            "fretboard reported no actuation. Either this isn't gameplay, or "
-            "the firmware predates schema v4 (frames carry no applied_mask).",
+            f"WARNING: no strum events in {src} — the label source reported no "
+            f"actuation. Either {hint}",
             file=sys.stderr,
         )
         return 2
@@ -533,16 +541,20 @@ def build_parser() -> argparse.ArgumentParser:
     p_export_ml.add_argument("--out", required=True, help="Output CSV path")
     p_export_ml.add_argument(
         "--labels",
-        choices=("detector", "actuator", "actuator-fb", "detector-fb"),
+        choices=("detector", "actuator", "actuator-fb", "detector-fb",
+                 "commanded-fb"),
         default="detector",
-        help="Label source: 'detector' = 5 per-fret pressed bits from "
-             "cv_marvin_v1 (default); 'actuator' = 5 frets + collapsed strum "
-             "from the timing pipeline's intended_mask (cross-stream join); "
-             "'actuator-fb' = same labels from the fretboard-reported "
-             "applied_mask, paired atomically in-frame, plus an fb_seq column "
-             "(preferred edge-ai target; needs schema v4+); 'detector-fb' = "
-             "diagnostic probe: detector pressed_mask frets (clean per-note "
-             "structure, no legato hold) + in-frame applied strum + fb_seq.",
+        help="Label source: 'commanded-fb' = the PREFERRED edge-ai distillation "
+             "target (schema v6+): marvin's CV teacher command (released-style, "
+             "no legato hold) latched into each frame as commanded_mask, paired "
+             "atomically with the ADC scan, plus an fb_seq column; "
+             "'detector' = 5 per-fret pressed bits from cv_marvin_v1 (default); "
+             "'actuator' = 5 frets + collapsed strum from the timing pipeline's "
+             "intended_mask (cross-stream join); 'actuator-fb' = same labels from "
+             "the fretboard-reported applied_mask (the node's own model output — "
+             "self-label, useful for validation, not the teacher); 'detector-fb' "
+             "= diagnostic probe: detector pressed_mask frets + in-frame applied "
+             "strum + fb_seq.",
     )
     p_export_ml.add_argument(
         "--strict",
