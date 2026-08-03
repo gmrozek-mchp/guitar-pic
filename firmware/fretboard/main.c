@@ -113,18 +113,27 @@ int main(void)
             model_infer_set_sel(sel);   /* recomputes the need-table; keeps the ring */
             applied_sel = sel;
         }
+        /* Run inference only when its output is used (armed) or when the model
+         * must stay warm for an instant arm (disarmed but not streaming — e.g.
+         * menus). During a capture (disarmed + streaming) the inferred command
+         * is discarded, so skip the heavy step: it keeps the main-loop pass
+         * under the 240 Hz tick so the data-frame flush never falls behind. An
+         * overrun lets the ISR overwrite the staged frame before it is sent,
+         * which surfaces as an fb_seq gap in the training stream. */
+        bool run_infer = s_actuation_active || !T1SDetector_StreamEnabled();
 #if MODEL_INFER_STREAMING
-        /* Drain the sample queue: one streaming step per sample, in order. */
+        /* Always drain the ISR->main sample queue so it can't overflow; step the
+         * (heavy) streaming model only when the result is needed. */
         while (s_q_rd != s_q_wr)
         {
             uint16_t ri = s_q_rd;
             uint16_t s[FRET_COUNT];
             for (int c = 0; c < FRET_COUNT; c++) { s[c] = s_adc_q[ri % ADC_Q_LEN][c]; }
-            s_latest_cmd = model_infer_stream_step(s);
+            if (run_infer) { s_latest_cmd = model_infer_stream_step(s); }
             s_q_rd = (uint16_t)(ri + 1u);
         }
 #else
-        s_latest_cmd = model_infer_run();
+        if (run_infer) { s_latest_cmd = model_infer_run(); }
 #endif
         /* Forward the gated command to the guitar (edge-triggered + refreshed) and
          * service the MAC-PHY / data-frame flush / presence heartbeat, then the

@@ -96,6 +96,15 @@ build-wiring (add the T1S + embedded-cli sources/include dirs) and on-hardware b
 
 ## Session log
 
+### 2026-08-03 — Capture drop fix: skip inference while disarmed+streaming (main-loop cadence)
+
+- **Symptom:** the first `commanded-fb` corpus (5 songs, ~284k rows) showed ~1.0–1.4% dropped frames — and crucially **every gap is exactly one frame** (avg drop length 1.0 across all songs), i.e. isolated single-frame drops, never bursts.
+- **Root cause:** the data-frame staging is a single latest-wins buffer — the 240 Hz ISR stages one frame/tick, the main loop flushes ≤1/pass. When a main-loop pass exceeds one tick (4.17 ms), the ISR overwrites the un-flushed frame → that `sample_seq` is lost (documented at [`t1s_detector.h`](../t1s_detector.h) staging comment). The pass time is dominated by inference, which ran **every tick even when disarmed** — so during an `active cv` capture the node burned the main loop on a model whose output it discards (`cmd = armed ? s_latest_cmd : 0`), occasionally overrunning a tick. The single-frame gap length is the signature: one overrun = one dropped frame, then recovery.
+- **SPI ruled out:** SERCOM0 host SPI to the LAN8651 is **12 MHz** (`SERCOM0_Frequency` 24 MHz, `BAUD=0` → 24/(2·1)). An 18 B frame ≈ 1 TC6 chunk ≈ 43 µs — negligible vs the tick. (Corrects the stale "1 MHz" note in the edge-ai 2026-06-17 entry.) So throughput isn't the bottleneck; main-loop cadence is.
+- **Fix ([`main.c`](../main.c)):** gate inference on `run_infer = s_actuation_active || !T1SDetector_StreamEnabled()`. So the heavy step is skipped only in the exact capture case (disarmed **and** streaming); it still runs armed (gameplay) and disarmed-not-streaming (menus, keeps the model warm for an instant arm). The streaming engine still drains its ISR→main sample queue every pass (so it can't overflow) but skips the compute. Expected: main-loop pass drops well under a tick during capture → drop rate → ~0.
+  - Edge note: a capture(disarmed+streaming, not stepping)→armed transition would leave the streaming model with stale state (brief warmup) — not a normal flow (capture is `active cv`, node stays disarmed; deploy play has streaming off). The recompute engine is unaffected (its ring is fed by the ISR every tick).
+- **Pending:** reflash, recapture a short clip, confirm drop% ≈ 0 before re-capturing the full corpus. (First corpus was trainable as-is; a baseline model is training on it now.)
+
 ### 2026-08-03 — Atomic teacher label (`commanded_mask`, 18-byte frame, teacher opcode `0x04`)
 
 - Hardware changed slightly (sensor gain/recalibration only — same 5 phototransistors, same
