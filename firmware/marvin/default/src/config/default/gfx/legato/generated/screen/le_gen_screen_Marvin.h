@@ -246,6 +246,7 @@ extern leWidget* Marvin_panel_TiltControl_1;
 extern leImageWidget* Marvin_image_TiltControl_1;
 extern leLabelWidget* Marvin_label_TILT_1;
 extern leWidget* Marvin_PANEL_KEYBOARD;
+extern leWidget* Marvin_PANEL_BUS;
 
 // screen lifecycle functions
 leResult screenInit_Marvin(void); // call to initialize this screen

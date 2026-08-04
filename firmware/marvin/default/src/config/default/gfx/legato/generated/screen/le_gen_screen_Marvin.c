@@ -7,6 +7,7 @@ static leWidget* root2;
 static leWidget* root3;
 static leWidget* root4;
 static leWidget* root5;
+static leWidget* root6;
 
 leWidget* Marvin_PANEL_DASHBOARD;
 leWidget* Marvin_PANEL_DASHBOARD_TITLEBAR;
@@ -241,6 +242,7 @@ leWidget* Marvin_panel_TiltControl_1;
 leImageWidget* Marvin_image_TiltControl_1;
 leLabelWidget* Marvin_label_TILT_1;
 leWidget* Marvin_PANEL_KEYBOARD;
+leWidget* Marvin_PANEL_BUS;
 
 static leBool initialized = LE_FALSE;
 static leBool showing = LE_FALSE;
@@ -2325,6 +2327,23 @@ leResult screenShow_Marvin(void)
     leAddRootWidget(root5, 5);
     leSetLayerColorMode(5, LE_COLOR_MODE_RGB_565);
 
+    // layer 6
+    root6 = leWidget_New();
+    root6->fn->setSize(root6, LE_DEFAULT_SCREEN_WIDTH, LE_DEFAULT_SCREEN_HEIGHT);
+    root6->fn->setBackgroundType(root6, LE_WIDGET_BACKGROUND_NONE);
+    root6->fn->setMargins(root6, 0, 0, 0, 0);
+    root6->flags |= LE_WIDGET_IGNOREEVENTS;
+    root6->flags |= LE_WIDGET_IGNOREPICK;
+
+    Marvin_PANEL_BUS = leWidget_New();
+    Marvin_PANEL_BUS->fn->setPosition(Marvin_PANEL_BUS, 0, 0);
+    Marvin_PANEL_BUS->fn->setSize(Marvin_PANEL_BUS, 1280, 800);
+    Marvin_PANEL_BUS->fn->setScheme(Marvin_PANEL_BUS, &SCHEME_BACKGROUND);
+    root6->fn->addChild(root6, (leWidget*)Marvin_PANEL_BUS);
+
+    leAddRootWidget(root6, 6);
+    leSetLayerColorMode(6, LE_COLOR_MODE_RGB_565);
+
     showing = LE_TRUE;
 
     return LE_SUCCESS;
@@ -2338,6 +2357,7 @@ void screenUpdate_Marvin(void)
     root3->fn->setSize(root3, root3->rect.width, root3->rect.height);
     root4->fn->setSize(root4, root4->rect.width, root4->rect.height);
     root5->fn->setSize(root5, root5->rect.width, root5->rect.height);
+    root6->fn->setSize(root6, root6->rect.width, root6->rect.height);
 }
 
 void screenHide_Marvin(void)
@@ -2606,6 +2626,12 @@ void screenHide_Marvin(void)
 
     Marvin_PANEL_KEYBOARD = NULL;
 
+    leRemoveRootWidget(root6, 6);
+    leWidget_Delete(root6);
+    root6 = NULL;
+
+    Marvin_PANEL_BUS = NULL;
+
 
     showing = LE_FALSE;
 }
@@ -2648,6 +2674,10 @@ leWidget* screenGetRoot_Marvin(uint32_t lyrIdx)
         case 5:
         {
             return root5;
+        }
+        case 6:
+        {
+            return root6;
         }
         default:
         {

@@ -7,6 +7,7 @@
 #include "ui/screens/video/screen_video.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
 #include "ui/screens/keyboard/screen_keyboard.h"
+#include "ui/screens/bus/screen_bus.h"
 #include "ui/dashboard_feed.h"
 
 #include <stdbool.h>
@@ -726,6 +727,7 @@ static void init_screens(void)
     ScreenAlbumArt_Setup();
     ScreenWiimotes_Setup();
     ScreenKeyboard_Setup();
+    ScreenBus_Setup();
 
     /* Song-select starts closed: disable its layer-screens' background panels so
      * those (hidden) overlays don't capture touches meant for the dashboard.
@@ -749,6 +751,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_SONG_SELECT_ALBUM_ART->fn->invalidate(Marvin_PANEL_SONG_SELECT_ALBUM_ART);
     Marvin_PANEL_WIIMOTES->fn->invalidate(Marvin_PANEL_WIIMOTES);
     Marvin_PANEL_KEYBOARD->fn->invalidate(Marvin_PANEL_KEYBOARD);
+    Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -883,6 +886,7 @@ void UiManager_Initialize(void)
     ScreenAlbumArt_InitSurface();
     ScreenWiimotes_InitSurface();
     ScreenKeyboard_InitSurface();
+    ScreenBus_InitSurface();
     GFX_CANVAS_Task();
 
     /* Dashboard telemetry feed: create the event queue now so producers (fret

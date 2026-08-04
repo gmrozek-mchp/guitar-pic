@@ -22,6 +22,7 @@ extern "C" {
 #define CANVAS_ALBUM_ART   3u   /* Marvin layer 3 — song-select cover (RGB888) */
 #define CANVAS_WIIMOTES    4u   /* Marvin layer 4 — wiimotes / manual-override */
 #define CANVAS_KEYBOARD    5u   /* Marvin layer 5 — on-screen keyboard modal   */
+#define CANVAS_BUS         6u   /* Marvin layer 6 — 10BASE-T1S bus statistics  */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
