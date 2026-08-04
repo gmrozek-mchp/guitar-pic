@@ -4,7 +4,7 @@
 #include "gfx/legato/legato.h"
 
 extern const leScheme SCHEME_BACKGROUND;
-extern const leScheme panel_darkslategray;
+extern const leScheme SCHEME_PILL_ZINC_700;
 extern const leScheme SCHEME_TEXT_WHITE;
 extern const leScheme SCHEME_TEXT_ZINC_200;
 extern const leScheme SCHEME_FILL_GREEN_500;
@@ -38,7 +38,7 @@ extern const leScheme SCHEME_TEXT_ZINC_500;
 extern const leScheme STYLE_TEXT_ROBOT;
 extern const leScheme SCHEME_TEXT_ZINC_400;
 extern const leScheme SCHEME_FILL_ZINC_600;
-extern const leScheme panel_darkturquoise;
+extern const leScheme SCHEME_PILL_ZINC_800;
 extern const leScheme SCHEME_TEXT_RED_500;
 extern const leScheme SCHEME_TEXT_RED_200;
 extern const leScheme SCHEME_TEXT_HUMAN;
@@ -58,6 +58,18 @@ extern const leScheme SCHEME_FILL_GREEN_400;
 extern const leScheme SCHEME_TEXT_GREEN_300;
 extern const leScheme SCHEME_FILL_PURPLE_600;
 extern const leScheme SCHEME_FILL_PURPLE_200;
+extern const leScheme SCHEME_TEXT_BLUE_400;
+extern const leScheme SCHEME_TEXT_RED_400;
+extern const leScheme SCHEME_TEXT_YELLOW_400;
+extern const leScheme SCHEME_TEXT_CYAN_400;
+extern const leScheme SCHEME_TEXT_VIOLET_400;
+extern const leScheme SCHEME_NODE_MARVIN;
+extern const leScheme SCHEME_NODE_FAUXMOTE;
+extern const leScheme SCHEME_NODE_GUITAR;
+extern const leScheme SCHEME_NODE_FRETBOARD;
+extern const leScheme SCHEME_NODE_BEATBOX;
+extern const leScheme SCHEME_NODE_LEMMY;
+extern const leScheme SCHEME_NODE_LIGHTSHOW;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility
