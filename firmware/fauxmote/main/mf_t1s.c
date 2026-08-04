@@ -31,11 +31,13 @@ static const char *TAG = "mft1s";
 #define T1S_ETHERTYPE_HB    (0x88B6u)  /* heartbeat / presence frames */
 #define T1S_ETH_HDR_LEN     (14u)
 
-/* Heartbeat (docs/t1s-podl-link.md §7.2): ver, node_type, node_id, flags, seq_u32. */
+/* Heartbeat (docs/t1s-podl-link.md §7.2). v2 payload (20 B): ver, node_type,
+ * node_id, flags, seq_u32, then telemetry the coordinator's bus-stats UI reads —
+ * tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16 (all little-endian). */
 #define T1S_HB_INTERVAL_MS      (500u)
-#define T1S_HB_VERSION          (1u)
+#define T1S_HB_VERSION          (2u)
 #define T1S_HB_TYPE_CONTROLLER  (3u)   /* 1 = detector, 2 = guitar, 3 = controller */
-#define T1S_HB_LEN              (8u)
+#define T1S_HB_LEN              (20u)
 
 /* LAN8651 wiring — Adafruit ESP32 Feather V2 defaults (overridable via Kconfig). */
 #ifndef CONFIG_FAUXMOTE_T1S_PIN_SCLK
@@ -79,10 +81,12 @@ static spi_device_handle_t s_spi;
 static volatile bool       s_need_service;
 static volatile bool       s_link_up;
 
-/* Diagnostics. */
-static volatile uint32_t s_rx_count;
-static volatile uint32_t s_tx_count;
+/* Diagnostics (read by the CLI + reported in the extended heartbeat). */
+static volatile uint32_t s_rx_count;    /* all frames received (any ethertype) */
+static volatile uint32_t s_tx_count;    /* frames this node has sent (HB + mf) */
 static volatile uint32_t s_err_count;
+static volatile uint16_t s_crc_err;     /* MAC-PHY FCS errors (TC6Regs event) */
+static volatile uint16_t s_sym_err;     /* MAC-PHY loss-of-framing (symbol) errors */
 static uint32_t          s_last_diag_ms;
 
 static uint8_t s_rx_buf[64];
@@ -173,6 +177,22 @@ static void send_heartbeat(void)
     s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
     s_hb_frame[20] = (uint8_t)(s_hb_seq >> 16);
     s_hb_frame[21] = (uint8_t)(s_hb_seq >> 24);
+
+    /* v2 telemetry (payload offsets 8..19), little-endian. */
+    uint32_t tx = s_tx_count, rx = s_rx_count;
+    uint16_t crc = s_crc_err, sym = s_sym_err;
+    s_hb_frame[22] = (uint8_t)(tx);
+    s_hb_frame[23] = (uint8_t)(tx >> 8);
+    s_hb_frame[24] = (uint8_t)(tx >> 16);
+    s_hb_frame[25] = (uint8_t)(tx >> 24);
+    s_hb_frame[26] = (uint8_t)(rx);
+    s_hb_frame[27] = (uint8_t)(rx >> 8);
+    s_hb_frame[28] = (uint8_t)(rx >> 16);
+    s_hb_frame[29] = (uint8_t)(rx >> 24);
+    s_hb_frame[30] = (uint8_t)(crc);
+    s_hb_frame[31] = (uint8_t)(crc >> 8);
+    s_hb_frame[32] = (uint8_t)(sym);
+    s_hb_frame[33] = (uint8_t)(sym >> 8);
 
     s_hb_busy = true;
     if (!TC6_SendRawEthernetPacket(s_tc6, s_hb_frame, T1S_ETH_HDR_LEN + T1S_HB_LEN,
@@ -409,6 +429,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     if (!success || (len < (T1S_ETH_HDR_LEN + 1u))) {
         return;
     }
+    s_rx_count++;   /* total frames received (any ethertype), for bus-stats RX total */
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
     if (ethertype != T1S_ETHERTYPE_MF) {
         return;
@@ -420,7 +441,6 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     if (paylen > MF_MAX_PAYLOAD) {
         paylen = MF_MAX_PAYLOAD;
     }
-    s_rx_count++;
     (void)MfLink_HandleMessage(type, &s_rx_buf[T1S_ETH_HDR_LEN + 1u], (uint8_t)paylen);
 }
 
@@ -455,7 +475,13 @@ void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
     (void)pTag;
     diag_log(TC6Regs_GetEventStr(event));
     switch (event) {
+        case TC6Regs_Event_Transmit_Frame_Check_Sequence_Error:
+            s_crc_err++;   /* reported in the extended heartbeat */
+            break;
         case TC6Regs_Event_Loss_of_Framing_Error:
+            s_sym_err++;
+            TC6Regs_Reinit(pInst);
+            break;
         case TC6Regs_Event_RX_Non_Recoverable_Error:
         case TC6Regs_Event_TX_Non_Recoverable_Error:
             TC6Regs_Reinit(pInst);

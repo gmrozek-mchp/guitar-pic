@@ -4,6 +4,10 @@ Running log of planning, decisions, open questions, and work-in-progress for fau
 
 ---
 
+**2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same contract as the PIC followers (`mf_t1s.c`, ESP-IDF side). `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. `s_tx_count` already counted all sends (HB + mf) and is reported as-is; `s_rx_count` moved up to count **all** received frames (was mf-branch only); new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check.** Completes Phase 2 — all six follower nodes now emit the v2 heartbeat.
+
+---
+
 **2026-07-28 — fixed T1S command RX: min-frame padding was rejected by exact-length checks.** With the marvin link on the `0x88B7` T1S controller channel, `rx` climbed steadily (marvin's GUITAR floor-refresh + commands were arriving and passing the MAC filter) but nothing actuated. The T1S MAC-PHY pads short frames to the 60-byte Ethernet minimum, and `mf_t1s.c` clamps the received payload to `MF_MAX_PAYLOAD` (8), not the per-type length — so `MfLink_HandleMessage` saw len 8 for a 3-byte GUITAR / 1-byte LINK_CMD and its `!=` checks dropped everything. Changed those per-type checks to `>=` (`len < MF_LEN_*` rejects), matching the design note that the message layer ignores trailing pad. UART path unaffected (LEN framing gives exact lengths). Mirror of the same fix on marvin's `latch_status` (STATUS uplink). File: `main/mf_link.c`. **Pending Greg's build.**
 
 ---
