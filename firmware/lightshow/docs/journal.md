@@ -4,6 +4,12 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 lighting) firmware. Newest entries at the top. For *what lightshow is* (purpose, hardware, link,
 firmware design, milestones), read [`../SPEC.md`](../SPEC.md) — this journal does not duplicate it.
 
+---
+
+**2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same change as guitar/lemmy this date. `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. `s_tx_count` in `hb_tx_done` (heartbeats are lightshow's only TX); `s_rx_count` now counts **all** received frames once at the top of `TC6_CB_OnRxEthernetPacket` (dropped the data-branch increment; beat/ctrl now counted too); new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check.**
+
+---
+
 ## Current focus
 
 **Bring lightshow up on the T1S bus first, then add the LED output.** lightshow is the **lighting

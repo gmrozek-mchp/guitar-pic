@@ -31,11 +31,13 @@
 #define T1S_CTRL_OUTPUT_EN   (0x01u)  /* arg 0|1: enable/disable the LED show */
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
- * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
+ * presence to the coordinator. v2 payload (20 B): ver, node_type, node_id, flags,
+ * seq_u32, then telemetry the coordinator's bus-stats UI reads —
+ * tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16 (all little-endian). */
 #define T1S_HB_INTERVAL_MS  (500u)
-#define T1S_HB_VERSION      (1u)
+#define T1S_HB_VERSION      (2u)
 #define T1S_HB_TYPE_LIGHTSHOW   (5u)     /* 5 = lightshow (LED lighting) */
-#define T1S_HB_LEN          (8u)
+#define T1S_HB_LEN          (20u)
 
 /* PLCA_STATUS register: bit 15 (plca_status) = PLCA operating (coordinator beacon
  * on the wire). Polled in the background so IsConnected / the CLI report real
@@ -62,10 +64,13 @@ static volatile bool     s_spi_busy;
 static volatile bool     s_plca_op;
 static uint32_t          s_plca_poll_ms;
 
-/* Diagnostics (read by the CLI). */
+/* Diagnostics (read by the CLI + reported in the extended heartbeat). */
 static volatile uint8_t  s_last_byte;
-static volatile uint32_t s_rx_count;
-static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
+static volatile uint32_t s_rx_count;    /* all frames received (any ethertype) */
+static volatile uint32_t s_tx_count;    /* frames this node has completed sending */
+static volatile uint32_t s_err_count;   /* total TC6 driver errors since boot */
+static volatile uint16_t s_crc_err;     /* MAC-PHY FCS errors (TC6Regs event) */
+static volatile uint16_t s_sym_err;     /* MAC-PHY loss-of-framing (symbol) errors */
 static volatile uint8_t  s_last_ctrl_op;   /* last 0x88B9 control opcode applied */
 static volatile uint8_t  s_last_ctrl_arg;
 static volatile uint32_t s_ctrl_count;     /* accepted control frames */
@@ -146,6 +151,7 @@ static void hb_tx_done(TC6_t *pInst, const uint8_t *pTx, uint16_t len,
     (void)pTag;
     (void)pGlobalTag;
     s_hb_busy = false;
+    s_tx_count++;   /* count completed transmits (heartbeats — this node's only TX) */
 }
 
 /* Announce presence to the coordinator (ethertype 0x88B6). */
@@ -170,6 +176,23 @@ static void send_heartbeat(void)
     s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
     s_hb_frame[20] = (uint8_t)(s_hb_seq >> 16);
     s_hb_frame[21] = (uint8_t)(s_hb_seq >> 24);
+
+    /* v2 telemetry (payload offsets 8..19), little-endian. Snapshot the counters
+     * before this heartbeat's own TX completes (its off-by-one is negligible). */
+    uint32_t tx = s_tx_count, rx = s_rx_count;
+    uint16_t crc = s_crc_err, sym = s_sym_err;
+    s_hb_frame[22] = (uint8_t)(tx);
+    s_hb_frame[23] = (uint8_t)(tx >> 8);
+    s_hb_frame[24] = (uint8_t)(tx >> 16);
+    s_hb_frame[25] = (uint8_t)(tx >> 24);
+    s_hb_frame[26] = (uint8_t)(rx);
+    s_hb_frame[27] = (uint8_t)(rx >> 8);
+    s_hb_frame[28] = (uint8_t)(rx >> 16);
+    s_hb_frame[29] = (uint8_t)(rx >> 24);
+    s_hb_frame[30] = (uint8_t)(crc);
+    s_hb_frame[31] = (uint8_t)(crc >> 8);
+    s_hb_frame[32] = (uint8_t)(sym);
+    s_hb_frame[33] = (uint8_t)(sym >> 8);
 
     s_hb_busy = true;
     if (!TC6_SendRawEthernetPacket(s_tc6, s_hb_frame, T1S_ETH_HDR_LEN + T1S_HB_LEN,
@@ -428,6 +451,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     if (!success || (len < (T1S_ETH_HDR_LEN + 1u))) {
         return;
     }
+    s_rx_count++;   /* total frames received (any ethertype), for bus-stats RX total */
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
     if (ethertype == T1S_ETHERTYPE_BEAT) {
         /* beatbox beat frame: drive the light show from the payload. */
@@ -453,9 +477,8 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     if (ethertype != T1S_ETHERTYPE) {
         return;
     }
-    /* Record the first payload byte + count so the CLI can confirm data RX. */
+    /* Record the first payload byte so the CLI can confirm data RX. */
     s_last_byte = s_rx_buf[T1S_ETH_HDR_LEN];
-    s_rx_count++;
 }
 
 void TC6_CB_OnError(TC6_t *pInst, TC6_Error_t err, void *pGlobalTag)
@@ -489,7 +512,13 @@ void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
     (void)pTag;
     diag_log("lightshow: t1s event: ", TC6Regs_GetEventStr(event));
     switch (event) {
+        case TC6Regs_Event_Transmit_Frame_Check_Sequence_Error:
+            s_crc_err++;   /* reported in the extended heartbeat */
+            break;
         case TC6Regs_Event_Loss_of_Framing_Error:
+            s_sym_err++;
+            TC6Regs_Reinit(pInst);
+            break;
         case TC6Regs_Event_RX_Non_Recoverable_Error:
         case TC6Regs_Event_TX_Non_Recoverable_Error:
             TC6Regs_Reinit(pInst);
