@@ -465,7 +465,7 @@ void ScreenDashboard_Setup(void)
      * overshoots the 8px rect. Corners are eaten back to the card colour (18181B). */
     leProgressBarWidget *bar = Marvin_PROGRESSBAR_DASHBOARD_SONG_PLAYTIME;
     bar->fn->setSize(bar, bar->fn->getWidth(bar), 8u);
-    ProgressBarAA_EnableRoundImage(bar, 4u, &SCHEME_PANEL_GRAY_18181B);
+    ProgressBarAA_EnableRoundImage(bar, 4u, &SCHEME_FILL_ZINC_900);
 
     round_button(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, 4);
     round_button(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START,       4);

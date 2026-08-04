@@ -44,7 +44,7 @@ void ScreenBus_Setup(void)
     {
         title->fn->setPosition(title, 32, 28);
         title->fn->setSize(title, 800, 32);
-        title->fn->setScheme(title, &SCHEME_TEXT_GRAY_A1A1AA);
+        title->fn->setScheme(title, &SCHEME_TEXT_ZINC_400);
         title->fn->setBackgroundType(title, LE_WIDGET_BACKGROUND_NONE);
         title->fn->setHAlignment(title, LE_HALIGN_LEFT);
         title->fn->setVAlignment(title, LE_VALIGN_MIDDLE);

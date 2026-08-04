@@ -32,7 +32,7 @@ const leScheme *SongDetail_TierScheme(int tier)
         case 6:  return &SCHEME_TEXT_TIER_6;
         case 7:  return &SCHEME_TEXT_TIER_7;
         case 8:  return &SCHEME_TEXT_TIER_8;
-        default: return &SCHEME_TEXT_GRAY_D4D4D8;   /* bonus / unknown → light gray */
+        default: return &SCHEME_TEXT_ZINC_300;   /* bonus / unknown → light gray */
     }
 }
 

@@ -360,7 +360,7 @@ static void song_list_init(void)
     list->fn->setSize(list, 320, 594 - SONGLIST_HEADER_H);
     /* Transparent: the dialog's gray panel shows through behind the rows. Match its
      * scheme so the glyph anti-alias blends against that real backdrop (0x18181B). */
-    list->fn->setScheme(list, &SCHEME_PANEL_GRAY_18181B);
+    list->fn->setScheme(list, &SCHEME_FILL_ZINC_900);
     SongList_SetTransparent(list, true);
     SongList_SetFonts(list,
                       (const leFont *)&DejaVuSansMonoBold_12,   /* title  — 12 bold    */
@@ -415,7 +415,7 @@ void ScreenSongSelect_Setup(void)
     /* Round the album-art strip: the empty overlay panel over the cover eats its
      * corners back to the dialog gray (0x18181B) it sits in front of. */
     Marvin_PANEL_ALBUM_ART_OVERLAY->fn->setScheme(Marvin_PANEL_ALBUM_ART_OVERLAY,
-                                                  &SCHEME_PANEL_GRAY_18181B);
+                                                  &SCHEME_FILL_ZINC_900);
     Marvin_PANEL_ALBUM_ART_OVERLAY->fn->setCornerRadius(Marvin_PANEL_ALBUM_ART_OVERLAY,
                                                         ALBUM_ART_RADIUS);
     PanelAA_EnableRoundImage(Marvin_PANEL_ALBUM_ART_OVERLAY);

@@ -259,14 +259,14 @@ void ScreenKeyboard_Setup(void)
     gfxcSetWindowSize(CANVAS_KEYBOARD, KBD_W, KBD_H);
     gfxcSetWindowPosition(CANVAS_KEYBOARD, KBD_X, KBD_Y);
 
-    /* Opaque scrim: the MGS panel already carries SCHEME_PANEL_GRAY_18181B; make it
+    /* Opaque scrim: the MGS panel already carries SCHEME_FILL_ZINC_900; make it
      * fill so the whole dialog is drawn (it starts as a plain unfilled leWidget). */
     Marvin_PANEL_KEYBOARD->fn->setBackgroundType(Marvin_PANEL_KEYBOARD, LE_WIDGET_BACKGROUND_FILL);
 
     /* Title (top-left). Text is set per-session in Prepare(). */
     (void)add_label(PAD, 16, 700, 32, &s_title_str, s_title_buf,
                     sizeof s_title_buf / sizeof s_title_buf[0],
-                    (const leFont *)&DejaVuSansMono_20, &SCHEME_TEXT_GRAY_A1A1AA, LE_HALIGN_LEFT, LE_FALSE);
+                    (const leFont *)&DejaVuSansMono_20, &SCHEME_TEXT_ZINC_400, LE_HALIGN_LEFT, LE_FALSE);
 
     /* Text-field box: a rounded, bordered child panel over the dialog gray. */
     box = leWidget_New();
