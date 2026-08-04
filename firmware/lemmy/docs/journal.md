@@ -4,6 +4,10 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ---
 
+**2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same change as guitar's this date (see `firmware/guitar/docs/journal.md`), adapted to lemmy's multi-ethertype RX. `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. `s_tx_count` bumped in `hb_tx_done` (heartbeats are lemmy's only TX); `s_rx_count` now counts **all** received frames once at the top of `TC6_CB_OnRxEthernetPacket` (dropped the per-branch increments in the beat/data paths — was beat+data only, never ctrl); new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check.**
+
+---
+
 ## Current focus
 
 **Bring lemmy up on the T1S bus first, then add motion.** lemmy is the **animation node**: a
