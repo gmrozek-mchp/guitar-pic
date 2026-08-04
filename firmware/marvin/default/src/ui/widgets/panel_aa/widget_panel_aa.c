@@ -92,3 +92,46 @@ void PanelAA_EnableRoundImage(leWidget* panel)
 
     panel->fn = &s_ri_vt;
 }
+
+/* Dot variant: own vtable copy + captured paint. */
+static leWidgetVTable s_dot_vt;
+static void (*s_dot_orig_paint)(leWidget*);
+static leBool s_dot_ready = LE_FALSE;
+
+/* Fill (a plain square, cornerRadius 0 — the stock rounded-rect paint hangs at
+ * cornerRadius == size/2), then eat the four corners to the backdrop so the square
+ * becomes an anti-aliased circle. The fill covers the whole square, so unlike
+ * aa_paint we can't read the backdrop from the widget's own corner pixel — sample
+ * it just outside the dot instead (uniform panel fill around a small dot). */
+static void dot_paint(leWidget* wgt)
+{
+    s_dot_orig_paint(wgt);
+
+    if (wgt->status.drawState == LE_WIDGET_DRAW_STATE_DONE)
+    {
+        leRect   rect;
+        uint32_t r;
+
+        wgt->fn->rectToScreen(wgt, &rect);
+        r = (uint32_t)((rect.width < rect.height ? rect.width : rect.height) / 2);
+
+        if (r > 0u && rect.x > 0)
+        {
+            leColor bg = leRenderer_GetPixel(rect.x - 1, rect.y + rect.height / 2);
+            AaCorners_RenderRoundImage(&rect, r, bg, leRenderer_CurrentColorMode());
+        }
+    }
+}
+
+void PanelAA_EnableDot(leWidget* panel)
+{
+    if (!s_dot_ready)
+    {
+        s_dot_vt = *panel->fn;
+        s_dot_orig_paint = panel->fn->_paint;
+        s_dot_vt._paint = dot_paint;
+        s_dot_ready = LE_TRUE;
+    }
+
+    panel->fn = &s_dot_vt;
+}

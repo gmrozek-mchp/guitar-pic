@@ -16,6 +16,10 @@ extern "C" {
 void ScreenNavigation_InitSurface(void);
 void ScreenNavigation_Setup(void);
 
+/* Open/close the navigation drawer. Public so any base-view titlebar hamburger
+ * (the shared ui/titlebar component) can toggle it. */
+void ScreenNavigation_ToggleDrawer(void);
+
 #ifdef __cplusplus
 }
 #endif

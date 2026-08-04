@@ -8,6 +8,7 @@
 #include "task.h"
 
 #include "ui/ui_manager.h"   /* CANVAS_BUS, BASE_W, BASE_H, RenderLock/Unlock */
+#include "ui/titlebar.h"     /* shared hamburger + logos titlebar */
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "net/t1s/t1s_link.h"
 
@@ -33,14 +34,15 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define MARGIN     16
 #define CARD_R     6
 
-#define KPI_Y      48
+/* Content sits below the shared titlebar (occupies the top ~65 px). */
+#define KPI_Y      76
 #define KPI_H      104
 #define KPI_N      8
 #define KPI_GAP    8
 #define KPI_W      ((BASE_W - 2 * MARGIN - (KPI_N - 1) * KPI_GAP) / KPI_N)   /* 149 */
 
-#define TBL_HDR_Y  176
-#define TBL_ROW0_Y 208
+#define TBL_HDR_Y  200
+#define TBL_ROW0_Y 232
 #define ROW_H      44
 #define MAX_ROWS   10
 #define DOT        12
@@ -124,8 +126,7 @@ static leWidget *add_dot(int x, int y, int d, const leScheme *scheme)
     p->fn->setSize(p, d, d);
     p->fn->setScheme(p, scheme);
     p->fn->setBackgroundType(p, LE_WIDGET_BACKGROUND_FILL);
-    p->fn->setCornerRadius(p, (uint32_t)(d / 2));
-    PanelAA_EnableRoundImage(p);
+    PanelAA_EnableDot(p);   /* square fill + AA circle (no cornerRadius: stock rounding hangs at r==size/2) */
     Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, p);
     return p;
 }
@@ -205,9 +206,10 @@ void ScreenBus_Setup(void)
     gfxcSetWindowSize(CANVAS_BUS, BASE_W, BASE_H);
     Marvin_PANEL_BUS->fn->setBackgroundType(Marvin_PANEL_BUS, LE_WIDGET_BACKGROUND_FILL);
 
-    leLabelWidget *title = add_label(Marvin_PANEL_BUS, MARGIN, 14, 700, 26,
-                                     (const leFont *)&DejaVuSansMono_20, &SCHEME_TEXT_ZINC_300, LE_HALIGN_LEFT);
-    set_text(title, "10BASE-T1S BUS");
+    /* Shared titlebar (hamburger + logos), same as the dashboard/wiimotes chrome. */
+    Titlebar_Add(Marvin_PANEL_BUS);
+
+    ScreenBus_SetInput(false);
 
     /* KPI tiles. */
     s_kpi_util  = kpi(0, "BUS UTIL",   (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_TEXT_CYAN_400,  NULL, NULL);
@@ -271,7 +273,6 @@ void ScreenBus_Setup(void)
     }
 
     refresh_all();   /* seed values (render tasks suspended during boot Setup) */
-    ScreenBus_SetInput(false);
 
     (void)xTaskCreateStatic(bus_task, "BusStats", (uint32_t)(sizeof s_task_stack / sizeof s_task_stack[0]),
                             NULL, 2u, s_task_stack, &s_task_tcb);

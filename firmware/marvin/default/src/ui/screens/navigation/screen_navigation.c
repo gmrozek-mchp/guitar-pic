@@ -186,12 +186,19 @@ static void navigation_fx_done(unsigned int canvasID, GFXC_FX_TYPE effect,
     }
 }
 
-/* The titlebar hamburger (present on both the dashboard and the wiimotes screen)
- * toggles the navigation drawer. */
+/* Open/close the drawer. Public so any base-view titlebar hamburger can toggle it
+ * (the shared ui/titlebar component, plus the MGS-authored dashboard/wiimotes
+ * buttons until they migrate to that component). */
+void ScreenNavigation_ToggleDrawer(void)
+{
+    if (s_navigation_open) { navigation_close(); } else { navigation_open(); }
+}
+
+/* The titlebar hamburger toggles the navigation drawer. */
 static void hamburger_on_press(leButtonWidget *btn)
 {
     (void)btn;
-    if (s_navigation_open) { navigation_close(); } else { navigation_open(); }
+    ScreenNavigation_ToggleDrawer();
 }
 
 void ScreenNavigation_InitSurface(void)
