@@ -14,12 +14,7 @@ extern "C" {
 
 // screen member widget declarations
 extern leWidget* Marvin_PANEL_DASHBOARD;
-extern leWidget* Marvin_PANEL_DASHBOARD_TITLEBAR;
 extern leWidget* Marvin_PANEL_DASHBOARD_BOTTOM;
-extern leButtonWidget* Marvin_BUTTON_DASHBOARD_TITLEBAR_NAVIGATION;
-extern leImageWidget* Marvin_IMAGE_DASHBOARD_TITLEBAR_GUITAR;
-extern leImageWidget* Marvin_IMAGE_DASHBOARD_TITLEBAR_PIC;
-extern leImageWidget* Marvin_IMAGE_DASHBOARD_TITLEBAR_MICROCHIP;
 extern leWidget* Marvin_PANEL_DASHBOARD_ROBOT;
 extern leWidget* Marvin_PANEL_DASHBOARD_GAMEPLAY;
 extern leWidget* Marvin_PANEL_DASHBOARD_HUMAN;
@@ -201,12 +196,7 @@ extern leLabelWidget* Marvin_LABEL_SONG_SELECT_SongTier;
 extern leLabelWidget* Marvin_LABEL_SONG_SELECT_SongTitle;
 extern leLabelWidget* Marvin_LABEL_SONG_SELECT_Artist;
 extern leWidget* Marvin_PANEL_WIIMOTES;
-extern leWidget* Marvin_PANEL_WIIMOTES_TITLEBAR;
 extern leWidget* Marvin_PANEL_WIIMOTES_BOTTOM;
-extern leButtonWidget* Marvin_BUTTON_WIIMOTES_TITLEBAR_NAVIGATION;
-extern leImageWidget* Marvin_IMAGE_WIIMOTES_TITLEBAR_GUITAR;
-extern leImageWidget* Marvin_IMAGE_WIIMOTES_TITLEBAR_PIC;
-extern leImageWidget* Marvin_IMAGE_WIIMOTES_TITLEBAR_MICROCHIP;
 extern leWidget* Marvin_PANEL_WIIMOTES_ROBOT;
 extern leWidget* Marvin_PANEL_WIIMOTES_HUMAN;
 extern leLabelWidget* Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy;

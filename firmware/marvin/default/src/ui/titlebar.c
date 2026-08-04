@@ -36,9 +36,9 @@ static void nav_pressed(leButtonWidget *btn)
     ScreenNavigation_ToggleDrawer();
 }
 
-void Titlebar_Add(leWidget *parent)
+leWidget *Titlebar_Add(leWidget *parent)
 {
-    if (parent == NULL || s_n >= TITLEBAR_MAX) { return; }
+    if (parent == NULL || s_n >= TITLEBAR_MAX) { return NULL; }
     titlebar_t *t = &s_bar[s_n++];
 
     leWidget *bar = &t->bar;
@@ -85,4 +85,6 @@ void Titlebar_Add(leWidget *parent)
     c->fn->setBorderType(c, LE_WIDGET_BORDER_NONE);
     c->fn->setImage(c, (leImage *)&LOGO_MICROCHIP);
     bar->fn->addChild(bar, (leWidget *)c);
+
+    return bar;
 }

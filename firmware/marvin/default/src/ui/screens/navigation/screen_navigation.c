@@ -199,12 +199,6 @@ void ScreenNavigation_ToggleDrawer(void)
     if (s_navigation_open) { navigation_close(); } else { navigation_open(); }
 }
 
-/* The titlebar hamburger toggles the navigation drawer. */
-static void hamburger_on_press(leButtonWidget *btn)
-{
-    (void)btn;
-    ScreenNavigation_ToggleDrawer();
-}
 
 void ScreenNavigation_InitSurface(void)
 {
@@ -230,10 +224,6 @@ void ScreenNavigation_Setup(void)
 
     navigation_buttons_init();
 
-    /* Both base views carry a titlebar hamburger (dashboard header on layer 0, and
-     * the wiimotes screen's own titlebar on layer 4); wire both to toggle the drawer. */
-    Marvin_BUTTON_DASHBOARD_TITLEBAR_NAVIGATION->fn->setPressedEventCallback(
-        Marvin_BUTTON_DASHBOARD_TITLEBAR_NAVIGATION, hamburger_on_press);
-    Marvin_BUTTON_WIIMOTES_TITLEBAR_NAVIGATION->fn->setPressedEventCallback(
-        Marvin_BUTTON_WIIMOTES_TITLEBAR_NAVIGATION, hamburger_on_press);
+    /* Every base view's hamburger comes from the shared ui/titlebar component, which
+     * wires it to ScreenNavigation_ToggleDrawer itself — nothing to wire here. */
 }

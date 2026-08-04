@@ -16,7 +16,10 @@ extern "C" {
  * The bar sits at (12,12) and is 1256x53, so it occupies the top ~65 px — lay the
  * screen's own content below that. Gating the parent panel's pickability
  * (LE_WIDGET_ENABLED) gates the hamburger with it. */
-void Titlebar_Add(leWidget *parent);
+/* Returns the bar widget (the titlebar's own container), so a caller can gate it
+ * in/out of picking later — e.g. the dashboard hides its chrome from touches while
+ * the video is fullscreen. NULL if the instance pool is exhausted. */
+leWidget *Titlebar_Add(leWidget *parent);
 
 #ifdef __cplusplus
 }

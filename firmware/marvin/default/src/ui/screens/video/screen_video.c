@@ -1,6 +1,7 @@
 #include "ui/screens/video/screen_video.h"
 
 #include "ui/ui_manager.h"   /* BASE_W, BASE_H, UiManager_VideoShow, overlay verbs */
+#include "ui/screens/dashboard/screen_dashboard.h"   /* ScreenDashboard_Titlebar */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -99,14 +100,16 @@ static leBool s_dash_vt_ready = LE_FALSE;
  * invalidated — same pick-only gate as ui_manager's panel_set_pickable. */
 static void set_dashboard_input(bool on)
 {
+    leWidget *titlebar = ScreenDashboard_Titlebar();   /* shared component, built in code */
+
     if (on)
     {
-        Marvin_PANEL_DASHBOARD_TITLEBAR->flags |= LE_WIDGET_ENABLED;
+        if (titlebar != NULL) { titlebar->flags |= LE_WIDGET_ENABLED; }
         Marvin_PANEL_DASHBOARD_BOTTOM->flags |= LE_WIDGET_ENABLED;
     }
     else
     {
-        Marvin_PANEL_DASHBOARD_TITLEBAR->flags &= ~LE_WIDGET_ENABLED;
+        if (titlebar != NULL) { titlebar->flags &= ~LE_WIDGET_ENABLED; }
         Marvin_PANEL_DASHBOARD_BOTTOM->flags &= ~LE_WIDGET_ENABLED;
     }
 }

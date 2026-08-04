@@ -4,6 +4,7 @@
 
 #include "ui/ui_manager.h"   /* CANVAS_DASH, BASE_W, BASE_H, UiManager_OpenSongSelect */
 #include "ui/song_detail.h"
+#include "ui/titlebar.h"         /* shared hamburger + logos titlebar */
 #include "ui/dashboard_feed.h"   /* DashboardFeed_PostSelection — route updates via the feed */
 #include "ui/widgets/button_aa/widget_button_aa.h"
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
@@ -121,6 +122,10 @@ static leFixedString s_score_str;
  * (blank until the odometer appears at ~25), likewise fed live during a run. */
 static leChar        s_streak_buf[8];
 static leFixedString s_streak_str;
+
+/* The shared titlebar's bar widget, kept so screen_video can gate the dashboard
+ * chrome out of picking while the video is fullscreen (see ScreenDashboard_Titlebar). */
+static leWidget *s_titlebar;
 
 /* Selected song length (s), captured on ApplySelection so ApplyPlaytime can scale
  * elapsed play time into the 0-100 progress-bar fill. 0 = unknown → no fill. */
@@ -450,6 +455,10 @@ void ScreenDashboard_Setup(void)
     gfxcSetWindowPosition(CANVAS_DASH, 0, 0);
     gfxcSetWindowSize(CANVAS_DASH, BASE_W, BASE_H);
 
+    /* Shared titlebar (hamburger + logos); the handle lets screen_video gate the
+     * chrome out of picking while the video is fullscreen. */
+    s_titlebar = Titlebar_Add(Marvin_PANEL_DASHBOARD);
+
     round_card(Marvin_PANEL_DASHBOARD_ROBOT,                4u);
     round_card(Marvin_PANEL_DASHBOARD_TEST_PATTERN_BORDER,  6u);
     round_card(Marvin_PANEL_DASHBOARD_SONG,                 4u);
@@ -503,4 +512,9 @@ void ScreenDashboard_Setup(void)
     if (GameSelection_Get()->valid) { ScreenDashboard_ApplySelection(); }
 
     GameController_SetStatusObserver(dash_game_status);
+}
+
+leWidget *ScreenDashboard_Titlebar(void)
+{
+    return s_titlebar;
 }

@@ -4,6 +4,7 @@
 #include <stdbool.h>
 
 #include "ui/ui_manager.h"   /* CANVAS_WIIMOTES, BASE_W, BASE_H */
+#include "ui/titlebar.h"     /* shared hamburger + logos titlebar */
 
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -133,6 +134,9 @@ void ScreenWiimotes_Setup(void)
      * canvas window positions that layer's pixels on the display. */
     gfxcSetWindowPosition(CANVAS_WIIMOTES, 0, 0);
     gfxcSetWindowSize(CANVAS_WIIMOTES, BASE_W, BASE_H);
+
+    /* Shared titlebar (hamburger + logos), same chrome as the other base views. */
+    (void)Titlebar_Add(Marvin_PANEL_WIIMOTES);
 
     controls_init();
 

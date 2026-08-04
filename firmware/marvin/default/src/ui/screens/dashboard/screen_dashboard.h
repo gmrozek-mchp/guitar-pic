@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+#include "gfx/legato/legato.h"   /* leWidget */
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -16,6 +18,11 @@ extern "C" {
  * ui_manager binds CANVAS_DASH to a hardware layer (BASE) at display time. */
 void ScreenDashboard_InitSurface(void);
 void ScreenDashboard_Setup(void);
+
+/* The dashboard's shared-titlebar bar widget (NULL before Setup). screen_video
+ * gates it out of picking while the video is fullscreen, so a tap anywhere exits
+ * fullscreen instead of hitting the hamburger. */
+leWidget *ScreenDashboard_Titlebar(void);
 
 /* Apply live dashboard state. Called only from the dashboard feed's consumer task
  * (ui/dashboard_feed.c) — the sole writer of dashboard widgets — never directly by
