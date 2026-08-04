@@ -55,6 +55,12 @@ Files under `firmware/*/default/src/config/default/` are owned by MPLAB Code Con
 
 If a task requires changing behavior in this tree, stop and ask how to proceed. Typical alternatives: add a new file in the project's own source tree that wraps or extends the vendor behavior, use a Legato extension point (e.g. `leDrawSurfaceWidget`, a custom skin registered via the vtable), or adjust the MCC configuration and regenerate rather than hand-editing the output.
 
+## Editing the MGS / Legato design (schemes, strings, widgets, palette)
+
+The one thing you *do* edit inside `config/default/` — but never by hand-editing the generated `le_gen_*` output — is the MGS design database `default_design.zip`. For bulk / scripted changes (rename or dedupe schemes, standardize a palette, retarget strings, etc.) use the **`mgs-legato-design` skill** (`.claude/skills/mgs-legato-design/`): it documents the safe zip round-trip (backup, uuid-reference validation, C build-safety) and carries reusable audit/repack scripts. You edit the zip; the user then opens MGS → **Generate** to refresh `le_gen_*`.
+
+**Keep the skill current.** When you learn a new technique or hit a gotcha working with the design zip, update the skill (`SKILL.md` / `REFERENCE.md` / `scripts/`) as part of that work — it's the team's shared reference for this workflow.
+
 ## Do not use `.specstory/` history as context
 
 The `.specstory/` directory holds raw transcripts of past chat sessions. Do **not** read or treat those files as authoritative context — they are ephemeral records, not source of truth, and may contradict the current code or journals. When you need prior state, use the journals, specs, code, and git history instead.
