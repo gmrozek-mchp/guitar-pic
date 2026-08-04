@@ -4,6 +4,10 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ---
 
+**2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** The `0x88B6` heartbeat payload grows 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): after the existing `ver/type/id/flags/seq`, append little-endian `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16` (`send_heartbeat`, `t1s_follower.c`). Counters: `s_tx_count` bumped in `hb_tx_done` (heartbeats are this actuator's only TX); `s_rx_count` now counts **all** received frames (moved before the ethertype filter in `TC6_CB_OnRxEthernetPacket` — was command-frames-only); new `s_crc_err`/`s_sym_err` tallied in `TC6Regs_CB_OnEvent` (FCS-error / loss-of-framing, alongside the existing reinit). Wire contract in `docs/t1s-podl-link.md` §7.2; marvin parses it gated on length so this is a standalone reflash (marvin already shipped the v2 parser). No peripheral/MCC change — app logic only. **Pending build + on-hardware check** (marvin `nodes` shows guitar's tx/rx/rate populate). First of the 6 follower nodes to get the v2 heartbeat.
+
+---
+
 ## Current focus
 
 **G1 + G2 done — the node is proven end-to-end on hardware.** guitar is the **Wii-guitar actuator node**:
