@@ -359,7 +359,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_ROBOT_STATE = leWidget_New();
     Marvin_PANEL_DASHBOARD_ROBOT_STATE->fn->setPosition(Marvin_PANEL_DASHBOARD_ROBOT_STATE, 186, 182);
     Marvin_PANEL_DASHBOARD_ROBOT_STATE->fn->setSize(Marvin_PANEL_DASHBOARD_ROBOT_STATE, 57, 20);
-    Marvin_PANEL_DASHBOARD_ROBOT_STATE->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_STATE, &Scheme11);
+    Marvin_PANEL_DASHBOARD_ROBOT_STATE->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_STATE, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_PANEL_DASHBOARD_ROBOT_STATE);
 
     Marvin_PANEL_DASHBOARD_ROBOT_STATE_LED = leWidget_New();
@@ -461,7 +461,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_ROBOT_Streak = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setPosition(Marvin_LABEL_DASHBOARD_ROBOT_Streak, 92, 283);
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setSize(Marvin_LABEL_DASHBOARD_ROBOT_Streak, 32, 16);
-    Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setScheme(Marvin_LABEL_DASHBOARD_ROBOT_Streak, &Scheme14);
+    Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setScheme(Marvin_LABEL_DASHBOARD_ROBOT_Streak, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_ROBOT_Streak, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setHAlignment(Marvin_LABEL_DASHBOARD_ROBOT_Streak, LE_HALIGN_RIGHT);
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setVAlignment(Marvin_LABEL_DASHBOARD_ROBOT_Streak, LE_VALIGN_TOP);
@@ -482,7 +482,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setPosition(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, 235, 283);
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setSize(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, 8, 16);
-    Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setScheme(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, &Scheme14);
+    Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setScheme(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setVAlignment(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setMargins(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, 0, 0, 0, 0);
@@ -509,7 +509,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setPosition(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, 235, 319);
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setSize(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, 8, 16);
-    Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setScheme(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, &Scheme14);
+    Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setScheme(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setVAlignment(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setMargins(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, 0, 0, 0, 0);
@@ -526,7 +526,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1 = leWidget_New();
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1->fn->setPosition(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1, 13, 357);
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1->fn->setSize(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1, 230, 1);
-    Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1, &Scheme11);
+    Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_1);
 
     Marvin_LABEL_DASHBOARD_ROBOT_FRET_ACTIVITY = leLabelWidget_New();
@@ -592,13 +592,13 @@ leResult screenShow_Marvin(void)
     Marvin_panel_Container_36_0 = leWidget_New();
     Marvin_panel_Container_36_0->fn->setPosition(Marvin_panel_Container_36_0, 198, 424);
     Marvin_panel_Container_36_0->fn->setSize(Marvin_panel_Container_36_0, 45, 20);
-    Marvin_panel_Container_36_0->fn->setScheme(Marvin_panel_Container_36_0, &Scheme11);
+    Marvin_panel_Container_36_0->fn->setScheme(Marvin_panel_Container_36_0, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_panel_Container_36_0);
 
     Marvin_label_IDLE_0_0 = leLabelWidget_New();
     Marvin_label_IDLE_0_0->fn->setPosition(Marvin_label_IDLE_0_0, 8, 2);
     Marvin_label_IDLE_0_0->fn->setSize(Marvin_label_IDLE_0_0, 29, 16);
-    Marvin_label_IDLE_0_0->fn->setScheme(Marvin_label_IDLE_0_0, &text_dimgray_0);
+    Marvin_label_IDLE_0_0->fn->setScheme(Marvin_label_IDLE_0_0, &SCHEME_TEXT_GRAY_52525C);
     Marvin_label_IDLE_0_0->fn->setBackgroundType(Marvin_label_IDLE_0_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_IDLE_0_0->fn->setVAlignment(Marvin_label_IDLE_0_0, LE_VALIGN_TOP);
     Marvin_label_IDLE_0_0->fn->setMargins(Marvin_label_IDLE_0_0, 0, 0, 0, 0);
@@ -608,7 +608,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2 = leWidget_New();
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2->fn->setPosition(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2, 13, 454);
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2->fn->setSize(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2, 230, 1);
-    Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2, &Scheme11);
+    Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2);
 
     Marvin_LABEL_DASHBOARD_ROBOT_DETECTOR = leLabelWidget_New();
@@ -644,7 +644,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3 = leWidget_New();
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3->fn->setPosition(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3, 13, 563);
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3->fn->setSize(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3, 230, 1);
-    Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3, &Scheme11);
+    Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3->fn->setScheme(Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_3);
 
     Marvin_PANEL_DASHBOARD_ROBOT_BORDER = leWidget_New();
@@ -811,7 +811,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_SongTitle = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_SongTitle, 1, 18);
     Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_SongTitle, 350, 25);
-    Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongTitle, &Scheme8);
+    Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongTitle, &SCHEME_TEXT_WHITE);
     Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_SongTitle, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_SongTitle, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_SongTitle->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_SongTitle, 0, 0, 0, 0);
@@ -831,7 +831,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_SongAlbum = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, 0, 63);
     Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, 350, 16);
-    Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, &text_dimgray_0);
+    Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, &SCHEME_TEXT_GRAY_52525C);
     Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_SongAlbum->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_SongAlbum, 0, 0, 0, 0);
@@ -841,7 +841,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_GENRE = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_GENRE, 0, 105);
     Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_GENRE, 130, 16);
-    Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GENRE, &text_dimgray_0);
+    Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GENRE, &SCHEME_TEXT_GRAY_52525C);
     Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_GENRE, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_GENRE, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_GENRE->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_GENRE, 0, 0, 0, 0);
@@ -851,7 +851,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_SongGenre = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_SongGenre, 0, 121);
     Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_SongGenre, 130, 16);
-    Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongGenre, &Scheme14);
+    Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongGenre, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_SongGenre, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_SongGenre, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_SongGenre->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_SongGenre, 0, 0, 0, 0);
@@ -861,7 +861,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_DURATION = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_DURATION, 142, 105);
     Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_DURATION, 70, 16);
-    Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_DURATION, &text_dimgray_0);
+    Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_DURATION, &SCHEME_TEXT_GRAY_52525C);
     Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_DURATION, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_DURATION, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_DURATION->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_DURATION, 0, 0, 0, 0);
@@ -871,7 +871,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_SongDuration = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_SongDuration, 142, 121);
     Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_SongDuration, 70, 16);
-    Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongDuration, &Scheme14);
+    Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_SongDuration, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_SongDuration, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_SongDuration, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_SongDuration->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_SongDuration, 0, 0, 0, 0);
@@ -881,7 +881,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_TIER = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_TIER, 219, 105);
     Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_TIER, 140, 16);
-    Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_TIER, &text_dimgray_0);
+    Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_TIER, &SCHEME_TEXT_GRAY_52525C);
     Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_TIER, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_TIER, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_TIER->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_TIER, 0, 0, 0, 0);
@@ -940,7 +940,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, 16, 16);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, 40, 16);
-    Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, &text_dimgray_0);
+    Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, &SCHEME_TEXT_GRAY_52525C);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_MODE, 0, 0, 0, 0);
@@ -950,7 +950,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, 87, 16);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, 73, 16);
-    Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, &Scheme14);
+    Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_GameMode, 0, 0, 0, 0);
@@ -960,7 +960,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setPosition(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, 16, 40);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setSize(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, 80, 16);
-    Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, &text_dimgray_0);
+    Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setScheme(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, &SCHEME_TEXT_GRAY_52525C);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setVAlignment(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY->fn->setMargins(Marvin_LABEL_DASHBOARD_SONG_GAMEPLAY_DIFFICULTY, 0, 0, 0, 0);
@@ -1050,7 +1050,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_HUMAN_STATE = leWidget_New();
     Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_STATE, 186, 182);
     Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_STATE, 57, 20);
-    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_STATE, &Scheme11);
+    Marvin_PANEL_DASHBOARD_HUMAN_STATE->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_STATE, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_STATE);
 
     Marvin_PANEL_DASHBOARD_HUMAN_STATE_LED = leWidget_New();
@@ -1151,7 +1151,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_HUMAN_Streak = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setPosition(Marvin_LABEL_DASHBOARD_HUMAN_Streak, 116, 283);
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setSize(Marvin_LABEL_DASHBOARD_HUMAN_Streak, 8, 16);
-    Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_Streak, &Scheme14);
+    Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_Streak, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_Streak, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_Streak, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_Streak, 0, 0, 0, 0);
@@ -1171,7 +1171,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setPosition(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, 235, 283);
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setSize(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, 8, 16);
-    Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, &Scheme14);
+    Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, 0, 0, 0, 0);
@@ -1198,7 +1198,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower = leLabelWidget_New();
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setPosition(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, 235, 319);
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setSize(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, 8, 16);
-    Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, &Scheme14);
+    Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setScheme(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, &SCHEME_TEXT_GRAY_D4D4D8);
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, 0, 0, 0, 0);
@@ -1215,7 +1215,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1 = leWidget_New();
     Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1->fn->setPosition(Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1, 13, 357);
     Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1->fn->setSize(Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1, 230, 1);
-    Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1, &Scheme11);
+    Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1->fn->setScheme(Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1, &panel_darkslategray_0);
     Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_PANEL_DASHBOARD_HUMAN_DIVIDER_1);
 
     Marvin_panel_Container_98_0 = leWidget_New();
@@ -1266,7 +1266,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Wii_guitar_0 = leLabelWidget_New();
     Marvin_label_Wii_guitar_0->fn->setPosition(Marvin_label_Wii_guitar_0, 0, 0);
     Marvin_label_Wii_guitar_0->fn->setSize(Marvin_label_Wii_guitar_0, 73, 16);
-    Marvin_label_Wii_guitar_0->fn->setScheme(Marvin_label_Wii_guitar_0, &text_dimgray_0);
+    Marvin_label_Wii_guitar_0->fn->setScheme(Marvin_label_Wii_guitar_0, &SCHEME_TEXT_GRAY_52525C);
     Marvin_label_Wii_guitar_0->fn->setBackgroundType(Marvin_label_Wii_guitar_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Wii_guitar_0->fn->setVAlignment(Marvin_label_Wii_guitar_0, LE_VALIGN_TOP);
     Marvin_label_Wii_guitar_0->fn->setMargins(Marvin_label_Wii_guitar_0, 0, 0, 0, 0);
@@ -1307,7 +1307,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Wii_remote_0 = leLabelWidget_New();
     Marvin_label_Wii_remote_0->fn->setPosition(Marvin_label_Wii_remote_0, 0, 0);
     Marvin_label_Wii_remote_0->fn->setSize(Marvin_label_Wii_remote_0, 73, 16);
-    Marvin_label_Wii_remote_0->fn->setScheme(Marvin_label_Wii_remote_0, &text_dimgray_0);
+    Marvin_label_Wii_remote_0->fn->setScheme(Marvin_label_Wii_remote_0, &SCHEME_TEXT_GRAY_52525C);
     Marvin_label_Wii_remote_0->fn->setBackgroundType(Marvin_label_Wii_remote_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Wii_remote_0->fn->setVAlignment(Marvin_label_Wii_remote_0, LE_VALIGN_TOP);
     Marvin_label_Wii_remote_0->fn->setMargins(Marvin_label_Wii_remote_0, 0, 0, 0, 0);
@@ -1348,7 +1348,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Battery_0 = leLabelWidget_New();
     Marvin_label_Battery_0->fn->setPosition(Marvin_label_Battery_0, 0, 0);
     Marvin_label_Battery_0->fn->setSize(Marvin_label_Battery_0, 51, 16);
-    Marvin_label_Battery_0->fn->setScheme(Marvin_label_Battery_0, &text_dimgray_0);
+    Marvin_label_Battery_0->fn->setScheme(Marvin_label_Battery_0, &SCHEME_TEXT_GRAY_52525C);
     Marvin_label_Battery_0->fn->setBackgroundType(Marvin_label_Battery_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Battery_0->fn->setVAlignment(Marvin_label_Battery_0, LE_VALIGN_TOP);
     Marvin_label_Battery_0->fn->setMargins(Marvin_label_Battery_0, 0, 0, 0, 0);
@@ -1403,7 +1403,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_NAVIGATION_TOP = leWidget_New();
     Marvin_PANEL_NAVIGATION_TOP->fn->setPosition(Marvin_PANEL_NAVIGATION_TOP, 0, 0);
     Marvin_PANEL_NAVIGATION_TOP->fn->setSize(Marvin_PANEL_NAVIGATION_TOP, 319, 97);
-    Marvin_PANEL_NAVIGATION_TOP->fn->setScheme(Marvin_PANEL_NAVIGATION_TOP, &SCHEME_PANEL);
+    Marvin_PANEL_NAVIGATION_TOP->fn->setScheme(Marvin_PANEL_NAVIGATION_TOP, &SCHEME_PANEL_GRAY_18181B);
     Marvin_PANEL_NAVIGATION_TOP->fn->setBackgroundType(Marvin_PANEL_NAVIGATION_TOP, LE_WIDGET_BACKGROUND_NONE);
     Marvin_PANEL_NAVIGATION_TOP->fn->setBorderType(Marvin_PANEL_NAVIGATION_TOP, LE_WIDGET_BORDER_LINE);
     Marvin_PANEL_NAVIGATION->fn->addChild(Marvin_PANEL_NAVIGATION, (leWidget*)Marvin_PANEL_NAVIGATION_TOP);
@@ -1431,7 +1431,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_NAVIGATION_MIDDLE = leWidget_New();
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->setPosition(Marvin_PANEL_NAVIGATION_MIDDLE, 0, 97);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->setSize(Marvin_PANEL_NAVIGATION_MIDDLE, 319, 617);
-    Marvin_PANEL_NAVIGATION_MIDDLE->fn->setScheme(Marvin_PANEL_NAVIGATION_MIDDLE, &SCHEME_PANEL);
+    Marvin_PANEL_NAVIGATION_MIDDLE->fn->setScheme(Marvin_PANEL_NAVIGATION_MIDDLE, &SCHEME_PANEL_GRAY_18181B);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->setBackgroundType(Marvin_PANEL_NAVIGATION_MIDDLE, LE_WIDGET_BACKGROUND_NONE);
     Marvin_PANEL_NAVIGATION->fn->addChild(Marvin_PANEL_NAVIGATION, (leWidget*)Marvin_PANEL_NAVIGATION_MIDDLE);
 
@@ -1536,7 +1536,7 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_NAVIGATION_BOTTOM = leWidget_New();
     Marvin_PANEL_NAVIGATION_BOTTOM->fn->setPosition(Marvin_PANEL_NAVIGATION_BOTTOM, 0, 715);
     Marvin_PANEL_NAVIGATION_BOTTOM->fn->setSize(Marvin_PANEL_NAVIGATION_BOTTOM, 319, 85);
-    Marvin_PANEL_NAVIGATION_BOTTOM->fn->setScheme(Marvin_PANEL_NAVIGATION_BOTTOM, &SCHEME_PANEL);
+    Marvin_PANEL_NAVIGATION_BOTTOM->fn->setScheme(Marvin_PANEL_NAVIGATION_BOTTOM, &SCHEME_PANEL_GRAY_18181B);
     Marvin_PANEL_NAVIGATION_BOTTOM->fn->setBackgroundType(Marvin_PANEL_NAVIGATION_BOTTOM, LE_WIDGET_BACKGROUND_NONE);
     Marvin_PANEL_NAVIGATION_BOTTOM->fn->setBorderType(Marvin_PANEL_NAVIGATION_BOTTOM, LE_WIDGET_BORDER_LINE);
     Marvin_PANEL_NAVIGATION->fn->addChild(Marvin_PANEL_NAVIGATION, (leWidget*)Marvin_PANEL_NAVIGATION_BOTTOM);
@@ -2022,7 +2022,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy = leLabelWidget_New();
     Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setPosition(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, 17, 19);
     Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setSize(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, 110, 20);
-    Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setScheme(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, &Scheme29);
+    Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setScheme(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, &Scheme10);
     Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setBackgroundType(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setVAlignment(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, LE_VALIGN_TOP);
     Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy->fn->setMargins(Marvin_LABEL_WIIMOTES_ROBOT_RobotLemmy, 0, 0, 0, 0);
@@ -2054,13 +2054,13 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION = leWidget_New();
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setPosition(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, 17, 53);
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setSize(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, 586, 272);
-    Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setScheme(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, &Scheme31);
+    Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setScheme(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, &panel_darkslategray_0);
     Marvin_PANEL_WIIMOTES_ROBOT->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT, (leWidget*)Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION);
 
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION = leLabelWidget_New();
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setPosition(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, 12, 12);
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setSize(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, 134, 16);
-    Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setScheme(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, &Scheme24);
+    Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setScheme(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, &text_dimgray);
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setBackgroundType(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setVAlignment(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, LE_VALIGN_TOP);
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setMargins(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, 0, 0, 0, 0);
@@ -2132,7 +2132,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_WHAMMY_1 = leLabelWidget_New();
     Marvin_label_WHAMMY_1->fn->setPosition(Marvin_label_WHAMMY_1, 110, 23);
     Marvin_label_WHAMMY_1->fn->setSize(Marvin_label_WHAMMY_1, 54, 20);
-    Marvin_label_WHAMMY_1->fn->setScheme(Marvin_label_WHAMMY_1, &Scheme36);
+    Marvin_label_WHAMMY_1->fn->setScheme(Marvin_label_WHAMMY_1, &SCHEME_TEXT_GRAY_71717A);
     Marvin_label_WHAMMY_1->fn->setBackgroundType(Marvin_label_WHAMMY_1, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_WHAMMY_1->fn->setVAlignment(Marvin_label_WHAMMY_1, LE_VALIGN_TOP);
     Marvin_label_WHAMMY_1->fn->setMargins(Marvin_label_WHAMMY_1, 0, 0, 0, 0);
@@ -2149,13 +2149,13 @@ leResult screenShow_Marvin(void)
     Marvin_panel_Container_16_1 = leWidget_New();
     Marvin_panel_Container_16_1->fn->setPosition(Marvin_panel_Container_16_1, 0, 42);
     Marvin_panel_Container_16_1->fn->setSize(Marvin_panel_Container_16_1, 273, 64);
-    Marvin_panel_Container_16_1->fn->setScheme(Marvin_panel_Container_16_1, &Scheme31);
+    Marvin_panel_Container_16_1->fn->setScheme(Marvin_panel_Container_16_1, &panel_darkslategray_0);
     Marvin_panel_WhammySlider_1->fn->addChild(Marvin_panel_WhammySlider_1, (leWidget*)Marvin_panel_Container_16_1);
 
     Marvin_panel_Container_17_1 = leWidget_New();
     Marvin_panel_Container_17_1->fn->setPosition(Marvin_panel_Container_17_1, 137, 0);
     Marvin_panel_Container_17_1->fn->setSize(Marvin_panel_Container_17_1, 1, 64);
-    Marvin_panel_Container_17_1->fn->setScheme(Marvin_panel_Container_17_1, &Scheme37);
+    Marvin_panel_Container_17_1->fn->setScheme(Marvin_panel_Container_17_1, &Scheme12);
     Marvin_panel_Container_16_1->fn->addChild(Marvin_panel_Container_16_1, (leWidget*)Marvin_panel_Container_17_1);
 
     Marvin_panel_Container_18_1 = leWidget_New();
@@ -2189,13 +2189,13 @@ leResult screenShow_Marvin(void)
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE = leWidget_New();
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->setPosition(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, 17, 337);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->setSize(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, 588, 274);
-    Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->setScheme(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, &Scheme31);
+    Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->setScheme(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, &panel_darkslategray_0);
     Marvin_PANEL_WIIMOTES_ROBOT->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT, (leWidget*)Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE);
 
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE = leLabelWidget_New();
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setPosition(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, 12, 12);
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setSize(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, 58, 16);
-    Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setScheme(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, &Scheme24);
+    Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setScheme(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, &text_dimgray);
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setBackgroundType(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setVAlignment(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, LE_VALIGN_TOP);
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setMargins(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, 0, 0, 0, 0);
@@ -2293,7 +2293,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_TILT_1 = leLabelWidget_New();
     Marvin_label_TILT_1->fn->setPosition(Marvin_label_TILT_1, 4, 1);
     Marvin_label_TILT_1->fn->setSize(Marvin_label_TILT_1, 28, 16);
-    Marvin_label_TILT_1->fn->setScheme(Marvin_label_TILT_1, &Scheme36);
+    Marvin_label_TILT_1->fn->setScheme(Marvin_label_TILT_1, &SCHEME_TEXT_GRAY_71717A);
     Marvin_label_TILT_1->fn->setBackgroundType(Marvin_label_TILT_1, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_TILT_1->fn->setVAlignment(Marvin_label_TILT_1, LE_VALIGN_TOP);
     Marvin_label_TILT_1->fn->setMargins(Marvin_label_TILT_1, 0, 0, 0, 0);
