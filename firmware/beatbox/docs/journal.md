@@ -4,6 +4,12 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 (beat-source) firmware. Newest entries at the top. For *what beatbox is* (purpose, hardware, link,
 firmware design, milestones), read [`../SPEC.md`](../SPEC.md) — this journal does not duplicate it.
 
+---
+
+**2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same change as the other followers this date (XC-DSC side). `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. New `s_tx_count` counts **completed** transmits in **both** `hb_tx_done` and `beat_tx_done` (beatbox is the beat source, so its TX = heartbeats + broadcast beat frames; the existing `s_beat_tx_count` stays for the CLI); `s_rx_count` now counts **all** received frames at the top of `TC6_CB_OnRxEthernetPacket`; new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check** (beatbox is not yet on the bus — this readies the heartbeat for when it joins).
+
+---
+
 ## Current focus
 
 **Import first, then re-scope to a pure T1S beat publisher.** beatbox came in from the standalone
