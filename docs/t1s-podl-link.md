@@ -305,12 +305,26 @@ apart from data/command traffic (`0x88B5`). marvin stamps a per-node "last seen"
 on receipt and reports it via the `nodes` console command (present = a heartbeat
 within ~2 s).
 
-Payload (8 bytes): `version(1)`, `node_type(1)` (1=detector, 2=guitar, 3=controller,
-4=animation, 5=lightshow, 6=beat source), `node_id(1)`, `flags(1)` (bit0 = follower synced),
-`seq(u32 LE)`. marvin derives the node from the **src MAC** via its static node table, not by
-decoding the `node_type` byte — so the payload type is informational (seq enables drop detection).
-marvin's `nodes` display recognizes `lemmy` (id 6), `lightshow` (id 7), and `beatbox` (id 5) as
-table entries; decoding the payload `node_type` byte remains an unneeded marvin-side follow-up.
+Payload — **v1 (8 bytes, legacy)**: `version(1)`, `node_type(1)` (1=detector, 2=guitar,
+3=controller, 4=animation, 5=lightshow, 6=beat source), `node_id(1)`, `flags(1)`
+(bit0 = follower synced), `seq(u32 LE)`. marvin derives the node from the **src MAC** via its
+static node table, not by decoding the `node_type` byte — so the payload type is informational
+(seq enables drop detection). marvin's `nodes` display recognizes `lemmy` (id 6), `lightshow`
+(id 7), and `beatbox` (id 5) as table entries; decoding the payload `node_type` byte remains an
+unneeded marvin-side follow-up.
+
+**v2 (20 bytes) — telemetry extension** (for the bus-statistics UI, `nodes`/`t1s` console).
+`version` is bumped to `2` and the 8-byte header is followed by the node's own cumulative
+counters, all little-endian: `tx_count(u32)`, `rx_count(u32)`, `crc_err(u16)`, `sym_err(u16)`
+(offsets 8, 12, 16, 18 in the payload). `tx_count`/`rx_count` are frames the node has
+sent/received; `crc_err`/`sym_err` are the node's own MAC-PHY FCS / loss-of-framing event tallies
+(counted in the follower's `TC6Regs_CB_OnEvent` — there is no per-source error counter, so each
+node reports its *own* receiver's errors). The coordinator gates on payload length
+(`payload_len >= 20`), so a not-yet-reflashed follower still sending a v1 8-byte heartbeat simply
+reports zeros for the new fields — the extension rolls out node-by-node with no flag day. Frames are
+padded to the 60-byte Ethernet minimum, so the extra 12 bytes add no wire cost. marvin derives
+per-node TX/RX **rates** (frames/s) from the reported cumulative deltas once a second, and its own
+(coordinator) row from its local counters + its own `TC6Regs_CB_OnEvent` tallies.
 
 ## 8. Transport coexistence
 

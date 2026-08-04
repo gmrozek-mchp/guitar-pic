@@ -47,6 +47,48 @@ typedef struct {
 uint8_t T1SLink_NodeTableCount(void);
 bool    T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out);
 
+/* Per-node bus statistics for the diagnostics UI / console. Extends NodeInfo with
+ * the traffic + error telemetry a node reports in its extended heartbeat (v2): a
+ * legacy (8-byte) heartbeat leaves the tx/rx/err fields 0. Rates are frames/s,
+ * recomputed once a second on the coordinator from the reported cumulative deltas
+ * (so they only advance as fast as the heartbeat, ~1 Hz). */
+typedef struct {
+    uint8_t     node_id;
+    const char *type;
+    bool        present;
+    uint32_t    age_ms;      /* since the last heartbeat (also shown as "latency") */
+    uint32_t    tx_count;    /* cumulative frames the node has sent     */
+    uint32_t    rx_count;    /* cumulative frames the node has received */
+    uint32_t    tx_rate;     /* frames/s (delta over the last second)   */
+    uint32_t    rx_rate;
+    uint16_t    crc_err;     /* cumulative FCS errors at the node       */
+    uint16_t    sym_err;     /* cumulative framing (symbol) errors      */
+} T1SLink_NodeStats;
+
+bool T1SLink_GetNodeStats(uint8_t idx, T1SLink_NodeStats *out);
+
+/* marvin's own (coordinator) row, filled from its local counters: node_id 0, type
+ * "marvin", always present. tx/rx are the sum of its data + controller channels;
+ * crc/sym are its own MAC-PHY FCS / framing events. */
+bool T1SLink_GetSelfStats(T1SLink_NodeStats *out);
+
+/* Aggregate bus statistics (marvin + all follower rows) for the header tiles.
+ * util_permille is a derived estimate (Σ frame-rate × 64-byte frame vs 10 Mbps),
+ * clamped to 1000; err_rate_ppm = total errors / total frames. */
+typedef struct {
+    uint32_t util_permille;  /* 0..1000 (estimate)          */
+    uint32_t tx_total;       /* frames sent, bus-wide        */
+    uint32_t rx_total;       /* frames received, bus-wide    */
+    uint32_t crc_total;
+    uint32_t sym_total;
+    uint32_t err_rate_ppm;   /* errors per million frames    */
+    uint32_t uptime_s;       /* since T1SLink_Initialize      */
+    uint8_t  nodes_online;   /* present nodes incl. marvin    */
+    uint8_t  nodes_total;    /* table + marvin                */
+} T1SLink_BusStats;
+
+bool T1SLink_GetBusStats(T1SLink_BusStats *out);
+
 /* Latest-wins 1-byte button command to the active guitar (actuator) node.
  * Safe to call from any task; the value is flushed onto the bus by the T1S
  * service task (TC6 access is single-threaded). Returns false if the link is

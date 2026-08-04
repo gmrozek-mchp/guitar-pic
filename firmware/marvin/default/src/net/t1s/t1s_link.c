@@ -56,7 +56,8 @@
 #define T1S_ETHERTYPE_NODE_CTRL (0x88B9u) /* per-node typed [opcode,arg] control (lemmy, lightshow) */
 #define T1S_ETH_HDR_LEN      (14u)
 #define T1S_MAC_LEN          (6u)
-#define T1S_HB_LEN           (8u)        /* ver, type, id, flags, seq_u32 */
+#define T1S_HB_LEN           (8u)        /* legacy (v1): ver, type, id, flags, seq_u32 */
+#define T1S_HB_EXT_LEN       (20u)       /* v2: + tx_u32, rx_u32, crc_u16, sym_u16 */
 #define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
 
 /* Locally administered coordinator MAC (02:00:00:00:00:00). */
@@ -99,11 +100,18 @@ static const t1s_node_t s_nodes[] = {
 
 #define T1S_NODE_TABLE_LEN  (sizeof(s_nodes) / sizeof(s_nodes[0]))
 
-/* Per-node runtime presence (parallel to s_nodes), updated on heartbeat RX. */
+/* Per-node runtime presence + telemetry (parallel to s_nodes), updated on
+ * heartbeat RX. The tx/rx/crc/sym fields are reported by the node in its extended
+ * (v2) heartbeat and stay 0 for a legacy node; the rates are derived on the
+ * coordinator once a second from the reported cumulative deltas. */
 static struct {
     uint32_t last_seen_tick;
     uint32_t last_seq;
     bool     seen;
+    uint32_t tx_count, rx_count;   /* cumulative, from the extended heartbeat */
+    uint16_t crc_err, sym_err;
+    uint32_t tx_rate, rx_rate;     /* frames/s, recomputed once a second       */
+    uint32_t prev_tx, prev_rx;     /* snapshot for the rate delta              */
 } s_node_rt[T1S_NODE_TABLE_LEN];
 
 static const char *node_type_name(t1s_node_type_t t, uint8_t node_id)
@@ -194,6 +202,17 @@ static T1SLink_FrameHandler s_frame_handler;
 static volatile uint32_t s_tx_count;   /* command frames sent */
 static volatile uint32_t s_rx_count;   /* frames received from a known node */
 static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
+
+/* marvin's own MAC-PHY error tallies (from TC6Regs_CB_OnEvent), for the self row. */
+static volatile uint32_t s_self_crc_err;   /* FCS errors */
+static volatile uint32_t s_self_sym_err;   /* loss-of-framing (symbol) errors */
+
+/* Rate state: per-node rates live in s_node_rt; these hold marvin's own rate plus
+ * the once-a-second recompute bookkeeping. Rates are frames/s. */
+static uint32_t  s_self_tx_rate, s_self_rx_rate;
+static uint32_t  s_prev_self_tx, s_prev_self_rx;
+static TickType_t s_rate_tick;   /* last rate recompute */
+static TickType_t s_boot_tick;   /* T1SLink_Initialize — uptime origin */
 
 #if T1S_CTRL_ENABLED
 /* Controller channel (fauxmote, 0x88B7). Producers stage one mf_proto message
@@ -341,6 +360,32 @@ static bool t1s_try_bringup(void)
     return TC6Regs_GetInitDone(s_tc6);
 }
 
+/* Once a second, refresh the frames/s rates from the cumulative-count deltas —
+ * marvin's own counters plus each node's last-reported extended-heartbeat totals.
+ * Runs in the service task; a no-op until a full second has elapsed. */
+static void recompute_rates(void)
+{
+    TickType_t now = xTaskGetTickCount();
+    if ((uint32_t)(now - s_rate_tick) < pdMS_TO_TICKS(1000u)) { return; }
+    uint32_t dt_ms = (uint32_t)((now - s_rate_tick) * portTICK_PERIOD_MS);
+    s_rate_tick = now;
+    if (dt_ms == 0u) { return; }
+
+    uint32_t self_tx = s_tx_count + T1SLink_CtrlTxCount();
+    uint32_t self_rx = s_rx_count + T1SLink_CtrlRxCount();
+    s_self_tx_rate = (self_tx - s_prev_self_tx) * 1000u / dt_ms;
+    s_self_rx_rate = (self_rx - s_prev_self_rx) * 1000u / dt_ms;
+    s_prev_self_tx = self_tx;
+    s_prev_self_rx = self_rx;
+
+    for (uint8_t i = 0u; i < T1S_NODE_TABLE_LEN; i++) {
+        s_node_rt[i].tx_rate = (s_node_rt[i].tx_count - s_node_rt[i].prev_tx) * 1000u / dt_ms;
+        s_node_rt[i].rx_rate = (s_node_rt[i].rx_count - s_node_rt[i].prev_rx) * 1000u / dt_ms;
+        s_node_rt[i].prev_tx = s_node_rt[i].tx_count;
+        s_node_rt[i].prev_rx = s_node_rt[i].rx_count;
+    }
+}
+
 static void t1s_task(void *param)
 {
     (void)param;
@@ -395,6 +440,8 @@ static void t1s_task(void *param)
         /* If the pump bailed with work still pending, force a yield so this
          * prio-5 task can never monopolize the CPU on a stuck MAC-PHY. */
         if (service_pump()) { vTaskDelay(pdMS_TO_TICKS(1)); }
+
+        recompute_rates();   /* once-a-second frames/s from cumulative-count deltas */
 
         /* Flush the latest pending command to the active guitar (actuator)
          * node. All TC6 access stays in this task; producers only stash via
@@ -508,6 +555,9 @@ void T1SLink_Initialize(void)
     if (s_initialized) { return; }
     s_initialized = true;
 
+    s_boot_tick = xTaskGetTickCount();   /* uptime origin */
+    s_rate_tick = s_boot_tick;
+
     s_svc_sem = xSemaphoreCreateBinaryStatic(&s_svc_sem_buf);
     configASSERT(s_svc_sem != NULL);
 
@@ -570,6 +620,96 @@ bool T1SLink_GetNodeInfo(uint8_t idx, T1SLink_NodeInfo *out)
         out->age_ms  = 0u;
         out->present = false;
     }
+    return true;
+}
+
+/* Fill presence (node_id, type, present, age_ms) for a node index — shared by
+ * GetNodeStats and the aggregate presence count. */
+static void fill_presence(uint8_t idx, T1SLink_NodeStats *out)
+{
+    out->node_id = s_nodes[idx].node_id;
+    out->type    = node_type_name(s_nodes[idx].type, s_nodes[idx].node_id);
+    if (s_node_rt[idx].seen) {
+        uint32_t age = xTaskGetTickCount() - s_node_rt[idx].last_seen_tick;
+        out->age_ms  = (uint32_t)(age * portTICK_PERIOD_MS);
+        out->present = (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS));
+    } else {
+        out->age_ms  = 0u;
+        out->present = false;
+    }
+}
+
+bool T1SLink_GetNodeStats(uint8_t idx, T1SLink_NodeStats *out)
+{
+    if ((idx >= T1S_NODE_TABLE_LEN) || (out == NULL)) {
+        return false;
+    }
+    fill_presence(idx, out);
+    out->tx_count = s_node_rt[idx].tx_count;
+    out->rx_count = s_node_rt[idx].rx_count;
+    out->tx_rate  = s_node_rt[idx].tx_rate;
+    out->rx_rate  = s_node_rt[idx].rx_rate;
+    out->crc_err  = s_node_rt[idx].crc_err;
+    out->sym_err  = s_node_rt[idx].sym_err;
+    return true;
+}
+
+bool T1SLink_GetSelfStats(T1SLink_NodeStats *out)
+{
+    if (out == NULL) { return false; }
+    out->node_id  = (uint8_t)T1S_NODE_ID;
+    out->type     = "marvin";
+    out->present  = true;
+    out->age_ms   = 0u;
+    out->tx_count = s_tx_count + T1SLink_CtrlTxCount();
+    out->rx_count = s_rx_count + T1SLink_CtrlRxCount();
+    out->tx_rate  = s_self_tx_rate;
+    out->rx_rate  = s_self_rx_rate;
+    out->crc_err  = (uint16_t)s_self_crc_err;
+    out->sym_err  = (uint16_t)s_self_sym_err;
+    return true;
+}
+
+bool T1SLink_GetBusStats(T1SLink_BusStats *out)
+{
+    if (out == NULL) { return false; }
+
+    uint32_t tx_total  = s_tx_count + T1SLink_CtrlTxCount();
+    uint32_t rx_total  = s_rx_count + T1SLink_CtrlRxCount();
+    uint32_t crc_total = s_self_crc_err;
+    uint32_t sym_total = s_self_sym_err;
+    uint32_t rate_sum  = s_self_tx_rate + s_self_rx_rate;   /* frames/s, bus-wide */
+    uint8_t  online    = 1u;   /* marvin is always up */
+
+    for (uint8_t i = 0u; i < T1S_NODE_TABLE_LEN; i++) {
+        tx_total  += s_node_rt[i].tx_count;
+        rx_total  += s_node_rt[i].rx_count;
+        crc_total += s_node_rt[i].crc_err;
+        sym_total += s_node_rt[i].sym_err;
+        rate_sum  += s_node_rt[i].tx_rate + s_node_rt[i].rx_rate;
+        if (s_node_rt[i].seen) {
+            uint32_t age = xTaskGetTickCount() - s_node_rt[i].last_seen_tick;
+            if (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS)) { online++; }
+        }
+    }
+
+    /* Utilization estimate: each frame ≈ the 64-byte Ethernet minimum, so
+     * bits/s ≈ rate·64·8; permille of the 10 Mbps line = bits/s / 10000. */
+    uint32_t permille = rate_sum * 512u / 10000u;
+    if (permille > 1000u) { permille = 1000u; }
+
+    uint32_t frames = tx_total + rx_total;
+
+    out->util_permille = permille;
+    out->tx_total      = tx_total;
+    out->rx_total      = rx_total;
+    out->crc_total     = crc_total;
+    out->sym_total     = sym_total;
+    out->err_rate_ppm  = (frames != 0u)
+        ? (uint32_t)(((uint64_t)(crc_total + sym_total) * 1000000u) / frames) : 0u;
+    out->uptime_s      = (uint32_t)(((xTaskGetTickCount() - s_boot_tick) * portTICK_PERIOD_MS) / 1000u);
+    out->nodes_online  = online;
+    out->nodes_total   = (uint8_t)(T1S_NODE_TABLE_LEN + 1u);
     return true;
 }
 
@@ -754,6 +894,20 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
                                     | ((uint32_t)payload[6] << 16)
                                     | ((uint32_t)payload[7] << 24);
         }
+        /* Extended (v2) heartbeat: the node's own traffic + error telemetry. A
+         * legacy 8-byte heartbeat leaves these fields untouched (stay 0). */
+        if (payload_len >= T1S_HB_EXT_LEN) {
+            s_node_rt[idx].tx_count = (uint32_t)payload[8]
+                                    | ((uint32_t)payload[9]  << 8)
+                                    | ((uint32_t)payload[10] << 16)
+                                    | ((uint32_t)payload[11] << 24);
+            s_node_rt[idx].rx_count = (uint32_t)payload[12]
+                                    | ((uint32_t)payload[13] << 8)
+                                    | ((uint32_t)payload[14] << 16)
+                                    | ((uint32_t)payload[15] << 24);
+            s_node_rt[idx].crc_err  = (uint16_t)(payload[16] | (payload[17] << 8));
+            s_node_rt[idx].sym_err  = (uint16_t)(payload[18] | (payload[19] << 8));
+        }
         return;
     }
 
@@ -807,7 +961,13 @@ void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
     (void)pTag;
 //    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
     switch (event) {
+        case TC6Regs_Event_Transmit_Frame_Check_Sequence_Error:
+            s_self_crc_err++;   /* marvin's own FCS error tally (self row) */
+            break;
         case TC6Regs_Event_Loss_of_Framing_Error:
+            s_self_sym_err++;   /* framing (symbol) error — also fatal, reinit below */
+            TC6Regs_Reinit(pInst);
+            break;
         case TC6Regs_Event_RX_Non_Recoverable_Error:
         case TC6Regs_Event_TX_Non_Recoverable_Error:
             TC6Regs_Reinit(pInst);

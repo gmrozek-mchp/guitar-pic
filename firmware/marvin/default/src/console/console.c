@@ -193,6 +193,21 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("tx cmds: %lu", (unsigned long)T1SLink_TxCount());
     console_printf("rx frms: %lu", (unsigned long)T1SLink_RxCount());
     console_printf("svc ovr: %lu", (unsigned long)T1SLink_ServiceOverruns());
+
+    T1SLink_BusStats bs;
+    if (T1SLink_GetBusStats(&bs))
+    {
+        console_printf("bus util:%lu.%lu%%  online:%u/%u  up:%lus",
+                       (unsigned long)(bs.util_permille / 10u),
+                       (unsigned long)(bs.util_permille % 10u),
+                       (unsigned)bs.nodes_online, (unsigned)bs.nodes_total,
+                       (unsigned long)bs.uptime_s);
+        console_printf("tx tot: %lu  rx tot: %lu",
+                       (unsigned long)bs.tx_total, (unsigned long)bs.rx_total);
+        console_printf("crc err:%lu  sym err:%lu  err:%lu ppm",
+                       (unsigned long)bs.crc_total, (unsigned long)bs.sym_total,
+                       (unsigned long)bs.err_rate_ppm);
+    }
 }
 
 static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
@@ -200,16 +215,29 @@ static void cmd_nodes(EmbeddedCli *cli, char *args, void *ctx)
     (void)cli; (void)args; (void)ctx;
 
     uint8_t n = T1SLink_NodeTableCount();
-    console_printf("id  type      present  last-hb");
+    console_printf("id  type      pres  age    txtot   rxtot   tx/s  rx/s  crc  sym");
+
+    T1SLink_NodeStats st;
+    if (T1SLink_GetSelfStats(&st))
+    {
+        console_printf("%-3u %-9s %-4s  %-5lu  %-7lu %-7lu %-5lu %-5lu %-4u %u",
+                       (unsigned)st.node_id, st.type, "yes",
+                       0ul,
+                       (unsigned long)st.tx_count, (unsigned long)st.rx_count,
+                       (unsigned long)st.tx_rate, (unsigned long)st.rx_rate,
+                       (unsigned)st.crc_err, (unsigned)st.sym_err);
+    }
     for (uint8_t i = 0u; i < n; i++)
     {
-        T1SLink_NodeInfo ni;
-        if (T1SLink_GetNodeInfo(i, &ni))
+        if (T1SLink_GetNodeStats(i, &st))
         {
-            console_printf("%-3u %-9s %-7s  %lums",
-                           (unsigned)ni.node_id, ni.type,
-                           ni.present ? "yes" : "no",
-                           (unsigned long)ni.age_ms);
+            console_printf("%-3u %-9s %-4s  %-5lu  %-7lu %-7lu %-5lu %-5lu %-4u %u",
+                           (unsigned)st.node_id, st.type,
+                           st.present ? "yes" : "no",
+                           (unsigned long)st.age_ms,
+                           (unsigned long)st.tx_count, (unsigned long)st.rx_count,
+                           (unsigned long)st.tx_rate, (unsigned long)st.rx_rate,
+                           (unsigned)st.crc_err, (unsigned)st.sym_err);
         }
     }
 }
