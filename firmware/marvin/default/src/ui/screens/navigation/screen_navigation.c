@@ -95,6 +95,11 @@ static void navigation_on_release(leButtonWidget *btn)
         UiManager_ShowWiimotes();
         navigation_close();
     }
+    else if (btn == Marvin_BUTTON_NAV_DIAGNOSTICS)
+    {
+        UiManager_ShowStats();
+        navigation_close();
+    }
 }
 
 static void navigation_buttons_init(void)

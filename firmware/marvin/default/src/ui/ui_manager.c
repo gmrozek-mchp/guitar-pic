@@ -552,15 +552,44 @@ void UiManager_CloseKeyboard(void)
  * then binds the incoming one to BASE. Picking is gated to the shown view: Legato
  * picks across all attached layers regardless of canvas visibility, so the hidden
  * view's panel must be gated off or it would still intercept touches. */
-typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES } base_view_t;
+typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES, BASE_VIEW_BUS } base_view_t;
 static base_view_t s_base_view = BASE_VIEW_DASHBOARD;
+
+/* Hide the currently-shown base view: stop its canvas driving BASE and gate its
+ * (still-attached) panel out of picking. The incoming Show* then binds its own
+ * canvas onto BASE. */
+static void hide_current_base(void)
+{
+    switch (s_base_view)
+    {
+        case BASE_VIEW_WIIMOTES:
+            gfxcHideCanvas(CANVAS_WIIMOTES); gfxcCanvasUpdate(CANVAS_WIIMOTES);
+            ScreenWiimotes_SetInput(false);
+            ScreenWiimotes_SetShown(false);
+            break;
+        case BASE_VIEW_BUS:
+            gfxcHideCanvas(CANVAS_BUS); gfxcCanvasUpdate(CANVAS_BUS);
+            ScreenBus_SetInput(false);
+            ScreenBus_SetShown(false);
+            break;
+        case BASE_VIEW_DASHBOARD:
+        default:
+            gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
+            UiManager_SetDashboardPickable(false);
+            break;
+    }
+}
 
 /* Gate the currently-shown base view in/out of picking (used by the nav drawer to
  * be modal over whichever view is active). */
 void UiManager_SetBaseViewPickable(bool on)
 {
-    if (s_base_view == BASE_VIEW_WIIMOTES) { ScreenWiimotes_SetInput(on); }
-    else                                   { UiManager_SetDashboardPickable(on); }
+    switch (s_base_view)
+    {
+        case BASE_VIEW_WIIMOTES: ScreenWiimotes_SetInput(on);        break;
+        case BASE_VIEW_BUS:      ScreenBus_SetInput(on);             break;
+        default:                 UiManager_SetDashboardPickable(on); break;
+    }
 }
 
 void UiManager_ShowWiimotes(void)
@@ -572,11 +601,7 @@ void UiManager_ShowWiimotes(void)
     UiManager_VideoHide();
     UiManager_VideoOverlayHide();
 
-    /* Hide the dashboard canvas so it stops driving BASE, and gate its (still-
-     * attached) panel out of picking, then bring wiimotes onto BASE. */
-    gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
-    UiManager_SetDashboardPickable(false);
-
+    hide_current_base();
     bind_canvas(CANVAS_WIIMOTES, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     ScreenWiimotes_SetInput(true);
     ScreenWiimotes_SetShown(true);
@@ -584,14 +609,28 @@ void UiManager_ShowWiimotes(void)
     s_base_view = BASE_VIEW_WIIMOTES;
 }
 
+/* Bus-statistics screen: a full-screen base view like wiimotes (owns the panel, so
+ * the live video is dropped). Its titlebar hamburger reopens the drawer to leave. */
+void UiManager_ShowStats(void)
+{
+    if (s_base_view == BASE_VIEW_BUS) { return; }
+
+    UiManager_VideoHide();
+    UiManager_VideoOverlayHide();
+
+    hide_current_base();
+    bind_canvas(CANVAS_BUS, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    ScreenBus_SetInput(true);
+    ScreenBus_SetShown(true);   /* starts the ~1 Hz telemetry refresh */
+
+    s_base_view = BASE_VIEW_BUS;
+}
+
 void UiManager_ShowDashboard(void)
 {
     if (s_base_view == BASE_VIEW_DASHBOARD) { return; }
 
-    gfxcHideCanvas(CANVAS_WIIMOTES); gfxcCanvasUpdate(CANVAS_WIIMOTES);
-    ScreenWiimotes_SetInput(false);
-    ScreenWiimotes_SetShown(false);
-
+    hide_current_base();
     bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     UiManager_SetDashboardPickable(true);
 

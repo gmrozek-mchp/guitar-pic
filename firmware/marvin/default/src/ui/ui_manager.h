@@ -111,6 +111,7 @@ void UiManager_SetDashboardPickable(bool on);
  * the requested view is already active. Driven by the nav drawer's entries. */
 void UiManager_ShowDashboard(void);
 void UiManager_ShowWiimotes(void);
+void UiManager_ShowStats(void);
 
 /* Gate the currently-shown base view's pickability (routes to the dashboard or the
  * wiimotes screen per the active view). Used by the nav drawer to be modal over
