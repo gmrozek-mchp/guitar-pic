@@ -4,6 +4,10 @@ Running log of planning, decisions, open questions, and work-in-progress for the
 
 ---
 
+**2026-08-04 — extended heartbeat to v2: report per-node telemetry for marvin's bus-stats UI.** Same contract as the other followers, but `t1s_detector.c` has four TX paths (data→coordinator, command→guitar, GUITAR→fauxmote, heartbeat) and had no RX counter. `0x88B6` payload 8→20 bytes (`T1S_HB_VERSION` 1→2, `T1S_HB_LEN` 8→20): append LE `tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16`. New `s_tx_total` counts **completed** transmits in all four `*_tx_done` callbacks (distinct from the existing `s_tx_count` = data-frames-only, kept for the CLI/banner); new `s_rx_count` counts all received frames at the top of `TC6_CB_OnRxEthernetPacket` (this node otherwise only consumes the control channel); new `s_crc_err`/`s_sym_err` in `TC6Regs_CB_OnEvent`. Wire contract: `docs/t1s-podl-link.md` §7.2; marvin parses gated on length → standalone reflash. App logic only. **Pending build + on-hardware check.**
+
+---
+
 ## Current focus
 
 **T1S-only sense+actuate node (single behaviour — no build flags).** UART and the

@@ -45,11 +45,13 @@
 #define T1S_CMD_REFRESH_MS  (50u)
 
 /* Heartbeat (docs/t1s-podl-link.md §7.2): followers periodically announce
- * presence to the coordinator. Payload: ver, node_type, node_id, flags, seq_u32. */
+ * presence to the coordinator. v2 payload (20 B): ver, node_type, node_id, flags,
+ * seq_u32, then telemetry the coordinator's bus-stats UI reads —
+ * tx_count_u32, rx_count_u32, crc_err_u16, sym_err_u16 (all little-endian). */
 #define T1S_HB_INTERVAL_MS  (500u)
-#define T1S_HB_VERSION      (1u)
+#define T1S_HB_VERSION      (2u)
 #define T1S_HB_TYPE_DETECTOR (1u)    /* 1 = detector, 2 = guitar (shared codes) */
-#define T1S_HB_LEN          (8u)
+#define T1S_HB_LEN          (20u)
 
 /* PLCA_STATUS register: bit 15 (plca_status) = PLCA operating (coordinator beacon
  * on the wire). Polled in the background so IsConnected / the CLI report real
@@ -90,6 +92,14 @@ static volatile uint32_t s_cmd_count;   /* command frames sent to the guitar */
 static volatile uint8_t  s_last_cmd;    /* most recent command bitmask sent */
 static volatile uint32_t s_err_count;   /* total TC6 errors since boot */
 static uint32_t          s_last_diag_ms; /* rate-limit window for diag logs */
+
+/* Bus-stats telemetry reported in the extended (v2) heartbeat. s_tx_total counts
+ * every completed transmit across all four TX paths (data, guitar command,
+ * fauxmote, heartbeat) — distinct from s_tx_count (data frames only, CLI). */
+static volatile uint32_t s_rx_count;    /* all frames received (any ethertype) */
+static volatile uint32_t s_tx_total;    /* all frames this node has completed sending */
+static volatile uint16_t s_crc_err;     /* MAC-PHY FCS errors (TC6Regs event) */
+static volatile uint16_t s_sym_err;     /* MAC-PHY loss-of-framing (symbol) errors */
 
 /* Actuation-armed state. Written by either the local CLI (T1SDetector_SetArmed)
  * or marvin's control channel (0x88B9 opcode 0x01) — last writer wins, no lockout.
@@ -223,25 +233,30 @@ static void fill_eth_header(uint8_t *frame, const uint8_t *dst, uint16_t etherty
 }
 
 /* TX completion callbacks free the matching staging buffer. */
+/* All four free their staging buffer and bump the unified completed-TX total. */
 static void tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
 {
     (void)p; (void)t; (void)l; (void)a; (void)b;
     s_tx_busy = false;
+    s_tx_total++;
 }
 static void cmd_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
 {
     (void)p; (void)t; (void)l; (void)a; (void)b;
     s_cmd_busy = false;
+    s_tx_total++;
 }
 static void fx_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
 {
     (void)p; (void)t; (void)l; (void)a; (void)b;
     s_fx_busy = false;
+    s_tx_total++;
 }
 static void hb_tx_done(TC6_t *p, const uint8_t *t, uint16_t l, void *a, void *b)
 {
     (void)p; (void)t; (void)l; (void)a; (void)b;
     s_hb_busy = false;
+    s_tx_total++;
 }
 
 /* Flush the most recent staged data frame to the coordinator. Main loop only. */
@@ -350,6 +365,23 @@ static void send_heartbeat(void)
     s_hb_frame[19] = (uint8_t)(s_hb_seq >> 8);
     s_hb_frame[20] = (uint8_t)(s_hb_seq >> 16);
     s_hb_frame[21] = (uint8_t)(s_hb_seq >> 24);
+
+    /* v2 telemetry (payload offsets 8..19), little-endian. Snapshot the counters
+     * before this heartbeat's own TX completes (its off-by-one is negligible). */
+    uint32_t tx = s_tx_total, rx = s_rx_count;
+    uint16_t crc = s_crc_err, sym = s_sym_err;
+    s_hb_frame[22] = (uint8_t)(tx);
+    s_hb_frame[23] = (uint8_t)(tx >> 8);
+    s_hb_frame[24] = (uint8_t)(tx >> 16);
+    s_hb_frame[25] = (uint8_t)(tx >> 24);
+    s_hb_frame[26] = (uint8_t)(rx);
+    s_hb_frame[27] = (uint8_t)(rx >> 8);
+    s_hb_frame[28] = (uint8_t)(rx >> 16);
+    s_hb_frame[29] = (uint8_t)(rx >> 24);
+    s_hb_frame[30] = (uint8_t)(crc);
+    s_hb_frame[31] = (uint8_t)(crc >> 8);
+    s_hb_frame[32] = (uint8_t)(sym);
+    s_hb_frame[33] = (uint8_t)(sym >> 8);
 
     s_hb_busy = true;
     if (!TC6_SendRawEthernetPacket(s_tc6, s_hb_frame, T1S_ETH_HDR_LEN + T1S_HB_LEN,
@@ -660,6 +692,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
     if (!success || (len < (T1S_ETH_HDR_LEN + T1S_CTRL_LEN))) {
         return;
     }
+    s_rx_count++;   /* total frames received (any ethertype), for bus-stats RX total */
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
     if (ethertype != T1S_ETHERTYPE_CTRL) {
         return;   /* this node only consumes the control channel */
@@ -721,7 +754,13 @@ void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
     (void)pTag;
     diag_log("fretboard: t1s event: ", TC6Regs_GetEventStr(event));
     switch (event) {
+        case TC6Regs_Event_Transmit_Frame_Check_Sequence_Error:
+            s_crc_err++;   /* reported in the extended heartbeat */
+            break;
         case TC6Regs_Event_Loss_of_Framing_Error:
+            s_sym_err++;
+            TC6Regs_Reinit(pInst);
+            break;
         case TC6Regs_Event_RX_Non_Recoverable_Error:
         case TC6Regs_Event_TX_Non_Recoverable_Error:
             TC6Regs_Reinit(pInst);
