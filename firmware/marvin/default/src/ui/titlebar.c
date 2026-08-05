@@ -21,10 +21,17 @@ extern void _leImageWidget_Constructor(leImageWidget *img);
  * in-place Constructors. Geometry mirrors the MGS-authored dashboard titlebar. */
 #define TITLEBAR_MAX  4
 
+/* Bar geometry (mirrors the MGS-authored dashboard titlebar it replaced). */
+#define BAR_X   12
+#define BAR_Y   12
+#define BAR_W  1256
+#define BAR_H    53
+
 typedef struct {
     leWidget       bar;
     leButtonWidget nav;
     leImageWidget  guitar, pic, chip;
+    leWidget       rule;      /* 1px divider along the bar's bottom edge */
 } titlebar_t;
 
 static titlebar_t s_bar[TITLEBAR_MAX];
@@ -43,10 +50,21 @@ leWidget *Titlebar_Add(leWidget *parent)
 
     leWidget *bar = &t->bar;
     leWidget_Constructor(bar);
-    bar->fn->setPosition(bar, 12, 12);
-    bar->fn->setSize(bar, 1256, 53);
+    bar->fn->setPosition(bar, BAR_X, BAR_Y);
+    bar->fn->setSize(bar, BAR_W, BAR_H);
     bar->fn->setBackgroundType(bar, LE_WIDGET_BACKGROUND_NONE);
     parent->fn->addChild(parent, bar);
+
+    /* Divider between the titlebar and the screen content — the mockup header's
+     * `border-b border-zinc-700`. Sits on the bar's bottom row (bar-relative), so
+     * it stays inside the bar's rect and needs nothing from the parent's layout. */
+    leWidget *rule = &t->rule;
+    leWidget_Constructor(rule);
+    rule->fn->setPosition(rule, 0, BAR_H - 1);
+    rule->fn->setSize(rule, BAR_W, 1);
+    rule->fn->setScheme(rule, &SCHEME_FILL_ZINC_700);
+    rule->fn->setBackgroundType(rule, LE_WIDGET_BACKGROUND_FILL);
+    bar->fn->addChild(bar, rule);
 
     leButtonWidget *nav = &t->nav;
     leButtonWidget_Constructor(nav);
