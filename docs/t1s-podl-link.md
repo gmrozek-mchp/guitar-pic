@@ -208,7 +208,7 @@ command TX targets. marvin selects the active node of each class.
 | Node | Class | PLCA ID | MAC (locally administered) | Notes |
 |---|---|---|---|---|
 | marvin | coordinator | 0 | `02:00:00:00:00:00` | beacons the PLCA cycle; selects active detector + guitar |
-| fauxmote(s) | controller | 1–2 | `02:00:00:00:00:0k` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. One PLCA node per fauxmote, at most two (id build-configurable, default 1) |
+| fauxmote | controller | 1 | `02:00:00:00:00:01` | Wiimote emulator; receives mf_proto slices on `0x88B7`, sends `STATUS` uplink. **Single controller node** — id 2 was reserved for a second fauxmote and was dropped 2026-08-04 (never built, not planned); marvin's node table has one controller row, so `nodes` and the bus screen no longer carry a permanently-absent id-2 entry. The node's own id stays build-configurable (`CONFIG_FAUXMOTE_T1S_NODE_ID`, default 1) |
 | guitar | guitar (actuator) | 3 | `02:00:00:00:00:03` | receives the 1-byte command bitmask (from marvin or a detector) |
 | fretboard | detector | 4 | `02:00:00:00:00:04` | photo-ADC stream → `detector_id`; also commands the guitar directly |
 | beatbox | (future) | 5 | `02:00:00:00:00:05` | reserved — beat-signal source for lemmy / lightshow |
