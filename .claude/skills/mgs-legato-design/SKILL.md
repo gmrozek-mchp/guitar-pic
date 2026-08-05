@@ -77,6 +77,21 @@ Before retargeting a font, predict layout damage from the glyph `advance` tables
 deleting one, check hand source for its symbol and `drop=` its whole
 `assets/fonts/{uuid}/` directory.
 
+## Replacing an imported screen with hand-written C
+
+When a figma-imported screen is being rebuilt programmatically (marvin's `screen_bus.c` /
+`screen_wiimotes.c`), the design should keep only the **empty root panel** the builder attaches
+to. `scripts/strip_subtree.py <zip> <PANEL_NAME> [--layer NAME]` deletes that panel's children
+and reports what the deletion orphans.
+
+The counter-intuitive part: **keep the deleted widgets' strings and drive them from C with
+`leTableString` + `stringID_*`** rather than switching to C literals. Imported captions are
+often non-ASCII — d-pad arrows ▲ ◀ ▶ ▼, a true minus U+2212 — and per the glyph rule above MGS
+only auto-includes glyphs for strings it can see in the design. A C literal would render blank
+after the next Generate with no build error. Full recipe (plus the `PanelAA_Enable` opaque-parent
+precondition and why a widget+scheme can't express a two-tone fill) in
+[REFERENCE.md](REFERENCE.md).
+
 ## Details
 
 Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `stringtable.json`
@@ -84,4 +99,4 @@ Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `str
 full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
-`audit_glyph_coverage.py`.
+`audit_glyph_coverage.py`, `strip_subtree.py`.

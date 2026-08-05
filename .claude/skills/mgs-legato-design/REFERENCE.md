@@ -16,9 +16,18 @@
 | `version.json` | format version |
 | `assets/fonts/{uuid}/…` | font config JSON + `sourceData` blobs |
 | `assets/images/{uuid}/…` | image config JSON + raw blobs |
+| `assets/images/images.json` | **manifest** — `{"images":[{id,name,type},…]}` listing every image |
 
 Everything you'd edit programmatically is JSON. Preserve all other members verbatim on repack
 (the font/image blobs are large — don't touch them).
+
+**Assets are listed in a manifest AND stored in their own directory — you must update both.**
+Deleting an image means dropping `assets/images/{uuid}/` *and* removing its entry from
+`assets/images/images.json`; dropping only the directory leaves a manifest entry pointing at
+nothing. Fonts follow the same pattern (`fonts.json` `fonts[]` + `assets/fonts/{uuid}/`). Note
+the image manifest lives **under `assets/`**, so a "scan the design JSON for references" loop
+that skips `assets/` will not see it — check the manifest explicitly instead, and assert
+`manifest ids == asset dirs` afterwards.
 
 ## The generated-C relationship
 
@@ -192,8 +201,63 @@ references by regex over the screen/state JSON:
   state, zero visual change, and you don't inherit the dead asset's font binding (which may be
   a size you're about to delete).
 
+## Recipe: strip a widget subtree to hand-code a screen
+
+A recurring move on a figma-imported design: a screen's imported widget tree is being replaced
+by a programmatic builder in C (marvin's `screen_bus.c` / `screen_wiimotes.c` model), so the
+design should supply only the **empty root panel** the builder attaches to. Delete every child
+of that panel and leave the layer + root intact. `scripts/strip_subtree.py` does this.
+
+Why hand-code at all: a re-layout of N widgets is unreviewable as a zip delta and miserable to
+drag in Composer, and anything needing per-pixel paint (an arc control, a two-tone
+fill-plus-ring, a slider that fills from its centre) **cannot be expressed by a widget +
+scheme** at all — a `leScheme` carries 16 named colors, not "fill *and* a differently-coloured
+ring". Layout constants in C are also diffable.
+
+Three things to get right:
+
+- **Keep the root panel** — the builder needs it, and hand source references it
+  (`Marvin_PANEL_FOO`). Confirm it has `background = 1` (FILL) if the builder puts AA-rounded
+  cards on it: `PanelAA_Enable` samples the parent's pixel for its corner backdrop and assumes
+  an opaque parent. Compare against a panel already known to work.
+- **The deleted widgets' STRINGS are usually worth keeping, and driving from C via
+  `leTableString` + `stringID_*`** — the opposite of the "hand-coded screens use C literals"
+  habit. Two reasons, in order:
+  1. **Localization.** A design string carries a value per language; a C literal can never be
+     translated. Table strings are the default for any user-facing caption.
+  2. **Glyphs.** MGS auto-includes glyphs only for strings **it can see in the design**, so a
+     non-ASCII caption in a C literal renders as a missing glyph with **no build error** (see
+     the glyph rule above). Imported captions hit this constantly: d-pad arrows
+     (▲ ◀ ▶ ▼ = U+25B2/25C0/25B6/25BC), a true minus (− = U+2212), check / backspace glyphs.
+
+  A table string also keeps the design's per-string font binding. Net effect: deleting the
+  widgets costs you nothing in the string table, and `audit_strings_fonts.py` stays at 0 unused.
+  Dropping to C literals is a defensible shortcut for a throwaway/demo view that will never be
+  translated — just make it a recorded decision, not a default.
+- **This is not a build-breaking handoff.** The generated `le_gen_*` on disk are untouched by a
+  zip edit, so the project still compiles before Generate *provided the new C references none of
+  the deleted widget globals*. What you get until Generate is a **visual** artifact: the screen's
+  `screenShow_*` still constructs the old subtree, which renders underneath the new layout.
+
+Report what the deletion orphans (strings / images / fonts) rather than sweeping it in the same
+pass — compare asset refs from the doomed subtree against refs from everything that survives, so
+shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta reviewable as
+"subtree removed".
+
 ## Gotchas (learned the hard way)
 
+- **`mgs_zip.repack`'s `.bak` is the PRISTINE original, not the previous state.** It only
+  copies when no `.bak` exists (`if not os.path.exists(bak)`), so on the second and later
+  repacks the backup is *not* a one-step rollback — it can be many sessions old. Restoring it
+  to "undo the last run" silently reverts every earlier change too (asked once for the previous
+  step, got a zip from two cleanups ago). **Use `git checkout -- <zip>` to roll back a step**;
+  the zip is tracked, so HEAD is the reliable baseline. Don't print "backup at X.bak" in a
+  transform script — it implies a rollback point that isn't there.
+- **"Unused by widget" ≠ unused — hand source references assets by generated symbol name.**
+  An audit that only checks widget uuid refs will call logos, LED indicators and icons unused
+  when `titlebar.c` et al. draw them from C. Always intersect with a grep of hand source for the
+  asset's `outputName` (excluding `config/default/`) before deleting. In marvin, 35 of 47 images
+  had no widget ref but 5 of those were live from C.
 - **Grep hand source EXCLUDING `config/default/`** when checking code references — the
   generated tree declares every symbol and yields false positives.
 - **Renames are widget-safe, deletes are not** — repoint uuids on delete/merge.
@@ -215,3 +279,8 @@ references by regex over the screen/state JSON:
 - [ ] no code-referenced name deleted without a source-rename patch
 - [ ] `userDefault` uuid still resolves
 - [ ] zip `testzip()` passes after repack
+- [ ] **asset manifests agree with asset directories** — `images.json` ids == `assets/images/*/`
+      dirs, `fonts.json` ids == `assets/fonts/*/` dirs (a delete must update both)
+- [ ] no widget references an image/font whose asset directory is gone
+- [ ] `stringtable.json`: every `bindings[].string` resolves to a surviving string; string `id`s
+      and `name`s unique
