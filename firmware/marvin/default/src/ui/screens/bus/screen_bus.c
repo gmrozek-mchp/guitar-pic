@@ -10,6 +10,8 @@
 #include "ui/ui_manager.h"   /* CANVAS_BUS, BASE_W, BASE_H, RenderLock/Unlock */
 #include "ui/titlebar.h"     /* shared hamburger + logos titlebar */
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
+#include "ui/widgets/gauge/widget_gauge.h"
+#include "ui/widgets/sparkline/widget_sparkline.h"
 #include "net/t1s/t1s_link.h"
 
 #include "gfx/canvas/gfx_canvas_api.h"
@@ -64,6 +66,11 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define CHART_H    (BASE_H - MARGIN - CHART_Y)    /* 264 */
 #define CHART_W    ((CONTENT_W - 2 * GAP) / 3)    /* 408 */
 
+/* Plot area inside a chart card: below the title, above the footer/axis labels. */
+#define AXIS_W     26                             /* y-tick gutter */
+#define PLOT_Y     (CHART_Y + 34)
+#define PLOT_H     (CHART_H - 34 - 26)
+
 #define DOT_NODE   8           /* w-2  */
 #define DOT_STAT   6           /* w-1.5 */
 #define BADGE_W    52
@@ -87,8 +94,8 @@ static const struct { const char *hdr; int x, w; } COL[C_COUNT] = {
  * transparent; refresh rewrites the string then invalidates the whole panel so the
  * opaque card backdrop repaints under them. */
 #define CAP       28           /* longest string: "BUS UTILIZATION HISTORY" */
-#define LBL_MAX  160
-#define WGT_MAX   64           /* 12 cards + 14 dots + 7 rules + 7 badge fills */
+#define LBL_MAX  200
+#define WGT_MAX   96
 
 static leChar        s_buf[LBL_MAX][CAP];
 static leFixedString s_fs[LBL_MAX];
@@ -157,6 +164,23 @@ static void add_rule(int x, int y, int w, const leScheme *scheme)
     p->fn->setScheme(p, scheme);
     p->fn->setBackgroundType(p, LE_WIDGET_BACKGROUND_FILL);
     Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, p);
+}
+
+/* A plain filled rect (chart bars + pill tracks). `pill` rounds the ends to a
+ * stadium via PanelAA_EnableDot — which rounds by min(w,h)/2 *without* setting
+ * cornerRadius, so it stays clear of the stock rounded-rect hang. Bars that are
+ * resized every refresh are left square (their width/height changes each tick, and
+ * an AA pass keyed to the old size would smear). */
+static leWidget *add_rect(int x, int y, int w, int h, const leScheme *scheme, bool pill)
+{
+    leWidget *p = next_widget();
+    p->fn->setPosition(p, x, y);
+    p->fn->setSize(p, w, h);
+    p->fn->setScheme(p, scheme);
+    p->fn->setBackgroundType(p, LE_WIDGET_BACKGROUND_FILL);
+    if (pill) { PanelAA_EnableDot(p); }
+    Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, p);
+    return p;
 }
 
 /* A filled AA circle. Never sets cornerRadius: Legato's stock rounded-rect paint
@@ -228,6 +252,13 @@ typedef struct {
 } row_t;
 static row_t s_row[MAX_ROWS];
 
+/* Chart widgets resized on each refresh: the TX-rate bars (bottom-anchored, so both
+ * y and height move) and the error bars (width only), plus their value labels. */
+static leWidget      *s_bar[MAX_ROWS];
+static leWidget      *s_ebar[MAX_ROWS];
+static leLabelWidget *s_etot[MAX_ROWS], *s_esplit[MAX_ROWS];
+static int            s_etrack_w = 1;
+
 static volatile bool s_shown;
 static StackType_t   s_task_stack[1024];
 static StaticTask_t  s_task_tcb;
@@ -272,14 +303,24 @@ void ScreenBus_Setup(void)
     Titlebar_Add(Marvin_PANEL_BUS);
     ScreenBus_SetInput(false);
 
-    /* ── KPI row: the wide utilization card, then seven equal tiles ───────── */
+    /* ── KPI row: the wide utilization card, then seven equal tiles ─────────
+     * Child paint order matters: card, then the gauge arc, then the % readout on
+     * top of it (as in the mockup). */
     add_card(CONTENT_X, KPI_Y, GAUGE_W, KPI_H);
-    s_kpi_util = add_label(CONTENT_X + PAD, KPI_Y + 30, 88, 28,
-                           (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_TEXT_CYAN_400,
-                           LE_HALIGN_LEFT);
-    set_text(add_label(CONTENT_X + 112, KPI_Y + 26, 76, 16, (const leFont *)&DejaVuSansMono_12,
+    {
+        leWidget *g = next_widget();
+        g->fn->setPosition(g, CONTENT_X + PAD, KPI_Y + 20);
+        g->fn->setSize(g, 76, 44);
+        g->fn->setBackgroundType(g, LE_WIDGET_BACKGROUND_NONE);
+        Gauge_Enable(g, 7u, &SCHEME_FILL_ZINC_700);
+        Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, g);
+    }
+    s_kpi_util = add_label(CONTENT_X + PAD, KPI_Y + 46, 76, 16,
+                           (const leFont *)&DejaVuSansMonoBold_14, &SCHEME_TEXT_CYAN_400,
+                           LE_HALIGN_CENTER);
+    set_text(add_label(CONTENT_X + 106, KPI_Y + 28, 84, 16, (const leFont *)&DejaVuSansMono_12,
                        &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT), "BUS");
-    set_text(add_label(CONTENT_X + 112, KPI_Y + 44, 76, 16, (const leFont *)&DejaVuSansMono_12,
+    set_text(add_label(CONTENT_X + 106, KPI_Y + 44, 84, 16, (const leFont *)&DejaVuSansMono_12,
                        &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT), "UTILIZATION");
 
     int x = CONTENT_X + GAUGE_W + GAP;
@@ -372,18 +413,112 @@ void ScreenBus_Setup(void)
         }
     }
 
-    /* ── chart row: three titled cards; the plots themselves come later ───── */
+    /* ── chart row: three cards ───────────────────────────────────────────── */
     static const char *CHART_TITLE[3] = {
         "BUS UTILIZATION HISTORY", "TX RATE BY NODE", "ERROR COUNT BY NODE",
     };
+    int cx[3];
     for (int i = 0; i < 3; i++)
     {
-        int cx = CONTENT_X + i * (CHART_W + GAP);
-        add_card(cx, CHART_Y, CHART_W, CHART_H);
-        set_text(add_label(cx + GAP, CHART_Y + GAP, CHART_W - 2 * GAP, 16,
+        cx[i] = CONTENT_X + i * (CHART_W + GAP);
+        add_card(cx[i], CHART_Y, CHART_W, CHART_H);
+        set_text(add_label(cx[i] + GAP, CHART_Y + GAP, CHART_W - 2 * GAP, 16,
                            (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
                            LE_HALIGN_LEFT), CHART_TITLE[i]);
     }
+
+    /* 1) Utilization history: y-axis ticks, the sparkline plot, and the time hints.
+     *    Scale matches the mockup's 0..60% Y domain. */
+    {
+        int px = cx[0] + GAP + AXIS_W;
+        int pw = CHART_W - 2 * GAP - AXIS_W;
+        for (int i = 0; i < 3; i++)   /* 60 / 30 / 0 top-to-bottom */
+        {
+            char t[8];
+            (void)snprintf(t, sizeof t, "%d", 60 - i * 30);
+            set_text(add_label(cx[0] + GAP, PLOT_Y + (PLOT_H - 12) * i / 2, AXIS_W - 4, 12,
+                               (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_600,
+                               LE_HALIGN_RIGHT), t);
+        }
+        leWidget *spark = next_widget();
+        spark->fn->setPosition(spark, px, PLOT_Y);
+        spark->fn->setSize(spark, pw, PLOT_H);
+        spark->fn->setScheme(spark, &SCHEME_NODE_MARVIN);   /* mono cyan = line colour */
+        spark->fn->setBackgroundType(spark, LE_WIDGET_BACKGROUND_NONE);
+        Sparkline_Enable(spark);
+        Sparkline_SetScale(600u);
+        Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, spark);
+
+        set_text(add_label(px, CHART_Y + CHART_H - 20, pw / 2, 14,
+                           (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_600,
+                           LE_HALIGN_LEFT), "<- 40s ago");   /* 40 samples @ 1 Hz */
+        set_text(add_label(px + pw / 2, CHART_Y + CHART_H - 20, pw / 2, 14,
+                           (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_600,
+                           LE_HALIGN_RIGHT), "now ->");
+    }
+
+    /* 2) TX rate by node: one bottom-anchored bar per row, node-coloured, with the
+     *    node's initial beneath it. Heights are set on refresh. */
+    {
+        int pw   = CHART_W - 2 * GAP;
+        int slot = pw / (int)((nrows > 0u) ? nrows : 1u);
+        int bw   = (slot > 16) ? (slot - 8) : slot;
+        for (uint8_t r = 0; r < nrows; r++)
+        {
+            T1SLink_NodeStats st;
+            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
+                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            const leScheme *nsc = (r == 0u) ? &SCHEME_NODE_MARVIN : node_scheme(st.type);
+            int bx = cx[1] + GAP + r * slot + (slot - bw) / 2;
+
+            s_bar[r] = add_rect(bx, PLOT_Y + PLOT_H - 1, bw, 1, nsc, false);
+
+            /* Full node name under the bar, centred on the whole slot (not just the
+             * bar) — at 9px even "Lightshow" fits the ~54px slot. */
+            char t[CAP];
+            (void)snprintf(t, sizeof t, "%s", (st.type != NULL) ? st.type : "?");
+            if (t[0] >= 'a' && t[0] <= 'z') { t[0] = (char)(t[0] - 32); }
+            set_text(add_label(cx[1] + GAP + r * slot, PLOT_Y + PLOT_H + 3, slot, 12,
+                               (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_500,
+                               LE_HALIGN_CENTER), t);
+        }
+    }
+
+    /* 3) Error count by node: name, a pill track with a node-coloured fill, the
+     *    total, and the CRC/SYM split. Fill widths are set on refresh. */
+    {
+        int rows_y = CHART_Y + 34;
+        int row_h  = (CHART_H - 42) / (int)((nrows > 0u) ? nrows : 1u);
+        int name_w = 72, tot_w = 28, split_w = 108;
+        int track_x = cx[2] + GAP + name_w + 6;
+        int track_w = CHART_W - 2 * GAP - name_w - tot_w - split_w - 18;
+
+        for (uint8_t r = 0; r < nrows; r++)
+        {
+            T1SLink_NodeStats st;
+            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
+                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            const leScheme *nsc = (r == 0u) ? &SCHEME_NODE_MARVIN : node_scheme(st.type);
+            int y = rows_y + r * row_h;
+            char t[CAP];
+
+            (void)snprintf(t, sizeof t, "%s", (st.type != NULL) ? st.type : "?");
+            if (t[0] >= 'a' && t[0] <= 'z') { t[0] = (char)(t[0] - 32); }
+            set_text(add_label(cx[2] + GAP, y, name_w, 14, (const leFont *)&DejaVuSansMono_12,
+                               nsc, LE_HALIGN_LEFT), t);
+
+            add_rect(track_x, y + 3, track_w, 8, &SCHEME_FILL_ZINC_800, true);
+            s_ebar[r]  = add_rect(track_x, y + 3, 1, 8, nsc, false);
+            s_etot[r]  = add_label(track_x + track_w + 6, y, tot_w, 14,
+                                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_400,
+                                   LE_HALIGN_RIGHT);
+            s_esplit[r] = add_label(track_x + track_w + tot_w + 10, y, split_w, 14,
+                                    (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_600,
+                                    LE_HALIGN_LEFT);
+        }
+        s_etrack_w = track_w;
+    }
+
 
     refresh_all();   /* seed values (render tasks suspended during boot Setup) */
 
@@ -406,6 +541,14 @@ static void refresh_all(void)
         s_kpi_util->fn->setScheme(s_kpi_util,
             (bs.util_permille > 700u) ? &SCHEME_TEXT_RED_400 :
             (bs.util_permille > 450u) ? &SCHEME_TEXT_YELLOW_400 : &SCHEME_TEXT_CYAN_400);
+
+        /* Gauge sweep + history sample. The gauge/sparkline read colours from a
+         * scheme's BASE, so these are the mono colour-carrier schemes (NODE_MARVIN is
+         * cyan #22D3EE, NODE_LIGHTSHOW is red #F87171 — both exactly the mockup's). */
+        Gauge_Set(bs.util_permille,
+                  (bs.util_permille > 700u) ? &SCHEME_NODE_LIGHTSHOW :
+                  (bs.util_permille > 450u) ? &SCHEME_FILL_YELLOW_400 : &SCHEME_NODE_MARVIN);
+        Sparkline_Push(bs.util_permille);
 
         fmt_count(bs.tx_total, tmp, sizeof tmp); set_text(s_kpi_tx, tmp);
         fmt_count(bs.rx_total, tmp, sizeof tmp); set_text(s_kpi_rx, tmp);
@@ -482,8 +625,54 @@ static void refresh_all(void)
                                                          : &SCHEME_FILL_ZINC_600);
     }
 
-    /* Transparent labels don't repaint their backdrop on invalidate, so repaint the
-     * whole panel once to erase old glyphs and redraw every cell. */
+    /* ── charts: rescale the bars against the current maxima ─────────────── */
+    {
+        uint32_t max_rate = 1u, max_err = 1u;
+        T1SLink_NodeStats st;
+        for (uint8_t r = 0; r < MAX_ROWS; r++)
+        {
+            if (!s_row[r].used) { continue; }
+            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
+                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            if (st.tx_rate > max_rate) { max_rate = st.tx_rate; }
+            uint32_t e = (uint32_t)st.crc_err + st.sym_err;
+            if (e > max_err) { max_err = e; }
+        }
+
+        for (uint8_t r = 0; r < MAX_ROWS; r++)
+        {
+            if (!s_row[r].used) { continue; }
+            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
+                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+
+            /* TX-rate bar: bottom-anchored, so both height and y move. */
+            if (s_bar[r] != NULL)
+            {
+                int h = (int)(((uint64_t)st.tx_rate * (uint32_t)(PLOT_H - 2)) / max_rate);
+                if (h < 1) { h = 1; }
+                s_bar[r]->fn->setSize(s_bar[r], s_bar[r]->fn->getWidth(s_bar[r]), (uint32_t)h);
+                s_bar[r]->fn->setPosition(s_bar[r], s_bar[r]->rect.x, PLOT_Y + PLOT_H - h);
+            }
+
+            /* Error bar: width only, plus the total and the CRC/SYM split. */
+            uint32_t e = (uint32_t)st.crc_err + st.sym_err;
+            if (s_ebar[r] != NULL)
+            {
+                int w = (int)(((uint64_t)e * (uint32_t)s_etrack_w) / max_err);
+                if (w < 1) { w = 1; }
+                s_ebar[r]->fn->setSize(s_ebar[r], (uint32_t)w, 8u);
+            }
+            (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)e);
+            set_text(s_etot[r], tmp);
+            (void)snprintf(tmp, sizeof tmp, "(%u CRC / %u SYM)",
+                           (unsigned)st.crc_err, (unsigned)st.sym_err);
+            set_text(s_esplit[r], tmp);
+        }
+    }
+
+    /* Transparent labels don't repaint their backdrop on invalidate, and the bars
+     * just moved, so repaint the whole panel once to erase old glyphs/geometry and
+     * redraw every cell + plot. */
     Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
 }
 

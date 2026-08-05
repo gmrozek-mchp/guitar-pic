@@ -241,11 +241,11 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/font/legato_rasterfont_stream.c
   hash: 211449061e65ea18d22f4971dfa6375dc4f0a9f74dee474465b6c9b4c3b98996
 - file: ../src/config/default/gfx/legato/generated/font/le_gen_fonts.c
-  hash: 89c8ad37aa28eb58b7a3d1f22306795c8153ab431ca9412e1d92accfb809d150
+  hash: 167ea7031e74dd59a3e2904a0c6629e201aded2c07dd5d62ebf50294852d292d
 - file: ../src/config/default/gfx/legato/generated/image/le_gen_images.c
   hash: d7e3e989d7470bf8dd1f99fe3df643449521e5c1ce4f781024365744b1b1f1f3
 - file: ../src/config/default/gfx/legato/generated/le_gen_assets.h
-  hash: 923b9887b69c2ba3ac1859624d651f95f1bc217a163f7ad960b2d239068a8507
+  hash: cfa2fbdacb2e0914b276c6d1482f90b27080f89fda182c930b0c2e730f5a62db
 - file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
   hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c
@@ -257,7 +257,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
   hash: bc335d35b4925118f02c19e895ef9aee476ad9276cddcc29af01f234ae60910c
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c
-  hash: 3f98c6b9dd372591b29c1e0d9bcd7b6ba3b65e782c51542fa85b7c5aaee1ad6f
+  hash: d5351d381367f30f776e3dafaf0227d78a972f13cf7db18fb8f2bd118d2ab161
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.c
   hash: cfa11f6fae97c111bfef3d1d2e4fc7c4045c1fadfb4708bcfd6f53415e9ca9ec
 - file: ../src/config/default/gfx/legato/generated/screen/le_gen_screen_Marvin.h

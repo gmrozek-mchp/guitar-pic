@@ -30,6 +30,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/screens/bus/screen_bus.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/titlebar.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/song_list/widget_song_list.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/gauge/widget_gauge.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/sparkline/widget_sparkline.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/button_aa/widget_button_aa.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/panel_aa/widget_panel_aa.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/progressbar_aa/widget_progressbar_aa.c"

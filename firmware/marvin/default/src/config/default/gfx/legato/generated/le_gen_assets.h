@@ -1069,6 +1069,18 @@ extern leRasterFont DejaVuSansMonoBoldOblique_40;
 ***********************************/
 extern leRasterFont DejaVuSansMonoBold_40;
 
+/*********************************
+ * Legato Font Asset
+ * Name:         DejaVuSansMono_9
+ * Height:       37
+ * Baseline:     8
+ * Style:        Antialias
+ * Glyph Count:  95
+ * Range Count:  1
+ * Glyph Ranges: 0x20-0x7E
+***********************************/
+extern leRasterFont DejaVuSansMono_9;
+
 /*****************************************************************************
  * Legato String Table
  * Encoding        UTF8
