@@ -17,7 +17,8 @@ Usage:
     audit_glyph_coverage.py <design.zip> [hand-src-dir] [data-file-or-dir ...]
 
 Hand-source scanning strips C comments first (a `…` in a comment is not rendered text)
-and excludes any path containing 'config/default'. Data files are decoded as UTF-8.
+and excludes the generated tree (located from the zip's own directory). Data files are
+decoded as UTF-8.
 For data files the font set can't be inferred, so they are checked against **every**
 surviving font and reported per font.
 """
@@ -27,6 +28,9 @@ import os
 import re
 import sys
 import zipfile
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mgs_zip
 
 ASCII = set(range(32, 127))
 
@@ -63,7 +67,13 @@ def main(argv):
         return 2
     zip_path = argv[1]
     rest = argv[2:]
-    hand_dir = rest[0] if rest and os.path.isdir(rest[0]) and "src" in rest[0] else None
+    # First positional after the zip is the source root if it is a directory holding
+    # C/C++ source; everything else is runtime data. (Don't test for "src" in the
+    # name — a project's source root can be called anything.)
+    hand_dir = None
+    if rest and os.path.isdir(rest[0]):
+        if any(f.endswith((".c", ".h", ".cpp")) for _r, _d, fs in os.walk(rest[0]) for f in fs):
+            hand_dir = rest[0]
     data_paths = [p for p in rest if p != hand_dir]
 
     cov, bound = load_coverage(zip_path)
@@ -92,28 +102,22 @@ def main(argv):
     if hand_dir:
         print("\n== RUNTIME TEXT in hand source (must be added to fonts MANUALLY)")
         found = False
-        for dp, dn, fn in os.walk(hand_dir):
-            if "config/default" in dp.replace(os.sep, "/"):
-                dn[:] = []
+        for p in sorted(mgs_zip.hand_source_files(hand_dir, zip_path,
+                                                  exts=(".c", ".h", ".cpp"))):
+            t = strip_c_comments(open(p, encoding="utf-8", errors="replace").read())
+            fonts_here = sorted(n for n in cov if re.search(r"\b%s\b" % re.escape(n), t))
+            if not fonts_here:
                 continue
-            for f in sorted(fn):
-                if not f.endswith((".c", ".h", ".cpp")):
-                    continue
-                p = os.path.join(dp, f)
-                t = strip_c_comments(open(p, encoding="utf-8", errors="replace").read())
-                fonts_here = sorted(n for n in cov if re.search(r"\b%s\b" % re.escape(n), t))
-                if not fonts_here:
-                    continue
-                chars = collections.Counter(
-                    ch for lit in literals(t) for ch in lit if ord(ch) > 126)
-                if not chars:
-                    continue
-                found = True
-                print("  %s\n     fonts used here: %s" % (p, ", ".join(fonts_here)))
-                for ch, n in chars.most_common():
-                    miss = [x for x in fonts_here if ord(ch) not in cov[x]]
-                    if miss:
-                        problems += 1
+            chars = collections.Counter(
+                ch for lit in literals(t) for ch in lit if ord(ch) > 126)
+            if not chars:
+                continue
+            found = True
+            print("  %s\n     fonts used here: %s" % (p, ", ".join(fonts_here)))
+            for ch, n in chars.most_common():
+                miss = [x for x in fonts_here if ord(ch) not in cov[x]]
+                if miss:
+                    problems += 1
                     print("     U+%04X %-2s x%-3d %s"
                           % (ord(ch), ch, n,
                              ("!! MISSING in: " + ", ".join(miss)) if miss else "ok"))

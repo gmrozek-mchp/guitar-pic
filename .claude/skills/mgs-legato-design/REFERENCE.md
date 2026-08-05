@@ -138,9 +138,9 @@ So string+font cleanups touch exactly those members.
 ### Font gotchas worth checking before any font work
 
 - **Names lie — hash the `sourceData` blob.** MGS silently substitutes a face it can't find
-  and keeps the requested name. In marvin, 31 fonts named `figmaFont_Menlo_*`,
-  `figmaFont_Inter_13`, `figmaFont_Cousine_13`, and `NotoSans_Regular_*` were **one identical
-  TTF: Noto Sans Regular** — so the "Menlo" labels weren't even monospace. Group fonts by
+  and keeps the requested name. Seen in the wild: 31 fonts named `figmaFont_Menlo_*`,
+  `figmaFont_Inter_13`, `figmaFont_Cousine_13` and `NotoSans_Regular_*` were **one identical
+  TTF — Noto Sans Regular** — so the "Menlo" labels weren't even monospace. Group fonts by
   `sha1(sourceData)` and read the TTF `name` table (nameID 1/2/4/6) to learn the real faces.
 - **Design-time strings get their glyphs automatically; runtime text does NOT.** This is the
   single most important font rule here.
@@ -209,7 +209,7 @@ references by regex over the screen/state JSON:
 - **Delete unused strings:** drop from `strings[]` **and** drop their `bindings[]` entries.
   Live = the string uuid appears in a widget's `properties.string` in `screen.json`. Hand
   source usually references **no** design string (runtime text goes through `setString` with a
-  dynamic string) — grep `stringID_` outside `config/default/` to confirm, and if it's empty,
+  dynamic string) — grep `stringID_` outside the generated tree to confirm, and if it's empty,
   string deletes and renames cannot break the C build.
 - **Delete unused fonts:** drop from `fonts.json` `fonts[]` **and** `drop=` the font's
   `assets/fonts/{uuid}/` directory. Keep any font whose `outputName` is referenced by hand
@@ -254,8 +254,8 @@ Two practical notes:
 ## Recipe: strip a widget subtree to hand-code a screen
 
 A recurring move on a figma-imported design: a screen's imported widget tree is being replaced
-by a programmatic builder in C (marvin's `screen_bus.c` / `screen_wiimotes.c` model), so the
-design should supply only the **empty root panel** the builder attaches to. Delete every child
+by a programmatic builder in C, so the design should supply only the **empty root panel** the
+builder attaches to. Delete every child
 of that panel and leave the layer + root intact. `scripts/strip_subtree.py` does this.
 
 Why hand-code at all: a re-layout of N widgets is unreviewable as a zip delta and miserable to
@@ -266,10 +266,11 @@ ring". Layout constants in C are also diffable.
 
 Three things to get right:
 
-- **Keep the root panel** — the builder needs it, and hand source references it
-  (`Marvin_PANEL_FOO`). Confirm it has `background = 1` (FILL) if the builder puts AA-rounded
-  cards on it: `PanelAA_Enable` samples the parent's pixel for its corner backdrop and assumes
-  an opaque parent. Compare against a panel already known to work.
+- **Keep the root panel** — the builder needs it, and hand source references its generated
+  global (`<Screen>_PANEL_<NAME>`). If the builder puts AA-rounded child panels on it, confirm
+  it has `background = 1` (FILL): a corner-smoothing paint typically samples the parent's pixel
+  for its backdrop and so assumes an opaque parent. Compare against a panel already known to
+  work.
 - **The deleted widgets' STRINGS are usually worth keeping, and driving from C via
   `leTableString` + `stringID_*`** — the opposite of the "hand-coded screens use C literals"
   habit. Two reasons, in order:
@@ -296,8 +297,8 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
 
 ## Gotchas (learned the hard way)
 
-- **A Generate can lag an external zip edit — verify, don't assume.** Observed once (marvin,
-  2026-08-05): after several Generates the output reflected two earlier edits but not a third
+- **A Generate can lag an external zip edit — verify, don't assume.** Observed once: after
+  several Generates the output reflected two earlier edits but not a third
   (all 44 `leImage` still declared while the zip had 16). It cleared on a later Generate; root
   cause never established. MGS re-serializes the design on save and keeps a
   `.legato_generate_cache.zip`, so an edit made while Composer holds the project open is at
@@ -313,11 +314,14 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
   transform script — it implies a rollback point that isn't there.
 - **"Unused by widget" ≠ unused — hand source references assets by generated symbol name.**
   An audit that only checks widget uuid refs will call logos, LED indicators and icons unused
-  when `titlebar.c` et al. draw them from C. Always intersect with a grep of hand source for the
-  asset's `outputName` (excluding `config/default/`) before deleting. In marvin, 35 of 47 images
-  had no widget ref but 5 of those were live from C.
-- **Grep hand source EXCLUDING `config/default/`** when checking code references — the
-  generated tree declares every symbol and yields false positives.
+  when a hand-built titlebar or chrome module draws them from C. Always intersect with a grep of
+  hand source for the asset's `outputName` (excluding the generated tree) before deleting.
+  Observed ratio in one project: 35 of 47 images had no widget ref, but 5 of those were live
+  from C.
+- **Grep hand source EXCLUDING the generated configuration tree** when checking code references
+  — it declares every symbol, so including it makes everything look referenced. The tree is the
+  design zip's own directory (`src/config/<cfg>/`); derive it from the zip path rather than
+  assuming the configuration is named `default` (`mgs_zip.hand_source_files` does this).
 - **Renames are widget-safe, deletes are not** — repoint uuids on delete/merge.
 - **Palette version drift:** designs often mix Tailwind v3 and v4 shades of the "same" color
   (e.g. zinc-400 `#A1A1AA` v3 vs `#9F9FA9` v4). Decide whether to consolidate (a recolor).

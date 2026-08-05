@@ -24,6 +24,43 @@ NULL_UUID = "{00000000-0000-0000-0000-000000000000}"
 _SCHEME_REF = re.compile(r'"type":\s*"scheme",\s*"value":\s*"(\{[0-9a-fA-F-]+\})"')
 
 
+def generated_root(zip_path):
+    """Absolute path of the MCC/Harmony generated tree, derived from the zip's own
+    location. The design zip lives in the configuration directory
+    (`<proj>/default/src/config/<CONFIG_NAME>/`), which is exactly the tree that
+    holds the generated le_gen_* sources — so this needs no guess about the
+    configuration being named "default"."""
+    return os.path.dirname(os.path.abspath(zip_path))
+
+
+def hand_source_files(src_dir, zip_path=None, exts=(".c", ".h")):
+    """Every source file under `src_dir` OUTSIDE the generated tree.
+
+    The generated tree declares every asset symbol, so including it makes
+    everything look code-referenced. Pass `zip_path` to locate that tree exactly;
+    without it, fall back to skipping any `config/<name>/` segment."""
+    skip_abs = os.path.abspath(generated_root(zip_path)) if zip_path else None
+    out = []
+    for root, _dirs, files in os.walk(src_dir):
+        rp = os.path.abspath(root)
+        if skip_abs is not None:
+            if rp == skip_abs or rp.startswith(skip_abs + os.sep):
+                continue
+        elif re.search(r"(^|/)config/[^/]+(/|$)", root.replace(os.sep, "/")):
+            continue
+        for f in files:
+            if f.endswith(exts):
+                out.append(os.path.join(root, f))
+    return out
+
+
+def strip_c_comments(src):
+    """Drop /* */ and // comments. Do this before matching an asset name in source:
+    prose mentions of a name produce false 'still referenced' verdicts."""
+    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
+    return re.sub(r"//[^\n]*", "", src)
+
+
 def members(zip_path):
     with zipfile.ZipFile(zip_path) as z:
         return z.namelist()

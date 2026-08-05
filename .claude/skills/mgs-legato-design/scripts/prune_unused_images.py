@@ -5,16 +5,17 @@ An image is KEPT if either:
   - a widget references its uuid  ({"type":"image","value":"{uuid}"}) in the design
     JSON (screens + state.json), or
   - its generated symbol (outputName) appears in hand source outside the generated
-    config/default/ tree.
+    generated configuration tree.
 
 Both halves matter. "Unused by widget" is NOT unused — logos, button icons and status
 LEDs are routinely drawn from C with setImage(w, (leImage *)&NAME), and the generated
 tree declares every symbol so it must be excluded from the grep or nothing looks dead.
 
 The hand-source check strips comments first, then matches the bare symbol on word
-boundaries. Comments are stripped because prose mentions of a name (a screen called
-"Marvin" and an image called "Marvin") otherwise produce false KEEPs; the match is
-left deliberately loose (no leading '&' required) so a macro alias still counts.
+boundaries. Comments are stripped because prose mentions of a name otherwise produce
+false KEEPs — an asset whose name is also a screen name or a product name will appear
+all over the comments while being genuinely dead. The match is left deliberately loose
+(no leading '&' required) so a macro alias still counts.
 
 Deleting an image drops assets/images/{uuid}/ AND its entry in
 assets/images/images.json — see REFERENCE.md; the manifest and the directories must
@@ -32,23 +33,11 @@ import mgs_zip
 MANIFEST = "assets/images/images.json"
 
 
-def strip_comments(src):
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    return re.sub(r"//[^\n]*", "", src)
-
-
-def hand_source_blob(src_dir):
-    """Every .c/.h outside the generated config/default/ tree, comments stripped."""
-    generated = os.path.join(src_dir, "config", "default")
-    out = []
-    for root, _dirs, files in os.walk(src_dir):
-        if root == generated or root.startswith(generated + os.sep):
-            continue
-        for f in files:
-            if f.endswith((".c", ".h")):
-                p = os.path.join(root, f)
-                out.append(strip_comments(open(p, encoding="utf-8", errors="ignore").read()))
-    return "\n".join(out)
+def hand_source_blob(src_dir, zip_path):
+    """Every source file outside the generated tree, comments stripped."""
+    return "\n".join(
+        mgs_zip.strip_c_comments(open(p, encoding="utf-8", errors="ignore").read())
+        for p in mgs_zip.hand_source_files(src_dir, zip_path))
 
 
 def inventory(zip_path):
@@ -88,7 +77,7 @@ def main(argv):
 
     imgs = inventory(zip_path)
     wref = widget_refs(zip_path)
-    code = hand_source_blob(src_dir)
+    code = hand_source_blob(src_dir, zip_path)
 
     keep, dead = [], []
     for u, (out, sz, sha) in imgs.items():

@@ -15,7 +15,7 @@ kind (same color mode / RLE / memory location) — usually a sibling icon.
                [--bind WIDGET:prop[,prop...]]... [--apply]
 
 --bind repoints a widget's image-typed property at the new asset, e.g.
-  --bind BUTTON_NAV_WIIMOTES:pressedImage,releasedImage
+  --bind BUTTON_NAV_SETTINGS:pressedImage,releasedImage
 Only the property's "value" is rewritten; enabled/visible/type are preserved.
 
 Dry-run by default. After --apply, open MGS -> Generate to emit the new leImage.

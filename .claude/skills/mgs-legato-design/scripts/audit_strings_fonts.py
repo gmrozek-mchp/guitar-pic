@@ -12,7 +12,7 @@ Usage:
     audit_strings_fonts.py <design.zip> [hand-src-dir] [--face DejaVuSansMono]
     audit_strings_fonts.py <design.zip> [hand-src-dir] --json      # machine-readable
 
-Hand-source scanning EXCLUDES any path containing 'config/default' — the generated
+Hand-source scanning EXCLUDES the generated configuration tree — that tree
 tree declares every symbol and would make everything look used.
 """
 import json
@@ -21,6 +21,9 @@ import re
 import sys
 import zipfile
 from collections import defaultdict
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import mgs_zip
 
 NULL_UUID = "{00000000-0000-0000-0000-000000000000}"
 
@@ -104,22 +107,16 @@ class Design:
         return out, fj
 
 
-def scan_hand_src(root):
+def scan_hand_src(root, zip_path=None):
     """Return (text, files) for hand-written C/H source, excluding generated tree."""
     chunks, files = [], []
-    for dirpath, dirnames, filenames in os.walk(root):
-        if "config/default" in dirpath.replace(os.sep, "/"):
-            dirnames[:] = []
-            continue
-        for fn in filenames:
-            if fn.endswith((".c", ".h", ".cpp")):
-                p = os.path.join(dirpath, fn)
-                try:
-                    with open(p, "r", errors="ignore") as fh:
-                        chunks.append((p, fh.read()))
-                except OSError:
-                    pass
-                files.append(p)
+    for p in mgs_zip.hand_source_files(root, zip_path, exts=(".c", ".h", ".cpp")):
+        try:
+            with open(p, "r", errors="ignore") as fh:
+                chunks.append((p, fh.read()))
+        except OSError:
+            pass
+        files.append(p)
     return chunks, files
 
 
@@ -188,7 +185,7 @@ def main(argv):
     # hand-source references, by generated C symbol name
     code_str, code_font = defaultdict(list), defaultdict(list)
     if hand_dir:
-        chunks, _files = scan_hand_src(hand_dir)
+        chunks, _files = scan_hand_src(hand_dir, zip_path)
         sname = {s["name"]: sid for sid, s in strings.items()}
         fname = {f["name"]: fid for fid, f in fonts.items()}
         for path, text in chunks:

@@ -5,7 +5,7 @@ description: Audit and programmatically edit an MGS (MPLAB Graphics Suite) / Leg
 
 # Editing an MGS / Legato design.zip
 
-`default_design.zip` (under `<proj>/default/src/config/default/`) is the
+`<name>_design.zip` (under `<proj>/<cfg>/src/config/<cfg>/`, typically `default`) is the
 **MGS (MPLAB Graphics Suite) / Legato project database** — a zip of JSON files. MGS "Generate" turns it into the
 `le_gen_*.c/.h` C sources the firmware compiles. Editing the JSON directly + regenerating
 lets you make **bulk, scripted** changes the Composer UI makes tedious (rename 40 schemes,
@@ -23,7 +23,7 @@ tool-edited zip, then re-serializes it on save).
    → **Deleting/merging** one requires repointing every referencing uuid to a survivor.
 3. **Generated C symbol names come from the asset `name`.** So renaming/deleting an asset
    that **hand-written source** uses (`&SCHEME_FOO`) breaks the C build even though the design
-   is valid. Grep hand source (EXCLUDING the generated `config/default/` tree — it declares
+   is valid. Grep hand source (EXCLUDING the generated configuration tree — it declares
    *everything*, causing false positives) to find real deps, and emit a source-rename patch.
 4. **Validate before repack:** every widget asset-uuid still resolves to a surviving asset;
    uuids and names are unique.
@@ -46,14 +46,20 @@ source-neutral) as one commit, then *renames* (with the source patch) as a secon
 
 ## Quick start
 
+Set `Z` to the design zip and `SRC` to the project's source root — the directory holding both
+your hand-written code and the generated configuration tree. The scripts locate that generated
+tree from the zip's own directory, so the Harmony configuration needn't be named `default`.
+`DATA` is optional: any directory of runtime data files (CSV, JSON) whose text reaches a label,
+for the glyph audit.
+
 ```bash
 S=.claude/skills/mgs-legato-design/scripts
-Z=firmware/marvin/default/src/config/default/default_design.zip
-python3 $S/audit_schemes.py       $Z firmware/marvin/default/src   # schemes
-python3 $S/audit_strings_fonts.py $Z firmware/marvin/default/src   # strings + fonts
-python3 $S/audit_widget_strings.py $Z --dupes                      # widget → string → font
-python3 $S/audit_glyph_coverage.py $Z firmware/marvin/default/src \
-                                      firmware/marvin/data         # glyph coverage
+Z=<proj>/<cfg>/src/config/<cfg>/<name>_design.zip
+SRC=<proj>/<cfg>/src
+python3 $S/audit_schemes.py        $Z $SRC          # schemes
+python3 $S/audit_strings_fonts.py  $Z $SRC          # strings + fonts
+python3 $S/audit_widget_strings.py $Z --dupes       # widget → string → font
+python3 $S/audit_glyph_coverage.py $Z $SRC [$DATA]  # glyph coverage
 ```
 
 ## Strings and fonts, specifically
@@ -81,12 +87,12 @@ deleting one, check hand source for its symbol and `drop=` its whole
 
 Two things you can do without touching Composer, both in [REFERENCE.md](REFERENCE.md):
 
-- **Prune** — `prune_unused_images.py <zip> <hand-src-dir>` deletes images referenced by
-  neither a widget nor hand code. Both halves are required: logos and button icons are drawn
+- **Prune** — `prune_unused_images.py <zip> <src-dir>` deletes images referenced by neither a
+  widget nor hand code. Both halves are required: logos and button icons are routinely drawn
   from C with `setImage(w, (leImage *)&NAME)`, so widget-refs alone under-counts, while the
   generated tree declares every symbol so it must be excluded from the grep. Strip comments
-  before name-matching — an image named `Marvin` in a project whose screen is also called
-  Marvin otherwise looks live off prose hits alone.
+  before name-matching, or an asset whose name is also a common word in the codebase (a screen
+  name, a product name) looks live off prose hits alone.
 - **Add** — `add_image.py <zip> <file.png> <NAME> --like <sibling> [--bind WIDGET:prop,…]`
   writes the three `assets/images/{uuid}/` members plus the `images.json` manifest entry, and
   can repoint widgets at the new asset in the same pass. Clone a sibling's config rather than
@@ -94,18 +100,19 @@ Two things you can do without touching Composer, both in [REFERENCE.md](REFERENC
 
 ## Replacing an imported screen with hand-written C
 
-When a figma-imported screen is being rebuilt programmatically (marvin's `screen_bus.c` /
-`screen_wiimotes.c`), the design should keep only the **empty root panel** the builder attaches
-to. `scripts/strip_subtree.py <zip> <PANEL_NAME> [--layer NAME]` deletes that panel's children
-and reports what the deletion orphans.
+When an imported screen is being rebuilt by a programmatic builder in C, the design should keep
+only the **empty root panel** the builder attaches to.
+`scripts/strip_subtree.py <zip> <PANEL_NAME> [--layer NAME]` deletes that panel's children and
+reports what the deletion orphans.
 
 The counter-intuitive part: **keep the deleted widgets' strings and drive them from C with
-`leTableString` + `stringID_*`** rather than switching to C literals. Imported captions are
-often non-ASCII — d-pad arrows ▲ ◀ ▶ ▼, a true minus U+2212 — and per the glyph rule above MGS
-only auto-includes glyphs for strings it can see in the design. A C literal would render blank
-after the next Generate with no build error. Full recipe (plus the `PanelAA_Enable` opaque-parent
-precondition and why a widget+scheme can't express a two-tone fill) in
-[REFERENCE.md](REFERENCE.md).
+`leTableString` + `stringID_*`** rather than switching to C literals. First for localization — a
+design string has a value per language, a C literal can never be translated. Second for glyphs:
+imported captions are often non-ASCII (arrows ▲ ◀ ▶ ▼, a true minus U+2212, ✓/⌫), and per the
+glyph rule above MGS only auto-includes glyphs for strings it can see in the design, so a literal
+would render blank after the next Generate with no build error. Full recipe — plus the
+opaque-parent precondition for AA-rounded child panels, and why a widget + scheme can't express a
+two-tone fill — in [REFERENCE.md](REFERENCE.md).
 
 ## Details
 

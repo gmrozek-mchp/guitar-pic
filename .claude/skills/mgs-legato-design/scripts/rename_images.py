@@ -23,23 +23,10 @@ import mgs_zip
 MANIFEST = "assets/images/images.json"
 
 
-def strip_comments(src):
-    src = re.sub(r"/\*.*?\*/", "", src, flags=re.S)
-    return re.sub(r"//[^\n]*", "", src)
-
-
-def hand_source(src_dir):
-    """{path: comment-stripped text} for .c/.h outside the generated tree."""
-    generated = os.path.join(src_dir, "config", "default")
-    out = {}
-    for root, _d, files in os.walk(src_dir):
-        if root == generated or root.startswith(generated + os.sep):
-            continue
-        for f in files:
-            if f.endswith((".c", ".h")):
-                p = os.path.join(root, f)
-                out[p] = strip_comments(open(p, encoding="utf-8", errors="ignore").read())
-    return out
+def hand_source(src_dir, zip_path):
+    """{path: comment-stripped text} for source files outside the generated tree."""
+    return {p: mgs_zip.strip_c_comments(open(p, encoding="utf-8", errors="ignore").read())
+            for p in mgs_zip.hand_source_files(src_dir, zip_path)}
 
 
 def main(argv):
@@ -71,7 +58,7 @@ def main(argv):
         by_name[nm] = (n, m.group(1), doc)
 
     manifest = mgs_zip.load_json(zip_path, MANIFEST)
-    code = hand_source(src_dir)
+    code = hand_source(src_dir, zip_path)
 
     todo, skipped, blocked = [], [], []
     for old, new in pairs:

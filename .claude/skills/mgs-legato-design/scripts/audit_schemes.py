@@ -9,7 +9,7 @@ neither a widget nor hand code (delete candidates), and the colorMode spread.
 
 `hand-src-dir` (optional) is your hand-written source root (e.g. `<proj>/default/src`).
 Scheme names referenced there are flagged as code-used so you don't rename/delete
-them without a source patch. The generated `config/default/` tree is auto-excluded
+them without a source patch. The generated configuration tree is auto-excluded
 (it declares every symbol → false positives).
 
 Read-only. Pairs with mgs_zip.py for the actual edit + repack.
@@ -51,8 +51,7 @@ def main(argv):
 
     code_used = set()
     if src_dir:
-        files = [f for f in glob.glob(os.path.join(src_dir, "**", "*.[ch]"), recursive=True)
-                 if "/config/default/" not in f.replace(os.sep, "/")]
+        files = mgs_zip.hand_source_files(src_dir, zp)
         blob = "\n".join(open(f, errors="ignore").read() for f in files)
         allnames = sorted(id2name.values(), key=len, reverse=True)
         if allnames:
