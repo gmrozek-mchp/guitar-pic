@@ -29,8 +29,18 @@ void ScreenBus_Setup(void);
 void ScreenBus_SetInput(bool on);
 
 /* Marks the bus view shown/hidden — starts/stops the ~1 Hz statistics refresh so it
- * costs nothing on other views. No-op placeholder until the refresh lands. */
+ * costs nothing on other views. */
 void ScreenBus_SetShown(bool shown);
+
+/* Swap the screen between the live T1S telemetry and a simulated feed. The
+ * simulator exists because a healthy bus is near-idle and error-free, so the
+ * thresholds, colour ramps, gauge sweep and chart scaling never exercise on real
+ * data (and followers report zeros until each is reflashed with the v2 heartbeat).
+ * While simulated, the UPTIME tile's sub-line reads SIMULATED so the screen never
+ * implies the numbers are live. Takes effect on the next refresh tick; the row set
+ * is built at Setup, and both feeds present the same node count. */
+void ScreenBus_SetSimulated(bool on);
+bool ScreenBus_Simulated(void);
 
 #ifdef __cplusplus
 }

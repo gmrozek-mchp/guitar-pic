@@ -34,9 +34,10 @@
  * AA card: zinc-900 fill + 1px zinc-700 border (SCHEME_FILL_ZINC_900's shadowDark
  * is #404040 ≈ zinc-700, so the stock border colour already matches).
  *
- * Still to come (mockup has them, we don't yet): the semicircle utilization gauge
- * (shown as a threshold-coloured % for now) and the three chart bodies — their
- * cards + titles are laid out so adding the drawing is self-contained. */
+ * The utilization gauge and the three plots are custom-painted widgets
+ * (ui/widgets/gauge, ui/widgets/sparkline) plus plain resized rects for the bars.
+ * Values come from the data-source accessors below, which read either the live
+ * T1SLink telemetry or a simulated feed (see BUS_SIM_DEFAULT). */
 
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
 static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
@@ -241,9 +242,182 @@ static const leScheme *node_scheme(const char *type)
 static const leScheme *crc_scheme(uint16_t v) { return (v > 15u) ? &SCHEME_TEXT_RED_400 : (v > 6u) ? &SCHEME_TEXT_YELLOW_400 : &SCHEME_TEXT_ZINC_500; }
 static const leScheme *sym_scheme(uint16_t v) { return (v > 8u)  ? &SCHEME_TEXT_RED_400 : (v > 3u) ? &SCHEME_TEXT_YELLOW_400 : &SCHEME_TEXT_ZINC_500; }
 
+/* ── data source: live telemetry, or a simulated feed ────────────────────────
+ * Every value on this screen is read through these four accessors, so a synthetic
+ * feed can stand in for the live T1S telemetry. That matters for development: a
+ * healthy bus is near-idle and error-free, so the thresholds, colour ramps, gauge
+ * sweep and chart scaling never exercise on real data (and followers report zeros
+ * until each is reflashed with the v2 heartbeat).
+ *
+ * The simulator mirrors the mockup's seed values and jitter, keeps its own
+ * accumulators, and marks beatbox absent (it genuinely isn't on the bus yet) so the
+ * OFFLINE styling is covered too. Toggle with ScreenBus_SetSimulated(); when it is
+ * on, the UPTIME tile's sub-line reads SIMULATED so the screen never lies about
+ * where its numbers came from. */
+
+/* Default for development builds. Set to false to ship live telemetry. */
+#define BUS_SIM_DEFAULT   true
+
+static bool s_sim = BUS_SIM_DEFAULT;
+
+typedef struct {
+    const char *type;
+    uint8_t     node_id;
+    uint16_t    base_tx, base_rx;   /* frames/s at unity jitter */
+    uint8_t     base_err;
+    bool        present;
+} sim_node_t;
+
+/* Row 0 is marvin (the coordinator/self row); the rest mirror the real node table's
+ * ids so the ADDR column stays representative. */
+static const sim_node_t SIM_NODE[] = {
+    { "marvin",    0u, 1140u, 560u, 1u, true  },
+    { "fauxmote",  1u,  310u, 870u, 5u, true  },
+    { "guitar",    3u,  265u, 740u, 2u, true  },
+    { "fretboard", 4u,  230u, 700u, 9u, true  },
+    { "beatbox",   5u,  185u, 660u, 3u, false },   /* not on the bus yet */
+    { "lemmy",     6u,  145u, 600u, 2u, true  },
+    { "lightshow", 7u,  410u, 690u, 4u, true  },
+};
+#define SIM_N  (sizeof SIM_NODE / sizeof SIM_NODE[0])
+
+static struct {
+    uint32_t tx, rx, tx_rate, rx_rate, age_ms;
+    uint16_t crc, sym;
+} s_sim_rt[SIM_N];
+
+static uint32_t s_sim_util = 320u;   /* permille */
+static uint32_t s_sim_uptime;
+static bool     s_sim_seeded;
+
+/* xorshift32 — a deterministic, allocation-free jitter source. */
+static uint32_t s_rng = 0x1BADB002u;
+static uint32_t rnd(void)
+{
+    s_rng ^= s_rng << 13;
+    s_rng ^= s_rng >> 17;
+    s_rng ^= s_rng << 5;
+    return s_rng;
+}
+
+/* Seed the totals so the counters start in a plausible place (millions of frames,
+ * a handful of errors) instead of climbing from zero. */
+static void sim_seed(void)
+{
+    for (unsigned i = 0; i < SIM_N; i++)
+    {
+        s_sim_rt[i].tx  = (uint32_t)SIM_NODE[i].base_tx * 4800u + (rnd() % 20000u);
+        s_sim_rt[i].rx  = (uint32_t)SIM_NODE[i].base_rx * 4800u + (rnd() % 20000u);
+        /* Seeded low enough that the per-node CRC/SYM columns start spread across
+         * all three threshold tiers (zinc / yellow / red) rather than saturating
+         * red — the point of the simulated feed is to exercise the styling. */
+        s_sim_rt[i].crc = (uint16_t)(SIM_NODE[i].base_err * 2u + (rnd() % 4u));
+        s_sim_rt[i].sym = (uint16_t)(SIM_NODE[i].base_err * 1u + (rnd() % 3u));
+    }
+    s_sim_uptime = 15397u;   /* 4:16:37, like the mockup */
+    s_sim_seeded = true;
+}
+
+/* Advance one refresh tick: jitter each node's rate, accumulate totals, sprinkle
+ * errors, and walk the utilization figure around 25–43%. */
+static void sim_advance(void)
+{
+    if (!s_sim_seeded) { sim_seed(); }
+
+    for (unsigned i = 0; i < SIM_N; i++)
+    {
+        uint32_t j = 820u + (rnd() % 361u);            /* 0.82 .. 1.18 */
+        if (!SIM_NODE[i].present)
+        {
+            s_sim_rt[i].tx_rate = 0u;
+            s_sim_rt[i].rx_rate = 0u;
+            s_sim_rt[i].age_ms  = 30000u;              /* long gone */
+            continue;
+        }
+        s_sim_rt[i].tx_rate = (uint32_t)SIM_NODE[i].base_tx * j / 1000u;
+        s_sim_rt[i].rx_rate = (uint32_t)SIM_NODE[i].base_rx * j / 1000u;
+        s_sim_rt[i].tx     += s_sim_rt[i].tx_rate;
+        s_sim_rt[i].rx     += s_sim_rt[i].rx_rate;
+        s_sim_rt[i].age_ms  = (i == 0u) ? 0u : (rnd() % 600u);
+
+        if ((rnd() % 100u) < 4u) { s_sim_rt[i].crc++; }
+        if ((rnd() % 100u) < 2u) { s_sim_rt[i].sym++; }
+    }
+
+    s_sim_util = 250u + (rnd() % 190u);
+    s_sim_uptime++;
+}
+
+static void sim_fill(unsigned i, T1SLink_NodeStats *out)
+{
+    out->node_id  = SIM_NODE[i].node_id;
+    out->type     = SIM_NODE[i].type;
+    out->present  = SIM_NODE[i].present;
+    out->age_ms   = s_sim_rt[i].age_ms;
+    out->tx_count = s_sim_rt[i].tx;
+    out->rx_count = s_sim_rt[i].rx;
+    out->tx_rate  = s_sim_rt[i].tx_rate;
+    out->rx_rate  = s_sim_rt[i].rx_rate;
+    out->crc_err  = s_sim_rt[i].crc;
+    out->sym_err  = s_sim_rt[i].sym;
+}
+
+static uint8_t bus_node_count(void)
+{
+    return s_sim ? (uint8_t)(SIM_N - 1u) : T1SLink_NodeTableCount();
+}
+
+static bool bus_self(T1SLink_NodeStats *out)
+{
+    if (!s_sim) { return T1SLink_GetSelfStats(out); }
+    if (!s_sim_seeded) { sim_seed(); }
+    sim_fill(0u, out);
+    return true;
+}
+
+static bool bus_node(uint8_t idx, T1SLink_NodeStats *out)
+{
+    if (!s_sim) { return T1SLink_GetNodeStats(idx, out); }
+    if ((uint32_t)idx + 1u >= SIM_N) { return false; }
+    if (!s_sim_seeded) { sim_seed(); }
+    sim_fill((unsigned)idx + 1u, out);
+    return true;
+}
+
+static bool bus_stats(T1SLink_BusStats *out)
+{
+    if (!s_sim) { return T1SLink_GetBusStats(out); }
+    if (!s_sim_seeded) { sim_seed(); }
+
+    uint32_t tx = 0u, rx = 0u, crc = 0u, sym = 0u;
+    uint8_t  online = 0u;
+    for (unsigned i = 0; i < SIM_N; i++)
+    {
+        tx  += s_sim_rt[i].tx;
+        rx  += s_sim_rt[i].rx;
+        crc += s_sim_rt[i].crc;
+        sym += s_sim_rt[i].sym;
+        if (SIM_NODE[i].present) { online++; }
+    }
+    uint32_t frames = tx + rx;
+
+    out->util_permille = s_sim_util;
+    out->tx_total      = tx;
+    out->rx_total      = rx;
+    out->crc_total     = crc;
+    out->sym_total     = sym;
+    out->err_rate_ppm  = (frames != 0u)
+        ? (uint32_t)(((uint64_t)(crc + sym) * 1000000u) / frames) : 0u;
+    out->uptime_s      = s_sim_uptime;
+    out->nodes_online  = online;
+    out->nodes_total   = (uint8_t)SIM_N;
+    return true;
+}
+
 /* ── widget handles for the refresh ─────────────────────────────────────────*/
 static leLabelWidget *s_kpi_util, *s_kpi_tx, *s_kpi_txr, *s_kpi_rx,
-                     *s_kpi_crc, *s_kpi_sym, *s_kpi_err, *s_kpi_nodes, *s_kpi_up;
+                     *s_kpi_crc, *s_kpi_sym, *s_kpi_err, *s_kpi_nodes, *s_kpi_up,
+                     *s_kpi_upsub;   /* "10BASE-T1S" / "SIMULATED" */
 
 typedef struct {
     bool           used;
@@ -337,7 +511,7 @@ void ScreenBus_Setup(void)
     s_kpi_nodes = kpi(x, KPI_W, "NODES",      &SCHEME_TEXT_GREEN_400,  NULL, "ONLINE", NULL);
                                                           x += KPI_W + GAP;
     s_kpi_up    = kpi(x, (CONTENT_X + CONTENT_W) - x, "UPTIME", &SCHEME_TEXT_VIOLET_400,
-                      NULL, "10BASE-T1S", NULL);
+                      &s_kpi_upsub, "10BASE-T1S", NULL);
 
     /* ── node table: one card holding the header, a rule, then the rows ───── */
     add_card(CONTENT_X, TBL_Y, CONTENT_W, TBL_H);
@@ -350,7 +524,7 @@ void ScreenBus_Setup(void)
     add_rule(CONTENT_X, TBL_Y + TBL_HDR_H, CONTENT_W, &SCHEME_FILL_ZINC_700);
 
     /* Row 0 = marvin (self), rows 1.. = the follower node table. */
-    uint8_t nfollow = T1SLink_NodeTableCount();
+    uint8_t nfollow = bus_node_count();
     uint8_t nrows   = (uint8_t)(1u + nfollow);
     if (nrows > MAX_ROWS) { nrows = MAX_ROWS; }
 
@@ -360,7 +534,7 @@ void ScreenBus_Setup(void)
         int  y    = row0_y + r * ROW_H;
         bool self = (r == 0u);
         T1SLink_NodeStats st;
-        if (!(self ? T1SLink_GetSelfStats(&st) : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st)))
+        if (!(self ? bus_self(&st) : bus_node((uint8_t)(r - 1u), &st)))
         {
             continue;
         }
@@ -466,8 +640,8 @@ void ScreenBus_Setup(void)
         for (uint8_t r = 0; r < nrows; r++)
         {
             T1SLink_NodeStats st;
-            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
-                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            if (!((r == 0u) ? bus_self(&st)
+                            : bus_node((uint8_t)(r - 1u), &st))) { continue; }
             const leScheme *nsc = (r == 0u) ? &SCHEME_NODE_MARVIN : node_scheme(st.type);
             int bx = cx[1] + GAP + r * slot + (slot - bw) / 2;
 
@@ -496,8 +670,8 @@ void ScreenBus_Setup(void)
         for (uint8_t r = 0; r < nrows; r++)
         {
             T1SLink_NodeStats st;
-            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
-                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            if (!((r == 0u) ? bus_self(&st)
+                            : bus_node((uint8_t)(r - 1u), &st))) { continue; }
             const leScheme *nsc = (r == 0u) ? &SCHEME_NODE_MARVIN : node_scheme(st.type);
             int y = rows_y + r * row_h;
             char t[CAP];
@@ -533,8 +707,10 @@ static void refresh_all(void)
 {
     char tmp[CAP];
 
+    if (s_sim) { sim_advance(); }
+
     T1SLink_BusStats bs;
-    if (T1SLink_GetBusStats(&bs))
+    if (bus_stats(&bs))
     {
         (void)snprintf(tmp, sizeof tmp, "%lu%%", (unsigned long)(bs.util_permille / 10u));
         set_text(s_kpi_util, tmp);
@@ -574,16 +750,21 @@ static void refresh_all(void)
         unsigned s = bs.uptime_s;
         (void)snprintf(tmp, sizeof tmp, "%u:%02u:%02u", s / 3600u, (s % 3600u) / 60u, s % 60u);
         set_text(s_kpi_up, tmp);
+
+        /* Never let the screen imply these are live numbers. */
+        set_text(s_kpi_upsub, s_sim ? "SIMULATED" : "10BASE-T1S");
+        s_kpi_upsub->fn->setScheme(s_kpi_upsub, s_sim ? &SCHEME_TEXT_YELLOW_400
+                                                      : &SCHEME_TEXT_ZINC_500);
     }
 
     /* TOTAL TX's green sub-line = aggregate TX rate (marvin + every node). */
     {
         uint32_t txr = 0u;
         T1SLink_NodeStats s2;
-        if (T1SLink_GetSelfStats(&s2)) { txr += s2.tx_rate; }
-        for (uint8_t i = 0; i < T1SLink_NodeTableCount(); i++)
+        if (bus_self(&s2)) { txr += s2.tx_rate; }
+        for (uint8_t i = 0; i < bus_node_count(); i++)
         {
-            if (T1SLink_GetNodeStats(i, &s2)) { txr += s2.tx_rate; }
+            if (bus_node(i, &s2)) { txr += s2.tx_rate; }
         }
         fmt_rate(txr, tmp, sizeof tmp);
         set_text(s_kpi_txr, tmp);
@@ -594,8 +775,8 @@ static void refresh_all(void)
         row_t *w = &s_row[r];
         if (!w->used) { continue; }
         T1SLink_NodeStats st;
-        if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
-                        : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st)))
+        if (!((r == 0u) ? bus_self(&st)
+                        : bus_node((uint8_t)(r - 1u), &st)))
         {
             continue;
         }
@@ -632,8 +813,8 @@ static void refresh_all(void)
         for (uint8_t r = 0; r < MAX_ROWS; r++)
         {
             if (!s_row[r].used) { continue; }
-            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
-                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            if (!((r == 0u) ? bus_self(&st)
+                            : bus_node((uint8_t)(r - 1u), &st))) { continue; }
             if (st.tx_rate > max_rate) { max_rate = st.tx_rate; }
             uint32_t e = (uint32_t)st.crc_err + st.sym_err;
             if (e > max_err) { max_err = e; }
@@ -642,8 +823,8 @@ static void refresh_all(void)
         for (uint8_t r = 0; r < MAX_ROWS; r++)
         {
             if (!s_row[r].used) { continue; }
-            if (!((r == 0u) ? T1SLink_GetSelfStats(&st)
-                            : T1SLink_GetNodeStats((uint8_t)(r - 1u), &st))) { continue; }
+            if (!((r == 0u) ? bus_self(&st)
+                            : bus_node((uint8_t)(r - 1u), &st))) { continue; }
 
             /* TX-rate bar: bottom-anchored, so both height and y move. */
             if (s_bar[r] != NULL)
@@ -699,4 +880,14 @@ void ScreenBus_SetInput(bool on)
 void ScreenBus_SetShown(bool shown)
 {
     s_shown = shown;
+}
+
+void ScreenBus_SetSimulated(bool on)
+{
+    s_sim = on;
+}
+
+bool ScreenBus_Simulated(void)
+{
+    return s_sim;
 }
