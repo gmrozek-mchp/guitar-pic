@@ -494,7 +494,7 @@ extern leImage Image0;
  * Baseline:     12
  * Style:        Antialias
  * Glyph Count:  194
- * Range Count:  20
+ * Range Count:  23
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
                  0x2014
@@ -553,7 +553,7 @@ extern leRasterFont DejaVuSansMono_18;
  * Baseline:     19
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  7
+ * Range Count:  2
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -565,10 +565,11 @@ extern leRasterFont DejaVuSansMono_20;
  * Height:       37
  * Baseline:     22
  * Style:        Antialias
- * Glyph Count:  191
+ * Glyph Count:  192
  * Range Count:  4
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
+                 0x2212
 ***********************************/
 extern leRasterFont DejaVuSansMono_24;
 
@@ -592,7 +593,7 @@ extern leRasterFont DejaVuSansMonoBold_18;
  * Baseline:     14
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  12
+ * Range Count:  9
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -605,7 +606,7 @@ extern leRasterFont DejaVuSansMonoBold_14;
  * Baseline:     22
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  10
+ * Range Count:  11
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -618,7 +619,7 @@ extern leRasterFont DejaVuSansMonoBold_24;
  * Baseline:     11
  * Style:        Antialias
  * Glyph Count:  192
- * Range Count:  10
+ * Range Count:  16
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
                  0x2605
@@ -656,13 +657,27 @@ extern leRasterFont DejaVuSansMonoBold_40;
  * Legato Font Asset
  * Name:         DejaVuSansMono_9
  * Height:       37
- * Baseline:     8
+ * Baseline:     9
  * Style:        Antialias
- * Glyph Count:  95
- * Range Count:  1
+ * Glyph Count:  191
+ * Range Count:  2
  * Glyph Ranges: 0x20-0x7E
+                 0xA0-0xFF
 ***********************************/
 extern leRasterFont DejaVuSansMono_9;
+
+/*********************************
+ * Legato Font Asset
+ * Name:         DejaVuSansMonoBold_20
+ * Height:       37
+ * Baseline:     19
+ * Style:        Antialias
+ * Glyph Count:  191
+ * Range Count:  7
+ * Glyph Ranges: 0x20-0x7E
+                 0xA0-0xFF
+***********************************/
+extern leRasterFont DejaVuSansMonoBold_20;
 
 /*****************************************************************************
  * Legato String Table
