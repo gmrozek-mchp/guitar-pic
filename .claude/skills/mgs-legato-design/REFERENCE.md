@@ -227,6 +227,30 @@ references by regex over the screen/state JSON:
   state, zero visual change, and you don't inherit the dead asset's font binding (which may be
   a size you're about to delete).
 
+## Icon as a glyph, or as an image?
+
+A figma import gives you every icon as a small PNG, and it is tempting to convert the ones with
+Unicode equivalents — a tick → U+2713, a solid play triangle → U+25B6, arrows →
+U+25B2/25C0/25B6/25BC — since MGS auto-includes the glyph on Generate and the asset disappears.
+
+**Decide per control group, and let the least-representable icon in the group decide.** If any
+icon in the same set of buttons has no sane character (a playlist glyph; a hamburger — U+2630 is
+absent from DejaVu Sans Mono), that set can only be all-images, and converting its siblings makes
+the group *less* consistent. Different groups may legitimately differ: one screen's d-pad can be
+arrow glyphs while another screen's toolbar stays images. Judge consistency within the group the
+user sees together, not across the firmware.
+
+Two practical notes:
+
+- **File size rarely decides it.** A 14–24 px icon is a few hundred bytes, and an added glyph
+  costs about the same, so argue from consistency and asset-management instead.
+- **Folding an icon into the label changes layout.** Legato centres image+text as a unit with
+  `setImageMargin`; as a glyph it becomes part of the text run, so spacing shifts. Watch for
+  imported strings that carry a **leading space** (`' SELECT SONG'`) — that space may be doing
+  the icon/text spacing where no `imageMargin` is declared, so it is not automatically a
+  removable artifact. Prefer an explicit `imageMargin` over an invisible character, but verify
+  visually.
+
 ## Recipe: strip a widget subtree to hand-code a screen
 
 A recurring move on a figma-imported design: a screen's imported widget tree is being replaced

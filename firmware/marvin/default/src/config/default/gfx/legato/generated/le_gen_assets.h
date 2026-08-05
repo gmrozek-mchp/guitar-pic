@@ -162,21 +162,21 @@ extern leImage BUTTON_FACE_START;
 
 /*********************************
  * Legato Image Asset
- * Name:   LemmyOnStagePlayerImage_gradient
+ * Name:   PLAYER_ROBOT_ART
  * Size:   254x208 pixels
  * Type:   RGB Data
  * Format: RGB_565
  ***********************************/
-extern leImage LemmyOnStagePlayerImage_gradient;
+extern leImage PLAYER_ROBOT_ART;
 
 /*********************************
  * Legato Image Asset
- * Name:   HumanPlayer_gradient
+ * Name:   PLAYER_HUMAN_ART
  * Size:   254x208 pixels
  * Type:   RGB Data
  * Format: RGB_565
  ***********************************/
-extern leImage HumanPlayer_gradient;
+extern leImage PLAYER_HUMAN_ART;
 
 /*********************************
  * Legato Image Asset

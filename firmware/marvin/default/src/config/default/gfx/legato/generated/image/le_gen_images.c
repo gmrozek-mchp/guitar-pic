@@ -930,12 +930,12 @@ leImage BUTTON_FACE_START =
 
 /*********************************
  * Legato Image Asset
- * Name:   LemmyOnStagePlayerImage_gradient
+ * Name:   PLAYER_ROBOT_ART
  * Size:   254x208 pixels
  * Mode:   RGB_565
  ***********************************/
 
-const uint8_t LemmyOnStagePlayerImage_gradient_data[105664] =
+const uint8_t PLAYER_ROBOT_ART_data[105664] =
 {
     0x20,0x08,0x40,0x10,0x61,0x10,0x41,0x10,0x41,0x10,0x41,0x10,0x41,0x10,0x41,0x18,
     0x41,0x10,0x41,0x10,0x41,0x10,0x41,0x10,0x41,0x18,0x41,0x10,0x41,0x10,0x41,0x08,
@@ -7543,11 +7543,11 @@ const uint8_t LemmyOnStagePlayerImage_gradient_data[105664] =
     0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,
 };
 
-leImage LemmyOnStagePlayerImage_gradient =
+leImage PLAYER_ROBOT_ART =
 {
     {
         LE_STREAM_LOCATION_ID_INTERNAL, // data location id
-        (void*)LemmyOnStagePlayerImage_gradient_data, // data variable pointer
+        (void*)PLAYER_ROBOT_ART_data, // data variable pointer
         105664, // data size
     },
     LE_IMAGE_FORMAT_RAW,
@@ -7559,7 +7559,7 @@ leImage LemmyOnStagePlayerImage_gradient =
         },
         52832,
         105664,
-        (void*)LemmyOnStagePlayerImage_gradient_data, // data variable pointer
+        (void*)PLAYER_ROBOT_ART_data, // data variable pointer
         0, // flags
     },
     0, // image flags
@@ -7572,12 +7572,12 @@ leImage LemmyOnStagePlayerImage_gradient =
 
 /*********************************
  * Legato Image Asset
- * Name:   HumanPlayer_gradient
+ * Name:   PLAYER_HUMAN_ART
  * Size:   254x208 pixels
  * Mode:   RGB_565
  ***********************************/
 
-const uint8_t HumanPlayer_gradient_data[105664] =
+const uint8_t PLAYER_HUMAN_ART_data[105664] =
 {
     0x93,0xE6,0x73,0xE6,0x94,0xE6,0xB4,0xE6,0x94,0xE6,0xB4,0xEE,0xF5,0xEE,0xF5,0xEE,
     0xD6,0xEE,0xF7,0xEE,0xF7,0xEE,0xF7,0xEE,0xF6,0xEE,0xB4,0xE6,0xD5,0xEE,0x17,0xEF,
@@ -14185,11 +14185,11 @@ const uint8_t HumanPlayer_gradient_data[105664] =
     0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,0xC3,0x18,
 };
 
-leImage HumanPlayer_gradient =
+leImage PLAYER_HUMAN_ART =
 {
     {
         LE_STREAM_LOCATION_ID_INTERNAL, // data location id
-        (void*)HumanPlayer_gradient_data, // data variable pointer
+        (void*)PLAYER_HUMAN_ART_data, // data variable pointer
         105664, // data size
     },
     LE_IMAGE_FORMAT_RAW,
@@ -14201,7 +14201,7 @@ leImage HumanPlayer_gradient =
         },
         52832,
         105664,
-        (void*)HumanPlayer_gradient_data, // data variable pointer
+        (void*)PLAYER_HUMAN_ART_data, // data variable pointer
         0, // flags
     },
     0, // image flags
