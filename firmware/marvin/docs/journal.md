@@ -4,6 +4,43 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-05 — Unused-image prune: 44 → 16 images, ~604 KiB of flash to be reclaimed on the next Generate.** Rule (Greg): delete anything referenced by neither the Composer design nor hand code. New reusable skill script `prune_unused_images.py` does the analysis and the removal; zip 3.71 → 3.21 MB, manifest and asset dirs agree, no widget references a missing image, strings/fonts untouched, `ninja` still links.
+
+- **Flash impact, measured from the generated arrays rather than guessed:** the 28 doomed `*_data[]` arrays in `le_gen_images.c` total **618,472 B (604.0 KiB)**; the 16 survivors total 288,639 B (281.9 KiB). Bigger than the font cleanup's 443 KiB. **Pending Greg's MGS Generate** — unlike the strings/fonts pass, `ninja` does *not* regenerate, so `le_gen_images.c` is unchanged until then (still 44 arrays). Harmless meanwhile: nothing in hand source names a doomed image.
+- **The analysis has to test both halves, and a naive grep gets it wrong.** "Unused by widget" is not unused (logos + the hamburger are drawn from C), but a bare `\bMarvin\b` grep over hand source *keeps* the 114 KB `Marvin` image purely on prose hits — the master screen is also called Marvin, so comments and `Marvin_*` symbols create false positives. Fix: strip comments before matching. With that, `Marvin` is correctly dead (the splash loads raw RGBA8888 from QSPI, not from the design). `game_art.c` was also checked for indirection — it builds its `leImage`s at runtime via `leImage_Create`, so album art holds no design asset.
+- **Superseded originals:** `HumanPlayer` / `LemmyOnStagePlayerImage` were dead while their `*_gradient` variants are the ones widgets use — 241 KB of source blobs. Confirmed different sha1s, so genuinely superseded rather than duplicates.
+- **Byte-identical triplet:** `BUTTON_ICON_HAMBURGER`, `figmaImg_Icon`, `figmaImg_Icon_18` share one sha1; the two figma copies were dead and went.
+
+**Naming — 9 of the 16 survivors still carry meaningless `figmaImg_*` names.** Identified by walking the design to the widget that uses each, then *rendering the PNGs* to confirm. Every one is a button `pressedImage`+`releasedImage` icon, not baked text — the nav rows carry real `NAV_BUTTON_*` strings, so localization is unaffected. All 9 are widget-only with **no** hand-source reference, so renaming is zero-risk (same uuid, no C patch).
+
+**The mockup's icons are [lucide](https://lucide.dev) SVGs rasterized to small PNGs** — not font characters. Rendering the assets confirmed the set exactly matches `NavigationDrawer.tsx`'s imports: Home / FileText / Gauge / Info / Activity / Gamepad2 / Network / Settings.
+
+| current | used by | size | is | proposed |
+|---|---|---|---|---|
+| `figmaImg_Icon_0_0` | dashboard `..._SELECT_SONG` | 14×14 | list+note | `BUTTON_FACE_SELECT_SONG` |
+| `figmaImg_Icon_1_0` | dashboard `..._START` | 14×14 | play ▶ | `BUTTON_FACE_START` |
+| `figmaImg_Icon_11` | `BUTTON_NAV_DASHBOARD` | 24×24 | Home | `NAV_ICON_DASHBOARD` |
+| `figmaImg_Icon_12` | `BUTTON_NAV_LOGS` | 24×24 | FileText | `NAV_ICON_LOGS` |
+| `figmaImg_Icon_13` | `BUTTON_NAV_PERFORMANCE` | 24×24 | Gauge | `NAV_ICON_PERFORMANCE` |
+| `figmaImg_Icon_14` | `BUTTON_NAV_SYSTEM_INFO` | 24×24 | Info | `NAV_ICON_SYSTEM_INFO` |
+| `figmaImg_Icon_15` | `BUTTON_NAV_DIAGNOSTICS` | 24×24 | Activity | `NAV_ICON_DIAGNOSTICS` |
+| `figmaImg_Icon_16` | `BUTTON_NAV_SETTINGS` | 24×24 | gear | `NAV_ICON_SETTINGS` |
+| `figmaImg_Icon_17` | `BUTTON_SONG_SELECT_CLOSE` | 20×20 | X | `BUTTON_ICON_CLOSE` (matches `BUTTON_ICON_CHECK`/`_HAMBURGER`) |
+
+*Correction to an earlier note in this entry's first draft: these are 24×24 / 20×20 / 14×14 icons. The "287×56" figures were the **button widget** sizes, not the images.*
+
+**Design bug found while naming, and FIXED: the Wiimotes nav row was showing the Activity-Logs icon.** The drawer had 7 rows but only 6 distinct icons — `figmaImg_Icon_12` (visually confirmed as lucide `FileText`, a document) was bound to **both** `BUTTON_NAV_WIIMOTES` and `BUTTON_NAV_LOGS`. Reads as a figma-import artifact (the Wiimotes row copied from Logs, inheriting its icon). No gamepad existed anywhere in the design — checked all 44 images including the 28 just pruned, whose only 24×24 members were hamburger duplicates.
+
+Fixed by **adding lucide `gamepad-2` as a new image asset programmatically** — no Composer import. Greg supplied the authentic SVG (rather than me reconstructing the path from memory); `currentColor` substituted for `#D4D4D8` — sampled from the existing nav icons' opaque pixels so the stroke matches — then `rsvg-convert -w 24 -h 24`. Result is 24×24 RGBA, 675 B, stroke `(212,212,216)` identical to its siblings. Added as `NAV_ICON_WIIMOTES` and bound to `BUTTON_NAV_WIIMOTES`'s pressed+released images; `figmaImg_Icon_12` is now Logs-only, so every row has its own icon. Zip 17 images, manifest == asset dirs, no widget→missing-image ref, `ninja` links.
+
+**Renames applied: zero `figmaImg_*` names left.** All 9 renamed per the table above (`_12`→`NAV_ICON_LOGS` now that it is Logs-only), verified `outputName` == manifest `name` for all 17 images, build links. New skill script `rename_images.py`: a rename must move **both** `imageconfig.json`'s `outputName` *and* the `images.json` entry's `name`; widgets key off the uuid so bindings are safe, but the generated C symbol *is* the name, so it refuses to rename a code-referenced image unless forced and prints the `&OLD`→`&NEW` patch. All 9 were widget-only.
+
+**Unexplained Generate lag (cause NOT established).** Greg ran Generate several times while these zip edits were landing, and at one point the generated tree reflected the *strip* and the *orphan sweep* but **not** the image prune — `le_gen_assets.h` still declared all 44 `leImage` while the zip had 16. It resolved on a later Generate and everything renders correctly now. No root cause proven. Two things noticed that may or may not be related, recorded only as leads: `.legato_generate_cache.zip` shares a timestamp with `default_design.zip` after an external edit, and MGS re-serializes the design on save — so an edit made while Composer holds the project open is at least plausibly missable or overwritable. **The cheap diagnostic if this recurs: the design should list 17 images; 44 means MGS is not reading the zip on disk.** Closing and reopening the design before Generate is the low-cost precaution.
+
+**New reusable skill capability: `add_image.py`** — adding an image needs four writes (`imageconfig.json`, `rawconfig.json`, `sourceData`, plus the `images.json` manifest entry) and it works by **cloning a sibling's config** rather than synthesizing one, so every field this MGS version expects is present including `memoryLocation`. Two non-obvious details: `rawconfig.json`'s `maskColor.image` is **self-referential** and must be repointed to the new uuid, and `mgs_zip.repack` only *replaces* existing members, so the three new asset members have to be appended in a second `zipfile` open. `--bind WIDGET:prop,…` repoints widgets in the same pass.
+
+---
+
 **2026-08-05 — Wiimotes / manual-override screen re-layout to the `ManualOverrideScreen` mockup (`~/Downloads/Marvin`). Decision: hand-code the screen in C (bus-screen model), strip the figma-imported subtree out of the design zip. IN PROGRESS.**
 
 *Why hand-code, not MGS Composer.* The mockup's component pixel sizes are already **identical** to the design's (71×71 buttons, 180×71 strum, 273×148 whammy, 157×157 tilt, 5 frets ≈107×64), so this is a re-parent + reposition of ~30 widgets — exactly the tedium Composer is worst at, and the resulting zip delta is unreviewable. Meanwhile three mockup elements **cannot** be expressed in MGS at all and need custom-paint widgets regardless (tilt is a static PNG today; whammy is four dead nested panels; frets need held-state feedback). [`screen_bus.c`](../default/src/ui/screens/bus/screen_bus.c) is the proven precedent: a whole screen built programmatically into an empty MGS panel, ported from a mockup TSX with Tailwind units resolved to `#define`s.

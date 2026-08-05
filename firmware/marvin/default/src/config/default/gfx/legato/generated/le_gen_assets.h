@@ -63,114 +63,6 @@ extern const lePalette leGlobalPalette;
  *****************************************************************************/
 /*********************************
  * Legato Image Asset
- * Name:   Marvin
- * Size:   1280x800 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage Marvin;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_4
- * Size:   16x16 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_4;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_5
- * Size:   16x16 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_5;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_8
- * Size:   14x14 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_8;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_9
- * Size:   14x14 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_9;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_10
- * Size:   14x14 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_10;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_0
- * Size:   16x16 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_0;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_1
- * Size:   16x16 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_1;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_2
- * Size:   20x20 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_2;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_3
- * Size:   16x16 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_3;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_6
- * Size:   20x20 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_6;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_7
- * Size:   20x20 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_7;
-
-/*********************************
- * Legato Image Asset
  * Name:   BUTTON_ICON_HAMBURGER
  * Size:   24x24 pixels
  * Type:   RGB Data
@@ -180,111 +72,57 @@ extern leImage BUTTON_ICON_HAMBURGER;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_12
+ * Name:   NAV_ICON_LOGS
  * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_12;
+extern leImage NAV_ICON_LOGS;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_13
+ * Name:   NAV_ICON_PERFORMANCE
  * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_13;
+extern leImage NAV_ICON_PERFORMANCE;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_14
+ * Name:   NAV_ICON_SYSTEM_INFO
  * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_14;
+extern leImage NAV_ICON_SYSTEM_INFO;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_15
+ * Name:   NAV_ICON_DIAGNOSTICS
  * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_15;
+extern leImage NAV_ICON_DIAGNOSTICS;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_16
+ * Name:   NAV_ICON_SETTINGS
  * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_16;
+extern leImage NAV_ICON_SETTINGS;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_11
+ * Name:   NAV_ICON_DASHBOARD
  * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_11;
-
-/*********************************
- * Legato Image Asset
- * Name:   WII_CTRL_LED_DISABLED
- * Size:   8x8 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage WII_CTRL_LED_DISABLED;
-
-/*********************************
- * Legato Image Asset
- * Name:   WII_CTRL_LED_ENABLED
- * Size:   8x8 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage WII_CTRL_LED_ENABLED;
-
-/*********************************
- * Legato Image Asset
- * Name:   STAND_BY
- * Size:   718x478 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage STAND_BY;
-
-/*********************************
- * Legato Image Asset
- * Name:   VIDEO_LED_NO_SIGNAL
- * Size:   8x8 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage VIDEO_LED_NO_SIGNAL;
-
-/*********************************
- * Legato Image Asset
- * Name:   LED_SYSTEM_ACTIVE
- * Size:   12x12 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage LED_SYSTEM_ACTIVE;
-
-/*********************************
- * Legato Image Asset
- * Name:   LED_SYSTEM_INACTIVE
- * Size:   12x12 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage LED_SYSTEM_INACTIVE;
+extern leImage NAV_ICON_DASHBOARD;
 
 /*********************************
  * Legato Image Asset
@@ -297,84 +135,30 @@ extern leImage BUTTON_ICON_CHECK;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_17
+ * Name:   BUTTON_ICON_CLOSE
  * Size:   20x20 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_17;
+extern leImage BUTTON_ICON_CLOSE;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_0_0
+ * Name:   BUTTON_FACE_SELECT_SONG
  * Size:   14x14 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_0_0;
+extern leImage BUTTON_FACE_SELECT_SONG;
 
 /*********************************
  * Legato Image Asset
- * Name:   figmaImg_Icon_1_0
+ * Name:   BUTTON_FACE_START
  * Size:   14x14 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage figmaImg_Icon_1_0;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_18
- * Size:   24x24 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_18;
-
-/*********************************
- * Legato Image Asset
- * Name:   LemmyOnStagePlayerImage
- * Size:   254x208 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage LemmyOnStagePlayerImage;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_2_0
- * Size:   20x20 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_2_0;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon_3_0
- * Size:   20x20 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon_3_0;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_TiltControl_0
- * Size:   157x157 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_TiltControl_0;
-
-/*********************************
- * Legato Image Asset
- * Name:   figmaImg_Icon
- * Size:   24x24 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage figmaImg_Icon;
+extern leImage BUTTON_FACE_START;
 
 /*********************************
  * Legato Image Asset
@@ -387,30 +171,12 @@ extern leImage LemmyOnStagePlayerImage_gradient;
 
 /*********************************
  * Legato Image Asset
- * Name:   HumanPlayer
- * Size:   254x208 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage HumanPlayer;
-
-/*********************************
- * Legato Image Asset
  * Name:   HumanPlayer_gradient
  * Size:   254x208 pixels
  * Type:   RGB Data
  * Format: RGB_565
  ***********************************/
 extern leImage HumanPlayer_gradient;
-
-/*********************************
- * Legato Image Asset
- * Name:   Gemini_Generated_Image_9oeot89oeot89oeo
- * Size:   402x53 pixels
- * Type:   RGB Data
- * Format: RGB_565
- ***********************************/
-extern leImage Gemini_Generated_Image_9oeot89oeot89oeo;
 
 /*********************************
  * Legato Image Asset
@@ -441,21 +207,12 @@ extern leImage LOGO_MICROCHIP;
 
 /*********************************
  * Legato Image Asset
- * Name:   LOGO_MGS
- * Size:   162x45 pixels
+ * Name:   NAV_ICON_WIIMOTES
+ * Size:   24x24 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
-extern leImage LOGO_MGS;
-
-/*********************************
- * Legato Image Asset
- * Name:   Image0
- * Size:   61x42 pixels
- * Type:   RGB Data
- * Format: RGBA_8888
- ***********************************/
-extern leImage Image0;
+extern leImage NAV_ICON_WIIMOTES;
 
 /*****************************************************************************
  * Legato Graphics Font Assets

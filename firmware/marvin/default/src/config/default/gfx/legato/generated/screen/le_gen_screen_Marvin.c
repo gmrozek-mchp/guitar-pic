@@ -908,8 +908,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setScheme(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, &SCHEME_BUTTON_MODE);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setBorderType(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, LE_WIDGET_BORDER_NONE);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setString(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, (leString*)&string_GAMEPLAY_SELECT_SONG);
-    Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setPressedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, (leImage*)&figmaImg_Icon_0_0);
-    Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setReleasedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, (leImage*)&figmaImg_Icon_0_0);
+    Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setPressedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, (leImage*)&BUTTON_FACE_SELECT_SONG);
+    Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setReleasedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, (leImage*)&BUTTON_FACE_SELECT_SONG);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG->fn->setPressedOffset(Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG, 0);
     Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY, (leWidget*)Marvin_BUTTON_DASHBOARD_GAMEPLAY_SELECT_SONG);
 
@@ -919,8 +919,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setScheme(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, &SCHEME_GUITAR_FRET_GREEN);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setBorderType(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, LE_WIDGET_BORDER_NONE);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setString(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, (leString*)&string_GAMEPLAY_START);
-    Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setPressedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, (leImage*)&figmaImg_Icon_1_0);
-    Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setReleasedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, (leImage*)&figmaImg_Icon_1_0);
+    Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setPressedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, (leImage*)&BUTTON_FACE_START);
+    Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setReleasedImage(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, (leImage*)&BUTTON_FACE_START);
     Marvin_BUTTON_DASHBOARD_GAMEPLAY_START->fn->setPressedOffset(Marvin_BUTTON_DASHBOARD_GAMEPLAY_START, 0);
     Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY->fn->addChild(Marvin_PANEL_DASHBOARD_SONG_GAMEPLAY, (leWidget*)Marvin_BUTTON_DASHBOARD_GAMEPLAY_START);
 
@@ -1355,8 +1355,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_DASHBOARD->fn->setHAlignment(Marvin_BUTTON_NAV_DASHBOARD, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_DASHBOARD->fn->setMargins(Marvin_BUTTON_NAV_DASHBOARD, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_DASHBOARD->fn->setString(Marvin_BUTTON_NAV_DASHBOARD, (leString*)&string_NAV_BUTTON_Dashboard);
-    Marvin_BUTTON_NAV_DASHBOARD->fn->setPressedImage(Marvin_BUTTON_NAV_DASHBOARD, (leImage*)&figmaImg_Icon_11);
-    Marvin_BUTTON_NAV_DASHBOARD->fn->setReleasedImage(Marvin_BUTTON_NAV_DASHBOARD, (leImage*)&figmaImg_Icon_11);
+    Marvin_BUTTON_NAV_DASHBOARD->fn->setPressedImage(Marvin_BUTTON_NAV_DASHBOARD, (leImage*)&NAV_ICON_DASHBOARD);
+    Marvin_BUTTON_NAV_DASHBOARD->fn->setReleasedImage(Marvin_BUTTON_NAV_DASHBOARD, (leImage*)&NAV_ICON_DASHBOARD);
     Marvin_BUTTON_NAV_DASHBOARD->fn->setImageMargin(Marvin_BUTTON_NAV_DASHBOARD, 16);
     Marvin_BUTTON_NAV_DASHBOARD->fn->setPressedOffset(Marvin_BUTTON_NAV_DASHBOARD, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_DASHBOARD);
@@ -1369,8 +1369,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_WIIMOTES->fn->setHAlignment(Marvin_BUTTON_NAV_WIIMOTES, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_WIIMOTES->fn->setMargins(Marvin_BUTTON_NAV_WIIMOTES, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_WIIMOTES->fn->setString(Marvin_BUTTON_NAV_WIIMOTES, (leString*)&string_NAV_BUTTON_Wiimotes);
-    Marvin_BUTTON_NAV_WIIMOTES->fn->setPressedImage(Marvin_BUTTON_NAV_WIIMOTES, (leImage*)&figmaImg_Icon_12);
-    Marvin_BUTTON_NAV_WIIMOTES->fn->setReleasedImage(Marvin_BUTTON_NAV_WIIMOTES, (leImage*)&figmaImg_Icon_12);
+    Marvin_BUTTON_NAV_WIIMOTES->fn->setPressedImage(Marvin_BUTTON_NAV_WIIMOTES, (leImage*)&NAV_ICON_WIIMOTES);
+    Marvin_BUTTON_NAV_WIIMOTES->fn->setReleasedImage(Marvin_BUTTON_NAV_WIIMOTES, (leImage*)&NAV_ICON_WIIMOTES);
     Marvin_BUTTON_NAV_WIIMOTES->fn->setImageMargin(Marvin_BUTTON_NAV_WIIMOTES, 16);
     Marvin_BUTTON_NAV_WIIMOTES->fn->setPressedOffset(Marvin_BUTTON_NAV_WIIMOTES, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_WIIMOTES);
@@ -1383,8 +1383,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_LOGS->fn->setHAlignment(Marvin_BUTTON_NAV_LOGS, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_LOGS->fn->setMargins(Marvin_BUTTON_NAV_LOGS, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_LOGS->fn->setString(Marvin_BUTTON_NAV_LOGS, (leString*)&string_NAV_BUTTON_Activity_Logs);
-    Marvin_BUTTON_NAV_LOGS->fn->setPressedImage(Marvin_BUTTON_NAV_LOGS, (leImage*)&figmaImg_Icon_12);
-    Marvin_BUTTON_NAV_LOGS->fn->setReleasedImage(Marvin_BUTTON_NAV_LOGS, (leImage*)&figmaImg_Icon_12);
+    Marvin_BUTTON_NAV_LOGS->fn->setPressedImage(Marvin_BUTTON_NAV_LOGS, (leImage*)&NAV_ICON_LOGS);
+    Marvin_BUTTON_NAV_LOGS->fn->setReleasedImage(Marvin_BUTTON_NAV_LOGS, (leImage*)&NAV_ICON_LOGS);
     Marvin_BUTTON_NAV_LOGS->fn->setImageMargin(Marvin_BUTTON_NAV_LOGS, 16);
     Marvin_BUTTON_NAV_LOGS->fn->setPressedOffset(Marvin_BUTTON_NAV_LOGS, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_LOGS);
@@ -1397,8 +1397,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_PERFORMANCE->fn->setHAlignment(Marvin_BUTTON_NAV_PERFORMANCE, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_PERFORMANCE->fn->setMargins(Marvin_BUTTON_NAV_PERFORMANCE, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_PERFORMANCE->fn->setString(Marvin_BUTTON_NAV_PERFORMANCE, (leString*)&string_NAV_BUTTON_Performance);
-    Marvin_BUTTON_NAV_PERFORMANCE->fn->setPressedImage(Marvin_BUTTON_NAV_PERFORMANCE, (leImage*)&figmaImg_Icon_13);
-    Marvin_BUTTON_NAV_PERFORMANCE->fn->setReleasedImage(Marvin_BUTTON_NAV_PERFORMANCE, (leImage*)&figmaImg_Icon_13);
+    Marvin_BUTTON_NAV_PERFORMANCE->fn->setPressedImage(Marvin_BUTTON_NAV_PERFORMANCE, (leImage*)&NAV_ICON_PERFORMANCE);
+    Marvin_BUTTON_NAV_PERFORMANCE->fn->setReleasedImage(Marvin_BUTTON_NAV_PERFORMANCE, (leImage*)&NAV_ICON_PERFORMANCE);
     Marvin_BUTTON_NAV_PERFORMANCE->fn->setImageMargin(Marvin_BUTTON_NAV_PERFORMANCE, 16);
     Marvin_BUTTON_NAV_PERFORMANCE->fn->setPressedOffset(Marvin_BUTTON_NAV_PERFORMANCE, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_PERFORMANCE);
@@ -1411,8 +1411,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setHAlignment(Marvin_BUTTON_NAV_SYSTEM_INFO, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setMargins(Marvin_BUTTON_NAV_SYSTEM_INFO, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setString(Marvin_BUTTON_NAV_SYSTEM_INFO, (leString*)&string_NAV_BUTTON_System_Info);
-    Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setPressedImage(Marvin_BUTTON_NAV_SYSTEM_INFO, (leImage*)&figmaImg_Icon_14);
-    Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setReleasedImage(Marvin_BUTTON_NAV_SYSTEM_INFO, (leImage*)&figmaImg_Icon_14);
+    Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setPressedImage(Marvin_BUTTON_NAV_SYSTEM_INFO, (leImage*)&NAV_ICON_SYSTEM_INFO);
+    Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setReleasedImage(Marvin_BUTTON_NAV_SYSTEM_INFO, (leImage*)&NAV_ICON_SYSTEM_INFO);
     Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setImageMargin(Marvin_BUTTON_NAV_SYSTEM_INFO, 16);
     Marvin_BUTTON_NAV_SYSTEM_INFO->fn->setPressedOffset(Marvin_BUTTON_NAV_SYSTEM_INFO, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_SYSTEM_INFO);
@@ -1425,8 +1425,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setHAlignment(Marvin_BUTTON_NAV_DIAGNOSTICS, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setMargins(Marvin_BUTTON_NAV_DIAGNOSTICS, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setString(Marvin_BUTTON_NAV_DIAGNOSTICS, (leString*)&string_NAV_BUTTON_Diagnostics);
-    Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setPressedImage(Marvin_BUTTON_NAV_DIAGNOSTICS, (leImage*)&figmaImg_Icon_15);
-    Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setReleasedImage(Marvin_BUTTON_NAV_DIAGNOSTICS, (leImage*)&figmaImg_Icon_15);
+    Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setPressedImage(Marvin_BUTTON_NAV_DIAGNOSTICS, (leImage*)&NAV_ICON_DIAGNOSTICS);
+    Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setReleasedImage(Marvin_BUTTON_NAV_DIAGNOSTICS, (leImage*)&NAV_ICON_DIAGNOSTICS);
     Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setImageMargin(Marvin_BUTTON_NAV_DIAGNOSTICS, 16);
     Marvin_BUTTON_NAV_DIAGNOSTICS->fn->setPressedOffset(Marvin_BUTTON_NAV_DIAGNOSTICS, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_DIAGNOSTICS);
@@ -1439,8 +1439,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_NAV_SETTINGS->fn->setHAlignment(Marvin_BUTTON_NAV_SETTINGS, LE_HALIGN_LEFT);
     Marvin_BUTTON_NAV_SETTINGS->fn->setMargins(Marvin_BUTTON_NAV_SETTINGS, 16, 4, 4, 4);
     Marvin_BUTTON_NAV_SETTINGS->fn->setString(Marvin_BUTTON_NAV_SETTINGS, (leString*)&string_NAV_BUTTON_Settings);
-    Marvin_BUTTON_NAV_SETTINGS->fn->setPressedImage(Marvin_BUTTON_NAV_SETTINGS, (leImage*)&figmaImg_Icon_16);
-    Marvin_BUTTON_NAV_SETTINGS->fn->setReleasedImage(Marvin_BUTTON_NAV_SETTINGS, (leImage*)&figmaImg_Icon_16);
+    Marvin_BUTTON_NAV_SETTINGS->fn->setPressedImage(Marvin_BUTTON_NAV_SETTINGS, (leImage*)&NAV_ICON_SETTINGS);
+    Marvin_BUTTON_NAV_SETTINGS->fn->setReleasedImage(Marvin_BUTTON_NAV_SETTINGS, (leImage*)&NAV_ICON_SETTINGS);
     Marvin_BUTTON_NAV_SETTINGS->fn->setImageMargin(Marvin_BUTTON_NAV_SETTINGS, 16);
     Marvin_BUTTON_NAV_SETTINGS->fn->setPressedOffset(Marvin_BUTTON_NAV_SETTINGS, 0);
     Marvin_PANEL_NAVIGATION_MIDDLE->fn->addChild(Marvin_PANEL_NAVIGATION_MIDDLE, (leWidget*)Marvin_BUTTON_NAV_SETTINGS);
@@ -1541,8 +1541,8 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setSize(Marvin_BUTTON_SONG_SELECT_CLOSE, 50, 50);
     Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setBackgroundType(Marvin_BUTTON_SONG_SELECT_CLOSE, LE_WIDGET_BACKGROUND_NONE);
     Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setBorderType(Marvin_BUTTON_SONG_SELECT_CLOSE, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setPressedImage(Marvin_BUTTON_SONG_SELECT_CLOSE, (leImage*)&figmaImg_Icon_17);
-    Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedImage(Marvin_BUTTON_SONG_SELECT_CLOSE, (leImage*)&figmaImg_Icon_17);
+    Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setPressedImage(Marvin_BUTTON_SONG_SELECT_CLOSE, (leImage*)&BUTTON_ICON_CLOSE);
+    Marvin_BUTTON_SONG_SELECT_CLOSE->fn->setReleasedImage(Marvin_BUTTON_SONG_SELECT_CLOSE, (leImage*)&BUTTON_ICON_CLOSE);
     Marvin_PANEL_SONG_SELECT_TOP->fn->addChild(Marvin_PANEL_SONG_SELECT_TOP, (leWidget*)Marvin_BUTTON_SONG_SELECT_CLOSE);
 
     Marvin_PANEL_SONG_SELECT_BOTTOM = leWidget_New();
