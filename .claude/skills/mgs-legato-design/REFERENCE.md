@@ -132,6 +132,17 @@ So string+font cleanups touch exactly those members.
 - **Predict layout damage before retargeting.** Sum the per-glyph `advance` from each font's
   own `glyphs.json` for the string's text and compare old vs new against the widget's
   `width` — that catches overflow (and finds labels *already* overflowing).
+- **Regular→bold is free in a monospace family.** DejaVu Sans Mono Bold has the *same*
+  advance as Regular at every size, so a weight-only rebinding cannot change any label's
+  width. Verify with `glyphs.json` (one distinct advance per font, equal across the pair)
+  and then weight changes need no layout review at all.
+- **When a symbol looks wrong beside a sibling, compare glyph ink extents before changing
+  size or padding — it is usually the wrong codepoint.** Advance is uniform in a monospace
+  font, so mismatches come from the *ink*. Measure with fontTools `BoundsPen` on the real
+  TTF: in DejaVu Sans Mono, `+` (U+002B) and `−` (U+2212 MINUS SIGN) are a designed pair —
+  both 12.4px wide with the bar at +7.5px at 24px — whereas `—` (U+2014 EM DASH) is 14.4px
+  and sits 0.9px lower. A `-`/`—` standing in for a real minus is a common Figma-import
+  artifact and reads as misaligned next to a `+`.
 - **Deleting a font must drop its 4 zip members**, not just its `fonts.json` entry — use
   `mgs_zip.repack(..., drop=["assets/fonts/{uuid}/"])`.
 
