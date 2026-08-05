@@ -4,6 +4,62 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-05 — Two root causes, one bug: a missing `invalidate()` in the nav drawer produced BOTH a visual artifact on the icons AND killed the USB CDC link. Fixed and verified on hardware. Along the way: a canvas-dump facility, USB sink hardening, and a nocache corruption detector.**
+
+**Symptom 1 — a small block of wrong pixels at the top-left of every nav icon,** which "changed colour but not shape" (pink, later blue) and appeared on icons that had never been selected.
+
+**Symptom 2 — opening the drawer and selecting a row killed the whole perf-log USB stream.** Console (FLEXCOM2 UART) unaffected, drain task healthy, only a reboot recovered. Song-select — which does *more* graphics work, including album-art decode and OVR2 binding — never triggered it.
+
+**Both were `navigation_highlight()` not invalidating.** The image setters raise no damage, and the damage `setScheme` raises does not cover every pixel the icon draw touches. That left a small block at each icon's top-left holding its previous paint:
+- **stale blue** where the row had been selected (the `#195DFF` fill, AA-blended with icon ink), or
+- **uninitialized DDR** where it had not — and this is the second root cause: **`.region_nocache` is `NOLOAD` and is never zeroed.** `_szero`/`_ezero` bracket **`.bss` only**, so every canvas surface starts as whatever DDR held at power-on (or the previous session's framebuffer after a warm reset). That garbage is what read as "pink".
+- Hence the artifact tracked the row's *previous* state and needed no selection to appear. Chasing it through the image data — RLE encoding, PNG `bKGD` chunks, channel order — found nothing, because **those pixels were never written**.
+
+**The USB death is the same bug reaching further.** The map explains why:
+
+| address | size | object |
+|---|---|---|
+| `0x20000000` | 0x90 | **UDPHS endpoint objects** |
+| `0x20000090` | 0x30 | linker fill |
+| `0x200000C0` | 4 MB | `LE_SCRATCH` (Legato renderer) |
+| `0x204000C0` | … | capture pool, then every canvas surface |
+
+The USB driver's endpoint/transfer state is the **first object in the region**, 48 bytes below Legato's scratch, and nothing bounds-checks any of it. A paint driven by a malformed damage rect underruns the scratch and lands on it. Fixing the invalidate cured both symptoms — Greg confirmed screen capture then survived drawer open/close, which is what tied them together. *The underrun mechanism remains inference: the addresses and the correlation are measured, the write itself was never caught in the act.*
+
+**Fix:** `navigation_highlight()` invalidates each button it touches, and repaints only the two rows whose state changes rather than all seven (first call still paints all seven, so it does not depend on MGS's build-time defaults). Per-state icon pairs (`NAV_ICON_X` zinc-300 + `_SELECTED` white, same SVG, alpha-identical) were the feature that exposed it — a scheme cannot recolour an image, and the figma export had frozen Dashboard in its selected state, so its icon was permanently white.
+
+**Detection added, because this took far too long to find.** `health/nocache_guard.c` seeds patterns in the region and re-checks them from the drain task. Its limit is real and documented: link order decides placement, so it sits just after `LE_SCRATCH` (catching an overrun past it) and **cannot** guard the USB objects — the linker emits `config/default` objects before any of ours, so nothing we write lands in that 48-byte gap; only a change to the MCC-generated `ddram.ld` could. The sink's **submitted-vs-completed write divergence** covers that blind spot by watching the effect instead of the memory, and is the check that would have named this in minutes.
+
+**Debugging lessons worth keeping.**
+- **Instrument before theorising.** Five hypotheses died to measurements: drain-task stack overflow (302 of 512 words free), a TX credit leak (`credits 3, reclaims 0`), HEO scaling (Bus Stats hides video and still died), RLE encoding (off changed nothing), and unchecked RX arming (`queued, failures 0`). Each was plausible from reading code and wrong.
+- **A classifier hid the answer.** The first `nav icon` dump bucketed pixels as ink/backdrop/red and reported "0 red-dominant" — I concluded the framebuffer was clean. It was not: the icon's *shape* had a hole, which Greg spotted in the ASCII art. Printing a legend of the actual RGB565 values is what exposed the stale blue.
+- **The decisive test was Greg's:** song-select doing more graphics work without dying ruled out "too much graphics" and pointed at the drawer specifically.
+
+**Two real latent defects found on the way, fixed, neither the cause.** TX credits are returned only on `WRITE_COMPLETE`, so a host closing the port mid-burst leaked them permanently (3 losses = permanent stall); and `prime_rx_read()` discarded its result while only being called from `CONFIGURED`/`READ_COMPLETE`, so one silent arming failure left the device deaf to commands for the session while TX kept working.
+
+**Still open:** the USB link appeared to die for host sessions *after the first* even with the link flags reading healthy (`cfg 1`, `cls 1` never incrementing). That may simply have been this same corruption, but it was never isolated on its own — worth re-testing now the invalidate is fixed, and treating as its own investigation if it persists.
+
+---
+
+**2026-08-05 — `assets/` now holds real originals (not design-zip exports), and the nav drawer got per-state icons. Generated + built.**
+
+**Rule (Greg): never source archived assets from `default_design.zip` unless there is no other source.** The zip's `sourceData` is a *derived* copy — icons rasterized to the pixel size the UI needs, artwork cropped and scaled. So `firmware/marvin/assets/` is now the upstream material, documented in [`assets/README.md`](../assets/README.md):
+- `icon/lucide/` — **13 lucide SVGs** (Greg downloaded them), lucide's own filenames so a fresh download diffs cleanly. The mockup used `lucide-react@0.487.0`. Includes `network.svg`, unused, for the Bus Statistics row the drawer still lacks.
+- `image/source/` — the **upstream masters**, all higher-res than anything in the design: the two AI renders (`VitruvianGuitarist.png` 1024², `LemmyOnStage.png` 816×1276), `LemmyPuppet.jpg`, and the 361×84 Microchip lockup. The repo's existing `HumanPlayer*.png` / `LemmyOnStagePlayerImage*.png` are all already 254×208, i.e. derived — this establishes the chain.
+- `font/` — the two real TTFs (Greg dropped them in). The design carries 14 font assets but only **two distinct TTFs**; the Noto pair is kept, marked superseded.
+- **Verified the archive is faithful rather than assuming it:** rasterized all 12 icon SVGs at each asset's size and sampled colour and compared side by side — every one reproduces its design asset.
+- **Trap found and documented: `play.svg` ships as an open outline** (`fill="none"`), but the shipped asset is a *solid* triangle because the mockup rendered it `<Play className="… fill-current" />`. It is the only icon needing `fill`; re-rasterizing it naively yields an outline. Also `Home` is now a lucide alias — the file is `house.svg` (Greg caught this).
+
+**Why the nav icons had inconsistent colours — and the fix (option 2, per Greg).** `NAV_ICON_DASHBOARD` was `#FFFFFF` while its six siblings were `#D4D4D8`. Cause: in the mockup the icon inherits `currentColor` from its button, which is `text-white` when active and `text-zinc-300` otherwise, and `useState('dashboard')` makes Dashboard the default active row — **so the figma export froze one row in its selected state**. Not an import error, a stateful design captured in one frame.
+- marvin could not reproduce that: `navigation_highlight()` swapped `SCHEME_NAV_BUTTON_SELECTED`/`_UNSELECTED`, but a scheme changes a button's *fill* and **cannot recolour an image** — `setPressedImage`/`setReleasedImage` are press states with fixed pixels. Net effect on hardware: Dashboard's icon was permanently white and the rest permanently zinc-300 regardless of selection.
+- **Fixed with per-state icon assets.** All 7 rows now ship a matched pair (`NAV_ICON_X` zinc-300 + `NAV_ICON_X_SELECTED` white), both rendered from the *same* SVG so only colour differs — verified alpha channels are pixel-identical. `navigation_highlight()` now sets the image alongside the scheme. Design went 17 → 24 images; the design still binds the rest variants as the widget default.
+- Note both nav schemes have `text=#FFFFFF`, so the **label** never changed colour on selection either — only the background did. Now the icon tracks it too.
+- **This was the one genuinely build-breaking handoff of the session** (hand source referenced `NAV_ICON_*_SELECTED` before Generate emitted them); confirmed the failure, then Greg generated and `ninja` links with 24 `leImage` / 7 `_SELECTED` present.
+
+**New reusable skill script: `set_image_source.py`** — swap an existing asset's `sourceData` while keeping its uuid, so every widget binding survives (contrast `add_image.py`, which creates a new asset needing rebinding). Updates the blob plus the dimensions in `imageconfig.json` and `colorCount` in `rawconfig.json`, and warns when pixel dimensions change since that moves layout. Also `export_assets.py`, written earlier in the session and now framed in the skill as a **recovery** path for when the zip is the only copy — not the way to build an asset archive.
+
+---
+
 **2026-08-05 — Unused-image prune: 44 → 16 images, ~604 KiB of flash to be reclaimed on the next Generate.** Rule (Greg): delete anything referenced by neither the Composer design nor hand code. New reusable skill script `prune_unused_images.py` does the analysis and the removal; zip 3.71 → 3.21 MB, manifest and asset dirs agree, no widget references a missing image, strings/fonts untouched, `ninja` still links.
 
 - **Flash impact, measured from the generated arrays rather than guessed:** the 28 doomed `*_data[]` arrays in `le_gen_images.c` total **618,472 B (604.0 KiB)**; the 16 survivors total 288,639 B (281.9 KiB). Bigger than the font cleanup's 443 KiB. **Pending Greg's MGS Generate** — unlike the strings/fonts pass, `ninja` does *not* regenerate, so `le_gen_images.c` is unchanged until then (still 44 arrays). Harmless meanwhile: nothing in hand source names a doomed image.
