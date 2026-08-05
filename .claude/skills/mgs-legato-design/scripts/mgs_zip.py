@@ -62,9 +62,20 @@ def repoint_scheme_refs(text, remap):
     return text
 
 
-def repack(zip_path, replacements, backup=True, backup_suffix=".bak"):
-    """Write a new zip with `replacements` (name -> str|bytes) swapped in, every other
-    member copied verbatim. Backs up the original first. Verifies integrity."""
+def repack(zip_path, replacements, backup=True, backup_suffix=".bak", drop=()):
+    """Write a new zip with `replacements` (name -> str|bytes) swapped in, members in
+    `drop` omitted, every other member copied verbatim. Backs up the original first.
+    Verifies integrity.
+
+    `drop` takes member names or prefixes ending in "/" (e.g. deleting a font means
+    dropping its whole "assets/fonts/{uuid}/" directory — 4 members)."""
+    drop_exact = {d for d in drop if not d.endswith("/")}
+    drop_pref = tuple(d for d in drop if d.endswith("/"))
+
+    def dropped(name):
+        return name in drop_exact or name.startswith(drop_pref) if drop_pref \
+            else name in drop_exact
+
     if backup:
         bak = zip_path + backup_suffix
         if not os.path.exists(bak):
@@ -73,6 +84,8 @@ def repack(zip_path, replacements, backup=True, backup_suffix=".bak"):
     with zipfile.ZipFile(zip_path) as zin, \
          zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
         for item in zin.infolist():
+            if dropped(item.filename):
+                continue
             if item.filename in replacements:
                 data = replacements[item.filename]
                 zout.writestr(item, data.encode("utf-8") if isinstance(data, str) else data)

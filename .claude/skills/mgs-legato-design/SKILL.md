@@ -47,14 +47,41 @@ source-neutral) as one commit, then *renames* (with the source patch) as a secon
 ## Quick start
 
 ```bash
-python3 .claude/skills/mgs-legato-design/scripts/audit_schemes.py \
-        firmware/marvin/default/src/config/default/default_design.zip \
-        firmware/marvin/default/src
+S=.claude/skills/mgs-legato-design/scripts
+Z=firmware/marvin/default/src/config/default/default_design.zip
+python3 $S/audit_schemes.py       $Z firmware/marvin/default/src   # schemes
+python3 $S/audit_strings_fonts.py $Z firmware/marvin/default/src   # strings + fonts
+python3 $S/audit_widget_strings.py $Z --dupes                      # widget → string → font
+python3 $S/audit_glyph_coverage.py $Z firmware/marvin/default/src \
+                                      firmware/marvin/data         # glyph coverage
 ```
+
+## Strings and fonts, specifically
+
+Two things trip people up here, both covered in [REFERENCE.md](REFERENCE.md):
+
+- **A font is bound per *string*, not per widget** (`stringtable.json` `bindings[]`). "Change
+  this label's font" means retargeting that string's binding — and two labels sharing a string
+  can't differ, which is why Figma imports breed near-duplicate strings.
+- **Font names lie.** MGS substitutes a face it can't find and keeps the requested name, so
+  group fonts by `sha1(sourceData)` and read the TTF `name` table before trusting any name.
+  Real flash cost is the generated `le_gen_fonts.c` arrays, not the shared TTF blob.
+- **Glyphs: design-time is automatic, runtime is not.** MGS auto-adds whatever glyphs the
+  *bound design strings* need on Generate — so retargeting a string to a font missing its
+  special characters self-heals. But text produced at **runtime** (`setString` from a C
+  literal, a CSV / QSPI data file, a formatted device name) is invisible to MGS: those
+  characters must be **added to the font's character set by hand in MGS**, or they render as a
+  missing glyph with no build error. Run `audit_glyph_coverage.py` to check both sides.
+
+Before retargeting a font, predict layout damage from the glyph `advance` tables; before
+deleting one, check hand source for its symbol and `drop=` its whole
+`assets/fonts/{uuid}/` directory.
 
 ## Details
 
-Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), how widgets
-reference assets, the generated-C relationship, and the full gotcha list are in
-[REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are the reusable core —
-`mgs_zip.py` (load member / repack+backup / validate refs) and `audit_schemes.py`.
+Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `stringtable.json`
++ font-asset structure, how widgets reference assets, the generated-C relationship, and the
+full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are
+the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
+refs), `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
+`audit_glyph_coverage.py`.
