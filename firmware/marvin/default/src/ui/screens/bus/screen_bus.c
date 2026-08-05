@@ -48,12 +48,14 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define DOT        12
 
 /* Column x / width (left-aligned monospace), sum < BASE_W - MARGIN. */
-enum { C_NODE, C_ADDR, C_ROLE, C_TXTOT, C_RXTOT, C_TXR, C_RXR, C_CRC, C_SYM, C_LAT, C_STATUS, C_COUNT };
+/* C_HBAGE shows the age of the node's last heartbeat, not a round-trip latency —
+ * marvin has no ping/echo protocol (see docs/t1s-podl-link.md §7.2). */
+enum { C_NODE, C_ADDR, C_ROLE, C_TXTOT, C_RXTOT, C_TXR, C_RXR, C_CRC, C_SYM, C_HBAGE, C_STATUS, C_COUNT };
 static const struct { const char *hdr; int x, w; } COL[C_COUNT] = {
     { "NODE",     16,  176 }, { "ADDR",    192, 64  }, { "ROLE",    256, 88  },
     { "TX TOTAL", 344, 128 }, { "RX TOTAL",472, 128 }, { "TX RATE", 600, 108 },
     { "RX RATE",  708, 108 }, { "CRC ERR", 816, 80  }, { "SYM ERR", 896, 80  },
-    { "LATENCY",  976, 104 }, { "STATUS",  1080,150 },
+    { "LAST HB",  976, 104 }, { "STATUS",  1080,150 },
 };
 
 /* ── static widget storage ──────────────────────────────────────────────────
@@ -164,7 +166,7 @@ static leLabelWidget *s_kpi_util, *s_kpi_tx, *s_kpi_txr, *s_kpi_rx,
 
 typedef struct {
     bool           used;
-    leLabelWidget *txtot, *rxtot, *txr, *rxr, *crc, *sym, *lat, *status;
+    leLabelWidget *txtot, *rxtot, *txr, *rxr, *crc, *sym, *hbage, *status;
     leWidget      *statusdot;
 } row_t;
 static row_t s_row[MAX_ROWS];
@@ -267,7 +269,7 @@ void ScreenBus_Setup(void)
         w->rxr    = add_label(Marvin_PANEL_BUS, COL[C_RXR].x,   y, COL[C_RXR].w,   ROW_H, (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_BLUE_400, LE_HALIGN_LEFT);
         w->crc    = add_label(Marvin_PANEL_BUS, COL[C_CRC].x,   y, COL[C_CRC].w,   ROW_H, (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
         w->sym    = add_label(Marvin_PANEL_BUS, COL[C_SYM].x,   y, COL[C_SYM].w,   ROW_H, (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
-        w->lat    = add_label(Marvin_PANEL_BUS, COL[C_LAT].x,   y, COL[C_LAT].w,   ROW_H, (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_ZINC_400, LE_HALIGN_LEFT);
+        w->hbage    = add_label(Marvin_PANEL_BUS, COL[C_HBAGE].x,   y, COL[C_HBAGE].w,   ROW_H, (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_ZINC_400, LE_HALIGN_LEFT);
         w->statusdot = add_dot(COL[C_STATUS].x, y + (ROW_H - 8) / 2, 8, &SCHEME_FILL_GREEN_400);
         w->status = add_label(Marvin_PANEL_BUS, COL[C_STATUS].x + 14, y, COL[C_STATUS].w - 14, ROW_H, (const leFont *)&DejaVuSansMono_14, &SCHEME_TEXT_GREEN_400, LE_HALIGN_LEFT);
     }
@@ -338,8 +340,8 @@ static void refresh_all(void)
         (void)snprintf(tmp, sizeof tmp, "%u", (unsigned)st.sym_err); set_text(w->sym, tmp);
         w->sym->fn->setScheme(w->sym, sym_scheme(st.sym_err));
 
-        if (r == 0u) { set_text(w->lat, "-"); }
-        else { (void)snprintf(tmp, sizeof tmp, "%lu ms", (unsigned long)st.age_ms); set_text(w->lat, tmp); }
+        if (r == 0u) { set_text(w->hbage, "-"); }
+        else { (void)snprintf(tmp, sizeof tmp, "%lu ms", (unsigned long)st.age_ms); set_text(w->hbage, tmp); }
 
         bool online = (r == 0u) ? true : st.present;
         set_text(w->status, online ? "ONLINE" : "OFFLINE");
