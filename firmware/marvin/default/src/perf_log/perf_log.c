@@ -13,6 +13,8 @@
 #include "definitions.h"
 #include "log.h"
 #include "video/video.h"
+#include "ui/gfx/ui_surface.h"   /* UiSurface_Get — canvas dump */
+#include "health/nocache_guard.h"
 
 /* ─── Configuration ──────────────────────────────────────────────────────── */
 
@@ -97,6 +99,33 @@ static volatile bool s_running;
 static volatile bool    s_snapshot_req;
 static uint8_t          s_snapshot_staging[1280u * 720u * PERF_STRIP_BPP];
 static perf_rec_strip_t s_snapshot_scratch;
+
+/* One-shot canvas (UI framebuffer) dump. Latched by the RX path, paged out by the
+ * drain task like the snapshot. No staging buffer: a canvas surface is CPU-rendered
+ * and stable between repaints, so bands convert straight out of it — unlike the
+ * video frame, which is being DMA'd into a rotating ring and needs a coherent copy
+ * first. Reuses s_snapshot_scratch (the two are mutually exclusive; both run only
+ * from the drain task). */
+static volatile bool     s_canvas_req;
+static volatile uint8_t  s_canvas_id;
+static volatile uint16_t s_canvas_x, s_canvas_y, s_canvas_w, s_canvas_h;
+
+/* Every dump gets a fresh epoch, stamped into each of its bands' frame_epoch. The
+ * host groups bands by that value, so a burst abandoned half-way (host timed out,
+ * port closed, request re-sent) lands in its own bucket and can never be spliced
+ * onto a later one. A video snapshot gets this for free from the frame counter;
+ * a canvas has no equivalent clock, so count the dumps. */
+static uint32_t s_canvas_epoch;
+
+/* Last dump outcome, for the `perf` console command. Logging from inside the dump
+ * is not an option: log_vprintf calls full vprintf and takes a portMAX_DELAY mutex,
+ * and the drain task runs on a deliberately small 2 KB stack — the existing LOG_*
+ * calls here are only safe because they run at task startup, one frame deep. So the
+ * dump latches a reason code and the console reads it out instead. */
+static volatile uint8_t  s_canvas_reason;
+static volatile uint16_t s_canvas_bands;
+
+static TaskHandle_t s_drain_handle;
 
 /* Boot with only the cheap diagnostic types enabled: DROP (1 Hz),
  * TASK_HIGHWATER (~6/s), TASK_RUNTIME (~6/s). The host viewer enables
@@ -360,6 +389,133 @@ static void emit_snapshot(void)
     }
 }
 
+/* Convert one surface row to the strip's BGR888, `n` pixels from `src`. */
+static void canvas_row_to_bgr(uint8_t *dst, const void *src, uint16_t n,
+                              GFXC_COLOR_FORMAT mode)
+{
+    uint16_t i;
+
+    switch (mode)
+    {
+        case GFX_COLOR_MODE_RGB_565:
+        {
+            const uint16_t *p = (const uint16_t *)src;
+            for (i = 0u; i < n; i++)
+            {
+                uint16_t v = p[i];
+                uint8_t r5 = (uint8_t)((v >> 11) & 0x1Fu);
+                uint8_t g6 = (uint8_t)((v >> 5)  & 0x3Fu);
+                uint8_t b5 = (uint8_t)(v         & 0x1Fu);
+                /* Replicate the high bits into the low ones so full-scale maps to
+                 * 255 rather than 248/252 (a plain shift darkens everything). */
+                dst[i * 3u + 0u] = (uint8_t)((b5 << 3) | (b5 >> 2));
+                dst[i * 3u + 1u] = (uint8_t)((g6 << 2) | (g6 >> 4));
+                dst[i * 3u + 2u] = (uint8_t)((r5 << 3) | (r5 >> 2));
+            }
+            break;
+        }
+        case GFX_COLOR_MODE_RGBA_8888:
+        {
+            const uint32_t *p = (const uint32_t *)src;
+            for (i = 0u; i < n; i++)
+            {
+                uint32_t v = p[i];
+                dst[i * 3u + 0u] = (uint8_t)((v >> 8)  & 0xFFu);   /* B */
+                dst[i * 3u + 1u] = (uint8_t)((v >> 16) & 0xFFu);   /* G */
+                dst[i * 3u + 2u] = (uint8_t)((v >> 24) & 0xFFu);   /* R */
+            }
+            break;
+        }
+        default:
+            memset(dst, 0, (size_t)n * PERF_STRIP_BPP);
+            break;
+    }
+}
+
+/* Stream a rect of a canvas surface back as CANVAS bands. Same banding and pacing
+ * as emit_snapshot, and likewise monopolizes the drain for the duration. */
+static void emit_canvas_dump(void)
+{
+    const void     *base = NULL;
+    uint16_t        sw = 0u, sh = 0u;
+    GFXC_COLOR_FORMAT  mode = GFX_COLOR_MODE_RGB_565;
+
+    if (!UiSurface_Get(s_canvas_id, &base, &sw, &sh, &mode) || base == NULL)
+    {
+        s_canvas_reason = PERF_CANVAS_NO_SURFACE;
+        return;
+    }
+
+    uint32_t bpp;
+    switch (mode)
+    {
+        case GFX_COLOR_MODE_RGB_565:   bpp = 2u; break;
+        case GFX_COLOR_MODE_RGBA_8888: bpp = 4u; break;
+        default:
+            s_canvas_reason = PERF_CANVAS_BAD_MODE;
+            return;
+    }
+
+    /* Clip the requested rect to the surface; 0 extent means "to the edge". Every
+     * rejection logs: from the host all failures look like a timeout, so a silent
+     * return here is indistinguishable from a dropped request. */
+    uint16_t x = s_canvas_x, y0 = s_canvas_y;
+    if (x >= sw || y0 >= sh)
+    {
+        s_canvas_reason = PERF_CANVAS_OUTSIDE;
+        return;
+    }
+    uint16_t w = (s_canvas_w == 0u) ? (uint16_t)(sw - x) : s_canvas_w;
+    uint16_t h = (s_canvas_h == 0u) ? (uint16_t)(sh - y0) : s_canvas_h;
+    if ((uint32_t)x + w > sw) { w = (uint16_t)(sw - x); }
+    if ((uint32_t)y0 + h > sh) { h = (uint16_t)(sh - y0); }
+    if (w == 0u || h == 0u)
+    {
+        s_canvas_reason = PERF_CANVAS_EMPTY;
+        return;
+    }
+
+    const uint32_t out_stride = (uint32_t)w * PERF_STRIP_BPP;
+    uint32_t band_rows = PERF_STRIP_MAX_BYTES / out_stride;
+    if (band_rows == 0u)
+    {
+        s_canvas_reason = PERF_CANVAS_TOO_WIDE;
+        return;
+    }
+    if (band_rows > h)   { band_rows = h; }
+
+    const uint32_t epoch = ++s_canvas_epoch;
+    s_canvas_reason = PERF_CANVAS_RUNNING;
+    s_canvas_bands  = (uint16_t)((h + band_rows - 1u) / band_rows);
+
+    for (uint16_t yy = 0u; yy < h; )
+    {
+        uint16_t bh = (uint16_t)(((uint32_t)(h - yy) < band_rows) ? (h - yy) : band_rows);
+
+        perf_rec_strip_t *r = &s_snapshot_scratch;
+        memset(r, 0, PERF_STRIP_HDR_BYTES);
+        hdr_fill(&r->hdr, PERF_REC_STRIP, 0u, epoch);
+        r->x     = x;
+        r->y     = (uint16_t)(y0 + yy);
+        r->w     = w;
+        r->h     = bh;
+        r->kind  = (uint8_t)PERF_STRIP_CANVAS;
+        r->flags = ((uint32_t)yy + bh >= h) ? PERF_STRIP_FLAG_LAST : 0u;
+
+        for (uint16_t row = 0u; row < bh; row++)
+        {
+            const uint8_t *src = (const uint8_t *)base
+                               + ((uint32_t)(y0 + yy + row) * sw + x) * bpp;
+            canvas_row_to_bgr(&r->bgr[(uint32_t)row * out_stride], src, w, mode);
+        }
+
+        PerfLogSinkCdc_WriteFramed(r, strip_record_size(r));
+        yy = (uint16_t)(yy + bh);
+    }
+
+    s_canvas_reason = PERF_CANVAS_DONE;
+}
+
 static void perf_log_drain_task(void *param)
 {
     (void)param;
@@ -380,10 +536,26 @@ static void perf_log_drain_task(void *param)
         }
         prev_connected = now_connected;
 
+        /* Cheap integrity check of the non-cached region. Placed here because this
+         * task already runs at a steady low rate and the failure it detects
+         * (USB state clobbered by a stray write) manifests on this very path. */
+        (void)NocacheGuard_Check();
+
+        /* Keep the command channel armed. Arming can fail silently and nothing
+         * else retries it, which leaves the device deaf to commands while records
+         * keep flowing — indistinguishable from "device not responding". */
+        PerfLogSinkCdc_ServiceRx();
+
         if (s_snapshot_req)
         {
             s_snapshot_req = false;
             emit_snapshot();
+        }
+
+        if (s_canvas_req)
+        {
+            s_canvas_req = false;
+            emit_canvas_dump();
         }
 
         perf_rec_state_slot_t srec;
@@ -460,6 +632,7 @@ void PerfLog_Start(void)
                                        PL_DRAIN_PRIORITY,
                                        s_drain_stack,
                                        &s_drain_tcb);
+    s_drain_handle = h;
     PerfLog_RegisterTaskForHighwater(PERF_TASK_PERF_DRAIN, h);
     /* Idle handle isn't valid until vTaskStartScheduler creates the idle
      * task — registered from the drain task post-scheduler instead, see
@@ -766,6 +939,37 @@ void PerfLog_NoteSinkDrop(uint32_t bytes_dropped)
 void PerfLog_RequestSnapshot(void)
 {
     s_snapshot_req = true;
+}
+
+void PerfLog_GetDiag(perf_log_diag_t *out)
+{
+    if (out == NULL) { return; }
+
+    out->running    = s_running;
+    out->drop_state = s_drop_state;
+    out->drop_strip = s_drop_strip;
+    out->drop_sink  = s_drop_sink;
+    out->sink_connected = PerfLogSinkCdc_IsConnected();
+    out->sink_credits   = PerfLogSinkCdc_TxCredits();
+    out->sink_reclaims  = PerfLogSinkCdc_TxReclaims();
+    out->canvas_reason = s_canvas_reason;
+    out->canvas_id     = s_canvas_id;
+    out->canvas_bands  = s_canvas_bands;
+    out->canvas_epoch  = s_canvas_epoch;
+    out->drain_stack_free_words =
+        (s_drain_handle != NULL) ? uxTaskGetStackHighWaterMark(s_drain_handle) : 0u;
+}
+
+void PerfLog_RequestCanvasDump(uint8_t canvas, uint16_t x, uint16_t y,
+                               uint16_t w, uint16_t h)
+{
+    s_canvas_id = canvas;
+    s_canvas_x  = x;
+    s_canvas_y  = y;
+    s_canvas_w  = w;
+    s_canvas_h  = h;
+    s_canvas_reason = PERF_CANVAS_REQUESTED;
+    s_canvas_req = true;   /* set last — the drain task reads the rect once this is up */
 }
 
 /* ─── Record-type filter ─────────────────────────────────────────────────── */

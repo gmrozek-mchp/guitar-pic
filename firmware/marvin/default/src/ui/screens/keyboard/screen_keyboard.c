@@ -8,6 +8,7 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "util/legato_utf8.h"
 
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_fixedstring.h"
@@ -247,7 +248,7 @@ void ScreenKeyboard_InitSurface(void)
 {
     static uint16_t __attribute__((section(".region_nocache"), aligned(32)))
         s_fb[KBD_W * KBD_H];
-    gfxcSetPixelBuffer(CANVAS_KEYBOARD, KBD_W, KBD_H, GFX_COLOR_MODE_RGB_565, s_fb);
+    UiSurface_Set(CANVAS_KEYBOARD, KBD_W, KBD_H, GFX_COLOR_MODE_RGB_565, s_fb);
 }
 
 void ScreenKeyboard_Setup(void)

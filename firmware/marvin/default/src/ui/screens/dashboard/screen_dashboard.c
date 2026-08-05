@@ -19,6 +19,7 @@
 #include "results/results.h"   /* Results_Set/GetPlayer — 2P player-name prompt */
 #include "util/legato_utf8.h"
 
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_fixedstring.h"                /* runtime label text */
@@ -34,7 +35,7 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 
 void ScreenDashboard_InitSurface(void)
 {
-    gfxcSetPixelBuffer(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+    UiSurface_Set(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
 }
 
 /* The gameplay card's SELECT SONG button opens the song-select modal. */

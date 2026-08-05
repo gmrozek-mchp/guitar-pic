@@ -14,6 +14,7 @@
 #include "log.h"
 #include "util/legato_utf8.h"
 
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_fixedstring.h"                /* runtime label text */
@@ -36,7 +37,7 @@ static uint16_t FB_NOCACHE s_fb_songsel[SONGSEL_W * SONGSEL_H];
 
 void ScreenSongSelect_InitSurface(void)
 {
-    gfxcSetPixelBuffer(CANVAS_SONGSEL, SONGSEL_W, SONGSEL_H, GFX_COLOR_MODE_RGB_565, s_fb_songsel);
+    UiSurface_Set(CANVAS_SONGSEL, SONGSEL_W, SONGSEL_H, GFX_COLOR_MODE_RGB_565, s_fb_songsel);
 }
 
 /* ── difficulty + mode radio groups ──────────────────────────────────────────

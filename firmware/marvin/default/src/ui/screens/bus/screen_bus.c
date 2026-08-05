@@ -14,6 +14,7 @@
 #include "ui/widgets/sparkline/widget_sparkline.h"
 #include "net/t1s/t1s_link.h"
 
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_fixedstring.h"
@@ -461,7 +462,7 @@ static leLabelWidget *kpi(int x, int w, const char *caption, const leScheme *vsc
 
 void ScreenBus_InitSurface(void)
 {
-    gfxcSetPixelBuffer(CANVAS_BUS, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+    UiSurface_Set(CANVAS_BUS, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
 }
 
 static void refresh_all(void);

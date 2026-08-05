@@ -1,6 +1,7 @@
 #include "ui/screens/album_art/screen_album_art.h"
 
 #include "ui/ui_manager.h"   /* CANVAS_ALBUM_ART */
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 
 /* Layer 3 is RGBA8888 — the only full-color mode the 2D engine supports
@@ -27,7 +28,7 @@ void ScreenAlbumArt_InitSurface(void)
      * RGBA8888 word is 0xRRGGBBAA, so opaque black = 0x000000FF. */
     for (uint32_t i = 0u; i < (ART_W * ART_H); i++) { s_fb_album_art[i] = 0x000000FFu; }
 
-    gfxcSetPixelBuffer(CANVAS_ALBUM_ART, ART_W, ART_H, GFX_COLOR_MODE_RGBA_8888, s_fb_album_art);
+    UiSurface_Set(CANVAS_ALBUM_ART, ART_W, ART_H, GFX_COLOR_MODE_RGBA_8888, s_fb_album_art);
 }
 
 void ScreenAlbumArt_Setup(void)

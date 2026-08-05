@@ -33,6 +33,17 @@ static uint8_t    s_fcs_s2;
 static uint16_t   s_fcs_rx;
 static uint32_t   s_drops;
 
+/* RX observability. `bytes`/`frames` separate "the host's write never reached the
+ * device" from "it arrived but the frame or the dispatch rejected it" — from the
+ * outside both look like a command that did nothing. last_cmd/last_len record what
+ * dispatch actually saw, which is the only way to catch a length or opcode
+ * mismatch against the host's encoder. */
+static uint32_t   s_bytes;
+static uint32_t   s_frames;
+static uint32_t   s_dispatched;
+static uint8_t    s_last_cmd;
+static uint16_t   s_last_len;
+
 static inline void fcs_byte(uint8_t b)
 {
     s_fcs_s1 = (uint8_t)(((uint16_t)s_fcs_s1 + b) % 255u);
@@ -69,11 +80,17 @@ static void resync(uint8_t b)
 
 static void dispatch_payload(void)
 {
+    s_frames++;
+    s_last_len = s_len;
+
     if (s_len < sizeof(perf_cmd_hdr_t)) { return; }
 
     perf_cmd_hdr_t hdr;
     memcpy(&hdr, s_payload, sizeof(hdr));
+    s_last_cmd = hdr.cmd_id;
     if (hdr.magic != PERF_CMD_HDR_MAGIC) { return; }
+
+    s_dispatched++;
 
     switch (hdr.cmd_id)
     {
@@ -111,6 +128,15 @@ static void dispatch_payload(void)
             }
             break;
 
+        case PERF_CMD_CANVAS_DUMP:
+            if (s_len == sizeof(perf_cmd_canvas_dump_t))
+            {
+                perf_cmd_canvas_dump_t cmd;
+                memcpy(&cmd, s_payload, sizeof(cmd));
+                PerfLog_RequestCanvasDump(cmd.canvas, cmd.x, cmd.y, cmd.w, cmd.h);
+            }
+            break;
+
         default:
             break;
     }
@@ -124,6 +150,8 @@ void PerfLogRx_Initialize(void)
 
 void PerfLogRx_Feed(const uint8_t *bytes, uint32_t len)
 {
+    s_bytes += len;
+
     for (uint32_t i = 0u; i < len; i++)
     {
         uint8_t b = bytes[i];
@@ -191,4 +219,17 @@ void PerfLogRx_Feed(const uint8_t *bytes, uint32_t len)
 uint32_t PerfLogRx_GetDropCount(void)
 {
     return s_drops;
+}
+
+void PerfLogRx_GetDiag(perf_rx_diag_t *out)
+{
+    if (out == NULL) { return; }
+
+    out->bytes      = s_bytes;
+    out->frames     = s_frames;
+    out->dispatched = s_dispatched;
+    out->drops      = s_drops;
+    out->last_cmd   = s_last_cmd;
+    out->last_len   = s_last_len;
+    out->state      = (uint8_t)s_state;
 }

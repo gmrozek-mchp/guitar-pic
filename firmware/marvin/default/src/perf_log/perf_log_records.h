@@ -220,6 +220,7 @@ typedef enum
     PERF_STRIP_STRIKE   = 1,
     PERF_STRIP_SNAPSHOT = 2,
     PERF_STRIP_REGION   = 3,   /* host-selected sub-region, streamed per frame */
+    PERF_STRIP_CANVAS   = 4,   /* one-shot Legato canvas surface, banded like SNAPSHOT */
 } perf_strip_kind_t;
 
 /* Strip flags byte (perf_rec_strip_t.flags). SNAPSHOT producers set LAST on
@@ -393,6 +394,7 @@ typedef enum
     PERF_CMD_SNAPSHOT      = 0x02u,
     PERF_CMD_SET_OVERLAY   = 0x03u,
     PERF_CMD_REGION_STREAM = 0x04u,
+    PERF_CMD_CANVAS_DUMP   = 0x05u,
 } perf_cmd_t;
 
 /* Overlay sinks for the per-fret target rings, gated independently via
@@ -447,5 +449,28 @@ typedef struct __attribute__((packed))
     uint8_t        reserved;
     uint16_t       x, y, w, h;
 } perf_cmd_region_stream_t;
+
+/* PERF_CMD_CANVAS_DUMP — one-shot capture of a Legato canvas surface (the UI
+ * framebuffer a screen renders into), streamed back as PERF_REC_STRIP bands of
+ * kind CANVAS, LAST set on the final band. This is the UI counterpart to
+ * PERF_CMD_SNAPSHOT: SNAPSHOT captures the *video* frame (HEO), which shares no
+ * memory with the UI, so neither can show the other.
+ *
+ * `canvas` is a ui_manager CANVAS_* id. Each canvas is a separate surface — the
+ * nav drawer, dialogs and the on-screen keyboard are NOT part of the base view's
+ * buffer — so pick the one that holds the pixels you want. The surface is read
+ * as-is, without compositing: what the LCDC blends across hardware layers on the
+ * panel cannot be reproduced here, and isn't attempted.
+ *
+ * The rect is in surface pixels and clipped to the surface; w or h = 0 means
+ * "to the edge", so an all-zero rect dumps the whole surface. Pixels are
+ * converted to the strip's BGR888 regardless of the surface's colour mode.  */
+typedef struct __attribute__((packed))
+{
+    perf_cmd_hdr_t hdr;
+    uint8_t        canvas;
+    uint8_t        reserved;
+    uint16_t       x, y, w, h;
+} perf_cmd_canvas_dump_t;
 
 #endif /* PERF_LOG_RECORDS_H */

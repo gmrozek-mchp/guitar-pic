@@ -115,6 +115,54 @@ void PerfLog_EmitStripPacked(uint32_t frame_epoch,
  * call from any context (e.g. the CDC RX callback). */
 void PerfLog_RequestSnapshot(void);
 
+/* Request a one-shot dump of a Legato canvas surface (the UI framebuffer, as
+ * opposed to the video frame PerfLog_RequestSnapshot captures). `canvas` is a
+ * ui_manager CANVAS_* id; the rect is in surface pixels, clipped to the surface,
+ * with w or h = 0 meaning "to the edge" — so an all-zero rect dumps the lot.
+ * Streamed back as CANVAS strips, last band flagged LAST. Each canvas is its own
+ * surface and no compositing is done, so overlays (drawer, dialogs, keyboard) and
+ * the video layer will not appear in another canvas's dump. Safe from any
+ * context; the drain task does the work. */
+void PerfLog_RequestCanvasDump(uint8_t canvas, uint16_t x, uint16_t y,
+                               uint16_t w, uint16_t h);
+
+/* Outcome of the last canvas dump (PerfLog_Diag.canvas_reason). */
+typedef enum
+{
+    PERF_CANVAS_IDLE       = 0,   /* none requested since boot            */
+    PERF_CANVAS_REQUESTED  = 1,   /* latched by RX, drain hasn't run it   */
+    PERF_CANVAS_RUNNING    = 2,   /* started emitting bands               */
+    PERF_CANVAS_DONE       = 3,   /* all bands handed to the sink         */
+    PERF_CANVAS_NO_SURFACE = 4,   /* canvas id has no assigned buffer     */
+    PERF_CANVAS_BAD_MODE   = 5,   /* colour mode not convertible          */
+    PERF_CANVAS_OUTSIDE    = 6,   /* origin outside the surface           */
+    PERF_CANVAS_EMPTY      = 7,   /* rect empty after clipping            */
+    PERF_CANVAS_TOO_WIDE   = 8,   /* one row exceeds a strip payload      */
+} perf_canvas_reason_t;
+
+/* Perf-log internals for the `perf` console command. The console is on its own
+ * UART, so this still reports when the CDC record stream is dead — which is the
+ * case worth diagnosing. `drain_stack_free_words` is the FreeRTOS high-water
+ * mark: if it approaches zero the drain task is overflowing its stack, which
+ * would explain the whole subsystem going quiet. */
+typedef struct
+{
+    bool     running;
+    uint32_t drain_stack_free_words;
+    uint32_t drop_state;
+    uint32_t drop_strip;
+    uint32_t drop_sink;
+    bool     sink_connected;
+    uint32_t sink_credits;    /* 0 = sink stalled; nothing can reach the host */
+    uint32_t sink_reclaims;   /* >0 = USB writes were abandoned and recovered */
+    uint8_t  canvas_reason;   /* perf_canvas_reason_t */
+    uint8_t  canvas_id;
+    uint16_t canvas_bands;
+    uint32_t canvas_epoch;
+} perf_log_diag_t;
+
+void PerfLog_GetDiag(perf_log_diag_t *out);
+
 void PerfLog_EmitTaskHighwater(perf_task_id_t id, uint32_t words);
 void PerfLog_EmitTaskRuntime(perf_task_id_t id,
                              perf_task_state_t state,

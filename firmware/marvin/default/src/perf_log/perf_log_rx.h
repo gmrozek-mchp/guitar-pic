@@ -18,4 +18,19 @@ void     PerfLogRx_Initialize(void);
 void     PerfLogRx_Feed(const uint8_t *bytes, uint32_t len);
 uint32_t PerfLogRx_GetDropCount(void);
 
+/* Command-channel observability for the `perf` console command. Without this a
+ * command that does nothing is indistinguishable from one that never arrived. */
+typedef struct
+{
+    uint32_t bytes;       /* bytes handed to the framer            */
+    uint32_t frames;      /* complete frames passed FCS            */
+    uint32_t dispatched;  /* frames with a valid command header    */
+    uint32_t drops;       /* framing errors / resyncs              */
+    uint8_t  last_cmd;    /* last cmd_id seen by dispatch          */
+    uint16_t last_len;    /* last payload length seen by dispatch  */
+    uint8_t  state;       /* framer state — non-zero = mid-frame   */
+} perf_rx_diag_t;
+
+void PerfLogRx_GetDiag(perf_rx_diag_t *out);
+
 #endif /* PERF_LOG_RX_H */

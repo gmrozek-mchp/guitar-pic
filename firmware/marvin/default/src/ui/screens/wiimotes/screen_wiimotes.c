@@ -15,6 +15,7 @@
 #include "ui/widgets/whammy/widget_whammy.h"
 #include "ui/widgets/tilt/widget_tilt.h"
 
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_tablestring.h"
@@ -410,7 +411,7 @@ static void build_wiimote_card(void)
 
 void ScreenWiimotes_InitSurface(void)
 {
-    gfxcSetPixelBuffer(CANVAS_WIIMOTES, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+    UiSurface_Set(CANVAS_WIIMOTES, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
 }
 
 void ScreenWiimotes_Setup(void)
