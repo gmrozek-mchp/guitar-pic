@@ -1,6 +1,8 @@
 #ifndef UI_SCREEN_NAVIGATION_H
 #define UI_SCREEN_NAVIGATION_H
 
+#include <stdbool.h>
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -19,6 +21,13 @@ void ScreenNavigation_Setup(void);
 /* Open/close the navigation drawer. Public so any base-view titlebar hamburger
  * (the shared ui/titlebar component) can toggle it. */
 void ScreenNavigation_ToggleDrawer(void);
+
+
+/* Drawer slide animation on/off. The canvas Move FX is unique to this screen, so
+ * disabling it isolates the FX from everything else the drawer does. Console:
+ * `nav slide on|off`. */
+void ScreenNavigation_SetSlide(bool on);
+bool ScreenNavigation_GetSlide(void);
 
 #ifdef __cplusplus
 }

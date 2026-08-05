@@ -214,6 +214,69 @@ extern leImage LOGO_MICROCHIP;
  ***********************************/
 extern leImage NAV_ICON_WIIMOTES;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_DASHBOARD_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_DASHBOARD_SELECTED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_WIIMOTES_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_WIIMOTES_SELECTED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_LOGS_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_LOGS_SELECTED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_PERFORMANCE_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_PERFORMANCE_SELECTED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_SYSTEM_INFO_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_SYSTEM_INFO_SELECTED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_DIAGNOSTICS_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_DIAGNOSTICS_SELECTED;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_SETTINGS_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_SETTINGS_SELECTED;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/

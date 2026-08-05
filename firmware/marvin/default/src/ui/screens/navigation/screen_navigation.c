@@ -6,9 +6,11 @@
 #include "ui/ui_manager.h"   /* CANVAS_NAVIGATION */
 #include "ui/widgets/button_aa/widget_button_aa.h"
 
+#include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/generated/le_gen_scheme.h"
+#include "gfx/legato/generated/le_gen_assets.h"                 /* NAV_ICON_* images */
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* nav widgets + hamburger event */
 
 /* The navigation drawer is layer 1 of the Marvin master screen, rendered into its
@@ -62,19 +64,78 @@ static leButtonWidget *navigation_button(unsigned int i)
     }
 }
 
+/* Per-entry icon pair, indexed like navigation_button. A scheme changes the button's
+ * fill but cannot recolour an image, so the selected look needs its own asset: the
+ * design ships each icon twice, zinc-300 for rest and white for selected (the two are
+ * rendered from one SVG in assets/icon/lucide, so only the colour differs). */
+static const struct { const leImage *rest, *selected; } NAVIGATION_ICON[NAVIGATION_COUNT] =
+{
+    { &NAV_ICON_DASHBOARD,   &NAV_ICON_DASHBOARD_SELECTED   },
+    { &NAV_ICON_WIIMOTES,    &NAV_ICON_WIIMOTES_SELECTED    },
+    { &NAV_ICON_LOGS,        &NAV_ICON_LOGS_SELECTED        },
+    { &NAV_ICON_PERFORMANCE, &NAV_ICON_PERFORMANCE_SELECTED },
+    { &NAV_ICON_SYSTEM_INFO, &NAV_ICON_SYSTEM_INFO_SELECTED },
+    { &NAV_ICON_DIAGNOSTICS, &NAV_ICON_DIAGNOSTICS_SELECTED },
+    { &NAV_ICON_SETTINGS,    &NAV_ICON_SETTINGS_SELECTED    },
+};
+
 static void navigation_close(void);   /* forward decl — navigation_on_release may close the drawer */
 
-/* Single-active highlight: paint the active entry selected, the rest unselected. */
+/* Index of the entry currently painted selected; -1 before the first highlight. */
+static int s_navigation_active = -1;
+
+/* Apply one entry's selected/unselected look.
+ *
+ * The explicit invalidate is required: the image setters raise no damage, and the
+ * damage setScheme raises does not cover every pixel the icon draw touched. A small
+ * block at the icon's top-left kept its previous paint — showing stale blue on a row
+ * that had been selected, or uninitialized DDR (the .region_nocache surfaces are
+ * NOLOAD and never zeroed) on one that had not. Same rect either way; only the
+ * leftover content differed. */
+static void navigation_paint_entry(unsigned int i, bool on)
+{
+    leButtonWidget *b = navigation_button(i);
+
+    b->fn->setScheme(b, on ? &SCHEME_NAV_BUTTON_SELECTED
+                           : &SCHEME_NAV_BUTTON_UNSELECTED);
+
+    const leImage *icon = on ? NAVIGATION_ICON[i].selected : NAVIGATION_ICON[i].rest;
+    b->fn->setPressedImage(b, (leImage *)icon);
+    b->fn->setReleasedImage(b, (leImage *)icon);
+
+    b->fn->invalidate(b);
+}
+
+/* Single-active highlight. Only the two entries whose state actually changes are
+ * repainted — the one losing selection and the one gaining it — rather than all
+ * seven, so a selection costs two button repaints instead of seven.
+ *
+ * The first call is the exception and paints every entry: it must not depend on the
+ * design's build-time defaults still matching what this code expects. */
 static void navigation_highlight(leButtonWidget *active)
 {
     unsigned int i;
+    int next = -1;
 
     for (i = 0u; i < NAVIGATION_COUNT; i++)
     {
-        leButtonWidget *b = navigation_button(i);
-        b->fn->setScheme(b, (b == active) ? &SCHEME_NAV_BUTTON_SELECTED
-                                          : &SCHEME_NAV_BUTTON_UNSELECTED);
+        if (navigation_button(i) == active) { next = (int)i; break; }
     }
+
+    if (s_navigation_active < 0)
+    {
+        for (i = 0u; i < NAVIGATION_COUNT; i++)
+        {
+            navigation_paint_entry(i, (int)i == next);
+        }
+    }
+    else if (next != s_navigation_active)
+    {
+        navigation_paint_entry((unsigned int)s_navigation_active, false);
+        if (next >= 0) { navigation_paint_entry((unsigned int)next, true); }
+    }
+
+    s_navigation_active = next;
 }
 
 /* Released-event sink for every navigation entry. Switch the highlight, then swap
@@ -127,11 +188,48 @@ static void navigation_buttons_init(void)
  * would be silently dropped — the original move would run to completion and fire
  * navigation_fx_done with a now-stale s_navigation_open, hiding the drawer and
  * wedging the toggle. Reading the live position makes the reversal retarget smoothly. */
+/* When false the drawer jumps to its target instead of animating. The canvas Move
+ * FX is the one thing the drawer uses that no other screen does, so this makes it
+ * an A/B test at runtime (`nav slide on|off`) rather than a rebuild. */
+static bool s_navigation_slide = true;
+
+void ScreenNavigation_SetSlide(bool on)
+{
+    s_navigation_slide = on;
+}
+
+bool ScreenNavigation_GetSlide(void)
+{
+    return s_navigation_slide;
+}
+
 static void navigation_slide_to(int target_x)
 {
     int x, y;
 
     gfxcStopEffect(CANVAS_NAVIGATION, GFXC_FX_MOVE);
+
+    if (!s_navigation_slide)
+    {
+        /* Jump straight there. With no move to complete, navigation_fx_done never
+         * runs, so the close ending it owns — disable the layer to clear the
+         * residual edge sliver, then re-arm base-view input — has to happen here.
+         *
+         * Discriminate on the TARGET, not s_navigation_open: navigation_open calls
+         * this *before* setting that flag, so testing the flag would treat an open
+         * as a close and hide the drawer the instant it was shown. The animated path
+         * is immune because fx_done runs long after the caller has updated it. */
+        gfxcSetWindowPosition(CANVAS_NAVIGATION, target_x, 0);
+        gfxcCanvasUpdate(CANVAS_NAVIGATION);
+
+        if (target_x != 0)
+        {
+            UiManager_HideNavLayer();
+            UiManager_SetBaseViewPickable(true);
+        }
+        return;
+    }
+
     gfxcGetWindowPosition(CANVAS_NAVIGATION, &x, &y);
     gfxcStartEffectMove(CANVAS_NAVIGATION, GFXC_FX_MOVE_DEC, x, 0, target_x, 0, NAVIGATION_SLIDE_DELTA);
 }
@@ -202,7 +300,7 @@ void ScreenNavigation_ToggleDrawer(void)
 
 void ScreenNavigation_InitSurface(void)
 {
-    gfxcSetPixelBuffer(CANVAS_NAVIGATION, NAVIGATION_W, NAVIGATION_H, GFX_COLOR_MODE_RGB_565, s_fb_navigation);
+    UiSurface_Set(CANVAS_NAVIGATION, NAVIGATION_W, NAVIGATION_H, GFX_COLOR_MODE_RGB_565, s_fb_navigation);
 }
 
 /* Per-panel setup for the navigation drawer (Marvin layer-screen 1,
