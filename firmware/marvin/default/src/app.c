@@ -47,6 +47,7 @@
 #include "game/game_engine.h"
 #include "console/console.h"
 #include "health/health_monitor.h"
+#include "health/nocache_guard.h"
 #include "storage/storage.h"
 #include "results/results.h"
 #include "game/game_catalog.h"
@@ -129,6 +130,11 @@ void APP_Initialize ( void )
      * sequence (splash → screens → reveal) once the scheduler is up. The callback
      * is registered first so the boot task can fire it the moment the splash is on
      * screen — that's our cue to start everything else (see app_on_splash_shown). */
+    /* Lay the nocache guards before anything paints into the region, so a stray
+     * write is reported as memory corruption rather than chased through whatever
+     * it happens to break (see health/nocache_guard.h). */
+    NocacheGuard_Initialize();
+
     UiManager_SetSplashShownCallback(app_on_splash_shown);
     UiManager_Initialize();
 

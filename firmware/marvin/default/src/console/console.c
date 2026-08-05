@@ -28,6 +28,12 @@
 #include "net/fauxmote/mf_proto.h"
 #include "storage/storage.h"
 #include "health/health_monitor.h"
+#include "health/nocache_guard.h"
+#include "perf_log/perf_log.h"
+#include "perf_log/perf_log_sink.h"
+#include "perf_log/perf_log_rx.h"
+#include "ui/screens/navigation/screen_navigation.h"
+#include "ui/gfx/ui_surface.h"
 #include "results/results.h"
 #include "game/game_catalog.h"
 #include "game/game_art.h"
@@ -512,6 +518,296 @@ static void cmd_health(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)args; (void)ctx;
     HealthMonitor_Report(sd_out, NULL);   /* per-task stack + runtime table */
+}
+
+/* `perf dump <canvas> [x y w h]` requests a canvas dump straight from the console,
+ * bypassing the perf-log CDC command channel. Useful when a dump is not arriving
+ * and it matters whether the request path or the emit path is at fault: the host
+ * only has to listen (`marvin-perf screendump --listen`). */
+static void cmd_perf_dump(char *args)
+{
+    const char *a1 = embeddedCliGetToken(args, 2);
+    if (a1 == NULL)
+    {
+        printf("usage: perf dump <canvas 0-6> [x y w h]\r\n");
+        return;
+    }
+
+    int canvas = atoi(a1);
+    const char *ax = embeddedCliGetToken(args, 3);
+    const char *ay = embeddedCliGetToken(args, 4);
+    const char *aw = embeddedCliGetToken(args, 5);
+    const char *ah = embeddedCliGetToken(args, 6);
+
+    uint16_t x = (ax != NULL) ? (uint16_t)atoi(ax) : 0u;
+    uint16_t y = (ay != NULL) ? (uint16_t)atoi(ay) : 0u;
+    uint16_t w = (aw != NULL) ? (uint16_t)atoi(aw) : 0u;
+    uint16_t h = (ah != NULL) ? (uint16_t)atoi(ah) : 0u;
+
+    if (canvas < 0 || canvas > 6)
+    {
+        printf("perf: canvas must be 0-6\r\n");
+        return;
+    }
+
+    PerfLog_RequestCanvasDump((uint8_t)canvas, x, y, w, h);
+    printf("perf: canvas %d dump requested (%u,%u %ux%u)\r\n",
+           canvas, (unsigned)x, (unsigned)y, (unsigned)w, (unsigned)h);
+}
+
+/* Read the nav-drawer icon rect straight out of its canvas surface and report it
+ * over the console. USB is unusable for this — the device link dies after the first
+ * host session — so this is the only way to answer "is the corruption in the
+ * framebuffer or only on the glass" without a working screendump.
+ *
+ * Row geometry mirrors the design: buttons 287x56 at x=16, y=113+64n, icon 24x24
+ * inset by the button's 16 px imageMargin. */
+/* Dump an arbitrary rect of the nav surface, so a defect can be located rather than
+ * guessed at. `nav px <x> <y> [w] [h]`. */
+static void cmd_nav_px(char *args)
+{
+    const char *ax = embeddedCliGetToken(args, 2);
+    const char *ay = embeddedCliGetToken(args, 3);
+    const char *aw = embeddedCliGetToken(args, 4);
+    const char *ah = embeddedCliGetToken(args, 5);
+
+    if (ax == NULL || ay == NULL) { printf("usage: nav px <x> <y> [w] [h]\r\n"); return; }
+
+    int x = atoi(ax), y = atoi(ay);
+    int w = (aw != NULL) ? atoi(aw) : 16;
+    int h = (ah != NULL) ? atoi(ah) : 8;
+    if (w < 1 || w > 64) { w = 16; }
+    if (h < 1 || h > 64) { h = 8; }
+
+    const void *base = NULL;
+    uint16_t sw = 0u, sh = 0u;
+    GFXC_COLOR_FORMAT mode = GFX_COLOR_MODE_RGB_565;
+    if (!UiSurface_Get(CANVAS_NAVIGATION, &base, &sw, &sh, &mode) || base == NULL)
+    {
+        printf("nav: no navigation surface\r\n");
+        return;
+    }
+    if (x < 0 || y < 0 || (uint32_t)x + w > sw || (uint32_t)y + h > sh)
+    {
+        printf("nav: rect outside %ux%u\r\n", (unsigned)sw, (unsigned)sh);
+        return;
+    }
+
+    const uint16_t *fb = (const uint16_t *)base;
+    printf("nav px %d,%d %dx%d (RGB565):\r\n", x, y, w, h);
+    for (int yy = 0; yy < h; yy++)
+    {
+        printf("   ");
+        for (int xx = 0; xx < w; xx++)
+        {
+            printf(" %04X", (unsigned)fb[(uint32_t)(y + yy) * sw + (x + xx)]);
+        }
+        printf("\r\n");
+    }
+}
+
+static void cmd_nav_icon(const char *arg)
+{
+    int row = (arg != NULL) ? atoi(arg) : 0;
+    if (row < 0 || row > 6) { printf("nav: row must be 0-6\r\n"); return; }
+
+    const void *base = NULL;
+    uint16_t sw = 0u, sh = 0u;
+    GFXC_COLOR_FORMAT mode = GFX_COLOR_MODE_RGB_565;
+
+    if (!UiSurface_Get(CANVAS_NAVIGATION, &base, &sw, &sh, &mode) || base == NULL)
+    {
+        printf("nav: no navigation surface\r\n");
+        return;
+    }
+    if (mode != GFX_COLOR_MODE_RGB_565)
+    {
+        printf("nav: unexpected colour mode %u\r\n", (unsigned)mode);
+        return;
+    }
+
+    const uint16_t ix = 16u + 16u;                       /* button x + imageMargin */
+    const uint16_t iy = (uint16_t)(113 + 64 * row + 16);
+    if ((uint32_t)ix + 24u > sw || (uint32_t)iy + 24u > sh)
+    {
+        printf("nav: icon rect outside %ux%u\r\n", (unsigned)sw, (unsigned)sh);
+        return;
+    }
+
+    const uint16_t *fb = (const uint16_t *)base;
+
+    /* Build a legend of the distinct RGB565 values present, then print the rect as
+     * legend indices. Lossless for the question at hand — a classifier that buckets
+     * by "looks dark" hides both which colour a pixel actually is and whether a gap
+     * is background or something else. */
+    #define NAV_LEGEND_MAX 16u
+    uint16_t pal[NAV_LEGEND_MAX];
+    uint32_t cnt[NAV_LEGEND_MAX];
+    uint32_t npal = 0u, other = 0u;
+
+    for (uint16_t yy = 0u; yy < 24u; yy++)
+    {
+        for (uint16_t xx = 0u; xx < 24u; xx++)
+        {
+            uint16_t v = fb[(uint32_t)(iy + yy) * sw + (ix + xx)];
+            uint32_t k;
+            for (k = 0u; k < npal; k++) { if (pal[k] == v) { cnt[k]++; break; } }
+            if (k == npal)
+            {
+                if (npal < NAV_LEGEND_MAX) { pal[npal] = v; cnt[npal] = 1u; npal++; }
+                else                       { other++; }
+            }
+        }
+    }
+
+    printf("nav icon row %d at %u,%u (24x24, RGB565):\r\n",
+           row, (unsigned)ix, (unsigned)iy);
+
+    for (uint16_t yy = 0u; yy < 24u; yy++)
+    {
+        char line[25];
+        for (uint16_t xx = 0u; xx < 24u; xx++)
+        {
+            uint16_t v = fb[(uint32_t)(iy + yy) * sw + (ix + xx)];
+            char c = '*';
+            for (uint32_t k = 0u; k < npal; k++)
+            {
+                if (pal[k] == v)
+                {
+                    c = (char)((k < 10u) ? ('0' + k) : ('a' + (k - 10u)));
+                    break;
+                }
+            }
+            line[xx] = c;
+        }
+        line[24] = '\0';
+        printf("  %s\r\n", line);
+    }
+
+    printf("  legend (index = RGB565 -> R,G,B, count):\r\n");
+    for (uint32_t k = 0u; k < npal; k++)
+    {
+        uint16_t v = pal[k];
+        printf("   %c = %04X -> %3u,%3u,%3u  x%lu\r\n",
+               (char)((k < 10u) ? ('0' + k) : ('a' + (k - 10u))), (unsigned)v,
+               (unsigned)(((v >> 11) & 0x1Fu) << 3),
+               (unsigned)(((v >> 5) & 0x3Fu) << 2),
+               (unsigned)((v & 0x1Fu) << 3),
+               (unsigned long)cnt[k]);
+    }
+    if (other != 0u) { printf("   '*' = %lu px beyond legend\r\n", (unsigned long)other); }
+
+
+    /* Corner values verbatim — the reported defect is a small block up here. */
+    printf("  top-left 5x5 RGB565:\r\n");
+    for (uint16_t yy = 0u; yy < 5u; yy++)
+    {
+        printf("   ");
+        for (uint16_t xx = 0u; xx < 5u; xx++)
+        {
+            printf(" %04X", (unsigned)fb[(uint32_t)(iy + yy) * sw + (ix + xx)]);
+        }
+        printf("\r\n");
+    }
+}
+
+static void cmd_nav(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+
+    const char *sub = embeddedCliGetToken(args, 1);
+    const char *val = embeddedCliGetToken(args, 2);
+
+    if (sub != NULL && strcmp(sub, "icon") == 0)
+    {
+        cmd_nav_icon(val);
+        return;
+    }
+
+    if (sub != NULL && strcmp(sub, "px") == 0)
+    {
+        cmd_nav_px(args);
+        return;
+    }
+
+    if (sub != NULL && strcmp(sub, "slide") == 0 && val != NULL)
+    {
+        bool on = (strcmp(val, "on") == 0) || (strcmp(val, "1") == 0);
+        ScreenNavigation_SetSlide(on);
+    }
+
+    printf("nav: slide %s\r\n", ScreenNavigation_GetSlide() ? "on" : "off");
+}
+
+static void cmd_perf(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+
+    const char *sub = embeddedCliGetToken(args, 1);
+    if (sub != NULL && strcmp(sub, "dump") == 0)
+    {
+        cmd_perf_dump(args);
+        return;
+    }
+
+    static const char *const REASON[] = {
+        "idle", "requested", "running", "done",
+        "no-surface", "bad-mode", "outside", "empty", "too-wide",
+    };
+
+    perf_log_diag_t d;
+    PerfLog_GetDiag(&d);
+
+    const char *reason = (d.canvas_reason < (sizeof REASON / sizeof REASON[0]))
+                       ? REASON[d.canvas_reason] : "?";
+
+    printf("perf: drain %s, stack free %lu words\r\n",
+           d.running ? "running" : "STOPPED",
+           (unsigned long)d.drain_stack_free_words);
+    perf_sink_link_t lk;
+    PerfLogSinkCdc_GetLinkState(&lk);
+
+    printf("  sink: %s, tx credits %lu, reclaims %lu\r\n",
+           d.sink_connected ? "connected" : "no host",
+           (unsigned long)d.sink_credits, (unsigned long)d.sink_reclaims);
+    printf("  usb tx: submitted %lu completed %lu%s\r\n",
+           (unsigned long)PerfLogSinkCdc_WritesSubmitted(),
+           (unsigned long)PerfLogSinkCdc_WritesCompleted(),
+           (PerfLogSinkCdc_WritesSubmitted() - PerfLogSinkCdc_WritesCompleted()
+                > 12u) ? "  <-- STALLED" : "");
+    printf("  usb: configured=%d dtr=%d | cfg %lu decfg %lu reset %lu cls %lu\r\n",
+           lk.configured ? 1 : 0, lk.dtr ? 1 : 0,
+           (unsigned long)lk.n_configured, (unsigned long)lk.n_decfg,
+           (unsigned long)lk.n_reset, (unsigned long)lk.n_cls);
+    uint32_t g_trips = 0u, g_blk = 0u, g_off = 0u, g_exp = 0u, g_got = 0u;
+    NocacheGuard_GetState(&g_trips, &g_blk, &g_off, &g_exp, &g_got);
+    if (g_trips == 0u)
+    {
+        printf("  nocache guard: intact (block0 %p)\r\n", NocacheGuard_BlockAddr(0));
+    }
+    else
+    {
+        printf("  nocache guard: CORRUPTED x%lu — block %lu +%lu, want %08lX got %08lX\r\n",
+               (unsigned long)g_trips, (unsigned long)g_blk, (unsigned long)g_off,
+               (unsigned long)g_exp, (unsigned long)g_got);
+    }
+
+    perf_rx_diag_t rx;
+    PerfLogRx_GetDiag(&rx);
+    bool rx_armed = false; uint32_t rx_fails = 0u;
+    PerfLogSinkCdc_GetRxArm(&rx_armed, &rx_fails);
+    printf("  rx arm: %s, failures %lu\r\n",
+           rx_armed ? "queued" : "NOT QUEUED", (unsigned long)rx_fails);
+    printf("  rx: bytes %lu frames %lu dispatched %lu drops %lu | last cmd 0x%02X len %u state %u\r\n",
+           (unsigned long)rx.bytes, (unsigned long)rx.frames,
+           (unsigned long)rx.dispatched, (unsigned long)rx.drops,
+           (unsigned)rx.last_cmd, (unsigned)rx.last_len, (unsigned)rx.state);
+    printf("  drops: state %lu strip %lu sink %lu\r\n",
+           (unsigned long)d.drop_state, (unsigned long)d.drop_strip,
+           (unsigned long)d.drop_sink);
+    printf("  canvas dump: %s (canvas %u, %u bands, epoch %lu)\r\n",
+           reason, (unsigned)d.canvas_id, (unsigned)d.canvas_bands,
+           (unsigned long)d.canvas_epoch);
 }
 
 static void cmd_detect(EmbeddedCli *cli, char *args, void *ctx)
@@ -1022,6 +1318,8 @@ static void register_commands(void)
         { "fret",   "fret <g|r|y|b|o> <0|1>: press/release a fret",        true, NULL, cmd_fret },
         { "strum",  "strum <down|up>: one strum pulse",                    true, NULL, cmd_strum },
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
+        { "perf",     "perf [dump <canvas> [x y w h]]: perf-log state, or request a canvas dump", true, NULL, cmd_perf },
+        { "nav",      "nav [slide on|off | icon <row> | px <x> <y> [w h]]: drawer slide / pixel dump", true, NULL, cmd_nav },
         { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
         { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
         { "settings","settings [dump|save|wipe|stress [n]]: persistent settings (QSPI)", true, NULL, cmd_settings },
