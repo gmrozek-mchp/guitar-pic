@@ -417,7 +417,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setHAlignment(Marvin_LABEL_DASHBOARD_ROBOT_Streak, LE_HALIGN_RIGHT);
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setVAlignment(Marvin_LABEL_DASHBOARD_ROBOT_Streak, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setMargins(Marvin_LABEL_DASHBOARD_ROBOT_Streak, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setString(Marvin_LABEL_DASHBOARD_ROBOT_Streak, (leString*)&string_figmaStr__0_0);
+    Marvin_LABEL_DASHBOARD_ROBOT_Streak->fn->setString(Marvin_LABEL_DASHBOARD_ROBOT_Streak, (leString*)&string_PLAYER_Streak);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_LABEL_DASHBOARD_ROBOT_Streak);
 
     Marvin_LABEL_DASHBOARD_ROBOT_ACCURACY = leLabelWidget_New();
@@ -437,7 +437,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setVAlignment(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setMargins(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setString(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, (leString*)&string_figmaStr__);
+    Marvin_LABEL_DASHBOARD_ROBOT_Accuracy->fn->setString(Marvin_LABEL_DASHBOARD_ROBOT_Accuracy, (leString*)&string_PLAYER_Accuracy);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_LABEL_DASHBOARD_ROBOT_Accuracy);
 
     Marvin_PROGRESSBAR_DASHBOARD_ROBOT_Accuracy = leProgressBarWidget_New();
@@ -464,7 +464,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setVAlignment(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setMargins(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setString(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, (leString*)&string_figmaStr___0);
+    Marvin_LABEL_DASHBOARD_ROBOT_StarPower->fn->setString(Marvin_LABEL_DASHBOARD_ROBOT_StarPower, (leString*)&string_PLAYER_StarPower);
     Marvin_PANEL_DASHBOARD_ROBOT->fn->addChild(Marvin_PANEL_DASHBOARD_ROBOT, (leWidget*)Marvin_LABEL_DASHBOARD_ROBOT_StarPower);
 
     Marvin_PROGRESSBAR_DASHBOARD_ROBOT_StarPower = leProgressBarWidget_New();
@@ -553,7 +553,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_IDLE_0_0->fn->setBackgroundType(Marvin_label_IDLE_0_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_IDLE_0_0->fn->setVAlignment(Marvin_label_IDLE_0_0, LE_VALIGN_TOP);
     Marvin_label_IDLE_0_0->fn->setMargins(Marvin_label_IDLE_0_0, 0, 0, 0, 0);
-    Marvin_label_IDLE_0_0->fn->setString(Marvin_label_IDLE_0_0, (leString*)&string_figmaStr_IDLE_0);
+    Marvin_label_IDLE_0_0->fn->setString(Marvin_label_IDLE_0_0, (leString*)&string_PLAYER_STRUM_BAR_Status);
     Marvin_panel_Container_36_0->fn->addChild(Marvin_panel_Container_36_0, (leWidget*)Marvin_label_IDLE_0_0);
 
     Marvin_PANEL_DASHBOARD_ROBOT_DIVIDER_2 = leWidget_New();
@@ -703,7 +703,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_NO_SIGNAL->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_NO_SIGNAL, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_NO_SIGNAL->fn->setVAlignment(Marvin_LABEL_DASHBOARD_NO_SIGNAL, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_NO_SIGNAL->fn->setMargins(Marvin_LABEL_DASHBOARD_NO_SIGNAL, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_NO_SIGNAL->fn->setString(Marvin_LABEL_DASHBOARD_NO_SIGNAL, (leString*)&string_figmaStr_NO_SIGNAL_0);
+    Marvin_LABEL_DASHBOARD_NO_SIGNAL->fn->setString(Marvin_LABEL_DASHBOARD_NO_SIGNAL, (leString*)&string_VIDEO_NO_SIGNAL);
     Marvin_PANEL_DASHBOARD_NO_SIGNAL->fn->addChild(Marvin_PANEL_DASHBOARD_NO_SIGNAL, (leWidget*)Marvin_LABEL_DASHBOARD_NO_SIGNAL);
 
     Marvin_PANEL_DASHBOARD_TEST_PATTERN_BORDER = leWidget_New();
@@ -1106,7 +1106,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_Streak, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_Streak, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_Streak, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_Streak, (leString*)&string_figmaStr__0_0);
+    Marvin_LABEL_DASHBOARD_HUMAN_Streak->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_Streak, (leString*)&string_PLAYER_Streak);
     Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_LABEL_DASHBOARD_HUMAN_Streak);
 
     Marvin_LABEL_DASHBOARD_HUMAN_ACCURACY = leLabelWidget_New();
@@ -1126,7 +1126,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, (leString*)&string_figmaStr__);
+    Marvin_LABEL_DASHBOARD_HUMAN_Accuracy->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_Accuracy, (leString*)&string_PLAYER_Accuracy);
     Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_LABEL_DASHBOARD_HUMAN_Accuracy);
 
     Marvin_PROGRESSBAR_DASHBOARD_HUMAN_Accuracy = leProgressBarWidget_New();
@@ -1153,7 +1153,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setBackgroundType(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setVAlignment(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, LE_VALIGN_TOP);
     Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setMargins(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, 0, 0, 0, 0);
-    Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, (leString*)&string_figmaStr___0);
+    Marvin_LABEL_DASHBOARD_HUMAN_StarPower->fn->setString(Marvin_LABEL_DASHBOARD_HUMAN_StarPower, (leString*)&string_PLAYER_StarPower);
     Marvin_PANEL_DASHBOARD_HUMAN->fn->addChild(Marvin_PANEL_DASHBOARD_HUMAN, (leWidget*)Marvin_LABEL_DASHBOARD_HUMAN_StarPower);
 
     Marvin_PROGRESSBAR_DASHBOARD_HUMAN_StarPower = leProgressBarWidget_New();
@@ -1190,7 +1190,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_CONTROLLER_0->fn->setBackgroundType(Marvin_label_CONTROLLER_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_CONTROLLER_0->fn->setVAlignment(Marvin_label_CONTROLLER_0, LE_VALIGN_TOP);
     Marvin_label_CONTROLLER_0->fn->setMargins(Marvin_label_CONTROLLER_0, 0, 0, 0, 0);
-    Marvin_label_CONTROLLER_0->fn->setString(Marvin_label_CONTROLLER_0, (leString*)&string_figmaStr_CONTROLLER);
+    Marvin_label_CONTROLLER_0->fn->setString(Marvin_label_CONTROLLER_0, (leString*)&string_PLAYER_HUMAN_CONTROLLER);
     Marvin_panel_Paragraph_13_0->fn->addChild(Marvin_panel_Paragraph_13_0, (leWidget*)Marvin_label_CONTROLLER_0);
 
     Marvin_panel_Container_99_0 = leWidget_New();
@@ -1221,7 +1221,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Wii_guitar_0->fn->setBackgroundType(Marvin_label_Wii_guitar_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Wii_guitar_0->fn->setVAlignment(Marvin_label_Wii_guitar_0, LE_VALIGN_TOP);
     Marvin_label_Wii_guitar_0->fn->setMargins(Marvin_label_Wii_guitar_0, 0, 0, 0, 0);
-    Marvin_label_Wii_guitar_0->fn->setString(Marvin_label_Wii_guitar_0, (leString*)&string_figmaStr_Wii_guitar);
+    Marvin_label_Wii_guitar_0->fn->setString(Marvin_label_Wii_guitar_0, (leString*)&string_PLAYER_HUMAN_Wii_guitar);
     Marvin_panel_Text_32_0->fn->addChild(Marvin_panel_Text_32_0, (leWidget*)Marvin_label_Wii_guitar_0);
 
     Marvin_panel_Text_33_0 = leWidget_New();
@@ -1238,7 +1238,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Connected_1->fn->setBackgroundType(Marvin_label_Connected_1, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Connected_1->fn->setVAlignment(Marvin_label_Connected_1, LE_VALIGN_TOP);
     Marvin_label_Connected_1->fn->setMargins(Marvin_label_Connected_1, 0, 0, 0, 0);
-    Marvin_label_Connected_1->fn->setString(Marvin_label_Connected_1, (leString*)&string_figmaStr_Connected_0);
+    Marvin_label_Connected_1->fn->setString(Marvin_label_Connected_1, (leString*)&string_PLAYER_HUMAN_GuitarStatus);
     Marvin_panel_Text_33_0->fn->addChild(Marvin_panel_Text_33_0, (leWidget*)Marvin_label_Connected_1);
 
     Marvin_panel_Container_101_0 = leWidget_New();
@@ -1262,7 +1262,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Wii_remote_0->fn->setBackgroundType(Marvin_label_Wii_remote_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Wii_remote_0->fn->setVAlignment(Marvin_label_Wii_remote_0, LE_VALIGN_TOP);
     Marvin_label_Wii_remote_0->fn->setMargins(Marvin_label_Wii_remote_0, 0, 0, 0, 0);
-    Marvin_label_Wii_remote_0->fn->setString(Marvin_label_Wii_remote_0, (leString*)&string_figmaStr_Wii_remote);
+    Marvin_label_Wii_remote_0->fn->setString(Marvin_label_Wii_remote_0, (leString*)&string_PLAYER_HUMAN_Wii_remote);
     Marvin_panel_Text_34_0->fn->addChild(Marvin_panel_Text_34_0, (leWidget*)Marvin_label_Wii_remote_0);
 
     Marvin_panel_Text_35_0 = leWidget_New();
@@ -1279,7 +1279,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Connected_0_0->fn->setBackgroundType(Marvin_label_Connected_0_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Connected_0_0->fn->setVAlignment(Marvin_label_Connected_0_0, LE_VALIGN_TOP);
     Marvin_label_Connected_0_0->fn->setMargins(Marvin_label_Connected_0_0, 0, 0, 0, 0);
-    Marvin_label_Connected_0_0->fn->setString(Marvin_label_Connected_0_0, (leString*)&string_figmaStr_Connected_0_0);
+    Marvin_label_Connected_0_0->fn->setString(Marvin_label_Connected_0_0, (leString*)&string_PLAYER_HUMAN_RemoteStatus);
     Marvin_panel_Text_35_0->fn->addChild(Marvin_panel_Text_35_0, (leWidget*)Marvin_label_Connected_0_0);
 
     Marvin_panel_Container_102_0 = leWidget_New();
@@ -1303,7 +1303,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Battery_0->fn->setBackgroundType(Marvin_label_Battery_0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Battery_0->fn->setVAlignment(Marvin_label_Battery_0, LE_VALIGN_TOP);
     Marvin_label_Battery_0->fn->setMargins(Marvin_label_Battery_0, 0, 0, 0, 0);
-    Marvin_label_Battery_0->fn->setString(Marvin_label_Battery_0, (leString*)&string_figmaStr_Battery);
+    Marvin_label_Battery_0->fn->setString(Marvin_label_Battery_0, (leString*)&string_PLAYER_HUMAN_Battery);
     Marvin_panel_Text_36_0->fn->addChild(Marvin_panel_Text_36_0, (leWidget*)Marvin_label_Battery_0);
 
     Marvin_panel_Text_37_0 = leWidget_New();
@@ -1320,7 +1320,7 @@ leResult screenShow_Marvin(void)
     Marvin_label__68__0->fn->setBackgroundType(Marvin_label__68__0, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label__68__0->fn->setVAlignment(Marvin_label__68__0, LE_VALIGN_TOP);
     Marvin_label__68__0->fn->setMargins(Marvin_label__68__0, 0, 0, 0, 0);
-    Marvin_label__68__0->fn->setString(Marvin_label__68__0, (leString*)&string_figmaStr_68_);
+    Marvin_label__68__0->fn->setString(Marvin_label__68__0, (leString*)&string_PLAYER_HUMAN_BatteryLevel);
     Marvin_panel_Text_37_0->fn->addChild(Marvin_panel_Text_37_0, (leWidget*)Marvin_label__68__0);
 
     Marvin_PANEL_DASHBOARD_HUMAN_BORDER = leWidget_New();
@@ -1523,7 +1523,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_STATUS->fn->setBackgroundType(Marvin_label_STATUS, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_STATUS->fn->setVAlignment(Marvin_label_STATUS, LE_VALIGN_TOP);
     Marvin_label_STATUS->fn->setMargins(Marvin_label_STATUS, 0, 0, 0, 0);
-    Marvin_label_STATUS->fn->setString(Marvin_label_STATUS, (leString*)&string_figmaStr_STATUS);
+    Marvin_label_STATUS->fn->setString(Marvin_label_STATUS, (leString*)&string_NAV_STATUS);
     Marvin_panel_Container_199->fn->addChild(Marvin_panel_Container_199, (leWidget*)Marvin_label_STATUS);
 
     Marvin_panel_Container_200 = leWidget_New();
@@ -1539,7 +1539,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_Connected->fn->setBackgroundType(Marvin_label_Connected, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_Connected->fn->setVAlignment(Marvin_label_Connected, LE_VALIGN_TOP);
     Marvin_label_Connected->fn->setMargins(Marvin_label_Connected, 0, 0, 0, 0);
-    Marvin_label_Connected->fn->setString(Marvin_label_Connected, (leString*)&string_figmaStr_Connected);
+    Marvin_label_Connected->fn->setString(Marvin_label_Connected, (leString*)&string_NAV_ConnectionStatus);
     Marvin_panel_Container_200->fn->addChild(Marvin_panel_Container_200, (leWidget*)Marvin_label_Connected);
 
     leAddRootWidget(root1, 1);
@@ -1960,7 +1960,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_ENABLED_0->fn->setHAlignment(Marvin_label_ENABLED_0, LE_HALIGN_CENTER);
     Marvin_label_ENABLED_0->fn->setVAlignment(Marvin_label_ENABLED_0, LE_VALIGN_TOP);
     Marvin_label_ENABLED_0->fn->setMargins(Marvin_label_ENABLED_0, 0, 0, 0, 0);
-    Marvin_label_ENABLED_0->fn->setString(Marvin_label_ENABLED_0, (leString*)&string_figmaStr_ENABLED);
+    Marvin_label_ENABLED_0->fn->setString(Marvin_label_ENABLED_0, (leString*)&string_WIIMOTES_ENABLED);
     Marvin_panel_Button_37->fn->addChild(Marvin_panel_Button_37, (leWidget*)Marvin_label_ENABLED_0);
 
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION = leWidget_New();
@@ -1976,7 +1976,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setBackgroundType(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setVAlignment(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, LE_VALIGN_TOP);
     Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setMargins(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, 0, 0, 0, 0);
-    Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setString(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leString*)&string_figmaStr_GUITAR_EXTENSION);
+    Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->setString(Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leString*)&string_GUITAR_EXTENSION);
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leWidget*)Marvin_LABEL_WIIMOTES_ROBOT_GUITAR_EXTENSION);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_FRET_GREEN = leButtonWidget_New();
@@ -2019,7 +2019,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, 180, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, (leString*)&string_figmaStr__UP);
+    Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, (leString*)&string_GUITAR_STRUM_UP);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setPressedImage(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, (leImage*)&figmaImg_Icon_0_1);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP->fn->setReleasedImage(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP, (leImage*)&figmaImg_Icon_0_1);
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_UP);
@@ -2029,7 +2029,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, 180, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, (leString*)&string_figmaStr__DN);
+    Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, (leString*)&string_GUITAR_STRUM_DOWN);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setPressedImage(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, (leImage*)&figmaImg_Icon_1_1);
     Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN->fn->setReleasedImage(Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN, (leImage*)&figmaImg_Icon_1_1);
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_STRUM_DOWN);
@@ -2048,7 +2048,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_WHAMMY_1->fn->setBackgroundType(Marvin_label_WHAMMY_1, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_WHAMMY_1->fn->setVAlignment(Marvin_label_WHAMMY_1, LE_VALIGN_TOP);
     Marvin_label_WHAMMY_1->fn->setMargins(Marvin_label_WHAMMY_1, 0, 0, 0, 0);
-    Marvin_label_WHAMMY_1->fn->setString(Marvin_label_WHAMMY_1, (leString*)&string_figmaStr_WHAMMY);
+    Marvin_label_WHAMMY_1->fn->setString(Marvin_label_WHAMMY_1, (leString*)&string_GUITAR_WHAMMY);
     Marvin_panel_Container_15_1->fn->addChild(Marvin_panel_Container_15_1, (leWidget*)Marvin_label_WHAMMY_1);
 
     Marvin_panel_WhammySlider_1 = leWidget_New();
@@ -2087,7 +2087,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS, (leString*)&string_figmaStr___3);
+    Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS, (leString*)&string_GUITAR_PLUS);
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_PLUS);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS = leButtonWidget_New();
@@ -2095,7 +2095,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS, (leString*)&string_figmaStr___1);
+    Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS, (leString*)&string_GUITAR_MINUS);
     Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_GUITAR_EXTENSION, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_GUITAR_MINUS);
 
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE = leWidget_New();
@@ -2111,7 +2111,7 @@ leResult screenShow_Marvin(void)
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setBackgroundType(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, LE_WIDGET_BACKGROUND_NONE);
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setVAlignment(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, LE_VALIGN_TOP);
     Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setMargins(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, 0, 0, 0, 0);
-    Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setString(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, (leString*)&string_figmaStr_WIIMOTE);
+    Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE->fn->setString(Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE, (leString*)&string_WIIMOTE_HEADING);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_LABEL_WIIMOTES_ROBOT_WIIMOTE);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_UP = leButtonWidget_New();
@@ -2119,7 +2119,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_UP->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_UP, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_UP->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_UP, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_UP->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_UP, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_UP->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_UP, (leString*)&string_figmaStr___1_0);
+    Marvin_BUTTON_WIIMOTES_ROBOT_UP->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_UP, (leString*)&string_WIIMOTE_DPAD_UP);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_UP);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_LEFT = leButtonWidget_New();
@@ -2127,7 +2127,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_LEFT->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_LEFT, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_LEFT->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_LEFT, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_LEFT->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_LEFT, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_LEFT->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_LEFT, (leString*)&string_figmaStr___2_0);
+    Marvin_BUTTON_WIIMOTES_ROBOT_LEFT->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_LEFT, (leString*)&string_WIIMOTE_DPAD_LEFT);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_LEFT);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT = leButtonWidget_New();
@@ -2135,7 +2135,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT, (leString*)&string_figmaStr___3_0);
+    Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT, (leString*)&string_WIIMOTE_DPAD_RIGHT);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_RIGHT);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_DOWN = leButtonWidget_New();
@@ -2143,7 +2143,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_DOWN->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_DOWN, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_DOWN->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_DOWN, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_DOWN->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_DOWN, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_DOWN->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_DOWN, (leString*)&string_figmaStr___4);
+    Marvin_BUTTON_WIIMOTES_ROBOT_DOWN->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_DOWN, (leString*)&string_WIIMOTE_DPAD_DOWN);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_DOWN);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_HOME = leButtonWidget_New();
@@ -2151,7 +2151,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_HOME->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_HOME, 150, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_HOME->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_HOME, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_HOME->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_HOME, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_HOME->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_HOME, (leString*)&string_figmaStr_HOME);
+    Marvin_BUTTON_WIIMOTES_ROBOT_HOME->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_HOME, (leString*)&string_WIIMOTE_HOME);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_HOME);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_A = leButtonWidget_New();
@@ -2159,7 +2159,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_A->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_A, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_A->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_A, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_A->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_A, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_A->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_A, (leString*)&string_figmaStr_A);
+    Marvin_BUTTON_WIIMOTES_ROBOT_A->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_A, (leString*)&string_WIIMOTE_A);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_A);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_B = leButtonWidget_New();
@@ -2167,7 +2167,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_B->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_B, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_B->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_B, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_B->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_B, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_B->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_B, (leString*)&string_figmaStr_B_0);
+    Marvin_BUTTON_WIIMOTES_ROBOT_B->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_B, (leString*)&string_WIIMOTE_B);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_B);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_ONE = leButtonWidget_New();
@@ -2175,7 +2175,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_ONE->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_ONE, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_ONE->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_ONE, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_ONE->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_ONE, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_ONE->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_ONE, (leString*)&string_figmaStr_1);
+    Marvin_BUTTON_WIIMOTES_ROBOT_ONE->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_ONE, (leString*)&string_WIIMOTE_ONE);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_ONE);
 
     Marvin_BUTTON_WIIMOTES_ROBOT_TWO = leButtonWidget_New();
@@ -2183,7 +2183,7 @@ leResult screenShow_Marvin(void)
     Marvin_BUTTON_WIIMOTES_ROBOT_TWO->fn->setSize(Marvin_BUTTON_WIIMOTES_ROBOT_TWO, 71, 71);
     Marvin_BUTTON_WIIMOTES_ROBOT_TWO->fn->setScheme(Marvin_BUTTON_WIIMOTES_ROBOT_TWO, &SCHEME_FILL_ZINC_700);
     Marvin_BUTTON_WIIMOTES_ROBOT_TWO->fn->setBorderType(Marvin_BUTTON_WIIMOTES_ROBOT_TWO, LE_WIDGET_BORDER_NONE);
-    Marvin_BUTTON_WIIMOTES_ROBOT_TWO->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_TWO, (leString*)&string_figmaStr_2);
+    Marvin_BUTTON_WIIMOTES_ROBOT_TWO->fn->setString(Marvin_BUTTON_WIIMOTES_ROBOT_TWO, (leString*)&string_WIIMOTE_TWO);
     Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE->fn->addChild(Marvin_PANEL_WIIMOTES_ROBOT_WIIMOTE, (leWidget*)Marvin_BUTTON_WIIMOTES_ROBOT_TWO);
 
     Marvin_panel_TiltControl_1 = leWidget_New();
@@ -2209,7 +2209,7 @@ leResult screenShow_Marvin(void)
     Marvin_label_TILT_1->fn->setBackgroundType(Marvin_label_TILT_1, LE_WIDGET_BACKGROUND_NONE);
     Marvin_label_TILT_1->fn->setVAlignment(Marvin_label_TILT_1, LE_VALIGN_TOP);
     Marvin_label_TILT_1->fn->setMargins(Marvin_label_TILT_1, 0, 0, 0, 0);
-    Marvin_label_TILT_1->fn->setString(Marvin_label_TILT_1, (leString*)&string_figmaStr_TILT);
+    Marvin_label_TILT_1->fn->setString(Marvin_label_TILT_1, (leString*)&string_WIIMOTE_TILT);
     Marvin_panel_TiltControl_1->fn->addChild(Marvin_panel_TiltControl_1, (leWidget*)Marvin_label_TILT_1);
 
     Marvin_PANEL_WIIMOTES_HUMAN = leWidget_New();
