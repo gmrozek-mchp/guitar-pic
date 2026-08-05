@@ -21,6 +21,32 @@
 Everything you'd edit programmatically is JSON. Preserve all other members verbatim on repack
 (the font/image blobs are large — don't touch them).
 
+### Adding an image asset (yes, this works — no Composer import needed)
+
+`scripts/add_image.py <zip> <file.png> <NAME> --like <ExistingImage> [--bind WIDGET:prop,…]`
+adds a PNG as a real image asset and can repoint widgets at it in the same pass. Four writes
+are needed and all four matter:
+
+| write | contents |
+|---|---|
+| `assets/images/{new-uuid}/imageconfig.json` | identity + sizes: `id`, `outputName`, `source/outputWidth`, `source/outputHeight`, `sourceFormat: "png"`, `memoryLocation` |
+| `assets/images/{new-uuid}/rawconfig.json` | `colorMode`, `useRLE`, `colorCount`, and `maskColor.image` — which is **self-referential**, so it must be repointed to the new uuid |
+| `assets/images/{new-uuid}/sourceData` | the raw PNG bytes, verbatim |
+| `assets/images/images.json` | one `{id, name, type}` entry (`name` == `outputName`) |
+
+**Clone an existing image's configs rather than synthesizing them** (`--like`), overriding only
+identity and dimensions: that way every field this design's MGS version expects is present with
+a plausible value, including `memoryLocation`. Pick a template of the same kind — a sibling
+icon, not a full-screen bitmap. Derived fields (`outputSize`, and `colorCount` if it disagrees)
+are recomputed by MGS on Generate, so small mismatches self-heal.
+
+`mgs_zip.repack` only *replaces* existing members, so the three new asset members must be
+appended (`zipfile.ZipFile(..., "a")`) after the repack that updates the manifest and screen.
+
+Match the surrounding art when rasterizing: sample an existing sibling's opaque pixels for the
+stroke colour and reuse it, so a new icon doesn't stand out. For lucide SVGs, substitute the
+`currentColor` stroke for that hex and `rsvg-convert -w N -h N` at the icon's native size.
+
 **Assets are listed in a manifest AND stored in their own directory — you must update both.**
 Deleting an image means dropping `assets/images/{uuid}/` *and* removing its entry from
 `assets/images/images.json`; dropping only the directory leaves a manifest entry pointing at
@@ -246,6 +272,14 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
 
 ## Gotchas (learned the hard way)
 
+- **A Generate can lag an external zip edit — verify, don't assume.** Observed once (marvin,
+  2026-08-05): after several Generates the output reflected two earlier edits but not a third
+  (all 44 `leImage` still declared while the zip had 16). It cleared on a later Generate; root
+  cause never established. MGS re-serializes the design on save and keeps a
+  `.legato_generate_cache.zip`, so an edit made while Composer holds the project open is at
+  least plausibly missable — **close and reopen the design before Generate** as a cheap
+  precaution. Always give the user a *countable* check ("the design should list N images") so a
+  stale Generate is distinguishable from a bad edit.
 - **`mgs_zip.repack`'s `.bak` is the PRISTINE original, not the previous state.** It only
   copies when no `.bak` exists (`if not os.path.exists(bak)`), so on the second and later
   repacks the backup is *not* a one-step rollback — it can be many sessions old. Restoring it

@@ -77,6 +77,21 @@ Before retargeting a font, predict layout damage from the glyph `advance` tables
 deleting one, check hand source for its symbol and `drop=` its whole
 `assets/fonts/{uuid}/` directory.
 
+## Images
+
+Two things you can do without touching Composer, both in [REFERENCE.md](REFERENCE.md):
+
+- **Prune** — `prune_unused_images.py <zip> <hand-src-dir>` deletes images referenced by
+  neither a widget nor hand code. Both halves are required: logos and button icons are drawn
+  from C with `setImage(w, (leImage *)&NAME)`, so widget-refs alone under-counts, while the
+  generated tree declares every symbol so it must be excluded from the grep. Strip comments
+  before name-matching — an image named `Marvin` in a project whose screen is also called
+  Marvin otherwise looks live off prose hits alone.
+- **Add** — `add_image.py <zip> <file.png> <NAME> --like <sibling> [--bind WIDGET:prop,…]`
+  writes the three `assets/images/{uuid}/` members plus the `images.json` manifest entry, and
+  can repoint widgets at the new asset in the same pass. Clone a sibling's config rather than
+  synthesizing it, and remember `rawconfig.json`'s `maskColor.image` is self-referential.
+
 ## Replacing an imported screen with hand-written C
 
 When a figma-imported screen is being rebuilt programmatically (marvin's `screen_bus.c` /
@@ -99,4 +114,4 @@ Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `str
 full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
-`audit_glyph_coverage.py`, `strip_subtree.py`.
+`audit_glyph_coverage.py`, `strip_subtree.py`, `prune_unused_images.py`, `add_image.py`.
