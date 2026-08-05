@@ -53,6 +53,12 @@ static uint8_t s_ptr_y;
 static uint8_t s_ptr_flags;   /* MF_PTR_VISIBLE */
 static bool    s_ptr_dirty;
 
+/* Signed 1/32-g per axis; rest = level (fauxmote's own default). */
+static int8_t s_acc_x = MF_ACCEL_LEVEL_X;
+static int8_t s_acc_y = MF_ACCEL_LEVEL_Y;
+static int8_t s_acc_z = MF_ACCEL_LEVEL_Z;
+static bool   s_acc_dirty;
+
 /* Latest STATUS from fauxmote. */
 static bool       s_status_valid;
 static uint8_t    s_status[MF_LEN_STATUS];
@@ -124,8 +130,10 @@ static void fx_tx_task(void *param)
         uint8_t g[MF_LEN_GUITAR];
         uint8_t nav[MF_LEN_WIIMOTE];
         uint8_t ptr[MF_LEN_POINTER];
+        uint8_t acc[MF_LEN_ACCEL];
         bool    nav_dirty;
         bool    ptr_dirty;
+        bool    acc_dirty;
 
         taskENTER_CRITICAL();
         g[0] = s_g_mask;
@@ -142,6 +150,11 @@ static void fx_tx_task(void *param)
         ptr[2] = s_ptr_flags;
         ptr_dirty = s_ptr_dirty;
         s_ptr_dirty = false;
+        acc[0] = (uint8_t)s_acc_x;
+        acc[1] = (uint8_t)s_acc_y;
+        acc[2] = (uint8_t)s_acc_z;
+        acc_dirty = s_acc_dirty;
+        s_acc_dirty = false;
         taskEXIT_CRITICAL();
 
         /* GUITAR slice: marvin drives it except while the fretboard owns the
@@ -165,6 +178,7 @@ static void fx_tx_task(void *param)
 
         if (nav_dirty) { send_frame(MF_MSG_WIIMOTE, nav, MF_LEN_WIIMOTE); }
         if (ptr_dirty) { send_frame(MF_MSG_POINTER, ptr, MF_LEN_POINTER); }
+        if (acc_dirty) { send_frame(MF_MSG_ACCEL,   acc, MF_LEN_ACCEL);   }
 
         uint8_t op;
         while (xQueueReceive(s_cmd_queue, &op, 0) == pdTRUE)
@@ -352,6 +366,47 @@ void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible)
     s_ptr_dirty = true;
     taskEXIT_CRITICAL();
     (void)xSemaphoreGive(s_tx_notify);
+}
+
+void Fauxmote_SendAccel(int8_t x, int8_t y, int8_t z)
+{
+    if (!s_ready) { return; }
+    taskENTER_CRITICAL();
+    s_acc_x     = x;
+    s_acc_y     = y;
+    s_acc_z     = z;
+    s_acc_dirty = true;
+    taskEXIT_CRITICAL();
+    (void)xSemaphoreGive(s_tx_notify);
+}
+
+/* 32 * sin(deg) for deg 0..90, i.e. one g in wire units (MF_ACCEL_LSB_PER_G).
+ * cos(deg) is the same table read as sin(90 - deg), so this covers both axes and
+ * keeps the transform off the soft-float path (no FPU on this core). */
+static const uint8_t k_sin_g[91] =
+{
+     0,  1,  1,  2,  2,  3,  3,  4,  4,  5,
+     6,  6,  7,  7,  8,  8,  9,  9, 10, 10,
+    11, 11, 12, 13, 13, 14, 14, 15, 15, 16,
+    16, 16, 17, 17, 18, 18, 19, 19, 20, 20,
+    21, 21, 21, 22, 22, 23, 23, 23, 24, 24,
+    25, 25, 25, 26, 26, 26, 27, 27, 27, 27,
+    28, 28, 28, 29, 29, 29, 29, 29, 30, 30,
+    30, 30, 30, 31, 31, 31, 31, 31, 31, 31,
+    32, 32, 32, 32, 32, 32, 32, 32, 32, 32,
+    32
+};
+
+void Fauxmote_SendTilt(int16_t degrees)
+{
+    if (degrees < 0)  { degrees = 0; }
+    if (degrees > 90) { degrees = 90; }
+
+    /* Rest pose puts gravity on -X; tilting the neck up rotates it toward +Y. */
+    int8_t gx = (int8_t)-(int)k_sin_g[90 - degrees];
+    int8_t gy = (int8_t) (int)k_sin_g[degrees];
+
+    Fauxmote_SendAccel(gx, gy, 0);
 }
 
 bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,

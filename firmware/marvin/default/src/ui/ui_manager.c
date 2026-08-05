@@ -596,15 +596,19 @@ void UiManager_ShowWiimotes(void)
 {
     if (s_base_view == BASE_VIEW_WIIMOTES) { return; }
 
-    /* The wiimotes screen owns the whole panel — drop the live video (HEO) and its
-     * OVR1 frame overlay. Intent only; the video-task reconcile applies it. */
-    UiManager_VideoHide();
-    UiManager_VideoOverlayHide();
-
     hide_current_base();
     bind_canvas(CANVAS_WIIMOTES, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     ScreenWiimotes_SetInput(true);
     ScreenWiimotes_SetShown(true);
+
+    /* This screen shows the live video in its own smaller rect above the control
+     * cards, with the matching AA frame on the overlay layer. HEO composites above
+     * BASE, so the video covers whatever is under its rect — the layout keeps the
+     * cards clear of it. Intent only; the video-task reconcile applies it. */
+    uint32_t vx, vy, vw, vh;
+    ScreenWiimotes_VideoRect(&vx, &vy, &vw, &vh);
+    UiManager_VideoShow(vx, vy, vw, vh);
+    UiManager_VideoOverlayShow(ScreenWiimotes_VideoFrameSurface(), vx, vy, vw, vh);
 
     s_base_view = BASE_VIEW_WIIMOTES;
 }

@@ -2,6 +2,7 @@
 #define UI_SCREEN_WIIMOTES_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,6 +25,12 @@ void ScreenWiimotes_Setup(void);
  * background panel; no repaint). ui_manager calls this when it shows/hides the
  * wiimotes base view and when the nav drawer opens over it. */
 void ScreenWiimotes_SetInput(bool on);
+
+/* Where the live video sits on this screen and the ARGB_4444 frame surface to
+ * composite over it — ui_manager binds HEO and the overlay layer from these when it
+ * shows this base view. The rect is a compile-time constant of the layout. */
+void ScreenWiimotes_VideoRect(uint32_t *x, uint32_t *y, uint32_t *w, uint32_t *h);
+const void *ScreenWiimotes_VideoFrameSurface(void);
 
 /* Take (shown) / relinquish (hidden) the fauxmote link as this manual-override view
  * becomes/stops being the active base view. While shown, the screen's buttons drive

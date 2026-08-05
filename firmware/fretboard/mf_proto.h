@@ -22,7 +22,7 @@ enum {
     MF_MSG_GUITAR   = 0x01,   /* m->f, 3B: hot gameplay input */
     MF_MSG_WIIMOTE  = 0x02,   /* m->f, 4B: menu-nav input */
     MF_MSG_LINK_CMD = 0x03,   /* m->f, 1B: bluetooth link management */
-    MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (planned) */
+    MF_MSG_ACCEL    = 0x04,   /* m->f, 3B: accelerometer (tilt) */
     MF_MSG_POINTER  = 0x05,   /* m->f, 3B: IR pointer (planned) */
     MF_MSG_STATUS   = 0x81,   /* f->m, 4B: link/connection state */
 };
@@ -50,7 +50,8 @@ enum {
 #define MF_AUX_PLUS       (1u << 0)   /* Start / pause */
 #define MF_AUX_MINUS      (1u << 1)   /* Select */
 #define MF_AUX_PEDAL      (1u << 2)
-#define MF_AUX_STARPOWER  (1u << 3)   /* planned: maps to a Wiimote tilt (no-op for now) */
+#define MF_AUX_STARPOWER  (1u << 3)   /* not a device concept; fauxmote ignores it. Star
+                                       * power is a tilt — express it via the ACCEL slice. */
 
 /* --- WIIMOTE (4B): [0] core buttons, [1] d-pad, [2] stick X, [3] stick Y */
 #define MF_W_A           (1u << 0)
@@ -67,6 +68,14 @@ enum {
 #define MF_W_RIGHT       (1u << 3)
 
 #define MF_STICK_CENTER  0x20u   /* 6-bit stick 0..63, center (safe default) */
+
+/* --- ACCEL (3B): [0] X, [1] Y, [2] Z, each signed int8 acceleration in g.
+ * 1 LSB = 1/32 g, so +1 g = +32 and the int8 range is -4.0 .. +3.97 g. fauxmote
+ * translates these to raw Wiimote report bytes via its advertised calibration. */
+#define MF_ACCEL_LSB_PER_G  32   /* signed int8, 1 LSB = 1/32 g */
+#define MF_ACCEL_LEVEL_X    0    /* level / rest: X = 0 g */
+#define MF_ACCEL_LEVEL_Y    0    /* level / rest: Y = 0 g */
+#define MF_ACCEL_LEVEL_Z    32   /* level / rest: Z = +1 g (gravity), safe default */
 
 /* --- POINTER (3B): [0] x, [1] y (0..255 -> 0..1, 0,0 = top-left), [2] flags */
 #define MF_PTR_VISIBLE   (1u << 0)   /* 0 = pointer off / hidden */

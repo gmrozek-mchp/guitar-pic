@@ -48,6 +48,16 @@ void Fauxmote_SetOverride(bool on);
  * (0,0 = top-left). visible=false hides the pointer (off-screen). */
 void Fauxmote_SendPointer(uint8_t x, uint8_t y, bool visible);
 
+/* ACCEL slice: emulated accelerometer, signed 1/32-g units per axis
+ * (MF_ACCEL_LSB_PER_G), so +1 g = +32. This is how guitar tilt is expressed —
+ * fauxmote ignores MF_AUX_STARPOWER. See Fauxmote_SendTilt for the guitar-pose
+ * helper the wiimotes screen uses. */
+void Fauxmote_SendAccel(int8_t x, int8_t y, int8_t z);
+
+/* Guitar tilt as a gravity vector: 0 deg = held at rest (gravity on -X), 90 deg =
+ * neck straight up (gravity on +Y). Angles outside 0..90 are clamped. */
+void Fauxmote_SendTilt(int16_t degrees);
+
 /* Latest STATUS from fauxmote. Returns false if none has ever been received.
  * Any out pointer may be NULL. age_ms = ms since the last STATUS arrived. */
 bool Fauxmote_GetStatus(uint8_t *flags, uint8_t *player_slot,
