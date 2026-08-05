@@ -24,7 +24,7 @@ bootstrap:
 
 `uv sync` creates `.venv/` and writes `uv.lock`. Subsequent invocations use the
 existing venv automatically. Omit `--group viewer` if you only need the headless
-CLI helpers (record, set-mask, set-overlay, snapshot, export-ml).
+CLI helpers (record, set-mask, set-overlay, snapshot, screendump, export-ml).
 
 ## Usage
 
@@ -50,12 +50,35 @@ CLI helpers (record, set-mask, set-overlay, snapshot, export-ml).
     # Capture one full video frame from a running device and save it
     uv run marvin-perf snapshot --port /dev/cu.usbmodem... --out snapshots/
 
+    # Dump a UI framebuffer (Legato canvas surface) — the counterpart to snapshot
+    uv run marvin-perf screendump --port /dev/cu.usbmodem... --canvas dash
+    uv run marvin-perf screendump --port /dev/cu.usbmodem... --canvas navigation
+    uv run marvin-perf screendump --port /dev/cu.usbmodem... --canvas navigation \
+        --rect 12,120,296,56 --out drawer-row.png
+
     # Stream a fixed sub-region (default: the scoring block) to PNGs at full rate
     uv run marvin-perf score-capture --port /dev/cu.usbmodem... --out scores/ --count 500
     uv run marvin-perf score-capture --port /dev/cu.usbmodem... --rect 114,309,96,105
 
     # Extract REGION strips from a recorded capture into score-NNNN.png (score corpus)
     uv run marvin-perf export-region session/ --out scores/
+
+### `snapshot` vs `screendump`
+
+They read two memories that share nothing, so neither can show the other's pixels:
+
+* **`snapshot`** captures the **video frame** (the HDMI capture on the HEO hardware
+  layer). Use it for anything about what the camera/console is producing.
+* **`screendump`** captures a **Legato canvas surface** — the UI framebuffer a screen
+  renders into. Use it to inspect widgets, icons and text at the pixel level.
+
+`screendump` takes `--canvas` because every canvas is its own surface: the nav drawer,
+the song/mode dialog, the album-art strip and the on-screen keyboard are **not** part
+of the base view's buffer. Dump the canvas that owns the pixels you want.
+
+Neither reproduces the panel: the LCDC composites the hardware layers (BASE / HEO /
+OVR1 / OVR2) in the display controller, so the blended result exists only on the
+glass. `screendump` deliberately does not try to fake it.
 
     # Export a capture as a SensiML-format CSV for MPLAB ML training
     uv run marvin-perf export-ml session/ --out session.csv --labels actuator-fb

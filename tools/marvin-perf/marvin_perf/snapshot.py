@@ -22,6 +22,10 @@ class CompletedSnapshot:
     height: int
     frame_epoch: int
     bgr: bytes  # width * height * 3, row-major, top-to-bottom
+    # Origin of the assembled region within its source. Always (0, 0) for a video
+    # snapshot; a canvas dump of a sub-rect reports where in the surface it came from.
+    x: int = 0
+    y: int = 0
 
     @property
     def n_bytes(self) -> int:
@@ -42,19 +46,36 @@ class _Pending:
 class SnapshotAssembler:
     """Feed decoded `Strip` records; get a `CompletedSnapshot` when done.
 
-    `add()` ignores non-SNAPSHOT strips and returns None until a snapshot's
-    LAST band has arrived and every row from 0..height is covered, at which
-    point it returns the assembled frame (and forgets that frame_epoch).
+    `add()` ignores strips of other kinds and returns None until a region's LAST
+    band has arrived and every row from the origin down is covered, at which point
+    it returns the assembled image (and forgets that frame_epoch).
+
+    Bands carry x/y in *source* coordinates, so a dump of a sub-rect starts at a
+    non-zero origin. The origin is passed in rather than inferred from the bands:
+    inferring it from the smallest y seen so far would complete a region early if
+    its LAST band arrived before an earlier one. All bands must sit at `origin_x`
+    and share a width.
+
+    `kind` selects the strip kind to assemble — SNAPSHOT (video frame) by default,
+    CANVAS for a UI framebuffer dump.
     """
 
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        kind: StripKind = StripKind.SNAPSHOT,
+        origin_x: int = 0,
+        origin_y: int = 0,
+    ) -> None:
+        self._kind = int(kind)
+        self._x0 = origin_x
+        self._y0 = origin_y
         self._pending: dict[int, _Pending] = {}
 
     def add(self, strip: Strip) -> CompletedSnapshot | None:
-        if strip.kind != int(StripKind.SNAPSHOT):
+        if strip.kind != self._kind:
             return None
-        if strip.x != 0:
-            raise SnapshotError(f"snapshot band at x={strip.x}, expected full-width")
+        if strip.x != self._x0:
+            raise SnapshotError(f"band at x={strip.x}, expected {self._x0}")
 
         epoch = strip.hdr.frame_epoch
         p = self._pending.get(epoch)
@@ -63,7 +84,7 @@ class SnapshotAssembler:
             self._pending[epoch] = p
         elif strip.w != p.width:
             raise SnapshotError(
-                f"snapshot band width {strip.w} != {p.width} (frame_epoch {epoch})"
+                f"band width {strip.w} != {p.width} (frame_epoch {epoch})"
             )
 
         p.bands[strip.y] = strip
@@ -75,21 +96,26 @@ class SnapshotAssembler:
         return self._try_finalize(epoch, p)
 
     def _try_finalize(self, epoch: int, p: _Pending) -> CompletedSnapshot | None:
-        # Walk contiguous bands from y=0; bail (keep waiting) on any gap.
+        # Walk contiguous bands from the origin; bail (keep waiting) on any gap.
         canvas = bytearray()
-        y = 0
-        height = 0
+        y = self._y0
+        bottom = self._y0
         while y in p.bands:
             band = p.bands[y]
             canvas += band.bgr
-            height = y + band.h
+            bottom = y + band.h
             y += band.h
-        if p.last_y is None or height <= p.last_y:
+        if p.last_y is None or bottom <= p.last_y:
             return None  # not yet contiguous through the LAST band
 
         del self._pending[epoch]
         return CompletedSnapshot(
-            width=p.width, height=height, frame_epoch=epoch, bgr=bytes(canvas)
+            width=p.width,
+            height=bottom - self._y0,
+            frame_epoch=epoch,
+            bgr=bytes(canvas),
+            x=self._x0,
+            y=self._y0,
         )
 
 

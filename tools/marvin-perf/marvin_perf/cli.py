@@ -25,6 +25,7 @@ from .exporters.sensiml_csv import ExportError
 from .decode import decode_record
 from .framing import FrameStats, frame_encode, iter_frames
 from .records import (
+    CANVAS_IDS,
     PERF_OVERLAY_STRIP,
     DEFAULT_REGION_RECT,
     RECORD_TYPE_BY_NAME,
@@ -32,6 +33,7 @@ from .records import (
     TYPE_MASK_MIN,
     Strip,
     StripKind,
+    encode_canvas_dump_payload,
     encode_region_stream_payload,
     encode_set_mask_payload,
     encode_set_overlay_payload,
@@ -178,6 +180,43 @@ def _idle_chunks(ser: SerialSource, idle_timeout_s: float):
             yield chunk
 
 
+def _retrying_chunks(
+    ser: SerialSource,
+    command: bytes,
+    idle_timeout_s: float,
+    resend_after_s: float = 0.75,
+):
+    """Yield serial chunks, (re)sending `command` until the device answers.
+
+    The firmware's CDC sink is DTR-gated and only notices DTR when it polls, so a
+    command written immediately after opening the port can be answered into a sink
+    that is still closed — the reply is dropped and the caller waits out its whole
+    timeout. Opening the port also makes the firmware re-emit a SESSION record, so
+    "some bytes arrived" is not proof the command itself landed.
+
+    Re-sending is safe because both the snapshot and canvas-dump commands are
+    idempotent one-shots: a duplicate just produces another burst, and the
+    assembler keys bands by frame_epoch so a stale partial burst cannot corrupt a
+    later complete one. Stops re-sending once any byte arrives after a send, then
+    falls back to plain idle-timeout behaviour.
+    """
+    ser.send_command(command)
+    sent_at = time.monotonic()
+    deadline = sent_at + idle_timeout_s
+    answered = False
+
+    while time.monotonic() < deadline:
+        chunk = ser.read_chunk()
+        if chunk:
+            answered = True
+            deadline = time.monotonic() + idle_timeout_s
+            yield chunk
+            continue
+        if not answered and (time.monotonic() - sent_at) >= resend_after_s:
+            ser.send_command(command)
+            sent_at = time.monotonic()
+
+
 def _resolve_snapshot_out(out: str | None) -> Path:
     """Resolve the `--out` argument to a concrete .png path.
 
@@ -240,8 +279,107 @@ def cmd_snapshot(args: argparse.Namespace) -> int:
     return 0
 
 
-def _parse_rect(spec: str | None) -> tuple[int, int, int, int]:
+def _resolve_screendump_out(out: str | None, canvas: str) -> Path:
+    """Pick the output path, auto-incrementing `<canvas>-NNNN.png` in a directory."""
+    p = Path(out) if out else Path("screendumps")
+    if out and p.suffix:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        return p
+    p.mkdir(parents=True, exist_ok=True)
+    nxt = 1 + max(
+        (
+            int(m.group(1))
+            for f in p.glob(f"{canvas}-*.png")
+            if (m := re.fullmatch(rf"{re.escape(canvas)}-(\d+)", f.stem))
+        ),
+        default=0,
+    )
+    return p / f"{canvas}-{nxt:04d}.png"
+
+
+def cmd_screendump(args: argparse.Namespace) -> int:
+    """Dump a Legato canvas surface (the UI framebuffer) and save it as a PNG.
+
+    The UI counterpart to `snapshot`, which captures the video frame. Each canvas
+    is a separate surface and nothing is composited, so the drawer, dialogs and the
+    on-screen keyboard do not appear in the base view's dump — pick the canvas that
+    holds the pixels you care about. Likewise the video layer is never included.
+    """
+    canvas_id = CANVAS_IDS.get(args.canvas)
+    if canvas_id is None:
+        print(
+            f"screendump: unknown canvas {args.canvas!r}; "
+            f"choose from {', '.join(sorted(CANVAS_IDS))}",
+            file=sys.stderr,
+        )
+        return 2
+
+    x, y, w, h = _parse_rect(args.rect, default=(0, 0, 0, 0))
+    out_path = _resolve_screendump_out(args.out, args.canvas)
+
+    assembler = SnapshotAssembler(kind=StripKind.CANVAS, origin_x=x, origin_y=y)
+    command = frame_encode(encode_canvas_dump_payload(canvas_id, x, y, w, h))
+    with SerialSource(args.port) as ser:
+        if args.listen:
+            # Don't request anything — just assemble whatever CANVAS bands turn up.
+            # Lets the dump be triggered another way (marvin's `perf dump <canvas>`
+            # console command) to tell a broken request path from a broken emit path.
+            print(
+                f"[screendump] listening for canvas {args.canvas} bands "
+                f"(trigger with: perf dump {canvas_id}"
+                + (f" {x} {y} {w} {h}" if (x or y or w or h) else "")
+                + ")…",
+                file=sys.stderr,
+                flush=True,
+            )
+            chunks = _idle_chunks(ser, args.timeout)
+        else:
+            print(
+                f"[screendump] canvas {args.canvas} requested; waiting for bands…",
+                file=sys.stderr,
+                flush=True,
+            )
+            chunks = _retrying_chunks(ser, command, args.timeout)
+        snap = None
+        saw_strip = False
+        for fb in iter_frames(chunks):
+            rec = decode_record(fb.payload)
+            if not isinstance(rec, Strip):
+                continue
+            saw_strip = True
+            snap = assembler.add(rec)
+            if snap is not None:
+                break
+
+    if snap is None:
+        detail = (
+            "bands arrived but never completed the region — a partial burst?"
+            if saw_strip
+            else f"no CANVAS bands arrived. Canvas {args.canvas} may have no surface "
+                 "assigned yet, or the rect may fall outside it (check the device log)."
+        )
+        print(
+            f"screendump: no complete dump within {args.timeout:.1f}s idle timeout: "
+            f"{detail}",
+            file=sys.stderr,
+        )
+        return 1
+
+    written = save_snapshot(snap, out_path)
+    print(
+        f"screendump: {args.canvas} {snap.width}×{snap.height} at ({snap.x},{snap.y}) → "
+        + ", ".join(str(p) for p in written),
+        file=sys.stderr,
+    )
+    return 0
+
+
+def _parse_rect(
+    spec: str | None, default: tuple[int, int, int, int] | None = None
+) -> tuple[int, int, int, int]:
     """Parse an "x,y,w,h" rect, or return the default score block."""
+    if not spec and default is not None:
+        return default
     if not spec:
         return SCORE_BLOCK_RECT
     parts = spec.split(",")
@@ -501,6 +639,45 @@ def build_parser() -> argparse.ArgumentParser:
              "(default: 5).",
     )
     p_snapshot.set_defaults(func=cmd_snapshot)
+
+    p_screendump = sub.add_parser(
+        "screendump",
+        help="Capture a Legato canvas surface (UI framebuffer) and save it as a PNG.",
+    )
+    p_screendump.add_argument("--port", required=True)
+    p_screendump.add_argument(
+        "--canvas",
+        default="dash",
+        help="Which canvas surface to dump: " + ", ".join(sorted(CANVAS_IDS))
+             + ". Each is separate — overlays are not in the base view's buffer "
+               "(default: dash).",
+    )
+    p_screendump.add_argument(
+        "--rect",
+        default=None,
+        help='Sub-rect "x,y,w,h" in surface pixels; w/h 0 means to the edge '
+             "(default: the whole surface).",
+    )
+    p_screendump.add_argument(
+        "--out",
+        default=None,
+        help="Output PNG path, or a directory for auto-incrementing "
+             "<canvas>-NNNN.png (default: ./screendumps/).",
+    )
+    p_screendump.add_argument(
+        "--timeout",
+        type=float,
+        default=5.0,
+        help="Idle timeout in seconds — give up if no bands arrive for this long.",
+    )
+    p_screendump.add_argument(
+        "--listen",
+        action="store_true",
+        help="Don't send the request; just assemble bands triggered elsewhere "
+             "(marvin's `perf dump <canvas>` console command). Isolates a broken "
+             "command path from a broken emit path.",
+    )
+    p_screendump.set_defaults(func=cmd_screendump)
 
     p_score = sub.add_parser(
         "score-capture",

@@ -23,6 +23,7 @@ PERF_CMD_SET_TYPE_MASK = 0x01
 PERF_CMD_SNAPSHOT = 0x02
 PERF_CMD_SET_OVERLAY = 0x03
 PERF_CMD_REGION_STREAM = 0x04
+PERF_CMD_CANVAS_DUMP = 0x05
 
 # Overlay sinks for the per-fret target rings (PERF_CMD_SET_OVERLAY flags).
 # STRIP draws rings onto the viewer's SENSING strip copy; PANEL is reserved for
@@ -66,6 +67,21 @@ class StripKind(IntEnum):
     STRIKE = 1
     SNAPSHOT = 2
     REGION = 3  # host-selected sub-region, one strip per frame
+    CANVAS = 4  # one-shot Legato canvas (UI framebuffer) dump, banded like SNAPSHOT
+
+
+# ui_manager CANVAS_* ids, for PERF_CMD_CANVAS_DUMP. Each is a separate surface:
+# overlays (drawer, dialogs, keyboard) are NOT part of the base view's buffer, so
+# pick the canvas that holds the pixels you want. Mirrors firmware ui_manager.h.
+CANVAS_IDS = {
+    "dash": 0,
+    "navigation": 1,
+    "songsel": 2,
+    "album_art": 3,
+    "wiimotes": 4,
+    "keyboard": 5,
+    "bus": 6,
+}
 
 
 # Strip flags byte (Strip.flags). SNAPSHOT bands set LAST on the final
@@ -446,4 +462,22 @@ def encode_region_stream_payload(
     """
     return _CMD_REGION_STREAM_FMT.pack(
         PERF_CMD_HDR_MAGIC, PERF_CMD_REGION_STREAM, 0, 1 if enable else 0, 0, x, y, w, h
+    )
+
+
+# magic, cmd_id, reserved, canvas, reserved, x, y, w, h  (mirrors perf_cmd_canvas_dump_t)
+_CMD_CANVAS_DUMP_FMT = struct.Struct("<HBBBBHHHH")
+
+
+def encode_canvas_dump_payload(
+    canvas: int, x: int = 0, y: int = 0, w: int = 0, h: int = 0
+) -> bytes:
+    """Pack a CANVAS_DUMP command payload (no SOF/LEN/FCS framing).
+
+    One-shot dump of a Legato canvas surface, returned as CANVAS strips with LAST
+    set on the final band. The rect is clipped to the surface and w/h = 0 means
+    "to the edge", so the default dumps the whole surface.
+    """
+    return _CMD_CANVAS_DUMP_FMT.pack(
+        PERF_CMD_HDR_MAGIC, PERF_CMD_CANVAS_DUMP, 0, canvas & 0xFF, 0, x, y, w, h
     )
