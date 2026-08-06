@@ -20,6 +20,7 @@ extern leWidget* Marvin_PANEL_SONG_SELECT_ALBUM_ART;
 extern leWidget* Marvin_PANEL_WIIMOTES;
 extern leWidget* Marvin_PANEL_KEYBOARD;
 extern leWidget* Marvin_PANEL_BUS;
+extern leWidget* Marvin_PANEL_SYSTEM;
 
 // screen lifecycle functions
 leResult screenInit_Marvin(void); // call to initialize this screen

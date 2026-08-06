@@ -112,6 +112,7 @@ static const struct {
     { stringID_NAV_BUTTON_Dashboard,      &NAV_ICON_DASHBOARD, &NAV_ICON_DASHBOARD_SELECTED, UiManager_ShowDashboard },
     { stringID_NAV_BUTTON_Wiimotes,       &NAV_ICON_WIIMOTES,  &NAV_ICON_WIIMOTES_SELECTED,  UiManager_ShowWiimotes  },
     { stringID_NAV_BUTTON_Bus_Statistics, &NAV_ICON_BUS,       &NAV_ICON_BUS_SELECTED,       UiManager_ShowStats     },
+    { stringID_NAV_BUTTON_System_Info,    &NAV_ICON_SYSTEM_INFO, &NAV_ICON_SYSTEM_INFO_SELECTED, UiManager_ShowSystem },
 };
 
 #define NAVIGATION_COUNT  (sizeof NAV_ENTRY / sizeof NAV_ENTRY[0])

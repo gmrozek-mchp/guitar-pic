@@ -8,6 +8,7 @@
 #include "ui/screens/wiimotes/screen_wiimotes.h"
 #include "ui/screens/keyboard/screen_keyboard.h"
 #include "ui/screens/bus/screen_bus.h"
+#include "ui/screens/system/screen_system.h"
 #include "ui/dashboard_feed.h"
 
 #include <stdbool.h>
@@ -19,7 +20,8 @@
 #include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
 #include "log.h"
 #include "flash/settings.h"   /* persisted backlight % */
-#include "game/game_art.h"         /* GameArt_LoadAll — cover-art preload during splash */
+#include "game/game_art.h"    /* GameArt_LoadAll — cover-art preload during splash */
+#include "game/node_art.h"    /* NodeArt_LoadAll — board-photo preload during splash */
 #include "health/health_monitor.h"  /* armed at end of boot (HealthMonitor_NotifyReady) */
 #include "video/video.h"      /* capture producer — compositor owns HEO display */
 #include "ui/gfx/aa_corners.h"     /* rounded modal corners against the base view */
@@ -745,7 +747,8 @@ void UiManager_CloseKeyboard(void)
  * then binds the incoming one to BASE. Picking is gated to the shown view: Legato
  * picks across all attached layers regardless of canvas visibility, so the hidden
  * view's panel must be gated off or it would still intercept touches. */
-typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES, BASE_VIEW_BUS } base_view_t;
+typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES, BASE_VIEW_BUS,
+               BASE_VIEW_SYSTEM } base_view_t;
 static base_view_t s_base_view = BASE_VIEW_DASHBOARD;
 
 /* Hide the currently-shown base view: stop its canvas driving BASE and gate its
@@ -765,6 +768,11 @@ static void hide_current_base(void)
             ScreenBus_SetInput(false);
             ScreenBus_SetShown(false);
             break;
+        case BASE_VIEW_SYSTEM:
+            gfxcHideCanvas(CANVAS_SYSTEM); gfxcCanvasUpdate(CANVAS_SYSTEM);
+            ScreenSystem_SetInput(false);
+            ScreenSystem_SetShown(false);
+            break;
         case BASE_VIEW_DASHBOARD:
         default:
             gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
@@ -780,6 +788,7 @@ unsigned int UiManager_BaseCanvas(void)
     {
         case BASE_VIEW_WIIMOTES: return CANVAS_WIIMOTES;
         case BASE_VIEW_BUS:      return CANVAS_BUS;
+        case BASE_VIEW_SYSTEM:   return CANVAS_SYSTEM;
         default:                 return CANVAS_DASH;
     }
 }
@@ -792,6 +801,7 @@ void UiManager_SetBaseViewPickable(bool on)
     {
         case BASE_VIEW_WIIMOTES: ScreenWiimotes_SetInput(on);        break;
         case BASE_VIEW_BUS:      ScreenBus_SetInput(on);             break;
+        case BASE_VIEW_SYSTEM:   ScreenSystem_SetInput(on);          break;
         default:                 UiManager_SetDashboardPickable(on); break;
     }
 }
@@ -832,6 +842,24 @@ void UiManager_ShowStats(void)
     ScreenBus_SetShown(true);   /* starts the ~1 Hz telemetry refresh */
 
     s_base_view = BASE_VIEW_BUS;
+}
+
+/* System-info screen: the node showcase, another full-screen base view (so the live
+ * video is dropped, same as the bus screen). Its titlebar hamburger reopens the
+ * drawer to leave; its own back button only moves between overview and detail. */
+void UiManager_ShowSystem(void)
+{
+    if (s_base_view == BASE_VIEW_SYSTEM) { return; }
+
+    UiManager_VideoHide();
+    UiManager_VideoOverlayHide();
+
+    hide_current_base();
+    bind_canvas(CANVAS_SYSTEM, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    ScreenSystem_SetInput(true);
+    ScreenSystem_SetShown(true);
+
+    s_base_view = BASE_VIEW_SYSTEM;
 }
 
 void UiManager_ShowDashboard(void)
@@ -976,6 +1004,7 @@ static void init_screens(void)
     ScreenWiimotes_Setup();
     ScreenKeyboard_Setup();
     ScreenBus_Setup();
+    ScreenSystem_Setup();
 
     /* Song-select starts closed: disable its layer-screens' background panels so
      * those (hidden) overlays don't capture touches meant for the dashboard.
@@ -1000,6 +1029,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_WIIMOTES->fn->invalidate(Marvin_PANEL_WIIMOTES);
     Marvin_PANEL_KEYBOARD->fn->invalidate(Marvin_PANEL_KEYBOARD);
     Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
+    Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
 }
 
 /* Block until the Legato render task has painted all pending damage. We don't
@@ -1057,6 +1087,10 @@ static void ui_boot_task(void *param)
      * Legato's image decoders are up from SYS_Initialize. All behind the splash;
      * the ~1-3 s decode just extends the splash hold. See game/game_art.h. */
     (void)GameArt_LoadAll();
+
+    /* Same deal for the board photos, and for the same reason: ScreenSystem_Setup
+     * seeds its detail view below, so the photos have to be cached by then. */
+    (void)NodeArt_LoadAll();
 
     /* PHASE 2 — build the Marvin screen + per-panel setup behind the splash.
      * Scene-graph edits (screenInit_Marvin's leAddRootWidget calls) are guarded
@@ -1135,6 +1169,7 @@ void UiManager_Initialize(void)
     ScreenWiimotes_InitSurface();
     ScreenKeyboard_InitSurface();
     ScreenBus_InitSurface();
+    ScreenSystem_InitSurface();
     GFX_CANVAS_Task();
 
     /* Dashboard telemetry feed: create the event queue now so producers (fret

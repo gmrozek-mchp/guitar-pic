@@ -123,6 +123,21 @@ only the **empty root panel** the builder attaches to.
 reports what the deletion orphans. A screen spanning several layers has one root panel per layer,
 so strip each by name — the script takes a widget, not a screen.
 
+**A brand-new builder-owned screen needs a layer that doesn't exist yet** —
+`scripts/add_layer.py <zip> <SUFFIX> --like <TEMPLATE_SUFFIX>` clones a sibling layer plus its
+root panel under fresh uuids (`--like BUS` + `SYSTEM` → layer `SCREEN_SYSTEM`, panel
+`PANEL_SYSTEM` → C global `<Screen>_PANEL_SYSTEM`). Clone rather than synthesize: a layer carries
+~25 properties (`colorMode`, `renderMode`, `clearMode`, alpha, margins, editor state) whose enum
+ordinals appear nowhere in the zip, and a sibling the firmware already renders correctly is the
+only trustworthy source for all of them at once. Pick the template by *role* — for a full-screen
+base view take another full-screen one (in marvin, `BUS`/`WIIMOTES` are `100x100` `sizeLocked`
+with the canvas window set at runtime, while modal layers carry real design sizes). Layer and
+panel uuids are contained in `screen.json` alone, so this touches exactly one member; the script
+verifies the pre-existing layers and everything outside `layers[]` are byte-identical afterwards.
+MGS derives `LE_LAYER_COUNT` from the layer count, so Generate raises it for free — but the
+firmware also needs its canvas pool (`CONFIG_CANVAS_NUM_OBJ`) and framebuffer RAM to have room
+for the new surface, which the design cannot tell you about.
+
 **Deleting widgets can delete a widget TYPE.** `legato_config.h`'s `LE_<TYPE>_WIDGET_ENABLED`
 flags are derived from the types the *design* instantiates, so removing the last design widget of
 a type compiles that type out — `leXWidget` becomes an unknown type name at the next Generate, in
@@ -156,6 +171,6 @@ Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `str
 full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_refs.py`, `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
-`audit_glyph_coverage.py`, `strip_subtree.py`, `prune_unused_images.py`, `add_image.py`,
-`add_string.py`, `add_font_range.py`, `set_image_source.py`, `rename_images.py`,
-`export_assets.py`.
+`audit_glyph_coverage.py`, `strip_subtree.py`, `add_layer.py`, `prune_unused_images.py`,
+`add_image.py`, `add_string.py`, `add_font_range.py`, `set_image_source.py`,
+`rename_images.py`, `export_assets.py`.

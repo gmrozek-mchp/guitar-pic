@@ -18,9 +18,11 @@
 extern void _leImageWidget_Constructor(leImageWidget *img);
 
 /* One statically-allocated titlebar instance per base-view screen that uses it
- * (dashboard, wiimotes, bus, …). No Legato pool — widgets live in BSS via the
- * in-place Constructors. Geometry mirrors the MGS-authored dashboard titlebar. */
-#define TITLEBAR_MAX  4
+ * (dashboard, wiimotes, bus, system, …). No Legato pool — widgets live in BSS via the
+ * in-place Constructors. Geometry mirrors the MGS-authored dashboard titlebar.
+ * Sized with slack: exhaustion returns NULL, which costs a screen its whole chrome
+ * (and its only way back to the drawer) without any build or assert failure. */
+#define TITLEBAR_MAX  8
 
 /* Bar geometry (mirrors the MGS-authored dashboard titlebar it replaced). */
 #define BAR_X   12

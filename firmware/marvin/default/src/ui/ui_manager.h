@@ -23,6 +23,7 @@ extern "C" {
 #define CANVAS_WIIMOTES    4u   /* Marvin layer 4 — wiimotes / manual-override */
 #define CANVAS_KEYBOARD    5u   /* Marvin layer 5 — on-screen keyboard modal   */
 #define CANVAS_BUS         6u   /* Marvin layer 6 — 10BASE-T1S bus statistics  */
+#define CANVAS_SYSTEM      7u   /* Marvin layer 7 — system info (node showcase) */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
@@ -156,6 +157,7 @@ void UiManager_SetDashboardPickable(bool on);
 void UiManager_ShowDashboard(void);
 void UiManager_ShowWiimotes(void);
 void UiManager_ShowStats(void);
+void UiManager_ShowSystem(void);
 
 /* Gate the currently-shown base view's pickability (routes to the dashboard or the
  * wiimotes screen per the active view). Used by the nav drawer to be modal over

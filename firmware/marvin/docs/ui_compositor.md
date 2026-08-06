@@ -35,6 +35,17 @@ canvas can be on `OVR1` in one situation and `OVR2` in another. The 8-slot canva
 (`LE_LAYER_COUNT` ≤ 8, canvases 0–7); the LCDC then composites **any 3** of them onto its 3
 usable HW layers at once — *define many, show a few.*
 
+**The pool size is not the ceiling it looks like.** `CONFIG_CANVAS_NUM_OBJ` only sizes the
+static `GFXC_CANVAS canvas[]` array (`gfx_canvas.c:67`); `GFXC_Initialize` marks every unused
+slot `CANVAS_ID_INVALID` / `GFXC_FX_IDLE`, so spare slots are inert at ~150 B of BSS each and
+raising the number is an MCC regen and nothing more. `LE_LAYER_COUNT` is MGS-derived, and
+`leState.layerList` is a dynamic `leList` rather than a fixed array — no ceiling there either.
+What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, 32 MB): a full-screen
+RGB565 surface is 1.95 MB, and with the eight layers below defined the region is ~30.8 MB used.
+A ninth layer-screen therefore needs the `ram_nocache`/`ram` split moved (`.region_ram` has
+~200 MB spare, so this is a one-line change) — *not* a bigger pool. The splash's 4 MB RGBA8888
+buffer is the obvious reclaim if it is ever wanted instead.
+
 ### 0.1 Direction (decided 2026-06-29): adopt MGS's single-master-screen / layer-screen model
 
 Per Microchip's GFX-canvas layer-screen guide¹, MGS is meant to be **one master screen whose
@@ -144,16 +155,38 @@ lifecycle events are direct calls).
 
 ### 4.1 Two layer counts — don't conflate them
 - **`LE_LAYER_COUNT`** (Legato, `legato_config.h:156`) = how many canvases / Legato layers the global
-  `layerList` manages = **4** (the four Marvin layer-screens: dashboard 0, nav 1, song-select dialog 2,
-  song-select album-art 3 — `CANVAS_*` in `ui_manager.h`). MGS derives it as the **max layer count
-  across all screens** in the design; there is no explicit knob.
+  `layerList` manages = **8** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
+
+  | Layer / canvas | Panel | Role | HW layer when shown |
+  |---|---|---|---|
+  | 0 | `PANEL_DASHBOARD` | dashboard (base view) | BASE |
+  | 1 | `PANEL_NAVIGATION` | nav drawer | OVR2 |
+  | 2 | `PANEL_SONG_SELECT` | song-select dialog | OVR1 |
+  | 3 | `PANEL_SONG_SELECT_ALBUM_ART` | song-select cover strip (RGBA8888) | OVR2 |
+  | 4 | `PANEL_WIIMOTES` | wiimotes / manual override (base view) | BASE |
+  | 5 | `PANEL_KEYBOARD` | on-screen keyboard modal | OVR1 |
+  | 6 | `PANEL_BUS` | 10BASE-T1S bus statistics (base view) | BASE |
+  | 7 | `PANEL_SYSTEM` | system info / node showcase (base view) | BASE |
+
+  MGS derives the count as the **max layer count across all screens** in the design; there is no
+  explicit knob. (Adding a layer-screen therefore means adding a layer to the `Marvin` screen in
+  `default_design.zip` — see the `add_layer.py` recipe in the `mgs-legato-design` skill — and then
+  a Generate.)
 - **`XLCDC_TOT_LAYERS`** (XLCDC driver, "Total Layers" in `le_gfx_driver_xlcdc.yml`) = enumerated
   hardware layers = **4** (`layerOrder` = {BASE 0, HEO 1, OVR1 2, OVR2 3}).
 
-The four canvases are mapped, at display time, onto the **three non-HEO** hardware layers
-(BASE / OVR1 / OVR2); HEO is the live camera. Because the canvases are time-shared (the video
-frame ⇎ dialog on OVR1, nav ⇎ album-art on OVR2 — see §16), never more than three are visible
-at once even though four are defined.
+The eight canvases are mapped, at display time, onto the **three non-HEO** hardware layers
+(BASE / OVR1 / OVR2); HEO is the live camera. Because the canvases are time-shared (four
+mutually-exclusive base views on BASE, video frame ⇎ dialog on OVR1, nav ⇎ album-art on OVR2 —
+see §16), never more than three are visible at once even though eight are defined.
+
+**A base-view swap costs no drawing.** Legato renders into a canvas surface whether or not that
+canvas is shown or bound to a hardware layer, so `paint_all_screens_once` (`ui_manager.c`) paints
+all eight surfaces complete behind the splash and every later `bind_canvas` is a pure layer bind:
+`gfxcSetLayer` + `gfxcShowCanvas` + `gfxcCanvasUpdate` + the colour-mode poke, and no repaint. This
+is the property to reach for when a screen transition looks expensive — give the two states their
+own canvases and the switch becomes free. It is also why each `Screen*_SetShown` gates only that
+screen's *periodic work*, never a repaint.
 
 ### 4.2 The LayerBudget screen (obsolete)
 > **Obsolete — removed on 2026-06-29.** This described the old per-screen-Factory design, where each

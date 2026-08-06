@@ -1,0 +1,8 @@
+[project]
+name = "node-photos"
+version = "1.0.0"
+description = "Process board photos into marvin's system-info screen asset tree."
+requires-python = ">=3.8"
+dependencies = [
+    "pillow>=10.0.0",
+]

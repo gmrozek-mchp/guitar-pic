@@ -23,7 +23,7 @@ Current journals:
   - System-level spec for marvin lives at `firmware/marvin/docs/spec.md` — **read it first** alongside the journal on any non-trivial marvin task. The spec is the durable description of what marvin is (purpose, subsystems, interfaces, milestones); the journal is the running diary.
 - `firmware/fretboard/docs/journal.md` — fretboard firmware (PIC32CM phototransistor **detector** node: ADC stream out; re-scoping from sensor/actuator — the actuator role is moving to the `guitar` subproject, but fretboard still actuates until that node is proven)
   - Spec for fretboard lives at `firmware/fretboard/SPEC.md` — read it alongside the journal on any non-trivial fretboard task.
-- `firmware/guitar/docs/journal.md` — guitar firmware (PIC32CM PL10 Wii-guitar **actuator** node: receives marvin's button bitmask over T1S → open-drain GPIO; T1S PLCA follower id 2. Working on hardware — follower up, marvin drives it over T1S, presence heartbeat + CLI)
+- `firmware/guitar/docs/journal.md` — guitar firmware (PIC32CM PL10 Wii-guitar **actuator** node: receives marvin's button bitmask over T1S → open-drain GPIO; T1S PLCA follower id 3. Working on hardware — follower up, marvin drives it over T1S, presence heartbeat + CLI)
   - Spec for guitar lives at `firmware/guitar/SPEC.md` — read it alongside the journal on any non-trivial guitar task.
 - `firmware/lemmy/docs/journal.md` — lemmy firmware (PIC32CM PL10 **animation** node: animated guitar-playing puppet, two R/C servos — neck nod + jaw; T1S PLCA follower id 6. Bring-up — base MCC project scaffolded; T1S follower first, motion second)
   - Spec for lemmy lives at `firmware/lemmy/SPEC.md` — read it alongside the journal on any non-trivial lemmy task.

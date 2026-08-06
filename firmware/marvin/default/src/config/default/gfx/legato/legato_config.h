@@ -153,7 +153,7 @@ extern "C" {
 // renderer configuration
 //#define LE_VSYNC_STALL
 
-#define LE_LAYER_COUNT                     7
+#define LE_LAYER_COUNT                     8
 
 #define LE_WIDGET_MAX_EVENT_FILTERS        2
 
