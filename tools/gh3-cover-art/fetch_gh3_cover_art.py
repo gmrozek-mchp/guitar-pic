@@ -60,7 +60,7 @@ SONGS = [
     ("main", 20, "kool_thing",                "Kool Thing",                "Sonic Youth",             "Goo"),
     ("main", 21, "my_name_is_jonas",          "My Name Is Jonas",          "Weezer",                  "Weezer"),
     ("main", 22, "even_flow",                 "Even Flow",                 "Pearl Jam",               "Ten"),
-    ("main", 23, "cities_on_flame_with_rock_roll", "Cities On Flame with Rock & Roll", "Blue Oyster Cult", "Blue Oyster Cult"),
+    ("main", 23, "cities_on_flame_with_rock_roll", "Cities On Flame with Rock & Roll", "Blue Öyster Cult", "Blue Öyster Cult"),
     ("main", 24, "holiday_in_cambodia",       "Holiday in Cambodia",       "Dead Kennedys",           "Fresh Fruit for Rotting Vegetables"),
     ("main", 25, "rock_you_like_a_hurricane", "Rock You Like a Hurricane", "Scorpions",               "Love at First Sting"),
     ("main", 26, "same_old_song_and_dance",   "Same Old Song and Dance",   "Aerosmith",               "Get Your Wings"),

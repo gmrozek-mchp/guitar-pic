@@ -943,11 +943,21 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
   blob bytes (~13 KB of new tree objects, 11 loose objects total) against ~10 MB of art and 56 MB of
   screens. A two-step "rename to temp names, then to final names" dance would make the diff *print*
   as `R` but would cost an extra commit's trees and save nothing — not worth it.
-- Remaining, blocked on Greg: real cover art for the 6 new songs needs `fetch_gh3_cover_art.py
-  --catalog` run with network access to musicbrainz.org / coverartarchive.org (not in this
-  sandbox's allowed hosts) — Greg runs it, or supplies images another way. Placeholder
-  album/genre/bpm/length_s for the 6 new songs left as-is in `songs.csv` pending that run (the tool
-  rewrites the catalog wholesale, so hand-filling now would just be overwritten).
+- Reindexed the cached covers in `tools/gh3-cover-art/data/` to the new indices as well — the fetch
+  tool's skip key is `<setlist>_<idx>_<slug>`, so stale indices would have re-downloaded all 39 main
+  songs. Mapping joined on `(setlist, slug)` against the script's own `SONGS` table instead of
+  re-deriving the arithmetic. Verified against the tool's actual skip expression: 64 skip, 6 fetch.
+- Greg then ran the fetch and updated the catalog; art and metadata for all 70 songs are in. Filled
+  the three genres MusicBrainz left blank (Sabotage → Rap Rock, Suck My Kiss → Funk Rock,
+  Helicopter → Indie Rock) and restored the diaeresis in *Blue Öyster Cult* — in `songs.csv` and in
+  the script's `SONGS` table, so a future `--catalog` run doesn't revert it (MusicBrainz's canonical
+  artist name carries the umlaut, so the lookup is unaffected). Validated all 70 rows against the
+  `game_catalog_entry_t` buffer widths: widest field is 47/64 bytes, and the 2-byte `Ö` is nowhere
+  near a `copy_field` truncation boundary.
+- Known gap, low priority: `length_s` is still 0 ("unknown", a valid state) for the 6 new songs.
+  MusicBrainz returns album-release durations, which don't match GH3's in-game edits, so these want
+  measuring off real gameplay rather than guessing. `bpm` is 0 for all 70 — that's the existing
+  baseline, not a regression.
 
 ### 2026-08-06 — Drag lag: tilt + whammy repaint only the damaged band
 
