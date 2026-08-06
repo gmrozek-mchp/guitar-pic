@@ -22,6 +22,12 @@
 
 void GameArt_Initialize(void);   /* state only; no I/O (call before scheduler) */
 
+/* Decode progress, for a caller that wants to show it (the boot splash). Reports the
+ * tier's own name ("small"/"large") and its file count as the tier starts, then after
+ * every cover; wording is the caller's business, not this module's. */
+typedef void (*game_art_progress_fn)(const char *tier, uint32_t done, uint32_t total);
+void GameArt_SetProgressCallback(game_art_progress_fn fn);
+
 /* Mount the card and decode all covers in both tiers into the caches. Idempotent
  * after the first successful pass. Returns the total number of covers decoded.
  * Must run from a task (blocks on SD I/O) and after Legato's image decoders are

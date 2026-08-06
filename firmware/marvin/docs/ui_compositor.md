@@ -436,6 +436,19 @@ percentage on the right, an 8 px rounded capsule with a cyan gradient fill. Geom
   and one boot replaces it. `SplashProgress_SetStage` logs `stage → elapsed (predicted)` and
   `_Calibrate` logs the whole measured-vs-stored table, so the grounding is inspectable from a boot
   log rather than inferred.
+- **Notes say what the stage is doing, without touching the bar.**
+  `SplashProgress_SetNote(note, done, total)` replaces the stage label with e.g.
+  `LOADING ALBUM ART 42/70`; `SetStage` clears it. The art caches take a registered
+  progress callback (`GameArt_SetProgressCallback` / `NodeArt_SetProgressCallback`, the same
+  idiom as `Video_SetFrameLatchCallback`) and report their own tier name and file count —
+  `ui_manager` owns the wording, so `game/` stays free of UI vocabulary. The card is also
+  mounted explicitly from the boot task (`Storage_Mount` is idempotent) so the mount wait
+  gets its own note instead of hiding inside the artwork stage.
+  **Deliberately display-only: the counter does not drive the bar.** A progress bar should
+  be linear in *time*, and work inside a stage is not uniform per item — a 508×208 PNG cover
+  costs more than a 144×144 JPEG, so a count-linear bar would move at two different speeds
+  against the clock. The measured profile is accurate to ~0.05% over an 18 s stage, which is
+  far better than counting items would be.
 - **The last stage is slack, and must not be stored as a cost.** `READY` waits out
   `SPLASH_MIN_MS`, so its duration is the remainder (`max(Σwork, min_hold) − Σwork`, 0 when the work
   already exceeded the hold). Recording it as a measured cost would invert the calibration: speeding

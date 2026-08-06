@@ -27,6 +27,11 @@
 
 void NodeArt_Initialize(void);   /* state only; no I/O (call before scheduler) */
 
+/* Decode progress, for a caller that wants to show it (the boot splash): the photo count
+ * as the pass starts, then after every photo. */
+typedef void (*node_art_progress_fn)(uint32_t done, uint32_t total);
+void NodeArt_SetProgressCallback(node_art_progress_fn fn);
+
 /* Mount the card and decode every node photo. Idempotent after the first pass.
  * Returns the number decoded. Must run from a task (blocks on SD I/O) and after
  * Legato's image decoders are up — i.e. during the boot/splash sequence. */

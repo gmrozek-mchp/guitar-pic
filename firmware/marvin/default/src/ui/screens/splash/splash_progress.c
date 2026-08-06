@@ -53,6 +53,7 @@
 #define CALIB_TOLERANCE_MS   250u   /* re-persist only past this per-stage drift */
 #define MAX_PERMILLE         990u   /* only _Complete() writes 1000          */
 
+#define LABEL_MAX         40u   /* "LOADING COVER DETAIL 70/70" and room to spare */
 #define TASK_STACK_WORDS 768u
 #define TASK_PRIORITY      3u   /* above the boot task (2), which blocks in long calls */
 
@@ -104,9 +105,20 @@ static uint32_t s_permille;        /* last rendered, for monotonicity */
 static uint32_t s_fill_w;          /* last rendered fill width, px    */
 static uint32_t s_glow_w;          /* glow painted out to this width  */
 static uint32_t s_pct;             /* last rendered percentage        */
-static const char *s_label;        /* last rendered label             */
-static uint32_t s_label_box_w;     /* erase width for the label       */
+static uint32_t s_label_w;         /* width of the drawn label, px    */
 static uint32_t s_pct_box_w;       /* erase width for the percentage  */
+
+/* What the current stage is doing, set from the boot task (see SplashProgress_SetNote);
+ * `s_drawn_*` is what the ticker last put on screen. Each field is a single word, so a
+ * read torn against a write costs at most one frame of a stale count. */
+static const char *volatile s_note;
+static volatile uint32_t    s_note_done;
+static volatile uint32_t    s_note_total;
+
+static const char    *s_drawn_note;
+static uint32_t       s_drawn_done;
+static uint32_t       s_drawn_total;
+static splash_stage_t s_drawn_stage;
 
 static StackType_t  s_stack[TASK_STACK_WORDS];
 static StaticTask_t s_tcb;
@@ -265,38 +277,84 @@ static void draw_glow(uint32_t from_x, uint32_t to_x)
 }
 #endif
 
-/* "42%" — no printf on the splash path. */
-static void fmt_pct(char *buf, uint32_t pct)
+/* Text is composed by hand rather than with snprintf: this runs on the ticker task, and
+ * the label is rebuilt on every counter tick. */
+static uint32_t append_str(char *dst, uint32_t at, const char *s)
 {
-    char     digits[3];
-    uint32_t n = 0u;
-
-    do { digits[n++] = (char)('0' + (pct % 10u)); pct /= 10u; } while (pct != 0u);
-
-    for (uint32_t i = 0u; i < n; i++) { buf[i] = digits[n - 1u - i]; }
-    buf[n]      = '%';
-    buf[n + 1u] = '\0';
+    while ((*s != '\0') && (at < (LABEL_MAX - 1u))) { dst[at++] = *s++; }
+    return at;
 }
 
-static void draw_text(const char *label, uint32_t pct)
+static uint32_t append_u32(char *dst, uint32_t at, uint32_t v)
 {
-    if (label != s_label)
+    char     tmp[10];
+    uint32_t n = 0u;
+
+    do { tmp[n++] = (char)('0' + (v % 10u)); v /= 10u; } while (v != 0u);
+    while ((n > 0u) && (at < (LABEL_MAX - 1u))) { dst[at++] = tmp[--n]; }
+    return at;
+}
+
+/* Erase only as far as the widest of the outgoing and incoming text, so a counter tick
+ * copies back tens of pixels of art instead of the whole left half of the band. */
+static void draw_left(const char *s)
+{
+    uint32_t w = GlyphBlit_TextWidth(FONT, s);
+
+    art_restore(TEXT_ERASE_Y, TEXT_ERASE_H, 0u,
+                ((w > s_label_w) ? w : s_label_w) + 4u);
+    GlyphBlit_Text(s_fb, BASE_W, BASE_H, (int32_t)BAR_X, (int32_t)TEXT_Y, s, FONT, COL_TEXT);
+    s_label_w = w;
+}
+
+static void draw_right(const char *s)
+{
+    art_restore(TEXT_ERASE_Y, TEXT_ERASE_H, BAR_W - s_pct_box_w, s_pct_box_w);
+
+    uint32_t w = GlyphBlit_TextWidth(FONT, s);
+    GlyphBlit_Text(s_fb, BASE_W, BASE_H,
+                   (int32_t)(BAR_X + BAR_W - w), (int32_t)TEXT_Y, s, FONT, COL_TEXT);
+}
+
+/* The label is the stage's, or the note the stage set for what it is doing right now
+ * ("LOADING ALBUM ART 42/70"). */
+static void draw_text(uint32_t pct)
+{
+    const char *note  = s_note;
+    uint32_t    done  = s_note_done;
+    uint32_t    total = s_note_total;
+
+    if ((note != s_drawn_note) || (done != s_drawn_done) || (total != s_drawn_total) ||
+        (s_stage != s_drawn_stage))
     {
-        art_restore(TEXT_ERASE_Y, TEXT_ERASE_H, 0u, s_label_box_w);
-        GlyphBlit_Text(s_fb, BASE_W, BASE_H, (int32_t)BAR_X, (int32_t)TEXT_Y,
-                       label, FONT, COL_TEXT);
-        s_label = label;
+        char     text[LABEL_MAX];
+        uint32_t at = append_str(text, 0u, (note != NULL) ? note : s_labels[s_stage]);
+
+        if (total > 0u)
+        {
+            at = append_str(text, at, " ");
+            at = append_u32(text, at, done);
+            at = append_str(text, at, "/");
+            at = append_u32(text, at, total);
+        }
+        text[at] = '\0';
+
+        draw_left(text);
+        s_drawn_note  = note;
+        s_drawn_done  = done;
+        s_drawn_total = total;
+        s_drawn_stage = s_stage;
     }
 
     if (pct != s_pct)
     {
-        char text[8];
-        fmt_pct(text, pct);
+        char     text[8];
+        uint32_t at = append_u32(text, 0u, pct);
 
-        art_restore(TEXT_ERASE_Y, TEXT_ERASE_H, BAR_W - s_pct_box_w, s_pct_box_w);
-        uint32_t w = GlyphBlit_TextWidth(FONT, text);
-        GlyphBlit_Text(s_fb, BASE_W, BASE_H,
-                       (int32_t)(BAR_X + BAR_W - w), (int32_t)TEXT_Y, text, FONT, COL_TEXT);
+        at       = append_str(text, at, "%");
+        text[at] = '\0';
+
+        draw_right(text);
         s_pct = pct;
     }
 }
@@ -314,7 +372,7 @@ static void render(uint32_t permille)
 #endif
         s_fill_w = w;
     }
-    draw_text(s_labels[s_stage], (permille + 5u) / 10u);
+    draw_text((permille + 5u) / 10u);
 }
 
 /* ── progress model ──────────────────────────────────────────────────────── */
@@ -408,20 +466,19 @@ void SplashProgress_Start(uint32_t *fb, uint32_t min_hold_ms)
     s_permille = 0u;
     s_fill_w   = 0u;
     s_glow_w   = 0u;
-    s_pct      = UINT32_MAX;   /* force the first text draw */
-    s_label    = NULL;
+    s_pct      = UINT32_MAX;         /* force the first text draw */
+    s_label_w  = 0u;
+    s_note     = NULL;
+    s_note_done  = 0u;
+    s_note_total = 0u;
+    s_drawn_note = s_labels[0];      /* differs from s_note, so the label draws */
+    s_drawn_done = 0u;
+    s_drawn_total = 0u;
+    s_drawn_stage = SPLASH_STAGE_SPLASH;
 
     for (uint32_t i = 0u; i < SPLASH_STAGE_COUNT; i++) { s_entered_ms[i] = 0u; }
 
-    /* Erase boxes sized to the content they have to clear. */
-    s_label_box_w = 0u;
-    for (uint32_t i = 0u; i < SPLASH_STAGE_COUNT; i++)
-    {
-        uint32_t w = GlyphBlit_TextWidth(FONT, s_labels[i]);
-        if (w > s_label_box_w) { s_label_box_w = w; }
-    }
-    s_label_box_w += 4u;
-    s_pct_box_w    = GlyphBlit_TextWidth(FONT, "100%") + 4u;
+    s_pct_box_w = GlyphBlit_TextWidth(FONT, "100%") + 4u;
 
     /* Mark the bar from the previous boot's per-stage profile; all-zero means nothing has
      * been measured yet (fresh settings), so fall back to the compiled seed. */
@@ -450,11 +507,24 @@ void SplashProgress_SetStage(splash_stage_t stage)
     /* Entry time before the stage itself, so the ticker never reads a stage against a
      * stale entry. This is also the measurement the next boot is marked from. */
     s_entered_ms[stage] = elapsed_ms();
+    s_note              = NULL;
+    s_note_total        = 0u;
     s_stage             = stage;
 
     LOG_INFO("SPLASH: %s at %lu ms (predicted %lu, %lu permille)\r\n", s_labels[stage],
              (unsigned long)s_entered_ms[stage], (unsigned long)s_pred_at_ms[stage],
              (unsigned long)s_mark[stage]);
+}
+
+void SplashProgress_SetNote(const char *note, uint32_t done, uint32_t total)
+{
+    if (s_fb == NULL) { return; }
+
+    /* Count first: the ticker composes from these, and a note arriving before its count
+     * would briefly read the previous note's numbers. */
+    s_note_done  = done;
+    s_note_total = total;
+    s_note       = note;
 }
 
 void SplashProgress_Complete(void)

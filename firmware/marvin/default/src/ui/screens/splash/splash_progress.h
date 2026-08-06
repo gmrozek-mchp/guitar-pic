@@ -41,8 +41,15 @@ void SplashProgress_Start(uint32_t *fb, uint32_t min_hold_ms);
 
 /* Advance to a boot stage: sets the label, hands the bar that stage's share, and stamps
  * the entry time this boot's profile is measured from. Call from the boot task, in order
- * — every stage's entry closes the previous stage's measurement. */
+ * — every stage's entry closes the previous stage's measurement. Clears any note. */
 void SplashProgress_SetStage(splash_stage_t stage);
+
+/* Say what the current stage is doing right now — the note replaces the stage's label,
+ * with " done/total" appended when total is non-zero. Display only: it does not move the
+ * bar, which stays on the stage's own share (a bar should be linear in TIME, and the work
+ * inside a stage is not uniform per item — a large cover costs more than a small one).
+ * `note` must have static lifetime, or be NULL to go back to the stage label. */
+void SplashProgress_SetNote(const char *note, uint32_t done, uint32_t total);
 
 /* Boot done: records the measured duration, stops the ticker, and shows 100% for a
  * moment. Returns once the bar is at 100% and no task is writing the framebuffer. */

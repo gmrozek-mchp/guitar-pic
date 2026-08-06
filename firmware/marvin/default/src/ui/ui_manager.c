@@ -23,6 +23,7 @@
 #include "flash/settings.h"   /* persisted backlight % */
 #include "game/game_art.h"    /* GameArt_LoadAll — cover-art preload during splash */
 #include "game/node_art.h"    /* NodeArt_LoadAll — board-photo preload during splash */
+#include "storage/storage.h"  /* Storage_Mount — mounted explicitly during the splash */
 #include "health/health_monitor.h"  /* armed at end of boot (HealthMonitor_NotifyReady) */
 #include "video/video.h"      /* capture producer — compositor owns HEO display */
 #include "ui/gfx/aa_corners.h"     /* rounded modal corners against the base view */
@@ -1069,6 +1070,19 @@ static void wait_render_idle(void)
 
 /* ── boot sequence ───────────────────────────────────────────────────────── */
 
+/* The art caches report which tier they are on and how far through it; the wording is
+ * ours, so they stay free of any UI vocabulary (registered in UiManager_Initialize). */
+static void art_progress(const char *tier, uint32_t done, uint32_t total)
+{
+    bool small = (tier != NULL) && (tier[0] == 's');
+    SplashProgress_SetNote(small ? "LOADING ALBUM ART" : "LOADING COVER DETAIL", done, total);
+}
+
+static void node_art_progress(uint32_t done, uint32_t total)
+{
+    SplashProgress_SetNote("LOADING BOARD PHOTOS", done, total);
+}
+
 static void ui_boot_task(void *param)
 {
     (void)param;
@@ -1095,6 +1109,12 @@ static void ui_boot_task(void *param)
      * Legato's image decoders are up from SYS_Initialize. All behind the splash;
      * the ~1-3 s decode just extends the splash hold. See game/game_art.h. */
     SplashProgress_SetStage(SPLASH_STAGE_ART);
+
+    /* Mount explicitly rather than leaving it to the first loader, so the card wait
+     * gets its own note instead of hiding inside "loading artwork". Idempotent. */
+    SplashProgress_SetNote("MOUNTING CARD", 0u, 0u);
+    (void)Storage_Mount();
+
     (void)GameArt_LoadAll();
 
     /* Same deal for the board photos, and for the same reason: ScreenSystem_Setup
@@ -1209,6 +1229,10 @@ void UiManager_Initialize(void)
     /* Load the HEO levels-expansion gamma CLUT now, while GAM/CLUTEN are clear
      * (post XLCDC_SetupHEOLayer, pre any HEO bind). heo_bind enables GAM. */
     heo_gamma_load();
+
+    /* Let the splash bar say what the art loaders are chewing through. */
+    GameArt_SetProgressCallback(art_progress);
+    NodeArt_SetProgressCallback(node_art_progress);
 
     (void)xTaskCreateStatic(ui_boot_task, "UiBoot", BOOT_TASK_STACK_WORDS,
                             NULL, BOOT_TASK_PRIORITY, s_boot_stack, &s_boot_tcb);

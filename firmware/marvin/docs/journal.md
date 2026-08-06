@@ -956,6 +956,18 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-06 (evening) — Splash bar sub-notes inside the artwork stage (and why they don't drive the bar)
+
+Greg, after two hardware runs: *"might be nice to have a few more message updates within loading artwork. this might have been the 2 option."* It was — and his own log then argued for doing **less** than option 2 proposed. Committed the bar first (`7aacb66`), then this.
+
+- **The log made the case for sub-notes overwhelming and the case for count-driving nonexistent.** `ART` was **18.36 s of a 23.36 s boot — 78% of the bar** behind one unchanging label. But the same log shows `LOADING ARTWORK 18360 ms (was 18351)`: a **0.05% prediction error** over 18 s. So the time interpolation across the stage is already excellent, and level 2's original pitch — drive the span off `files_done / files_total` — would have made the motion **worse**: small covers are 144×144 JPEG and large are 508×208 PNG, so progress-per-file is not progress-per-second and a count-linear bar would visibly change speed at the tier boundary. A bar should be linear in time. Counting is an information win, not an accuracy win.
+- **So the counter is display-only.** `SplashProgress_SetNote(note, done, total)` overrides the stage label (`LOADING ALBUM ART 42/70`) and touches nothing in the progress model. No settings change, no version bump, no new stages — a far smaller change than the option as scoped.
+- **`load_tier` was already shaped for this:** phase 1 collects the whole file list and closes the directory, phase 2 decodes with `n` known, so an exact total is available with no restructuring and no second walk. `NodeArt_LoadAll` has a fixed `PHOTO_N` and no walk at all.
+- **Layering:** the loaders take a registered progress callback and report their own tier name (`"small"`/`"large"`) plus counts; `ui_manager` maps those to display strings. `game/` gains no UI vocabulary — same shape as `Video_SetFrameLatchCallback` / `UiManager_SetSplashShownCallback`.
+- **Mount got its own note** by calling `Storage_Mount()` from the boot task before the loaders (it is idempotent, and both loaders already call it defensively). Worth 657 ms of the boot that was previously labelled "loading artwork".
+- **Text is composed by hand** (`append_str`/`append_u32`, no `snprintf`) because the label is now rebuilt on every counter tick on the 768-word ticker task; and the label's erase box is now `max(outgoing, incoming)` width instead of a precomputed worst case, so a counter tick copies back tens of pixels of art rather than the whole left half of the band.
+- **Noticed in passing, not acted on:** `NODEART: 0 of 7 board photo(s) loaded` — the board photos aren't on the card yet, so the system screen shows blank frames. The new note will make that obvious on screen (`LOADING BOARD PHOTOS 7/7` with nothing to show for it).
+
 ### 2026-08-06 (evening) — Splash bar milestones grounded in measurement (settings v2 → v3)
 
 First hardware run looked right (Greg: *"it's looks pretty good on first run"*), then: *"but how do we ground the various milestones?"* — a fair challenge, because the five permille marks were my apportionment guesses, and there was no way to check them: `log.c` calls `vprintf` with **no timestamp prefix**, so no existing boot log carries a time. Greg took levels 0 + 1 of the three offered.

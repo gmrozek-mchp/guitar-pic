@@ -53,6 +53,8 @@ static bool    s_valid[PHOTO_N];
 static int     s_n;
 static bool    s_loaded;
 
+static node_art_progress_fn s_progress_cb;
+
 /* True dimensions from the PNG IHDR. The destination raster is sized from the slot,
  * so a mismatch has to be rejected rather than scaled. IHDR width/height are 4-byte
  * big-endian at offsets 16 and 20; our sizes fit 16 bits, so take the low two bytes. */
@@ -138,6 +140,11 @@ void NodeArt_Initialize(void)
     memset(s_valid, 0, sizeof s_valid);
 }
 
+void NodeArt_SetProgressCallback(node_art_progress_fn fn)
+{
+    s_progress_cb = fn;
+}
+
 int NodeArt_LoadAll(void)
 {
     if (s_loaded) { return s_n; }
@@ -148,6 +155,8 @@ int NodeArt_LoadAll(void)
     /* One file open at a time: FatFs is built with FF_FS_MAX_FILES=1. Each photo is
      * opened, read and closed inside decode_one, so no directory walk is needed —
      * the names are known, which also means a stray filename is never touched. */
+    if (s_progress_cb != NULL) { s_progress_cb(0u, PHOTO_N); }
+
     for (unsigned i = 0u; i < PHOTO_N; i++)
     {
         char path[PATH_MAX_];
@@ -159,6 +168,7 @@ int NodeArt_LoadAll(void)
             s_valid[i] = true;
             s_n++;
         }
+        if (s_progress_cb != NULL) { s_progress_cb(i + 1u, PHOTO_N); }
     }
 
     LOG_INFO("NODEART: %d of %u board photo(s) loaded\r\n", s_n, (unsigned)PHOTO_N);

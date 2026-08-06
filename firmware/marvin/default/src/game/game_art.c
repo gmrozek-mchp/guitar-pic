@@ -64,6 +64,8 @@ static int  s_small_n = 0;
 static int  s_large_n = 0;
 static bool s_loaded  = false;
 
+static game_art_progress_fn s_progress_cb;
+
 /* ---- filename / header parsing ----------------------------------------- */
 
 /* Case-insensitive equality of `s` (an n-char span, no NUL) with a lowercase
@@ -336,6 +338,8 @@ static int load_tier(const char *subdir, uint8_t *pool, size_t slot_bytes,
     /* Phase 2 — decode each collected cover (dir closed → one file open at a time).
      * Reconstruct the path from the key so we never touch a stray filename. */
     int count = 0;
+    if (s_progress_cb != NULL) { s_progress_cb(subdir, 0u, (uint32_t)n); }
+
     for (int i = 0; i < n; i++)
     {
         const char *setname = (s_scan[i].setlist == GP_SETLIST_BONUS) ? "bonus" : "main";
@@ -352,6 +356,7 @@ static int load_tier(const char *subdir, uint8_t *pool, size_t slot_bytes,
             keys[count].valid   = true;
             count++;
         }
+        if (s_progress_cb != NULL) { s_progress_cb(subdir, (uint32_t)(i + 1), (uint32_t)n); }
     }
 
     LOG_INFO("ART: %s: %d file(s) seen, %d loaded\r\n", subdir, seen, count);
@@ -365,6 +370,11 @@ void GameArt_Initialize(void)
     s_small_n = 0;
     s_large_n = 0;
     s_loaded  = false;
+}
+
+void GameArt_SetProgressCallback(game_art_progress_fn fn)
+{
+    s_progress_cb = fn;
 }
 
 int GameArt_LoadAll(void)
