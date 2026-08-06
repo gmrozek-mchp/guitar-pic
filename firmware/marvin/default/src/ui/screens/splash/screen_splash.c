@@ -5,7 +5,7 @@
 
 #include "definitions.h"            /* DRV_SST26_*, XLCDC_* */
 #include "log.h"
-#include "flash/qspi_layout.h"      /* QSPI_SPLASH_OFFSET */
+#include "flash/qspi_layout.h"      /* QSPI_SPLASH_OFFSET, QSPI_SPLASH_SIZE */
 #include "ui/ui_manager.h"          /* BASE_W, BASE_H */
 
 /* Fallback fill: opaque black. The layer is RGBA_8888 (packs 0xRRGGBBAA), so a
@@ -17,6 +17,11 @@
  * coherent without cache maintenance; 32-byte aligned. */
 static uint32_t s_fb[BASE_W * BASE_H]
     __attribute__((section(".region_nocache"), aligned(32)));
+
+/* The whole buffer is read from QSPI in one shot, so a panel-size bump that
+ * outgrew the splash region would silently read on into the assets region.
+ * Negative array size => compile error instead. */
+typedef char splash_fits_qspi_region[(sizeof s_fb <= QSPI_SPLASH_SIZE) ? 1 : -1];
 
 void ScreenSplash_Show(XLCDC_LAYER layer)
 {

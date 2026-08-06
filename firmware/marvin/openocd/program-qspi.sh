@@ -6,7 +6,10 @@
 # program-nand.sh.
 #
 # Offsets come from default/src/flash/qspi_layout.h:
-#   splash -> 0x000000 (4 MiB)   assets -> 0x400000 (~3.98 MiB)   settings 0x7FC000 (off-limits)
+#   splash -> 0x010000   assets -> 0x400000   (both 0x3F0000 = 4,128,768 B)
+# Writes are confined to the 64 KiB-uniform host window [0x010000, 0x7F0000): the
+# bottom and top 64 KiB of this part are non-uniform Block-Erase bands (8/32 KiB
+# blocks), where u-boot's 64 KiB `sf erase` under-erases without reporting it.
 #
 # PREREQUISITES (see program-qspi.md):
 #   * JP4 (QSPI-CS) IN  — the part must be connected for `sf` to reach it. QSPI holds
@@ -17,7 +20,7 @@
 #
 # Usage:
 #   ./program-qspi.sh shell                    # stage u-boot only -> console (test `sf probe 0`)
-#   ./program-qspi.sh splash [file]            # -> QSPI 0x000000  (default $root/data/ui/splash.raw)
+#   ./program-qspi.sh splash [file]            # -> QSPI 0x010000  (default $root/data/ui/splash.raw)
 #   ./program-qspi.sh assets <file> [offset]   # -> QSPI 0x400000 + offset
 #   ./program-qspi.sh raw <qspi_off> <file>    # -> QSPI <qspi_off> (escape hatch)
 #
@@ -35,10 +38,11 @@ here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 root="$(cd "$here/.." && pwd)"
 
 # QSPI region bases (keep in sync with default/src/flash/qspi_layout.h).
-QSPI_SPLASH_OFFSET=0x000000
+QSPI_SPLASH_OFFSET=0x010000
 QSPI_ASSETS_OFFSET=0x400000
-QSPI_SETTINGS_OFFSET=0x7FC000     # off-limits to this tool
-QSPI_FLASH_SIZE=0x800000
+QSPI_HOST_WINDOW_OFFSET=0x010000  # first 64 KiB-uniform block
+QSPI_HOST_WINDOW_LIMIT=0x7F0000   # exclusive end; above here is firmware-only
+QSPI_BLOCK_SIZE=0x10000           # u-boot's erase granularity for this part
 
 [ $# -ge 1 ] || { sed -n '2,30p' "$0"; exit 1; }
 region="$1"; shift
@@ -97,16 +101,19 @@ LEN_HEX=$(printf '0x%x' "$LEN")   # u-boot parses command args as HEX — pass l
 roundup64k() { printf '0x%x' $(( ( ($1 + 0xffff) / 0x10000 ) * 0x10000 )); }
 ESZ=$(roundup64k "$LEN")
 
-# Bounds + settings-region guard (all arithmetic in (( )), which parses 0x...).
-# Any write whose end passes the settings base reaches into it (settings runs to
-# the top of the device), so a single `end > settings` test covers both a write
-# that spills in and one that starts inside.
+# Host-window + alignment guards (all arithmetic in (( )), which parses 0x...).
+# The window bounds are what keep every erase on a uniform 64 KiB block; stepping
+# outside means `sf erase` silently clears less than it claims and the write lands
+# on un-erased NOR (bits only ever clear, so the result is old AND new). The
+# offset check matters most for `raw`, which can name any address.
 qoff_d=$(( QOFF )); end_d=$(( qoff_d + ESZ ))
-if (( end_d > QSPI_FLASH_SIZE )); then
-    echo "refusing: $(printf '0x%x' $qoff_d) + $ESZ exceeds device size $QSPI_FLASH_SIZE" >&2; exit 1
+if (( qoff_d % QSPI_BLOCK_SIZE != 0 )); then
+    echo "refusing: offset $(printf '0x%x' $qoff_d) is not 64 KiB-aligned (u-boot's sf erase granularity)." >&2; exit 1
 fi
-if (( end_d > QSPI_SETTINGS_OFFSET )); then
-    echo "refusing: write [$(printf '0x%x' $qoff_d)..$(printf '0x%x' $end_d)) overlaps the settings region ($QSPI_SETTINGS_OFFSET)." >&2; exit 1
+if (( qoff_d < QSPI_HOST_WINDOW_OFFSET || end_d > QSPI_HOST_WINDOW_LIMIT )); then
+    echo "refusing: write [$(printf '0x%x' $qoff_d)..$(printf '0x%x' $end_d)) leaves the host window [$QSPI_HOST_WINDOW_OFFSET..$QSPI_HOST_WINDOW_LIMIT)." >&2
+    echo "  Outside it the SST26's blocks are 8/32 KiB, not 64 KiB — u-boot would under-erase. Those bands (and the settings ring) are firmware-only." >&2
+    exit 1
 fi
 
 echo "bootstrap (DDR init) : $BOOTSTRAP_ELF (entry $boot_entry)"
