@@ -257,13 +257,12 @@ re-enabled; `NAVIGATION_CLOSED_X` dodges the window-clip row-wrap; mid-slide rev
 in-flight move); single-active highlight via a runtime-registered shared release sink; rounded
 AA buttons (§10a). **Its widget tree is built in C, not authored in MGS** (§17).
 
-**Next:**
-1. **Author song/mode-select as its own MGS Screen;** assign `canvas[2]` a real buffer and have
-   `ui_manager` host it on layer 2 (OVR2) as a modal (sized to the dialog, dashboard live behind).
-   First real exercise of the coexist verb with a *live* background; the re-host + slide
-   mechanics are proven on the nav.
-2. **`manual_input.c` fate** — `Screen0` is retired, but the strum handlers now serve the
-   Dashboard screen, so `manual_input.c` stays until manual control is reworked.
+**Song/mode-select is done too** (2026-08-05): the layer-2 dialog on OVR1 with its own layer-3
+album-art strip on OVR2, both built in C (§17), the modal coexist verb exercised against a live
+dashboard, and rounded dialog corners without per-pixel alpha (§18).
+
+**Next:** **`manual_input.c` fate** — `Screen0` is retired, but the strum handlers now serve the
+Dashboard screen, so `manual_input.c` stays until manual control is reworked.
 
 ## 8. Static-allocation, cache & priority rules
 
@@ -524,9 +523,10 @@ Design implications when we build it:
 
 ## 17. Panels built in C, not authored in MGS
 
-**Every base view is now a programmatic builder over an empty MGS root panel** — bus stats,
-wiimotes, the on-screen keyboard, the nav drawer, and (2026-08-05) the **dashboard**, which was
-the last and largest imported tree. The design supplies one bare panel per layer-screen —
+**Every layer-screen is now a programmatic builder over an empty MGS root panel** — bus stats,
+wiimotes, the on-screen keyboard, the nav drawer, the dashboard, and (2026-08-05) the
+**song-select dialog**, which was the last. The design is now **assets only**: seven layers, seven
+bare panels, zero authored widgets. The design supplies one bare panel per layer-screen —
 position, size, an opaque scheme — and the module builds every child in `Screen<Name>_Setup()`
 with the in-place constructors (`leWidget_Constructor`, `leButtonWidget_Constructor`,
 `leLabelWidget_Constructor`), storing widgets in file-scope arrays (no Legato pool, no
@@ -580,14 +580,53 @@ Consequences for this style of screen:
   `widget_gauge`, …), and a plain widget is always available. `ui/widgets/bar` exists precisely
   because the stock progress bar contributed nothing but a square track and a vtable to hijack.
 - **What the code genuinely needs must be forced on** in the Legato component rather than left to
-  the design's whim. Today `leButtonWidget` / `leLabelWidget` / `leImageWidget` are alive *only*
-  because song-select is still MGS-authored; that must be pinned before song-select is rebuilt.
+  the design's whim. `leButtonWidget` / `leLabelWidget` / `leImageWidget` were alive *only* because
+  song-select was still MGS-authored; they are now **pinned**, which is what made stripping it
+  safe. With the design holding no widgets at all, every type the firmware uses is on loan from a
+  pin — there is nothing left for the design to keep them alive. The tell that a pin is real:
+  `LE_CIRCULARGAUGE_WIDGET_ENABLED` reads 1 with no design instance anywhere.
 - **The failure is a compile error, not a silent one** — which is the one mercy here. Grep the
   firmware for `\ble[A-Z][A-Za-z]*Widget\b` to get the true list of types it depends on.
+
+## 18. Rounded corners on an opaque overlay, by copying the layer below
+
+The song-select dialog is `rounded-xl` in the mockup, but it is an **opaque RGB565 canvas on
+OVR1** — RGB565 has no alpha, so its corners cannot reveal the dashboard on BASE the way §16's
+ARGB_4444 video frame reveals HEO. Three ways out; we took the third.
+
+1. Make the dialog canvas RGBA8888 with transparent AA'd corners. Correct, but 2.9 MB and ~174
+   MB/s of OVR1 read while open (vs 87), in the exact bandwidth region that has knocked CSI-2
+   out of lock before.
+2. Cut the corners to a fixed colour, as the video frame does. Wrong here — the dialog floats
+   over dashboard *content*, so a black cut reads as four black notches.
+3. **Copy the pixels the base view has at those coordinates.** The corner boxes are filled with
+   `base_surface[(SONGSEL_Y + y) * stride + SONGSEL_X + x]`, anti-aliased against the dialog's
+   own fill and 1px border. 4 × 12 × 12 px of work, no format change, no extra layer.
+
+What makes it work is that both surfaces are **CPU-readable RGB565 statics** and `UiSurface_Get`
+already records every canvas's base pointer and geometry — so an overlay can read what is
+underneath it even though they are different hardware layers.
+`AaCorners_RenderSurface565` (`ui/gfx/aa_corners.c`) takes a per-pixel backdrop **sampler** and
+writes the surface directly rather than through `leRenderer`, so it runs outside a paint pass and
+the caller picks the moment. `ui_manager` picks **open**, via `ScreenSongSelect_RoundCorners`,
+which reads `UiManager_BaseCanvas()` so it tracks whichever base view is up.
+
+Three properties worth knowing before reusing this:
+
+- **It is a snapshot.** Live content moving under a corner goes stale until the next open. Fine
+  here (page/card background); check before applying it elsewhere.
+- **Anything that repaints over a corner undoes it.** The song list had to stop `DLG_R` short of
+  the dialog's bottom edge for exactly this reason — its row separators and selected-row fill
+  span its full width, so a list reaching the bottom would repaint the corner on every scroll.
+  Keep repainting widgets out of the arc boxes, or re-run the pass after they paint.
+- **It composes with the BASE-discard optimisation.** The dialog still discards BASE DMA behind
+  itself while open (bandwidth), and that is safe precisely because the corner pixels were
+  *copied* — nothing needs BASE to be scanned there.
 
 ## 11. Relationship to spec §4.5 / Q5
 
 This answers spec **Q5** (Legato vs. custom UI) for the *presentation* layer: **Legato is the
 renderer; a marvin `ui_manager` over GFX Canvas owns surface/layer composition and screen
-orchestration.** Per-screen *authoring* stays in MGS (one Screen per panel); the compositor
-assembles their trees onto hardware layers.
+orchestration.** Per-screen *authoring* is now **code**, not MGS — the design supplies only assets
+and one bare panel per layer-screen (§17); the compositor assembles the built trees onto hardware
+layers.

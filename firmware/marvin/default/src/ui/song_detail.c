@@ -1,6 +1,7 @@
 #include "ui/song_detail.h"
 
 #include <stdio.h>
+#include <string.h>
 
 int SongDetail_Tier(const char *difficulty)
 {
@@ -20,6 +21,17 @@ void SongDetail_TierText(int tier, char *buf, size_t n)
     if (p < n) { buf[p] = '\0'; } else if (n > 0u) { buf[n - 1u] = '\0'; }
 }
 
+void SongDetail_TierTextLong(int tier, char *buf, size_t n)
+{
+    size_t p;
+
+    SongDetail_TierText(tier, buf, n);
+    if (tier <= 0) { return; }   /* "BONUS" names itself */
+
+    p = strlen(buf);
+    (void)snprintf(buf + p, (n > p) ? (n - p) : 0u, "  TIER %d", tier);
+}
+
 const leScheme *SongDetail_TierScheme(int tier)
 {
     switch (tier)
@@ -34,6 +46,11 @@ const leScheme *SongDetail_TierScheme(int tier)
         case 8:  return &SCHEME_TEXT_TIER_8;
         default: return &SCHEME_TEXT_ZINC_300;   /* bonus / unknown → light gray */
     }
+}
+
+leColor SongDetail_TierColor(int tier)
+{
+    return leScheme_GetColor(SongDetail_TierScheme(tier), LE_SCHM_TEXT, LE_COLOR_MODE_RGB_888);
 }
 
 void SongDetail_Duration(uint16_t length_s, char *buf, size_t n)

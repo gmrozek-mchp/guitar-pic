@@ -118,6 +118,11 @@ void UiManager_ShowStats(void);
  * whichever base view is beneath it. */
 void UiManager_SetBaseViewPickable(bool on);
 
+/* Canvas id of the base view currently on the BASE hardware layer. Read by an
+ * overlay that needs the pixels behind it — the song-select dialog samples them to
+ * fake rounded corners without per-pixel alpha. */
+unsigned int UiManager_BaseCanvas(void);
+
 /* Runtime render lock for post-boot widget edits from an app task (Legato here is
  * single-threaded and unlocked). Lock suspends the Legato render/input threads and
  * waits for the current paint to finish; do the setString/setPressed/invalidate work,

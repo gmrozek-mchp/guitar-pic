@@ -1,6 +1,7 @@
 #include "ui/screens/album_art/screen_album_art.h"
 
 #include "ui/ui_manager.h"   /* CANVAS_ALBUM_ART */
+#include "ui/screens/song_select/screen_song_select.h"   /* the art rect's position */
 #include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 
@@ -8,11 +9,13 @@
  * (gfx2dFormats[]: RGB_565 and RGBA_8888 only; RGB_888 is unsupported, so a 24bpp
  * canvas can't be GFX2D-blitted and renders garbage). At 508x208 the 32bpp surface
  * is ~0.42 MB, so the bandwidth cost is trivial; the dialog itself (OVR1) stays
- * RGB565. The window sits over the dialog's art rect. */
+ * RGB565. The window sits over the dialog's art rect, whose position comes from the
+ * dialog's own layout (ScreenSongSelect_ArtOrigin).
+ *
+ * The size does NOT: 508x208 is the slot the covers are decoded into (game_art.c), an
+ * asset property both this surface and the dialog's column width are sized around. */
 #define ART_W   508u
 #define ART_H   208u
-#define ART_X   433    /* absolute screen position of the art rect (over the OVR1 dialog) */
-#define ART_Y   160
 
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
 
@@ -33,6 +36,11 @@ void ScreenAlbumArt_InitSurface(void)
 
 void ScreenAlbumArt_Setup(void)
 {
+    int x = 0;
+    int y = 0;
+
+    ScreenSongSelect_ArtOrigin(&x, &y);
+
     gfxcSetWindowSize(CANVAS_ALBUM_ART, ART_W, ART_H);
-    gfxcSetWindowPosition(CANVAS_ALBUM_ART, ART_X, ART_Y);
+    gfxcSetWindowPosition(CANVAS_ALBUM_ART, x, y);
 }

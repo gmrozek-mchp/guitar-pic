@@ -13,8 +13,8 @@
 
 /* ---- layout / feel constants ------------------------------------------- */
 
-#define SL_PAD_X        20      /* left/right inset for content */
-#define SL_BADGE_COL    50      /* width reserved for the tier badge column */
+#define SL_PAD_X        16      /* left/right inset for content (mockup px-4) */
+#define SL_BADGE_COL    28      /* badge column: w-4 tag + gap-3 */
 #define SL_LINE_GAP     2       /* px between title and artist */
 #define SL_TAP_SLOP     10      /* drag under this many px counts as a tap */
 #define SL_DECAY_PER_MS 0.004f  /* velocity *= (1 - SL_DECAY_PER_MS*dt_ms) per update */
@@ -23,17 +23,23 @@
 #define SL_MAX_DT_MS    100u    /* clamp a long scheduling stall */
 #define SL_DEFAULT_ROWH 64
 
-/* Colors are authored in RGB_888 and converted to the active layer mode at
- * paint time. */
-#define SL_BG           0x0E0E0Eu
-#define SL_SEP          0x232323u
-#define SL_SEL_BG       0xF2F2F2u
-#define SL_TITLE        0xF0F0F0u
-#define SL_ARTIST       0x8A8A8Au
-#define SL_RIGHT        0x9A9A9Au
-#define SL_SEL_TITLE    0x121212u
-#define SL_SEL_ARTIST   0x606060u
-#define SL_SEL_RIGHT    0x404040u
+/* Colors are authored in RGB_888 and converted to the active layer mode at paint
+ * time. Tailwind zinc, per the mockup's SongSelectModal row: an unselected row is
+ * zinc-300 over the dialog's zinc-900, a selected one inverts to black on zinc-100.
+ * SL_SEP is border-zinc-800/50 resolved over zinc-900 (the widget draws opaque, so
+ * the half-alpha border is pre-composited here). */
+#define SL_BG           0x18181Bu   /* zinc-900 */
+#define SL_SEP          0x1F1F23u   /* zinc-800 at 50% over zinc-900 */
+#define SL_SEL_BG       0xF4F4F5u   /* zinc-100 */
+#define SL_TITLE        0xD4D4D8u   /* zinc-300 */
+#define SL_ARTIST       0x71717Bu   /* zinc-500 */
+#define SL_RIGHT        0x52525Cu   /* zinc-600 */
+#define SL_SEL_TITLE    0x000000u
+#define SL_SEL_ARTIST   0x52525Cu   /* zinc-600 */
+#define SL_SEL_RIGHT    0x71717Bu   /* zinc-500 */
+/* The selected row drops the badge's own colour for plain zinc-500: the tier hue is
+ * legible against the dark row but not against the zinc-100 selection fill. */
+#define SL_SEL_BADGE    0x71717Bu   /* zinc-500 */
 
 /* ---- widget type -------------------------------------------------------- */
 
@@ -207,26 +213,29 @@ static void sl_paint(leWidget *wgt)
         if (w->rowFn == NULL || !w->rowFn(w->rowCtx, i, &row)) { continue; }
         row.selected = (i == w->selected);
 
+        /* The mockup's row is a full-bleed button: the selection fill spans the whole
+         * row (no inset, no rounding) and the border-b sits on top of it, so the rule
+         * is drawn for every row after the fill rather than only on unselected ones. */
         if (row.selected)
         {
-            leRect hl = { area.x + 6, rowTop + 4, area.width - 12, rowH - 8 };
+            leRect hl = { area.x, rowTop, area.width, rowH };
             leRenderer_RectFill(&hl, conv(SL_SEL_BG), 255);
             titleC = conv(SL_SEL_TITLE); artistC = conv(SL_SEL_ARTIST); rightC = conv(SL_SEL_RIGHT);
         }
         else
         {
             titleC = conv(SL_TITLE); artistC = conv(SL_ARTIST); rightC = conv(SL_RIGHT);
-
-            leRect sep = { area.x + SL_PAD_X, rowTop + rowH - 1,
-                           area.width - 2 * SL_PAD_X, 1 };
-            leRenderer_RectFill(&sep, conv(SL_SEP), 255);
         }
+
+        leRect sep = { area.x, rowTop + rowH - 1, area.width, 1 };
+        leRenderer_RectFill(&sep, conv(SL_SEP), 255);
 
         if (row.badge != NULL && row.badge[0] != '\0')
         {
             draw_str(w, row.badge, w->badgeFont,
                      area.x + SL_PAD_X, rowTop + (rowH - font_h(w->badgeFont)) / 2,
-                     LE_HALIGN_LEFT, conv(row.badgeColor));
+                     LE_HALIGN_LEFT,
+                     row.selected ? conv(SL_SEL_BADGE) : conv(row.badgeColor));
         }
 
         textX  = area.x + SL_PAD_X + SL_BADGE_COL;

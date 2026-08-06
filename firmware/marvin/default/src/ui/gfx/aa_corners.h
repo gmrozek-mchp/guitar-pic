@@ -37,6 +37,28 @@ void AaCorners_Render(const leRect *rect, uint32_t radius, uint32_t borderWidth,
 void AaCorners_RenderRoundImage(const leRect *rect, uint32_t radius,
                                 leColor bg, leColorMode mode);
 
+/* Backdrop colour to show outside the arc at (x, y), in surface coordinates. */
+typedef leColor (*aa_backdrop_fn)(void *ctx, int32_t x, int32_t y);
+
+/* Round the corners of a rect inside a raw RGB565 surface, blending toward a
+ * PER-PIXEL backdrop from `sample` (backdrop → borderWidth-px `border` → `fill`,
+ * as AaCorners_Render). Two differences from the functions above, both deliberate:
+ *
+ *  - It writes the surface directly instead of going through leRenderer, so it runs
+ *    OUTSIDE a paint pass — the caller picks the moment.
+ *  - The backdrop is sampled per pixel, so it can be content from a DIFFERENT
+ *    surface. That is what lets a top-level overlay panel appear rounded without
+ *    per-pixel alpha: the corner is filled with the pixels the layer below has at
+ *    the same screen position (see screen_song_select.c), which reads as
+ *    transparency as long as that content is static while the overlay is up.
+ *
+ * `stride` is in pixels. Coordinates are surface-relative and are not clipped —
+ * `rect` must lie inside the surface. */
+void AaCorners_RenderSurface565(uint16_t *surface, uint32_t stride,
+                                const leRect *rect, uint32_t radius, uint32_t borderWidth,
+                                leColor fill, leColor border,
+                                aa_backdrop_fn sample, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

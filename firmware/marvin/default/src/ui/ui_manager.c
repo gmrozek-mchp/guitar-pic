@@ -475,6 +475,12 @@ void UiManager_OpenSongSelect(void)
     /* The dialog takes OVR1 from the video frame overlay; drop the frame first
      * (video is hidden below, so there's nothing to frame). */
     UiManager_VideoOverlayHide();
+
+    /* Cut the dialog's rounded corners against whatever the base view has behind them,
+     * NOW rather than at build time: the dialog is opaque RGB565, so a corner can only
+     * look transparent by holding a copy of those pixels, and this is the last moment
+     * they are known good. */
+    ScreenSongSelect_RoundCorners();
     bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
     bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
 
@@ -577,6 +583,16 @@ static void hide_current_base(void)
             gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
             UiManager_SetDashboardPickable(false);
             break;
+    }
+}
+
+unsigned int UiManager_BaseCanvas(void)
+{
+    switch (s_base_view)
+    {
+        case BASE_VIEW_WIIMOTES: return CANVAS_WIIMOTES;
+        case BASE_VIEW_BUS:      return CANVAS_BUS;
+        default:                 return CANVAS_DASH;
     }
 }
 

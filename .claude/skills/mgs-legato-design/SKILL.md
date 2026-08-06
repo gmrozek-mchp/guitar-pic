@@ -120,7 +120,8 @@ Two things you can do without touching Composer, both in [REFERENCE.md](REFERENC
 When an imported screen is being rebuilt by a programmatic builder in C, the design should keep
 only the **empty root panel** the builder attaches to.
 `scripts/strip_subtree.py <zip> <PANEL_NAME> [--layer NAME]` deletes that panel's children and
-reports what the deletion orphans.
+reports what the deletion orphans. A screen spanning several layers has one root panel per layer,
+so strip each by name — the script takes a widget, not a screen.
 
 **Deleting widgets can delete a widget TYPE.** `legato_config.h`'s `LE_<TYPE>_WIDGET_ENABLED`
 flags are derived from the types the *design* instantiates, so removing the last design widget of
@@ -131,6 +132,12 @@ resolutions, both worth doing: **pin** the types the code needs in the Legato/MG
 design can't take them away, and **prefer a plain `leWidget` plus a paint override** to a
 specialised type wherever the code already owns the drawing — a widget whose fill you paint
 yourself gains nothing from the stock implementation but a vtable to hijack.
+
+**How to tell a pin is real before you rely on it:** a flag reading `1` proves nothing while the
+design still instantiates that type. Look instead for a flag that is `1` with **no** design
+instance anywhere — that can only be a pin, and it confirms pins are in effect for this project.
+This matters most on the *last* strip: once the design holds no widgets at all, every type the
+firmware uses is on loan from a pin, with nothing left in the design to keep any of them alive.
 
 The counter-intuitive part: **keep the deleted widgets' strings and drive them from C with
 `leTableString` + `stringID_*`** rather than switching to C literals. First for localization — a

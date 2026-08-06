@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "gfx/legato/common/legato_color.h"        /* leColor */
 #include "gfx/legato/generated/le_gen_scheme.h"   /* leScheme */
 
 /* Shared song-detail formatting used by both the song-select dialog and the
@@ -17,8 +18,17 @@ int SongDetail_Tier(const char *difficulty);
 /* UTF-8 tier text: `tier` black stars (U+2605), or "BONUS" for 0. */
 void SongDetail_TierText(int tier, char *buf, size_t n);
 
+/* As above with the tier spelled out — "★★★  TIER 3", or "BONUS". For the
+ * song-select detail strip, where nothing else names the tier; the dashboard's TIER
+ * cell uses the stars-only form because its column header already says TIER. */
+void SongDetail_TierTextLong(int tier, char *buf, size_t n);
+
 /* Text color scheme for a tier: SCHEME_TEXT_TIER_1..8, or light gray for bonus. */
 const leScheme *SongDetail_TierScheme(int tier);
+
+/* That scheme's text color as RGB_888, for a drawer that takes a color rather than a
+ * scheme (the song list's tier badge). */
+leColor SongDetail_TierColor(int tier);
 
 /* Duration as "m:ss", or "-" when length_s is 0 (unknown). */
 void SongDetail_Duration(uint16_t length_s, char *buf, size_t n);

@@ -5,12 +5,34 @@
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/renderer/legato_renderer.h"
 
-/* Repaint one radius×radius corner box. (ox, oy) is its top-left in screen space;
- * (flip_x, flip_y) orient the arc centre so all four corners reuse the upper-left
- * math (centre at the box's inner corner). bg is sampled from the box's outer
- * pixel — the pixel furthest from the arc centre, which is always backdrop. Each
- * pixel is a blend of backdrop → border → fill by its coverage of the outer arc
- * (radius r) and inner arc (radius r-borderWidth). */
+/* Distance of pixel (px, py) within a radius-r corner box from the arc centre, with
+ * (flip_x, flip_y) orienting the box so all four corners reuse the upper-left math
+ * (centre at the box's inner corner). Coverage of an arc of radius `ra` is then
+ * clamp(ra + 0.5 - d): 1 fully inside, 0 fully outside, the fraction between giving
+ * the 1px anti-aliased band. */
+static float arc_dist(uint32_t px, uint32_t py, uint32_t r, leBool flip_x, leBool flip_y)
+{
+    uint32_t mx = flip_x ? (r - 1u - px) : px;
+    uint32_t my = flip_y ? (r - 1u - py) : py;
+    float    dx = (float)r - (float)mx - 0.5f;
+    float    dy = (float)r - (float)my - 0.5f;
+
+    return sqrtf(dx * dx + dy * dy);
+}
+
+static float arc_coverage(float d, float ra)
+{
+    float c = ra + 0.5f - d;
+
+    if (c < 0.0f) { return 0.0f; }
+    if (c > 1.0f) { return 1.0f; }
+    return c;
+}
+
+/* Repaint one radius×radius corner box. (ox, oy) is its top-left in screen space.
+ * bg is sampled from the box's outer pixel — the pixel furthest from the arc centre,
+ * which is always backdrop. Each pixel is a blend of backdrop → border → fill by its
+ * coverage of the outer arc (radius r) and inner arc (radius r-borderWidth). */
 static void blend_corner(int32_t ox, int32_t oy, uint32_t r, uint32_t bw,
                          leColor fill, leColor border, leColorMode mode,
                          leBool flip_x, leBool flip_y)
@@ -23,15 +45,10 @@ static void blend_corner(int32_t ox, int32_t oy, uint32_t r, uint32_t bw,
     {
         for (px = 0u; px < r; px++)
         {
-            uint32_t mx = flip_x ? (r - 1u - px) : px;
-            uint32_t my = flip_y ? (r - 1u - py) : py;
-            float    dx = (float)r - (float)mx - 0.5f;
-            float    dy = (float)r - (float)my - 0.5f;
-            float    d  = sqrtf(dx * dx + dy * dy);
+            float    d  = arc_dist(px, py, r, flip_x, flip_y);
             leColor  c;
 
-            float co = (float)r + 0.5f - d;   /* coverage inside the outer arc */
-            if (co < 0.0f) { co = 0.0f; } else if (co > 1.0f) { co = 1.0f; }
+            float co = arc_coverage(d, (float)r);   /* coverage inside the outer arc */
 
             if (bw == 0u)
             {
@@ -39,8 +56,7 @@ static void blend_corner(int32_t ox, int32_t oy, uint32_t r, uint32_t bw,
             }
             else
             {
-                float ci = (float)(r - bw) + 0.5f - d;   /* coverage inside the fill */
-                if (ci < 0.0f) { ci = 0.0f; } else if (ci > 1.0f) { ci = 1.0f; }
+                float ci = arc_coverage(d, (float)(r - bw));   /* coverage inside the fill */
 
                 c = leColorLerp(bg, border, (uint32_t)(co * 100.0f + 0.5f), mode);
                 c = leColorLerp(c,  fill,   (uint32_t)(ci * 100.0f + 0.5f), mode);
@@ -77,15 +93,9 @@ static void round_corner(int32_t ox, int32_t oy, uint32_t r, leColor bg,
     {
         for (px = 0u; px < r; px++)
         {
-            uint32_t mx = flip_x ? (r - 1u - px) : px;
-            uint32_t my = flip_y ? (r - 1u - py) : py;
-            float    dx = (float)r - (float)mx - 0.5f;
-            float    dy = (float)r - (float)my - 0.5f;
-            float    d  = sqrtf(dx * dx + dy * dy);
+            float co = arc_coverage(arc_dist(px, py, r, flip_x, flip_y), (float)r);
 
-            float co = (float)r + 0.5f - d;   /* coverage inside the outer arc */
             if (co >= 1.0f) { continue; }     /* fully inside → keep the image  */
-            if (co < 0.0f)  { co = 0.0f; }
 
             int32_t x = ox + (int32_t)px;
             int32_t y = oy + (int32_t)py;
@@ -108,4 +118,57 @@ void AaCorners_RenderRoundImage(const leRect *rect, uint32_t radius,
     round_corner(rect->x + rect->width - r, rect->y,                    radius, bg, mode, LE_TRUE,  LE_FALSE);
     round_corner(rect->x,                   rect->y + rect->height - r, radius, bg, mode, LE_FALSE, LE_TRUE);
     round_corner(rect->x + rect->width - r, rect->y + rect->height - r, radius, bg, mode, LE_TRUE,  LE_TRUE);
+}
+
+/* One corner of the surface flavour: same arc geometry, but the backdrop comes from
+ * `sample` per pixel and the writes go straight into the RGB565 surface. */
+static void surface_corner(uint16_t *surface, uint32_t stride,
+                           int32_t ox, int32_t oy, uint32_t r, uint32_t bw,
+                           leColor fill, leColor border,
+                           aa_backdrop_fn sample, void *ctx,
+                           leBool flip_x, leBool flip_y)
+{
+    uint32_t px, py;
+
+    for (py = 0u; py < r; py++)
+    {
+        for (px = 0u; px < r; px++)
+        {
+            int32_t x  = ox + (int32_t)px;
+            int32_t y  = oy + (int32_t)py;
+            float   d  = arc_dist(px, py, r, flip_x, flip_y);
+            float   co = arc_coverage(d, (float)r);
+            leColor bg = sample(ctx, x, y);
+            leColor c;
+
+            if (bw == 0u)
+            {
+                c = leColorLerp(bg, fill, (uint32_t)(co * 100.0f + 0.5f), LE_COLOR_MODE_RGB_565);
+            }
+            else
+            {
+                float ci = arc_coverage(d, (float)(r - bw));
+
+                c = leColorLerp(bg, border, (uint32_t)(co * 100.0f + 0.5f), LE_COLOR_MODE_RGB_565);
+                c = leColorLerp(c,  fill,   (uint32_t)(ci * 100.0f + 0.5f), LE_COLOR_MODE_RGB_565);
+            }
+
+            surface[(uint32_t)y * stride + (uint32_t)x] = (uint16_t)c;
+        }
+    }
+}
+
+void AaCorners_RenderSurface565(uint16_t *surface, uint32_t stride,
+                                const leRect *rect, uint32_t radius, uint32_t borderWidth,
+                                leColor fill, leColor border,
+                                aa_backdrop_fn sample, void *ctx)
+{
+    int32_t r = (int32_t)radius;
+
+    if (surface == NULL || sample == NULL || radius == 0u) { return; }
+
+    surface_corner(surface, stride, rect->x,                   rect->y,                    radius, borderWidth, fill, border, sample, ctx, LE_FALSE, LE_FALSE);
+    surface_corner(surface, stride, rect->x + rect->width - r, rect->y,                    radius, borderWidth, fill, border, sample, ctx, LE_TRUE,  LE_FALSE);
+    surface_corner(surface, stride, rect->x,                   rect->y + rect->height - r, radius, borderWidth, fill, border, sample, ctx, LE_FALSE, LE_TRUE);
+    surface_corner(surface, stride, rect->x + rect->width - r, rect->y + rect->height - r, radius, borderWidth, fill, border, sample, ctx, LE_TRUE,  LE_TRUE);
 }
