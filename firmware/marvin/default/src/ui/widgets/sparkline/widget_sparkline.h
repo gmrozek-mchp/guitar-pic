@@ -11,7 +11,7 @@ extern "C" {
 
 /* Time-series sparkline painted over a plain (transparent) leWidget: the samples
  * are drawn as a connected 2px polyline, oldest at the left edge, newest at the
- * right. Drawn with bounded per-column VertLine runs (no stock curve paint).
+ * right. Drawn as antialiased vector segments (no stock curve paint).
  *
  * Owns its own ring buffer — push a sample per refresh tick and the widget scrolls
  * itself. Single instance (the bus screen's utilization history). The line colour
