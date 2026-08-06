@@ -5,6 +5,7 @@
 #include "gfx/legato/legato.h"
 #include "gfx/legato/widget/legato_widget.h"
 #include "gfx/legato/string/legato_string_renderer.h"
+#include "gfx/legato/string/legato_stringutils.h"   /* measure a string to align it */
 
 #include "util/legato_utf8.h"
 
@@ -110,6 +111,13 @@ static void clamp_scroll(leSongListWidget *w)
     else if (w->scrollY > (float)mx) { w->scrollY = (float)mx; }
 }
 
+/* Draw `s` with `x` meaning the LEFT / CENTRE / RIGHT edge per `align`.
+ *
+ * The renderer cannot do this itself: `leUStringRenderRequest.align` only distributes
+ * multiple LINES within the string's own bounding box (drawUString draws each glyph at
+ * `req->x + lineX`, and lineX starts at that box's origin), so for a single-line string
+ * RIGHT and CENTRE behave exactly like LEFT and the text runs off to the right of the
+ * anchor. So resolve the alignment here by measuring the string and moving x. */
 static void draw_str(const leSongListWidget *w, const char *s, const leFont *font,
                      int x, int y, leHAlignment align, leColor color)
 {
@@ -124,12 +132,22 @@ static void draw_str(const leSongListWidget *w, const char *s, const leFont *fon
     len = utf8_to_lechar(s, buf, sizeof(buf) / sizeof(buf[0]));
     if (len == 0) { return; }
 
+    if (align != LE_HALIGN_LEFT)
+    {
+        leRect measured = leRect_Zero;
+
+        if (leStringUtils_GetRect(buf, len, font, &measured) == LE_SUCCESS)
+        {
+            x -= (align == LE_HALIGN_RIGHT) ? measured.width : (measured.width / 2);
+        }
+    }
+
     req.str    = buf;
     req.length = len;
     req.font   = font;
     req.x      = x;
     req.y      = y;
-    req.align  = align;
+    req.align  = LE_HALIGN_LEFT;
     req.color  = color;
     req.alpha  = 255;
     req.lookupTable = (w->widget.scheme != NULL)

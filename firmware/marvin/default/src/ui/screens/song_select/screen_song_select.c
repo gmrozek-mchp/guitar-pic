@@ -85,20 +85,39 @@ void ScreenSongSelect_InitSurface(void)
 
 #define DLG_R   12               /* rounded-xl */
 
-/* Header: the 32px close button (p-1.5 around a 20px icon) is its tallest child, so
- * it sets the row height. The last row is the border-b. */
-#define CLOSE_D    32
-#define HDR_H      (PAD_4 + CLOSE_D + PAD_4 + 1)
-#define BODY_Y     HDR_H
-#define BODY_H     ((int)SONGSEL_H - BODY_Y)
+/* The dialog's own 1px border, and the content box INSIDE it. Everything is laid out
+ * relative to that box, never to the surface: the mockup's box is `border` +
+ * `overflow-hidden`, so its content starts after the border and no child of it may
+ * paint on the border row. Getting this wrong is visible — the list's row separators
+ * span the list's full width, so a list at x=0 redraws the left border every 57px in
+ * the separator's colour. It also cost a pixel of accuracy everywhere: with the inset,
+ * the derivation lands exactly on the figma export's own values (art at 434,160;
+ * metrics at 314; SELECT at 587). */
+#define DLG_BORDER 1
+#define CONTENT_X  DLG_BORDER
+#define CONTENT_Y  DLG_BORDER
+#define CONTENT_W  ((int)SONGSEL_W - 2 * DLG_BORDER)
+#define CONTENT_H  ((int)SONGSEL_H - 2 * DLG_BORDER)
 
-#define LEFT_W     320                                   /* w-80 */
+/* Header: the 32px close button (p-1.5 around a 20px icon) is its tallest child, so
+ * it sets the row height. Its border-b is the row after it. */
+#define CLOSE_D    32
+#define HDR_H      (PAD_4 + CLOSE_D + PAD_4)
+#define HDR_RULE_Y (CONTENT_Y + HDR_H)
+#define BODY_Y     (HDR_RULE_Y + 1)
+#define BODY_H     (CONTENT_Y + CONTENT_H - BODY_Y)
+
+#define LEFT_W     320                                   /* w-80, incl. its border-r */
 #define RIGHT_W    224                                   /* w-56 */
-#define CENTER_X   LEFT_W
-#define CENTER_W   ((int)SONGSEL_W - LEFT_W - RIGHT_W)
-#define RIGHT_X    ((int)SONGSEL_W - RIGHT_W)
+#define LEFT_RULE_X  (CONTENT_X + LEFT_W - 1)
+#define CENTER_X     (LEFT_RULE_X + 1)
+#define RIGHT_X      (CONTENT_X + CONTENT_W - RIGHT_W)
+#define CENTER_W     (RIGHT_X - CENTER_X)
+#define CENTER_RULE_X (RIGHT_X - 1)
+#define CENTER_CONTENT_W (CENTER_W - 1)                  /* less the column's border-r */
 
 /* Left column: a SETLIST header strip (its last row the border-b) over the list. */
+#define LEFT_CONTENT_W  (LEFT_W - 1)                     /* less the column's border-r */
 #define SETLIST_H  (PAD_2 + TXT_XS + PAD_2 + 1)
 #define LIST_Y     (BODY_Y + SETLIST_H)
 /* Stops DLG_R short of the bottom edge: the list's row separators and selected-row
@@ -112,11 +131,13 @@ void ScreenSongSelect_InitSurface(void)
 #define LIST_ROW_H 57
 
 /* Center column: the album-art rect, then the 2x2 metric grid. ART_W/ART_H are an
- * ASSET property — the covers are decoded into 508x208 slots (game_art.c) — so the
- * column is sized around them rather than the reverse. */
+ * ASSET property — the covers are decoded into 508x208 slots (game_art.c) — while the
+ * mockup's art is its column's content width, 506. So the art is CENTRED in the column
+ * rather than placed at p-6: 23px of side padding instead of 24, which absorbs those
+ * 2px symmetrically and is where the mockup's own numbers land anyway. */
 #define ART_W      508
 #define ART_H      208
-#define ART_X      (CENTER_X + PAD_6)
+#define ART_X      (CENTER_X + (CENTER_CONTENT_W - ART_W) / 2)
 #define ART_Y      (BODY_Y + PAD_6)
 #define ART_R      DLG_R                                 /* rounded-xl, as the dialog */
 
@@ -146,7 +167,7 @@ void ScreenSongSelect_InitSurface(void)
 #define MODE_H       (2 * PAD_BTN_Y + TXT_XS + BTN_BORDER)   /* text-xs caption */
 #define MODE_PITCH   (MODE_H + PAD_2)
 #define SEL_H        56                                  /* py-4 + text-base, no border */
-#define SEL_Y        ((int)SONGSEL_H - PAD_4 - SEL_H)     /* mt-auto */
+#define SEL_Y        (CONTENT_Y + CONTENT_H - PAD_4 - SEL_H)   /* mt-auto */
 
 #define BTN_R         4                                  /* rounded */
 #define SEL_R         8                                  /* rounded-lg */
@@ -542,14 +563,16 @@ static void song_close_on_release(leButtonWidget *btn)
 
 static void build_header(void)
 {
-    int close_x = (int)SONGSEL_W - PAD_6 - CLOSE_D;
+    int title_x = CONTENT_X + PAD_6;
+    int close_x = CONTENT_X + CONTENT_W - PAD_6 - CLOSE_D;
 
-    (void)add_cap(Marvin_PANEL_SONG_SELECT, PAD_6, PAD_4, close_x - PAD_6 - PAD_2, CLOSE_D,
+    (void)add_cap(Marvin_PANEL_SONG_SELECT, title_x, CONTENT_Y + PAD_4,
+                  close_x - title_x - PAD_2, CLOSE_D,
                   stringID_SONG_SELECT_SELECT_SONG, &SCHEME_TEXT_ZINC_200);
 
     /* The close button has no resting fill (the mockup only tints it on hover), so
      * there is nothing for ButtonAA to round — radius 0, no border. */
-    leButtonWidget *close = add_button(Marvin_PANEL_SONG_SELECT, close_x, PAD_4,
+    leButtonWidget *close = add_button(Marvin_PANEL_SONG_SELECT, close_x, CONTENT_Y + PAD_4,
                                        CLOSE_D, CLOSE_D, 0u, &SCHEME_FILL_ZINC_900,
                                        0u, LE_FALSE);
     close->fn->setBackgroundType(close, LE_WIDGET_BACKGROUND_NONE);
@@ -557,23 +580,23 @@ static void build_header(void)
     close->fn->setReleasedImage(close, (leImage *)&BUTTON_ICON_CLOSE);
     close->fn->setReleasedEventCallback(close, song_close_on_release);
 
-    add_rule(0, HDR_H - 1, (int)SONGSEL_W, 1, &SCHEME_FILL_ZINC_700);   /* border-b */
+    add_rule(CONTENT_X, HDR_RULE_Y, CONTENT_W, 1, &SCHEME_FILL_ZINC_700);   /* border-b */
 }
 
 static void build_setlist(void)
 {
-    (void)add_dyn(Marvin_PANEL_SONG_SELECT, DYN_SETLIST, PAD_4, BODY_Y + PAD_2,
-                  LEFT_W - 2 * PAD_4, TXT_XS,
+    (void)add_dyn(Marvin_PANEL_SONG_SELECT, DYN_SETLIST, CONTENT_X + PAD_4, BODY_Y + PAD_2,
+                  LEFT_CONTENT_W - 2 * PAD_4, TXT_XS,
                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500);
-    add_rule(0, LIST_Y - 1, LEFT_W, 1, &SCHEME_FILL_ZINC_800);          /* border-b */
+    add_rule(CONTENT_X, LIST_Y - 1, LEFT_CONTENT_W, 1, &SCHEME_FILL_ZINC_800);  /* border-b */
 
     s_list = SongList_New();
     if (s_list == NULL) { return; }
 
     (void)GameCatalog_Reload();
 
-    s_list->fn->setPosition(s_list, 0, LIST_Y);
-    s_list->fn->setSize(s_list, LEFT_W - 1, LIST_H);   /* less the column's border-r */
+    s_list->fn->setPosition(s_list, CONTENT_X, LIST_Y);
+    s_list->fn->setSize(s_list, LEFT_CONTENT_W, LIST_H);
     /* Transparent: the dialog's zinc-900 panel shows through behind the rows. Match its
      * scheme so the glyph anti-alias blends against that real backdrop. */
     s_list->fn->setScheme(s_list, &SCHEME_FILL_ZINC_900);
@@ -759,9 +782,10 @@ void ScreenSongSelect_Setup(void)
     Marvin_PANEL_SONG_SELECT->fn->setBorderType(Marvin_PANEL_SONG_SELECT, LE_WIDGET_BORDER_LINE);
     Marvin_PANEL_SONG_SELECT->fn->setCornerRadius(Marvin_PANEL_SONG_SELECT, DLG_R);
 
-    /* Column rules (border-r), full body height. */
-    add_rule(LEFT_W - 1,              BODY_Y, 1, BODY_H, &SCHEME_FILL_ZINC_700);
-    add_rule(CENTER_X + CENTER_W - 1, BODY_Y, 1, BODY_H, &SCHEME_FILL_ZINC_700);
+    /* Column rules (border-r), spanning the body but stopping inside the dialog's own
+     * bottom border. */
+    add_rule(LEFT_RULE_X,   BODY_Y, 1, BODY_H, &SCHEME_FILL_ZINC_700);
+    add_rule(CENTER_RULE_X, BODY_Y, 1, BODY_H, &SCHEME_FILL_ZINC_700);
 
     build_header();
     build_setlist();
