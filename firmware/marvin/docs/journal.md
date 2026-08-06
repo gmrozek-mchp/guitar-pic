@@ -956,6 +956,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-06 (evening) — `node_art` moved `game/` → `ui/`
+
+Pure move, no behaviour change: `git mv` both files, `#include "game/node_art.h"` → `"ui/node_art.h"` in `app.c` / `ui_manager.c` / `screen_system.c` (and its own), include guard `MARVIN_NODE_ART_H` → `UI_NODE_ART_H` to match the `UI_*` convention its new neighbours use (`ui/dashboard_feed.h`, `ui/titlebar.h`, `ui/song_detail.h`), one path in `user.cmake`, and `ui_compositor.md` §6.1. Builds clean; `harmony.bin` is byte-for-byte the same size, as a move should be.
+
+- **The rule this establishes, written into §6.1:** an asset cache belongs beside the screens that consume it, not in the domain modules. `node_art` is keyed by **T1S PLCA node id** and read only by `screens/system` — nothing about it is game domain. `game_art` stays in `game/` because its key *is* game data, `(setlist, index)` from the recognizer. The only reason `node_art` was ever in `game/` is that it was bootstrapped from `game_art.c` and inherited its neighbourhood along with its shape.
+- §6.1's layout block also gained the `gfx/` line it had been missing since those primitives were added. The rest of that section is still stale (its "current contents" list predates several screens) — left alone rather than turned into a drive-by rewrite.
+- **Earlier journal entries still say `game/node_art.c`.** Deliberately not rewritten: they are dated records of what was true when written, and this entry is the forward pointer.
+
 ### 2026-08-06 (evening) — Splash bar sub-notes inside the artwork stage (and why they don't drive the bar)
 
 Greg, after two hardware runs: *"might be nice to have a few more message updates within loading artwork. this might have been the 2 option."* It was — and his own log then argued for doing **less** than option 2 proposed. Committed the bar first (`7aacb66`), then this.

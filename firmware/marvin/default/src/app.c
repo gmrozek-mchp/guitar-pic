@@ -52,7 +52,7 @@
 #include "results/results.h"
 #include "game/game_catalog.h"
 #include "game/game_art.h"
-#include "game/node_art.h"
+#include "ui/node_art.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -167,7 +167,7 @@ void APP_Initialize ( void )
 
     /* Board photos for the system-info screen, keyed by node id. State only here;
      * decoded from the card by NodeArt_LoadAll() alongside the album art. See
-     * game/node_art.h. */
+     * ui/node_art.h. */
     NodeArt_Initialize();
 
     /* The video pipeline, detector, actuator links, gameplay observer, console,

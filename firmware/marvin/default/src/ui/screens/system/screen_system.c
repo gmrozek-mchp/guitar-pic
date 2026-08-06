@@ -10,7 +10,7 @@
 #include "ui/titlebar.h"
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/button_aa/widget_button_aa.h"
-#include "game/node_art.h"
+#include "ui/node_art.h"
 
 #include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"

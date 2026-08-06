@@ -1,5 +1,5 @@
-#ifndef MARVIN_NODE_ART_H
-#define MARVIN_NODE_ART_H
+#ifndef UI_NODE_ART_H
+#define UI_NODE_ART_H
 
 #include <stdbool.h>
 #include <stdint.h>

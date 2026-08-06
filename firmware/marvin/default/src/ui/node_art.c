@@ -1,4 +1,4 @@
-#include "game/node_art.h"
+#include "ui/node_art.h"
 
 #include <stdio.h>     /* snprintf */
 #include <string.h>

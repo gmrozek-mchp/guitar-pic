@@ -251,9 +251,15 @@ a flat editor tab list reads unambiguously:
 ui/
   ui_manager.{c,h}                          orchestrator (mechanism; stays at root)
   manual_input.c                            input shim for the future manual-input screen
+  node_art.{c,h}                            board-photo cache for the system screen
   screens/<name>/   screen_<name>.{c,h}     one folder per panel (+ panel-specific helpers)
   widgets/<name>/   widget_<name>.{c,h}     reusable widgets, one folder each
+  gfx/              <primitive>.{c,h}       raw-surface drawing primitives (no widget)
 ```
+
+An asset cache belongs beside the screens that consume it, not in the domain modules: `node_art`
+is keyed by **T1S PLCA node id** and read only by `screens/system`, so it lives here. `game_art`
+stays in `game/` because its key *is* game data — `(setlist, index)` from the recognizer.
 
 Current contents: `screens/dashboard/screen_dashboard`, `screens/video/screen_video`,
 `screens/navigation/screen_navigation`, `screens/song_select/screen_song_select`,

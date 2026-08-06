@@ -22,7 +22,7 @@
 #include "log.h"
 #include "flash/settings.h"   /* persisted backlight % */
 #include "game/game_art.h"    /* GameArt_LoadAll — cover-art preload during splash */
-#include "game/node_art.h"    /* NodeArt_LoadAll — board-photo preload during splash */
+#include "ui/node_art.h"     /* NodeArt_LoadAll — board-photo preload during splash */
 #include "storage/storage.h"  /* Storage_Mount — mounted explicitly during the splash */
 #include "health/health_monitor.h"  /* armed at end of boot (HealthMonitor_NotifyReady) */
 #include "video/video.h"      /* capture producer — compositor owns HEO display */
