@@ -2,6 +2,8 @@
 
 #include <math.h>
 
+#include "ui/gfx/vec_draw.h"
+
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/renderer/legato_renderer.h"
 
@@ -25,45 +27,46 @@ static int32_t       s_degrees;
  * sweeping up and to the left fills the widget; MARGIN is the clearance left
  * outside the track. At the mockup's 157x157 this yields its exact numbers:
  * centre (137,137), radius 108, 38px track. */
-#define INSET      20.0f
-#define MARGIN     10.0f
-#define STROKE     38.0f
+#define INSET      20
+#define MARGIN     10
+#define STROKE     38
 #define THUMB_R    12.0f
 #define RIM_HALF    1.25f      /* SVG stroke-width 2.5 straddles the boundary */
 
+/* Outer/inner thumb radii, Q16.16. The parentheses around the argument are load
+ * bearing: LE_REAL_I16_FROM_FLOAT does not add its own. */
+#define THUMB_RIM_R    LE_REAL_I16_FROM_FLOAT((THUMB_R + RIM_HALF))
+#define THUMB_BODY_R   LE_REAL_I16_FROM_FLOAT((THUMB_R - RIM_HALF))
+
 #define DEG2RAD   0.01745329f
+
+/* The swept quadrant runs up and to the left, which is 90°..180° in the vector API's
+ * frame (0° to the right, counter-clockwise), so a tilt of d degrees off the left ray
+ * sits at 180 - d. */
+#define TILT_DEG16(d)   UI_VEC_DEG16(180 - (d))
 
 static float clampf(float v, float lo, float hi)
 {
     return v < lo ? lo : (v > hi ? hi : v);
 }
 
-/* Coverage of a shape whose boundary is at sdf == 0, anti-aliased over one pixel. */
-static float coverage(float sdf)
+/* Arc centre and radius in screen space. False if the widget is too small to draw. */
+static leBool arc_geom(const leRect *rect, leVector2 *centre, leReal_i16 *radius)
 {
-    return clampf(0.5f - sdf, 0.0f, 1.0f);
-}
+    int32_t r;
 
-static void blend(int32_t x, int32_t y, leColor c, float cov, leColorMode mode)
-{
-    if (cov <= 0.0f) { return; }
-    if (cov > 1.0f)  { cov = 1.0f; }
+    if (rect->width < 40 || rect->height < 40) { return LE_FALSE; }
 
-    leColor bg = leRenderer_GetPixel(x, y);
-    leRenderer_PutPixel(x, y, leColorLerp(bg, c, (uint32_t)(cov * 100.0f + 0.5f), mode));
-}
+    r = ((rect->width < rect->height) ? rect->width : rect->height)
+        - INSET - MARGIN - STROKE / 2;
 
-/* Round cap coverage: a disc of radius STROKE/2 centred on the arc endpoint at
- * `deg`, in the (dx, dy-up) frame relative to the arc centre. */
-static float cap_cov(float dx, float dy, float r, float deg)
-{
-    float a  = deg * DEG2RAD;
-    float ex = -r * cosf(a);
-    float ey =  r * sinf(a);
-    float ux = dx - ex;
-    float uy = dy - ey;
+    if (r < STROKE) { return LE_FALSE; }
 
-    return coverage(sqrtf(ux * ux + uy * uy) - STROKE / 2.0f);
+    *radius   = LE_REAL_I16_FROM_INT(r);
+    centre->x = LE_REAL_I16_FROM_INT(rect->x + rect->width  - INSET);
+    centre->y = LE_REAL_I16_FROM_INT(rect->y + rect->height - INSET);
+
+    return LE_TRUE;
 }
 
 static void tilt_paint(leWidget *wgt)
@@ -72,79 +75,112 @@ static void tilt_paint(leWidget *wgt)
 
     if (wgt->status.drawState != LE_WIDGET_DRAW_STATE_DONE) { return; }
 
-    leRect rect;
-    wgt->fn->rectToScreen(wgt, &rect);
-    if (rect.width < 40 || rect.height < 40) { return; }
-
+    leRect      rect;
+    leVector2   centre;
+    leReal_i16  radius;
     leColorMode mode = leRenderer_CurrentColorMode();
-    leColor track = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_TRACK);
-    leColor fill  = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_FILL);
-    leColor thumb = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_THUMB);
-    leColor rim   = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_RIM);
 
-    float cx = (float)rect.x + (float)rect.width  - INSET;
-    float cy = (float)rect.y + (float)rect.height - INSET;
-    float r  = fminf((float)rect.width, (float)rect.height) - INSET - MARGIN - STROKE / 2.0f;
-    if (r < STROKE) { return; }
+    wgt->fn->rectToScreen(wgt, &rect);
 
-    float tilt = (float)s_degrees;
+    if (!arc_geom(&rect, &centre, &radius)) { return; }
 
-    for (int32_t py = 0; py < rect.height; py++)
+    leVectorArc_StrokeAttr arc =
     {
-        for (int32_t px = 0; px < rect.width; px++)
-        {
-            int32_t sx = rect.x + px;
-            int32_t sy = rect.y + py;
-            float   dx = (float)sx + 0.5f - cx;
-            float   dy = cy - ((float)sy + 0.5f);      /* positive above the centre */
+        .color    = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_TRACK),
+        .alpha    = 255u,
+        .width    = LE_REAL_I16_FROM_INT(STROKE),
+        .hardness = LE_REAL_I16_ONE,
+        .mask     = LE_STROKEMASK_ALL,
+        .aaMode   = UI_VEC_AA,
+        .capStyle = LE_CAPSTYLE_ROUND,
+    };
 
-            /* Annulus coverage, anti-aliased on both edges. */
-            float d    = sqrtf(dx * dx + dy * dy);
-            float ring = coverage(fabsf(d - r) - STROKE / 2.0f);
+    /* Both arcs start at their high-tilt end and sweep back to tilt 0 (the left ray),
+     * since the vector API's spans run counter-clockwise. */
+    leDraw_VectorArcStroke(&centre, radius, TILT_DEG16(90), UI_VEC_DEG16(90), &arc);
 
-            /* The sweep occupies the quadrant dx <= 0, dy >= 0; the round caps cover
-             * the two straight ends, so a hard quadrant test is enough here. */
-            float body = (dx <= 0.0f && dy >= 0.0f) ? ring : 0.0f;
-
-            float cov = fmaxf(body, fmaxf(cap_cov(dx, dy, r, 0.0f),
-                                          cap_cov(dx, dy, r, 90.0f)));
-            if (cov > 0.0f) { blend(sx, sy, track, cov, mode); }
-
-            if (tilt > 0.0f)
-            {
-                /* Fill spans 0..tilt of the same annulus, round-capped at both ends. */
-                float fcov = 0.0f;
-                if (body > 0.0f)
-                {
-                    float deg = atan2f(dy, -dx) / DEG2RAD;
-                    if (deg <= tilt) { fcov = body; }
-                }
-                fcov = fmaxf(fcov, fmaxf(cap_cov(dx, dy, r, 0.0f),
-                                         cap_cov(dx, dy, r, tilt)));
-                blend(sx, sy, fill, fcov, mode);
-            }
-
-            /* Thumb: white rim disc, then the body inset by half the rim width. */
-            float a  = tilt * DEG2RAD;
-            float ux = dx - (-r * cosf(a));
-            float uy = dy - ( r * sinf(a));
-            float du = sqrtf(ux * ux + uy * uy);
-
-            blend(sx, sy, rim,   coverage(du - (THUMB_R + RIM_HALF)), mode);
-            blend(sx, sy, thumb, coverage(du - (THUMB_R - RIM_HALF)), mode);
-        }
+    if (s_degrees > 0)
+    {
+        arc.color = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_FILL);
+        leDraw_VectorArcStroke(&centre, radius, TILT_DEG16(s_degrees),
+                               UI_VEC_DEG16(s_degrees), &arc);
     }
+
+    /* Thumb: white rim disc, then the body inset by half the rim width. */
+    leVector2 thumb;
+    UiVec_ArcPoint(&centre, radius, TILT_DEG16(s_degrees), &thumb);
+
+    leVectorArc_FillAttr disc =
+    {
+        .color    = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_RIM),
+        .alpha    = 255u,
+        .hardness = LE_REAL_I16_ONE,
+        .aaMode   = UI_VEC_AA,
+    };
+
+    leDraw_VectorArcFill(&thumb, THUMB_RIM_R, 0, UI_VEC_FULL_CIRCLE, &disc);
+
+    disc.color = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_THUMB);
+    leDraw_VectorArcFill(&thumb, THUMB_BODY_R, 0, UI_VEC_FULL_CIRCLE, &disc);
+}
+
+/* Damage only what a move from `from` to `to` degrees can change: the round-cap box at
+ * each of the two angles. That box also holds the thumb (a smaller disc on the same
+ * centre), and since cos and sin are monotonic across the swept quadrant the two boxes
+ * together bound the sector between the angles — so nothing else on the arc moves. One
+ * pixel of margin for the anti-aliased fringe.
+ *
+ * Worth the arithmetic because the vector rasterizer clips its scan to the damage rect:
+ * a one-degree drag step scans ~1/9 of the widget and lands a result identical to a
+ * full repaint. A full invalidate would repaint all 157x157 for a 2 px thumb move. */
+static void damage_between(int32_t from, int32_t to)
+{
+    leRect     rect;
+    leVector2  centre;
+    leVector2  a;
+    leVector2  b;
+    leReal_i16 radius;
+    int32_t    half = STROKE / 2 + 1;
+    int32_t    ax, ay, bx, by;
+    leRect     d;
+
+    s_arc->fn->rectToScreen(s_arc, &rect);
+
+    if (!arc_geom(&rect, &centre, &radius))
+    {
+        s_arc->fn->invalidate(s_arc);
+        return;
+    }
+
+    UiVec_ArcPoint(&centre, radius, TILT_DEG16(from), &a);
+    UiVec_ArcPoint(&centre, radius, TILT_DEG16(to),   &b);
+
+    ax = leReal_i16_ToInt(a.x);
+    ay = leReal_i16_ToInt(a.y);
+    bx = leReal_i16_ToInt(b.x);
+    by = leReal_i16_ToInt(b.y);
+
+    d.x      = ((ax < bx) ? ax : bx) - half;
+    d.y      = ((ay < by) ? ay : by) - half;
+    d.width  = (((ax > bx) ? ax : bx) + half) - d.x + 1;
+    d.height = (((ay > by) ? ay : by) + half) - d.y + 1;
+
+    leRectClip(&d, &rect, &d);
+
+    s_arc->fn->_damageArea(s_arc, &d);
 }
 
 static void value_set(int32_t deg)
 {
+    int32_t prev = s_degrees;
+
     if (deg <  0) { deg =  0; }
     if (deg > 90) { deg = 90; }
     if (deg == s_degrees) { return; }
 
     s_degrees = deg;
 
-    if (s_arc != NULL) { s_arc->fn->invalidate(s_arc); }
+    if (s_arc != NULL) { damage_between(prev, deg); }
     if (s_on_change != NULL) { s_on_change(s_degrees); }
 }
 

@@ -1,10 +1,8 @@
 #include "ui/widgets/gauge/widget_gauge.h"
 
-#include <math.h>
+#include "ui/gfx/vec_draw.h"
 
-#include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/core/legato_scheme.h"
-#include "gfx/legato/renderer/legato_renderer.h"
 
 /* Shared vtable copy + captured original paint (the PanelAA pattern). */
 static leWidgetVTable s_vt;
@@ -18,13 +16,10 @@ static uint32_t        s_permille;
 static const leScheme *s_track;
 static const leScheme *s_fill;
 
-#define PI_F  3.14159265f
-
-/* Paint the arc after the (empty, transparent) widget paints. Each pixel's
- * coverage of the ring is 1 - |d - r| / (t/2), so the inner and outer edges are
- * anti-aliased against whatever is already in the framebuffer; the sweep angle
- * decides whether it takes the fill or the track colour. Bounded by the widget
- * rect — no stock rounded/arc paint involved. */
+/* Paint the arc after the (empty, transparent) widget paints: the full 180° track,
+ * then the fill over its left end. The vector rasterizer anti-aliases both radial
+ * edges and the fill's leading edge against whatever is already in the framebuffer,
+ * and clips to the widget's damage rect — no stock rounded/arc paint involved. */
 static void gauge_paint(leWidget *wgt)
 {
     s_orig_paint(wgt);
@@ -39,45 +34,36 @@ static void gauge_paint(leWidget *wgt)
     wgt->fn->rectToScreen(wgt, &rect);
     if (rect.width < 8 || rect.height < 6) { return; }
 
-    leColorMode mode = leRenderer_CurrentColorMode();
-    leColor track = leScheme_GetRenderColor(s_track, LE_SCHM_BASE);
-    leColor fill  = leScheme_GetRenderColor(s_fill,  LE_SCHM_BASE);
+    leReal_i16 t = LE_REAL_I16_FROM_INT((int32_t)s_thickness);
+    leReal_i16 r = LE_REAL_I16_FROM_INT(rect.width) / 2 - t / 2 - LE_REAL_I16_ONE;
 
-    float t    = (float)s_thickness;
-    float cx   = (float)rect.x + (float)rect.width / 2.0f;
-    float r    = (float)rect.width / 2.0f - t / 2.0f - 1.0f;
-    float cy   = (float)rect.y + r + t / 2.0f + 1.0f;
-    float pct  = (float)s_permille / 1000.0f;
-    int   ymax = (int)(r + t / 2.0f + 2.0f);
+    if (r <= t / 2) { return; }
 
-    if (ymax > rect.height) { ymax = rect.height; }
+    leVector2 centre = { .x = LE_REAL_I16_FROM_INT(rect.x) +
+                              LE_REAL_I16_FROM_INT(rect.width) / 2,
+                         .y = LE_REAL_I16_FROM_INT(rect.y) + r + t / 2 + LE_REAL_I16_ONE };
 
-    for (int py = 0; py < ymax; py++)
+    /* The fill grows from the left end (180°) clockwise, so it ends where the track's
+     * remaining span begins. */
+    int32_t span = (int32_t)((s_permille * (uint32_t)UI_VEC_DEG16(180)) / 1000u);
+
+    leVectorArc_StrokeAttr arc =
     {
-        for (int px = 0; px < rect.width; px++)
-        {
-            float fx = (float)(rect.x + px) + 0.5f;
-            float fy = (float)(rect.y + py) + 0.5f;
-            float dx = fx - cx;
-            float dy = cy - fy;          /* positive above the centre */
+        .color    = leScheme_GetRenderColor(s_track, LE_SCHM_BASE),
+        .alpha    = 255u,
+        .width    = t,
+        .hardness = LE_REAL_I16_ONE,
+        .mask     = LE_STROKEMASK_ALL,
+        .aaMode   = UI_VEC_AA,
+        .capStyle = LE_CAPSTYLE_SQUARE,
+    };
 
-            if (dy < -0.5f) { continue; }   /* below the flat side */
+    leDraw_VectorArcStroke(&centre, r, 0, UI_VEC_DEG16(180), &arc);
 
-            float d   = sqrtf(dx * dx + dy * dy);
-            float cov = 1.0f - fabsf(d - r) / (t / 2.0f);
-            if (cov <= 0.0f) { continue; }
-            if (cov > 1.0f)  { cov = 1.0f; }
-
-            /* atan2 gives π at the left end, 0 at the right → sweep fraction. */
-            float frac = 1.0f - (atan2f((dy < 0.0f) ? 0.0f : dy, dx) / PI_F);
-            leColor c  = (frac <= pct) ? fill : track;
-
-            int32_t x = rect.x + px;
-            int32_t y = rect.y + py;
-            leColor bg = leRenderer_GetPixel(x, y);
-            leRenderer_PutPixel(x, y,
-                                leColorLerp(bg, c, (uint32_t)(cov * 100.0f + 0.5f), mode));
-        }
+    if (span > 0)
+    {
+        arc.color = leScheme_GetRenderColor(s_fill, LE_SCHM_BASE);
+        leDraw_VectorArcStroke(&centre, r, UI_VEC_DEG16(180) - span, span, &arc);
     }
 }
 

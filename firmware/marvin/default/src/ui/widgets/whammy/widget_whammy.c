@@ -65,8 +65,16 @@ static void whammy_paint(leWidget *wgt)
     if (wgt->status.drawState != LE_WIDGET_DRAW_STATE_DONE) { return; }
 
     leRect rect;
+    leRect scan;
     wgt->fn->rectToScreen(wgt, &rect);
     if (rect.width < 16 || rect.height < 8) { return; }
+
+    /* Scan only the damaged part of the widget — the geometry below still comes from
+     * the full rect, but a drag step damages a narrow column band, and every pixel
+     * outside it would have its write culled after paying for the coverage maths. */
+    leRenderer_GetClipRect(&scan);
+    leRectClip(&rect, &scan, &scan);
+    if (scan.width <= 0 || scan.height <= 0) { return; }
 
     leColorMode mode = leRenderer_CurrentColorMode();
     leColor track = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_TRACK);
@@ -91,14 +99,12 @@ static void whammy_paint(leWidget *wgt)
     float fill_hw = (fb - fa) / 2.0f + hh;      /* pad to a capsule end cap */
     float fill_cx = (fa + fb) / 2.0f;
 
-    for (int32_t py = 0; py < rect.height; py++)
+    for (int32_t sy = scan.y; sy < scan.y + scan.height; sy++)
     {
-        for (int32_t px = 0; px < rect.width; px++)
+        for (int32_t sx = scan.x; sx < scan.x + scan.width; sx++)
         {
-            int32_t sx = rect.x + px;
-            int32_t sy = rect.y + py;
-            float   fx = (float)sx + 0.5f;
-            float   fy = (float)sy + 0.5f;
+            float fx = (float)sx + 0.5f;
+            float fy = (float)sy + 0.5f;
 
             /* Track capsule; everything else is clipped to it. */
             float d_track = rrect_sdf(fx, fy, cx, cy, hw, hh, hh);
@@ -129,15 +135,56 @@ static void whammy_paint(leWidget *wgt)
     }
 }
 
+/* Damage only the column band a move from `from` to `to` can change: the thumb capsule
+ * at either value, widened by the fill capsule's end cap (half the widget height, which
+ * is how far the fill's rounded end reaches past the thumb centre) plus a pixel of AA
+ * margin. Full height, since every shape spans the track. Both the fill's far edge and
+ * the tick at centre fall inside this band, and paint scans only the damaged part — so
+ * a drag step costs a fraction of the 273x64 rect. */
+static void damage_between(int32_t from, int32_t to)
+{
+    leRect rect;
+    leRect d;
+
+    s_track->fn->rectToScreen(s_track, &rect);
+
+    float hw   = (float)rect.width  / 2.0f;
+    float hh   = (float)rect.height / 2.0f;
+    float cx   = (float)rect.x + hw;
+    float span = hw - THUMB_W / 2.0f;
+
+    if (span < 1.0f)
+    {
+        s_track->fn->invalidate(s_track);
+        return;
+    }
+
+    float xa = cx + span * (float)from / 100.0f;
+    float xb = cx + span * (float)to   / 100.0f;
+    float lo = fminf(xa, xb) - hh - 1.0f;
+    float hi = fmaxf(xa, xb) + hh + 1.0f;
+
+    d.x      = (int32_t)lo - 1;                 /* truncation is toward zero; -1 floors */
+    d.y      = rect.y;
+    d.width  = ((int32_t)hi + 1) - d.x + 1;
+    d.height = rect.height;
+
+    leRectClip(&d, &rect, &d);
+
+    s_track->fn->_damageArea(s_track, &d);
+}
+
 static void value_set(int32_t v)
 {
+    int32_t prev = s_value;
+
     if (v < -100) { v = -100; }
     if (v >  100) { v =  100; }
     if (v == s_value) { return; }
 
     s_value = v;
 
-    if (s_track != NULL) { s_track->fn->invalidate(s_track); }
+    if (s_track != NULL) { damage_between(prev, v); }
     if (s_on_change != NULL) { s_on_change(s_value); }
 }
 

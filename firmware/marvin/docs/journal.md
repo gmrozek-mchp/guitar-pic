@@ -27,9 +27,54 @@ Greg asked to try the DMA-disable idea from yesterday's research, and it works o
 
 ---
 
-**FOLLOW-UPS — next session (opened 2026-08-05, Greg).** Three items, in the order they came up. **Item 3 is now DONE — see the 2026-08-06 entry above.**
+**2026-08-06 (last) — Tilt and whammy drag lag: the cause is that a 2-pixel thumb move repaints the whole widget. Both now damage only the band that can change — measured **9× less work for tilt**, **3.8× for whammy**, and the framebuffer comes out **bit-identical** to a full repaint. CONFIRMED ON HARDWARE: Greg — *"significantly improved!"*.** His report that started it: *"tilt is a bit sluggish (it was sluggish before too). Whammy is better but also a bit sluggish."*
 
-**1. Sweep the rest of the firmware for the string-renderer alignment bug.** Fixed in `widget_song_list.c` today (`af5825b`), but the cause is general: `leUStringRenderRequest.align` **only distributes multiple LINES within the string's own bounding box** — `drawUString` draws every glyph at `req->x + lineX` with `lineX` starting at that box's origin — so for a **single-line** string `LE_HALIGN_RIGHT` and `LE_HALIGN_CENTER` behave exactly like `LEFT` and the text runs rightward off the anchor. Any hand-drawn text that passes RIGHT/CENTRE straight to the renderer is mis-placed, and it only *looks* fine when there happens to be room to the right. `screen_bus.c` is the prime suspect — it right-aligns a lot of numbers into table columns. The fix pattern is in `draw_str`: measure with `leStringUtils_GetRect` and resolve the alignment to an explicit left edge. Note the stock **widgets** are fine (`leLabelWidget` etc. compute their own rect), so this is only about direct `leStringRenderer_*` callers.
+Ruled out first, so it is on record: **the send path is not the problem.** `tilt_changed` → `Fauxmote_SendTilt` and `whammy_changed` → `send_guitar` both just latch state under a critical section and give a semaphore to the TX task — no blocking I/O in the Legato task's context.
+
+The actual budget per drag step: `SYS_INPUT_Tasks` polls touch every 10 ms, `LEGATO_Tasks` ticks every 10 ms, and with `LE_PREEMPTION_LEVEL 0` `leRenderer_Paint` runs the **entire frame synchronously** inside that tick. So latency is ~20 ms of scheduling plus the paint — and the paint was repainting all 157×157 of the tilt (and all 273×64 of the whammy) because `value_set` called `invalidate`, which damages the widget's whole rect. Legato already coalesces touch-move events into one (`leInput_InjectTouchMoved` overwrites the pending event), so there is no queue backlog to blame: it is purely paint cost per frame.
+
+- **`widget_tilt` — full repaint 44 476 pixels scanned / 355 808 point evaluations; a 1° step now 4 786 / 38 288.** The damage rect is the union of the round-cap box at the old and new angle. That box also contains the thumb (a smaller disc on the same centre), and because cos/sin are monotonic across the swept quadrant the two boxes bound the sector between the angles too — so it is provably everything that can change. **This only works because of yesterday's vector conversion:** the old float paint scanned its whole rect regardless of the clip rect (`leRenderer_PutPixel` culled the *writes*, after paying for the coverage maths), whereas the vector kernel clips its **scan area** up front. The review predicted "partial repaints become safe again"; they are also now the fast path.
+- **`widget_whammy` — 17 472 px / 50 824 `rrect_sdf` (each a `sqrtf`) → 4 480 / 13 440 for a 1-step move.** Still the float paint, so it needed both halves: the loop is now bounded to `rect ∩ clip`, and `value_set` damages a full-height column band around the two thumb positions. Bounding the loop is invisible and free — those pixels were being computed and then culled.
+- **Verified, not assumed:** the host harness renders angle/value A, damages only the computed rect, refills it with the parent background (what Legato's parent repaint does) and repaints — then diffs against a full repaint at B. **0 pixels differ, worst 0**, across tilt 44→45, 45→46, 40→50, 0→1, 89→90, 0→90 and whammy 0→1, 20→21, −1→1, −50→50, 99→100, 60→0, 0→−1. Two consecutive drag rects always overlap, and `addDamageRectToList` merges overlapping rects, so a burst of changes between paints cannot fragment the list.
+- Cost: **+992 B** flash (`.text` 1 372 052 → 1 373 044).
+
+**Worth deciding separately (not changed):** the whammy's fill capsule is padded by `hh` — half the widget height, 32 px — so **the fill leads the thumb by 32 px** and a 65-px lozenge pops in at ±1 rather than growing from nothing. Rendered it to be sure; that is what the code does today. Fixing it (`fill_hw = (fb − fa)/2` with radius `min(hh, fill_hw)`) would make the fill end at the thumb *and* shrink the damage band from 70 px to ~20, tripling the whammy's win — but it is an appearance change to a widget nobody complained about, so it is Greg's call.
+
+**If ~20 ms of scheduling latency still reads as lag** after this, the remaining lever is the two `vTaskDelay(10)` loops in the MCC-generated `config/default/tasks.c` (`LEGATO_Tasks`, `SYS_INPUT_Tasks`). Halving them would halve the fixed part, at the cost of another MCC re-apply patch on a generated file — worth doing only if the panel still feels slow with the paint cost gone.
+
+---
+
+**2026-08-06 (earlier) — Follow-up 4 landed: `tilt`, `gauge`, the `panel_aa` dot and `fret` now draw with Legato's vector rasterizer. Every per-pixel `sqrtf`/`cosf`/`sinf`/`atan2f` is gone from all four paint paths; +7 912 B flash. A/B'd against the old float code on a HOST harness, then run on the panel later the same day (the drag-lag work below was measured on it). Not explicitly signed off: the gauge's now-crisp ring, and `marvin-perf` numbers.**
+
+The four steps of the adoption order are done in order, one widget each, all four verified pixel-against-pixel (see below). Shared conventions live in a new header-only [`ui/gfx/vec_draw.h`](../default/src/ui/gfx/vec_draw.h): `UI_VEC_AA` (the project-wide 8X pin — one place to drop to 4X if profiling asks), `UI_VEC_DEG16`, a `leRectF` builder, and an arc-point helper. Header-only on purpose: a new `.c` would mean editing `user.cmake`, and the vector `.o` files were already being compiled and thrown away by `--gc-sections`.
+
+- **`widget_tilt`** — the whole 157×157 rect scan with ~8 soft-float transcendentals per pixel is now four calls: `ArcStroke` for the track (90°..180°, round caps), `ArcStroke` for the fill, and two `ArcFill` discs for the thumb. The angle mapping is the thing to remember: the vector API is 0° right / counter-clockwise, so the widget's "tilt d degrees off the left ray" is vector angle **180 − d**, and both arcs therefore start at their high-tilt end. `value_from_point` keeps its `atan2f` (once per touch).
+- **`widget_gauge`** — two `ArcStroke`s, and this one **changes how it looks**, deliberately. The old coverage was `1 − |d − r|/(t/2)`: a *feathered* ring, fully opaque only on the exact centre line and fading to nothing over 3.5 px each side. The vector stroke is crisp, so a `thickness = 7` gauge now reads as a solid 7 px ring instead of a soft smear. That is what the mockup's stroke width was asking for and I think it is the right reading — but it is the one change here that is a taste call rather than a fidelity fix, so look at it first. Making it soft again would mean `hardness < 1`, which is exactly the poisoned path (vendor bug (a)); dropping `thickness` to 5 is the cheap knob if it reads heavy.
+- **`panel_aa` dot** — now draws a true **capsule**, which retires both the sampled-backdrop hack (`leRenderer_GetPixel(rect.x - 1, …)`) and its `rect.x > 0` guard, and covers the case the review missed: this vtable also serves `screen_bus`'s **pill tracks**, not just square dots. A single rounded `RectFill` cannot express either shape (see the clamp bug below), so it is a band `RectFill` plus one `ArcFill` per end, degenerating to a single disc when the widget is square. `PanelAA_EnableDot` now **clears the widget's background type** — the shape blends against what is behind it, so a skin fill underneath would leave square corners. Documented in the header; the call sites still ask for `BACKGROUND_FILL` and are simply superseded.
+- **`widget_fret`** — one `RectFill` idle (`alpha = 191` replaces `cov * 0.75f`), or ring-then-inset-body when held. `rrect_sdf` and the last `sqrtf` are gone.
+
+**Verified with a host-side A/B harness, since a screendump needs the panel.** The vendor vector tree compiles natively with one shim header standing in for `legato_renderer.h` (plus a stub `device.h`) — so old float path and new vector path can render the same widget into the same RGB888 canvas under stubs that mimic what `paintWidget` hands a paint (frame rect = canvas, **clip rect = the widget's damage rect**), and be differenced. Results, over tilt at 0/1/30/45/89/90°, gauge at 0/1/250/500/999/1000‰, fret idle+held, a 12×12 dot and a 100×8 pill: **tilt** ≤ 40/255 worst channel, mean 4–11, and only on 1-px edges; **fret idle** 7 122 pixels differ by ≤ **8** (pure alpha rounding, 0.75 → 191/255); **fret held** 84 px, worst 31; **dot** 38 px, worst 31; **pill** 28 px, worst 7. Gauge differs by design as described. **No case painted a single pixel outside the widget rect** — worth checking explicitly, because the tilt arc's *scan* box is the full circle (254×254, larger than the widget) and only the clip rect keeps it in bounds.
+
+- **The harness earned its keep immediately: it caught a bug the compiler could not.** `LE_REAL_I16_FROM_FLOAT(f)` is `((int32_t)(f * 65536))` — **no parentheses around the argument** — so `LE_REAL_I16_FROM_FLOAT(THUMB_R + RIM_HALF)` expanded to `12.0f + 1.25f * 65536` and the thumb rim came out at radius **1.25 px instead of 13.25**. On screen that is a one-pixel dot where a 26-px disc belongs; in a diff it is unmissable. The parens at the call site are now load-bearing and commented. Legato's own uses of that macro are all `/` and `*`, which is why nothing in-tree ever tripped it.
+- The harness is **ephemeral** (built in `$TMPDIR`), because it duplicates the old float paints that this commit deletes. The reusable part is the recipe: shim `gfx/legato/renderer/legato_renderer.h` down to `GetFrameRect`/`GetClipRect`/`BlendPixel`/`PutPixel`/`CurrentColorMode`, add an empty `device.h`, and compile the ten `gfx/legato/vector/*.c` plus `legato_real_i16/u8`, `legato_rect`, `legato_math`, `legato_color_*`. Worth landing as a tool if we do the remaining widgets — offered, not taken.
+
+**Three more findings about the vendor vector code, on top of the two bugs §5 of the review already lists.** All three change what is *possible*, so they matter more than the two known ones:
+
+- **`leDraw_VectorRectFill` clamps every corner radius to `min(w,h)/4`, not `min(w,h)/2`** — `_clampCorners` halves the `leRectF` extents, which are *already* half-extents. So a **capsule is not expressible** as a rounded rect fill at all. This kills the review's §4.5 plan for `bar` (capsule track + capsule fill) exactly as written, and it is why the dot is band-plus-discs. Our fret radius (8 on a 112×64 pad, clamp 16) is unaffected.
+- **`widget_whammy` cannot move at all**, and not for a perf reason: every shape in it is a capsule (same clamp), *and* the fill, tick and thumb are all multiplied by the track's coverage (`* cov`) so they clip to the capsule. The vector API has no clip-rect setter — `leRenderer_GetClipRect` is read-only — so there is no way to express "inside the track only". It stays hand-rolled; it is the widget that would have benefited second-most.
+- **The review's "shrinks the scan to each shape's own bbox" is wrong for arcs.** `_calculateScanArea` uses the **full circle** at `radius + halfWidth`, ignoring the span — the tilt arc scans 254×254 where the old loop scanned 157×157. It only comes out even because the renderer's clip rect is the widget's damage rect. Fine here, but it means an arc drawn small inside a large widget scans far more than it paints.
+
+**Still owed on this item:** the on-panel look, `marvin-perf` before/after on tilt and gauge (the whole premise — fixed-point-with-8-samples beating soft-float-with-1-sample — is still plausible-not-proven), and the note to the Legato developer, which now carries five items: §5's two bugs, the `arc_fill` `ranges[1]` nit, the corner-radius clamp, and the `FROM_FLOAT` macro. `sparkline` stays unconverted on purpose: it is the most frequently repainted of the custom widgets, and swapping N cheap `leRenderer_VertLine` fills for N supersampled OBB scans is the one place the vector API is plausibly *slower*.
+
+---
+
+**FOLLOW-UPS (opened 2026-08-05, Greg).** **Items 1, 3 and 4 are DONE (2026-08-06) — 4's four widgets are converted, host-A/B'd and running on the panel; `marvin-perf` numbers and a verdict on the gauge's crisp ring still owed. Open: item 2 (tier palette).**
+
+**1. Sweep the rest of the firmware for the string-renderer alignment bug — DONE 2026-08-06, and the answer is that there was nothing else.** The cause is general: `leUStringRenderRequest.align` **only distributes multiple LINES within the string's own bounding box** — `drawUString` draws every glyph at `req->x + lineX` with `lineX` starting at that box's origin — so for a **single-line** string `LE_HALIGN_RIGHT` and `LE_HALIGN_CENTER` behave exactly like `LEFT` and the text runs rightward off the anchor. But it only bites *direct* renderer callers, and there is exactly one in the whole firmware: `widget_song_list.c`, fixed in `af5825b`.
+- **`screen_bus.c` was the prime suspect and is innocent.** Its right-aligned table numbers — and the dashboard's, the keyboard's, the wiimotes' — are all `leLabelWidget`s, and the stock label skin resolves alignment *correctly*: `leUtils_ArrangeRectangleRelative` positions the kerning rect inside the label's bounds by halign, and only then passes the **already-resolved** `kerningRect.x` as `req.x`, leaving `req.align` to do its intended multi-line job. Worth knowing precisely, because "the renderer's align is broken" is the wrong lesson — the renderer's align means something else, and every stock widget uses it correctly.
+- Also checked: **no custom-paint widget draws text at all** (gauge, sparkline, bar, whammy, tilt, fret) — the bus gauge's centred `%`, for instance, is a child label. `grep -rn "leStringRenderer_\|leStringUtils_"` over hand source returns three hits, all in the song list plus one comment.
+- And the fix is **exact, not approximate**: `leStringUtils_GetLineRect` sums `glyph.advance`, the same quantity `drawUString` advances `lineX` by, so the measured width is precisely what the draw consumes and the right edge lands on the anchor rather than off by a side bearing.
+- **The rule for next time:** passing `LE_HALIGN_*` to a *widget* is fine; passing it to `leStringRenderer_Draw*` is not, and needs the `draw_str` pattern (measure, resolve to a left edge, draw `LEFT`).
 
 **2. Revisit the tier colour ramp — Greg doesn't like the current scheme.** Today's `SCHEME_TEXT_TIER_1..8` is the two-shade band ramp measured on 2026-08-05 (green-300/500 · amber-300/500 · orange-300/500 · red-300/500). It satisfies the constraints it was built for — every adjacent pair ΔE ≥ 27, contrast 4.7–12.6:1 on zinc-900, luminance stepping down band over band — so if it still reads wrong the *constraints* are what need revisiting, not the arithmetic. Worth establishing first: is the objection to the hues, to the within-band pairing (lighter = lower), or to eight steps being too many to read at a glance when the star count already carries the exact tier? Two new consumers to keep in mind that did not exist when the ramp was chosen: the **song-list tier badge** (`SongDetail_TierColor`, tiny bold 12px text) and the fact that the badge is deliberately **not** tier-coloured when the row is selected (contrast against zinc-100). A ramp that has to work at 12px on both zinc-900 and as a detail-strip line over baked art is a tighter brief than the original one.
 
@@ -41,6 +86,11 @@ Greg asked to try the DMA-disable idea from yesterday's research, and it works o
 - **The CLUT answer, if a scrim ever needs to be non-uniform** (a hole, a gradient, rounded corners): **CLUT entries carry 8-bit alpha** — `ACLUT[7:0]` in [`HEOCLUT`](https://onlinedocs.microchip.com/oxy/GUID-51CE727C-126C-4670-A2BA-189781F25924-en-US-2/GUID-CE4A34A5-1CE1-4CA6-83CB-6A24737500CD.html) §5.2.7.119 (and the OVR/BASE equivalents), and `CLUTMODE` offers **1/2/4/8 bpp** (§5.2.7.81). So Greg's instinct was right and even cheaper than guessed: **1 bpp** is enough for a binary scrim mask — 1280×800 = **125 KB**, ~7.7 MB/s, with two arbitrary ARGB colours available per pixel. 2 bpp buys four.
   - Caveat for that path: `CLUTEN` and `GAM` are mutually exclusive on the same layer ("When GAM = 1, writing in LCDC_HEOCLUT has no effect", and CLUTEN blocks it too) — and we currently use HEO's **gamma CLUT** for the video levels expansion (ui_compositor §15.1). A CLUT-mode scrim on HEO would therefore have to be swapped in and out around the video, not layered with it. The DMA-off default-colour route has no such conflict.
 - Either way this is **research only — nothing is implemented and none of it has run on hardware.** It supersedes ui_compositor.md §18's "needs a full-screen surface plus a spare hardware layer" as the reason the scrim was skipped; the real answer is that it may cost almost nothing.
+
+**4. Move the custom widgets onto Legato's vector rasterizer (`gfx/legato/vector/`) — Greg, 2026-08-06. The four-widget conversion is DONE the same day; see the entry above.** Background is [`legato_vector_review.md`](legato_vector_review.md) (2026-08-05) — what the API is, why it wins, the per-widget mapping in §4, the adoption order in §6 — with a corrections block now at its top. What is left of the item:
+- **On hardware:** look at all four (start with the gauge, whose crisp ring is a deliberate appearance change), then `marvin-perf` before/after on tilt and gauge. Fixed-point-with-8-samples beating soft-float-with-1-sample is still plausible-not-proven; `UI_VEC_AA` in `ui/gfx/vec_draw.h` drops the whole project to 4X in one line if it asks.
+- **To the Legato developer**, now five items: §5's two bugs (sticky gradient shader, `arc_stroke` convexity), the `arc_fill` `ranges[1]` nit, `leDraw_VectorRectFill` clamping corner radii to `min(w,h)/4` (so capsules are inexpressible), and `LE_REAL_I16_FROM_FLOAT` not parenthesising its argument.
+- **Not converting, with reasons:** `widget_whammy` (capsule shapes *and* it clips everything to the track's coverage, which needs a clip-rect setter the API does not have), `ui/widgets/bar` (the review's §4.5 target after `progressbar_aa` was deleted — blocked by the same radius clamp, and its dithered gradient has no vector equivalent), `widget_sparkline` (cosmetic, and the one case the vector path is plausibly slower on the most-repainted widget), and `aa_corners`/`panel_aa`/`button_aa` (the corner-box footprint beats anything the API can express — the review's own conclusion).
 
 ---
 
@@ -845,6 +895,44 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-08-06 — Drag lag: tilt + whammy repaint only the damaged band
+
+- Cause: `value_set` in both widgets called `invalidate`, damaging the whole widget rect for a
+  ~2 px thumb move. Send path exonerated (non-blocking); Legato already coalesces touch moves.
+- `widget_tilt`: damage = union of the round-cap boxes at the old and new angle (also bounds the
+  thumb and the swept sector). 355 808 → 38 288 point evaluations for a 1° step, **9×**. Only
+  possible because the vector kernel clips its *scan*, which the old float loop did not.
+- `widget_whammy`: paint loop bounded to `rect ∩ clip` (free, invisible) plus a column-band
+  damage rect. 50 824 → 13 440 `rrect_sdf` calls, **3.8×**.
+- Both proven bit-identical to a full repaint over 13 angle/value transitions on the host harness,
+  including the extremes (tilt 0→90, whammy −50→50, spring-back 60→0).
+- +992 B flash. **Confirmed on hardware** — Greg: *"significantly improved!"*.
+- Noticed, not changed: the whammy's fill capsule overshoots the thumb by 32 px (a 65-px lozenge
+  pops in at ±1). Fixing it would also triple the whammy's perf win — Greg's call.
+
+### 2026-08-06 — Vector rasterizer adopted for tilt / gauge / dot / fret (follow-up 4)
+
+- Four widgets converted from hand-rolled per-pixel soft-float coverage to `leDraw_Vector*`,
+  one step at a time in the review's order. New header-only `ui/gfx/vec_draw.h` carries the
+  project-wide `UI_VEC_AA = 8X` pin, `UI_VEC_DEG16`, a whole-pixel `leRectF` builder and an
+  arc-point helper; header-only so no `user.cmake` edit is needed.
+- `tilt`: 4 calls (2 `ArcStroke` + 2 `ArcFill`) replace a 24.6 k-pixel loop doing ~8 soft-float
+  transcendentals each. `gauge`: 2 `ArcStroke`. `panel_aa` dot: a capsule (band + end discs) that
+  also covers `screen_bus`'s pill tracks and now owns the widget's background. `fret`: 1–2
+  `RectFill`. Paint paths verified float-free in the disassembly.
+- **+7 912 B flash** (`.text` 1 364 140 → 1 372 052): ~9.8 kB of vector library that `--gc-sections`
+  used to discard, less ~1.9 kB of widget code deleted. Ran on the panel the same day (see the
+  drag-lag entry); the gauge's crisp ring and `marvin-perf` numbers are not signed off.
+- A/B'd on a host harness (vendor vector tree compiled natively behind a shimmed
+  `legato_renderer.h`): all four within AA noise except the gauge, whose feathered ring becomes a
+  crisp one by design; no pixel painted outside any widget rect. The harness caught a
+  `LE_REAL_I16_FROM_FLOAT` macro-parenthesis bug that had shrunk the tilt thumb to 1.25 px.
+- Found and documented: the rect fill's corner radius clamps to `min(w,h)/4` (capsules
+  inexpressible), arcs scan the full circle not the span, and `widget_whammy` is blocked outright
+  (needs a clip-rect setter the API lacks). Review doc carries a corrections block.
+- **On hardware the same day** (the drag-lag entry above was measured on it). Still owed:
+  `marvin-perf` before/after, and a verdict on the gauge's crisp ring.
 
 ### 2026-08-03 — Atomic teacher label to fretboard (opcode `0x04`, perf schema v6)
 

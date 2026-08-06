@@ -1,6 +1,6 @@
 #include "ui/widgets/fret/widget_fret.h"
 
-#include <math.h>
+#include "ui/gfx/vec_draw.h"
 
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/renderer/legato_renderer.h"
@@ -24,37 +24,16 @@ static fret_t      s_frets[FRET_MAX];
 static unsigned    s_count;
 static FretChangeFn s_on_change;
 
-#define CORNER_R    8.0f    /* Tailwind rounded-lg */
-#define RING_PX     2.0f
-#define IDLE_ALPHA  0.75f   /* mockup: opacity-75 at rest */
+#define CORNER_R    8       /* Tailwind rounded-lg */
+#define RING_PX     2
+#define IDLE_ALPHA  191u    /* mockup: opacity-75 at rest */
 
-static float clampf(float v, float lo, float hi)
+static void radius_set(leVectorRect_FillAttr *attr, int32_t r)
 {
-    return v < lo ? lo : (v > hi ? hi : v);
-}
-
-static float rrect_sdf(float px, float py, float cx, float cy,
-                       float hw, float hh, float r)
-{
-    float qx = fabsf(px - cx) - (hw - r);
-    float qy = fabsf(py - cy) - (hh - r);
-    float ox = qx > 0.0f ? qx : 0.0f;
-    float oy = qy > 0.0f ? qy : 0.0f;
-    return sqrtf(ox * ox + oy * oy) + fminf(fmaxf(qx, qy), 0.0f) - r;
-}
-
-static float coverage(float sdf)
-{
-    return clampf(0.5f - sdf, 0.0f, 1.0f);
-}
-
-static void blend(int32_t x, int32_t y, leColor c, float cov, leColorMode mode)
-{
-    if (cov <= 0.0f) { return; }
-    if (cov > 1.0f)  { cov = 1.0f; }
-
-    leColor bg = leRenderer_GetPixel(x, y);
-    leRenderer_PutPixel(x, y, leColorLerp(bg, c, (uint32_t)(cov * 100.0f + 0.5f), mode));
+    attr->topLeftRadius     = LE_REAL_I16_FROM_INT(r);
+    attr->topRightRadius    = attr->topLeftRadius;
+    attr->bottomLeftRadius  = attr->topLeftRadius;
+    attr->bottomRightRadius = attr->topLeftRadius;
 }
 
 static fret_t *find(const leWidget *pad)
@@ -82,43 +61,36 @@ static void fret_paint(leWidget *wgt)
     if (rect.width < 8 || rect.height < 8) { return; }
 
     leColorMode mode = leRenderer_CurrentColorMode();
-    leColor body = leColorConvert(LE_COLOR_MODE_RGB_888, mode,
-                                 f->held ? f->held_c : f->idle);
-    leColor ring = leColorConvert(LE_COLOR_MODE_RGB_888, mode, f->ring);
+    leRectF     rf;
 
-    float alpha = f->held ? 1.0f : IDLE_ALPHA;
-    float hw = (float)rect.width  / 2.0f;
-    float hh = (float)rect.height / 2.0f;
-    float cx = (float)rect.x + hw;
-    float cy = (float)rect.y + hh;
+    UiVec_RectF(&rect, &rf);
 
-    for (int32_t py = 0; py < rect.height; py++)
+    leVectorRect_FillAttr body =
     {
-        for (int32_t px = 0; px < rect.width; px++)
-        {
-            int32_t sx = rect.x + px;
-            int32_t sy = rect.y + py;
-            float   fx = (float)sx + 0.5f;
-            float   fy = (float)sy + 0.5f;
+        .color  = leColorConvert(LE_COLOR_MODE_RGB_888, mode,
+                                 f->held ? f->held_c : f->idle),
+        .alpha  = f->held ? 255u : IDLE_ALPHA,
+        .aaMode = UI_VEC_AA,
+    };
 
-            float d   = rrect_sdf(fx, fy, cx, cy, hw, hh, CORNER_R);
-            float cov = coverage(d);
-            if (cov <= 0.0f) { continue; }
+    radius_set(&body, CORNER_R);
 
-            if (f->held)
-            {
-                /* Ring first, then the body inset by the ring width. Tailwind draws
-                 * ring-2 outside the element; a widget cannot paint past its own
-                 * rect, so it is inset here instead. */
-                blend(sx, sy, ring, cov, mode);
-                blend(sx, sy, body, coverage(d + RING_PX), mode);
-            }
-            else
-            {
-                blend(sx, sy, body, cov * alpha, mode);
-            }
-        }
+    if (f->held)
+    {
+        /* Ring first, then the body inset by the ring width. Tailwind draws ring-2
+         * outside the element; a widget cannot paint past its own rect, so it is
+         * inset here instead. */
+        leVectorRect_FillAttr ring = body;
+
+        ring.color = leColorConvert(LE_COLOR_MODE_RGB_888, mode, f->ring);
+        leDraw_VectorRectFill(&rf, &ring);
+
+        rf.extents.x -= LE_REAL_I16_FROM_INT(RING_PX);
+        rf.extents.y -= LE_REAL_I16_FROM_INT(RING_PX);
+        radius_set(&body, CORNER_R - RING_PX);
     }
+
+    leDraw_VectorRectFill(&rf, &body);
 }
 
 static void fret_set(fret_t *f, bool held, bool notify)

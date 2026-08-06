@@ -28,13 +28,15 @@ void PanelAA_Enable(leWidget* panel);
  * transparent. Call once after construction. */
 void PanelAA_EnableRoundImage(leWidget* panel);
 
-/* Filled anti-aliased CIRCLE for a small dot (a plain leWidget filled with its BASE
- * colour). Does NOT set or rely on the widget's cornerRadius: Legato's stock
- * rounded-rect paint hangs when cornerRadius reaches half the widget size (a full
- * circle), so the dot is filled as a plain square (radius 0) and this paint rounds
- * it — the four corners are eaten to the backdrop (sampled just outside the dot,
- * since the fill covers the whole square) at radius = half the smaller dimension.
- * Leave cornerRadius 0; call once after construction. */
+/* Filled anti-aliased CAPSULE in the panel's BASE colour: a circle for a square
+ * widget (a status dot), a stadium for an oblong one (a pill track), with the ends
+ * rounded by half the smaller dimension. Drawn with Legato's vector rasterizer, so it
+ * blends against whatever is behind the panel and needs no solid surround to sample.
+ *
+ * Takes the panel's background over: this CLEARS the background type, because a skin
+ * fill underneath would show square corners around the shape. Does not set or rely on
+ * cornerRadius either — Legato's stock rounded-rect paint hangs once cornerRadius
+ * reaches half the widget size. Call once after construction. */
 void PanelAA_EnableDot(leWidget* panel);
 
 #ifdef __cplusplus

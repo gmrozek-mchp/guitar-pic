@@ -1,6 +1,7 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 
 #include "ui/gfx/aa_corners.h"
+#include "ui/gfx/vec_draw.h"
 
 #include "gfx/legato/core/legato_scheme.h"
 #include "gfx/legato/renderer/legato_renderer.h"
@@ -98,28 +99,76 @@ static leWidgetVTable s_dot_vt;
 static void (*s_dot_orig_paint)(leWidget*);
 static leBool s_dot_ready = LE_FALSE;
 
-/* Fill (a plain square, cornerRadius 0 — the stock rounded-rect paint hangs at
- * cornerRadius == size/2), then eat the four corners to the backdrop so the square
- * becomes an anti-aliased circle. The fill covers the whole square, so unlike
- * aa_paint we can't read the backdrop from the widget's own corner pixel — sample
- * it just outside the dot instead (uniform panel fill around a small dot). */
+/* A capsule in the panel's BASE colour, drawn by the vector rasterizer: a disc when
+ * the panel is square, a stadium otherwise (the ends round by min(w,h)/2). The middle
+ * band plus one disc per end — a single rounded RectFill cannot do it, because the
+ * vector rect fill clamps its corner radii to min(w,h)/4.
+ *
+ * Nothing else may paint the panel's background: the shape blends against whatever is
+ * behind it, so a skin fill underneath would leave square corners. PanelAA_EnableDot
+ * clears the background type for that reason. */
 static void dot_paint(leWidget* wgt)
 {
+    leRect     rect;
+    leRectF    band;
+    leVector2  end;
+    leReal_i16 radius;
+    leReal_i16 offset;
+
     s_dot_orig_paint(wgt);
 
-    if (wgt->status.drawState == LE_WIDGET_DRAW_STATE_DONE)
+    if (wgt->status.drawState != LE_WIDGET_DRAW_STATE_DONE) { return; }
+
+    wgt->fn->rectToScreen(wgt, &rect);
+
+    if (rect.width < 2 || rect.height < 2) { return; }
+
+    radius = LE_REAL_I16_FROM_INT((rect.width < rect.height) ? rect.width : rect.height) / 2;
+
+    UiVec_RectF(&rect, &band);
+
+    if (rect.width > rect.height)
     {
-        leRect   rect;
-        uint32_t r;
+        band.extents.x -= radius;
+        offset = band.extents.x;
+    }
+    else
+    {
+        band.extents.y -= radius;
+        offset = band.extents.y;
+    }
 
-        wgt->fn->rectToScreen(wgt, &rect);
-        r = (uint32_t)((rect.width < rect.height ? rect.width : rect.height) / 2);
+    leVectorArc_FillAttr disc =
+    {
+        .color    = leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE),
+        .alpha    = 255u,
+        .hardness = LE_REAL_I16_ONE,
+        .aaMode   = UI_VEC_AA,
+    };
 
-        if (r > 0u && rect.x > 0)
+    if (offset > 0)
+    {
+        leVectorRect_FillAttr fill =
         {
-            leColor bg = leRenderer_GetPixel(rect.x - 1, rect.y + rect.height / 2);
-            AaCorners_RenderRoundImage(&rect, r, bg, leRenderer_CurrentColorMode());
-        }
+            .color  = disc.color,
+            .alpha  = 255u,
+            .aaMode = UI_VEC_AA,
+        };
+
+        leDraw_VectorRectFill(&band, &fill);
+    }
+
+    end = band.origin;
+
+    if (rect.width > rect.height) { end.x -= offset; } else { end.y -= offset; }
+    leDraw_VectorArcFill(&end, radius, 0, UI_VEC_FULL_CIRCLE, &disc);
+
+    if (offset > 0)
+    {
+        end = band.origin;
+
+        if (rect.width > rect.height) { end.x += offset; } else { end.y += offset; }
+        leDraw_VectorArcFill(&end, radius, 0, UI_VEC_FULL_CIRCLE, &disc);
     }
 }
 
@@ -134,4 +183,5 @@ void PanelAA_EnableDot(leWidget* panel)
     }
 
     panel->fn = &s_dot_vt;
+    panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
 }

@@ -2,6 +2,27 @@
 
 **Date:** 2026-08-05 · **Scope:** review only, no code changed.
 
+> **Status, 2026-08-06 — adopted for four widgets, with four corrections to this document.**
+> `widget_tilt`, `widget_gauge`, the `panel_aa` dot and `widget_fret` now use `leDraw_Vector*`
+> (shared conventions in `ui/gfx/vec_draw.h`); see the 2026-08-06 entry in
+> [journal.md](journal.md) for the A/B results and what is still owed. Corrections found
+> while doing it:
+>
+> 1. **§1 / §4.1 — "clips to each shape's own bbox" is wrong for arcs.** `_calculateScanArea`
+>    scans the **full circle** at `radius + halfWidth`, ignoring the span. The tilt arc scans
+>    254×254 where the old loop scanned 157×157; it only comes out even because the renderer's
+>    clip rect is the widget's damage rect.
+> 2. **§4.5 — a capsule is not expressible.** `leDraw_VectorRectFill` clamps every corner radius
+>    to `min(w,h)/4` (`_clampCorners` halves extents that are already half-extents), so the
+>    `bar` retarget as written cannot work, and the `panel_aa` capsule is a band `RectFill` plus
+>    an `ArcFill` per end.
+> 3. **§4.4 — the dot vtable also serves `screen_bus`'s pill tracks**, so that step had to
+>    handle oblong widgets too, and had to take over the widget's background fill.
+> 4. **§5 — two more entries for the vendor list:** the radius clamp above, and
+>    `LE_REAL_I16_FROM_FLOAT(f)` = `((int32_t)(f * 65536))` with no parentheses around `f`, so
+>    any argument containing `+` or `-` silently yields a wrong number. Legato's own uses are all
+>    `/` and `*`, which is why nothing in-tree trips it.
+
 Prompted by a Legato developer pointing out the anti-aliasing functions in
 `config/default/gfx/legato/vector/`. Question: should marvin's custom widgets and
 rounded-panel/button code be using them?

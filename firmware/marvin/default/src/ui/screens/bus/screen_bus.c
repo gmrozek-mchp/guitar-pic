@@ -168,11 +168,11 @@ static void add_rule(int x, int y, int w, const leScheme *scheme)
     Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, p);
 }
 
-/* A plain filled rect (chart bars + pill tracks). `pill` rounds the ends to a
- * stadium via PanelAA_EnableDot — which rounds by min(w,h)/2 *without* setting
- * cornerRadius, so it stays clear of the stock rounded-rect hang. Bars that are
- * resized every refresh are left square (their width/height changes each tick, and
- * an AA pass keyed to the old size would smear). */
+/* A plain filled rect (chart bars + pill tracks). `pill` hands the whole shape to
+ * PanelAA_EnableDot, which draws a stadium rounded by min(w,h)/2 and takes over the
+ * background fill. Bars that are resized every refresh are left square (their
+ * width/height changes each tick, and an AA pass keyed to the old size would
+ * smear). */
 static leWidget *add_rect(int x, int y, int w, int h, const leScheme *scheme, bool pill)
 {
     leWidget *p = next_widget();
@@ -185,8 +185,9 @@ static leWidget *add_rect(int x, int y, int w, int h, const leScheme *scheme, bo
     return p;
 }
 
-/* A filled AA circle. Never sets cornerRadius: Legato's stock rounded-rect paint
- * hangs once the radius reaches half the widget size (see PanelAA_EnableDot). */
+/* A filled AA circle (PanelAA_EnableDot draws it and owns the fill). Never sets
+ * cornerRadius: Legato's stock rounded-rect paint hangs once the radius reaches half
+ * the widget size. */
 static leWidget *add_dot(int x, int y, int d, const leScheme *scheme)
 {
     leWidget *p = next_widget();
