@@ -185,3 +185,60 @@ void PanelAA_EnableDot(leWidget* panel)
     panel->fn = &s_dot_vt;
     panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
 }
+
+/* Top-rounded variant: own vtable copy + captured paint. */
+static leWidgetVTable s_top_vt;
+static void (*s_top_orig_paint)(leWidget*);
+static leBool s_top_ready = LE_FALSE;
+
+/* One rounded rect fill in the panel's BASE colour, radii on the top corners only, so
+ * the shape stands on the plot floor. The whole body is redrawn from the current rect
+ * every paint — nothing is carried over from the previous size — which is what makes it
+ * safe on a bar whose height and y move on every refresh.
+ *
+ * As with dot_paint, nothing else may paint the background: the arcs blend against what
+ * is behind the panel, and a skin fill underneath would square them off again. */
+static void round_top_paint(leWidget* wgt)
+{
+    leRect     rect;
+    leRectF    body;
+    leReal_i16 radius;
+
+    s_top_orig_paint(wgt);
+
+    if (wgt->status.drawState != LE_WIDGET_DRAW_STATE_DONE) { return; }
+
+    wgt->fn->rectToScreen(wgt, &rect);
+
+    if (rect.width < 1 || rect.height < 1) { return; }
+
+    radius = LE_REAL_I16_FROM_INT((int32_t)wgt->style.cornerRadius);
+
+    UiVec_RectF(&rect, &body);
+
+    leVectorRect_FillAttr fill =
+    {
+        .color          = leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE),
+        .alpha          = 255u,
+        .aaMode         = UI_VEC_AA,
+        .topLeftRadius  = radius,
+        .topRightRadius = radius,
+    };
+
+    leDraw_VectorRectFill(&body, &fill);
+}
+
+void PanelAA_EnableRoundTop(leWidget* panel, uint32_t radius)
+{
+    if (!s_top_ready)
+    {
+        s_top_vt = *panel->fn;
+        s_top_orig_paint = panel->fn->_paint;
+        s_top_vt._paint = round_top_paint;
+        s_top_ready = LE_TRUE;
+    }
+
+    panel->fn = &s_top_vt;
+    panel->fn->setCornerRadius(panel, radius);
+    panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
+}

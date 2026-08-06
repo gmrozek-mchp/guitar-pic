@@ -36,7 +36,7 @@
  * is #404040 ≈ zinc-700, so the stock border colour already matches).
  *
  * The utilization gauge and the three plots are custom-painted widgets
- * (ui/widgets/gauge, ui/widgets/sparkline) plus plain resized rects for the bars.
+ * (ui/widgets/gauge, ui/widgets/sparkline) plus vector-drawn rounded rects for the bars.
  * Values come from the data-source accessors below, which read either the live
  * T1SLink telemetry or a simulated feed (see BUS_SIM_DEFAULT). */
 
@@ -77,6 +77,8 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define DOT_STAT   6           /* w-1.5 */
 #define BADGE_W    52
 #define BADGE_H    20
+#define BAR_R       2          /* TX bars' rounded top corners */
+#define EBAR_H      8          /* error pill track/fill height (h-2) */
 
 /* Column x / width inside the table card (mockup's grid, scaled to CONTENT_W). */
 /* C_HBAGE shows the age of the node's last heartbeat, not a round-trip latency —
@@ -168,19 +170,21 @@ static void add_rule(int x, int y, int w, const leScheme *scheme)
     Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, p);
 }
 
-/* A plain filled rect (chart bars + pill tracks). `pill` hands the whole shape to
- * PanelAA_EnableDot, which draws a stadium rounded by min(w,h)/2 and takes over the
- * background fill. Bars that are resized every refresh are left square (their
- * width/height changes each tick, and an AA pass keyed to the old size would
- * smear). */
-static leWidget *add_rect(int x, int y, int w, int h, const leScheme *scheme, bool pill)
+/* A filled chart shape, rounded as the mockup draws it: SHAPE_PILL is a stadium
+ * (`rounded-full` — the error track and its fill), SHAPE_BAR is a column with only its
+ * top corners rounded (`radius={[2,2,0,0]}` — the TX-rate bars). Both hand the whole
+ * shape to a vector paint that redraws it from the current rect, so the ones that get
+ * resized on every refresh round correctly at every size. */
+typedef enum { SHAPE_PILL, SHAPE_BAR } shape_t;
+
+static leWidget *add_rect(int x, int y, int w, int h, const leScheme *scheme, shape_t shape)
 {
     leWidget *p = next_widget();
     p->fn->setPosition(p, x, y);
     p->fn->setSize(p, w, h);
     p->fn->setScheme(p, scheme);
-    p->fn->setBackgroundType(p, LE_WIDGET_BACKGROUND_FILL);
-    if (pill) { PanelAA_EnableDot(p); }
+    if (shape == SHAPE_PILL) { PanelAA_EnableDot(p); }
+    else                     { PanelAA_EnableRoundTop(p, BAR_R); }
     Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, p);
     return p;
 }
@@ -647,7 +651,7 @@ void ScreenBus_Setup(void)
             const leScheme *nsc = (r == 0u) ? &SCHEME_NODE_MARVIN : node_scheme(st.type);
             int bx = cx[1] + GAP + r * slot + (slot - bw) / 2;
 
-            s_bar[r] = add_rect(bx, PLOT_Y + PLOT_H - 1, bw, 1, nsc, false);
+            s_bar[r] = add_rect(bx, PLOT_Y + PLOT_H - 1, bw, 1, nsc, SHAPE_BAR);
 
             /* Full node name under the bar, centred on the whole slot (not just the
              * bar) — at 9px even "Lightshow" fits the ~54px slot. */
@@ -683,8 +687,8 @@ void ScreenBus_Setup(void)
             set_text(add_label(cx[2] + GAP, y, name_w, 14, (const leFont *)&DejaVuSansMono_12,
                                nsc, LE_HALIGN_LEFT), t);
 
-            add_rect(track_x, y + 3, track_w, 8, &SCHEME_FILL_ZINC_800, true);
-            s_ebar[r]  = add_rect(track_x, y + 3, 1, 8, nsc, false);
+            add_rect(track_x, y + 3, track_w, EBAR_H, &SCHEME_FILL_ZINC_800, SHAPE_PILL);
+            s_ebar[r]  = add_rect(track_x, y + 3, 1, EBAR_H, nsc, SHAPE_PILL);
             s_etot[r]  = add_label(track_x + track_w + 6, y, tot_w, 14,
                                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_400,
                                    LE_HALIGN_RIGHT);
@@ -837,13 +841,17 @@ static void refresh_all(void)
                 s_bar[r]->fn->setPosition(s_bar[r], s_bar[r]->rect.x, PLOT_Y + PLOT_H - h);
             }
 
-            /* Error bar: width only, plus the total and the CRC/SYM split. */
+            /* Error bar: width only, plus the total and the CRC/SYM split. A pill
+             * narrower than it is tall reads as a sliver rather than a rounded end, so
+             * any non-zero count is at least one full end-cap wide; zero stays below
+             * the pill paint's minimum and so draws nothing, leaving a bare track. */
             uint32_t e = (uint32_t)st.crc_err + st.sym_err;
             if (s_ebar[r] != NULL)
             {
                 int w = (int)(((uint64_t)e * (uint32_t)s_etrack_w) / max_err);
+                if (e != 0u && w < EBAR_H) { w = EBAR_H; }
                 if (w < 1) { w = 1; }
-                s_ebar[r]->fn->setSize(s_ebar[r], (uint32_t)w, 8u);
+                s_ebar[r]->fn->setSize(s_ebar[r], (uint32_t)w, (uint32_t)EBAR_H);
             }
             (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)e);
             set_text(s_etot[r], tmp);

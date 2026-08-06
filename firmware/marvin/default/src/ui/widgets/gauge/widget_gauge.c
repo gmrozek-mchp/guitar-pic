@@ -19,7 +19,12 @@ static const leScheme *s_fill;
 /* Paint the arc after the (empty, transparent) widget paints: the full 180° track,
  * then the fill over its left end. The vector rasterizer anti-aliases both radial
  * edges and the fill's leading edge against whatever is already in the framebuffer,
- * and clips to the widget's damage rect — no stock rounded/arc paint involved. */
+ * and clips to the widget's damage rect — no stock rounded/arc paint involved.
+ *
+ * Both arcs are round-capped, so the ring's ends and the fill's leading edge are
+ * semicircles. A cap reaches thickness/2 past its arc end in every direction, which
+ * the radius below leaves room for: the ends sit on the horizontal diameter, so the
+ * caps grow into the pixels between the arc and the widget's bottom corners. */
 static void gauge_paint(leWidget *wgt)
 {
     s_orig_paint(wgt);
@@ -55,7 +60,7 @@ static void gauge_paint(leWidget *wgt)
         .hardness = LE_REAL_I16_ONE,
         .mask     = LE_STROKEMASK_ALL,
         .aaMode   = UI_VEC_AA,
-        .capStyle = LE_CAPSTYLE_SQUARE,
+        .capStyle = LE_CAPSTYLE_ROUND,
     };
 
     leDraw_VectorArcStroke(&centre, r, 0, UI_VEC_DEG16(180), &arc);

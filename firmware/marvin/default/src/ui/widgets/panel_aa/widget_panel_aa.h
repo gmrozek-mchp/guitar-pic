@@ -39,6 +39,17 @@ void PanelAA_EnableRoundImage(leWidget* panel);
  * reaches half the widget size. Call once after construction. */
 void PanelAA_EnableDot(leWidget* panel);
 
+/* Filled anti-aliased column in the panel's BASE colour with only its TOP two corners
+ * rounded — a bottom-anchored chart bar. Drawn with the vector rasterizer from the
+ * widget's rect at paint time, so the panel may be resized freely between paints.
+ *
+ * The radius is stored in cornerRadius, which is inert here because this also CLEARS
+ * the background type (as PanelAA_EnableDot does, and for the same reason): the stock
+ * rounded-rect paint would otherwise draw all four corners underneath. The rasterizer
+ * clamps each radius to a quarter of the smaller side, so a bar shorter than 4×radius
+ * rounds by less and a 1px bar comes out flat. Call once after construction. */
+void PanelAA_EnableRoundTop(leWidget* panel, uint32_t radius);
+
 #ifdef __cplusplus
 }
 #endif
