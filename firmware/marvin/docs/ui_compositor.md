@@ -384,6 +384,71 @@ shows a pre-splash/garbage frame.
 - **Asset:** provisioned into QSPI NOR at `QSPI_SPLASH_OFFSET` (raw 1280×800 RGBA8888) by
   `openocd/program-qspi.sh`.
 
+### 12.1 Boot progress bar (self-calibrating) — `splash_progress.c`
+
+A bottom-anchored progress bar over the splash art: a monospace stage label on the left, a
+percentage on the right, an 8 px rounded capsule with a cyan gradient fill. Geometry is the mockup's
+(`MarvinSplash` `App.tsx`) resolved at 1280×800 — bar `x 64..1216`, `y 752..759`, text row top
+`y 728`, gradient `#0E7490 → #22D3EE`, label `zinc-400`.
+
+- **Drawn into the splash framebuffer, not through Legato.** The splash is up long before any screen
+  exists, so there is no canvas and no paint pass to draw in. `splash_progress.c` composites straight
+  into `s_fb` (exposed by `ScreenSplash_Framebuffer()`) — it is `.region_nocache`, so a CPU write is
+  on screen at the next scan-out with no cache maintenance.
+- **Text comes from the Legato font ASSETS, which work with the stack down.**
+  `leFont_GetGlyphInfo()` is a pure lookup in a `const` glyph table — no renderer, no globals, no
+  init — and an 8bpp antialias glyph's coverage bitmap is directly addressable at
+  `font->base.header.address + glyph->dataOffset` (`dataRowWidth` bytes per row, one alpha byte per
+  pixel), placed at `x + bearingX`, `top + (baseline − bearingY)`. `ui/gfx/glyph_blit.h` wraps that
+  into "draw an ASCII string into a raw RGBA8888 buffer". What is **not** usable is
+  `leFont_DrawGlyph()` / the string renderer: they blit through `leRenderer_BlendPixel()`, which needs
+  an active paint pass — the same constraint that produced `AaCorners_RenderSurface565` (§18). The
+  font is `DejaVuSansMono_12`, already linked, matching the mockup's `font-mono text-xs`.
+- **A Legato overlay was the wrong tool, on timing.** A layer-screen would need an MGS design change
+  and — fatally — cannot paint until `init_screens()` runs, which is two thirds of the way through
+  boot, *after* the album-art decode. It cannot cover the phase that most needs a bar.
+- **Own ticker task, because there are no software timers.** `configUSE_TIMERS` is 0 in the
+  MCC-owned FreeRTOSConfig, and the boot task blocks in `GameArt_LoadAll` / `init_screens` /
+  `wait_render_idle`, so the bar runs on a static 25 Hz task at **priority 3** (above the boot task's
+  2). It repaints only when the fill's pixel width or a string actually changes, and
+  `SplashProgress_Complete()` stops it and waits for it to exit, so the framebuffer is back to a
+  single writer before the final 100% draw and the fade.
+- **Two backdrop copies, so nothing double-blends.** The pristine art for the band (`y 724..763`)
+  and the rendered track are kept in plain cached RAM (~220 KB, `ram` not `.region_nocache`): text
+  erases to the art, the fill — including its antialiased leading cap — draws onto the track. Every
+  repaint is therefore idempotent, and the capsule's AA corners sit on the photo rather than on a
+  black box. Capsule coverage comes from a rounded-rect distance field (float, as `aa_corners.c`);
+  with height 8 and radius 4 the straight section is fully covered at every row, so the field is only
+  evaluated in the two 4-px cap boxes.
+- **The milestones are measured, not apportioned by hand.** Each stage owns the share of the bar
+  that its duration *on the previous boot* was of the whole:
+  `mark[i] = cum_ms[i] × 990 / total`, and within a stage the bar interpolates on
+  `elapsed_in_stage / predicted_stage_ms`. So the bar's *speed* tracks what each stage actually
+  costs instead of being uniform in time; a stage that finishes early hands the bar straight to the
+  next mark, one that runs long eases to its own ceiling and waits there. Monotone by construction
+  (marks only increase, and a stage starts where the previous one ended); only `_Complete()` writes
+  100%. Stages: `INITIALIZING SYSTEM` (services spawning) · `LOADING ARTWORK` ·
+  `BUILDING INTERFACE` · `RENDERING SCREENS` · `READY`.
+- **The profile lives in the QSPI settings ring** as `settings_t.boot_stage_ms[4]` (record v3) —
+  one duration per *work* stage, written after the reveal when any stage has drifted more than
+  250 ms, so a steady system stops touching flash after the first boot. All-zero means nothing has
+  been measured yet and a compiled seed profile is used; the seed is the only guessed number left,
+  and one boot replaces it. `SplashProgress_SetStage` logs `stage → elapsed (predicted)` and
+  `_Calibrate` logs the whole measured-vs-stored table, so the grounding is inspectable from a boot
+  log rather than inferred.
+- **The last stage is slack, and must not be stored as a cost.** `READY` waits out
+  `SPLASH_MIN_MS`, so its duration is the remainder (`max(Σwork, min_hold) − Σwork`, 0 when the work
+  already exceeded the hold). Recording it as a measured cost would invert the calibration: speeding
+  the work up *lengthens* the idle wait, which would then train the bar to crawl through the stages
+  that do the work.
+- **Reveal is a cross-dissolve, not a cut.** OVR1's blender is `SFACTC = A0·As` / `DFACTC = 1−A0·As`
+  and splash pixels are opaque, so `ScreenSplash_FadeOut()` ramping the layer's global alpha 255→0
+  dissolves into the already-painted BASE dashboard at zero extra pixel cost. The ramp needs no
+  delay of its own: `XLCDC_SetLayerOpts(..., update=true)` ends in `XLCDC_UpdateLayerAttributes`,
+  which spins until the LCDC latches at the next vsync, so one step **is** one frame and the step
+  count is just `ms / 17`. It restores A0 to 255 after disabling the layer so OVR1's next user — the
+  AA video frame overlay (§16) — cannot inherit a transparent layer.
+
 ## 13. Pre-rendered, persistent per-screen canvases (done — code-complete, pending hardware test)
 
 Fixes the reveal-before-paint flash (§10): a screen used to be shown while Legato incrementally

@@ -44,6 +44,36 @@ void ScreenSplash_Hide(XLCDC_LAYER layer)
     XLCDC_SetLayerEnable(layer, false, true);
 }
 
+/* The ramp is paced by the hardware, not by us: XLCDC_SetLayerOpts with update=true ends
+ * in XLCDC_UpdateLayerAttributes, which spins until the LCDC latches the new attributes
+ * at the next vsync. So one call is one panel frame (1280×800 @ 60 Hz) and the step count
+ * is the duration divided by the frame period. */
+#define FADE_FRAME_MS   17u
+
+void ScreenSplash_FadeOut(XLCDC_LAYER layer, uint32_t ms)
+{
+    uint32_t steps = ms / FADE_FRAME_MS;
+
+    if (steps == 0u) { steps = 1u; }
+
+    for (uint32_t i = 1u; i <= steps; i++)
+    {
+        XLCDC_SetLayerOpts(layer, (uint8_t)(255u - ((255u * i) / steps)), true, true);
+    }
+
+    XLCDC_SetLayerEnable(layer, false, true);
+
+    /* Back to opaque: the next user of this layer (the AA video frame overlay) programs
+     * its own attributes through the GFX canvas driver, but must not be able to inherit
+     * a transparent A0 from us. */
+    XLCDC_SetLayerOpts(layer, 255u, true, true);
+}
+
+uint32_t *ScreenSplash_Framebuffer(void)
+{
+    return s_fb;
+}
+
 static void fill_fallback(void)
 {
     for (uint32_t i = 0u; i < (BASE_W * BASE_H); i++) { s_fb[i] = SPLASH_FILL; }

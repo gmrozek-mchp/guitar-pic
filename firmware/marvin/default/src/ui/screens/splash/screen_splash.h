@@ -2,6 +2,7 @@
 #define UI_SCREEN_SPLASH_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "definitions.h"   /* XLCDC_LAYER */
 
@@ -31,5 +32,15 @@ void ScreenSplash_Show(XLCDC_LAYER layer);
 
 /* Disable the given XLCDC layer. */
 void ScreenSplash_Hide(XLCDC_LAYER layer);
+
+/* Fade the splash out over `ms` and then disable the layer. The overlay blender scales
+ * the source by the layer's global alpha, so ramping it down cross-dissolves into
+ * whatever is on the layer below (the painted dashboard on BASE). Blocks for `ms`;
+ * leaves the layer's alpha back at opaque for its next user. */
+void ScreenSplash_FadeOut(XLCDC_LAYER layer, uint32_t ms);
+
+/* The splash framebuffer, for overlays drawn into it before Legato exists (the boot
+ * progress bar — see splash_progress.h). BASE_W × BASE_H, RGBA8888. */
+uint32_t *ScreenSplash_Framebuffer(void);
 
 #endif /* UI_SCREEN_SPLASH_H */

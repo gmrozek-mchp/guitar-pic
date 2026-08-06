@@ -3,12 +3,13 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdio.h>
 #include <string.h>
 
 #include "definitions.h"
 #include "log.h"
 
-#define SETTINGS_VERSION         1u
+#define SETTINGS_VERSION         3u
 #define SETTINGS_DEFAULT_BL      50u    /* default boot brightness % (no record yet) */
 
 #define SETTINGS_MAGIC           0x4D565354u   /* 'M''V''S''T' */
@@ -43,6 +44,22 @@ static void set_defaults(void)
     s_cache.version       = SETTINGS_VERSION;
     s_cache.backlight_pct = SETTINGS_DEFAULT_BL;
     s_cache.reserved0     = 0u;
+    (void)memset(s_cache.boot_stage_ms, 0, sizeof s_cache.boot_stage_ms);   /* uncalibrated */
+}
+
+/* "380,2490,470,570" — the boot profile, for one log line. */
+static const char *boot_profile_str(const settings_t *s)
+{
+    static char buf[SETTINGS_BOOT_STAGES * 7u];
+    uint32_t    n = 0u;
+
+    for (uint32_t i = 0u; i < SETTINGS_BOOT_STAGES; i++)
+    {
+        n += (uint32_t)snprintf(&buf[n], sizeof buf - n, (i == 0u) ? "%u" : ",%u",
+                                (unsigned)s->boot_stage_ms[i]);
+        if (n >= sizeof buf) { break; }
+    }
+    return buf;
 }
 
 /* Bitwise CRC-32 (poly 0xEDB88320). No table; records are tiny and writes rare. */
@@ -75,9 +92,12 @@ static bool wait_done(DRV_HANDLE h)
     return false;
 }
 
+/* A layout change moves the crc within the record, so records from another version
+ * fail the crc anyway; the version test just makes the rejection explicit. */
 static bool record_valid(const settings_record_t *r)
 {
     return (r->magic == SETTINGS_MAGIC) &&
+           (r->data.version == SETTINGS_VERSION) &&
            (crc32(r, offsetof(settings_record_t, crc)) == r->crc);
 }
 
@@ -120,9 +140,10 @@ void Settings_Load(void)
     }
     else
     {
-        LOG_INFO("SETTINGS: loaded seq=%lu slot=%ld (v%u backlight=%u%%)\r\n",
+        LOG_INFO("SETTINGS: loaded seq=%lu slot=%ld (v%u backlight=%u%% boot=[%s]ms)\r\n",
                  (unsigned long)s_cur_seq, (long)s_cur_slot,
-                 (unsigned)s_cache.version, (unsigned)s_cache.backlight_pct);
+                 (unsigned)s_cache.version, (unsigned)s_cache.backlight_pct,
+                 boot_profile_str(&s_cache));
     }
 }
 
@@ -175,8 +196,9 @@ bool Settings_Save(void)
 
     s_cur_slot = next;
     s_cur_seq  = r->seq;
-    LOG_INFO("SETTINGS: saved seq=%lu slot=%ld (backlight=%u%%)\r\n",
-             (unsigned long)s_cur_seq, (long)s_cur_slot, (unsigned)s_cache.backlight_pct);
+    LOG_INFO("SETTINGS: saved seq=%lu slot=%ld (backlight=%u%% boot=[%s]ms)\r\n",
+             (unsigned long)s_cur_seq, (long)s_cur_slot,
+             (unsigned)s_cache.backlight_pct, boot_profile_str(&s_cache));
     return true;
 }
 
@@ -185,6 +207,16 @@ bool Settings_SetBacklight(uint8_t pct)
     if (!s_loaded) { Settings_Load(); }
     if (pct > 100u) { pct = 100u; }
     s_cache.backlight_pct = pct;
+    return Settings_Save();
+}
+
+bool Settings_SetBootStages(const uint32_t *stage_ms)
+{
+    if (!s_loaded) { Settings_Load(); }
+    for (uint32_t i = 0u; i < SETTINGS_BOOT_STAGES; i++)
+    {
+        s_cache.boot_stage_ms[i] = (stage_ms[i] > 0xFFFFu) ? 0xFFFFu : (uint16_t)stage_ms[i];
+    }
     return Settings_Save();
 }
 
@@ -208,9 +240,9 @@ void Settings_Dump(void)
         if (record_valid(r))
         {
             valid++;
-            LOG_INFO("SETTINGS:  slot %2lu: seq=%lu v%u bl=%u%%%s\r\n",
+            LOG_INFO("SETTINGS:  slot %2lu: seq=%lu v%u bl=%u%% boot=[%s]ms%s\r\n",
                      (unsigned long)slot, (unsigned long)r->seq, (unsigned)r->data.version,
-                     (unsigned)r->data.backlight_pct,
+                     (unsigned)r->data.backlight_pct, boot_profile_str(&r->data),
                      ((int32_t)slot == s_cur_slot) ? "  <- current" : "");
         }
     }

@@ -4,6 +4,7 @@
 #include "ui/screens/song_select/screen_song_select.h"
 #include "ui/screens/album_art/screen_album_art.h"
 #include "ui/screens/splash/screen_splash.h"
+#include "ui/screens/splash/splash_progress.h"
 #include "ui/screens/video/screen_video.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
 #include "ui/screens/keyboard/screen_keyboard.h"
@@ -54,7 +55,8 @@
  *      active canvases are bound to display layers and paint behind the splash.
  *      After a minimum hold the splash is hidden, revealing the (warm) dashboard. */
 
-#define SPLASH_MIN_MS   5000u   /* hold the splash at least this long */
+#define SPLASH_MIN_MS   5000u   /* hold the splash at least this long   */
+#define SPLASH_FADE_MS   300u   /* cross-dissolve into the dashboard    */
 
 /* Render-completion wait. leRenderer_IsIdle() is also true in the gaps between
  * leUpdate calls (LEGATO_Tasks ticks ~10 ms), so a single idle sample can read
@@ -1077,6 +1079,12 @@ static void ui_boot_task(void *param)
     enable_backlight();
     TickType_t shown_at = xTaskGetTickCount();
 
+    /* Progress bar over the splash art, ticked by its own task so it keeps moving
+     * while this one blocks in the loads below. It times itself against the duration
+     * measured on the previous boot; SPLASH_MIN_MS is the floor on that prediction
+     * because the reveal below can't happen sooner. See splash_progress.h. */
+    SplashProgress_Start(ScreenSplash_Framebuffer(), SPLASH_MIN_MS);
+
     /* Splash is up — let the app start everything else (services + camera) now,
      * in parallel with the screen painting below, so it's all warm at reveal. */
     if (s_splash_shown_cb != NULL) { s_splash_shown_cb(); }
@@ -1086,6 +1094,7 @@ static void ui_boot_task(void *param)
      * song_detail_show(0)) finds its cover already cached. Storage mounts here;
      * Legato's image decoders are up from SYS_Initialize. All behind the splash;
      * the ~1-3 s decode just extends the splash hold. See game/game_art.h. */
+    SplashProgress_SetStage(SPLASH_STAGE_ART);
     (void)GameArt_LoadAll();
 
     /* Same deal for the board photos, and for the same reason: ScreenSystem_Setup
@@ -1096,6 +1105,7 @@ static void ui_boot_task(void *param)
      * Scene-graph edits (screenInit_Marvin's leAddRootWidget calls) are guarded
      * against the render tasks; the canvas/layer binds after are GFX-canvas only
      * (no root-list mutation) so they need no guard. */
+    SplashProgress_SetStage(SPLASH_STAGE_SCREENS);
     scene_edit_begin();
     init_screens();
     scene_edit_end();
@@ -1115,20 +1125,26 @@ static void ui_boot_task(void *param)
     /* Paint all screens once now, behind the splash, then wait for it to drain.
      * Every surface is complete before it's ever shown; screens are event-driven
      * from here — showing one is a pure layer bind, no repaint. */
+    SplashProgress_SetStage(SPLASH_STAGE_PAINT);
     paint_all_screens_once();
     wait_render_idle();
 
     /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
+    SplashProgress_SetStage(SPLASH_STAGE_HOLD);
     TickType_t elapsed   = xTaskGetTickCount() - shown_at;
     TickType_t min_ticks = pdMS_TO_TICKS(SPLASH_MIN_MS);
     if (elapsed < min_ticks) { vTaskDelay(min_ticks - elapsed); }
 
-    /* REVEAL — cut over to the (painted) dashboard. The song-select dialog starts
+    /* Bar to 100% and the ticker stopped — this is the interval the next boot
+     * animates against, so it is measured here, before the dwell and the fade. */
+    SplashProgress_Complete();
+
+    /* REVEAL — dissolve into the (painted) dashboard. The song-select dialog starts
      * closed: it and its OVR2 cover strip are painted into their canvases but not
      * shown; UiManager_OpenSongSelect() binds + shows the pair on demand (header tap).
      * OVR1/OVR2 colour modes are set by their users when shown (video frame → ARGB_4444,
      * dialog → RGB565, nav/album-art on OVR2), so no preemptive poke is needed here. */
-    ScreenSplash_Hide(xlcdc_layer(SPLASH_HW_LAYER));
+    ScreenSplash_FadeOut(xlcdc_layer(SPLASH_HW_LAYER), SPLASH_FADE_MS);
 
     /* Bring the live video up (windowed) on HEO over the dashboard, and its OVR1
      * frame overlay. Video is intent only — the video task binds HEO on its next
@@ -1150,6 +1166,10 @@ static void ui_boot_task(void *param)
     /* Boot sequence done — arm the health monitor now (it stays idle until this
      * so its card I/O + task-list walks never perturb the reveal window). */
     HealthMonitor_NotifyReady();
+
+    /* Last: persist this boot's duration if it has drifted, so the next boot's bar is
+     * calibrated. Flash write, deliberately after everything else. */
+    SplashProgress_Calibrate();
 
     vTaskDelete(NULL);
 }
