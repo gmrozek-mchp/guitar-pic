@@ -24,6 +24,11 @@ void ScreenDashboard_Setup(void);
  * fullscreen instead of hitting the hamburger. */
 leWidget *ScreenDashboard_Titlebar(void);
 
+/* The panel holding the three content columns (NULL before Setup). Every interactive
+ * dashboard widget below the titlebar is a descendant, so screen_video gates the whole
+ * lot out of picking with one flag while the video is fullscreen. */
+leWidget *ScreenDashboard_Content(void);
+
 /* Apply live dashboard state. Called only from the dashboard feed's consumer task
  * (ui/dashboard_feed.c) — the sole writer of dashboard widgets — never directly by
  * producers. ApplySelection rebuilds the SONG card from the committed GameSelection_Get();

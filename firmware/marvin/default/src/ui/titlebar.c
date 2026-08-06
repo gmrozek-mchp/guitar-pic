@@ -1,6 +1,7 @@
 #include "ui/titlebar.h"
 
 #include "ui/screens/navigation/screen_navigation.h"   /* ScreenNavigation_ToggleDrawer */
+#include "ui/widgets/panel_aa/widget_panel_aa.h"       /* PanelAA_EnableDot */
 
 #include "gfx/legato/legato.h"
 #include "gfx/legato/widget/legato_widget.h"
@@ -32,6 +33,7 @@ typedef struct {
     leButtonWidget nav;
     leImageWidget  guitar, pic, chip;
     leWidget       rule;      /* 1px divider along the bar's bottom edge */
+    leWidget       dot;       /* system status LED, left of the Microchip logo */
 } titlebar_t;
 
 static titlebar_t s_bar[TITLEBAR_MAX];
@@ -94,6 +96,19 @@ leWidget *Titlebar_Add(leWidget *parent)
     p->fn->setBorderType(p, LE_WIDGET_BORDER_NONE);
     p->fn->setImage(p, (leImage *)&LOGO_PIC);
     bar->fn->addChild(bar, (leWidget *)p);
+
+    /* System status LED (the mockup header's pulsing green dot). Static green: it says
+     * "the UI is up", which is true whenever it is on screen — there is no aggregate
+     * health signal behind it yet. Sits gap-4 left of the Microchip logo. */
+    leWidget *dot = &t->dot;
+    leWidget_Constructor(dot);
+    dot->fn->setPosition(dot, 1020, (BAR_H - 12) / 2);
+    dot->fn->setSize(dot, 12, 12);
+    dot->fn->setScheme(dot, &SCHEME_FILL_GREEN_500);
+    dot->fn->setBackgroundType(dot, LE_WIDGET_BACKGROUND_FILL);
+    dot->fn->setBorderType(dot, LE_WIDGET_BORDER_NONE);
+    PanelAA_EnableDot(dot);
+    bar->fn->addChild(bar, dot);
 
     leImageWidget *c = &t->chip;
     _leImageWidget_Constructor(c);

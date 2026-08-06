@@ -70,6 +70,9 @@ extern const leScheme SCHEME_TEXT_ZINC_400;
 extern const leScheme SCHEME_TEXT_ZINC_500;
 extern const leScheme SCHEME_TEXT_ZINC_600;
 extern const leScheme STYLE_TEXT_ROBOT;
+extern const leScheme SCHEME_PILL_HUMAN;
+extern const leScheme SCHEME_TOGGLE_OFF;
+extern const leScheme SCHEME_TOGGLE_ON;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility

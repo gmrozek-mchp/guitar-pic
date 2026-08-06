@@ -1,7 +1,7 @@
 #include "ui/screens/video/screen_video.h"
 
 #include "ui/ui_manager.h"   /* BASE_W, BASE_H, UiManager_VideoShow, overlay verbs */
-#include "ui/screens/dashboard/screen_dashboard.h"   /* ScreenDashboard_Titlebar */
+#include "ui/screens/dashboard/screen_dashboard.h"   /* Titlebar + Content handles */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -24,8 +24,10 @@ static bool s_fullscreen;
  * A static ARGB_4444 surface the size of the windowed video, composited over the
  * video by the LCDC (see ui/gfx/video_frame.h). Filled once at setup; the
  * compositor just binds/unbinds OVR1 to it. */
-#define BORDER_RADIUS   6.0f
-#define BORDER_STROKE   1.0f              /* stroke thickness, px            */
+/* Mockup: `border-2 border-zinc-700 rounded-sm` — 2px stroke, 4px radius (Tailwind v4
+ * rounded-sm = 0.25rem). Same frame the wiimotes screen draws, so both match. */
+#define BORDER_RADIUS   4.0f
+#define BORDER_STROKE   2.0f              /* stroke thickness, px            */
 #define BORDER_C4       4u                /* 0x40 → 4-bit; stroke 0x404040    */
 
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
@@ -36,24 +38,20 @@ static void (*s_dash_touch)(leWidget *, leWidgetEvent_TouchDown *);
 static leBool s_dash_vt_ready = LE_FALSE;
 
 /* Gate the dashboard's interactive widgets from picking without repainting them.
- * All interactive widgets live under DASHBOARD_TOP (header) and DASHBOARD_BOTTOM
- * (control columns + video); leUtils_PickFromWidget descends only into ENABLED
- * children, so clearing the flag on those two makes every tap resolve to the
- * dashboard panel. Toggle the flag directly (not setEnabled) so the surface isn't
- * invalidated — same pick-only gate as ui_manager's panel_set_pickable. */
+ * All of them live under the titlebar or the content panel, both built by
+ * screen_dashboard; leUtils_PickFromWidget descends only into ENABLED children, so
+ * clearing the flag on those two makes every tap resolve to the dashboard panel.
+ * Toggle the flag directly (not setEnabled) so the surface isn't invalidated — same
+ * pick-only gate as ui_manager's panel_set_pickable. */
 static void set_dashboard_input(bool on)
 {
-    leWidget *titlebar = ScreenDashboard_Titlebar();   /* shared component, built in code */
+    leWidget *chrome[2] = { ScreenDashboard_Titlebar(), ScreenDashboard_Content() };
 
-    if (on)
+    for (unsigned i = 0; i < 2u; i++)
     {
-        if (titlebar != NULL) { titlebar->flags |= LE_WIDGET_ENABLED; }
-        Marvin_PANEL_DASHBOARD_BOTTOM->flags |= LE_WIDGET_ENABLED;
-    }
-    else
-    {
-        if (titlebar != NULL) { titlebar->flags &= ~LE_WIDGET_ENABLED; }
-        Marvin_PANEL_DASHBOARD_BOTTOM->flags &= ~LE_WIDGET_ENABLED;
+        if (chrome[i] == NULL) { continue; }
+        if (on) { chrome[i]->flags |= LE_WIDGET_ENABLED; }
+        else    { chrome[i]->flags &= ~LE_WIDGET_ENABLED; }
     }
 }
 

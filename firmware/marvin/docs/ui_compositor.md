@@ -524,31 +524,66 @@ Design implications when we build it:
 
 ## 17. Panels built in C, not authored in MGS
 
-Four panels are now **programmatic builders over an empty MGS root panel**: bus stats, wiimotes,
-the on-screen keyboard, and (2026-08-05) the **nav drawer**. The design supplies one bare panel
-per layer-screen — position, size, an opaque scheme — and the module builds every child in
-`Screen<Name>_Setup()` with the in-place constructors (`leWidget_Constructor`,
-`leButtonWidget_Constructor`, `leLabelWidget_Constructor`), storing widgets in file-scope arrays
-(no Legato pool, no `LE_MALLOC`). `screen_bus.c` is the reference; `ui/titlebar.c` is the
-shared-component flavour of the same idiom.
+**Every base view is now a programmatic builder over an empty MGS root panel** — bus stats,
+wiimotes, the on-screen keyboard, the nav drawer, and (2026-08-05) the **dashboard**, which was
+the last and largest imported tree. The design supplies one bare panel per layer-screen —
+position, size, an opaque scheme — and the module builds every child in `Screen<Name>_Setup()`
+with the in-place constructors (`leWidget_Constructor`, `leButtonWidget_Constructor`,
+`leLabelWidget_Constructor`), storing widgets in file-scope arrays (no Legato pool, no
+`LE_MALLOC`). `screen_bus.c` is the reference; `ui/titlebar.c` is the shared-component flavour of
+the same idiom. What remains authored in MGS is the *asset* layer — schemes, strings, fonts,
+images — which is exactly what MGS is good at.
 
 Why, for the drawer specifically: its row set has to track *which screens exist*, which is a
 code fact, not a design fact — `NAV_ENTRY[]` in `screen_navigation.c` is one line per row
 (caption `stringID`, icon pair, base-view verb), so adding a screen adds a row. The design keeps
 the unused icon pairs and captions for the rows not built yet.
 
-Two rules this style has to respect, both learned the hard way:
+Three rules this style has to respect, all learned the hard way:
 
 - **Captions come from the design string table** (`leTableString_Constructor(&s, stringID_X)`),
   never C literals: MGS only auto-includes glyphs for strings it can see in the design, and a
-  design string keeps its per-language values. See the `mgs-legato-design` skill.
+  design string keeps its per-language values. A caption with *two states* (PLAYING/IDLE,
+  START/STOP) is two table strings with the label re-pointed — not a runtime literal. Text that
+  is genuinely *data* (a song title, a score) is a `leFixedString`, and any non-ASCII character
+  it can contain must be declared in the font's range (see the `mgs-legato-design` skill).
 - **Every appearance change needs an explicit `invalidate()`.** Image setters raise no damage and
   `setScheme`'s damage doesn't cover the icon rect; the leftover pixels were the 2026-08-05 bug
   (stale fill, or unzeroed `.region_nocache` DDR).
+- **Round a card with a frame overlay added LAST — and set `LE_WIDGET_IGNOREPICK` on it.** A
+  full-card panel with `SCHEME_BACKGROUND` + `BORDER_LINE` + radius + `PanelAA_EnableRoundImage`
+  draws the rounded border and then eats the corners back to the page black. Rounding the filled
+  card instead eats its corners back to its *own* fill (the radius never shows), and an image
+  flush to the card's edge would overwrite the arc anyway — the overlay is on top of it.
+  **The catch:** `leUtils_PickFromWidget` keeps the *last* child whose rect contains the point, so
+  "paints on top" and "wins the touch" are the same property. Without `IGNOREPICK` the overlay
+  swallows every touch inside its card — which is exactly what happened on the dashboard's first
+  hardware run (only the titlebar hamburger, which has no overlay, responded). Any decorative
+  widget stacked over interactive ones needs the flag.
 
 The MGS-side edit is mechanical: `strip_subtree.py <zip> <PANEL_NAME>` deletes the imported
 children and keeps the panel. Since the root panel's fill is what `PanelAA`/`ButtonAA` sample as
 the backdrop behind a rounded child, it must stay **opaque** (`BACKGROUND_FILL`).
+
+### 17.1 Widget TYPES are enabled by the design, not by the code
+
+`legato_config.h`'s `LE_<TYPE>_WIDGET_ENABLED` flags are derived by MGS from the widget types the
+**design** instantiates. A type used only by hand-built code therefore vanishes — `leXWidget`
+becomes an unknown type name — the moment the last design widget of that type is deleted. This
+bit us on 2026-08-05: stripping the dashboard removed the design's only progress bars and its only
+gradient, and the next Generate broke a build whose C had not changed.
+
+Consequences for this style of screen:
+
+- **Prefer a plain `leWidget` plus a paint override** to a specialised widget type. We already own
+  the paint for everything non-trivial (`PanelAA`, `ButtonAA`, `ui/widgets/bar`, `widget_fret`,
+  `widget_gauge`, …), and a plain widget is always available. `ui/widgets/bar` exists precisely
+  because the stock progress bar contributed nothing but a square track and a vtable to hijack.
+- **What the code genuinely needs must be forced on** in the Legato component rather than left to
+  the design's whim. Today `leButtonWidget` / `leLabelWidget` / `leImageWidget` are alive *only*
+  because song-select is still MGS-authored; that must be pinned before song-select is rebuilt.
+- **The failure is a compile error, not a silent one** — which is the one mercy here. Grep the
+  firmware for `\ble[A-Z][A-Za-z]*Widget\b` to get the true list of types it depends on.
 
 ## 11. Relationship to spec §4.5 / Q5
 
