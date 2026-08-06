@@ -623,14 +623,53 @@ Three properties worth knowing before reusing this:
   itself while open (bandwidth), and that is safe precisely because the corner pixels were
   *copied* — nothing needs BASE to be scanned there.
 
-**The scrim is still missing, but not for the reason given above.** The mockup's `bg-black/75`
-behind the dialog was skipped as needing a full-screen surface and the bandwidth to scan it. A
-read of the LCDC registers says otherwise: **HEO with `DMA = 0` emits a solid ARGB colour from
-`HEOCFG9` (`ADEF`/`RDEF`/`GDEF`/`BDEF`) with no framebuffer at all** — zero memory, zero DDR
-traffic — and HEO already sits below OVR1 and above BASE, exactly where a scrim belongs. Unverified
-on hardware; the open questions (window geometry with DMA off, which blender factors consume
-`ADEF` as source alpha, OVR1/OVR2's "post-processing only" caveat on their own `ADEF`, and the
-`CLUTEN`/`GAM` conflict on the CLUT-mode alternative) are in the journal's follow-up entry.
+### 18.1 The modal scrim — a full-screen dim that costs nothing
+
+The mockup dims everything behind a modal (`bg-black/75`). Doing that with a surface would cost a
+full-screen buffer plus the DDR bandwidth to scan it every frame — the contention that has knocked
+CSI-2 out of lock before, and the reason this was skipped at first. It turns out to be **free**,
+from two LCDC properties:
+
+- **`HEOCFG12.DMA = 0` makes the layer take its pixel from the default-colour register** instead
+  of memory, and HEO's `HEOCFG9` carries a real **alpha** there (`ADEF`) alongside `RDEF`/`GDEF`/
+  `BDEF`. So the layer emits one constant ARGB pixel with **no buffer, no DMA, no bandwidth**.
+  OVR1/OVR2 have `ADEF` too, but the datasheet marks theirs *"only for post-processing usage"* —
+  this is HEO's trick specifically.
+- **MCC already configures HEO's blender as straight src-over on source alpha** (`SFACTC = A0*As`,
+  `DFACTC = 1-(A0*As)`, `A0 = 255`), so the composite is exactly
+  `out = black·ADEF/255 + dst·(1 − ADEF/255)`. `ADEF = 191` is `bg-black/75`.
+
+HEO sits **below OVR1 and above BASE** (`VIDPRI = 0`) — precisely where a scrim belongs: the base
+view dims, the modal on OVR1 stays full strength. And it is available whenever the video is
+hidden, which every modal already does.
+
+`heo_scrim_bind` does the register work; `UiManager_ScrimShow(pct)` / `_ScrimHide()` are intent
+only, applied by the video task's `heo_reconcile`, so **HEO stays single-writer**. That reconcile
+is now three-state — **video / scrim / off**, in that priority — and acts only when leaving a video
+bind or when the level changes, since each layer `update` busy-waits a vsync. `MODAL_SCRIM_PCT` in
+`ui_manager.h` is the shared level. The nav drawer cannot use this (it does not hide the video, so
+HEO is busy); the on-screen keyboard could, and is the obvious next adopter.
+
+Three couplings worth knowing:
+
+- **`heo_bind` must re-assert `DMA = 1`.** It never touched `HEOCFG12` before, relying on
+  `DRV_XLCDC_Initialize` having left DMA set. Once a scrim clears it, a later video bind would
+  scan out the default colour instead of the capture — a silent, confusing regression. `heo_bind`
+  now calls `XLCDC_SetLayerOpts(HEO, 255, true, false)` and is self-sufficient.
+- **The dialog's sampled corners must be dimmed to match** (§18). They hold a *copy* of the base
+  view, but what the panel shows around them is the base view *dimmed*; an undimmed copy reads as
+  four bright notches. `scrim_dim565` applies the same factor the blender does.
+- **BASE discard is unaffected.** BASE is still read outside the dialog (that is what gets
+  dimmed) and still discarded behind the opaque dialog rect.
+
+**Confirmed on hardware** (2026-08-06), including the corner dim. Still unknown, and worth knowing
+if a partial dim is ever wanted: whether the layer's window geometry (`HEOCFG2`/`3`) is honoured
+with DMA off — we program it full-screen either way, so it cannot be told apart from here.
+
+If a *non-uniform* scrim is ever wanted (a hole, a gradient), the fallback is a CLUT-mode layer:
+CLUT entries carry 8-bit alpha (`ACLUT`) and `CLUTMODE` goes down to **1 bpp**, so a binary mask is
+125 KB and ~7.7 MB/s. Note `CLUTEN` conflicts with the gamma CLUT we use on HEO for video levels
+(§15.1), so that path would have to swap around the video rather than coexist with it.
 
 ## 11. Relationship to spec §4.5 / Q5
 

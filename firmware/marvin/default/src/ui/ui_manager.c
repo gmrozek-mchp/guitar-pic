@@ -117,7 +117,9 @@ static volatile bool   s_video_shown;               /* intent (UI task)         
 static volatile bool   s_video_rebind;              /* window changed → rebind        */
 static volatile rect_t s_video_win;                 /* dst rect (UI task writes)      */
 static volatile bool   s_dialog_discard;            /* discard BASE behind modal (UI) */
+static volatile uint8_t s_scrim_alpha;              /* modal dim 0..255 intent (UI)   */
 static bool            s_video_bound;               /* HEO bound (video-task only)    */
+static uint8_t         s_scrim_bound;               /* scrim ADEF programmed (task)   */
 static uint16_t        s_bound_src_w, s_bound_src_h;/* full source HEO is bound at (task) */
 static uint16_t        s_bound_aw, s_bound_ah;      /* active crop size HEO is bound at */
 static uint16_t        s_bound_ax, s_bound_ay;      /* active crop offset HEO is bound at */
@@ -206,6 +208,11 @@ static void heo_bind(uint16_t src_w, uint16_t src_h,
 
     XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
     XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_HEO, XLCDC_RGB_COLOR_MODE_RGB_888_PACKED, false);
+    /* Take the pixel stream from memory again. DRV_XLCDC_Initialize leaves HEO's
+     * HEOCFG12.DMA set, so this used to be implicit — but heo_scrim_bind clears it, and
+     * a video bind after a scrim would otherwise scan out the default colour instead of
+     * the capture. Same call the scrim uses, with dma = true. */
+    XLCDC_SetLayerOpts(XLCDC_LAYER_HEO, 255u, true, false);
     /* Re-apply the levels CLUT enable (RGBColorMode clears GAM); off = raw pass-through. */
     if (s_video_levels) { XLCDC_REGS->LCDC_HEOCFG1 |=  LCDC_HEOCFG1_GAM_Msk; }
     else                { XLCDC_REGS->LCDC_HEOCFG1 &= ~LCDC_HEOCFG1_GAM_Msk; }
@@ -263,6 +270,45 @@ static void heo_unbind(void)
     XLCDC_SetLayerEnable(XLCDC_LAYER_BASE, true, true);
 }
 
+/* ── modal scrim: a full-screen dim on HEO with NO framebuffer ─────────────────
+ * The mockup dims everything behind a modal (`bg-black/75`). Doing that with a
+ * surface would cost a full-screen buffer and the DDR bandwidth to scan it every
+ * frame — the contention that has knocked the CSI-2 D-PHY out of lock before. It
+ * costs nothing instead, because of two things the LCDC gives us:
+ *
+ *  - `HEOCFG12.DMA = 0` makes the layer take its pixel from the DEFAULT COLOUR
+ *    register rather than memory, and HEO's `HEOCFG9` carries a real ALPHA there
+ *    (`ADEF`) as well as RGB. So the layer emits one constant ARGB pixel with no
+ *    buffer, no DMA and no bandwidth at all. (OVR1/OVR2 have `ADEF` too, but the
+ *    datasheet marks theirs "only for post-processing usage" — this is HEO's.)
+ *  - MCC already configures HEO's blender as straight src-over on source alpha
+ *    (`SFACTC = A0*As`, `DFACTC = 1-(A0*As)`, `A0 = 255`), so the composite is
+ *    exactly `out = black*ADEF/255 + dst*(1 - ADEF/255)` — i.e. `bg-black/N`.
+ *
+ * HEO sits below OVR1 and above BASE (`VIDPRI = 0`), which is precisely where a
+ * scrim belongs: it dims the base view while the modal on OVR1 stays full strength.
+ * It is free whenever the video is hidden, which every modal already does.
+ *
+ * Video-task ctx, like every other HEO write. */
+static void heo_scrim_bind(uint8_t alpha)
+{
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, false, true);
+
+    XLCDC_REGS->LCDC_HEOCFG9 = LCDC_HEOCFG9_RDEF(0u) | LCDC_HEOCFG9_GDEF(0u)
+                             | LCDC_HEOCFG9_BDEF(0u) | LCDC_HEOCFG9_ADEF(alpha);
+    XLCDC_SetLayerOpts(XLCDC_LAYER_HEO, 255u, false, false);   /* DMA off, A0 = 255 */
+
+    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_HEO, 0u, 0u, false);
+    XLCDC_REGS->LCDC_HEOCFG3 = LCDC_HEOCFG3_XSIZE(BASE_W - 1u) | LCDC_HEOCFG3_YSIZE(BASE_H - 1u);
+    XLCDC_REGS->LCDC_HEOCFG4 = LCDC_HEOCFG4_XMEMSIZE(BASE_W - 1u) | LCDC_HEOCFG4_YMEMSIZE(BASE_H - 1u);
+    /* No scaling: a previous video bind may have left the scalers engaged, and there
+     * is no pixel stream to scale. */
+    XLCDC_REGS->LCDC_HEOCFG23 = 0u;
+
+    XLCDC_SetLayerEnable(XLCDC_LAYER_HEO, true, true);
+    LOG_INFO("UI: HEO scrim %u/255 full-screen (no framebuffer)\r\n", (unsigned)alpha);
+}
+
 /* ── BASE DMA-discard (single DISCEN owner, video-task ctx) ───────────────────
  * The LCDC has one BASE discard window (§44.6.4.7): BASE skips its DDR read where
  * an opaque layer fully covers it, freeing read bandwidth. base_discard_reconcile
@@ -313,7 +359,8 @@ static void base_discard_reconcile(void)
 /* video-task tick: converge HEO to intent + source. Bind on first show, window
  * change (rebind flag), source-size change, or active-crop change (detection
  * locking flips the source from full-frame to the active rect); unbind when
- * hidden. */
+ * hidden — and when hidden, HEO is free for the modal scrim, so the layer has
+ * three states here: video / scrim / off, in that priority. */
 static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
 {
     rect_t w = s_video_win;
@@ -331,11 +378,23 @@ static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
         heo_bind(src_w, src_h, w.x, w.y, w.w, w.h);
         s_video_bound  = true;
         s_video_rebind = false;
+        s_scrim_bound  = 0u;   /* heo_bind re-took DMA; any scrim is gone */
     }
-    else if (!want && s_video_bound)
+    else if (!want)
     {
-        heo_unbind();
-        s_video_bound = false;
+        uint8_t alpha = s_scrim_alpha;   /* UI-task intent */
+
+        /* Act only when leaving a video bind or when the dim level changes, so the
+         * steady state costs no register writes. heo_scrim_bind reconfigures the layer
+         * wholesale, so it replaces a video bind directly — no unbind first, which
+         * matters because every `update` busy-waits a vsync. */
+        if (s_video_bound || alpha != s_scrim_bound)
+        {
+            if (alpha != 0u) { heo_scrim_bind(alpha); }
+            else             { heo_unbind(); }
+            s_video_bound = false;
+            s_scrim_bound = alpha;
+        }
     }
 
     /* Own the single BASE discard window (video rect / dialog rect / none). Runs
@@ -345,9 +404,11 @@ static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
 
 /* ISC IRQ: point HEO at the just-completed ring slot every frame so it always scans
  * the freshest complete frame (not a slot the capture engine is mid-write on). This
- * is unconditional: writing the layer address while HEO is disabled (video hidden)
- * is harmless, and keeping the write out of any task/IRQ-shared flag guarantees the
- * scanout base advances regardless of task timing. Latches at the next vsync. */
+ * is unconditional, and safe in both of the states where video is not showing:
+ * disabled (nothing scans the address) and scrimmed (HEOCFG12.DMA is 0, so the layer
+ * takes its pixel from the default-colour register and never reads the address).
+ * Keeping the write out of any task/IRQ-shared flag guarantees the scanout base
+ * advances regardless of task timing. Latches at the next vsync. */
 static void heo_frame_latch(uint32_t buffer_addr)
 {
     /* Non-blocking base update: write the HEO frame address and *request* the layer
@@ -373,6 +434,21 @@ void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h)
 void UiManager_VideoHide(void)
 {
     s_video_shown = false;
+}
+
+/* Intent only, like the video verbs: the video task's heo_reconcile applies it, so
+ * HEO stays single-writer. Takes effect on the next tick — the same latency as the
+ * VideoHide every modal already issues, so the video going away and the dim arriving
+ * land together. */
+void UiManager_ScrimShow(uint8_t percent)
+{
+    if (percent > 100u) { percent = 100u; }
+    s_scrim_alpha = (uint8_t)(((uint32_t)percent * 255u) / 100u);
+}
+
+void UiManager_ScrimHide(void)
+{
+    s_scrim_alpha = 0u;
 }
 
 /* ── video frame overlay (OVR1, above HEO) ────────────────────────────────────
@@ -476,6 +552,11 @@ void UiManager_OpenSongSelect(void)
      * (video is hidden below, so there's nothing to frame). */
     UiManager_VideoOverlayHide();
 
+    /* Dim the base view behind the dialog (mockup: bg-black/75). Free — a
+     * constant-colour HEO layer with DMA off; HEO is idle because the dialog hides the
+     * video anyway. Requested BEFORE the corner cut below, which has to match this dim. */
+    UiManager_ScrimShow(MODAL_SCRIM_PCT);
+
     /* Cut the dialog's rounded corners against whatever the base view has behind them,
      * NOW rather than at build time: the dialog is opaque RGB565, so a corner can only
      * look transparent by holding a copy of those pixels, and this is the last moment
@@ -503,8 +584,10 @@ void UiManager_CloseSongSelect(void)
     gfxcHideCanvas(CANVAS_ALBUM_ART); gfxcCanvasUpdate(CANVAS_ALBUM_ART);
     songsel_set_input(LE_FALSE);
 
-    /* Dashboard is back: drop the modal's BASE discard and bring the live video
-     * back up (reconcile re-binds HEO once the source is locked). */
+    /* Dashboard is back: drop the modal's dim and BASE discard, and bring the live video
+     * back up (reconcile re-binds HEO once the source is locked — that bind also takes
+     * HEO's DMA back from the scrim). */
+    UiManager_ScrimHide();
     s_dialog_discard = false;
     ScreenVideo_ShowWindowed();
 

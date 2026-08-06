@@ -728,11 +728,26 @@ static void build_album_art(void)
  * is not, the dialog simply stays square rather than showing converted garbage. */
 typedef struct { const uint16_t *px; uint32_t stride; int x0, y0; } base_sampler_t;
 
+/* Scale an RGB565 pixel by (100 - MODAL_SCRIM_PCT)%, per channel at its own depth.
+ * Required because the corner holds a COPY of the base view, while what the panel
+ * actually shows there is the base view as dimmed by the modal scrim — an undimmed
+ * copy would read as four bright notches in the dialog's corners. Same arithmetic the
+ * LCDC blender does for the rest of the screen. */
+static uint16_t scrim_dim565(uint16_t px)
+{
+    uint32_t keep = 100u - MODAL_SCRIM_PCT;
+    uint32_t r    = (((uint32_t)px >> 11) & 0x1Fu) * keep / 100u;
+    uint32_t g    = (((uint32_t)px >>  5) & 0x3Fu) * keep / 100u;
+    uint32_t b    = ( (uint32_t)px        & 0x1Fu) * keep / 100u;
+
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
 static leColor base_sample(void *ctx, int32_t x, int32_t y)
 {
     const base_sampler_t *s = (const base_sampler_t *)ctx;
 
-    return (leColor)s->px[(uint32_t)(s->y0 + y) * s->stride + (uint32_t)(s->x0 + x)];
+    return (leColor)scrim_dim565(s->px[(uint32_t)(s->y0 + y) * s->stride + (uint32_t)(s->x0 + x)]);
 }
 
 void ScreenSongSelect_RoundCorners(void)

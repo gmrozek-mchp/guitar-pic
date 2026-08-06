@@ -61,6 +61,17 @@ void UiManager_SetSplashShownCallback(void (*cb)(void));
 void UiManager_VideoShow(uint32_t x, uint32_t y, uint32_t w, uint32_t h);
 void UiManager_VideoHide(void);
 
+/* Modal scrim: dim everything below OVR1 by `percent` (the mockup's bg-black/75), so a
+ * modal on OVR1 reads as floating over a darkened base view. Costs no memory and no DDR
+ * bandwidth — it is a constant-colour HEO layer with DMA off (see heo_scrim_bind) — and
+ * is available whenever the video is hidden, which every modal already does. Intent
+ * only; the video task applies it. MODAL_SCRIM_PCT is the shared value, so anything
+ * that has to match the dim (the song-select dialog's sampled corners) agrees with it. */
+#define MODAL_SCRIM_PCT  75u
+
+void UiManager_ScrimShow(uint8_t percent);
+void UiManager_ScrimHide(void);
+
 /* Toggle the HEO video levels-expansion (limited→full range via the gamma CLUT).
  * On by default. Display-only; takes effect on the next HEO (re)bind (a rebind is
  * requested so a shown video updates within a frame). For A/B eyeballing. */
