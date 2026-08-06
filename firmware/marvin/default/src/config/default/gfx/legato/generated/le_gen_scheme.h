@@ -73,6 +73,9 @@ extern const leScheme STYLE_TEXT_ROBOT;
 extern const leScheme SCHEME_PILL_HUMAN;
 extern const leScheme SCHEME_TOGGLE_OFF;
 extern const leScheme SCHEME_TOGGLE_ON;
+extern const leScheme SCHEME_FILL_RED_500;
+extern const leScheme SCHEME_FILL_WHITE;
+extern const leScheme SCHEME_TEST_PATTERN_DARK;
 
 // DOM-IGNORE-BEGIN
 #ifdef __cplusplus  // Provide C++ Compatibility

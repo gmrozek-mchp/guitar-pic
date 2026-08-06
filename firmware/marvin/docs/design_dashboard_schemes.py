@@ -36,9 +36,29 @@ TIERS = {
     7: "FCA5A5", 8: "EF4444",     # red-300    / red-500     (EXPERT band)
 }
 
+# Test-pattern bars at the SMPTE 75% level the mockup draws (191 = 0xBF), not full
+# intensity. These are bar colours only; the two things in that card that must stay
+# bright get their own schemes below.
+BARS = {
+    "SCHEME_TEST_PATTERN_WHITE":   "BFBFBF",
+    "SCHEME_TEST_PATTERN_YELLOW":  "BFBF00",
+    "SCHEME_TEST_PATTERN_CYAN":    "00BFBF",
+    "SCHEME_TEST_PATTERN_GREEN":   "00BF00",
+    "SCHEME_TEST_PATTERN_MAGENTA": "BF00BF",
+    "SCHEME_TEST_PATTERN_RED":     "BF0000",
+    "SCHEME_TEST_PATTERN_BLUE":    "0000BF",
+}
+
 # name -> (base = idle/track, background = active fill, text)
 FILLS = {
     "SCHEME_PILL_HUMAN":    ("27272A", "FDC700", "000000"),   # human multiplier pills
+
+    # Test-pattern extras, all from the mockup's canvas: the middle row's separators are
+    # #131313, not black; the centre crosshair stays full white; the NO SIGNAL dot is
+    # red-500 (it was borrowing the test-pattern red, which is now dimmed).
+    "SCHEME_TEST_PATTERN_DARK": ("131313", "131313", "FFFFFF"),
+    "SCHEME_FILL_WHITE":        ("FFFFFF", "FFFFFF", "000000"),
+    "SCHEME_FILL_RED_500":      ("EF4444", "EF4444", "FFFFFF"),
 
     # Selected / unselected look for the robot card's option rows (detector choice,
     # actuator state). Text colour differs per state, and a scheme carries only one
@@ -98,6 +118,20 @@ def main(argv):
             print("   T%d %-22s already #%s" % (tier, name, h))
         else:
             print("   T%d %-22s #%s -> #%s" % (tier, name, was, h))
+            changed = True
+
+    # ---- 1b. test-pattern bars to the mockup's 75% level ----
+    print("\n=== test-pattern bars (SMPTE 75 pct) ===")
+    for name, hexv in sorted(BARS.items()):
+        s = by_name.get(name)
+        if s is None:
+            print("!! %s not found" % name)
+            return 1
+        was = set_color(s["properties"], "base", hexv)
+        if was is None:
+            print("     %-30s already #%s" % (name, hexv))
+        else:
+            print("   %-30s #%s -> #%s" % (name, was, hexv))
             changed = True
 
     # ---- 2. toggling fills ----

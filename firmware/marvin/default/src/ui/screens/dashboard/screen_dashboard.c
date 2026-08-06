@@ -140,6 +140,24 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define BAR_MID_H    40                              /* height/12             */
 #define PILL_H       24
 
+/* PLEASE STAND BY slate. STAND_BY_W is the message's measured width in the font its
+ * design string is bound to (DejaVuSansMonoBold_40: 15 glyphs x 24px advance); the box
+ * pads it by the mockup's 20px each side and keeps the mockup's proportion of box height
+ * to text size (50/32), centred on the mockup's baseline at VIDEO_H - 65. */
+#define STAND_BY_W       360
+#define STAND_BY_BOX_W   (STAND_BY_W + 2 * 20)
+#define STAND_BY_BOX_H    62
+#define STAND_BY_Y       (VIDEO_H - 65 - STAND_BY_BOX_H / 2)
+
+/* LE_VALIGN_MIDDLE centres the font's ASCENT box, not the ink: leStringUtils_KerningRect
+ * sizes the arranged rect to `stringHeight - font->height + font->baseline`, and the
+ * ascent reserves space above cap height for accents that all-caps text never uses. So
+ * the glyphs land low by half that slack — for DejaVuSansMonoBold_40, baseline 33 against
+ * a 30px cap height (bearingY of P/L/E/A/S/N/D/B/Y), i.e. ~1.5px. The label is lifted by
+ * that much; the box does not move. Only conspicuous at this size — at 12px it is a
+ * fraction of a pixel, which is why no other label needs this. */
+#define STAND_BY_INK_LIFT  2
+
 /* Song card (mockup NowPlaying). */
 #define SONG_Y      (VIDEO_H + GAP)                  /* 492 */
 #define SONG_H      (CONTENT_H - SONG_Y)             /* 224 */
@@ -709,17 +727,20 @@ static void build_human_card(leWidget *content)
 
 static void build_video(leWidget *content)
 {
-    /* SMPTE-ish colour bars: seven full-height bars, a middle row, then a black→white
-     * ramp — what the panel shows wherever the live video (HEO, above this layer) is
-     * not covering. Bar widths alternate 103/102 to sum to the card's inner width. */
+    /* SMPTE colour bars: seven full-height bars, a middle row, then a black→white ramp —
+     * what the panel shows wherever the live video (HEO, above this layer) is not
+     * covering. The bar schemes are the standard 75% level (191, matching the mockup's
+     * canvas), so anything here that should read as full intensity — the crosshair, the
+     * NO SIGNAL dot — uses its own scheme rather than a bar colour. Bar widths alternate
+     * 103/102 to sum to the card's inner width. */
     static const leScheme *TOP[7] = {
         &SCHEME_TEST_PATTERN_WHITE, &SCHEME_TEST_PATTERN_YELLOW, &SCHEME_TEST_PATTERN_CYAN,
         &SCHEME_TEST_PATTERN_GREEN, &SCHEME_TEST_PATTERN_MAGENTA, &SCHEME_TEST_PATTERN_RED,
         &SCHEME_TEST_PATTERN_BLUE,
     };
     static const leScheme *MID[7] = {
-        &SCHEME_TEST_PATTERN_BLUE, &SCHEME_BACKGROUND, &SCHEME_TEST_PATTERN_MAGENTA,
-        &SCHEME_BACKGROUND, &SCHEME_TEST_PATTERN_CYAN, &SCHEME_BACKGROUND,
+        &SCHEME_TEST_PATTERN_BLUE, &SCHEME_TEST_PATTERN_DARK, &SCHEME_TEST_PATTERN_MAGENTA,
+        &SCHEME_TEST_PATTERN_DARK, &SCHEME_TEST_PATTERN_CYAN, &SCHEME_TEST_PATTERN_DARK,
         &SCHEME_TEST_PATTERN_WHITE,
     };
 
@@ -743,19 +764,27 @@ static void build_video(leWidget *content)
                              0x000000u, 0xFFFFFFu);
     Bar_SetPermille(ramp, 1000u);
 
-    /* Centre crosshair. */
+    /* PLEASE STAND BY slate: white text on a black box over the ramp, centred on the
+     * mockup's baseline (VIDEO_H - 65). The mockup sets bold 32px; the design carries
+     * bold 24 and 40, so this uses 40 — already in the image for the on-screen keyboard,
+     * so it costs no flash, at the price of a slate ~25% larger than the mockup's. The
+     * box hugs the text: STAND_BY_W is the measured advance sum for that font. */
+    (void)add_panel(video, (VIDEO_W - STAND_BY_BOX_W) / 2, STAND_BY_Y,
+                    STAND_BY_BOX_W, STAND_BY_BOX_H, &SCHEME_BACKGROUND, LE_TRUE);
+    (void)add_cap(video, (VIDEO_W - STAND_BY_BOX_W) / 2, STAND_BY_Y - STAND_BY_INK_LIFT,
+                  STAND_BY_BOX_W, STAND_BY_BOX_H, stringID_VIDEO_STAND_BY,
+                  &SCHEME_TEXT_WHITE, LE_HALIGN_CENTER);
+
+    /* Centre crosshair — full white, unlike the 75% bars around it. */
     (void)add_panel(video, VIDEO_W / 2 - 40, VIDEO_H / 2 - 1, 80, 3,
-                    &SCHEME_TEST_PATTERN_WHITE, LE_TRUE);
+                    &SCHEME_FILL_WHITE, LE_TRUE);
     (void)add_panel(video, VIDEO_W / 2 - 1, VIDEO_H / 2 - 40, 3, 80,
-                    &SCHEME_TEST_PATTERN_WHITE, LE_TRUE);
+                    &SCHEME_FILL_WHITE, LE_TRUE);
 
-    /* Corner chips (mockup: TEST PATTERN top-left, NO SIGNAL top-right). */
-    leWidget *tp = add_pill(video, 10, 10, 103, PILL_H, &SCHEME_BACKGROUND);
-    (void)add_cap(tp, 8, 4, 87, 16, stringID_VIDEO_TEST_PATTERN, &SCHEME_TEXT_ZINC_400,
-            LE_HALIGN_LEFT);
-
+    /* NO SIGNAL chip, top right. (The mockup's TEST PATTERN chip on the left is
+     * deliberately not built — the bars say that already.) */
     leWidget *ns = add_pill(video, VIDEO_W - 10 - 98, 10, 98, PILL_H, &SCHEME_BACKGROUND);
-    (void)add_dot(ns, 8, 8, 9, &SCHEME_TEST_PATTERN_RED);
+    (void)add_dot(ns, 8, 8, 9, &SCHEME_FILL_RED_500);
     (void)add_cap(ns, 24, 4, 66, 16, stringID_VIDEO_NO_SIGNAL, &SCHEME_TEXT_WHITE,
             LE_HALIGN_LEFT);
 

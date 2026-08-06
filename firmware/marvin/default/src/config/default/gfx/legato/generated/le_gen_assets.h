@@ -459,7 +459,7 @@ extern leRasterFont DejaVuSansMonoBold_16;
  * Baseline:     33
  * Style:        Antialias
  * Glyph Count:  97
- * Range Count:  3
+ * Range Count:  11
  * Glyph Ranges: 0x20-0x7E
                  0x232B
                  0x2713
@@ -496,7 +496,7 @@ extern leRasterFont DejaVuSansMonoBold_20;
  * Legato String Table
  * Encoding        UTF8
  * Language Count: 1
- * String Count:   114
+ * String Count:   115
  *****************************************************************************/
 
 // language IDs
@@ -599,24 +599,25 @@ extern leRasterFont DejaVuSansMonoBold_20;
 #define stringID_PLAYER_ROBOT_FRET_ACTIVITY    93
 #define stringID_SONG_SELECT_HARD    94
 #define stringID_SONG_SELECT_MODE    95
-#define stringID_PLAYER_ROBOT_Neural_Network    96
-#define stringID_SONG_SELECT_GENRE    97
-#define stringID_PLAYER_HUMAN_BatteryLevel    98
-#define stringID_SONG_SELECT_SETLIST    99
-#define stringID_SONG_GAMEPLAY_EASY    100
-#define stringID_PLAYER_ROBOT_Name    101
-#define stringID_PLAYER_STRUM_ACTIVE    102
-#define stringID_PLAYER_MULTIPLIER_4x    103
-#define stringID_ACTUATOR_LEMMY    104
-#define stringID_SONG_INFO_Title    105
-#define stringID_NAV_NAVIGATION    106
-#define stringID_PLAYER_STATE_DISABLED    107
-#define stringID_PLAYER_STATE_ENABLED    108
-#define stringID_PLAYER_STRUM_BAR_Status    109
-#define stringID_GAMEPLAY_START    110
-#define stringID_PLAYER_ACCURACY    111
-#define stringID_PLAYER_MULTIPLIER_3x    112
-#define stringID_NAV_STATUS    113
+#define stringID_VIDEO_STAND_BY    96
+#define stringID_PLAYER_ROBOT_Neural_Network    97
+#define stringID_SONG_SELECT_GENRE    98
+#define stringID_PLAYER_HUMAN_BatteryLevel    99
+#define stringID_SONG_SELECT_SETLIST    100
+#define stringID_SONG_GAMEPLAY_EASY    101
+#define stringID_PLAYER_ROBOT_Name    102
+#define stringID_PLAYER_STRUM_ACTIVE    103
+#define stringID_PLAYER_MULTIPLIER_4x    104
+#define stringID_ACTUATOR_LEMMY    105
+#define stringID_SONG_INFO_Title    106
+#define stringID_NAV_NAVIGATION    107
+#define stringID_PLAYER_STATE_DISABLED    108
+#define stringID_PLAYER_STATE_ENABLED    109
+#define stringID_PLAYER_STRUM_BAR_Status    110
+#define stringID_GAMEPLAY_START    111
+#define stringID_PLAYER_ACCURACY    112
+#define stringID_PLAYER_MULTIPLIER_3x    113
+#define stringID_NAV_STATUS    114
 
 extern const leStringTable stringTable;
 
@@ -718,6 +719,7 @@ extern leTableString string_PLAYER_HUMAN_Wii_guitar;
 extern leTableString string_PLAYER_ROBOT_FRET_ACTIVITY;
 extern leTableString string_SONG_SELECT_HARD;
 extern leTableString string_SONG_SELECT_MODE;
+extern leTableString string_VIDEO_STAND_BY;
 extern leTableString string_PLAYER_ROBOT_Neural_Network;
 extern leTableString string_SONG_SELECT_GENRE;
 extern leTableString string_PLAYER_HUMAN_BatteryLevel;
