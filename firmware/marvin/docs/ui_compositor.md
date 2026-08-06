@@ -590,9 +590,14 @@ Consequences for this style of screen:
 
 ## 18. Rounded corners on an opaque overlay, by copying the layer below
 
-The song-select dialog is `rounded-xl` in the mockup, but it is an **opaque RGB565 canvas on
-OVR1** — RGB565 has no alpha, so its corners cannot reveal the dashboard on BASE the way §16's
-ARGB_4444 video frame reveals HEO. Three ways out; we took the third.
+**The modal look** — a rounded, 1px-bordered zinc-900 card floating over the dimmed base view —
+is shared by both modals (song-select and the on-screen keyboard) off `MODAL_R` /
+`MODAL_SCRIM_PCT` in `ui_manager.h`. The border and radius are ordinary widget style on each
+modal's root panel; the *corners* are the hard part.
+
+A modal canvas is an **opaque RGB565 canvas on OVR1** — RGB565 has no alpha, so its corners
+cannot reveal the base view on BASE the way §16's ARGB_4444 video frame reveals HEO. Three ways
+out; we took the third.
 
 1. Make the dialog canvas RGBA8888 with transparent AA'd corners. Correct, but 2.9 MB and ~174
    MB/s of OVR1 read while open (vs 87), in the exact bandwidth region that has knocked CSI-2
@@ -600,25 +605,38 @@ ARGB_4444 video frame reveals HEO. Three ways out; we took the third.
 2. Cut the corners to a fixed colour, as the video frame does. Wrong here — the dialog floats
    over dashboard *content*, so a black cut reads as four black notches.
 3. **Copy the pixels the base view has at those coordinates.** The corner boxes are filled with
-   `base_surface[(SONGSEL_Y + y) * stride + SONGSEL_X + x]`, anti-aliased against the dialog's
-   own fill and 1px border. 4 × 12 × 12 px of work, no format change, no extra layer.
+   `base_surface[(y0 + y) * stride + x0 + x]`, anti-aliased against the modal's own fill and 1px
+   border. 4 × 12 × 12 px of work, no format change, no extra layer.
 
 What makes it work is that both surfaces are **CPU-readable RGB565 statics** and `UiSurface_Get`
 already records every canvas's base pointer and geometry — so an overlay can read what is
 underneath it even though they are different hardware layers.
 `AaCorners_RenderSurface565` (`ui/gfx/aa_corners.c`) takes a per-pixel backdrop **sampler** and
 writes the surface directly rather than through `leRenderer`, so it runs outside a paint pass and
-the caller picks the moment. `ui_manager` picks **open**, via `ScreenSongSelect_RoundCorners`,
-which reads `UiManager_BaseCanvas()` so it tracks whichever base view is up.
+the caller picks the moment.
+
+The pass itself is **`UiManager_CutModalCorners(canvas)`**, a compositor verb rather than a screen
+function, because every input it needs is compositor knowledge: which canvas is the base view
+(`UiManager_BaseCanvas()`, so it tracks whichever is up), where the modal's window sits
+(`gfxcGetWindowPosition` — the same single source of that geometry the BASE discard uses), and how
+dim the scrim is. A screen passes its canvas id and nothing else; both modals share one
+implementation. Called on **open**, after requesting the scrim and before binding the canvas.
 
 Three properties worth knowing before reusing this:
 
 - **It is a snapshot.** Live content moving under a corner goes stale until the next open. Fine
   here (page/card background); check before applying it elsewhere.
-- **Anything that repaints over a corner undoes it.** The song list had to stop `DLG_R` short of
+- **Anything that repaints over a corner undoes it.** The song list had to stop `MODAL_R` short of
   the dialog's bottom edge for exactly this reason — its row separators and selected-row fill
   span its full width, so a list reaching the bottom would repaint the corner on every scroll.
   Keep repainting widgets out of the arc boxes, or re-run the pass after they paint.
+- **The canvas window's X must be 4-aligned, or the corner cut samples the wrong place and a
+  black column appears.** The framework floors a non-32bpp window's X to a multiple of 4 and
+  leaves the width alone, while `gfxcGetWindowPosition` still reports the unaligned request — so
+  the discard rect, the sample offset and any overlay placed in panel coords all end up
+  disagreeing with where the canvas really is. Place modal canvases through `CANVAS_X_ALIGN`
+  (`ui_manager.h`). This produced a visible 2px black bar on both modals and a 2px offset of the
+  album-art strip; see the 2026-08-06 journal entry.
 - **It composes with the BASE-discard optimisation.** The dialog still discards BASE DMA behind
   itself while open (bandwidth), and that is safe precisely because the corner pixels were
   *copied* — nothing needs BASE to be scanned there.
@@ -647,8 +665,8 @@ hidden, which every modal already does.
 only, applied by the video task's `heo_reconcile`, so **HEO stays single-writer**. That reconcile
 is now three-state — **video / scrim / off**, in that priority — and acts only when leaving a video
 bind or when the level changes, since each layer `update` busy-waits a vsync. `MODAL_SCRIM_PCT` in
-`ui_manager.h` is the shared level. The nav drawer cannot use this (it does not hide the video, so
-HEO is busy); the on-screen keyboard could, and is the obvious next adopter.
+`ui_manager.h` is the shared level, used by **both modals** — song-select and the on-screen
+keyboard. The **nav drawer cannot** use this: it does not hide the video, so HEO is busy.
 
 Three couplings worth knowing:
 

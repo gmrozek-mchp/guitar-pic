@@ -36,6 +36,21 @@ extern "C" {
 #define BASE_W   1280u
 #define BASE_H    800u
 
+/* Place a non-32bpp canvas window on an X the hardware will actually use.
+ *
+ * The canvas framework aligns such a window's X **down to a multiple of 4**
+ * (`gfx_canvas.c`: `setPositionParm.x &= ~0x3`, guarded on bytes-per-pixel != 4) and does
+ * NOT widen or shift the window to compensate. So an unaligned request silently lands up
+ * to 3px left of where it was asked for, while everything *derived* from the requested
+ * value stays put — the BASE discard rect, the corner-cut sample offset, an overlay placed
+ * in panel coordinates. The visible result of that disagreement is a **black column at the
+ * right edge**, where BASE has been told to skip its fetch but the canvas no longer
+ * reaches. Align the request instead, and requested == actual everywhere.
+ *
+ * RGBA8888 canvases are exempt (the framework skips the alignment), which is why the
+ * album-art strip needs no rounding — but it must follow whatever the dialog resolves to. */
+#define CANVAS_X_ALIGN(x)   ((int)((uint32_t)(x) & ~3u))
+
 /* Hardware layer the boot splash is shown on. OVR1 (above BASE so it covers the
  * dashboard); OVR2 is left free for an overlay drawn over the splash, e.g. a
  * loading bar. */
@@ -71,6 +86,24 @@ void UiManager_VideoHide(void);
 
 void UiManager_ScrimShow(uint8_t percent);
 void UiManager_ScrimHide(void);
+
+/* The modal look: a rounded 1px-bordered card floating over the dimmed base view.
+ * MODAL_R is the corner radius, shared so a screen can reserve it in its own layout (the
+ * song list stops short of the arc) and so both modals match.
+ *
+ * UiManager_CutModalCorners cuts those corners into an opaque RGB565 modal surface by
+ * copying what the base view has behind them — an opaque layer has no per-pixel alpha to
+ * be transparent with. Call on open, AFTER requesting the scrim and BEFORE binding the
+ * canvas: the corners hold a snapshot, so that is the last moment the pixels behind are
+ * known good. No-ops (leaving square corners) if either surface is not RGB565.
+ *
+ * The fill and border colours are not arguments because they are not the screen's choice:
+ * every modal is the same zinc-900 card with the same hairline, which is why this and
+ * MODAL_SCRIM_PCT live together here. Give it a scheme argument when a modal needs to
+ * differ, not before. */
+#define MODAL_R  12u
+
+void UiManager_CutModalCorners(unsigned int canvas);
 
 /* Toggle the HEO video levels-expansion (limited→full range via the gamma CLUT).
  * On by default. Display-only; takes effect on the next HEO (re)bind (a rebind is

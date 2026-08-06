@@ -28,7 +28,11 @@ void ScreenKeyboard_Setup(void);
 
 /* Seed one editing session: title text, initial buffer contents, max length (capped
  * to the internal limit), and the commit callback. Call before showing the dialog
- * (UiManager_OpenKeyboard does this). */
+ * (UiManager_OpenKeyboard does this).
+ *
+ * `commit` fires on OK and ONLY on OK. Dismissing with X cancels the session and never
+ * calls it, so a caller may treat the callback as the operator's confirmation and act on
+ * it — the player-name prompt starts the run from it. It fires at most once per session. */
 void ScreenKeyboard_Prepare(const char *title, const char *initial,
                             uint32_t maxlen, keyboard_commit_fn commit);
 

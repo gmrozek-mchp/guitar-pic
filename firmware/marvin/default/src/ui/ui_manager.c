@@ -22,8 +22,12 @@
 #include "game/game_art.h"         /* GameArt_LoadAll — cover-art preload during splash */
 #include "health/health_monitor.h"  /* armed at end of boot (HealthMonitor_NotifyReady) */
 #include "video/video.h"      /* capture producer — compositor owns HEO display */
+#include "ui/gfx/aa_corners.h"     /* rounded modal corners against the base view */
+#include "ui/gfx/ui_surface.h"     /* the modal + base canvas surfaces to sample */
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
+#include "gfx/legato/core/legato_scheme.h"
+#include "gfx/legato/generated/le_gen_scheme.h"
 #include "gfx/legato/generated/le_gen_assets.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"      /* screenInit/GetRoot_Marvin */
 #include "gfx/legato/renderer/legato_renderer.h"                   /* leRenderer_IsIdle */
@@ -456,6 +460,82 @@ void UiManager_VideoHide(void)
     s_video_shown = false;
 }
 
+/* ── rounded modal corners ────────────────────────────────────────────────────
+ * A modal canvas is OPAQUE RGB565, so its rounded corners cannot be transparent —
+ * there is no per-pixel alpha to reveal the layer below. Instead each corner box is
+ * filled with the pixels the BASE view has at the same screen position, dimmed to match
+ * the scrim, and anti-aliased against the modal's own fill and 1px border. For as long
+ * as the modal is up that is indistinguishable from transparency, because what sits
+ * behind those four boxes is static page/card background.
+ *
+ * This lives here rather than in a screen module because every input it needs is
+ * compositor knowledge: which canvas is the base view, where the modal's window sits,
+ * and how dim the scrim is. Screens just ask, and both modals share one implementation.
+ *
+ * Snapshot semantics: run on open, not per frame, so live content moving under a corner
+ * would go stale. Anything that repaints over a corner also undoes it — see
+ * ui_compositor.md §18. */
+typedef struct { const uint16_t *px; uint32_t stride; int x0, y0; } base_sampler_t;
+
+/* Scale an RGB565 pixel by (100 - MODAL_SCRIM_PCT)%, per channel at its own depth: the
+ * corner holds a COPY of the base view, but what the panel shows around it is the base
+ * view as dimmed by the scrim, so an undimmed copy reads as bright notches. Same
+ * arithmetic the LCDC blender does for the rest of the screen. */
+static uint16_t scrim_dim565(uint16_t px)
+{
+    uint32_t keep = 100u - MODAL_SCRIM_PCT;
+    uint32_t r    = (((uint32_t)px >> 11) & 0x1Fu) * keep / 100u;
+    uint32_t g    = (((uint32_t)px >>  5) & 0x3Fu) * keep / 100u;
+    uint32_t b    = ( (uint32_t)px        & 0x1Fu) * keep / 100u;
+
+    return (uint16_t)((r << 11) | (g << 5) | b);
+}
+
+static leColor base_sample(void *ctx, int32_t x, int32_t y)
+{
+    const base_sampler_t *s = (const base_sampler_t *)ctx;
+
+    return (leColor)scrim_dim565(s->px[(uint32_t)(s->y0 + y) * s->stride + (uint32_t)(s->x0 + x)]);
+}
+
+void UiManager_CutModalCorners(unsigned int canvas)
+{
+    const leScheme   *scheme    = &SCHEME_FILL_ZINC_900;   /* every modal's card colour */
+    const void       *modal_buf = NULL;
+    const void       *base_buf  = NULL;
+    uint16_t          mw = 0u, mh = 0u, bw = 0u, bh = 0u;
+    GFXC_COLOR_FORMAT mmode = GFX_COLOR_MODE_RGB_565;
+    GFXC_COLOR_FORMAT bmode = GFX_COLOR_MODE_RGB_565;
+    base_sampler_t    ctx;
+    int               x = 0, y = 0;
+    leRect            rect;
+
+    /* Both surfaces must be RGB565 for the copy to be a copy; if either isn't, leave the
+     * corners square rather than write converted garbage. */
+    if (!UiSurface_Get(canvas, &modal_buf, &mw, &mh, &mmode))            { return; }
+    if (!UiSurface_Get(UiManager_BaseCanvas(), &base_buf, &bw, &bh, &bmode)) { return; }
+    if (modal_buf == NULL || base_buf == NULL)                            { return; }
+    if (mmode != GFX_COLOR_MODE_RGB_565 || bmode != GFX_COLOR_MODE_RGB_565) { return; }
+
+    /* Where the modal sits on the panel — its canvas window, the same single source of
+     * that geometry modal_discard_set uses. */
+    if (gfxcGetWindowPosition(canvas, &x, &y) != GFX_SUCCESS) { return; }
+    if (x < 0 || y < 0)                                       { return; }
+    if ((uint32_t)x + mw > bw || (uint32_t)y + mh > bh)        { return; }
+
+    ctx.px     = (const uint16_t *)base_buf;
+    ctx.stride = bw;
+    ctx.x0     = x;
+    ctx.y0     = y;
+
+    rect.x = 0; rect.y = 0; rect.width = (int16_t)mw; rect.height = (int16_t)mh;
+
+    AaCorners_RenderSurface565((uint16_t *)modal_buf, mw, &rect, MODAL_R, 1u,
+                               leScheme_GetColor(scheme, LE_SCHM_BASE, LE_COLOR_MODE_RGB_565),
+                               leScheme_GetColor(scheme, LE_SCHM_SHADOWDARK, LE_COLOR_MODE_RGB_565),
+                               base_sample, &ctx);
+}
+
 /* Intent only, like the video verbs: the video task's heo_reconcile applies it, so
  * HEO stays single-writer. Takes effect on the next tick — the same latency as the
  * VideoHide every modal already issues, so the video going away and the dim arriving
@@ -577,11 +657,9 @@ void UiManager_OpenSongSelect(void)
      * video anyway. Requested BEFORE the corner cut below, which has to match this dim. */
     UiManager_ScrimShow(MODAL_SCRIM_PCT);
 
-    /* Cut the dialog's rounded corners against whatever the base view has behind them,
-     * NOW rather than at build time: the dialog is opaque RGB565, so a corner can only
-     * look transparent by holding a copy of those pixels, and this is the last moment
-     * they are known good. */
-    ScreenSongSelect_RoundCorners();
+    /* Cut the rounded corners against whatever the base view has behind them, NOW
+     * rather than at build time: this is the last moment those pixels are known good. */
+    UiManager_CutModalCorners(CANVAS_SONGSEL);
     bind_canvas(CANVAS_SONGSEL,   HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565,   true);
     bind_canvas(CANVAS_ALBUM_ART, HW_OVR2, XLCDC_RGB_COLOR_MODE_RGBA_8888, true);
 
@@ -615,11 +693,13 @@ void UiManager_CloseSongSelect(void)
 }
 
 /* ── on-screen keyboard modal (OVR1) ──────────────────────────────────────────
- * A full modal over whichever base view is showing. Like the song-select dialog it
- * takes OVR1 (dropping the video-frame overlay first), hides the live video for a clean
- * backdrop, and discards BASE behind its own opaque rect; unlike it there's no
- * album-art layer. The keyboard canvas paints continuously into its surface; open is a
- * pure layer bind, close hides it and restores the windowed video. */
+ * A full modal over whichever base view is showing. Like the song-select dialog it takes
+ * OVR1 (dropping the video-frame overlay first), hides the live video for a clean
+ * backdrop, dims what is left with the HEO scrim, and discards BASE behind its own
+ * opaque rect; unlike it there's no album-art layer, and its corners are square, so
+ * nothing here holds a copy of the base view that would have to be dimmed to match. The
+ * keyboard canvas paints continuously into its surface; open is a pure layer bind, close
+ * hides it and restores the windowed video. */
 static bool s_keyboard_open = false;
 
 void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t maxlen,
@@ -635,6 +715,8 @@ void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t max
     UiManager_VideoOverlayHide();
     bind_canvas(CANVAS_KEYBOARD, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     UiManager_VideoHide();
+    UiManager_ScrimShow(MODAL_SCRIM_PCT);
+    UiManager_CutModalCorners(CANVAS_KEYBOARD);
     modal_discard_set(CANVAS_KEYBOARD);
 
     s_keyboard_open = true;
@@ -647,6 +729,7 @@ void UiManager_CloseKeyboard(void)
     gfxcHideCanvas(CANVAS_KEYBOARD); gfxcCanvasUpdate(CANVAS_KEYBOARD);
     ScreenKeyboard_SetInput(false);
     UiManager_SetBaseViewPickable(true);
+    UiManager_ScrimHide();
     modal_discard_clear();
 
     ScreenVideo_ShowWindowed();   /* restores HEO windowed + its OVR1 frame */

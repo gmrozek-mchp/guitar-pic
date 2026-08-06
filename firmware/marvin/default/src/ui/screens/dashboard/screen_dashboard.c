@@ -464,6 +464,9 @@ static void select_song_on_release(leButtonWidget *btn)
 /* Commit callback from the on-screen keyboard, which START raises for a 2-player match:
  * record the entered name as the current player, show it on the human card, then start
  * the run. Empty input leaves the player unchanged. */
+/* Confirmation of the 2P name prompt, and the start of the run. Only reached via the
+ * keyboard's OK — dismissing it with X never calls this, which is what makes X a true
+ * cancel of the game start rather than just of the name edit. */
 static void player_name_committed(const char *name)
 {
     if (name != NULL && name[0] != '\0')

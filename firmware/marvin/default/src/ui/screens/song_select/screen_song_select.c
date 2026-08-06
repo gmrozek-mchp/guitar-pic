@@ -49,8 +49,11 @@
 
 #define SONGSEL_W   1100u
 #define SONGSEL_H    660u
-#define SONGSEL_X   ((int)((BASE_W - SONGSEL_W) / 2u))   /* 90  */
-#define SONGSEL_Y   ((int)((BASE_H - SONGSEL_H) / 2u))   /* 70  */
+/* Centered, with X rounded down to the canvas window's 4px grid (CANVAS_X_ALIGN) so the
+ * dialog lands exactly where every derived value thinks it does: 88 rather than a
+ * requested 90 the hardware would quietly turn into 88 anyway. Y needs no alignment. */
+#define SONGSEL_X   CANVAS_X_ALIGN((BASE_W - SONGSEL_W) / 2u)   /* 88 */
+#define SONGSEL_Y   ((int)((BASE_H - SONGSEL_H) / 2u))          /* 70 */
 
 /* Legato quirk: the image widget's public leImageWidget_Constructor is declared but
  * never defined; only the internal in-place one is linkable (same workaround as
@@ -83,7 +86,7 @@ void ScreenSongSelect_InitSurface(void)
 #define TXT_XS  16
 #define TXT_SM  20
 
-#define DLG_R   12               /* rounded-xl */
+#define DLG_R   MODAL_R          /* rounded-xl; the shared modal radius */
 
 /* The dialog's own 1px border, and the content box INSIDE it. Everything is laid out
  * relative to that box, never to the surface: the mockup's box is `border` +
@@ -122,7 +125,7 @@ void ScreenSongSelect_InitSurface(void)
 #define LIST_Y     (BODY_Y + SETLIST_H)
 /* Stops DLG_R short of the bottom edge: the list's row separators and selected-row
  * fill span its full width, so a list running to y = SONGSEL_H would paint into the
- * dialog's rounded bottom-left corner and undo ScreenSongSelect_RoundCorners on every
+ * dialog's rounded bottom-left corner and undo the compositor's corner cut on every
  * scroll. Ending at the start of the arc is also what the mockup's rounded
  * overflow-hidden container does to its last row. */
 #define LIST_H     (BODY_H - SETLIST_H - DLG_R)
@@ -715,67 +718,6 @@ static void build_album_art(void)
                   (const leFont *)&DejaVuSansMono_14, &SCHEME_TEXT_ZINC_300);
 }
 
-/* ── rounded dialog corners ─────────────────────────────────────────────────
- * The dialog is an OPAQUE RGB565 overlay, so its rounded corners cannot be
- * transparent — there is no per-pixel alpha to reveal the layer below. Instead the
- * corner boxes are filled with the pixels the BASE view has at the same screen
- * position, anti-aliased against the dialog's own fill and 1px border. The result is
- * indistinguishable from transparency for as long as the dialog is up, because what
- * sits behind those four 12x12 boxes is static page/card background.
- *
- * Snapshot semantics: this runs on open (ui_manager), not per frame, so live content
- * moving under a corner would go stale. Both surfaces are RGB565 — if the base view's
- * is not, the dialog simply stays square rather than showing converted garbage. */
-typedef struct { const uint16_t *px; uint32_t stride; int x0, y0; } base_sampler_t;
-
-/* Scale an RGB565 pixel by (100 - MODAL_SCRIM_PCT)%, per channel at its own depth.
- * Required because the corner holds a COPY of the base view, while what the panel
- * actually shows there is the base view as dimmed by the modal scrim — an undimmed
- * copy would read as four bright notches in the dialog's corners. Same arithmetic the
- * LCDC blender does for the rest of the screen. */
-static uint16_t scrim_dim565(uint16_t px)
-{
-    uint32_t keep = 100u - MODAL_SCRIM_PCT;
-    uint32_t r    = (((uint32_t)px >> 11) & 0x1Fu) * keep / 100u;
-    uint32_t g    = (((uint32_t)px >>  5) & 0x3Fu) * keep / 100u;
-    uint32_t b    = ( (uint32_t)px        & 0x1Fu) * keep / 100u;
-
-    return (uint16_t)((r << 11) | (g << 5) | b);
-}
-
-static leColor base_sample(void *ctx, int32_t x, int32_t y)
-{
-    const base_sampler_t *s = (const base_sampler_t *)ctx;
-
-    return (leColor)scrim_dim565(s->px[(uint32_t)(s->y0 + y) * s->stride + (uint32_t)(s->x0 + x)]);
-}
-
-void ScreenSongSelect_RoundCorners(void)
-{
-    const void       *buf  = NULL;
-    uint16_t          w    = 0u;
-    uint16_t          h    = 0u;
-    GFXC_COLOR_FORMAT mode = GFX_COLOR_MODE_RGB_565;
-    base_sampler_t    ctx;
-    leRect            rect = { 0, 0, (int)SONGSEL_W, (int)SONGSEL_H };
-
-    if (!UiSurface_Get(UiManager_BaseCanvas(), &buf, &w, &h, &mode)) { return; }
-    if (buf == NULL || mode != GFX_COLOR_MODE_RGB_565)               { return; }
-    if (w < SONGSEL_X + SONGSEL_W || h < SONGSEL_Y + SONGSEL_H)      { return; }
-
-    ctx.px     = (const uint16_t *)buf;
-    ctx.stride = w;
-    ctx.x0     = SONGSEL_X;
-    ctx.y0     = SONGSEL_Y;
-
-    AaCorners_RenderSurface565(s_fb_songsel, SONGSEL_W, &rect, DLG_R, 1u,
-                               leScheme_GetColor(&SCHEME_FILL_ZINC_900, LE_SCHM_BASE,
-                                                 LE_COLOR_MODE_RGB_565),
-                               leScheme_GetColor(&SCHEME_FILL_ZINC_900, LE_SCHM_SHADOWDARK,
-                                                 LE_COLOR_MODE_RGB_565),
-                               base_sample, &ctx);
-}
-
 void ScreenSongSelect_ArtOrigin(int *x, int *y)
 {
     if (x != NULL) { *x = SONGSEL_X + ART_X; }
@@ -792,8 +734,8 @@ void ScreenSongSelect_Setup(void)
     gfxcSetWindowPosition(CANVAS_SONGSEL, SONGSEL_X, SONGSEL_Y);
 
     /* The dialog's own rounded 1px border: the classic skin draws it stepped in the
-     * scheme's SHADOWDARK (#404040 ≈ zinc-700), and ScreenSongSelect_RoundCorners
-     * re-cuts the four corner boxes properly once there is a base view to sample. */
+     * scheme's SHADOWDARK (#404040 ≈ zinc-700), and UiManager_CutModalCorners re-cuts the
+     * four corner boxes properly on open, once there is a base view to sample. */
     Marvin_PANEL_SONG_SELECT->fn->setBorderType(Marvin_PANEL_SONG_SELECT, LE_WIDGET_BORDER_LINE);
     Marvin_PANEL_SONG_SELECT->fn->setCornerRadius(Marvin_PANEL_SONG_SELECT, DLG_R);
 

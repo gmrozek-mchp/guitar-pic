@@ -23,8 +23,11 @@
  * display by the canvas window. All child coordinates below are panel-relative. */
 #define KBD_W   1060
 #define KBD_H    560
-#define KBD_X   ((int)((BASE_W - KBD_W) / 2u))   /* 110 */
-#define KBD_Y   ((int)((BASE_H - KBD_H) / 2u))   /* 120 */
+/* X rounded down to the canvas window's 4px grid (CANVAS_X_ALIGN): the framework would
+ * align it anyway, and doing it here keeps the BASE discard rect and the corner cut — both
+ * derived from this value — in agreement with where the canvas actually lands. */
+#define KBD_X   CANVAS_X_ALIGN((BASE_W - KBD_W) / 2u)   /* 108 */
+#define KBD_Y   ((int)((BASE_H - KBD_H) / 2u))          /* 120 */
 
 #define PAD        24
 #define CONTENT_X  PAD
@@ -40,6 +43,27 @@
 #define ROW_Y(r)   (ROW1_Y + (r) * (KEY_H + ROW_GAP))
 #define LETTER_W   92                /* 10*92 + 9*10 = 1010, centered in 1012    */
 #define KEY_RADIUS 12
+
+/* The 10-key top row is the widest, so it defines the block every other row aligns to.
+ * ROW_R is that block's right edge (exclusive) — the backspace and OK keys both end on
+ * it, which is what puts them in one column. */
+#define ROW_W      (10 * LETTER_W + 9 * KEY_GAP)             /* 1010 */
+#define ROW_X      (CONTENT_X + (CONTENT_W - ROW_W) / 2)     /*   25 */
+#define ROW_R      (ROW_X + ROW_W)                           /* 1035 */
+
+/* Bottom row: CLEAR | SPACE | OK, with SPACE taking whatever is left between them. */
+#define CLEAR_W    150
+#define OK_W       200
+#define OK_X       (ROW_R - OK_W)                            /*  835 */
+#define SPACE_X    (ROW_X + CLEAR_W + KEY_GAP)               /*  185 */
+#define SPACE_W    (OK_X - KEY_GAP - SPACE_X)                /*  640 */
+
+/* Backspace closes the Z row in OK's column. It takes CLEAR's width — the two utility
+ * keys then match and bracket the layout — and is placed from the block's right edge, so
+ * the space left between it and M (54 px, five times KEY_GAP) falls out as a deliberate
+ * separation: the row reads as letters, then a function key, not as an eighth letter. */
+#define BKSP_W     CLEAR_W
+#define BKSP_X     (ROW_R - BKSP_W)                          /*  885 */
 
 /* UTF-8 for the two glyphs added to DejaVuSansMonoBold_40 (check + backspace). */
 #define GLYPH_CHECK "\xE2\x9C\x93"   /* U+2713 */
@@ -151,8 +175,10 @@ static void add_key(int x, int y, int w, int h, const char *label, const leFont 
 }
 
 /* Lay one letter row (each key a KIND_CHAR of its letter), centered then shifted by
- * `x_off` px so the rows stagger like a real keyboard. */
-static void add_letter_row(const char *letters, int y, int x_off)
+ * `x_off` px so the rows stagger like a real keyboard. Returns the row's right edge
+ * (exclusive), so a caller can butt another key against it without repeating the
+ * centering arithmetic. */
+static int add_letter_row(const char *letters, int y, int x_off)
 {
     int n     = (int)strlen(letters);
     int total = n * LETTER_W + (n - 1) * KEY_GAP;
@@ -166,6 +192,7 @@ static void add_letter_row(const char *letters, int y, int x_off)
                 &SCHEME_BUTTON_MODE, KIND_CHAR, letters[i]);
         x += LETTER_W + KEY_GAP;
     }
+    return x - KEY_GAP;
 }
 
 /* ── entry-text refresh (repaints only the two labels) ────────────────────────*/
@@ -214,10 +241,19 @@ static void clear_all(void)
     refresh_count();
 }
 
-static void commit_and_close(void)
+/* The one exit from an editing session. `commit` decides whether the session's callback
+ * fires at all: OK commits, X cancels, and a cancel must NEVER reach the callback —
+ * for the player-name prompt that callback starts the run, so calling it would start a
+ * game the operator just cancelled. Routing both keys through here keeps that decision
+ * in one place instead of leaving it implicit in which key forgot to call it.
+ *
+ * s_commit is cleared either way, so a finished session cannot fire a second time. */
+static void keyboard_close(bool commit)
 {
     keyboard_commit_fn cb = s_commit;
-    if (cb != NULL) { cb(s_text); }
+
+    s_commit = NULL;
+    if (commit && cb != NULL) { cb(s_text); }
     UiManager_CloseKeyboard();
 }
 
@@ -234,8 +270,8 @@ static void key_on_release(leButtonWidget *btn)
             case KIND_SPACE:     append_char(' ');          break;
             case KIND_BACKSPACE: backspace();               break;
             case KIND_CLEAR:     clear_all();               break;
-            case KIND_OK:        commit_and_close();        break;
-            case KIND_CANCEL:    UiManager_CloseKeyboard(); break;
+            case KIND_OK:        keyboard_close(true);      break;
+            case KIND_CANCEL:    keyboard_close(false);     break;
             default: break;
         }
         return;
@@ -260,9 +296,18 @@ void ScreenKeyboard_Setup(void)
     gfxcSetWindowSize(CANVAS_KEYBOARD, KBD_W, KBD_H);
     gfxcSetWindowPosition(CANVAS_KEYBOARD, KBD_X, KBD_Y);
 
-    /* Opaque scrim: the MGS panel already carries SCHEME_FILL_ZINC_900; make it
-     * fill so the whole dialog is drawn (it starts as a plain unfilled leWidget). */
+    /* Opaque card: the MGS panel already carries SCHEME_FILL_ZINC_900; make it fill so the
+     * whole dialog is drawn (it starts as a plain unfilled leWidget), then give it the
+     * shared modal look — a 1px border the classic skin draws in the scheme's SHADOWDARK
+     * (#404040 ≈ zinc-700) and MODAL_R rounded corners, matching the song-select dialog.
+     * The corners themselves are cut by UiManager_CutModalCorners on open, which is also
+     * what fills them: the skin's rounded fill leaves the four corner boxes untouched.
+     *
+     * Nothing here needs insetting for the border the way song-select did — every child
+     * sits inside PAD (24), well clear of both the border row and the MODAL_R boxes. */
     Marvin_PANEL_KEYBOARD->fn->setBackgroundType(Marvin_PANEL_KEYBOARD, LE_WIDGET_BACKGROUND_FILL);
+    Marvin_PANEL_KEYBOARD->fn->setBorderType(Marvin_PANEL_KEYBOARD, LE_WIDGET_BORDER_LINE);
+    Marvin_PANEL_KEYBOARD->fn->setCornerRadius(Marvin_PANEL_KEYBOARD, MODAL_R);
 
     /* Title (top-left). Text is set per-session in Prepare(). */
     (void)add_label(PAD, 16, 700, 32, &s_title_str, s_title_buf,
@@ -303,17 +348,17 @@ void ScreenKeyboard_Setup(void)
     add_letter_row("ASDFGHJKL",  ROW_Y(1), 0);
     add_letter_row("ZXCVBNM",    ROW_Y(2), -(LETTER_W + KEY_GAP) / 2);
 
-    /* Bottom row: CLEAR | SPACE (wide) | backspace | OK (green). Widths (150/520/
-     * 110/200) + three 10px gaps sum to 1010, centered like the letter rows
-     * (start at CONTENT_X + 1 = 25). */
-    add_key(25,  ROW_Y(3), 150, KEY_H, "CLEAR", (const leFont *)&DejaVuSansMonoBold_24,
-            &SCHEME_BUTTON_MODE, KIND_CLEAR, 0);
-    add_key(185, ROW_Y(3), 520, KEY_H, "SPACE", (const leFont *)&DejaVuSansMonoBold_24,
-            &SCHEME_BUTTON_MODE, KIND_SPACE, 0);
-    add_key(715, ROW_Y(3), 110, KEY_H, GLYPH_BKSP, (const leFont *)&DejaVuSansMonoBold_40,
-            &SCHEME_BUTTON_MODE, KIND_BACKSPACE, 0);
-    add_key(835, ROW_Y(3), 200, KEY_H, GLYPH_CHECK " OK", (const leFont *)&DejaVuSansMonoBold_40,
-            &SCHEME_BUTTON_EASY, KIND_OK, 0);
+    add_key(BKSP_X, ROW_Y(2), BKSP_W, KEY_H, GLYPH_BKSP,
+            (const leFont *)&DejaVuSansMonoBold_40, &SCHEME_BUTTON_MODE, KIND_BACKSPACE, 0);
+
+    /* Bottom row: CLEAR | SPACE | OK (green), SPACE taking all the width the other two
+     * leave. */
+    add_key(ROW_X, ROW_Y(3), CLEAR_W, KEY_H, "CLEAR",
+            (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_BUTTON_MODE, KIND_CLEAR, 0);
+    add_key(SPACE_X, ROW_Y(3), SPACE_W, KEY_H, "SPACE",
+            (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_BUTTON_MODE, KIND_SPACE, 0);
+    add_key(OK_X, ROW_Y(3), OK_W, KEY_H, GLYPH_CHECK " OK",
+            (const leFont *)&DejaVuSansMonoBold_40, &SCHEME_BUTTON_EASY, KIND_OK, 0);
 
     ScreenKeyboard_SetInput(false);   /* built but not shown */
 }

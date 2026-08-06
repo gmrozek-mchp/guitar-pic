@@ -14,11 +14,10 @@ extern "C" {
  *   ScreenSongSelect_Setup       — build the dialog's widget tree into the empty MGS
  *                         panels and position the canvas window (centered); call once
  *                         after screenShow_Marvin.
- *   ScreenSongSelect_RoundCorners — re-cut the dialog's rounded corners against the base
- *                         view behind it; ui_manager calls this on open. */
+ * The rounded corners are cut by the compositor (UiManager_CutModalCorners) on open,
+ * not here — they are a copy of the base view, which is its business, not the dialog's. */
 void ScreenSongSelect_InitSurface(void);
 void ScreenSongSelect_Setup(void);
-void ScreenSongSelect_RoundCorners(void);
 
 /* Absolute screen position of the album-art rect inside the dialog. The art strip is a
  * separate layer-screen that has to sit exactly there, and this is the dialog's layout
