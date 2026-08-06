@@ -623,6 +623,15 @@ Three properties worth knowing before reusing this:
   itself while open (bandwidth), and that is safe precisely because the corner pixels were
   *copied* — nothing needs BASE to be scanned there.
 
+**The scrim is still missing, but not for the reason given above.** The mockup's `bg-black/75`
+behind the dialog was skipped as needing a full-screen surface and the bandwidth to scan it. A
+read of the LCDC registers says otherwise: **HEO with `DMA = 0` emits a solid ARGB colour from
+`HEOCFG9` (`ADEF`/`RDEF`/`GDEF`/`BDEF`) with no framebuffer at all** — zero memory, zero DDR
+traffic — and HEO already sits below OVR1 and above BASE, exactly where a scrim belongs. Unverified
+on hardware; the open questions (window geometry with DMA off, which blender factors consume
+`ADEF` as source alpha, OVR1/OVR2's "post-processing only" caveat on their own `ADEF`, and the
+`CLUTEN`/`GAM` conflict on the CLUT-mode alternative) are in the journal's follow-up entry.
+
 ## 11. Relationship to spec §4.5 / Q5
 
 This answers spec **Q5** (Legato vs. custom UI) for the *presentation* layer: **Legato is the
