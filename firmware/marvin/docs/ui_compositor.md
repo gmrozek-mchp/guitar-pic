@@ -666,6 +666,36 @@ Three couplings worth knowing:
 if a partial dim is ever wanted: whether the layer's window geometry (`HEOCFG2`/`3`) is honoured
 with DMA off — we program it full-screen either way, so it cannot be told apart from here.
 
+### 18.2 What each state costs the memory bus
+
+Two independent savings, often confused: **BASE discard stops reads**, a `SetShown` gate stops
+**writes**.
+
+- **`BASECFG4.DISCEN` + `BASECFG5/6`** give the LCDC one BASE discard window: BASE skips its DDR
+  *read* where an opaque layer fully covers it. `base_discard_reconcile` owns it (single DISCEN
+  writer, video-task ctx) and picks the region each tick — **video rect** while HEO is bound, else
+  the **open modal's rect**, else none. Fullscreen video therefore discards the *whole panel*; BASE
+  stays enabled, which is the point — nothing needs disabling.
+
+  | state | discard rect | BASE read skipped (RGB565 @60 Hz) |
+  |---|---|---|
+  | fullscreen video | 1280×800 | 122.9 MB/s |
+  | song-select dialog | 1100×660 | 87.1 MB/s |
+  | keyboard modal | 1060×560 | 71.2 MB/s |
+  | windowed video | 720×480 | 41.5 MB/s |
+
+  The modal rect is read from that modal's **canvas window**, not from constants here, so the
+  geometry has one owner — the screen module that lays it out.
+- **`Screen<Name>_SetShown`** stops the *other* half: repainting a surface nobody scans out costs
+  CPU and DDR **writes**, which no discard can help. The dashboard's gate lives in
+  `dashboard_feed.c` (its sole writer) and is **deferring, not dropping** — events keep coalescing
+  while hidden and the show flushes what changed, with a wake event to unblock the consumer.
+  **Only full occlusion gates:** a modal leaves the dashboard visible around it, so telemetry must
+  keep flowing behind it — that is §5's coexist premise.
+
+All of this is by-construction: no bus monitor is wired up, so none of these figures has been
+observed as actual DDR traffic.
+
 If a *non-uniform* scrim is ever wanted (a hole, a gradient), the fallback is a CLUT-mode layer:
 CLUT entries carry 8-bit alpha (`ACLUT`) and `CLUTMODE` goes down to **1 bpp**, so a binary mask is
 125 KB and ~7.7 MB/s. Note `CLUTEN` conflicts with the gamma CLUT we use on HEO for video levels

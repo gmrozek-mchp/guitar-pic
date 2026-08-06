@@ -103,20 +103,12 @@ static void bind_canvas(uint32_t canvas, uint32_t hw, XLCDC_RGB_COLOR_MODE mode,
  * contexts, so the UI task only sets volatile intent (UiManager_VideoShow/Hide) and
  * HEO/BASE stay single-writer. HEO is free for other uses whenever video is hidden. */
 
-/* Song-select modal geometry, for discarding BASE DMA behind the opaque dialog
- * while it's open. Mirrors screen_song_select.c's SONGSEL_* (both derive the
- * centered origin from BASE_W/BASE_H); keep the 1100x660 size in sync. */
-#define DIALOG_W   1100u
-#define DIALOG_H    660u
-#define DIALOG_X   ((BASE_W - DIALOG_W) / 2u)
-#define DIALOG_Y   ((BASE_H - DIALOG_H) / 2u)
-
 typedef struct { uint32_t x, y, w, h; } rect_t;
 
 static volatile bool   s_video_shown;               /* intent (UI task)              */
 static volatile bool   s_video_rebind;              /* window changed → rebind        */
 static volatile rect_t s_video_win;                 /* dst rect (UI task writes)      */
-static volatile bool   s_dialog_discard;            /* discard BASE behind modal (UI) */
+static volatile rect_t s_modal_disc;                /* discard BASE behind modal (UI)  */
 static volatile uint8_t s_scrim_alpha;              /* modal dim 0..255 intent (UI)   */
 static bool            s_video_bound;               /* HEO bound (video-task only)    */
 static uint8_t         s_scrim_bound;               /* scrim ADEF programmed (task)   */
@@ -341,19 +333,47 @@ static void base_discard_apply(bool on, uint32_t x, uint32_t y, uint32_t w, uint
 
 static void base_discard_reconcile(void)
 {
+    rect_t m = s_modal_disc;
+
     if (s_video_bound)
     {
         rect_t r = s_video_win;
         base_discard_apply(true, r.x, r.y, r.w, r.h);
     }
-    else if (s_dialog_discard)
+    else if (m.w != 0u && m.h != 0u)
     {
-        base_discard_apply(true, DIALOG_X, DIALOG_Y, DIALOG_W, DIALOG_H);
+        base_discard_apply(true, m.x, m.y, m.w, m.h);
     }
     else
     {
         base_discard_apply(false, 0u, 0u, 0u, 0u);
     }
+}
+
+/* Mark/clear the region BASE may skip while an opaque modal covers it. The rect is
+ * read from the modal's own CANVAS WINDOW rather than kept as constants here, so there
+ * is one source of that geometry — a copy in this file had to be manually kept in sync
+ * with the screen module that owns the layout. Any opaque full-canvas modal qualifies.
+ * UI-task ctx; the video task applies it (single DISCEN owner). */
+static void modal_discard_set(unsigned int canvas)
+{
+    int          x = 0, y = 0;
+    unsigned int w = 0u, h = 0u;
+    rect_t       r = { 0u, 0u, 0u, 0u };
+
+    if (gfxcGetWindowPosition(canvas, &x, &y) == GFX_SUCCESS &&
+        gfxcGetWindowSize(canvas, &w, &h) == GFX_SUCCESS &&
+        x >= 0 && y >= 0 && w != 0u && h != 0u)
+    {
+        r.x = (uint32_t)x; r.y = (uint32_t)y; r.w = w; r.h = h;
+    }
+    s_modal_disc = r;
+}
+
+static void modal_discard_clear(void)
+{
+    rect_t none = { 0u, 0u, 0u, 0u };
+    s_modal_disc = none;
 }
 
 /* video-task tick: converge HEO to intent + source. Bind on first show, window
@@ -572,7 +592,7 @@ void UiManager_OpenSongSelect(void)
      * (album-art decode/blit + repaint). Both are intent only — the video-task
      * reconcile applies them, so HEO/BASE stay single-writer. */
     UiManager_VideoHide();
-    s_dialog_discard = true;
+    modal_discard_set(CANVAS_SONGSEL);
 
     s_songsel_open = true;
 }
@@ -588,7 +608,7 @@ void UiManager_CloseSongSelect(void)
      * back up (reconcile re-binds HEO once the source is locked — that bind also takes
      * HEO's DMA back from the scrim). */
     UiManager_ScrimHide();
-    s_dialog_discard = false;
+    modal_discard_clear();
     ScreenVideo_ShowWindowed();
 
     s_songsel_open = false;
@@ -596,11 +616,10 @@ void UiManager_CloseSongSelect(void)
 
 /* ── on-screen keyboard modal (OVR1) ──────────────────────────────────────────
  * A full modal over whichever base view is showing. Like the song-select dialog it
- * takes OVR1 (dropping the video-frame overlay first) and hides the live video for a
- * clean backdrop; unlike it there's no album-art layer and no BASE discard (the
- * dialog does no bandwidth-heavy work, so the dashboard stays fully painted around
- * it). The keyboard canvas paints continuously into its surface; open is a pure
- * layer bind, close hides it and restores the windowed video. */
+ * takes OVR1 (dropping the video-frame overlay first), hides the live video for a clean
+ * backdrop, and discards BASE behind its own opaque rect; unlike it there's no
+ * album-art layer. The keyboard canvas paints continuously into its surface; open is a
+ * pure layer bind, close hides it and restores the windowed video. */
 static bool s_keyboard_open = false;
 
 void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t maxlen,
@@ -616,6 +635,7 @@ void UiManager_OpenKeyboard(const char *title, const char *initial, uint32_t max
     UiManager_VideoOverlayHide();
     bind_canvas(CANVAS_KEYBOARD, HW_OVR1, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     UiManager_VideoHide();
+    modal_discard_set(CANVAS_KEYBOARD);
 
     s_keyboard_open = true;
 }
@@ -627,6 +647,7 @@ void UiManager_CloseKeyboard(void)
     gfxcHideCanvas(CANVAS_KEYBOARD); gfxcCanvasUpdate(CANVAS_KEYBOARD);
     ScreenKeyboard_SetInput(false);
     UiManager_SetBaseViewPickable(true);
+    modal_discard_clear();
 
     ScreenVideo_ShowWindowed();   /* restores HEO windowed + its OVR1 frame */
 
@@ -665,6 +686,7 @@ static void hide_current_base(void)
         default:
             gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
             UiManager_SetDashboardPickable(false);
+            ScreenDashboard_SetShown(false);
             break;
     }
 }
@@ -736,6 +758,7 @@ void UiManager_ShowDashboard(void)
     hide_current_base();
     bind_canvas(CANVAS_DASH, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     UiManager_SetDashboardPickable(true);
+    ScreenDashboard_SetShown(true);   /* flushes whatever telemetry changed while away */
 
     s_base_view = BASE_VIEW_DASHBOARD;
 

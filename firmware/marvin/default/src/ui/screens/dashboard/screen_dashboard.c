@@ -1164,6 +1164,14 @@ void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms)
 
 /* ── lifecycle ──────────────────────────────────────────────────────────────*/
 
+/* The dashboard has no periodic work of its own — every repaint comes from a feed
+ * apply — so being "not shown" is entirely a property of the writer, and the gate lives
+ * there. This is the name the compositor uses for the other screens. */
+void ScreenDashboard_SetShown(bool shown)
+{
+    DashboardFeed_SetShown(shown);
+}
+
 void ScreenDashboard_InitSurface(void)
 {
     UiSurface_Set(CANVAS_DASH, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);

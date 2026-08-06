@@ -60,12 +60,17 @@ static void enter_fullscreen(void)
     UiManager_VideoOverlayHide();               /* edge-to-edge; no frame */
     UiManager_VideoShow(0u, 0u, BASE_W, BASE_H);
     set_dashboard_input(false);
+    /* Fullscreen video covers the dashboard completely (and BASE's DMA is discarded
+     * across the whole panel), so telemetry repaints would be writing pixels that
+     * cannot be seen. Deferred, not dropped — the exit below flushes them. */
+    ScreenDashboard_SetShown(false);
     s_fullscreen = true;
 }
 
 void ScreenVideo_ShowWindowed(void)
 {
     set_dashboard_input(true);
+    ScreenDashboard_SetShown(true);
     UiManager_VideoShow(SCREEN_VIDEO_WIN_X, SCREEN_VIDEO_WIN_Y,
                         SCREEN_VIDEO_WIN_W, SCREEN_VIDEO_WIN_H);
     UiManager_VideoOverlayShow(s_border_fb, SCREEN_VIDEO_WIN_X, SCREEN_VIDEO_WIN_Y,

@@ -1,6 +1,7 @@
 #ifndef UI_SCREEN_DASHBOARD_H
 #define UI_SCREEN_DASHBOARD_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #include "gfx/legato/legato.h"   /* leWidget */
@@ -40,6 +41,12 @@ void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms);
 void ScreenDashboard_ApplyScore(uint32_t score);
 void ScreenDashboard_ApplyMultiplier(uint8_t mult);
 void ScreenDashboard_ApplyStreak(uint16_t streak);
+
+/* Tell the dashboard whether it is on screen, so telemetry stops repainting a surface
+ * nobody scans out (fullscreen video covering it, or another base view replacing it).
+ * Peer of ScreenBus_SetShown / ScreenWiimotes_SetShown. Deferred, not dropped: the feed
+ * keeps coalescing while hidden and flushes on show. */
+void ScreenDashboard_SetShown(bool shown);
 
 #ifdef __cplusplus
 }

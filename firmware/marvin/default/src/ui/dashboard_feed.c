@@ -21,6 +21,23 @@ static uint8_t       s_q_storage[DF_QUEUE_DEPTH * sizeof(dashboard_evt_t)];
 static StackType_t   s_task_stack[DF_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
 
+/* An out-of-range type: the drain loop ignores it (it only records types below
+ * DASH_EVT_COUNT), so it carries no state and exists purely to unblock the consumer —
+ * which otherwise waits forever on the queue and would not notice a show. */
+#define DF_EVT_WAKE   ((uint8_t)DASH_EVT_COUNT)
+
+/* Latest not-yet-applied event of each type, and whether there is one. Persistent
+ * across loop iterations rather than local to one drain, which is what lets the applies
+ * be deferred while the dashboard is hidden: events keep coalescing in here, and a show
+ * flushes exactly the set that changed while it was away. */
+static bool            s_have[DASH_EVT_COUNT];
+static dashboard_evt_t s_latest[DASH_EVT_COUNT];
+
+/* False while the dashboard is not on screen — fullscreen video covers it, or another
+ * base view has replaced it. Applying then would repaint a surface nobody scans out,
+ * costing CPU and DDR write bandwidth for pixels that cannot be seen. */
+static volatile bool   s_shown = true;
+
 static void post(const dashboard_evt_t *evt)
 {
     if (s_q == NULL) { return; }
@@ -86,29 +103,51 @@ static void dashboard_task(void *param)
     for (;;)
     {
         dashboard_evt_t evt;
-        bool            have[DASH_EVT_COUNT]   = { false };
-        dashboard_evt_t latest[DASH_EVT_COUNT] = { { 0 } };
 
         if (xQueueReceive(s_q, &evt, portMAX_DELAY) != pdTRUE) { continue; }
         do
         {
             if (evt.type < DASH_EVT_COUNT)
             {
-                latest[evt.type] = evt;
-                have[evt.type]   = true;
+                s_latest[evt.type] = evt;
+                s_have[evt.type]   = true;
             }
         } while (xQueueReceive(s_q, &evt, 0) == pdTRUE);
 
-        /* Selection first (rebuilds the SONG card), then live activity on top. */
+        /* Hidden: keep coalescing, apply nothing. The pending set is flushed by the
+         * show, so no update is lost — only deferred. */
+        if (!s_shown) { continue; }
+
+        /* Selection first (rebuilds the SONG card), then live activity on top. Each
+         * apply clears its pending flag, so the next pass only touches what changed. */
         UiManager_RenderLock();
-        if (have[DASH_EVT_SELECTION]) { ScreenDashboard_ApplySelection(); }
-        if (have[DASH_EVT_STATUS])    { ScreenDashboard_ApplyStatus(latest[DASH_EVT_STATUS].u.text); }
-        if (have[DASH_EVT_PLAYTIME])  { ScreenDashboard_ApplyPlaytime(latest[DASH_EVT_PLAYTIME].u.play_ms); }
-        if (have[DASH_EVT_SCORE])     { ScreenDashboard_ApplyScore(latest[DASH_EVT_SCORE].u.score); }
-        if (have[DASH_EVT_MULTIPLIER]) { ScreenDashboard_ApplyMultiplier(latest[DASH_EVT_MULTIPLIER].u.mult); }
-        if (have[DASH_EVT_STREAK])    { ScreenDashboard_ApplyStreak(latest[DASH_EVT_STREAK].u.streak); }
-        if (have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(latest[DASH_EVT_FRET].u.fret_mask); }
+        if (s_have[DASH_EVT_SELECTION]) { ScreenDashboard_ApplySelection(); }
+        if (s_have[DASH_EVT_STATUS])    { ScreenDashboard_ApplyStatus(s_latest[DASH_EVT_STATUS].u.text); }
+        if (s_have[DASH_EVT_PLAYTIME])  { ScreenDashboard_ApplyPlaytime(s_latest[DASH_EVT_PLAYTIME].u.play_ms); }
+        if (s_have[DASH_EVT_SCORE])     { ScreenDashboard_ApplyScore(s_latest[DASH_EVT_SCORE].u.score); }
+        if (s_have[DASH_EVT_MULTIPLIER]) { ScreenDashboard_ApplyMultiplier(s_latest[DASH_EVT_MULTIPLIER].u.mult); }
+        if (s_have[DASH_EVT_STREAK])    { ScreenDashboard_ApplyStreak(s_latest[DASH_EVT_STREAK].u.streak); }
+        if (s_have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(s_latest[DASH_EVT_FRET].u.fret_mask); }
         UiManager_RenderUnlock();
+
+        (void)memset(s_have, 0, sizeof s_have);
+    }
+}
+
+void DashboardFeed_SetShown(bool shown)
+{
+    bool was = s_shown;
+
+    s_shown = shown;
+
+    /* A show has to wake the consumer: it is parked on the queue with no timeout, so
+     * without this the deferred set would sit unapplied until the next producer post —
+     * which, outside a run, may be a long time. Only on a real transition, so the
+     * several paths that legitimately re-assert "shown" cost nothing. */
+    if (shown && !was)
+    {
+        dashboard_evt_t wake = { .type = DF_EVT_WAKE, .u = { 0 } };
+        post(&wake);
     }
 }
 

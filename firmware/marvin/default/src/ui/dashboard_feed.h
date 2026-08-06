@@ -1,6 +1,7 @@
 #ifndef UI_DASHBOARD_FEED_H
 #define UI_DASHBOARD_FEED_H
 
+#include <stdbool.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -58,6 +59,13 @@ void DashboardFeed_Init(void);
 /* Create the consumer task. Call once the dashboard widgets exist and are painted
  * (end of boot / post-reveal). Buffered events apply on the task's first run. */
 void DashboardFeed_Start(void);
+
+/* Gate the applies on whether the dashboard is actually on screen. While hidden the
+ * consumer keeps coalescing events but writes no widgets, so nothing repaints into a
+ * surface the LCDC is not scanning; the show flushes whatever changed meanwhile, so
+ * updates are deferred rather than lost. Call through ScreenDashboard_SetShown(), which
+ * is the name the compositor uses for every other screen. */
+void DashboardFeed_SetShown(bool shown);
 
 /* Producer posts — all non-blocking (drop-on-full). No-ops if the queue isn't up. */
 void DashboardFeed_PostFret(uint8_t mask);
