@@ -27,11 +27,16 @@ Filenames are lucide's own, so a fresh download diffs cleanly. Each renders to i
 at the size and colour below; verified by rasterizing with
 `rsvg-convert -w N -h N` after substituting `currentColor`.
 
-**The seven nav icons ship as pairs**, because a Legato scheme changes a button's fill but
+**The eight nav icons ship as pairs**, because a Legato scheme changes a button's fill but
 cannot recolour an image: rest is zinc-300, selected is white, and `navigation_highlight()` in
 `ui/screens/navigation/screen_navigation.c` swaps the image alongside the scheme. Both members of
 a pair are rendered from the *same* SVG so only the colour differs (verified: alpha channels are
 pixel-identical).
+
+Only three pairs are on screen today — the drawer carries one row per screen that exists
+(Dashboard, Wiimotes, Bus Statistics; `NAV_ENTRY` in `screen_navigation.c`). The other five are
+kept for the screens they name, so `prune_unused_images.py` will report them as unreferenced;
+that is deliberate, not a leak.
 
 | design asset | lucide file | size | stroke |
 |---|---|---|---|
@@ -47,7 +52,7 @@ pixel-identical).
 | `BUTTON_ICON_CHECK` | `check.svg` | 20×20 | `#000000` (dark, on a light button) |
 | `BUTTON_FACE_SELECT_SONG` | `list-music.svg` | 14×14 | `#D4D4D8` |
 | `BUTTON_FACE_START` | `play.svg` | 14×14 | `#FFFFFF` |
-| *(none yet)* | `network.svg` | — | for a Bus Statistics nav row the drawer doesn't have yet |
+| `NAV_ICON_BUS` + `_SELECTED` | `network.svg` | 24×24 | `#D4D4D8` / `#FFFFFF` |
 
 To regenerate a nav pair:
 

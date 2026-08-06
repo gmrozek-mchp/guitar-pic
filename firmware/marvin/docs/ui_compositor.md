@@ -251,11 +251,11 @@ into `user.cmake`
 **Built (committed):** GFX Canvas substrate; state machine off + app-owned `screenInit/Show`
 (`compat/le_gen_init.h` stub); `ui_manager` orchestrator + dashboard on BASE; `LE_LAYER_COUNT`=4
 under the single-master-`Marvin`-screen model (the old `LayerBudget`-screen pin is retired — §4.2).
-**Nav drawer is feature-complete:** its
-own `Navigation` MGS Screen re-hosted onto OVR2; slide in/out via canvas Move FX (Move FX
-re-enabled; `NAV_CLOSED_X` dodges the window-clip row-wrap; mid-slide reversal cancels the
-in-flight move); single-active highlight via a runtime-registered shared release sink (Dashboard
-closes, others switch); full-repaint-on-open; rounded buttons (set in code; not AA — §10).
+**Nav drawer is feature-complete:** the Marvin
+master screen's layer-1 panel, bound to OVR2; slide in/out via canvas Move FX (Move FX
+re-enabled; `NAVIGATION_CLOSED_X` dodges the window-clip row-wrap; mid-slide reversal cancels the
+in-flight move); single-active highlight via a runtime-registered shared release sink; rounded
+AA buttons (§10a). **Its widget tree is built in C, not authored in MGS** (§17).
 
 **Next:**
 1. **Author song/mode-select as its own MGS Screen;** assign `canvas[2]` a real buffer and have
@@ -318,9 +318,9 @@ off-limits), via a per-instance vtable re-point in `src/ui/widgets/button_aa/wid
   a precomputed coverage mask via `leColorLerp` + `leRenderer_PutPixel`. Fill is read from
   the live scheme each paint, so highlight (selected/unselected) and pressed states track.
 - Runs **in-pass** (damage → repaint → AA in one paint), so no timing/flicker window.
-- Wired from `nav_buttons_init()`; currently nav-only. Extending app-wide is just calling
-  `ButtonAA_Enable` from other screens' button init. Single radius (`BUTTON_AA_RADIUS`);
-  other radii pass through unsmoothed.
+- Wired from each screen's own button init (nav rows, wiimotes controls, song-select). Any
+  radius works — `AaCorners_Render` (`ui/gfx/aa_corners.c`) computes coverage analytically
+  per pixel rather than from a mask precomputed for one radius.
 
 ## 12. Boot splash (done)
 
@@ -521,6 +521,34 @@ Design implications when we build it:
 - **Geometry.** Overlay coords map 1:1 to the *displayed* video window; if the HUD
   is derived from source-pixel positions, apply the active-area crop + scale
   (§15) to place markers correctly on the scaled video.
+
+## 17. Panels built in C, not authored in MGS
+
+Four panels are now **programmatic builders over an empty MGS root panel**: bus stats, wiimotes,
+the on-screen keyboard, and (2026-08-05) the **nav drawer**. The design supplies one bare panel
+per layer-screen — position, size, an opaque scheme — and the module builds every child in
+`Screen<Name>_Setup()` with the in-place constructors (`leWidget_Constructor`,
+`leButtonWidget_Constructor`, `leLabelWidget_Constructor`), storing widgets in file-scope arrays
+(no Legato pool, no `LE_MALLOC`). `screen_bus.c` is the reference; `ui/titlebar.c` is the
+shared-component flavour of the same idiom.
+
+Why, for the drawer specifically: its row set has to track *which screens exist*, which is a
+code fact, not a design fact — `NAV_ENTRY[]` in `screen_navigation.c` is one line per row
+(caption `stringID`, icon pair, base-view verb), so adding a screen adds a row. The design keeps
+the unused icon pairs and captions for the rows not built yet.
+
+Two rules this style has to respect, both learned the hard way:
+
+- **Captions come from the design string table** (`leTableString_Constructor(&s, stringID_X)`),
+  never C literals: MGS only auto-includes glyphs for strings it can see in the design, and a
+  design string keeps its per-language values. See the `mgs-legato-design` skill.
+- **Every appearance change needs an explicit `invalidate()`.** Image setters raise no damage and
+  `setScheme`'s damage doesn't cover the icon rect; the leftover pixels were the 2026-08-05 bug
+  (stale fill, or unzeroed `.region_nocache` DDR).
+
+The MGS-side edit is mechanical: `strip_subtree.py <zip> <PANEL_NAME>` deletes the imported
+children and keeps the panel. Since the root panel's fill is what `PanelAA`/`ButtonAA` sample as
+the backdrop behind a rounded child, it must stay **opaque** (`BACKGROUND_FILL`).
 
 ## 11. Relationship to spec §4.5 / Q5
 

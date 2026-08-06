@@ -277,6 +277,24 @@ extern leImage NAV_ICON_DIAGNOSTICS_SELECTED;
  ***********************************/
 extern leImage NAV_ICON_SETTINGS_SELECTED;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_BUS
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_BUS;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   NAV_ICON_BUS_SELECTED
+ * Size:   24x24 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage NAV_ICON_BUS_SELECTED;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/
@@ -316,7 +334,7 @@ extern leRasterFont DejaVuSansMono_14;
  * Baseline:     15
  * Style:        Antialias
  * Glyph Count:  191
- * Range Count:  15
+ * Range Count:  14
  * Glyph Ranges: 0x20-0x7E
                  0xA0-0xFF
 ***********************************/
@@ -478,119 +496,121 @@ extern leRasterFont DejaVuSansMonoBold_20;
  * Legato String Table
  * Encoding        UTF8
  * Language Count: 1
- * String Count:   101
+ * String Count:   102
  *****************************************************************************/
 
 // language IDs
 #define language_Default    0
 
 // string IDs
-#define stringID_PLAYER_ROBOT_DETECTOR    0
-#define stringID_PLAYER_MULTIPLIER_1x    1
-#define stringID_PLAYER_STREAK    2
-#define stringID_SONG_SELECT_EASY    3
-#define stringID_SONG_INFO_Status    4
-#define stringID_WIIMOTE_HEADING    5
-#define stringID_SONG_SELECT_YEAR    6
-#define stringID_WIIMOTE_A    7
-#define stringID_NAV_BUTTON_System_Info    8
-#define stringID_SONG_SELECT_SongYear    9
-#define stringID_SONG_INFO_Tier    10
-#define stringID_GUITAR_PLUS    11
-#define stringID_NAV_ConnectionStatus    12
-#define stringID_NAV_BUTTON_Activity_Logs    13
-#define stringID_SONG_INFO_STOP_TIME    14
-#define stringID_SONG_SELECT_SongTier    15
-#define stringID_SONG_SELECT_SELECT    16
-#define stringID_SONG_INFO_TIER    17
-#define stringID_SONG_INFO_START_TIME    18
-#define stringID_PLAYER_HUMAN_Battery    19
-#define stringID_WIIMOTE_DPAD_UP    20
-#define stringID_SONG_SELECT_SELECT_SONG    21
-#define stringID_SONG_SELECT_EXPERT    22
-#define stringID_SONG_SELECT_1P_HUMAN    23
-#define stringID_PLAYER_SCORE    24
-#define stringID_WIIMOTE_B    25
-#define stringID_SONG_INFO_Album_Year    26
-#define stringID_SONG_INFO_Artist    27
-#define stringID_SONG_SELECT_DIFFICULTY    28
-#define stringID_NAV_BUTTON_Settings    29
-#define stringID_WIIMOTE_DPAD_LEFT    30
-#define stringID_PLAYER_STAR_POWER    31
-#define stringID_PLAYER_HUMAN_Wii_remote    32
-#define stringID_GUITAR_MINUS    33
-#define stringID_SONG_INFO_Genre    34
-#define stringID_PLAYER_HUMAN_RemoteStatus    35
-#define stringID_PLAYER_Streak    36
-#define stringID_PLAYER_StarPower    37
-#define stringID_SONG_SELECT_1P_ROBOT    38
-#define stringID_WIIMOTE_DPAD_DOWN    39
-#define stringID_SONG_INFO_GENRE    40
-#define stringID_NAV_Marvin_v1_0_0    41
-#define stringID_PLAYER_Accuracy    42
-#define stringID_GAMEPLAY_SELECT_SONG    43
-#define stringID_SONG_SELECT_SongTitle    44
-#define stringID_NAV_BUTTON_Dashboard    45
-#define stringID_SONG_GAMEPLAY_DIFFICULTY    46
-#define stringID_SONG_SELECT_2P_ROBOT_vs_HUMAN    47
-#define stringID_SONG_SELECT_MEDIUM    48
-#define stringID_WIIMOTE_ONE    49
-#define stringID_SONG_INFO_DURATION    50
-#define stringID_PLAYER_ROBOT_GUITAR_ACTUATORS    51
-#define stringID_GAMEPLAY_MODE_1P_ROBOT    52
-#define stringID_PLAYER_MULTIPLIER_2x    53
-#define stringID_SONG_SELECT_SongArtist    54
-#define stringID_PLAYER_HUMAN_HumanPlayer    55
-#define stringID_PLAYER_HUMAN_Name    56
-#define stringID_SONG_SELECT_ALBUM    57
-#define stringID_SONG_SELECT_DURATION    58
-#define stringID_GUITAR_STRUM_UP    59
-#define stringID_SONG_SELECT_SongDuration    60
-#define stringID_GUITAR_EXTENSION    61
-#define stringID_PLAYER_STRUM_BAR    62
-#define stringID_GUITAR_WHAMMY    63
-#define stringID_VIDEO_NO_SIGNAL    64
-#define stringID_GUITAR_STRUM_DOWN    65
-#define stringID_WIIMOTE_HOME    66
-#define stringID_SONG_SELECT_SongGenre    67
-#define stringID_PLAYER_HUMAN_CONTROLLER    68
-#define stringID_SONG_SELECT_SongAlbum    69
-#define stringID_NAV_BUTTON_Performance    70
-#define stringID_NAV_BUTTON_Diagnostics    71
-#define stringID_PLAYER_ROBOT_RobotPlayer    72
-#define stringID_WIIMOTE_TWO    73
-#define stringID_PLAYER_ROBOT_Score    74
-#define stringID_NAV_BUTTON_Wiimotes    75
-#define stringID_PLAYER_ROBOT_Computer_Vision    76
-#define stringID_PLAYER_HUMAN_GuitarStatus    77
-#define stringID_WIIMOTE_TILT    78
-#define stringID_PLAYER_ROBOT_Status    79
-#define stringID_WIIMOTE_DPAD_RIGHT    80
-#define stringID_SONG_GAMEPLAY_MODE    81
-#define stringID_SONG_INFO_Duration    82
-#define stringID_PLAYER_HUMAN_Wii_guitar    83
-#define stringID_PLAYER_ROBOT_FRET_ACTIVITY    84
-#define stringID_SONG_SELECT_HARD    85
-#define stringID_SONG_SELECT_MODE    86
-#define stringID_PLAYER_ROBOT_Neural_Network    87
-#define stringID_SONG_SELECT_GENRE    88
-#define stringID_PLAYER_HUMAN_BatteryLevel    89
-#define stringID_SONG_SELECT_SETLIST    90
-#define stringID_SONG_GAMEPLAY_EASY    91
-#define stringID_PLAYER_ROBOT_Name    92
-#define stringID_PLAYER_MULTIPLIER_4x    93
-#define stringID_SONG_INFO_Title    94
-#define stringID_NAV_NAVIGATION    95
-#define stringID_PLAYER_STRUM_BAR_Status    96
-#define stringID_GAMEPLAY_START    97
-#define stringID_PLAYER_ACCURACY    98
-#define stringID_PLAYER_MULTIPLIER_3x    99
-#define stringID_NAV_STATUS    100
+#define stringID_NAV_BUTTON_Bus_Statistics    0
+#define stringID_PLAYER_ROBOT_DETECTOR    1
+#define stringID_PLAYER_MULTIPLIER_1x    2
+#define stringID_PLAYER_STREAK    3
+#define stringID_SONG_SELECT_EASY    4
+#define stringID_SONG_INFO_Status    5
+#define stringID_WIIMOTE_HEADING    6
+#define stringID_SONG_SELECT_YEAR    7
+#define stringID_WIIMOTE_A    8
+#define stringID_NAV_BUTTON_System_Info    9
+#define stringID_SONG_SELECT_SongYear    10
+#define stringID_SONG_INFO_Tier    11
+#define stringID_GUITAR_PLUS    12
+#define stringID_NAV_ConnectionStatus    13
+#define stringID_NAV_BUTTON_Activity_Logs    14
+#define stringID_SONG_INFO_STOP_TIME    15
+#define stringID_SONG_SELECT_SongTier    16
+#define stringID_SONG_SELECT_SELECT    17
+#define stringID_SONG_INFO_TIER    18
+#define stringID_SONG_INFO_START_TIME    19
+#define stringID_PLAYER_HUMAN_Battery    20
+#define stringID_WIIMOTE_DPAD_UP    21
+#define stringID_SONG_SELECT_SELECT_SONG    22
+#define stringID_SONG_SELECT_EXPERT    23
+#define stringID_SONG_SELECT_1P_HUMAN    24
+#define stringID_PLAYER_SCORE    25
+#define stringID_WIIMOTE_B    26
+#define stringID_SONG_INFO_Album_Year    27
+#define stringID_SONG_INFO_Artist    28
+#define stringID_SONG_SELECT_DIFFICULTY    29
+#define stringID_NAV_BUTTON_Settings    30
+#define stringID_WIIMOTE_DPAD_LEFT    31
+#define stringID_PLAYER_STAR_POWER    32
+#define stringID_PLAYER_HUMAN_Wii_remote    33
+#define stringID_GUITAR_MINUS    34
+#define stringID_SONG_INFO_Genre    35
+#define stringID_PLAYER_HUMAN_RemoteStatus    36
+#define stringID_PLAYER_Streak    37
+#define stringID_PLAYER_StarPower    38
+#define stringID_SONG_SELECT_1P_ROBOT    39
+#define stringID_WIIMOTE_DPAD_DOWN    40
+#define stringID_SONG_INFO_GENRE    41
+#define stringID_NAV_Marvin_v1_0_0    42
+#define stringID_PLAYER_Accuracy    43
+#define stringID_GAMEPLAY_SELECT_SONG    44
+#define stringID_SONG_SELECT_SongTitle    45
+#define stringID_NAV_BUTTON_Dashboard    46
+#define stringID_SONG_GAMEPLAY_DIFFICULTY    47
+#define stringID_SONG_SELECT_2P_ROBOT_vs_HUMAN    48
+#define stringID_SONG_SELECT_MEDIUM    49
+#define stringID_WIIMOTE_ONE    50
+#define stringID_SONG_INFO_DURATION    51
+#define stringID_PLAYER_ROBOT_GUITAR_ACTUATORS    52
+#define stringID_GAMEPLAY_MODE_1P_ROBOT    53
+#define stringID_PLAYER_MULTIPLIER_2x    54
+#define stringID_SONG_SELECT_SongArtist    55
+#define stringID_PLAYER_HUMAN_HumanPlayer    56
+#define stringID_PLAYER_HUMAN_Name    57
+#define stringID_SONG_SELECT_ALBUM    58
+#define stringID_SONG_SELECT_DURATION    59
+#define stringID_GUITAR_STRUM_UP    60
+#define stringID_SONG_SELECT_SongDuration    61
+#define stringID_GUITAR_EXTENSION    62
+#define stringID_PLAYER_STRUM_BAR    63
+#define stringID_GUITAR_WHAMMY    64
+#define stringID_VIDEO_NO_SIGNAL    65
+#define stringID_GUITAR_STRUM_DOWN    66
+#define stringID_WIIMOTE_HOME    67
+#define stringID_SONG_SELECT_SongGenre    68
+#define stringID_PLAYER_HUMAN_CONTROLLER    69
+#define stringID_SONG_SELECT_SongAlbum    70
+#define stringID_NAV_BUTTON_Performance    71
+#define stringID_NAV_BUTTON_Diagnostics    72
+#define stringID_PLAYER_ROBOT_RobotPlayer    73
+#define stringID_WIIMOTE_TWO    74
+#define stringID_PLAYER_ROBOT_Score    75
+#define stringID_NAV_BUTTON_Wiimotes    76
+#define stringID_PLAYER_ROBOT_Computer_Vision    77
+#define stringID_PLAYER_HUMAN_GuitarStatus    78
+#define stringID_WIIMOTE_TILT    79
+#define stringID_PLAYER_ROBOT_Status    80
+#define stringID_WIIMOTE_DPAD_RIGHT    81
+#define stringID_SONG_GAMEPLAY_MODE    82
+#define stringID_SONG_INFO_Duration    83
+#define stringID_PLAYER_HUMAN_Wii_guitar    84
+#define stringID_PLAYER_ROBOT_FRET_ACTIVITY    85
+#define stringID_SONG_SELECT_HARD    86
+#define stringID_SONG_SELECT_MODE    87
+#define stringID_PLAYER_ROBOT_Neural_Network    88
+#define stringID_SONG_SELECT_GENRE    89
+#define stringID_PLAYER_HUMAN_BatteryLevel    90
+#define stringID_SONG_SELECT_SETLIST    91
+#define stringID_SONG_GAMEPLAY_EASY    92
+#define stringID_PLAYER_ROBOT_Name    93
+#define stringID_PLAYER_MULTIPLIER_4x    94
+#define stringID_SONG_INFO_Title    95
+#define stringID_NAV_NAVIGATION    96
+#define stringID_PLAYER_STRUM_BAR_Status    97
+#define stringID_GAMEPLAY_START    98
+#define stringID_PLAYER_ACCURACY    99
+#define stringID_PLAYER_MULTIPLIER_3x    100
+#define stringID_NAV_STATUS    101
 
 extern const leStringTable stringTable;
 
 
 // string list
+extern leTableString string_NAV_BUTTON_Bus_Statistics;
 extern leTableString string_PLAYER_ROBOT_DETECTOR;
 extern leTableString string_PLAYER_MULTIPLIER_1x;
 extern leTableString string_PLAYER_STREAK;

@@ -609,7 +609,13 @@ static void cmd_nav_px(char *args)
 static void cmd_nav_icon(const char *arg)
 {
     int row = (arg != NULL) ? atoi(arg) : 0;
-    if (row < 0 || row > 6) { printf("nav: row must be 0-6\r\n"); return; }
+    uint16_t ix = 0u, iy = 0u, id = 0u;
+
+    if (row < 0 || !ScreenNavigation_GetIconRect((unsigned)row, &ix, &iy, &id))
+    {
+        printf("nav: no such drawer row\r\n");
+        return;
+    }
 
     const void *base = NULL;
     uint16_t sw = 0u, sh = 0u;
@@ -626,9 +632,7 @@ static void cmd_nav_icon(const char *arg)
         return;
     }
 
-    const uint16_t ix = 16u + 16u;                       /* button x + imageMargin */
-    const uint16_t iy = (uint16_t)(113 + 64 * row + 16);
-    if ((uint32_t)ix + 24u > sw || (uint32_t)iy + 24u > sh)
+    if ((uint32_t)ix + id > sw || (uint32_t)iy + id > sh)
     {
         printf("nav: icon rect outside %ux%u\r\n", (unsigned)sw, (unsigned)sh);
         return;
@@ -641,13 +645,20 @@ static void cmd_nav_icon(const char *arg)
      * by "looks dark" hides both which colour a pixel actually is and whether a gap
      * is background or something else. */
     #define NAV_LEGEND_MAX 16u
+    #define NAV_DUMP_MAX   32u          /* line buffer below */
     uint16_t pal[NAV_LEGEND_MAX];
     uint32_t cnt[NAV_LEGEND_MAX];
     uint32_t npal = 0u, other = 0u;
 
-    for (uint16_t yy = 0u; yy < 24u; yy++)
+    if (id > NAV_DUMP_MAX)
     {
-        for (uint16_t xx = 0u; xx < 24u; xx++)
+        printf("nav: icon %ux%u too large to dump\r\n", (unsigned)id, (unsigned)id);
+        return;
+    }
+
+    for (uint16_t yy = 0u; yy < id; yy++)
+    {
+        for (uint16_t xx = 0u; xx < id; xx++)
         {
             uint16_t v = fb[(uint32_t)(iy + yy) * sw + (ix + xx)];
             uint32_t k;
@@ -660,13 +671,13 @@ static void cmd_nav_icon(const char *arg)
         }
     }
 
-    printf("nav icon row %d at %u,%u (24x24, RGB565):\r\n",
-           row, (unsigned)ix, (unsigned)iy);
+    printf("nav icon row %d at %u,%u (%ux%u, RGB565):\r\n",
+           row, (unsigned)ix, (unsigned)iy, (unsigned)id, (unsigned)id);
 
-    for (uint16_t yy = 0u; yy < 24u; yy++)
+    for (uint16_t yy = 0u; yy < id; yy++)
     {
-        char line[25];
-        for (uint16_t xx = 0u; xx < 24u; xx++)
+        char line[NAV_DUMP_MAX + 1u];
+        for (uint16_t xx = 0u; xx < id; xx++)
         {
             uint16_t v = fb[(uint32_t)(iy + yy) * sw + (ix + xx)];
             char c = '*';
@@ -680,7 +691,7 @@ static void cmd_nav_icon(const char *arg)
             }
             line[xx] = c;
         }
-        line[24] = '\0';
+        line[id] = '\0';
         printf("  %s\r\n", line);
     }
 

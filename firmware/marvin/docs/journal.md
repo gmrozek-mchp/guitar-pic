@@ -4,6 +4,30 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-05 — Nav drawer taken over from MGS: figma subtree stripped, drawer now built in C from a 3-row entry table (Dashboard / Wiimotes / Bus Statistics), styled to the mockup. Code + design edits done; PENDING Greg's MGS Generate (the build cannot link until then).**
+
+The drawer was the last figma-imported widget tree still authored in MGS. It is also the panel with the most reason to be code-owned: **its row set has to track which screens actually exist**, which is a code fact. The design shipped seven rows, four going nowhere, and the Diagnostics row was wired to the *bus* screen.
+
+*Why hand-code (same reasoning as bus / wiimotes / keyboard).* One `NAV_ENTRY[]` line per row — caption `stringID`, icon pair, base-view verb — so adding a screen adds a row, and the four unbuilt rows can't drift into a shipping menu. The pattern is proven: [`screen_bus.c`](../default/src/ui/screens/bus/screen_bus.c) built a whole screen into an empty MGS panel, [`titlebar.c`](../default/src/ui/titlebar.c) is the shared-component flavour. Recorded as ui_compositor.md **§17** (the general "panels built in C" rule), which also retires two stale claims there: the drawer is not "its own `Navigation` MGS Screen" any more, and ButtonAA is no longer single-radius (`AaCorners_Render` computes coverage analytically, so radius 8 works).
+
+**Design zip (5 scripted edits, all idempotent + dry-run first).** `strip_subtree.py PANEL_NAVIGATION` removed 19 widgets and kept the root panel; new `design_nav_panel_retarget.py` made that panel a plain opaque backdrop (`SCHEME_FILL_ZINC_900`, FILL, border NONE — it had been carrying a *row's* scheme plus a full `BORDER_LINE` box) and recoloured `SCHEME_NAV_BUTTON_UNSELECTED.text` white → `#D4D4D8`; `add_image.py` added the `NAV_ICON_BUS` pair; new skill script `add_string.py` added `NAV_BUTTON_Bus_Statistics`.
+- **The unselected label was white, so only the fill and icon ever changed on selection.** The mockup styles the whole row `text-zinc-300` → `text-white`. Now the label tracks the icon. Safe to edit that scheme in place: it was referenced by the nav widgets only, and they are gone.
+- **The Bus icon is `network.svg`** — the lucide original `assets/README.md` had already reserved "for a Bus Statistics nav row the drawer doesn't have yet". Rasterized zinc-300 + white at 24×24; verified both members have **identical opaque-pixel counts (174)**, i.e. alpha-identical, which is the property the pair relies on.
+- **New reusable skill script `add_string.py`.** Adding a string means **two** lists: `strings[]` (identity + per-language value) *and* `bindings[]` (`{string, language, font}`). An unbound string generates a `leTableString` with no font — and the binding is also what makes MGS include the value's glyphs, so the font choice belongs in the add, not later. It refuses a duplicate name (the generated C symbol *is* the name).
+- **Kept deliberately: 5 icon pairs + their captions** (Activity Logs, Performance, System Info, Settings, Diagnostics). They are now referenced by neither a widget nor C, so `prune_unused_images.py` will report them — that is expected, noted in `assets/README.md` so a future prune doesn't quietly delete them.
+
+**Mockup deltas, all from `NavigationDrawer.tsx`** (Tailwind v4 → px): row width 287 → **288** (`w-full` inside `p-4`), corner radius 12 → **8** (`rounded-lg`), subtitle + `STATUS` zinc-200 → **zinc-500** (`text-zinc-500`), the status dot gets AA via `PanelAA_EnableDot` instead of being a 12×12 square, and the three `border-*` hairlines are single 1px zinc-700 rules (right edge, under the header, over the footer) instead of figma's full `BORDER_LINE` boxes on three nested transparent panels. Every layout number is now derived — `HDR_H` from title+subtitle+`p-6`, `FTR_H` from the footer's content row + padding — rather than copied from the export.
+
+**Kept verbatim from the old module** because it is proven and design-independent: the nocache surface, `NAVIGATION_CLOSED_X` window-clip derivation, the whole Move-FX slide path (stop-before-restart, jump path owning the close ending), the base-view pickability gating, and `navigation_highlight`'s repaint-only-the-two-changed-rows + first-call-paints-all + per-row `invalidate()` (the fix from earlier today).
+
+**`nav icon <row>` was hard-coding the drawer's geometry** (`16+16`, `113+64*row+16`, rows 0–6) — a copy of the layout it exists to inspect, and it would have gone stale silently. Now `ScreenNavigation_GetIconRect(row, …)` supplies the rect and the row bound, so the console tracks `NAV_ENTRY` and the dump adapts to the icon size.
+
+**Verified so far:** design zip is self-consistent (26 images, 102 strings, manifest == asset dirs, **0 dangling widget asset refs**, no unbound string, no binding to an unknown font/string); `screen_navigation.c` + `console.c` both compile clean under `-Wall -Wextra` with the three not-yet-generated symbols stubbed. **Not yet verified on hardware.**
+
+**Handoff — this will not link until MGS → Generate**, because the code names `stringID_NAV_BUTTON_Bus_Statistics`, `NAV_ICON_BUS`, `NAV_ICON_BUS_SELECTED` first (the same handoff as this morning's icon-pair work; confirmed the failure is exactly those three identifiers and nothing else). Post-Generate sanity check: `le_gen_assets.h` should declare **26** `leImage` (24 today) and the `Marvin_BUTTON_NAV_*` / `Marvin_PANEL_NAVIGATION_TOP` externs should be **gone** — if they are still there, MGS didn't read the edited zip (close and reopen the design; see the Generate-lag note below).
+
+---
+
 **2026-08-05 — Two root causes, one bug: a missing `invalidate()` in the nav drawer produced BOTH a visual artifact on the icons AND killed the USB CDC link. Fixed and verified on hardware. Along the way: a canvas-dump facility, USB sink hardening, and a nocache corruption detector.**
 
 **Symptom 1 — a small block of wrong pixels at the top-left of every nav icon,** which "changed colour but not shape" (pink, later blue) and appeared on icons that had never been selected.

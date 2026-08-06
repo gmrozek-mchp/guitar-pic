@@ -2,6 +2,7 @@
 #define UI_SCREEN_NAVIGATION_H
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -28,6 +29,12 @@ void ScreenNavigation_ToggleDrawer(void);
  * `nav slide on|off`. */
 void ScreenNavigation_SetSlide(bool on);
 bool ScreenNavigation_GetSlide(void);
+
+/* Surface rect of row `row`'s icon, for the console's pixel dump (`nav icon <row>`).
+ * False if there is no such row, so the caller's bound tracks the entry table rather
+ * than a copy of it. */
+bool ScreenNavigation_GetIconRect(unsigned int row, uint16_t *x, uint16_t *y,
+                                  uint16_t *size);
 
 #ifdef __cplusplus
 }
