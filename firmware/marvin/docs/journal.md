@@ -96,7 +96,7 @@ The four steps of the adoption order are done in order, one widget each, all fou
 
 **4. Move the custom widgets onto Legato's vector rasterizer (`gfx/legato/vector/`) — Greg, 2026-08-06. The four-widget conversion is DONE the same day; see the entry above.** Background is [`legato_vector_review.md`](legato_vector_review.md) (2026-08-05) — what the API is, why it wins, the per-widget mapping in §4, the adoption order in §6 — with a corrections block now at its top. What is left of the item:
 - **On hardware:** look at all four (start with the gauge, whose crisp ring is a deliberate appearance change), then `marvin-perf` before/after on tilt and gauge. Fixed-point-with-8-samples beating soft-float-with-1-sample is still plausible-not-proven; `UI_VEC_AA` in `ui/gfx/vec_draw.h` drops the whole project to 4X in one line if it asks.
-- **To the Legato developer**, now five items: §5's two bugs (sticky gradient shader, `arc_stroke` convexity), the `arc_fill` `ranges[1]` nit, `leDraw_VectorRectFill` clamping corner radii to `min(w,h)/4` (so capsules are inexpressible), and `LE_REAL_I16_FROM_FLOAT` not parenthesising its argument.
+- ~~**To the Legato developer**, now five items~~ — **REPORTED (Greg, 2026-08-06).** All five went across: §5's two bugs (sticky gradient shader, `arc_stroke` convexity), the `arc_fill` `ranges[1]` nit, `leDraw_VectorRectFill` clamping corner radii to `min(w,h)/4` (so capsules are inexpressible), and `LE_REAL_I16_FROM_FLOAT` not parenthesising its argument. Two of them shape our code until they are fixed upstream, so they stay documented rather than closed: `hardness` is pinned to `LE_REAL_I16_ONE` at every call site to dodge the sticky shader, and the radius clamp is what keeps `ui/widgets/bar` and `widget_whammy` off the vector path (see "not converting" below). Re-test those two when a new Legato drops.
 - **Not converting, with reasons:** `widget_whammy` (capsule shapes *and* it clips everything to the track's coverage, which needs a clip-rect setter the API does not have), `ui/widgets/bar` (the review's §4.5 target after `progressbar_aa` was deleted — blocked by the same radius clamp, and its dithered gradient has no vector equivalent), `widget_sparkline` (cosmetic, and the one case the vector path is plausibly slower on the most-repainted widget), and `aa_corners`/`panel_aa`/`button_aa` (the corner-box footprint beats anything the API can express — the review's own conclusion).
 
 ---
@@ -903,6 +903,51 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 ---
 
 ## Session log
+
+### 2026-08-06 — GH3-Wii song catalog renumbered for newly-unlocked songs
+
+- Greg unlocked 6 more songs on the real Wii disc and staged them into `songs.csv` with
+  temporary `x.5` indices (4.5, 9.5, 14.5, 19.5, 24.5, 29.5) to mark insertion points without
+  disturbing the existing integer rows. `(setlist, index)` isn't just a catalog key — it's also
+  the recognizer template label (`gp_song_templates`) *and* the literal strum-down navigation
+  distance `game_controller.c` computes between songs — so `x.5` placeholders were never
+  deployable, only a staging convention (confirmed: the on-device CSV parser does
+  `atoi("4.5") == 4`, a silent collision with the real song at index 4).
+- Renumbered the main setlist to consecutive integers 0–44, landing the new songs at 5 (Sabotage),
+  11 (Reptilia), 17 (Suck My Kiss), 23 (Cities On Flame with Rock & Roll), 29 (Helicopter), 35
+  (Monsters). Bonus setlist (0–24) untouched — no overlap.
+- Propagated the old→new index shift everywhere it's baked in: `gh3_screens/` corpus PNGs
+  (`git mv`, existing screenshots just relabeled — the vector-match content doesn't depend on the
+  index), `art/{large,small}/main-*.png` (same shift), `gh3_screens/README.md` + `gh3_navigation.md`
+  song tables, `tools/gh3-cover-art/fetch_gh3_cover_art.py`'s `SONGS` table (+ 6 new entries with
+  derived slugs/albums), and regenerated `gameplay_metadata.h` via `gameplay export-c` (`tools/gameplay`
+  test suite green, 80 passed).
+- Caught and fixed a self-introduced off-by-one: an early corpus-rename pass shifted the six songs
+  immediately *before* each insertion point one slot too far (e.g. Rock and Roll All Nite → 05
+  instead of staying at 04), leaving gaps at the wrong indices. Re-derived the mapping directly
+  from the renumbered `songs.csv` and corrected all six before it touched the art tier or the
+  generated header.
+- Greg captured the 6 missing `song_select` screens the same session and dropped them into
+  `gh3_screens/` as raw `snapshot-1{88129,89100,90168,91013,92233,92804}.png`, numerically ordered to
+  match the gap indices ascending. Verified each capture visually against the highlighted title and
+  its neighbours before renaming (the earlier off-by-one made blind positional trust unwise) — all
+  six matched. Renamed to the corpus convention, filled in the `README.md` / `gh3_navigation.md`
+  pending rows, and regenerated `gameplay_metadata.h`: main setlist is now 0–44 contiguous,
+  `GP_N_SONGS` 64 → **70** (45 main + 25 bonus). Recognizer is clean on the enlarged corpus —
+  70/70 songs identified, `margin_min` 33.6, zero failures. Bumped the three hardcoded `64` counts
+  in `tests/test_songselect.py` + `tests/test_export_c.py`; suite green, 80 passed.
+- Note on the corpus/art renames and repo size: the index shift is a *permutation* of paths, so
+  `git status` shows most files as `M` rather than `R` — git's rename detection needs a delete/add
+  pair and these paths exist on both sides. That's a display artifact only, not storage. Verified
+  every staged PNG blob OID already exists in `HEAD`, so committing the shuffle adds **zero** new
+  blob bytes (~13 KB of new tree objects, 11 loose objects total) against ~10 MB of art and 56 MB of
+  screens. A two-step "rename to temp names, then to final names" dance would make the diff *print*
+  as `R` but would cost an extra commit's trees and save nothing — not worth it.
+- Remaining, blocked on Greg: real cover art for the 6 new songs needs `fetch_gh3_cover_art.py
+  --catalog` run with network access to musicbrainz.org / coverartarchive.org (not in this
+  sandbox's allowed hosts) — Greg runs it, or supplies images another way. Placeholder
+  album/genre/bpm/length_s for the 6 new songs left as-is in `songs.csv` pending that run (the tool
+  rewrites the catalog wholesale, so hand-filling now would just be overwritten).
 
 ### 2026-08-06 — Drag lag: tilt + whammy repaint only the damaged band
 

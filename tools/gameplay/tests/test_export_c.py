@@ -21,7 +21,7 @@ def test_header_dimensions(corpus):
     h = build_metadata_header(corpus)
     assert "#define GP_N_SCREENS 14" in h
     assert "#define GP_N_MENUS 8" in h
-    assert "#define GP_N_SONGS 64" in h
+    assert "#define GP_N_SONGS 70" in h
     assert "#define GP_FP_LEN 288" in h
     assert "#define GP_SONG_LEN 192" in h
 

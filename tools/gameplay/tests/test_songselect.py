@@ -12,16 +12,16 @@ def test_song_from_filename():
     assert song_from_filename("main_menu__career.png") is None
 
 
-def test_catalog_has_all_64(corpus):
+def test_catalog_has_all_70(corpus):
     cat = build_song_catalog(corpus)
-    assert len(cat.templates) == 64
-    assert sum(t.setlist == "main" for t in cat.templates) == 39
+    assert len(cat.templates) == 70
+    assert sum(t.setlist == "main" for t in cat.templates) == 45
     assert sum(t.setlist == "bonus" for t in cat.templates) == 25
 
 
 def test_song_match_clean_and_slop(corpus):
     res = song_eval(corpus)
-    assert res.n_total == 64
+    assert res.n_total == 70
     assert res.song_acc == 1.0, res.failures  # every song identified (match-all)
     assert res.margin_min > 0
     assert res.slop_acc >= 0.95, res.slop_acc

@@ -22,40 +22,46 @@ snapshot number.
 | song_select__02_hit_me_with_your_best_shot.png | 14 | song_select — song: Hit Me With Your Best Shot |
 | song_select__03_story_of_my_life.png | 15 | song_select — song: Story of My Life |
 | song_select__04_rock_and_roll_all_nite.png | 16 | song_select — song: Rock and Roll All Nite |
-| song_select__05_mississippi_queen.png | 17 | song_select — song: Mississippi Queen |
-| song_select__06_school_s_out.png | 18 | song_select — song: School's Out |
-| song_select__07_sunshine_of_your_love.png | 19 | song_select — song: Sunshine of Your Love |
-| song_select__08_barracuda.png | 20 | song_select — song: Barracuda |
-| song_select__09_bulls_on_parade.png | 21 | song_select — song: Bulls on Parade |
-| song_select__10_when_you_were_young.png | 22 | song_select — song: When You Were Young |
-| song_select__11_miss_murder.png | 23 | song_select — song: Miss Murder |
-| song_select__12_the_seeker.png | 24 | song_select — song: The Seeker |
-| song_select__13_lay_down.png | 25 | song_select — song: Lay Down |
-| song_select__14_paint_it_black.png | 26 | song_select — song: Paint It Black |
-| song_select__15_paranoid.png | 27 | song_select — song: Paranoid |
-| song_select__16_anarchy_in_the_u_k.png | 28 | song_select — song: Anarchy in the U.K. |
-| song_select__17_kool_thing.png | 29 | song_select — song: Kool Thing |
-| song_select__18_my_name_is_jonas.png | 30 | song_select — song: My Name Is Jonas |
-| song_select__19_even_flow.png | 31 | song_select — song: Even Flow |
-| song_select__20_holiday_in_cambodia.png | 32 | song_select — song: Holiday In Cambodia |
-| song_select__21_rock_you_like_a_hurricane.png | 33 | song_select — song: Rock You Like A Hurricane |
-| song_select__22_same_old_song_and_dance.png | 34 | song_select — song: Same Old Song and Dance |
-| song_select__23_la_grange.png | 35 | song_select — song: La Grange |
-| song_select__24_welcome_to_the_jungle.png | 36 | song_select — song: Welcome To The Jungle |
-| song_select__25_black_magic_woman.png | 37 | song_select — song: Black Magic Woman |
-| song_select__26_cherub_rock.png | 38 | song_select — song: Cherub Rock |
-| song_select__27_black_sunshine.png | 39 | song_select — song: Black Sunshine |
-| song_select__28_the_metal.png | 40 | song_select — song: The Metal |
-| song_select__29_pride_and_joy.png | 41 | song_select — song: Pride and Joy |
-| song_select__30_before_i_forget.png | 42 | song_select — song: Before I Forget |
-| song_select__31_stricken.png | 43 | song_select — song: Stricken |
-| song_select__32_3_s_7_s.png | 44 | song_select — song: 3's & 7's |
-| song_select__33_knights_of_cydonia.png | 45 | song_select — song: Knights of Cydonia |
-| song_select__34_cult_of_personality.png | 46 | song_select — song: Cult Of Personality |
-| song_select__35_raining_blood.png | 47 | song_select — song: Raining Blood |
-| song_select__36_cliffs_of_dover.png | 48 | song_select — song: Cliffs Of Dover |
-| song_select__37_the_number_of_the_beast.png | 49 | song_select — song: The Number of the Beast |
-| song_select__38_one.png | 50 | song_select — song: One |
+| song_select__05_sabotage.png | 188129 | song_select — song: Sabotage |
+| song_select__06_mississippi_queen.png | 17 | song_select — song: Mississippi Queen |
+| song_select__07_school_s_out.png | 18 | song_select — song: School's Out |
+| song_select__08_sunshine_of_your_love.png | 19 | song_select — song: Sunshine of Your Love |
+| song_select__09_barracuda.png | 20 | song_select — song: Barracuda |
+| song_select__10_bulls_on_parade.png | 21 | song_select — song: Bulls on Parade |
+| song_select__11_reptilia.png | 189100 | song_select — song: Reptilia |
+| song_select__12_when_you_were_young.png | 22 | song_select — song: When You Were Young |
+| song_select__13_miss_murder.png | 23 | song_select — song: Miss Murder |
+| song_select__14_the_seeker.png | 24 | song_select — song: The Seeker |
+| song_select__15_lay_down.png | 25 | song_select — song: Lay Down |
+| song_select__16_paint_it_black.png | 26 | song_select — song: Paint It Black |
+| song_select__17_suck_my_kiss.png | 190168 | song_select — song: Suck My Kiss |
+| song_select__18_paranoid.png | 27 | song_select — song: Paranoid |
+| song_select__19_anarchy_in_the_u_k.png | 28 | song_select — song: Anarchy in the U.K. |
+| song_select__20_kool_thing.png | 29 | song_select — song: Kool Thing |
+| song_select__21_my_name_is_jonas.png | 30 | song_select — song: My Name Is Jonas |
+| song_select__22_even_flow.png | 31 | song_select — song: Even Flow |
+| song_select__23_cities_on_flame_with_rock_roll.png | 191013 | song_select — song: Cities On Flame with Rock & Roll |
+| song_select__24_holiday_in_cambodia.png | 32 | song_select — song: Holiday In Cambodia |
+| song_select__25_rock_you_like_a_hurricane.png | 33 | song_select — song: Rock You Like A Hurricane |
+| song_select__26_same_old_song_and_dance.png | 34 | song_select — song: Same Old Song and Dance |
+| song_select__27_la_grange.png | 35 | song_select — song: La Grange |
+| song_select__28_welcome_to_the_jungle.png | 36 | song_select — song: Welcome To The Jungle |
+| song_select__29_helicopter.png | 192233 | song_select — song: Helicopter |
+| song_select__30_black_magic_woman.png | 37 | song_select — song: Black Magic Woman |
+| song_select__31_cherub_rock.png | 38 | song_select — song: Cherub Rock |
+| song_select__32_black_sunshine.png | 39 | song_select — song: Black Sunshine |
+| song_select__33_the_metal.png | 40 | song_select — song: The Metal |
+| song_select__34_pride_and_joy.png | 41 | song_select — song: Pride and Joy |
+| song_select__35_monsters.png | 192804 | song_select — song: Monsters |
+| song_select__36_before_i_forget.png | 42 | song_select — song: Before I Forget |
+| song_select__37_stricken.png | 43 | song_select — song: Stricken |
+| song_select__38_3_s_7_s.png | 44 | song_select — song: 3's & 7's |
+| song_select__39_knights_of_cydonia.png | 45 | song_select — song: Knights of Cydonia |
+| song_select__40_cult_of_personality.png | 46 | song_select — song: Cult Of Personality |
+| song_select__41_raining_blood.png | 47 | song_select — song: Raining Blood |
+| song_select__42_cliffs_of_dover.png | 48 | song_select — song: Cliffs Of Dover |
+| song_select__43_the_number_of_the_beast.png | 49 | song_select — song: The Number of the Beast |
+| song_select__44_one.png | 50 | song_select — song: One |
 | song_select__bonus_00_avalancha.png | 51 | song_select — bonus song: Avalancha |
 | song_select__bonus_01_in_the_belly_of_a_shark.png | 52 | song_select — bonus song: In The Belly Of A Shark |
 | song_select__bonus_02_can_t_be_saved.png | 53 | song_select — bonus song: Can't Be Saved |

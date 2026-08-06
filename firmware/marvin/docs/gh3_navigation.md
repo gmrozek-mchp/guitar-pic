@@ -269,40 +269,46 @@ artist. Room for more metadata (BPM, length, difficulty) later.
 | 2 | Hit Me With Your Best Shot | Pat Benatar | `gh3_screens/song_select__02_hit_me_with_your_best_shot.png` |
 | 3 | Story of My Life | Social Distortion | `gh3_screens/song_select__03_story_of_my_life.png` |
 | 4 | Rock and Roll All Nite | KISS | `gh3_screens/song_select__04_rock_and_roll_all_nite.png` |
-| 5 | Mississippi Queen | Mountain | `gh3_screens/song_select__05_mississippi_queen.png` |
-| 6 | School's Out | Alice Cooper | `gh3_screens/song_select__06_school_s_out.png` |
-| 7 | Sunshine of Your Love | Cream | `gh3_screens/song_select__07_sunshine_of_your_love.png` |
-| 8 | Barracuda | Heart | `gh3_screens/song_select__08_barracuda.png` |
-| 9 | Bulls on Parade | Rage Against the Machine | `gh3_screens/song_select__09_bulls_on_parade.png` |
-| 10 | When You Were Young | The Killers | `gh3_screens/song_select__10_when_you_were_young.png` |
-| 11 | Miss Murder | AFI | `gh3_screens/song_select__11_miss_murder.png` |
-| 12 | The Seeker | The Who | `gh3_screens/song_select__12_the_seeker.png` |
-| 13 | Lay Down | Priestess | `gh3_screens/song_select__13_lay_down.png` |
-| 14 | Paint It Black | The Rolling Stones | `gh3_screens/song_select__14_paint_it_black.png` |
-| 15 | Paranoid | Black Sabbath | `gh3_screens/song_select__15_paranoid.png` |
-| 16 | Anarchy in the U.K. | The Sex Pistols | `gh3_screens/song_select__16_anarchy_in_the_u_k.png` |
-| 17 | Kool Thing | Sonic Youth | `gh3_screens/song_select__17_kool_thing.png` |
-| 18 | My Name Is Jonas | Weezer | `gh3_screens/song_select__18_my_name_is_jonas.png` |
-| 19 | Even Flow | Pearl Jam | `gh3_screens/song_select__19_even_flow.png` |
-| 20 | Holiday In Cambodia | Dead Kennedys | `gh3_screens/song_select__20_holiday_in_cambodia.png` |
-| 21 | Rock You Like A Hurricane | Scorpions | `gh3_screens/song_select__21_rock_you_like_a_hurricane.png` |
-| 22 | Same Old Song and Dance | Aerosmith | `gh3_screens/song_select__22_same_old_song_and_dance.png` |
-| 23 | La Grange | ZZ Top | `gh3_screens/song_select__23_la_grange.png` |
-| 24 | Welcome To The Jungle | Guns N' Roses | `gh3_screens/song_select__24_welcome_to_the_jungle.png` |
-| 25 | Black Magic Woman | Santana | `gh3_screens/song_select__25_black_magic_woman.png` |
-| 26 | Cherub Rock | The Smashing Pumpkins | `gh3_screens/song_select__26_cherub_rock.png` |
-| 27 | Black Sunshine | White Zombie | `gh3_screens/song_select__27_black_sunshine.png` |
-| 28 | The Metal | Tenacious D | `gh3_screens/song_select__28_the_metal.png` |
-| 29 | Pride and Joy | Stevie Ray Vaughan | `gh3_screens/song_select__29_pride_and_joy.png` |
-| 30 | Before I Forget | Slipknot | `gh3_screens/song_select__30_before_i_forget.png` |
-| 31 | Stricken | Disturbed | `gh3_screens/song_select__31_stricken.png` |
-| 32 | 3's & 7's | Queens of the Stone Age | `gh3_screens/song_select__32_3_s_7_s.png` |
-| 33 | Knights of Cydonia | Muse | `gh3_screens/song_select__33_knights_of_cydonia.png` |
-| 34 | Cult Of Personality | Living Colour | `gh3_screens/song_select__34_cult_of_personality.png` |
-| 35 | Raining Blood | Slayer | `gh3_screens/song_select__35_raining_blood.png` |
-| 36 | Cliffs Of Dover | Eric Johnson | `gh3_screens/song_select__36_cliffs_of_dover.png` |
-| 37 | The Number of the Beast | Iron Maiden | `gh3_screens/song_select__37_the_number_of_the_beast.png` |
-| 38 | One | Metallica | `gh3_screens/song_select__38_one.png` |
+| 5 | Sabotage | Beastie Boys | `gh3_screens/song_select__05_sabotage.png` |
+| 6 | Mississippi Queen | Mountain | `gh3_screens/song_select__06_mississippi_queen.png` |
+| 7 | School's Out | Alice Cooper | `gh3_screens/song_select__07_school_s_out.png` |
+| 8 | Sunshine of Your Love | Cream | `gh3_screens/song_select__08_sunshine_of_your_love.png` |
+| 9 | Barracuda | Heart | `gh3_screens/song_select__09_barracuda.png` |
+| 10 | Bulls on Parade | Rage Against the Machine | `gh3_screens/song_select__10_bulls_on_parade.png` |
+| 11 | Reptilia | The Strokes | `gh3_screens/song_select__11_reptilia.png` |
+| 12 | When You Were Young | The Killers | `gh3_screens/song_select__12_when_you_were_young.png` |
+| 13 | Miss Murder | AFI | `gh3_screens/song_select__13_miss_murder.png` |
+| 14 | The Seeker | The Who | `gh3_screens/song_select__14_the_seeker.png` |
+| 15 | Lay Down | Priestess | `gh3_screens/song_select__15_lay_down.png` |
+| 16 | Paint It Black | The Rolling Stones | `gh3_screens/song_select__16_paint_it_black.png` |
+| 17 | Suck My Kiss | Red Hot Chili Peppers | `gh3_screens/song_select__17_suck_my_kiss.png` |
+| 18 | Paranoid | Black Sabbath | `gh3_screens/song_select__18_paranoid.png` |
+| 19 | Anarchy in the U.K. | The Sex Pistols | `gh3_screens/song_select__19_anarchy_in_the_u_k.png` |
+| 20 | Kool Thing | Sonic Youth | `gh3_screens/song_select__20_kool_thing.png` |
+| 21 | My Name Is Jonas | Weezer | `gh3_screens/song_select__21_my_name_is_jonas.png` |
+| 22 | Even Flow | Pearl Jam | `gh3_screens/song_select__22_even_flow.png` |
+| 23 | Cities On Flame with Rock & Roll | Blue Öyster Cult | `gh3_screens/song_select__23_cities_on_flame_with_rock_roll.png` |
+| 24 | Holiday In Cambodia | Dead Kennedys | `gh3_screens/song_select__24_holiday_in_cambodia.png` |
+| 25 | Rock You Like A Hurricane | Scorpions | `gh3_screens/song_select__25_rock_you_like_a_hurricane.png` |
+| 26 | Same Old Song and Dance | Aerosmith | `gh3_screens/song_select__26_same_old_song_and_dance.png` |
+| 27 | La Grange | ZZ Top | `gh3_screens/song_select__27_la_grange.png` |
+| 28 | Welcome To The Jungle | Guns N' Roses | `gh3_screens/song_select__28_welcome_to_the_jungle.png` |
+| 29 | Helicopter | Bloc Party | `gh3_screens/song_select__29_helicopter.png` |
+| 30 | Black Magic Woman | Santana | `gh3_screens/song_select__30_black_magic_woman.png` |
+| 31 | Cherub Rock | The Smashing Pumpkins | `gh3_screens/song_select__31_cherub_rock.png` |
+| 32 | Black Sunshine | White Zombie | `gh3_screens/song_select__32_black_sunshine.png` |
+| 33 | The Metal | Tenacious D | `gh3_screens/song_select__33_the_metal.png` |
+| 34 | Pride and Joy | Stevie Ray Vaughan | `gh3_screens/song_select__34_pride_and_joy.png` |
+| 35 | Monsters | Matchbook Romance | `gh3_screens/song_select__35_monsters.png` |
+| 36 | Before I Forget | Slipknot | `gh3_screens/song_select__36_before_i_forget.png` |
+| 37 | Stricken | Disturbed | `gh3_screens/song_select__37_stricken.png` |
+| 38 | 3's & 7's | Queens of the Stone Age | `gh3_screens/song_select__38_3_s_7_s.png` |
+| 39 | Knights of Cydonia | Muse | `gh3_screens/song_select__39_knights_of_cydonia.png` |
+| 40 | Cult Of Personality | Living Colour | `gh3_screens/song_select__40_cult_of_personality.png` |
+| 41 | Raining Blood | Slayer | `gh3_screens/song_select__41_raining_blood.png` |
+| 42 | Cliffs Of Dover | Eric Johnson | `gh3_screens/song_select__42_cliffs_of_dover.png` |
+| 43 | The Number of the Beast | Iron Maiden | `gh3_screens/song_select__43_the_number_of_the_beast.png` |
+| 44 | One | Metallica | `gh3_screens/song_select__44_one.png` |
 
 ### Song catalog (bonus setlist)
 
