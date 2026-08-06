@@ -56,11 +56,16 @@ for the glyph audit.
 S=.claude/skills/mgs-legato-design/scripts
 Z=<proj>/<cfg>/src/config/<cfg>/<name>_design.zip
 SRC=<proj>/<cfg>/src
+python3 $S/audit_refs.py           $Z               # referential integrity (run after ANY edit)
 python3 $S/audit_schemes.py        $Z $SRC          # schemes
 python3 $S/audit_strings_fonts.py  $Z $SRC          # strings + fonts
 python3 $S/audit_widget_strings.py $Z --dupes       # widget → string → font
 python3 $S/audit_glyph_coverage.py $Z $SRC [$DATA]  # glyph coverage
 ```
+
+`audit_refs.py` is the one to run **after** a transform, not just before: it exits non-zero if any
+widget asset-uuid, manifest entry or string binding no longer resolves, which is the failure mode
+where the design still opens in Composer but Generate emits a reference to something that is gone.
 
 ## Strings and fonts, specifically
 
@@ -72,6 +77,12 @@ Two things trip people up here, both covered in [REFERENCE.md](REFERENCE.md):
 - **Font names lie.** MGS substitutes a face it can't find and keeps the requested name, so
   group fonts by `sha1(sourceData)` and read the TTF `name` table before trusting any name.
   Real flash cost is the generated `le_gen_fonts.c` arrays, not the shared TTF blob.
+- **Adding a string means TWO lists.** `add_string.py <zip> <NAME> <value> --font <FontName>`
+  appends to `strings[]` (identity + one value per language) *and* `bindings[]` (one
+  `{string, language, font}` per language). An unbound string generates a `leTableString` with no
+  font, and the binding is also what makes MGS include the value's glyphs — so the font choice
+  belongs in this step. A string needs no widget reference to be generated, which is what lets a
+  hand-built screen own its captions while the design still owns the text.
 - **Glyphs: design-time is automatic, runtime is not.** MGS auto-adds whatever glyphs the
   *bound design strings* need on Generate — so retargeting a string to a font missing its
   special characters self-heals. But text produced at **runtime** (`setString` from a C
@@ -110,9 +121,10 @@ The counter-intuitive part: **keep the deleted widgets' strings and drive them f
 design string has a value per language, a C literal can never be translated. Second for glyphs:
 imported captions are often non-ASCII (arrows ▲ ◀ ▶ ▼, a true minus U+2212, ✓/⌫), and per the
 glyph rule above MGS only auto-includes glyphs for strings it can see in the design, so a literal
-would render blank after the next Generate with no build error. Full recipe — plus the
-opaque-parent precondition for AA-rounded child panels, and why a widget + scheme can't express a
-two-tone fill — in [REFERENCE.md](REFERENCE.md).
+would render blank after the next Generate with no build error. Same reasoning applies to a
+caption the design *lacks*: `add_string.py` it (bound to the font its neighbours use) rather than
+reaching for a C literal. Full recipe — plus the opaque-parent precondition for AA-rounded child
+panels, and why a widget + scheme can't express a two-tone fill — in [REFERENCE.md](REFERENCE.md).
 
 ## Details
 
@@ -120,5 +132,6 @@ Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `str
 + font-asset structure, how widgets reference assets, the generated-C relationship, and the
 full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
-refs), `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
-`audit_glyph_coverage.py`, `strip_subtree.py`, `prune_unused_images.py`, `add_image.py`.
+refs), `audit_refs.py`, `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
+`audit_glyph_coverage.py`, `strip_subtree.py`, `prune_unused_images.py`, `add_image.py`,
+`add_string.py`, `set_image_source.py`, `rename_images.py`, `export_assets.py`.

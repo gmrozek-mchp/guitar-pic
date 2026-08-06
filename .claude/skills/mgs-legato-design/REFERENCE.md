@@ -40,6 +40,15 @@ a plausible value, including `memoryLocation`. Pick a template of the same kind 
 icon, not a full-screen bitmap. Derived fields (`outputSize`, and `colorCount` if it disagrees)
 are recomputed by MGS on Generate, so small mismatches self-heal.
 
+**Cloning inherits `colorMode`, `useRLE` and `memoryLocation` — so the template choice is a
+settings choice, not just a shape choice.** If the design has deliberately turned RLE off for a
+class of images (a decode bug, a size/robustness tradeoff), a template from that class carries
+that decision forward for free; one from outside it silently reintroduces the old setting. When
+adding a **per-state pair** (rest + selected/pressed variants of one icon), clone each variant
+from its counterpart so the pair stays symmetric, and verify the two rasters are
+**alpha-identical** — count opaque pixels in each; equal counts prove only the colour differs,
+which is what the state swap relies on visually.
+
 `mgs_zip.repack` only *replaces* existing members, so the three new asset members must be
 appended (`zipfile.ZipFile(..., "a")`) after the repack that updates the manifest and screen.
 
@@ -120,6 +129,16 @@ displays/edits the scheme; the `{red,green,blue}` floats are the source of truth
 Two labels sharing one string cannot have different fonts — that's why Figma-imported
 designs sprout near-duplicate strings (`figmaStr_Connected`, `_Connected_0`, `_0_0`).
 
+**Adding a string means writing BOTH lists** (`scripts/add_string.py <zip> <NAME> <value>
+--font <FontName>`): a `strings[]` entry (fresh uuid, `name`, `path`, one `values[]` per
+language) *and* a matching `bindings[]` entry. Skip the binding and the string generates a
+`leTableString` with **no font**, and — because the binding is what MGS follows to collect
+glyphs — none of its characters are guaranteed to be in any font. So the font is part of adding
+the string, not a later decision; pick the one its neighbouring captions use. Refuse duplicate
+names: the generated C symbol *is* the name. A string needs **no widget reference** to be
+generated (`stringID_<NAME>` + `string_<NAME>` are emitted regardless), which is exactly what
+lets a hand-built screen own its captions while the design keeps the text and its translations.
+
 `assets/fonts/fonts.json` is a flat `{"fonts":[{"id","name"}],"paths":[]}` index; each font
 owns **4 zip members** under `assets/fonts/{uuid}/`:
 
@@ -180,6 +199,26 @@ So string+font cleanups touch exactly those members.
   artifact and reads as misaligned next to a `+`.
 - **Deleting a font must drop its 4 zip members**, not just its `fonts.json` entry — use
   `mgs_zip.repack(..., drop=["assets/fonts/{uuid}/"])`.
+
+## Widget properties — shape, and how to read the enums
+
+Every widget property is an object, not a bare value: `{"enabled":…, "type":…, "value":…,
+"visible":…}`. Edit `value` and leave the rest alone — `enabled`/`visible` are Composer's
+inspector state, and a property absent from a widget is one that widget doesn't support (treat
+that as an error, not something to add).
+
+`type` is `"integer"`, `"boolean"`, `"text"`, `"uuid"`, an asset kind (`"scheme"`, `"string"`,
+`"image"`, `"font"`) — or **`"combo"`, which holds an enum ordinal as a plain integer**. The
+names are nowhere in the zip, so don't guess: the property names are also shorter than the C
+setters (`background` / `border` for `setBackgroundType` / `setBorderType`). Two ways to resolve
+one, in order of reliability:
+
+1. **Read it off a sibling whose generated C you can see.** Dump the property across several
+   widgets, then match against the `setXType(...)` calls in `le_gen_screen_*.c` — a widget that
+   emits no setter at all is sitting on the enum's default. This settles both the mapping and
+   what value you actually want.
+2. Cross-check against the Legato header's enum order (`LE_WIDGET_BACKGROUND_NONE` = 0,
+   `_FILL` = 1, …) — consistent in practice, but confirm with (1) before writing.
 
 ## How references work
 
@@ -266,11 +305,18 @@ ring". Layout constants in C are also diffable.
 
 Three things to get right:
 
-- **Keep the root panel** — the builder needs it, and hand source references its generated
-  global (`<Screen>_PANEL_<NAME>`). If the builder puts AA-rounded child panels on it, confirm
-  it has `background = 1` (FILL): a corner-smoothing paint typically samples the parent's pixel
-  for its backdrop and so assumes an opaque parent. Compare against a panel already known to
-  work.
+- **Keep the root panel — then check the panel ITSELF for import artifacts.** The builder needs
+  it, and hand source references its generated global (`<Screen>_PANEL_<NAME>`). But a figma
+  import often leaves the container carrying settings that made sense only inside the deleted
+  tree: a *child's* scheme reused as the panel fill, or a full `border = LINE` box where the
+  mockup drew a single edge rule. Retarget it to what the builder actually wants — usually an
+  opaque fill in the surface's own background colour, border NONE, with any hairline drawn as a
+  1px child widget. If the builder puts AA-rounded child panels on it, the opaque fill
+  (`background = 1`) is a hard requirement: a corner-smoothing paint typically samples the
+  parent's pixel for its backdrop.
+  - **The reliable reference is another root panel in the same design that a builder already
+    works against.** Dump the same properties across both and match them — that also settles the
+    enum ordinals (see below) without guessing.
 - **The deleted widgets' STRINGS are usually worth keeping, and driving from C via
   `leTableString` + `stringID_*`** — the opposite of the "hand-coded screens use C literals"
   habit. Two reasons, in order:
@@ -282,13 +328,30 @@ Three things to get right:
      (▲ ◀ ▶ ▼ = U+25B2/25C0/25B6/25BC), a true minus (− = U+2212), check / backspace glyphs.
 
   A table string also keeps the design's per-string font binding. Net effect: deleting the
-  widgets costs you nothing in the string table, and `audit_strings_fonts.py` stays at 0 unused.
+  widgets costs you nothing in the string table, as long as the new C actually drives each one.
   Dropping to C literals is a defensible shortcut for a throwaway/demo view that will never be
   translated — just make it a recorded decision, not a default.
-- **This is not a build-breaking handoff.** The generated `le_gen_*` on disk are untouched by a
-  zip edit, so the project still compiles before Generate *provided the new C references none of
-  the deleted widget globals*. What you get until Generate is a **visual** artifact: the screen's
-  `screenShow_*` still constructs the old subtree, which renders underneath the new layout.
+- **Assets the rebuilt screen deliberately does NOT use yet need a recorded intent.** A hand-built
+  screen is often *narrower* than the import (only the rows/tabs/controls that exist today), so
+  some kept strings and images end up referenced by neither a widget nor C. `audit_strings_fonts.py`
+  will list them as unused and `prune_unused_images.py` will offer to delete them — correctly, on
+  the evidence available. Write the intent down where the next person looks (the project's asset
+  README, or a comment beside the builder's entry table) so "unused" reads as "reserved", not as a
+  leak. Don't expect the unused count to stay at 0 after a narrowing rebuild.
+- **The handoff is build-breaking as soon as the new C names a NEW asset.** A pure strip is safe —
+  the generated `le_gen_*` on disk are untouched by a zip edit, so the project still compiles
+  before Generate, and the only symptom is **visual**: `screenShow_*` still constructs the old
+  subtree under the new layout. But if the same pass *adds* a string or image (a caption or icon
+  the import lacked), the builder references `stringID_*` / `<IMAGE>` that Generate hasn't emitted
+  yet, and the build fails until the user regenerates. That's fine — just say so explicitly, and
+  prove the rest of the work is sound first:
+  - Compile the touched translation unit alone with the pending symbols aliased to existing ones
+    (`-D'stringID_NEW=stringID_EXISTING' -D'IMG_NEW=IMG_EXISTING'`, pulled from the project's
+    `compile_commands.json`). A clean `-Wall -Wextra` run then means the *only* thing standing
+    between here and a build is Generate.
+  - Before that, confirm the un-aliased failure lists **exactly** the expected new symbols and
+    nothing else — that is the check that catches a typo'd asset name or a stale reference to a
+    deleted widget global.
 
 Report what the deletion orphans (strings / images / fonts) rather than sweeping it in the same
 pass — compare asset refs from the doomed subtree against refs from everything that survives, so
@@ -336,6 +399,10 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
 
 ## Validation checklist (before repack)
 
+`scripts/audit_refs.py <zip>` automates the structural half of this list (all four asset kinds,
+manifests vs directories, binding integrity, duplicate names) and exits non-zero, so it can gate
+a repack. The judgement items — code-referenced names, appearance — still need you.
+
 - [ ] every scheme-uuid in screen/state JSON resolves to a surviving scheme
 - [ ] scheme `id`s unique; scheme `name`s unique
 - [ ] no code-referenced name deleted without a source-rename patch
@@ -344,5 +411,9 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
 - [ ] **asset manifests agree with asset directories** — `images.json` ids == `assets/images/*/`
       dirs, `fonts.json` ids == `assets/fonts/*/` dirs (a delete must update both)
 - [ ] no widget references an image/font whose asset directory is gone
-- [ ] `stringtable.json`: every `bindings[].string` resolves to a surviving string; string `id`s
-      and `name`s unique
+- [ ] `stringtable.json`: every `bindings[].string` **and `bindings[].font`** resolves to a
+      surviving asset; string `id`s and `name`s unique
+- [ ] **no string without a binding** (it would generate with no font, and no glyph guarantee)
+- [ ] every widget asset-uuid of *every* kind resolves — not just schemes: one regex over the
+      screen/state JSON for `"type":"(string|image|font|scheme)","value":"{uuid}"` against the
+      four manifests catches a half-finished delete that a scheme-only check passes
