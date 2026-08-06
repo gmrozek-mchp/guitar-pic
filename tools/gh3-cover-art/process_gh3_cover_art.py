@@ -55,20 +55,23 @@ DEFAULT_CATALOG = "../../firmware/marvin/data/games/gh3-wii/songs.csv"
 KEY_RE = re.compile(r"^(main|bonus)_(\d+)_")
 
 # 8-tier difficulty palette, Tailwind ("tailscan") colors, tier 1 easiest -> 8
-# hardest (cool/calm at the low end, hot at the high end). Each tier is
-# (accent, tint): `accent` is the bright label color (Tailwind <hue>-400/-500) —
-# set the matching MGS SCHEME_TEXT_TIER_n text color to this; `tint` is the dark
-# wash (Tailwind <hue>-900) baked behind the large cover art. Edit a row to retune.
+# hardest. The hue walks one monotone arc of the spectrum — cool at the low end,
+# hot at the high end — so the ramp reads as ordered. Each tier is
+# (accent, tint): `accent` is the bright label color (Tailwind <hue>-400, except
+# tier 8 which drops to red-600 to separate it from tier 7) — the matching MGS
+# SCHEME_TEXT_TIER_n text color is set to this; `tint` is the dark wash
+# (Tailwind <hue>-900) baked behind the large cover art. Edit a row to retune,
+# then re-run to re-bake the larges.
 TIER_PALETTE = {
     #     accent (label)        tint (art wash)      Tailwind hue
-    1: ((0x4A, 0xDE, 0x80), (0x14, 0x53, 0x2D)),   # green
-    2: ((0x2D, 0xD4, 0xBF), (0x13, 0x4E, 0x4A)),   # teal
-    3: ((0x60, 0xA5, 0xFA), (0x1E, 0x3A, 0x8A)),   # blue
-    4: ((0xA7, 0x8B, 0xFA), (0x4C, 0x1D, 0x95)),   # violet
+    1: ((0x60, 0xA5, 0xFA), (0x1E, 0x3A, 0x8A)),   # blue
+    2: ((0x22, 0xD3, 0xEE), (0x16, 0x4E, 0x63)),   # cyan
+    3: ((0x4A, 0xDE, 0x80), (0x14, 0x53, 0x2D)),   # green
+    4: ((0xA3, 0xE6, 0x35), (0x36, 0x53, 0x14)),   # lime
     5: ((0xFA, 0xCC, 0x15), (0x71, 0x3F, 0x12)),   # yellow
     6: ((0xFB, 0x92, 0x3C), (0x7C, 0x2D, 0x12)),   # orange
     7: ((0xF8, 0x71, 0x71), (0x7F, 0x1D, 0x1D)),   # red
-    8: ((0xEF, 0x44, 0x44), (0x45, 0x0A, 0x0A)),   # deep red
+    8: ((0xDC, 0x26, 0x26), (0x45, 0x0A, 0x0A)),   # deep red (red-600 / red-950)
 }
 BONUS_ACCENT = (0xD4, 0xD4, 0xD8)   # zinc-300
 BONUS_TINT   = (0x3F, 0x3F, 0x46)   # zinc-700 (neutral, near-invisible wash)

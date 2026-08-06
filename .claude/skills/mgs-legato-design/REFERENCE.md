@@ -389,6 +389,26 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
   step, got a zip from two cleanups ago). **Use `git checkout -- <zip>` to roll back a step**;
   the zip is tracked, so HEAD is the reliable baseline. Don't print "backup at X.bak" in a
   transform script — it implies a rollback point that isn't there.
+- **A json round-trip is NOT byte-neutral — MGS renders empty containers differently.** MGS
+  serializes with the equivalent of `json.dumps(indent=4, sort_keys=True)` **except** that an
+  empty array is `"__groups": [\n]`, not `[]`. So `load_json` → mutate → `json.dumps(indent=4,
+  sort_keys=True)` reproduces the file exactly *apart from* every empty container, which in one
+  73-scheme `schemes.json` was 73 spurious hunks — a 2-line-per-scheme diff swamping the 8 lines
+  you meant to change. Harmless to MGS, but it makes the change unreviewable in git and hides
+  mistakes. For a **small, surgical** edit (recolor N roles, flip a flag) **edit the member as
+  text**: regex the specific block, splice the new values, then `json.loads` both versions and
+  assert the parsed diff is exactly the fields you intended. That gives a diff of literally the
+  bytes you changed *and* a stronger correctness check than the dump path. Reserve the
+  dump path for structural edits where the diff is large anyway.
+  - Floats are full-precision doubles (`0.8313725590705872` = `212/255`), but exact 0 and 1
+    serialize as bare `0` / `1` — match that or the diff grows.
+  - Verify a repack didn't disturb assets by comparing member-by-member against `git show
+    HEAD:<zip>`: same name set, and only the members you touched differing by sha1. Total zip
+    *size* is not a signal — `ZIP_DEFLATED`'s default level differs from MGS's, so a
+    content-identical repack of a 3.2 MB design came out 18 KB smaller.
+- **Editing the zip retriggers MCC autosave.** The mtime change makes MPLAB rewrite
+  `<proj>/<cfg>/mcc/mcc-manifest-autosave.yml` with a fresh `creation_date`. It shows up as an
+  unexpected modified file in `git status`; it's timestamp-only and safe to ignore or discard.
 - **"Unused by widget" ≠ unused — hand source references assets by generated symbol name.**
   An audit that only checks widget uuid refs will call logos, LED indicators and icons unused
   when a hand-built titlebar or chrome module draws them from C. Always intersect with a grep of
