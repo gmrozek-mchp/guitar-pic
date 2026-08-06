@@ -225,7 +225,7 @@ enum {
     DYN_R_SCORE, DYN_R_STREAK,
     DYN_H_NAME, DYN_H_SCORE, DYN_H_STREAK,
     DYN_S_STATUS, DYN_S_TITLE, DYN_S_ARTIST, DYN_S_ALBUM,
-    DYN_S_GENRE, DYN_S_BPM, DYN_S_DURATION, DYN_S_TIER,
+    DYN_S_GENRE, DYN_S_DURATION, DYN_S_TIER,
     DYN_S_MODE, DYN_S_DIFF, DYN_S_ELAPSED, DYN_S_TOTAL,
     DYN_COUNT
 };
@@ -814,15 +814,23 @@ static void build_song_card(leWidget *content)
     (void)add_dyn(card, DYN_S_ALBUM, INFO_X, 79, INFO_W, 16,
                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_600, LE_HALIGN_LEFT);
 
-    /* Metric row — the mockup's GENRE · BPM · DURATION · TIER (BPM is new; it comes
-     * from the catalog, which has always parsed it). */
-    static const struct { int x, w; uint32_t cap; unsigned dyn; } METRIC[4] = {
-        { INFO_X,       130, stringID_SONG_INFO_GENRE,    DYN_S_GENRE    },
-        { INFO_X + 130,  50, stringID_SONG_INFO_BPM,      DYN_S_BPM      },
+    /* Metric row: GENRE · DURATION · TIER. The mockup also lists BPM, dropped because the
+     * catalog's column isn't populated in practice (SONG_INFO_BPM is kept, unused).
+     *
+     * The fields tile the info column edge to edge — a label clips its text at its own
+     * right edge, so a box narrower than its content silently truncates while a generous
+     * one costs nothing (transparent background, and the only real hazard is overlapping
+     * a neighbour, since siblings paint in order rather than clipping each other). Widths
+     * are therefore allocated by worst-case content: DURATION needs its 8-character
+     * heading, TIER eight stars, and GENRE — the one that actually overflows, on
+     * "Progressive Rock" and friends — takes everything left over, which is what BPM's
+     * 50px went to. */
+    static const struct { int x, w; uint32_t cap; unsigned dyn; } METRIC[3] = {
+        { INFO_X,       180, stringID_SONG_INFO_GENRE,    DYN_S_GENRE    },
         { INFO_X + 180,  80, stringID_SONG_INFO_DURATION, DYN_S_DURATION },
         { INFO_X + 260,  90, stringID_SONG_INFO_TIER,     DYN_S_TIER     },
     };
-    for (unsigned i = 0u; i < 4u; i++)
+    for (unsigned i = 0u; i < (sizeof METRIC / sizeof METRIC[0]); i++)
     {
         (void)add_cap(card, METRIC[i].x, 121, METRIC[i].w, 16, METRIC[i].cap,
                 &SCHEME_TEXT_ZINC_600, LE_HALIGN_LEFT);
@@ -959,13 +967,6 @@ void ScreenDashboard_ApplySelection(void)
         else                         { tmp[0] = '\0'; }
         set_dyn(DYN_S_ALBUM, tmp);
 
-        if (e.bpm != 0u)
-        {
-            (void)snprintf(tmp, sizeof tmp, "%u", (unsigned)e.bpm);
-            set_dyn(DYN_S_BPM, tmp);
-        }
-        else { set_dyn(DYN_S_BPM, "-"); }
-
         SongDetail_Duration(e.length_s, tmp, sizeof tmp);
         set_dyn(DYN_S_DURATION, tmp);
         set_dyn(DYN_S_TOTAL, tmp);
@@ -979,7 +980,6 @@ void ScreenDashboard_ApplySelection(void)
         set_dyn(DYN_S_ARTIST,   "-");
         set_dyn(DYN_S_ALBUM,    "-");
         set_dyn(DYN_S_GENRE,    "-");
-        set_dyn(DYN_S_BPM,      "-");
         set_dyn(DYN_S_DURATION, "-");
         set_dyn(DYN_S_TOTAL,    "-");
         s_song_len_s = 0u;
