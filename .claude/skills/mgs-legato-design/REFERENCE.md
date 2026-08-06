@@ -169,14 +169,20 @@ So string+font cleanups touch exactly those members.
     strings bound to it. So **retargeting a string onto a font that lacks its special
     characters self-heals on Generate** (confirmed: retargeting three em-dash strings onto
     `DejaVuSansMono_12` grew it 193→194 glyphs, +28 bytes, with no manual step).
-  - **Characters that only ever appear at runtime must be added to the font's character set
-    by hand in MGS** (Font asset → add a range, or add the characters). MGS cannot see text
+  - **Characters that only ever appear at runtime must be declared in the font's `ranges.json`**
+    (`add_font_range.py`, or in MGS: Font asset → add a range / add the characters). Do not rely
+    on some *other* design string happening to contain the character — that keeps the glyph alive
+    only until that string is retargeted or pruned, and the failure is a blank glyph with no build
+    error. A declared range makes it a property of the font. MGS cannot see text
     built by `setString` from a C literal, a CSV / QSPI data file, or a `sprintf` of a device
     name — an uncovered codepoint there just renders as a missing glyph, silently, with no
     build error. Fonts whose ranges are ASCII-only are the exposure: check them against any
     data file whose text they may draw.
   - `scripts/audit_glyph_coverage.py` checks both sides — design-string coverage per font, plus
-    non-ASCII in hand-source literals (C comments stripped) and data files.
+    non-ASCII in hand-source literals (C comments stripped) and data files. **Its blind spot:** it
+    matches non-ASCII *characters*, so text assembled from bytes (`buf[p++] = 0xE2; … 0x98; … 0x85;`
+    for ★) reads as pure ASCII and the audit passes while the screen draws a glyph nobody
+    declared. A clean run is evidence, not proof — check byte-level string building by eye.
 - **Real flash cost is in the generated C, not `sourceData`.** All sizes of a face share one
   TTF blob, so `sourceData` size says nothing about cost. Sum the
   `const uint8_t <font>_{data,glyphs}[N]` arrays in
@@ -359,6 +365,14 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
 "subtree removed".
 
 ## Gotchas (learned the hard way)
+
+- **A decorative widget stacked over interactive ones steals their touches.**
+  `leUtils_PickFromWidget` keeps the **last** child whose rect contains the point, so "paints on
+  top" and "wins the pick" are the same property. A full-card frame overlay — the standard way to
+  round a card whose image reaches its edge — therefore swallows every touch inside the card
+  unless it carries `LE_WIDGET_IGNOREPICK`. Same for a state dot drawn over a button (a Legato
+  button paints its own caption and cannot host children). Symptom: one screen goes completely
+  dead to touch while chrome outside the overlay still works.
 
 - **A Generate can lag an external zip edit — verify, don't assume.** Observed once: after
   several Generates the output reflected two earlier edits but not a third

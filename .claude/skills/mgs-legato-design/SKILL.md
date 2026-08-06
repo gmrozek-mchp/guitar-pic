@@ -86,9 +86,15 @@ Two things trip people up here, both covered in [REFERENCE.md](REFERENCE.md):
 - **Glyphs: design-time is automatic, runtime is not.** MGS auto-adds whatever glyphs the
   *bound design strings* need on Generate — so retargeting a string to a font missing its
   special characters self-heals. But text produced at **runtime** (`setString` from a C
-  literal, a CSV / QSPI data file, a formatted device name) is invisible to MGS: those
-  characters must be **added to the font's character set by hand in MGS**, or they render as a
-  missing glyph with no build error. Run `audit_glyph_coverage.py` to check both sides.
+  literal, a CSV / QSPI data file, a formatted device name) is invisible to MGS, and renders as a
+  missing glyph with no build error. Until a design string happens to contain the same
+  character, that glyph is on loan: it disappears the day that unrelated string is retargeted or
+  pruned. **Declare it instead** — `add_font_range.py <zip> <FontName> U+2605` writes the font's
+  `ranges.json`, making the glyph a property of the font rather than a side effect of someone
+  else's caption. (This supersedes the earlier advice to add such characters by hand in MGS.)
+  Run `audit_glyph_coverage.py` to check both sides, but know its blind spot: it greps hand
+  source for non-ASCII *literals*, so a character assembled byte-by-byte (`\xE2\x98\x85`) reads
+  as pure ASCII and passes.
 
 Before retargeting a font, predict layout damage from the glyph `advance` tables; before
 deleting one, check hand source for its symbol and `drop=` its whole
@@ -116,6 +122,16 @@ only the **empty root panel** the builder attaches to.
 `scripts/strip_subtree.py <zip> <PANEL_NAME> [--layer NAME]` deletes that panel's children and
 reports what the deletion orphans.
 
+**Deleting widgets can delete a widget TYPE.** `legato_config.h`'s `LE_<TYPE>_WIDGET_ENABLED`
+flags are derived from the types the *design* instantiates, so removing the last design widget of
+a type compiles that type out — `leXWidget` becomes an unknown type name at the next Generate, in
+code that was building minutes earlier. Before stripping, list what the firmware actually uses
+(`grep -rhoE '\ble[A-Z][A-Za-z]*Widget\b' <hand-src>`) and check it against those flags. Two
+resolutions, both worth doing: **pin** the types the code needs in the Legato/MGS component so the
+design can't take them away, and **prefer a plain `leWidget` plus a paint override** to a
+specialised type wherever the code already owns the drawing — a widget whose fill you paint
+yourself gains nothing from the stock implementation but a vtable to hijack.
+
 The counter-intuitive part: **keep the deleted widgets' strings and drive them from C with
 `leTableString` + `stringID_*`** rather than switching to C literals. First for localization — a
 design string has a value per language, a C literal can never be translated. Second for glyphs:
@@ -134,4 +150,5 @@ full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_refs.py`, `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
 `audit_glyph_coverage.py`, `strip_subtree.py`, `prune_unused_images.py`, `add_image.py`,
-`add_string.py`, `set_image_source.py`, `rename_images.py`, `export_assets.py`.
+`add_string.py`, `add_font_range.py`, `set_image_source.py`, `rename_images.py`,
+`export_assets.py`.
