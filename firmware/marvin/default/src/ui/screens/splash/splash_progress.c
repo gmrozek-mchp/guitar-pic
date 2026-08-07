@@ -54,6 +54,7 @@
 #define MAX_PERMILLE         990u   /* only _Complete() writes 1000          */
 
 #define LABEL_MAX         40u   /* "LOADING COVER DETAIL 70/70" and room to spare */
+#define TEXT_SCRATCH_W   320u   /* widest text field composed off-screen           */
 #define TASK_STACK_WORDS 768u
 #define TASK_PRIORITY      3u   /* above the boot task (2), which blocks in long calls */
 
@@ -82,6 +83,9 @@ static const uint16_t s_seed_ms[WORK_STAGES] = { 400u, 3000u, 700u, 700u };
  * cached RAM — only the CPU reads them; the writes go to the non-cached scanout. */
 static uint32_t s_art[BAND_H][BAR_W];
 static uint32_t s_track[BAR_H][BAR_W];
+
+/* Where a text field is composed before being pushed to the scanout (see draw_field). */
+static uint32_t s_scratch[TEXT_ERASE_H][TEXT_SCRATCH_W];
 
 static uint32_t *s_fb;
 static TickType_t s_start;
@@ -203,15 +207,6 @@ static void band_backup(void)
     }
 }
 
-static void art_restore(uint32_t y, uint32_t h, uint32_t lx, uint32_t w)
-{
-    if ((lx + w) > BAR_W) { w = BAR_W - lx; }
-    for (uint32_t r = 0u; r < h; r++)
-    {
-        (void)memcpy(fb_at(y + r, lx), art_at(y + r, lx), w * sizeof(uint32_t));
-    }
-}
-
 /* Translucent black capsule with a 1 px hairline border, composited onto the art and
  * kept as the fill's backdrop. Drawn once. */
 static void draw_track(void)
@@ -239,15 +234,21 @@ static void draw_track(void)
     }
 }
 
-static void draw_fill(uint32_t w)
+/* Paint columns [from, to) of the fill. Only the leading cap's own width of columns needs
+ * revisiting as the bar grows — everywhere else a column's colour and coverage do not
+ * depend on `to` — so a tick writes a few dozen pixels rather than the whole bar. That
+ * matters more than the arithmetic saved: the scanout buffer is strongly-ordered memory,
+ * so every pixel is an unbuffered DDR transaction competing with the LCDC's own ~360 MB/s
+ * of layer reads and, late in boot, the 2D engine blitting every screen canvas. */
+static void draw_fill(uint32_t from, uint32_t to)
 {
-    for (uint32_t lx = 0u; lx < w; lx++)
+    for (uint32_t lx = from; lx < to; lx++)
     {
         uint32_t rgb = fill_rgb(lx);
 
         for (uint32_t ly = 0u; ly < BAR_H; ly++)
         {
-            float c = fill_cov(lx, ly, w);
+            float c = fill_cov(lx, ly, to);
 
             if (c <= 0.0f) { continue; }
             *fb_at(BAR_Y + ly, lx) = px_blend(s_track[ly][lx], rgb,
@@ -295,25 +296,51 @@ static uint32_t append_u32(char *dst, uint32_t at, uint32_t v)
     return at;
 }
 
-/* Erase only as far as the widest of the outgoing and incoming text, so a counter tick
- * copies back tens of pixels of art instead of the whole left half of the band. */
+/* Compose a text field over the pristine art in cached scratch, then push the finished
+ * strip out in one pass.
+ *
+ * Erasing in place and then drawing the glyphs would be two passes over rows the display
+ * is actively scanning, and a frame caught between them shows the text MISSING. Composing
+ * first means every pixel goes straight from its old final value to its new final value,
+ * so the worst a caught frame can show is old text above and new text below — invisible
+ * for a digit change, since both the write and the beam run top-to-bottom.
+ *
+ * `lx` / `w` are the field's box in bar-local pixels, `text_x` where the text starts. */
+static void draw_field(uint32_t lx, uint32_t w, uint32_t text_x, const char *s)
+{
+    if (w > TEXT_SCRATCH_W) { w = TEXT_SCRATCH_W; }
+    if ((lx + w) > BAR_W)   { w = BAR_W - lx; }
+
+    for (uint32_t r = 0u; r < TEXT_ERASE_H; r++)
+    {
+        (void)memcpy(s_scratch[r], art_at(TEXT_ERASE_Y + r, lx), w * sizeof(uint32_t));
+    }
+
+    GlyphBlit_Text(&s_scratch[0][0], TEXT_SCRATCH_W, TEXT_ERASE_H,
+                   (int32_t)(text_x - lx), (int32_t)(TEXT_Y - TEXT_ERASE_Y),
+                   s, FONT, COL_TEXT);
+
+    for (uint32_t r = 0u; r < TEXT_ERASE_H; r++)
+    {
+        (void)memcpy(fb_at(TEXT_ERASE_Y + r, lx), s_scratch[r], w * sizeof(uint32_t));
+    }
+}
+
+/* The box spans the widest of the outgoing and incoming text, so shrinking text still
+ * clears what it no longer covers. */
 static void draw_left(const char *s)
 {
     uint32_t w = GlyphBlit_TextWidth(FONT, s);
 
-    art_restore(TEXT_ERASE_Y, TEXT_ERASE_H, 0u,
-                ((w > s_label_w) ? w : s_label_w) + 4u);
-    GlyphBlit_Text(s_fb, BASE_W, BASE_H, (int32_t)BAR_X, (int32_t)TEXT_Y, s, FONT, COL_TEXT);
+    draw_field(0u, ((w > s_label_w) ? w : s_label_w) + 4u, 0u, s);
     s_label_w = w;
 }
 
 static void draw_right(const char *s)
 {
-    art_restore(TEXT_ERASE_Y, TEXT_ERASE_H, BAR_W - s_pct_box_w, s_pct_box_w);
-
     uint32_t w = GlyphBlit_TextWidth(FONT, s);
-    GlyphBlit_Text(s_fb, BASE_W, BASE_H,
-                   (int32_t)(BAR_X + BAR_W - w), (int32_t)TEXT_Y, s, FONT, COL_TEXT);
+
+    draw_field(BAR_W - s_pct_box_w, s_pct_box_w, BAR_W - w, s);
 }
 
 /* The label is the stage's, or the note the stage set for what it is doing right now
@@ -365,7 +392,9 @@ static void render(uint32_t permille)
 
     if (w != s_fill_w)
     {
-        draw_fill(w);
+        /* Back up by the cap's width: those columns were drawn against the old leading
+         * edge and have to be re-evaluated against the new one. */
+        draw_fill((s_fill_w > BAR_R) ? (s_fill_w - BAR_R) : 0u, w);
 #if GLOW_ENABLED
         draw_glow(s_glow_w, w);
         s_glow_w = w;

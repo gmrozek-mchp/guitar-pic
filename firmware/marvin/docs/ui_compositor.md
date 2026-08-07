@@ -447,6 +447,21 @@ percentage on the right, an 8 px rounded capsule with a cyan gradient fill. Geom
   and one boot replaces it. `SplashProgress_SetStage` logs `stage → elapsed (predicted)` and
   `_Calibrate` logs the whole measured-vs-stored table, so the grounding is inspectable from a boot
   log rather than inferred.
+- **Drawing into live scanout has two disciplines, both learned the hard way** (glitches on
+  hardware, 2026-08-06). The splash framebuffer is being scanned out *while* the bar draws into
+  it — there is no back buffer and no vsync gate — so:
+  1. **Never erase-then-draw. Compose off-screen, then blit once.** Two passes over rows the
+     beam is crossing means a frame caught between them shows the *intermediate* state; for text
+     that is a visible blank. `draw_field` composites art + glyphs in cached scratch and pushes
+     the finished strip out in one pass, so a pixel only ever goes old-final → new-final. Both
+     the write and the beam run top-to-bottom, so the worst artifact is old-above/new-below.
+  2. **Count transactions, not bytes.** `.region_nocache` is strongly-ordered: writes are
+     neither buffered nor coalesced, so each pixel is its own DDR transaction, serialized
+     against the LCDC's own layer reads (~360 MB/s with the RGBA8888 splash on OVR1 and the
+     RGB565 dashboard on BASE) and, late in boot, the 2D engine blitting every screen canvas.
+     Redrawing the whole fill each tick (~7200 px) was enough to tip that into occasional
+     scanout underrun — a whole-frame shift. `draw_fill` is incremental (~48 px/tick, 150×
+     fewer) because only the leading cap's width of columns depends on the current width.
 - **Notes say what the stage is doing, without touching the bar.**
   `SplashProgress_SetNote(note, done, total)` replaces the stage label with e.g.
   `LOADING ALBUM ART 42/70`; `SetStage` clears it. The art caches take a registered
