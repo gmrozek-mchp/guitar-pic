@@ -148,10 +148,15 @@ lifecycle events are direct calls).
   surface needs canvas multiplexing (`gfxcSetBaseCanvasID`) or giving up a layer.
 
 > **Current HW-layer map (supersedes the table above; see §16):** BASE = dashboard, HEO = video,
-> **OVR1 = video frame overlay / song-select dialog**, **OVR2 = nav drawer / album-art strip**.
+> **OVR1 = video frame overlay / song-select dialog / keyboard modal / system-screen board photo**,
+> **OVR2 = nav drawer / album-art strip**.
 > Z-order `OVR2 > OVR1 > HEO > BASE`. Nav moved to OVR2 so it sits *above* the OVR1 video frame
-> (an open drawer covers the frame's left edge). The pairs on each overlay are time-exclusive:
-> frame ⇎ dialog (frame hidden whenever video is), nav ⇎ album-art (nav closed during song-select).
+> (an open drawer covers the frame's left edge). The users of each overlay are time-exclusive:
+> frame ⇎ dialog (frame hidden whenever video is), nav ⇎ album-art (nav closed during song-select),
+> and the board photo ⇎ everything else on OVR1 (`UiManager_ShowSystem` drops the video *and* its
+> frame; the dialog and keyboard are reachable only from the dashboard). The nav drawer is the one
+> thing that *can* appear over the system screen, and it rides OVR2 above the photo — so it covers
+> the photo's left edge, which is the wanted behaviour.
 
 ### 4.1 Two layer counts — don't conflate them
 - **`LE_LAYER_COUNT`** (Legato, `legato_config.h:156`) = how many canvases / Legato layers the global
@@ -809,7 +814,8 @@ Two independent savings, often confused: **BASE discard stops reads**, a `SetSho
 - **`BASECFG4.DISCEN` + `BASECFG5/6`** give the LCDC one BASE discard window: BASE skips its DDR
   *read* where an opaque layer fully covers it. `base_discard_reconcile` owns it (single DISCEN
   writer, video-task ctx) and picks the region each tick — **video rect** while HEO is bound, else
-  the **open modal's rect**, else none. Fullscreen video therefore discards the *whole panel*; BASE
+  the **open modal's rect**, else the **system screen's board-photo rect** while that overlay is up,
+  else none. Fullscreen video therefore discards the *whole panel*; BASE
   stays enabled, which is the point — nothing needs disabling.
 
   | state | discard rect | BASE read skipped (RGB565 @60 Hz) |
@@ -818,9 +824,14 @@ Two independent savings, often confused: **BASE discard stops reads**, a `SetSho
   | song-select dialog | 1100×660 | 87.1 MB/s |
   | keyboard modal | 1060×560 | 71.2 MB/s |
   | windowed video | 720×480 | 41.5 MB/s |
+  | system-screen board photo | 288×620 | 21.4 MB/s |
 
   The modal rect is read from that modal's **canvas window**, not from constants here, so the
   geometry has one owner — the screen module that lays it out.
+
+  The board photo qualifies only because it is opaque over its **whole** rect: its rounded frame is
+  baked into the asset as opaque page-black corners rather than left as alpha, so no part of the rect
+  still needs BASE. An alpha-rounded photo would have forced an inset discard instead — see §19.
 - **`Screen<Name>_SetShown`** stops the *other* half: repainting a surface nobody scans out costs
   CPU and DDR **writes**, which no discard can help. The dashboard's gate lives in
   `dashboard_feed.c` (its sole writer) and is **deferring, not dropping** — events keep coalescing
@@ -835,6 +846,56 @@ If a *non-uniform* scrim is ever wanted (a hole, a gradient), the fallback is a 
 CLUT entries carry 8-bit alpha (`ACLUT`) and `CLUTMODE` goes down to **1 bpp**, so a binary mask is
 125 KB and ~7.7 MB/s. Note `CLUTEN` conflicts with the gamma CLUT we use on HEO for video levels
 (§15.1), so that path would have to swap around the video rather than coexist with it.
+
+## 19. Full-colour board photo on OVR1 (done — confirmed on hardware)
+
+The system screen's photo column escapes the canvas's RGB565: the decoded photo is scanned out
+**directly from its `ui/node_art.c` slot** as an opaque RGBA8888 OVR1 layer at `(16, 164) 288×620`,
+so it keeps 8 bits per channel. `UiManager_NodePhotoShow/Hide` are the same direct-PLIB pattern as the
+video frame overlay (§16) — `SetLayerRGBColorMode` + `SetLayerAddress` + window pos/size + enable.
+
+- **Why not a canvas.** Nothing on this layer needs Legato: it is one static raster at a fixed rect.
+  So this needed **no new Legato layer, no `add_layer.py`, no MGS Generate and no
+  `CONFIG_CANVAS_NUM_OBJ` bump** — unlike the album-art strip (§4.1 layer 3), which is a canvas
+  because it carries labels beside the cover.
+- **Why RGBA8888 and not RGB888_PACKED**, which the XLCDC does support and would be 25% cheaper: the
+  photo arrives through Legato's PNG decoder, and spec §4.8.7 records that the 2D engine's
+  `gfx2dFormats[]` maps RGB888 to `-1`. RGBA8888 is the mode the decoder and the XLCDC already agree
+  on, proven by the album-art tier. The alpha byte is **forced opaque after decode** (`game_art.c`'s
+  fix: a PNG-without-alpha decode leaves it zero, which the LCDC reads as a transparent layer).
+- **The frame is baked into the asset, not drawn.** Nothing on BASE can draw over an overlay, so the
+  1px `#404040` border and the radius-4 corners (eaten back to page black) are rendered offline by
+  `tools/node-photos/`, reproducing what `PanelAA_EnableRoundImage` used to do at runtime. This is
+  what keeps the rect fully opaque, which is what makes the full-rect BASE discard valid (§18.2).
+  The canvas keeps an **empty** frame widget for nodes with no photo; the two are exclusive.
+- **Slots stay in cached `.region_ram`** even though the LCDC DMA-reads them, because a slot is
+  write-once: the CPU decodes into it, `decode_one` cleans it to DDR, and nothing writes it again, so
+  no line can go dirty behind the display controller. Cost of the format change: `.region_ram`
+  +2,499,840 B (7 slots, 565 → 8888). **`.region_nocache` is byte-for-byte unchanged** at
+  32,336,480 B — this buys full colour without spending the last full-screen surface.
+- **`photo_apply()` is gated on the screen being shown**, because OVR1 belongs to whoever is on the
+  panel: the splash owns it for all of boot, and `show_view(VIEW_OVERVIEW)` runs at build time, which
+  would otherwise disable the splash mid-boot.
+- **The reveal is deferred a frame; the takedown is not.** Enabling a hardware layer is instant while
+  the rest of the view is still being painted into the canvas, so on hardware the photo arrived
+  visibly ahead of its own page. `photo_task` (static, prio 2) waits for the repaint and then enables
+  the layer. It waits on **`UiManager_WaitFrameAfter`**, i.e. the renderer's `leRenderer_GetDrawCount()`
+  advancing past the value sampled where the damage was queued — exact, because that counter moves in
+  the renderer's `postFrame` only once every damaged rect on every layer has been drawn. This is the
+  signal to reach for over `leRenderer_IsIdle()`, which is also true in the gaps between `leUpdate`
+  calls and so needs a tuned stable window to be trusted. A `s_photo_gen` counter drops a reveal the
+  user has already navigated past. Its own task because the tap is dispatched from inside `leUpdate`:
+  waiting in the handler would be waiting on `LEGATO_Tasks` from inside `LEGATO_Tasks`.
+  - **The structural fix, not taken here:** give overview and detail their own canvases (§13's
+    property — Legato paints a canvas whether or not it is bound), which makes the switch a pure
+    layer bind with *no* repaint to outrun, and lets the page and the photo land in the same frame
+    with no wait at all. Costs a second full-screen RGB565 surface (~2.0 MB) against the 1.16 MB
+    `.region_nocache` has free, so it needs the region grown. Worth doing if the deferred reveal
+    still reads as a two-stage arrival.
+- **Both of the open risks are now settled on hardware.** The XLCDC blender does treat an alpha-255
+  RGBA8888 overlay as fully opaque — the full-rect BASE discard is active while the photo is up and
+  nothing shows through — and direct LCDC scanout of cached `.region_ram` renders correctly, so the
+  write-once + clean argument holds in practice. Neither needed the `.region_nocache` fallback.
 
 ## 11. Relationship to spec §4.5 / Q5
 

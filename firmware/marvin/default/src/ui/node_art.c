@@ -11,6 +11,7 @@
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/common/legato_rect.h"
 #include "gfx/legato/core/legato_stream.h"
+#include "gfx/legato/image/legato_image.h"
 
 /* One photo per node, keyed by T1S PLCA id. The filenames are the node names the
  * rest of the system uses, so a photo drop is self-explanatory on the card. */
@@ -27,10 +28,10 @@ static const node_photo_t PHOTO[] = {
 };
 #define PHOTO_N  (sizeof PHOTO / sizeof PHOTO[0])
 
-/* RGB565 to match the BASE layer the system screen renders on — source and layer in
- * the same mode means the standard draw path uses the 2D engine (a native 565→565
- * copy) and positions/clips correctly inside the full-screen canvas. */
-#define SLOT_BPP    2u
+/* RGBA8888 to match the OVR1 layer the slot is scanned out on. The alpha byte is
+ * forced opaque after decode and never used — the layer is a plain opaque rectangle
+ * — but RGBA_8888 is the mode the XLCDC and Legato's decoder agree on at 32bpp. */
+#define SLOT_BPP    4u
 #define SLOT_BYTES  (NODE_ART_W * NODE_ART_H * SLOT_BPP)
 
 /* Largest compressed photo we'll read. Oversize files are skipped, not truncated.
@@ -42,13 +43,13 @@ static const node_photo_t PHOTO[] = {
 
 #define REGION_RAM  __attribute__((section(".region_ram"), aligned (32)))
 
-/* Pixel pool + decode scratch live in cached DDR: they are decoder output staging
- * that Legato later blits into the (non-cached) canvas surface, never scanned out by
- * the LCDC directly. */
+/* Pixel pool + decode scratch live in cached DDR even though the LCDC DMA-reads a
+ * slot directly. Safe because a slot is write-once: the CPU decodes into it, the
+ * clean at the end of decode_one pushes it to DDR, and nothing writes it again, so no
+ * line can go dirty behind the display controller's back. */
 static uint8_t REGION_RAM s_px[PHOTO_N][SLOT_BYTES];
 static uint8_t REGION_RAM s_scratch[SCRATCH_BYTES];
 
-static leImage s_img[PHOTO_N];
 static bool    s_valid[PHOTO_N];
 static int     s_n;
 static bool    s_loaded;
@@ -69,13 +70,13 @@ static bool png_dims(const uint8_t *b, uint32_t n, uint16_t *w, uint16_t *h)
 }
 
 /* Read one photo into scratch, verify it is exactly slot-sized, and decode it into
- * the slot as RGB565. Fills *out (RAW, RGB565, pointing at slot_px) on success.
+ * the slot as RGBA8888.
  *
  * PNG, not JPEG: Legato's JPEG decoder gates its block writes on the renderer clip
  * rect, which is stale during an offscreen boot decode, so a runtime JPEG lands as
  * noise. The PNG decoder is a plain colour-converting buffer copy with no clip
  * dependency. The album-art tiers are PNG for the same reason. */
-static bool decode_one(const char *path, uint8_t *slot_px, leImage *out)
+static bool decode_one(const char *path, uint8_t *slot_px)
 {
     SYS_FS_HANDLE fh = SYS_FS_FileOpen(path, SYS_FS_FILE_OPEN_READ);
     if (fh == SYS_FS_HANDLE_INVALID) { return false; }   /* absent is normal */
@@ -118,17 +119,29 @@ static bool decode_one(const char *path, uint8_t *slot_px, leImage *out)
     src.format      = LE_IMAGE_FORMAT_PNG;
     src.header.size = (uint32_t)size;
 
-    (void)leImage_Create(out, iw, ih, LE_COLOR_MODE_RGB_565, slot_px,
+    /* Destination: the slot as a RAW RGBA8888 image. Only ever a decode target — the
+     * LCDC scans the pixels, so no LE_IMAGE_DIRECT_BLIT and no draw path here. */
+    leImage dst;
+    (void)leImage_Create(&dst, iw, ih, LE_COLOR_MODE_RGBA_8888, slot_px,
                          LE_STREAM_LOCATION_ID_INTERNAL);
 
     leRect full = { 0, 0, (int32_t)iw, (int32_t)ih };
     /* leImage_Render's return is unreliable (LE_FAILURE even on success), so we trust
      * the validated dims + known format, mirroring how leProcessImage drives it. */
-    (void)leImage_Render(&src, &full, 0, 0, LE_TRUE, LE_TRUE, out);
+    (void)leImage_Render(&src, &full, 0, 0, LE_TRUE, LE_TRUE, &dst);
 
-    /* The decode wrote the slot via the CPU (write-back cache); flush it so a
-     * 2D-engine read of the slot sees current pixels. 32-byte aligned, exact-multiple
-     * size → clean line boundaries. */
+    /* Force opaque alpha: a PNG-without-alpha decode into RGBA8888 leaves the alpha
+     * byte 0, which the LCDC reads as a fully transparent layer. RGBA_8888 packs
+     * 0xRRGGBBAA, so alpha is the low byte (same fix as game_art.c's large tier). */
+    {
+        uint32_t *px  = (uint32_t *)(void *)slot_px;
+        size_t    npx = (size_t)iw * ih;
+        for (size_t i = 0; i < npx; i++) { px[i] |= 0x000000FFu; }
+    }
+
+    /* The decode wrote the slot via the CPU (write-back cache); flush it so the LCDC's
+     * DMA read sees current pixels. 32-byte aligned, exact-multiple size → clean line
+     * boundaries. */
     dcache_CleanByAddr(slot_px, (int32_t)((uint32_t)iw * ih * SLOT_BPP));
     return true;
 }
@@ -163,7 +176,7 @@ int NodeArt_LoadAll(void)
         (void)snprintf(path, sizeof path, "%s/%s/%s.png",
                        Storage_MountPoint(), DIR_REL, PHOTO[i].file);
 
-        if (decode_one(path, s_px[i], &s_img[i]))
+        if (decode_one(path, s_px[i]))
         {
             s_valid[i] = true;
             s_n++;
@@ -178,13 +191,13 @@ int NodeArt_LoadAll(void)
 bool NodeArt_IsLoaded(void) { return s_loaded; }
 int  NodeArt_Count(void)    { return s_n; }
 
-const leImage *NodeArt_Photo(uint8_t node_id)
+const void *NodeArt_Pixels(uint8_t node_id)
 {
     for (unsigned i = 0u; i < PHOTO_N; i++)
     {
         if (PHOTO[i].id == node_id)
         {
-            return s_valid[i] ? &s_img[i] : NULL;
+            return s_valid[i] ? (const void *)s_px[i] : NULL;
         }
     }
     return NULL;

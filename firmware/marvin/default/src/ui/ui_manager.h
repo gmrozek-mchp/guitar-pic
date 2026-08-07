@@ -2,6 +2,7 @@
 #define UI_UI_MANAGER_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -119,6 +120,30 @@ bool UiManager_GetVideoLevels(void);
 void UiManager_VideoOverlayShow(const void *buf, uint32_t x, uint32_t y,
                                 uint32_t w, uint32_t h);
 void UiManager_VideoOverlayHide(void);
+
+/* System-screen board photo (OVR1). Show binds a caller-owned, fully opaque RGBA8888
+ * raster — a node_art slot — to OVR1 at the photo column's rect, so the photo is
+ * scanned out at 8 bits per channel instead of being quantized into the RGB565 BASE
+ * canvas, and marks the rect for BASE discard. Hide disables OVR1 and clears it. The
+ * buffer must stay resident while shown (node_art's slots are static). Safe only
+ * while the system screen owns OVR1 — see the note at the implementation. */
+void UiManager_NodePhotoShow(const void *buf, uint32_t x, uint32_t y,
+                             uint32_t w, uint32_t h);
+void UiManager_NodePhotoHide(void);
+
+/* Sequence work *after* a repaint — e.g. revealing a hardware layer so it doesn't beat
+ * the canvas it belongs with onto the panel. Sample FrameCount() where the damage is
+ * queued (with the renderer idle, which is where Legato dispatches widget events), then
+ * WaitFrameAfter that value: the count advances only when a whole frame has been drawn,
+ * so it cannot report a paint finished while it is still running. Bounded; must be
+ * called from a task other than LEGATO_Tasks. */
+size_t UiManager_FrameCount(void);
+void   UiManager_WaitFrameAfter(size_t from);
+
+/* Bounded wait for the renderer to go quiet, with idle required to hold continuously for
+ * stable_ms. For boot, which drains damage from everything at once; prefer
+ * UiManager_WaitFrameAfter when there is one specific repaint to wait for. */
+void UiManager_WaitRenderIdle(uint32_t stable_ms);
 
 /* Bind / unbind the navigation drawer's canvas to its hardware layer (OVR2, above
  * the video frame so the drawer covers it when open). Show sets OVR2 to the

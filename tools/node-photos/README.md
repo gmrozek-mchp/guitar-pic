@@ -13,16 +13,26 @@ That writes `288x620` PNGs into `firmware/marvin/data/system/nodes/`, which is t
 card image tree — copy it to the SD card (or point `--out` straight at the card).
 
 Node names must match the `PHOTO` table in
-`firmware/marvin/default/src/game/node_art.c`:
+`firmware/marvin/default/src/ui/node_art.c`:
 
 ```
 marvin  fauxmote  guitar  fretboard  beatbox  lemmy  lightshow
 ```
 
+## The frame is baked in
+
+Each output carries its own 1px rounded border (`#404040`, radius 4, corners eaten back to page
+black). That is not decoration you can drop: the photo is scanned out on its own hardware layer
+above the UI canvas — which is how it keeps 8 bits per channel instead of being quantized to
+RGB565 — so no widget can draw a frame over it. Staying opaque over the whole rect is also what
+lets the firmware tell the display controller to skip reading the canvas underneath.
+
+Nodes with no photo keep an empty frame drawn by the UI instead.
+
 ## Why this step isn't optional
 
 The firmware reads the PNG header and **skips any file that isn't exactly
-288x620** (`NODE_ART_W` x `NODE_ART_H` in `game/node_art.h`), leaving that node's
+288x620** (`NODE_ART_W` x `NODE_ART_H` in `ui/node_art.h`), leaving that node's
 photo slot empty and the detail screen showing a blank frame. It also has to be PNG:
 Legato's JPEG decoder gates its block writes on the renderer clip rect, which is
 stale during marvin's offscreen boot decode, so a runtime JPEG decodes to noise.

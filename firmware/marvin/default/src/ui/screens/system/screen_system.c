@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "FreeRTOS.h"
+#include "task.h"
 
 #include "ui/ui_manager.h"   /* CANVAS_SYSTEM, BASE_W, BASE_H */
 #include "ui/titlebar.h"
@@ -34,7 +35,8 @@
  * show_view() is the only thing that switches between them — see the note there.
  *
  * Layout mirrors the mockup's SystemScreen.tsx with Tailwind units resolved to pixels
- * (gap-3 = 12, gap-4 = 16, rounded = 4, text-xs/sm/base/lg/2xl/3xl = 12/14/16/18/24).
+ * (gap-3 = 12, gap-4 = 16, text-xs/sm/base/lg/2xl/3xl = 12/14/16/18/24; for the corner
+ * radii, which do not follow the stock Tailwind scale, see CARD_R).
  *
  * Every label, dot, bar and frame here is marked IGNOREPICK: a Legato button paints
  * its own caption and cannot host children, so a card's text is a sibling drawn over
@@ -66,9 +68,7 @@ typedef struct {
     const char     *chip;           /* the networking part, or NULL */
     const char     *tag[2];         /* card tagline, wrapped to the narrow column */
     const char     *tagline;        /* detail header, one line */
-    const char     *status;
     const leScheme *accent;
-    const leScheme *status_scheme;
     bool            this_device;
     const char     *prose[PROSE_MAX];
     const char     *built[BUILT_MAX];
@@ -77,42 +77,41 @@ typedef struct {
 /* Indexed in bus order (id 0,1,3,4,5,6,7) so the BUS POSITION rail reads naturally;
  * the overview grid draws them in the mockup's visual order (see GRID_ROW1/2).
  *
- * fauxmote deliberately carries no part number and no networking chip: it is the one
- * board here that isn't Microchip, and docs/screens/02-fauxmote.md asks for the card
- * to stay a notch quieter rather than naming the hardware it happens to run on. */
+ * fauxmote deliberately carries no part number: it is the one board here whose MCU
+ * isn't Microchip, and docs/screens/02-fauxmote.md asks for the card to stay a notch
+ * quieter rather than naming the hardware it happens to run on. It does name LAN8651,
+ * because its T1S PHY is the same Microchip part as every other node's. */
 static const node_info_t NODE[NODE_N] = {
     {
         .id = 0u, .name = "marvin", .part = "SAM9X75", .chip = "LAN8651",
         .tag = { "The brain - watches the", "game and calls the shots" },
         .tagline = "The brain - watches the game and calls the shots",
-        .status = "Live", .accent = &SCHEME_NODE_MARVIN,
-        .status_scheme = &SCHEME_TEXT_GREEN_400, .this_device = true,
+        .accent = &SCHEME_NODE_MARVIN, .this_device = true,
         .prose = {
-            "marvin is the one running this screen right now, and it's",
-            "the brains of the whole operation. It watches the game over",
-            "HDMI, recognizes notes in real time, decides exactly when to",
-            "press each button, and coordinates every other board in the",
-            "system. It's also driving the 10.1-inch touchscreen display",
-            "you're looking at.",
+            "marvin is the one running this screen right now, and the",
+            "brains of the whole operation. It watches the game over HDMI,",
+            "recognizes notes in real time, decides exactly when to press",
+            "each button, and coordinates every other board in the system.",
+            "It's also driving the 10.1-inch touchscreen display you're",
+            "looking at.",
         },
         .built = {
-            "MPLAB X IDE and the Curiosity development platform",
-            "A 10.1-inch touchscreen driven directly by the SAM9X75",
+            "MPLAB X IDE",
+            "Curiosity development platform",
+            "10.1-inch touchscreen driven directly by the SAM9X75",
         },
     },
     {
-        .id = 1u, .name = "fauxmote", .part = NULL, .chip = NULL,
+        .id = 1u, .name = "fauxmote", .part = NULL, .chip = "LAN8651",
         .tag = { "An alternate way to talk", "to the game console" },
         .tagline = "An alternate way to talk to the game console",
-        .status = "Concept demo", .accent = &SCHEME_NODE_FAUXMOTE,
-        .status_scheme = &SCHEME_TEXT_VIOLET_400,
+        .accent = &SCHEME_NODE_FAUXMOTE,
         .prose = {
             "fauxmote explores a different way to play: instead of",
             "physically pressing buttons on a real guitar controller, it",
             "wirelessly pretends to be one, talking straight to the game",
-            "console over Bluetooth. It's a side experiment sitting",
-            "alongside the main, physical approach - not the primary path",
-            "this project takes.",
+            "console over Bluetooth. It's a side experiment alongside the",
+            "main physical approach.",
         },
         .built = { "Bluetooth Classic wireless link" },
     },
@@ -120,45 +119,42 @@ static const node_info_t NODE[NODE_N] = {
         .id = 3u, .name = "guitar", .part = "PIC32CM PL10", .chip = "LAN8651",
         .tag = { "The hands - presses the", "buttons in perfect time" },
         .tagline = "The hands - presses the buttons in perfect time",
-        .status = "Live", .accent = &SCHEME_NODE_GUITAR,
-        .status_scheme = &SCHEME_TEXT_GREEN_400,
+        .accent = &SCHEME_NODE_GUITAR,
         .prose = {
             "This board is the one that actually presses the buttons -",
             "receiving marvin's call and instantly lighting up the right",
-            "frets and strum, in perfect time with the music. It's a",
-            "small, dedicated board with one job, and it does it fast and",
-            "reliably.",
+            "frets and strum, in perfect time with the music. A small,",
+            "dedicated board with one job, done fast and reliably.",
         },
         .built = {
-            "MPLAB X IDE + MCC (MPLAB Code Configurator)",
-            "Microchip LAN8651 for its network connection",
+            "MPLAB X IDE",
+            "MCC (MPLAB Code Configurator)",
+            "Microchip LAN8651 networking",
         },
     },
     {
         .id = 4u, .name = "fretboard", .part = "PIC32CM6408", .chip = "LAN8651",
-        .tag = { "The eyes - watches the", "fretboard, senses every note" },
-        .tagline = "The eyes - watches the fretboard and senses every note",
-        .status = "In development", .accent = &SCHEME_NODE_FRETBOARD,
-        .status_scheme = &SCHEME_NODE_FRETBOARD,
+        .tag = { "The eyes - senses every note", "the instant it appears" },
+        .tagline = "The eyes - senses every note the instant it appears",
+        .accent = &SCHEME_NODE_FRETBOARD,
         .prose = {
-            "fretboard watches the game screen where the notes actually",
-            "appear and senses them the instant they arrive - then decides,",
-            "right there on the board, which button that note calls for.",
-            "It's a small board doing real-time sensing and on-device",
-            "decision-making, without waiting on anything else to tell it",
-            "what to do.",
+            "fretboard watches the game screen where notes appear and",
+            "senses them the instant they arrive - then decides, right",
+            "there on the board, which button that note calls for.",
+            "Real-time sensing and on-device decision-making, without",
+            "waiting on anything else.",
         },
         .built = {
-            "MPLAB X IDE + MCC for peripheral and sensor setup",
-            "Microchip LAN8651 for its network connection",
+            "MPLAB X IDE",
+            "MCC (MPLAB Code Configurator)",
+            "Microchip LAN8651 networking",
         },
     },
     {
         .id = 5u, .name = "beatbox", .part = "dsPIC33AK512MPS512", .chip = "LAN8651",
         .tag = { "The ears - listens to the", "music and finds the beat" },
         .tagline = "The ears - listens to the music and finds the beat",
-        .status = "In development", .accent = &SCHEME_NODE_BEATBOX,
-        .status_scheme = &SCHEME_NODE_FRETBOARD,
+        .accent = &SCHEME_NODE_BEATBOX,
         .prose = {
             "beatbox listens to the music itself and figures out where the",
             "beat falls, in real time - then shares that rhythm with the",
@@ -166,7 +162,8 @@ static const node_info_t NODE[NODE_N] = {
             "lights can pulse in time with the song.",
         },
         .built = {
-            "MPLAB X IDE with the XC-DSC compiler",
+            "MPLAB X IDE",
+            "XC-DSC compiler",
             "Curiosity Platform Development Board",
         },
     },
@@ -174,41 +171,38 @@ static const node_info_t NODE[NODE_N] = {
         .id = 6u, .name = "lemmy", .part = "PIC32CM6408", .chip = "LAN8651",
         .tag = { "The body - head-bangs a puppet", "in time with the music" },
         .tagline = "The body - head-bangs a puppet in time with the music",
-        .status = "In development", .accent = &SCHEME_NODE_LEMMY,
-        .status_scheme = &SCHEME_NODE_FRETBOARD,
+        .accent = &SCHEME_NODE_LEMMY,
         .prose = {
             "lemmy is an animated puppet that brings the performance to",
             "life - nodding its head and moving its jaw right along with",
-            "the beat that beatbox hears. It doesn't sense or decide",
-            "anything itself; it just takes the rhythm it's given and turns",
-            "it into motion.",
+            "the beat that beatbox hears. It takes the rhythm it's given",
+            "and turns it into motion.",
         },
         .built = {
-            "MPLAB X IDE + MCC for peripheral setup",
-            "Microchip LAN8651 for its network connection",
+            "MPLAB X IDE",
+            "MCC (MPLAB Code Configurator)",
+            "Microchip LAN8651 networking",
         },
     },
     {
         .id = 7u, .name = "lightshow", .part = "PIC32CM6408", .chip = "LAN8651",
         .tag = { "The lights - brings the", "stage to life" },
         .tagline = "The lights - brings the stage to life",
-        .status = "In development", .accent = &SCHEME_NODE_LIGHTSHOW,
-        .status_scheme = &SCHEME_NODE_FRETBOARD,
+        .accent = &SCHEME_NODE_LIGHTSHOW,
         .prose = {
             "lightshow turns the same beat that moves lemmy's head into a",
             "stage light show - driving colorful LED strips that pulse and",
             "animate along with the music.",
         },
         .built = {
-            "MPLAB X IDE + MCC for peripheral setup",
-            "Microchip LAN8651 for its network connection",
+            "MPLAB X IDE",
+            "MCC (MPLAB Code Configurator)",
+            "Microchip LAN8651 networking",
         },
     },
 };
 
 #define HEADLINE  "Seven boards. One cable. Every one Microchip inside."
-#define SUBHEAD   "Six Microchip microcontrollers, one Microchip networking chip, " \
-                  "wired together with a single cable."
 
 /* Visual order of the grid: marvin / fretboard / beatbox above,
  * lemmy / guitar / lightshow / fauxmote below. Values are NODE[] indices. */
@@ -219,19 +213,25 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
  * Content spans x 16..1264 below the shared titlebar (top ~65px). */
 #define MARGIN      16
 #define GAP         12
-#define CARD_R       4
+
+/* Three radii, from the mockup's Tailwind classes. Note its theme.css overrides
+ * --radius-lg/xl off a 0.625rem base but leaves --radius-2xl at the default, so
+ * rounded-2xl is 16 while rounded-xl is 14 — they are not one scale apart.
+ * AaCorners_Render computes coverage per pixel, so any radius is free. */
+#define CARD_R      16    /* rounded-2xl: node cards, section cards, photo frame */
+#define BTN_R       14    /* rounded-xl:  the detail view's back button          */
+#define BOX_R        4    /* rounded:     the bus-position id boxes only         */
 #define CONTENT_X   MARGIN
 #define CONTENT_W   (BASE_W - 2 * MARGIN)          /* 1248 */
 
-/* overview */
+/* overview. The mockup carries no caption under the headline — the two card rows are
+ * `flex-1` straight below it — so the grid takes the space a subhead would have had. */
 #define HEAD_Y      76
 #define HEAD_H      30
-#define SUB_Y      108
-#define SUB_H       18
-#define GRID_Y     134
-#define GRID_H      (BASE_H - MARGIN - GRID_Y)     /* 650 */
-#define CARD_H      ((GRID_H - GAP) / 2)           /* 319 */
-#define ROW2_Y      (GRID_Y + CARD_H + GAP)        /* 465 */
+#define GRID_Y      (HEAD_Y + HEAD_H + GAP)        /* 118 */
+#define GRID_H      (BASE_H - MARGIN - GRID_Y)     /* 666 */
+#define CARD_H      ((GRID_H - GAP) / 2)           /* 327 */
+#define ROW2_Y      (GRID_Y + CARD_H + GAP)        /* 457 */
 #define R1_W        ((CONTENT_W - 2 * GAP) / 3)    /* 408 */
 #define R2_W        ((CONTENT_W - 3 * GAP) / 4)    /* 303 */
 
@@ -244,9 +244,6 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
 #define C_TAG_PITCH  20
 #define CHIP_H       20
 #define CHIP_DOT_D    6
-#define PILL_W     118                             /* fits "In development" */
-#define PILL_H      22
-#define PILL_Y      18
 
 /* detail */
 #define BACK_X      MARGIN
@@ -298,11 +295,14 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
  * Widgets live in BSS (no Legato pool / LE_MALLOC): the in-place Constructors build
  * them exactly as leX_New would after LE_MALLOC. Pools are sized to the built screen;
  * configASSERT catches undersizing at bring-up. */
-#define CAP       104u    /* longest string: SUBHEAD, 97 chars */
+/* Longest string is marvin's detail tagline with the THIS DEVICE suffix appended — 65
+ * bytes, since show_detail builds it in a char[CAP] and `·` costs two. Prose lines are
+ * 61 at most. Kept generously above both so an edit to either doesn't silently clip. */
+#define CAP       104u
 #define LBL_MAX    96u
 #define WGT_MAX    64u
 #define BTN_MAX    12u    /* 7 node cards + back, with slack */
-#define IMG_MAX     4u    /* board photo + the reserved QR slot, with slack */
+#define IMG_MAX     3u    /* the reserved QR slot, with slack */
 
 static leChar        s_buf[LBL_MAX][CAP];
 static leFixedString s_fs[LBL_MAX];
@@ -330,7 +330,18 @@ static leLabelWidget  *s_d_part, *s_d_name, *s_d_tag;
 static leLabelWidget  *s_d_prose[PROSE_MAX];
 static leLabelWidget  *s_d_built[BUILT_MAX];
 static leWidget       *s_d_built_dot[BUILT_MAX];
-static leImageWidget  *s_d_photo;
+static leWidget       *s_d_frame;
+static const void     *s_photo_px;   /* selected node's photo pixels, NULL if none */
+static bool            s_shown;      /* this screen owns the panel (and so OVR1)   */
+
+/* Deferred photo reveal (photo_task). s_photo_gen is bumped on every change to what
+ * should be on the layer, so a reveal that is still waiting can tell it is stale;
+ * s_photo_frame is the renderer's frame count when that change queued its repaint. */
+static volatile uint32_t s_photo_gen;
+static volatile size_t   s_photo_frame;
+static TaskHandle_t      s_photo_task;
+static StackType_t       s_photo_stack[512];
+static StaticTask_t      s_photo_tcb;
 static leWidget       *s_d_qr_card;
 static leWidget       *s_d_rail_box[NODE_N];
 static leLabelWidget  *s_d_rail_id[NODE_N], *s_d_rail_name[NODE_N];
@@ -430,19 +441,6 @@ static leLabelWidget *add_text(leWidget *parent, int x, int y, int w, int h,
     return l;
 }
 
-/* A status pill: a rounded zinc-800 fill with its caption drawn over it, so the fill
- * and the text colour stay independent without a bespoke 2-tone scheme. */
-static void add_pill(leWidget *parent, int x, int y, const char *text,
-                     const leScheme *text_scheme)
-{
-    leWidget *bg = add_panel(parent, x, y, PILL_W, PILL_H, &SCHEME_FILL_ZINC_800, LE_TRUE);
-    bg->fn->setCornerRadius(bg, CARD_R);
-    PanelAA_Enable(bg);
-
-    (void)add_text(parent, x, y, PILL_W, PILL_H, (const leFont *)&DejaVuSansMonoBold_12,
-                   text_scheme, LE_HALIGN_CENTER, text);
-}
-
 static leImageWidget *add_image(leWidget *parent, int x, int y, int w, int h)
 {
     configASSERT(s_nimg < IMG_MAX);
@@ -458,20 +456,21 @@ static leImageWidget *add_image(leWidget *parent, int x, int y, int w, int h)
     return img;
 }
 
-/* The rounded frame over an image, drawn after it so it lands on top: the classic skin
- * draws a 1px rounded border, then PanelAA's round-image pass eats the four corners
- * back to the panel's BASE (black, the page behind), which is what makes an image
- * flush to the frame read as clipped to the radius. */
-static void add_image_frame(leWidget *parent, int x, int y, int w, int h)
+/* The empty rounded frame for the photo column, shown only when that node has no
+ * photo. A photo that *is* present is scanned out on OVR1 above this canvas with its
+ * own matching frame baked in (tools/node-photos), so nothing on BASE can draw over
+ * it — which is also why the runtime round-image pass is not used here. */
+static leWidget *add_image_frame(leWidget *parent, int x, int y, int w, int h)
 {
     leWidget *p = add_panel(parent, x, y, w, h, &SCHEME_BACKGROUND, LE_FALSE);
     p->fn->setBorderType(p, LE_WIDGET_BORDER_LINE);
     p->fn->setCornerRadius(p, CARD_R);
-    PanelAA_EnableRoundImage(p);
+    PanelAA_Enable(p);
+    return p;
 }
 
 static leButtonWidget *add_button(leWidget *parent, int x, int y, int w, int h,
-                                  const leScheme *scheme)
+                                  int radius, const leScheme *scheme)
 {
     configASSERT(s_nbtn < BTN_MAX);
 
@@ -482,7 +481,7 @@ static leButtonWidget *add_button(leWidget *parent, int x, int y, int w, int h,
     b->fn->setScheme(b, scheme);
     b->fn->setBackgroundType(b, LE_WIDGET_BACKGROUND_FILL);
     b->fn->setBorderType(b, LE_WIDGET_BORDER_LINE);
-    b->fn->setCornerRadius(b, CARD_R);
+    b->fn->setCornerRadius(b, (uint32_t)radius);
     b->fn->setPressedOffset(b, 0);
     ButtonAA_Enable(b);
     parent->fn->addChild(parent, (leWidget *)b);
@@ -502,6 +501,70 @@ static leButtonWidget *add_button(leWidget *parent, int x, int y, int w, int h,
  * whether or not it is shown (see ui_manager's paint_all_screens_once), so both would
  * stay complete and switching would cost no drawing at all. Nothing outside this
  * function needs to know which of the two it is. */
+/* Put the selected node's photo on OVR1, or take it down. The photo is the one thing
+ * on this screen that is not drawn into the canvas: it rides its own hardware layer so
+ * it keeps 8 bits per channel instead of being quantized to the canvas's RGB565. Hence
+ * "visible" for it means a layer bind, not a widget flag, and it has to be reconciled
+ * anywhere the view or the selection changes — which is the same set of places
+ * show_view already owns.
+ *
+ * The BASE frame under it is the fallback for a node with no photo: a present photo
+ * covers that rect completely and carries its own frame, so the two are exclusive. */
+static void photo_apply(void)
+{
+    /* OVR1 belongs to whichever screen is on the panel: the splash owns it for the
+     * whole of boot, and the video frame overlay owns it under the dashboard. Touching
+     * it while this screen is not shown would take the layer out from under them —
+     * build-time show_view(VIEW_OVERVIEW) runs while the splash is still up. */
+    if (!s_shown) { return; }
+
+    bool on = (s_view == VIEW_DETAIL) && (s_photo_px != NULL);
+
+    /* Taking the photo down is immediate; putting it up is deferred (photo_task).
+     * Enabling a hardware layer is instant, while the rest of the view is still being
+     * painted into the canvas, so an immediate show puts the photo on the panel ahead
+     * of the page it belongs to. s_photo_gen invalidates a deferred show that the user
+     * has already navigated past.
+     *
+     * The frame count is sampled here rather than in the task: this runs where the
+     * repaint is queued and with the renderer idle (Legato dispatches the tap between
+     * frames), which is what makes "the count moved" mean "our damage was drawn". */
+    s_photo_gen++;
+    s_photo_frame = UiManager_FrameCount();
+
+    if (!on)                       { UiManager_NodePhotoHide(); }
+    else if (s_photo_task != NULL) { (void)xTaskNotifyGive(s_photo_task); }
+
+    if (s_d_frame != NULL)
+    {
+        s_d_frame->fn->setVisible(s_d_frame, on ? LE_FALSE : LE_TRUE);
+    }
+}
+
+/* Reveal the photo once the canvas has caught up. Its own task because the wait has to
+ * happen outside LEGATO_Tasks — the tap that gets us here is dispatched from inside
+ * leUpdate, so waiting there would be waiting on ourselves. */
+static void photo_task(void *param)
+{
+    (void)param;
+
+    for (;;)
+    {
+        (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+
+        uint32_t gen = s_photo_gen;
+        UiManager_WaitFrameAfter(s_photo_frame);
+
+        /* Re-read the live state: the view may have moved on during the wait, in which
+         * case that change queued its own notification and owns the decision. */
+        if (gen == s_photo_gen && s_shown &&
+            s_view == VIEW_DETAIL && s_photo_px != NULL)
+        {
+            UiManager_NodePhotoShow(s_photo_px, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
+        }
+    }
+}
+
 static void show_view(view_t v)
 {
     if (v == s_view) { return; }
@@ -515,6 +578,7 @@ static void show_view(view_t v)
     }
     s_view = v;
 
+    photo_apply();
     Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
 }
 
@@ -563,7 +627,7 @@ static void show_detail(unsigned n)
                                          (d->built[i] != NULL) ? LE_TRUE : LE_FALSE);
     }
 
-    s_d_photo->fn->setImage(s_d_photo, (leImage *)NodeArt_Photo(d->id));
+    s_photo_px = NodeArt_Pixels(d->id);
 
     /* The QR slot is reserved, not wired: only the nodes with a Microchip product page
      * get one, so the whole card stays hidden for the others rather than showing an
@@ -588,6 +652,7 @@ static void show_detail(unsigned n)
      * through the nodes) would otherwise show the previous node's text. */
     if (s_view == VIEW_DETAIL)
     {
+        photo_apply();   /* show_view is the no-op here, so rebind the photo directly */
         Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
     }
     else
@@ -620,7 +685,7 @@ static void build_card(leWidget *parent, unsigned n, int x, int y, int w)
 {
     const node_info_t *d = &NODE[n];
 
-    s_card[n] = add_button(parent, x, y, w, CARD_H, &SCHEME_FILL_ZINC_900);
+    s_card[n] = add_button(parent, x, y, w, CARD_H, CARD_R, &SCHEME_FILL_ZINC_900);
     s_card[n]->fn->setReleasedEventCallback(s_card[n], card_on_release);
 
     /* The mockup's 6px left edge, inset by the corner radius so it doesn't square off
@@ -650,10 +715,9 @@ static void build_card(leWidget *parent, unsigned n, int x, int y, int w)
                        LE_HALIGN_LEFT, d->tag[i]);
     }
 
-    add_pill(parent, x + w - 14 - PILL_W, y + PILL_Y, d->status, d->status_scheme);
-
     /* Bottom-anchored chip bullet — the shared LAN8651 link is the hero fact of this
-     * screen, so every Microchip node names it. */
+     * screen, so every node names it: fauxmote's MCU is the one non-Microchip part in
+     * the lineup, but its T1S PHY is a LAN8651 like everyone else's. */
     if (d->chip != NULL)
     {
         int cy = y + CARD_H - 16 - CHIP_H;
@@ -669,9 +733,6 @@ static void build_overview(leWidget *parent)
     (void)add_text(parent, CONTENT_X, HEAD_Y, CONTENT_W, HEAD_H,
                    (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_TEXT_WHITE,
                    LE_HALIGN_LEFT, HEADLINE);
-    (void)add_text(parent, CONTENT_X, SUB_Y, CONTENT_W, SUB_H,
-                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
-                   LE_HALIGN_LEFT, SUBHEAD);
 
     for (unsigned i = 0u; i < 3u; i++)
     {
@@ -688,7 +749,7 @@ static void build_overview(leWidget *parent)
 static void build_detail(leWidget *parent)
 {
     /* header: back, divider, accent bar, part + name + tagline */
-    leButtonWidget *back = add_button(parent, BACK_X, BACK_Y, BACK_W, BACK_H,
+    leButtonWidget *back = add_button(parent, BACK_X, BACK_Y, BACK_W, BACK_H, BTN_R,
                                       &SCHEME_FILL_ZINC_800);
     back->fn->setReleasedEventCallback(back, back_on_release);
     (void)add_text(parent, BACK_X, BACK_Y, BACK_W, BACK_H,
@@ -708,9 +769,9 @@ static void build_detail(leWidget *parent)
                          (const leFont *)&DejaVuSansMono_14, &SCHEME_TEXT_ZINC_400,
                          LE_HALIGN_LEFT);
 
-    /* col 1: the board photo, clipped to the card radius by its frame */
-    s_d_photo = add_image(parent, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
-    add_image_frame(parent, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
+    /* col 1: the board photo's empty frame. The photo itself is not a widget — it is
+     * scanned out on OVR1 over this rect (see photo_apply). */
+    s_d_frame = add_image_frame(parent, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
 
     /* col 2: what it does, then built with */
     (void)add_card(parent, C2_X, BODY_Y, C2_W, WHAT_H);
@@ -764,13 +825,13 @@ static void build_detail(leWidget *parent)
          * and a differently-coloured border. */
         s_d_rail_box[i] = add_panel(parent, C3_X + CPAD, ry, BOX_W, BOX_H,
                                     &SCHEME_FILL_ZINC_700, LE_TRUE);
-        s_d_rail_box[i]->fn->setCornerRadius(s_d_rail_box[i], CARD_R);
+        s_d_rail_box[i]->fn->setCornerRadius(s_d_rail_box[i], BOX_R);
         PanelAA_Enable(s_d_rail_box[i]);
 
         leWidget *inner = add_panel(parent, C3_X + CPAD + BOX_EDGE, ry + BOX_EDGE,
                                     BOX_W - 2 * BOX_EDGE, BOX_H - 2 * BOX_EDGE,
                                     &SCHEME_FILL_ZINC_900, LE_TRUE);
-        inner->fn->setCornerRadius(inner, CARD_R - BOX_EDGE);
+        inner->fn->setCornerRadius(inner, BOX_R - BOX_EDGE);
         PanelAA_Enable(inner);
 
         (void)snprintf(t, sizeof t, "%u", (unsigned)NODE[i].id);
@@ -817,6 +878,10 @@ void ScreenSystem_Setup(void)
 
     show_detail(0u);          /* seed every detail string/scheme once */
     show_view(VIEW_OVERVIEW);
+
+    s_photo_task = xTaskCreateStatic(photo_task, "NodePhoto",
+                                     (uint32_t)(sizeof s_photo_stack / sizeof s_photo_stack[0]),
+                                     NULL, 2u, s_photo_stack, &s_photo_tcb);
 }
 
 void ScreenSystem_SetInput(bool on)
@@ -829,6 +894,12 @@ void ScreenSystem_SetShown(bool shown)
 {
     /* Re-entering lands on the grid: leaving from a node detail via the drawer and
      * coming back to that same detail would be a confusing place to arrive. No-op (and
-     * so no repaint) when the overview is already the current view. */
+     * so no repaint) when the overview is already the current view.
+     *
+     * Leaving must drop the photo layer explicitly: OVR1 belongs to whoever is on
+     * screen, and the next base view hands it to the video frame overlay. */
+    s_shown = shown;
+
     if (shown) { show_view(VIEW_OVERVIEW); }
+    else       { UiManager_NodePhotoHide(); }
 }

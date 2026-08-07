@@ -118,6 +118,7 @@ static volatile bool   s_video_shown;               /* intent (UI task)         
 static volatile bool   s_video_rebind;              /* window changed → rebind        */
 static volatile rect_t s_video_win;                 /* dst rect (UI task writes)      */
 static volatile rect_t s_modal_disc;                /* discard BASE behind modal (UI)  */
+static volatile rect_t s_photo_disc;                /* discard BASE behind node photo (UI) */
 static volatile uint8_t s_scrim_alpha;              /* modal dim 0..255 intent (UI)   */
 static bool            s_video_bound;               /* HEO bound (video-task only)    */
 static uint8_t         s_scrim_bound;               /* scrim ADEF programmed (task)   */
@@ -314,7 +315,8 @@ static void heo_scrim_bind(uint8_t alpha)
  * The LCDC has one BASE discard window (§44.6.4.7): BASE skips its DDR read where
  * an opaque layer fully covers it, freeing read bandwidth. base_discard_reconcile
  * picks the region each tick — the video rect while HEO is bound, else the dialog
- * rect while the song-select modal is open, else none — and applies only on change
+ * rect while the song-select modal is open, else the system screen's node-photo rect
+ * while that overlay is up, else none — and applies only on change
  * so it isn't re-committing BASE every tick. Keeping every DISCEN write here (never
  * in heo_bind/heo_unbind or the UI task) keeps BASE single-writer. */
 static struct { bool on; uint32_t x, y, w, h; } s_base_disc;
@@ -343,6 +345,7 @@ static void base_discard_apply(bool on, uint32_t x, uint32_t y, uint32_t w, uint
 static void base_discard_reconcile(void)
 {
     rect_t m = s_modal_disc;
+    rect_t p = s_photo_disc;
 
     if (s_video_bound)
     {
@@ -352,6 +355,10 @@ static void base_discard_reconcile(void)
     else if (m.w != 0u && m.h != 0u)
     {
         base_discard_apply(true, m.x, m.y, m.w, m.h);
+    }
+    else if (p.w != 0u && p.h != 0u)
+    {
+        base_discard_apply(true, p.x, p.y, p.w, p.h);
     }
     else
     {
@@ -577,6 +584,42 @@ void UiManager_VideoOverlayShow(const void *buf, uint32_t x, uint32_t y,
 void UiManager_VideoOverlayHide(void)
 {
     XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
+}
+
+/* ── node board photo (OVR1, opaque RGBA8888) ─────────────────────────────────
+ * The system screen's photo column, scanned straight out of its node_art slot so the
+ * photo keeps 8 bits per channel instead of being quantized into the RGB565 BASE
+ * canvas. Driven via the PLIB rather than a canvas for the same reason as the video
+ * frame: nothing on this layer needs Legato: it is one static, opaque raster at a
+ * fixed rect, frame included (tools/node-photos bakes it in).
+ *
+ * OVR1 is free whenever this screen is up — UiManager_ShowSystem drops both the video
+ * and its frame overlay, and the two other OVR1 users (song-select dialog, keyboard
+ * modal) are reachable only from the dashboard. The nav drawer rides OVR2, above this,
+ * so an open drawer correctly covers the photo. */
+void UiManager_NodePhotoShow(const void *buf, uint32_t x, uint32_t y,
+                             uint32_t w, uint32_t h)
+{
+    rect_t r = { x, y, w, h };
+
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
+    XLCDC_SetLayerRGBColorMode(XLCDC_LAYER_OVR1, XLCDC_RGB_COLOR_MODE_RGBA_8888, false);
+    XLCDC_SetLayerAddress(XLCDC_LAYER_OVR1, (uint32_t)(uintptr_t)buf, false);
+    XLCDC_SetLayerXStride(XLCDC_LAYER_OVR1, 0u, false);   /* buffer == window, no gap */
+    XLCDC_SetLayerWindowXYPos(XLCDC_LAYER_OVR1, x, y, false);
+    XLCDC_SetLayerWindowXYSize(XLCDC_LAYER_OVR1, w, h, false);
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, true, true);
+
+    /* The photo is opaque over its whole rect, so BASE can skip reading underneath it. */
+    s_photo_disc = r;
+}
+
+void UiManager_NodePhotoHide(void)
+{
+    rect_t none = { 0u, 0u, 0u, 0u };
+
+    XLCDC_SetLayerEnable(XLCDC_LAYER_OVR1, false, true);
+    s_photo_disc = none;
 }
 
 void UiManager_SetVideoLevels(bool on)
@@ -1020,7 +1063,7 @@ static void init_screens(void)
  * layer, so a full paint here leaves every surface complete — after which showing a
  * screen is a pure layer bind with no repaint. Each panel is VISIBLE by now (its
  * *_Setup set it) and its canvas window is full-surface sized, so one invalidate
- * lands the whole surface; wait_render_idle then confirms it drained. Relied upon so
+ * lands the whole surface; the render-idle wait then confirms it drained. Relied upon so
  * the drawer/dialog need never invalidate on open — MGS builds the nav panel
  * setVisible(FALSE), so its boot root-damage paints nothing until this runs. */
 static void paint_all_screens_once(void)
@@ -1035,11 +1078,45 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
 }
 
+size_t UiManager_FrameCount(void)
+{
+    return leRenderer_GetDrawCount();
+}
+
+/* Block until the renderer has completed a frame past `from`, i.e. until the damage
+ * queued before `from` was sampled is actually on the panel. Exact rather than timed:
+ * leRenderer_GetDrawCount() advances in the renderer's postFrame, which runs only once
+ * every damaged rect on every layer has been drawn — so unlike leRenderer_IsIdle() (true
+ * in the gaps between leUpdate calls too) it cannot read "done" mid-paint. Idle is still
+ * required as a second condition, which costs nothing once the count has moved.
+ *
+ * Callers sample `from` while the renderer is idle — Legato dispatches widget events
+ * between frames — so no frame is in flight to complete without their damage in it.
+ *
+ * Bounded, and must not be called from LEGATO_Tasks: it would be waiting on the task it
+ * is running in. */
+void UiManager_WaitFrameAfter(size_t from)
+{
+    TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(RENDER_IDLE_TIMEOUT_MS);
+
+    while (xTaskGetTickCount() < deadline)
+    {
+        if (leRenderer_GetDrawCount() != from && leRenderer_IsIdle()) { return; }
+        vTaskDelay(pdMS_TO_TICKS(RENDER_POLL_MS));
+    }
+    LOG_WARN("UI: frame-painted wait timed out\r\n");
+}
+
 /* Block until the Legato render task has painted all pending damage. We don't
  * drive leUpdate — LEGATO_Tasks + GFX_CANVAS_Task render correctly when they run;
- * we just yield and poll the public idle flag, requiring it to hold continuously
- * (a lone idle sample is an inter-frame gap, not a finished paint). Bounded. */
-static void wait_render_idle(void)
+ * we just yield and poll the public idle flag, requiring it to hold continuously for
+ * stable_ms (a lone idle sample is an inter-frame gap, not a finished paint). Bounded.
+ *
+ * Prefer UiManager_WaitFrameAfter when there is a specific repaint to wait for; this is
+ * for boot, which has to drain damage queued by everything at once (no single baseline
+ * frame count to sample) and can afford a conservative window. Must not be called from
+ * LEGATO_Tasks itself — it would be waiting on the task it is running in. */
+void UiManager_WaitRenderIdle(uint32_t stable_ms)
 {
     TickType_t deadline   = xTaskGetTickCount() + pdMS_TO_TICKS(RENDER_IDLE_TIMEOUT_MS);
     TickType_t idle_since = 0;
@@ -1054,7 +1131,7 @@ static void wait_render_idle(void)
                 idle_run   = true;
                 idle_since = xTaskGetTickCount();
             }
-            else if ((xTaskGetTickCount() - idle_since) >= pdMS_TO_TICKS(RENDER_IDLE_STABLE_MS))
+            else if ((xTaskGetTickCount() - idle_since) >= pdMS_TO_TICKS(stable_ms))
             {
                 return;
             }
@@ -1147,7 +1224,7 @@ static void ui_boot_task(void *param)
      * from here — showing one is a pure layer bind, no repaint. */
     SplashProgress_SetStage(SPLASH_STAGE_PAINT);
     paint_all_screens_once();
-    wait_render_idle();
+    UiManager_WaitRenderIdle(RENDER_IDLE_STABLE_MS);
 
     /* Hold the splash a minimum time so a fast boot doesn't flash it away. */
     SplashProgress_SetStage(SPLASH_STAGE_HOLD);
