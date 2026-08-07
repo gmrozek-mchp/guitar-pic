@@ -49,10 +49,12 @@
 #define CON_RX_THRESHOLD      1u      /* wake on any inbound byte */
 #define CON_RX_WAIT_MS        100u    /* bounded so a missed notify can't wedge */
 
-/* embedded-cli internal buffer (static-allocation mode → no malloc). Sized
- * generously for the config below; the actual requirement is asserted at init,
- * so bump this if the assert ever fires after a config change. */
-static CLI_UINT s_cli_buf[BYTES_TO_CLI_UINTS(1024)];
+/* embedded-cli internal buffer (static-allocation mode → no malloc). The binding pool
+ * dominates it and grows with the command table (~20 bytes per command on this 32-bit
+ * target), so the old 1024 left only ~40 bytes of slack at the current count — i.e. the
+ * next command added would have turned into a boot assert. 2 KB carries ~50 commands. The
+ * exact requirement is checked at init; bump this if that assert ever fires. */
+static CLI_UINT s_cli_buf[BYTES_TO_CLI_UINTS(2048)];
 
 static EmbeddedCli *s_cli;
 
@@ -974,6 +976,18 @@ static void cmd_backlight(EmbeddedCli *cli, char *args, void *ctx)
                    saved ? "saved" : "save FAIL");
 }
 
+/* Attribute the renderer's load between the titlebar's two damage sources.
+ *
+ * The frame rate is the number that matters: with LE_PREEMPTION_LEVEL 0 a Legato frame
+ * runs to completion inside one LEGATO_Tasks tick, so LEGATO_Tasks' share of the CPU is
+ * frames/s x cost-per-frame — and the damaged area barely enters into it. Sampled over
+ * the same 500 ms window `health` uses, so the two readings are comparable: run `titlebar`
+ * for frames/s, `health` for the per-task share, then toggle and repeat. */
+#define RENDER_WINDOW_MS  500u
+
+/* Render cost of the wiimotes screen's custom-painted widgets — whammy and tilt are the
+ * last per-pixel float paints on a surface the user drags. Compare against `titlebar probe`
+ * run on the same screen, which gives the fixed frame cost and ns/px floor. */
 static void cmd_gamma(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -1302,9 +1316,13 @@ static void cmd_fretboard(EmbeddedCli *cli, char *args, void *ctx)
     console_printf("usage: fretboard <arm|disarm|stream on|off|model <difficulty>>");
 }
 
-static void register_commands(void)
-{
-    static const CliCommandBinding bindings[] = {
+/* The command table lives at file scope so CMD_COUNT can size the CLI's binding pool.
+ * It used to be local to register_commands with maxBindingCount hard-coded alongside, and
+ * the two drifted: 29 commands against a pool of 26 silently dropped the last three
+ * (`gamma`, `qspi`, `settings`) — embeddedCliAddBinding just returns false, and the call
+ * site discarded it. Deriving the pool from the table is what stops that recurring; the
+ * configASSERT below is the backstop if it happens anyway. */
+static const CliCommandBinding bindings[] = {
         { "status", "Print link / detector / mode / video state", false, NULL, cmd_status },
         { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
         { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
@@ -1334,10 +1352,23 @@ static void register_commands(void)
         { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
         { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
         { "settings","settings [dump|save|wipe|stress [n]]: persistent settings (QSPI)", true, NULL, cmd_settings },
-    };
-    for (size_t i = 0u; i < (sizeof(bindings) / sizeof(bindings[0])); i++)
+};
+#define CMD_COUNT  (sizeof(bindings) / sizeof(bindings[0]))
+
+static void register_commands(void)
+{
+    for (size_t i = 0u; i < CMD_COUNT; i++)
     {
-        (void)embeddedCliAddBinding(s_cli, bindings[i]);
+        /* A false return means the binding pool is full: this command and every one after
+         * it is absent from `help` and unreachable at the prompt. Reported at ERROR rather
+         * than asserted because configASSERT is a no-op in this build (FreeRTOSConfig.h
+         * never defines it) — and wrapping the call in one would delete the call. */
+        if (!embeddedCliAddBinding(s_cli, bindings[i]))
+        {
+            LOG_ERROR("CON: binding pool full (%u) — '%s' and later commands dropped\r\n",
+                      (unsigned)CMD_COUNT, bindings[i].name);
+            return;
+        }
     }
 }
 
@@ -1395,15 +1426,28 @@ void Console_Initialize(void)
     cfg->rxBufferSize      = 64u;
     cfg->cmdBufferSize     = 64u;
     cfg->historyBufferSize = 128u;
-    cfg->maxBindingCount   = 26u;
+    cfg->maxBindingCount   = (uint16_t)CMD_COUNT;
     cfg->enableAutoComplete = true;
     cfg->cliBuffer         = s_cli_buf;
     cfg->cliBufferSize     = sizeof(s_cli_buf);
 
-    configASSERT(embeddedCliRequiredSize(cfg) <= sizeof(s_cli_buf));
+    /* Both of these were configASSERTs, which are compiled out here — so an undersized
+     * buffer made embeddedCliNew return NULL and the next line dereference it, i.e. a data
+     * abort at boot with nothing logged. Report and give up instead: no console is
+     * recoverable, a data abort is not. */
+    if (embeddedCliRequiredSize(cfg) > sizeof(s_cli_buf))
+    {
+        LOG_ERROR("CON: cli buffer too small (%u < %u) — console disabled\r\n",
+                  (unsigned)sizeof(s_cli_buf), (unsigned)embeddedCliRequiredSize(cfg));
+        return;
+    }
 
     s_cli = embeddedCliNew(cfg);
-    configASSERT(s_cli != NULL);
+    if (s_cli == NULL)
+    {
+        LOG_ERROR("CON: embeddedCliNew failed — console disabled\r\n");
+        return;
+    }
     s_cli->writeChar = console_write_char;
 
     register_commands();
