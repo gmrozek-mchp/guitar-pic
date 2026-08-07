@@ -107,6 +107,26 @@ write your own transform:
   button scheme, set `background` deliberately; the natural value is one step lighter than
   `base`, which is what a CSS `hover:` step means in an imported mockup.
 
+**Adding one:** `add_scheme.py <zip> <NEW_NAME> --like <SIBLING> [slot=#RRGGBB …]` clones an
+existing scheme under a fresh uuid and recolours the slots you name (dry-run by default; uuid5
+from the name, so re-running is reproducible). Clone rather than synthesize, for `add_layer.py`'s
+reason: a scheme carries ~37 properties — 16 colour slots, `colorMode`, two mono tables, editor
+category state — whose defaults appear nowhere else in the zip. Pick the sibling by **role**, and
+note it must not be the last element of `schemes[]` (the splice inserts after it).
+
+**Which slots to set is the decision, and it follows the reading widget, not the colour.** An
+accent used for both text and small filled shapes needs `base`, `foreground` **and** `text` all
+carrying it: a panel fills from `base`, a label reads `text`. Set only one and the other half of
+the card comes out the sibling's colour. This is also why the stock `SCHEME_TEXT_*` schemes
+cannot be reused as accents — they carry the colour in `text` alone and fill grey, so a widget
+filled from one gets a grey edge with no error anywhere. Verified in marvin: of 73 schemes, only
+the seven `SCHEME_NODE_*` had `base == foreground == text`, so an eighth accent needed a new
+scheme rather than a reuse.
+
+**Remember RGB565.** The generated C quantizes to the canvas's colour mode, so `#E4002B` reads
+back as `#E60029` in `le_gen_scheme.c` — that is the correct nearest value in 5/6/5, not a
+mis-set slot. Compare against the quantized target before concluding a colour didn't land.
+
 ## Strings and fonts, specifically
 
 Two things trip people up here, both covered in [REFERENCE.md](REFERENCE.md):
@@ -212,5 +232,5 @@ full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_refs.py`, `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
 `audit_glyph_coverage.py`, `strip_subtree.py`, `add_layer.py`, `prune_unused_images.py`,
-`add_image.py`, `add_string.py`, `add_font_range.py`, `set_scheme_color.py`, `set_image_source.py`,
+`add_image.py`, `add_string.py`, `add_font_range.py`, `add_scheme.py`, `set_scheme_color.py`, `set_image_source.py`,
 `rename_images.py`, `export_assets.py`.
