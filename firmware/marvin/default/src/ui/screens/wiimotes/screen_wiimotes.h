@@ -39,6 +39,18 @@ const void *ScreenWiimotes_VideoFrameSurface(void);
  * base-view show/hide only. */
 void ScreenWiimotes_SetShown(bool shown);
 
+/* Time a frame for each of this screen's custom-painted widgets and report one line each
+ * through `out` (the HealthMonitor_Report sink shape). Only useful while the screen is
+ * shown; says so otherwise.
+ *
+ * Here because the whammy slider and the tilt gauge are the last per-pixel FLOAT paints on
+ * an interactive surface — whammy evaluates four or five signed-distance functions plus
+ * three blends per pixel, all in soft float on a core with no FPU, and the user drags it.
+ * See ui/gfx/render_probe.h for how to read the numbers. */
+typedef void (*wiimotes_probe_fn)(void *ctx, const char *line);
+
+void ScreenWiimotes_Probe(unsigned iters, wiimotes_probe_fn out, void *ctx);
+
 #ifdef __cplusplus
 }
 #endif

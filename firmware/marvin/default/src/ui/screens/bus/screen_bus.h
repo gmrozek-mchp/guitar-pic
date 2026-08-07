@@ -40,6 +40,13 @@ void ScreenBus_SetShown(bool shown);
  * implies the numbers are live. Takes effect on the next refresh tick; the row set
  * is built at Setup, and both feeds present the same node count. */
 void ScreenBus_SetSimulated(bool on);
+
+/* Time a frame for each custom-painted widget on this screen (gauge, sparkline, a TX bar) and
+ * report one line each through `out` — the HealthMonitor_Report sink shape. Everything here
+ * repaints on the 1 Hz refresh, so paint cost is continuous rather than only-while-touched. */
+typedef void (*bus_probe_fn)(void *ctx, const char *line);
+
+void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx);
 bool ScreenBus_Simulated(void);
 
 #ifdef __cplusplus

@@ -40,6 +40,9 @@
 #include "game/game_selection.h"
 #include "game/game_controller.h"
 #include "ui/ui_manager.h"
+#include "ui/titlebar.h"
+#include "ui/screens/wiimotes/screen_wiimotes.h"
+#include "ui/screens/bus/screen_bus.h"
 #include "flash/qspi_smoke.h"
 #include "flash/settings.h"
 
@@ -985,9 +988,141 @@ static void cmd_backlight(EmbeddedCli *cli, char *args, void *ctx)
  * for frames/s, `health` for the per-task share, then toggle and repeat. */
 #define RENDER_WINDOW_MS  500u
 
+static void cmd_titlebar(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    const char *val = embeddedCliGetToken(args, 2);
+
+    if (tok != NULL && strcmp(tok, "probe") == 0)
+    {
+        /* Constant-content rects of increasing area (see Titlebar_ProbeFrameUs): the
+         * intercept is the fixed per-frame overhead, the slope the per-pixel cost. */
+        static const struct { uint32_t w, h; } SWEEP[] = {
+            { 1u, 1u }, { 12u, 12u }, { 64u, 32u }, { 260u, 40u },
+        };
+        #define SWEEP_N  (sizeof(SWEEP) / sizeof(SWEEP[0]))
+
+        unsigned n = (val != NULL) ? (unsigned)atoi(val) : 20u;
+        uint32_t us[SWEEP_N];
+        if (n == 0u || n > 200u) { n = 20u; }
+
+        for (size_t i = 0u; i < SWEEP_N; i++)
+        {
+            us[i] = Titlebar_ProbeFrameUs(n, SWEEP[i].w, SWEEP[i].h);
+        }
+        if (us[0] == 0u)
+        {
+            console_printf("probe: no titlebar on screen");
+            return;
+        }
+
+        for (size_t i = 0u; i < SWEEP_N; i++)
+        {
+            console_printf("  %3lux%-3lu (%6lu px) = %6lu us",
+                           (unsigned long)SWEEP[i].w, (unsigned long)SWEEP[i].h,
+                           (unsigned long)(SWEEP[i].w * SWEEP[i].h),
+                           (unsigned long)us[i]);
+        }
+
+        uint32_t px_lo = SWEEP[0].w * SWEEP[0].h;
+        uint32_t px_hi = SWEEP[SWEEP_N - 1u].w * SWEEP[SWEEP_N - 1u].h;
+        uint32_t d_us  = (us[SWEEP_N - 1u] > us[0]) ? (us[SWEEP_N - 1u] - us[0]) : 0u;
+        uint32_t fixed = us[0];
+        uint32_t ns_px = (d_us * 1000u) / (px_hi - px_lo);
+        console_printf("probe (%u iters): fixed ~%luus/frame, %lu ns/px over %lu px",
+                       n, (unsigned long)fixed, (unsigned long)ns_px,
+                       (unsigned long)(px_hi - px_lo));
+
+        /* Now the real parts, each minus what an empty rect of the same size would cost,
+         * so the remainder is that widget's own drawing. */
+        static const struct { const char *name; Titlebar_Part part; uint32_t px; } PART[] = {
+            { "dot   12x12", TITLEBAR_PART_DOT,   12u * 12u },
+            { "plot   80x28", TITLEBAR_PART_PLOT,  80u * 28u },
+            { "card  158x42", TITLEBAR_PART_CARD, 158u * 42u },
+        };
+        for (size_t i = 0u; i < (sizeof(PART) / sizeof(PART[0])); i++)
+        {
+            uint32_t tot  = Titlebar_ProbePartUs(n, PART[i].part);
+            uint32_t base = fixed + (PART[i].px * ns_px) / 1000u;
+            console_printf("  %s = %6lu us   (drawing %6lu us)",
+                           PART[i].name, (unsigned long)tot,
+                           (unsigned long)((tot > base) ? (tot - base) : 0u));
+        }
+        #undef SWEEP_N
+        return;
+    }
+
+    if (tok != NULL)
+    {
+        bool on;
+        if (val == NULL || (strcmp(val, "on") != 0 && strcmp(val, "off") != 0))
+        {
+            console_printf("usage: titlebar [pulse <on|off> | tiles <on|off> | probe [iters]]");
+            return;
+        }
+        on = (strcmp(val, "on") == 0);
+
+        if      (strcmp(tok, "pulse") == 0) { Titlebar_SetPulseEnabled(on); }
+        else if (strcmp(tok, "tiles") == 0) { Titlebar_SetTilesEnabled(on); }
+        else
+        {
+            console_printf("usage: titlebar [pulse <on|off> | tiles <on|off> | probe [iters]]");
+            return;
+        }
+    }
+
+    size_t f0 = UiManager_FrameCount();
+    vTaskDelay(pdMS_TO_TICKS(RENDER_WINDOW_MS));
+    size_t f1 = UiManager_FrameCount();
+
+    Titlebar_Status st;
+    Titlebar_GetStatus(&st);
+
+    console_printf("titlebar: pulse=%s tiles=%s onscreen=%s  cpu=%lu.%lu%% bus=%lu.%lu%%",
+                   st.pulse ? "on" : "off", st.tiles ? "on" : "off",
+                   st.live ? "yes" : "no",
+                   (unsigned long)(st.cpu_permille / 10u), (unsigned long)(st.cpu_permille % 10u),
+                   (unsigned long)(st.bus_permille / 10u), (unsigned long)(st.bus_permille % 10u));
+    console_printf("renderer: %lu frames in %ums (%lu/s)",
+                   (unsigned long)(f1 - f0), (unsigned)RENDER_WINDOW_MS,
+                   (unsigned long)((f1 - f0) * 1000u / RENDER_WINDOW_MS));
+}
+
 /* Render cost of the wiimotes screen's custom-painted widgets — whammy and tilt are the
  * last per-pixel float paints on a surface the user drags. Compare against `titlebar probe`
  * run on the same screen, which gives the fixed frame cost and ns/px floor. */
+static void cmd_wiimotes(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    const char *val = embeddedCliGetToken(args, 2);
+
+    if (tok == NULL || strcmp(tok, "probe") != 0)
+    {
+        console_printf("usage: wiimotes probe [iters]");
+        return;
+    }
+
+    ScreenWiimotes_Probe((val != NULL) ? (unsigned)atoi(val) : 20u, sd_out, NULL);
+}
+
+/* Render cost of the bus screen's custom widgets — all of them repaint at 1 Hz. */
+static void cmd_bus(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    const char *val = embeddedCliGetToken(args, 2);
+
+    if (tok == NULL || strcmp(tok, "probe") != 0)
+    {
+        console_printf("usage: bus probe [iters]");
+        return;
+    }
+
+    ScreenBus_Probe((val != NULL) ? (unsigned)atoi(val) : 20u, sd_out, NULL);
+}
+
 static void cmd_gamma(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -1349,7 +1484,10 @@ static const CliCommandBinding bindings[] = {
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
         { "perf",     "perf [dump <canvas> [x y w h]]: perf-log state, or request a canvas dump", true, NULL, cmd_perf },
         { "nav",      "nav [slide on|off | icon <row> | px <x> <y> [w h]]: drawer slide / pixel dump", true, NULL, cmd_nav },
+        { "bus",     "bus probe [iters]: render cost of the gauge / sparkline / TX bars", true, NULL, cmd_bus },
+        { "wiimotes","wiimotes probe [iters]: render cost of the whammy / tilt / fret widgets", true, NULL, cmd_wiimotes },
         { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
+        { "titlebar","titlebar [pulse <on|off> | tiles <on|off> | probe [iters]]: metric-tile / LED render load, frames/s, per-frame cost", true, NULL, cmd_titlebar },
         { "qspi",   "qspi [bench [MB]|verify [KB] [passes]]: SST26 smoke / bench / integrity stress", true, NULL, cmd_qspi },
         { "settings","settings [dump|save|wipe|stress [n]]: persistent settings (QSPI)", true, NULL, cmd_settings },
 };

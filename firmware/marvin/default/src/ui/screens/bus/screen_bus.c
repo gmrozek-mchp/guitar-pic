@@ -16,6 +16,7 @@
 #include "net/t1s/t1s_link.h"
 
 #include "ui/gfx/ui_surface.h"
+#include "ui/gfx/render_probe.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_fixedstring.h"
@@ -461,6 +462,14 @@ static leWidget      *s_ebar[MAX_ROWS];
 static leLabelWidget *s_etot[MAX_ROWS], *s_esplit[MAX_ROWS];
 static int            s_etrack_w = 1;
 
+/* Utilization history: the plot and the samples behind it. Its own storage rather than
+ * the plain-leWidget pool, because the sparkline paint reads its style through the
+ * embedding struct. */
+static SparklineSeries s_util_series;
+static SparklineWidget s_util_plot;
+
+static leWidget     *s_titlebar;
+static leWidget     *s_gauge;
 static volatile bool s_shown;
 static StackType_t   s_task_stack[1024];
 static StaticTask_t  s_task_tcb;
@@ -502,7 +511,7 @@ void ScreenBus_Setup(void)
     Marvin_PANEL_BUS->fn->setBackgroundType(Marvin_PANEL_BUS, LE_WIDGET_BACKGROUND_FILL);
 
     /* Shared titlebar (hamburger + logos), same as the other base views. */
-    Titlebar_Add(Marvin_PANEL_BUS);
+    s_titlebar = Titlebar_Add(Marvin_PANEL_BUS);
     ScreenBus_SetInput(false);
 
     /* ── KPI row: the wide utilization card, then seven equal tiles ─────────
@@ -511,6 +520,7 @@ void ScreenBus_Setup(void)
     add_card(CONTENT_X, KPI_Y, GAUGE_W, KPI_H);
     {
         leWidget *g = next_widget();
+        s_gauge = g;
         g->fn->setPosition(g, CONTENT_X + PAD, KPI_Y + 20);
         g->fn->setSize(g, 76, 44);
         g->fn->setBackgroundType(g, LE_WIDGET_BACKGROUND_NONE);
@@ -645,13 +655,15 @@ void ScreenBus_Setup(void)
                                (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_600,
                                LE_HALIGN_RIGHT), t);
         }
-        leWidget *spark = next_widget();
+        /* Scale matches the y-ticks drawn above: 0..60%, fixed, not autoscaled. */
+        Sparkline_SeriesInit(&s_util_series);
+        Sparkline_Constructor(&s_util_plot, &s_util_series, 600u);
+
+        leWidget *spark = &s_util_plot.widget;
         spark->fn->setPosition(spark, px, PLOT_Y);
         spark->fn->setSize(spark, pw, PLOT_H);
         spark->fn->setScheme(spark, &SCHEME_NODE_MARVIN);   /* mono cyan = line colour */
         spark->fn->setBackgroundType(spark, LE_WIDGET_BACKGROUND_NONE);
-        Sparkline_Enable(spark);
-        Sparkline_SetScale(600u);
         Marvin_PANEL_BUS->fn->addChild(Marvin_PANEL_BUS, spark);
 
         set_text(add_label(px, CHART_Y + CHART_H - 20, pw / 2, 14,
@@ -755,7 +767,7 @@ static void refresh_all(void)
         Gauge_Set(bs.util_permille,
                   (bs.util_permille > 700u) ? &SCHEME_NODE_LIGHTSHOW :
                   (bs.util_permille > 450u) ? &SCHEME_FILL_YELLOW_400 : &SCHEME_NODE_MARVIN);
-        Sparkline_Push(bs.util_permille);
+        Sparkline_Push(&s_util_series, bs.util_permille);
 
         fmt_count(bs.tx_total, tmp, sizeof tmp); set_text(s_kpi_tx, tmp);
         fmt_count(bs.rx_total, tmp, sizeof tmp); set_text(s_kpi_rx, tmp);
@@ -915,6 +927,7 @@ void ScreenBus_SetInput(bool on)
 void ScreenBus_SetShown(bool shown)
 {
     s_shown = shown;
+    Titlebar_SetShown(s_titlebar, shown);
 }
 
 void ScreenBus_SetSimulated(bool on)
@@ -925,4 +938,45 @@ void ScreenBus_SetSimulated(bool on)
 bool ScreenBus_Simulated(void)
 {
     return s_sim;
+}
+
+/* ── render probe ────────────────────────────────────────────────────────────
+ * The custom-painted widgets on this screen, timed one frame each. Everything here repaints
+ * on the 1 Hz refresh, so a slow paint costs continuously rather than only while touched —
+ * which is why the gauge and the TX bars were worth converting off the vector rasterizer.
+ * See ui/gfx/render_probe.h for how to read the numbers. */
+void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
+{
+    if (out == NULL) { return; }
+
+    if (UiManager_BaseCanvas() != CANVAS_BUS)
+    {
+        out(ctx, "bus: not the shown base view (nav to it first)");
+        return;
+    }
+    if (iters == 0u || iters > 200u) { iters = 20u; }
+
+    char line[96];
+
+    struct { const char *name; leWidget *w; } part[3] = {
+        { "gauge",   s_gauge },
+        { "spark",   &s_util_plot.widget },
+        { "txbar[0]", s_bar[0] },
+    };
+
+    for (size_t i = 0u; i < 3u; i++)
+    {
+        leRect   r;
+        uint32_t us;
+
+        if (part[i].w == NULL) { continue; }
+
+        part[i].w->fn->rectToScreen(part[i].w, &r);
+        us = RenderProbe_WidgetUs(part[i].w, iters);
+
+        (void)snprintf(line, sizeof line, "  %-9s %3dx%-3d (%5d px) = %6lu us",
+                       part[i].name, (int)r.width, (int)r.height,
+                       (int)(r.width * r.height), (unsigned long)us);
+        out(ctx, line);
+    }
 }

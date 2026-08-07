@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stdio.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -16,6 +17,7 @@
 #include "ui/widgets/tilt/widget_tilt.h"
 
 #include "ui/gfx/ui_surface.h"
+#include "ui/gfx/render_probe.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
 #include "gfx/legato/string/legato_tablestring.h"
@@ -152,6 +154,7 @@ static unsigned        s_nlbl;
 static leWidget *s_fret[5];
 static leWidget *s_whammy;
 static leWidget *s_tilt;
+static leWidget *s_titlebar;
 
 static leWidget *next_widget(int x, int y, int w, int h)
 {
@@ -425,7 +428,7 @@ void ScreenWiimotes_Setup(void)
                     VID_FRAME_R, VID_FRAME_STROKE, VID_FRAME_C4);
 
     /* Shared titlebar (hamburger + logos), same chrome as the other base views. */
-    (void)Titlebar_Add(Marvin_PANEL_WIIMOTES);
+    s_titlebar = Titlebar_Add(Marvin_PANEL_WIIMOTES);
 
     build_guitar_card();
     build_wiimote_card();
@@ -471,6 +474,8 @@ void ScreenWiimotes_SetShown(bool shown)
 {
     unsigned i;
 
+    Titlebar_SetShown(s_titlebar, shown);
+
     s_g_mask   = 0u;
     s_g_aux    = 0u;
     s_g_whammy = MF_WHAMMY_REST;
@@ -492,5 +497,48 @@ void ScreenWiimotes_SetShown(bool shown)
         send_guitar();
         send_nav();
         Fauxmote_SetOverride(false);
+    }
+}
+
+/* ── render probe ────────────────────────────────────────────────────────────*/
+
+void ScreenWiimotes_Probe(unsigned iters, wiimotes_probe_fn out, void *ctx)
+{
+    static const struct { const char *name; leWidget **w; } PART[] = {
+        { "whammy", &s_whammy },
+        { "tilt",   &s_tilt   },
+        { "fret[0]",&s_fret[0]},
+    };
+
+    if (out == NULL) { return; }
+
+    /* This screen keeps no shown flag, so ask the compositor which canvas owns BASE — a
+     * probe on a canvas that is not bound would time a paint nobody can see. */
+    if (UiManager_BaseCanvas() != CANVAS_WIIMOTES)
+    {
+        out(ctx, "wiimotes: not the shown base view (nav to it first)");
+        return;
+    }
+    if (iters == 0u || iters > 200u) { iters = 20u; }
+
+    char line[96];
+
+    for (size_t i = 0u; i < (sizeof(PART) / sizeof(PART[0])); i++)
+    {
+        leWidget *w = *PART[i].w;
+        uint32_t  us;
+        leRect    r;
+
+        if (w == NULL) { continue; }
+
+        w->fn->rectToScreen(w, &r);
+        us = RenderProbe_WidgetUs(w, iters);
+
+        /* Fixed frame cost plus the parent's fill are the floor; both are measured by
+         * `titlebar probe` on this same layer, so compare against that. */
+        (void)snprintf(line, sizeof line, "  %-8s %3dx%-3d (%5d px) = %6lu us",
+                       PART[i].name, (int)r.width, (int)r.height,
+                       (int)(r.width * r.height), (unsigned long)us);
+        out(ctx, line);
     }
 }
