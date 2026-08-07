@@ -78,4 +78,100 @@ void gfxcConfigObjectsInitialize(void)
     id = gfxcCreate();
     gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
                        NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
+    id = gfxcCreate();
+    gfxcSetPixelBuffer(id, 480, 272, GFX_COLOR_MODE_RGBA_8888,
+                       NULL);
 }

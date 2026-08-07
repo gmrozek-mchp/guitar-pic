@@ -31,7 +31,7 @@ These are distinct and must not be collapsed (this has been a recurring source o
 **"canvas ≠ layer" is true only for the *hardware* layer (3), not for the *Legato* layer (2).**
 A panel never *owns* a HW layer — two canvases never shown together can share one; the same
 canvas can be on `OVR1` in one situation and `OVR2` in another. The 8-slot canvas pool
-(`CONFIG_CANVAS_NUM_OBJ = 8`) means up to 8 layer-screens may be **defined**
+(`CONFIG_CANVAS_NUM_OBJ = 40`) means far more layer-screens may be **defined**
 (`LE_LAYER_COUNT` ≤ 8, canvases 0–7); the LCDC then composites **any 3** of them onto its 3
 usable HW layers at once — *define many, show a few.*
 
@@ -40,7 +40,7 @@ static `GFXC_CANVAS canvas[]` array (`gfx_canvas.c:67`); `GFXC_Initialize` marks
 slot `CANVAS_ID_INVALID` / `GFXC_FX_IDLE`, so spare slots are inert at ~150 B of BSS each and
 raising the number is an MCC regen and nothing more. `LE_LAYER_COUNT` is MGS-derived, and
 `leState.layerList` is a dynamic `leList` rather than a fixed array — no ceiling there either.
-What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, 32 MB): a full-screen
+What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, 64 MB): a full-screen
 RGB565 surface is 1.95 MB, and with the eight layers below defined the region is ~30.8 MB used.
 A ninth layer-screen therefore needs the `ram_nocache`/`ram` split moved (`.region_ram` has
 ~200 MB spare, so this is a one-line change) — *not* a bigger pool. The splash's 4 MB RGBA8888
@@ -160,7 +160,7 @@ lifecycle events are direct calls).
 
 ### 4.1 Two layer counts — don't conflate them
 - **`LE_LAYER_COUNT`** (Legato, `legato_config.h:156`) = how many canvases / Legato layers the global
-  `layerList` manages = **8** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
+  `layerList` manages = **9** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
 
   | Layer / canvas | Panel | Role | HW layer when shown |
   |---|---|---|---|
@@ -171,7 +171,8 @@ lifecycle events are direct calls).
   | 4 | `PANEL_WIIMOTES` | wiimotes / manual override (base view) | BASE |
   | 5 | `PANEL_KEYBOARD` | on-screen keyboard modal | OVR1 |
   | 6 | `PANEL_BUS` | 10BASE-T1S bus statistics (base view) | BASE |
-  | 7 | `PANEL_SYSTEM` | system info / node showcase (base view) | BASE |
+  | 7 | `PANEL_SYSTEM` | system info — node grid (base view) | BASE |
+  | 8 | `PANEL_SYSTEM_DETAIL` | system info — node detail (base view) | BASE |
 
   MGS derives the count as the **max layer count across all screens** in the design; there is no
   explicit knob. (Adding a layer-screen therefore means adding a layer to the `Marvin` screen in
@@ -912,22 +913,38 @@ video frame overlay (§16) — `SetLayerRGBColorMode` + `SetLayerAddress` + wind
 - **`photo_apply()` is gated on the screen being shown**, because OVR1 belongs to whoever is on the
   panel: the splash owns it for all of boot, and `show_view(VIEW_OVERVIEW)` runs at build time, which
   would otherwise disable the splash mid-boot.
-- **The reveal is deferred a frame; the takedown is not.** Enabling a hardware layer is instant while
-  the rest of the view is still being painted into the canvas, so on hardware the photo arrived
-  visibly ahead of its own page. `photo_task` (static, prio 2) waits for the repaint and then enables
-  the layer. It waits on **`UiManager_WaitFrameAfter`**, i.e. the renderer's `leRenderer_GetDrawCount()`
-  advancing past the value sampled where the damage was queued — exact, because that counter moves in
-  the renderer's `postFrame` only once every damaged rect on every layer has been drawn. This is the
-  signal to reach for over `leRenderer_IsIdle()`, which is also true in the gaps between `leUpdate`
-  calls and so needs a tuned stable window to be trusted. A `s_photo_gen` counter drops a reveal the
-  user has already navigated past. Its own task because the tap is dispatched from inside `leUpdate`:
-  waiting in the handler would be waiting on `LEGATO_Tasks` from inside `LEGATO_Tasks`.
-  - **The structural fix, not taken here:** give overview and detail their own canvases (§13's
-    property — Legato paints a canvas whether or not it is bound), which makes the switch a pure
-    layer bind with *no* repaint to outrun, and lets the page and the photo land in the same frame
-    with no wait at all. Costs a second full-screen RGB565 surface (~2.0 MB) against the 1.16 MB
-    `.region_nocache` has free, so it needs the region grown. Worth doing if the deferred reveal
-    still reads as a two-stage arrival.
+- **The photo layer flips in the same breath as the canvas bind, because each view owns a canvas.**
+  Enabling a hardware layer is instant while a canvas repaint is not, so any design where the two
+  have to agree *and* the canvas has to repaint is a race you can only paper over. It was papered
+  over first — a task that waited for `leRenderer_GetDrawCount()` to pass the value sampled where the
+  damage was queued, which is the exact "has this repaint finished" signal (that counter moves in the
+  renderer's `postFrame`, only once every damaged rect on every layer is drawn, unlike
+  `leRenderer_IsIdle()`, which is also true between `leUpdate` calls). It worked going *into* the
+  detail view and was visibly wrong coming back out: the photo went down, then the grid appeared.
+  - **Fixed structurally:** overview and detail are separate layer-screens (7 and 8) with their own
+    canvases, so `bind_view` is `UiManager_BindSystemView` — a layer bind, no drawing — and the
+    photo's enable/disable rides along in the same call.
+  - **But only one of the two canvases is genuinely pre-painted, and assuming otherwise was a bug.**
+    The grid never changes; the detail canvas is one tree re-pointed at whichever node was tapped.
+    A canvas is safe to bind immediately only if its content is already correct, so the detail
+    canvas is **repainted first and bound when that paint lands** (`UiManager_WaitFrameAfter` on
+    `leRenderer_GetDrawCount()`, from `view_task` — the wait cannot run in `LEGATO_Tasks`, which is
+    where the tap is dispatched). Binding it straight away showed the *previous* node.
+    So the switch is asymmetric: **detail→overview is instant**, **overview→detail waits**, and the
+    wait is what keeps the grid on screen until the detail view is complete rather than showing a
+    half-built page. A generation counter drops a deferred bind the user has navigated past — note
+    `s_shown` alone does not catch leave-then-return, since it is true again by then.
+  - **`s_view` is which view is current, NOT whether its canvas is bound.** Those diverge every time
+    another base view takes the panel, so `bind_view` has no "already showing it" guard: with one,
+    the first entry after boot bound nothing at all (the build-time call had set `s_view` while the
+    dashboard still owned BASE).
+  - **Input follows the bind, not visibility.** Both roots stay attached to their Legato layers for
+    life and `leInput` walks every attached layer, so the off-screen view would still answer taps.
+    What keeps it out is `LE_WIDGET_ENABLED`, which the pick walk requires and
+    `ScreenSystem_SetInput` puts on the current view alone.
+  - Cost, measured: `.region_nocache` 30.84 → 32.79 MiB (+2,048,000 B, exactly one full-screen
+    RGB565 surface) inside a region Greg grew 32 → 64 MiB, with `CONFIG_CANVAS_NUM_OBJ` raised to 40.
+    Each view also carries its own titlebar now (`TITLEBAR_MAX` 8, five in use).
 - **Both of the open risks are now settled on hardware.** The XLCDC blender does treat an alpha-255
   RGBA8888 overlay as fully opaque — the full-rect BASE discard is active while the photo is up and
   nothing shows through — and direct LCDC scanout of cached `.region_ram` renders correctly, so the

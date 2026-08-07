@@ -36,6 +36,11 @@ leWidget *ScreenDashboard_Content(void);
  * ApplyFret reflects the 7-bit guitar mask (GUITAR_BTN_*) on the ROBOT fret buttons. */
 void ScreenDashboard_ApplySelection(void);
 void ScreenDashboard_ApplyFret(uint8_t mask);
+
+/* Show or hide the SMPTE test pattern under the video card: it is only meant to be seen
+ * when HEO is not covering it, and the rebind gap after a full-screen view was long
+ * enough to flash the bars. Feed-task ctx, render lock held. */
+void ScreenDashboard_ApplyVideoState(bool displayed);
 void ScreenDashboard_ApplyStatus(const char *text);
 void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms);
 void ScreenDashboard_ApplyScore(uint32_t score);

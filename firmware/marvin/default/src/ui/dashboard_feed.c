@@ -50,6 +50,12 @@ void DashboardFeed_PostFret(uint8_t mask)
     post(&e);
 }
 
+void DashboardFeed_PostVideo(bool displayed)
+{
+    dashboard_evt_t e = { .type = DASH_EVT_VIDEO, .u.on = displayed };
+    post(&e);
+}
+
 void DashboardFeed_PostSelection(void)
 {
     dashboard_evt_t e = { .type = DASH_EVT_SELECTION };
@@ -128,6 +134,7 @@ static void dashboard_task(void *param)
         if (s_have[DASH_EVT_MULTIPLIER]) { ScreenDashboard_ApplyMultiplier(s_latest[DASH_EVT_MULTIPLIER].u.mult); }
         if (s_have[DASH_EVT_STREAK])    { ScreenDashboard_ApplyStreak(s_latest[DASH_EVT_STREAK].u.streak); }
         if (s_have[DASH_EVT_FRET])      { ScreenDashboard_ApplyFret(s_latest[DASH_EVT_FRET].u.fret_mask); }
+        if (s_have[DASH_EVT_VIDEO])     { ScreenDashboard_ApplyVideoState(s_latest[DASH_EVT_VIDEO].u.on); }
         UiManager_RenderUnlock();
 
         (void)memset(s_have, 0, sizeof s_have);

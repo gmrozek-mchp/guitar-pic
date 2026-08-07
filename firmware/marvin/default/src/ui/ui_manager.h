@@ -24,7 +24,8 @@ extern "C" {
 #define CANVAS_WIIMOTES    4u   /* Marvin layer 4 — wiimotes / manual-override */
 #define CANVAS_KEYBOARD    5u   /* Marvin layer 5 — on-screen keyboard modal   */
 #define CANVAS_BUS         6u   /* Marvin layer 6 — 10BASE-T1S bus statistics  */
-#define CANVAS_SYSTEM      7u   /* Marvin layer 7 — system info (node showcase) */
+#define CANVAS_SYSTEM      7u   /* Marvin layer 7 — system info, node grid      */
+#define CANVAS_SYSTEM_DETAIL 8u /* Marvin layer 8 — system info, node detail    */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
@@ -131,18 +132,25 @@ void UiManager_NodePhotoShow(const void *buf, uint32_t x, uint32_t y,
                              uint32_t w, uint32_t h);
 void UiManager_NodePhotoHide(void);
 
-/* Sequence work *after* a repaint — e.g. revealing a hardware layer so it doesn't beat
- * the canvas it belongs with onto the panel. Sample FrameCount() where the damage is
- * queued (with the renderer idle, which is where Legato dispatches widget events), then
- * WaitFrameAfter that value: the count advances only when a whole frame has been drawn,
- * so it cannot report a paint finished while it is still running. Bounded; must be
- * called from a task other than LEGATO_Tasks. */
+/* Bind the system screen's grid or detail canvas to BASE — the whole overview↔detail
+ * switch, a layer bind with no drawing. No-op unless the system screen owns the base view.
+ *
+ * A canvas is only safe to bind straight away if its content is already correct. That
+ * holds for the grid, which never changes; the detail canvas is re-pointed at whichever
+ * node was tapped, so its caller repaints it and waits (below) before binding. */
+void UiManager_BindSystemView(bool detail);
+
+/* Sequence work after a specific repaint: sample FrameCount() where the damage is queued,
+ * then WaitFrameAfter that value. For binding a canvas whose content was just rewritten —
+ * the bind is instant, the repaint is not, so binding first shows the previous content.
+ * Must be called from a task other than LEGATO_Tasks. */
 size_t UiManager_FrameCount(void);
 void   UiManager_WaitFrameAfter(size_t from);
 
 /* Bounded wait for the renderer to go quiet, with idle required to hold continuously for
- * stable_ms. For boot, which drains damage from everything at once; prefer
- * UiManager_WaitFrameAfter when there is one specific repaint to wait for. */
+ * stable_ms. For boot, which drains damage from everything at once. To sequence one thing
+ * after one specific repaint, prefer giving it its own canvas — then there is no repaint
+ * to wait for (UiManager_BindSystemView). */
 void UiManager_WaitRenderIdle(uint32_t stable_ms);
 
 /* Bind / unbind the navigation drawer's canvas to its hardware layer (OVR2, above

@@ -21,6 +21,7 @@ extern leWidget* Marvin_PANEL_WIIMOTES;
 extern leWidget* Marvin_PANEL_KEYBOARD;
 extern leWidget* Marvin_PANEL_BUS;
 extern leWidget* Marvin_PANEL_SYSTEM;
+extern leWidget* Marvin_PANEL_SYSTEM_DETAIL;
 
 // screen lifecycle functions
 leResult screenInit_Marvin(void); // call to initialize this screen

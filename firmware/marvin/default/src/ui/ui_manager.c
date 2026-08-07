@@ -397,6 +397,44 @@ static void modal_discard_clear(void)
  * locking flips the source from full-frame to the active rect); unbind when
  * hidden — and when hidden, HEO is free for the modal scrim, so the layer has
  * three states here: video / scrim / off, in that priority. */
+/* Tell the dashboard whether the video is actually on the panel, so it can drop the test
+ * pattern that sits under HEO (ScreenDashboard_ApplyVideoState).
+ *
+ * Asymmetric on purpose. "Video is up" publishes immediately — the pattern must be gone
+ * before HEO covers it. "Video is gone" waits VIDEO_GONE_MS, because HEO unbinds for
+ * reasons that are about to be undone: a full-screen view taking the panel, a rebind for
+ * new geometry, a source re-lock. Publishing those straight through would put the bars
+ * back for exactly the gap this is meant to hide. Video-task ctx. */
+#define VIDEO_GONE_MS  400u
+
+static void video_state_publish(void)
+{
+    /* The pattern is built hidden, so "displayed" is the assumed starting state and boot
+     * reveals no bars either — a genuinely absent source turns them on below. */
+    static bool       published = true;
+    static bool       timing;
+    static TickType_t gone_since;
+
+    if (s_video_bound)
+    {
+        timing = false;
+        if (!published)
+        {
+            published = true;
+            DashboardFeed_PostVideo(true);
+        }
+        return;
+    }
+
+    if (!timing) { timing = true; gone_since = xTaskGetTickCount(); }
+
+    if (published && (xTaskGetTickCount() - gone_since) >= pdMS_TO_TICKS(VIDEO_GONE_MS))
+    {
+        published = false;
+        DashboardFeed_PostVideo(false);
+    }
+}
+
 static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
 {
     rect_t w = s_video_win;
@@ -436,6 +474,8 @@ static void heo_reconcile(bool source_valid, uint16_t src_w, uint16_t src_h)
     /* Own the single BASE discard window (video rect / dialog rect / none). Runs
      * after the HEO decision above so it sees the current s_video_bound. */
     base_discard_reconcile();
+
+    video_state_publish();
 }
 
 /* ISC IRQ: point HEO at the just-completed ring slot every frame so it always scans
@@ -796,6 +836,7 @@ void UiManager_CloseKeyboard(void)
 typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES, BASE_VIEW_BUS,
                BASE_VIEW_SYSTEM } base_view_t;
 static base_view_t s_base_view = BASE_VIEW_DASHBOARD;
+static bool        s_system_detail;   /* which of the system screen's two canvases is bound */
 
 /* Hide the currently-shown base view: stop its canvas driving BASE and gate its
  * (still-attached) panel out of picking. The incoming Show* then binds its own
@@ -815,7 +856,10 @@ static void hide_current_base(void)
             ScreenBus_SetShown(false);
             break;
         case BASE_VIEW_SYSTEM:
-            gfxcHideCanvas(CANVAS_SYSTEM); gfxcCanvasUpdate(CANVAS_SYSTEM);
+            /* Two canvases, one per view; only one is ever bound, but hide both rather
+             * than tracking which — hiding an unbound canvas is a no-op. */
+            gfxcHideCanvas(CANVAS_SYSTEM);        gfxcCanvasUpdate(CANVAS_SYSTEM);
+            gfxcHideCanvas(CANVAS_SYSTEM_DETAIL); gfxcCanvasUpdate(CANVAS_SYSTEM_DETAIL);
             ScreenSystem_SetInput(false);
             ScreenSystem_SetShown(false);
             break;
@@ -834,7 +878,7 @@ unsigned int UiManager_BaseCanvas(void)
     {
         case BASE_VIEW_WIIMOTES: return CANVAS_WIIMOTES;
         case BASE_VIEW_BUS:      return CANVAS_BUS;
-        case BASE_VIEW_SYSTEM:   return CANVAS_SYSTEM;
+        case BASE_VIEW_SYSTEM:   return s_system_detail ? CANVAS_SYSTEM_DETAIL : CANVAS_SYSTEM;
         default:                 return CANVAS_DASH;
     }
 }
@@ -901,11 +945,30 @@ void UiManager_ShowSystem(void)
     UiManager_VideoOverlayHide();
 
     hide_current_base();
-    bind_canvas(CANVAS_SYSTEM, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    s_base_view = BASE_VIEW_SYSTEM;   /* before SetShown: it binds via UiManager_BindSystemView */
+    ScreenSystem_SetShown(true);      /* lands on the grid, and binds that canvas */
     ScreenSystem_SetInput(true);
-    ScreenSystem_SetShown(true);
+}
 
-    s_base_view = BASE_VIEW_SYSTEM;
+/* Put one of the system screen's two canvases on BASE. Both are painted and stay painted
+ * (paint_all_screens_once covers them, and Legato renders a canvas whether or not it is
+ * bound), so the overview↔detail switch is this bind and no drawing at all — which is
+ * what lets the node-photo layer be enabled in the same breath instead of chasing a
+ * repaint. Called by the system screen's show_view; ignored unless it owns the panel. */
+void UiManager_BindSystemView(bool detail)
+{
+    unsigned int show = detail ? CANVAS_SYSTEM_DETAIL : CANVAS_SYSTEM;
+    unsigned int hide = detail ? CANVAS_SYSTEM : CANVAS_SYSTEM_DETAIL;
+
+    if (s_base_view != BASE_VIEW_SYSTEM) { return; }
+
+    s_system_detail = detail;   /* so UiManager_BaseCanvas names the bound one */
+
+    /* gfxcSetLayer only takes effect while the canvas is hidden, so drop the outgoing one
+     * first — and the incoming one is already hidden, having never been bound. */
+    gfxcHideCanvas(hide);
+    gfxcCanvasUpdate(hide);
+    bind_canvas(show, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
 }
 
 void UiManager_ShowDashboard(void)
@@ -1076,6 +1139,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_KEYBOARD->fn->invalidate(Marvin_PANEL_KEYBOARD);
     Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
     Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
+    Marvin_PANEL_SYSTEM_DETAIL->fn->invalidate(Marvin_PANEL_SYSTEM_DETAIL);
 }
 
 size_t UiManager_FrameCount(void)
@@ -1083,18 +1147,17 @@ size_t UiManager_FrameCount(void)
     return leRenderer_GetDrawCount();
 }
 
-/* Block until the renderer has completed a frame past `from`, i.e. until the damage
- * queued before `from` was sampled is actually on the panel. Exact rather than timed:
+/* Block until the renderer has completed a frame past `from` — i.e. until damage queued
+ * before `from` was sampled is actually in the surface. Exact rather than timed:
  * leRenderer_GetDrawCount() advances in the renderer's postFrame, which runs only once
- * every damaged rect on every layer has been drawn — so unlike leRenderer_IsIdle() (true
- * in the gaps between leUpdate calls too) it cannot read "done" mid-paint. Idle is still
- * required as a second condition, which costs nothing once the count has moved.
+ * every damaged rect on every layer has been drawn, so unlike leRenderer_IsIdle() (also
+ * true in the gaps between leUpdate calls) it cannot read "done" mid-paint.
  *
- * Callers sample `from` while the renderer is idle — Legato dispatches widget events
- * between frames — so no frame is in flight to complete without their damage in it.
+ * The caller samples `from` where it queues the damage, with the renderer idle — Legato
+ * dispatches widget events between frames — so no frame is in flight that could complete
+ * without their damage in it.
  *
- * Bounded, and must not be called from LEGATO_Tasks: it would be waiting on the task it
- * is running in. */
+ * Bounded, and must not be called from LEGATO_Tasks: it would wait on its own task. */
 void UiManager_WaitFrameAfter(size_t from)
 {
     TickType_t deadline = xTaskGetTickCount() + pdMS_TO_TICKS(RENDER_IDLE_TIMEOUT_MS);
@@ -1112,9 +1175,10 @@ void UiManager_WaitFrameAfter(size_t from)
  * we just yield and poll the public idle flag, requiring it to hold continuously for
  * stable_ms (a lone idle sample is an inter-frame gap, not a finished paint). Bounded.
  *
- * Prefer UiManager_WaitFrameAfter when there is a specific repaint to wait for; this is
- * for boot, which has to drain damage queued by everything at once (no single baseline
- * frame count to sample) and can afford a conservative window. Must not be called from
+ * Boot is the only caller, and wants the conservative window: it drains damage queued by
+ * everything at once, so there is no one repaint to key on. Sequencing a *single* thing
+ * after a *specific* repaint is better served by giving it its own canvas — then there is
+ * no repaint to wait for at all (see UiManager_BindSystemView). Must not be called from
  * LEGATO_Tasks itself — it would be waiting on the task it is running in. */
 void UiManager_WaitRenderIdle(uint32_t stable_ms)
 {

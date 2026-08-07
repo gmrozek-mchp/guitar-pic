@@ -252,6 +252,7 @@ static bool                 s_actuator_on[ACTUATOR_COUNT];
 static leButtonWidget      *s_start;
 static leTableString        s_start_cap, s_stop_cap;
 static leWidget            *s_state_robot, *s_state_robot_led;
+static leWidget            *s_video_pattern;   /* SMPTE bars group, hidden while video is up */
 static leWidget            *s_state_human, *s_state_human_led;
 static leWidget            *s_strum_pill;
 static leWidget            *s_diff_pill;
@@ -750,6 +751,17 @@ static void build_video(leWidget *content)
     leWidget *video = add_panel(content, CENTER_X, 0, VIDEO_W, VIDEO_H,
                                 &SCHEME_BACKGROUND, LE_TRUE);
 
+    /* Everything below goes in one transparent child so the whole pattern hides with a
+     * single flag: HEO covers this rect only while the video is actually bound, and the
+     * gap after a rebind (leaving a full-screen view, source re-locking) would otherwise
+     * flash the bars. `video`'s own fill stays as the backdrop for that gap.
+     *
+     * Built HIDDEN: the compositor turns it on only after the video has been absent for
+     * a moment, so neither the boot reveal nor a view switch ever flashes the bars. */
+    s_video_pattern = add_panel(video, 0, 0, VIDEO_W, VIDEO_H, NULL, LE_FALSE);
+    s_video_pattern->fn->setVisible(s_video_pattern, LE_FALSE);
+    video = s_video_pattern;
+
     int x = 1;
     for (unsigned i = 0u; i < 7u; i++)
     {
@@ -1163,6 +1175,25 @@ void ScreenDashboard_ApplyPlaytime(uint32_t elapsed_ms)
     set_dyn(DYN_S_ELAPSED, elapsed);
 
     Bar_SetPermille(s_bar_play, permille);
+}
+
+/* Drop the SMPTE test pattern while the live video is actually on the panel. The pattern
+ * lives *under* HEO, so it is only ever meant to be seen when there is nothing over it —
+ * but HEO unbinds whenever a full-screen view takes the panel, and rebinding it costs a
+ * video-task tick plus a source re-lock, which was long enough to flash the bars on the
+ * way back to the dashboard. Hiding the group means that gap shows the video card's own
+ * dark fill instead. The NO SIGNAL / PLEASE STAND BY slate goes with it, which is right:
+ * it is part of the same "nothing is coming through" story.
+ *
+ * Called from the feed task with the render lock held. */
+void ScreenDashboard_ApplyVideoState(bool displayed)
+{
+    if (s_video_pattern == NULL) { return; }
+
+    leBool want = displayed ? LE_FALSE : LE_TRUE;
+    if (s_video_pattern->fn->getVisible(s_video_pattern) == want) { return; }
+
+    s_video_pattern->fn->setVisible(s_video_pattern, want);
 }
 
 /* ── lifecycle ──────────────────────────────────────────────────────────────*/

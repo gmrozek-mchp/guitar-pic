@@ -32,7 +32,7 @@
  * node's record. Content is the NODE table below, transcribed from docs/screens/.
  *
  * Both views are built once into their own full-screen container panel, and
- * show_view() is the only thing that switches between them — see the note there.
+ * bind_view() is the only thing that puts one on the panel — see the note there.
  *
  * Layout mirrors the mockup's SystemScreen.tsx with Tailwind units resolved to pixels
  * (gap-3 = 12, gap-4 = 16, text-xs/sm/base/lg/2xl/3xl = 12/14/16/18/24; for the corner
@@ -48,7 +48,10 @@
 extern void _leImageWidget_Constructor(leImageWidget *img);
 
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
+/* One surface per view. Both are painted once at boot and stay painted, so switching
+ * between them is a layer bind with no drawing — see bind_view. */
 static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
+static uint16_t FB_NOCACHE s_fb_detail[BASE_W * BASE_H];
 
 /* ── content ────────────────────────────────────────────────────────────────
  * Prose is stored hand-wrapped, one string per rendered line, because Legato labels
@@ -317,7 +320,7 @@ static unsigned      s_nimg;
 
 /* The two views. Each is built into its own full-screen container so switching is a
  * visibility toggle on one widget rather than a walk over every child — and so a move
- * to a second pre-rendered canvas only has to re-parent these two (see show_view). */
+ * each owns a canvas and a Legato layer of its own (see bind_view). */
 typedef enum { VIEW_OVERVIEW, VIEW_DETAIL, VIEW_COUNT } view_t;
 
 static leWidget *s_root[VIEW_COUNT];
@@ -334,14 +337,15 @@ static leWidget       *s_d_frame;
 static const void     *s_photo_px;   /* selected node's photo pixels, NULL if none */
 static bool            s_shown;      /* this screen owns the panel (and so OVR1)   */
 
-/* Deferred photo reveal (photo_task). s_photo_gen is bumped on every change to what
- * should be on the layer, so a reveal that is still waiting can tell it is stale;
- * s_photo_frame is the renderer's frame count when that change queued its repaint. */
-static volatile uint32_t s_photo_gen;
-static volatile size_t   s_photo_frame;
-static TaskHandle_t      s_photo_task;
-static StackType_t       s_photo_stack[512];
-static StaticTask_t      s_photo_tcb;
+/* Deferred bind of the detail canvas (view_task): s_pending_frame is the renderer's frame
+ * count when the repaint for the selected node was queued, and s_view_gen is bumped on
+ * every request so a bind the user has navigated past can tell it is stale. */
+static volatile size_t   s_pending_frame;
+static volatile uint32_t s_view_gen;
+static TaskHandle_t      s_view_task;
+static StackType_t       s_view_stack[512];
+static StaticTask_t      s_view_tcb;
+
 static leWidget       *s_d_qr_card;
 static leWidget       *s_d_rail_box[NODE_N];
 static leLabelWidget  *s_d_rail_id[NODE_N], *s_d_rail_name[NODE_N];
@@ -506,7 +510,7 @@ static leButtonWidget *add_button(leWidget *parent, int x, int y, int w, int h,
  * it keeps 8 bits per channel instead of being quantized to the canvas's RGB565. Hence
  * "visible" for it means a layer bind, not a widget flag, and it has to be reconciled
  * anywhere the view or the selection changes — which is the same set of places
- * show_view already owns.
+ * bind_view already owns.
  *
  * The BASE frame under it is the fallback for a node with no photo: a present photo
  * covers that rect completely and carries its own frame, so the two are exclusive. */
@@ -515,25 +519,13 @@ static void photo_apply(void)
     /* OVR1 belongs to whichever screen is on the panel: the splash owns it for the
      * whole of boot, and the video frame overlay owns it under the dashboard. Touching
      * it while this screen is not shown would take the layer out from under them —
-     * build-time show_view(VIEW_OVERVIEW) runs while the splash is still up. */
+     * build-time bind_view(VIEW_OVERVIEW) runs while the splash is still up. */
     if (!s_shown) { return; }
 
     bool on = (s_view == VIEW_DETAIL) && (s_photo_px != NULL);
 
-    /* Taking the photo down is immediate; putting it up is deferred (photo_task).
-     * Enabling a hardware layer is instant, while the rest of the view is still being
-     * painted into the canvas, so an immediate show puts the photo on the panel ahead
-     * of the page it belongs to. s_photo_gen invalidates a deferred show that the user
-     * has already navigated past.
-     *
-     * The frame count is sampled here rather than in the task: this runs where the
-     * repaint is queued and with the renderer idle (Legato dispatches the tap between
-     * frames), which is what makes "the count moved" mean "our damage was drawn". */
-    s_photo_gen++;
-    s_photo_frame = UiManager_FrameCount();
-
-    if (!on)                       { UiManager_NodePhotoHide(); }
-    else if (s_photo_task != NULL) { (void)xTaskNotifyGive(s_photo_task); }
+    if (on) { UiManager_NodePhotoShow(s_photo_px, CONTENT_X, BODY_Y, PHOTO_W, BODY_H); }
+    else    { UiManager_NodePhotoHide(); }
 
     if (s_d_frame != NULL)
     {
@@ -541,10 +533,47 @@ static void photo_apply(void)
     }
 }
 
-/* Reveal the photo once the canvas has caught up. Its own task because the wait has to
- * happen outside LEGATO_Tasks — the tap that gets us here is dispatched from inside
- * leUpdate, so waiting there would be waiting on ourselves. */
-static void photo_task(void *param)
+/* Switch views. Each view owns a canvas, both stay painted, so this is a layer bind and
+ * nothing is drawn — which is the point: the photo layer flips in the same breath as the
+ * bind, so the page and the photo arrive together in one frame. There is no repaint to
+ * outrun, and so nothing to defer.
+ *
+ * Input is moved with the bind rather than following visibility. Both roots are attached
+ * to their Legato layers permanently and leInput walks every attached layer, so the
+ * hidden view would still answer taps; the pick walk requires LE_WIDGET_ENABLED, and
+ * ScreenSystem_SetInput puts that on the current view alone. */
+/* Put a view on the panel: bind its canvas, move input to it, settle the photo layer.
+ *
+ * Unconditional on purpose — there is no "already showing it" shortcut, because s_view
+ * says which view is *current*, not whether its canvas is bound to BASE. Those differ
+ * whenever another base view has taken the panel since, including at boot: Setup runs
+ * bind_view once with nothing bound, and a guard here meant the first real entry did
+ * nothing at all. Re-binding the same canvas is a handful of register writes. */
+static void bind_view(view_t v)
+{
+    /* Any view that actually reaches the panel invalidates a deferred bind still waiting:
+     * tap a card, leave the screen, come back to the grid, and the pending detail bind
+     * would otherwise land on top of it — s_shown is true again by then, so that check
+     * alone does not catch it. */
+    s_view_gen++;
+    s_view = v;
+
+    UiManager_BindSystemView(v == VIEW_DETAIL);
+    ScreenSystem_SetInput(s_shown);
+    photo_apply();
+}
+
+/* Bind the detail canvas once it has been repainted for the node just selected.
+ *
+ * The grid canvas is static, so entering it is a bare bind. The detail canvas is not: it
+ * is one tree re-pointed at whichever node was tapped, so binding it before its repaint
+ * lands shows the *previous* node. Waiting keeps the grid on screen until the detail view
+ * is complete, which is also what makes the arrival read as one step.
+ *
+ * Its own task because the wait cannot run in LEGATO_Tasks — the tap that gets here is
+ * dispatched from inside leUpdate. s_view_gen drops a request the user has already
+ * navigated past (tap a card, then leave the screen before the paint finishes). */
+static void view_task(void *param)
 {
     (void)param;
 
@@ -552,34 +581,11 @@ static void photo_task(void *param)
     {
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
-        uint32_t gen = s_photo_gen;
-        UiManager_WaitFrameAfter(s_photo_frame);
+        uint32_t gen = s_view_gen;
+        UiManager_WaitFrameAfter(s_pending_frame);
 
-        /* Re-read the live state: the view may have moved on during the wait, in which
-         * case that change queued its own notification and owns the decision. */
-        if (gen == s_photo_gen && s_shown &&
-            s_view == VIEW_DETAIL && s_photo_px != NULL)
-        {
-            UiManager_NodePhotoShow(s_photo_px, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
-        }
+        if (gen == s_view_gen && s_shown) { bind_view(VIEW_DETAIL); }
     }
-}
-
-static void show_view(view_t v)
-{
-    if (v == s_view) { return; }
-
-    for (unsigned i = 0u; i < (unsigned)VIEW_COUNT; i++)
-    {
-        if (s_root[i] != NULL)
-        {
-            s_root[i]->fn->setVisible(s_root[i], (i == (unsigned)v) ? LE_TRUE : LE_FALSE);
-        }
-    }
-    s_view = v;
-
-    photo_apply();
-    Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
 }
 
 /* Point the one detail tree at a node: rewrite its strings, recolour everything that
@@ -646,18 +652,25 @@ static void show_detail(unsigned n)
                                         sel ? NODE[i].accent : &SCHEME_TEXT_ZINC_600);
     }
 
-    /* Repaint even when the detail view is already up: show_view() is a no-op on a
-     * same-view call, and the strings above have just changed underneath it. Only
-     * reachable from the overview today, but a detail-to-detail move (prev/next
-     * through the nodes) would otherwise show the previous node's text. */
+    /* The strings above were written straight into their leFixedStrings, which does not
+     * damage the widgets, so the canvas has to be invalidated by hand — this is the only
+     * thing that gets the new node's text painted. */
+    Marvin_PANEL_SYSTEM_DETAIL->fn->invalidate(Marvin_PANEL_SYSTEM_DETAIL);
+
+    s_view_gen++;
+
     if (s_view == VIEW_DETAIL)
     {
-        photo_apply();   /* show_view is the no-op here, so rebind the photo directly */
-        Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
+        /* Already bound, so the repaint lands in place; only the photo needs re-pointing.
+         * (Not reachable from the UI today — it is the detail-to-detail move a prev/next
+         * rail would make.) */
+        photo_apply();
     }
-    else
+    else if (s_view_task != NULL)
     {
-        show_view(VIEW_DETAIL);
+        /* Sampled here, where the damage is queued and the renderer is between frames. */
+        s_pending_frame = UiManager_FrameCount();
+        (void)xTaskNotifyGive(s_view_task);
     }
 }
 
@@ -674,7 +687,7 @@ static void card_on_release(leButtonWidget *btn)
 static void back_on_release(leButtonWidget *btn)
 {
     (void)btn;
-    show_view(VIEW_OVERVIEW);
+    bind_view(VIEW_OVERVIEW);
 }
 
 /* ── overview ───────────────────────────────────────────────────────────────*/
@@ -862,56 +875,86 @@ static void build_detail(leWidget *parent)
 
 void ScreenSystem_InitSurface(void)
 {
-    UiSurface_Set(CANVAS_SYSTEM, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+    UiSurface_Set(CANVAS_SYSTEM,        BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
+    UiSurface_Set(CANVAS_SYSTEM_DETAIL, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb_detail);
 }
 
 void ScreenSystem_Setup(void)
 {
-    gfxcSetWindowPosition(CANVAS_SYSTEM, 0, 0);
-    gfxcSetWindowSize(CANVAS_SYSTEM, BASE_W, BASE_H);
-    Marvin_PANEL_SYSTEM->fn->setBackgroundType(Marvin_PANEL_SYSTEM,
-                                               LE_WIDGET_BACKGROUND_FILL);
+    leWidget *panel[VIEW_COUNT] = {
+        [VIEW_OVERVIEW] = Marvin_PANEL_SYSTEM,
+        [VIEW_DETAIL]   = Marvin_PANEL_SYSTEM_DETAIL,
+    };
+    const unsigned int canvas[VIEW_COUNT] = {
+        [VIEW_OVERVIEW] = CANVAS_SYSTEM,
+        [VIEW_DETAIL]   = CANVAS_SYSTEM_DETAIL,
+    };
 
-    /* Shared titlebar (hamburger + logos), same as the other base views. Added first
-     * so the view containers paint over the page, never over the chrome. */
-    Titlebar_Add(Marvin_PANEL_SYSTEM);
+    for (unsigned i = 0u; i < (unsigned)VIEW_COUNT; i++)
+    {
+        gfxcSetWindowPosition(canvas[i], 0, 0);
+        gfxcSetWindowSize(canvas[i], BASE_W, BASE_H);
+        panel[i]->fn->setBackgroundType(panel[i], LE_WIDGET_BACKGROUND_FILL);
+
+        /* Each view carries its own titlebar (hamburger + logos): the two are separate
+         * layers now, so there is nothing to share. Added first so the content paints
+         * over the page and never over the chrome. */
+        Titlebar_Add(panel[i]);
+        s_root[i] = panel[i];
+    }
+
     ScreenSystem_SetInput(false);
-
-    /* Full-screen containers, so both views address the panel's own coordinates. They
-     * are IGNOREPICK (see add_panel) which also keeps a tap on empty page from being
-     * captured here instead of falling through to the titlebar beneath. */
-    s_root[VIEW_OVERVIEW] = add_panel(Marvin_PANEL_SYSTEM, 0, 0, BASE_W, BASE_H,
-                                      NULL, LE_FALSE);
-    s_root[VIEW_DETAIL]   = add_panel(Marvin_PANEL_SYSTEM, 0, 0, BASE_W, BASE_H,
-                                      NULL, LE_FALSE);
 
     build_overview(s_root[VIEW_OVERVIEW]);
     build_detail(s_root[VIEW_DETAIL]);
 
-    show_detail(0u);          /* seed every detail string/scheme once */
-    show_view(VIEW_OVERVIEW);
+    /* Seed every detail string once. This also queues the detail canvas's first paint,
+     * which paint_all_screens_once would do anyway — and it must NOT leave a pending
+     * deferred bind behind, so the view is set to "nothing bound" straight after. */
+    show_detail(0u);
 
-    s_photo_task = xTaskCreateStatic(photo_task, "NodePhoto",
-                                     (uint32_t)(sizeof s_photo_stack / sizeof s_photo_stack[0]),
-                                     NULL, 2u, s_photo_stack, &s_photo_tcb);
+    s_view = VIEW_COUNT;
+    s_view_gen++;
+
+    s_view_task = xTaskCreateStatic(view_task, "SysView",
+                                    (uint32_t)(sizeof s_view_stack / sizeof s_view_stack[0]),
+                                    NULL, 2u, s_view_stack, &s_view_tcb);
 }
 
+/* Only the view on the panel may answer taps. Both roots stay attached to their Legato
+ * layers for their whole life and leInput walks every attached layer, so the off-screen
+ * view is still in the pick walk — what keeps it out is LE_WIDGET_ENABLED, which the walk
+ * requires. Visibility plays no part in this now that the views are separate layers. */
 void ScreenSystem_SetInput(bool on)
 {
-    if (on) { Marvin_PANEL_SYSTEM->flags |=  LE_WIDGET_ENABLED; }
-    else    { Marvin_PANEL_SYSTEM->flags &= ~LE_WIDGET_ENABLED; }
+    for (unsigned i = 0u; i < (unsigned)VIEW_COUNT; i++)
+    {
+        if (s_root[i] == NULL) { continue; }
+
+        if (on && i == (unsigned)s_view) { s_root[i]->flags |=  LE_WIDGET_ENABLED; }
+        else                             { s_root[i]->flags &= ~LE_WIDGET_ENABLED; }
+    }
 }
 
 void ScreenSystem_SetShown(bool shown)
 {
     /* Re-entering lands on the grid: leaving from a node detail via the drawer and
-     * coming back to that same detail would be a confusing place to arrive. No-op (and
-     * so no repaint) when the overview is already the current view.
+     * coming back to that same detail would be a confusing place to arrive.
      *
-     * Leaving must drop the photo layer explicitly: OVR1 belongs to whoever is on
-     * screen, and the next base view hands it to the video frame overlay. */
+     * Leaving must drop the photo layer explicitly (OVR1 belongs to whoever is on screen,
+     * and the next base view hands it to the video frame overlay) and forget which view
+     * was bound; bind_view is unconditional so the next show re-binds regardless, and
+     * same-view guard — the canvas is no longer on BASE by then. */
     s_shown = shown;
 
-    if (shown) { show_view(VIEW_OVERVIEW); }
-    else       { UiManager_NodePhotoHide(); }
+    if (shown)
+    {
+        bind_view(VIEW_OVERVIEW);
+    }
+    else
+    {
+        UiManager_NodePhotoHide();
+        ScreenSystem_SetInput(false);
+        s_view = VIEW_COUNT;
+    }
 }

@@ -1152,7 +1152,7 @@ data:
       children:
       - children:
         - attributes:
-            value: '8'
+            value: '40'
           type: User
         type: Values
       type: Integer

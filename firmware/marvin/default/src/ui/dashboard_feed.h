@@ -34,6 +34,7 @@ typedef enum
     DASH_EVT_SCORE,      /* u.score      (future)                             */
     DASH_EVT_MULTIPLIER, /* u.mult       (future)                             */
     DASH_EVT_STREAK,     /* u.streak     (future)                             */
+    DASH_EVT_VIDEO,      /* u.on — HEO is (not) covering the video card       */
     DASH_EVT_COUNT
 } dashboard_evt_type_t;
 
@@ -49,6 +50,7 @@ typedef struct
         uint16_t mult;
         uint16_t streak;
         uint32_t play_ms;
+        bool     on;
         char     text[DASH_EVT_TEXT_CAP];
     } u;
 } dashboard_evt_t;
@@ -75,6 +77,12 @@ void DashboardFeed_PostPlaytime(uint32_t elapsed_ms);
 void DashboardFeed_PostScore(uint32_t score);
 void DashboardFeed_PostMultiplier(uint16_t mult);
 void DashboardFeed_PostStreak(uint16_t streak);
+
+/* Whether the live video is actually on the panel over the video card. Posted by the
+ * compositor when HEO's bind state settles, so the dashboard can drop the SMPTE test
+ * pattern that sits *under* HEO — otherwise the bars show through for the gap between
+ * the dashboard becoming visible and HEO being rebound. Video-task ctx. */
+void DashboardFeed_PostVideo(bool displayed);
 
 #ifdef __cplusplus
 }
