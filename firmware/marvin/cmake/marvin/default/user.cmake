@@ -42,6 +42,8 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/whammy/widget_whammy.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/tilt/widget_tilt.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/aa_corners.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/aa_shape.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/render_probe.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/gradient.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/glyph_blit.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/video_frame.c"

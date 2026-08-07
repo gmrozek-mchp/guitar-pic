@@ -5,11 +5,86 @@
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/renderer/legato_renderer.h"
 
-/* Distance of pixel (px, py) within a radius-r corner box from the arc centre, with
- * (flip_x, flip_y) orienting the box so all four corners reuse the upper-left math
- * (centre at the box's inner corner). Coverage of an arc of radius `ra` is then
- * clamp(ra + 0.5 - d): 1 fully inside, 0 fully outside, the fraction between giving
- * the 1px anti-aliased band. */
+/* Squared distance of pixel (px, py) within a radius-r corner box from the arc centre, in
+ * HALF-pixel units, with (flip_x, flip_y) orienting the box so all four corners reuse the
+ * upper-left maths (centre at the box's inner corner).
+ *
+ * Half-pixel units are what make this integer: the offsets are r - m - 0.5, so doubling
+ * them lands on odd integers exactly. Coverage of an arc of radius `ra` is
+ * clamp(ra + 0.5 - d) — 1 fully inside, 0 fully outside, the fraction between being the 1px
+ * antialiased band — and in these units that is clamp(((2·ra + 1) - sqrt(d2)) / 2), so the
+ * two saturated cases are integer comparisons against (2·ra ∓ 1)² and only band pixels ever
+ * need a square root.
+ *
+ * This used to be `sqrtf` plus float coverage maths on *every* pixel of *every* corner box —
+ * 576 px per radius-12 card, on a core with no FPU where each float operation is a libgcc
+ * call at ~80 cycles — and it runs for every card and button in the UI. See the journal,
+ * 2026-08-07 (night).
+ *
+ * Ranges: d2 ≤ (2r)²·2, so radius ≤ 45 keeps `d2 << 16` inside int32. */
+static uint32_t arc_dist2(uint32_t px, uint32_t py, uint32_t r, leBool flip_x, leBool flip_y)
+{
+    uint32_t mx = flip_x ? (r - 1u - px) : px;
+    uint32_t my = flip_y ? (r - 1u - py) : py;
+    int32_t  dx = (int32_t)(2u * r) - (int32_t)(2u * mx) - 1;
+    int32_t  dy = (int32_t)(2u * r) - (int32_t)(2u * my) - 1;
+
+    return (uint32_t)((dx * dx) + (dy * dy));
+}
+
+/* Integer square root, bit-by-bit. ~16 iterations of a shift and a conditional subtract
+ * against a soft-float `sqrtf` call, and exact for the values used here. */
+static uint32_t isqrt32(uint32_t v)
+{
+    uint32_t res = 0u;
+    uint32_t bit = 1u << 30;
+
+    while (bit > v) { bit >>= 2; }
+
+    while (bit != 0u)
+    {
+        if (v >= (res + bit))
+        {
+            v  -= res + bit;
+            res = (res >> 1) + bit;
+        }
+        else
+        {
+            res >>= 1;
+        }
+        bit >>= 2;
+    }
+
+    return res;
+}
+
+/* Arc coverage as a 0..COV_ONE weight, from the squared half-pixel distance. `ra2_in` and
+ * `ra2_out` are (2·ra - 1)² and (2·ra + 1)², precomputed by the caller so the saturated
+ * cases cost one comparison. */
+#define COV_ONE  256u
+
+static uint32_t arc_cov(uint32_t d2, uint32_t ra, uint32_t ra2_in, uint32_t ra2_out)
+{
+    if (d2 <= ra2_in)  { return COV_ONE; }
+    if (d2 >= ra2_out) { return 0u; }
+
+    /* 256·sqrt(d2), so the ramp resolves to 1/256 of a pixel. */
+    uint32_t s = isqrt32(d2 << 16);
+    uint32_t t = ((2u * ra) + 1u) * COV_ONE;
+
+    return (s >= t) ? 0u : ((t - s) / 2u);
+}
+
+/* Coverage weight → leColorLerp's 0..100 percent. */
+static uint32_t cov_pct(uint32_t cov)
+{
+    return ((cov * 100u) + (COV_ONE / 2u)) / COV_ONE;
+}
+
+/* Float forms, kept for AaCorners_RenderLeftEdge alone: its inner boundary is an ELLIPSE
+ * whose radius along each ray is solved per pixel, so there is no fixed threshold to
+ * compare a squared distance against and the integer shortcut above does not apply. It is
+ * also the coldest of these paths — one call per node card on the System Info screen. */
 static float arc_dist(uint32_t px, uint32_t py, uint32_t r, leBool flip_x, leBool flip_y)
 {
     uint32_t mx = flip_x ? (r - 1u - px) : px;
@@ -17,7 +92,7 @@ static float arc_dist(uint32_t px, uint32_t py, uint32_t r, leBool flip_x, leBoo
     float    dx = (float)r - (float)mx - 0.5f;
     float    dy = (float)r - (float)my - 0.5f;
 
-    return sqrtf(dx * dx + dy * dy);
+    return sqrtf((dx * dx) + (dy * dy));
 }
 
 static float arc_coverage(float d, float ra)
@@ -37,32 +112,73 @@ static void blend_corner(int32_t ox, int32_t oy, uint32_t r, uint32_t bw,
                          leColor fill, leColor border, leColorMode mode,
                          leBool flip_x, leBool flip_y)
 {
-    leColor   bg = leRenderer_GetPixel(flip_x ? ox + (int32_t)r - 1 : ox,
-                                       flip_y ? oy + (int32_t)r - 1 : oy);
-    uint32_t  px, py;
+    /* Clip to the rect actually being drawn. This is a correctness fix, not just a saving:
+     * these writes used to go through the UNCHECKED `leRenderer_PutPixel`, so a damage rect
+     * smaller than the widget sent the corner boxes writing outside the scratch buffer — very
+     * likely why every screen in this codebase invalidates whole cards. Culling the box also
+     * makes partial invalidation cheap, since a corner is usually nowhere near the rect that
+     * actually changed. */
+    leRect box  = { .x = ox, .y = oy, .width = (int32_t)r, .height = (int32_t)r };
+    leRect clip;
 
-    for (py = 0u; py < r; py++)
+    if (leRenderer_CullDrawRect(&box) == LE_TRUE) { return; }
+
+    leRenderer_ClipDrawRect(&box, &clip);
+
+    if (clip.width < 1 || clip.height < 1) { return; }
+
+    /* Backdrop comes from the pixel furthest from the arc centre — the one guaranteed to be
+     * outside the arc. Taken from the CLIPPED box so the read stays in bounds; if the clip
+     * excludes the arc's outside entirely then every surviving pixel saturates and bg is
+     * never used. */
+    leColor   bg = leRenderer_GetPixel(flip_x ? (clip.x + clip.width  - 1) : clip.x,
+                                       flip_y ? (clip.y + clip.height - 1) : clip.y);
+    uint32_t  ri = (bw < r) ? (r - bw) : 0u;    /* inner (fill) arc radius */
+    uint32_t  o_in  = ((2u * r) - 1u) * ((2u * r) - 1u);
+    uint32_t  o_out = ((2u * r) + 1u) * ((2u * r) + 1u);
+    uint32_t  i_in  = (ri > 0u) ? (((2u * ri) - 1u) * ((2u * ri) - 1u)) : 0u;
+    uint32_t  i_out = (ri > 0u) ? (((2u * ri) + 1u) * ((2u * ri) + 1u)) : 0u;
+    int32_t   px, py;
+
+    for (py = clip.y - oy; py < (clip.y - oy) + clip.height; py++)
     {
-        for (px = 0u; px < r; px++)
+        for (px = clip.x - ox; px < (clip.x - ox) + clip.width; px++)
         {
-            float    d  = arc_dist(px, py, r, flip_x, flip_y);
+            uint32_t d2 = arc_dist2((uint32_t)px, (uint32_t)py, r, flip_x, flip_y);
+            uint32_t co, ci;
             leColor  c;
 
-            float co = arc_coverage(d, (float)r);   /* coverage inside the outer arc */
+            /* Outside the outer arc the result is `bg`, which is what the pixel already
+             * holds — so there is nothing to write. This is ~a quarter of every box. */
+            if (d2 >= o_out) { continue; }
 
             if (bw == 0u)
             {
-                c = leColorLerp(bg, fill, (uint32_t)(co * 100.0f + 0.5f), mode);
+                if (d2 <= o_in) { c = fill; }    /* saturated: no lerp needed */
+                else
+                {
+                    co = arc_cov(d2, r, o_in, o_out);
+                    c  = leColorLerp(bg, fill, cov_pct(co), mode);
+                }
+            }
+            else if ((ri > 0u) && (d2 <= i_in))
+            {
+                c = fill;                        /* fully inside the fill arc */
+            }
+            else if (d2 <= o_in && ((ri == 0u) || (d2 >= i_out)))
+            {
+                c = border;                      /* between the arcs: solid border */
             }
             else
             {
-                float ci = arc_coverage(d, (float)(r - bw));   /* coverage inside the fill */
+                co = arc_cov(d2, r, o_in, o_out);
+                ci = (ri > 0u) ? arc_cov(d2, ri, i_in, i_out) : 0u;
 
-                c = leColorLerp(bg, border, (uint32_t)(co * 100.0f + 0.5f), mode);
-                c = leColorLerp(c,  fill,   (uint32_t)(ci * 100.0f + 0.5f), mode);
+                c = leColorLerp(bg, border, cov_pct(co), mode);
+                c = leColorLerp(c,  fill,   cov_pct(ci), mode);
             }
 
-            leRenderer_PutPixel(ox + (int32_t)px, oy + (int32_t)py, c);
+            leRenderer_PutPixel(ox + px, oy + py, c);
         }
     }
 }
@@ -159,22 +275,44 @@ void AaCorners_Render(const leRect *rect, uint32_t radius, uint32_t borderWidth,
 static void round_corner(int32_t ox, int32_t oy, uint32_t r, leColor bg,
                          leColorMode mode, leBool flip_x, leBool flip_y)
 {
-    uint32_t px, py;
+    int32_t px, py;
 
-    for (py = 0u; py < r; py++)
+    uint32_t o_in  = ((2u * r) - 1u) * ((2u * r) - 1u);
+    uint32_t o_out = ((2u * r) + 1u) * ((2u * r) + 1u);
+    leRect   box   = { .x = ox, .y = oy, .width = (int32_t)r, .height = (int32_t)r };
+    leRect   clip;
+
+    if (leRenderer_CullDrawRect(&box) == LE_TRUE) { return; }
+
+    leRenderer_ClipDrawRect(&box, &clip);
+
+    if (clip.width < 1 || clip.height < 1) { return; }
+
+    for (py = clip.y - oy; py < (clip.y - oy) + clip.height; py++)
     {
-        for (px = 0u; px < r; px++)
+        for (px = clip.x - ox; px < (clip.x - ox) + clip.width; px++)
         {
-            float co = arc_coverage(arc_dist(px, py, r, flip_x, flip_y), (float)r);
+            uint32_t d2 = arc_dist2((uint32_t)px, (uint32_t)py, r, flip_x, flip_y);
+            uint32_t co;
+            int32_t  x, y;
 
-            if (co >= 1.0f) { continue; }     /* fully inside → keep the image  */
+            if (d2 <= o_in) { continue; }     /* fully inside → keep the image  */
 
-            int32_t x = ox + (int32_t)px;
-            int32_t y = oy + (int32_t)py;
-            leColor img = leRenderer_GetPixel(x, y);
+            x = ox + px;
+            y = oy + py;
+
+            /* Fully outside is plain bg, with no need to read the image back. */
+            if (d2 >= o_out)
+            {
+                leRenderer_PutPixel(x, y, bg);
+                continue;
+            }
+
+            co = arc_cov(d2, r, o_in, o_out);
             /* co→1 keeps the image, co→0 is full bg. */
             leRenderer_PutPixel(x, y,
-                                leColorLerp(bg, img, (uint32_t)(co * 100.0f + 0.5f), mode));
+                                leColorLerp(bg, leRenderer_GetPixel(x, y),
+                                            cov_pct(co), mode));
         }
     }
 }
@@ -200,29 +338,58 @@ static void surface_corner(uint16_t *surface, uint32_t stride,
                            aa_backdrop_fn sample, void *ctx,
                            leBool flip_x, leBool flip_y)
 {
+    uint32_t ri    = (bw < r) ? (r - bw) : 0u;
+    uint32_t o_in  = ((2u * r) - 1u) * ((2u * r) - 1u);
+    uint32_t o_out = ((2u * r) + 1u) * ((2u * r) + 1u);
+    uint32_t i_in  = (ri > 0u) ? (((2u * ri) - 1u) * ((2u * ri) - 1u)) : 0u;
+    uint32_t i_out = (ri > 0u) ? (((2u * ri) + 1u) * ((2u * ri) + 1u)) : 0u;
     uint32_t px, py;
 
     for (py = 0u; py < r; py++)
     {
         for (px = 0u; px < r; px++)
         {
-            int32_t x  = ox + (int32_t)px;
-            int32_t y  = oy + (int32_t)py;
-            float   d  = arc_dist(px, py, r, flip_x, flip_y);
-            float   co = arc_coverage(d, (float)r);
-            leColor bg = sample(ctx, x, y);
-            leColor c;
+            int32_t  x  = ox + (int32_t)px;
+            int32_t  y  = oy + (int32_t)py;
+            uint32_t d2 = arc_dist2(px, py, r, flip_x, flip_y);
+            uint32_t co, ci;
+            leColor  c;
 
-            if (bw == 0u)
+            /* Unlike blend_corner this cannot skip the outside: the destination is a fresh
+             * surface, not pixels already holding the backdrop, so bg must be written. */
+            if (d2 >= o_out)
             {
-                c = leColorLerp(bg, fill, (uint32_t)(co * 100.0f + 0.5f), LE_COLOR_MODE_RGB_565);
+                c = sample(ctx, x, y);
+            }
+            else if ((bw != 0u) && (ri > 0u) && (d2 <= i_in))
+            {
+                c = fill;
+            }
+            else if ((bw == 0u) && (d2 <= o_in))
+            {
+                c = fill;
+            }
+            else if ((bw != 0u) && (d2 <= o_in) && ((ri == 0u) || (d2 >= i_out)))
+            {
+                c = border;
             }
             else
             {
-                float ci = arc_coverage(d, (float)(r - bw));
+                leColor bg = sample(ctx, x, y);
 
-                c = leColorLerp(bg, border, (uint32_t)(co * 100.0f + 0.5f), LE_COLOR_MODE_RGB_565);
-                c = leColorLerp(c,  fill,   (uint32_t)(ci * 100.0f + 0.5f), LE_COLOR_MODE_RGB_565);
+                co = arc_cov(d2, r, o_in, o_out);
+
+                if (bw == 0u)
+                {
+                    c = leColorLerp(bg, fill, cov_pct(co), LE_COLOR_MODE_RGB_565);
+                }
+                else
+                {
+                    ci = (ri > 0u) ? arc_cov(d2, ri, i_in, i_out) : 0u;
+
+                    c = leColorLerp(bg, border, cov_pct(co), LE_COLOR_MODE_RGB_565);
+                    c = leColorLerp(c,  fill,   cov_pct(ci), LE_COLOR_MODE_RGB_565);
+                }
             }
 
             surface[(uint32_t)y * stride + (uint32_t)x] = (uint16_t)c;
