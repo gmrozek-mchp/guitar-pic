@@ -356,13 +356,36 @@ static void updateWidget(leWidget* wgt, uint32_t dt)
     }
 }
 
+/* MARVIN re-apply patch #15 — skip the walk when nothing in the build overrides update().
+ *
+ * Only four widget types do — listwheel, radialmenu, textfield, imagesequence — and all four
+ * are disabled in this configuration, so every call this loop makes lands on the base
+ * `_leWidget_Update`, which is literally `(void)_this; (void)dt;`. LEGATO_Tasks runs it at
+ * 100 Hz and marvin carries ~850 widgets across nine layers, giving ~85,000 no-op vtable
+ * calls a second, each chasing pointers through ~180 KB of widget structs against a 32 KB
+ * D-cache. That was measured as most of a ~3.85% CPU floor present on every screen.
+ *
+ * Conditioned on the config symbols rather than deleted, so enabling any of those four
+ * widgets in MCC silently restores the stock behaviour instead of silently breaking its
+ * animation. See the journal, 2026-08-07 (night). */
+#define MARVIN_ANY_UPDATING_WIDGET \
+    ((LE_LISTWHEEL_WIDGET_ENABLED != 0) || (LE_RADIALMENU_WIDGET_ENABLED != 0) || \
+     (LE_TEXTFIELD_WIDGET_ENABLED != 0) || (LE_IMAGESEQUENCE_WIDGET_ENABLED != 0))
+
 static void updateWidgets(uint32_t dt)
 {
+#if MARVIN_ANY_UPDATING_WIDGET
     leLayerState* layer;
     uint32_t i;
+#endif
 
     if(leIsDrawing() == LE_TRUE)
         return;
+
+#if !MARVIN_ANY_UPDATING_WIDGET
+    (void)dt;
+    return;
+#else
 
     // iterate over all existing layers for update
     for(i = 0; i < _state.layerList.size; i++)
@@ -371,6 +394,7 @@ static void updateWidgets(uint32_t dt)
 
         updateWidget(&layer->root, dt);
     }
+#endif   /* MARVIN_ANY_UPDATING_WIDGET — re-apply patch #15 */
 }
 
 leResult leUpdate(uint32_t dt)
