@@ -44,21 +44,29 @@ void ScreenSplash_Hide(XLCDC_LAYER layer)
     XLCDC_SetLayerEnable(layer, false, true);
 }
 
-/* The ramp is paced by the hardware, not by us: XLCDC_SetLayerOpts with update=true ends
- * in XLCDC_UpdateLayerAttributes, which spins until the LCDC latches the new attributes
- * at the next vsync. So one call is one panel frame (1280×800 @ 60 Hz) and the step count
- * is the duration divided by the frame period. */
-#define FADE_FRAME_MS   17u
+/* We have to pace the ramp ourselves — the hardware does not.
+ *
+ * XLCDC_SetLayerOpts(update=true) ends in XLCDC_UpdateLayerAttributes, which looks like it
+ * blocks until the attributes are live but does not: LCDC_ATTRS.SIP is *clock-domain*
+ * synchronization ("access to LCDC_ATTRE has no effect" while set), a few LCD-clock cycles,
+ * not a frame; and the LCDC_ATTRE it polls first is a write-only register. So the call
+ * returns in well under a microsecond, and an unpaced ramp would write every alpha inside
+ * one frame — only the last latching, which reads as an instant cut.
+ *
+ * A step slightly longer than the 16.67 ms frame gives each alpha its own frame. Nothing
+ * breaks if a step is missed: a dropped alpha is invisible in a fade. */
+#define FADE_STEP_MS   17u
 
 void ScreenSplash_FadeOut(XLCDC_LAYER layer, uint32_t ms)
 {
-    uint32_t steps = ms / FADE_FRAME_MS;
+    uint32_t steps = ms / FADE_STEP_MS;
 
     if (steps == 0u) { steps = 1u; }
 
     for (uint32_t i = 1u; i <= steps; i++)
     {
         XLCDC_SetLayerOpts(layer, (uint8_t)(255u - ((255u * i) / steps)), true, true);
+        vTaskDelay(pdMS_TO_TICKS(FADE_STEP_MS));
     }
 
     XLCDC_SetLayerEnable(layer, false, true);

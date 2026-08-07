@@ -518,11 +518,20 @@ percentage on the right, an 8 px rounded capsule with a cyan gradient fill. Geom
   that do the work.
 - **Reveal is a cross-dissolve, not a cut.** OVR1's blender is `SFACTC = A0·As` / `DFACTC = 1−A0·As`
   and splash pixels are opaque, so `ScreenSplash_FadeOut()` ramping the layer's global alpha 255→0
-  dissolves into the already-painted BASE dashboard at zero extra pixel cost. The ramp needs no
-  delay of its own: `XLCDC_SetLayerOpts(..., update=true)` ends in `XLCDC_UpdateLayerAttributes`,
-  which spins until the LCDC latches at the next vsync, so one step **is** one frame and the step
-  count is just `ms / 17`. It restores A0 to 255 after disabling the layer so OVR1's next user — the
-  AA video frame overlay (§16) — cannot inherit a transparent layer.
+  dissolves into the already-painted BASE dashboard at zero extra pixel cost. It restores A0 to 255
+  after disabling the layer so OVR1's next user — the AA video frame overlay (§16) — cannot inherit
+  a transparent layer.
+- **The ramp must pace itself; `update=true` does NOT wait for a frame.** This looks like it does
+  and does not, which cost a debugging round: `XLCDC_SetLayerOpts(..., update=true)` ends in
+  `XLCDC_UpdateLayerAttributes`, whose `WAIT_ATTRS_EQ(LCDC_ATTRS_SIP_Msk)` waits on
+  **Synchronization In Progress** — a *clock-domain* handshake, a few LCD-clock cycles ("access to
+  `LCDC_ATTRE` has no effect" while set), **not** vsync — and whose leading
+  `while(XLCDC_REGS->LCDC_ATTRE);` polls a **write-only** register (`__O` in the DFP header), so it
+  is not a wait either. An unpaced ramp therefore writes every alpha inside one frame and only the
+  last latches: a fade written that way is an instant cut. `FadeOut` delays ~17 ms per step (just
+  over the 16.67 ms frame) so each alpha gets its own frame. **Anything that wants a
+  frame-accurate layer change has to pace itself** — or poll `LCDC_ATTRS`'s per-layer update bit,
+  which is the flag that actually clears at a frame boundary.
 
 ## 13. Pre-rendered, persistent per-screen canvases (done — code-complete, pending hardware test)
 
