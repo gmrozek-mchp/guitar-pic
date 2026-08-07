@@ -14,11 +14,13 @@
 #include "ui/widgets/sparkline/widget_sparkline.h"
 #include "ui/ui_text_metrics.h"   /* DOT_Y — bullets align to the row's baseline */
 #include "net/t1s/t1s_link.h"
+#include "definitions.h"   /* SYS_TIME_* (probe) */
 
 #include "ui/gfx/ui_surface.h"
 #include "ui/gfx/render_probe.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
+#include "gfx/legato/renderer/legato_renderer.h"   /* leRenderer_Paint (probe) */
 #include "gfx/legato/string/legato_fixedstring.h"
 #include "gfx/legato/widget/legato_widget.h"          /* leWidget_Constructor */
 #include "gfx/legato/widget/label/legato_widget_label.h"
@@ -1057,6 +1059,38 @@ void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
                        "PANEL", (int)BASE_W, (int)BASE_H, (int)(BASE_W * BASE_H),
                        (unsigned long)us);
         out(ctx, line);
+    }
+
+    /* And the real thing: one whole refresh plus the frame it causes. This is the number the
+     * 1 Hz task actually pays, and the only one that reflects `bus refresh full|targeted`.
+     * Note it advances the simulated feed once per iteration, so a long run fast-forwards it. */
+    {
+        uint32_t hz = SYS_TIME_FrequencyGet();
+        uint64_t ticks = 0u;
+        unsigned n = (iters > 8u) ? 8u : iters;
+        unsigned i;
+
+        for (i = 0u; i < n && hz != 0u; i++)
+        {
+            uint64_t t0;
+
+            UiManager_RenderLock();
+            t0 = SYS_TIME_Counter64Get();
+            refresh_all();
+            leRenderer_Paint();
+            ticks += SYS_TIME_Counter64Get() - t0;
+            UiManager_RenderUnlock();
+
+            vTaskDelay(1);
+        }
+
+        if (hz != 0u && n != 0u)
+        {
+            (void)snprintf(line, sizeof line, "  REFRESH (%s) = %6lu us   <- what the 1 Hz task pays",
+                           s_full_repaint ? "full" : "targeted",
+                           (unsigned long)((ticks * 1000000u) / ((uint64_t)hz * n)));
+            out(ctx, line);
+        }
     }
 
     for (size_t i = 0u; i < 3u; i++)

@@ -57,8 +57,27 @@ leResult lestring_set_utf8(leString *str, const char *utf8)
      * equally wrong. */
     if (n == 0)
     {
+        if (str->fn->length(str) == 0u) { return LE_SUCCESS; }   /* already empty */
+
         str->fn->clear(str);
         return LE_SUCCESS;
+    }
+
+    /* Skip an identical write. leFixedString_SetFromChar does NOT compare — it preinvalidates
+     * and invalidates unconditionally — so a screen that rewrites every field on a timer
+     * repaints every label even when nothing moved. The bus screen's node table is ~60 labels
+     * refreshed at 1 Hz, and on a quiet bus most of those numbers are the same second to
+     * second. Cheap to check: the comparison is over at most `n` leChars, against a repaint. */
+    if (str->fn->length(str) == n)
+    {
+        uint32_t i;
+
+        for (i = 0u; i < n; i++)
+        {
+            if (str->fn->charAt(str, i) != buf[i]) { break; }
+        }
+
+        if (i == n) { return LE_SUCCESS; }
     }
 
     return str->fn->setFromChar(str, buf, n);
