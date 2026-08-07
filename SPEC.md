@@ -107,7 +107,11 @@ guitar-pic/
 │   ├── Sensor-LCD5/             # KiCad project for fretboard sensor/actuator PCB
 │   └── kicad/                   # shared symbol/footprint libraries
 └── docs/
+    ├── t1s-podl-link.md         # 10BASE-T1S + PoDL inter-node link detail
+    ├── marvin-fauxmote-link.md  # marvin ↔ fauxmote command protocol
+    ├── ai-authorship-audit.md   # dated snapshot: how much of the repo the AI agent wrote
     ├── SAM9X7-Series-Data-Sheet-DS60001813.pdf
+    ├── upstream/                # vendor reference material
     └── archive/                 # historical docs from the original PC/Elgato/PS2 architecture
 ```
 

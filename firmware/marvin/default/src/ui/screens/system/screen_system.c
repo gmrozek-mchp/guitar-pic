@@ -67,11 +67,26 @@ static uint16_t FB_NOCACHE s_fb_detail[BASE_W * BASE_H];
 #define BUILT_MAX   8u
 
 /* An entry with `story` set gets a different column 2: one full-height card instead of
- * the what-it-does / parts-list pair, so it has room for a page of prose rather than a
- * paragraph and a list. Only the project card uses it — the boards are described by what
- * they do and what is on them, the project by how it was made. Same font and pitch as
- * `prose`, so the wrap limit is PROSE_COLS either way; the row count is what differs. */
-#define STORY_MAX  19u
+ * the what-it-does / parts-list pair. Only the project card uses it — the boards are
+ * described by what they do and what is on them, the project by how it was made.
+ *
+ * Its shape is three parts: a lead paragraph in `story` (same font and pitch as `prose`,
+ * so the wrap limit is PROSE_COLS), the `story_kicker` line that introduces the figures,
+ * and the figures themselves as a dotted list in `story_list`. Each item is a headline
+ * against a bullet dot with a dimmer, smaller gloss line under it, which is what lets a
+ * number carry a few words of meaning without the headline wrapping. The two-row item is
+ * also what fills the card: five one-line bullets would leave a 620px column half empty.
+ *
+ * The kicker is the one line set in bold and in the card's accent, so the eye lands on it
+ * on the way from the paragraph into the list. It is a field of its own rather than the
+ * last `story` row because it takes a different font and scheme from the rows around it. */
+#define STORY_MAX    5u
+#define STORY_ITEMS  5u
+
+typedef struct {
+    const char *head;    /* the figure, set against the bullet dot */
+    const char *gloss;   /* the dimmer line under it; NULL = a one-row item */
+} story_item_t;
 
 /* NODE_BUS_N entries are the boards on the T1S bus, held in bus order. NODE_N adds the
  * whole-project card after them — it is a card and a detail page like the others, but not
@@ -104,6 +119,8 @@ typedef struct {
     const char     *prose[PROSE_MAX];
     const char     *built[BUILT_MAX];
     const char     *story[STORY_MAX];   /* set = one big card instead of those two */
+    const char     *story_kicker;
+    story_item_t    story_list[STORY_ITEMS];
 } node_info_t;
 
 /* What the QR points at, for the six nodes whose callout is an orderable part number. */
@@ -316,20 +333,19 @@ static const node_info_t NODE[NODE_N] = {
             "agent working next to a developer: Claude, in a terminal",
             "beside MPLAB. It reads the datasheet, writes the driver,",
             "and explains what it changed and why.",
-            "",
-            "The hard part is memory. Each subproject keeps a journal",
-            "the agent writes as it works - decisions, dead ends, and",
-            "the reason behind each - so the next session starts where",
-            "the last one stopped instead of from nothing.",
-            "",
-            "It cannot see this screen, so the loop stays human: it",
-            "writes, the board gets flashed, and what really happened",
-            "comes back as the next prompt. Where it can, it proves",
-            "the code offline first - the same maths run in Python.",
-            "",
-            "Some bugs it found by reading, not guessing: a button",
-            "flashing white because one colour slot was never set, and",
-            "a boot hang traced to code landing in uncached memory.",
+        },
+        .story_kicker = "This is what it wrote:",
+        .story_list = {
+            { "41,000 lines of application C",
+              "seven boards, four silicon families, three compilers" },
+            { "19,000 lines of Python",
+              "seven host-side tools it wrote to check its own work" },
+            { "3,400 lines of tooling it built for itself",
+              "17 scripts, to edit a UI design it cannot click through" },
+            { "23,000 lines of specs and journals",
+              "the memory that lets a session resume, not restart" },
+            { "626 commits in six months",
+              "across 110 recorded sessions with the agent" },
         },
     },
 };
@@ -444,6 +460,35 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
 #define PROSE_COLS  57
 #define BUILT_COLS  61
 
+/* The story card, top to bottom: STORY_MAX lead rows at PROSE_PITCH from SEC_BODY_Y, the
+ * kicker, then STORY_ITEMS two-row items. The lead paragraph uses four of its five rows,
+ * so the spare row is the paragraph break above the kicker.
+ *
+ * Pinned so the last gloss lands on the same 36px bottom pad the rest of the column uses:
+ * STORY_LIST_Y + 4*STORY_ITEM_PITCH + STORY_HEAD_PITCH + STORY_GLOSS_H = 584 against a
+ * 620px card. Change any of them and the list drifts off the card bottom silently — a
+ * Legato child is clipped to its parent, not reported.
+ *
+ * The gap inside an item is zero (the rows abut, so the gloss reads as part of the
+ * headline); the 16px gap between items is the remainder of STORY_ITEM_PITCH. Both rows
+ * are indented past the dot like a parts row, so a headline wraps to STORY_HEAD_COLS
+ * (614px at 12px/glyph for DejaVuSansMono_20) and a gloss to BUILT_COLS. */
+#define STORY_KICKER_Y    (SEC_BODY_Y + (int)STORY_MAX * PROSE_PITCH)   /* 192 */
+#define STORY_LIST_Y      (STORY_KICKER_Y + PROSE_PITCH + 20)           /* 240 */
+#define STORY_ITEM_PITCH   72
+#define STORY_HEAD_PITCH   30    /* DejaVuSansMono_20 is 25px tall */
+#define STORY_GLOSS_H      26    /* DejaVuSansMono_16 is 20px tall */
+#define STORY_HEAD_COLS    51
+
+/* The bullet is bigger than a parts-list dot because it answers a 20px headline rather
+ * than a 16px row, and it is placed off the headline's own baseline rather than centred in
+ * the row box: a marker centred on a box looks high beside a two-line item, since the eye
+ * centres on the whole block. DejaVuSansMono_20 in a STORY_HEAD_PITCH box puts its
+ * baseline at +22 and digits are 15 tall, so their optical middle is +14.5; this centres
+ * the dot 1px below that, which is what reads as level. */
+#define STORY_DOT_D         8
+#define STORY_DOT_Y        11
+
 /* Glyph advances, decoded from le_gen_fonts.c. MONO24_ADV lays the node name out after a
  * variable-length callout in the detail header; MONO_B18_ADV decides whether that callout
  * fits a card at its full size (see build_card). */
@@ -460,10 +505,10 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
  * configASSERT catches undersizing at bring-up. */
 /* Longest string is marvin's detail tagline with the THIS DEVICE suffix appended — 66
  * bytes, since show_detail builds it in a char[CAP] and `·` costs two. Prose lines run
- * to PROSE_COLS and parts rows to BUILT_COLS. Kept generously above all three so an
- * edit to any of them doesn't silently clip. */
+ * to PROSE_COLS, parts rows to BUILT_COLS, and story rows to PROSE_COLS / STORY_HEAD_COLS
+ * / BUILT_COLS. Kept generously above all of them so an edit doesn't silently clip. */
 #define CAP       104u
-#define LBL_MAX   128u    /* ~79 in use before the project card's 20 */
+#define LBL_MAX   128u    /* ~79 in use before the project card's 15 */
 #define WGT_MAX    64u
 #define BTN_MAX    12u    /* 7 node cards + back, with slack */
 #define IMG_MAX     3u    /* the QR tile, with slack */
@@ -494,7 +539,9 @@ static leLabelWidget  *s_d_part, *s_d_name, *s_d_tag;
 static leLabelWidget  *s_d_prose[PROSE_MAX];
 static leLabelWidget  *s_d_built[BUILT_MAX];
 static leWidget       *s_d_built_dot[BUILT_MAX];
-static leLabelWidget  *s_d_story[STORY_MAX];
+static leLabelWidget  *s_d_story[STORY_MAX], *s_d_kicker;
+static leLabelWidget  *s_d_item_head[STORY_ITEMS], *s_d_item_gloss[STORY_ITEMS];
+static leWidget       *s_d_item_dot[STORY_ITEMS];
 /* The three column-2 cards. Handles only so show_detail can pick a shape: the pair, or
  * the story card. Every other card here is fire-and-forget. */
 static leWidget       *s_d_what_card, *s_d_built_card, *s_d_story_card;
@@ -829,6 +876,16 @@ static void show_detail(unsigned n)
     {
         set_text(s_d_story[i], d->story[i]);
     }
+    set_text(s_d_kicker, d->story_kicker);
+    s_d_kicker->fn->setScheme(s_d_kicker, d->accent);
+    for (unsigned i = 0u; i < STORY_ITEMS; i++)
+    {
+        set_text(s_d_item_head[i],  d->story_list[i].head);
+        set_text(s_d_item_gloss[i], d->story_list[i].gloss);
+        s_d_item_dot[i]->fn->setScheme(s_d_item_dot[i], d->accent);
+        s_d_item_dot[i]->fn->setVisible(s_d_item_dot[i],
+                                        (d->story_list[i].head != NULL) ? LE_TRUE : LE_FALSE);
+    }
     for (unsigned i = 0u; i < BUILT_MAX; i++)
     {
         set_text(s_d_built[i], d->built[i]);
@@ -1046,7 +1103,9 @@ static void build_detail(leWidget *parent)
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
     }
 
-    /* The project's shape: the same column, full height, one caption, no bullets. */
+    /* The project's shape: the same column, full height, one caption, a lead paragraph,
+     * then the figures as a dotted list. The dots and the indent match a parts row, so the
+     * project page reads as the same kind of page as a node's. */
     s_d_story_card = add_card(parent, C2_X, BODY_Y, C2_W, BODY_H);
     (void)add_text(s_d_story_card, CPAD, CPAD, C2_W - 2 * CPAD, SEC_H,
                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
@@ -1058,6 +1117,25 @@ static void build_detail(leWidget *parent)
                                  C2_W - 2 * CPAD, PROSE_PITCH,
                                  (const leFont *)&DejaVuSansMono_18,
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
+    }
+    s_d_kicker = add_label(s_d_story_card, CPAD, STORY_KICKER_Y, C2_W - 2 * CPAD,
+                           PROSE_PITCH, (const leFont *)&DejaVuSansMonoBold_18,
+                           &SCHEME_NODE_PROJECT, LE_HALIGN_LEFT);
+
+    for (unsigned i = 0u; i < STORY_ITEMS; i++)
+    {
+        int iy = STORY_LIST_Y + (int)i * STORY_ITEM_PITCH;
+        int tx = CPAD + CHIP_DOT_D + 12;
+        int tw = C2_W - 2 * CPAD - CHIP_DOT_D - 12;
+
+        s_d_item_dot[i] = add_dot(s_d_story_card, CPAD + (CHIP_DOT_D - STORY_DOT_D) / 2,
+                                  iy + STORY_DOT_Y, STORY_DOT_D, &SCHEME_NODE_PROJECT);
+        s_d_item_head[i] = add_label(s_d_story_card, tx, iy, tw, STORY_HEAD_PITCH,
+                                     (const leFont *)&DejaVuSansMono_20,
+                                     &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
+        s_d_item_gloss[i] = add_label(s_d_story_card, tx, iy + STORY_HEAD_PITCH, tw,
+                                      STORY_GLOSS_H, (const leFont *)&DejaVuSansMono_16,
+                                      &SCHEME_TEXT_ZINC_400, LE_HALIGN_LEFT);
     }
 
     /* col 3: the QR slot, then the bus rail. The image and caption are children of the
