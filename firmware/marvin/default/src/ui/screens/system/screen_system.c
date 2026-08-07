@@ -66,6 +66,13 @@ static uint16_t FB_NOCACHE s_fb_detail[BASE_W * BASE_H];
 #define PROSE_MAX   8u
 #define BUILT_MAX   8u
 
+/* An entry with `story` set gets a different column 2: one full-height card instead of
+ * the what-it-does / parts-list pair, so it has room for a page of prose rather than a
+ * paragraph and a list. Only the project card uses it — the boards are described by what
+ * they do and what is on them, the project by how it was made. Same font and pitch as
+ * `prose`, so the wrap limit is PROSE_COLS either way; the row count is what differs. */
+#define STORY_MAX  19u
+
 /* NODE_BUS_N entries are the boards on the T1S bus, held in bus order. NODE_N adds the
  * whole-project card after them — it is a card and a detail page like the others, but not
  * a node: it has no bus id, so it never appears on the BUS POSITION rail, and PROJECT is
@@ -96,6 +103,7 @@ typedef struct {
     const char     *qr_caption;     /* NULL = QR_CAPTION */
     const char     *prose[PROSE_MAX];
     const char     *built[BUILT_MAX];
+    const char     *story[STORY_MAX];   /* set = one big card instead of those two */
 } node_info_t;
 
 /* What the QR points at, for the six nodes whose callout is an orderable part number. */
@@ -209,7 +217,6 @@ static const node_info_t NODE[NODE_N] = {
             "PIC32CM PL10 Curiosity Nano (EV10P22A)",
             "Custom signal-conditioning board: 5 phototransistors",
             "MCP6002 dual op-amps - phototransistor front end",
-            "MCP1804 LDO + MCP16301 buck - sensor board power",
             "12-bit ADC - five channels sampled at 240 Hz",
             "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
             "MPLAB extensions for VS Code, MCC Harmony, XC32",
@@ -293,8 +300,9 @@ static const node_info_t NODE[NODE_N] = {
     },
     /* The whole project, not a node — see PROJECT. No bus id, and `part` carries a
      * category line rather than an orderable number, so its QR points at the project
-     * itself rather than a product page. Its parts list is the system-level one: every
-     * Microchip family on the bus at once. */
+     * itself rather than a product page. It sets `story` instead of prose + built: the
+     * boards each say what they do and what is on them, and this card says how the whole
+     * thing got written, which is the part visitors ask about. */
     {
         .id = ID_PROJECT, .name = "guitar-pic", .part = "DIGITAL MUSIC INTEGRATION",
         .chip = "10BASE-T1S single-pair bus",
@@ -303,25 +311,25 @@ static const node_info_t NODE[NODE_N] = {
         .accent = &SCHEME_NODE_PROJECT,
         .qr_url = "https://github.com/gmrozek-mchp/guitar-pic",
         .qr_caption = "SCAN FOR PROJECT SOURCE",
-        .prose = {
-            "guitar-pic is the whole rig: seven boards that watch a",
-            "video game, work out what to play, and play it on a real",
-            "guitar controller - with a puppet and a light show",
-            "keeping time to the music.",
+        .story = {
+            "Every board in this rig was programmed with an AI coding",
+            "agent working next to a developer: Claude, in a terminal",
+            "beside MPLAB. It reads the datasheet, writes the driver,",
+            "and explains what it changed and why.",
             "",
-            "Every board is a Microchip MCU, and they all talk over",
-            "one twisted pair using 10BASE-T1S, the same single-pair",
-            "Ethernet that links sensors in a car.",
-        },
-        .built = {
-            "SAM9X75D2G - 800 MHz Arm926 MPU with 2D graphics",
-            "PIC32CM6408PL10048 - 5 V Cortex-M0+, four of them",
-            "dsPIC33AK512MPS512 - 200 MHz DSC for the audio FFT",
-            "LAN8651B1 10BASE-T1S MAC-PHY on every node",
-            "MIKROE Two-Wire ETH 3 Click - one per board",
-            "MCP16502 PMIC, MCP6002 op-amps, MCP1804, MCP16301",
-            "MPLAB extensions for VS Code, MCC Harmony + Melody",
-            "XC32 and XC-DSC compilers, Harmony 3, Graphics Suite",
+            "The hard part is memory. Each subproject keeps a journal",
+            "the agent writes as it works - decisions, dead ends, and",
+            "the reason behind each - so the next session starts where",
+            "the last one stopped instead of from nothing.",
+            "",
+            "It cannot see this screen, so the loop stays human: it",
+            "writes, the board gets flashed, and what really happened",
+            "comes back as the next prompt. Where it can, it proves",
+            "the code offline first - the same maths run in Python.",
+            "",
+            "Some bugs it found by reading, not guessing: a button",
+            "flashing white because one colour slot was never set, and",
+            "a boot hang traced to code landing in uncached memory.",
         },
     },
 };
@@ -455,7 +463,7 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
  * to PROSE_COLS and parts rows to BUILT_COLS. Kept generously above all three so an
  * edit to any of them doesn't silently clip. */
 #define CAP       104u
-#define LBL_MAX    96u
+#define LBL_MAX   128u    /* ~79 in use before the project card's 20 */
 #define WGT_MAX    64u
 #define BTN_MAX    12u    /* 7 node cards + back, with slack */
 #define IMG_MAX     3u    /* the QR tile, with slack */
@@ -486,6 +494,10 @@ static leLabelWidget  *s_d_part, *s_d_name, *s_d_tag;
 static leLabelWidget  *s_d_prose[PROSE_MAX];
 static leLabelWidget  *s_d_built[BUILT_MAX];
 static leWidget       *s_d_built_dot[BUILT_MAX];
+static leLabelWidget  *s_d_story[STORY_MAX];
+/* The three column-2 cards. Handles only so show_detail can pick a shape: the pair, or
+ * the story card. Every other card here is fire-and-forget. */
+static leWidget       *s_d_what_card, *s_d_built_card, *s_d_story_card;
 static leWidget       *s_d_frame;
 static const void     *s_photo_px;   /* selected node's photo pixels, NULL if none */
 static bool            s_shown;      /* this screen owns the panel (and so OVR1)   */
@@ -799,9 +811,23 @@ static void show_detail(unsigned n)
         set_text(s_d_tag, d->tagline);
     }
 
+    /* Pick column 2's shape. Both sets of text are written either way — the unused one
+     * lands in hidden labels, which costs a few string copies and keeps this free of a
+     * second branch — but only one card is visible, and each card owns its own caption
+     * and body, so that one flag is the whole switch. */
+    leBool story = (d->story[0] != NULL) ? LE_TRUE : LE_FALSE;
+
+    s_d_what_card->fn->setVisible(s_d_what_card,   (story == LE_TRUE) ? LE_FALSE : LE_TRUE);
+    s_d_built_card->fn->setVisible(s_d_built_card, (story == LE_TRUE) ? LE_FALSE : LE_TRUE);
+    s_d_story_card->fn->setVisible(s_d_story_card, story);
+
     for (unsigned i = 0u; i < PROSE_MAX; i++)
     {
         set_text(s_d_prose[i], d->prose[i]);
+    }
+    for (unsigned i = 0u; i < STORY_MAX; i++)
+    {
+        set_text(s_d_story[i], d->story[i]);
     }
     for (unsigned i = 0u; i < BUILT_MAX; i++)
     {
@@ -987,32 +1013,50 @@ static void build_detail(leWidget *parent)
      * scanned out on OVR1 over this rect (see photo_apply). */
     s_d_frame = add_image_frame(parent, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
 
-    /* col 2: what it does, then the parts list */
-    (void)add_card(parent, C2_X, BODY_Y, C2_W, WHAT_H);
-    (void)add_text(parent, C2_X + CPAD, BODY_Y + CPAD, C2_W - 2 * CPAD, SEC_H,
+    /* col 2, in two mutually exclusive shapes — the what-it-does + parts-list pair for a
+     * board, or one full-height story card for the project (see STORY_MAX). Each card's
+     * caption and body are its own CHILDREN, in card-relative coordinates, so a shape is
+     * shown or hidden with a single setVisible on the card rather than by walking its
+     * text. That is why these three are the only cards here that keep a handle. */
+    s_d_what_card = add_card(parent, C2_X, BODY_Y, C2_W, WHAT_H);
+    (void)add_text(s_d_what_card, CPAD, CPAD, C2_W - 2 * CPAD, SEC_H,
                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
                    LE_HALIGN_LEFT, "WHAT IT DOES");
     for (unsigned i = 0u; i < PROSE_MAX; i++)
     {
-        s_d_prose[i] = add_label(parent, C2_X + CPAD,
-                                 BODY_Y + SEC_BODY_Y + (int)i * PROSE_PITCH,
+        s_d_prose[i] = add_label(s_d_what_card, CPAD,
+                                 SEC_BODY_Y + (int)i * PROSE_PITCH,
                                  C2_W - 2 * CPAD, PROSE_PITCH,
                                  (const leFont *)&DejaVuSansMono_18,
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
     }
 
-    (void)add_card(parent, C2_X, BUILT_Y, C2_W, BUILT_H);
-    (void)add_text(parent, C2_X + CPAD, BUILT_Y + CPAD, C2_W - 2 * CPAD, SEC_H,
+    s_d_built_card = add_card(parent, C2_X, BUILT_Y, C2_W, BUILT_H);
+    (void)add_text(s_d_built_card, CPAD, CPAD, C2_W - 2 * CPAD, SEC_H,
                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
                    LE_HALIGN_LEFT, "MICROCHIP INSIDE");
     for (unsigned i = 0u; i < BUILT_MAX; i++)
     {
-        int by = BUILT_Y + SEC_BODY_Y + (int)i * BUILT_PITCH;
-        s_d_built_dot[i] = add_dot(parent, C2_X + CPAD, by + (24 - CHIP_DOT_D) / 2,
+        int by = SEC_BODY_Y + (int)i * BUILT_PITCH;
+        s_d_built_dot[i] = add_dot(s_d_built_card, CPAD, by + (24 - CHIP_DOT_D) / 2,
                                    CHIP_DOT_D, &SCHEME_NODE_MARVIN);
-        s_d_built[i] = add_label(parent, C2_X + CPAD + CHIP_DOT_D + 12, by,
+        s_d_built[i] = add_label(s_d_built_card, CPAD + CHIP_DOT_D + 12, by,
                                  C2_W - 2 * CPAD - CHIP_DOT_D - 12, 24,
                                  (const leFont *)&DejaVuSansMono_16,
+                                 &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
+    }
+
+    /* The project's shape: the same column, full height, one caption, no bullets. */
+    s_d_story_card = add_card(parent, C2_X, BODY_Y, C2_W, BODY_H);
+    (void)add_text(s_d_story_card, CPAD, CPAD, C2_W - 2 * CPAD, SEC_H,
+                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
+                   LE_HALIGN_LEFT, "BUILT WITH AI");
+    for (unsigned i = 0u; i < STORY_MAX; i++)
+    {
+        s_d_story[i] = add_label(s_d_story_card, CPAD,
+                                 SEC_BODY_Y + (int)i * PROSE_PITCH,
+                                 C2_W - 2 * CPAD, PROSE_PITCH,
+                                 (const leFont *)&DejaVuSansMono_18,
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
     }
 
