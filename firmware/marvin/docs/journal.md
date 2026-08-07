@@ -1143,6 +1143,16 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-07 — guitar's card stops claiming it plays; project card joins the "The X -" pattern
+
+Greg: *"it is correct that the guitar is now just an indicator with LEDs at the buttons - it doesn't actually play."* The card said **"guitar is the board that actually plays"**, which was the one outright false sentence on the screen — the firmware has targeted the ATE_2026 board since 2026-07-23 and its output stage is active-high status LEDs, no Wii guitar (see [`firmware/guitar/SPEC.md`](../../guitar/SPEC.md) §1–2). Also dropped the *"a couple of milliseconds behind the call"* latency claim, which was never measured.
+
+- **The tag and tagline stay exactly as they were** — "The hands - presses the buttons in perfect time". Greg's call, and a fair one: the lamps show which buttons are being pressed, so the phrase describes what a visitor sees. The prose now opens `"guitar is the hands."` so it picks the tag up instead of contradicting it.
+- **The lamps are not a mock-up of the command path — they are the command path.** SPEC §1: the mask → GPIO mapping is shared across output-stage variants. So the prose closes on *"The same mapping drives a real controller's switches, unchanged"*, which stops the LED board reading as a downgrade and pairs with the second paragraph's "swappable". "Lamp" rather than "LED" in the prose, since lightshow's card owns the LED language.
+- **An earlier draft added the software-open-drain detail** (assert = drive low, release = tri-state) as the replacement for the removed 5 V line. Rejected — *"the open drain gpio isn't interesting"*. Left both lists short rather than filling them: guitar is prose 8/8, built 5/8.
+
+Separately, the project card's tag was the only one of the eight not opening `"The X - "` (it read "A robot band that plays…", tagline "The whole rig - …"). Now **"The band - plays Guitar / Hero all by itself"**, tagline **"The band - all seven boards, playing Guitar Hero by itself"** — "robot band" dropped because "The band - a robot band" stutters, and "all seven boards" ties the card to the screen headline. All eight tags and taglines now share the pattern; a check for that is cheap to re-run and worth doing after any copy edit.
+
 ### 2026-08-07 — Node card copy: guitar drops its 5 V claim, lightshow names MVIO
 
 Greg removed `"5 V I/O drives the guitar's buttons with no level shift"` from guitar's parts list — that node drives open-drain into the controller, so the 5 V I/O headroom is not what makes it work and the line was selling the wrong feature.
