@@ -61,7 +61,10 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_catalog.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/game/game_art.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/node_art.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/qr_art.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/qr_raster.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli/embedded_cli.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/qrcodegen/qrcodegen.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s/t1s_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/fauxmote/fauxmote_link.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/src/tc6.c"
@@ -75,6 +78,7 @@ target_include_directories(marvin_default_default_XC32_compile PRIVATE
     # the include). Resolves only when the generated copy is absent. See the stub.
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/compat"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/embedded-cli"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/third_party/qrcodegen"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/t1s"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/net/fauxmote"
     "${CMAKE_CURRENT_LIST_DIR}/../../../../../third_party/oa-tc6-lib/libtc6/inc"

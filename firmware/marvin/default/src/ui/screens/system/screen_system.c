@@ -12,7 +12,9 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/button_aa/widget_button_aa.h"
 #include "ui/node_art.h"
+#include "ui/qr_art.h"
 
+#include "ui/gfx/qr_raster.h"        /* QR_RASTER_W — the QR slot is sized from it */
 #include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -85,10 +87,19 @@ typedef struct {
     const char     *tagline;        /* detail header, one line */
     const leScheme *accent;
     bool            this_device;
-    bool            product;        /* `part` is an orderable part number → QR slot shown */
+    /* The QR slot's whole content. The URL is the asset — it is encoded to a tile at
+     * setup rather than pre-rendered anywhere (see ui/qr_art.h) — and repeats across
+     * entries share one tile, so the four PIC32CM nodes cost one. NULL hides the slot.
+     * Spelled out in full per entry, like the repeated `built` lines: tools/qr-verify
+     * reads these literals straight out of this file to decode-check them. */
+    const char     *qr_url;
+    const char     *qr_caption;     /* NULL = QR_CAPTION */
     const char     *prose[PROSE_MAX];
     const char     *built[BUILT_MAX];
 } node_info_t;
+
+/* What the QR points at, for the six nodes whose callout is an orderable part number. */
+#define QR_CAPTION  "SCAN FOR PRODUCT PAGE"
 
 /* The first NODE_BUS_N entries are indexed in bus order (id 0,1,3,4,5,6,7) so the BUS
  * POSITION rail reads naturally, and the project card follows them at PROJECT; the overview
@@ -104,7 +115,8 @@ static const node_info_t NODE[NODE_N] = {
         .id = 0u, .name = "marvin", .part = "SAM9X75D2G", .chip = "LAN8651",
         .tag = { "The brain - watches the", "game, calls every shot" },
         .tagline = "The brain - watches the game and calls every shot",
-        .accent = &SCHEME_NODE_MARVIN, .this_device = true, .product = true,
+        .accent = &SCHEME_NODE_MARVIN, .this_device = true,
+        .qr_url = "https://www.microchip.com/en-us/product/SAM9X75D2G",
         .prose = {
             "marvin is the board running this screen, and the",
             "brain of the whole rig. It captures the game's video",
@@ -131,6 +143,10 @@ static const node_info_t NODE[NODE_N] = {
         .tag = { "The stand-in - becomes", "the controller itself" },
         .tagline = "The stand-in - becomes the controller, wirelessly",
         .accent = &SCHEME_NODE_FAUXMOTE,
+        /* No part number of its own, so its QR names the one Microchip part it does
+         * carry — the T1S PHY shared with every other node. */
+        .qr_url = "https://www.microchip.com/en-us/product/LAN8651",
+        .qr_caption = "SCAN FOR LAN8651 PAGE",
         .prose = {
             "fauxmote skips the guitar altogether. Instead of",
             "pressing buttons on a real controller, it pretends to",
@@ -151,7 +167,8 @@ static const node_info_t NODE[NODE_N] = {
         .id = 3u, .name = "guitar", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
         .tag = { "The hands - presses the", "buttons in perfect time" },
         .tagline = "The hands - takes the call and presses the buttons",
-        .accent = &SCHEME_NODE_GUITAR, .product = true,
+        .accent = &SCHEME_NODE_GUITAR,
+        .qr_url = "https://www.microchip.com/en-us/product/PIC32CM6408PL10048",
         .prose = {
             "guitar is the board that actually plays. One byte",
             "arrives over the bus - which frets are held, and",
@@ -175,7 +192,8 @@ static const node_info_t NODE[NODE_N] = {
         .id = 4u, .name = "fretboard", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
         .tag = { "The eyes - reads notes", "off the screen itself" },
         .tagline = "The eyes - reads the notes straight off the screen",
-        .accent = &SCHEME_NODE_FRETBOARD, .product = true,
+        .accent = &SCHEME_NODE_FRETBOARD,
+        .qr_url = "https://www.microchip.com/en-us/product/PIC32CM6408PL10048",
         .prose = {
             "fretboard watches the TV itself. Five phototransistors",
             "sit over the spot where notes reach the strike line,",
@@ -201,7 +219,8 @@ static const node_info_t NODE[NODE_N] = {
         .id = 5u, .name = "beatbox", .part = "dsPIC33AK512MPS512", .chip = "LAN8651",
         .tag = { "The ears - listens and", "finds the beat" },
         .tagline = "The ears - listens to the music and finds the beat",
-        .accent = &SCHEME_NODE_BEATBOX, .product = true,
+        .accent = &SCHEME_NODE_BEATBOX,
+        .qr_url = "https://www.microchip.com/en-us/product/dsPIC33AK512MPS512",
         .prose = {
             "beatbox listens. Stereo line-level audio comes in",
             "through the on-chip converter at 48,000 samples a",
@@ -226,7 +245,8 @@ static const node_info_t NODE[NODE_N] = {
         .id = 6u, .name = "lemmy", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
         .tag = { "The body - head-bangs a", "puppet on the beat" },
         .tagline = "The body - head-bangs a puppet in time with the music",
-        .accent = &SCHEME_NODE_LEMMY, .product = true,
+        .accent = &SCHEME_NODE_LEMMY,
+        .qr_url = "https://www.microchip.com/en-us/product/PIC32CM6408PL10048",
         .prose = {
             "lemmy is the puppet. Two hobby servos - one in the",
             "neck, one in the jaw - run off a timer on the MCU, and",
@@ -249,7 +269,8 @@ static const node_info_t NODE[NODE_N] = {
         .id = 7u, .name = "lightshow", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
         .tag = { "The lights - turns the", "beat into a stage show" },
         .tagline = "The lights - turns the beat into a stage show",
-        .accent = &SCHEME_NODE_LIGHTSHOW, .product = true,
+        .accent = &SCHEME_NODE_LIGHTSHOW,
+        .qr_url = "https://www.microchip.com/en-us/product/PIC32CM6408PL10048",
         .prose = {
             "lightshow drives two strands of addressable LEDs from",
             "the same beat frame lemmy nods to - pulsing on the",
@@ -271,15 +292,17 @@ static const node_info_t NODE[NODE_N] = {
         },
     },
     /* The whole project, not a node — see PROJECT. No bus id, and `part` carries a
-     * category line rather than an orderable number, so `product` stays false and the
-     * QR slot is hidden. Its parts list is the system-level one: every Microchip family
-     * on the bus at once. */
+     * category line rather than an orderable number, so its QR points at the project
+     * itself rather than a product page. Its parts list is the system-level one: every
+     * Microchip family on the bus at once. */
     {
         .id = ID_PROJECT, .name = "guitar-pic", .part = "DIGITAL MUSIC INTEGRATION",
         .chip = "10BASE-T1S single-pair bus",
         .tag = { "A robot band that plays", "Guitar Hero by itself" },
         .tagline = "The whole rig - a robot band that plays Guitar Hero by itself",
         .accent = &SCHEME_NODE_PROJECT,
+        .qr_url = "https://github.com/gmrozek-mchp/guitar-pic",
+        .qr_caption = "SCAN FOR PROJECT SOURCE",
         .prose = {
             "guitar-pic is the whole rig: seven boards that watch a",
             "video game, work out what to play, and play it on a real",
@@ -386,6 +409,14 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
 #define BUILT_Y     (BODY_Y + WHAT_H + GAP)        /* 472 */
 #define BUILT_H     (BASE_H - MARGIN - BUILT_Y)    /* 312 */
 #define QR_H       232
+/* The QR tile is not scaled: its size comes from the rasterizer, which lays out whole
+ * pixels per module (164 = 41 modules x 4 px), and resampling a QR is how you make one
+ * that will not scan. So the card holds the tile at 1:1, centred in the space above the
+ * caption, rather than the tile being fitted to a box chosen here. */
+#define QR_IMG      ((int)QR_RASTER_W)              /* 164 */
+#define QR_CAP_Y    (QR_H - 32)                     /* 200 */
+#define QR_IMG_X    ((C3_W - QR_IMG) / 2)           /* 46  */
+#define QR_IMG_Y    ((QR_CAP_Y - QR_IMG) / 2)       /* 18  */
 #define RAIL_Y      (BODY_Y + QR_H + GAP)          /* 408 */
 #define RAIL_H      (BASE_H - MARGIN - RAIL_Y)     /* 376 */
 #define SEC_BODY_Y  52                             /* first row below a caption */
@@ -427,7 +458,7 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
 #define LBL_MAX    96u
 #define WGT_MAX    64u
 #define BTN_MAX    12u    /* 7 node cards + back, with slack */
-#define IMG_MAX     3u    /* the reserved QR slot, with slack */
+#define IMG_MAX     3u    /* the QR tile, with slack */
 
 static leChar        s_buf[LBL_MAX][CAP];
 static leFixedString s_fs[LBL_MAX];
@@ -469,6 +500,11 @@ static StackType_t       s_view_stack[512];
 static StaticTask_t      s_view_tcb;
 
 static leWidget       *s_d_qr_card;
+static leImageWidget  *s_d_qr_img;
+static leLabelWidget  *s_d_qr_cap;
+/* One encoded tile per card, resolved once at setup; NULL where the URL would not
+ * encode, which hides that card's slot. */
+static const leImage  *s_qr[NODE_N];
 static leWidget       *s_d_rail_box[NODE_BUS_N];
 static leLabelWidget  *s_d_rail_id[NODE_BUS_N], *s_d_rail_name[NODE_BUS_N];
 
@@ -777,10 +813,18 @@ static void show_detail(unsigned n)
 
     s_photo_px = NodeArt_Pixels(d->id);
 
-    /* The QR slot is reserved, not wired: only the entries whose callout is an orderable
-     * part number have a product page, so the whole card stays hidden for the others
-     * rather than showing an empty box. */
-    s_d_qr_card->fn->setVisible(s_d_qr_card, d->product ? LE_TRUE : LE_FALSE);
+    /* An entry with no URL, or one that failed to encode, hides the whole card rather
+     * than showing an empty box or a tile from the previously selected node. */
+    if (s_qr[n] != NULL)
+    {
+        s_d_qr_img->fn->setImage(s_d_qr_img, (leImage *)s_qr[n]);
+        set_text(s_d_qr_cap, (d->qr_caption != NULL) ? d->qr_caption : QR_CAPTION);
+        s_d_qr_card->fn->setVisible(s_d_qr_card, LE_TRUE);
+    }
+    else
+    {
+        s_d_qr_card->fn->setVisible(s_d_qr_card, LE_FALSE);
+    }
 
     /* The project card lights the whole rail — it *is* the bus — which doubles as the
      * legend for the accent colours the other seven cards carry. */
@@ -972,14 +1016,14 @@ static void build_detail(leWidget *parent)
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
     }
 
-    /* col 3: the reserved QR slot, then the bus rail. The image and caption are
-     * children of the card, so hiding the card hides the whole slot in one call — and
-     * dropping the real QR image in later needs no other change. */
+    /* col 3: the QR slot, then the bus rail. The image and caption are children of the
+     * card, so hiding the card hides the whole slot in one call. Both are repointed per
+     * node in show_detail; the tiles themselves are encoded in Setup. */
     s_d_qr_card = add_card(parent, C3_X, BODY_Y, C3_W, QR_H);
-    (void)add_image(s_d_qr_card, (C3_W - 192) / 2, 20, 192, 192);
-    (void)add_text(s_d_qr_card, 0, QR_H - 32, C3_W, SEC_H,
-                   (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
-                   LE_HALIGN_CENTER, "SCAN FOR PRODUCT PAGE");
+    s_d_qr_img  = add_image(s_d_qr_card, QR_IMG_X, QR_IMG_Y, QR_IMG, QR_IMG);
+    s_d_qr_cap  = add_label(s_d_qr_card, 0, QR_CAP_Y, C3_W, SEC_H,
+                            (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
+                            LE_HALIGN_CENTER);
 
     (void)add_card(parent, C3_X, RAIL_Y, C3_W, RAIL_H);
     (void)add_text(parent, C3_X + CPAD, RAIL_Y + CPAD, C3_W - 2 * CPAD, SEC_H,
@@ -1052,6 +1096,15 @@ void ScreenSystem_Setup(void)
 
     build_overview(s_root[VIEW_OVERVIEW]);
     build_detail(s_root[VIEW_DETAIL]);
+
+    /* Encode every card's QR before the seeding show_detail below reads s_qr. Repeat
+     * URLs resolve to the same tile, so the eight cards cost five. No I/O: the URL is
+     * the whole input, which is why this needs no card mount and no boot-progress step
+     * the way the photos and album art do. */
+    for (unsigned i = 0u; i < NODE_N; i++)
+    {
+        s_qr[i] = QrArt_Get(NODE[i].qr_url);
+    }
 
     /* Seed every detail string once. This also queues the detail canvas's first paint,
      * which paint_all_screens_once would do anyway — and it must NOT leave a pending

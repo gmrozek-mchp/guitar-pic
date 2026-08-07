@@ -7,3 +7,7 @@ docs/*.pdf
 # to-refetch inputs to process_gh3_cover_art.py), ignore the regenerable resized output.
 tools/gh3-cover-art/data/*
 !tools/gh3-cover-art/data/*.jpg
+
+# QR tiles dumped by verify.py --png: regenerable from the NODE table's URLs, for
+# eyeballing only. The verification itself needs no stored artifact.
+tools/qr-verify/data/

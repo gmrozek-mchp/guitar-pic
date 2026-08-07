@@ -1,0 +1,10 @@
+[project]
+name = "qr-verify"
+version = "1.0.0"
+description = "Decode-check marvin's System Info QR rasterizer against the NODE table's URLs."
+requires-python = ">=3.10"
+dependencies = [
+    "pillow>=10.0.0",
+    "segno>=1.6.0",
+    "zxing-cpp>=2.2.0",
+]

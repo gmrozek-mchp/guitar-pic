@@ -53,6 +53,7 @@
 #include "game/game_catalog.h"
 #include "game/game_art.h"
 #include "ui/node_art.h"
+#include "ui/qr_art.h"
 #include "perf_log/perf_log.h"
 
 // *****************************************************************************
@@ -169,6 +170,11 @@ void APP_Initialize ( void )
      * decoded from the card by NodeArt_LoadAll() alongside the album art. See
      * ui/node_art.h. */
     NodeArt_Initialize();
+
+    /* QR tiles for the system-info screen, keyed by URL. State only here; the tiles are
+     * encoded from the NODE table's URLs by ScreenSystem_Setup — no card, no decoder,
+     * nothing to load. See ui/qr_art.h. */
+    QrArt_Initialize();
 
     /* The video pipeline, detector, actuator links, gameplay observer, console,
      * and perf-log drain are NOT started here — they spawn tasks at priorities
