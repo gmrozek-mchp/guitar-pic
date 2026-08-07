@@ -1143,6 +1143,14 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-07 — Node card copy: guitar drops its 5 V claim, lightshow names MVIO
+
+Greg removed `"5 V I/O drives the guitar's buttons with no level shift"` from guitar's parts list — that node drives open-drain into the controller, so the 5 V I/O headroom is not what makes it work and the line was selling the wrong feature.
+
+Lightshow's is the card where that silicon feature *is* load-bearing, and it was under-sold: the old copy said "This MCU's 5 V outputs drive the strips directly", which states the symptom without naming the capability. Both its prose and its parts list now name **MVIO (Multi-Voltage I/O)** and, more importantly, say what it *is* — a second supply rail (`VDDIO2`), independent of `VDD`, powering a subset of the pins at its own voltage, 5 V here. Confirmed against the datasheet before writing: [§15.4.4.2](https://onlinedocs.microchip.com/oxy/GUID-DE09DA5A-1CBB-49A8-9DA0-B2EB94E57E56-en-US-11/GUID-23DA1B16-810A-4484-891F-37E103B6C940.html) (Dual Supply mode, `MVIO.VDDIO2CFG`) and [§40.3.1.3](https://onlinedocs.microchip.com/oxy/GUID-DE09DA5A-1CBB-49A8-9DA0-B2EB94E57E56-en-US-11/GUID-1161AB62-565B-4749-BD0E-26EE9A8CF15A.html) (VDDIO2 as a supply pin pair). The acronym is spelled out in both places — a visitor at the panel will not know it.
+
+Lightshow is now at capacity on both lists (**prose 8/8, built 8/8**), so anything further on that card trades something out. Guitar's list has room, at 5/8.
+
 ### 2026-08-07 — guitar-pic story rewritten around an audit of how much of the repo the agent wrote
 
 Greg: *"I want to focus on the extent of AI assisted coding. There is virtually zero human hand coding in this project."* Paragraph 1 kept, paragraphs 2–4 replaced by an emphasised lead-in and a list of measured figures. Builds clean.
