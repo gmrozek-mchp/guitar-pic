@@ -101,11 +101,17 @@ def repoint_scheme_refs(text, remap):
 
 def repack(zip_path, replacements, backup=True, backup_suffix=".bak", drop=()):
     """Write a new zip with `replacements` (name -> str|bytes) swapped in, members in
-    `drop` omitted, every other member copied verbatim. Backs up the original first.
-    Verifies integrity.
+    `drop` omitted, every other member copied verbatim. Verifies integrity.
 
     `drop` takes member names or prefixes ending in "/" (e.g. deleting a font means
-    dropping its whole "assets/fonts/{uuid}/" directory — 4 members)."""
+    dropping its whole "assets/fonts/{uuid}/" directory — 4 members).
+
+    Returns the backup path, or None if none was written — which happens whenever
+    `<zip>.bak` ALREADY EXISTS: the first backup is kept deliberately (it is the last
+    known-MGS-written state, and clobbering it on every edit would lose that after one
+    bad round), but it means the second and later edits in a session have NO fresh
+    backup. Check the return value rather than assuming, and for a zip under version
+    control treat git as the real safety net — `git checkout -- <zip>`."""
     drop_exact = {d for d in drop if not d.endswith("/")}
     drop_pref = tuple(d for d in drop if d.endswith("/"))
 
@@ -113,10 +119,12 @@ def repack(zip_path, replacements, backup=True, backup_suffix=".bak", drop=()):
         return name in drop_exact or name.startswith(drop_pref) if drop_pref \
             else name in drop_exact
 
+    made_backup = None
     if backup:
         bak = zip_path + backup_suffix
         if not os.path.exists(bak):
             shutil.copy2(zip_path, bak)
+            made_backup = bak
     tmp = zip_path + ".new"
     with zipfile.ZipFile(zip_path) as zin, \
          zipfile.ZipFile(tmp, "w", zipfile.ZIP_DEFLATED) as zout:
@@ -132,6 +140,7 @@ def repack(zip_path, replacements, backup=True, backup_suffix=".bak", drop=()):
         os.remove(tmp)
         raise RuntimeError("repacked zip failed integrity check")
     os.replace(tmp, zip_path)
+    return made_backup
 
 
 def validate_scheme_refs(zip_path, schemes_doc=None):

@@ -366,6 +366,38 @@ shared assets aren't miscounted. Keeping the sweep separate leaves the zip delta
 
 ## Gotchas (learned the hard way)
 
+- **A button's pressed fill is a DIFFERENT scheme slot, and its default is white.** The classic
+  button skin fills from `LE_SCHM_BACKGROUND` whenever `state != LE_BUTTON_STATE_UP` and from
+  `LE_SCHM_BASE` when up (`drawBackground`, `legato_widget_button_skin_classic.c`; the string
+  render's lookup-table colour follows the same swap). A plain panel or widget never reads
+  `background` at all — `leWidget_SkinClassic_DrawStandardBackground` only uses `base`. So a FILL
+  scheme authored by eye for panels can leave `background` at Legato's default **white** and look
+  perfect forever, until a button is given that scheme and flashes white under the finger. In
+  marvin every `SCHEME_FILL_ZINC_*` had exactly this: correct `base`, `background` still
+  `#FFFFFF`. Two consequences worth internalising:
+  - It is invisible to every static check. Nothing is unreferenced, no uuid is dangling, a
+    screenshot of the idle screen is right, and `audit_schemes.py`'s role column reports `base`.
+    Only touching the widget shows it.
+  - The fix belongs in the design, not in code. A custom paint override can repair the AA corners
+    (it reads the same slot, so it stays *consistent* with the skin — and therefore consistently
+    wrong), but the button's body is drawn by the stock skin from the scheme, so no widget-side
+    hack fixes the fill. Set the slot: `set_scheme_color.py <zip> NAME:background=#RRGGBB`.
+  - Natural value: one step lighter than `base`. An imported mockup states it directly — a
+    Tailwind `hover:bg-zinc-800` on a `bg-zinc-900` card means `background` = the design's own
+    zinc-800.
+
+- **MGS's JSON serializer is not reproducible from Python, so edit by splicing text.** No
+  combination of `indent` / `separators` / `sort_keys` reproduces it: marvin's 810 KB
+  `schemes.json` comes back as 595 KB from `json.dumps(indent=2)` and 809 KB from
+  `indent=4, sort_keys=True` — close, but not equal. A `json.loads` → mutate → `json.dumps`
+  round-trip is therefore never a minimal diff; it rewrites every member you touch, which both
+  buries the intended change and removes any way to show you changed nothing else. Locate the
+  value in the raw member text and splice it (`add_layer.py` and `set_scheme_color.py` both do
+  this), then reparse the result and assert the set of differing fields equals the set you
+  intended. Useful anchor for schemes: `properties` is serialized alphabetically, so every colour
+  slot appears *before* that scheme's own `"name"` entry — find the name, then `rindex` back to
+  the slot.
+
 - **A decorative widget stacked over interactive ones steals their touches.**
   `leUtils_PickFromWidget` keeps the **last** child whose rect contains the point, so "paints on
   top" and "wins the pick" are the same property. A full-card frame overlay — the standard way to

@@ -17,7 +17,12 @@ tool-edited zip, then re-serializes it on save).
 
 ## Golden rules
 
-1. **Back up the zip first.** Always keep the pre-edit `.zip` until MGS has reopened + built.
+1. **Back up the zip first** — and know that `mgs_zip.repack(backup=True)` only writes `<zip>.bak`
+   when one does **not** already exist, so on every edit after the first it silently makes none.
+   That is deliberate (the first `.bak` is the last known MGS-written state), but it means the
+   `.bak` sitting next to the zip may be months old and is **not** your undo. It now returns the
+   backup path or `None`; check it. For a tracked zip the real safety net is
+   `git checkout -- <zip>`, so confirm the zip is committed clean before editing.
 2. **Assets are referenced BY UUID, not name.** Widgets store `{"type":"scheme","value":"{uuid}"}`.
    → **Renaming** an asset (change its `name`, keep its `id`) never disturbs a reference.
    → **Deleting/merging** one requires repointing every referencing uuid to a survivor.
@@ -29,6 +34,17 @@ tool-edited zip, then re-serializes it on save).
    uuids and names are unique.
 5. **You edit the zip; the user regenerates.** After repack, the user opens MGS →
    **Generate** (refreshes `le_gen_*`) → build. Only then are name changes reflected in C.
+   Three consequences of the two halves not being atomic, all of them silent:
+   - **Finish every zip edit before asking for a Generate.** A Generate that runs between two
+     of your edits produces a *half-applied* design that builds clean and looks almost right —
+     e.g. new pressed fills present, a new pressed border still at the old default.
+   - **Verify it landed instead of assuming.** Read the generated value back and compare it to
+     the zip: `awk '/leScheme SCHEME_X =/,/^};/' <gen>/le_gen_scheme.c` (or the equivalent for
+     strings/images). Timestamps help — a zip newer than `le_gen_*` means the Generate predates
+     your edit.
+   - **MGS holding the design open will clobber a tool edit** on its next save, since it writes
+     its in-memory copy. If it was open while you wrote, have the user reopen the design before
+     generating.
 
 ## Workflow
 
@@ -66,6 +82,30 @@ python3 $S/audit_glyph_coverage.py $Z $SRC [$DATA]  # glyph coverage
 `audit_refs.py` is the one to run **after** a transform, not just before: it exits non-zero if any
 widget asset-uuid, manifest entry or string binding no longer resolves, which is the failure mode
 where the design still opens in Composer but Generate emits a reference to something that is gone.
+
+## Schemes, specifically
+
+`set_scheme_color.py <zip> SCHEME_NAME:slot=#RRGGBB [...]` sets any of the 16 colour slots on
+existing schemes (dry-run by default). Two things it encodes that are worth knowing even if you
+write your own transform:
+
+- **Splice the member text; do not round-trip the JSON.** MGS's serializer is not Python's — no
+  `indent`/`separators`/`sort_keys` combination reproduces it (a plain `json.dumps(indent=2)`
+  of marvin's `schemes.json` is 595 KB against the original's 810 KB). Re-dumping therefore
+  rewrites the entire member and buries a four-value change in a whole-file diff, which also
+  destroys your ability to prove you changed nothing else. This applies to **every** member, not
+  just `screen.json` in `add_layer.py`. Then reparse the result and assert the set of differing
+  fields is exactly the set you asked for: a regex edit to 800 KB of JSON should never be trusted
+  because "the regex matched".
+- **Which slot a widget reads depends on its TYPE and STATE.** A plain panel/widget only ever
+  fills from `base` (`leWidget_SkinClassic_DrawStandardBackground`), but the classic **button**
+  skin fills from `background` while pressed and `base` while up (`drawBackground` in
+  `legato_widget_button_skin_classic.c`, and the string's lookup-table colour follows the same
+  swap). Legato's default `background` is **white**, so a FILL scheme authored only for panels
+  looks perfect until someone puts a button on it — and then it flashes white on every touch,
+  with nothing wrong in the design and nothing to see in a static screenshot. When adding a
+  button scheme, set `background` deliberately; the natural value is one step lighter than
+  `base`, which is what a CSS `hover:` step means in an imported mockup.
 
 ## Strings and fonts, specifically
 
@@ -172,5 +212,5 @@ full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_refs.py`, `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
 `audit_glyph_coverage.py`, `strip_subtree.py`, `add_layer.py`, `prune_unused_images.py`,
-`add_image.py`, `add_string.py`, `add_font_range.py`, `set_image_source.py`,
+`add_image.py`, `add_string.py`, `add_font_range.py`, `set_scheme_color.py`, `set_image_source.py`,
 `rename_images.py`, `export_assets.py`.
