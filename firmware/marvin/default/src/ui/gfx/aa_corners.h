@@ -37,6 +37,29 @@ void AaCorners_Render(const leRect *rect, uint32_t radius, uint32_t borderWidth,
 void AaCorners_RenderRoundImage(const leRect *rect, uint32_t radius,
                                 leColor bg, leColorMode mode);
 
+/* Recolour the left edge of an already-drawn rounded rect, following its corners.
+ * Reproduces what CSS does for `borderLeftWidth: 6px; borderLeftColor: <accent>` on a
+ * `rounded-2xl border` box (the mockup's node cards), which is two things a plain bar
+ * cannot express:
+ *
+ *  - The band's INNER edge is an ellipse, radii (radius - edgeWidth) horizontally and
+ *    (radius - borderWidth) vertically, so it is edgeWidth thick where it meets the
+ *    straight left edge and tapers to borderWidth where it meets the top/bottom one.
+ *  - The colour hands over along the MITRE — the line from the outer corner toward
+ *    (edgeWidth, borderWidth) — so the arc is accent below it and left alone above.
+ *
+ * Only band pixels are touched, and they are blended over what is already there
+ * rather than over a sampled backdrop: the widget beneath has by then painted its
+ * fill, its 1px border and its own AA corners, so the outer AA edge lands on real
+ * backdrop and the inner one on real fill, both already correct. Call from a paint
+ * override on a transparent sibling drawn AFTER the shape (see widget_panel_aa.c).
+ *
+ * `rect` is the whole rounded rect, not just the edge. `mode` is
+ * leRenderer_CurrentColorMode(). */
+void AaCorners_RenderLeftEdge(const leRect *rect, uint32_t radius,
+                              uint32_t edgeWidth, uint32_t borderWidth,
+                              leColor accent, leColorMode mode);
+
 /* Backdrop colour to show outside the arc at (x, y), in surface coordinates. */
 typedef leColor (*aa_backdrop_fn)(void *ctx, int32_t x, int32_t y);
 

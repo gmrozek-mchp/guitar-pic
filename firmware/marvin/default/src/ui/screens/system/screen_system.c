@@ -688,9 +688,15 @@ static void build_card(leWidget *parent, unsigned n, int x, int y, int w)
     s_card[n] = add_button(parent, x, y, w, CARD_H, CARD_R, &SCHEME_FILL_ZINC_900);
     s_card[n]->fn->setReleasedEventCallback(s_card[n], card_on_release);
 
-    /* The mockup's 6px left edge, inset by the corner radius so it doesn't square off
-     * the card's rounded corners. */
-    (void)add_panel(parent, x, y + CARD_R, BAR_W, CARD_H - 2 * CARD_R, d->accent, LE_TRUE);
+    /* The mockup's 6px left edge. A transparent overlay over the whole card rather than
+     * a bar, so the accent can follow the corners the way the mockup's borderLeftWidth
+     * does — tapering into the 1px border instead of ending square at the radius. Must
+     * stay a later sibling than the card: it blends over what the card painted. */
+    {
+        leWidget *edge = add_panel(parent, x, y, w, CARD_H, d->accent, LE_FALSE);
+        edge->fn->setCornerRadius(edge, CARD_R);
+        PanelAA_EnableLeftAccent(edge, BAR_W, 1u);
+    }
 
     int tx = x + TXT_X;
     int tw = w - TXT_X - 14;

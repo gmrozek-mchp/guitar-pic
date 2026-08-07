@@ -50,6 +50,18 @@ void PanelAA_EnableDot(leWidget* panel);
  * rounds by less and a 1px bar comes out flat. Call once after construction. */
 void PanelAA_EnableRoundTop(leWidget* panel, uint32_t radius);
 
+/* Recolours the LEFT EDGE of a rounded rect already drawn beneath this panel, in the
+ * panel's BASE colour, following the corners the way CSS does for the mockup's
+ * `borderLeftWidth` on a rounded card — the band tapers around each corner to meet the
+ * 1px border instead of stopping square (see AaCorners_RenderLeftEdge).
+ *
+ * The panel is a transparent overlay covering the WHOLE card and must be a LATER
+ * sibling than the card, since it blends over what the card painted. Give it the
+ * card's own cornerRadius; `edgeWidth` is the thick side, `borderWidth` the other
+ * three. Both widths are shared by every user of this variant, as the vtable is —
+ * fine while the only caller is the node-card grid. Call once after construction. */
+void PanelAA_EnableLeftAccent(leWidget* panel, uint32_t edgeWidth, uint32_t borderWidth);
+
 #ifdef __cplusplus
 }
 #endif

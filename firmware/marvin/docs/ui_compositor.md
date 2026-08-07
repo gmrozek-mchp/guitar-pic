@@ -365,6 +365,27 @@ off-limits), via a per-instance vtable re-point in `src/ui/widgets/button_aa/wid
   radius works — `AaCorners_Render` (`ui/gfx/aa_corners.c`) computes coverage analytically
   per pixel rather than from a mask precomputed for one radius.
 
+### 10a.1 Per-side border colour (`AaCorners_RenderLeftEdge`)
+
+The System Info node cards carry the mockup's `borderLeftWidth: 6px; borderLeftColor: <accent>`
+on a `rounded-2xl border` box. A 6px bar inset by the radius cannot express that, and at radius
+16 the difference is obvious — the accent ends square with a grey arc above it. What CSS actually
+paints, and what this reproduces, is two things:
+
+- **The band's inner edge is an ellipse**, radii `radius - edgeWidth` horizontally and
+  `radius - borderWidth` vertically, so it is 6px thick at the straight left edge and tapers to
+  1px where it meets the top/bottom border. Solved with the polar form of the ellipse along each
+  ray, so the AA band stays measured radially exactly as the circular path measures it.
+- **The colour hands over along the mitre** — the line from the outer corner toward
+  `(edgeWidth, borderWidth)`, softened over a pixel. At 6:1 that line is shallow, so the accent
+  owns most of the arc and the top border keeps a short sliver, which is what the mockup shows.
+
+Unlike the other entry points it blends **over what is already on the surface** instead of over a
+sampled backdrop: the card beneath has already painted its fill, its 1px border and its own AA
+corners, so the band's outer AA edge lands on real backdrop and its inner edge on real fill.
+That makes it a transparent later sibling covering the whole card (`PanelAA_EnableLeftAccent`),
+not a bar — sibling order is load-bearing here.
+
 ## 12. Boot splash (done)
 
 A full-screen photo splash is the first thing on the panel: the boot task reads it out of QSPI NOR

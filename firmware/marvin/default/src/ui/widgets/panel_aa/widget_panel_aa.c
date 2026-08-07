@@ -242,3 +242,44 @@ void PanelAA_EnableRoundTop(leWidget* panel, uint32_t radius)
     panel->fn->setCornerRadius(panel, radius);
     panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
 }
+
+/* Left-accent variant: own vtable copy + captured paint, plus the two widths, which
+ * the variant shares the way it shares the vtable (one node-card geometry). */
+static leWidgetVTable s_la_vt;
+static void (*s_la_orig_paint)(leWidget*);
+static leBool s_la_ready = LE_FALSE;
+static uint32_t s_la_edge_w, s_la_border_w;
+
+static void left_accent_paint(leWidget* wgt)
+{
+    s_la_orig_paint(wgt);
+
+    if (wgt->status.drawState == LE_WIDGET_DRAW_STATE_DONE &&
+        wgt->style.cornerRadius > 0u)
+    {
+        leRect rect;
+
+        wgt->fn->rectToScreen(wgt, &rect);
+        AaCorners_RenderLeftEdge(&rect, wgt->style.cornerRadius,
+                                 s_la_edge_w, s_la_border_w,
+                                 leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE),
+                                 leRenderer_CurrentColorMode());
+    }
+}
+
+void PanelAA_EnableLeftAccent(leWidget* panel, uint32_t edgeWidth, uint32_t borderWidth)
+{
+    if (!s_la_ready)
+    {
+        s_la_vt = *panel->fn;
+        s_la_orig_paint = panel->fn->_paint;
+        s_la_vt._paint = left_accent_paint;
+        s_la_ready = LE_TRUE;
+    }
+
+    s_la_edge_w   = edgeWidth;
+    s_la_border_w = borderWidth;
+
+    panel->fn = &s_la_vt;
+    panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
+}
