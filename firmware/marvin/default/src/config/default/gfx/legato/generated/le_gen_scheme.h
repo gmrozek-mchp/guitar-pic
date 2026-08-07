@@ -36,6 +36,7 @@ extern const leScheme SCHEME_NODE_GUITAR;
 extern const leScheme SCHEME_NODE_LEMMY;
 extern const leScheme SCHEME_NODE_LIGHTSHOW;
 extern const leScheme SCHEME_NODE_MARVIN;
+extern const leScheme SCHEME_NODE_PROJECT;
 extern const leScheme SCHEME_PILL_ZINC_700;
 extern const leScheme SCHEME_PILL_ZINC_800;
 extern const leScheme SCHEME_TEST_PATTERN_BLUE;

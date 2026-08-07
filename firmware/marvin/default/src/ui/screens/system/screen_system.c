@@ -26,10 +26,11 @@
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* Marvin_PANEL_SYSTEM */
 #include "util/legato_utf8.h"
 
-/* System info — a product showcase of the seven boards, built programmatically into
- * the MGS layer-7 panel (Marvin_PANEL_SYSTEM). Two views live on the one surface:
- * an overview grid of node cards, and one detail view repopulated from the tapped
- * node's record. Content is the NODE table below, transcribed from docs/screens/.
+/* System info — a product showcase of the seven boards plus the project that contains
+ * them, built programmatically into the MGS layer-7 panel (Marvin_PANEL_SYSTEM). Two views
+ * live on the one surface: an overview grid of eight cards, and one detail view repopulated
+ * from the tapped card's record. The NODE table below is the content: nothing here reads
+ * from a doc.
  *
  * Both views are built once into their own full-screen container panel, and
  * bind_view() is the only thing that puts one on the panel — see the note there.
@@ -61,156 +62,256 @@ static uint16_t FB_NOCACHE s_fb_detail[BASE_W * BASE_H];
  * below ARE in the declared Latin-1 range, so they are safe. */
 
 #define PROSE_MAX   8u
-#define BUILT_MAX   3u
-#define NODE_N      7u
+#define BUILT_MAX   8u
+
+/* NODE_BUS_N entries are the boards on the T1S bus, held in bus order. NODE_N adds the
+ * whole-project card after them — it is a card and a detail page like the others, but not
+ * a node: it has no bus id, so it never appears on the BUS POSITION rail, and PROJECT is
+ * the index the few places that special-case it test against. */
+#define NODE_BUS_N  7u
+#define NODE_N      8u
+#define PROJECT     (NODE_N - 1u)
+
+/* Photo key for the project card. NodeArt is keyed by T1S id, and this stands in for one
+ * where there is no node — deliberately outside the id space rather than the next id up. */
+#define ID_PROJECT  0xFFu
 
 typedef struct {
     uint8_t         id;             /* real T1S PLCA id (see net/t1s/t1s_link.c) */
     const char     *name;
-    const char     *part;           /* NULL = not a Microchip part; see fauxmote */
+    const char     *part;           /* the accent callout line; NULL = none, see fauxmote */
     const char     *chip;           /* the networking part, or NULL */
     const char     *tag[2];         /* card tagline, wrapped to the narrow column */
     const char     *tagline;        /* detail header, one line */
     const leScheme *accent;
     bool            this_device;
+    bool            product;        /* `part` is an orderable part number → QR slot shown */
     const char     *prose[PROSE_MAX];
     const char     *built[BUILT_MAX];
 } node_info_t;
 
-/* Indexed in bus order (id 0,1,3,4,5,6,7) so the BUS POSITION rail reads naturally;
- * the overview grid draws them in the mockup's visual order (see GRID_ROW1/2).
+/* The first NODE_BUS_N entries are indexed in bus order (id 0,1,3,4,5,6,7) so the BUS
+ * POSITION rail reads naturally, and the project card follows them at PROJECT; the overview
+ * grid draws all of them in visual order instead (see GRID_ROW1/2).
  *
- * fauxmote deliberately carries no part number: it is the one board here whose MCU
- * isn't Microchip, and docs/screens/02-fauxmote.md asks for the card to stay a notch
- * quieter rather than naming the hardware it happens to run on. It does name LAN8651,
- * because its T1S PHY is the same Microchip part as every other node's. */
+ * `built` is a Microchip parts list — silicon, board, support parts, then the tools —
+ * which is why every entry that can name an orderable part number does. fauxmote
+ * carries no part number of its own: its MCU is the one non-Microchip part in the
+ * lineup, so its card names the Feather form factor and the radio class and stops
+ * there. Its T1S PHY is a LAN8651 like every other node's. */
 static const node_info_t NODE[NODE_N] = {
     {
-        .id = 0u, .name = "marvin", .part = "SAM9X75", .chip = "LAN8651",
-        .tag = { "The brain - watches the", "game and calls the shots" },
-        .tagline = "The brain - watches the game and calls the shots",
-        .accent = &SCHEME_NODE_MARVIN, .this_device = true,
+        .id = 0u, .name = "marvin", .part = "SAM9X75D2G", .chip = "LAN8651",
+        .tag = { "The brain - watches the", "game, calls every shot" },
+        .tagline = "The brain - watches the game and calls every shot",
+        .accent = &SCHEME_NODE_MARVIN, .this_device = true, .product = true,
         .prose = {
-            "marvin is the one running this screen right now, and the",
-            "brains of the whole operation. It watches the game over HDMI,",
-            "recognizes notes in real time, decides exactly when to press",
-            "each button, and coordinates every other board in the system.",
-            "It's also driving the 10.1-inch touchscreen display you're",
-            "looking at.",
+            "marvin is the board running this screen, and the",
+            "brain of the whole rig. It captures the game's video",
+            "over HDMI at 60 frames a second, finds the notes in",
+            "each frame, works out the exact moment every button",
+            "must be pressed, then calls it over one pair of wires.",
+            "",
+            "One 800 MHz processor does all of it at once: capture,",
+            "computer vision, note timing, and this touch UI.",
         },
         .built = {
-            "MPLAB X IDE",
-            "Curiosity development platform",
-            "10.1-inch touchscreen driven directly by the SAM9X75",
+            "SAM9X75D2G - 800 MHz Arm926 MPU, 2 Gbit DDR3L in package",
+            "SAM9X75 Curiosity Development Board (EV31H43A)",
+            "MCP16502 power management IC",
+            "SST26VF064B 64 Mbit SQI flash - settings storage",
+            "10.1-inch 1280x800 LVDS panel with maXTouch touch",
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "MPLAB extensions for VS Code, MCC Harmony 3, XC32",
+            "MPLAB Graphics Suite (Legato) + FreeRTOS drive this UI",
         },
     },
     {
         .id = 1u, .name = "fauxmote", .part = NULL, .chip = "LAN8651",
-        .tag = { "An alternate way to talk", "to the game console" },
-        .tagline = "An alternate way to talk to the game console",
+        .tag = { "The stand-in - becomes", "the controller itself" },
+        .tagline = "The stand-in - becomes the controller, wirelessly",
         .accent = &SCHEME_NODE_FAUXMOTE,
         .prose = {
-            "fauxmote explores a different way to play: instead of",
-            "physically pressing buttons on a real guitar controller, it",
-            "wirelessly pretends to be one, talking straight to the game",
-            "console over Bluetooth. It's a side experiment alongside the",
-            "main physical approach.",
+            "fauxmote skips the guitar altogether. Instead of",
+            "pressing buttons on a real controller, it pretends to",
+            "be one - speaking the console's own wireless protocol,",
+            "down to the encryption the game expects.",
+            "",
+            "It is the one board here that isn't a Microchip MCU:",
+            "the side experiment. It still joins the same",
+            "single-pair bus, and takes the same calls as the rest.",
         },
-        .built = { "Bluetooth Classic wireless link" },
+        .built = {
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "Adafruit Feather board with a Bluetooth Classic radio",
+            "Same T1S frames as every Microchip node on the bus",
+        },
     },
     {
-        .id = 3u, .name = "guitar", .part = "PIC32CM PL10", .chip = "LAN8651",
+        .id = 3u, .name = "guitar", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
         .tag = { "The hands - presses the", "buttons in perfect time" },
-        .tagline = "The hands - presses the buttons in perfect time",
-        .accent = &SCHEME_NODE_GUITAR,
+        .tagline = "The hands - takes the call and presses the buttons",
+        .accent = &SCHEME_NODE_GUITAR, .product = true,
         .prose = {
-            "This board is the one that actually presses the buttons -",
-            "receiving marvin's call and instantly lighting up the right",
-            "frets and strum, in perfect time with the music. A small,",
-            "dedicated board with one job, done fast and reliably.",
+            "guitar is the board that actually plays. One byte",
+            "arrives over the bus - which frets are held, and",
+            "whether to strum - and its outputs follow, a couple of",
+            "milliseconds behind the call.",
+            "",
+            "It holds no game logic at all: no camera, no timing,",
+            "no notes. That is deliberate. Sensing, timing and",
+            "pressing each live on their own node, swappable.",
         },
         .built = {
-            "MPLAB X IDE",
-            "MCC (MPLAB Code Configurator)",
-            "Microchip LAN8651 networking",
+            "PIC32CM6408PL10048 - 5 V Cortex-M0+ MCU, 64 KB, 24 MHz",
+            "PIC32CM PL10 Curiosity Nano (EV10P22A)",
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "5 V I/O drives the guitar's buttons with no level shift",
+            "Bare metal - no RTOS, one main loop, static allocation",
+            "MPLAB extensions for VS Code, MCC Harmony, XC32",
         },
     },
     {
-        .id = 4u, .name = "fretboard", .part = "PIC32CM6408", .chip = "LAN8651",
-        .tag = { "The eyes - senses every note", "the instant it appears" },
-        .tagline = "The eyes - senses every note the instant it appears",
-        .accent = &SCHEME_NODE_FRETBOARD,
+        .id = 4u, .name = "fretboard", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
+        .tag = { "The eyes - reads notes", "off the screen itself" },
+        .tagline = "The eyes - reads the notes straight off the screen",
+        .accent = &SCHEME_NODE_FRETBOARD, .product = true,
         .prose = {
-            "fretboard watches the game screen where notes appear and",
-            "senses them the instant they arrive - then decides, right",
-            "there on the board, which button that note calls for.",
-            "Real-time sensing and on-device decision-making, without",
-            "waiting on anything else.",
+            "fretboard watches the TV itself. Five phototransistors",
+            "sit over the spot where notes reach the strike line,",
+            "and the MCU samples all five 240 times a second.",
+            "",
+            "A small neural network - trained on marvin's own play",
+            "and squeezed into 64 KB of flash - runs on the board",
+            "and turns those five light readings into the buttons",
+            "to press, then sends them straight out over the bus.",
         },
         .built = {
-            "MPLAB X IDE",
-            "MCC (MPLAB Code Configurator)",
-            "Microchip LAN8651 networking",
+            "PIC32CM6408PL10048 - 5 V Cortex-M0+ MCU, 64 KB, 24 MHz",
+            "PIC32CM PL10 Curiosity Nano (EV10P22A)",
+            "Custom signal-conditioning board: 5 phototransistors",
+            "MCP6002 dual op-amps - phototransistor front end",
+            "MCP1804 LDO + MCP16301 buck - sensor board power",
+            "12-bit ADC - five channels sampled at 240 Hz",
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "MPLAB extensions for VS Code, MCC Harmony, XC32",
         },
     },
     {
         .id = 5u, .name = "beatbox", .part = "dsPIC33AK512MPS512", .chip = "LAN8651",
-        .tag = { "The ears - listens to the", "music and finds the beat" },
+        .tag = { "The ears - listens and", "finds the beat" },
         .tagline = "The ears - listens to the music and finds the beat",
-        .accent = &SCHEME_NODE_BEATBOX,
+        .accent = &SCHEME_NODE_BEATBOX, .product = true,
         .prose = {
-            "beatbox listens to the music itself and figures out where the",
-            "beat falls, in real time - then shares that rhythm with the",
-            "rest of the system so the puppet can nod its head and the",
-            "lights can pulse in time with the song.",
+            "beatbox listens. Stereo line-level audio comes in",
+            "through the on-chip converter at 48,000 samples a",
+            "second, and 512-point FFTs run over it 23 times a",
+            "second.",
+            "",
+            "From how the energy jumps between one FFT and the next",
+            "it picks out kick drums and bass hits - the beat - and",
+            "broadcasts it to the bus. lemmy and lightshow follow.",
         },
         .built = {
-            "MPLAB X IDE",
-            "XC-DSC compiler",
-            "Curiosity Platform Development Board",
+            "dsPIC33AK512MPS512 - 200 MHz DSC with hardware FPU",
+            "dsPIC33AK512MPS512 GP DIM (EV80L65A)",
+            "Curiosity Platform Development Board (EV74H48A)",
+            "On-chip ADC - stereo line in at 48 kHz",
+            "PWM outputs as a monitor DAC",
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "MPLAB extensions for VS Code, MCC Melody, XC-DSC",
         },
     },
     {
-        .id = 6u, .name = "lemmy", .part = "PIC32CM6408", .chip = "LAN8651",
-        .tag = { "The body - head-bangs a puppet", "in time with the music" },
+        .id = 6u, .name = "lemmy", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
+        .tag = { "The body - head-bangs a", "puppet on the beat" },
         .tagline = "The body - head-bangs a puppet in time with the music",
-        .accent = &SCHEME_NODE_LEMMY,
+        .accent = &SCHEME_NODE_LEMMY, .product = true,
         .prose = {
-            "lemmy is an animated puppet that brings the performance to",
-            "life - nodding its head and moving its jaw right along with",
-            "the beat that beatbox hears. It takes the rhythm it's given",
-            "and turns it into motion.",
+            "lemmy is the puppet. Two hobby servos - one in the",
+            "neck, one in the jaw - run off a timer on the MCU, and",
+            "the head nods to the beat beatbox broadcasts.",
+            "",
+            "It hears the same beat frame lightshow does, keeps its",
+            "own small oscillator locked to it, and rides straight",
+            "through quiet patches instead of stopping dead.",
         },
         .built = {
-            "MPLAB X IDE",
-            "MCC (MPLAB Code Configurator)",
-            "Microchip LAN8651 networking",
+            "PIC32CM6408PL10048 - 5 V Cortex-M0+ MCU, 64 KB, 24 MHz",
+            "PIC32CM PL10 Curiosity Nano (EV10P22A)",
+            "TCC timer - 50 Hz servo pulses, no CPU per frame",
+            "Two R/C hobby servos: neck nod and jaw",
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "MPLAB extensions for VS Code, MCC Harmony, XC32",
         },
     },
     {
-        .id = 7u, .name = "lightshow", .part = "PIC32CM6408", .chip = "LAN8651",
-        .tag = { "The lights - brings the", "stage to life" },
-        .tagline = "The lights - brings the stage to life",
-        .accent = &SCHEME_NODE_LIGHTSHOW,
+        .id = 7u, .name = "lightshow", .part = "PIC32CM6408PL10048", .chip = "LAN8651",
+        .tag = { "The lights - turns the", "beat into a stage show" },
+        .tagline = "The lights - turns the beat into a stage show",
+        .accent = &SCHEME_NODE_LIGHTSHOW, .product = true,
         .prose = {
-            "lightshow turns the same beat that moves lemmy's head into a",
-            "stage light show - driving colorful LED strips that pulse and",
-            "animate along with the music.",
+            "lightshow drives two strands of addressable LEDs from",
+            "the same beat frame lemmy nods to - pulsing on the",
+            "kick, washing colour with the bass.",
+            "",
+            "Each LED wants a 5 volt data stream shaped to about a",
+            "microsecond per bit. This MCU's 5 V outputs drive the",
+            "strips directly - no level shifter - while a timer and",
+            "DMA clock out both strands and leave the CPU free.",
         },
         .built = {
-            "MPLAB X IDE",
-            "MCC (MPLAB Code Configurator)",
-            "Microchip LAN8651 networking",
+            "PIC32CM6408PL10048 - 5 V Cortex-M0+ MCU, 64 KB, 24 MHz",
+            "PIC32CM PL10 Curiosity Nano (EV10P22A)",
+            "5 V I/O on VDDIO2 - drives LED data with no shifter",
+            "TC timer + DMA - 800 kHz bit stream, zero CPU",
+            "Two 33-pixel addressable LED strands",
+            "LAN8651B1 10BASE-T1S MAC-PHY (Two-Wire ETH 3 Click)",
+            "MPLAB extensions for VS Code, MCC Harmony, XC32",
+        },
+    },
+    /* The whole project, not a node — see PROJECT. No bus id, and `part` carries a
+     * category line rather than an orderable number, so `product` stays false and the
+     * QR slot is hidden. Its parts list is the system-level one: every Microchip family
+     * on the bus at once. */
+    {
+        .id = ID_PROJECT, .name = "guitar-pic", .part = "DIGITAL MUSIC INTEGRATION",
+        .chip = "10BASE-T1S single-pair bus",
+        .tag = { "A robot band that plays", "Guitar Hero by itself" },
+        .tagline = "The whole rig - a robot band that plays Guitar Hero by itself",
+        .accent = &SCHEME_NODE_PROJECT,
+        .prose = {
+            "guitar-pic is the whole rig: seven boards that watch a",
+            "video game, work out what to play, and play it on a real",
+            "guitar controller - with a puppet and a light show",
+            "keeping time to the music.",
+            "",
+            "Every board is a Microchip MCU, and they all talk over",
+            "one twisted pair using 10BASE-T1S, the same single-pair",
+            "Ethernet that links sensors in a car.",
+        },
+        .built = {
+            "SAM9X75D2G - 800 MHz Arm926 MPU with 2D graphics",
+            "PIC32CM6408PL10048 - 5 V Cortex-M0+, four of them",
+            "dsPIC33AK512MPS512 - 200 MHz DSC for the audio FFT",
+            "LAN8651B1 10BASE-T1S MAC-PHY on every node",
+            "MIKROE Two-Wire ETH 3 Click - one per board",
+            "MCP16502 PMIC, MCP6002 op-amps, MCP1804, MCP16301",
+            "MPLAB extensions for VS Code, MCC Harmony + Melody",
+            "XC32 and XC-DSC compilers, Harmony 3, Graphics Suite",
         },
     },
 };
 
-#define HEADLINE  "Seven boards. One cable. Every one Microchip inside."
+#define HEADLINE  "Seven boards. One pair of wires. Microchip in every one."
 
-/* Visual order of the grid: marvin / fretboard / beatbox above,
- * lemmy / guitar / lightshow / fauxmote below. Values are NODE[] indices. */
-static const uint8_t GRID_ROW1[3] = { 0u, 3u, 4u };
-static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
+/* Visual order of the grid: guitar-pic / marvin / fretboard / beatbox above,
+ * lemmy / guitar / lightshow / fauxmote below. Values are NODE[] indices — the whole-project
+ * card leads, so the row reads parent-then-brain. Both rows are four wide, so one card
+ * width serves both (see CARD_W). */
+#define GRID_COLS   4u
+static const uint8_t GRID_ROW1[GRID_COLS] = { PROJECT, 0u, 3u, 4u };
+static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
 
 /* ── layout ──────────────────────────────────────────────────────────────────
  * Content spans x 16..1264 below the shared titlebar (top ~65px). */
@@ -235,8 +336,7 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
 #define GRID_H      (BASE_H - MARGIN - GRID_Y)     /* 666 */
 #define CARD_H      ((GRID_H - GAP) / 2)           /* 327 */
 #define ROW2_Y      (GRID_Y + CARD_H + GAP)        /* 457 */
-#define R1_W        ((CONTENT_W - 2 * GAP) / 3)    /* 408 */
-#define R2_W        ((CONTENT_W - 3 * GAP) / 4)    /* 303 */
+#define CARD_W      ((CONTENT_W - (int)(GRID_COLS - 1u) * GAP) / (int)GRID_COLS)   /* 303 */
 
 /* card interior, relative to the card's own origin */
 #define BAR_W        6                             /* the mockup's borderLeftWidth */
@@ -244,7 +344,7 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
 #define C_NAME_Y     16
 #define C_PART_Y     50
 #define C_TAG_Y      82
-#define C_TAG_PITCH  20
+#define C_TAG_PITCH  22    /* DejaVuSansMono_16 is 20px tall, so 20 would touch */
 #define CHIP_H       20
 #define CHIP_DOT_D    6
 
@@ -262,6 +362,14 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
 #define D_PART_Y    82
 #define D_TAG_Y    118
 
+/* The node name, set beside the part number. Its box has to be taller than the glyph —
+ * DejaVuSansMonoBold_20 is 25px — or a descender is clipped, and since a label centres
+ * its text at `y + h/2 - fontHeight/2` (integer division, leUtils_ArrangeRectangleRelative)
+ * the y compensates for the extra height so the baseline still lands on the part
+ * number's. Both must change together. */
+#define D_NAME_Y    (D_PART_Y + 2)
+#define D_NAME_H    28
+
 #define BODY_Y     164
 #define BODY_H      (BASE_H - MARGIN - BODY_Y)     /* 620 */
 #define PHOTO_W    288
@@ -271,36 +379,50 @@ static const uint8_t GRID_ROW2[4] = { 5u, 2u, 6u, 1u };
 #define C3_W       256
 #define CPAD        24
 #define SEC_H       18                             /* section caption */
-#define WHAT_H     380
-#define BUILT_Y     (BODY_Y + WHAT_H + GAP)        /* 556 */
-#define BUILT_H     (BASE_H - MARGIN - BUILT_Y)    /* 228 */
+/* WHAT_H is sized to its content — SEC_BODY_Y + PROSE_MAX * PROSE_PITCH + a bottom pad
+ * — rather than splitting the column evenly, so the surplus goes to the parts list
+ * below, which is the section that ran out of room. */
+#define WHAT_H     296
+#define BUILT_Y     (BODY_Y + WHAT_H + GAP)        /* 472 */
+#define BUILT_H     (BASE_H - MARGIN - BUILT_Y)    /* 312 */
 #define QR_H       232
 #define RAIL_Y      (BODY_Y + QR_H + GAP)          /* 408 */
 #define RAIL_H      (BASE_H - MARGIN - RAIL_Y)     /* 376 */
 #define SEC_BODY_Y  52                             /* first row below a caption */
-#define PROSE_PITCH 26
-#define BUILT_PITCH 32
+#define PROSE_PITCH 28
+#define BUILT_PITCH 30
 #define RAIL_PITCH  40
 #define BOX_W       32
 #define BOX_H       26
 #define BOX_EDGE     2                             /* the mockup's 2px accent ring */
 
 /* Prose wraps to this many columns: the text box is C2_W - 2*CPAD = 632px and
- * DejaVuSansMono_16 advances 10px/glyph (every DejaVu Mono here is monospace, one
- * advance for all 191 glyphs), so 63 fit. The NODE table's lines are wrapped to 62. */
-#define PROSE_COLS  62
+ * DejaVuSansMono_18 advances 11px/glyph (every DejaVu Mono here is monospace, one
+ * advance for all its glyphs), so 57 fit. The NODE table's lines are wrapped to that.
+ *
+ * A parts row is narrower — it sits after the bullet dot — at C2_W - 2*CPAD - CHIP_DOT_D
+ * - 12 = 614px, and DejaVuSansMono_16 advances 10px, so 61 fit. */
+#define PROSE_COLS  57
+#define BUILT_COLS  61
 
-/* DejaVuSansMonoBold_24's glyph advance, used to lay the node name out after a
- * variable-length part number in the detail header. */
-#define MONO24_ADV  14
+/* Glyph advances, decoded from le_gen_fonts.c. MONO24_ADV lays the node name out after a
+ * variable-length callout in the detail header; MONO_B18_ADV decides whether that callout
+ * fits a card at its full size (see build_card). */
+#define MONO24_ADV     14
+#define MONO_B18_ADV   11
+
+/* The detail header's callout label, wide enough for the longest string in the table —
+ * "DIGITAL MUSIC INTEGRATION", 25 glyphs at MONO24_ADV. */
+#define D_PART_W    (26 * MONO24_ADV)               /* 364 */
 
 /* ── static widget storage ───────────────────────────────────────────────────
  * Widgets live in BSS (no Legato pool / LE_MALLOC): the in-place Constructors build
  * them exactly as leX_New would after LE_MALLOC. Pools are sized to the built screen;
  * configASSERT catches undersizing at bring-up. */
-/* Longest string is marvin's detail tagline with the THIS DEVICE suffix appended — 65
- * bytes, since show_detail builds it in a char[CAP] and `·` costs two. Prose lines are
- * 61 at most. Kept generously above both so an edit to either doesn't silently clip. */
+/* Longest string is marvin's detail tagline with the THIS DEVICE suffix appended — 66
+ * bytes, since show_detail builds it in a char[CAP] and `·` costs two. Prose lines run
+ * to PROSE_COLS and parts rows to BUILT_COLS. Kept generously above all three so an
+ * edit to any of them doesn't silently clip. */
 #define CAP       104u
 #define LBL_MAX    96u
 #define WGT_MAX    64u
@@ -347,8 +469,8 @@ static StackType_t       s_view_stack[512];
 static StaticTask_t      s_view_tcb;
 
 static leWidget       *s_d_qr_card;
-static leWidget       *s_d_rail_box[NODE_N];
-static leLabelWidget  *s_d_rail_id[NODE_N], *s_d_rail_name[NODE_N];
+static leWidget       *s_d_rail_box[NODE_BUS_N];
+static leLabelWidget  *s_d_rail_id[NODE_BUS_N], *s_d_rail_name[NODE_BUS_N];
 
 /* ── build helpers ──────────────────────────────────────────────────────────
  * All take their parent, so the same builders work whether both views share one
@@ -402,11 +524,31 @@ static leWidget *add_capsule(leWidget *parent, int x, int y, int w, int h,
     return p;
 }
 
+/* A label box shorter than its font clips a row off the text — top and bottom, so the
+ * visible symptom is a cut descender. Legato centres the text at `y + h/2 - fontH/2`
+ * (leUtils_ArrangeRectangleRelative) and clips to the widget rect, so growing the box to
+ * the font's height and shifting y by the same halved amount fits the glyphs without
+ * moving them: the caller's numbers still decide where the text sits. */
+static void fit_font(const leFont *font, int *y, int *h)
+{
+    if ((font == NULL) || (font->type != LE_RASTER_FONT)) { return; }
+
+    int fh = (int)((const leRasterFont *)font)->height;
+
+    if (*h < fh)
+    {
+        *y += (*h / 2) - (fh / 2);
+        *h  = fh;
+    }
+}
+
 static leLabelWidget *add_label(leWidget *parent, int x, int y, int w, int h,
                                 const leFont *font, const leScheme *scheme,
                                 leHAlignment ha)
 {
     configASSERT(s_nlbl < LBL_MAX);
+
+    fit_font(font, &y, &h);
 
     leLabelWidget *l = &s_lbl[s_nlbl];
     leLabelWidget_Constructor(l);
@@ -605,7 +747,7 @@ static void show_detail(unsigned n)
                               (d->part != NULL)
                                   ? TITLE_X + (int)(strlen(d->part) + 2u) * MONO24_ADV
                                   : TITLE_X,
-                              D_PART_Y + 4);
+                              D_NAME_Y);
     s_d_name->fn->setScheme(s_d_name, (d->part != NULL) ? &SCHEME_TEXT_ZINC_400
                                                         : d->accent);
     set_text(s_d_name, d->name);
@@ -635,15 +777,16 @@ static void show_detail(unsigned n)
 
     s_photo_px = NodeArt_Pixels(d->id);
 
-    /* The QR slot is reserved, not wired: only the nodes with a Microchip product page
-     * get one, so the whole card stays hidden for the others rather than showing an
-     * empty box. */
-    s_d_qr_card->fn->setVisible(s_d_qr_card,
-                                (d->part != NULL) ? LE_TRUE : LE_FALSE);
+    /* The QR slot is reserved, not wired: only the entries whose callout is an orderable
+     * part number have a product page, so the whole card stays hidden for the others
+     * rather than showing an empty box. */
+    s_d_qr_card->fn->setVisible(s_d_qr_card, d->product ? LE_TRUE : LE_FALSE);
 
-    for (unsigned i = 0u; i < NODE_N; i++)
+    /* The project card lights the whole rail — it *is* the bus — which doubles as the
+     * legend for the accent colours the other seven cards carry. */
+    for (unsigned i = 0u; i < NODE_BUS_N; i++)
     {
-        bool sel = (i == n);
+        bool sel = (n == PROJECT) || (i == n);
         s_d_rail_box[i]->fn->setScheme(s_d_rail_box[i],
                                        sel ? NODE[i].accent : &SCHEME_FILL_ZINC_700);
         s_d_rail_id[i]->fn->setScheme(s_d_rail_id[i],
@@ -722,18 +865,23 @@ static void build_card(leWidget *parent, unsigned n, int x, int y, int w)
                    LE_HALIGN_LEFT, d->name);
 
     /* The part number is the marketing payload of this screen, so it gets its own
-     * callout line rather than being one bullet among others. */
+     * callout line rather than being one bullet among others. A part number fits the card
+     * at Bold_18 (18 chars × 11px against a 269px column); the project card's longer
+     * category line does not, so the callout drops a size rather than clipping. */
     if (d->part != NULL)
     {
+        bool fits = ((int)strlen(d->part) * MONO_B18_ADV) <= tw;
+
         (void)add_text(parent, tx, y + C_PART_Y, tw, 24,
-                       (const leFont *)&DejaVuSansMonoBold_18, d->accent,
-                       LE_HALIGN_LEFT, d->part);
+                       fits ? (const leFont *)&DejaVuSansMonoBold_18
+                            : (const leFont *)&DejaVuSansMonoBold_16,
+                       d->accent, LE_HALIGN_LEFT, d->part);
     }
 
     for (unsigned i = 0u; i < 2u; i++)
     {
         (void)add_text(parent, tx, y + C_TAG_Y + (int)i * C_TAG_PITCH, tw, C_TAG_PITCH,
-                       (const leFont *)&DejaVuSansMono_14, &SCHEME_TEXT_ZINC_300,
+                       (const leFont *)&DejaVuSansMono_16, &SCHEME_TEXT_ZINC_300,
                        LE_HALIGN_LEFT, d->tag[i]);
     }
 
@@ -756,13 +904,10 @@ static void build_overview(leWidget *parent)
                    (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_TEXT_WHITE,
                    LE_HALIGN_LEFT, HEADLINE);
 
-    for (unsigned i = 0u; i < 3u; i++)
+    for (unsigned i = 0u; i < GRID_COLS; i++)
     {
-        build_card(parent, GRID_ROW1[i], CONTENT_X + (int)i * (R1_W + GAP), GRID_Y, R1_W);
-    }
-    for (unsigned i = 0u; i < 4u; i++)
-    {
-        build_card(parent, GRID_ROW2[i], CONTENT_X + (int)i * (R2_W + GAP), ROW2_Y, R2_W);
+        build_card(parent, GRID_ROW1[i], CONTENT_X + (int)i * (CARD_W + GAP), GRID_Y, CARD_W);
+        build_card(parent, GRID_ROW2[i], CONTENT_X + (int)i * (CARD_W + GAP), ROW2_Y, CARD_W);
     }
 }
 
@@ -784,10 +929,10 @@ static void build_detail(leWidget *parent)
     (void)add_panel(parent, DIV_X, BACK_Y, 1, BACK_H, &SCHEME_FILL_ZINC_700, LE_TRUE);
     s_d_accent = add_capsule(parent, ACC_X, ACC_Y, ACC_W, ACC_H, &SCHEME_NODE_MARVIN);
 
-    s_d_part = add_label(parent, TITLE_X, D_PART_Y, 320, HEAD_H,
+    s_d_part = add_label(parent, TITLE_X, D_PART_Y, D_PART_W, HEAD_H,
                          (const leFont *)&DejaVuSansMonoBold_24, &SCHEME_NODE_MARVIN,
                          LE_HALIGN_LEFT);
-    s_d_name = add_label(parent, TITLE_X, D_PART_Y + 4, 260, 24,
+    s_d_name = add_label(parent, TITLE_X, D_NAME_Y, 260, D_NAME_H,
                          (const leFont *)&DejaVuSansMonoBold_20, &SCHEME_TEXT_ZINC_400,
                          LE_HALIGN_LEFT);
     s_d_tag  = add_label(parent, TITLE_X, D_TAG_Y, BASE_W - TITLE_X - MARGIN, 20,
@@ -798,7 +943,7 @@ static void build_detail(leWidget *parent)
      * scanned out on OVR1 over this rect (see photo_apply). */
     s_d_frame = add_image_frame(parent, CONTENT_X, BODY_Y, PHOTO_W, BODY_H);
 
-    /* col 2: what it does, then built with */
+    /* col 2: what it does, then the parts list */
     (void)add_card(parent, C2_X, BODY_Y, C2_W, WHAT_H);
     (void)add_text(parent, C2_X + CPAD, BODY_Y + CPAD, C2_W - 2 * CPAD, SEC_H,
                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
@@ -808,14 +953,14 @@ static void build_detail(leWidget *parent)
         s_d_prose[i] = add_label(parent, C2_X + CPAD,
                                  BODY_Y + SEC_BODY_Y + (int)i * PROSE_PITCH,
                                  C2_W - 2 * CPAD, PROSE_PITCH,
-                                 (const leFont *)&DejaVuSansMono_16,
+                                 (const leFont *)&DejaVuSansMono_18,
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
     }
 
     (void)add_card(parent, C2_X, BUILT_Y, C2_W, BUILT_H);
     (void)add_text(parent, C2_X + CPAD, BUILT_Y + CPAD, C2_W - 2 * CPAD, SEC_H,
                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
-                   LE_HALIGN_LEFT, "BUILT WITH");
+                   LE_HALIGN_LEFT, "MICROCHIP INSIDE");
     for (unsigned i = 0u; i < BUILT_MAX; i++)
     {
         int by = BUILT_Y + SEC_BODY_Y + (int)i * BUILT_PITCH;
@@ -823,7 +968,7 @@ static void build_detail(leWidget *parent)
                                    CHIP_DOT_D, &SCHEME_NODE_MARVIN);
         s_d_built[i] = add_label(parent, C2_X + CPAD + CHIP_DOT_D + 12, by,
                                  C2_W - 2 * CPAD - CHIP_DOT_D - 12, 24,
-                                 (const leFont *)&DejaVuSansMono_14,
+                                 (const leFont *)&DejaVuSansMono_16,
                                  &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);
     }
 
@@ -840,7 +985,7 @@ static void build_detail(leWidget *parent)
     (void)add_text(parent, C3_X + CPAD, RAIL_Y + CPAD, C3_W - 2 * CPAD, SEC_H,
                    (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
                    LE_HALIGN_LEFT, "BUS POSITION");
-    for (unsigned i = 0u; i < NODE_N; i++)
+    for (unsigned i = 0u; i < NODE_BUS_N; i++)   /* the project card has no bus id */
     {
         int ry = RAIL_Y + SEC_BODY_Y + (int)i * RAIL_PITCH;
         char t[8];

@@ -13,8 +13,8 @@ extern "C" {
  * screens); built + painted at boot but not shown until swapped onto BASE.
  *
  * A product showcase of the seven boards that make up the robot: an overview grid of
- * node cards, each tapping through to that node's detail view. Content comes from the
- * static table in screen_system.c, transcribed from docs/screens/.
+ * node cards, each tapping through to that node's detail view. The static NODE table in
+ * screen_system.c is the content — description, parts list and all.
  *
  * Owned by ui/screens/system:
  *   ScreenSystem_InitSurface — assign the canvas buffer; call before the canvas state

@@ -18,13 +18,16 @@
 typedef struct { uint8_t id; const char *file; } node_photo_t;
 
 static const node_photo_t PHOTO[] = {
-    { 0u, "marvin"    },
-    { 1u, "fauxmote"  },
-    { 3u, "guitar"    },
-    { 4u, "fretboard" },
-    { 5u, "beatbox"   },
-    { 6u, "lemmy"     },
-    { 7u, "lightshow" },
+    { 0u,    "marvin"     },
+    { 1u,    "fauxmote"   },
+    { 3u,    "guitar"     },
+    { 4u,    "fretboard"  },
+    { 5u,    "beatbox"    },
+    { 6u,    "lemmy"      },
+    { 7u,    "lightshow"  },
+    /* The whole-rig shot for the project card, which is not a node — 0xFF is its stand-in
+     * key (ID_PROJECT in screen_system.c), outside the T1S id space. */
+    { 0xFFu, "guitar-pic" },
 };
 #define PHOTO_N  (sizeof PHOTO / sizeof PHOTO[0])
 
