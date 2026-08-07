@@ -18,7 +18,10 @@ uint32_t utf8_to_lechar(const char *utf8, leChar *out, uint32_t cap);
 
 /* Set any leString (fixed or dynamic) from a UTF-8 C string, decoding
  * multibyte sequences into single code points. Use instead of
- * str->fn->setFromCStr for text that may contain non-ASCII characters. */
+ * str->fn->setFromCStr for text that may contain non-ASCII characters.
+ *
+ * NULL or "" empties the string — setFromChar alone would not (see the note in the
+ * implementation), so this is the way to blank a label. */
 leResult lestring_set_utf8(leString *str, const char *utf8);
 
 #endif

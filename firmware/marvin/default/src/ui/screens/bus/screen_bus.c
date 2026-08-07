@@ -116,10 +116,31 @@ static leWidget *next_widget(void)
     return p;
 }
 
+/* A label box shorter than its font clips a row off the text — top and bottom, so the
+ * visible symptom is a cut descender (several boxes here are 14px around a 16px font).
+ * Legato centres the text at `y + h/2 - fontH/2` (leUtils_ArrangeRectangleRelative) and
+ * clips to the widget rect, so growing the box to the font's height and shifting y by the
+ * same halved amount fits the glyphs without moving them. */
+static void fit_font(const leFont *font, int *y, int *h)
+{
+    if ((font == NULL) || (font->type != LE_RASTER_FONT)) { return; }
+
+    int fh = (int)((const leRasterFont *)font)->height;
+
+    if (*h < fh)
+    {
+        *y += (*h / 2) - (fh / 2);
+        *h  = fh;
+    }
+}
+
 static leLabelWidget *add_label(int x, int y, int w, int h, const leFont *font,
                                 const leScheme *scheme, leHAlignment ha)
 {
     configASSERT(s_nlbl < LBL_MAX);
+
+    fit_font(font, &y, &h);
+
     leLabelWidget *l = &s_lbl[s_nlbl];
     leLabelWidget_Constructor(l);
     l->fn->setPosition(l, x, y);

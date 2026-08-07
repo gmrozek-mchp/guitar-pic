@@ -50,5 +50,16 @@ leResult lestring_set_utf8(leString *str, const char *utf8)
 
     n = utf8_to_lechar(utf8, buf, sizeof(buf) / sizeof(buf[0]));
 
+    /* Empty goes through clear(), not setFromChar: leFixedString_SetFromChar returns
+     * LE_SUCCESS early on size 0 without touching length, so assigning "" would leave
+     * the previous text in the buffer. clear() zeroes the length and damages the old
+     * rect. Also covers a decode that produced nothing, where stale text would be
+     * equally wrong. */
+    if (n == 0)
+    {
+        str->fn->clear(str);
+        return LE_SUCCESS;
+    }
+
     return str->fn->setFromChar(str, buf, n);
 }
