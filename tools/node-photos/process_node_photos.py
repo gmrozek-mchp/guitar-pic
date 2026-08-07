@@ -32,7 +32,7 @@ the rest in the card's own zinc-900, which keeps the board recognizable. Use
 `--fit cover` for a photo already framed portrait.
 
 Node names must match ui/node_art.c's PHOTO table:
-    marvin fauxmote guitar fretboard beatbox lemmy lightshow
+    marvin fauxmote guitar fretboard beatbox lemmy lightshow guitar-pic
 
 Usage:
     cd tools/node-photos
@@ -52,8 +52,10 @@ from PIL import Image, ImageDraw, ImageOps
 SLOT_W = 288
 SLOT_H = 620
 
-# Must match the PHOTO table in firmware/marvin/default/src/ui/node_art.c
-NODES = ["marvin", "fauxmote", "guitar", "fretboard", "beatbox", "lemmy", "lightshow"]
+# Must match the PHOTO table in firmware/marvin/default/src/ui/node_art.c. "guitar-pic"
+# is the whole-rig shot for the project card, which is not a node.
+NODES = ["marvin", "fauxmote", "guitar", "fretboard", "beatbox", "lemmy", "lightshow",
+         "guitar-pic"]
 
 # The card fill the letterbox blends into (Tailwind zinc-900, SCHEME_FILL_ZINC_900).
 ZINC_900 = (24, 24, 27)

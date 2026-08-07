@@ -16,8 +16,11 @@ Node names must match the `PHOTO` table in
 `firmware/marvin/default/src/ui/node_art.c`:
 
 ```
-marvin  fauxmote  guitar  fretboard  beatbox  lemmy  lightshow
+marvin  fauxmote  guitar  fretboard  beatbox  lemmy  lightshow  guitar-pic
 ```
+
+`guitar-pic` is the whole-rig shot for the project card rather than a node — the
+firmware keys it off `0xFF`, outside the T1S id space.
 
 ## The frame is baked in
 
