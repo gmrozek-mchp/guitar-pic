@@ -1,6 +1,6 @@
 #include "ui/widgets/gauge/widget_gauge.h"
 
-#include "ui/gfx/vec_draw.h"
+#include "ui/gfx/aa_shape.h"
 
 #include "gfx/legato/core/legato_scheme.h"
 
@@ -17,9 +17,12 @@ static const leScheme *s_track;
 static const leScheme *s_fill;
 
 /* Paint the arc after the (empty, transparent) widget paints: the full 180° track,
- * then the fill over its left end. The vector rasterizer anti-aliases both radial
- * edges and the fill's leading edge against whatever is already in the framebuffer,
- * and clips to the widget's damage rect — no stock rounded/arc paint involved.
+ * then the fill over its left end — drawn as ONE annulus pass whose colour comes from an
+ * angular wedge test, so the seam between them is never blended twice.
+ *
+ * AaShape_ArcRing, not leDraw_VectorArcStroke: the arc rasterizer takes 8 supersamples per
+ * pixel and each runs Atan2 plus a vector normalise, and per legato_vector_review.md's own
+ * correction 1 it scans the FULL circle regardless of span. See the journal, 2026-08-07.
  *
  * Both arcs are round-capped, so the ring's ends and the fill's leading edge are
  * semicircles. A cap reaches thickness/2 past its arc end in every direction, which
@@ -39,36 +42,36 @@ static void gauge_paint(leWidget *wgt)
     wgt->fn->rectToScreen(wgt, &rect);
     if (rect.width < 8 || rect.height < 6) { return; }
 
-    leReal_i16 t = LE_REAL_I16_FROM_INT((int32_t)s_thickness);
-    leReal_i16 r = LE_REAL_I16_FROM_INT(rect.width) / 2 - t / 2 - LE_REAL_I16_ONE;
+    /* Half-pixel units. The ring's ends sit on the horizontal diameter, and the round caps
+     * reach hw past them, which the radius leaves room for. */
+    int32_t hw = (int32_t)s_thickness;                 /* half of thickness px, doubled */
+    int32_t r  = rect.width - hw - 2;
 
-    if (r <= t / 2) { return; }
+    if (r <= hw) { return; }
 
-    leVector2 centre = { .x = LE_REAL_I16_FROM_INT(rect.x) +
-                              LE_REAL_I16_FROM_INT(rect.width) / 2,
-                         .y = LE_REAL_I16_FROM_INT(rect.y) + r + t / 2 + LE_REAL_I16_ONE };
+    int32_t cx = (2 * rect.x) + rect.width;
+    int32_t cy = (2 * rect.y) + r + hw + 2;
 
-    /* The fill grows from the left end (180°) clockwise, so it ends where the track's
-     * remaining span begins. */
-    int32_t span = (int32_t)((s_permille * (uint32_t)UI_VEC_DEG16(180)) / 1000u);
+    leColor track = leScheme_GetRenderColor(s_track, LE_SCHM_BASE);
+    leColor fill  = leScheme_GetRenderColor(s_fill,  LE_SCHM_BASE);
 
-    leVectorArc_StrokeAttr arc =
+    /* The fill grows from the left end (180 degrees) back toward 0, so the wedge is the top
+     * `span` degrees of the ring's range. */
+    int32_t span = (int32_t)((s_permille * 180u) / 1000u);
+
+    AaShape_ArcRing(cx, cy, r, hw, 0, 180, 180 - span, (span > 0) ? 180 : 0,
+                    track, fill, 255u);
+
+    /* Round caps: the ring's two ends, then the fill's leading edge. */
+    AaShape_Disc(cx + r, cy, hw, track, 255u);
+    AaShape_Disc(cx - r, cy, hw, (span > 0) ? fill : track, 255u);
+
+    if (span > 0 && span < 180)
     {
-        .color    = leScheme_GetRenderColor(s_track, LE_SCHM_BASE),
-        .alpha    = 255u,
-        .width    = t,
-        .hardness = LE_REAL_I16_ONE,
-        .mask     = LE_STROKEMASK_ALL,
-        .aaMode   = UI_VEC_AA,
-        .capStyle = LE_CAPSTYLE_ROUND,
-    };
+        int32_t ex = cx + ((r * AaShape_CosQ12(180 - span)) >> 12);
+        int32_t ey = cy - ((r * AaShape_SinQ12(180 - span)) >> 12);
 
-    leDraw_VectorArcStroke(&centre, r, 0, UI_VEC_DEG16(180), &arc);
-
-    if (span > 0)
-    {
-        arc.color = leScheme_GetRenderColor(s_fill, LE_SCHM_BASE);
-        leDraw_VectorArcStroke(&centre, r, UI_VEC_DEG16(180) - span, span, &arc);
+        AaShape_Disc(ex, ey, hw, fill, 255u);
     }
 }
 

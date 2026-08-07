@@ -1,6 +1,6 @@
 #include "ui/widgets/whammy/widget_whammy.h"
 
-#include <math.h>
+#include "ui/gfx/aa_shape.h"
 
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/renderer/legato_renderer.h"
@@ -22,40 +22,45 @@ static int32_t         s_value;      /* -100 .. +100, 0 = rest */
 #define C_THUMB   0xDAB2FFu
 #define C_RIM     0xF3E8FFu
 
-#define THUMB_W   16.0f
-#define THUMB_H   40.0f
-#define RIM_PX     2.0f
+#define THUMB_W_PX   16
+#define THUMB_H_PX   40
+#define RIM_PX        2
 
-static float clampf(float v, float lo, float hi)
-{
-    return v < lo ? lo : (v > hi ? hi : v);
-}
+/* A half-extent expressed in HALF-pixel units is numerically the size in pixels (half the
+ * size, doubled), which is why these serve as both. */
+#define THUMB_W   THUMB_W_PX
+#define THUMB_H   THUMB_H_PX
+#define RIM_HP    (2 * RIM_PX)
 
-/* Signed distance from (px,py) to a rounded rect centred at (cx,cy) with half-
- * extents (hw,hh) and corner radius r. Negative inside. r = hh gives a capsule. */
-static float rrect_sdf(float px, float py, float cx, float cy,
-                       float hw, float hh, float r)
+/* Coverage of a shape's boundary, and the blend, both integer. The float versions of these
+ * cost this widget 116 ms for a full repaint — four soft-float signed-distance evaluations
+ * plus three blends per pixel over 17,472 pixels, ~5300 cycles each, on a core with no FPU.
+ * The capsule maths now lives in ui/gfx/aa_shape.h in half-pixel integer units; see the
+ * journal, 2026-08-07 (night). */
+static void blend(int32_t x, int32_t y, leColor c, uint32_t cov, leColorMode mode)
 {
-    float qx = fabsf(px - cx) - (hw - r);
-    float qy = fabsf(py - cy) - (hh - r);
-    float ox = qx > 0.0f ? qx : 0.0f;
-    float oy = qy > 0.0f ? qy : 0.0f;
-    return sqrtf(ox * ox + oy * oy) + fminf(fmaxf(qx, qy), 0.0f) - r;
-}
+    if (cov == 0u) { return; }
+    if (cov > AA_COV_ONE) { cov = AA_COV_ONE; }
 
-/* Coverage of a shape whose boundary is at sdf == 0, anti-aliased over one pixel. */
-static float coverage(float sdf)
-{
-    return clampf(0.5f - sdf, 0.0f, 1.0f);
-}
-
-static void blend(int32_t x, int32_t y, leColor c, float cov, leColorMode mode)
-{
-    if (cov <= 0.0f) { return; }
-    if (cov > 1.0f)  { cov = 1.0f; }
+    /* Saturated coverage is an opaque write: no read-back, no interpolation. Interior pixels
+     * are the majority of every shape here. */
+    if (cov == AA_COV_ONE)
+    {
+        leRenderer_PutPixel(x, y, c);
+        return;
+    }
 
     leColor bg = leRenderer_GetPixel(x, y);
-    leRenderer_PutPixel(x, y, leColorLerp(bg, c, (uint32_t)(cov * 100.0f + 0.5f), mode));
+
+    leRenderer_PutPixel(x, y,
+                        leColorLerp(bg, c,
+                                    ((cov * 100u) + (AA_COV_ONE / 2u)) / AA_COV_ONE, mode));
+}
+
+/* a·b over 0..AA_COV_ONE — clipping one shape to another. */
+static uint32_t cov_mul(uint32_t a, uint32_t b)
+{
+    return (a * b) / AA_COV_ONE;
 }
 
 static void whammy_paint(leWidget *wgt)
@@ -83,54 +88,64 @@ static void whammy_paint(leWidget *wgt)
     leColor thumb = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_THUMB);
     leColor rim   = leColorConvert(LE_COLOR_MODE_RGB_888, mode, C_RIM);
 
-    float hw = (float)rect.width  / 2.0f;
-    float hh = (float)rect.height / 2.0f;
-    float cx = (float)rect.x + hw;
-    float cy = (float)rect.y + hh;
+    /* Half-pixel units throughout: a half-extent is the rect's own width/height, a centre is
+     * 2·origin + extent, and a pixel centre is 2·p + 1. */
+    int32_t hw = rect.width;
+    int32_t hh = rect.height;
+    int32_t cx = (2 * rect.x) + hw;
+    int32_t cy = (2 * rect.y) + hh;
 
-    /* Thumb centre travels the track minus half a thumb at each end, so the thumb
-     * stays inside the capsule at the extremes. */
-    float span   = hw - THUMB_W / 2.0f;
-    float thumbx = cx + span * (float)s_value / 100.0f;
+    /* Thumb centre travels the track minus half a thumb at each end, so the thumb stays
+     * inside the capsule at the extremes. */
+    int32_t span = hw - THUMB_W;
+    int32_t num  = span * s_value;
+    /* Rounded, not truncated: truncation toward zero cost up to a half pixel of thumb
+     * position, which is visible as the rim edge landing a pixel out. Rounding puts it on
+     * the nearest half pixel — finer than the 1.28 half-pixels the thumb moves per value
+     * step, so the quantisation is below the control's own resolution. */
+    int32_t thumbx = cx + ((num >= 0) ? ((num + 50) / 100) : ((num - 50) / 100));
 
-    /* Fill capsule spans centre -> thumb centre; degenerate (zero width) at rest. */
-    float fa = fminf(cx, thumbx);
-    float fb = fmaxf(cx, thumbx);
-    float fill_hw = (fb - fa) / 2.0f + hh;      /* pad to a capsule end cap */
-    float fill_cx = (fa + fb) / 2.0f;
+    /* Fill capsule spans centre -> thumb centre, padded to an end cap; degenerate at rest. */
+    int32_t fa      = (cx < thumbx) ? cx : thumbx;
+    int32_t fb      = (cx > thumbx) ? cx : thumbx;
+    int32_t fill_hw = ((fb - fa) / 2) + hh;
+    int32_t fill_cx = (fa + fb) / 2;
+
+    AaCapsule c_track, c_fill, c_rim, c_body;
+
+    AaShape_CapsuleSet(&c_track, cx, cy, hw, hh);
+    AaShape_CapsuleSet(&c_fill,  fill_cx, cy, fill_hw, hh);
+    AaShape_CapsuleSet(&c_rim,   thumbx, cy, THUMB_W, THUMB_H);
+    AaShape_CapsuleSet(&c_body,  thumbx, cy, THUMB_W - RIM_HP, THUMB_H - RIM_HP);
 
     for (int32_t sy = scan.y; sy < scan.y + scan.height; sy++)
     {
+        int32_t y = (2 * sy) + 1;
+
         for (int32_t sx = scan.x; sx < scan.x + scan.width; sx++)
         {
-            float fx = (float)sx + 0.5f;
-            float fy = (float)sy + 0.5f;
+            int32_t  x = (2 * sx) + 1;
+            uint32_t cov;
 
             /* Track capsule; everything else is clipped to it. */
-            float d_track = rrect_sdf(fx, fy, cx, cy, hw, hh, hh);
-            float cov     = coverage(d_track);
-            if (cov <= 0.0f) { continue; }
+            cov = AaShape_CapsuleCov(&c_track, x, y);
+            if (cov == 0u) { continue; }
 
             blend(sx, sy, track, cov, mode);
 
             /* Centre tick: a 1px column, only where no fill will cover it. */
             if (s_value == 0)
             {
-                float d_tick = fabsf(fx - cx) - 0.5f;
-                blend(sx, sy, tick, coverage(d_tick) * cov, mode);
+                blend(sx, sy, tick, cov_mul(AaShape_ColumnCov(cx, x), cov), mode);
             }
-
-            if (s_value != 0)
+            else
             {
-                float d_fill = rrect_sdf(fx, fy, fill_cx, cy, fill_hw, hh, hh);
-                blend(sx, sy, fill, coverage(d_fill) * cov, mode);
+                blend(sx, sy, fill, cov_mul(AaShape_CapsuleCov(&c_fill, x, y), cov), mode);
             }
 
-            /* Thumb: rim capsule, then the inner body inset by the rim. */
-            float d_thumb = rrect_sdf(fx, fy, thumbx, cy,
-                                      THUMB_W / 2.0f, THUMB_H / 2.0f, THUMB_W / 2.0f);
-            blend(sx, sy, rim,   coverage(d_thumb) * cov, mode);
-            blend(sx, sy, thumb, coverage(d_thumb + RIM_PX) * cov, mode);
+            /* Thumb: rim capsule, then the body inset by the rim on every side. */
+            blend(sx, sy, rim,   cov_mul(AaShape_CapsuleCov(&c_rim,  x, y), cov), mode);
+            blend(sx, sy, thumb, cov_mul(AaShape_CapsuleCov(&c_body, x, y), cov), mode);
         }
     }
 }
@@ -148,25 +163,27 @@ static void damage_between(int32_t from, int32_t to)
 
     s_track->fn->rectToScreen(s_track, &rect);
 
-    float hw   = (float)rect.width  / 2.0f;
-    float hh   = (float)rect.height / 2.0f;
-    float cx   = (float)rect.x + hw;
-    float span = hw - THUMB_W / 2.0f;
+    int32_t hw   = rect.width / 2;
+    int32_t hh   = rect.height / 2;
+    int32_t cx   = rect.x + hw;
+    int32_t span = hw - (THUMB_W_PX / 2);
 
-    if (span < 1.0f)
+    if (span < 1)
     {
         s_track->fn->invalidate(s_track);
         return;
     }
 
-    float xa = cx + span * (float)from / 100.0f;
-    float xb = cx + span * (float)to   / 100.0f;
-    float lo = fminf(xa, xb) - hh - 1.0f;
-    float hi = fmaxf(xa, xb) + hh + 1.0f;
+    int32_t xa = cx + ((span * from) / 100);
+    int32_t xb = cx + ((span * to)   / 100);
+    int32_t lo = ((xa < xb) ? xa : xb) - hh - 1;
+    int32_t hi = ((xa > xb) ? xa : xb) + hh + 1;
 
-    d.x      = (int32_t)lo - 1;                 /* truncation is toward zero; -1 floors */
+    /* One more pixel each way than the geometry needs, covering the integer division above
+     * and the antialiased edge. */
+    d.x      = lo - 1;
     d.y      = rect.y;
-    d.width  = ((int32_t)hi + 1) - d.x + 1;
+    d.width  = (hi + 1) - d.x + 1;
     d.height = rect.height;
 
     leRectClip(&d, &rect, &d);
@@ -195,12 +212,19 @@ static void value_from_x(int32_t screen_x)
     leRect rect;
     s_track->fn->rectToScreen(s_track, &rect);
 
-    float hw   = (float)rect.width / 2.0f;
-    float span = hw - THUMB_W / 2.0f;
-    if (span < 1.0f) { return; }
+    int32_t hw   = rect.width / 2;
+    int32_t span = hw - (THUMB_W_PX / 2);
+    int32_t rel, v;
 
-    float rel = ((float)screen_x + 0.5f) - ((float)rect.x + hw);
-    value_set((int32_t)(clampf(rel / span, -1.0f, 1.0f) * 100.0f));
+    if (span < 1) { return; }
+
+    rel = screen_x - (rect.x + hw);
+    v   = (rel * 100) / span;
+
+    if (v < -100) { v = -100; }
+    if (v >  100) { v =  100; }
+
+    value_set(v);
 }
 
 static void whammy_touchDown(leWidget *wgt, leWidgetEvent_TouchDown *evt)

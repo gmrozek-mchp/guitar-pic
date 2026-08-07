@@ -1,6 +1,6 @@
 #include "ui/widgets/fret/widget_fret.h"
 
-#include "ui/gfx/vec_draw.h"
+#include "ui/gfx/aa_shape.h"
 
 #include "gfx/legato/common/legato_color.h"
 #include "gfx/legato/renderer/legato_renderer.h"
@@ -28,14 +28,6 @@ static FretChangeFn s_on_change;
 #define RING_PX     2
 #define IDLE_ALPHA  191u    /* mockup: opacity-75 at rest */
 
-static void radius_set(leVectorRect_FillAttr *attr, int32_t r)
-{
-    attr->topLeftRadius     = LE_REAL_I16_FROM_INT(r);
-    attr->topRightRadius    = attr->topLeftRadius;
-    attr->bottomLeftRadius  = attr->topLeftRadius;
-    attr->bottomRightRadius = attr->topLeftRadius;
-}
-
 static fret_t *find(const leWidget *pad)
 {
     unsigned i;
@@ -61,36 +53,27 @@ static void fret_paint(leWidget *wgt)
     if (rect.width < 8 || rect.height < 8) { return; }
 
     leColorMode mode = leRenderer_CurrentColorMode();
-    leRectF     rf;
-
-    UiVec_RectF(&rect, &rf);
-
-    leVectorRect_FillAttr body =
-    {
-        .color  = leColorConvert(LE_COLOR_MODE_RGB_888, mode,
-                                 f->held ? f->held_c : f->idle),
-        .alpha  = f->held ? 255u : IDLE_ALPHA,
-        .aaMode = UI_VEC_AA,
-    };
-
-    radius_set(&body, CORNER_R);
+    leColor     body = leColorConvert(LE_COLOR_MODE_RGB_888, mode,
+                                      f->held ? f->held_c : f->idle);
+    uint32_t    alpha = f->held ? 255u : IDLE_ALPHA;
 
     if (f->held)
     {
-        /* Ring first, then the body inset by the ring width. Tailwind draws ring-2
-         * outside the element; a widget cannot paint past its own rect, so it is
-         * inset here instead. */
-        leVectorRect_FillAttr ring = body;
+        /* Ring first, then the body inset by the ring width. Tailwind draws ring-2 outside
+         * the element; a widget cannot paint past its own rect, so it is inset here. */
+        leRect inner = { .x = rect.x + RING_PX,
+                         .y = rect.y + RING_PX,
+                         .width  = rect.width  - 2 * RING_PX,
+                         .height = rect.height - 2 * RING_PX };
 
-        ring.color = leColorConvert(LE_COLOR_MODE_RGB_888, mode, f->ring);
-        leDraw_VectorRectFill(&rf, &ring);
-
-        rf.extents.x -= LE_REAL_I16_FROM_INT(RING_PX);
-        rf.extents.y -= LE_REAL_I16_FROM_INT(RING_PX);
-        radius_set(&body, CORNER_R - RING_PX);
+        AaShape_RRect(&rect, CORNER_R,
+                      leColorConvert(LE_COLOR_MODE_RGB_888, mode, f->ring), alpha);
+        AaShape_RRect(&inner, CORNER_R - RING_PX, body, alpha);
     }
-
-    leDraw_VectorRectFill(&rf, &body);
+    else
+    {
+        AaShape_RRect(&rect, CORNER_R, body, alpha);
+    }
 }
 
 static void fret_set(fret_t *f, bool held, bool notify)

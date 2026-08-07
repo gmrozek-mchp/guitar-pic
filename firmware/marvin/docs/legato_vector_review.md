@@ -23,6 +23,33 @@
 >    any argument containing `+` or `-` silently yields a wrong number. Legato's own uses are all
 >    `/` and `*`, which is why nothing in-tree trips it.
 
+> **⚠ Status, 2026-08-07 — MEASURED AT LAST, AND THE RECOMMENDATION IN §6 IS WRONG FOR
+> ARCS. `panel_aa`'s dot has been reverted to analytic coverage.**
+> §6 said the cost was "a plausible win, not a certain one" and asked for a before/after
+> measurement. That measurement never happened, and the migration shipped. It has now been
+> taken, on hardware, with a per-frame timing probe (`titlebar probe`):
+>
+> - A **radius-6 disc** through `leDraw_VectorArcFill` costs **5.7 ms**. Same damage rect,
+>   same layer, a widget that paints *nothing*: 88 µs. So the disc alone is ~5,740 µs for
+>   144 pixels — about **32,000 cycles per pixel**.
+> - Why: the kernel takes **8 supersamples per pixel** (`LE_ANTIALIASING_8X`) over the scan
+>   area, and `_arcTest` runs `leVector2_AngleOf` → `leVector2_Normalize` (software square
+>   root **plus** a 64-bit divide) and `leReal_i16_Atan2` (more 64-bit divides) **per
+>   sample**. `LE_REAL_I16_MULTIPLY`/`DIVIDE` are 64-bit multiply-then-divide, and this core
+>   is an ARM926 with neither an FPU nor a hardware integer divide, so every one is a libgcc
+>   call. Correction 1 above compounds it: an arc scans the full circle regardless of span.
+> - Replaced with analytic capsule coverage in `dot_paint` — distance to the capsule spine,
+>   one `sqrtf` per *rim* pixel and none in the interior. For a 12×12 dot that is **36
+>   `sqrtf` calls against 1,152 supersample evaluations**. Verified offline against the
+>   analytic area (112.82 vs π·6² = 113.10) for discs and both pill orientations.
+>
+> **Consequences beyond the dot, not yet measured:** `widget_tilt` and `widget_gauge` were
+> migrated *first* on this document's advice ("biggest win by a wide margin") and both are
+> arc-based over far larger rects than a 12 px dot — tilt scans 254×254 per correction 1.
+> They need the same probe before they are trusted. `widget_fret` uses `RectFill`, which has
+> no `Atan2` in its inner loop, so it is not implicated by this result. **Do not migrate
+> anything else to `leDraw_VectorArc*` on the strength of §6.**
+
 Prompted by a Legato developer pointing out the anti-aliasing functions in
 `config/default/gfx/legato/vector/`. Question: should marvin's custom widgets and
 rounded-panel/button code be using them?
