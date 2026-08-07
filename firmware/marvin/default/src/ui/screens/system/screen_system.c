@@ -686,6 +686,9 @@ static void build_card(leWidget *parent, unsigned n, int x, int y, int w)
     const node_info_t *d = &NODE[n];
 
     s_card[n] = add_button(parent, x, y, w, CARD_H, CARD_R, &SCHEME_FILL_ZINC_900);
+    /* The card is the one bordered button in the design, and the mockup lightens its
+     * border as well as its fill on press. */
+    ButtonAA_EnablePressedBorder(s_card[n]);
     s_card[n]->fn->setReleasedEventCallback(s_card[n], card_on_release);
 
     /* The mockup's 6px left edge. A transparent overlay over the whole card rather than
@@ -757,6 +760,9 @@ static void build_detail(leWidget *parent)
     /* header: back, divider, accent bar, part + name + tagline */
     leButtonWidget *back = add_button(parent, BACK_X, BACK_Y, BACK_W, BACK_H, BTN_R,
                                       &SCHEME_FILL_ZINC_800);
+    /* Borderless in the mockup — a filled pill, unlike the cards. add_button's default is
+     * a LINE border, so drop it here; the AA pass then blends backdrop straight to fill. */
+    ((leWidget *)back)->fn->setBorderType((leWidget *)back, LE_WIDGET_BORDER_NONE);
     back->fn->setReleasedEventCallback(back, back_on_release);
     (void)add_text(parent, BACK_X, BACK_Y, BACK_W, BACK_H,
                    (const leFont *)&DejaVuSansMono_14, &SCHEME_TEXT_ZINC_300,

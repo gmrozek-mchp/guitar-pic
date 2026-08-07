@@ -253,7 +253,7 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.h
   hash: a913b0cf5f6029be4a46db040144b14d9949f2e52d9b00576e2373403d530213
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.c
-  hash: 497f3228129e0c42ddd56b93888f309aab0a53bbe5d801ed143332feee290677
+  hash: 1f6461375dd8b354f52ece2cff26911b7e37b7845362b4dd91c912a99e3b2a51
 - file: ../src/config/default/gfx/legato/generated/le_gen_scheme.h
   hash: 34aab52bb99211b52799a3e90bdb7c0c6553d46f68dedcbbaa9c540486b2f160
 - file: ../src/config/default/gfx/legato/generated/le_gen_stringtable.c

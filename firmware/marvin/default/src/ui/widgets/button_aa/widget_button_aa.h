@@ -20,6 +20,18 @@ extern "C" {
  * constructed. */
 void ButtonAA_Enable(leButtonWidget* btn);
 
+/* As ButtonAA_Enable, and additionally recolours the 1px LINE border while the button is
+ * pressed, from the scheme's HIGHLIGHT — the mockup's `hover:border-zinc-500` alongside
+ * its `hover:bg-zinc-800`. Supersedes ButtonAA_Enable on that button (safe to call after
+ * it; the wrapper chains to the stock paint, not to the plain variant's).
+ *
+ * HIGHLIGHT carries the pressed border because Legato leaves it unused for a
+ * LINE-bordered button — the classic skin's line border is hard-wired to SHADOWDARK with
+ * no state branch, which is also why the border has to be overdrawn rather than themed.
+ * A button whose scheme has no deliberate HIGHLIGHT will flash Legato's default there, so
+ * this is opt-in per button rather than the house default. */
+void ButtonAA_EnablePressedBorder(leButtonWidget* btn);
+
 #ifdef __cplusplus
 }
 #endif
