@@ -64,6 +64,42 @@ the image manifest lives **under `assets/`**, so a "scan the design JSON for ref
 that skips `assets/` will not see it — check the manifest explicitly instead, and assert
 `manifest ids == asset dirs` afterwards.
 
+### Where a replaced image actually lands (alignment, not position)
+
+`set_image_source.py` changes an asset's pixel dimensions, which changes **where the image draws**
+without changing any widget property. The chain, all in the generated tree:
+
+- `_leImageWidget_GetImageRect` seeds the rect at the image's `buffer.size` and hands it to
+  `leUtils_ArrangeRectangle` with the widget's `style.halign` / `style.valign`.
+- `_leImageWidget_Constructor` sets `rect.width`/`height`, border and background — **not**
+  alignment. So the values in force are `leWidget_Constructor`'s: `LE_HALIGN_CENTER` and
+  `LE_VALIGN_MIDDLE`.
+- `leUtils_ArrangeRectangle`'s centre case is
+  `sub->y = bounds.y + (bounds.height / 2) - (sub->height / 2)` — **two separate integer
+  divisions**. `(bounds - sub)/2` is a different number when the parities differ.
+
+Worked example, from marvin's titlebar (a 44 px-tall widget whose image shrank 43 → 41):
+`44/2 − 43/2 = 22 − 21 = 1`, then `44/2 − 41/2 = 22 − 20 = 2`. The image moves **down one pixel**
+and the centreline holds at 23 — with `setPosition` untouched. A 45 px widget going 45 → 41 moves
+down two the same way. Useful when that is what you wanted; invisible damage when it isn't.
+
+Two consequences worth acting on:
+
+- **Make the rect equal the image and the whole mechanism switches off** (offset 0 on both axes),
+  so the source states the position instead of implying it. This costs nothing visually: an
+  opaque image covers its rect exactly, so `LE_WIDGET_BACKGROUND_FILL` + scheme and
+  `LE_WIDGET_BACKGROUND_NONE` render identically once they are the same size. Assets stored as
+  RGB are opaque by construction — `rawconfig.json`'s `backgroundColor` is what the PNG's alpha
+  was flattened against, so the *parent* backdrop must match that colour, which is the real
+  constraint and it is unaffected by a resize.
+- **Verify the image edge is the visual edge.** `Image.open(p).convert("RGBA").split()[3].getbbox()`
+  against the canvas size says whether the art is ink-tight or padded; only for ink-tight art does
+  aligning the canvas align what the eye sees.
+
+Reading the dimensions back after Generate: `leImage <NAME> = { … }` in
+`<gen>/image/le_gen_images.c` carries the size and the RLE data length, and the `<NAME>_data[]`
+array length is the flash cost. A zip newer than that file means the Generate predates the swap.
+
 ## The generated-C relationship
 
 MGS **Generate** reads this zip and emits `.../gfx/legato/generated/le_gen_*.c/.h`

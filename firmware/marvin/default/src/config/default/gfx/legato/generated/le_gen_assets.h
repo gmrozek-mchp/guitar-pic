@@ -181,7 +181,7 @@ extern leImage PLAYER_HUMAN_ART;
 /*********************************
  * Legato Image Asset
  * Name:   LOGO_PIC
- * Size:   121x43 pixels
+ * Size:   115x41 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/
@@ -199,7 +199,7 @@ extern leImage LOGO_GUITAR;
 /*********************************
  * Legato Image Asset
  * Name:   LOGO_MICROCHIP
- * Size:   194x45 pixels
+ * Size:   177x41 pixels
  * Type:   RGB Data
  * Format: RGBA_8888
  ***********************************/

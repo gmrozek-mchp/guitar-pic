@@ -92,8 +92,8 @@ leWidget *Titlebar_Add(leWidget *parent)
 
     leImageWidget *p = &t->pic;
     _leImageWidget_Constructor(p);
-    p->fn->setPosition(p, 294, 1);
-    p->fn->setSize(p, 121, 44);
+    p->fn->setPosition(p, 294, 3);
+    p->fn->setSize(p, 115, 41);
     p->fn->setScheme(p, &SCHEME_BACKGROUND);
     p->fn->setBorderType(p, LE_WIDGET_BORDER_NONE);
     p->fn->setImage(p, (leImage *)&LOGO_PIC);
@@ -104,7 +104,7 @@ leWidget *Titlebar_Add(leWidget *parent)
      * health signal behind it yet. Sits gap-4 left of the Microchip logo. */
     leWidget *dot = &t->dot;
     leWidget_Constructor(dot);
-    dot->fn->setPosition(dot, 1020, (BAR_H - 12) / 2);
+    dot->fn->setPosition(dot, 1037, (BAR_H - 12) / 2);
     dot->fn->setSize(dot, 12, 12);
     dot->fn->setScheme(dot, &SCHEME_FILL_GREEN_500);
     dot->fn->setBackgroundType(dot, LE_WIDGET_BACKGROUND_FILL);
@@ -114,8 +114,8 @@ leWidget *Titlebar_Add(leWidget *parent)
 
     leImageWidget *c = &t->chip;
     _leImageWidget_Constructor(c);
-    c->fn->setPosition(c, 1052, 1);
-    c->fn->setSize(c, 194, 45);
+    c->fn->setPosition(c, 1069, 3);
+    c->fn->setSize(c, 177, 41);
     c->fn->setBackgroundType(c, LE_WIDGET_BACKGROUND_NONE);
     c->fn->setBorderType(c, LE_WIDGET_BORDER_NONE);
     c->fn->setImage(c, (leImage *)&LOGO_MICROCHIP);

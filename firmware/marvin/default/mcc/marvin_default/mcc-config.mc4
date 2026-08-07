@@ -243,9 +243,9 @@ generatedFileHashHistoryMap:
 - file: ../src/config/default/gfx/legato/generated/font/le_gen_fonts.c
   hash: 390be28888658580256d63d3b7b18e6187d003181f597f56a97c5b5c6f75b9c9
 - file: ../src/config/default/gfx/legato/generated/image/le_gen_images.c
-  hash: 0d824749822014190db407220898c14cb7691225f8680e1a73e8350ca98a3b78
+  hash: 72501cd1ade3ba21d501c2488312ab71a025776b4fda3ece8a15bfe57d1cc83a
 - file: ../src/config/default/gfx/legato/generated/le_gen_assets.h
-  hash: 6101f60032ee3252fc083878a341b816021e41024e70686ac474a8cba6583448
+  hash: fe242d30abf16dc7fa40166df3e641b79796f49d2749861b445137883f0355c6
 - file: ../src/config/default/gfx/legato/generated/le_gen_globalpalette.c
   hash: 5f0dec9b5b1be59e8f4a5851209d3d08d155accd7dae2f486bb4f5235605f740
 - file: ../src/config/default/gfx/legato/generated/le_gen_harmony.c

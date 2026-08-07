@@ -182,6 +182,28 @@ Two things you can do without touching Composer, both in [REFERENCE.md](REFERENC
   writes the three `assets/images/{uuid}/` members plus the `images.json` manifest entry, and
   can repoint widgets at the new asset in the same pass. Clone a sibling's config rather than
   synthesizing it, and remember `rawconfig.json`'s `maskColor.image` is self-referential.
+- **Replace the artwork, keep the asset** — `set_image_source.py <zip> NAME=<file.png> […]`
+  swaps `sourceData` + the dimensions + `colorCount`, leaving uuid, bindings, memory location,
+  format and RLE alone. Use this whenever the *art* changed but the identity shouldn't; nothing
+  needs rebinding, because widgets and `setImage` calls both reference the asset, not the file.
+
+  **New artwork of a different size does not move a widget — and that is the trap.** Legato's
+  image widget centres: `leWidget_Constructor` sets `LE_HALIGN_CENTER`/`LE_VALIGN_MIDDLE` and
+  `_leImageWidget_Constructor` never overrides them, so a smaller image silently re-centres
+  inside the unchanged rect and the position in the source stops describing what is on screen.
+  **Shrink the widget rect to the image's exact size** — then the arrange offset is zero, the
+  widget position *is* the image position, and the layout is explicit. Two things make this
+  safe and worth doing: a rect equal to an opaque image fully overdraws its own background, so
+  the `backgroundType`/scheme becomes irrelevant; and it is how a correctly-authored logo widget
+  already looks, which makes the odd one out easy to spot.
+
+  When you do compute positions, use Legato's real formula —
+  `bounds.height/2 - sub.height/2`, **two independent integer divisions**, not `(bounds-sub)/2`.
+  They differ by a pixel whenever the parities differ, which is exactly the size of error being
+  chased. Check the ink bounding box before assuming the image edge is the visual edge: art with
+  transparent padding needs the *bbox* aligned, not the canvas. Anchoring is a design decision
+  the resize forces, not a derivable one — a shrunken right-aligned mark either keeps its gutter
+  or keeps its centreline, and the widths no longer allow both, so ask.
 
 ## Replacing an imported screen with hand-written C
 
