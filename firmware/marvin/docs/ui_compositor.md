@@ -30,9 +30,9 @@ These are distinct and must not be collapsed (this has been a recurring source o
 
 **"canvas ≠ layer" is true only for the *hardware* layer (3), not for the *Legato* layer (2).**
 A panel never *owns* a HW layer — two canvases never shown together can share one; the same
-canvas can be on `OVR1` in one situation and `OVR2` in another. The 8-slot canvas pool
-(`CONFIG_CANVAS_NUM_OBJ = 40`) means far more layer-screens may be **defined**
-(`LE_LAYER_COUNT` ≤ 8, canvases 0–7); the LCDC then composites **any 3** of them onto its 3
+canvas can be on `OVR1` in one situation and `OVR2` in another. The canvas pool
+(`CONFIG_CANVAS_NUM_OBJ = 40`) sets how many layer-screens may be **defined** — nine today
+(`LE_LAYER_COUNT = 9`, canvases 0–8); the LCDC then composites **any 3** of them onto its 3
 usable HW layers at once — *define many, show a few.*
 
 **The pool size is not the ceiling it looks like.** `CONFIG_CANVAS_NUM_OBJ` only sizes the
@@ -40,11 +40,25 @@ static `GFXC_CANVAS canvas[]` array (`gfx_canvas.c:67`); `GFXC_Initialize` marks
 slot `CANVAS_ID_INVALID` / `GFXC_FX_IDLE`, so spare slots are inert at ~150 B of BSS each and
 raising the number is an MCC regen and nothing more. `LE_LAYER_COUNT` is MGS-derived, and
 `leState.layerList` is a dynamic `leList` rather than a fixed array — no ceiling there either.
-What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, 64 MB): a full-screen
-RGB565 surface is 1.95 MB, and with the eight layers below defined the region is ~30.8 MB used.
-A ninth layer-screen therefore needs the `ram_nocache`/`ram` split moved (`.region_ram` has
-~200 MB spare, so this is a one-line change) — *not* a bigger pool. The splash's 4 MB RGBA8888
-buffer is the obvious reclaim if it is ever wanted instead.
+What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, 34 MB): a full-screen
+RGB565 surface is 1.95 MB, and with the nine layers below defined the region is 32.79 MB used.
+The ninth layer-screen (System Info's detail view, 2026-08-06) is what forced the
+`ram_nocache`/`ram` split to move — 32 → 34 MB, an MCC setting, *not* a bigger pool. The
+splash's 4 MB RGBA8888 buffer is the obvious reclaim if more is ever wanted, and is now the
+**preferred** source: the region itself cannot grow much further (below).
+
+> **`ram_nocache` cannot grow past ~60 MB, and overshooting it does not fail loudly.** `ddram.ld`
+> places `.text` at a **hard-coded `0x23f00000`** — DDR base + 63 MB — which does *not* move when the
+> regions are resized, while `MMU_Initialize` maps the whole non-cached window
+> `TTB_SECT_STRONGLY_ORDERED` (non-cacheable *and* unbuffered). Setting the region to 64 MB therefore
+> put 1,048,576 of `.text`'s 1,420,932 bytes inside that window: 74% of the firmware executing
+> uncached, every instruction fetch its own DDR transaction. It boots, slowly, and dies in the
+> artwork stage — and the tell is that the splash bar moves *jerkily*, because `.text` straddles the
+> boundary so some functions crawl and others run at full speed. Nothing warns: `.text` uses an
+> explicit address rather than `>ram`, so the linker never region-checks it, and as long as
+> `.region_nocache`'s *used* size stays under 63 MB no bytes actually collide. Confirmed on hardware
+> 2026-08-06 (64 MB stalled at boot, 34 MB fine). Needing more than ~60 MB means moving `.text` too,
+> which is an MCC change — `ddram.ld` is generated.
 
 ### 0.1 Direction (decided 2026-06-29): adopt MGS's single-master-screen / layer-screen model
 
