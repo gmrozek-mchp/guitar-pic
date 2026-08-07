@@ -13,6 +13,7 @@
 #include "ui/widgets/button_aa/widget_button_aa.h"
 #include "ui/node_art.h"
 #include "ui/qr_art.h"
+#include "ui/ui_text_metrics.h"
 
 #include "ui/gfx/qr_raster.h"        /* QR_RASTER_W — the QR slot is sized from it */
 #include "ui/gfx/ui_surface.h"
@@ -480,24 +481,18 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
 #define STORY_GLOSS_H      26    /* DejaVuSansMono_16 is 20px tall */
 #define STORY_HEAD_COLS    51
 
-/* The bullet is bigger than a parts-list dot because it answers a 20px headline rather than
- * a 16px row, and it is placed off the headline's own metrics rather than centred in the row
- * box. Centre it on the box, or on the cap height, and it reads high: the visual mass of a
- * line of mixed-case text sits at the x-height, not between baseline and cap.
- *
- * DejaVuSansMono_20 in a STORY_HEAD_PITCH box puts its baseline at +22 with an x-height of
- * 11, so the x-height middle is +16.5 and an 8px dot centres on it at y = 12.5. Rounded down
- * a half-pixel the other way, since the descender space below the baseline pulls the eye
- * down slightly further. Metrics decoded from le_gen_fonts.c — recipe in the
- * mgs-legato-design skill's REFERENCE.md, under vertical alignment. */
+/* The story bullet is bigger than a parts-list dot because it answers a 20px headline rather
+ * than a 16px row. Its y comes from DOT_Y, like every other bullet here. */
 #define STORY_DOT_D         8
-#define STORY_DOT_Y        13
 
 /* Glyph advances, decoded from le_gen_fonts.c. MONO24_ADV lays the node name out after a
  * variable-length callout in the detail header; MONO_B18_ADV decides whether that callout
  * fits a card at its full size (see build_card). */
 #define MONO24_ADV     14
 #define MONO_B18_ADV   11
+
+/* Baseline / bullet alignment lives in ui/ui_text_metrics.h — TEXT_BASELINE, DOT_Y and the
+ * MONO*_BASE / MONO*_XH metrics, shared with the bus screen. */
 
 /* The detail header's callout label, wide enough for the longest string in the table —
  * "DIGITAL MUSIC INTEGRATION", 25 glyphs at MONO24_ADV. */
@@ -1022,7 +1017,9 @@ static void build_card(leWidget *parent, unsigned n, int x, int y, int w)
     if (d->chip != NULL)
     {
         int cy = y + CARD_H - 16 - CHIP_H;
-        (void)add_dot(parent, tx, cy + (CHIP_H - CHIP_DOT_D) / 2, CHIP_DOT_D, d->accent);
+        (void)add_dot(parent, tx,
+                      cy + DOT_Y(CHIP_H, MONO12_BASE, MONO12_XH, CHIP_DOT_D),
+                      CHIP_DOT_D, d->accent);
         (void)add_text(parent, tx + CHIP_DOT_D + 8, cy, tw - CHIP_DOT_D - 8, CHIP_H,
                        (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_400,
                        LE_HALIGN_LEFT, d->chip);
@@ -1099,7 +1096,8 @@ static void build_detail(leWidget *parent)
     for (unsigned i = 0u; i < BUILT_MAX; i++)
     {
         int by = SEC_BODY_Y + (int)i * BUILT_PITCH;
-        s_d_built_dot[i] = add_dot(s_d_built_card, CPAD, by + (24 - CHIP_DOT_D) / 2,
+        s_d_built_dot[i] = add_dot(s_d_built_card, CPAD,
+                                   by + DOT_Y(24, MONO16_BASE, MONO16_XH, CHIP_DOT_D),
                                    CHIP_DOT_D, &SCHEME_NODE_MARVIN);
         s_d_built[i] = add_label(s_d_built_card, CPAD + CHIP_DOT_D + 12, by,
                                  C2_W - 2 * CPAD - CHIP_DOT_D - 12, 24,
@@ -1133,7 +1131,9 @@ static void build_detail(leWidget *parent)
         int tw = C2_W - 2 * CPAD - CHIP_DOT_D - 12;
 
         s_d_item_dot[i] = add_dot(s_d_story_card, CPAD + (CHIP_DOT_D - STORY_DOT_D) / 2,
-                                  iy + STORY_DOT_Y, STORY_DOT_D, &SCHEME_NODE_PROJECT);
+                                  iy + DOT_Y(STORY_HEAD_PITCH, MONO20_BASE, MONO20_XH,
+                                             STORY_DOT_D),
+                                  STORY_DOT_D, &SCHEME_NODE_PROJECT);
         s_d_item_head[i] = add_label(s_d_story_card, tx, iy, tw, STORY_HEAD_PITCH,
                                      (const leFont *)&DejaVuSansMono_20,
                                      &SCHEME_TEXT_ZINC_200, LE_HALIGN_LEFT);

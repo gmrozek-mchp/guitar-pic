@@ -8,6 +8,7 @@
 #include "ui/song_detail.h"
 #include "ui/titlebar.h"         /* shared hamburger + logos titlebar */
 #include "ui/dashboard_feed.h"   /* DashboardFeed_PostSelection — route updates via the feed */
+#include "ui/ui_text_metrics.h"  /* DOT_Y — status LEDs align to their caption's baseline */
 #include "ui/widgets/button_aa/widget_button_aa.h"
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/bar/widget_bar.h"
@@ -576,8 +577,11 @@ static void build_player_head(leWidget *card, const leImage *art, uint32_t name_
     }
     (void)add_cap(card, COL_X, SUB_Y, 160, 16, role_id, &SCHEME_TEXT_ZINC_400, LE_HALIGN_LEFT);
 
+    /* The LED tracks the status caption's baseline, not the pill's middle — the caption box
+     * is the (2, 16) below, and its design-bound font is DejaVuSansMonoBold_12. */
     *state = add_pill(card, STATE_X, STATE_Y, STATE_W, STATE_H, &SCHEME_FILL_ZINC_800);
-    *led   = add_dot(*state, 8, 7, 6, &SCHEME_FILL_ZINC_600);
+    *led   = add_dot(*state, 8, 2 + DOT_Y(16, MONO_B12_BASE, MONO_B12_XH, 6), 6,
+                     &SCHEME_FILL_ZINC_600);
     dual_init(state_cap,
               add_cap(*state, 20, 2, 32, 16, stringID_PLAYER_ROBOT_Status,
                       &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT),
@@ -700,7 +704,10 @@ static void build_robot_card(leWidget *content)
         s_actuator[i]->fn->setMargins(s_actuator[i], PAD, 0, 0, 0);
         s_actuator[i]->fn->setReleasedEventCallback(s_actuator[i], actuator_on_release);
 
-        s_actuator_led[i] = add_dot(card, x + ACT_W - PAD - 8, y + (OPT_H - 8) / 2, 8,
+        /* Aligned to the button caption's baseline (design-bound DejaVuSansMonoBold_12); the
+         * button skin centres text through the same kerning-rect path a label does. */
+        s_actuator_led[i] = add_dot(card, x + ACT_W - PAD - 8,
+                                    y + DOT_Y(OPT_H, MONO_B12_BASE, MONO_B12_XH, 8), 8,
                                     &SCHEME_FILL_ZINC_600);
         s_actuator_led[i]->flags |= LE_WIDGET_IGNOREPICK;
     }
@@ -799,7 +806,8 @@ static void build_video(leWidget *content)
     /* NO SIGNAL chip, top right. (The mockup's TEST PATTERN chip on the left is
      * deliberately not built — the bars say that already.) */
     leWidget *ns = add_pill(video, VIDEO_W - 10 - 98, 10, 98, PILL_H, &SCHEME_BACKGROUND);
-    (void)add_dot(ns, 8, 8, 9, &SCHEME_FILL_RED_500);
+    /* Dot on the caption's baseline — caption box is the (4, 16) below, font DejaVuSansMono_12. */
+    (void)add_dot(ns, 8, 4 + DOT_Y(16, MONO12_BASE, MONO12_XH, 9), 9, &SCHEME_FILL_RED_500);
     (void)add_cap(ns, 24, 4, 66, 16, stringID_VIDEO_NO_SIGNAL, &SCHEME_TEXT_WHITE,
             LE_HALIGN_LEFT);
 

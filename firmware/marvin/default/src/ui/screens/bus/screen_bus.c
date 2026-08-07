@@ -12,6 +12,7 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 #include "ui/widgets/gauge/widget_gauge.h"
 #include "ui/widgets/sparkline/widget_sparkline.h"
+#include "ui/ui_text_metrics.h"   /* DOT_Y — bullets align to the row's baseline */
 #include "net/t1s/t1s_link.h"
 
 #include "ui/gfx/ui_surface.h"
@@ -570,7 +571,9 @@ void ScreenBus_Setup(void)
         char tmp[CAP];
 
         /* NODE: colour dot + capitalized node name, both in the node's colour. */
-        add_dot(COL[C_NODE].x, y + (ROW_H - DOT_NODE) / 2, DOT_NODE, nsc);
+        add_dot(COL[C_NODE].x,
+                y + DOT_Y(ROW_H, MONO_B14_BASE, MONO_B14_XH, DOT_NODE),
+                DOT_NODE, nsc);
         (void)snprintf(tmp, sizeof tmp, "%s", (st.type != NULL) ? st.type : "?");
         if (tmp[0] >= 'a' && tmp[0] <= 'z') { tmp[0] = (char)(tmp[0] - 32); }
         set_text(add_label(COL[C_NODE].x + DOT_NODE + 8, y,
@@ -600,8 +603,9 @@ void ScreenBus_Setup(void)
         w->hbage = CELL(C_HBAGE, &SCHEME_TEXT_ZINC_400);
         #undef CELL
 
-        w->statusdot = add_dot(COL[C_STATUS].x, y + (ROW_H - DOT_STAT) / 2, DOT_STAT,
-                               &SCHEME_FILL_GREEN_400);
+        w->statusdot = add_dot(COL[C_STATUS].x,
+                               y + DOT_Y(ROW_H, MONO12_BASE, MONO12_XH, DOT_STAT),
+                               DOT_STAT, &SCHEME_FILL_GREEN_400);
         w->status = add_label(COL[C_STATUS].x + DOT_STAT + 6, y,
                               COL[C_STATUS].w - DOT_STAT - 6, ROW_H,
                               (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_GREEN_400,

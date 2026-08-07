@@ -226,21 +226,48 @@ const uint8_t <name>_data[] = <u32 glyph count> then packed 20-byte records, all
 struct doesn't name: **cap height** = `bearingY` of a digit, **x-height** = `bearingY` of
 round lowercase (`acemnorsuvwxz`), **descender depth** = `height - bearingY` of `pqgyj`.
 
-**Where Legato puts the text.** `leLabelWidget` with `LE_VALIGN_MIDDLE` centres the glyph box
-in the widget rect (`leUtils_ArrangeRectangleRelative`), using integer division:
+**Where Legato puts the text — it does NOT centre the font box.** This is the trap. Trace it:
 
 ```
-text_top = y + (H // 2) - (fontHeight // 2)
-baseline = text_top + fontBaseline
+_leString_GetLineRect      rect.height = fontHeight
+leStringUtils_KerningRect  height -= fontHeight; height += fontBaseline
+                             → for one line, height == fontBaseline  (descender dropped)
+ArrangeRectangleRelative   VALIGN_MIDDLE: rect_y = H/2 - rect.height/2
+leStringRenderer_DrawString  each glyph at rect_y + (fontBaseline - glyph.bearingY)
+                             → rect_y IS the glyph-box top
 ```
 
-**Align markers to the x-height middle — `baseline - xHeight/2` — not to the row box and not
-to the cap-height middle.** The visual mass of a line of mixed-case text sits at the x-height;
-both other choices read *high*, and the error grows with the font's descender. Worked example
-that cost two rounds of "the dots are still too high" on hardware: `DejaVuSansMono_20` in a
-30px row has `baseline` +22, cap 15, x-height 11 — so the cap-height middle is +14.5 but the
-x-height middle is +16.5, and an 8px dot belongs at `y = 16.5 - 4 ≈ 12`, a full **2px lower**
-than centring on either the box or the caps. Two corollaries:
+So, with integer division on each term:
+
+```
+rect_y   = (H / 2) - (fontBaseline / 2)      <-- fontBaseline, NOT fontHeight
+baseline = rect_y + fontBaseline
+```
+
+**Using `fontHeight` there is wrong by half the descender** — 3px for `DejaVuSansMono_16` —
+and it fails silently: the text looks fine (Legato positioned it correctly all along), but
+everything *you* align to your own calculation sits a few pixels off with nothing obviously
+broken. This cost three rounds of "the dots are still too high" on hardware, because the model
+said the dot was 0.5px low while it was really 3.5px high.
+
+**Align markers to the line's optical middle, which is between the cap-height and x-height
+middles — never the row-box centre.** The box centre reads ~3px high for the reason above. The
+x-height middle (`baseline - xHeight/2`) is right for running lowercase, but UI labels are
+usually caps- and digit-heavy, so their mass sits higher; the **mean of the cap-height and
+x-height middles** is what reads level. Confirmed by eye on a 1280×800 panel across eight call
+sites, after both the box centre and the pure x-height middle were rejected:
+
+```c
+#define TEXT_BASELINE(h, base)   (((h) / 2) - ((base) / 2) + (base))
+#define DOT_Y(h, base, xh, d)    (TEXT_BASELINE(h, base) - ((xh) + (d)) / 2 - 1)
+```
+
+The `- 1` is what converts x-height middle into that mean; it holds within half a pixel for
+every DejaVu Mono size 12–20 at dot diameters 6–9, so it is a constant rather than a per-site
+tweak. Worked example: `DejaVuSansMono_16` in a 24px row is `base` 15, cap 12, x-height 9 — so
+`rect_y` +5, baseline +20, cap middle +14, x-height middle +15.5, optical target **+14.75**. A
+6px dot belongs at `y = 12`; centring it in the row box puts it at `y = 9`, **3px high.** Two
+corollaries:
 
 - **A digits-and-caps-only line is the exception** — a row of figures, an all-caps caption —
   where cap-height middle is right, because there is no lowercase mass to answer to.

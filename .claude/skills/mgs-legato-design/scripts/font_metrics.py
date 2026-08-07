@@ -124,22 +124,35 @@ def main():
 
     for H in a.box:
         print(f"\n## label box height {H}px")
-        print("   Legato centres text at y + H/2 - fontHeight/2 (integer division), so")
-        print("   baseline = y + (H//2 - h//2) + base. Offsets below are from the box's y.\n")
-        w = f"{'font':30}{'clipped':>8}{'top':>6}{'baseline':>10}{'cap mid':>9}{'x-ht mid':>10}"
+        print("   Legato centres the KERNING rect, whose height is fontBaseline (the")
+        print("   descender is dropped by leStringUtils_KerningRect) — NOT fontHeight:")
+        print("     rect_y = H/2 - base/2   then   baseline = rect_y + base")
+        print("   Offsets below are from the label's own y.\n")
+        w = (
+            f"{'font':30}{'clipped':>8}{'top':>6}{'baseline':>10}"
+            f"{'cap mid':>9}{'x-ht mid':>10}{'optical':>9}{'boxctr err':>11}"
+        )
         print(w)
         print("-" * len(w))
         for f in sorted(rows, key=lambda r: r["name"]):
-            top = H // 2 - f["height"] // 2
+            top = H // 2 - f["baseline"] // 2
             bl = top + f["baseline"]
+            capmid = bl - f["cap"] / 2
+            xmid = bl - f["xh"] / 2
+            optical = (capmid + xmid) / 2
             clipped = "YES" if H < f["height"] else "-"
             print(
                 f"{f['name']:30}{clipped:>8}{top:>+6}{bl:>+10}"
-                f"{bl - f['cap'] / 2:>+9.1f}{bl - f['xh'] / 2:>+10.1f}"
+                f"{capmid:>+9.1f}{xmid:>+10.1f}{optical:>+9.2f}{optical - H / 2:>+11.1f}"
             )
         print(
-            "\n   Centre a marker of diameter D on the x-height middle: y = <x-ht mid> - D/2.\n"
-            "   Cap mid is for a digits/caps-only line; the row box centre is for neither."
+            "\n   Align a marker of diameter D to 'optical' — the mean of the cap-height and\n"
+            "   x-height middles. Pure x-height middle suits running lowercase; UI labels are\n"
+            "   caps/digit-heavy, so their mass sits higher. In integer C:\n"
+            "       (H/2 - base/2 + base) - (xh + D)/2 - 1\n"
+            "   (the -1 converts x-height middle to the optical mean, within 0.5px for\n"
+            "    DejaVu Mono 12-20 at D = 6..9).\n"
+            "   'boxctr err' is how many px HIGH a marker centred in the row box would sit."
         )
 
 
