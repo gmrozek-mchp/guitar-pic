@@ -156,6 +156,14 @@ Two things trip people up here, both covered in [REFERENCE.md](REFERENCE.md):
   source for non-ASCII *literals*, so a character assembled byte-by-byte (`\xE2\x98\x85`) reads
   as pure ASCII and passes.
 
+- **Aligning anything to text needs the baseline, which is only in the generated C.** Not the
+  zip, not `glyphs.json`. `font_metrics.py <src-dir> [--box H]` reads `le_gen_fonts.c` and
+  reports height / baseline / advance / cap height / x-height / descender per font, plus where
+  a label box of height `H` puts the baseline. **Align markers to the x-height middle**
+  (`baseline - xHeight/2`), not to the row box and not to the cap-height middle — text mass
+  sits at the x-height, so both other choices read visibly high. Full parse, the worked
+  2px example, and the box-too-short clipping rule in [REFERENCE.md](REFERENCE.md).
+
 Before retargeting a font, predict layout damage from the glyph `advance` tables; before
 deleting one, check hand source for its symbol and `drop=` its whole
 `assets/fonts/{uuid}/` directory.
@@ -231,6 +239,10 @@ Zip anatomy, `schemes.json` structure (16 color fields + `colorMode` enum), `str
 full gotcha list are in [REFERENCE.md](REFERENCE.md). The scripts in [scripts/](scripts/) are
 the reusable core — `mgs_zip.py` (load member / repack+backup with a `drop` set / validate
 refs), `audit_refs.py`, `audit_schemes.py`, `audit_strings_fonts.py`, `audit_widget_strings.py`,
-`audit_glyph_coverage.py`, `strip_subtree.py`, `add_layer.py`, `prune_unused_images.py`,
+`audit_glyph_coverage.py`, `font_metrics.py`, `strip_subtree.py`, `add_layer.py`, `prune_unused_images.py`,
 `add_image.py`, `add_string.py`, `add_font_range.py`, `add_scheme.py`, `set_scheme_color.py`, `set_image_source.py`,
 `rename_images.py`, `export_assets.py`.
+
+Note that `font_metrics.py` is the one script here that reads **generated output** rather than
+the design zip — vertical metrics exist only in `le_gen_fonts.c`. It is read-only, so it does
+not breach the "never edit the generated tree" rule.

@@ -480,14 +480,18 @@ static const uint8_t GRID_ROW2[GRID_COLS] = { 5u, 2u, 6u, 1u };
 #define STORY_GLOSS_H      26    /* DejaVuSansMono_16 is 20px tall */
 #define STORY_HEAD_COLS    51
 
-/* The bullet is bigger than a parts-list dot because it answers a 20px headline rather
- * than a 16px row, and it is placed off the headline's own baseline rather than centred in
- * the row box: a marker centred on a box looks high beside a two-line item, since the eye
- * centres on the whole block. DejaVuSansMono_20 in a STORY_HEAD_PITCH box puts its
- * baseline at +22 and digits are 15 tall, so their optical middle is +14.5; this centres
- * the dot 1px below that, which is what reads as level. */
+/* The bullet is bigger than a parts-list dot because it answers a 20px headline rather than
+ * a 16px row, and it is placed off the headline's own metrics rather than centred in the row
+ * box. Centre it on the box, or on the cap height, and it reads high: the visual mass of a
+ * line of mixed-case text sits at the x-height, not between baseline and cap.
+ *
+ * DejaVuSansMono_20 in a STORY_HEAD_PITCH box puts its baseline at +22 with an x-height of
+ * 11, so the x-height middle is +16.5 and an 8px dot centres on it at y = 12.5. Rounded down
+ * a half-pixel the other way, since the descender space below the baseline pulls the eye
+ * down slightly further. Metrics decoded from le_gen_fonts.c — recipe in the
+ * mgs-legato-design skill's REFERENCE.md, under vertical alignment. */
 #define STORY_DOT_D         8
-#define STORY_DOT_Y        11
+#define STORY_DOT_Y        13
 
 /* Glyph advances, decoded from le_gen_fonts.c. MONO24_ADV lays the node name out after a
  * variable-length callout in the detail header; MONO_B18_ADV decides whether that callout

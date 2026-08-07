@@ -206,6 +206,70 @@ So string+font cleanups touch exactly those members.
 - **Deleting a font must drop its 4 zip members**, not just its `fonts.json` entry — use
   `mgs_zip.repack(..., drop=["assets/fonts/{uuid}/"])`.
 
+### Vertical metrics — where the baseline is, and what to align to
+
+Everything above is horizontal (advance, ink width). For anything that must sit *level with*
+text — a bullet dot, a rule, an accent bar, an icon beside a caption — you need the baseline,
+and neither the zip nor `glyphs.json` names it. It is in the generated C.
+`scripts/font_metrics.py <src-dir> [--box H]` prints the whole table; the parse, in case you
+need it inline:
+
+```
+leRasterFont <name> = { {..header..}, <height>, <baseline>, <bpp>, <name>_data };
+
+const uint8_t <name>_data[] = <u32 glyph count> then packed 20-byte records, all LE:
+  codePoint u16, width i16, height i16, advance i16,
+  bearingX  i16, bearingY i16, flags u16, dataRowWidth u16, dataOffset u32
+```
+
+`bearingY` is the rise above the baseline, which is how you recover the three landmarks the
+struct doesn't name: **cap height** = `bearingY` of a digit, **x-height** = `bearingY` of
+round lowercase (`acemnorsuvwxz`), **descender depth** = `height - bearingY` of `pqgyj`.
+
+**Where Legato puts the text.** `leLabelWidget` with `LE_VALIGN_MIDDLE` centres the glyph box
+in the widget rect (`leUtils_ArrangeRectangleRelative`), using integer division:
+
+```
+text_top = y + (H // 2) - (fontHeight // 2)
+baseline = text_top + fontBaseline
+```
+
+**Align markers to the x-height middle — `baseline - xHeight/2` — not to the row box and not
+to the cap-height middle.** The visual mass of a line of mixed-case text sits at the x-height;
+both other choices read *high*, and the error grows with the font's descender. Worked example
+that cost two rounds of "the dots are still too high" on hardware: `DejaVuSansMono_20` in a
+30px row has `baseline` +22, cap 15, x-height 11 — so the cap-height middle is +14.5 but the
+x-height middle is +16.5, and an 8px dot belongs at `y = 16.5 - 4 ≈ 12`, a full **2px lower**
+than centring on either the box or the caps. Two corollaries:
+
+- **A digits-and-caps-only line is the exception** — a row of figures, an all-caps caption —
+  where cap-height middle is right, because there is no lowercase mass to answer to.
+- **A marker beside a multi-line item still aligns to the first line**, but expect it to read
+  high there even when correct, because the eye centres on the whole block. Fix that with
+  *weight* (a larger marker) before reaching for more offset.
+
+**A label box shorter than the font clips top *and* bottom.** Legato clips to the widget rect,
+so the visible symptom is a cut descender and the cause looks like a font problem. Grow the box
+to `fontHeight` and shift `y` by half the growth to fit the glyphs without moving them;
+`font_metrics.py --box H` flags every font that would clip at that height.
+
+Measured for the family marvin uses, as a sanity reference (`h`/`base` are the struct fields):
+
+| font | h | base | adv | cap | x-ht | desc |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| DejaVuSansMono_9 | 12 | 9 | 5 | 7 | 5 | 2 |
+| DejaVuSansMono_12 | 16 | 12 | 7 | 9 | 7 | 3 |
+| DejaVuSansMono_14 | 18 | 14 | 8 | 10 | 8 | 3 |
+| DejaVuSansMono_16 | 20 | 15 | 10 | 12 | 9 | 3 |
+| DejaVuSansMono_18 | 22 | 17 | 11 | 13 | 10 | 4 |
+| DejaVuSansMono_20 | 25 | 19 | 12 | 15 | 11 | 4 |
+| DejaVuSansMono_24 | 29 | 22 | 14 | 18 | 13 | 5 |
+
+Bold is identical to Regular on every column at 14/16/18/20/24 — so a weight change needs no
+*vertical* review either, extending the "regular→bold is free in a monospace family" rule above.
+**The 12px pair is the exception**: Bold_12 is `h` 15 / `base` 11 against Regular_12's 16 / 12,
+so a swap at that size shifts the baseline up 1px. Check the pair rather than assuming.
+
 ## Widget properties — shape, and how to read the enums
 
 Every widget property is an object, not a bare value: `{"enabled":…, "type":…, "value":…,
