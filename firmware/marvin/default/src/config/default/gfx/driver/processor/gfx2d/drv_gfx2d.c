@@ -120,6 +120,60 @@ gfxResult DRV_GFX2D_Fill(gfxPixelBuffer* dest,
     return GFX_SUCCESS;
 }
 
+/* MARVIN re-apply patch #14 — cache-maintain only the rows a blit touches.
+ *
+ * Stock DRV_GFX2D_Blit cleans+invalidates each buffer over its whole `buffer_length`,
+ * which for a full-screen canvas is 1280*800*2 = 2,048,000 bytes = 64,000 cache lines,
+ * every blit, regardless of the rect. Legato blits one damage rect per frame, so a 12x12
+ * status-LED repaint paid the same toll as a full-screen one: measured 7.45 ms per frame
+ * on this 800 MHz ARM926, which put ~8% of the CPU into a pulsing 12px dot.
+ *
+ * Cleaning the rect's rows instead is both correct and enough — the 2D engine only reads
+ * the source rect and only writes the destination rect. Full-width rects (the common
+ * Legato case, since its scratch buffer is sized to the damage) collapse to one
+ * contiguous range, so nothing is lost on large blits.
+ *
+ * Ordering and clean+invalidate semantics are deliberately left exactly as stock: only
+ * the address range changes. See the journal, 2026-08-07 (night). */
+static void gfx2d_cache_rect(const gfxPixelBuffer* buf, const gfxRect* rect)
+{
+    uint32_t bpp = gfxColorInfoTable[buf->mode].size;
+    uint8_t* base;
+    int32_t  x0, y0, x1, y1, row;
+
+    /* Clamped to the buffer, because the stock whole-buffer clean was immune to a rect
+     * reaching past the end and a per-row one is not. Every in-tree caller passes a
+     * clipped rect today; this keeps the patch safe for the ones that don't. */
+    x0 = (rect->x > 0) ? rect->x : 0;
+    y0 = (rect->y > 0) ? rect->y : 0;
+    x1 = rect->x + rect->width;
+    y1 = rect->y + rect->height;
+    if (x1 > buf->size.width)  { x1 = buf->size.width;  }
+    if (y1 > buf->size.height) { y1 = buf->size.height; }
+
+    if (x1 <= x0 || y1 <= y0)
+    {
+        return;
+    }
+
+    /* Rows are contiguous when the rect spans the full buffer width — one range. */
+    if (x0 == 0 && x1 == buf->size.width)
+    {
+        base = (uint8_t*)gfxPixelBufferOffsetGet_Unsafe(buf, 0, (uint32_t)y0);
+        dcache_CleanInvalidateByAddr(base,
+                                    (int32_t)((uint32_t)(x1 - x0) *
+                                              (uint32_t)(y1 - y0) * bpp));
+        return;
+    }
+
+    for (row = y0; row < y1; row++)
+    {
+        base = (uint8_t*)gfxPixelBufferOffsetGet_Unsafe(buf, (uint32_t)x0,
+                                                        (uint32_t)row);
+        dcache_CleanInvalidateByAddr(base, (int32_t)((uint32_t)(x1 - x0) * bpp));
+    }
+}
+
 gfxResult DRV_GFX2D_Blit(const gfxPixelBuffer* source,
                            const gfxRect* srcRect,
                            const gfxPixelBuffer* dest,
@@ -156,8 +210,12 @@ gfxResult DRV_GFX2D_Blit(const gfxPixelBuffer* source,
     src_rect.width = (uint32_t)srcRect->width;
     src_rect.height = (uint32_t)srcRect->height;
 
-	dcache_CleanInvalidateByAddr(source->pixels, source->buffer_length);
-	dcache_CleanInvalidateByAddr(dest->pixels, dest->buffer_length);
+	/* MARVIN re-apply patch #14 — was:
+	 *   dcache_CleanInvalidateByAddr(source->pixels, source->buffer_length);
+	 *   dcache_CleanInvalidateByAddr(dest->pixels, dest->buffer_length);
+	 * i.e. the whole buffer per blit. See gfx2d_cache_rect above. */
+	gfx2d_cache_rect(source, srcRect);
+	gfx2d_cache_rect(dest, destRect);
 
     if ( blendState == GFX_BLEND_NONE )
     {
