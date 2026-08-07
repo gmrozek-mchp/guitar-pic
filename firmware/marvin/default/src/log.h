@@ -2,6 +2,7 @@
 #define MARVIN_LOG_H
 
 #include <stdarg.h>
+#include <stdint.h>
 
 /* Lightweight logging shim. Goes through libc printf → xc32_monitor →
  * DBGU. Adds a runtime severity filter and FreeRTOS-aware locking.
@@ -9,6 +10,16 @@
  * Pre-scheduler calls work too — the mutex is taken only when the
  * scheduler is running, so log_printf is safe to call from
  * APP_Initialize / SYS_Initialize.
+ *
+ * The lock is recursive, so a LOG_* reached from inside another one on the
+ * same task interleaves a line rather than deadlocking. That nesting is a
+ * defect in the caller, so it is reported to DBGU with the offending
+ * address and counted (log_nested_count).
+ *
+ * Acquiring the lock is also bounded: no logger can be stalled indefinitely by
+ * a task that wedges while holding it. A line that times out is written raw
+ * (format string, no argument substitution) and counted — see
+ * log_lock_timeout_count. Logging therefore cannot deadlock the system.
  *
  * Do NOT call from an ISR — use a different mechanism for ISR-side
  * diagnostics (queue to a task, or atomic counter polled by a task).
@@ -28,6 +39,14 @@ void log_init(log_level_t initial_level);
 
 void        log_set_level(log_level_t lvl);
 log_level_t log_get_level(void);
+
+/* Number of nested LOG_* entries seen since boot. Non-zero means some caller
+ * logs from inside a log call; the DBGU marker names the address. */
+uint32_t log_nested_count(void);
+
+/* Number of lines that gave up waiting for the lock. Non-zero means a task
+ * wedged while holding it; those lines went out unformatted. */
+uint32_t log_lock_timeout_count(void);
 
 void log_vprintf(log_level_t lvl, const char *fmt, va_list ap);
 void log_printf(log_level_t lvl, const char *fmt, ...)

@@ -37,6 +37,7 @@ terminal while debugging.
 | `nand_console.py` | Shared u-boot-console driver (pre-flight port check, erase, program+verify) used by `program-nand.sh` / `erase-nand.sh` |
 | `program-qspi.{sh,cfg}` | Program QSPI NOR (splash / UI assets) from macOS over JTAG (u-boot RAM-loaded as an `sf` flasher) — see `program-qspi.md` |
 | `qspi_console.py` | Shared u-boot-console driver (pre-flight port check, `sf` probe/erase/write+verify) used by `program-qspi.sh` |
+| `inspect-wedge.gdb` | gdb helpers for post-mortem on a frozen marvin (see "Inspecting a wedged board" below) |
 
 ## Usage
 
@@ -148,6 +149,47 @@ openocd -f sam9x75-chybrid.cfg &                       # gdb server on :3333
 arm-none-eabi-gdb firmware/marvin/out/marvin/default.elf \
     -ex 'set architecture arm' -ex 'target remote :3333'
 ```
+
+## Inspecting a wedged board — `inspect-wedge.gdb`
+
+When marvin freezes, attach **without resetting** and read its state. Plain `init`
+only does a TAP reset (TMS), which leaves the running core alone; `reset`,
+`reset halt` and `reset init` all destroy the evidence.
+
+```sh
+openocd -f sam9x75-chybrid.cfg &                       # no reset
+arm-none-eabi-gdb firmware/marvin/out/marvin/default.elf \
+    -ex 'set architecture arm' -ex 'target remote :3333' \
+    -x firmware/marvin/openocd/inspect-wedge.gdb
+```
+
+OpenOCD halts the core on gdb connect. Bump the clock first — the config leaves
+JTAG at 50 kHz (only `reset init` raises it), which makes struct reads crawl:
+
+```
+(gdb) monitor adapter speed 1000
+(gdb) marvin_wedge_overview
+(gdb) marvin_log_lock
+(gdb) marvin_task &'video.c'::s_task_tcb
+(gdb) marvin_task_regs &'video.c'::s_task_tcb
+```
+
+Every marvin task is created with `xTaskCreateStatic`, so each TCB has a symbol
+(`&'video.c'::s_task_tcb`, `&'ui_manager.c'::s_boot_tcb`, …) — no RTOS-aware gdb
+needed. Memory reads execute on the halted core, so they see the MMU- and
+cache-coherent view; raw `monitor mdw` bypasses that and is only used for
+peripheral registers.
+
+**Archive the ELF that was running.** `load-ram.sh` preserves nothing, and a
+rebuild can move `.bss` (and shift parts of `.text` by a few bytes) while most
+symbols still resolve — offset arithmetic then looks correct right up until it
+silently isn't. Keep the `.elf` beside the log capture.
+
+**Trust struct field reads over stack word scans.** `info symbol` applied to
+stale words inside printf's large frames will produce a coherent-looking call
+chain that never happened. See the 2026-08-07 entry in
+[`../docs/journal.md`](../docs/journal.md) for how that played out, and for the
+four dead ends worth not re-walking.
 
 ## Bootable microSD (standalone, no JTAG) — `make-sdcard.sh`
 

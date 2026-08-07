@@ -152,4 +152,15 @@ data:
           type: User
         type: Values
       type: Integer
+    FREERTOS_USE_RECURSIVE_MUTEXES:
+      attributes:
+        id: FREERTOS_USE_RECURSIVE_MUTEXES
+        label: Use Recursive Mutexes
+      children:
+      - children:
+        - attributes:
+            value: 'true'
+          type: User
+        type: Values
+      type: Boolean
   userData: {}
