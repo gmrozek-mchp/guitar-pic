@@ -244,6 +244,68 @@ static void add_badge(int x, int y, const char *text, const leScheme *text_schem
                        text_scheme, LE_HALIGN_CENTER), text);
 }
 
+
+/* ── minimal-damage geometry updates ────────────────────────────────────────
+ * setSize and setPosition each damage the OLD rect and then the NEW one, whose union is the
+ * larger of the two — so a TX bar whose value moves it two pixels repaints all 46x204 of
+ * itself, and an error pill that grows by three repaints its whole track. These two helpers
+ * write the rect directly and damage only the band that can have changed.
+ *
+ * Writing `rect` rather than going through the setter is the same idiom ui_manager uses to
+ * change LE_WIDGET_ENABLED without invalidating (panel_set_pickable), and for the same reason:
+ * to drop one unwanted side effect. Safe for these particular widgets because they are plain
+ * leWidgets with no border, no resize handler and no picking — the setter's other effects are
+ * the resize event and _invalidateBorderAreas, neither of which applies. */
+
+/* Bottom-anchored bar: `bottom` is fixed, the top edge moves. Damage spans both top edges plus
+ * the rounded corners at the new one. */
+static void bar_set_height(leWidget *bar, int bottom, int h)
+{
+    if (bar == NULL || h < 1) { return; }
+
+    int old_top = bar->rect.y;
+    int new_top = bottom - h;
+
+    if (new_top == old_top && bar->rect.height == h) { return; }
+
+    bar->rect.y      = new_top;
+    bar->rect.height = h;
+
+    leRect d = {
+        .x      = bar->rect.x,
+        .y      = ((old_top < new_top) ? old_top : new_top) - 1,
+        .width  = bar->rect.width,
+        .height = 0,
+    };
+    d.height = (((old_top > new_top) ? old_top : new_top) + BAR_R + 2) - d.y;
+
+    bar->fn->_damageArea(bar, &d);
+}
+
+/* Left-anchored pill: the left end is fixed, the right end cap moves. Damage spans both right
+ * edges, widened by the cap radius so the moving semicircle is covered. */
+static void pill_set_width(leWidget *pill, int w)
+{
+    if (pill == NULL || w < 1) { return; }
+
+    int old_w = pill->rect.width;
+    int cap   = (pill->rect.height / 2) + 2;
+
+    if (w == old_w) { return; }
+
+    pill->rect.width = w;
+
+    leRect d = {
+        .x      = pill->rect.x + ((old_w < w) ? old_w : w) - cap,
+        .y      = pill->rect.y,
+        .width  = 0,
+        .height = pill->rect.height,
+    };
+    d.width = (pill->rect.x + ((old_w > w) ? old_w : w) + cap) - d.x;
+
+    pill->fn->_damageArea(pill, &d);
+}
+
 /* ── formatting (mirrors the mockup) ────────────────────────────────────────*/
 static void fmt_count(uint32_t v, char *b, size_t n)
 {
@@ -470,6 +532,10 @@ static SparklineWidget s_util_plot;
 
 static leWidget     *s_titlebar;
 static leWidget     *s_gauge;
+
+/* A/B for the refresh strategy: `bus refresh full` restores the old whole-panel invalidate so
+ * the saving can be measured rather than asserted. Targeted by default. */
+static volatile bool s_full_repaint;
 static volatile bool s_shown;
 static StackType_t   s_task_stack[1024];
 static StaticTask_t  s_task_tcb;
@@ -874,8 +940,7 @@ static void refresh_all(void)
             {
                 int h = (int)(((uint64_t)st.tx_rate * (uint32_t)(PLOT_H - 2)) / max_rate);
                 if (h < 1) { h = 1; }
-                s_bar[r]->fn->setSize(s_bar[r], s_bar[r]->fn->getWidth(s_bar[r]), (uint32_t)h);
-                s_bar[r]->fn->setPosition(s_bar[r], s_bar[r]->rect.x, PLOT_Y + PLOT_H - h);
+                bar_set_height(s_bar[r], PLOT_Y + PLOT_H, h);
             }
 
             /* Error bar: width only, plus the total and the CRC/SYM split. A pill
@@ -888,7 +953,7 @@ static void refresh_all(void)
                 int w = (int)(((uint64_t)e * (uint32_t)s_etrack_w) / max_err);
                 if (e != 0u && w < EBAR_H) { w = EBAR_H; }
                 if (w < 1) { w = 1; }
-                s_ebar[r]->fn->setSize(s_ebar[r], (uint32_t)w, (uint32_t)EBAR_H);
+                pill_set_width(s_ebar[r], w);
             }
             (void)snprintf(tmp, sizeof tmp, "%lu", (unsigned long)e);
             set_text(s_etot[r], tmp);
@@ -898,10 +963,20 @@ static void refresh_all(void)
         }
     }
 
-    /* Transparent labels don't repaint their backdrop on invalidate, and the bars
-     * just moved, so repaint the whole panel once to erase old glyphs/geometry and
-     * redraw every cell + plot. */
-    Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
+    /* Everything above invalidates itself: set_text goes through the string's invalidate
+     * callback, setScheme invalidates, and setSize/setPosition damage the old rect as well as
+     * the new one. The two exceptions are pure data — Gauge_Set now invalidates its own widget,
+     * and a sparkline series is shared by several widgets so its push cannot know them.
+     *
+     * This used to end with `Marvin_PANEL_BUS->fn->invalidate(...)`: a whole 1280x800 repaint,
+     * every second, on the belief that transparent labels do not get their backdrop repainted.
+     * They do — `invalidateWidget` marks every widget intersecting the damage rect dirty from
+     * the layer root down, so the opaque card behind a label repaints first. What actually made
+     * targeted invalidation unsafe was `AaCorners_Render` writing through the unchecked
+     * `leRenderer_PutPixel`, which is fixed. See the journal, 2026-08-07 (night). */
+    s_util_plot.widget.fn->invalidate(&s_util_plot.widget);
+
+    if (s_full_repaint) { Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS); }
 }
 
 /* ~1 Hz refresh, only while the bus view is the shown base view. */
@@ -928,6 +1003,16 @@ void ScreenBus_SetShown(bool shown)
 {
     s_shown = shown;
     Titlebar_SetShown(s_titlebar, shown);
+}
+
+void ScreenBus_SetFullRepaint(bool on)
+{
+    s_full_repaint = on;
+}
+
+bool ScreenBus_FullRepaint(void)
+{
+    return s_full_repaint;
 }
 
 void ScreenBus_SetSimulated(bool on)
@@ -963,6 +1048,16 @@ void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
         { "spark",   &s_util_plot.widget },
         { "txbar[0]", s_bar[0] },
     };
+
+    /* The panel itself, for scale: this is what the 1 Hz refresh used to repaint in full. */
+    {
+        uint32_t us = RenderProbe_WidgetUs(Marvin_PANEL_BUS, (iters > 4u) ? 4u : iters);
+
+        (void)snprintf(line, sizeof line, "  %-9s %3dx%-3d (%5d px) = %6lu us  <- old refresh",
+                       "PANEL", (int)BASE_W, (int)BASE_H, (int)(BASE_W * BASE_H),
+                       (unsigned long)us);
+        out(ctx, line);
+    }
 
     for (size_t i = 0u; i < 3u; i++)
     {

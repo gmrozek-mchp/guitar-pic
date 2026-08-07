@@ -122,6 +122,31 @@ uint32_t AaShape_RRectCov(const AaRRect *s, int32_t x, int32_t y)
     return (sq >= t) ? 0u : ((t - sq) / 2u);
 }
 
+/* Clip a shape's pixel bounding box to the rect actually being drawn, and say whether anything
+ * survives. Load-bearing for partial invalidation: the blits below write through the culling
+ * `_Safe` pixel calls, so without this they would still compute coverage for every pixel of the
+ * shape and merely throw most of it away. A bus-screen TX bar is 46x204 but a value change
+ * damages a band a few pixels tall. */
+static leBool clip_to_draw(int32_t *x0, int32_t *y0, int32_t *x1, int32_t *y1)
+{
+    leRect box = { .x = *x0, .y = *y0, .width = *x1 - *x0, .height = *y1 - *y0 };
+    leRect clip;
+
+    if (box.width < 1 || box.height < 1) { return LE_FALSE; }
+    if (leRenderer_CullDrawRect(&box) == LE_TRUE) { return LE_FALSE; }
+
+    leRenderer_ClipDrawRect(&box, &clip);
+
+    if (clip.width < 1 || clip.height < 1) { return LE_FALSE; }
+
+    *x0 = clip.x;
+    *y0 = clip.y;
+    *x1 = clip.x + clip.width;
+    *y1 = clip.y + clip.height;
+
+    return LE_TRUE;
+}
+
 /* sin(d) for d = 0..90 degrees, Q12. Everything else comes from symmetry. */
 static const uint16_t SIN_Q12[91] =
 {
@@ -173,7 +198,14 @@ void AaShape_ArcRing(int32_t cx, int32_t cy, int32_t r, int32_t hw,
     bool    wedge = (f1 > f0);
     int32_t py;
 
+    int32_t bx0 = (cx - o_out - 1) >> 1;
+    int32_t bx1 = ((cx + o_out + 2) >> 1) + 1;
+    int32_t by0 = (cy - o_out - 1) >> 1;
+    int32_t by1 = ((cy + o_out + 2) >> 1) + 1;
+
     if (r < 1 || hw < 1 || alpha == 0u) { return; }
+
+    if (clip_to_draw(&bx0, &by0, &bx1, &by1) == LE_FALSE) { return; }
 
     o2_out = o_out * o_out;
     o2_in  = (o_in > 0) ? (o_in * o_in) : 0;
@@ -183,7 +215,7 @@ void AaShape_ArcRing(int32_t cx, int32_t cy, int32_t r, int32_t hw,
     cos_f0 = AaShape_CosQ12(f0); sin_f0 = AaShape_SinQ12(f0);
     cos_f1 = AaShape_CosQ12(f1); sin_f1 = AaShape_SinQ12(f1);
 
-    for (py = (cy - o_out - 1) >> 1; py <= ((cy + o_out + 2) >> 1); py++)
+    for (py = by0; py < by1; py++)
     {
         int32_t y  = (2 * py) + 1;
         int32_t vy = y - cy;
@@ -215,6 +247,9 @@ void AaShape_ArcRing(int32_t cx, int32_t cy, int32_t r, int32_t hw,
                 px0 = ((cx + u_lo - 1) >> 1) - 1;
                 px1 = ((cx + u_hi + 1) >> 1) + 1;
             }
+
+            if (px0 < bx0) { px0 = bx0; }
+            if (px1 > bx1 - 1) { px1 = bx1 - 1; }
 
             for (px = px0; px <= px1; px++)
             {
@@ -275,6 +310,8 @@ static void rrect_blit(const AaRRect *sh, leColor color, uint32_t alpha)
     int32_t px, py;
 
     if (alpha == 0u || ex < 1 || ey < 1) { return; }
+
+    if (clip_to_draw(&x0, &y0, &x1, &y1) == LE_FALSE) { return; }
 
     for (py = y0; py < y1; py++)
     {

@@ -1114,9 +1114,19 @@ static void cmd_bus(EmbeddedCli *cli, char *args, void *ctx)
     const char *tok = embeddedCliGetToken(args, 1);
     const char *val = embeddedCliGetToken(args, 2);
 
+    if (tok != NULL && strcmp(tok, "refresh") == 0)
+    {
+        if (val != NULL && strcmp(val, "full") == 0)          { ScreenBus_SetFullRepaint(true); }
+        else if (val != NULL && strcmp(val, "targeted") == 0) { ScreenBus_SetFullRepaint(false); }
+        else { console_printf("usage: bus refresh <full|targeted>"); return; }
+
+        console_printf("bus refresh = %s", ScreenBus_FullRepaint() ? "full panel" : "targeted");
+        return;
+    }
+
     if (tok == NULL || strcmp(tok, "probe") != 0)
     {
-        console_printf("usage: bus probe [iters]");
+        console_printf("usage: bus <probe [iters] | refresh <full|targeted>>");
         return;
     }
 
@@ -1484,7 +1494,7 @@ static const CliCommandBinding bindings[] = {
         { "backlight","backlight <0-100>: set LCD backlight brightness %",  true, NULL, cmd_backlight },
         { "perf",     "perf [dump <canvas> [x y w h]]: perf-log state, or request a canvas dump", true, NULL, cmd_perf },
         { "nav",      "nav [slide on|off | icon <row> | px <x> <y> [w h]]: drawer slide / pixel dump", true, NULL, cmd_nav },
-        { "bus",     "bus probe [iters]: render cost of the gauge / sparkline / TX bars", true, NULL, cmd_bus },
+        { "bus",     "bus <probe [iters] | refresh full|targeted>: render cost / refresh strategy", true, NULL, cmd_bus },
         { "wiimotes","wiimotes probe [iters]: render cost of the whammy / tilt / fret widgets", true, NULL, cmd_wiimotes },
         { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
         { "titlebar","titlebar [pulse <on|off> | tiles <on|off> | probe [iters]]: metric-tile / LED render load, frames/s, per-frame cost", true, NULL, cmd_titlebar },

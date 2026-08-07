@@ -47,6 +47,11 @@ void ScreenBus_SetSimulated(bool on);
 typedef void (*bus_probe_fn)(void *ctx, const char *line);
 
 void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx);
+
+/* Force the old whole-panel repaint on every 1 Hz refresh instead of letting each changed
+ * widget invalidate itself. For A/B measurement only; targeted is the default. */
+void ScreenBus_SetFullRepaint(bool on);
+bool ScreenBus_FullRepaint(void);
 bool ScreenBus_Simulated(void);
 
 #ifdef __cplusplus
