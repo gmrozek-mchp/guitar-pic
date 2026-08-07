@@ -1,6 +1,8 @@
 #ifndef MARVIN_HEALTH_MONITOR_H
 #define MARVIN_HEALTH_MONITOR_H
 
+#include <stdint.h>
+
 /* Liveness + resource monitor.
  *
  * A low-priority task samples the system on a fixed cadence and records it to
@@ -26,6 +28,13 @@ void HealthMonitor_Initialize(void);
  * capture/reveal boot window perturbs it. Call once the UI is revealed and
  * capture is armed (end of the boot sequence). */
 void HealthMonitor_NotifyReady(void);
+
+/* Aggregate CPU load over the supervisor's most recent 1 s sample, in permille of one
+ * core — everything that is not the idle task, so interrupt time counts as load. 0 until
+ * the monitor is armed and has two samples to diff. Safe to call from any task (a single
+ * word, published by the supervisor and read without a lock). Drives the titlebar's CPU
+ * sparkline; the supervisor computes it anyway for its runaway check. */
+uint32_t HealthMonitor_CpuPermille(void);
 
 /* Render the current per-task table (header, one row per task, heap footer)
  * through a caller-supplied line sink. Used by the `health` console command;

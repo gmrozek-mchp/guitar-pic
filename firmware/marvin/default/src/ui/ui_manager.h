@@ -206,7 +206,10 @@ unsigned int UiManager_BaseCanvas(void);
  * single-threaded and unlocked). Lock suspends the Legato render/input threads and
  * waits for the current paint to finish; do the setString/setPressed/invalidate work,
  * then Unlock. Held only for the microseconds of an edit — never around blocking work.
- * Used by the dashboard feed consumer (ui/dashboard_feed.c). */
+ * Holders are serialized by a mutex — the underlying suspend/resume is not counted, so
+ * two tasks inside at once would have the first Unlock resume the renderer under the
+ * second. Used by the dashboard feed consumer (ui/dashboard_feed.c), the bus screen's
+ * telemetry refresh and the titlebar tick, the last of which overlaps the other two. */
 void UiManager_RenderLock(void);
 void UiManager_RenderUnlock(void);
 

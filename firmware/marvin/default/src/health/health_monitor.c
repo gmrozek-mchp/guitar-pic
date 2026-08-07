@@ -86,6 +86,9 @@ static uint64_t          s_prev_rt[HM_MAX_TASKS];
 static UBaseType_t       s_prev_n;
 static uint64_t          s_prev_total;
 
+/* Latest sample's non-idle share, permille. Published for the UI (see the header). */
+static volatile uint32_t s_cpu_permille;
+
 /* ---- helpers ------------------------------------------------------------ */
 
 #if HM_SD_LOG_ENABLED
@@ -372,6 +375,9 @@ static void supervisor_sample(uint32_t seq)
 
     if (!have_prev || total_delta == 0u) { return; }
 
+    uint32_t idle_pm = (uint32_t)((idle_delta * 1000u) / total_delta);
+    s_cpu_permille = (idle_pm < 1000u) ? (1000u - idle_pm) : 0u;
+
     unsigned idle_pct = (unsigned)((idle_delta * 100u) / total_delta);
     unsigned hot_pct  = (unsigned)((hot_delta  * 100u) / total_delta);
     unsigned isr_pct  = (sum_delta < total_delta)
@@ -470,4 +476,9 @@ void HealthMonitor_Initialize(void)
 void HealthMonitor_NotifyReady(void)
 {
     s_ready = true;
+}
+
+uint32_t HealthMonitor_CpuPermille(void)
+{
+    return s_cpu_permille;
 }

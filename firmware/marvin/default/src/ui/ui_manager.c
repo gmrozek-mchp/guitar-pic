@@ -17,6 +17,7 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
 
 #include "definitions.h"   /* XLCDC_*, PWM_* (backlight) */
 #include "log.h"
@@ -1032,6 +1033,12 @@ static void enable_backlight(void)
 static TaskHandle_t s_legato_task;
 static TaskHandle_t s_input_task;
 
+/* Serializes UiManager_RenderLock's holders — see the note there. Created pre-scheduler
+ * in UiManager_Initialize; the NULL checks cover the boot task's own scene edits, which
+ * run before that and are single-threaded anyway. */
+static SemaphoreHandle_t s_render_lock;
+static StaticSemaphore_t s_render_lock_buf;
+
 static void scene_edit_begin(void)
 {
     s_legato_task = xTaskGetHandle("LEGATO_Tasks");
@@ -1059,9 +1066,17 @@ static void scene_edit_end(void)
  * screen, see the journal) — only proceeds once leRenderer_IsIdle() confirms no paint
  * is in flight, so appending damage can't corrupt an active paint traversal. Held
  * only for the microseconds of an edit; never touches the actuation tasks (prio 4–5),
- * which are unaffected by suspending the prio-2 render/input pair. */
+ * which are unaffected by suspending the prio-2 render/input pair.
+ *
+ * A mutex serializes the holders, because vTaskSuspend/vTaskResume are NOT counted: with
+ * two tasks inside the lock at once, the first Unlock would resume the renderer while the
+ * second was still mid-edit. There are three callers now (the dashboard feed, the bus
+ * screen and the titlebar tick), and the titlebar's runs alongside whichever screen owns
+ * the base view, so they do overlap. */
 void UiManager_RenderLock(void)
 {
+    if (s_render_lock != NULL) { (void)xSemaphoreTake(s_render_lock, portMAX_DELAY); }
+
     if (s_legato_task == NULL) { s_legato_task = xTaskGetHandle("LEGATO_Tasks"); }
     if (s_input_task  == NULL) { s_input_task  = xTaskGetHandle("SYS_INPUT_Tasks"); }
 
@@ -1084,6 +1099,8 @@ void UiManager_RenderUnlock(void)
 {
     if (s_input_task  != NULL) { vTaskResume(s_input_task);  }
     if (s_legato_task != NULL) { vTaskResume(s_legato_task); }
+
+    if (s_render_lock != NULL) { (void)xSemaphoreGive(s_render_lock); }
 }
 
 /* Build the Marvin master screen and run per-panel setup. screenInit_Marvin builds
@@ -1352,6 +1369,8 @@ void UiManager_Initialize(void)
     ScreenBus_InitSurface();
     ScreenSystem_InitSurface();
     GFX_CANVAS_Task();
+
+    s_render_lock = xSemaphoreCreateMutexStatic(&s_render_lock_buf);
 
     /* Dashboard telemetry feed: create the event queue now so producers (fret
      * actuation, selection) can post immediately; the consumer task starts
