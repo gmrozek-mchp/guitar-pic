@@ -529,6 +529,7 @@ static unsigned      s_nimg;
 typedef enum { VIEW_OVERVIEW, VIEW_DETAIL, VIEW_COUNT } view_t;
 
 static leWidget *s_root[VIEW_COUNT];
+static leWidget *s_titlebar[VIEW_COUNT];
 static view_t    s_view = VIEW_COUNT;   /* VIEW_COUNT = nothing shown yet */
 
 /* Handles the detail view repopulates on selection. */
@@ -797,6 +798,11 @@ static void bind_view(view_t v)
     UiManager_BindSystemView(v == VIEW_DETAIL);
     ScreenSystem_SetInput(s_shown);
     photo_apply();
+
+    /* The two views' titlebars are separate instances, so the live one moves with the
+     * bind — the outgoing one is left alone, since reporting the incoming one already
+     * displaces it. */
+    if (s_shown) { Titlebar_SetShown(s_titlebar[v], true); }
 }
 
 /* Bind the detail canvas once it has been repainted for the node just selected.
@@ -1214,8 +1220,8 @@ void ScreenSystem_Setup(void)
         /* Each view carries its own titlebar (hamburger + logos): the two are separate
          * layers now, so there is nothing to share. Added first so the content paints
          * over the page and never over the chrome. */
-        Titlebar_Add(panel[i]);
-        s_root[i] = panel[i];
+        s_titlebar[i] = Titlebar_Add(panel[i]);
+        s_root[i]     = panel[i];
     }
 
     ScreenSystem_SetInput(false);
@@ -1279,6 +1285,10 @@ void ScreenSystem_SetShown(bool shown)
     {
         UiManager_NodePhotoHide();
         ScreenSystem_SetInput(false);
+        for (unsigned i = 0u; i < (unsigned)VIEW_COUNT; i++)
+        {
+            Titlebar_SetShown(s_titlebar[i], false);
+        }
         s_view = VIEW_COUNT;
     }
 }

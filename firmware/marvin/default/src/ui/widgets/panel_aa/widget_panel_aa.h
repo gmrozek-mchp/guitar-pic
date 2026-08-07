@@ -36,7 +36,10 @@ void PanelAA_EnableRoundImage(leWidget* panel);
  * Takes the panel's background over: this CLEARS the background type, because a skin
  * fill underneath would show square corners around the shape. Does not set or rely on
  * cornerRadius either — Legato's stock rounded-rect paint hangs once cornerRadius
- * reaches half the widget size. Call once after construction. */
+ * reaches half the widget size. Call once after construction.
+ *
+ * Drawn at the panel's Legato alpha, so setAlphaEnabled + setAlphaAmount fade the shape
+ * (the titlebar's pulsing status LED); left alone it is opaque. */
 void PanelAA_EnableDot(leWidget* panel);
 
 /* Filled anti-aliased column in the panel's BASE colour with only its TOP two corners

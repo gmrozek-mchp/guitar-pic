@@ -1212,6 +1212,7 @@ void ScreenDashboard_ApplyVideoState(bool displayed)
 void ScreenDashboard_SetShown(bool shown)
 {
     DashboardFeed_SetShown(shown);
+    Titlebar_SetShown(s_titlebar, shown);
 }
 
 void ScreenDashboard_InitSurface(void)

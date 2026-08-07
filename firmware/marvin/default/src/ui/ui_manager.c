@@ -11,6 +11,7 @@
 #include "ui/screens/bus/screen_bus.h"
 #include "ui/screens/system/screen_system.h"
 #include "ui/dashboard_feed.h"
+#include "ui/titlebar.h"      /* metric-tile + status-LED tick, started at end of boot */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -1344,6 +1345,10 @@ static void ui_boot_task(void *param)
     /* Boot sequence done — arm the health monitor now (it stays idle until this
      * so its card I/O + task-list walks never perturb the reveal window). */
     HealthMonitor_NotifyReady();
+
+    /* Titlebar metric tiles + status-LED pulse. After the reveal because the tick takes
+     * the render lock, which the boot sequence's own suspend/resume would fight. */
+    Titlebar_Start();
 
     /* Last: persist this boot's duration if it has drifted, so the next boot's bar is
      * calibrated. Flash write, deliberately after everything else. */

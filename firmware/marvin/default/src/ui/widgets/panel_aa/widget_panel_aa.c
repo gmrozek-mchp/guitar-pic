@@ -1,6 +1,7 @@
 #include "ui/widgets/panel_aa/widget_panel_aa.h"
 
 #include "ui/gfx/aa_corners.h"
+#include "ui/gfx/aa_shape.h"
 #include "ui/gfx/vec_draw.h"
 
 #include "gfx/legato/core/legato_scheme.h"
@@ -99,77 +100,40 @@ static leWidgetVTable s_dot_vt;
 static void (*s_dot_orig_paint)(leWidget*);
 static leBool s_dot_ready = LE_FALSE;
 
-/* A capsule in the panel's BASE colour, drawn by the vector rasterizer: a disc when
- * the panel is square, a stadium otherwise (the ends round by min(w,h)/2). The middle
- * band plus one disc per end — a single rounded RectFill cannot do it, because the
- * vector rect fill clamps its corner radii to min(w,h)/4.
+/* A capsule in the panel's BASE colour: a disc when the panel is square, a stadium
+ * otherwise (the ends round by min(w,h)/2). Coverage is computed analytically per pixel as
+ * the distance to the capsule's spine — the segment joining the two end-cap centres, which
+ * degenerates to a point for a disc — so one shape is one pass with no case analysis.
+ *
+ * Drawn by AaShape_Capsule, deliberately NOT by `leDraw_VectorArcFill`, which this used to
+ * use and which costs ~5.7 ms for a radius-6 disc on this core (see that header).
  *
  * Nothing else may paint the panel's background: the shape blends against whatever is
  * behind it, so a skin fill underneath would leave square corners. PanelAA_EnableDot
- * clears the background type for that reason. */
+ * clears the background type for that reason.
+ *
+ * Drawn at the panel's own Legato alpha (255 unless setAlphaEnabled + setAlphaAmount say
+ * otherwise), which is what lets a caller fade one; coverage scales it, so the antialiased
+ * edge stays correct at every level. The blend reads the backdrop the layer's opaque
+ * parents have just repainted under the damaged rect, so a fade never accumulates. */
 static void dot_paint(leWidget* wgt)
 {
-    leRect     rect;
-    leRectF    band;
-    leVector2  end;
-    leReal_i16 radius;
-    leReal_i16 offset;
+    leRect   rect;
+    uint32_t alpha;
 
     s_dot_orig_paint(wgt);
 
     if (wgt->status.drawState != LE_WIDGET_DRAW_STATE_DONE) { return; }
 
+    alpha = wgt->fn->getCumulativeAlphaAmount(wgt);
+
+    if (alpha == 0u) { return; }
+
     wgt->fn->rectToScreen(wgt, &rect);
 
     if (rect.width < 2 || rect.height < 2) { return; }
 
-    radius = LE_REAL_I16_FROM_INT((rect.width < rect.height) ? rect.width : rect.height) / 2;
-
-    UiVec_RectF(&rect, &band);
-
-    if (rect.width > rect.height)
-    {
-        band.extents.x -= radius;
-        offset = band.extents.x;
-    }
-    else
-    {
-        band.extents.y -= radius;
-        offset = band.extents.y;
-    }
-
-    leVectorArc_FillAttr disc =
-    {
-        .color    = leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE),
-        .alpha    = 255u,
-        .hardness = LE_REAL_I16_ONE,
-        .aaMode   = UI_VEC_AA,
-    };
-
-    if (offset > 0)
-    {
-        leVectorRect_FillAttr fill =
-        {
-            .color  = disc.color,
-            .alpha  = 255u,
-            .aaMode = UI_VEC_AA,
-        };
-
-        leDraw_VectorRectFill(&band, &fill);
-    }
-
-    end = band.origin;
-
-    if (rect.width > rect.height) { end.x -= offset; } else { end.y -= offset; }
-    leDraw_VectorArcFill(&end, radius, 0, UI_VEC_FULL_CIRCLE, &disc);
-
-    if (offset > 0)
-    {
-        end = band.origin;
-
-        if (rect.width > rect.height) { end.x += offset; } else { end.y += offset; }
-        leDraw_VectorArcFill(&end, radius, 0, UI_VEC_FULL_CIRCLE, &disc);
-    }
+    AaShape_Capsule(&rect, leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE), alpha);
 }
 
 void PanelAA_EnableDot(leWidget* panel)
@@ -200,9 +164,7 @@ static leBool s_top_ready = LE_FALSE;
  * is behind the panel, and a skin fill underneath would square them off again. */
 static void round_top_paint(leWidget* wgt)
 {
-    leRect     rect;
-    leRectF    body;
-    leReal_i16 radius;
+    leRect rect;
 
     s_top_orig_paint(wgt);
 
@@ -212,20 +174,12 @@ static void round_top_paint(leWidget* wgt)
 
     if (rect.width < 1 || rect.height < 1) { return; }
 
-    radius = LE_REAL_I16_FROM_INT((int32_t)wgt->style.cornerRadius);
-
-    UiVec_RectF(&rect, &body);
-
-    leVectorRect_FillAttr fill =
-    {
-        .color          = leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE),
-        .alpha          = 255u,
-        .aaMode         = UI_VEC_AA,
-        .topLeftRadius  = radius,
-        .topRightRadius = radius,
-    };
-
-    leDraw_VectorRectFill(&body, &fill);
+    /* AaShape_RRectCorners, not leDraw_VectorRectFill: the vector rect fill supersamples 8x
+     * per pixel, and these are the bus screen's TX bars — seven of them, up to 46x204, resized
+     * and repainted every second. That was the single most expensive thing on that screen. See
+     * the journal, 2026-08-07 (night). */
+    AaShape_RRectCorners(&rect, (int32_t)wgt->style.cornerRadius, AA_CORNER_TOP,
+                         leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE), 255u);
 }
 
 void PanelAA_EnableRoundTop(leWidget* panel, uint32_t radius)
