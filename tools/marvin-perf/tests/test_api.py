@@ -25,6 +25,7 @@ from .conftest import (
     build_drop_payload,
     build_session_payload,
     build_stamp_payload,
+    build_strip_payload,
     build_task_highwater_payload,
     build_task_runtime_payload,
     wrap_frame,
@@ -189,6 +190,65 @@ def test_strip_returns_404_when_not_present(
     ]
     resp = client.get(f"/api/capture/{cid}/strip/1/sensing.png")
     assert resp.status_code == 404
+
+
+def test_ui_assets_revalidate_but_capture_pixels_stay_immutable(
+    client: TestClient, tmp_path: Path
+) -> None:
+    """A front-end edit must never be masked by a stale browser cache.
+
+    Starlette sends ETag/Last-Modified with no Cache-Control, which lets a browser
+    reuse app.js on heuristic freshness — an edited UI then survives a reload and a
+    server restart. Capture pixels are content-addressed by (capture, epoch, kind)
+    and must keep their immutable long cache.
+    """
+    for path in ("/", "/static/app.js", "/static/styles.css"):
+        resp = client.get(path)
+        assert resp.status_code == 200, path
+        assert resp.headers["cache-control"] == "no-cache", path
+        assert resp.headers.get("etag"), f"{path} lost its ETag — revalidation costs a full GET"
+
+    # Revalidation must still be cheap, or no-cache becomes a re-download per load.
+    etag = client.get("/static/app.js").headers["etag"]
+    assert client.get("/static/app.js", headers={"If-None-Match": etag}).status_code == 304
+
+
+def test_strip_serves_every_registry_kind(client: TestClient, tmp_path: Path) -> None:
+    """Every front-end registry id must name a strip the PNG route can serve.
+
+    The route matches on `Strip.kind_name`, and a loaded capture's records carry
+    no inline pixels — so a registry `id` that doesn't equal `kind_name` renders
+    as a silent 404 in the offline viewer.
+    """
+    import re
+
+    from marvin_perf.records import StripKind
+
+    app_js = (Path(api_module.__file__).parent / "static" / "app.js").read_text()
+    body = re.search(r"STRIP_KIND_REGISTRY = \{(.*?)\n\};", app_js, re.S).group(1)
+    entries = dict(
+        (int(kind), name)
+        for kind, name in re.findall(r"(\d+):\s*\{\s*id:\s*\"([a-z0-9_]+)\"", body)
+    )
+    assert entries, "registry did not parse"
+
+    cap_dir = init_capture_dir(tmp_path / "kinds", exist_ok=False)
+    frames = [wrap_frame(build_session_payload())]
+    for kind in entries:
+        frames.append(
+            wrap_frame(build_strip_payload(frame_epoch=1, kind=kind, x=0, y=0, w=2, h=2))
+        )
+    (cap_dir / BIN_NAME).write_bytes(b"".join(frames))
+    finalize_capture_dir(cap_dir, source=CaptureSource(kind="file", file=str(cap_dir)))
+    cid = client.post("/api/capture/open", json={"path": str(cap_dir)}).json()[
+        "capture_id"
+    ]
+
+    for kind, reg_id in entries.items():
+        assert reg_id == StripKind(kind).name.lower(), f"kind {kind} id != kind_name"
+        resp = client.get(f"/api/capture/{cid}/strip/1/{reg_id}.png")
+        assert resp.status_code == 200, f"kind {kind} ({reg_id}) not served"
+        assert "immutable" in resp.headers["cache-control"]  # pixels never change
 
 
 # ─── /health ─────────────────────────────────────────────────────────────────

@@ -26,6 +26,10 @@ typedef struct
      * (rings painted here); STRIKE spans the strum zone below (no rings). */
     uint16_t sensing_x, sensing_y, sensing_w, sensing_h;
     uint16_t strike_x,  strike_y,  strike_w,  strike_h;
+    /* perf_strip_kind_t the two bands ship under. Per-highway, so a capture
+     * records which geometry produced them and the host can place both
+     * highways' bands in one session. */
+    uint8_t  sensing_kind, strike_kind;
     /* Observation lead (ms): travel time for a note from the sensor row down to
      * the strike line. The detector adds this to each frame's timestamp to
      * stamp detector_state_t.strike_at_ms; the timing pipeline schedules in

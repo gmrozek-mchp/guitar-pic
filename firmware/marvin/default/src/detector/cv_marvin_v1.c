@@ -54,6 +54,8 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_1P =
     },
     .sensing_x = 265u, .sensing_y = 300u, .sensing_w = 185u, .sensing_h = 32u,
     .strike_x  = 212u, .strike_y  = 395u, .strike_w  = 290u, .strike_h  = 32u,
+    .sensing_kind = PERF_STRIP_SENSING,
+    .strike_kind  = PERF_STRIP_STRIKE,
     .observation_lead_ms = 250u,
 };
 
@@ -70,6 +72,8 @@ const cv_marvin_v1_config_t CV_MARVIN_CFG_2P_LEFT =
     },
     .sensing_x = 150u, .sensing_y = 300u, .sensing_w = 155u, .sensing_h = 32u,
     .strike_x  = 120u, .strike_y  = 395u, .strike_w  = 205u, .strike_h  = 34u,
+    .sensing_kind = PERF_STRIP_SENSING_2P,
+    .strike_kind  = PERF_STRIP_STRIKE_2P,
     .observation_lead_ms = 250u,
 };
 
@@ -458,7 +462,8 @@ static void cv_marvin_v1_task(void *param)
 
         /* STRIKE: the strum trigger zone, copied straight from the frame (no
          * sensors there → no rings). */
-        PerfLog_EmitStripFromFrame(frame.frame_count, PERF_STRIP_STRIKE,
+        PerfLog_EmitStripFromFrame(frame.frame_count,
+                                   (perf_strip_kind_t)cfg->strike_kind,
                                    (const uint8_t *)frame.buffer, fstride,
                                    cfg->strike_x, cfg->strike_y,
                                    cfg->strike_w, cfg->strike_h);
@@ -486,7 +491,8 @@ static void cv_marvin_v1_task(void *param)
                 draw_overlay(s_sensing_scratch, cfg->sensing_w, cfg->sensing_h,
                              cfg->sensing_x, cfg->sensing_y, cfg);
             }
-            PerfLog_EmitStripPacked(frame.frame_count, PERF_STRIP_SENSING,
+            PerfLog_EmitStripPacked(frame.frame_count,
+                                    (perf_strip_kind_t)cfg->sensing_kind,
                                     cfg->sensing_x, cfg->sensing_y,
                                     cfg->sensing_w, cfg->sensing_h, s_sensing_scratch);
         }

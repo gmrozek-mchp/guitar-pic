@@ -11,7 +11,7 @@ from __future__ import annotations
 import struct
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import ClassVar
+from typing import ClassVar, NamedTuple
 
 
 EXPECTED_SCHEMA_VERSION = 6
@@ -68,6 +68,12 @@ class StripKind(IntEnum):
     SNAPSHOT = 2
     REGION = 3  # host-selected sub-region, one strip per frame
     CANVAS = 4  # one-shot Legato canvas (UI framebuffer) dump, banded like SNAPSHOT
+    # The detector's two band strips come in per-highway pairs — the kind says
+    # which geometry cv_marvin_v1 was reading (1p centered vs 2p left/robot).
+    SENSING_2P = 5
+    STRIKE_2P = 6
+    SCORE_2P_LEFT = 7   # 2-player left amp scoreboard  (region slot 1)
+    SCORE_2P_RIGHT = 8  # 2-player right amp scoreboard (region slot 2)
 
 
 # ui_manager CANVAS_* ids, for PERF_CMD_CANVAS_DUMP. Each is a separate surface:
@@ -448,20 +454,51 @@ def encode_set_overlay_payload(flags: int) -> bytes:
 # matching gameplay's SCORE_BLOCK_ROI. Fits both training and career scoring blocks.
 DEFAULT_REGION_RECT = (114, 309, 96, 105)
 
-# magic, cmd_id, reserved, enable, reserved, x, y, w, h  (mirrors perf_cmd_region_stream_t)
+
+class RegionSlot(NamedTuple):
+    """One device-side region-stream slot (mirrors perf_cmd_region_stream_t)."""
+
+    slot: int
+    id: str                          # CLI/API name
+    label: str                       # UI label
+    kind: StripKind                  # the strip kind this slot emits
+    rect: tuple[int, int, int, int]  # default (x, y, w, h)
+    prefix: str                      # PNG filename prefix for exports
+
+
+# The device has PERF_REGION_SLOTS (3) independent slots, each with its own
+# enable + rect and a fixed strip kind. Slot 0 is the generic/original one,
+# defaulting to the 1-player scoring block; slots 1-2 are the two 2-player amp
+# scoreboards, whose rects mirror gameplay's AMP2P_BLOCK. Rects are host-supplied,
+# so any slot can be repointed without a firmware rebuild.
+REGION_SLOTS: tuple[RegionSlot, ...] = (
+    RegionSlot(0, "score", "SCORE", StripKind.REGION, DEFAULT_REGION_RECT, "score"),
+    RegionSlot(1, "score-2p-left", "2P SC L", StripKind.SCORE_2P_LEFT,
+               (128, 164, 68, 78), "score-2pL"),
+    RegionSlot(2, "score-2p-right", "2P SC R", StripKind.SCORE_2P_RIGHT,
+               (515, 164, 68, 78), "score-2pR"),
+)
+
+REGION_SLOT_BY_ID = {s.id: s for s in REGION_SLOTS}
+REGION_SLOT_BY_NUM = {s.slot: s for s in REGION_SLOTS}
+
+# magic, cmd_id, reserved, enable, slot, x, y, w, h  (mirrors perf_cmd_region_stream_t)
 _CMD_REGION_STREAM_FMT = struct.Struct("<HBBBBHHHH")
 
 
 def encode_region_stream_payload(
-    enable: bool, x: int = 0, y: int = 0, w: int = 0, h: int = 0
+    enable: bool, x: int = 0, y: int = 0, w: int = 0, h: int = 0, slot: int = 0
 ) -> bytes:
     """Pack a REGION_STREAM command payload (no SOF/LEN/FCS framing).
 
-    enable=True starts streaming the (x, y, w, h) sub-region as one REGION strip
-    per frame; enable=False stops (rect ignored).
+    enable=True starts streaming the (x, y, w, h) sub-region as one strip per
+    frame; enable=False stops that slot (rect ignored). `slot` selects which of
+    the device's independent slots to drive, and fixes the strip kind it emits
+    (see REGION_SLOTS). The device ignores an out-of-range slot.
     """
     return _CMD_REGION_STREAM_FMT.pack(
-        PERF_CMD_HDR_MAGIC, PERF_CMD_REGION_STREAM, 0, 1 if enable else 0, 0, x, y, w, h
+        PERF_CMD_HDR_MAGIC, PERF_CMD_REGION_STREAM, 0, 1 if enable else 0,
+        slot & 0xFF, x, y, w, h
     )
 
 

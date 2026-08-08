@@ -37,6 +37,8 @@ from ..records import (
     PERF_OVERLAY_STRIP,
     DEFAULT_REGION_RECT,
     RECORD_TYPE_BY_NAME,
+    REGION_SLOTS,
+    REGION_SLOT_BY_NUM,
     DetectorConfig,
     Session,
     Strip,
@@ -75,16 +77,27 @@ _SNAPSHOT_TIMEOUT_S = 8.0
 
 
 @dataclass
+class _RegionState:
+    """Per-slot region-stream state (enable + the rect last pushed to it)."""
+
+    enabled: bool = False
+    rect: tuple[int, int, int, int] = DEFAULT_REGION_RECT
+
+
+@dataclass
 class _State:
     port: str | None = None
     mask: int = 0xFFFFFFFF
     # Mirrors the device's boot default (PERF_OVERLAY_STRIP on). Tracked so a
     # late-attaching WS client can render the toggle in the right state.
     overlay_enabled: bool = True
-    # Region stream (score-block capture). Off at device boot; the strips ride
-    # the normal record path into the capture .bin like any other record.
-    region_enabled: bool = False
-    region_rect: tuple[int, int, int, int] = DEFAULT_REGION_RECT
+    # Region streams, one entry per device slot (REGION_SLOTS): the 1p scoring
+    # block and the two 2-player amp scoreboards. All off at device boot; the
+    # strips ride the normal record path into the capture .bin like any other
+    # record. Keyed by slot number.
+    regions: dict[int, _RegionState] = field(
+        default_factory=lambda: {s.slot: _RegionState(rect=s.rect) for s in REGION_SLOTS}
+    )
     started_at: str | None = None
     framing_stats: FrameStats = field(default_factory=FrameStats)
     last_session_dict: dict[str, Any] | None = None
@@ -238,30 +251,65 @@ class _LiveSession:
         return enabled
 
     def set_region_stream(
-        self, enabled: bool, rect: tuple[int, int, int, int] | None = None
+        self,
+        enabled: bool,
+        rect: tuple[int, int, int, int] | None = None,
+        slot: int = 0,
     ) -> dict[str, Any]:
-        """Start/stop streaming a sub-region as one REGION strip per frame.
+        """Start/stop one slot's region stream (one strip per frame).
 
         The strips are ordinary PERF_REC_STRIP records, so an active recording
-        captures them into the .bin like everything else — no special path.
-        Defaults to the scoring-block rect.
+        captures them into the .bin like everything else — no special path. The
+        slot fixes the strip kind (REGION_SLOTS); each slot defaults to its own
+        rect and toggles independently of the others.
         """
+        if slot not in REGION_SLOT_BY_NUM:
+            raise ValueError(f"unknown region slot {slot}")
         with self._lock:
             ser = self._ser
             if ser is None:
                 raise RuntimeError("live session not active")
+            st = self._state.regions[slot]
             if rect is not None:
-                self._state.region_rect = tuple(rect)  # type: ignore[assignment]
-            x, y, w, h = self._state.region_rect
-            self._state.region_enabled = enabled
-        ser.send_command(frame_encode(encode_region_stream_payload(enabled, x, y, w, h)))
-        info = {"enabled": enabled, "rect": [x, y, w, h], "source": "client"}
+                st.rect = tuple(rect)  # type: ignore[assignment]
+            x, y, w, h = st.rect
+            st.enabled = enabled
+        ser.send_command(
+            frame_encode(encode_region_stream_payload(enabled, x, y, w, h, slot=slot))
+        )
+        info = {
+            "slot": slot,
+            "id": REGION_SLOT_BY_NUM[slot].id,
+            "enabled": enabled,
+            "rect": [x, y, w, h],
+            "source": "client",
+        }
         self._post("region", info)
         return info
 
     def _region_dict_locked(self) -> dict[str, Any]:
-        x, y, w, h = self._state.region_rect
-        return {"enabled": self._state.region_enabled, "rect": [x, y, w, h]}
+        """Every slot's state, keyed by slot id, plus slot 0 flattened.
+
+        The flattened `enabled`/`rect` keep slot 0 (the original single region
+        stream) readable by anything that predates the slot table.
+        """
+        slots = {}
+        for s in REGION_SLOTS:
+            st = self._state.regions[s.slot]
+            x, y, w, h = st.rect
+            slots[s.id] = {
+                "slot": s.slot,
+                "kind": int(s.kind),
+                "label": s.label,
+                "enabled": st.enabled,
+                "rect": [x, y, w, h],
+            }
+        zero = self._state.regions[0]
+        return {
+            "enabled": zero.enabled,
+            "rect": list(zero.rect),
+            "slots": slots,
+        }
 
     def status(self) -> dict[str, Any]:
         with self._lock:

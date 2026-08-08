@@ -29,6 +29,8 @@ from .records import (
     PERF_OVERLAY_STRIP,
     DEFAULT_REGION_RECT,
     RECORD_TYPE_BY_NAME,
+    REGION_SLOTS,
+    REGION_SLOT_BY_ID,
     TYPE_MASK_ALL,
     TYPE_MASK_MIN,
     Strip,
@@ -44,6 +46,17 @@ from .transport import FileSource, SerialSource
 
 # Default capture region — the scoring block (both training/career modes fit).
 SCORE_BLOCK_RECT = DEFAULT_REGION_RECT
+
+# Strip kinds `export-region` can pull out of a capture, and the PNG prefix each
+# gets. The region slots cover the scoreboard streams; the band kinds let a
+# 2-player session's note strips come out as their own corpus.
+_EXPORT_KINDS: dict[str, tuple[StripKind, str]] = {
+    **{s.id: (s.kind, s.prefix) for s in REGION_SLOTS},
+    "sensing": (StripKind.SENSING, "sensing"),
+    "strike": (StripKind.STRIKE, "strike"),
+    "sensing-2p": (StripKind.SENSING_2P, "sensing-2p"),
+    "strike-2p": (StripKind.STRIKE_2P, "strike-2p"),
+}
 
 
 # ─── Type-mask CLI parsing ───────────────────────────────────────────────────
@@ -389,14 +402,14 @@ def _parse_rect(
     return x, y, w, h
 
 
-def _score_dir_start(out: str | None) -> tuple[Path, int]:
-    """Resolve the output directory and the next free score-NNNN index."""
+def _score_dir_start(out: str | None, prefix: str = "score") -> tuple[Path, int]:
+    """Resolve the output directory and the next free <prefix>-NNNN index."""
     p = Path(out) if out else Path("scores")
     p.mkdir(parents=True, exist_ok=True)
     nums = [
         int(m.group(1))
-        for f in p.glob("score-*.png")
-        if (m := re.fullmatch(r"score-(\d+)", f.stem))
+        for f in p.glob(f"{prefix}-*.png")
+        if (m := re.fullmatch(rf"{re.escape(prefix)}-(\d+)", f.stem))
     ]
     return p, (max(nums) + 1 if nums else 1)
 
@@ -404,32 +417,36 @@ def _score_dir_start(out: str | None) -> tuple[Path, int]:
 def cmd_score_capture(args: argparse.Namespace) -> int:
     """Stream a fixed video sub-region to disk, one PNG per frame, at full rate.
 
-    Sends PERF_CMD_REGION_STREAM (start) for the requested rect (default: the
-    scoring block), saves each returned REGION strip as `score-NNNN.png`, and
-    stops on `--count` or Ctrl-C, sending the stop command on the way out. Each
-    REGION strip is one complete region frame, so no reassembly is needed.
-    Requires the STRIP record type to be enabled (the default).
+    Sends PERF_CMD_REGION_STREAM (start) on the chosen slot for the requested
+    rect (default: the slot's own rect), saves each returned strip of that slot's
+    kind as `<prefix>-NNNN.png`, and stops on `--count` or Ctrl-C, sending the
+    stop command on the way out. Each strip is one complete region frame, so no
+    reassembly is needed. The slot's command is the gate, so no type mask is
+    needed on the device.
     """
-    x, y, w, h = _parse_rect(args.rect)
-    out_dir, n = _score_dir_start(args.out)
+    slot = REGION_SLOT_BY_ID[args.slot]
+    x, y, w, h = _parse_rect(args.rect, default=slot.rect)
+    out_dir, n = _score_dir_start(args.out, slot.prefix)
     saved = 0
     with SerialSource(args.port) as ser:
-        ser.send_command(frame_encode(encode_region_stream_payload(True, x, y, w, h)))
+        ser.send_command(
+            frame_encode(encode_region_stream_payload(True, x, y, w, h, slot=slot.slot))
+        )
         print(
-            f"[score-capture] streaming ({x},{y},{w}×{h}) → {out_dir}/score-NNNN.png; "
-            "Ctrl-C to stop",
+            f"[score-capture] streaming {slot.id} ({x},{y},{w}×{h}) → "
+            f"{out_dir}/{slot.prefix}-NNNN.png; Ctrl-C to stop",
             file=sys.stderr,
             flush=True,
         )
         try:
             for fb in iter_frames(_idle_chunks(ser, args.timeout)):
                 rec = decode_record(fb.payload)
-                if not isinstance(rec, Strip) or rec.kind != int(StripKind.REGION):
+                if not isinstance(rec, Strip) or rec.kind != int(slot.kind):
                     continue
                 snap = CompletedSnapshot(
                     width=rec.w, height=rec.h, frame_epoch=rec.hdr.frame_epoch, bgr=rec.bgr
                 )
-                save_snapshot(snap, out_dir / f"score-{n:04d}.png")
+                save_snapshot(snap, out_dir / f"{slot.prefix}-{n:04d}.png")
                 saved += 1
                 n += 1
                 if args.count and saved >= args.count:
@@ -437,7 +454,9 @@ def cmd_score_capture(args: argparse.Namespace) -> int:
         except KeyboardInterrupt:
             pass
         finally:
-            ser.send_command(frame_encode(encode_region_stream_payload(False)))
+            ser.send_command(
+                frame_encode(encode_region_stream_payload(False, slot=slot.slot))
+            )
 
     print(f"score-capture: saved {saved} frame(s) to {out_dir}/", file=sys.stderr)
     return 0 if saved else 1
@@ -548,12 +567,14 @@ def cmd_export_ml(args: argparse.Namespace) -> int:
 
 
 def cmd_export_region(args: argparse.Namespace) -> int:
-    """Extract REGION strips from a capture into numbered PNGs.
+    """Extract strips of one kind from a capture into numbered PNGs.
 
-    Pulls the score-block frames recorded (via the web viewer's Record button or
-    `record`) out of a capture and writes them as `score-NNNN.png` — the input to
-    the gameplay score-template corpus.
+    Pulls the frames recorded (via the web viewer's Record button or `record`)
+    out of a capture and writes them as `<prefix>-NNNN.png` — the input to the
+    gameplay template corpora. Defaults to the slot-0 scoring block; `--kind`
+    selects a 2-player scoreboard or either detector band instead.
     """
+    kind, prefix = _EXPORT_KINDS[args.kind]
     cap = open_capture(args.capture)
     records = []
     stats = FrameStats()
@@ -563,9 +584,9 @@ def cmd_export_region(args: argparse.Namespace) -> int:
                 records.append(decode_record(frame.payload))
             except Exception:
                 continue
-    written = save_region_strips(records, args.out or "scores")
+    written = save_region_strips(records, args.out or "scores", kind=kind, prefix=prefix)
     print(
-        f"export-region: {len(written)} REGION frame(s) → {args.out or 'scores'}/",
+        f"export-region: {len(written)} {args.kind} frame(s) → {args.out or 'scores'}/",
         file=sys.stderr,
     )
     return 0 if written else 1
@@ -687,13 +708,25 @@ def build_parser() -> argparse.ArgumentParser:
     p_score.add_argument(
         "--out",
         default=None,
-        help="Directory for auto-incrementing score-NNNN.png (default: ./scores/).",
+        help="Directory for auto-incrementing <prefix>-NNNN.png (default: ./scores/).",
+    )
+    p_score.add_argument(
+        "--slot",
+        choices=tuple(REGION_SLOT_BY_ID),
+        default="score",
+        help="Which device region slot to drive: "
+             + "; ".join(
+                 f"{s.id} = {s.label} {','.join(str(v) for v in s.rect)}"
+                 for s in REGION_SLOTS
+             )
+             + " (default: score). Slots are independent, so several can stream "
+               "at once from separate invocations.",
     )
     p_score.add_argument(
         "--rect",
         default=None,
-        help="Region as x,y,w,h in the 720x480 frame (default: the scoring block "
-             f"{','.join(str(v) for v in SCORE_BLOCK_RECT)}).",
+        help="Region as x,y,w,h in the 720x480 frame (default: the chosen slot's "
+             f"rect — score is {','.join(str(v) for v in SCORE_BLOCK_RECT)}).",
     )
     p_score.add_argument(
         "--count",
@@ -743,11 +776,20 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_export_region = sub.add_parser(
         "export-region",
-        help="Extract REGION strips from a capture into numbered PNGs (score corpus input).",
+        help="Extract region/band strips from a capture into numbered PNGs (corpus input).",
     )
     p_export_region.add_argument("capture", help="Capture directory or .bin file")
     p_export_region.add_argument(
-        "--out", default=None, help="Output directory for score-NNNN.png (default: ./scores/)."
+        "--out", default=None,
+        help="Output directory for <prefix>-NNNN.png (default: ./scores/).",
+    )
+    p_export_region.add_argument(
+        "--kind",
+        choices=tuple(_EXPORT_KINDS),
+        default="score",
+        help="Which strip kind to extract (default: score, the 1-player scoring "
+             "block). The 2-player scoreboards and either detector band pair are "
+             "pulled out the same way.",
     )
     p_export_region.set_defaults(func=cmd_export_region)
 

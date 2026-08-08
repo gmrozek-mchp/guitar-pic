@@ -226,6 +226,28 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Session log
 
+### 2026-08-08 — a 2-player corpus can now be captured off the device (marvin-perf capture types)
+
+The data gap this journal has carried since 2026-07-15 — "only one session's worth of `in_song_2p`
+frames" — is now a capture away rather than a tooling task. `marvin-perf` grew capture types for
+2-player gameplay (see the marvin journal, same date):
+
+- **The two amp scoreboards stream independently**, as strip kinds `score_2p_left` / `score_2p_right`
+  on their own device region slots. Default rects are `AMP2P_BLOCK` verbatim
+  (`(128,164,68,78)` / `(515,164,68,78)`), so what lands on disk is exactly what `amp2p.py` reads —
+  and each side comes out as its own PNG series (`score-2pL-NNNN.png`), which is the shape the
+  per-side reference/mask build wants. Host-supplied rects, so widening a block for the deferred
+  2p digit reader needs no reflash.
+- **The note bands are tagged per highway** (`sensing_2p` / `strike_2p` vs the 1p `sensing` /
+  `strike`), so a 2-player capture's left-highway strips are self-identifying instead of
+  indistinguishable from 1p ones.
+
+Recipes: `marvin-perf score-capture --slot score-2p-left`, or Record in the viewer with the
+`2P SC L` / `2P SC R` toggles on and then
+`marvin-perf export-region <cap> --kind score-2p-left --out scores-2pL/`. Note the bands and the
+scoreboards should be captured in **separate sessions** — there is no per-stream rate control and
+both at 60 fps over-subscribes the wire.
+
 ### 2026-07-15 — gameplay screens classified by scoreboard-chrome presence (not whole-frame centroid)
 
 Fixes the intermittent 2-player `in_song_2p` classification dropout. Root cause: every screen

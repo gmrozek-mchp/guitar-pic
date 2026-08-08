@@ -2,7 +2,7 @@
 
 Host-side decoder and analyzer for the marvin firmware **perf-log** wire format.
 
-The firmware emits framed binary records (schema version 5) over its USB-device
+The firmware emits framed binary records (schema version 6) over its USB-device
 CDC ACM port. This tool consumes that stream live, records it to disk, and
 replays captures offline. Summary analyses (latency attribution, drop
 accounting, stack high-water trends) are produced by the `serve` viewer, not a
@@ -29,9 +29,9 @@ CLI helpers (record, set-mask, set-overlay, snapshot, screendump, export-ml).
 ## Usage
 
     # Launch the visual review server (default when no subcommand is given)
-    # In live mode the "▣ Score region" toggle streams the scoring block; hit
-    # Record to capture it into the .bin like any other record, then extract it
-    # offline with `export-region`.
+    # In live mode the SCORE / 2P SC L / 2P SC R toggles each start one device
+    # region slot; hit Record to capture them into the .bin like any other
+    # record, then extract them offline with `export-region --kind`.
     uv run marvin-perf
     uv run marvin-perf serve
     uv run marvin-perf serve --host 0.0.0.0 --port 8765
@@ -60,8 +60,15 @@ CLI helpers (record, set-mask, set-overlay, snapshot, screendump, export-ml).
     uv run marvin-perf score-capture --port /dev/cu.usbmodem... --out scores/ --count 500
     uv run marvin-perf score-capture --port /dev/cu.usbmodem... --rect 114,309,96,105
 
-    # Extract REGION strips from a recorded capture into score-NNNN.png (score corpus)
+    # ...or one of the two 2-player amp scoreboards (independent device slots,
+    # so both can stream at once from separate invocations)
+    uv run marvin-perf score-capture --port /dev/cu.usbmodem... --slot score-2p-left
+    uv run marvin-perf score-capture --port /dev/cu.usbmodem... --slot score-2p-right
+
+    # Extract strips of one kind from a recorded capture into <prefix>-NNNN.png
     uv run marvin-perf export-region session/ --out scores/
+    uv run marvin-perf export-region session/ --kind score-2p-left --out scores-2pL/
+    uv run marvin-perf export-region session/ --kind sensing-2p --out bands-2pL/
 
 ### `snapshot` vs `screendump`
 
@@ -82,6 +89,33 @@ glass. `screendump` deliberately does not try to fake it.
 
     # Export a capture as a SensiML-format CSV for MPLAB ML training
     uv run marvin-perf export-ml session/ --out session.csv --labels actuator-fb
+
+### Capturing 2-player gameplay
+
+Two-player mode moves everything the host cares about: the robot reads the
+**left** highway instead of the centered one, and the single bottom-left scoring
+block is replaced by **two amp scoreboards** near the top of the frame.
+
+The detector's band strips are tagged per highway, so a capture says which
+geometry produced them — `sensing`/`strike` for the 1p centered highway,
+`sensing_2p`/`strike_2p` for the 2p left (robot) one. The switch is automatic
+during a 2p song (marvin's screen classifier) and forceable from marvin's console
+with `cvcfg 2pl`. Both kinds are gated by the STRIP type mask, as before.
+
+The scoreboards ride the region-stream slots. The device has three independent
+slots, each with its own enable and rect, each emitting its own strip kind:
+
+| slot | `--slot` / `--kind` | strip kind | default rect |
+|---|---|---|---|
+| 0 | `score` | `region` | `114,309,96,105` (1p scoring block) |
+| 1 | `score-2p-left` | `score_2p_left` | `128,164,68,78` |
+| 2 | `score-2p-right` | `score_2p_right` | `515,164,68,78` |
+
+Rects are host-supplied, so any slot can be repointed without a firmware
+rebuild. Every slot streams at the full frame rate and there is no rate control:
+over-subscribing the wire drops strips at the device's strip pool, counted in
+`DROP.dropped_strip`. Capture the note bands and the scoreboards in **separate
+sessions** rather than trying to fit both.
 
 ## Tests
 

@@ -205,14 +205,17 @@ uint32_t PerfLog_GetEnabledMask(void);
 void     PerfLog_SetOverlayFlags(uint32_t flags);
 uint32_t PerfLog_GetOverlayFlags(void);
 
-/* ─── Region stream (host-controlled) ─────────────────────────────────────────
+/* ─── Region streams (host-controlled) ────────────────────────────────────────
  *
- * Stream a fixed sub-region of each video frame back as one PERF_REC_STRIP
- * (kind REGION) per frame. Started/stopped via PERF_CMD_REGION_STREAM; the CV
- * producer calls PerfLog_EmitRegionIfEnabled once per frame, which reads the
- * flag/rect lock-free and emits (drop-on-pool-empty, STRIP-mask gated) only
- * when enabled and the rect is within the frame. Default off. */
-void PerfLog_SetRegionStream(bool enable, uint16_t x, uint16_t y,
+ * Stream fixed sub-regions of each video frame back as one PERF_REC_STRIP per
+ * region per frame. PERF_REGION_SLOTS slots each hold their own enable + rect,
+ * and the slot fixes the strip kind emitted (perf_cmd_region_stream_t documents
+ * the map). Started/stopped per slot via PERF_CMD_REGION_STREAM; the CV producer
+ * calls PerfLog_EmitRegionIfEnabled once per frame, which reads the slot table
+ * lock-free and emits (drop-on-pool-empty; the command is the gate, not the
+ * STRIP type mask) for every slot enabled with a rect inside the frame. All
+ * slots off at boot; an out-of-range slot is ignored. */
+void PerfLog_SetRegionStream(uint8_t slot, bool enable, uint16_t x, uint16_t y,
                              uint16_t w, uint16_t h);
 void PerfLog_EmitRegionIfEnabled(uint32_t frame_epoch, const uint8_t *frame,
                                  uint32_t frame_stride,

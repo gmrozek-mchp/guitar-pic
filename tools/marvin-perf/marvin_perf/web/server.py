@@ -13,6 +13,24 @@ from . import api
 
 STATIC_DIR = Path(__file__).parent / "static"
 
+# The UI assets must revalidate on every load. Starlette sends ETag and
+# Last-Modified but no Cache-Control, which leaves the browser free to reuse a
+# cached app.js on heuristic freshness alone — so an edited front-end serves
+# stale silently, surviving a reload and a server restart. "no-cache" means
+# revalidate, not don't-store: the ETag still answers 304, so this costs a
+# conditional request, not a re-download. Capture pixels are the opposite case
+# and stay immutable-cached on their own /api route.
+_REVALIDATE = "no-cache"
+
+
+class _RevalidatingStatic(StaticFiles):
+    """StaticFiles that pins Cache-Control so edits can't be missed."""
+
+    def file_response(self, *args, **kwargs):  # type: ignore[no-untyped-def]
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = _REVALIDATE
+        return response
+
 
 def build_app() -> FastAPI:
     app = FastAPI(
@@ -23,11 +41,14 @@ def build_app() -> FastAPI:
     app.include_router(api.router)
 
     if STATIC_DIR.exists():
-        app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+        app.mount("/static", _RevalidatingStatic(directory=STATIC_DIR), name="static")
 
         @app.get("/")
         def root_index() -> FileResponse:
-            return FileResponse(STATIC_DIR / "index.html")
+            return FileResponse(
+                STATIC_DIR / "index.html",
+                headers={"Cache-Control": _REVALIDATE},
+            )
 
     return app
 

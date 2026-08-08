@@ -124,7 +124,8 @@ static void dispatch_payload(void)
             {
                 perf_cmd_region_stream_t cmd;
                 memcpy(&cmd, s_payload, sizeof(cmd));
-                PerfLog_SetRegionStream(cmd.enable != 0u, cmd.x, cmd.y, cmd.w, cmd.h);
+                PerfLog_SetRegionStream(cmd.slot, cmd.enable != 0u,
+                                        cmd.x, cmd.y, cmd.w, cmd.h);
             }
             break;
 

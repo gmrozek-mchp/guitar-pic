@@ -24,6 +24,7 @@ from marvin_perf.records import (
     PERF_LOG_HDR_MAGIC,
     PERF_OVERLAY_STRIP,
     EXPECTED_SCHEMA_VERSION,
+    REGION_SLOT_BY_ID,
     STRIP_FLAG_LAST,
     RecordType,
     Session,
@@ -174,6 +175,60 @@ def test_set_region_stream_when_inactive_raises() -> None:
     sess = _make_session()
     with pytest.raises(RuntimeError):
         sess.set_region_stream(True)
+
+
+def test_region_slots_toggle_independently() -> None:
+    """Each slot carries its own enable + rect; enabling one leaves the others off."""
+    sess = _make_session()
+    captured: dict[str, _FakeSerial] = {}
+
+    def factory(port: str) -> _FakeSerial:
+        ser = _FakeSerial(port)
+        captured["ser"] = ser
+        return ser
+
+    sess.start("/dev/null", ser_factory=factory)
+    try:
+        ser = captured["ser"]
+        left = REGION_SLOT_BY_ID["score-2p-left"]
+        right = REGION_SLOT_BY_ID["score-2p-right"]
+
+        info = sess.set_region_stream(True, slot=left.slot)
+        assert (info["slot"], info["id"]) == (left.slot, left.id)
+        assert tuple(info["rect"]) == left.rect
+        assert ser.sent[-1] == frame_encode(
+            encode_region_stream_payload(True, *left.rect, slot=left.slot)
+        )
+
+        sess.set_region_stream(True, slot=right.slot)
+        slots = sess.status()["region"]["slots"]
+        assert slots[left.id]["enabled"] is True
+        assert slots[right.id]["enabled"] is True
+        assert slots["score"]["enabled"] is False  # slot 0 untouched
+        assert slots[right.id]["kind"] == int(StripKind.SCORE_2P_RIGHT)
+
+        # Stopping one slot leaves the other streaming.
+        sess.set_region_stream(False, slot=left.slot)
+        assert ser.sent[-1] == frame_encode(
+            encode_region_stream_payload(False, *left.rect, slot=left.slot)
+        )
+        slots = sess.status()["region"]["slots"]
+        assert slots[left.id]["enabled"] is False
+        assert slots[right.id]["enabled"] is True
+        # The flattened view stays slot 0, for readers that predate the table.
+        assert sess.status()["region"]["enabled"] is False
+    finally:
+        sess.stop()
+
+
+def test_set_region_stream_unknown_slot_raises() -> None:
+    sess = _make_session()
+    sess.start("/dev/null", ser_factory=_FakeSerial)
+    try:
+        with pytest.raises(ValueError):
+            sess.set_region_stream(True, slot=9)
+    finally:
+        sess.stop()
 
 
 def test_set_mask_when_inactive_raises() -> None:

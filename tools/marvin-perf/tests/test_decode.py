@@ -194,6 +194,25 @@ def test_strip_round_trip() -> None:
     assert rec.hdr.frame_epoch == 11
 
 
+def test_strip_2p_kinds_round_trip() -> None:
+    """The per-highway band pair and the two 2-player scoreboards decode by name."""
+    for kind, name, rect in (
+        (StripKind.SENSING_2P, "sensing_2p", (150, 300, 155, 32)),
+        (StripKind.STRIKE_2P, "strike_2p", (120, 395, 205, 34)),
+        (StripKind.SCORE_2P_LEFT, "score_2p_left", (128, 164, 68, 78)),
+        (StripKind.SCORE_2P_RIGHT, "score_2p_right", (515, 164, 68, 78)),
+    ):
+        x, y, w, h = rect
+        rec = _round_trip_via_iter_frames(
+            build_strip_payload(frame_epoch=7, kind=int(kind), x=x, y=y, w=w, h=h, fill=0x5A)
+        )
+        assert isinstance(rec, Strip)
+        assert rec.kind == int(kind)
+        assert rec.kind_name == name
+        assert (rec.x, rec.y, rec.w, rec.h) == rect
+        assert len(rec.bgr) == w * h * 3
+
+
 def test_strip_unknown_kind_renders_as_kind_n() -> None:
     payload = build_strip_payload(kind=99, w=1, h=1)
     rec = _round_trip_via_iter_frames(payload)

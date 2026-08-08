@@ -22,7 +22,11 @@
 #define PL_DRAIN_PRIORITY       3u
 
 #define PL_STATE_QUEUE_DEPTH    1024u
-#define PL_STRIP_QUEUE_DEPTH    4u
+
+/* Deep enough that one frame's worth of strips never sits at the limit: the
+ * worst case is the detector's two band strips plus every region slot. Each
+ * pool slot is ~65 KB of DDR BSS. */
+#define PL_STRIP_QUEUE_DEPTH    (2u + PERF_REGION_SLOTS + 1u)
 
 /* Strip slots live in a static pool; the strip queue and free list carry
  * just slot indices. Pool size = queue depth + 2 leaves room for one slot
@@ -155,10 +159,23 @@ static inline bool type_enabled(uint8_t type)
  * the viewer strips, capture buffer untouched. */
 static volatile uint32_t s_overlay_flags = PERF_OVERLAY_STRIP;
 
-/* Host-selected sub-region streamed as one REGION strip per frame. Read
- * lock-free by the CV producer; set by PERF_CMD_REGION_STREAM. Default off. */
-static volatile bool     s_region_on;
-static volatile uint16_t s_region_x, s_region_y, s_region_w, s_region_h;
+/* Host-selected sub-regions, each streamed as one strip per frame. Read
+ * lock-free by the CV producer; set by PERF_CMD_REGION_STREAM. All off at boot.
+ * The slot fixes the strip kind (see perf_cmd_region_stream_t). */
+typedef struct
+{
+    volatile bool     on;
+    volatile uint16_t x, y, w, h;
+} region_slot_t;
+
+static region_slot_t s_region[PERF_REGION_SLOTS];
+
+static const perf_strip_kind_t s_region_kind[PERF_REGION_SLOTS] =
+{
+    PERF_STRIP_REGION,
+    PERF_STRIP_SCORE_2P_LEFT,
+    PERF_STRIP_SCORE_2P_RIGHT,
+};
 
 /* ─── Header fill ────────────────────────────────────────────────────────── */
 
@@ -1000,18 +1017,21 @@ uint32_t PerfLog_GetOverlayFlags(void)
 
 /* ─── Region stream ──────────────────────────────────────────────────────── */
 
-void PerfLog_SetRegionStream(bool enable, uint16_t x, uint16_t y,
+void PerfLog_SetRegionStream(uint8_t slot, bool enable, uint16_t x, uint16_t y,
                              uint16_t w, uint16_t h)
 {
+    if (slot >= PERF_REGION_SLOTS) { return; }
+    region_slot_t *r = &s_region[slot];
     if (enable)
     {
-        s_region_x = x;
-        s_region_y = y;
-        s_region_w = w;
-        s_region_h = h;
+        r->x = x;
+        r->y = y;
+        r->w = w;
+        r->h = h;
     }
-    s_region_on = enable;
-    LOG_INFO("PerfLog: region=%s (%u,%u,%u,%u)\r\n", enable ? "on" : "off",
+    r->on = enable;
+    LOG_INFO("PerfLog: region[%u]=%s (%u,%u,%u,%u)\r\n", (unsigned)slot,
+             enable ? "on" : "off",
              (unsigned)x, (unsigned)y, (unsigned)w, (unsigned)h);
 }
 
@@ -1019,15 +1039,21 @@ void PerfLog_EmitRegionIfEnabled(uint32_t frame_epoch, const uint8_t *frame,
                                  uint32_t frame_stride,
                                  uint16_t frame_w, uint16_t frame_h)
 {
-    if (!s_region_on || frame == NULL) { return; }
-    uint16_t x = s_region_x, y = s_region_y, w = s_region_w, h = s_region_h;
-    /* Ignore an out-of-bounds rect (strip_slot_claim only caps w*h*BPP, not
-     * the source extent, so bounds must be checked before the row-copy). */
-    if (w == 0u || h == 0u) { return; }
-    if ((uint32_t)x + w > frame_w || (uint32_t)y + h > frame_h) { return; }
-    /* honor_mask=false: the region command is the gate, so the scoreboard
-     * stream is independent of the STRIP type mask (which gates the fretboard
-     * SENSING/STRIKE strips). */
-    emit_strip_from_frame(frame_epoch, PERF_STRIP_REGION, frame, frame_stride,
-                          x, y, w, h, false);
+    if (frame == NULL) { return; }
+
+    for (uint8_t slot = 0u; slot < PERF_REGION_SLOTS; slot++)
+    {
+        const region_slot_t *r = &s_region[slot];
+        if (!r->on) { continue; }
+        uint16_t x = r->x, y = r->y, w = r->w, h = r->h;
+        /* Ignore an out-of-bounds rect (strip_slot_claim only caps w*h*BPP, not
+         * the source extent, so bounds must be checked before the row-copy). */
+        if (w == 0u || h == 0u) { continue; }
+        if ((uint32_t)x + w > frame_w || (uint32_t)y + h > frame_h) { continue; }
+        /* honor_mask=false: the region command is the gate, so the scoreboard
+         * streams are independent of the STRIP type mask (which gates the
+         * detector's band strips). */
+        emit_strip_from_frame(frame_epoch, s_region_kind[slot], frame, frame_stride,
+                              x, y, w, h, false);
+    }
 }

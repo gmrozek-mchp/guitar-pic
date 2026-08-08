@@ -210,17 +210,27 @@ typedef struct __attribute__((packed))
  * Future kinds (SCORE, MINIMAP, etc.) plug into the same record type —
  * adding one is an enum entry plus a producer; no schema bump.
  *
+ * The band kinds come in per-highway pairs: the 1p centered highway emits
+ * SENSING/STRIKE, the 2-player left (robot) highway SENSING_2P/STRIKE_2P.
+ * The kind is carried in the cv_marvin_v1 geometry config, so a capture says
+ * which highway the detector was reading and the host can place two differently
+ * positioned band pairs in one session.
+ *
  * Wire payload size is HDR + 12 B body + w*h*PERF_STRIP_BPP bytes,
  * tightly packed. The queue slot is sized to PERF_STRIP_MAX_BYTES; the
  * drain task computes the on-wire length from (w, h) and frames only
  * what's used. */
 typedef enum
 {
-    PERF_STRIP_SENSING  = 0,
-    PERF_STRIP_STRIKE   = 1,
-    PERF_STRIP_SNAPSHOT = 2,
-    PERF_STRIP_REGION   = 3,   /* host-selected sub-region, streamed per frame */
-    PERF_STRIP_CANVAS   = 4,   /* one-shot Legato canvas surface, banded like SNAPSHOT */
+    PERF_STRIP_SENSING        = 0,
+    PERF_STRIP_STRIKE         = 1,
+    PERF_STRIP_SNAPSHOT       = 2,
+    PERF_STRIP_REGION         = 3,   /* host-selected sub-region, streamed per frame */
+    PERF_STRIP_CANVAS         = 4,   /* one-shot Legato canvas surface, banded like SNAPSHOT */
+    PERF_STRIP_SENSING_2P     = 5,   /* sensor row, 2-player left (robot) highway */
+    PERF_STRIP_STRIKE_2P      = 6,   /* strum zone, 2-player left (robot) highway */
+    PERF_STRIP_SCORE_2P_LEFT  = 7,   /* 2-player left amp scoreboard  (region slot 1) */
+    PERF_STRIP_SCORE_2P_RIGHT = 8,   /* 2-player right amp scoreboard (region slot 2) */
 } perf_strip_kind_t;
 
 /* Strip flags byte (perf_rec_strip_t.flags). SNAPSHOT producers set LAST on
@@ -249,7 +259,7 @@ typedef enum
  * Buffer footprint scales with this:
  *   pool      = PL_STRIP_POOL_SIZE × (28 + PERF_STRIP_MAX_BYTES)
  *   sink ring = SINK_TX_RING_DEPTH × round_up_64(36 + PERF_STRIP_MAX_BYTES)
- * Together ~585 KB BSS at 65000; trivially fits in the 240 MB cached DDR.
+ * Together ~715 KB BSS at 65000; trivially fits in the 240 MB cached DDR.
  *
  * To go beyond u16 LEN, the wire format itself needs a schema break (LEN
  * → u32). Don't do that lightly — at 60 fps × 65 KB = ~3.9 MB/s, this cap
@@ -436,17 +446,31 @@ typedef struct __attribute__((packed))
 } perf_cmd_set_overlay_t;
 
 /* PERF_CMD_REGION_STREAM — start/stop continuously streaming a fixed sub-region
- * of each video frame back as one PERF_REC_STRIP (kind REGION) per frame via the
- * pooled strip path (drop-on-full). `enable`=1 starts with the given rect
- * (source-frame pixels); `enable`=0 stops (rect ignored). This command is the
- * gate, so REGION strips are emitted independent of the STRIP type mask (which
- * gates the fretboard SENSING/STRIKE strips). The rect is host-selected so it
- * can be repointed without a firmware rebuild. */
+ * of each video frame back as one PERF_REC_STRIP per frame via the pooled strip
+ * path (drop-on-full). `enable`=1 starts with the given rect (source-frame
+ * pixels); `enable`=0 stops (rect ignored). This command is the gate, so these
+ * strips are emitted independent of the STRIP type mask (which gates the
+ * detector's band strips). The rect is host-selected so it can be repointed
+ * without a firmware rebuild.
+ *
+ * There are PERF_REGION_SLOTS independent slots, each with its own enable and
+ * rect, so several regions stream at once and toggle separately. `slot` fixes
+ * the strip kind the slot emits:
+ *
+ *   0 → PERF_STRIP_REGION            (generic; the 1p scoring block by default)
+ *   1 → PERF_STRIP_SCORE_2P_LEFT     (2-player left amp scoreboard)
+ *   2 → PERF_STRIP_SCORE_2P_RIGHT    (2-player right amp scoreboard)
+ *
+ * An out-of-range slot is ignored. Every slot streams at the full frame rate;
+ * over-subscribing the wire drops strips at the pool, counted in
+ * PERF_REC_DROP.dropped_strip. */
+#define PERF_REGION_SLOTS    3u
+
 typedef struct __attribute__((packed))
 {
     perf_cmd_hdr_t hdr;
     uint8_t        enable;
-    uint8_t        reserved;
+    uint8_t        slot;
     uint16_t       x, y, w, h;
 } perf_cmd_region_stream_t;
 
