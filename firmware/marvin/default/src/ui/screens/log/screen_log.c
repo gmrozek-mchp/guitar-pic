@@ -58,8 +58,17 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define HDR_H       36                             /* title + counters row */
 #define COLHDR_H    28                             /* column headings strip */
 #define TABLE_Y      (CARD_Y + HDR_H + COLHDR_H)    /* 140 */
-#define TABLE_H      (CARD_H - HDR_H - COLHDR_H)    /* 636 -> 17 rows at ROW_H */
-#define ROW_H       36
+#define TABLE_H      (CARD_H - HDR_H - COLHDR_H)    /* 644 */
+
+/* Row font and pitch. DejaVuSansMono_16 is 20px tall against _12's 16, and the widget
+ * resolves its columns from the font's advance, so the cost of the larger text is message
+ * characters rather than a broken layout — about 87 instead of 138. Checked against the
+ * tree's 189 distinct log messages: 98.4% still fit whole (median 32 chars, p95 72).
+ *
+ * ROW_H keeps roughly the font's own height again as padding, as _12 with 36 did. 644/42
+ * leaves 15 whole rows and a 14px sliver of the 16th, which is the "more below" cue. */
+#define ROW_FONT    DejaVuSansMono_16
+#define ROW_H       42
 
 #define CAP         40          /* longest label string: the counters line */
 
@@ -316,7 +325,7 @@ void ScreenLog_Setup(void)
     }
 
     set_text(add_label(CONTENT_X + PAD, CARD_Y, 240, HDR_H,
-                       (const leFont *)&DejaVuSansMonoBold_14, &SCHEME_TEXT_ZINC_300,
+                       (const leFont *)&DejaVuSansMonoBold_16, &SCHEME_TEXT_ZINC_300,
                        LE_HALIGN_LEFT), "ACTIVITY LOG");
 
     s_counters = add_label(CONTENT_X + CONTENT_W - PAD - 320, CARD_Y, 320, HDR_H,
@@ -340,7 +349,7 @@ void ScreenLog_Setup(void)
     s_list->fn->setPosition(s_list, CONTENT_X + 1, TABLE_Y);
     s_list->fn->setSize(s_list, CONTENT_W - 2, TABLE_H);
     s_list->fn->setBackgroundType(s_list, LE_WIDGET_BACKGROUND_FILL);
-    LogList_SetFont(s_list, (const leFont *)&DejaVuSansMono_12);
+    LogList_SetFont(s_list, (const leFont *)&ROW_FONT);
     LogList_SetRowHeight(s_list, ROW_H);
     LogList_SetEmptyText(s_list, "No log entries yet");
     LogList_SetModel(s_list, (int)log_ring_count(), log_row, NULL);
@@ -357,7 +366,7 @@ void ScreenLog_Setup(void)
             LogList_ColumnRect(s_list, (loglist_col_t)c, &cx, &cw);
 
             set_text(add_label(s_list->rect.x + cx, CARD_Y + HDR_H, cw, COLHDR_H,
-                               (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_500,
+                               (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_500,
                                LE_HALIGN_LEFT), HEADING[c]);
         }
     }

@@ -14,17 +14,18 @@
 #define LL_DEFAULT_ROWH  36     /* mockup's p-3 around a 14px line */
 #define LL_PAD_X         16     /* card px-4 */
 
-/* Column left edges and widths, widget-relative. Sized to the content at
- * DejaVuSansMono_12 (7px advance): 12 chars of "00:04:17.905", 5 of "ERROR", 12 for the
- * longest source display name, and everything left over for the message. LL_COL_MSG_W is
- * a floor — the message column actually runs to the widget's right inset, so a widget
- * wider than the table's minimum gives the message the surplus. */
-static const struct { int x, w; } LL_COL[LOGLIST_COL_COUNT] = {
-    { LL_PAD_X,        88 },    /* TIME    */
-    { LL_PAD_X +  96,  44 },    /* LEVEL   */
-    { LL_PAD_X + 148,  88 },    /* SOURCE  */
-    { LL_PAD_X + 244,   0 },    /* MESSAGE — width resolved from the widget */
-};
+/* Columns are defined in CHARACTERS and resolved to pixels from the font's measured
+ * advance, so changing the row font reflows the table — and the screen's own column
+ * headings with it, since they are placed from LogList_ColumnRect. Hard-coding pixel
+ * columns meant a font change silently mis-sized every one of them.
+ *
+ * The three fixed columns are sized to their longest possible content: "00:04:17.905",
+ * "ERROR", and the longest source display name ("CV Detector"). The message column takes
+ * whatever is left, which is what absorbs a larger font. */
+#define LL_CH_TIME     12
+#define LL_CH_LEVEL     5
+#define LL_CH_SOURCE   11
+#define LL_CH_GAP       2
 
 /* Colours authored in RGB_888 and converted to the active layer mode at paint time.
  * Tailwind zinc over the card's zinc-900, and the mockup's level palette. */
@@ -75,6 +76,11 @@ static bool           vtableReady = false;
  * rule). */
 static leLogListWidget s_inst;
 static bool            s_taken = false;
+
+/* Resolved column geometry and the advance it was resolved from. Module scope because
+ * there is one instance, like s_path below. */
+static struct { int x, w; } s_col[LOGLIST_COL_COUNT];
+static int                  s_cw;
 
 /* Which text path the cells use. Shared by all instances (there is one) so the `log text`
  * command can A/B it at runtime — this screen is the most text-heavy in the UI, so it is
@@ -183,16 +189,31 @@ static void draw_cell(const leLogListWidget *w, const char *s, int x, int y,
     TextLut_DrawLine(w->font, x, y, buf, len, rgb888, LL_BG, s_path);
 }
 
-/* Message column width: everything from its left edge to the widget's right inset. */
-static int msg_width(const leLogListWidget *w)
+/* Resolve the column pixels from the font's advance and the widget's width. Called whenever
+ * either could have changed (font or size), so ColumnRect and the paint always agree.
+ *
+ * The message column takes the remainder, so a bigger font costs message characters rather
+ * than pushing a column off the right edge. */
+static void layout_columns(const leLogListWidget *w)
 {
-    int avail = (int)w->widget.rect.width - LL_COL[LOGLIST_COL_MESSAGE].x - LL_PAD_X;
-    return (avail > 0) ? avail : 0;
-}
+    s_cw = char_w(w->font);
 
-static int col_width(const leLogListWidget *w, loglist_col_t col)
-{
-    return (col == LOGLIST_COL_MESSAGE) ? msg_width(w) : LL_COL[col].w;
+    for (int c = 0; c < (int)LOGLIST_COL_COUNT; c++) { s_col[c].x = 0; s_col[c].w = 0; }
+    if (s_cw <= 0) { return; }
+
+    const int chars[3] = { LL_CH_TIME, LL_CH_LEVEL, LL_CH_SOURCE };
+    int x = LL_PAD_X;
+
+    for (int c = 0; c < 3; c++)
+    {
+        s_col[c].x = x;
+        s_col[c].w = chars[c] * s_cw;
+        x += (chars[c] + LL_CH_GAP) * s_cw;
+    }
+
+    int avail = (int)w->widget.rect.width - x - LL_PAD_X;
+    s_col[LOGLIST_COL_MESSAGE].x = x;
+    s_col[LOGLIST_COL_MESSAGE].w = (avail > 0) ? avail : 0;
 }
 
 /* ---- paint -------------------------------------------------------------- */
@@ -252,20 +273,20 @@ static void ll_paint(leWidget *wgt)
 
         textY = rowTop + (rowH - textH) / 2;
 
-        draw_cell(w, row.time, area.x + LL_COL[LOGLIST_COL_TIME].x, textY,
-                  LL_COL[LOGLIST_COL_TIME].w, cw, LL_TIME);
+        draw_cell(w, row.time, area.x + s_col[LOGLIST_COL_TIME].x, textY,
+                  s_col[LOGLIST_COL_TIME].w, cw, LL_TIME);
 
-        draw_cell(w, level_text(row.level), area.x + LL_COL[LOGLIST_COL_LEVEL].x, textY,
-                  LL_COL[LOGLIST_COL_LEVEL].w, cw, level_color(row.level));
+        draw_cell(w, level_text(row.level), area.x + s_col[LOGLIST_COL_LEVEL].x, textY,
+                  s_col[LOGLIST_COL_LEVEL].w, cw, level_color(row.level));
 
         bool known = (row.source != NULL) && (row.source[0] != '\0');
         draw_cell(w, known ? row.source : LL_UNKNOWN,
-                  area.x + LL_COL[LOGLIST_COL_SOURCE].x, textY,
-                  LL_COL[LOGLIST_COL_SOURCE].w, cw,
+                  area.x + s_col[LOGLIST_COL_SOURCE].x, textY,
+                  s_col[LOGLIST_COL_SOURCE].w, cw,
                   known ? LL_SOURCE : LL_SOURCE_UNK);
 
-        draw_cell(w, row.message, area.x + LL_COL[LOGLIST_COL_MESSAGE].x, textY,
-                  msg_width(w), cw, LL_MESSAGE);
+        draw_cell(w, row.message, area.x + s_col[LOGLIST_COL_MESSAGE].x, textY,
+                  s_col[LOGLIST_COL_MESSAGE].w, cw, LL_MESSAGE);
     }
 
     wgt->status.drawState = LE_WIDGET_DRAW_STATE_DONE;
@@ -402,6 +423,7 @@ void LogList_SetFont(leWidget *wgt, const leFont *text)
     leLogListWidget *w = (leLogListWidget *)wgt;
     if (w == NULL) { return; }
     w->font = text;
+    layout_columns(w);   /* column pixels follow the font's advance */
     wgt->fn->invalidate(wgt);
 }
 
@@ -427,8 +449,8 @@ void LogList_ColumnRect(const leWidget *wgt, loglist_col_t col, int *x, int *wid
     const leLogListWidget *w = (const leLogListWidget *)wgt;
     if (w == NULL || col >= LOGLIST_COL_COUNT) { return; }
 
-    if (x     != NULL) { *x     = LL_COL[col].x; }
-    if (width != NULL) { *width = col_width(w, col); }
+    if (x     != NULL) { *x     = s_col[col].x; }
+    if (width != NULL) { *width = s_col[col].w; }
 }
 
 bool LogList_Dragging(const leWidget *wgt)

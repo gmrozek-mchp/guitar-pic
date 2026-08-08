@@ -19,7 +19,13 @@
  * output. log_ring_get instead detects the one race that matters (the oldest slot
  * being recycled mid-copy) via the per-entry sequence number. */
 
-#define LOG_RING_ENTRIES  100u
+/* Depth. An entry is 156 B (measured, not derived — XC32 packs log_level_t to one byte with
+ * -fshort-enums), so this costs 76 KB of .bss, which sits in the 216 MB cacheable `ram`
+ * region rather than under the canvases' ram_nocache pressure. RAM is not what bounds this:
+ * 500 rows is ~35 screenfuls, about as far back as a 1:1 drag will realistically reach, and
+ * a full `log dump` is already ~4 s of serial at 115200. Going deeper is for grepping a
+ * capture, not for reading on the panel, and would want a filter rather than more rows. */
+#define LOG_RING_ENTRIES  500u
 #define LOG_RING_TEXT     144u   /* wider than the panel's message column can show */
 
 typedef struct

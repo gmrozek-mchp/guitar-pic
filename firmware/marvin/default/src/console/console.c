@@ -57,6 +57,9 @@
 #define CON_RX_THRESHOLD      1u      /* wake on any inbound byte */
 #define CON_RX_WAIT_MS        100u    /* bounded so a missed notify can't wedge */
 
+/* Lines `log dump` prints when given no count — see the note at its use. */
+#define LOG_DUMP_DEFAULT       40u
+
 /* embedded-cli internal buffer (static-allocation mode → no malloc). The binding pool
  * dominates it and grows with the command table (~20 bytes per command on this 32-bit
  * target), so the old 1024 left only ~40 bytes of slack at the current count — i.e. the
@@ -1184,14 +1187,21 @@ static void cmd_log(EmbeddedCli *cli, char *args, void *ctx)
 
     if (tok == NULL || strcmp(tok, "dump") == 0)
     {
+        /* Bounded by default: the ring holds 500 and a line is ~100 chars, so dumping it
+         * all is ~4 s of serial at 115200. `log dump all` when that is what you want. */
         uint32_t held = log_ring_count();
-        uint32_t n    = (val != NULL) ? (uint32_t)atoi(val) : held;
+        uint32_t n;
+
+        if (val == NULL)                    { n = LOG_DUMP_DEFAULT; }
+        else if (strcmp(val, "all") == 0)   { n = held; }
+        else                                { n = (uint32_t)atoi(val); }
         if (n > held) { n = held; }
 
         uint32_t err = 0u, warn = 0u;
         log_ring_counts(&err, &warn, NULL);
-        console_printf("log: %lu held, %lu err, %lu warn, %lu since boot, level %s",
-                       (unsigned long)held, (unsigned long)err, (unsigned long)warn,
+        console_printf("log: %lu of %lu held, %lu err, %lu warn, %lu since boot, level %s",
+                       (unsigned long)n, (unsigned long)held,
+                       (unsigned long)err, (unsigned long)warn,
                        (unsigned long)log_ring_seq(),
                        (log_get_level() == LOG_LEVEL_DEBUG) ? "debug" :
                        (log_get_level() == LOG_LEVEL_INFO)  ? "info"  :
@@ -1222,8 +1232,11 @@ static void cmd_log(EmbeddedCli *cli, char *args, void *ctx)
         return;
     }
 
-    console_printf("usage: log [dump [n] | level <error|warn|info|debug> | probe [iters] | text <ustring|walk|lut>]");
+    console_printf("usage: log [dump [n|all] | level <error|warn|info|debug> | probe [iters] | text <ustring|walk|lut>]");
 }
+
+/* Lines `log dump` prints when no count is given — see the note at its use. */
+#define LOG_DUMP_DEFAULT  40u
 
 /* System Info: what a node tap costs, and the whole-panel-vs-targeted A/B behind it.
  * The detail repaint is user-visible latency — bind_view holds the grid on screen until it
@@ -1642,7 +1655,7 @@ static const CliCommandBinding bindings[] = {
         { "nav",      "nav [slide on|off | icon <row> | px <x> <y> [w h]]: drawer slide / pixel dump", true, NULL, cmd_nav },
         { "bus",     "bus <probe [iters] | refresh full|targeted>: render cost / refresh strategy", true, NULL, cmd_bus },
         { "system",  "system <probe [iters] | refresh full|targeted>: node-tap repaint latency", true, NULL, cmd_system },
-        { "log",     "log [dump [n] | level <lvl> | probe [iters] | text <ustring|walk|lut>]: activity log ring / severity / render cost", true, NULL, cmd_log },
+        { "log",     "log [dump [n|all] | level <lvl> | probe [iters] | text <ustring|walk|lut>]: activity log ring / severity / render cost", true, NULL, cmd_log },
         { "wiimotes","wiimotes probe [iters]: render cost of the whammy / tilt / fret widgets", true, NULL, cmd_wiimotes },
         { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
         { "titlebar","titlebar [pulse <on|off> | tiles <on|off> | probe [iters]]: metric-tile / LED render load, frames/s, per-frame cost", true, NULL, cmd_titlebar },

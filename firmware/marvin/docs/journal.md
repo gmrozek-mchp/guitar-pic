@@ -4,6 +4,31 @@ Running log of planning, decisions, open questions, and work-in-progress for mar
 
 ---
 
+**2026-08-08 (night, after the commit) — activity log font 12 → 16, and the column table now derives itself from the font instead of being hard-coded pixels. NOT YET ON HARDWARE.**
+
+- **The pixel column table was a trap waiting to spring, and bumping the font is what sprang it.** `LL_COL` held hard-coded x/width sized for `DejaVuSansMono_12`'s 7px advance, so changing the row font would have left every column mis-sized with nothing to warn about — and the screen's own headings, placed from `LogList_ColumnRect`, would have drifted from the rows they label. Columns are now declared in **characters** (`LL_CH_TIME` 12, `LL_CH_LEVEL` 5, `LL_CH_SOURCE` 11, gap 2) and resolved to pixels in `layout_columns` from the advance `char_w()` already measures. Changing `ROW_FONT` now reflows rows and headings together.
+- **`DejaVuSansMono_16` (height 20, advance 10) at `ROW_H` 42.** The message column takes the remainder, so the larger text is paid for in message characters rather than in a broken layout:
+
+  | font | advance | message column | rows |
+  |---|---|---|---|
+  | Mono_12 (was) | 7 | 976 px = **139 ch** | 17 |
+  | **Mono_16 (now)** | 10 | 874 px = **87 ch** | **15** + a 14px sliver |
+  | Mono_18 | 11 | 840 px = 76 ch | 14 |
+
+- **87 characters was chosen on evidence, not by eye.** Estimating expanded length for the tree's 189 distinct log messages (tag stripped, format specifiers widened): median **32**, p90 66, p95 72, max 121. So 87 ch shows **98.4% of message types whole** — three truncate. 139 ch was 100% and 76 ch (Mono_18) drops to 95.8%, which is why 16 rather than 18. Headings went `_9` → `_12` and the title `Bold_14` → `Bold_16` to stay in proportion.
+- **Ring depth is not RAM-constrained, and the real limits are elsewhere.** Measured from the map, `log_ring.c.o` contributes **15,604 B** of `.bss` — that is 100 × **156 B** plus the 4-byte sequence counter, so an entry is 156 not the 160 the field list suggests (XC32 packs `log_level_t` to one byte with `-fshort-enums`). `.bss` sits at 6.31 MB inside the 216 MB cacheable `ram` region, i.e. **210 MB spare** — nothing like the `ram_nocache` pressure the canvases are under.
+
+  | entries | RAM | vs today |
+  |---|---|---|
+  | 100 | 15.2 KB | — |
+  | 500 | 76.2 KB | +61 KB |
+  | 1000 | 152.3 KB | +137 KB |
+
+  **Set to 500.** `log_ring.c.o` .bss went 15,604 → **78,004 B** = 500 × 156 + 4, exactly as predicted, and `.bss` is now 6.37 MB of 216 MB. `.region_nocache` is untouched at 36,432,480.
+  - **`log dump` needed a bound to go with it**: 500 lines at ~100 chars is ~4 s of serial at 115200, and the old default was "everything held". It now prints `LOG_DUMP_DEFAULT` = 40 unless given a count, with `log dump all` for the whole ring, and the header reports `n of held` so a truncated dump is never mistaken for the whole thing.
+
+  What actually bounds it: **`log dump` over serial** (~100 chars/line at 115200 ≈ 8.7 ms/line, so 1000 lines is 8.7 s — its default should be capped rather than "everything held"), and **scroll reachability** (1000 rows × 42 px = 42,000 px of virtual content, which no 1:1 drag will cross). `log_ring_counts` walking every entry twice a second is O(n) but immaterial at these sizes. So: pick depth on how far back you want to *read on the panel*, and raise it freely up to a few hundred.
+
 **2026-08-08 (night, last) — System Info: a node tap cost 186 ms and now costs 59.5 ms (3.1×). It is the only repaint in marvin that is user-visible LATENCY rather than background load. Targeted damage is the default; the probe found a stall it would otherwise have introduced.**
 
 ```
