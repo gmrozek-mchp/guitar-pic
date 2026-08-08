@@ -66,6 +66,12 @@ static volatile uint32_t s_ev_deconfigured;
 static volatile uint32_t s_ev_reset;
 static volatile uint32_t s_ev_cls;
 
+/* What PerfLogSinkCdc_ServiceRx has already announced. The event handlers below run
+ * in UDPHS ISR context and must not log (see log.h), so they only bump the counters
+ * and the drain task reports the change on its next pass. */
+static uint32_t s_rep_configured;
+static uint32_t s_rep_deconfigured;
+
 /* Stall watch. A write that is submitted but never completes is the signature of USB
  * state having been clobbered — the link still reports configured and DTR (those
  * flags are only updated by events that no longer arrive), so from the outside the
@@ -144,6 +150,22 @@ void PerfLogSinkCdc_ServiceRx(void)
     if (s_is_configured && !s_rx_armed)
     {
         prime_rx_read();
+    }
+
+    /* Announce enumeration changes the ISR-context handlers could only count. Latency
+     * is one drain pass; the counters, not this line, are the record of how many. */
+    uint32_t cfg = s_ev_configured;
+    if (cfg != s_rep_configured)
+    {
+        s_rep_configured = cfg;
+        LOG_INFO("PERF: USB device CDC configured\r\n");
+    }
+
+    uint32_t dcfg = s_ev_deconfigured;
+    if (dcfg != s_rep_deconfigured)
+    {
+        s_rep_deconfigured = dcfg;
+        LOG_INFO("PERF: USB device CDC deconfigured\r\n");
     }
 }
 
@@ -290,7 +312,6 @@ static void device_event_handler(USB_DEVICE_EVENT event, void *eventData,
                                                     cdc_event_handler, 0u);
                 s_is_configured = true;
                 s_ev_configured++;
-                LOG_INFO("PERF: USB device CDC configured\r\n");
                 prime_rx_read();
             }
             break;
