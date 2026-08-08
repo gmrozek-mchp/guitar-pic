@@ -43,8 +43,21 @@ tool-edited zip, then re-serializes it on save).
      strings/images). Timestamps help — a zip newer than `le_gen_*` means the Generate predates
      your edit.
    - **MGS holding the design open will clobber a tool edit** on its next save, since it writes
-     its in-memory copy. If it was open while you wrote, have the user reopen the design before
-     generating.
+     its in-memory copy. Ask whether Composer is open *before* editing, not after.
+   - **A script reporting `applied` is not evidence the edit is in the zip.** Each script
+     verifies the member it built and then repacks; neither can see a Composer save that lands
+     afterwards. Observed: `add_image.py` printed `manifest 26 -> 27 entries / applied` and
+     `add_scheme.py` printed `verified: 74 -> 75 schemes`, while the zip on disk still held 26
+     and 74 — Composer had been open and re-saved over both. **Always finish with
+     `audit_refs.py` and read its asset counts**, which is the cheap tell: the counts come from
+     the zip as it now exists on disk, so they disagree with the scripts' output exactly when
+     something clobbered you. Recovery is `git checkout -- <zip>` then re-apply.
+     - The clobbered zip can look byte-identical in content while `git status` still reports it
+       modified: Composer re-serializes the container (entry order, timestamps, compression) with
+       every member unchanged. Diff *members*, not the file, before assuming the user lost work —
+       if all members match HEAD, resetting is free.
+     - Note the member counts are also the only check that catches this. Sizes don't: a re-saved
+       zip can match HEAD's size to the byte.
 
 ## Workflow
 

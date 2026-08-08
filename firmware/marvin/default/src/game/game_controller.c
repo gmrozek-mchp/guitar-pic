@@ -271,12 +271,20 @@ static bool execute(const gc_step_t *st)
 
 /* ── run ──────────────────────────────────────────────────────────────────── */
 
-/* Release the wire, disable CV, report a terminal status. */
+/* Release the wire, disable CV, report a terminal status.
+ *
+ * Clearing s_busy *before* publishing is load-bearing, not tidiness. Observers run
+ * on their own task and read GameController_IsBusy() when they handle the status, so
+ * publishing first is a race: an observer that samples between the two lines sees a
+ * run still in flight, and since this is the last status of the run, nothing ever
+ * corrects it. That latched the dashboard's START/STOP button in STOP.
+ *
+ * Every terminal path routes through here so the ordering can't be forgotten. */
 static void finish(const char *st)
 {
     GameTiming_SetEnabled(false);   /* also sends one release */
-    status(st);
     s_busy = false;
+    status(st);
 }
 
 /* Return to main_menu from wherever we are. RED backs up the forward-nav menus,
@@ -367,9 +375,14 @@ static void play_until_done(void)
 }
 
 /* Make sure fauxmote is connected to the Wii before a run (it's the actuation path
- * to the console). Reconnect if the link is bonded-but-down; sets a descriptive
- * status and returns false if it can't get there. */
-static bool ensure_wii_connected(void)
+ * to the console). Reconnect if the link is bonded-but-down.
+ *
+ * On failure it reports the reason through `why` rather than publishing it: this runs
+ * with the run still marked busy, so the caller has to hand the message to finish()
+ * for the busy flag to be settled before observers see it. Progress statuses
+ * ("CONNECTING") are published directly — those are not terminal, so a later status
+ * always corrects whatever an observer sampled. */
+static bool ensure_wii_connected(const char **why)
 {
     uint8_t flags;
     if (!Fauxmote_GetStatus(&flags, NULL, NULL, NULL, NULL))
@@ -382,7 +395,7 @@ static bool ensure_wii_connected(void)
     if (flags & MF_ST_CONNECTED) { return true; }
     if (!(flags & MF_ST_BONDED))
     {
-        status("PAIR WII");   /* never synced — needs a manual red-SYNC pairing */
+        *why = "PAIR WII";   /* never synced — needs a manual red-SYNC pairing */
         return false;
     }
 
@@ -398,7 +411,7 @@ static bool ensure_wii_connected(void)
             return true;
         }
     }
-    status("NO WII");
+    *why = "NO WII";
     return false;
 }
 
@@ -448,10 +461,14 @@ static void run(void)
     DashboardFeed_PostMultiplier(1u);
     DashboardFeed_PostStreak(0u);
 
-    /* Pre-flight: the Wii link must be up (fauxmote is how we reach the console). */
-    if (!ensure_wii_connected())
+    /* Pre-flight: the Wii link must be up (fauxmote is how we reach the console).
+     * Exits through finish() like every other terminal path, so the busy flag is
+     * settled before the status reaches an observer. A stop during the connect wait
+     * reports no reason of its own. */
+    const char *why = NULL;
+    if (!ensure_wii_connected(&why))
     {
-        s_busy = false;   /* status already set (CONNECTING→NO WII / PAIR WII) */
+        finish((why != NULL) ? why : (s_stop_req ? "READY" : "FAILED"));
         return;
     }
 

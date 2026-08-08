@@ -10,6 +10,7 @@ extern const leScheme SCHEME_BUTTON_EXPERT;
 extern const leScheme SCHEME_BUTTON_HARD;
 extern const leScheme SCHEME_BUTTON_MEDIUM;
 extern const leScheme SCHEME_BUTTON_MODE;
+extern const leScheme SCHEME_BUTTON_DISABLED;
 extern const leScheme SCHEME_BUTTON_MODE_SELECTED;
 extern const leScheme SCHEME_BUTTON_SELECT;
 extern const leScheme SCHEME_FILL_GREEN_400;

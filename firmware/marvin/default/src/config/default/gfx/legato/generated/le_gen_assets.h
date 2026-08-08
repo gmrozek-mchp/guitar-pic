@@ -295,6 +295,24 @@ extern leImage NAV_ICON_BUS;
  ***********************************/
 extern leImage NAV_ICON_BUS_SELECTED;
 
+/*********************************
+ * Legato Image Asset
+ * Name:   BUTTON_FACE_STOP
+ * Size:   12x12 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage BUTTON_FACE_STOP;
+
+/*********************************
+ * Legato Image Asset
+ * Name:   BUTTON_FACE_SELECT_SONG_DIM
+ * Size:   14x14 pixels
+ * Type:   RGB Data
+ * Format: RGBA_8888
+ ***********************************/
+extern leImage BUTTON_FACE_SELECT_SONG_DIM;
+
 /*****************************************************************************
  * Legato Graphics Font Assets
  *****************************************************************************/

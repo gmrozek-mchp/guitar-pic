@@ -110,6 +110,7 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define FRET_PITCH   47
 #define FRET_H       24                              /* h-6 */
 #define R_STRUM_Y   392
+#define STRUM_W      68        /* 1.5x the old 45: a bare colour chip, no caption */
 #define R_RULE2_Y   422
 
 /* Detector + actuator rows, derived rather than tabulated: the mockup's own column is
@@ -204,7 +205,7 @@ typedef struct
     leTableString  on;
 } dual_cap_t;
 
-static dual_cap_t s_cap_state_robot, s_cap_state_human, s_cap_strum;
+static dual_cap_t s_cap_state_robot, s_cap_state_human;
 
 static void dual_init(dual_cap_t *d, leLabelWidget *lbl, uint32_t off_id, uint32_t on_id)
 {
@@ -251,11 +252,12 @@ static leButtonWidget      *s_actuator[ACTUATOR_COUNT];
 static leWidget            *s_actuator_led[ACTUATOR_COUNT];
 static bool                 s_actuator_on[ACTUATOR_COUNT];
 static leButtonWidget      *s_start;
+static leButtonWidget      *s_pick;    /* SELECT SONG — gated while a run is in flight */
 static leTableString        s_start_cap, s_stop_cap;
 static leWidget            *s_state_robot, *s_state_robot_led;
 static leWidget            *s_video_pattern;   /* SMPTE bars group, hidden while video is up */
 static leWidget            *s_state_human, *s_state_human_led;
-static leWidget            *s_strum_pill;
+static leButtonWidget      *s_strum_chip;   /* STRUM BAR activity, fret-style */
 static leWidget            *s_diff_pill;
 static leImageWidget       *s_album;
 static leWidget            *s_bar_play, *s_bar_streak_robot, *s_bar_streak_human;
@@ -660,13 +662,23 @@ static void build_robot_card(leWidget *content)
         s_fret[i]->widget.flags |= LE_WIDGET_IGNOREEVENTS;
     }
 
+    /* STRUM BAR activity — the same idiom as the frets above, and for the same reason:
+     * a toggleable button reaches its scheme's BACKGROUND when latched, where a plain
+     * pill only ever fills from BASE. SCHEME_PILL_ZINC_800 already carried the mockup's
+     * pair (zinc-800 idle / cyan-500 lit) but was on a pill, so the lit colour was
+     * unreachable and the chip only ever changed its caption. Caption dropped: the
+     * colour is the state, and a wider bare chip reads at a glance where IDLE/ACTIVE
+     * text had to be looked at. */
     (void)add_cap(card, COL_X, R_STRUM_Y, 96, 16, stringID_PLAYER_STRUM_BAR,
             &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
-    s_strum_pill = add_pill(card, 198, R_STRUM_Y - 2, 45, STATE_H, &SCHEME_FILL_ZINC_800);
-    dual_init(&s_cap_strum,
-              add_cap(s_strum_pill, 0, 2, 45, 16, stringID_PLAYER_STRUM_BAR_Status,
-                      &SCHEME_TEXT_ZINC_600, LE_HALIGN_CENTER),
-              stringID_PLAYER_STRUM_BAR_Status, stringID_PLAYER_STRUM_ACTIVE);
+    /* Right-aligned to the metric column, derived rather than placed: the old literal
+     * x=198 was right-aligned only because 198 + 45 happened to equal COL_X + COL_W, so
+     * widening the chip silently pushed it past the column edge. Deriving it means the
+     * width is the only thing to tune. Same edge the state pill sits on (STATE_X + STATE_W). */
+    s_strum_chip = add_button(card, COL_X + COL_W - STRUM_W, R_STRUM_Y - 2,
+                              STRUM_W, STATE_H, 0u, &SCHEME_PILL_ZINC_800);
+    s_strum_chip->fn->setToggleable(s_strum_chip, LE_TRUE);
+    s_strum_chip->widget.flags |= LE_WIDGET_IGNOREEVENTS;
 
     add_rule(card, COL_X, R_RULE2_Y, COL_W);
 
@@ -892,12 +904,12 @@ static void build_song_card(leWidget *content)
 
     (void)add_panel(card, GAME_X + 16, 70, GAME_W - 32, 1, &SCHEME_PILL_ZINC_700, LE_TRUE);
 
-    leButtonWidget *pick = add_button(card, GAME_X + 16, 79, GAME_W - 32, 60,
-                                      stringID_GAMEPLAY_SELECT_SONG, &SCHEME_BUTTON_MODE);
-    pick->fn->setPressedImage(pick, (leImage *)&BUTTON_FACE_SELECT_SONG);
-    pick->fn->setReleasedImage(pick, (leImage *)&BUTTON_FACE_SELECT_SONG);
-    pick->fn->setImageMargin(pick, 6);
-    pick->fn->setReleasedEventCallback(pick, select_song_on_release);
+    s_pick = add_button(card, GAME_X + 16, 79, GAME_W - 32, 60,
+                        stringID_GAMEPLAY_SELECT_SONG, &SCHEME_BUTTON_MODE);
+    s_pick->fn->setPressedImage(s_pick, (leImage *)&BUTTON_FACE_SELECT_SONG);
+    s_pick->fn->setReleasedImage(s_pick, (leImage *)&BUTTON_FACE_SELECT_SONG);
+    s_pick->fn->setImageMargin(s_pick, 6);
+    s_pick->fn->setReleasedEventCallback(s_pick, select_song_on_release);
 
     s_start = add_button(card, GAME_X + 16, 147, GAME_W - 32, 60,
                          stringID_GAMEPLAY_START, &SCHEME_GUITAR_FRET_GREEN);
@@ -1068,12 +1080,8 @@ void ScreenDashboard_ApplyFret(uint8_t mask)
     if (strum != s_last_strum)
     {
         s_last_strum = strum;
-        leLabelWidget *l = s_cap_strum.lbl;
-        s_strum_pill->fn->setScheme(s_strum_pill,
-                                    strum ? &SCHEME_PILL_ZINC_800 : &SCHEME_FILL_ZINC_800);
-        l->fn->setScheme(l, strum ? &SCHEME_TEXT_WHITE : &SCHEME_TEXT_ZINC_600);
-        dual_set(&s_cap_strum, strum);
-        s_strum_pill->fn->invalidate(s_strum_pill);
+        s_strum_chip->fn->setPressed(s_strum_chip, strum ? LE_TRUE : LE_FALSE);
+        s_strum_chip->fn->invalidate(s_strum_chip);
     }
 }
 
@@ -1121,11 +1129,46 @@ static void run_state_show(bool active)
     dual_set(&s_cap_state_human, human_active);
     s_state_human->fn->invalidate(s_state_human);
 
+    /* STOP carries lucide `square` at 12px filled, against START's `play` at 14px —
+     * the mockup's own sizes (`w-3` vs `w-3.5`, both `fill-current`), since a filled
+     * square reads heavier than a triangle of the same bounds. Each icon is baked in
+     * its caption's colour (STOP #FFCAC5 from BUTTON_EXPERT, START white), because a
+     * bitmap cannot follow the scheme — so recolouring either button means re-rendering
+     * its icon too. */
     s_start->fn->setString(s_start, (leString *)(active ? &s_stop_cap : &s_start_cap));
     s_start->fn->setScheme(s_start, active ? &SCHEME_BUTTON_EXPERT : &SCHEME_GUITAR_FRET_GREEN);
-    s_start->fn->setPressedImage(s_start, active ? NULL : (leImage *)&BUTTON_FACE_START);
-    s_start->fn->setReleasedImage(s_start, active ? NULL : (leImage *)&BUTTON_FACE_START);
+    s_start->fn->setPressedImage(s_start,
+        (leImage *)(active ? &BUTTON_FACE_STOP : &BUTTON_FACE_START));
+    s_start->fn->setReleasedImage(s_start,
+        (leImage *)(active ? &BUTTON_FACE_STOP : &BUTTON_FACE_START));
     s_start->fn->invalidate(s_start);
+
+    /* The selection is an input to the run in flight, so it must not change under it.
+     * Clearing LE_WIDGET_ENABLED only stops the widget being picked — Legato's button
+     * paint has no disabled styling — so the look has to change too, or the button
+     * reads live and silently does nothing. Muted scheme + no face image, mirroring
+     * how START drops its own image above.
+     *
+     * BUTTON_DISABLED exists for this one job because no stock scheme was dark enough
+     * in both slots at once: it sets base #1F1F23 (between the zinc-900 card and the
+     * enabled #292829, so the button recedes without vanishing into the card) and text
+     * #52525B against the enabled #9C9EAD. Judge a substitute by LE_SCHM_TEXT, which is
+     * what the button skin draws the caption with, and not by the scheme's name —
+     * NAV_BUTTON_UNSELECTED sounds apt and is *brighter* than enabled (#D4D4D8).
+     *
+     * The icon swaps to a dimmed copy rather than being dropped or left alone: it is a
+     * fixed bitmap, so it can neither follow the scheme (it would stay #D4D4D8 and be
+     * the brightest thing on a card where everything else just receded) nor disappear
+     * without the caption re-centring. _DIM is the same art at the caption's #52525B,
+     * recoloured from the same PNG so the two differ in nothing but colour. */
+    if (active) { s_pick->widget.flags &= ~LE_WIDGET_ENABLED; }
+    else        { s_pick->widget.flags |=  LE_WIDGET_ENABLED; }
+    s_pick->fn->setScheme(s_pick, active ? &SCHEME_BUTTON_DISABLED : &SCHEME_BUTTON_MODE);
+    s_pick->fn->setPressedImage(s_pick,
+        (leImage *)(active ? &BUTTON_FACE_SELECT_SONG_DIM : &BUTTON_FACE_SELECT_SONG));
+    s_pick->fn->setReleasedImage(s_pick,
+        (leImage *)(active ? &BUTTON_FACE_SELECT_SONG_DIM : &BUTTON_FACE_SELECT_SONG));
+    s_pick->fn->invalidate(s_pick);
 }
 
 /* Game-controller status → the song card's status line, plus the run-dependent chrome. */

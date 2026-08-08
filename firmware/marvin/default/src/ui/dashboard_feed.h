@@ -18,6 +18,13 @@ extern "C" {
  * actuation path — dashboard tracking must never delay gameplay timing. The consumer
  * runs in the UI priority band, below every actuation/detector task.
  *
+ * Drop-on-full is correct for telemetry, which is *sampled*: a lost playtime or score
+ * is superseded by the next one. It is wrong for DASH_EVT_STATUS, which is an *edge* —
+ * a terminal status is never resent, so dropping one leaves the dashboard acting on a
+ * run that has already ended. Status therefore goes through its own depth-1 overwrite
+ * mailbox as well, which cannot be crowded out by telemetry and is still wait-free.
+ * Any new event type should be classified the same way before it is added.
+ *
  * This header is POD-only (no Legato types) so producers in actuator/ and game/ can
  * include it without pulling in the GFX stack.
  *

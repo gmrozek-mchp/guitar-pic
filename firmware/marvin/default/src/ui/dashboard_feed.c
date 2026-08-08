@@ -18,6 +18,23 @@ static QueueHandle_t s_q;
 static StaticQueue_t s_q_buf;
 static uint8_t       s_q_storage[DF_QUEUE_DEPTH * sizeof(dashboard_evt_t)];
 
+/* Status gets a depth-1 overwrite mailbox of its own instead of riding the shared
+ * queue, because it is the one event type that is an *edge* rather than a sample.
+ *
+ * The shared queue is deliberately drop-on-full, which is right for telemetry: a lost
+ * playtime or score is replaced by the next one 300 ms later. A status is not resent —
+ * "READY" at the end of a run is the last one there will be — so dropping it left the
+ * dashboard believing a run was still in flight, latching START/STOP in STOP until the
+ * next run. During gameplay the controller posts up to four telemetry events per poll
+ * against a 16-deep queue drained by a priority-2 task, so a full queue is ordinary,
+ * not exceptional.
+ *
+ * xQueueOverwrite never fails and never blocks, so this keeps the wait-free contract
+ * the header promises, and the queue's own copy avoids tearing the string. */
+static QueueHandle_t s_status_q;
+static StaticQueue_t s_status_q_buf;
+static uint8_t       s_status_q_storage[sizeof(dashboard_evt_t)];
+
 static StackType_t   s_task_stack[DF_TASK_STACK_WORDS];
 static StaticTask_t  s_task_tcb;
 
@@ -70,6 +87,12 @@ void DashboardFeed_PostStatus(const char *text)
         (void)strncpy(e.u.text, text, DASH_EVT_TEXT_CAP - 1u);
         e.u.text[DASH_EVT_TEXT_CAP - 1u] = '\0';
     }
+    if (s_status_q != NULL) { (void)xQueueOverwrite(s_status_q, &e); }
+
+    /* Still poke the shared queue, purely to wake the consumer. Losing this to a full
+     * queue is harmless: full means the consumer has work pending and has not drained
+     * yet, so its next drain necessarily happens after the mailbox was written, and it
+     * reads the mailbox on that same pass. */
     post(&e);
 }
 
@@ -120,6 +143,18 @@ static void dashboard_task(void *param)
             }
         } while (xQueueReceive(s_q, &evt, 0) == pdTRUE);
 
+        /* Take the status from its mailbox, which cannot have been dropped, rather
+         * than from whatever survived the shared queue. Done after the drain so a
+         * status posted during it is still seen this pass. */
+        {
+            dashboard_evt_t st;
+            if (xQueueReceive(s_status_q, &st, 0) == pdTRUE)
+            {
+                s_latest[DASH_EVT_STATUS] = st;
+                s_have[DASH_EVT_STATUS]   = true;
+            }
+        }
+
         /* Hidden: keep coalescing, apply nothing. The pending set is flushed by the
          * show, so no update is lost — only deferred. */
         if (!s_shown) { continue; }
@@ -162,6 +197,8 @@ void DashboardFeed_Init(void)
 {
     s_q = xQueueCreateStatic(DF_QUEUE_DEPTH, sizeof(dashboard_evt_t),
                              s_q_storage, &s_q_buf);
+    s_status_q = xQueueCreateStatic(1u, sizeof(dashboard_evt_t),
+                                    s_status_q_storage, &s_status_q_buf);
 }
 
 void DashboardFeed_Start(void)
