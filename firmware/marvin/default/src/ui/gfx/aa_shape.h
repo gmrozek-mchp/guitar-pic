@@ -40,6 +40,16 @@ void AaShape_Disc(int32_t cx, int32_t cy, int32_t r, leColor color, uint32_t alp
 /* Filled anti-aliased rounded rectangle, `radius` in PIXELS (the widget-facing unit). */
 void AaShape_RRect(const leRect *rect, int32_t radius, leColor color, uint32_t alpha);
 
+/* Rounded rectangle with a border: the interior is `fill` at `fillAlpha`, the outermost
+ * `borderWidth` pixels are `border` at full strength. `radius` in PIXELS.
+ *
+ * One pass over the pixels, not a fill blit followed by a stroke: the two shapes share an
+ * antialiased boundary, and blending it twice darkens the seam. That also makes this the
+ * only way to draw a TRANSLUCENT fill inside an opaque border — a fill blitted over a
+ * border-coloured rect would tint the whole interior with the border colour. */
+void AaShape_RRectFramed(const leRect *rect, int32_t radius, int32_t borderWidth,
+                         leColor fill, uint32_t fillAlpha, leColor border);
+
 /* Rounded rectangle with only the named corners rounded; `radius` in PIXELS. */
 void AaShape_RRectCorners(const leRect *rect, int32_t radius, uint8_t corners,
                           leColor color, uint32_t alpha);

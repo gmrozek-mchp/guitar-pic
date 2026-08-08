@@ -65,6 +65,22 @@ void PanelAA_EnableRoundTop(leWidget* panel, uint32_t radius);
  * fine while the only caller is the node-card grid. Call once after construction. */
 void PanelAA_EnableLeftAccent(leWidget* panel, uint32_t edgeWidth, uint32_t borderWidth);
 
+/* A modal SCRIM over part of one layer: the panel's BASE colour at `alpha` over whatever
+ * earlier siblings painted under its rect, plus a full-strength 1px SHADOWDARK ring if the
+ * panel has a LINE border. Give it the radius and border first; this CLEARS the background
+ * type, since a skin fill would hide what the dim is meant to show through.
+ *
+ * Must be a LATER sibling than everything it dims, and the widgets under it must repaint
+ * themselves — the blend reads the pixels the layer's opaque parents and earlier siblings
+ * have just written under the damaged rect, which is what stops the dim accumulating across
+ * repaints (see dot_paint).
+ *
+ * Touches landing on it are accepted and dropped, so the widgets underneath are inert while
+ * it is up — that, not the dim, is what makes it modal. Its own children still pick normally
+ * (leUtils_PickFromWidget prefers the deepest match), as do LATER siblings, so the controls
+ * belonging to the scrim go there. Call once after construction. */
+void PanelAA_EnableScrim(leWidget* panel, uint32_t alpha);
+
 #ifdef __cplusplus
 }
 #endif

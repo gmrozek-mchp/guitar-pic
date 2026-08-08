@@ -374,3 +374,74 @@ void AaShape_RRect(const leRect *rect, int32_t radius, leColor color, uint32_t a
 {
     AaShape_RRectCorners(rect, radius, AA_CORNER_ALL, color, alpha);
 }
+
+void AaShape_RRectFramed(const leRect *rect, int32_t radius, int32_t borderWidth,
+                         leColor fill, uint32_t fillAlpha, leColor border)
+{
+    AaRRect out, in;
+    int32_t  x0, y0, x1, y1, px, py;
+    leBool   framed;
+
+    if (rect == NULL || rect->width < 1 || rect->height < 1) { return; }
+    if (borderWidth < 0) { borderWidth = 0; }
+
+    AaShape_RRectSet(&out, (2 * rect->x) + rect->width, (2 * rect->y) + rect->height,
+                     rect->width, rect->height, 2 * radius);
+
+    /* Half-pixel units: insetting by `borderWidth` pixels takes 2 off each half-extent, and
+     * the inner radius shrinks by the same pixel count so the two outlines stay concentric. */
+    AaShape_RRectSet(&in, out.cx, out.cy,
+                     out.hw - (2 * borderWidth), out.hh - (2 * borderWidth),
+                     2 * ((radius > borderWidth) ? (radius - borderWidth) : 0));
+
+    framed = (borderWidth > 0 && in.hw >= 1 && in.hh >= 1) ? LE_TRUE : LE_FALSE;
+
+    if (!framed)
+    {
+        rrect_blit(&out, fill, fillAlpha);
+        return;
+    }
+
+    x0 = (out.cx - out.hw - 1) >> 1;
+    x1 = ((out.cx + out.hw + 2) >> 1) + 1;
+    y0 = (out.cy - out.hh - 1) >> 1;
+    y1 = ((out.cy + out.hh + 2) >> 1) + 1;
+
+    if (clip_to_draw(&x0, &y0, &x1, &y1) == LE_FALSE) { return; }
+
+    for (py = y0; py < y1; py++)
+    {
+        int32_t y = (2 * py) + 1;
+
+        for (px = x0; px < x1; px++)
+        {
+            int32_t  x    = (2 * px) + 1;
+            uint32_t covo = AaShape_RRectCov(&out, x, y);
+            uint32_t covi;
+            uint32_t a;
+
+            if (covo == 0u) { continue; }
+
+            covi = AaShape_RRectCov(&in, x, y);
+
+            if (covi != 0u && fillAlpha != 0u)
+            {
+                a = (covi * fillAlpha) / COV_ONE;
+
+                if (a >= 255u) { (void)leRenderer_PutPixel_Safe(px, py, fill); }
+                else if (a != 0u) { (void)leRenderer_BlendPixel_Safe(px, py, fill, a); }
+            }
+
+            /* The ring is the difference of the two coverages, which is why both shapes are
+             * queried per pixel rather than the border being stroked over a finished fill:
+             * two blits share this antialiased boundary and would blend it twice. */
+            if (covo > covi)
+            {
+                a = ((covo - covi) * 255u) / COV_ONE;
+
+                if (a >= 255u) { (void)leRenderer_PutPixel_Safe(px, py, border); }
+                else if (a != 0u) { (void)leRenderer_BlendPixel_Safe(px, py, border, a); }
+            }
+        }
+    }
+}

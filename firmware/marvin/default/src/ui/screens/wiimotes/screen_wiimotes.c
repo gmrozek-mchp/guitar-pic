@@ -15,6 +15,7 @@
 #include "ui/widgets/fret/widget_fret.h"
 #include "ui/widgets/whammy/widget_whammy.h"
 #include "ui/widgets/tilt/widget_tilt.h"
+#include "ui/widgets/slide_unlock/widget_slide_unlock.h"
 
 #include "ui/gfx/ui_surface.h"
 #include "ui/gfx/render_probe.h"
@@ -41,8 +42,9 @@
  * U+2212), and MGS only auto-includes glyphs for strings it can see in the design.
  * A C literal would silently render blanks after the next Generate.
  *
- * Every control drives fauxmote directly while this screen is shown; see
- * ScreenWiimotes_SetShown. */
+ * The controls are gated behind a slide-to-unlock scrim over the two cards. Showing the
+ * screen no longer takes the fauxmote override — the unlock does, and leaving the screen
+ * releases it and re-locks; see ScreenWiimotes_SetShown. */
 
 /* Wiimotes surface, non-cached so the 2D engine and LCDC DMA read CPU-rendered
  * pixels coherently; 32-byte aligned. RGB565 to match the layer's color mode. */
@@ -112,6 +114,26 @@ static uint16_t FB_NOCACHE s_frame_fb[VID_W * VID_H];
 #define TILT_X       (ACT_X + HOME_W + 16)                   /* WX + 419 */
 #define TILT_Y       (CARD_Y + 68)
 
+/* Lock scrim: the mockup's `absolute inset-0` on the card row, so it spans both cards and
+ * the gap between them, and dims at bg-black/60. The heading + slider are centred in it as
+ * a gap-4 column (20 + 16 + 64 = 100 tall). */
+#define SCRIM_X      GX
+#define SCRIM_Y      CARD_Y
+#define SCRIM_W      (BASE_W - 2 * MARGIN)               /* 1248 */
+#define SCRIM_H      CARD_H
+#define SCRIM_ALPHA  153u                               /* 60% of 255 */
+
+#define GATE_COL_H   100
+#define GATE_LBL_H    20
+#define GATE_LBL_W   400
+#define GATE_LBL_Y   (SCRIM_Y + (SCRIM_H - GATE_COL_H) / 2)          /* 598 */
+#define GATE_LBL_X   (SCRIM_X + (SCRIM_W - GATE_LBL_W) / 2)
+
+#define SLIDE_W      420
+#define SLIDE_H       64
+#define SLIDE_X      (SCRIM_X + (SCRIM_W - SLIDE_W) / 2)             /* 430 */
+#define SLIDE_Y      (GATE_LBL_Y + GATE_LBL_H + 16)                  /* 634 */
+
 /* Fret colours (Tailwind v4): rest = the -600/-500 shade at 75%, held = the
  * brighter -400/-300 shade with a ring of the same. */
 static const struct { uint32_t idle, held; } FRET_COLOR[5] =
@@ -133,12 +155,18 @@ static uint8_t s_g_whammy = MF_WHAMMY_REST;
 static uint8_t s_nav_core;  /* MF_W_A/B/ONE/TWO/HOME */
 static uint8_t s_nav_dpad;  /* MF_W_UP/DOWN/LEFT/RIGHT */
 
+/* Whether the gate is open. The screen sends nothing at all while locked: SendGuitar and
+ * SendNav apply regardless of the override flag (only SendGuitarMask, the gameplay-mirror
+ * hook, is gated), so a "safe defaults" push from a locked screen would still stomp on
+ * whatever the mirror is driving. */
+static bool s_unlocked;
+
 /* ── widget pool ────────────────────────────────────────────────────────────
  * Static storage, constructed in place — no allocator (see the project's static
  * allocation rule). Sized to the built screen with a little slack. */
-#define WGT_MAX   12u
+#define WGT_MAX   14u
 #define BTN_MAX   16u
-#define LBL_MAX    6u
+#define LBL_MAX    7u
 
 static leWidget        s_wgt[WGT_MAX];
 static unsigned        s_nwgt;
@@ -155,6 +183,15 @@ static leWidget *s_fret[5];
 static leWidget *s_whammy;
 static leWidget *s_tilt;
 static leWidget *s_titlebar;
+
+/* The gate's three widgets, hidden together when it opens. */
+static leWidget *s_scrim;
+static leWidget *s_gate_lbl;
+static leWidget *s_slide;
+
+/* The slider's two captions. The heading is a plain label, so add_label owns its string. */
+static leTableString s_slide_cap;
+static leTableString s_slide_chev;
 
 static leWidget *next_widget(int x, int y, int w, int h)
 {
@@ -246,13 +283,20 @@ static leButtonWidget *add_button(int x, int y, int w, int h, uint32_t string_id
 
 /* ── fauxmote plumbing ──────────────────────────────────────────────────────*/
 
+/* Locked means silent, enforced here rather than at each control: the scrim already makes the
+ * controls unreachable, but Whammy_Set(0) fires its change callback from the show/hide path,
+ * and this is the one place that cannot be forgotten by a future producer. */
 static void send_guitar(void)
 {
+    if (!s_unlocked) { return; }
+
     Fauxmote_SendGuitar(s_g_mask, s_g_whammy, s_g_aux);
 }
 
 static void send_nav(void)
 {
+    if (!s_unlocked) { return; }
+
     Fauxmote_SendNav(s_nav_core, s_nav_dpad, MF_STICK_CENTER, MF_STICK_CENTER);
 }
 
@@ -340,6 +384,8 @@ static void whammy_changed(int32_t value)
 
 static void tilt_changed(int32_t degrees)
 {
+    if (!s_unlocked) { return; }
+
     Fauxmote_SendTilt((int16_t)degrees);
 }
 
@@ -412,6 +458,64 @@ static void build_wiimote_card(void)
                     stringID_WIIMOTE_TILT, &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT);
 }
 
+/* ── lock gate ──────────────────────────────────────────────────────────────*/
+
+/* Show/hide the gate's three widgets together. VISIBLE is what the renderer tests AND what
+ * leUtils_PickFromWidget tests, so hiding the scrim both stops the dim and stops it swallowing
+ * touches; setVisible invalidates, which repaints the row's cards at full brightness. */
+static void gate_show(bool on)
+{
+    leWidget *part[3] = { s_scrim, s_gate_lbl, s_slide };
+    unsigned  i;
+
+    for (i = 0u; i < 3u; i++)
+    {
+        if (part[i] != NULL)
+        {
+            (void)part[i]->fn->setVisible(part[i], on ? LE_TRUE : LE_FALSE);
+        }
+    }
+}
+
+/* The gate opening is the edge that takes the override — not the screen being shown. Push the
+ * current (all-released) state right after, so fauxmote starts from a known pose instead of
+ * whatever the gameplay mirror last left latched. */
+static void gate_unlocked(void)
+{
+    gate_show(false);
+
+    s_unlocked = true;
+    Fauxmote_SetOverride(true);
+    send_guitar();
+    send_nav();
+    Fauxmote_SendTilt((int16_t)Tilt_Degrees());
+}
+
+/* Scrim over the card row, with the heading and the slider as LATER siblings: later paints on
+ * top of the dim, and later also wins the pick, so the slider is reachable while everything the
+ * scrim covers is not. */
+static void build_lock_gate(void)
+{
+    s_scrim = next_widget(SCRIM_X, SCRIM_Y, SCRIM_W, SCRIM_H);
+    /* SCHEME_BACKGROUND is already the pair this needs: base #000000 to dim with, shadowDark
+     * #404040 for the rim (zinc-700 to within a RGB565 step). */
+    s_scrim->fn->setScheme(s_scrim, &SCHEME_BACKGROUND);
+    s_scrim->fn->setBorderType(s_scrim, LE_WIDGET_BORDER_LINE);
+    s_scrim->fn->setCornerRadius(s_scrim, CARD_R);
+    PanelAA_EnableScrim(s_scrim, SCRIM_ALPHA);
+
+    s_gate_lbl = (leWidget *)add_label(GATE_LBL_X, GATE_LBL_Y, GATE_LBL_W, GATE_LBL_H,
+                                       stringID_WIIMOTE_LOCK_HEADING,
+                                       &SCHEME_TEXT_ZINC_400, LE_HALIGN_CENTER);
+
+    leTableString_Constructor(&s_slide_cap,  stringID_WIIMOTE_LOCK_SLIDE);
+    leTableString_Constructor(&s_slide_chev, stringID_WIIMOTE_LOCK_CHEVRON);
+
+    s_slide = next_widget(SLIDE_X, SLIDE_Y, SLIDE_W, SLIDE_H);
+    SlideUnlock_Enable(s_slide, (leString *)&s_slide_cap, (leString *)&s_slide_chev,
+                       gate_unlocked);
+}
+
 void ScreenWiimotes_InitSurface(void)
 {
     UiSurface_Set(CANVAS_WIIMOTES, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
@@ -432,6 +536,7 @@ void ScreenWiimotes_Setup(void)
 
     build_guitar_card();
     build_wiimote_card();
+    build_lock_gate();
 
     /* Start not shown → gate out of picking (see ScreenWiimotes_SetInput). */
     ScreenWiimotes_SetInput(false);
@@ -465,11 +570,13 @@ const void *ScreenWiimotes_VideoFrameSurface(void)
     return s_frame_fb;
 }
 
-/* Take/relinquish the fauxmote link as this base view is shown/hidden. While shown
- * the screen owns the GUITAR slice (override blocks the gameplay mirror) and drives
- * fauxmote directly from its controls. On hide, release every input to safe defaults
- * *before* dropping the override so a dead touch never leaves a note held, then hand
- * fauxmote back to the gameplay mirror. */
+/* Relinquish the fauxmote link as this base view is hidden; taking it is the gate's job
+ * (gate_unlocked), so merely visiting the screen leaves the gameplay mirror alone.
+ *
+ * On hide, release every input to safe defaults *before* dropping the override, so a dead
+ * touch never leaves a note held — but only if the gate was open, since SendGuitar/SendNav
+ * apply whether or not the override is held and would otherwise zero the mirror's state.
+ * Then re-lock: the gate is per-visit, and there is no re-lock control on the screen. */
 void ScreenWiimotes_SetShown(bool shown)
 {
     unsigned i;
@@ -485,19 +592,16 @@ void ScreenWiimotes_SetShown(bool shown)
     Whammy_Set(0);
     for (i = 0u; i < 5u; i++) { Fret_SetHeld(s_fret[i], false); }
 
-    if (shown)
-    {
-        Fauxmote_SetOverride(true);
-        send_guitar();
-        send_nav();
-        Fauxmote_SendTilt((int16_t)Tilt_Degrees());
-    }
-    else
+    if (!shown && s_unlocked)
     {
         send_guitar();
         send_nav();
         Fauxmote_SetOverride(false);
     }
+
+    s_unlocked = false;
+    SlideUnlock_Reset();
+    gate_show(true);
 }
 
 /* ── render probe ────────────────────────────────────────────────────────────*/
@@ -508,6 +612,8 @@ void ScreenWiimotes_Probe(unsigned iters, wiimotes_probe_fn out, void *ctx)
         { "whammy", &s_whammy },
         { "tilt",   &s_tilt   },
         { "fret[0]",&s_fret[0]},
+        { "slide",  &s_slide  },
+        { "scrim",  &s_scrim  },
     };
 
     if (out == NULL) { return; }

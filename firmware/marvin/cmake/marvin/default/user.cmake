@@ -45,6 +45,7 @@ target_sources(marvin_default_default_XC32_compile PRIVATE
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/fret/widget_fret.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/whammy/widget_whammy.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/tilt/widget_tilt.c"
+    "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/widgets/slide_unlock/widget_slide_unlock.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/aa_corners.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/aa_shape.c"
     "${CMAKE_CURRENT_LIST_DIR}/../../../default/src/ui/gfx/render_probe.c"

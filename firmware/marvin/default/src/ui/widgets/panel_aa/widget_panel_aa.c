@@ -237,3 +237,64 @@ void PanelAA_EnableLeftAccent(leWidget* panel, uint32_t edgeWidth, uint32_t bord
     panel->fn = &s_la_vt;
     panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
 }
+
+/* Scrim variant: own vtable copy + captured paint, plus the dim level, which the variant
+ * shares the way it shares the vtable (one scrim up at a time). */
+static leWidgetVTable s_scrim_vt;
+static void (*s_scrim_orig_paint)(leWidget*);
+static leBool s_scrim_ready = LE_FALSE;
+static uint32_t s_scrim_alpha;
+
+static void scrim_paint(leWidget* wgt)
+{
+    s_scrim_orig_paint(wgt);
+
+    if (wgt->status.drawState == LE_WIDGET_DRAW_STATE_DONE)
+    {
+        leRect rect;
+
+        wgt->fn->rectToScreen(wgt, &rect);
+
+        AaShape_RRectFramed(&rect, (int32_t)wgt->style.cornerRadius,
+                            (wgt->style.borderType == LE_WIDGET_BORDER_LINE) ? 1 : 0,
+                            leScheme_GetRenderColor(wgt->scheme, LE_SCHM_BASE), s_scrim_alpha,
+                            leScheme_GetRenderColor(wgt->scheme, LE_SCHM_SHADOWDARK));
+    }
+}
+
+/* Swallow rather than ignore: an unhandled touch propagates to the PARENT, and the parent
+ * here is the screen's full-screen panel, so leaving these unset would let a press on a
+ * dimmed control reach whatever the panel does with it. */
+static void scrim_touchDown(leWidget* wgt, leWidgetEvent_TouchDown* evt)
+{
+    leWidgetEvent_Accept(&evt->event, wgt);
+}
+
+static void scrim_touchMove(leWidget* wgt, leWidgetEvent_TouchMove* evt)
+{
+    leWidgetEvent_Accept(&evt->event, wgt);
+}
+
+static void scrim_touchUp(leWidget* wgt, leWidgetEvent_TouchUp* evt)
+{
+    leWidgetEvent_Accept(&evt->event, wgt);
+}
+
+void PanelAA_EnableScrim(leWidget* panel, uint32_t alpha)
+{
+    if (!s_scrim_ready)
+    {
+        s_scrim_vt = *panel->fn;
+        s_scrim_orig_paint = panel->fn->_paint;
+        s_scrim_vt._paint         = scrim_paint;
+        s_scrim_vt.touchDownEvent = scrim_touchDown;
+        s_scrim_vt.touchMoveEvent = scrim_touchMove;
+        s_scrim_vt.touchUpEvent   = scrim_touchUp;
+        s_scrim_ready = LE_TRUE;
+    }
+
+    s_scrim_alpha = alpha;
+
+    panel->fn = &s_scrim_vt;
+    panel->fn->setBackgroundType(panel, LE_WIDGET_BACKGROUND_NONE);
+}
