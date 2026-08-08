@@ -22,7 +22,13 @@
  * log_lock_timeout_count. Logging therefore cannot deadlock the system.
  *
  * Do NOT call from an ISR — use a different mechanism for ISR-side
- * diagnostics (queue to a task, or atomic counter polled by a task).
+ * diagnostics (queue to a task, or atomic counter polled by a task). Taking the
+ * lock from an ISR blocks whichever task was interrupted, because
+ * xTaskGetCurrentTaskHandle() names that task rather than the handler; if it was
+ * already holding the lock, nothing can break the deadlock. This is enforced, not
+ * merely advised: a LOG_* from an exception context writes the format string raw
+ * (no lock, no formatting, no sink) and reports the caller once to DBGU. It is
+ * still a defect — see log_from_isr_count.
  */
 
 typedef enum
@@ -47,6 +53,10 @@ uint32_t log_nested_count(void);
 /* Number of lines that gave up waiting for the lock. Non-zero means a task
  * wedged while holding it; those lines went out unformatted. */
 uint32_t log_lock_timeout_count(void);
+
+/* Number of LOG_* calls made from an exception context. Non-zero means some
+ * interrupt handler logs; the DBGU marker names the address. Always a defect. */
+uint32_t log_from_isr_count(void);
 
 /* Tap every line that passes the severity filter, in addition to writing it to DBGU.
  * Used by log_ring.c to keep the last N lines for the operator UI's activity log.

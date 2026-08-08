@@ -28,6 +28,7 @@ static TaskHandle_t volatile s_holder;
 static volatile uint32_t     s_depth;
 static volatile uint32_t     s_nested;
 static volatile uint32_t     s_lock_timeouts;
+static volatile uint32_t     s_from_isr;
 
 void log_init(log_level_t initial_level)
 {
@@ -36,6 +37,7 @@ void log_init(log_level_t initial_level)
     s_depth         = 0u;
     s_nested        = 0u;
     s_lock_timeouts = 0u;
+    s_from_isr      = 0u;
 
     /* Recursive: a LOG_* reached from inside a log call — via a helper evaluated
      * for a log argument, or anything on the printf write path — would otherwise
@@ -68,6 +70,11 @@ uint32_t log_nested_count(void)
 uint32_t log_lock_timeout_count(void)
 {
     return s_lock_timeouts;
+}
+
+uint32_t log_from_isr_count(void)
+{
+    return s_from_isr;
 }
 
 /* Polled DBGU, so reporting a nested call cannot itself go through printf and
@@ -113,6 +120,32 @@ static void __attribute__((noinline)) log_lock_timeout_detected(const void *site
     dbgu_str(" - lines are unformatted until the holder releases ***\r\n");
 }
 
+/* True in an exception handler. The port runs tasks in System mode and branches to
+ * every C interrupt handler in Supervisor mode (portASM.S FreeRTOS_IRQ_Handler:
+ * `MSR CPSR_c, #SVC_MODE`), so once the scheduler is running any mode but System is
+ * an exception context. Only meaningful after that point — cstartup.S enters main()
+ * in Supervisor mode, so all pre-scheduler code would otherwise look like an ISR.
+ * ARM926 has no xPortIsInsideInterrupt. */
+#define ARM_MODE_SYS   0x1Fu
+
+static bool in_exception_context(void)
+{
+    uint32_t cpsr;
+    __asm volatile ("mrs %0, cpsr" : "=r" (cpsr));
+    return (cpsr & 0x1Fu) != ARM_MODE_SYS;
+}
+
+/* Breakpoint target for a LOG_* reached from an ISR. Taking the log mutex there
+ * blocks whichever task happened to be interrupted — and deadlocks outright if that
+ * task already held it — so the line is written raw instead and the caller reported.
+ * `site` resolves with `xc32-addr2line -e <matching elf> <site>`. */
+static void __attribute__((noinline)) log_from_isr_detected(const void *site)
+{
+    dbgu_str("\r\n*** LOG FROM ISR site=");
+    dbgu_hex32((uint32_t)(uintptr_t)site);
+    dbgu_str(" - move it off the interrupt path (see log.h) ***\r\n");
+}
+
 static void log_emit(log_level_t lvl, const char *fmt, va_list ap, const void *site)
 {
     if ((int)lvl > (int)s_level) { return; }
@@ -125,6 +158,17 @@ static void log_emit(log_level_t lvl, const char *fmt, va_list ap, const void *s
     if (s_mutex != NULL
         && xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
     {
+        /* An ISR must not touch the mutex: xTaskGetCurrentTaskHandle() there names the
+         * INTERRUPTED task, so a take blocks that task on this mutex — unbreakably if
+         * it already held it. Raw write only; no lock, no vprintf, and no sink (which
+         * runs on the caller and is equally not ISR-safe). */
+        if (in_exception_context())
+        {
+            if (s_from_isr++ == 0u) { log_from_isr_detected(site); }
+            dbgu_str(fmt);
+            return;
+        }
+
         /* Safe to read unlocked: only this task can have set s_holder to itself. */
         TaskHandle_t self   = xTaskGetCurrentTaskHandle();
         bool         nested = (s_holder == self) && (s_depth > 0u);
