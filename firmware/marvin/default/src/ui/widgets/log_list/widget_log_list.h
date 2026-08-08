@@ -48,13 +48,24 @@ leWidget *LogList_New(void);
 
 void LogList_SetModel(leWidget *w, int count, loglist_row_fn rows, void *ctx);
 
-/* Update just the row count, as lines arrive.
+/* New lines arrived at the top. `count` is the new total held; `inserted` is how many were
+ * added since the last call.
  *
- * Holds the reader's place: because row 0 is the newest, `n` new lines push everything
- * the operator is looking at down by n rows, so a list that is scrolled away from the top
- * has its offset advanced to match. At the top it stays at the top and the new lines
- * simply appear. */
-void LogList_SetCount(leWidget *w, int count);
+ * Both are needed, and `inserted` is not derivable from `count`: once the ring is full the
+ * count stops changing while the content keeps shifting. Passing only the count made this
+ * both a broken change signal — a same-count call skipped its invalidate, so the list froze
+ * the moment the ring filled while the header counters kept moving — and a broken
+ * position-hold, since the shift was inferred from a count delta that had gone to zero.
+ *
+ * Holds the reader's place: row 0 is the newest, so `inserted` lines push whatever is on
+ * screen down by that many rows and the offset advances to match. At the top it stays at the
+ * top and the new lines simply appear. If more arrived than the ring holds, everything being
+ * read is gone, so it lands back at the newest. */
+void LogList_Prepend(leWidget *w, int count, uint32_t inserted);
+
+/* Jump to the newest line. The screen calls this on entry — the activity log is a "what is
+ * happening now" view, not a document to resume. */
+void LogList_ScrollTop(leWidget *w);
 
 void LogList_SetFont(leWidget *w, const leFont *text);
 void LogList_SetRowHeight(leWidget *w, int px);

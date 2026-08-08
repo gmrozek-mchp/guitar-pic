@@ -43,6 +43,19 @@
 
 #define LL_UNKNOWN    "Unknown"
 
+/* Scrollbar. Draggable, not decorative: at 500 entries and a 42px pitch the content is
+ * ~21,000px tall, so reaching the oldest line by 1:1 dragging is not realistic — the bar is
+ * the only practical way to the far end, and it is the only thing that shows how far in you
+ * are. Drawn only when the content overflows.
+ *
+ * The thumb has a floor so it stays visible and grabbable once the ring is full: 15 of 500
+ * rows is 3% of the track, which would otherwise be a 19px sliver. */
+#define LL_BAR_W       8
+#define LL_BAR_GAP     6        /* between the message column and the track */
+#define LL_BAR_MIN    28        /* thumb floor, px */
+#define LL_BAR_TRACK  0x27272Au /* zinc-800 */
+#define LL_BAR_THUMB  0x52525Cu /* zinc-600 */
+
 /* Longest row text handled in one piece. The capture ring's lines are 143 chars, and the
  * message column shows fewer than that, so this only has to cover the widest column. */
 #define LL_TEXT_MAX   160
@@ -64,6 +77,7 @@ typedef struct leLogListWidget
     int scrollY;                /* px scrolled from the top; integer — there is no fling */
 
     bool    tracking;
+    bool    barDrag;            /* the touch started on the scrollbar track */
     int32_t touchId;
     int32_t lastY;
 } leLogListWidget;
@@ -211,9 +225,61 @@ static void layout_columns(const leLogListWidget *w)
         x += (chars[c] + LL_CH_GAP) * s_cw;
     }
 
-    int avail = (int)w->widget.rect.width - x - LL_PAD_X;
+    /* The message column stops short of the scrollbar track rather than running under it. */
+    int avail = (int)w->widget.rect.width - x - LL_PAD_X - (LL_BAR_GAP + LL_BAR_W);
     s_col[LOGLIST_COL_MESSAGE].x = x;
     s_col[LOGLIST_COL_MESSAGE].w = (avail > 0) ? avail : 0;
+}
+
+/* Track and thumb rects in screen space, given the widget's already-resolved screen rect.
+ * False when the content fits, which is also what suppresses the bar entirely. */
+static bool bar_geom(const leLogListWidget *w, const leRect *area,
+                     leRect *track, leRect *thumb)
+{
+    int mx = max_scroll(w);
+    int vh = (int)area->height;
+
+    if (mx <= 0 || vh <= 0) { return false; }
+
+    track->x      = area->x + (int)area->width - LL_PAD_X - LL_BAR_W;
+    track->y      = area->y;
+    track->width  = LL_BAR_W;
+    track->height = vh;
+
+    /* Thumb height is the visible fraction of the content, floored so it stays usable. */
+    int content = w->count * w->rowHeight;
+    int th      = (content > 0) ? (vh * vh) / content : vh;
+    if (th < LL_BAR_MIN) { th = LL_BAR_MIN; }
+    if (th > vh)         { th = vh; }
+
+    thumb->x      = track->x;
+    thumb->y      = area->y + ((vh - th) * w->scrollY) / mx;
+    thumb->width  = LL_BAR_W;
+    thumb->height = th;
+    return true;
+}
+
+/* Map a touch y to a scroll offset with the thumb centred on it, so a drag on the track
+ * positions absolutely — one gesture reaches either end of a 500-row ring. */
+static void bar_scroll_to(leLogListWidget *w, const leRect *area, int y)
+{
+    leRect track, thumb;
+
+    if (!bar_geom(w, area, &track, &thumb)) { return; }
+
+    int vh    = (int)area->height;
+    int th    = thumb.height;
+    int span  = vh - th;
+    int local = y - area->y - (th / 2);
+
+    if (span <= 0) { w->scrollY = 0; }
+    else
+    {
+        if (local < 0)    { local = 0;    }
+        if (local > span) { local = span; }
+        w->scrollY = (max_scroll(w) * local) / span;
+    }
+    clamp_scroll(w);
 }
 
 /* ---- paint -------------------------------------------------------------- */
@@ -289,6 +355,18 @@ static void ll_paint(leWidget *wgt)
                   s_col[LOGLIST_COL_MESSAGE].w, cw, LL_MESSAGE);
     }
 
+    /* After the rows, so it is never overdrawn by one. Costs no extra frame: the whole
+     * widget already repaints on every scroll step, and this is a few hundred pixels of it. */
+    {
+        leRect track, thumb;
+
+        if (bar_geom(w, &area, &track, &thumb))
+        {
+            leRenderer_RectFill(&track, conv(LL_BAR_TRACK), 255);
+            leRenderer_RectFill(&thumb, conv(LL_BAR_THUMB), 255);
+        }
+    }
+
     wgt->status.drawState = LE_WIDGET_DRAW_STATE_DONE;
     wgt->drawFunc = NULL;
 }
@@ -299,9 +377,25 @@ static void ll_touchDown(leWidget *wgt, leWidgetEvent_TouchDown *evt)
 {
     leLogListWidget *w = (leLogListWidget *)wgt;
 
+    leRect area, track, thumb;
+
+    wgt->fn->rectToScreen(wgt, &area);
+
     w->tracking = true;
     w->touchId  = evt->touchID;
     w->lastY    = evt->y;
+
+    /* A touch on the track is an absolute position, not a 1:1 drag — so tapping near the
+     * bottom of the bar jumps straight to the oldest lines instead of requiring a drag the
+     * length of the content. */
+    w->barDrag = bar_geom(w, &area, &track, &thumb) && (evt->x >= track.x);
+
+    if (w->barDrag)
+    {
+        int before = w->scrollY;
+        bar_scroll_to(w, &area, evt->y);
+        if (w->scrollY != before) { wgt->fn->invalidate(wgt); }
+    }
 
     leWidgetEvent_Accept((leWidgetEvent *)evt, wgt);
 }
@@ -313,12 +407,22 @@ static void ll_touchMove(leWidget *wgt, leWidgetEvent_TouchMove *evt)
 
     if (!w->tracking || (int32_t)evt->touchID != w->touchId) { return; }
 
-    dy     = evt->y - w->lastY;        /* finger down (dy>0) reveals earlier rows */
     before = w->scrollY;
 
-    w->scrollY -= dy;                  /* content follows the finger 1:1 */
-    w->lastY    = evt->y;
-    clamp_scroll(w);
+    if (w->barDrag)
+    {
+        leRect area;
+        wgt->fn->rectToScreen(wgt, &area);
+        bar_scroll_to(w, &area, evt->y);
+    }
+    else
+    {
+        dy = evt->y - w->lastY;        /* finger down (dy>0) reveals earlier rows */
+        w->scrollY -= dy;              /* content follows the finger 1:1 */
+        clamp_scroll(w);
+    }
+
+    w->lastY = evt->y;
 
     /* Repainting the list is the most expensive thing this screen does, so a move that
      * changed nothing — a horizontal drag, or a pull past either end — must not queue a
@@ -332,7 +436,11 @@ static void ll_touchUp(leWidget *wgt, leWidgetEvent_TouchUp *evt)
 {
     leLogListWidget *w = (leLogListWidget *)wgt;
 
-    if (w->tracking && (int32_t)evt->touchID == w->touchId) { w->tracking = false; }
+    if (w->tracking && (int32_t)evt->touchID == w->touchId)
+    {
+        w->tracking = false;
+        w->barDrag  = false;
+    }
 
     leWidgetEvent_Accept((leWidgetEvent *)evt, wgt);
 }
@@ -379,6 +487,7 @@ leWidget *LogList_New(void)
     w->rowHeight = LL_DEFAULT_ROWH;
     w->scrollY   = 0;
     w->tracking  = false;
+    w->barDrag   = false;
     w->touchId   = 0;
     w->lastY     = 0;
 
@@ -400,21 +509,36 @@ void LogList_SetModel(leWidget *wgt, int count, loglist_row_fn rows, void *ctx)
     wgt->fn->invalidate(wgt);
 }
 
-void LogList_SetCount(leWidget *wgt, int count)
+void LogList_Prepend(leWidget *wgt, int count, uint32_t inserted)
 {
     leLogListWidget *w = (leLogListWidget *)wgt;
     if (w == NULL) { return; }
 
-    int n = (count > 0) ? count : 0;
-    if (n == w->count) { return; }
+    w->count = (count > 0) ? count : 0;
 
-    /* Away from the top, hold the operator's place: n - count new rows were inserted
-     * above everything on screen, so the offset moves with them. At the top, stay there
-     * and let the new lines appear. */
-    if (w->scrollY > 0 && n > w->count) { w->scrollY += (n - w->count) * w->rowHeight; }
+    /* Away from the top, hold the operator's place by moving the offset with the rows that
+     * were pushed under it. Deliberately driven by `inserted` and not by a count delta: the
+     * count is pinned once the ring is full, so a delta would read zero while the content
+     * really shifted, and the reader would drift a line at a time. */
+    if (w->scrollY > 0 && inserted > 0u)
+    {
+        if (inserted >= (uint32_t)w->count) { w->scrollY = 0; }   /* all of it rolled over */
+        else { w->scrollY += (int)inserted * w->rowHeight; }
+    }
 
-    w->count = n;
     clamp_scroll(w);
+
+    /* Always, regardless of whether the count moved — the caller only gets here because the
+     * ring's sequence number advanced, and a full ring never changes count. */
+    wgt->fn->invalidate(wgt);
+}
+
+void LogList_ScrollTop(leWidget *wgt)
+{
+    leLogListWidget *w = (leLogListWidget *)wgt;
+    if (w == NULL || w->scrollY == 0) { return; }
+
+    w->scrollY = 0;
     wgt->fn->invalidate(wgt);
 }
 

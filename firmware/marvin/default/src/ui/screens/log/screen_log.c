@@ -58,7 +58,15 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define HDR_H       36                             /* title + counters row */
 #define COLHDR_H    28                             /* column headings strip */
 #define TABLE_Y      (CARD_Y + HDR_H + COLHDR_H)    /* 140 */
-#define TABLE_H      (CARD_H - HDR_H - COLHDR_H)    /* 644 */
+
+/* The list is an OPAQUE SQUARE rect over a rounded, bordered card, and it is a later
+ * sibling — so wherever it reaches, it wins. The +1/-2 inset on x clears the 1px side
+ * borders; the bottom has to stop CARD_R short, not 1px short, because the corner arcs
+ * occupy the last CARD_R rows and a square rect ending 1px above the border would still
+ * square them off. Ending at CARD_H - CARD_R leaves the card's own zinc-900 fill showing
+ * for CARD_R-1 rows — invisible, the list fills with the same colour — and the border and
+ * both arcs intact. */
+#define TABLE_H      (CARD_H - HDR_H - COLHDR_H - CARD_R)   /* 640 -> 15 rows */
 
 /* Row font and pitch. DejaVuSansMono_16 is 20px tall against _12's 16, and the widget
  * resolves its columns from the font's advance, so the cost of the larger text is message
@@ -263,6 +271,25 @@ static void refresh_counters(void)
     set_text(s_counters, t);
 }
 
+/* Pull whatever the ring has gained into the list. `to_top` jumps to the newest line, which
+ * entering the screen does and a periodic poll does not.
+ *
+ * The change signal is the ring's sequence number, never the held count — the count is
+ * pinned at LOG_RING_ENTRIES once the ring is full, so anything keyed off it stops noticing
+ * new lines the moment that happens. `inserted` is also what lets the list hold a scrolled
+ * reader's place; unsigned subtraction is correct across a wrap of seq. */
+static void pull_new_lines(bool to_top)
+{
+    uint32_t seq      = log_ring_seq();
+    uint32_t inserted = seq - s_seen_seq;
+
+    s_seen_seq = seq;
+
+    LogList_Prepend(s_list, (int)log_ring_count(), inserted);
+    if (to_top) { LogList_ScrollTop(s_list); }
+    refresh_counters();
+}
+
 void ScreenLog_InitSurface(void)
 {
     UiSurface_Set(CANVAS_LOG, BASE_W, BASE_H, GFX_COLOR_MODE_RGB_565, s_fb);
@@ -292,11 +319,8 @@ static void log_task(void *param)
          * next poll after the finger lifts picks them up. */
         if (LogList_Dragging(s_list)) { continue; }
 
-        s_seen_seq = seq;
-
         UiManager_RenderLock();
-        LogList_SetCount(s_list, (int)log_ring_count());   /* invalidates the list */
-        refresh_counters();
+        pull_new_lines(false);   /* leave the operator's scroll position alone */
         UiManager_RenderUnlock();
     }
 }
@@ -383,14 +407,16 @@ void ScreenLog_SetShown(bool shown)
     s_shown = shown;
     Titlebar_SetShown(s_titlebar, shown);
 
-    /* Coming on screen, catch up on everything logged while away — the poll skipped it
-     * all, so the sequence number is stale by however long the operator was elsewhere. */
-    if (shown && log_ring_seq() != s_seen_seq)
-    {
-        s_seen_seq = log_ring_seq();
-        LogList_SetCount(s_list, (int)log_ring_count());
-        refresh_counters();
-    }
+    /* Entering the screen catches up on everything logged while away — the poll skipped it
+     * all — and lands on the newest line. Holding the previous scroll position is right
+     * *while* the screen is up, so arriving lines do not yank what is being read, but wrong
+     * on entry: this is a "what is happening now" view, not a document to resume.
+     *
+     * Unconditional, unlike before: the sequence number not having moved is not a reason to
+     * skip it, because the scroll position may still need resetting. Runs in the Legato input
+     * context (the nav drawer's handler), the same context the renderer runs in, so no render
+     * lock — as the rest of this path has always assumed. */
+    if (shown) { pull_new_lines(true); }
 }
 
 void ScreenLog_SetTextPath(text_path_t path)
