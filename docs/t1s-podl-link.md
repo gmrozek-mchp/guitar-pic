@@ -345,7 +345,68 @@ and flushed by the T1S service task from a small static FIFO, interleaved with t
 fauxmote-T1S paths can both call it. `MARVIN_FAUXMOTE_TRANSPORT=0` selects the dedicated
 FLEXCOM5 UART point-to-point path instead (§ [`marvin-fauxmote-link.md`](marvin-fauxmote-link.md)).
 
-## 9. Decisions & open items
+## 9. Wire timing and bus occupancy
+
+What marvin's bus-stats screen reports, and why it is measured the way it is.
+All times in bit times (**BT** = 100 ns at 10 Mbit/s).
+
+**A PLCA bus cycle** (802.3cg Clause 148) is a BEACON followed by one transmit
+opportunity per configured node — `NODE_COUNT` = 8 here:
+
+| element | BT | note |
+|---|---|---|
+| BEACON | 20 | five N symbols, 2 µs; coordinator only |
+| short silence | 16 | after the BEACON, and after every transmission |
+| unused TO | 32 | `PLCA_TOTMR` default, 3.2 µs — a full silent slot |
+| used TO | frame | transmission, then a short silence |
+| preamble + SFD | 64 | 8 bytes ahead of each frame (SSD substituted in) |
+
+So an **idle cycle is 20 + 16 + 8×32 = 292 BT = 29.2 µs**, giving a ceiling of
+~34,250 cycles/s. That floor is spent whether or not anyone transmits, which is
+why "utilization" needs saying precisely.
+
+**Utilization** = the share of line time carrying frames, and nothing else. On an
+idle bus it is ~0% by construction; the remainder is beacon and mandated silence,
+not spare capacity that a faster link would recover. A saturating detector stream
+(1000 frames/s × 526 B) reads 43%.
+
+    util = (frame bytes + 8 per frame) × 8 / 10,000,000   per second
+
+The **+8 bytes per frame is the preamble and SFD**. The MAC generates them, so
+they appear in no frame length and have to be added explicitly — at ~1000
+frames/s that is ~8 kB/s, worth ~0.6 percentage points. The reported byte rate
+includes them for exactly this reason: **utilization is `bytes/s × 8 / 10 Mbit`
+by hand**, at any traffic level, and a byte figure that excluded framing would
+silently fail that check.
+
+**TO occupancy** is the headroom figure. A PLCA bus runs out of room when a node
+wants to transmit more often than its TO comes around — not when the bit rate
+nears 10 Mbit/s.
+
+**Everything is measured on marvin, from byte counts.** Its MAC is promiscuous
+(`TC6Regs_Init(..., promiscuous=true)`), so it observes every frame on the segment
+including ones it is not party to, and it never hears its own transmissions —
+so `rx + tx` on marvin is the whole bus, counted exactly once. Two consequences
+worth knowing:
+
+- **Do not sum the per-node frame rates to get bus load.** A frame occupies the
+  medium once but appears in its sender's `tx` and in every listener's `rx`, so
+  the sum roughly doubles the truth. The per-node rates are for the node table.
+- **The two directions report different lengths for the same frame.** On receive,
+  `len` is the full wire frame *including pad and FCS* — `MAC_NCFGR.RFCS` defaults
+  to 0, so the MAC relays the FCS rather than stripping it. On transmit the host
+  passes neither: the MAC pads to 60 bytes and appends the FCS itself
+  (`QTXCFG.MACFCSDIS` defaults to 0). A tx length has to be grown to match.
+
+**Not used yet:** the LAN8651 has hardware PLCA event counters — `CTRCTRL`
+(0x0020) `TOCTRE`/`BCNTRE` enable `TOCNTH/L` (transmit opportunities offered) and
+`BCNCNTH/L` (beacons), both clear-on-read. Polling `TOCNT` would replace the
+derived cycle rate with a measured one and double as a PLCA-health check. There
+are **no octet counters** in the MAC statistics block (MMS1 0x288–0x293 is frame
+and error counts only), so byte totals have to be accumulated in software
+regardless.
+
+## 10. Decisions & open items
 
 **Built and working (2026-06-17):** marvin coordinator (id 0) ↔ guitar follower
 over T1S — command TX, presence heartbeat, and link/`nodes` diagnostics on both

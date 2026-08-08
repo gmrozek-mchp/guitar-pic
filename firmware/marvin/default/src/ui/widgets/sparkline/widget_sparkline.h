@@ -59,6 +59,17 @@ void Sparkline_Constructor(SparklineWidget *sp, const SparklineSeries *series,
  * For a plot with no axis, where the value beside it carries the absolute number. */
 void Sparkline_SetAutoscale(SparklineWidget *sp, uint32_t min_span_permille);
 
+/* Move the fixed-mode ceiling, leaving zero pinned to the bottom edge (and turning
+ * autoscale back off). For an axis the caller scales itself: unlike SetAutoscale this
+ * keeps the plot's height proportional to the absolute value, so a trace near the top
+ * really is near the ceiling the caller has labelled. */
+void Sparkline_SetScale(SparklineWidget *sp, uint32_t permille_max);
+
+/* Largest sample in the plotted window. A caller driving SetScale needs this rather
+ * than the newest sample: the ceiling has to cover every sample still on screen, or
+ * history that predates a drop in scale gets clipped flat against the top. */
+uint32_t Sparkline_PlotMax(const SparklineWidget *sp);
+
 /* Plot only the newest `samples` of the series (0 = all of it). For a plot narrower than
  * the series is long: the sample pitch, not the sample count, is what decides whether the
  * result reads as a line or as a comb — the mockup's tiles run ~3 px per sample. */

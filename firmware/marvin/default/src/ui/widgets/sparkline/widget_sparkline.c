@@ -386,6 +386,28 @@ void Sparkline_SetAutoscale(SparklineWidget *sp, uint32_t min_span_permille)
     sp->min_span  = min_span_permille;
 }
 
+void Sparkline_SetScale(SparklineWidget *sp, uint32_t permille_max)
+{
+    if (sp == NULL) { return; }
+
+    sp->autoscale = false;
+    sp->scale     = (permille_max > 0u) ? permille_max : 1u;
+}
+
+uint32_t Sparkline_PlotMax(const SparklineWidget *sp)
+{
+    if (sp == NULL || sp->series == NULL) { return 0u; }
+
+    uint32_t n = plot_count(sp);
+    uint32_t m = 0u;
+    for (uint32_t i = 0u; i < n; i++)
+    {
+        uint32_t v = sample_at(sp, i);
+        if (v > m) { m = v; }
+    }
+    return m;
+}
+
 void Sparkline_SetWindow(SparklineWidget *sp, uint32_t samples)
 {
     if (sp == NULL) { return; }

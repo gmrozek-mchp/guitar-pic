@@ -60,6 +60,20 @@
 #define T1S_HB_EXT_LEN       (20u)       /* v2: + tx_u32, rx_u32, crc_u16, sym_u16 */
 #define T1S_PRESENCE_TIMEOUT_MS (2000u) /* node "present" if a HB seen within this */
 
+/* Wire timing, in bit times (1 BT = 100 ns at 10 Mbit/s), for the bus-occupancy
+ * figures. A PLCA bus cycle (802.3cg Clause 148) is a BEACON followed by one
+ * transmit opportunity per configured node: an unused TO is TO_TIMER of silence,
+ * a used one is the transmission plus a short silence. A short silence also
+ * follows the BEACON. See docs/t1s-podl-link.md §9. */
+#define T1S_BT_PER_MS         (10000u)
+#define T1S_PREAMBLE_LEN      (8u)    /* 7-byte preamble + SFD (SSD substituted in) */
+#define T1S_BT_PREAMBLE       (T1S_PREAMBLE_LEN * 8u)
+#define T1S_BT_BEACON         (20u)   /* five N symbols = 2 µs */
+#define T1S_BT_SHORT_SILENCE  (16u)   /* after a BEACON, and after every transmission */
+#define T1S_BT_TO_TIMER       (32u)   /* PLCA_TOTMR default: an unused TO, 3.2 µs */
+#define T1S_ETH_MIN_LEN       (60u)   /* MAC pads to this before appending the FCS */
+#define T1S_ETH_FCS_LEN       (4u)
+
 /* Locally administered coordinator MAC (02:00:00:00:00:00). */
 static uint8_t s_mac[6] = { 0x02u, 0x00u, 0x00u, 0x00u, 0x00u, (uint8_t)T1S_NODE_ID };
 
@@ -102,16 +116,31 @@ static const t1s_node_t s_nodes[] = {
 /* Per-node runtime presence + telemetry (parallel to s_nodes), updated on
  * heartbeat RX. The tx/rx/crc/sym fields are reported by the node in its extended
  * (v2) heartbeat and stay 0 for a legacy node; the rates are derived on the
- * coordinator once a second from the reported cumulative deltas. */
+ * coordinator once a second from the reported cumulative deltas.
+ *
+ * A node reports its own lifetime totals, which outlive marvin restarting — so
+ * the first heartbeat seen establishes a baseline that is subtracted from every
+ * later report. Everything on the bus screen is then "since marvin came up",
+ * matching the uptime tile, and T1SLink_ResetCounters re-arms the baselines. */
 static struct {
     uint32_t last_seen_tick;
     uint32_t last_seq;
     bool     seen;
-    uint32_t tx_count, rx_count;   /* cumulative, from the extended heartbeat */
+    uint32_t tx_count, rx_count;   /* baselined, from the extended heartbeat  */
     uint16_t crc_err, sym_err;
     uint32_t tx_rate, rx_rate;     /* frames/s, recomputed once a second       */
     uint32_t prev_tx, prev_rx;     /* snapshot for the rate delta              */
+    uint32_t base_tx, base_rx;     /* the node's totals when first seen        */
+    uint16_t base_crc, base_sym;
+    bool     based;                /* a baseline has been captured             */
 } s_node_rt[T1S_NODE_TABLE_LEN];
+
+/* Saturating subtract: a node that restarts reports totals below its baseline,
+ * which must read as zero rather than wrap to four billion. */
+static uint32_t sub_base(uint32_t raw, uint32_t base)
+{
+    return (raw >= base) ? (raw - base) : 0u;
+}
 
 static const char *node_type_name(t1s_node_type_t t, uint8_t node_id)
 {
@@ -196,17 +225,31 @@ static T1SLink_FrameHandler s_frame_handler;
 
 /* Traffic counters (read by the console t1s/nodes commands). */
 static volatile uint32_t s_tx_count;   /* command frames sent */
-static volatile uint32_t s_rx_count;   /* frames received from a known node */
+static volatile uint32_t s_rx_count;   /* detector frames received from a known node */
+static volatile uint32_t s_hb_rx_count; /* presence/telemetry heartbeats received */
 static volatile uint32_t s_service_overruns; /* service_pump hit its iter cap (stuck MAC-PHY) */
 
 /* marvin's own MAC-PHY error tallies (from TC6Regs_CB_OnEvent), for the self row. */
 static volatile uint32_t s_self_crc_err;   /* FCS errors */
 static volatile uint32_t s_self_sym_err;   /* loss-of-framing (symbol) errors */
 
+/* Wire accounting for the bus-occupancy figures, counted as bytes on the medium
+ * rather than as frames. marvin's MAC is promiscuous (see t1s_try_bringup), so
+ * every frame any node transmits is counted here on receive, and marvin never
+ * hears its own transmissions — so tx + rx is the whole segment's traffic,
+ * counted exactly once, with no dependence on what the followers report. */
+static volatile uint32_t s_wire_tx_frames, s_wire_tx_bytes;
+static volatile uint32_t s_wire_rx_frames, s_wire_rx_bytes;
+
 /* Rate state: per-node rates live in s_node_rt; these hold marvin's own rate plus
  * the once-a-second recompute bookkeeping. Rates are frames/s. */
 static uint32_t  s_self_tx_rate, s_self_rx_rate;
 static uint32_t  s_prev_self_tx, s_prev_self_rx;
+static uint32_t  s_prev_wire_frames, s_prev_wire_bytes;
+static uint32_t  s_util_permille;      /* medium time spent carrying frames */
+static uint32_t  s_wire_bps;           /* wire bytes/s, whole segment        */
+static uint32_t  s_plca_cycles;        /* PLCA bus cycles/s                  */
+static uint32_t  s_to_used_permille;   /* transmit opportunities that carried a frame */
 static TickType_t s_rate_tick;   /* last rate recompute */
 static TickType_t s_boot_tick;   /* T1SLink_Initialize — uptime origin */
 
@@ -225,6 +268,15 @@ static T1SLink_ControllerHandler s_ctrl_handler;
 static volatile uint32_t s_ctrl_tx_count;
 static volatile uint32_t s_ctrl_rx_count;
 #endif
+
+/* Every frame marvin puts on or takes off the wire, across all channels it
+ * terminates. Node rows report the node's own all-ethertype totals, so the self
+ * row has to be counted the same way or the two disagree. */
+static uint32_t self_tx_total(void) { return s_tx_count + T1SLink_CtrlTxCount(); }
+static uint32_t self_rx_total(void)
+{
+    return s_rx_count + T1SLink_CtrlRxCount() + s_hb_rx_count;
+}
 
 static TC6_t            *s_tc6;
 static volatile bool     s_need_service;
@@ -298,6 +350,14 @@ static bool send_to_node(uint8_t node_id, uint16_t ethertype,
                                         0u, tx_done_cb, NULL);
     if (!ok) {
         s_tx_busy = false;
+    } else {
+        /* Wire size, not the length handed to the driver: the MAC pads short
+         * frames to 60 bytes and appends the FCS itself (QTXCFG.MACFCSDIS is 0),
+         * so grow the count to match what a receiver reports for the same frame. */
+        uint32_t wire = T1S_ETH_HDR_LEN + payload_len;
+        if (wire < T1S_ETH_MIN_LEN) { wire = T1S_ETH_MIN_LEN; }
+        s_wire_tx_bytes += wire + T1S_ETH_FCS_LEN;
+        s_wire_tx_frames++;
     }
     return ok;
 }
@@ -356,6 +416,69 @@ static bool t1s_try_bringup(void)
     return TC6Regs_GetInitDone(s_tc6);
 }
 
+static volatile bool     s_probe_done;
+static volatile bool     s_probe_ok;
+static volatile uint32_t s_probe_val;
+
+static void probe_cb(TC6_t *pInst, bool success, uint32_t addr, uint32_t value,
+                     void *pTag, void *pGlobalTag)
+{
+    (void)pInst; (void)addr; (void)pTag; (void)pGlobalTag;
+    s_probe_ok   = success;
+    s_probe_val  = value;
+    s_probe_done = true;
+}
+
+/* One raw unprotected control read, bounded so a dead MAC-PHY can't hang the
+ * task. Same access the TC6 lib uses for its identity gate. */
+static bool probe_reg(uint32_t addr, uint32_t *out)
+{
+    TickType_t dl = xTaskGetTickCount() + pdMS_TO_TICKS(100u);
+
+    s_probe_done = false;
+    s_probe_ok   = false;
+    s_probe_val  = 0u;
+
+    while (!TC6_ReadRegister(s_tc6, addr, false, probe_cb, NULL)) {
+        if ((int32_t)(dl - xTaskGetTickCount()) <= 0) { return false; }
+        (void)TC6_Service(s_tc6, true);
+    }
+    while (!s_probe_done) {
+        if ((int32_t)(dl - xTaskGetTickCount()) <= 0) { return false; }
+        (void)TC6_Service(s_tc6, true);
+    }
+    *out = s_probe_val;
+    return s_probe_ok;
+}
+
+/* Dump the registers the TC6 lib gates bring-up on, plus two whose contents are
+ * known independently, so a bad read distinguishes a dead chip from a broken
+ * control transaction. PHYID is read twice: identical wrong values mean a
+ * deterministic framing fault, differing ones mean marginal SPI. If every
+ * address returns the same word, the address field isn't reaching the chip. */
+static void log_identity_probe(void)
+{
+    static const struct {
+        uint32_t    addr;
+        const char *name;
+        const char *expect;
+    } probes[] = {
+        { 0x00000000u, "MMS0.0x00  OA_ID  ", "0x00000011"                    },
+        { 0x00000001u, "MMS0.0x01  OA_PHYID", "0x0007C1B3"                  },
+        { 0x00000008u, "MMS0.0x08  STATUS0", "bit6 RESETC set after reset"   },
+        { 0x000A0094u, "MMS10.0x94 DEVID  ", "0x00086512 (LAN8651, si rev 2)"},
+        { 0x00000001u, "MMS0.0x01  OA_PHYID", "re-read, expect same as above"},
+    };
+
+    for (unsigned i = 0u; i < (sizeof(probes) / sizeof(probes[0])); i++) {
+        uint32_t val = 0u;
+        bool ok = probe_reg(probes[i].addr, &val);
+        LOG_ERROR("T1S: id probe: %s = 0x%08X%s (%s)\r\n",
+                  probes[i].name, (unsigned)val,
+                  ok ? "" : " [READ FAILED]", probes[i].expect);
+    }
+}
+
 /* Once a second, refresh the frames/s rates from the cumulative-count deltas —
  * marvin's own counters plus each node's last-reported extended-heartbeat totals.
  * Runs in the service task; a no-op until a full second has elapsed. */
@@ -367,8 +490,8 @@ static void recompute_rates(void)
     s_rate_tick = now;
     if (dt_ms == 0u) { return; }
 
-    uint32_t self_tx = s_tx_count + T1SLink_CtrlTxCount();
-    uint32_t self_rx = s_rx_count + T1SLink_CtrlRxCount();
+    uint32_t self_tx = self_tx_total();
+    uint32_t self_rx = self_rx_total();
     s_self_tx_rate = (self_tx - s_prev_self_tx) * 1000u / dt_ms;
     s_self_rx_rate = (self_rx - s_prev_self_rx) * 1000u / dt_ms;
     s_prev_self_tx = self_tx;
@@ -380,6 +503,67 @@ static void recompute_rates(void)
         s_node_rt[i].prev_tx = s_node_rt[i].tx_count;
         s_node_rt[i].prev_rx = s_node_rt[i].rx_count;
     }
+
+    /* Bus occupancy, from the wire byte counts rather than a per-frame guess.
+     * Frame counts must not be summed across nodes for this: one frame occupies
+     * the medium once but appears in its sender's tx and in every listener's rx. */
+    uint32_t wire_frames = s_wire_tx_frames + s_wire_rx_frames;
+    uint32_t wire_bytes  = s_wire_tx_bytes  + s_wire_rx_bytes;
+    uint32_t frames = wire_frames - s_prev_wire_frames;
+    uint32_t bytes  = wire_bytes  - s_prev_wire_bytes;
+    s_prev_wire_frames = wire_frames;
+    s_prev_wire_bytes  = wire_bytes;
+
+    /* Bit times overflow a uint32 past ~7 minutes, and the bring-up retry loop
+     * skips this function entirely — so a gap that long resynchronizes rather
+     * than reporting an interval it can't represent. */
+    if (dt_ms > 10000u) {
+        s_util_permille    = 0u;
+        s_wire_bps         = 0u;
+        s_plca_cycles      = 0u;
+        s_to_used_permille = 0u;
+        return;
+    }
+
+    /* Preamble + SFD is 8 bytes per frame that the MAC generates itself, so it
+     * appears in no frame length and has to be added here — otherwise the byte
+     * rate understates what the medium carries and can't be reconciled against
+     * the percentage by hand. */
+    uint32_t elapsed_bt = dt_ms * T1S_BT_PER_MS;
+    uint32_t wire_bt    = (bytes + (frames * T1S_PREAMBLE_LEN)) * 8u;
+    if (wire_bt > elapsed_bt) { wire_bt = elapsed_bt; }
+
+    /* Utilization is the share of line time carrying frames. The remainder is
+     * the BEACON and the mandated silences, which a PLCA bus spends whether or
+     * not anyone is talking — so this reads near zero on an idle bus by design,
+     * and the headroom question is answered by s_to_used_permille below.
+     *
+     * Both figures derive from the same clamped wire_bt, so the identity
+     * util = wire_bps · 8 / 10 Mbit holds exactly, at every traffic level. */
+    s_util_permille = wire_bt / (dt_ms * (T1S_BT_PER_MS / 1000u));
+    s_wire_bps      = (uint32_t)(((uint64_t)(wire_bt / 8u) * 1000u) / dt_ms);
+
+    /* Cycles in the interval, from the cycle structure:
+     *   elapsed = cycles·(BEACON + SHORT) + unused_TOs·TO_TIMER + Σ(frame + SHORT)
+     * with unused_TOs = cycles·NODE_COUNT − frames. Solving for cycles leaves the
+     * frames' short silences netted against the TO_TIMER slots they displaced. */
+    uint32_t cycle_bt = T1S_BT_BEACON + T1S_BT_SHORT_SILENCE
+                      + (T1S_NODE_COUNT * T1S_BT_TO_TIMER);
+    uint32_t cycles_bt = elapsed_bt - wire_bt
+                       + (frames * (T1S_BT_TO_TIMER - T1S_BT_SHORT_SILENCE));
+    uint32_t cycles = cycles_bt / cycle_bt;
+    s_plca_cycles = (uint32_t)(((uint64_t)cycles * 1000u) / dt_ms);
+
+    /* The real saturation measure: a PLCA bus runs out of room when nodes want to
+     * transmit more often than their transmit opportunity comes around, not when
+     * the bit rate nears 10 Mbit/s. */
+    uint32_t tos = cycles * T1S_NODE_COUNT;
+    s_to_used_permille = (tos != 0u)
+        ? (uint32_t)(((uint64_t)frames * 1000u) / tos) : 1000u;
+    /* Offered demand beyond what the line can carry clamps frame_bt above, which
+     * collapses the derived cycle count while the frame count stays high — so the
+     * ratio can exceed unity on a bus that is simply oversubscribed. */
+    if (s_to_used_permille > 1000u) { s_to_used_permille = 1000u; }
 }
 
 static void t1s_task(void *param)
@@ -418,6 +602,7 @@ static void t1s_task(void *param)
                     LOG_WARN("T1S: MAC-PHY not responding (LAN8651 populated? wiring?); "
                              "retry every %ums\r\n", (unsigned)T1S_ABSENT_RETRY_MS);
                     warned_absent = true;
+                    log_identity_probe();
                 }
                 vTaskDelay(pdMS_TO_TICKS(T1S_ABSENT_RETRY_MS));
                 continue;
@@ -657,8 +842,8 @@ bool T1SLink_GetSelfStats(T1SLink_NodeStats *out)
     out->type     = "marvin";
     out->present  = true;
     out->age_ms   = 0u;
-    out->tx_count = s_tx_count + T1SLink_CtrlTxCount();
-    out->rx_count = s_rx_count + T1SLink_CtrlRxCount();
+    out->tx_count = self_tx_total();
+    out->rx_count = self_rx_total();
     out->tx_rate  = s_self_tx_rate;
     out->rx_rate  = s_self_rx_rate;
     out->crc_err  = (uint16_t)s_self_crc_err;
@@ -666,15 +851,68 @@ bool T1SLink_GetSelfStats(T1SLink_NodeStats *out)
     return true;
 }
 
+void T1SLink_ResetCounters(void)
+{
+    /* Runs on the caller's task (console / UI) while the service task is still
+     * counting. Every field is a single aligned word, so a concurrent frame can
+     * only cost this reset one count — not worth a lock on the RX hot path. */
+    s_tx_count     = 0u;
+    s_rx_count     = 0u;
+    s_hb_rx_count  = 0u;
+    s_self_crc_err = 0u;
+    s_self_sym_err = 0u;
+#if T1S_CTRL_ENABLED
+    s_ctrl_tx_count = 0u;
+    s_ctrl_rx_count = 0u;
+#endif
+    s_wire_tx_frames = 0u;
+    s_wire_tx_bytes  = 0u;
+    s_wire_rx_frames = 0u;
+    s_wire_rx_bytes  = 0u;
+
+    s_prev_self_tx     = 0u;
+    s_prev_self_rx     = 0u;
+    s_prev_wire_frames = 0u;
+    s_prev_wire_bytes  = 0u;
+    s_self_tx_rate     = 0u;
+    s_self_rx_rate     = 0u;
+    s_util_permille    = 0u;
+    s_wire_bps         = 0u;
+    s_plca_cycles      = 0u;
+    s_to_used_permille = 0u;
+
+    for (uint8_t i = 0u; i < T1S_NODE_TABLE_LEN; i++) {
+        /* Re-arm the baseline: the node's next heartbeat re-zeroes it against
+         * its totals as of now, rather than against its own boot. Presence
+         * (seen / last_seen_tick) deliberately survives — this resets traffic
+         * counters, it doesn't forget who is on the bus. */
+        s_node_rt[i].based    = false;
+        s_node_rt[i].tx_count = 0u;
+        s_node_rt[i].rx_count = 0u;
+        s_node_rt[i].crc_err  = 0u;
+        s_node_rt[i].sym_err  = 0u;
+        s_node_rt[i].tx_rate  = 0u;
+        s_node_rt[i].rx_rate  = 0u;
+        s_node_rt[i].prev_tx  = 0u;
+        s_node_rt[i].prev_rx  = 0u;
+    }
+
+    /* Uptime is the window these totals cover, so it restarts with them —
+     * otherwise the screen pairs a fresh count with a stale window, which is
+     * the incoherence this whole change exists to remove. */
+    TickType_t now = xTaskGetTickCount();
+    s_rate_tick = now;
+    s_boot_tick = now;
+}
+
 bool T1SLink_GetBusStats(T1SLink_BusStats *out)
 {
     if (out == NULL) { return false; }
 
-    uint32_t tx_total  = s_tx_count + T1SLink_CtrlTxCount();
-    uint32_t rx_total  = s_rx_count + T1SLink_CtrlRxCount();
+    uint32_t tx_total  = self_tx_total();
+    uint32_t rx_total  = self_rx_total();
     uint32_t crc_total = s_self_crc_err;
     uint32_t sym_total = s_self_sym_err;
-    uint32_t rate_sum  = s_self_tx_rate + s_self_rx_rate;   /* frames/s, bus-wide */
     uint8_t  online    = 1u;   /* marvin is always up */
 
     for (uint8_t i = 0u; i < T1S_NODE_TABLE_LEN; i++) {
@@ -682,21 +920,21 @@ bool T1SLink_GetBusStats(T1SLink_BusStats *out)
         rx_total  += s_node_rt[i].rx_count;
         crc_total += s_node_rt[i].crc_err;
         sym_total += s_node_rt[i].sym_err;
-        rate_sum  += s_node_rt[i].tx_rate + s_node_rt[i].rx_rate;
         if (s_node_rt[i].seen) {
             uint32_t age = xTaskGetTickCount() - s_node_rt[i].last_seen_tick;
             if (age < pdMS_TO_TICKS(T1S_PRESENCE_TIMEOUT_MS)) { online++; }
         }
     }
 
-    /* Utilization estimate: each frame ≈ the 64-byte Ethernet minimum, so
-     * bits/s ≈ rate·64·8; permille of the 10 Mbps line = bits/s / 10000. */
-    uint32_t permille = rate_sum * 512u / 10000u;
+    uint32_t permille = s_util_permille;
     if (permille > 1000u) { permille = 1000u; }
 
     uint32_t frames = tx_total + rx_total;
 
     out->util_permille = permille;
+    out->wire_bps      = s_wire_bps;
+    out->plca_cycles   = s_plca_cycles;
+    out->to_used_permille = s_to_used_permille;
     out->tx_total      = tx_total;
     out->rx_total      = rx_total;
     out->crc_total     = crc_total;
@@ -859,6 +1097,14 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         return;
     }
 
+    /* Wire accounting happens here, ahead of every filter below: promiscuous RX
+     * sees the whole segment, so this is the only place that observes traffic
+     * marvin isn't a party to. `len` is already the full wire frame including
+     * pad and FCS — MAC_NCFGR.RFCS defaults to 0, so the MAC relays the FCS to
+     * the host rather than stripping it. */
+    s_wire_rx_frames++;
+    s_wire_rx_bytes += len;
+
     uint16_t ethertype = (uint16_t)((s_rx_buf[12] << 8) | s_rx_buf[13]);
     if ((ethertype != T1S_ETHERTYPE) && (ethertype != T1S_ETHERTYPE_HB)
 #if T1S_CTRL_ENABLED
@@ -882,6 +1128,7 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
 
     if (ethertype == T1S_ETHERTYPE_HB) {
         /* Presence heartbeat: stamp last-seen; capture the seq if present. */
+        s_hb_rx_count++;
         s_node_rt[idx].last_seen_tick = xTaskGetTickCount();
         s_node_rt[idx].seen = true;
         if (payload_len >= T1S_HB_LEN) {
@@ -893,16 +1140,38 @@ void TC6_CB_OnRxEthernetPacket(TC6_t *pInst, bool success, uint16_t len,
         /* Extended (v2) heartbeat: the node's own traffic + error telemetry. A
          * legacy 8-byte heartbeat leaves these fields untouched (stay 0). */
         if (payload_len >= T1S_HB_EXT_LEN) {
-            s_node_rt[idx].tx_count = (uint32_t)payload[8]
-                                    | ((uint32_t)payload[9]  << 8)
-                                    | ((uint32_t)payload[10] << 16)
-                                    | ((uint32_t)payload[11] << 24);
-            s_node_rt[idx].rx_count = (uint32_t)payload[12]
-                                    | ((uint32_t)payload[13] << 8)
-                                    | ((uint32_t)payload[14] << 16)
-                                    | ((uint32_t)payload[15] << 24);
-            s_node_rt[idx].crc_err  = (uint16_t)(payload[16] | (payload[17] << 8));
-            s_node_rt[idx].sym_err  = (uint16_t)(payload[18] | (payload[19] << 8));
+            uint32_t raw_tx  = (uint32_t)payload[8]
+                             | ((uint32_t)payload[9]  << 8)
+                             | ((uint32_t)payload[10] << 16)
+                             | ((uint32_t)payload[11] << 24);
+            uint32_t raw_rx  = (uint32_t)payload[12]
+                             | ((uint32_t)payload[13] << 8)
+                             | ((uint32_t)payload[14] << 16)
+                             | ((uint32_t)payload[15] << 24);
+            uint16_t raw_crc = (uint16_t)(payload[16] | (payload[17] << 8));
+            uint16_t raw_sym = (uint16_t)(payload[18] | (payload[19] << 8));
+
+            /* Capture the baseline on first sight, and recapture if the node's
+             * totals went backwards — that only happens when the node itself
+             * restarted, and carrying the stale baseline would peg it at zero. */
+            if (!s_node_rt[idx].based ||
+                (raw_tx < s_node_rt[idx].base_tx) ||
+                (raw_rx < s_node_rt[idx].base_rx)) {
+                s_node_rt[idx].based    = true;
+                s_node_rt[idx].base_tx  = raw_tx;
+                s_node_rt[idx].base_rx  = raw_rx;
+                s_node_rt[idx].base_crc = raw_crc;
+                s_node_rt[idx].base_sym = raw_sym;
+                /* Rate baselines too, or the next interval reports the whole
+                 * jump from zero as one second's traffic. */
+                s_node_rt[idx].prev_tx = 0u;
+                s_node_rt[idx].prev_rx = 0u;
+            }
+
+            s_node_rt[idx].tx_count = sub_base(raw_tx, s_node_rt[idx].base_tx);
+            s_node_rt[idx].rx_count = sub_base(raw_rx, s_node_rt[idx].base_rx);
+            s_node_rt[idx].crc_err  = (uint16_t)sub_base(raw_crc, s_node_rt[idx].base_crc);
+            s_node_rt[idx].sym_err  = (uint16_t)sub_base(raw_sym, s_node_rt[idx].base_sym);
         }
         return;
     }
@@ -954,9 +1223,29 @@ uint32_t TC6Regs_CB_GetTicksMs(void)
 
 void TC6Regs_CB_OnEvent(TC6_t *pInst, TC6Regs_Event_t event, void *pTag)
 {
+    /* Each fatal bring-up rejection logs once: both clear the TC6 lib's
+     * initialized flag, so bring-up fails and retries every T1S_ABSENT_RETRY_MS. */
+    static bool logged_unsupported_hw;
+    static bool logged_chip_error;
+
     (void)pTag;
 //    LOG_INFO("T1S: event: %s\r\n", TC6Regs_GetEventStr(event));
     switch (event) {
+        case TC6Regs_Event_Unsupported_Hardware:
+            if (!logged_unsupported_hw) {
+                logged_unsupported_hw = true;
+                LOG_ERROR("T1S: unsupported MAC-PHY — PHYID OUI/model mismatch or "
+                          "chipRev 0. Not a LAN865x, or SPI reads are garbage.\r\n");
+            }
+            break;
+        case TC6Regs_Event_Chip_Error:
+            if (!logged_chip_error) {
+                logged_chip_error = true;
+                LOG_ERROR("T1S: MAC-PHY OTP config invalid (trim registers out of "
+                          "range) — unsupported silicon revision, or marginal SPI "
+                          "at %u Hz.\r\n", (unsigned)T1S_SPI_HZ);
+            }
+            break;
         case TC6Regs_Event_Transmit_Frame_Check_Sequence_Error:
             s_self_crc_err++;   /* marvin's own FCS error tally (self row) */
             break;

@@ -31,7 +31,7 @@ uint8_t  T1SLink_ChipRev(void);
 uint8_t  T1SLink_NodeId(void);    /* PLCA coordinator id (0) */
 uint8_t  T1SLink_NodeCount(void); /* configured PLCA node count */
 uint32_t T1SLink_TxCount(void);   /* command frames sent */
-uint32_t T1SLink_RxCount(void);   /* frames received from known nodes */
+uint32_t T1SLink_RxCount(void);   /* detector frames received from known nodes */
 uint32_t T1SLink_ServiceOverruns(void); /* times service_pump hit its iter cap */
 uint32_t T1SLink_CtrlTxCount(void); /* controller (0x88B7) frames sent */
 uint32_t T1SLink_CtrlRxCount(void); /* controller (0x88B7) frames received */
@@ -73,10 +73,24 @@ bool T1SLink_GetNodeStats(uint8_t idx, T1SLink_NodeStats *out);
 bool T1SLink_GetSelfStats(T1SLink_NodeStats *out);
 
 /* Aggregate bus statistics (marvin + all follower rows) for the header tiles.
- * util_permille is a derived estimate (Σ frame-rate × 64-byte frame vs 10 Mbps),
- * clamped to 1000; err_rate_ppm = total errors / total frames. */
+ *
+ * The occupancy figures are measured from wire byte counts, not derived from the
+ * per-node frame rates: marvin's MAC is promiscuous, so it observes every frame
+ * on the segment directly, and summing node frame rates would count each frame
+ * once per party to it. util_permille is the share of line time spent carrying
+ * frames — on a PLCA bus the rest goes to the BEACON and the mandated silences
+ * whether or not anyone is talking, so an idle bus reads near zero and
+ * to_used_permille is the figure that answers "how much room is left".
+ * err_rate_ppm = total errors / total frames.
+ *
+ * wire_bps counts the frame *plus* its 8-byte preamble/SFD, which the MAC
+ * generates and no frame length includes — so util_permille is exactly
+ * wire_bps · 8 / 10 Mbit, and the two reconcile by hand. */
 typedef struct {
-    uint32_t util_permille;  /* 0..1000 (estimate)          */
+    uint32_t util_permille;  /* 0..1000, line time carrying frames */
+    uint32_t wire_bps;       /* wire bytes/s incl. preamble, whole segment */
+    uint32_t plca_cycles;    /* PLCA bus cycles/s            */
+    uint32_t to_used_permille; /* transmit opportunities carrying a frame */
     uint32_t tx_total;       /* frames sent, bus-wide        */
     uint32_t rx_total;       /* frames received, bus-wide    */
     uint32_t crc_total;
@@ -88,6 +102,13 @@ typedef struct {
 } T1SLink_BusStats;
 
 bool T1SLink_GetBusStats(T1SLink_BusStats *out);
+
+/* Zero every traffic/error counter and restart the uptime window, so the whole
+ * bus view reads "since this call". Node counters are the followers' own lifetime
+ * totals, so this re-arms their baselines instead: each node re-zeroes on its next
+ * heartbeat. Presence survives — this forgets traffic, not who is on the bus.
+ * Safe from any task. */
+void T1SLink_ResetCounters(void);
 
 /* Latest-wins 1-byte button command to the active guitar (actuator) node.
  * Safe to call from any task; the value is flushed onto the bus by the T1S

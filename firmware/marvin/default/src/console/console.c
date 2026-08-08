@@ -197,7 +197,15 @@ static void cmd_status(EmbeddedCli *cli, char *args, void *ctx)
 
 static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
 {
-    (void)cli; (void)args; (void)ctx;
+    (void)cli; (void)ctx;
+
+    const char *sub = embeddedCliGetToken(args, 1);
+    if ((sub != NULL) && (strcmp(sub, "reset") == 0))
+    {
+        T1SLink_ResetCounters();
+        console_printf("t1s: counters + uptime reset (nodes re-baseline on their next heartbeat)");
+        return;
+    }
 
     bool synced = false;
     uint8_t txc = 0u, rxc = 0u;
@@ -221,6 +229,10 @@ static void cmd_t1s(EmbeddedCli *cli, char *args, void *ctx)
                        (unsigned long)(bs.util_permille % 10u),
                        (unsigned)bs.nodes_online, (unsigned)bs.nodes_total,
                        (unsigned long)bs.uptime_s);
+        console_printf("wire: %lu B/s  plca: %lu cyc/s  TO used:%lu.%lu%%",
+                       (unsigned long)bs.wire_bps, (unsigned long)bs.plca_cycles,
+                       (unsigned long)(bs.to_used_permille / 10u),
+                       (unsigned long)(bs.to_used_permille % 10u));
         console_printf("tx tot: %lu  rx tot: %lu",
                        (unsigned long)bs.tx_total, (unsigned long)bs.rx_total);
         console_printf("crc err:%lu  sym err:%lu  err:%lu ppm",
@@ -1628,7 +1640,7 @@ static void cmd_fretboard(EmbeddedCli *cli, char *args, void *ctx)
  * configASSERT below is the backstop if it happens anyway. */
 static const CliCommandBinding bindings[] = {
         { "status", "Print link / detector / mode / video state", false, NULL, cmd_status },
-        { "t1s",    "Print T1S link / sync / PLCA / traffic counters",  false, NULL, cmd_t1s },
+        { "t1s",    "T1S link / sync / PLCA / traffic counters; 't1s reset' zeroes them", true, NULL, cmd_t1s },
         { "nodes",  "List T1S nodes + heartbeat presence / last-seen",  false, NULL, cmd_nodes },
         { "sd",     "sd <info|ls|bench|mount|unmount> [arg]: SD-card bring-up", true, NULL, cmd_sd },
         { "health", "Print the per-task stack high-water + runtime table",     false, NULL, cmd_health },

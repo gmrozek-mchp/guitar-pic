@@ -79,7 +79,11 @@ static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
 #define CHART_W    ((CONTENT_W - 2 * GAP) / 3)    /* 408 */
 
 /* Plot area inside a chart card: below the title, above the footer/axis labels. */
-#define AXIS_W     26                             /* y-tick gutter */
+/* y-tick gutter. Sized by the widest tick's *ink*, not its advance: in Mono_9 both
+ * 'k' and '%' extend one pixel past their 5px advance, so "1.2k" and "100%" measure
+ * 20px of advance but paint 21px wide, and a gutter sized to the advance clips the
+ * final glyph. Labels get AXIS_W-4 = 26px, leaving 5px of slack. */
+#define AXIS_W     30
 #define PLOT_Y     (CHART_Y + 34)
 #define PLOT_H     (CHART_H - 34 - 26)
 
@@ -315,9 +319,15 @@ static void pill_set_width(leWidget *pill, int w)
 }
 
 /* ── formatting (mirrors the mockup) ────────────────────────────────────────*/
+/* Cumulative counts, scaled so the string can never outgrow its tile. The KPI
+ * value font (Bold_24, 14px advance) gives 7 characters in a 105px label, and
+ * the widest output here is "999.99M" — exactly 7. Without the G step a count
+ * past 1e9 would render "4294.96M" and clip, which a bus-wide total reaches in
+ * about a day on a busy bus. */
 static void fmt_count(uint32_t v, char *b, size_t n)
 {
-    if (v >= 1000000u) { (void)snprintf(b, n, "%lu.%02luM", (unsigned long)(v / 1000000u), (unsigned long)((v % 1000000u) / 10000u)); }
+    if (v >= 1000000000u) { (void)snprintf(b, n, "%lu.%02luG", (unsigned long)(v / 1000000000u), (unsigned long)((v % 1000000000u) / 10000000u)); }
+    else if (v >= 1000000u) { (void)snprintf(b, n, "%lu.%02luM", (unsigned long)(v / 1000000u), (unsigned long)((v % 1000000u) / 10000u)); }
     else if (v >= 1000u) { (void)snprintf(b, n, "%lu.%luK", (unsigned long)(v / 1000u), (unsigned long)((v % 1000u) / 100u)); }
     else { (void)snprintf(b, n, "%lu", (unsigned long)v); }
 }
@@ -325,6 +335,90 @@ static void fmt_rate(uint32_t v, char *b, size_t n)
 {
     if (v >= 1000u) { (void)snprintf(b, n, "%lu.%luk/s", (unsigned long)(v / 1000u), (unsigned long)((v % 1000u) / 100u)); }
     else { (void)snprintf(b, n, "%lu/s", (unsigned long)v); }
+}
+
+/* Round a maximum up to the next 1-2-5 ladder rung, so an autoscaled axis reads
+ * in round numbers instead of whatever the busiest node happened to hit. Rungs are
+ * kept even: the axis has a midpoint tick, and an odd ceiling would label it with
+ * a truncated half. Never returns 0 — callers divide by it. */
+static uint32_t nice_ceiling(uint32_t v)
+{
+    if (v <= 10u) { return (v <= 2u) ? 2u : ((v + 1u) & ~1u); }   /* 2,4,6,8,10 */
+
+    uint32_t mag = 1u;
+    while ((v / mag) >= 10u) { mag *= 10u; }
+
+    /* Rungs in tenths, so fractional ones like 1.2 and 2.5 can exist: a coarse
+     * 1-2-5 ladder overshoots by up to 2x (1001 would scale against 2000, wasting
+     * half the plot), while this one stays within ~1.33x and usually ~1.2x.
+     * An odd rung is skipped rather than rounded — 1.5x10 is 15, whose midpoint
+     * label would truncate to 7 against a gridline at 7.5. */
+    static const uint32_t rung_x10[] = {
+        10u, 12u, 15u, 20u, 25u, 30u, 40u, 50u, 60u, 80u, 100u,
+    };
+    for (unsigned i = 0u; i < (sizeof rung_x10 / sizeof rung_x10[0]); i++)
+    {
+        uint64_t c = ((uint64_t)rung_x10[i] * mag) / 10u;
+        if ((c >= v) && ((c % 2u) == 0u))
+        {
+            return (c > 0xFFFFFFFEu) ? 0xFFFFFFFEu : (uint32_t)c;
+        }
+    }
+    return 0xFFFFFFFEu;
+}
+
+/* Ceiling for the utilization axis, in permille. A dedicated ladder rather than
+ * nice_ceiling: every rung is a multiple of 20 permille, so the midpoint tick is a
+ * whole percent and the label stays within the four glyphs the gutter paints
+ * (nice_ceiling could pick 250, whose midpoint is 12.5% and needs five).
+ *
+ * Floored at 10% so a near-idle bus is not magnified to fill the plot — zero stays
+ * pinned to the bottom, so height is always proportional to the real figure, and the
+ * floor bounds how much a fraction of a percent can be blown up. */
+#define UTIL_CEIL_MIN_PERMILLE  100u
+static uint32_t util_ceiling(uint32_t permille)
+{
+    static const uint32_t rung[] = {
+        100u, 200u, 300u, 400u, 600u, 800u, 1000u,
+    };
+    for (unsigned i = 0u; i < (sizeof rung / sizeof rung[0]); i++)
+    {
+        if (permille <= rung[i]) { return rung[i]; }
+    }
+    return 1000u;
+}
+
+/* Percent tick text from permille. Whole percents only — the ladder above guarantees
+ * the values it is handed are exact multiples of 10 permille. */
+static void fmt_pct(uint32_t permille, char *b, size_t n)
+{
+    (void)snprintf(b, n, "%lu%%", (unsigned long)(permille / 10u));
+}
+
+/* Axis tick text, held to 4 characters — the widest the gutter paints (see AXIS_W,
+ * which is sized by ink rather than advance). A fifth glyph would run under the plot. */
+static void fmt_axis(uint32_t v, char *b, size_t n)
+{
+    if (v >= 1000000000u) { (void)snprintf(b, n, "%luG", (unsigned long)(v / 1000000000u)); }
+    else if (v >= 1000000u) { (void)snprintf(b, n, "%luM", (unsigned long)(v / 1000000u)); }
+    else if (v >= 10000u) { (void)snprintf(b, n, "%luk", (unsigned long)(v / 1000u)); }
+    else if (v >= 1000u) { (void)snprintf(b, n, "%lu.%luk", (unsigned long)(v / 1000u), (unsigned long)((v % 1000u) / 100u)); }
+    else { (void)snprintf(b, n, "%lu", (unsigned long)v); }
+}
+
+/* Wire byte rate. Spans three orders of magnitude between an idle bus (a few
+ * hundred B/s of heartbeats) and a detector stream, so scale the unit. */
+static void fmt_bps(uint32_t v, char *b, size_t n)
+{
+    if (v >= 1000000u) {
+        (void)snprintf(b, n, "%lu.%luMB/s", (unsigned long)(v / 1000000u),
+                       (unsigned long)((v % 1000000u) / 100000u));
+    } else if (v >= 1000u) {
+        (void)snprintf(b, n, "%lu.%lukB/s", (unsigned long)(v / 1000u),
+                       (unsigned long)((v % 1000u) / 100u));
+    } else {
+        (void)snprintf(b, n, "%luB/s", (unsigned long)v);
+    }
 }
 
 static const leScheme *node_scheme(const char *type)
@@ -355,7 +449,7 @@ static const leScheme *sym_scheme(uint16_t v) { return (v > 8u)  ? &SCHEME_TEXT_
  * where its numbers came from. */
 
 /* Default for development builds. Set to false to ship live telemetry. */
-#define BUS_SIM_DEFAULT   true
+#define BUS_SIM_DEFAULT   false
 
 static bool s_sim = BUS_SIM_DEFAULT;
 
@@ -510,6 +604,12 @@ static bool bus_stats(T1SLink_BusStats *out)
     uint32_t frames = tx + rx;
 
     out->util_permille = s_sim_util;
+    /* Keep the synthetic occupancy figures consistent with the utilization the
+     * simulator picked: bytes/s is that share of the 10 Mbit/s line, and the PLCA
+     * cycle rate is what is left of the line once the frame time is taken out. */
+    out->wire_bps      = s_sim_util * 1250u;
+    out->plca_cycles   = ((1000u - s_sim_util) * 10000u) / 292u;
+    out->to_used_permille = s_sim_util / 3u;
     out->tx_total      = tx;
     out->rx_total      = rx;
     out->crc_total     = crc;
@@ -523,7 +623,7 @@ static bool bus_stats(T1SLink_BusStats *out)
 }
 
 /* ── widget handles for the refresh ─────────────────────────────────────────*/
-static leLabelWidget *s_kpi_util, *s_kpi_tx, *s_kpi_txr, *s_kpi_rx,
+static leLabelWidget *s_kpi_util, *s_kpi_bps, *s_kpi_tx, *s_kpi_txr, *s_kpi_rx,
                      *s_kpi_crc, *s_kpi_sym, *s_kpi_err, *s_kpi_nodes, *s_kpi_up,
                      *s_kpi_upsub;   /* "10BASE-T1S" / "SIMULATED" */
 
@@ -537,6 +637,23 @@ static row_t s_row[MAX_ROWS];
 /* Chart widgets resized on each refresh: the TX-rate bars (bottom-anchored, so both
  * y and height move) and the error bars (width only), plus their value labels. */
 static leWidget      *s_bar[MAX_ROWS];
+static leLabelWidget *s_txaxis[3];      /* TX-rate y ticks: top, mid, 0 */
+
+/* TX-rate axis scale, damped asymmetrically: it takes a new peak immediately so a
+ * burst is never clipped, but gives ground only after a dwell and then a fraction
+ * of the gap at a time. A rate that flutters across a ladder boundary would
+ * otherwise rescale the whole chart every refresh, and because rising is instant,
+ * a recurring spike holds the scale up instead of oscillating with it. */
+#define TX_SCALE_HOLD_TICKS  4u   /* ~2s at REFRESH_MS before easing down      */
+#define TX_SCALE_DECAY_DIV   2u   /* then halve the gap per tick: a real drop   */
+                                  /* settles in ~7s over 9 steps, where a       */
+                                  /* gentler quarter-gap crawls for 14s over 16 */
+static uint32_t       s_tx_scale;       /* damped peak, before quantization */
+static uint32_t       s_tx_hold;        /* refreshes left before easing down */
+
+static leLabelWidget *s_utilaxis[3];    /* utilization y ticks: top, mid, 0 */
+static uint32_t       s_util_scale;     /* damped peak of the plotted window */
+static uint32_t       s_util_hold;
 static leWidget      *s_ebar[MAX_ROWS];
 static leLabelWidget *s_etot[MAX_ROWS], *s_esplit[MAX_ROWS];
 static int            s_etrack_w = 1;
@@ -617,6 +734,11 @@ void ScreenBus_Setup(void)
                        &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT), "BUS");
     set_text(add_label(CONTENT_X + 106, KPI_Y + 44, 84, 16, (const leFont *)&DejaVuSansMono_12,
                        &SCHEME_TEXT_ZINC_500, LE_HALIGN_LEFT), "UTILIZATION");
+    /* Wire byte rate: the utilization percentage sits below 1% for anything short
+     * of a detector stream, so the card carries the absolute figure too. */
+    s_kpi_bps = add_label(CONTENT_X + 106, KPI_Y + 62, 84, 16,
+                          (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_200,
+                          LE_HALIGN_LEFT);
 
     int x = CONTENT_X + GAUGE_W + GAP;
     s_kpi_tx    = kpi(x, KPI_W, "TOTAL TX",   &SCHEME_TEXT_ZINC_200,   &s_kpi_txr, NULL,
@@ -713,7 +835,7 @@ void ScreenBus_Setup(void)
 
     /* ── chart row: three cards ───────────────────────────────────────────── */
     static const char *CHART_TITLE[3] = {
-        "BUS UTILIZATION HISTORY", "TX RATE BY NODE", "ERROR COUNT BY NODE",
+        "BUS UTILIZATION HISTORY", "TX RATE BY NODE (msg/s)", "ERROR COUNT BY NODE",
     };
     int cx[3];
     for (int i = 0; i < 3; i++)
@@ -726,21 +848,22 @@ void ScreenBus_Setup(void)
     }
 
     /* 1) Utilization history: y-axis ticks, the sparkline plot, and the time hints.
-     *    Scale matches the mockup's 0..60% Y domain. */
+     *    The ceiling autoscales (see refresh), so the ticks are written there too. */
     {
         int px = cx[0] + GAP + AXIS_W;
         int pw = CHART_W - 2 * GAP - AXIS_W;
-        for (int i = 0; i < 3; i++)   /* 60 / 30 / 0 top-to-bottom */
+        for (int i = 0; i < 3; i++)   /* top / mid / 0 */
         {
-            char t[8];
-            (void)snprintf(t, sizeof t, "%d", 60 - i * 30);
-            set_text(add_label(cx[0] + GAP, PLOT_Y + (PLOT_H - 12) * i / 2, AXIS_W - 4, 12,
-                               (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_600,
-                               LE_HALIGN_RIGHT), t);
+            s_utilaxis[i] = add_label(cx[0] + GAP, PLOT_Y + (PLOT_H - 12) * i / 2,
+                                      AXIS_W - 4, 12, (const leFont *)&DejaVuSansMono_9,
+                                      &SCHEME_TEXT_ZINC_600, LE_HALIGN_RIGHT);
         }
-        /* Scale matches the y-ticks drawn above: 0..60%, fixed, not autoscaled. */
+        /* Fixed mode with a ceiling the refresh moves: that keeps zero pinned to the
+         * bottom edge, so the trace's height stays proportional to the real figure.
+         * The widget's own autoscale fits the window's min..max instead, which would
+         * let a half-point wiggle fill the card. */
         Sparkline_SeriesInit(&s_util_series);
-        Sparkline_Constructor(&s_util_plot, &s_util_series, 600u);
+        Sparkline_Constructor(&s_util_plot, &s_util_series, UTIL_CEIL_MIN_PERMILLE);
 
         leWidget *spark = &s_util_plot.widget;
         spark->fn->setPosition(spark, px, PLOT_Y);
@@ -757,10 +880,23 @@ void ScreenBus_Setup(void)
                            LE_HALIGN_RIGHT), "now ->");
     }
 
-    /* 2) TX rate by node: one bottom-anchored bar per row, node-coloured, with the
-     *    node's initial beneath it. Heights are set on refresh. */
+    /* 2) TX rate by node: a y-axis gutter, then one bottom-anchored bar per row,
+     *    node-coloured, with the node's name beneath it. Both the tick text and the
+     *    heights are set on refresh, against a ceiling that autoscales to the
+     *    busiest node. */
     {
-        int pw   = CHART_W - 2 * GAP;
+        int px   = cx[1] + GAP + AXIS_W;
+        int pw   = CHART_W - 2 * GAP - AXIS_W;
+
+        /* Ticks are placed exactly as the utilization chart's are, so the two cards
+         * read as one system; the strings are empty until the first refresh. */
+        for (int i = 0; i < 3; i++)
+        {
+            s_txaxis[i] = add_label(cx[1] + GAP, PLOT_Y + (PLOT_H - 12) * i / 2,
+                                    AXIS_W - 4, 12, (const leFont *)&DejaVuSansMono_9,
+                                    &SCHEME_TEXT_ZINC_600, LE_HALIGN_RIGHT);
+        }
+
         int slot = pw / (int)((nrows > 0u) ? nrows : 1u);
         int bw   = (slot > 16) ? (slot - 8) : slot;
         for (uint8_t r = 0; r < nrows; r++)
@@ -769,16 +905,16 @@ void ScreenBus_Setup(void)
             if (!((r == 0u) ? bus_self(&st)
                             : bus_node((uint8_t)(r - 1u), &st))) { continue; }
             const leScheme *nsc = (r == 0u) ? &SCHEME_NODE_MARVIN : node_scheme(st.type);
-            int bx = cx[1] + GAP + r * slot + (slot - bw) / 2;
+            int bx = px + r * slot + (slot - bw) / 2;
 
             s_bar[r] = add_rect(bx, PLOT_Y + PLOT_H - 1, bw, 1, nsc, SHAPE_BAR);
 
             /* Full node name under the bar, centred on the whole slot (not just the
-             * bar) — at 9px even "Lightshow" fits the ~54px slot. */
+             * bar) — at 9px the longest, "Lightshow", inks 46px of the ~50px slot. */
             char t[CAP];
             (void)snprintf(t, sizeof t, "%s", (st.type != NULL) ? st.type : "?");
             if (t[0] >= 'a' && t[0] <= 'z') { t[0] = (char)(t[0] - 32); }
-            set_text(add_label(cx[1] + GAP + r * slot, PLOT_Y + PLOT_H + 3, slot, 12,
+            set_text(add_label(px + r * slot, PLOT_Y + PLOT_H + 3, slot, 12,
                                (const leFont *)&DejaVuSansMono_9, &SCHEME_TEXT_ZINC_500,
                                LE_HALIGN_CENTER), t);
         }
@@ -838,8 +974,14 @@ static void refresh_all(void)
     T1SLink_BusStats bs;
     if (bus_stats(&bs))
     {
-        (void)snprintf(tmp, sizeof tmp, "%lu%%", (unsigned long)(bs.util_permille / 10u));
+        /* One decimal: real traffic sits under 1% of the line, and a whole-percent
+         * readout would render every idle-bus value as a flat 0%. */
+        (void)snprintf(tmp, sizeof tmp, "%lu.%lu%%",
+                       (unsigned long)(bs.util_permille / 10u),
+                       (unsigned long)(bs.util_permille % 10u));
         set_text(s_kpi_util, tmp);
+        fmt_bps(bs.wire_bps, tmp, sizeof tmp);
+        set_text(s_kpi_bps, tmp);
         s_kpi_util->fn->setScheme(s_kpi_util,
             (bs.util_permille > 700u) ? &SCHEME_TEXT_RED_400 :
             (bs.util_permille > 450u) ? &SCHEME_TEXT_YELLOW_400 : &SCHEME_TEXT_CYAN_400);
@@ -851,6 +993,41 @@ static void refresh_all(void)
                   (bs.util_permille > 700u) ? &SCHEME_NODE_LIGHTSHOW :
                   (bs.util_permille > 450u) ? &SCHEME_FILL_YELLOW_400 : &SCHEME_NODE_MARVIN);
         Sparkline_Push(&s_util_series, bs.util_permille);
+
+        /* Autoscale the history card's ceiling against the whole plotted window, not
+         * the newest sample: the ceiling has to cover every sample still on screen or
+         * older, taller history clips flat against the top edge. Damped exactly as the
+         * TX chart is — instant up, dwell, then halve the gap — so a trace sitting near
+         * a ladder boundary doesn't relabel the axis every refresh. */
+        {
+            uint32_t win = Sparkline_PlotMax(&s_util_plot);
+            if (win < UTIL_CEIL_MIN_PERMILLE) { win = UTIL_CEIL_MIN_PERMILLE; }
+
+            if (win >= s_util_scale)
+            {
+                s_util_scale = win;
+                s_util_hold  = TX_SCALE_HOLD_TICKS;
+            }
+            else if (s_util_hold != 0u)
+            {
+                s_util_hold--;
+            }
+            else
+            {
+                uint32_t step = (s_util_scale - win) / TX_SCALE_DECAY_DIV;
+                if (step == 0u) { step = 1u; }
+                s_util_scale -= step;
+            }
+
+            uint32_t top = util_ceiling(s_util_scale);
+            Sparkline_SetScale(&s_util_plot, top);
+            for (int i = 0; i < 3; i++)
+            {
+                if (s_utilaxis[i] == NULL) { continue; }
+                fmt_pct(top - (top / 2u) * (uint32_t)i, tmp, sizeof tmp);
+                set_text(s_utilaxis[i], tmp);
+            }
+        }
 
         fmt_count(bs.tx_total, tmp, sizeof tmp); set_text(s_kpi_tx, tmp);
         fmt_count(bs.rx_total, tmp, sizeof tmp); set_text(s_kpi_rx, tmp);
@@ -946,16 +1123,48 @@ static void refresh_all(void)
             if (e > max_err) { max_err = e; }
         }
 
+        /* Track the peak upward at once, and downward only grudgingly. The forced
+         * minimum step matters: integer division of a gap under DECAY_DIV yields 0,
+         * which would leave the scale parked above a quiet bus forever. */
+        if (max_rate >= s_tx_scale)
+        {
+            s_tx_scale = max_rate;
+            s_tx_hold  = TX_SCALE_HOLD_TICKS;
+        }
+        else if (s_tx_hold != 0u)
+        {
+            s_tx_hold--;
+        }
+        else
+        {
+            uint32_t step = (s_tx_scale - max_rate) / TX_SCALE_DECAY_DIV;
+            if (step == 0u) { step = 1u; }
+            s_tx_scale -= step;
+        }
+
+        /* Label the damped scale, rounded up to a ladder rung. The bars below are
+         * scaled to this same value, not to max_rate — scaling them independently
+         * would draw the tallest bar at full height against an axis that says
+         * otherwise, which is worse than having no axis at all. */
+        uint32_t top = nice_ceiling(s_tx_scale);
+        for (int i = 0; i < 3; i++)
+        {
+            if (s_txaxis[i] == NULL) { continue; }
+            fmt_axis(top - (top / 2u) * (uint32_t)i, tmp, sizeof tmp);
+            set_text(s_txaxis[i], tmp);
+        }
+
         for (uint8_t r = 0; r < MAX_ROWS; r++)
         {
             if (!s_row[r].used) { continue; }
             if (!((r == 0u) ? bus_self(&st)
                             : bus_node((uint8_t)(r - 1u), &st))) { continue; }
 
-            /* TX-rate bar: bottom-anchored, so both height and y move. */
+            /* TX-rate bar: bottom-anchored, so both height and y move. Scaled to the
+             * labelled ceiling, so a bar's height can be read off the axis. */
             if (s_bar[r] != NULL)
             {
-                int h = (int)(((uint64_t)st.tx_rate * (uint32_t)(PLOT_H - 2)) / max_rate);
+                int h = (int)(((uint64_t)st.tx_rate * (uint32_t)(PLOT_H - 2)) / top);
                 if (h < 1) { h = 1; }
                 bar_set_height(s_bar[r], PLOT_Y + PLOT_H, h);
             }
