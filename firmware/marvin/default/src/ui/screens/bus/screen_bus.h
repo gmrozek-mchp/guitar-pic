@@ -28,7 +28,7 @@ void ScreenBus_Setup(void);
  * base view and when the nav drawer opens over it. */
 void ScreenBus_SetInput(bool on);
 
-/* Marks the bus view shown/hidden — starts/stops the ~1 Hz statistics refresh so it
+/* Marks the bus view shown/hidden — starts/stops the periodic statistics refresh so it
  * costs nothing on other views. */
 void ScreenBus_SetShown(bool shown);
 
@@ -43,12 +43,12 @@ void ScreenBus_SetSimulated(bool on);
 
 /* Time a frame for each custom-painted widget on this screen (gauge, sparkline, a TX bar) and
  * report one line each through `out` — the HealthMonitor_Report sink shape. Everything here
- * repaints on the 1 Hz refresh, so paint cost is continuous rather than only-while-touched. */
+ * repaints on every refresh, so paint cost is continuous rather than only-while-touched. */
 typedef void (*bus_probe_fn)(void *ctx, const char *line);
 
 void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx);
 
-/* Force the old whole-panel repaint on every 1 Hz refresh instead of letting each changed
+/* Force the old whole-panel repaint on every refresh instead of letting each changed
  * widget invalidate itself. For A/B measurement only; targeted is the default. */
 void ScreenBus_SetFullRepaint(bool on);
 bool ScreenBus_FullRepaint(void);

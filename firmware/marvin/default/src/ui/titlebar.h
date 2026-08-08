@@ -43,8 +43,8 @@ void Titlebar_SetShown(leWidget *bar, bool shown);
  * attributed without a reflash (the `titlebar` console command drives these; read the
  * per-task share back with `health`). Both default on.
  *
- * They are separate because they damage at very different rates: the tiles repaint two
- * 158x42 cards once a second, while the pulse damages a 12x12 dot ten times a second —
+ * They are separate because they damage at very different rates: the tiles damage each
+ * card's value text and plot twice a second, the pulse a 12x12 dot ten times a second —
  * and with LE_PREEMPTION_LEVEL 0 a Legato frame runs to completion inside one
  * LEGATO_Tasks tick, so cost tracks *frames*, not damaged pixels. Turning the pulse off
  * settles the dot at full opacity. */

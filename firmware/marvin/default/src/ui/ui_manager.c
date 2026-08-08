@@ -931,7 +931,7 @@ void UiManager_ShowStats(void)
     hide_current_base();
     bind_canvas(CANVAS_BUS, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
     ScreenBus_SetInput(true);
-    ScreenBus_SetShown(true);   /* starts the ~1 Hz telemetry refresh */
+    ScreenBus_SetShown(true);   /* starts the periodic telemetry refresh */
 
     s_base_view = BASE_VIEW_BUS;
 }

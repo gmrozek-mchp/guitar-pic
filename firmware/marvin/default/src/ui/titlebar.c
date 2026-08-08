@@ -47,7 +47,7 @@ extern void _leImageWidget_Constructor(leImageWidget *img);
 /* ── metric tiles ───────────────────────────────────────────────────────────────
  * The mockup header's two readouts: a rounded-xl zinc-900 card holding a right-aligned
  * caption over a value + unit, and beside it a sparkline over the last PLOT_WINDOW
- * seconds.
+ * samples.
  *
  * Metrics are decoded from `le_gen_fonts.c` (regenerate with the MGS skill's
  * font_metrics.py), and a glyph's ADVANCE is not its ink width — `%` at Mono_12 advances
@@ -104,14 +104,16 @@ extern void _leImageWidget_Constructor(leImageWidget *img);
 
 /* Newest N of the shared history, chosen for the pitch rather than the span: 24 samples
  * across the 74 px of plot inside PLOT_W is ~3 px each, the mockup's proportion. All 40
- * would be under 2 px, where a jumpy signal reads as a comb instead of a line. */
+ * would be under 2 px, where a jumpy signal reads as a comb instead of a line. At
+ * SAMPLE_MS that window is the last 12 s. */
 #define PLOT_WINDOW  24u
 
 /* Sample cadence, and the LED pulse. The tick is the pulse's step, not the sample's — the
- * metrics move once a second (the health supervisor's own sample period) while the LED
- * needs ~10 steps a second to read as a fade. */
+ * LED needs ~10 steps a second to read as a fade, while the metrics move at SAMPLE_MS.
+ * SAMPLE_MS is a *polling* rate: CPU is appended only when the health supervisor publishes
+ * a new reading (see metric_sample), so the plot never depends on the two agreeing. */
 #define TICK_MS     100u
-#define SAMPLE_MS  1000u
+#define SAMPLE_MS   500u
 #define PULSE_MS   2000u       /* Tailwind's animate-pulse period */
 #define PULSE_MIN   128u       /* its 0.5 opacity trough */
 
@@ -376,22 +378,41 @@ leWidget *Titlebar_Add(leWidget *parent)
 
 /* Read both metrics and append them to the shared history. Runs whether or not a bar is
  * on screen: it touches no widget, and keeping the history warm is what lets an incoming
- * screen show a full plot rather than start from a blank box. */
-static void metric_sample(void)
+ * screen show a full plot rather than start from a blank box.
+ *
+ * CPU is taken from the health supervisor, which publishes on its own schedule, so it is
+ * appended only when the reading is actually new — the sequence counter, not the value,
+ * because two equal readings a second apart are still two samples. That keeps the plot at
+ * the supervisor's true resolution whatever either period is set to, and keeps the zeros it
+ * returns before the first reading out of the history entirely.
+ *
+ * Returns the metrics that gained a sample, so a refresh can skip the tiles that did not. */
+static unsigned metric_sample(void)
 {
-    s_value[METRIC_CPU] = HealthMonitor_CpuPermille();
+    static uint32_t cpu_seq;
+    unsigned        fresh = 1u << METRIC_BUS;
+
+    uint32_t seq = HealthMonitor_CpuSeq();
+    if (seq != cpu_seq)
+    {
+        cpu_seq = seq;
+        s_value[METRIC_CPU] = HealthMonitor_CpuPermille();
+        fresh |= 1u << METRIC_CPU;
+    }
 
     T1SLink_BusStats bs;
     s_value[METRIC_BUS] = T1SLink_GetBusStats(&bs) ? bs.util_permille : 0u;
 
     for (unsigned m = 0u; m < (unsigned)METRIC_N; m++)
     {
-        Sparkline_Push(&s_series[m], s_value[m]);
+        if ((fresh & (1u << m)) != 0u) { Sparkline_Push(&s_series[m], s_value[m]); }
     }
+
+    return fresh;
 }
 
-/* Rewrite one instance's readouts and recolour both tiles to their current band, then
- * invalidate only what moved: the value text and the plot.
+/* Rewrite one instance's readouts and recolour the tiles named by `mask` to their current
+ * band, then invalidate only what moved: the value text and the plot.
  *
  * Deliberately NOT the whole card. The caption and the unit are static strings, and neither
  * of the two damaged rects reaches a corner box (the value spans card-x 12..44 and the plot
@@ -403,10 +424,12 @@ static void metric_sample(void)
  * This is only safe because AaCorners_Render clips to the draw rect — until that fix it
  * wrote corner boxes through the unchecked `leRenderer_PutPixel` regardless of the damage,
  * i.e. outside the scratch buffer. */
-static void tiles_refresh(titlebar_t *t)
+static void tiles_refresh(titlebar_t *t, unsigned mask)
 {
     for (unsigned m = 0u; m < (unsigned)METRIC_N; m++)
     {
+        if ((mask & (1u << m)) == 0u) { continue; }
+
         const metric_def_t *d    = &METRIC[m];
         metric_tile_t      *tl   = &t->tile[m];
         uint32_t            v    = s_value[m];
@@ -449,8 +472,8 @@ static void titlebar_task(void *param)
     {
         vTaskDelayUntil(&last, pdMS_TO_TICKS(TICK_MS));
 
-        bool sample = (since >= SAMPLE_MS);
-        if (sample) { since = 0u; metric_sample(); }
+        unsigned fresh = 0u;
+        if (since >= SAMPLE_MS) { since = 0u; fresh = metric_sample(); }
         since += TICK_MS;
 
         phase = (phase + TICK_MS) % PULSE_MS;
@@ -458,7 +481,10 @@ static void titlebar_task(void *param)
         titlebar_t *t = s_live;
         if (t == NULL) { continue; }
 
-        bool     tiles = s_tiles_on && (sample || s_dirty);
+        /* A view change repaints both tiles regardless of which metrics moved: the new
+         * instance's labels hold whatever the last one left in them. */
+        unsigned mask  = s_dirty ? ((1u << (unsigned)METRIC_N) - 1u) : fresh;
+        bool     tiles = s_tiles_on && (mask != 0u);
         uint32_t alpha = s_pulse_on ? pulse_alpha(phase) : 255u;
         bool     led   = (alpha != (uint32_t)t->dot.style.alphaAmount);
 
@@ -472,7 +498,7 @@ static void titlebar_task(void *param)
         if (tiles)
         {
             s_dirty = false;
-            tiles_refresh(t);
+            tiles_refresh(t, mask);
         }
         if (led) { (void)t->dot.fn->setAlphaAmount(&t->dot, alpha); }
         UiManager_RenderUnlock();

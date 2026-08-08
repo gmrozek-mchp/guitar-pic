@@ -1386,6 +1386,50 @@ _(Questions we haven't answered yet. Move to decision log with rationale once re
 
 ## Session log
 
+### 2026-08-08 — Telemetry refresh raised to 2 Hz; publish cadence and averaging window separated
+
+With `LEGATO_Tasks` at 3% on the bus screen (from 35%), Greg asked for the titlebar widgets and the bus stats screen to refresh at 2 Hz. Spending the optimization headroom on responsiveness rather than banking it.
+
+The cadence itself is three constants:
+
+- `titlebar.c`: `SAMPLE_MS` 1000 → **500**. `TICK_MS` stays 100 — it is the LED pulse's step, not the sample's.
+- `screen_bus.c`: a new `REFRESH_MS 500u` now drives `bus_task`'s `vTaskDelay`, replacing the literal 1000.
+- `health_monitor.c`: `HM_SUP_SAMPLE_MS` 1000 → **500**.
+
+**The supervisor had to move too, or the CPU plot would have stair-stepped** — `HealthMonitor_CpuPermille()` is only recomputed by the supervisor's own sample, so polling at 2 Hz while it publishes at 1 Hz plots each reading twice: double the resolution carrying half the information. But halving the sample period also halves the *averaging window*, and Greg's read on the first attempt was that 500 ms is too short a window for the figure `health` prints — it reads jumpy.
+
+Those are two independent knobs that had been welded together, so they were separated. **The supervisor now publishes every 500 ms but measures across the last `HM_SUP_WINDOW_N` (2) samples**, i.e. a 1 s window sliding in half-second steps: fresh enough to plot, steady enough to read. Successive readings overlap by half.
+
+The implementation is a two-slot snapshot ring instead of a single "previous" table, and it needs no ageing pass or timestamps because of one observation: **the slot a sample is about to overwrite is the one taken `HM_SUP_WINDOW_N` samples ago, which is exactly the far end of its own window.** So `ref = &s_snap[seq % HM_SUP_WINDOW_N]`, diff against it, then overwrite it. Widening the window later is a one-constant change and costs one 352-byte slot.
+
+Two values expressed in samples but *tuned in time* moved with it:
+
+- `HM_SUP_SUMMARY_N` 10 → 20, holding one `SUP:` line per 10 s.
+- runaway confirmation `starve_streak >= 2` → `>= HM_SUP_STARVE_N` (**3**). Because windows now overlap, N samples span `(N-1) * HM_SUP_SAMPLE_MS + window` — 3 covers 2 s, matching what two 1 s samples covered before. 2 would have tripped at 1.5 s.
+
+**A consumer polling faster than the source now says so mechanically, not in a comment.** `HealthMonitor_CpuSeq()` counts publications, and `metric_sample()` appends CPU only when the count changes — keyed on the sequence, not the value, since two equal readings a second apart are still two samples. The plot therefore tracks the supervisor's true resolution whatever either period is set to, and this stops being a pair of constants that must be kept in agreement. It also fixed a present-day wart: the zeros `CpuPermille()` returns before the first reading no longer enter the history, so the CPU plot starts at its first real sample instead of scrolling a false flat line at zero off the left edge. Cost is that the CPU tile's value reads blank rather than `0` for the first second after the UI is revealed — and that first reading now arrives at 1 s rather than 2 s, since filling the window is faster.
+
+`metric_sample()` returns a bitmask of which metrics gained a sample and `tiles_refresh()` takes it, so a tile whose metric did not move is not invalidated at all. A view change (`s_dirty`) still forces both, since a new instance's labels hold whatever the last one left in them.
+
+**The bus simulator was integrating per-tick, not per-second.** `sim_advance()` did `tx += tx_rate` and `s_sim_uptime++` on every call — correct only while a call *was* one second. At 2 Hz the totals would have climbed at twice the TX RATE displayed next to them, and the uptime clock would have run at 2×. Fixed by giving it a time delta: `sim_advance(REFRESH_MS)` scales the accumulators, the CRC/SYM error probabilities (now in thousandths, so 4%/2% per second survives the truncation), and a new `s_sim_uptime_ms` accumulator that `s_sim_uptime` derives from. The simulator no longer cares what the refresh period is.
+
+**Two labels became wrong.** The bus run chart's axis said `"<- 40s ago"`; 40 samples at 2 Hz is 20 s. And the titlebar's `PLOT_WINDOW` of 24 samples now spans 12 s instead of 24 s — the window is chosen for *pitch* (24 across 74 px ≈ 3 px each, the mockup's proportion; all 40 would be under 2 px and read as a comb), so the sample count is what's load-bearing and the time span follows. Both documented at the constants rather than left implicit.
+
+**Measured on hardware.** Per-frame costs are unchanged, which is the result that matters — nothing in the paint paths regressed, so the whole change is a rate change:
+
+```
+titlebar probe                      bus probe
+  fixed ~134 us/frame, 24 ns/px       PANEL   1280x800 = 166868 us  <- old refresh
+  dot   12x12 =   302 us              REFRESH (targeted) = 19489 us
+  plot  80x28 =  1994 us              gauge    76x44   =   1365 us
+  card 158x42 =  6225 us              spark   358x204  =   8745 us
+                                      txbar[0] 46x202  =   5686 us
+```
+
+The bus refresh at 19.5 ms twice a second is **~3.9% of one core**, so that screen's `LEGATO_Tasks` share goes ~3% → ~6% — the cost of the doubling, paid as expected. The titlebar splits: only the tiles half doubles, the 10 Hz LED pulse (302 µs/frame) is untouched by any of this.
+
+One number to keep an eye on: the bus `spark` measured 8745 µs against 5450 µs before this change. The sparkline painter's cost tracks the polyline's *vertical excursion per column* (it narrows the row scan to what the candidate segments can reach), so it is genuinely data-dependent and the two runs plotted different random series — but the simulated feed's value distribution did not change, only its rate, so that does not explain a 60% jump on its own. Not chased. If it is stable across repeated `bus probe` runs rather than variance, it is real and unexplained.
+
 ### 2026-08-07 — Every bullet in the marvin UI was ~3px high: Legato centres the baseline, not the font box
 
 Greg, after two failed fixes: *"you need to check your math because they all show high, even in the .built lists. It is NOT just a visual artifact of 2 lines."* Correct on both counts. The `.built` list has single-line items, so the two-line explanation I had offered was worthless — and the real cause was that **the baseline formula I had been reasoning from was wrong.**

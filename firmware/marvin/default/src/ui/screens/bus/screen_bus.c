@@ -31,7 +31,7 @@
 
 /* 10BASE-T1S bus statistics — KPI tile row + per-node table + chart row, built
  * programmatically into the MGS layer-6 panel (Marvin_PANEL_BUS) and backed by the
- * T1SLink telemetry API. Refreshed ~1 Hz only while shown.
+ * T1SLink telemetry API. Refreshed every REFRESH_MS, only while shown.
  *
  * Layout mirrors tools' BusStatsScreen.tsx mockup, with Tailwind units resolved to
  * pixels (gap-3 = 12, rounded = 4, px-4 = 16, text-xs/sm/xl = 12/14/20) and the
@@ -46,6 +46,12 @@
 
 #define FB_NOCACHE   __attribute__((section(".region_nocache"), aligned (32)))
 static uint16_t FB_NOCACHE s_fb[BASE_W * BASE_H];
+
+/* Refresh period. The simulated feed integrates against it rather than assuming one tick
+ * is one second, so totals and uptime stay consistent with the rates on display whatever
+ * this is set to. SPARKLINE_SAMPLES of history is 40 * REFRESH_MS — keep the plot's axis
+ * label in step with it. */
+#define REFRESH_MS   500u
 
 /* ── layout ─────────────────────────────────────────────────────────────────
  * Content spans x 16..1264 below the shared titlebar (top ~65px). Rows are
@@ -380,7 +386,8 @@ static struct {
 } s_sim_rt[SIM_N];
 
 static uint32_t s_sim_util = 320u;   /* permille */
-static uint32_t s_sim_uptime;
+static uint32_t s_sim_uptime;        /* seconds, derived from the ms accumulator */
+static uint32_t s_sim_uptime_ms;
 static bool     s_sim_seeded;
 
 /* xorshift32 — a deterministic, allocation-free jitter source. */
@@ -407,13 +414,18 @@ static void sim_seed(void)
         s_sim_rt[i].crc = (uint16_t)(SIM_NODE[i].base_err * 2u + (rnd() % 4u));
         s_sim_rt[i].sym = (uint16_t)(SIM_NODE[i].base_err * 1u + (rnd() % 3u));
     }
-    s_sim_uptime = 15397u;   /* 4:16:37, like the mockup */
-    s_sim_seeded = true;
+    s_sim_uptime_ms = 15397u * 1000u;   /* 4:16:37, like the mockup */
+    s_sim_uptime    = s_sim_uptime_ms / 1000u;
+    s_sim_seeded    = true;
 }
 
 /* Advance one refresh tick: jitter each node's rate, accumulate totals, sprinkle
  * errors, and walk the utilization figure around 25–43%. */
-static void sim_advance(void)
+/* Advance the simulated feed by `dt_ms`. Rates are per-second by definition, so the totals,
+ * the uptime and the error probabilities all scale by dt — otherwise a faster refresh would
+ * show TX TOTAL climbing at a multiple of the TX RATE beside it, and the uptime running
+ * fast. */
+static void sim_advance(uint32_t dt_ms)
 {
     if (!s_sim_seeded) { sim_seed(); }
 
@@ -429,16 +441,19 @@ static void sim_advance(void)
         }
         s_sim_rt[i].tx_rate = (uint32_t)SIM_NODE[i].base_tx * j / 1000u;
         s_sim_rt[i].rx_rate = (uint32_t)SIM_NODE[i].base_rx * j / 1000u;
-        s_sim_rt[i].tx     += s_sim_rt[i].tx_rate;
-        s_sim_rt[i].rx     += s_sim_rt[i].rx_rate;
+        s_sim_rt[i].tx     += s_sim_rt[i].tx_rate * dt_ms / 1000u;
+        s_sim_rt[i].rx     += s_sim_rt[i].rx_rate * dt_ms / 1000u;
         s_sim_rt[i].age_ms  = (i == 0u) ? 0u : (rnd() % 600u);
 
-        if ((rnd() % 100u) < 4u) { s_sim_rt[i].crc++; }
-        if ((rnd() % 100u) < 2u) { s_sim_rt[i].sym++; }
+        /* 4% and 2% per second, in thousandths so the dt scaling survives truncation. */
+        if ((rnd() % 1000u) < (40u * dt_ms / 1000u)) { s_sim_rt[i].crc++; }
+        if ((rnd() % 1000u) < (20u * dt_ms / 1000u)) { s_sim_rt[i].sym++; }
     }
 
     s_sim_util = 250u + (rnd() % 190u);
-    s_sim_uptime++;
+
+    s_sim_uptime_ms += dt_ms;
+    s_sim_uptime     = s_sim_uptime_ms / 1000u;
 }
 
 static void sim_fill(unsigned i, T1SLink_NodeStats *out)
@@ -736,7 +751,7 @@ void ScreenBus_Setup(void)
 
         set_text(add_label(px, CHART_Y + CHART_H - 20, pw / 2, 14,
                            (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_600,
-                           LE_HALIGN_LEFT), "<- 40s ago");   /* 40 samples @ 1 Hz */
+                           LE_HALIGN_LEFT), "<- 20s ago");   /* SPARKLINE_SAMPLES * REFRESH_MS */
         set_text(add_label(px + pw / 2, CHART_Y + CHART_H - 20, pw / 2, 14,
                            (const leFont *)&DejaVuSansMono_12, &SCHEME_TEXT_ZINC_600,
                            LE_HALIGN_RIGHT), "now ->");
@@ -818,7 +833,7 @@ static void refresh_all(void)
 {
     char tmp[CAP];
 
-    if (s_sim) { sim_advance(); }
+    if (s_sim) { sim_advance(REFRESH_MS); }
 
     T1SLink_BusStats bs;
     if (bus_stats(&bs))
@@ -981,13 +996,13 @@ static void refresh_all(void)
     if (s_full_repaint) { Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS); }
 }
 
-/* ~1 Hz refresh, only while the bus view is the shown base view. */
+/* REFRESH_MS refresh, only while the bus view is the shown base view. */
 static void bus_task(void *param)
 {
     (void)param;
     for (;;)
     {
-        vTaskDelay(pdMS_TO_TICKS(1000));
+        vTaskDelay(pdMS_TO_TICKS(REFRESH_MS));
         if (!s_shown) { continue; }
         UiManager_RenderLock();
         refresh_all();
@@ -1029,7 +1044,7 @@ bool ScreenBus_Simulated(void)
 
 /* ── render probe ────────────────────────────────────────────────────────────
  * The custom-painted widgets on this screen, timed one frame each. Everything here repaints
- * on the 1 Hz refresh, so a slow paint costs continuously rather than only while touched —
+ * on every refresh, so a slow paint costs continuously rather than only while touched —
  * which is why the gauge and the TX bars were worth converting off the vector rasterizer.
  * See ui/gfx/render_probe.h for how to read the numbers. */
 void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
@@ -1051,7 +1066,7 @@ void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
         { "txbar[0]", s_bar[0] },
     };
 
-    /* The panel itself, for scale: this is what the 1 Hz refresh used to repaint in full. */
+    /* The panel itself, for scale: this is what the refresh used to repaint in full. */
     {
         uint32_t us = RenderProbe_WidgetUs(Marvin_PANEL_BUS, (iters > 4u) ? 4u : iters);
 
@@ -1062,7 +1077,7 @@ void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
     }
 
     /* And the real thing: one whole refresh plus the frame it causes. This is the number the
-     * 1 Hz task actually pays, and the only one that reflects `bus refresh full|targeted`.
+     * refresh task actually pays, and the only one that reflects `bus refresh full|targeted`.
      * Note it advances the simulated feed once per iteration, so a long run fast-forwards it. */
     {
         uint32_t hz = SYS_TIME_FrequencyGet();
@@ -1086,7 +1101,7 @@ void ScreenBus_Probe(unsigned iters, bus_probe_fn out, void *ctx)
 
         if (hz != 0u && n != 0u)
         {
-            (void)snprintf(line, sizeof line, "  REFRESH (%s) = %6lu us   <- what the 1 Hz task pays",
+            (void)snprintf(line, sizeof line, "  REFRESH (%s) = %6lu us   <- what the refresh task pays",
                            s_full_repaint ? "full" : "targeted",
                            (unsigned long)((ticks * 1000000u) / ((uint64_t)hz * n)));
             out(ctx, line);
