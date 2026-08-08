@@ -37,8 +37,17 @@
  * running even when a lower task spins, and reports the runaway by name. */
 #define HM_SUP_STACK_WORDS   512u
 #define HM_SUP_PRIORITY      6u
-#define HM_SUP_SAMPLE_MS     1000u     /* runaway-detection sample period */
-#define HM_SUP_SUMMARY_N     10u       /* emit a CPU summary every N samples */
+/* The supervisor publishes every HM_SUP_SAMPLE_MS but measures across the last
+ * HM_SUP_WINDOW_N samples, so the cadence and the averaging window are set independently:
+ * a fresh number twice a second for the titlebar sparkline, each one averaged over a full
+ * second so the figure the `health` command prints is steady rather than jumpy. Successive
+ * windows therefore overlap by half. */
+#define HM_SUP_SAMPLE_MS     500u      /* publish cadence */
+#define HM_SUP_WINDOW_N      2u        /* samples per measurement window (1 s) */
+#define HM_SUP_SUMMARY_N     20u       /* emit a CPU summary every N samples (10 s) */
+/* Consecutive starved samples before crying wolf. Windows overlap, so N samples span
+ * (N-1) * HM_SUP_SAMPLE_MS + the window: 3 covers 2 s, as two 1 s samples did before. */
+#define HM_SUP_STARVE_N      3u
 #define HM_SUP_IDLE_PCT      3u        /* idle below this + one hot task = runaway */
 #define HM_SUP_HOT_PCT       90u
 
@@ -80,14 +89,26 @@ static uint64_t          s_rpt_rt[HM_MAX_TASKS];
 static volatile bool     s_ready;
 
 static TaskStatus_t      s_sup_tasks[HM_MAX_TASKS];
-/* Previous per-task runtime counters, keyed by handle, for interval deltas. */
-static TaskHandle_t      s_prev_handle[HM_MAX_TASKS];
-static uint64_t          s_prev_rt[HM_MAX_TASKS];
-static UBaseType_t       s_prev_n;
-static uint64_t          s_prev_total;
 
-/* Latest sample's non-idle share, permille. Published for the UI (see the header). */
+/* Per-task runtime counters, keyed by handle, for interval deltas — one snapshot per
+ * sample in the window. Held as a ring rather than a single "previous" table because the
+ * measurement window is wider than the publish cadence: the slot a sample overwrites is
+ * the one taken HM_SUP_WINDOW_N samples ago, which is exactly the far end of its window,
+ * so the ring needs no ageing pass and no timestamps. */
+typedef struct
+{
+    TaskHandle_t handle[HM_MAX_TASKS];
+    uint64_t     rt[HM_MAX_TASKS];
+    UBaseType_t  n;              /* 0 until the slot has been filled once */
+    uint64_t     total;
+} hm_snapshot_t;
+
+static hm_snapshot_t     s_snap[HM_SUP_WINDOW_N];
+
+/* Latest sample's non-idle share, permille, and a counter of how many have been published.
+ * Both for the UI (see the header). */
 static volatile uint32_t s_cpu_permille;
+static volatile uint32_t s_cpu_seq;
 
 /* ---- helpers ------------------------------------------------------------ */
 
@@ -322,27 +343,28 @@ static void stackdump_write(void)
 
 /* ---- supervisor (runaway-task detector) --------------------------------- */
 
-static uint64_t prev_rt_for(TaskHandle_t h)
+static uint64_t snap_rt_for(const hm_snapshot_t *s, TaskHandle_t h)
 {
-    for (UBaseType_t i = 0u; i < s_prev_n; i++)
+    for (UBaseType_t i = 0u; i < s->n; i++)
     {
-        if (s_prev_handle[i] == h) { return s_prev_rt[i]; }
+        if (s->handle[i] == h) { return s->rt[i]; }
     }
-    return 0u;   /* task not seen last sample → treat as no prior time */
+    return 0u;   /* task not in that snapshot → treat as no prior time */
 }
 
-/* One sample: diff each task's runtime against the previous sample and report
- * a starving CPU (one task hot while idle ~= 0). Runs at the top priority, so
- * it keeps sampling even while a lower task spins. */
+/* One sample: diff each task's runtime across the window and report a starving CPU (one
+ * task hot while idle ~= 0). Runs at the top priority, so it keeps sampling even while a
+ * lower task spins. */
 static void supervisor_sample(uint32_t seq)
 {
+    hm_snapshot_t *ref = &s_snap[seq % HM_SUP_WINDOW_N];   /* the window's far end */
     uint64_t    total = 0u;
     UBaseType_t n     = uxTaskGetSystemState(s_sup_tasks, HM_MAX_TASKS, &total);
     if (n == 0u) { return; }   /* HM_MAX_TASKS too small — nothing usable */
 
     TaskHandle_t idle = xTaskGetIdleTaskHandle();
 
-    uint64_t    total_delta = (total >= s_prev_total) ? (total - s_prev_total) : 0u;
+    uint64_t    total_delta = (total >= ref->total) ? (total - ref->total) : 0u;
     uint64_t    idle_delta  = 0u;
     uint64_t    hot_delta   = 0u;
     uint64_t    sum_delta   = 0u;
@@ -351,7 +373,7 @@ static void supervisor_sample(uint32_t seq)
     for (UBaseType_t i = 0u; i < n; i++)
     {
         const TaskStatus_t *t = &s_sup_tasks[i];
-        uint64_t prev = prev_rt_for(t->xHandle);
+        uint64_t prev = snap_rt_for(ref, t->xHandle);
         uint64_t d    = (t->ulRunTimeCounter >= prev) ? (t->ulRunTimeCounter - prev) : 0u;
         sum_delta += d;
         if (t->xHandle == idle) { idle_delta = d; }
@@ -362,34 +384,36 @@ static void supervisor_sample(uint32_t seq)
         }
     }
 
-    bool have_prev = (s_prev_n > 0u);
+    bool have_ref = (ref->n > 0u);
 
-    /* Roll the snapshot into the prev table for the next interval. */
+    /* Overwrite the slot just measured against: it becomes the far end of the window
+     * HM_SUP_WINDOW_N samples from now. */
     for (UBaseType_t i = 0u; i < n; i++)
     {
-        s_prev_handle[i] = s_sup_tasks[i].xHandle;
-        s_prev_rt[i]     = s_sup_tasks[i].ulRunTimeCounter;
+        ref->handle[i] = s_sup_tasks[i].xHandle;
+        ref->rt[i]     = s_sup_tasks[i].ulRunTimeCounter;
     }
-    s_prev_n     = n;
-    s_prev_total = total;
+    ref->n     = n;
+    ref->total = total;
 
-    if (!have_prev || total_delta == 0u) { return; }
+    if (!have_ref || total_delta == 0u) { return; }
 
     uint32_t idle_pm = (uint32_t)((idle_delta * 1000u) / total_delta);
     s_cpu_permille = (idle_pm < 1000u) ? (1000u - idle_pm) : 0u;
+    s_cpu_seq++;   /* publish after the value, so a reader that sees the seq sees the value */
 
     unsigned idle_pct = (unsigned)((idle_delta * 100u) / total_delta);
     unsigned hot_pct  = (unsigned)((hot_delta  * 100u) / total_delta);
     unsigned isr_pct  = (sum_delta < total_delta)
                         ? (unsigned)(((total_delta - sum_delta) * 100u) / total_delta) : 0u;
 
-    /* Require two consecutive starved samples before crying wolf — a single
+    /* Require HM_SUP_STARVE_N consecutive starved samples before crying wolf — a single
      * CPU-bound frame shouldn't trip it; a real spin persists. */
     static unsigned starve_streak;
     bool starved = (idle_pct <= HM_SUP_IDLE_PCT) && (hot_pct >= HM_SUP_HOT_PCT);
     starve_streak = starved ? (starve_streak + 1u) : 0u;
 
-    if (starve_streak >= 2u)
+    if (starve_streak >= HM_SUP_STARVE_N)
     {
         LOG_ERROR("HM: RUNAWAY '%s' cpu=%u%% idle=%u%% isr=%u%%\r\n",
                   hot_name, hot_pct, idle_pct, isr_pct);
@@ -481,4 +505,9 @@ void HealthMonitor_NotifyReady(void)
 uint32_t HealthMonitor_CpuPermille(void)
 {
     return s_cpu_permille;
+}
+
+uint32_t HealthMonitor_CpuSeq(void)
+{
+    return s_cpu_seq;
 }

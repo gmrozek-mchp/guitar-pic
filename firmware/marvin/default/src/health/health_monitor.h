@@ -29,12 +29,20 @@ void HealthMonitor_Initialize(void);
  * capture is armed (end of the boot sequence). */
 void HealthMonitor_NotifyReady(void);
 
-/* Aggregate CPU load over the supervisor's most recent 1 s sample, in permille of one
- * core — everything that is not the idle task, so interrupt time counts as load. 0 until
- * the monitor is armed and has two samples to diff. Safe to call from any task (a single
- * word, published by the supervisor and read without a lock). Drives the titlebar's CPU
- * sparkline; the supervisor computes it anyway for its runaway check. */
+/* Aggregate CPU load in permille of one core — everything that is not the idle task, so
+ * interrupt time counts as load. Averaged over the supervisor's measurement window (1 s)
+ * and republished on its faster cadence (500 ms), so it is both steady enough to read as
+ * a number and fresh enough to plot; consecutive readings overlap. 0 until the monitor is
+ * armed and the window has filled. Safe to call from any task (a single word, published by
+ * the supervisor and read without a lock). Drives the titlebar's CPU sparkline; the
+ * supervisor computes it anyway for its runaway check. */
 uint32_t HealthMonitor_CpuPermille(void);
+
+/* How many readings the supervisor has published. Lets a consumer tell a fresh reading
+ * from the same one read again — the titlebar's CPU sparkline advances only on a change,
+ * so it neither stretches one value across several samples nor records the zeros returned
+ * before the first real reading. */
+uint32_t HealthMonitor_CpuSeq(void);
 
 /* Render the current per-task table (header, one row per task, heap footer)
  * through a caller-supplied line sink. Used by the `health` console command;
