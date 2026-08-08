@@ -16,6 +16,7 @@
 #include "ui/ui_text_metrics.h"
 
 #include "ui/gfx/qr_raster.h"        /* QR_RASTER_W — the QR slot is sized from it */
+#include "ui/gfx/render_probe.h"
 #include "ui/gfx/ui_surface.h"
 #include "gfx/canvas/gfx_canvas_api.h"
 #include "gfx/legato/legato.h"
@@ -28,6 +29,8 @@
 #include "gfx/legato/generated/le_gen_assets.h"
 #include "gfx/legato/generated/screen/le_gen_screen_Marvin.h"   /* Marvin_PANEL_SYSTEM */
 #include "util/legato_utf8.h"
+#include "definitions.h"                            /* SYS_TIME_* (probe) */
+#include "gfx/legato/renderer/legato_renderer.h"    /* leRenderer_Paint (probe) */
 
 /* System info — a product showcase of the seven boards plus the project that contains
  * them, built programmatically into the MGS layer-7 panel (Marvin_PANEL_SYSTEM). Two views
@@ -549,6 +552,32 @@ static leWidget       *s_d_frame;
 static const void     *s_photo_px;   /* selected node's photo pixels, NULL if none */
 static bool            s_shown;      /* this screen owns the panel (and so OVR1)   */
 
+/* Whole-panel invalidate on a node switch. Now off: measured 3.1x faster targeted
+ * (185,715 -> 59,527 us per switch), and every mutation show_detail makes damages itself.
+ * `system refresh full` restores the old behaviour for comparison. */
+static bool            s_full_repaint = false;
+
+/* Which node the detail tree is currently pointed at. Written by show_detail; read by the
+ * probe so it can restore what was on screen. */
+static unsigned        s_detail_node;
+
+/* False until show_detail has populated the tree once, so the first call is never mistaken
+ * for a no-op re-show of node 0. */
+static bool            s_detail_valid;
+
+/* Set when a switch queued no damage at all, so view_task must not wait for a frame that
+ * will never come — see the note where it is written. */
+static volatile bool   s_skip_wait;
+
+/* Latency of the last REAL grid->detail tap, µs: show_detail entry to the detail canvas
+ * actually being bound. The probe cannot measure this — it runs under UiManager_RenderLock
+ * (LEGATO_Tasks and the input task suspended) and calls leRenderer_Paint synchronously, so
+ * it excludes view_task's wake-up, WaitFrameAfter's 5 ms poll granularity, and DDR
+ * contention from the capture DMA, T1S and USB, none of which the render lock stops. This is
+ * what the operator actually waits through. Reported by `system probe`. */
+static volatile uint32_t s_tap_us;
+static uint64_t          s_tap_t0;
+
 /* Deferred bind of the detail canvas (view_task): s_pending_frame is the renderer's frame
  * count when the repaint for the selected node was queued, and s_view_gen is bumped on
  * every request so a bind the user has navigated past can tell it is stale. */
@@ -824,9 +853,22 @@ static void view_task(void *param)
         (void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
 
         uint32_t gen = s_view_gen;
-        UiManager_WaitFrameAfter(s_pending_frame);
 
-        if (gen == s_view_gen && s_shown) { bind_view(VIEW_DETAIL); }
+        /* Nothing to wait for when the switch changed nothing (see show_detail). */
+        if (!s_skip_wait) { UiManager_WaitFrameAfter(s_pending_frame); }
+
+        if (gen == s_view_gen && s_shown)
+        {
+            bind_view(VIEW_DETAIL);
+
+            /* Closed here rather than at the end of the repaint: the bind is the moment the
+             * new node is on the panel, which is what the tap was waiting for. */
+            uint32_t hz = SYS_TIME_FrequencyGet();
+            if (hz != 0u)
+            {
+                s_tap_us = (uint32_t)(((SYS_TIME_Counter64Get() - s_tap_t0) * 1000000u) / hz);
+            }
+        }
     }
 }
 
@@ -837,6 +879,20 @@ static void show_detail(unsigned n)
 {
     configASSERT(n < NODE_N);
     const node_info_t *d = &NODE[n];
+
+    /* Re-showing the node already on the tree changes nothing: lestring_set_utf8 skips
+     * identical writes, _leWidget_SetScheme early-outs on an unchanged scheme, setVisible
+     * returns LE_FAILURE when the flag already matches, and setImage returns early on the
+     * same image. With targeted damage that means NO damage and therefore no frame, so the
+     * usual wait would block until some unrelated layer painted (the grid titlebar's pulse)
+     * or time out. Whole-panel mode never hit this because it always damaged something.
+     *
+     * This is the common navigation pattern, not a corner case: back to the grid and re-tap
+     * the same card. Detecting it here also makes it genuinely instant. */
+    const bool unchanged = s_detail_valid && (s_detail_node == n);
+
+    s_detail_node  = n;
+    s_detail_valid = true;
 
     s_d_accent->fn->setScheme(s_d_accent, d->accent);
 
@@ -927,10 +983,17 @@ static void show_detail(unsigned n)
                                         sel ? NODE[i].accent : &SCHEME_TEXT_ZINC_600);
     }
 
-    /* The strings above were written straight into their leFixedStrings, which does not
-     * damage the widgets, so the canvas has to be invalidated by hand — this is the only
-     * thing that gets the new node's text painted. */
-    Marvin_PANEL_SYSTEM_DETAIL->fn->invalidate(Marvin_PANEL_SYSTEM_DETAIL);
+    /* Whole-panel invalidate, on by default since this screen was written on the belief that
+     * writing a leFixedString does not damage its widget. That belief is false —
+     * lestring_set_utf8 reaches leFixedString_SetFromChar, which preinvalidates and
+     * invalidates unconditionally, and every setScheme above damages as well — so this is
+     * very probably redundant. Kept switchable rather than simply deleted because the saving
+     * depends on how Legato coalesces ~76 scattered damage rects, which is a measurement:
+     * `system refresh targeted` then `system probe`. */
+    if (s_full_repaint)
+    {
+        Marvin_PANEL_SYSTEM_DETAIL->fn->invalidate(Marvin_PANEL_SYSTEM_DETAIL);
+    }
 
     s_view_gen++;
 
@@ -944,7 +1007,9 @@ static void show_detail(unsigned n)
     else if (s_view_task != NULL)
     {
         /* Sampled here, where the damage is queued and the renderer is between frames. */
+        s_skip_wait     = unchanged;
         s_pending_frame = UiManager_FrameCount();
+        s_tap_t0        = SYS_TIME_Counter64Get();
         (void)xTaskNotifyGive(s_view_task);
     }
 }
@@ -1264,6 +1329,100 @@ void ScreenSystem_SetInput(bool on)
         if (on && i == (unsigned)s_view) { s_root[i]->flags |=  LE_WIDGET_ENABLED; }
         else                             { s_root[i]->flags &= ~LE_WIDGET_ENABLED; }
     }
+}
+
+void ScreenSystem_SetFullRepaint(bool on)
+{
+    s_full_repaint = on;
+}
+
+bool ScreenSystem_FullRepaint(void)
+{
+    return s_full_repaint;
+}
+
+/* ── node-tap probe ──────────────────────────────────────────────────────────
+ * What a tap costs, end to end: show_detail() re-points the tree at another node and the
+ * frame that follows paints it. That total is latency the operator sees rather than
+ * background load — bind_view deliberately holds the grid on screen until the repaint
+ * lands, so the grid→detail transition cannot be faster than this number.
+ *
+ * Alternates between two nodes so every string and scheme genuinely changes each iteration;
+ * repeating one node would let lestring_set_utf8's identical-write skip make the second
+ * iteration free and flatter the result. Restores the node that was showing.
+ *
+ * Requires the detail view to be bound, so show_detail takes its already-bound branch and
+ * does not hand work to view_task; driving the painter here is legitimate because
+ * RenderLock's contract is that LEGATO_Tasks is suspended with no paint in flight. */
+void ScreenSystem_Probe(unsigned iters, system_probe_fn out, void *ctx)
+{
+    if (out == NULL) { return; }
+
+    /* Printed before the guard: after coming back to the grid the figure is still the one
+     * from the last tap, and that is exactly when someone asks for it. */
+    {
+        char l[96];
+        if (s_tap_us != 0u)
+        {
+            (void)snprintf(l, sizeof l, "  last real tap (grid->detail) = %6lu us",
+                           (unsigned long)s_tap_us);
+        }
+        else
+        {
+            (void)snprintf(l, sizeof l, "  last real tap: none yet (tap a card on the grid)");
+        }
+        out(ctx, l);
+    }
+
+    if (!s_shown || s_view != VIEW_DETAIL)
+    {
+        out(ctx, "system: open a node's detail view first (nav to System Info, tap a card)");
+        return;
+    }
+
+    uint32_t hz = SYS_TIME_FrequencyGet();
+    if (hz == 0u) { return; }
+    if (iters == 0u || iters > 50u) { iters = 6u; }
+
+    const unsigned restore = s_detail_node;
+    char     line[96];
+    uint64_t ticks = 0u;
+    unsigned done  = 0u;
+
+    for (unsigned i = 0u; i < iters; i++)
+    {
+        unsigned n = (unsigned)((restore + 1u + i) % NODE_N);
+
+        UiManager_RenderLock();
+
+        uint64_t t0 = SYS_TIME_Counter64Get();
+        show_detail(n);        /* queues the damage, whichever mode is selected */
+        leRenderer_Paint();    /* and the frame that resolves it, synchronously */
+        ticks += SYS_TIME_Counter64Get() - t0;
+
+        UiManager_RenderUnlock();
+
+        done++;
+        vTaskDelay(1);         /* leave the renderer genuinely idle for the next lock */
+    }
+
+    UiManager_RenderLock();
+    show_detail(restore);
+    leRenderer_Paint();
+    UiManager_RenderUnlock();
+
+    uint32_t us = (uint32_t)((ticks * 1000000u) / ((uint64_t)hz * done));
+    (void)snprintf(line, sizeof line, "  node switch (%s) = %6lu us   %u iters",
+                   s_full_repaint ? "full panel" : "targeted", (unsigned long)us, done);
+    out(ctx, line);
+
+    /* For scale: what a full-screen repaint of this panel costs regardless of strategy.
+     * With `targeted` the switch should come in well under it; with `full panel` it is
+     * essentially this number, which is the point of the comparison. */
+    us = RenderProbe_WidgetUs(Marvin_PANEL_SYSTEM_DETAIL, 2u);
+    (void)snprintf(line, sizeof line, "  full panel  %4dx%-3d (%7d px) = %6lu us",
+                   (int)BASE_W, (int)BASE_H, (int)(BASE_W * BASE_H), (unsigned long)us);
+    out(ctx, line);
 }
 
 void ScreenSystem_SetShown(bool shown)

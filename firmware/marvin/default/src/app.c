@@ -36,6 +36,7 @@
 #include "app.h"
 #include "definitions.h"
 #include "log.h"
+#include "log_ring.h"
 #include "video/video.h"
 #include "detector/detector.h"
 #include "game/game_timing.h"
@@ -126,6 +127,11 @@ void APP_Initialize ( void )
      * (including video task startup) can use LOG_*. Default level is
      * INFO; flip to DEBUG via log_set_level() to enable verbose. */
     log_init(LOG_LEVEL_INFO);
+
+    /* Keep the last lines in RAM as well as sending them to DBGU, so the operator UI's
+     * activity log can show them. Installed here rather than later so the boot lines are
+     * captured too. */
+    log_set_sink(log_ring_vwrite);
 
     /* UI manager: the UI orchestrator + compositor. Assigns the per-screen canvas
      * surfaces (pre-scheduler) and creates the boot task that runs the bring-up

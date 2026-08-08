@@ -26,6 +26,7 @@ extern "C" {
 #define CANVAS_BUS         6u   /* Marvin layer 6 — 10BASE-T1S bus statistics  */
 #define CANVAS_SYSTEM      7u   /* Marvin layer 7 — system info, node grid      */
 #define CANVAS_SYSTEM_DETAIL 8u /* Marvin layer 8 — system info, node detail    */
+#define CANVAS_LOG         9u   /* Marvin layer 9 — activity log                */
 
 /* LCDC hardware-layer indices (drvLayer / layerOrder): BASE 0, HEO 1, OVR1 2,
  * OVR2 3. HEO is the live camera (off-limits). A canvas is bound to a hardware
@@ -191,6 +192,7 @@ void UiManager_ShowDashboard(void);
 void UiManager_ShowWiimotes(void);
 void UiManager_ShowStats(void);
 void UiManager_ShowSystem(void);
+void UiManager_ShowLog(void);
 
 /* Gate the currently-shown base view's pickability (routes to the dashboard or the
  * wiimotes screen per the active view). Used by the nav drawer to be modal over

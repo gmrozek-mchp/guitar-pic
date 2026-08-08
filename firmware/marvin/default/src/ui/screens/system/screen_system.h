@@ -36,6 +36,24 @@ void ScreenSystem_SetInput(bool on);
  * repaint only when the view actually changes. */
 void ScreenSystem_SetShown(bool shown);
 
+/* Time what a node tap actually costs: one show_detail() to a different node plus the frame
+ * it causes, which is the latency the operator waits through — bind_view holds the grid on
+ * screen until that repaint lands. Reports through `out`, the HealthMonitor_Report sink
+ * shape. Requires the detail view to be the shown base view. */
+typedef void (*system_probe_fn)(void *ctx, const char *line);
+
+void ScreenSystem_Probe(unsigned iters, system_probe_fn out, void *ctx);
+
+/* Keep the whole-panel invalidate in show_detail (the default, and the behaviour since this
+ * screen was written) or rely on per-setter damage instead.
+ *
+ * `set_text` reaches leFixedString_SetFromChar, which preinvalidates and invalidates
+ * unconditionally, and setScheme damages too — so the whole-panel invalidate is very
+ * probably redundant, exactly as the bus screen's turned out to be on 2026-08-07. Runtime
+ * A/B rather than a bet: `system refresh targeted` then `system probe`. */
+void ScreenSystem_SetFullRepaint(bool on);
+bool ScreenSystem_FullRepaint(void);
+
 #ifdef __cplusplus
 }
 #endif

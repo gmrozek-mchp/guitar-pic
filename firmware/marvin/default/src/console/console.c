@@ -13,6 +13,7 @@
 
 #include "definitions.h"
 #include "log.h"
+#include "log_ring.h"
 #include "embedded_cli.h"
 
 #include "game/game_timing.h"
@@ -43,6 +44,10 @@
 #include "ui/titlebar.h"
 #include "ui/screens/wiimotes/screen_wiimotes.h"
 #include "ui/screens/bus/screen_bus.h"
+#include "ui/screens/system/screen_system.h"
+#include "ui/screens/log/screen_log.h"
+#include "ui/widgets/log_list/widget_log_list.h"
+#include "ui/gfx/text_lut.h"
 #include "flash/qspi_smoke.h"
 #include "flash/settings.h"
 
@@ -1108,6 +1113,147 @@ static void cmd_wiimotes(EmbeddedCli *cli, char *args, void *ctx)
 }
 
 /* Render cost of the bus screen's custom widgets — all of them repaint at 1 Hz. */
+/* The activity log: the ring the UI screen reads, plus the severity filter that decides
+ * what reaches both it and DBGU.
+ *
+ * `dump` prints the tags verbatim rather than the screen's readable display names — the
+ * raw tag is what an engineer greps a serial capture for. */
+static void cmd_log(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    const char *val = embeddedCliGetToken(args, 2);
+
+    if (tok != NULL && strcmp(tok, "level") == 0)
+    {
+        static const struct { const char *name; log_level_t lvl; } LVL[] = {
+            { "error", LOG_LEVEL_ERROR }, { "warn", LOG_LEVEL_WARN },
+            { "info",  LOG_LEVEL_INFO  }, { "debug", LOG_LEVEL_DEBUG },
+        };
+
+        if (val != NULL)
+        {
+            for (size_t i = 0u; i < sizeof LVL / sizeof LVL[0]; i++)
+            {
+                if (strcmp(val, LVL[i].name) == 0)
+                {
+                    log_set_level(LVL[i].lvl);
+                    console_printf("log level = %s", LVL[i].name);
+                    return;
+                }
+            }
+            console_printf("usage: log level <error|warn|info|debug>");
+            return;
+        }
+
+        console_printf("log level = %s", LVL[(unsigned)log_get_level()].name);
+        return;
+    }
+
+    if (tok != NULL && strcmp(tok, "probe") == 0)
+    {
+        ScreenLog_Probe((val != NULL) ? (unsigned)atoi(val) : 8u, sd_out, NULL);
+        return;
+    }
+
+    /* Text-path A/B. `ustring` is Legato's own string renderer, `walk` is our glyph walk on
+     * Legato's per-pixel blend (so the delta from ustring is the redundant string
+     * measuring), `lut` adds the blend lookup table (so the delta from walk is the
+     * per-pixel path). Run `log probe` after each. */
+    if (tok != NULL && strcmp(tok, "text") == 0)
+    {
+        if (val != NULL)
+        {
+            text_path_t p;
+
+            if      (strcmp(val, "ustring") == 0) { p = TEXT_PATH_USTRING; }
+            else if (strcmp(val, "walk")    == 0) { p = TEXT_PATH_WALK;    }
+            else if (strcmp(val, "lut")     == 0) { p = TEXT_PATH_LUT;     }
+            else { console_printf("usage: log text <ustring|walk|lut>"); return; }
+
+            ScreenLog_SetTextPath(p);
+        }
+
+        uint32_t built = 0u, refused = 0u;
+        TextLut_CacheStats(&built, &refused);
+        console_printf("log text = %s  (lut tables built %lu, refused %lu)",
+                       TextLut_PathName(LogList_TextPath()),
+                       (unsigned long)built, (unsigned long)refused);
+        return;
+    }
+
+    if (tok == NULL || strcmp(tok, "dump") == 0)
+    {
+        uint32_t held = log_ring_count();
+        uint32_t n    = (val != NULL) ? (uint32_t)atoi(val) : held;
+        if (n > held) { n = held; }
+
+        uint32_t err = 0u, warn = 0u;
+        log_ring_counts(&err, &warn, NULL);
+        console_printf("log: %lu held, %lu err, %lu warn, %lu since boot, level %s",
+                       (unsigned long)held, (unsigned long)err, (unsigned long)warn,
+                       (unsigned long)log_ring_seq(),
+                       (log_get_level() == LOG_LEVEL_DEBUG) ? "debug" :
+                       (log_get_level() == LOG_LEVEL_INFO)  ? "info"  :
+                       (log_get_level() == LOG_LEVEL_WARN)  ? "warn"  : "error");
+
+        /* Oldest first, so a dump reads like the serial scrollback it came from. */
+        for (uint32_t i = n; i-- > 0u; )
+        {
+            log_ring_entry_t e;
+            if (!log_ring_get(i, &e)) { continue; }
+
+            uint32_t sec = e.uptime_ms / 1000u;
+            char     tag[24];
+            uint32_t tl = e.src_len;
+
+            if (tl >= sizeof tag) { tl = sizeof tag - 1u; }
+            memcpy(tag, e.text, tl);
+            tag[tl] = '\0';
+
+            console_printf("  %02lu:%02lu:%02lu.%03lu %-5s %-13s %s",
+                           (unsigned long)(sec / 3600u), (unsigned long)((sec / 60u) % 60u),
+                           (unsigned long)(sec % 60u),   (unsigned long)(e.uptime_ms % 1000u),
+                           (e.lvl == LOG_LEVEL_ERROR) ? "ERR"  :
+                           (e.lvl == LOG_LEVEL_WARN)  ? "WARN" :
+                           (e.lvl == LOG_LEVEL_INFO)  ? "INFO" : "DBG",
+                           (tl > 0u) ? tag : "-", &e.text[e.msg_off]);
+        }
+        return;
+    }
+
+    console_printf("usage: log [dump [n] | level <error|warn|info|debug> | probe [iters] | text <ustring|walk|lut>]");
+}
+
+/* System Info: what a node tap costs, and the whole-panel-vs-targeted A/B behind it.
+ * The detail repaint is user-visible latency — bind_view holds the grid on screen until it
+ * lands — so this is a responsiveness number, not a background-load one. */
+static void cmd_system(EmbeddedCli *cli, char *args, void *ctx)
+{
+    (void)cli; (void)ctx;
+    const char *tok = embeddedCliGetToken(args, 1);
+    const char *val = embeddedCliGetToken(args, 2);
+
+    if (tok != NULL && strcmp(tok, "refresh") == 0)
+    {
+        if (val != NULL && strcmp(val, "full") == 0)          { ScreenSystem_SetFullRepaint(true); }
+        else if (val != NULL && strcmp(val, "targeted") == 0) { ScreenSystem_SetFullRepaint(false); }
+        else { console_printf("usage: system refresh <full|targeted>"); return; }
+
+        console_printf("system refresh = %s",
+                       ScreenSystem_FullRepaint() ? "full panel" : "targeted");
+        return;
+    }
+
+    if (tok == NULL || strcmp(tok, "probe") != 0)
+    {
+        console_printf("usage: system <probe [iters] | refresh <full|targeted>>");
+        return;
+    }
+
+    ScreenSystem_Probe((val != NULL) ? (unsigned)atoi(val) : 6u, sd_out, NULL);
+}
+
 static void cmd_bus(EmbeddedCli *cli, char *args, void *ctx)
 {
     (void)cli; (void)ctx;
@@ -1495,6 +1641,8 @@ static const CliCommandBinding bindings[] = {
         { "perf",     "perf [dump <canvas> [x y w h]]: perf-log state, or request a canvas dump", true, NULL, cmd_perf },
         { "nav",      "nav [slide on|off | icon <row> | px <x> <y> [w h]]: drawer slide / pixel dump", true, NULL, cmd_nav },
         { "bus",     "bus <probe [iters] | refresh full|targeted>: render cost / refresh strategy", true, NULL, cmd_bus },
+        { "system",  "system <probe [iters] | refresh full|targeted>: node-tap repaint latency", true, NULL, cmd_system },
+        { "log",     "log [dump [n] | level <lvl> | probe [iters] | text <ustring|walk|lut>]: activity log ring / severity / render cost", true, NULL, cmd_log },
         { "wiimotes","wiimotes probe [iters]: render cost of the whammy / tilt / fret widgets", true, NULL, cmd_wiimotes },
         { "gamma",  "gamma <on|off>: toggle HEO video levels expansion (A/B)", true, NULL, cmd_gamma },
         { "titlebar","titlebar [pulse <on|off> | tiles <on|off> | probe [iters]]: metric-tile / LED render load, frames/s, per-frame cost", true, NULL, cmd_titlebar },

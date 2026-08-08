@@ -31,8 +31,8 @@ These are distinct and must not be collapsed (this has been a recurring source o
 **"canvas ≠ layer" is true only for the *hardware* layer (3), not for the *Legato* layer (2).**
 A panel never *owns* a HW layer — two canvases never shown together can share one; the same
 canvas can be on `OVR1` in one situation and `OVR2` in another. The canvas pool
-(`CONFIG_CANVAS_NUM_OBJ = 40`) sets how many layer-screens may be **defined** — nine today
-(`LE_LAYER_COUNT = 9`, canvases 0–8); the LCDC then composites **any 3** of them onto its 3
+(`CONFIG_CANVAS_NUM_OBJ = 40`) sets how many layer-screens may be **defined** — ten today
+(`LE_LAYER_COUNT = 10`, canvases 0–9); the LCDC then composites **any 3** of them onto its 3
 usable HW layers at once — *define many, show a few.*
 
 **The pool size is not the ceiling it looks like.** `CONFIG_CANVAS_NUM_OBJ` only sizes the
@@ -40,12 +40,19 @@ static `GFXC_CANVAS canvas[]` array (`gfx_canvas.c:67`); `GFXC_Initialize` marks
 slot `CANVAS_ID_INVALID` / `GFXC_FX_IDLE`, so spare slots are inert at ~150 B of BSS each and
 raising the number is an MCC regen and nothing more. `LE_LAYER_COUNT` is MGS-derived, and
 `leState.layerList` is a dynamic `leList` rather than a fixed array — no ceiling there either.
-What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, 34 MB): a full-screen
-RGB565 surface is 1.95 MB, and with the nine layers below defined the region is 32.79 MB used.
-The ninth layer-screen (System Info's detail view, 2026-08-06) is what forced the
-`ram_nocache`/`ram` split to move — 32 → 34 MB, an MCC setting, *not* a bigger pool. The
-splash's 4 MB RGBA8888 buffer is the obvious reclaim if more is ever wanted, and is now the
-**preferred** source: the region itself cannot grow much further (below).
+What actually bounds the screen count is **`ram_nocache`** (`ddram.ld`, now 40 MB): a
+full-screen RGB565 surface is 1.95 MB, and with the ten layers below defined the region is
+**34.74 MB used of 40** (36,432,480 B, measured 2026-08-08) — 5.26 MB spare, so an 11th
+layer-screen needs no reclaim at all. The
+region has been resized twice for exactly this reason, both times an MCC setting rather
+than a bigger pool: 32 → 34 MB for the ninth layer-screen (System Info's detail view,
+2026-08-06), then 34 → 40 MB ahead of the tenth (the activity log, 2026-08-08).
+
+> The splash's 4 MB RGBA8888 buffer used to be described here as the *preferred* reclaim.
+> It is not, and the activity log is why: the splash is **on screen while the other screens
+> paint behind it**, so a screen aliasing that buffer could not paint until after the
+> reveal. Resize the region instead while there is room to (below), and keep the splash
+> buffer as a last resort that costs boot sequencing.
 
 > **`ram_nocache` cannot grow past ~60 MB, and overshooting it does not fail loudly.** `ddram.ld`
 > places `.text` at a **hard-coded `0x23f00000`** — DDR base + 63 MB — which does *not* move when the
@@ -57,8 +64,8 @@ splash's 4 MB RGBA8888 buffer is the obvious reclaim if more is ever wanted, and
 > boundary so some functions crawl and others run at full speed. Nothing warns: `.text` uses an
 > explicit address rather than `>ram`, so the linker never region-checks it, and as long as
 > `.region_nocache`'s *used* size stays under 63 MB no bytes actually collide. Confirmed on hardware
-> 2026-08-06 (64 MB stalled at boot, 34 MB fine). Needing more than ~60 MB means moving `.text` too,
-> which is an MCC change — `ddram.ld` is generated.
+> 2026-08-06 (64 MB stalled at boot, 34 MB fine; 40 MB fine as of 2026-08-08). Needing more than
+> ~60 MB means moving `.text` too, which is an MCC change — `ddram.ld` is generated.
 
 ### 0.1 Direction (decided 2026-06-29): adopt MGS's single-master-screen / layer-screen model
 
@@ -174,7 +181,7 @@ lifecycle events are direct calls).
 
 ### 4.1 Two layer counts — don't conflate them
 - **`LE_LAYER_COUNT`** (Legato, `legato_config.h:156`) = how many canvases / Legato layers the global
-  `layerList` manages = **9** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
+  `layerList` manages = **10** (the Marvin layer-screens, `CANVAS_*` in `ui_manager.h`):
 
   | Layer / canvas | Panel | Role | HW layer when shown |
   |---|---|---|---|
@@ -187,6 +194,7 @@ lifecycle events are direct calls).
   | 6 | `PANEL_BUS` | 10BASE-T1S bus statistics (base view) | BASE |
   | 7 | `PANEL_SYSTEM` | system info — node grid (base view) | BASE |
   | 8 | `PANEL_SYSTEM_DETAIL` | system info — node detail (base view) | BASE |
+  | 9 | `PANEL_LOG` | activity log (base view) | BASE |
 
   MGS derives the count as the **max layer count across all screens** in the design; there is no
   explicit knob. (Adding a layer-screen therefore means adding a layer to the `Marvin` screen in

@@ -25,10 +25,9 @@
  * NavigationDrawer.tsx with Tailwind units resolved to pixels: a header, one row per
  * base view, and a status footer, over a zinc-900 backdrop.
  *
- * The row set is NAV_ENTRY below — one row per screen that exists. The design's four
- * remaining nav icon pairs and their strings (Activity Logs, Performance, System
- * Info, Settings, Diagnostics) are kept for the screens they name, so adding a row
- * is one line here.
+ * The row set is NAV_ENTRY below — one row per screen that exists. The design's remaining
+ * nav icon pairs and their strings (Performance, Settings, Diagnostics) are kept for the
+ * screens they name, so adding a row is one line here.
  *
  * Text comes from the DESIGN string table (leTableString + stringID_*), not C
  * literals, so the captions stay translatable and MGS keeps auto-including their
@@ -113,6 +112,7 @@ static const struct {
     { stringID_NAV_BUTTON_Wiimotes,       &NAV_ICON_WIIMOTES,  &NAV_ICON_WIIMOTES_SELECTED,  UiManager_ShowWiimotes  },
     { stringID_NAV_BUTTON_Bus_Statistics, &NAV_ICON_BUS,       &NAV_ICON_BUS_SELECTED,       UiManager_ShowStats     },
     { stringID_NAV_BUTTON_System_Info,    &NAV_ICON_SYSTEM_INFO, &NAV_ICON_SYSTEM_INFO_SELECTED, UiManager_ShowSystem },
+    { stringID_NAV_BUTTON_Activity_Logs,  &NAV_ICON_LOGS,      &NAV_ICON_LOGS_SELECTED,      UiManager_ShowLog       },
 };
 
 #define NAVIGATION_COUNT  (sizeof NAV_ENTRY / sizeof NAV_ENTRY[0])

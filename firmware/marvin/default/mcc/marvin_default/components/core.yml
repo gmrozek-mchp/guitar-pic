@@ -5375,7 +5375,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x02200000'
+            value: '0x02800000'
           type: Dynamic
         type: Values
       type: String
@@ -5387,7 +5387,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x221FFFFF'
+            value: '0x227FFFFF'
           type: Dynamic
         type: Values
       type: String
@@ -5399,7 +5399,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x22200000'
+            value: '0x22800000'
           type: Dynamic
         type: Values
       type: String
@@ -5411,7 +5411,7 @@ data:
       - children:
         - attributes:
             id: core
-            value: '0x0DE00000'
+            value: '0x0D800000'
           type: Dynamic
         type: Values
       type: String
@@ -5422,7 +5422,7 @@ data:
       children:
       - children:
         - attributes:
-            value: '34'
+            value: '40'
           type: User
         type: Values
       type: Integer

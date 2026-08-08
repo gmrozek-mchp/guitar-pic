@@ -8,6 +8,8 @@
 #include "gfx/legato/string/legato_stringutils.h"   /* measure a string to align it */
 
 #include "util/legato_utf8.h"
+#include "ui/gfx/text_lut.h"   /* blend-lookup glyph path */
+#include "ui/ui_anim.h"   /* drives the release fling; Legato's update() hook is compiled out */
 
 #include "FreeRTOS.h"
 #include "task.h"   /* xTaskGetTickCount — real elapsed time for inertia */
@@ -80,6 +82,8 @@ typedef struct leSongListWidget
 static leWidgetVTable songListVTable;
 static bool           vtableReady = false;
 
+static bool songlist_step(void *ctx);   /* inertia, registered from sl_touchUp */
+
 /* ---- small helpers ------------------------------------------------------ */
 
 static uint32_t now_ms(void)
@@ -119,11 +123,12 @@ static void clamp_scroll(leSongListWidget *w)
  * RIGHT and CENTRE behave exactly like LEFT and the text runs off to the right of the
  * anchor. So resolve the alignment here by measuring the string and moving x. */
 static void draw_str(const leSongListWidget *w, const char *s, const leFont *font,
-                     int x, int y, leHAlignment align, leColor color)
+                     int x, int y, leHAlignment align, leColor rgb888, leColor bg)
 {
     leChar buf[96];
-    leUStringRenderRequest req;
     uint32_t len;
+
+    (void)w;
 
     if (s == NULL || s[0] == '\0' || font == NULL) { return; }
 
@@ -142,20 +147,14 @@ static void draw_str(const leSongListWidget *w, const char *s, const leFont *fon
         }
     }
 
-    req.str    = buf;
-    req.length = len;
-    req.font   = font;
-    req.x      = x;
-    req.y      = y;
-    req.align  = LE_HALIGN_LEFT;
-    req.color  = color;
-    req.alpha  = 255;
-    req.lookupTable = (w->widget.scheme != NULL)
-        ? leUtils_GetSchemeLookupTable(w->widget.scheme, color,
-              leScheme_GetRenderColor(w->widget.scheme, LE_SCHM_BASE))
-        : NULL;
-
-    leStringRenderer_DrawUString(&req);
+    /* Alignment is already resolved into `x` above, so this only ever draws a left-aligned
+     * line — which is what lets it use the blend-lookup path (measured 1.38× on the text
+     * portion of a repaint, see ui/gfx/text_lut.h). `bg` is the flat colour actually behind
+     * the glyphs: the dialog's zinc-900 for a normal row, the selection fill for a selected
+     * one. The ramp is only valid if that is right, which is why it is a parameter rather
+     * than read from the scheme — this widget is transparent, so its own scheme's BASE is
+     * not what shows through. */
+    TextLut_DrawLine(font, x, y, buf, len, rgb888, bg, TEXT_PATH_LUT);
 }
 
 /* ---- paint -------------------------------------------------------------- */
@@ -194,7 +193,7 @@ static void sl_paint(leWidget *wgt)
         draw_str(w, msg, f,
                  area.x + (int)area.width / 2,
                  area.y + ((int)area.height - font_h(f)) / 2,
-                 LE_HALIGN_CENTER, conv(SL_ARTIST));
+                 LE_HALIGN_CENTER, SL_ARTIST, SL_BG);
 
         wgt->status.drawState = LE_WIDGET_DRAW_STATE_DONE;
         wgt->drawFunc = NULL;
@@ -223,6 +222,7 @@ static void sl_paint(leWidget *wgt)
         int rowTop = firstTop + (i - first) * rowH;
         songlist_row_t row;
         leColor titleC, artistC, rightC;
+        leColor rowBg;
         int textX, block, startY;
 
         if (rowTop >= area.y + vh) { break; }
@@ -238,11 +238,13 @@ static void sl_paint(leWidget *wgt)
         {
             leRect hl = { area.x, rowTop, area.width, rowH };
             leRenderer_RectFill(&hl, conv(SL_SEL_BG), 255);
-            titleC = conv(SL_SEL_TITLE); artistC = conv(SL_SEL_ARTIST); rightC = conv(SL_SEL_RIGHT);
+            rowBg = SL_SEL_BG;
+            titleC = SL_SEL_TITLE; artistC = SL_SEL_ARTIST; rightC = SL_SEL_RIGHT;
         }
         else
         {
-            titleC = conv(SL_TITLE); artistC = conv(SL_ARTIST); rightC = conv(SL_RIGHT);
+            titleC = SL_TITLE; artistC = SL_ARTIST; rightC = SL_RIGHT;
+            rowBg  = SL_BG;
         }
 
         leRect sep = { area.x, rowTop + rowH - 1, area.width, 1 };
@@ -253,19 +255,19 @@ static void sl_paint(leWidget *wgt)
             draw_str(w, row.badge, w->badgeFont,
                      area.x + SL_PAD_X, rowTop + (rowH - font_h(w->badgeFont)) / 2,
                      LE_HALIGN_LEFT,
-                     row.selected ? conv(SL_SEL_BADGE) : conv(row.badgeColor));
+                     row.selected ? SL_SEL_BADGE : row.badgeColor, rowBg);
         }
 
         textX  = area.x + SL_PAD_X + SL_BADGE_COL;
         block  = titleH + SL_LINE_GAP + metaH;
         startY = rowTop + (rowH - block) / 2;
 
-        draw_str(w, row.title,  w->titleFont, textX, startY, LE_HALIGN_LEFT, titleC);
+        draw_str(w, row.title,  w->titleFont, textX, startY, LE_HALIGN_LEFT, titleC, rowBg);
         draw_str(w, row.artist, w->metaFont,  textX, startY + titleH + SL_LINE_GAP,
-                 LE_HALIGN_LEFT, artistC);
+                 LE_HALIGN_LEFT, artistC, rowBg);
         draw_str(w, row.right,  w->metaFont,
                  area.x + area.width - SL_PAD_X, rowTop + (rowH - metaH) / 2,
-                 LE_HALIGN_RIGHT, rightC);
+                 LE_HALIGN_RIGHT, rightC, rowBg);
     }
 
     wgt->status.drawState = LE_WIDGET_DRAW_STATE_DONE;
@@ -347,29 +349,39 @@ static void sl_touchUp(leWidget *wgt, leWidgetEvent_TouchUp *evt)
 
         w->tracking   = false;
         w->lastTickMs = now_ms();      /* start the inertia clock */
+
+        /* Hand the fling to the animation ticker. Nothing is registered when the release
+         * was a tap or a dead stop, so a scroll that ends still costs nothing. */
+        if (w->velocity != 0.0f) { UiAnim_Start(songlist_step, w); }
     }
 
     leWidgetEvent_Accept((leWidgetEvent *)evt, wgt);
 }
 
-static void sl_update(leWidget *wgt, uint32_t dt)
+/* Inertia step, driven by ui_anim rather than by Legato's `update()` vtable slot.
+ *
+ * That slot is never called in this build — `updateWidgets` is compiled out under
+ * !MARVIN_ANY_UPDATING_WIDGET (re-apply patch #15) — so this lived here as dead code from
+ * that patch until 2026-08-08. Registered from sl_touchUp when a release has velocity, and
+ * self-deregistering by returning false; see ui/ui_anim.h.
+ *
+ * Motion is measured against real elapsed time rather than the tick period, so the fling
+ * covers the same distance whether or not the paint keeps up with UIANIM_STEP_MS. */
+static bool songlist_step(void *ctx)
 {
-    leSongListWidget *w = (leSongListWidget *)wgt;
+    leSongListWidget *w   = (leSongListWidget *)ctx;
+    leWidget         *wgt = &w->widget;
     uint32_t now, dtm;
     float decay;
     int mx;
 
-    /* Legato calls leUpdate(0), so the framework `dt` is always 0; we measure
-     * real elapsed time so motion is frame-rate independent (the update cadence
-     * is render-bound and irregular under task scheduling). */
-    (void)dt;
-
-    if (w->tracking || w->velocity == 0.0f) { return; }
+    /* A new touch during a fling sets velocity to 0, which ends the animation here. */
+    if (w->tracking || w->velocity == 0.0f) { return false; }
 
     now = now_ms();
     dtm = now - w->lastTickMs;
     w->lastTickMs = now;
-    if (dtm == 0u) { return; }
+    if (dtm == 0u) { return true; }
     if (dtm > SL_MAX_DT_MS) { dtm = SL_MAX_DT_MS; }
 
     w->scrollY += w->velocity * (float)dtm;
@@ -383,6 +395,8 @@ static void sl_update(leWidget *wgt, uint32_t dt)
     if (w->scrollY < 0.0f || w->scrollY > (float)mx) { w->velocity = 0.0f; }
     clamp_scroll(w);
     wgt->fn->invalidate(wgt);
+
+    return w->velocity != 0.0f;
 }
 
 /* ---- construction ------------------------------------------------------- */
@@ -396,7 +410,6 @@ static void ensure_vtable(const leWidget *constructed)
     if (vtableReady) { return; }
     songListVTable = *constructed->fn;
     songListVTable._paint         = sl_paint;
-    songListVTable.update         = sl_update;
     songListVTable.touchDownEvent = sl_touchDown;
     songListVTable.touchMoveEvent = sl_touchMove;
     songListVTable.touchUpEvent   = sl_touchUp;

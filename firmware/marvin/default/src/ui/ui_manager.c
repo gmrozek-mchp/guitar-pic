@@ -10,8 +10,10 @@
 #include "ui/screens/keyboard/screen_keyboard.h"
 #include "ui/screens/bus/screen_bus.h"
 #include "ui/screens/system/screen_system.h"
+#include "ui/screens/log/screen_log.h"
 #include "ui/dashboard_feed.h"
 #include "ui/titlebar.h"      /* metric-tile + status-LED tick, started at end of boot */
+#include "ui/ui_anim.h"       /* animation ticker (release flings) */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -65,7 +67,12 @@
  * leUpdate calls (LEGATO_Tasks ticks ~10 ms), so a single idle sample can read
  * "done" mid-paint. Require idle to hold continuously for a window several ticks
  * long before trusting it; bounded overall so a stall can't hang boot. */
-#define RENDER_POLL_MS            5u
+/* 1 ms rather than 5: this is on the System Info tap path, where WaitFrameAfter's poll
+ * granularity is pure added latency (~2.5 ms average at 5 ms). Each poll is two reads, and
+ * the wait only runs during a view switch or at boot, so polling more often costs nothing
+ * measurable. It also makes RENDER_IDLE_STABLE_MS a finer-grained check rather than a
+ * coarser one. */
+#define RENDER_POLL_MS            1u
 #define RENDER_IDLE_STABLE_MS   120u
 #define RENDER_IDLE_TIMEOUT_MS 8000u
 
@@ -836,7 +843,7 @@ void UiManager_CloseKeyboard(void)
  * picks across all attached layers regardless of canvas visibility, so the hidden
  * view's panel must be gated off or it would still intercept touches. */
 typedef enum { BASE_VIEW_DASHBOARD, BASE_VIEW_WIIMOTES, BASE_VIEW_BUS,
-               BASE_VIEW_SYSTEM } base_view_t;
+               BASE_VIEW_SYSTEM, BASE_VIEW_LOG } base_view_t;
 static base_view_t s_base_view = BASE_VIEW_DASHBOARD;
 static bool        s_system_detail;   /* which of the system screen's two canvases is bound */
 
@@ -865,6 +872,11 @@ static void hide_current_base(void)
             ScreenSystem_SetInput(false);
             ScreenSystem_SetShown(false);
             break;
+        case BASE_VIEW_LOG:
+            gfxcHideCanvas(CANVAS_LOG); gfxcCanvasUpdate(CANVAS_LOG);
+            ScreenLog_SetInput(false);
+            ScreenLog_SetShown(false);
+            break;
         case BASE_VIEW_DASHBOARD:
         default:
             gfxcHideCanvas(CANVAS_DASH); gfxcCanvasUpdate(CANVAS_DASH);
@@ -881,6 +893,7 @@ unsigned int UiManager_BaseCanvas(void)
         case BASE_VIEW_WIIMOTES: return CANVAS_WIIMOTES;
         case BASE_VIEW_BUS:      return CANVAS_BUS;
         case BASE_VIEW_SYSTEM:   return s_system_detail ? CANVAS_SYSTEM_DETAIL : CANVAS_SYSTEM;
+        case BASE_VIEW_LOG:      return CANVAS_LOG;
         default:                 return CANVAS_DASH;
     }
 }
@@ -894,6 +907,7 @@ void UiManager_SetBaseViewPickable(bool on)
         case BASE_VIEW_WIIMOTES: ScreenWiimotes_SetInput(on);        break;
         case BASE_VIEW_BUS:      ScreenBus_SetInput(on);             break;
         case BASE_VIEW_SYSTEM:   ScreenSystem_SetInput(on);          break;
+        case BASE_VIEW_LOG:      ScreenLog_SetInput(on);             break;
         default:                 UiManager_SetDashboardPickable(on); break;
     }
 }
@@ -934,6 +948,23 @@ void UiManager_ShowStats(void)
     ScreenBus_SetShown(true);   /* starts the periodic telemetry refresh */
 
     s_base_view = BASE_VIEW_BUS;
+}
+
+/* Activity-log screen: another full-screen base view like the bus screen (owns the panel,
+ * so the live video is dropped). Its titlebar hamburger reopens the drawer to leave. */
+void UiManager_ShowLog(void)
+{
+    if (s_base_view == BASE_VIEW_LOG) { return; }
+
+    UiManager_VideoHide();
+    UiManager_VideoOverlayHide();
+
+    hide_current_base();
+    bind_canvas(CANVAS_LOG, HW_BASE, XLCDC_RGB_COLOR_MODE_RGB_565, true);
+    ScreenLog_SetInput(true);
+    ScreenLog_SetShown(true);   /* catches up on lines logged while away */
+
+    s_base_view = BASE_VIEW_LOG;
 }
 
 /* System-info screen: the node showcase, another full-screen base view (so the live
@@ -1132,6 +1163,7 @@ static void init_screens(void)
     ScreenKeyboard_Setup();
     ScreenBus_Setup();
     ScreenSystem_Setup();
+    ScreenLog_Setup();
 
     /* Song-select starts closed: disable its layer-screens' background panels so
      * those (hidden) overlays don't capture touches meant for the dashboard.
@@ -1158,6 +1190,7 @@ static void paint_all_screens_once(void)
     Marvin_PANEL_BUS->fn->invalidate(Marvin_PANEL_BUS);
     Marvin_PANEL_SYSTEM->fn->invalidate(Marvin_PANEL_SYSTEM);
     Marvin_PANEL_SYSTEM_DETAIL->fn->invalidate(Marvin_PANEL_SYSTEM_DETAIL);
+    Marvin_PANEL_LOG->fn->invalidate(Marvin_PANEL_LOG);
 }
 
 size_t UiManager_FrameCount(void)
@@ -1373,6 +1406,11 @@ void UiManager_Initialize(void)
     ScreenKeyboard_InitSurface();
     ScreenBus_InitSurface();
     ScreenSystem_InitSurface();
+    ScreenLog_InitSurface();
+
+    /* The animation ticker (release flings). Creates a task that blocks immediately and
+     * stays blocked until something animates, so this costs nothing until it is used. */
+    UiAnim_Initialize();
     GFX_CANVAS_Task();
 
     s_render_lock = xSemaphoreCreateMutexStatic(&s_render_lock_buf);

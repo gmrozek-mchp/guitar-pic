@@ -19,6 +19,7 @@
 static volatile log_level_t s_level = LOG_LEVEL_INFO;
 static SemaphoreHandle_t    s_mutex;
 static StaticSemaphore_t    s_mutex_buf;
+static log_sink_fn volatile s_sink;
 
 /* Which task holds the lock and how deep it is in. Tracked here rather than read
  * back from the mutex so it works pre-scheduler and needs no
@@ -52,6 +53,11 @@ void log_set_level(log_level_t lvl)
 log_level_t log_get_level(void)
 {
     return s_level;
+}
+
+void log_set_sink(log_sink_fn fn)
+{
+    s_sink = fn;
 }
 
 uint32_t log_nested_count(void)
@@ -146,6 +152,17 @@ static void log_emit(log_level_t lvl, const char *fmt, va_list ap, const void *s
             dbgu_str(fmt);
             return;
         }
+    }
+
+    /* Its own copy, taken before vprintf consumes ap: capturing must not change what
+     * goes out over serial, including for a line the sink would have to truncate. */
+    log_sink_fn sink = s_sink;
+    if (sink != NULL)
+    {
+        va_list ap2;
+        va_copy(ap2, ap);
+        sink(lvl, fmt, ap2);
+        va_end(ap2);
     }
 
     (void)vprintf(fmt, ap);
