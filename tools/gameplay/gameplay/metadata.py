@@ -198,6 +198,85 @@ AMP2P_BLOCK: dict[str, tuple[int, int, int, int]] = {
     "right": (515, 164, 583, 242),
 }
 
+# ─── 2-player amp score digits (fixed-pitch LED strip) ─────────────────────────
+#
+# The amp's score is a green LED strip across the top of the registered block. It
+# is a *fixed grid*, unlike the single-player proportional font that score.py
+# ink-segments: equal-width cells at a constant pitch, right-aligned against a
+# fixed right edge, with the unused leading cells unpowered (uniformly dark, not
+# dim-with-ghost — so blank detection is a plain contrast gate). Coordinates are
+# relative to AMP2P_BLOCK, i.e. block-local, not canonical 720x480.
+#
+# The font is *not* 7-segment despite looking segment-like for 0/2/3/5/6/8/9: `1`
+# is a centred bar rather than the right-hand pair, and `4`/`7` carry diagonal
+# strokes. So digits are template-matched (integer coverage L1, same core as
+# score.py), not segment-decoded.
+AMP2P_BAND_Y0 = 14   # digit band rows 14..23 inside the block (ink is zero at 13 and 24)
+AMP2P_BAND_H = 10
+
+# Right edge (exclusive) the strip is anchored to. The two sides' block origins
+# were chosen independently, so this differs by a constant 6 px between them.
+AMP2P_RIGHT_EDGE: dict[str, int] = {"left": 55, "right": 61}
+
+# Per digit count: (cell_w, pitch). Cells grow leftward from AMP2P_RIGHT_EDGE.
+# The cell is the glyph *core* (7 px) — the 2 px between cores are gap, and must
+# stay out: they carry the glyph's bloom, which tracks the LED's brightness phase
+# rather than its shape, and including them lets a dim 9 out-match a bright 9.
+# Counts 1-4 are measured (the pitch and the right edge are unchanged across the
+# 3->4 digit crossing); 5 extends the same grid onto clean panel. There is
+# deliberately no 6+ entry: the strip re-lays-out when a 6th digit appears and
+# that geometry is unmeasured, so a 6-digit frame must be *flagged*, not guessed
+# (see docs/journal.md). Adding it later is one row here.
+AMP2P_GRID: dict[int, tuple[int, int]] = {
+    1: (7, 9),
+    2: (7, 9),
+    3: (7, 9),
+    4: (7, 9),
+    5: (7, 9),
+}
+
+# Canonical glyph grid. 10x7 is the cell's native size at the measured pitch, so
+# no resampling happens there; `covcore.cov_grid` still resizes into it, which is
+# what would give a narrower re-laid-out cell a chance of matching the same bank.
+AMP2P_GLYPH_ROWS = 10
+AMP2P_GLYPH_COLS = 7
+AMP2P_INK_NUM = 1            # relative ink threshold within a *cell* = num/den of the
+AMP2P_INK_DEN = 2            # min..max luma range (1/2 = midpoint; gain/offset robust)
+# Templates per digit. The LEDs pulse, so each glyph has a bloomed and a thin
+# rendering; splitting each digit's exemplars into this many variants keeps both
+# instead of averaging them together. Measured over the reference capture: 1
+# variant reads the same values but with worst-case distance 1844 and 1st-percentile
+# margin 389; 2 variants give 1275 / 648; 3 and 4 add templates without moving
+# either. So 2 buys the headroom the gates below are set against.
+AMP2P_VARIANTS = 2
+# A cell's luma range below this => unpowered (a leading blank). Measured: blank
+# cells span ~17 counts of dark-panel gradient, a lit cell 100-140, so the gate
+# sits well clear of both. In raw luma units (B*29+G*150+R*77, no /256).
+AMP2P_BLANK_CONTRAST = 35 * 256
+# Match gates, set against the reference capture (11392 cells, all read correctly):
+# worst per-cell distance was 1275 and the smallest runner-up gap 510, so these sit
+# clear of every good read and only fire on a glyph the bank has no business
+# claiming — an alien font, a torn strip, or a mid-transition cell.
+AMP2P_UNK_DIST = 2600        # per-cell best L1 above this => digit unreadable
+AMP2P_UNK_MARGIN = 200       # runner-up gap below this => digit ambiguous
+
+
+def amp2p_score_from_filename(filename: str) -> tuple[str, int] | None:
+    """Parse a 2-player amp score corpus filename into (side, value).
+
+    `score2p__right__01643__f0900.png` -> ("right", 1643). Returns None for
+    non-2p-score filenames.
+    """
+    stem = filename.rsplit("/", 1)[-1]
+    if stem.endswith(".png"):
+        stem = stem[: -len(".png")]
+    parts = stem.split("__")
+    if len(parts) < 3 or parts[0] != "score2p" or not parts[2].isdigit():
+        return None
+    if parts[1] not in AMP2P_BLOCK:
+        return None
+    return parts[1], int(parts[2])
+
 # ─── score multiplier (colour-count classifier) ────────────────────────────────
 #
 # The multiplier glyph in the medallion has a fixed colour per value: 2x = gold,

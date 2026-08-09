@@ -28,7 +28,8 @@ from .classifier import (
     build_templates,
     classify_fp,
 )
-from .corpus import Sample, load_bgr, load_corpus, load_score_corpus
+from . import amp2p
+from .corpus import Sample, load_amp2p_corpus, load_bgr, load_corpus, load_score_corpus
 from .fingerprint import CANONICAL_H, CANONICAL_W, BPP, FingerprintConfig, fingerprint
 from .highlight import build_selection_calibration, read_selection
 from .metadata import (
@@ -565,6 +566,93 @@ def score_monotonic_eval(
     return ScoreMonotonicResult(
         n_frames=len(files), n_violations=viol, digit_hist=dict(sorted(hist.items())),
         first=first, last=last, violations=violations,
+    )
+
+
+@dataclass(frozen=True)
+class Amp2pMonotonicResult:
+    side: str
+    n_frames: int
+    n_violations: int           # reads that decreased vs the running max
+    n_unreadable: int           # value is None (gated, misaligned, or off-grid)
+    n_layout_unknown: int       # the grid table cannot describe what is on screen
+    digit_hist: dict[int, int]  # powered-cell count → frame count
+    first: int
+    last: int
+    worst_dist: float
+    min_margin: float
+    deltas: list[int]           # distinct non-zero frame-to-frame changes
+    violations: list[tuple[str, int, int]]  # (filename, prev_max, read) — first few
+    unreadable: list[tuple[str, str]]       # (filename, reason) — first few
+
+    @property
+    def clean_frac(self) -> float:
+        return 1.0 - (self.n_violations / self.n_frames) if self.n_frames else 0.0
+
+
+def amp2p_score_monotonic_eval(
+    frames_dir, side: str = "right", samples: list[Sample] | None = None
+) -> Amp2pMonotonicResult:
+    """Label-free accuracy proxy over a whole extracted 2-player amp capture.
+
+    A play's score only climbs, so any read that *decreases* vs the running max is a
+    misread. Reads every `*.png` (sorted) with the bank from the committed corpus,
+    registers once on the corpus, and reports violations, gate rejections, the
+    powered-cell histogram and the distinct frame-to-frame deltas — real note/sustain
+    scoring shows up there as small sustain steps plus multiples of 50. Captures are
+    not committed, so this is a local check (see docs/journal.md for the reference
+    numbers).
+    """
+    from pathlib import Path
+
+    if samples is None:
+        samples = load_amp2p_corpus()
+    bank = amp2p.build_amp2p_bank(samples)
+    # Register on the (reliable) corpus, not the target dir's first frame.
+    ref = amp2p.build_reference(side)
+    calib = amp2p.calibrate(side, [s.image for s in samples[:4]], ref, search=4)
+
+    block_shape = amp2p.block_size(side)
+    files = [f for f in sorted(Path(frames_dir).glob("*.png"))
+             if load_bgr(f).shape[:2] in (block_shape, (CANONICAL_H, CANONICAL_W))]
+
+    prev_max = -1
+    viol = unread = unknown = 0
+    hist: dict[int, int] = defaultdict(int)
+    first = last = -1
+    worst_dist = 0.0
+    min_margin = float("inf")
+    seq: list[int] = []
+    violations: list[tuple[str, int, int]] = []
+    unreadable: list[tuple[str, str]] = []
+    for f in files:
+        r = amp2p.read_amp2p_score(load_bgr(f), bank, calib, side)
+        hist[r.n_cells] += 1
+        if r.layout_unknown:
+            unknown += 1
+        if r.value is None:
+            unread += 1
+            if len(unreadable) < 20:
+                unreadable.append((f.name, r.reason))
+            continue
+        worst_dist = max(worst_dist, r.dist)
+        min_margin = min(min_margin, r.margin)
+        seq.append(r.value)
+        if first < 0:
+            first = r.value
+        last = r.value
+        if r.value < prev_max:
+            viol += 1
+            if len(violations) < 20:
+                violations.append((f.name, prev_max, r.value))
+        prev_max = max(prev_max, r.value)
+    return Amp2pMonotonicResult(
+        side=side, n_frames=len(files), n_violations=viol, n_unreadable=unread,
+        n_layout_unknown=unknown, digit_hist=dict(sorted(hist.items())),
+        first=first, last=last, worst_dist=worst_dist,
+        min_margin=0.0 if min_margin == float("inf") else min_margin,
+        deltas=sorted({b - a for a, b in zip(seq, seq[1:]) if b != a}),
+        violations=violations, unreadable=unreadable,
     )
 
 

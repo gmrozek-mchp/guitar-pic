@@ -92,6 +92,19 @@ def load_score_corpus(directory: str | Path | None = None) -> list[Sample]:
     return [Sample(screen_id="in_song", path=f, image=load_bgr(f)) for f in files]
 
 
+def load_amp2p_corpus(directory: str | Path | None = None) -> list[Sample]:
+    """Load the labelled 2-player amp score frames (`score2p__<side>__<value>__*.png`).
+
+    Amp-block crops labelled by side + numeric value in the filename (see
+    `metadata.amp2p_score_from_filename`). Both sides live in one corpus and feed
+    one digit bank — same glyph art at the same scale, only the block origin
+    differs. Returned as `in_song_2p` samples. Returns [] if missing/empty.
+    """
+    d = Path(directory) if directory is not None else score_corpus_dir()
+    files = sorted(d.glob("score2p__*.png"))
+    return [Sample(screen_id="in_song_2p", path=f, image=load_bgr(f)) for f in files]
+
+
 def load_streak_corpus(directory: str | Path | None = None) -> list[Sample]:
     """Load the labelled streak frames (`streak__<hundreds><tens><units>__*.png`).
 

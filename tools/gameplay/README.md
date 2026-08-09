@@ -58,6 +58,29 @@ Char-level OCR is deliberately out of scope: menu items and song titles are a cl
 already have reference bitmaps for (match, don't decode); digit OCR comes only with score
 reading. `section_select` (variable list) and reading the scrolling neighbour list are deferred.
 
+## 2-player amp scoreboard reader
+
+Two-player mode replaces the single bottom-left scoring block with two amp scoreboards near
+the top of the frame. `amp2p.py` registers each side independently against its static chrome
+(hand-painted `amp2p_<side>_mask.png`), then reads the green LED score inside the registered
+block. The strip is a **fixed grid** — 7 px cells at pitch 9, band rows 14–23, right-aligned
+against a fixed edge — so there is no ink segmentation: cell positions come from `AMP2P_GRID`
+and each is matched by integer coverage L1 against a template bank. Two details carry the
+accuracy: the ink threshold is relative to *each cell* (the LEDs pulse, and a band-wide
+threshold thins a dim `9` into a `5`), and each digit keeps **two** templates rather than one
+average (its bloomed and thin renderings). The font is not segment-decodable — `1` is a centred
+bar, `4` and `7` have diagonals.
+
+Which cells hold a digit is read off the display, not the matcher: unused leading cells are
+unpowered, so a per-cell contrast gate gives the digit count. Anything the grid cannot justify
+— a non-right-aligned lit pattern, a digit count outside the table, ink off the grid — returns
+no value with `layout_unknown` set, rather than a guess. Result: **3027/3027** frames of the
+reference right-side capture read with 0 monotonic violations, and a bank built from 10
+committed right-side frames reads the **left** amp in all 5 corpus snapshots exactly.
+
+Deferred (see `docs/journal.md`): star-power pill count, the centre face-off gauge, and the
+multiplier. Scores above 99999 re-lay-out the strip and are flagged, not read.
+
 ## Navigator (M10)
 
 `navgraph.py` encodes the menu graph (`firmware/marvin/docs/gh3_navigation.md`) as data;
@@ -78,6 +101,14 @@ uv run gameplay eval                 # classifier + selection reader: accuracy, 
 uv run gameplay eval --no-sweep      # skip the parameter sweep
 uv run gameplay classify path/to/frame.png   # screen id (+ selection / song)
 uv run gameplay rows path/to/frame.png       # debug per-cell selection scores
+uv run gameplay read-score path/to/frame.png            # 1p score reader on one frame
+uv run gameplay read-amp2p path/to/frame.png --side left  # 2p amp score reader on one frame
+
+# 2p amp capture workflow (marvin-perf provides the frames)
+#   cd ../marvin-perf && uv run marvin-perf export-region <cap> --kind score-2p-left --out /tmp/L
+uv run gameplay amp2p-monotonic /tmp/L --side left      # label-free sweep over a whole capture
+uv run gameplay amp2p-grow /tmp/L --side left           # propose new corpus frames (add --commit)
+
 uv run gameplay navigate --song 19 --difficulty hard   # plan + run a practice run vs the sim
 uv run gameplay export-c --out gameplay_metadata.h     # freeze recognizer metadata to a C header
 

@@ -7,14 +7,27 @@
 from __future__ import annotations
 
 import argparse
+import pathlib
+import shutil
 import sys
 
-from . import evaluate
+from . import amp2p, evaluate
 from .classifier import build_templates, classify_image
-from .corpus import load_bgr, load_corpus, load_score_corpus
+from .corpus import (
+    load_amp2p_corpus,
+    load_bgr,
+    load_corpus,
+    load_score_corpus,
+    score_corpus_dir,
+)
 from .fingerprint import FingerprintConfig
 from .highlight import _cell_bounds, build_selection_calibration, read_selection
-from .metadata import MENU_LAYOUTS, score_from_filename, selected_item_from_filename
+from .metadata import (
+    MENU_LAYOUTS,
+    amp2p_score_from_filename,
+    score_from_filename,
+    selected_item_from_filename,
+)
 from .score import build_score_catalog, calibrate_score, read_score
 from .screens import screen_id_for_filename
 from .navigator import NavController, plan_practice_run
@@ -122,6 +135,83 @@ def cmd_score_monotonic(args: argparse.Namespace) -> int:
     return 0 if res.n_violations == 0 else 1
 
 
+def cmd_amp2p(args: argparse.Namespace) -> int:
+    """Debug the 2-player amp score reader on one image (block crop or full frame)."""
+    samples = load_amp2p_corpus()
+    if not samples:
+        print("read-amp2p: no 2p score corpus (tools/gameplay/data/scores/score2p__*.png)",
+              file=sys.stderr)
+        return 2
+    image = load_bgr(args.image)
+    bank = amp2p.build_amp2p_bank(samples)
+    ref = amp2p.build_reference(args.side)
+    calib = amp2p.calibrate(args.side, [image], ref, search=args.search)
+    r = amp2p.read_amp2p_score(image, bank, calib, args.side)
+    shown = r.value if r.value is not None else f"none ({r.reason})"
+    print(f"amp2p {args.side}: {shown}\t(digits={_digit_str(r.digits)} cells={r.n_cells} "
+          f"dist={r.dist:.0f} margin={r.margin:.0f} reg=({calib.dx},{calib.dy})"
+          f"{' LAYOUT-UNKNOWN' if r.layout_unknown else ''})")
+    parsed = amp2p_score_from_filename(args.image.rsplit("/", 1)[-1])
+    if parsed is not None:
+        true_v = parsed[1]
+        print(f"predicted={r.value}  true={true_v}  {'OK' if r.value == true_v else 'WRONG'}")
+    return 0
+
+
+def cmd_amp2p_monotonic(args: argparse.Namespace) -> int:
+    """Label-free 2-player score check over an extracted-capture dir."""
+    res = evaluate.amp2p_score_monotonic_eval(args.frames_dir, side=args.side)
+    print(
+        f"amp2p-monotonic ({res.side}): {res.n_frames} frames, {res.n_violations} violations "
+        f"({res.clean_frac:.2%} clean), {res.n_unreadable} unreadable, "
+        f"{res.n_layout_unknown} layout-unknown; range {res.first}..{res.last}; "
+        f"cell-count hist {res.digit_hist}; worst dist {res.worst_dist:.0f}, "
+        f"min margin {res.min_margin:.0f}"
+    )
+    print(f"  distinct deltas: {res.deltas}")
+    for name, prev, got in res.violations:
+        print(f"  violation {name}: running-max {prev} -> read {got}")
+    for name, reason in res.unreadable:
+        print(f"  unreadable {name}: {reason}")
+    return 0 if res.n_violations == 0 and res.n_unreadable == 0 else 1
+
+
+def cmd_amp2p_grow(args: argparse.Namespace) -> int:
+    """Propose frames from a new capture to add to the labelled 2-player corpus."""
+    samples = load_amp2p_corpus()
+    if not samples:
+        print("amp2p-grow: the corpus is empty, so there is no bank to grow. See "
+              "docs/journal.md for the cold-start (cluster-and-label) procedure.",
+              file=sys.stderr)
+        return 2
+    bank = amp2p.build_amp2p_bank(samples)
+    ref = amp2p.build_reference(args.side)
+    calib = amp2p.calibrate(args.side, [s.image for s in samples[:4]], ref, search=4)
+    have = {v for v in (amp2p_score_from_filename(s.path.name) for s in samples) if v}
+    cands, n_settled, n_frames = amp2p.grow_candidates(
+        args.frames_dir, bank, args.side, calib, limit=args.limit,
+        have_values={v for _side, v in have},
+    )
+    print(f"amp2p-grow ({args.side}): {n_frames} frames, {n_settled} settled+confident, "
+          f"{len(cands)} proposed (corpus has {len(samples)}, bank {len(bank.templates)} templates)")
+    if not cands:
+        print("  nothing to add — the bank already reads this capture confidently.")
+        return 0
+    out = pathlib.Path(args.out)
+    for c in cands:
+        src = pathlib.Path(c.path)
+        name = amp2p.corpus_name(args.side, c.value, args.source or f"cap{src.stem.split('-')[-1]}")
+        print(f"  {src.name} -> {name}  (dist={c.dist:.0f} margin={c.margin:.0f})")
+        if args.commit:
+            shutil.copyfile(src, out / name)
+    if args.commit:
+        print(f"  wrote {len(cands)} frame(s) to {out}/ — verify each label with read-amp2p, "
+              f"then re-run amp2p-monotonic.")
+    else:
+        print("  dry run; pass --commit to write these into the corpus.")
+    return 0
+
+
 def cmd_eval(args: argparse.Namespace) -> int:
     config = _config_from_args(args)
     print(evaluate.run_report(config=config, sweep=not args.no_sweep))
@@ -208,6 +298,32 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_mono.add_argument("frames_dir", help="dir of extracted score-block PNGs (marvin-perf export-region)")
     p_mono.set_defaults(func=cmd_score_monotonic)
+
+    p_amp = sub.add_parser("read-amp2p", help="Debug the 2-player amp score reader on one image.")
+    p_amp.add_argument("image", help="path to an amp-block crop or a full 720x480 frame")
+    p_amp.add_argument("--side", choices=amp2p.SIDES, default="right")
+    p_amp.add_argument("--search", type=int, default=4, help="registration search radius (px)")
+    p_amp.set_defaults(func=cmd_amp2p)
+
+    p_amono = sub.add_parser(
+        "amp2p-monotonic",
+        help="Label-free 2-player score check over an extracted-capture dir.",
+    )
+    p_amono.add_argument("frames_dir", help="dir of extracted amp-block PNGs (marvin-perf export-region)")
+    p_amono.add_argument("--side", choices=amp2p.SIDES, default="right")
+    p_amono.set_defaults(func=cmd_amp2p_monotonic)
+
+    p_agrow = sub.add_parser(
+        "amp2p-grow",
+        help="Propose frames from a new capture to add to the labelled 2p corpus.",
+    )
+    p_agrow.add_argument("frames_dir", help="dir of extracted amp-block PNGs")
+    p_agrow.add_argument("--side", choices=amp2p.SIDES, default="right")
+    p_agrow.add_argument("--limit", type=int, default=8, help="max frames to propose")
+    p_agrow.add_argument("--out", default=str(score_corpus_dir()), help="corpus directory")
+    p_agrow.add_argument("--source", help="source tag for the filenames (default: frame number)")
+    p_agrow.add_argument("--commit", action="store_true", help="write the frames (default: dry run)")
+    p_agrow.set_defaults(func=cmd_amp2p_grow)
 
     p_export = sub.add_parser("export-c", help="Emit recognizer metadata as a C header for the firmware.")
     p_export.add_argument("--out", help="output .h path (default: stdout)")

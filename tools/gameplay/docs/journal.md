@@ -15,6 +15,11 @@ Orienting docs (read alongside this journal):
 
 ## Current focus
 
+**Two threads.** (a) **2-player readers, host-side** — the amp score digit reader landed
+2026-08-09 and is proven on both sides; everything else 2p is data-blocked until Greg can
+capture again (the 6-digit layout, a left-side stream, star power, the face-off gauge, the
+multiplier — all itemized in Open questions). (b) the firmware port below.
+
 **Porting to marvin firmware (`gameplay_engine`, spec §4.8) — started.** The offline
 prototype is complete (phases 1–4); now freezing the proven algorithms into firmware. Phased
 because the firmware is built/flashed by Greg in MPLAB (I write + syntax-review C only), and
@@ -136,6 +141,13 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
    ✅; screen classifier / selection / song / **score / multiplier / streak** readers ported
    (code-complete, pending Greg's MPLAB build); navigator/controller (M10) ported earlier. See
    Current focus.
+7. 🚧 **2-player amp scoreboards (host-only)** — per-side chrome registration ✅ (2026-07-14) and
+   the **score digit reader** ✅ (2026-08-09): fixed 7 px/pitch-9 grid inside the registered
+   block, powered-cell digit count, per-cell relative ink coverage matched against a 2-variants-
+   per-digit bank. **3027/3027 frames of the reference capture, 0 monotonic violations**, and a
+   right-side bank reads the left amp exactly. Deferred (data-blocked, see Open questions): the
+   6-digit re-layout, a left-side stream capture, star power, the face-off gauge, the multiplier,
+   and the firmware port.
 
 ---
 
@@ -143,6 +155,11 @@ Result at the chosen default (12×8 grid, 5×5 samples/region, normalized):
 
 | Date | Decision | Rationale |
 |------|----------|-----------|
+| 2026-08-09 | **The 2-player amp score is read on a *fixed grid*, not by ink segmentation — and the digit count comes from the display's unpowered leading cells, not from the glyph matcher.** Cells are 7 px wide at pitch 9, band rows 14–23, right-aligned against a fixed edge (`AMP2P_GRID` / `AMP2P_RIGHT_EDGE`, block-local). | The amp strip is a segment display, so unlike the single-player *proportional* font (which forced `score.py`'s ink-run segmentation) the cell positions are constant and can be tabulated. Measured on the reference capture: the pitch and the right edge are unchanged across the 3→4 digit crossing, and per-column ink occupancy lands exactly on 7-px cores with clean 2-px gaps on **both** sides. Deriving `n` from the powered-cell contrast gate instead of the matcher is what makes it robust: unused cells are genuinely unpowered (contrast ~17 vs 100–140 for a lit cell, a ~6× margin), so the count is a physical measurement independent of glyph quality — a faint leading `1` can't shorten the number. |
+| 2026-08-09 | **The amp font is template-matched, not 7-segment-decoded.** | It *looks* segment-based, and a segment decoder is far cheaper, so it was tried first: it read 1596/3027 frames with 0 monotonic violations and then failed **every** frame containing a `4`. The font is a stylized LED face, not a true 7-segment one — `1` is a centred bar rather than the right-hand pair, and `4` and `7` are drawn with diagonal strokes. Template matching also reuses the integer coverage core already proven and firmware-mirrored for the 1p readers. |
+| 2026-08-09 | **The ink threshold is relative to each *cell*, and each digit keeps two templates instead of one average.** `AMP2P_INK_NUM/DEN` = 1/2 per cell; `AMP2P_VARIANTS` = 2. | The LEDs pulse, so a bright glyph's strokes bloom about a pixel wider than a dim one's. Under a band-wide threshold the brightest digit in the band sets the range, and a dim `9` thins until it matches `5` better than it matches a bloomed `9` — the exact failure seen (48 monotonic violations, all traceable to that pair-family). Thresholding per cell removes the brightness phase, and it moved 114 cells from `5` to `9`, taking the reference capture to 0 violations. Keeping two templates per digit then buys headroom rather than correctness: worst-case distance 1844→1275 and 1st-percentile margin 389→648, with 3 and 4 variants adding templates and moving neither. Same reasoning the streak reader already uses when it thresholds per tumbler. |
+| 2026-08-09 | **The grid table stops at 5 digits on purpose, and a wider strip is *reported* (`layout_unknown`) rather than decoded.** | Greg: the score does climb past 99999 and the spacing changes when the 6th digit arrives. That geometry cannot be measured from any frame we have (the reference capture tops out at 4 digits and the screen corpus at 4), so any 6-digit entry would be invented. Leaving `AMP2P_GRID[6]` absent turns the unmeasured case into a detectable event instead of a silent misread, and pinning it later is one table row — no code change. The same guard catches a non-right-aligned lit pattern and ink that does not sit on the grid. |
+| 2026-08-09 | **Both sides share one bank and one corpus; only the block origin and right edge differ per side.** | The two amps are the same art at the same scale — the star-power pill column is mirrored, but the amp itself is not (digits are right-aligned on both). So a bank trained on one side must read the other, and that became the primary generalization test rather than an assumption: a bank built from 10 committed **right**-side capture frames reads the **left** amp in all 5 corpus snapshots exactly (a different side, a different ROI origin, and a different image source). |
 | 2026-08-08 | **2-player run policy is fixed, not a choice the navigator makes: always PRO FACE-OFF (`multiplayer_menu` idx 1); marvin drives P1/left only; `guitar_select_2p` is assert-don't-act; `player_ready_2p` always PLAY SHOW (idx 0); `venue_select` confirms through whatever is selected.** | Greg. Every degree of freedom on the 2-player setup path that *doesn't* affect gameplay is pinned to one value, so the navigator has nothing to decide and needs no readers for it — the same reasoning that lets `section_select` be GREENed through today. Concretely: PRO FACE-OFF is the only 2p mode in scope, so FACE-OFF/BATTLE are documented for recognition but never routed to; venue doesn't affect gameplay, so no venue catalog or fixed-slot matcher is built (8 posters captured become classifier exemplars only); character choice is out of scope, so `character_select_2p` is a pass-through GREEN. **Assert-don't-act on the guitar screen is a safety call:** marvin's guitar is expected already preselected on the left, and improvising guitar-moving inputs could drag the *human's* guitar to marvin's side and wedge the screen — so the controller verifies and confirms its own side, and aborts to the operator if the assertion fails, rather than trying to fix it. Marvin driving only P1 halves the reader work: P2 state is wait-for-only, never acted on. |
 | 2026-08-08 | **The 2-player setup screens introduce a new edge kind — `act-then-wait` — whose wait is *unbounded*; timing out into the generic RED recovery is a bug, not a fallback.** | Every edge modelled until now is "marvin acts → the screen changes", so the controller's post-actuation policy is poll-until-expected *with a timeout*, falling back to RED recovery. On `guitar_select_2p` and `player_ready_2p` marvin can only confirm its own side — the transition is gated on a **second human actor** confirming theirs. A timeout there would back marvin out of the setup flow while the player is still deciding, i.e. the recovery path actively breaks the run. So these edges get "observe until the expected screen appears" plus operator-visible "waiting for player 2" status instead of a deadline. |
 | 2026-08-08 | **`difficulty_select` is shared outright with the 2-player path (one cursor, existing reader); `player_ready_2p` is the screen that needs a per-side reader.** | Greg: PRO FACE-OFF puts both players on the *same* difficulty, so the natural worry (a per-player difficulty screen) doesn't exist — no new class or reader there. The genuinely per-side screens are `guitar_select_2p` and `player_ready_2p`, and only the latter has a cursor to read. That makes the deferred reader work small and specific: key menu layouts by a *layout* id rather than by screen id so one screen can carry two panels, and read only the left one. |
@@ -183,6 +200,34 @@ subsampled path costs <1% CPU at 5–10 Hz.
 
 ## Open questions
 
+- **2-player amp scoreboard follow-ups (score digits done 2026-08-09).** All of these are
+  data-blocked, and Greg can't capture more until later; the reader is built so each gap is
+  *visible* rather than guessed.
+  1. **The 6-digit layout.** Greg confirms the score climbs past 99999 and the spacing changes
+     when the 6th digit appears. `AMP2P_GRID` has no 6-entry, so such a frame reads
+     `layout_unknown` instead of a wrong number. **Closes with:** any capture whose score passes
+     99999 → measure the new pitch/width and add one table row. Note **5** digits is also
+     unproven (both the capture and the corpus top out at 4); the 5-cell grid is geometrically
+     safe — the cell sits on clean panel — but no frame exercises it.
+  2. **A left-side stream capture** (`marvin-perf score-capture --slot score-2p-left`). The left
+     amp is validated only on the 5 corpus snapshots today. Greg expects future collection to be
+     mostly left-side anyway — marvin plays better than a human, so scores run higher and vary
+     more, which is also the run most likely to produce the 5- and 6-digit values item 1 needs.
+     Fold new frames in with `gameplay amp2p-grow`.
+  3. **Star-power pill count.** The pill column is *mirrored* — left of the left amp, right of
+     the right amp — and both fall **outside** the current 68×78 `AMP2P_BLOCK`, so the committed
+     ROIs clip it. Needs the rects widened (host-supplied, so no reflash) and a fresh capture.
+  4. **The centre face-off gauge** (the tug-of-war meter, roughly `(305,235)-(405,325)`) — a
+     separate ROI and its own region slot, unrelated geometry to the amps.
+  5. **The multiplier.** The 2p medallion shows a character portrait, never the 1p purple digit,
+     in every frame available — so whether 2-player displays a multiplier at all is unknown. The
+     reference capture never leaves 1× (deltas are 50/100, consistent with base notes and
+     chords). Needs a capture with the multiplier up.
+  6. **Firmware port** — `export_c` amp bank + a `gp_read_amp2p`, as a separate signed-off phase.
+  7. **Noise robustness.** The per-cell range is a 2-sample statistic (min/max), so one hot pixel
+     can set it. Not worth fixing on current evidence (the pixel-locked stream reads 3027/3027
+     with 510 of margin), but it is the first thing to revisit if a noisier rig ever appears —
+     robust percentiles would cost the bit-exact integer C mirror.
 - **section_select FULL SONG reader — still wanted; firmware assumes-and-GREENs for now
   (2026-07-04, Greg).** Variable, song-dependent list, so no fixed-row-index reader; the
   screen is recognized (constant chrome) and FULL SONG is always the top row. The offline
@@ -228,6 +273,68 @@ subsampled path costs <1% CPU at 5–10 Hz.
 ---
 
 ## Session log
+
+### 2026-08-09 — 2-player amp score digit reader (host-only, both sides, 0 violations)
+
+Finished the thread opened 2026-07-14, which had the per-side *location* (chrome registration)
+done and left the digit reader as "next, needs sign-off, blocked on data". The data arrived:
+`tools/marvin-perf/captures/web-20260808-155311` is a 51 s / **3027-frame** stream of the
+**right** amp (`score_2p_right`, 68×78 blocks, score 443 → 3153). Scope agreed with Greg for
+this pass: **score digits only**, **host-only**. Star power / face-off gauge / multiplier come
+later.
+
+**Registration needed no changes** — `amp2p.calibrate` returns (0,0) for frames sampled across
+the whole new capture and for both sides of all 5 corpus snapshots. What it did need was to
+accept a bare region-strip crop, so `_ensure_full_frame(image, side)` now embeds a block into a
+full frame (mirroring `score.py`); registration and reading then share one path.
+
+**Geometry, measured not assumed.** Band rows **14–23** (ink is exactly zero at rows 13 and 24,
+both sides). Cells **7 px wide at pitch 9** with 2-px gaps, right-aligned against a fixed edge
+(`right` 61, `left` 55 — the sides' block origins were picked independently in July, hence the
+constant 6 px offset). Per-column ink occupancy over the capture lands dead-on those cores, and
+the same check on the snapshots confirms the left side. Verified across the 3→4 digit crossing
+at frame ~760: the pitch and the right edge do not move.
+
+**Two findings drove the design** (both in the decision log): the font is not segment-decodable
+(a segment decoder failed every `4`), and the LED **pulse** makes coverage brightness-dependent —
+which under a band-wide ink threshold turned dim `9`s into `5`s. Per-cell thresholding plus two
+templates per digit fixed it.
+
+**Labels were bootstrapped, not hand-annotated.** All 11392 non-blank cells were clustered
+(k=14 over the coverage vectors), the centroids read off as ASCII, then an active-learning loop
+grew a corpus from the weakest-margin frames and a backward pass pruned it. Result: **10
+committed frames** (`data/scores/score2p__right__*.png`) → 17 templates, with *better* margins
+than the 40-frame set it came from (510 vs 255). `gameplay amp2p-grow` is that loop as a verb,
+so the next capture is one dry-run plus a glance.
+
+**Validation.**
+- **Reference capture: 3027/3027 frames read, 0 monotonic violations, 0 unreadable, 0
+  layout-unknown**; range 443..3153; cell-count histogram {3: 716, 4: 2311}; worst per-cell
+  distance 1275, minimum runner-up margin 510. Distinct frame-to-frame deltas
+  `[2, 4, 5, 6, 9, 50, 100]` — small sustain steps plus 50/100 note awards, i.e. real GH3
+  scoring, which is the independent check that the values are not merely self-consistent.
+- **Cross-side / cross-source:** the right-side bank reads the **left** amp in all 5 snapshots
+  exactly (6906, 0, 486, 2386, 6906) — and the right amp too (0, 4376, 4400, 4400, 0).
+- **Value slop:** gain 0.85/1.15 and offset +20 leave every read intact. Across the *whole*
+  envelope no perturbation ever produces a **wrong** number — the gates degrade to "unreadable"
+  instead. Two axes do hit that path on the lower-contrast snapshot frames: `offset-neg20`
+  (which clips ~49% of the digit band to black) and added noise (a single hot pixel can set a
+  cell's range). Both sit outside a pixel-locked capture; the raw stream has 510 of margin.
+- **Registration:** synthetic ±3 px shifts recover exactly and the read is unchanged.
+- 27 new tests in `tests/test_amp2p.py`; suite 80 → **107 passed**.
+
+Also extracted `gameplay/covcore.py` — the integer coverage primitives (`luma_i`, `edge`,
+`cov_grid`, `ink_mask`) that `score.py` had private and `present.py` had already duplicated a
+constant from. `score.py` keeps its local names via aliases, so the move is behaviour-neutral
+(verified: suite green before adding anything new). `ink_mask` gained a `range_from` argument
+for callers whose band is wider than the region the threshold should come from.
+
+**New CLI:** `read-amp2p <img> --side {left,right}`, `amp2p-monotonic <dir> --side`,
+`amp2p-grow <dir> --side [--commit]`.
+
+Open items are in "Open questions" below: the 6-digit layout, a left-side stream capture, and
+the deferred star-power / gauge / multiplier readers. No firmware work — host-first, per the
+pattern the 1p readers used.
 
 ### 2026-08-08 — the 2-player setup path is mapped (nav doc); 5 new screens, not yet recognized
 
@@ -459,6 +566,10 @@ templates (the single-player white-font banks won't transfer). (2) 2P **multipli
 present in 2-player. (3) A committed pytest fixture for the registration (crops of the 5 frames) and,
 later, the firmware export/port. No firmware work yet — this is host-only, matching the phase-5
 host-first pattern.
+
+*(Item 1 done 2026-08-09 — see that session-log entry; the registration fixture came with it, as
+`tests/test_amp2p.py`. Item 2 turned out to be two separate things: there is no multiplier digit
+in the 2p amp at all, and no streak odometer either — both now tracked in Open questions.)*
 
 ### 2026-07-10 — streak: audited/cleaned the training set + units-wrap tens carry (fixes the carry lag)
 

@@ -39,6 +39,7 @@ from dataclasses import dataclass
 import numpy as np
 
 from .corpus import Sample, load_bgr, score_corpus_dir
+from .covcore import cov_grid, edge, ink_mask, luma_i
 from .fingerprint import CANONICAL_H, CANONICAL_W, _to_canonical
 from .metadata import (
     SCORE_BLOCK_ROI,
@@ -142,50 +143,14 @@ class ScoreResult:
     margin: float            # weakest (min) per-digit runner-up gap
 
 
-# ─── integer coverage core (shared by the score + streak readers) ───────────────
-#
-# All coverage math is integer, so the firmware C reproduces it bit-for-bit (float
-# would differ by rounding mode + float32/64 between host and device). Luma keeps
-# the raw B*29+G*150+R*77 sum (no /256 — the divide cancels in the relative ink
-# threshold). The threshold is a rational num/den. Grid edges and the per-cell
-# coverage use one integer round-half-up rule mirrored in gameplay_score.c.
-
-_LUMA_WI = np.array([29, 150, 77], dtype=np.int64)  # BGR weights; luma has no /256
-
-
-def _luma_i(patch: np.ndarray) -> np.ndarray:
-    return patch.astype(np.int64) @ _LUMA_WI
-
-
-def _edge(i: int, extent: int, n: int) -> int:
-    """round(i*extent/n) half-up, integer (matches gameplay_score.c gp_edge)."""
-    return (2 * i * extent + n) // (2 * n)
-
-
-def _cov_grid(m: np.ndarray, rows: int, cols: int) -> np.ndarray:
-    """Resize a cropped bool ink mask to a rows×cols uint8 coverage grid (0-255).
-
-    Each cell = round(ink_fraction * 255) via `(count*255 + npx//2)//npx` — the
-    same integer form gameplay_score.c uses.
-    """
-    if m.size == 0:
-        return np.zeros(rows * cols, dtype=np.uint8)
-    rh, rw = m.shape
-    mi = m.astype(np.int64)
-    g = np.empty(rows * cols, dtype=np.uint8)
-    for r in range(rows):
-        ya = _edge(r, rh, rows)
-        yb = min(rh, max(ya + 1, _edge(r + 1, rh, rows)))  # clamp past the bbox → empty
-        for c in range(cols):
-            xa = _edge(c, rw, cols)
-            xb = min(rw, max(xa + 1, _edge(c + 1, rw, cols)))
-            blk = mi[ya:yb, xa:xb]
-            npx = blk.size
-            g[r * cols + c] = ((int(blk.sum()) * 255 + npx // 2) // npx) if npx else 0
-    return g
-
-
 # ─── digit band luma + segmentation ─────────────────────────────────────────────
+#
+# The integer coverage primitives live in `covcore` (shared with the 2-player amp
+# reader in amp2p.py); the private aliases below keep them at their local names.
+
+_cov_grid = cov_grid
+_edge = edge
+_luma_i = luma_i
 
 
 def _band_luma(image: np.ndarray, mode: str, dx: int = 0, dy: int = 0) -> np.ndarray:
@@ -196,8 +161,7 @@ def _band_luma(image: np.ndarray, mode: str, dx: int = 0, dy: int = 0) -> np.nda
 
 
 def _ink_mask(band: np.ndarray, cfg: ScoreConfig) -> np.ndarray:
-    lo, hi = int(band.min()), int(band.max())
-    return cfg.ink_den * (band - lo) > cfg.ink_num * (hi - lo)
+    return ink_mask(band, cfg.ink_num, cfg.ink_den)
 
 
 def _segment_digits(band: np.ndarray, cfg: ScoreConfig) -> list[tuple[int, int]]:
